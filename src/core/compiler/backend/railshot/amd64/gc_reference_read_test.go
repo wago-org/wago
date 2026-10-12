@@ -17,7 +17,7 @@ func TestDirectGCStructReferenceReadRetainsRoot(t *testing.T) {
 	f.m.Types[0].SubTypes[0].Final = true
 	f.m.Types[0].SubTypes[0].Comp = wasm.CompType{Kind: wasm.CompStruct, Fields: []wasm.FieldType{wasm.NewFieldType(wasm.StorageVal(typ), wasm.Var)}}
 	f.policy = currentCodegenPolicy()
-	if !f.emitDirectGCStructGet(0, 0, gcStructGet) {
+	if !f.emitDirectGCStructGet(nil, 0, 0, gcStructGet) {
 		t.Fatal("final compact reference read must use the checked native resolver")
 	}
 	roots := f.rootsBottomToTop()
@@ -59,13 +59,13 @@ func TestDirectGCStructReferenceReadLimits(t *testing.T) {
 				f.policy = currentCodegenPolicy()
 				return f
 			}
-			if got := makeEmitter().emitDirectGCStructGet(0, 0, gcStructGet); got != tc.direct {
+			if got := makeEmitter().emitDirectGCStructGet(nil, 0, 0, gcStructGet); got != tc.direct {
 				t.Fatalf("native read=%v, want %v", got, tc.direct)
 			}
 			if makeEmitter().emitDirectGCStructSet(0, 0) {
 				t.Fatal("reference write must not use the scalar write path")
 			}
-			if makeEmitter().emitDirectGCStructGet(0, 0, gcStructGetS) {
+			if makeEmitter().emitDirectGCStructGet(nil, 0, 0, gcStructGetS) {
 				t.Fatal("packed read cannot load a reference")
 			}
 		})
@@ -86,7 +86,7 @@ func TestGCReferenceReadRejectsInvalidNativeOffset(t *testing.T) {
 	f.gcTypeLayouts = metadata.Layouts
 	f.gcTypeLayouts[0].FieldLayout[0].Offset = math.MaxUint32
 	f.policy = currentCodegenPolicy()
-	if f.emitDirectGCStructGet(0, 0, gcStructGet) {
+	if f.emitDirectGCStructGet(nil, 0, 0, gcStructGet) {
 		t.Fatal("invalid native displacement entered direct reference read")
 	}
 }

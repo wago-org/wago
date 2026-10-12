@@ -417,7 +417,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 				return cmp.Compare(ak, bk)
 			}
 			if ak == 1 {
-				return cmp.Compare(a.entry.allocSize, b.entry.allocSize)
+				return cmp.Compare(a.entry.size, b.entry.size)
 			}
 			return 0
 		})
@@ -616,7 +616,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 				return cmp.Compare(ak, bk)
 			}
 			if ak == 1 {
-				return cmp.Compare(a.entry.allocSize, b.entry.allocSize)
+				return cmp.Compare(a.entry.size, b.entry.size)
 			}
 			return 0
 		})
@@ -718,10 +718,10 @@ func (c *Collector) promotionPlansSorted(plans []plannedPromotion) bool {
 	for i := range plans {
 		plan := &plans[i]
 		if plan.entry.space == spaceFree {
-			plan.entry.allocSize = c.throughput.promotionAllocSize(c.handles[plan.handle].size)
+			plan.entry.size = c.throughput.promotionAllocSize(c.handles[plan.handle].size)
 		}
 		kind := promotionPlanKind(plan.entry)
-		size := plan.entry.allocSize
+		size := plan.entry.size
 		if previousKind >= 0 && (kind < previousKind || (kind == 1 && previousKind == 1 && size < previousSize)) {
 			sorted = false
 		}
