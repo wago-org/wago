@@ -113,6 +113,71 @@ func TestIntervalBranchFlushPreservesDirtyLocals(t *testing.T) {
 	}
 }
 
+func TestIntervalReferenceBranchPreservesDirtyLocals(t *testing.T) {
+	for _, op := range []byte{0xd5, 0xd6} {
+		blockType := byte(0x40)
+		if op == 0xd6 {
+			blockType = 0x6e // br_on_non_null supplies an anyref to the block.
+		}
+		// Build the reference before activating regional locals, so reference
+		// selection's ordinary control edges do not flush away the reproducer.
+		body := []byte{2, 80, 0x7f, 1, 0x6e, 0x3f, 0, 0x1a,
+			0x20, 0, 0x04, 0x6e, 0xd0, 0x6e, 0x05, 0x41, 0, 0xfb, 0x1c, 0x0b,
+			0x21, 81, 0x02, blockType}
+		for x := byte(1); x <= 28; x++ {
+			body = append(body, 0x41, x, 0x21, x, 0x20, x, 0x1a, 0x20, x, 0x1a)
+		}
+		body = append(body, 0x20, 81, op, 0)
+		if op == 0xd5 {
+			body = append(body, 0x1a) // non-null fallthrough retains the reference.
+		}
+		for x := byte(1); x <= 28; x++ {
+			body = append(body, 0x41, 0, 0x21, x)
+		}
+		if op == 0xd6 {
+			body = append(body, 0xd0, 0x6e) // fallthrough block result.
+		}
+		body = append(body, 0x0b)
+		if op == 0xd6 {
+			body = append(body, 0x1a)
+		}
+		body = append(body, 0x41, 0)
+		for x := byte(1); x <= 28; x++ {
+			body = append(body, 0x20, x, 0x6a)
+		}
+		body = append(body, 0x0b)
+		m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatal(err)
+		}
+		for _, mode := range []string{"default", "enabled", "disabled"} {
+			for _, null := range []uint64{0, 1} {
+				t.Run(fmt.Sprintf("op%x/%s/null%d", op, mode, null), func(t *testing.T) {
+					var stats ModuleStats
+					opts := CompileOptions{}
+					if mode != "default" {
+						opts.Optimizations = map[string]bool{"interval-region-pins": mode == "enabled"}
+					}
+					if diagnosticsEnabled {
+						opts.Stats = &stats
+					}
+					got, err := runArm64WrapperWithOptions(t, m, opts, null)
+					want := uint64(0)
+					if op == 0xd5 && null == 1 || op == 0xd6 && null == 0 {
+						want = 406
+					}
+					if err != nil || got != want {
+						t.Fatalf("got %d, %v; want %d", got, err, want)
+					}
+					if diagnosticsEnabled && mode != "disabled" && stats.Funcs[0].Peephole["interval-region"] == 0 {
+						t.Fatalf("regional caching not exercised: %v", stats.Funcs[0].Peephole)
+					}
+				})
+			}
+		}
+	}
+}
+
 func TestDotLoopPreservesDiscardedLoadTrap(t *testing.T) {
 	for _, address := range []int32{0, 65536} {
 		m := dotLoopModule(t, 2, 0, 64, 0, 0)
