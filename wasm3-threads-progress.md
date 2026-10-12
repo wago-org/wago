@@ -1234,3 +1234,141 @@ comes from the separate matrix above. Retained logs:
   `8006def98b59f9e9986252cfa2de9b0d6041ac57570486e087bc00b5392fea78`
 - `official-threads-indexed-amd64.txt` SHA-256:
   `6d840cc11e93251321d3f25cb6df1ba72ea31c1f7134bfe623a202561293a2a4`
+
+
+## Shared memories at nonzero indices
+
+Wago `2aa65ce0` admits shared memories at every memory index under explicit
+bounds checks. Each owned shared secondary backing establishes its shared type
+before execution. Shared growth uses the selected synchronized host helper;
+size queries, ordinary/atomic/SIMD accesses and constant/dynamic bulk bounds read
+the selected backing's authoritative published byte extent. ARM64 acquires that
+extent with LDAR. Primary-memory cached paths are preserved.
+
+Instances with a private primary memory and a shared secondary also receive
+threaded invocation and native-state leases. Imported unshared backing, foreign
+callables, shared collectors, tables and mutable globals retain the conservative
+common execution lease. Shared backing directory refresh never rewrites its
+fault owner from another instance's private control.
+
+Active-data initialization previously held the primary shared backing lock while
+resolving a secondary backing. Two imported declarations aliasing one Memory
+then deadlocked in jobMemory. The new alias test reproduced this on both native
+architectures. Initialization now locks only the current segment's backing,
+publishes its initialized bytes, and releases the lock before the next segment.
+This also synchronizes host-view extension with growth for shared secondary data.
+
+Validation includes:
+
+- All 63 numeric atomic opcodes against shared memory 1, with mixed primary and
+  secondary address widths, constant/dynamic addresses, defined/imported backing,
+  both call ABIs and codec products; narrow writes, alignment, high offsets and
+  bounds-before-write remain checked.
+- A separate 32-case matrix, each with original/codec execution, combines a
+  private or shared primary, both address widths, ownership and call ABI with
+  independent growth, zero/high-delta growth, ordinary and SIMD access,
+  cross-memory copy, constant/dynamic fill/init, active/passive data and drop.
+- Blocking waits/cancellation on memory 1; notifications against a distinct
+  memory 0 cannot wake its waiters. Aliased declarations share one queue and one
+  growth extent, and closing one importer preserves the other importer.
+- A guest starts with a one-page directory, signals its native entry, then spins
+  on memory.size 1 until a separate grower publishes page two. It reads that new
+  page without leaving/re-entering native code. This tests live publication,
+  including a private primary, without a directory refresh masking stale bounds.
+
+Restoring the old admission gate reproduces rejection of shared memory 1. Full
+thread tests and the local Core 3 regression corpus pass under guarded race
+checking on ARM64 and AMD64; staged memory64 passes on AMD64. Broader ARM64
+memory/data/instance/resource-quota regression tests also pass under guarded race
+checking. The pinned official threads suite passes all 13 scripts, 51 modules
+and 312 assertions on both architectures with no skips or reported gaps. Its
+standard primary-memory cases complement the selected-secondary tests above.
+
+Official threads logs SHA-256:
+
+- `official-threads-shared-secondary-arm64.txt`:
+  `591a26a6c9c65264a3bb302ba4eeebf1e980e130ff4d0ebb56609681e15b06f8`
+- `official-threads-shared-secondary-amd64.txt`:
+  `5187dca12dc856885aba8508be8ae97ff1d3aa812360063e063bf8ce88db4e0b`
+
+### Sustained shared-secondary contracts
+
+wasm.fyi `1ce2a5c` adds three source-built contracts. On Apple M4 Max, Darwin
+ARM64, Go 1.27.1, the median of three independently launched Wago processes is:
+
+| Contract, 262,144 work units | Wago ns |
+| --- | ---: |
+| Shared secondary atomic load/store | 302,497 |
+| Shared secondary zero-timeout wait and zero-delta growth | 438,012 |
+| Shared-secondary to shared-primary copy | 418,867 |
+
+Each launch has two warmup batches and five verified timed batches of at least
+50 ms. A separate V8 launch verifies the independent arithmetic oracle for each
+contract. Wago identity is `2aa65ce046172e263968f8c2cd37b3b01f580e35`, source
+fingerprint `84281aae26a0eefff72874b85e72ea8d4aef05f70702bcad514f6667b56c0656`.
+All three peer launches reject indexed atomic memargs: expected alignment 2,
+got 66. No peer timing or same-feature performance ratio is available.
+Raw `threads-shared-secondary-arm64.json` has SHA-256
+`c8c0b5809a140c2aa42b6291b4e0a1bd47461fc90cdb18404f0e12e3b3a9a89a`.
+
+The threads family now has 27 sustained contracts and one growth lifecycle probe.
+These accumulated captures are not a full common-revision retiming. All 124
+feature artifacts reproduce byte-for-byte with wasm-tools 1.260.0. The Node
+performance/protocol checks have five passes and one unrelated allocation
+artifact skip.
+
+### Compile costs
+
+Six alternating production ARM64 processes compare `c223867e` and `2aa65ce0`
+without overlapping timed captures with builds/tests. Register-allocation checks
+are reserved for validation, not production compilation measurements.
+
+| Complete compilation | Before ns | Current ns |
+| --- | ---: | ---: |
+| Small scalar | 6,289 | 6,088 |
+| Small scalar with Core 3 | 6,448 | 6,115 |
+| Imported workers, one compiler worker | 23,550,536 | 23,382,920 |
+
+Scalar allocation totals remain 19,202 / 19,058 bytes and 74 / 73 allocations;
+worker generated code remains 1,587,220 bytes with 94 allocations at both medians.
+These small latency differences are not evidence of a general speedup.
+
+The 218-module Core 3 corpus helper makes 21,800 compiles per process. Six
+alternating processes with GOMAXPROCS=1 give these medians:
+
+| Corpus metric | Before | Current |
+| --- | ---: | ---: |
+| Elapsed ns | 419,936,042 | 415,502,959 |
+| Go allocated bytes | 777,964,464 | 777,964,584 |
+| Go allocations | 2,649,939 | 2,649,937 |
+| Generated code bytes | 17,900,800 | 17,900,800 |
+| Process maximum RSS bytes | 14,057,472 | 14,073,856 |
+| Process peak footprint bytes | 9,339,408 | 9,519,656 |
+
+Latency is -1.06%, allocation/code totals are essentially unchanged, and peak
+process memory varies slightly (+0.12% RSS, +1.93% footprint). These probes show
+no material compile-cost increase. Process peaks include inputs and warmup and
+are not isolated compiler-only live memory or instantiation measurements.
+
+Ignored compile evidence SHA-256:
+
+- `threads-shared-secondary-native-compile-ab.json`:
+  `74f9274ca4c1a1696f29f077812c186e95551b3f633da36b8bb5a3bbe4cd6433`
+- `threads-shared-secondary-core3-compile-ab.json`:
+  `cdb30e8e80e2587e6bec45461e64152d2a5ef9a7e4b84b38c504456a295d800a`
+
+Broader proposal combinations and feature-by-feature execution parity remain
+open. The cancelled native Go JSPI/CSP counterparts remain absent.
+
+A fresh full pinned Core 3 execution run after this stage passes all 258 source
+files, 2,226 modules and 58,238 assertions on both native architectures, with no
+failures, skips or reported execution gaps. The same 28 files use the pinned
+reference interpreter text conversion fallback. WABT remains 1.0.41 and the
+spec/interpreter revision remains 9d36019973201a19f9c9ebb0f10828b2fe2374aa.
+These full Core 3 runs use the allocation checker, without the Go race detector;
+thread and targeted regression validation above uses both.
+
+- `official-core3-shared-secondary-arm64.txt` SHA-256:
+  `e4680565ecd8123994208f346cae750b4f4f0db95a5d4fc6fc2f8e0a8d08ffd9`
+- `official-core3-shared-secondary-amd64.txt` SHA-256:
+  `d6a2debe616546ec85519c8532113968862434bfe5a335a0096c0cc7c751cbcc`

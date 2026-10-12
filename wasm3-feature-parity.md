@@ -51,7 +51,9 @@ support alone does not establish performance parity.
   unshared secondary memories now execute beside a shared primary memory, with
   all numeric atomics and wait/notify selecting the encoded memory index.
   Imported unshared secondary backing retains the common execution lease.
-  Additional shared memories and wider proposal composition remain open.
+  Defined/imported shared memories now execute at nonzero indices too, with
+  live shared extents, selected growth helpers and per-backing wait queues.
+  Wider proposal composition and performance parity remain open.
 
 ## Current validation
 
@@ -230,3 +232,21 @@ See `wasm3-threads-progress.md` for revision-specific timings and compile costs.
 The requested native Go analogues for JS Promise Integration and Web CSP were
 cancelled before implementation. Browser-specific behavior remains outside this
 native embedding; no Go async host-call or compile-policy API was added.
+
+## Shared secondary checkpoint (2026-10-12)
+
+`2aa65ce0` removes the remaining shared-memory-index admission gate. Selected
+shared memories now publish growth through the synchronized helper and scalar,
+SIMD and bulk bounds use their authoritative live extent. Memory size and zero
+page growth select the correct backing. Instances with a private primary and a
+shared secondary receive threaded invocation/native-state leases too, while
+imported unshared resources retain the common execution lease.
+
+Shared active-data initialization locks one segment backing at a time, avoiding
+self-deadlock when memory declarations alias the same Memory. Tests cover this
+aliasing, one wait queue across aliases, distinct queues for separate backing,
+blocking waits, cancellation and growth visibility within a live native entry.
+Guarded race checks pass on ARM64 and AMD64; both pinned official threads suites
+pass again. wasm.fyi `1ce2a5c` adds shared secondary atomic, wait/size and copy
+contracts, verified through Wago and an independent V8 oracle. The peer still
+rejects indexed atomic memargs, so no same-feature parity ratio exists.
