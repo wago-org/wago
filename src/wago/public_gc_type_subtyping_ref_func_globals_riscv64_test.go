@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -202,9 +203,17 @@ func TestRV64GCTypeSubtypingRefFuncGlobalsRejectHostileRetainedState(t *testing.
 			"value-type": func(v *Compiled) { v.ValueTypes[0].Ref.Nullable = true },
 			"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 			"product":    func(v *Compiled) { v.codeCache.gcTypeSubtypingProduct = 0 },
+			"all-claims": func(v *Compiled) {
+				v.requiredFeatures &^= CoreFeatureGC
+				v.codeCache.stagedFeatures &^= CoreFeatureGC
+				v.codeCache.gcTypeSubtypingProduct = 0
+			},
 		} {
 			t.Run(strconv.Itoa(int(variant))+"/"+name, func(t *testing.T) {
 				candidate := cloneCompiledMetadata(base)
+				candidate.code = slices.Clone(candidate.code)
+				cache := *candidate.codeCache
+				candidate.codeCache = &cache
 				candidate.validateMemo = &validateMemo{}
 				mutate(candidate)
 				if rv64GCTypeSubtypingRefFuncGlobals(candidate) {
@@ -213,9 +222,31 @@ func TestRV64GCTypeSubtypingRefFuncGlobalsRejectHostileRetainedState(t *testing.
 				if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
 					t.Fatal("hostile retained mutation admitted", err)
 				}
+				if got := rv64GCTypeSubtypingRefFuncGlobalsProfileWithCode(base, false, true); got != variant || railshotValidateCompiled(base) != nil {
+					t.Fatal("hostile mutation contaminated exact baseline", got, variant)
+				}
 			})
 		}
 		compiled.Close()
+	}
+}
+
+func TestRV64GCTypeSubtypingRefFuncGlobalsCodeFingerprintCollisionCompatibility(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run("artifact="+strconv.FormatBool(artifact), func(t *testing.T) {
+			compiled := rv64NativeTailCompile(t, "ref-func-global-code-collision", rv64PublicNativeIdentityModule(nil), artifact)
+			defer compiled.Close()
+			view := compiled.executionView()
+			if !rv64GCTypeSubtypingRefFuncGlobalsExecutionCode(view) {
+				t.Fatal("numeric identity no longer exercises the ref.func-global code collision")
+			}
+			if rv64GCTypeSubtypingRefFuncGlobalsExecutionClaim(view) || rv64GCTypeSubtypingRefFuncGlobals(view) {
+				t.Fatal("ordinary numeric identity acquired a GC product claim")
+			}
+			if err := railshotValidateCompiled(view); err != nil {
+				t.Fatal("ordinary numeric identity rejected by a GC-only code fingerprint", err)
+			}
+		})
 	}
 }
 

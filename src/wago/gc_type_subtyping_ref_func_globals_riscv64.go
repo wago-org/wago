@@ -108,6 +108,18 @@ func rv64GCTypeSubtypingRefFuncGlobalsExecutionCode(c *Compiled) bool {
 	return false
 }
 
+// A fixed instruction image is not a unique module identity: the smallest
+// ref.func-global product lowers to the same empty framed function as ordinary
+// non-GC modules. Treat the digest as a hostile retained-image signal only
+// while metadata still claims some part of the GC product contract. If every
+// claim is removed, the ordinary validators below must independently admit or
+// reject the remaining metadata.
+func rv64GCTypeSubtypingRefFuncGlobalsExecutionClaim(c *Compiled) bool {
+	return c != nil && (c.requiredFeatures.IsEnabled(CoreFeatureGC) ||
+		c.stagedFeatures().IsEnabled(CoreFeatureGC) ||
+		c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingRefFuncGlobals)
+}
+
 func railshotRestoreGCTypeSubtypingRefFuncGlobalsArtifact(c *Compiled) {
 	if rv64GCTypeSubtypingRefFuncGlobalsProfileWithCode(c, true, true) == 0 {
 		return

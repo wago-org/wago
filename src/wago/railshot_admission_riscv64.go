@@ -132,7 +132,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if rv64GCTypeSubtypingRecursiveFunctionsProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingRecursiveFunctions {
 		return reject("gc/type-subtyping recursive-function metadata requires its exact retained image")
 	}
-	if rv64GCTypeSubtypingRefFuncGlobalsExecutionCode(c) && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink {
+	if rv64GCTypeSubtypingRefFuncGlobalsExecutionCode(c) && rv64GCTypeSubtypingRefFuncGlobalsExecutionClaim(c) && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink {
 		return reject("gc/type-subtyping ref.func-global image requires its exact retained metadata")
 	}
 	if rv64GCTypeSubtypingRefFuncGlobalsProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingRefFuncGlobals {
