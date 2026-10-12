@@ -147,8 +147,7 @@ performance function has one `dmb ish` followed by closed-form integer arithmeti
 and `ret`, with no guest loop remaining. The ignored `fence-inspect.c` and
 `fence-inspect.s` retain the translated source and assembly. This optimization
 remains part of the parity objective rather than being removed from comparison.
-The RMW/CAS lowering currently uses exclusive load/store loops on arm64;
-qualifying an LSE lowering is a subsequent performance opportunity.
+The RMW/CAS measurements above precede the CPU-gated LSE checkpoint below.
 
 Five additional sequential compile samples at `0a24f14a` retain 74/73/94
 allocations per operation for default scalar/Core 3 scalar/imported-workers
@@ -166,3 +165,65 @@ Additional ignored evidence under `.validation/wasm3-parity/`:
   `threads-w2c2-pthreads-plan.json`, and `threads-w2c2-futex-plan.json` retain
   samples, exact commands, artifacts, and batching controls.
 - Rebuilt AOT adapter executable SHA-256 `9d18504522f3b22c8e2e161010f5a2a0870931f338e3d465224d20b59e949c84`.
+
+
+## CPU-gated LSE and proven atomic bounds
+
+Wago `76f7bdac` emits acquire/release LSE RMW and compare-exchange on capable
+arm64 CPUs. Darwin uses the kernel LSE capability query; other arm64 hosts use
+CPU discovery. `atomic-lse=false` retains exclusive loops. Compiled artifacts
+record the LSE requirement and reject loading on an incompatible host. Parallel
+compilation joins the requirement from every emitted function; unreachable
+atomic instructions do not introduce a requirement.
+
+Wago `a0da41af` proves aligned constant atomic accesses against the declared
+memory minimum on both architectures. `atomic-static-bounds` controls this
+proof independently. Address addition remains full-width, with overflow checked;
+shared memory cannot shrink below its declared minimum. Nonconstant, unaligned,
+and out-of-bounds addresses retain runtime checks. Tests include accesses above
+2 GiB and at the final eight bytes of a 4 GiB memory. Wago `9d06b863` also borrows
+read-only arm64 store operands and removes zero-offset address additions.
+
+The controlled comparison alternates `a0da41af` and `9d06b863` across three
+independent launches per revision. All rows have five verified samples, two
+warmup batches, and meet the 50 ms target. The current revision's median launch
+values below match the prior Wago and w2c2 artifact hashes exactly. Units are ns
+per entire 262,144-operation invocation.
+
+| Contract | Prior Wago (`0a24f14a`) | Current Wago (`9d06b863`) | w2c2 | Current / w2c2 |
+| --- | ---: | ---: | ---: | ---: |
+| atomic-rmw-add | 905,594 | 247,316 | 204,531 | 1.209 |
+| atomic-compare-exchange | 889,516 | 290,398 | 254,805 | 1.140 |
+
+These workloads take 72.7% and 67.4% less time respectively than the prior Wago
+capture. They remain slower than w2c2. The operand cleanup itself shows
+essentially unchanged RMW time and a 1.6% lower CAS median in the alternating
+comparison; that small difference is not a statistical speedup claim. An earlier
+capture that overlapped race-test compilation is excluded. Other thread kernels
+were not rerun for this checkpoint.
+
+Current adapter source identity:
+`9d06b863ab05f4e1e29dcf7a63fdcab2b0f5e11a/source-add69b1748ff0a9dbc862b5622cbbf607d0af3c5347426da8f4ac25dfad87822`.
+
+The full native `^TestThreads` group passes on arm64 after the cleanup and on
+amd64 after the bounds proof. LSE differential tests cover all RMW operations,
+CAS, all widths, extreme values, codec reload, and exclusive-loop fallback.
+Race-enabled LSE and defined-shared-memory tests pass locally. Encoder words
+match independently assembled Clang output. Backend/shared/optimization tests
+pass with the allocation checker on both architectures; the amd64 run includes
+the previously missing fixture files copied to the isolated workspace.
+
+Five sequential compile samples after the bounds proof retain 74/73/94
+allocations and 19,202/19,058/3,420,950 median bytes per operation for default
+scalar/Core 3 scalar/imported workers. Median times are 6,009 ns, 5,961 ns, and
+22,257,458 ns. Imported-worker code remains 1,587,220 bytes. Compared with the
+preceding checkpoint, the larger fixture takes 0.5% more time; these few fixtures
+show no material compile regression and do not establish peak RSS.
+
+Additional ignored evidence under `.validation/wasm3-parity/`:
+
+- `threads-lse-arm64.json`, SHA-256 `dc6f50ef3826dd4d34b9a21a3ae0acc7b45dd1783201b4d089fe3833bf305a0a`.
+- `threads-static-bounds-arm64.json`, SHA-256 `ea31c9e61dadf4ba7e3b13858e2da1f8c785d3a540d64a93553f8121bc06d578`.
+- `threads-store-borrow-ab-arm64.json`, SHA-256 `a6f6ea15baf054ba084c41836ffc12a70ef9ee2cf935bcd7fd1e71ac35b03af8`.
+- `threads-store-borrow-ab-plan.json` retains alternating commands and launch
+  order; `threads-lse-compile.txt` retains all compile samples.

@@ -8,6 +8,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Prove aligned constant atomic addresses against declared memory minimums on
+  amd64 and arm64, retaining runtime checks where the proof fails.
+  `atomic-static-bounds` selects this optimization independently.
+
 - Use single-instruction acquire/release LSE atomics for arm64 RMW and
   compare-exchange when supported by the host. Preserve exclusive-loop fallback
   through `atomic-lse`, and persist CPU requirements for artifact admission.

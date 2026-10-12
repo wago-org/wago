@@ -30,6 +30,9 @@ support alone does not establish performance parity.
   Memoryless `atomic.fence` and shared `memory.size` are admitted. Constant-zero shared waits now lower
   directly to native loads and comparisons on arm64 and amd64.
   Ordinary scalar and SIMD loads/stores now execute against shared backing.
+  ARM64 atomics use CPU-gated LSE with an exclusive-loop fallback and persisted
+  artifact requirements. Both backends prove aligned constant atomic bounds
+  against declared memory minimums.
   This remains partial thread support: bulk operations, growth, multiple
   memories, and broader import/segment combinations remain
   restricted.
@@ -91,6 +94,13 @@ produces seven successful exact-artifact thread comparisons. Wago remains
 1.555–7.097 times slower on the memory/atomic kernels; the fence-only kernel has
 a larger gap because Clang collapses its guest loops to one fence and closed-form
 arithmetic. The linked thread report retains those results and configuration.
+
+The LSE and constant-bounds checkpoint reduces the exact atomic-add and CAS
+workloads by 72.7% and 67.4% respectively versus the preceding Wago capture.
+Current times remain 1.209 and 1.140 times w2c2; other kernels retain the gaps
+above. Sequential compile samples show unchanged allocation counts and code
+size for the measured fixtures. The thread report records CPU admission,
+codec/differential validation, alternating measurements, and raw evidence.
 
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
