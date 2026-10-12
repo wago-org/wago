@@ -2,11 +2,13 @@ package wago
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 var errAtomicWaitInstanceClosed = errors.New("wago: instance closed while waiting")
@@ -57,6 +59,14 @@ func (in *Instance) dispatchAtomicWaitHelper(helper uint32, args, results []uint
 	}
 	if len(results) < 1 {
 		panic(atomicWaitHelperError{err: fmt.Errorf("atomic helper %d has no result slot", helper)})
+	}
+	if helper == shared.AtomicHelperMemoryGrow {
+		if len(args) != 1 || in.memoryDir == nil || len(in.memoryDir.native) < abi.MemoryDirEntryBytes {
+			panic(atomicWaitHelperError{err: fmt.Errorf("shared memory.grow helper has invalid arguments or directory")})
+		}
+		maximum := binary.LittleEndian.Uint32(in.memoryDir.native[abi.MemoryDirPolicyMaxPagesOffset:])
+		results[0] = uint64(in.memory.growShared(uint32(args[0]), maximum))
+		return
 	}
 	ctx := context.Background()
 	if state, ok := atomicWaitInvocationContexts.Load(in); ok {

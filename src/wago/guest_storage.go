@@ -203,7 +203,7 @@ func (v *guestStorageView) MemoryInfo(index uint32) (GuestMemoryInfo, error) {
 	if jm == nil {
 		return GuestMemoryInfo{}, fmt.Errorf("wago: memory index %d is closed", index)
 	}
-	bytes := jm.HostBytes()
+	bytes := memory.hostBytes()
 	addressType := GuestMemory32
 	def := v.in.c.memoryDef(int(index))
 	if def.Addr64 {
@@ -226,7 +226,7 @@ func (v *guestStorageView) MemoryRange(index uint32, offset, length uint64, acce
 	if jm == nil {
 		return nil, fmt.Errorf("wago: memory index %d is closed", index)
 	}
-	bytes := jm.HostBytes()
+	bytes := memory.hostBytes()
 	if offset > math.MaxUint64-length {
 		return nil, fmt.Errorf("wago: memory range overflows")
 	}

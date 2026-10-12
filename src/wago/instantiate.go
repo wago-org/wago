@@ -676,8 +676,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			entry := nativeMemoryDir[i*abi.MemoryDirEntryBytes:]
 			binary.LittleEndian.PutUint64(entry[abi.MemoryDirBaseOffset:], uint64(memoryJM.LinMemBase()))
-			binary.LittleEndian.PutUint64(entry[abi.MemoryDirCurrentBytesOffset:], uint64(len(memoryJM.HostBytes())))
-			binary.LittleEndian.PutUint32(entry[abi.MemoryDirCurrentPagesOffset:], memoryJM.CurrentPages())
+			pages := memoryJM.CurrentPages()
+			binary.LittleEndian.PutUint64(entry[abi.MemoryDirCurrentBytesOffset:], uint64(pages)<<16)
+			binary.LittleEndian.PutUint32(entry[abi.MemoryDirCurrentPagesOffset:], pages)
 			binary.LittleEndian.PutUint32(entry[abi.MemoryDirPolicyMaxPagesOffset:], opts.memoryLimitPages)
 		}
 		jm.SetMemoryDirPtr(uintptr(unsafe.Pointer(&nativeMemoryDir[0])))

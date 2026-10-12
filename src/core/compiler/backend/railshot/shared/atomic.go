@@ -30,7 +30,7 @@ const (
 	AtomicXchg
 )
 
-// AtomicWaitDispatchBit selects the internal synchronous wait/notify bridge.
+// AtomicWaitDispatchBit selects the internal synchronous shared-memory bridge.
 // It is disjoint from public host-funcref and GC helper dispatch bits.
 const AtomicWaitDispatchBit uint32 = 1 << 29
 
@@ -38,6 +38,7 @@ const (
 	AtomicHelperNotify uint32 = iota
 	AtomicHelperWait32
 	AtomicHelperWait64
+	AtomicHelperMemoryGrow
 )
 
 // Atomic describes exactly the architecture-neutral facts needed by direct
@@ -161,4 +162,14 @@ func DecodeAtomic(r *wasm.Reader) (Atomic, error) {
 		}
 	}
 	return d, nil
+}
+
+// SharedMemoryGrowMayCall keeps call-frame planning consistent with the
+// directory-backed growth helper. Ordinary memory.grow remains a native leaf.
+func SharedMemoryGrowMayCall(m *wasm.Module, kind wasm.InstrKind, memoryIndex uint32) bool {
+	if kind != wasm.InstrMemoryGrow || m == nil {
+		return false
+	}
+	mt, ok := m.MemoryType(memoryIndex)
+	return ok && mt.Shared
 }

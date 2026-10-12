@@ -210,6 +210,11 @@ func analyzeModuleRequirementsWithValidation(m *wasm.Module, analysis *wasm.Vali
 	if programmaticCode && frontend.ModuleRequiresSIMD(m) {
 		out |= CoreFeatureSIMD
 	}
+	if len(moduleFacts.MemoryGrowUsed) != 0 && moduleFacts.MemoryGrowUsed[0] {
+		if mt, ok := m.MemoryType(0); ok && mt.Shared {
+			atomicWaitHelpers = true
+		}
+	}
 	return moduleRequirements{
 		features:             out,
 		elemStateCount:       elemStateCount,

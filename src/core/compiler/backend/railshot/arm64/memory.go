@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
@@ -672,9 +673,15 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	f.ld64(dir, linMemReg, -int32(offMemoryDirPtr))
 	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
 	mb := f.allocReg(maskOf(ea, dir))
-	f.ld64(mb, dir, entry+abi.MemoryDirCurrentBytesOffset)
-	base = f.allocReg(maskOf(ea, dir, mb))
-	f.ld64(base, dir, entry+abi.MemoryDirBaseOffset)
+	if memoryIndex == 0 && f.threadedMemory0 {
+		base = f.allocReg(maskOf(ea, dir, mb))
+		f.ld64(base, dir, entry+abi.MemoryDirBaseOffset)
+		f.loadSharedMemoryBytes(mb, base)
+	} else {
+		f.ld64(mb, dir, entry+abi.MemoryDirCurrentBytesOffset)
+		base = f.allocReg(maskOf(ea, dir, mb))
+		f.ld64(base, dir, entry+abi.MemoryDirBaseOffset)
+	}
 	end := f.allocReg(maskOf(ea, dir, mb, base))
 	f.a.MovImm64(end, uint64(size))
 	f.a.Adds64(end, ea, end)
@@ -1761,11 +1768,44 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	return nil
 }
 
+// loadSharedMemoryBytes acquires the backing's authoritative size, rather
+// than an instance directory snapshot that another grower can make stale.
+func (f *fn) loadSharedMemoryBytes(dst, base Reg) {
+	f.a.SubImm64(dst, base, uint32(bdCurBytes))
+	f.a.Ldar(dst, dst, 8)
+}
+
+func (f *fn) sharedMemorySize() {
+	out := f.allocReg(0)
+	f.ld64(out, linMemReg, -int32(offMemoryDirPtr))
+	f.ld64(out, out, abi.MemoryDirBaseOffset)
+	f.loadSharedMemoryBytes(out, out)
+	f.a.LsrImm(out, out, 16, false)
+	f.pushReg(out, mtI32)
+}
+
+func (f *fn) sharedMemoryGrow() error {
+	f.materializePendingLoads()
+	f.materializePendingTraps()
+	f.invalidateBoundsCert()
+	if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst && uint32(top.st.cval) == 0 {
+		f.dropValue()
+		f.sharedMemorySize()
+		return nil
+	}
+	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}
+	return f.callHostSync(int(shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow), ft)
+}
+
 // memorySize pushes the current linear-memory size in pages.
 func (f *fn) memorySize(r *wasm.Reader) error {
 	memoryIndex, err := r.U32()
 	if err != nil {
 		return err
+	}
+	if memoryIndex == 0 && f.threadedMemory0 {
+		f.sharedMemorySize()
+		return nil
 	}
 	out := f.allocReg(0)
 	if memoryIndex == 0 && !f.threadedMemory0 {
@@ -1791,6 +1831,9 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	memoryIndex, err := r.U32()
 	if err != nil {
 		return err
+	}
+	if memoryIndex == 0 && f.threadedMemory0 {
+		return f.sharedMemoryGrow()
 	}
 	f.materializePendingTraps()
 	f.invalidateBoundsCert()
@@ -1951,7 +1994,12 @@ func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
 	}
 	f.ld64(X13, linMemReg, -int32(offMemoryDirPtr))
 	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
-	f.ld64(X16, X13, entry+abi.MemoryDirCurrentBytesOffset)
+	if memoryIndex == 0 && f.threadedMemory0 {
+		f.ld64(X16, X13, entry+abi.MemoryDirBaseOffset)
+		f.loadSharedMemoryBytes(X16, X16)
+	} else {
+		f.ld64(X16, X13, entry+abi.MemoryDirCurrentBytesOffset)
+	}
 	f.cmpRR(X12, X16, true)
 	f.trapIf(condA, trapMemOOB)
 	f.ld64(X12, X13, entry)
@@ -1990,7 +2038,12 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 			f.ld64(mb, linMemReg, -int32(bdCurBytes))
 		} else {
 			f.ld64(mb, linMemReg, -int32(offMemoryDirPtr))
-			f.ld64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirCurrentBytesOffset)
+			if memoryIndex == 0 && f.threadedMemory0 {
+				f.ld64(mb, mb, abi.MemoryDirBaseOffset)
+				f.loadSharedMemoryBytes(mb, mb)
+			} else {
+				f.ld64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirCurrentBytesOffset)
+			}
 		}
 		f.cmpRR(t, mb, true)
 		f.release(mb)

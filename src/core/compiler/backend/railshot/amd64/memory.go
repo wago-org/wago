@@ -820,8 +820,13 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	f.a.Load64(base, RBX, -offMemoryDirPtr)
 	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
 	mb := f.allocReg(maskOf(ea).add(base))
-	f.a.Load64(mb, base, entry+abi.MemoryDirCurrentBytesOffset)
-	f.a.Load64(base, base, entry+abi.MemoryDirBaseOffset)
+	if memoryIndex == 0 && f.threadedMemory0 {
+		f.a.Load64(base, base, entry+abi.MemoryDirBaseOffset)
+		f.a.Load64(mb, base, -bdCurBytes)
+	} else {
+		f.a.Load64(mb, base, entry+abi.MemoryDirCurrentBytesOffset)
+		f.a.Load64(base, base, entry+abi.MemoryDirBaseOffset)
+	}
 	t := f.allocReg(maskOf(ea).add(base).add(mb))
 	if addr64 {
 		f.a.MovReg64(t, ea)
@@ -1242,7 +1247,12 @@ func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
 	}
 	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
 	f.a.Load64(R8, RBX, -offMemoryDirPtr)
-	f.a.Load64(R8, R8, entry+abi.MemoryDirCurrentBytesOffset)
+	if memoryIndex == 0 && f.threadedMemory0 {
+		f.a.Load64(R8, R8, entry+abi.MemoryDirBaseOffset)
+		f.a.Load64(R8, R8, -bdCurBytes)
+	} else {
+		f.a.Load64(R8, R8, entry+abi.MemoryDirCurrentBytesOffset)
+	}
 	f.trapUnlessLE(RDX, R8)
 	f.a.Load64(R8, RBX, -offMemoryDirPtr)
 	f.a.Load64(R8, R8, entry+abi.MemoryDirBaseOffset)
@@ -1628,10 +1638,36 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 }
 
 // memorySize pushes the current linear-memory size in pages.
+func (f *fn) sharedMemorySize() {
+	out := f.allocReg(0)
+	f.a.Load64(out, RBX, -offMemoryDirPtr)
+	f.a.Load64(out, out, abi.MemoryDirBaseOffset)
+	f.a.Load64(out, out, -bdCurBytes)
+	f.a.ShiftImm(5, out, 16, true)
+	f.pushReg(out, mtI32)
+}
+
+func (f *fn) sharedMemoryGrow() error {
+	f.materializePendingLoads()
+	f.materializePendingTraps()
+	f.invalidateBoundsCert()
+	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst && uint32(top.st.cval) == 0 {
+		f.dropValue()
+		f.sharedMemorySize()
+		return nil
+	}
+	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}
+	return f.callHostSync(int(shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow), ft)
+}
+
 func (f *fn) memorySize(r *wasm.Reader) error {
 	memoryIndex, err := r.U32()
 	if err != nil {
 		return err
+	}
+	if memoryIndex == 0 && f.threadedMemory0 {
+		f.sharedMemorySize()
+		return nil
 	}
 	out := f.allocReg(0)
 	if memoryIndex == 0 && !f.threadedMemory0 {
@@ -1657,6 +1693,9 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	memoryIndex, err := r.U32()
 	if err != nil {
 		return err
+	}
+	if memoryIndex == 0 && f.threadedMemory0 {
+		return f.sharedMemoryGrow()
 	}
 	f.materializePendingTraps()
 	f.invalidateBoundsCert() // memBytes changes; end the certificate conservatively
@@ -1833,7 +1872,12 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	} else {
 		mb := f.allocReg(maskOf(t))
 		f.a.Load64(mb, RBX, -offMemoryDirPtr)
-		f.a.Load64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirCurrentBytesOffset)
+		if memoryIndex == 0 && f.threadedMemory0 {
+			f.a.Load64(mb, mb, abi.MemoryDirBaseOffset)
+			f.a.Load64(mb, mb, -bdCurBytes)
+		} else {
+			f.a.Load64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirCurrentBytesOffset)
+		}
 		f.a.Cmp64(t, mb)
 		f.release(mb)
 	}

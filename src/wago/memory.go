@@ -236,11 +236,46 @@ func (m *Memory) UnsafeBytes() []byte {
 			return nil
 		}
 	}
-	jm := m.jobMemory()
-	if jm == nil {
+	return m.hostBytes()
+}
+
+// hostBytes serializes guard-view extension with shared growth. Native
+// accesses use the stable backing base and acquire-load its logical extent.
+func (m *Memory) hostBytes() []byte {
+	if m == nil {
 		return nil
 	}
-	return jm.HostBytes()
+	if s := m.state.Load(); s != nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.has(memoryStateClosed) {
+			return nil
+		}
+	}
+	if m.jm == nil {
+		return nil
+	}
+	return m.jm.HostBytes()
+}
+
+func (m *Memory) growShared(delta, policyMaximum uint32) uint32 {
+	if m == nil {
+		return ^uint32(0)
+	}
+	s := m.state.Load()
+	if s == nil {
+		return ^uint32(0)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.has(memoryStateClosed) || !s.has(memoryStateWasmShared) || m.jm == nil {
+		return ^uint32(0)
+	}
+	previous, ok := m.jm.GrowShared(delta, policyMaximum)
+	if !ok {
+		return ^uint32(0)
+	}
+	return previous
 }
 
 // Close releases a host-created memory after every importer closes. An exported

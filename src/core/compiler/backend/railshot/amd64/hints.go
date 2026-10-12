@@ -571,7 +571,7 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			if shared.InstructionNeedsEHFrame(0, in.Kind) {
 				h.flags.set(hintModuleEH)
 			}
-			if gcOrAtomicInstructionMayCall(in.Kind, gcStructHelpers) {
+			if gcOrAtomicInstructionMayCall(in.Kind, gcStructHelpers) || shared.SharedMemoryGrowMayCall(m, in.Kind, in.Index) {
 				h.flags.set(hintHasCall)
 				h.markUnsupportedDynamicCall()
 				sub = true
@@ -1237,7 +1237,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
 				s.h.flags.set(hintModuleEH)
 			}
-			if gcOrAtomicInstructionMayCall(imm.Kind, s.gcStructHelpers) {
+			if gcOrAtomicInstructionMayCall(imm.Kind, s.gcStructHelpers) || shared.SharedMemoryGrowMayCall(s.m, imm.Kind, imm.Index) {
 				s.h.noteBoundaryEvent(shared.LocalEventCollection, depth)
 				s.h.flags.set(hintHasCall)
 				s.h.markUnsupportedDynamicCall()
