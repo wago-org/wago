@@ -139,10 +139,15 @@ func (a *Asm) addSubReg(base uint32, rd, rn, rm Reg) {
 	}
 }
 
-func (a *Asm) Add64(rd, rn, rm Reg)  { a.addSubReg(0x8B000000, rd, rn, rm) }
-func (a *Asm) Add32(rd, rn, rm Reg)  { a.addSubReg(0x0B000000, rd, rn, rm) }
-func (a *Asm) Sub64(rd, rn, rm Reg)  { a.addSubReg(0xCB000000, rd, rn, rm) }
-func (a *Asm) Sub32(rd, rn, rm Reg)  { a.addSubReg(0x4B000000, rd, rn, rm) }
+func (a *Asm) Add64(rd, rn, rm Reg) { a.addSubReg(0x8B000000, rd, rn, rm) }
+func (a *Asm) Add32(rd, rn, rm Reg) { a.addSubReg(0x0B000000, rd, rn, rm) }
+func (a *Asm) Sub64(rd, rn, rm Reg) { a.addSubReg(0xCB000000, rd, rn, rm) }
+func (a *Asm) Sub32(rd, rn, rm Reg) { a.addSubReg(0x4B000000, rd, rn, rm) }
+
+// Adc64 and Sbc64 consume the carry flag without replacing it.
+func (a *Asm) Adc64(rd, rn, rm Reg) { a.addSubReg(0x9A000000, rd, rn, rm) }
+func (a *Asm) Sbc64(rd, rn, rm Reg) { a.addSubReg(0xDA000000, rd, rn, rm) }
+
 func (a *Asm) Adds64(rd, rn, rm Reg) { a.addSubReg(0xAB000000, rd, rn, rm) }
 func (a *Asm) Subs64(rd, rn, rm Reg) { a.addSubReg(0xEB000000, rd, rn, rm) }
 

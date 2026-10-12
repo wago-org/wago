@@ -815,6 +815,8 @@ func (f *fn) emitFC(r *wasm.Reader) error {
 		return f.tableSize(r)
 	case 17: // table.fill
 		return f.tableFill(r)
+	case 19, 20, 21, 22:
+		f.wideArithmetic(sub)
 	default:
 		return fmt.Errorf("amd64: unsupported 0xFC opcode %d", sub)
 	}

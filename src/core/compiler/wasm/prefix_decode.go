@@ -62,7 +62,7 @@ func decodeFCWithMultiMemory(r *reader, multiMemory bool) (Instruction, error) {
 	}
 }
 
-var fcNoImm = [...]InstrKind{0: InstrI32TruncSatF32S, 1: InstrI32TruncSatF32U, 2: InstrI32TruncSatF64S, 3: InstrI32TruncSatF64U, 4: InstrI64TruncSatF32S, 5: InstrI64TruncSatF32U, 6: InstrI64TruncSatF64S, 7: InstrI64TruncSatF64U}
+var fcNoImm = [...]InstrKind{0: InstrI32TruncSatF32S, 1: InstrI32TruncSatF32U, 2: InstrI32TruncSatF64S, 3: InstrI32TruncSatF64U, 4: InstrI64TruncSatF32S, 5: InstrI64TruncSatF32U, 6: InstrI64TruncSatF64S, 7: InstrI64TruncSatF64U, 19: InstrI64Add128, 20: InstrI64Sub128, 21: InstrI64MulWideS, 22: InstrI64MulWideU}
 
 func decodeFB(r *reader) (Instruction, error) {
 	sub, err := r.u32()

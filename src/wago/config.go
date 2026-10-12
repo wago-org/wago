@@ -65,6 +65,8 @@ const (
 	CoreFeatureThreads
 	// CoreFeatureCompactImports: grouped entries in the import section.
 	CoreFeatureCompactImports
+	// CoreFeatureWideArithmetic: 128-bit integer add/subtract and widening multiply.
+	CoreFeatureWideArithmetic
 )
 
 // Feature groups for WebAssembly Core releases.
@@ -96,7 +98,7 @@ const (
 
 	// coreFeaturesWago is the optional set wago's backend lowers and the ceiling
 	// validated by WithCoreFeatures.
-	coreFeaturesWago = CoreFeaturesV3 | CoreFeatureExtendedConst | CoreFeatureThreads | CoreFeatureCompactImports
+	coreFeaturesWago = CoreFeaturesV3 | CoreFeatureExtendedConst | CoreFeatureThreads | CoreFeatureCompactImports | CoreFeatureWideArithmetic
 
 	// coreFeaturesWithoutSidecar is the set whose compiled representation needs
 	// no feature-specific structural sidecar. Keep this separate from the runtime
@@ -111,7 +113,8 @@ const (
 		CoreFeatureSIMD |
 		CoreFeatureExtendedConst |
 		CoreFeatureExtendedConstExpressions |
-		CoreFeatureCompactImports
+		CoreFeatureCompactImports |
+		CoreFeatureWideArithmetic
 )
 
 // IsEnabled returns true if all bits in feature are set.
@@ -168,6 +171,7 @@ var featureRegistry = []FeatureInfo{
 	{Feature: CoreFeatureMultiMemory, Name: "multi-memory", Label: "Multiple memories", Description: "multiple memories and indexed memory instructions"},
 	{Feature: CoreFeatureMemory64, Name: "memory64", Label: "64-bit memory", Description: "64-bit linear-memory limits and addresses"},
 	{Feature: CoreFeatureTable64, Name: "table64", Label: "64-bit tables", Description: "64-bit table limits and indexes"},
+	{Feature: CoreFeatureWideArithmetic, Name: "wide-arithmetic", Label: "Wide arithmetic", Description: "128-bit integer add, subtract, and widening multiply"},
 	{Feature: CoreFeatureCompactImports, Name: "compact-imports", Label: "Compact imports", Description: "grouped import-section entries"},
 	{Feature: CoreFeatureThreads, Name: "threads", Label: "Threads and atomics", Description: "shared memory and atomic memory instructions", Experimental: true},
 }
@@ -806,6 +810,7 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		TypedTailCalls:          c.features.IsEnabled(CoreFeatureTailCall),
 		MultiMemory:             c.features.IsEnabled(CoreFeatureMultiMemory),
 		CompactImports:          c.features.IsEnabled(CoreFeatureCompactImports),
+		WideArithmetic:          c.features.IsEnabled(CoreFeatureWideArithmetic),
 		Memory64:                c.features.IsEnabled(CoreFeatureMemory64),
 		Table64:                 c.features.IsEnabled(CoreFeatureTable64),
 		Threads:                 c.features.IsEnabled(CoreFeatureThreads),

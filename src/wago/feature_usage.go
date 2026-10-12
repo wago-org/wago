@@ -653,6 +653,9 @@ func recordModuleRequirementFact(kind wasm.InstrKind, index uint32, facts *front
 }
 
 func requiredFeaturesForInstructionKind(kind wasm.InstrKind) CoreFeatures {
+	if kind >= wasm.InstrI64Add128 && kind <= wasm.InstrI64MulWideU {
+		return CoreFeatureWideArithmetic
+	}
 	if wasm.IsCoreAtomicInstructionKind(kind) {
 		return CoreFeatureThreads
 	}

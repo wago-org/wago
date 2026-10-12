@@ -28,6 +28,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
+- Implement wide integer arithmetic with native amd64/arm64 carry chains and
+  signed/unsigned widening multiplies, public feature selection, and persisted
+  artifact requirements. Cover edge cases, register pressure, and trap order.
+
 - Expose compact import sections through `CoreFeatureCompactImports` and CLI
   discovery, independently of multiple-memory admission. Enable grouped imports
   by default without adding runtime metadata or changing native code.

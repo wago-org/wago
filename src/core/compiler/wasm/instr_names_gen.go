@@ -2,7 +2,7 @@
 
 package wasm
 
-const instrKindNameCount = 534
+const instrKindNameCount = 538
 
 const instrKindNameBlob = "" +
 	"Invalid" +
@@ -538,7 +538,11 @@ const instrKindNameBlob = "" +
 	"F64x2RelaxedMax" +
 	"I16x8RelaxedQ15mulrS" +
 	"I16x8RelaxedDotI8x16I7x16S" +
-	"I32x4RelaxedDotI8x16I7x16AddS"
+	"I32x4RelaxedDotI8x16I7x16AddS" +
+	"I64Add128" +
+	"I64Sub128" +
+	"I64MulWideS" +
+	"I64MulWideU"
 
 var instrKindNameOffsets = [...]uint16{
 	0, 7, 18, 21, 26, 30, 32, 37, 45, 47, 51, 58,
@@ -585,7 +589,7 @@ var instrKindNameOffsets = [...]uint16{
 	5147, 5155, 5164, 5173, 5181, 5189, 5198, 5206, 5214, 5222, 5230, 5238,
 	5246, 5255, 5264, 5283, 5302, 5320, 5338, 5361, 5384, 5405, 5426, 5445,
 	5468, 5491, 5518, 5545, 5561, 5578, 5594, 5611, 5633, 5655, 5677, 5699,
-	5714, 5729, 5744, 5759, 5779, 5805, 5834,
+	5714, 5729, 5744, 5759, 5779, 5805, 5834, 5843, 5852, 5863, 5874,
 }
 
 var _ [numInstrKinds - instrKindNameCount]struct{}

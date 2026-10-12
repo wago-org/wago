@@ -22,6 +22,20 @@ func IsCoreAtomicInstructionKind(kind InstrKind) bool {
 
 func (v *funcValidator) proposalStep(in *Instruction) (bool, error) {
 	switch in.Kind {
+	case InstrI64Add128, InstrI64Sub128, InstrI64MulWideS, InstrI64MulWideU:
+		count := 2
+		if in.Kind == InstrI64Add128 || in.Kind == InstrI64Sub128 {
+			count = 4
+		}
+		for i := 0; i < count; i++ {
+			if err := v.popExpect(I64); err != nil {
+				return true, err
+			}
+		}
+		v.push(I64)
+		v.push(I64)
+		return true, nil
+
 	case InstrThrow:
 		return true, v.stepThrow(*in)
 	case InstrThrowRef:
