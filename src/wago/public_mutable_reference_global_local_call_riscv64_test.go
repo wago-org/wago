@@ -194,6 +194,9 @@ func TestRV64PublicMutableFuncrefGlobalLocalCall(t *testing.T) {
 			if err = rt.Close(); err != nil {
 				t.Fatal(err)
 			}
+			if err = rt.WaitClosed(context.Background()); err != nil {
+				t.Fatal(err)
+			}
 			if final := producer.referenceLifetime().snapshot(); final.PhysicalResources || final.ResourceRoots != 0 {
 				t.Fatal("runtime token release did not retire foreign call target", final)
 			}
@@ -240,7 +243,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallI32(t *testing.T) {
 			}
 			assertCall(0xcafebabeffffffff, 0)
 
-			producerCode := rv64NativeTailCompile(t, "mutable-funcref-local-call-i32-producer", rv64PublicNativeIdentityModule([]wasm.ValType{wasm.I32}), artifact)
+			producerCode := rv64NativeTailCompile(t, "mutable-funcref-local-call-i32-producer", rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32}, false, true), artifact)
 			producer := rv64NativeTokenInstantiate(t, rt, producerCode, NewImports())
 			descriptor, ok := producer.localFuncrefDescriptor(0)
 			if !ok {
@@ -313,7 +316,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallScalars(t *testing.T) {
 				}
 				assertCall(test.increment)
 
-				producerCode := rv64NativeTailCompile(t, "mutable-funcref-local-call-"+name+"-producer", rv64PublicNativeIdentityModule([]wasm.ValType{test.typ}), artifact)
+				producerCode := rv64NativeTailCompile(t, "mutable-funcref-local-call-"+name+"-producer", rv64PublicReferenceTailModule([]wasm.ValType{test.typ}, false, true), artifact)
 				producer := rv64NativeTokenInstantiate(t, rt, producerCode, NewImports())
 				descriptor, ok := producer.localFuncrefDescriptor(0)
 				if !ok {
@@ -361,8 +364,8 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallMixed(t *testing.T) {
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 			defer rt.Close()
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-mixed", rv64MutableFuncrefLocalCallMixedModule(), artifact)
-			if !rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) {
-				t.Fatal("mixed local-call witness missing")
+			if view := compiled.executionView(); !rv64MutableFuncrefGlobalLocalCall(view) {
+				t.Fatalf("mixed local-call witness missing: code=%d/%x entries=%v/%v validation=%v", len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, railshotValidateCompiled(view))
 			}
 			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
 			input := []uint64{0xdeadbeef80000001, ^uint64(0), 0xfeedface00000000 | uint64(math.Float32bits(1.5)), math.Float64bits(1.5)}
@@ -385,7 +388,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallMixed(t *testing.T) {
 			assertCall(increment)
 
 			types := []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}
-			producerCode := rv64NativeTailCompile(t, "mutable-funcref-local-call-mixed-producer", rv64PublicNativeIdentityModule(types), artifact)
+			producerCode := rv64NativeTailCompile(t, "mutable-funcref-local-call-mixed-producer", rv64PublicReferenceTailModule(types, false, true), artifact)
 			producer := rv64NativeTokenInstantiate(t, rt, producerCode, NewImports())
 			descriptor, ok := producer.localFuncrefDescriptor(0)
 			if !ok {
@@ -517,7 +520,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallHostReentryClear(t *testing.T) {
 				if len(params) != 1 || len(results) != 1 || params[0] != 0x80000001 {
 					panic("mutable call host transport")
 				}
-				if _, err := consumer.Invoke("clear"); err != nil {
+				if err := consumer.SetGlobalValue("cell", ValueFuncRef(NullFuncRef())); err != nil {
 					panic(fmt.Sprintf("mutable call host reentry clear: %v", err))
 				}
 				snapshot := producer.referenceLifetime().snapshot()

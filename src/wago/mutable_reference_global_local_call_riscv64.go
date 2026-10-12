@@ -152,6 +152,9 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 		return false
 	}
 	required := CoreFeatureReferenceTypes | CoreFeatureMutableGlobal | CoreFeatureTypedFunctionReferences
+	if variant == 6 {
+		required |= CoreFeatureMultiValue
+	}
 	wantEntry := []int{0, 608, 1216, 1936, 2656, 3312}
 	if variant == 2 || variant == 4 || variant == 5 {
 		wantEntry = []int{0, 608, 1264, 1984, 2704, 3360}
