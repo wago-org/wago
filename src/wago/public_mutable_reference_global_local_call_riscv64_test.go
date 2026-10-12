@@ -159,6 +159,25 @@ func rv64MutableFuncrefLocalCallVectorModule() []byte {
 	)
 }
 
+func rv64MutableFuncrefLocalTailCallVectorModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{6, 0, 0, 1, 1, 1, 0}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0), wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2), wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("call", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0xfd, 77, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0x23, 0, 0x15, 0, 0x0b}),
+		)),
+	)
+}
+
 func rv64MutableFuncrefLocalCallMixedVectorModule() []byte {
 	types := []wasm.ValType{wasm.I32, wasm.V128, wasm.F64}
 	return wasmtest.Module(
@@ -719,6 +738,76 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallVector(t *testing.T) {
 			}
 			if err := producer.Close(); err != nil {
 				t.Fatal(err)
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := consumer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := compiled.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicMutableFuncrefGlobalLocalTailCallVector(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+			defer rt.Close()
+			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-vector", rv64MutableFuncrefLocalTailCallVectorModule(), artifact)
+			view := compiled.executionView()
+			if !rv64MutableFuncrefGlobalLocalCall(view) || !rv64HasReferenceTail(view) {
+				t.Fatal("vector local-tail-call witness missing")
+			}
+			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+			input := []uint64{0x0123456789abcdef, 0xfedcba9876543210}
+			inverted := []uint64{^input[0], ^input[1]}
+			assertCall := func(want []uint64) {
+				t.Helper()
+				got, err := consumer.Invoke("call", input...)
+				if err != nil || !slices.Equal(got, want) {
+					t.Fatal("vector mutable return_call_ref", got, err, "want", want)
+				}
+			}
+			if _, err := consumer.Invoke("set_0"); err != nil {
+				t.Fatal("install vector tail identity", err)
+			}
+			assertCall(input)
+			if _, err := consumer.Invoke("set_1"); err != nil {
+				t.Fatal("install vector tail not target", err)
+			}
+			assertCall(inverted)
+
+			producerCode := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-vector-producer", rv64PublicReferenceTailModule([]wasm.ValType{wasm.V128}, false, true), artifact)
+			producer := rv64NativeTokenInstantiate(t, rt, producerCode, NewImports())
+			descriptor, ok := producer.localFuncrefDescriptor(0)
+			if !ok {
+				t.Fatal("foreign vector tail producer descriptor")
+			}
+			token, err := rt.refStore.issue(producer, descriptor)
+			if err != nil {
+				t.Fatal("foreign vector tail producer token", err)
+			}
+			if err := consumer.SetGlobalValue("cell", ValueOf(ValFuncRef, token)); err != nil {
+				t.Fatal("install foreign vector tail target", err)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			assertCall(input)
+			if _, err := consumer.Invoke("clear"); err != nil {
+				t.Fatal("clear vector tail target", err)
+			}
+			if got, invokeErr := consumer.Invoke("call", input...); got != nil {
+				t.Fatal("cleared vector return_call_ref returned a result", got, invokeErr)
+			} else {
+				var trap *coreruntime.TrapError
+				if !errors.As(invokeErr, &trap) || trap.Code != coreruntime.TrapIndirectOutOfBounds {
+					t.Fatal("cleared vector mutable return_call_ref trap", invokeErr)
+				}
 			}
 			if err := producerCode.Close(); err != nil {
 				t.Fatal(err)

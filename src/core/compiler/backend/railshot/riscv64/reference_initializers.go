@@ -486,7 +486,7 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 	}
 	for i := range m.Code {
 		body := bytes.Equal(m.Code[i].BodyBytes, wantBodies[i])
-		if i32Argument && i == 5 {
+		if (i32Argument || vectorArgument) && i == 5 {
 			body = body || bytes.Equal(m.Code[i].BodyBytes, []byte{0x20, 0, 0x23, 0, 0x15, 0, 0x0b})
 		}
 		if m.FuncTypes[i] != (wasm.TypeIdx{Index: wantTypes[i]}) || m.Code[i].LocalDeclBytes != 1 || len(m.Code[i].Locals.Runs) != 0 || !body {
