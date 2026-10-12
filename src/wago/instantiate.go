@@ -863,7 +863,10 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				}
 			}
 		}
-		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
+		// Exported table entries can execute in a different instance on either
+		// architecture. Internal register entries inherit their caller's context;
+		// publish wrapper entries so foreign calls switch to the producer instead.
+		if !localFuncrefsMayEscape {
 			localFuncrefsMayEscape = len(c.tableExports) != 0
 		}
 		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
