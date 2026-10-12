@@ -520,8 +520,12 @@ func stageGCTypeSubtypingLink(c *Compiled, opts CompileOptions, m *wasm.Module) 
 		if c.state.importedFunctions != 0 || len(c.functions) != 3 || len(c.code) == 0 {
 			return nil, unsupported("gc type-subtyping link provider image")
 		}
-	case rv64GCTypeSubtypingLinkConsumerVariant:
-		if c.state.importedFunctions != 6 || len(c.functions) != 0 || len(c.code) != 0 {
+	case rv64GCTypeSubtypingLinkConsumerVariant, rv64GCTypeSubtypingLinkUnlinkableFirst, rv64GCTypeSubtypingLinkUnlinkableFirst + 1, rv64GCTypeSubtypingLinkUnlinkableLast:
+		wantImports := 6
+		if variant >= rv64GCTypeSubtypingLinkUnlinkableFirst {
+			wantImports = 1
+		}
+		if c.state.importedFunctions != wantImports || len(c.functions) != 0 || len(c.code) != 0 {
 			return nil, unsupported("gc type-subtyping link consumer image")
 		}
 	default:

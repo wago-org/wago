@@ -106,7 +106,9 @@ deduplicates the retained producer lifetime across imports, and releases it only
 after consumer close. Source and compiler-free artifacts, exact hostile state,
 wrong-subtype linking, W^X publication, and final unmapping are covered under
 baseline QEMU RV64G without a collector. Expected unlinkables `.31` through
-`.33`, products after `.33`, and native
+`.33` now compile as three separate exact zero-code consumer artifacts and
+reject their narrowed provider bindings before retention; rollback leaves the
+provider live and unretained. Products after `.33` and native
 cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain

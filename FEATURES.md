@@ -133,7 +133,10 @@ The consumer copies the provider's full-width canonical identities, retains the
 logically closed provider until its own close, and rejects a narrower function
 bound to the deepest import. Source, compiler-free artifact, hostile retained-
 state, W^X lease, and final-unmap paths are covered without a collector. The
-three following expected-unlinkable modules remain fail-closed. Other
+three following official expected-unlinkable consumers (`.31` through `.33`)
+also compile only as exact authenticated zero-code products. Each rejects its
+narrower requested type while linking to the `.29` provider and rolls back
+without retaining that provider. Other
 `gc/type-subtyping` module shapes remain fail-closed on RV64.
 Compiler diagnostics builds report finalized code/frame sizes. With `wago_profile`,
 optional source maps record scalar and SWAR opcode origins in finalized code,

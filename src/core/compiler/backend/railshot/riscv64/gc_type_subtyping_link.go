@@ -13,11 +13,16 @@ import (
 const (
 	rv64GCTypeSubtypingLinkProviderVariant = 1
 	rv64GCTypeSubtypingLinkConsumerVariant = 2
+	rv64GCTypeSubtypingLinkUnlinkableFirst = 3
+	rv64GCTypeSubtypingLinkUnlinkableLast  = 5
 )
 
 var rv64GCTypeSubtypingLinkWires = [][]byte{
 	mustDecodeGCTypeSubtypingLinkWire("0061736d01000000019780808000035000600001705001006000016301500101600001630203848080800003000102079080808000030266300000026631000102663200020a9c8080800003848080800000d0700b848080800000d0010b848080800000d0020b"),
 	mustDecodeGCTypeSubtypingLinkWire("0061736d01000000019780808000035000600001705001006000016301500101600001630202ab8080800006014d0266300000014d0266310000014d0266310001014d0266320000014d0266320001014d0266320002"),
+	mustDecodeGCTypeSubtypingLinkWire("0061736d01000000019780808000035000600001705001006000016301500101600001630202888080800001014d0266300001"),
+	mustDecodeGCTypeSubtypingLinkWire("0061736d01000000019780808000035000600001705001006000016301500101600001630202888080800001014d0266300002"),
+	mustDecodeGCTypeSubtypingLinkWire("0061736d01000000019780808000035000600001705001006000016301500101600001630202888080800001014d0266310002"),
 }
 
 var rv64GCTypeSubtypingLinkModules = func() []*wasm.Module {
@@ -43,7 +48,7 @@ func mustDecodeGCTypeSubtypingLinkWire(source string) []byte {
 func gcTypeSubtypingLinkSourceVariant(data []byte) uint8 {
 	for i, wire := range rv64GCTypeSubtypingLinkWires {
 		if bytes.Equal(data, wire) {
-			wantIDs := [][]byte{{1, 3, 7, 10}, {1, 2}}[i]
+			wantIDs := [][]byte{{1, 3, 7, 10}, {1, 2}, {1, 2}, {1, 2}, {1, 2}}[i]
 			if !admitExactProductWireShapeWithRecGroups(data, wantIDs) {
 				return 0
 			}
@@ -63,7 +68,8 @@ func admitRV64GCTypeSubtypingLinkWire(data []byte) bool {
 }
 
 // GCTypeSubtypingLinkSourceVariant returns 1 for the exact .29 provider, 2 for
-// the exact .30 consumer, and zero for every other source.
+// the exact .30 consumer, 3 through 5 for the expected-unlinkable .31 through
+// .33 consumers, and zero for every other source.
 func GCTypeSubtypingLinkSourceVariant(data []byte) uint8 {
 	return gcTypeSubtypingLinkSourceVariant(data)
 }
