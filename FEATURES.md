@@ -99,7 +99,7 @@ identical function types retain distinct nominal descriptor keys; the `run`
 export accepts only the declared subtype closures, while both narrower and
 unrelated indirect calls trap. Source, compiler-free artifact, W^X lifetime,
 and hostile retained-state paths are covered without a collector. Official
-`.20` through `.27` add the first recursive function-identity `ref.test`
+`.20` through `.28` add the first recursive function-identity `ref.test`
 checkpoints.
 Its declaratively declared function descriptor is tested against the canonical
 equivalent subtype relation across distinct recursive groups by genuine RV64
@@ -123,7 +123,9 @@ completes this bounded group with eight cross-group projections over two
 recursive signature pairs, returning eight normalized true results while the
 two source identities remain non-callable. `.27` adds the first later nominal-
 mismatch checkpoint: a callable empty-signature function from a distinct
-recursive group tests false against type 0 and returns normalized `[0]`. Other
+recursive group tests false against type 0 and returns normalized `[0]`. `.28`
+repeats the nominal mismatch one recursive layer deeper, comparing actual type
+4 with target type 2 and returning normalized `[0]`. Other
 `gc/type-subtyping` module shapes remain fail-closed on RV64.
 Compiler diagnostics builds report finalized code/frame sizes. With `wago_profile`,
 optional source maps record scalar and SWAR opcode origins in finalized code,

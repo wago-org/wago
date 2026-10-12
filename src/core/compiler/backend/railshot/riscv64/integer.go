@@ -2103,7 +2103,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						(variant == 5 && (target == 0 || target == 4)) ||
 						(variant == 6 && target < 4) ||
 						(variant == 7 && target < 8) ||
-						(variant == 8 && target == 0)
+						(variant == 8 && target == 0) ||
+						(variant == 9 && target == 2)
 					accepted := uint32(6)
 					if variant == 3 || variant == 4 {
 						accepted = 4
@@ -2115,6 +2116,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						accepted = 4 + uint32(refTestCount/2&1)
 					} else if variant == 8 {
 						accepted = 0
+					} else if variant == 9 {
+						accepted = 2
 					}
 					if !validTarget || int(accepted) >= len(state.types) {
 						return integerSummary{}, unsupported("bounded function ref.test type relation")

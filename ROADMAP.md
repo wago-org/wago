@@ -78,7 +78,7 @@ declared function types share the same structural carrier. Source/artifact and
 actual compiler-free execution cover the five successful calls, both wrong-
 signature traps, post-trap re-entry, W^X leases/final unmapping, and hostile
 retained metadata under baseline QEMU RV64G without a collector. Official `.20`
-through `.27` now form the first exact function `ref.test` checkpoints: one
+through `.28` now form the first exact function `ref.test` checkpoints: one
 private canonical descriptor crosses equivalent recursive type groups and
 produces a normalized true result through table-free genuine RV64 lowering.
 The second checkpoint retains mutually recursive indexed function parameters
@@ -96,8 +96,10 @@ functions non-callable while testing their exact canonical arena identities
 across equivalent recursive groups, returning `[1, 1, 1, 1]`. The seventh
 extends both recursive signature pairs across eight exact projections and
 returns eight normalized true results. The eighth checkpoint admits the later
-distinct-recursive-group empty signature and returns normalized false. Products
-after `.27` and native cache/performance qualification remain open.
+distinct-recursive-group empty signature and returns normalized false. The ninth
+checkpoint repeats that nominal false relation one recursive layer deeper,
+comparing actual type 4 with target type 2. Products after `.28` and native
+cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

@@ -18,6 +18,7 @@ const rv64GCTypeSubtypingRefTestMultiFirstHex = "0061736d0100000001e480808000064
 const rv64GCTypeSubtypingRefTestMultiPairsHex = "0061736d0100000001aa80808000034e025000600001647050010060000164004e025000600001647050010260000164026000047f7f7f7f03848080800003000104078780808000010372756e00020989808080000203000100030001010aac8080800003838080800000000b838080800000000b968080800000d200fb1400d200fb1402d201fb1401d201fb14030b"
 const rv64GCTypeSubtypingRefTestMultiHex = "0061736d0100000001d280808000054e025000600001647050010060000164004e025000600001647050010260000164024e02500100600001647050010460000164044e02500102600001647050010660000164066000087f7f7f7f7f7f7f7f03848080800003040508078780808000010372756e00020989808080000203000100030001010ac08080800003838080800000000b838080800000000baa8080800000d200fb1400d200fb1402d201fb1400d201fb1402d200fb1404d200fb1406d201fb1405d201fb14070b"
 const rv64GCTypeSubtypingRefTestNominalFalseHex = "0061736d01000000019f80808000034e0250006000005001006000004e0250006000005001006000006000017f038380808000020204078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14000b"
+const rv64GCTypeSubtypingRefTestNominalFalseDeepHex = "0061736d0100000001ac80808000044e0250006000005001006000004e0250006000005001006000004e0250006000005001026000006000017f038380808000020406078780808000010372756e000109858080800001030001000a9480808000028280808000000b878080800000d200fb14020b"
 
 var rv64GCTypeSubtypingRefTestSingleWire = func() []byte {
 	wire, err := hex.DecodeString(rv64GCTypeSubtypingRefTestSingleHex)
@@ -147,6 +148,22 @@ var rv64GCTypeSubtypingRefTestNominalFalseModule = func() *wasm.Module {
 	return m
 }()
 
+var rv64GCTypeSubtypingRefTestNominalFalseDeepWire = func() []byte {
+	wire, err := hex.DecodeString(rv64GCTypeSubtypingRefTestNominalFalseDeepHex)
+	if err != nil {
+		panic(err)
+	}
+	return wire
+}()
+
+var rv64GCTypeSubtypingRefTestNominalFalseDeepModule = func() *wasm.Module {
+	m, err := wasm.DecodeModule(rv64GCTypeSubtypingRefTestNominalFalseDeepWire)
+	if err != nil {
+		panic(err)
+	}
+	return m
+}()
+
 var rv64GCTypeSubtypingRefTestWires = [...][]byte{
 	rv64GCTypeSubtypingRefTestSingleWire,
 	rv64GCTypeSubtypingRefTestRecursiveWire,
@@ -156,6 +173,7 @@ var rv64GCTypeSubtypingRefTestWires = [...][]byte{
 	rv64GCTypeSubtypingRefTestMultiPairsWire,
 	rv64GCTypeSubtypingRefTestMultiWire,
 	rv64GCTypeSubtypingRefTestNominalFalseWire,
+	rv64GCTypeSubtypingRefTestNominalFalseDeepWire,
 }
 
 var rv64GCTypeSubtypingRefTestModules = [...]*wasm.Module{
@@ -167,6 +185,7 @@ var rv64GCTypeSubtypingRefTestModules = [...]*wasm.Module{
 	rv64GCTypeSubtypingRefTestMultiPairsModule,
 	rv64GCTypeSubtypingRefTestMultiModule,
 	rv64GCTypeSubtypingRefTestNominalFalseModule,
+	rv64GCTypeSubtypingRefTestNominalFalseDeepModule,
 }
 
 func gcTypeSubtypingRefTestSingleSourceVariant(data []byte) uint8 {
@@ -197,7 +216,7 @@ func AdmitGCTypeSubtypingRefTestSingleSource(data []byte) bool {
 }
 
 // GCTypeSubtypingRefTestSingleSourceVariant returns the exact source identity:
-// 1 for .20 through 8 for .27, and zero otherwise.
+// 1 for .20 through 9 for .28, and zero otherwise.
 func GCTypeSubtypingRefTestSingleSourceVariant(data []byte) uint8 {
 	return gcTypeSubtypingRefTestSingleSourceVariant(data)
 }
