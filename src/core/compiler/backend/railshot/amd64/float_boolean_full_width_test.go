@@ -10,34 +10,35 @@ import (
 	"testing"
 )
 
-func TestFloatParitySingleExtension(t *testing.T) {
+func TestFloatParityConditionalMove(t *testing.T) {
 	for _, wide := range []bool{false, true} {
 		for _, op := range []wOp{opEq, opNe} {
 			for _, dst := range []Reg{RAX, RDI, R8} {
 				for _, tmp := range []Reg{RCX, RSI, R9} {
 					f := fn{a: &encoder.Asm{}, reserved: ^maskOf(dst, tmp)}
 					f.emitFCmpSetcc(op, 8, 9, wide, dst)
-					first, parity, byteOp := condE, condNP, byte(0x20)
-					if op == opNe {
-						first, parity, byteOp = condNE, condP, 0x08
-					}
 					var want, old encoder.Asm
-					want.Ucomis(8, 9, wide)
-					want.SetccReg8(first, dst)
-					want.SetccReg8(parity, tmp)
-					want.AluRR8(byteOp, dst, tmp)
-					want.Movzx8(dst, dst, false)
+					first, parity := condE, condNP
+					if op == opEq {
+						want.AluRR(aluTable[opXor].rr, tmp, tmp, false)
+						want.AluRR(aluTable[opXor].rr, dst, dst, false)
+						want.Ucomis(8, 9, wide)
+						want.SetccReg8(condNP, dst)
+						want.Cmovcc(condNE, dst, tmp, false)
+					} else {
+						first, parity = condNE, condP
+						want.MovImm32(tmp, 1)
+						want.AluRR(aluTable[opXor].rr, dst, dst, false)
+						want.Ucomis(8, 9, wide)
+						want.SetccReg8(condNE, dst)
+						want.Cmovcc(condP, dst, tmp, false)
+					}
 					old.Ucomis(8, 9, wide)
 					old.SetccReg(first, dst)
 					old.SetccReg(parity, tmp)
-					old.AluRR(aluTable[opAnd].rr, dst, tmp, false)
-					if op == opNe {
-						old = encoder.Asm{}
-						old.Ucomis(8, 9, wide)
-						old.SetccReg(first, dst)
-						old.SetccReg(parity, tmp)
-						old.AluRR(aluTable[opOr].rr, dst, tmp, false)
-					}
+					combine := opAnd
+					if op == opNe { combine = opOr }
+					old.AluRR(aluTable[combine].rr, dst, tmp, false)
 					if !bytes.Equal(f.a.B, want.B) || len(f.a.B) >= len(old.B) {
 						t.Fatalf("wide=%v op=%v dst=%v tmp=%v got=%x want=%x old-bytes=%d", wide, op, dst, tmp, f.a.B, want.B, len(old.B))
 					}
