@@ -116,7 +116,7 @@ func TestRV64PublicMutableFuncrefStateImport(t *testing.T) {
 }
 
 func TestRV64PublicMutableFuncrefStateAdmission(t *testing.T) {
-	compiled := rv64TableStageCompile(t, "mutable-funcref-state-admission", rv64MutableFuncrefStateModule(), false)
+	compiled := rv64TableStageCompile(t, "mutable-funcref-state-admission", rv64MutableFuncrefStateModule(), true)
 	defer compiled.Close()
 	if !rv64StateOnlyMutableFuncrefImport(compiled.executionView()) {
 		t.Fatalf("base mutable funcref state witness rejected: imports=%#v globals=%#v exports=%#v values=%#v features=%#x structural=%#x types=%d funcs=%d funcids=%d code=%d", compiled.GlobalImports, compiled.Globals, compiled.GlobalExports, compiled.ValueTypes, compiled.requiredFeatures, compiledStructuralRequiredFeatures(compiled), len(compiled.Types), len(compiled.Funcs), len(compiled.FuncTypeID), len(compiled.code))
@@ -153,7 +153,7 @@ func TestRV64PublicMutableFuncrefStateAdmission(t *testing.T) {
 }
 
 func TestRV64PublicMutableFuncrefStateBinding(t *testing.T) {
-	compiled := rv64TableStageCompile(t, "mutable-funcref-state-binding", rv64MutableFuncrefStateModule(), false)
+	compiled := rv64TableStageCompile(t, "mutable-funcref-state-binding", rv64MutableFuncrefStateModule(), true)
 	defer compiled.Close()
 	rt := NewRuntime()
 	defer rt.Close()
