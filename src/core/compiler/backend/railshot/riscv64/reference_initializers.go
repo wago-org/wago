@@ -408,7 +408,10 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 	}
 	zeroArgument := i31CoreFunctionType(&m.Types[0], nil, []wasm.ValType{wasm.I32})
 	i32Argument := i31CoreFunctionType(&m.Types[0], []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
-	if (!zeroArgument && !i32Argument) || !i31CoreFunctionType(&m.Types[1], nil, nil) {
+	i64Argument := i31CoreFunctionType(&m.Types[0], []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64})
+	f32Argument := i31CoreFunctionType(&m.Types[0], []wasm.ValType{wasm.F32}, []wasm.ValType{wasm.F32})
+	f64Argument := i31CoreFunctionType(&m.Types[0], []wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64})
+	if (!zeroArgument && !i32Argument && !i64Argument && !f32Argument && !f64Argument) || !i31CoreFunctionType(&m.Types[1], nil, nil) {
 		return false
 	}
 	indexed := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{}), false))
@@ -428,6 +431,21 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 	if i32Argument {
 		wantBodies[0] = []byte{0x20, 0, 0x0b}
 		wantBodies[1] = []byte{0x20, 0, 0x41, 1, 0x6a, 0x0b}
+		wantBodies[5] = []byte{0x20, 0, 0x23, 0, 0x14, 0, 0x0b}
+	}
+	if i64Argument {
+		wantBodies[0] = []byte{0x20, 0, 0x0b}
+		wantBodies[1] = []byte{0x20, 0, 0x42, 1, 0x7c, 0x0b}
+		wantBodies[5] = []byte{0x20, 0, 0x23, 0, 0x14, 0, 0x0b}
+	}
+	if f32Argument {
+		wantBodies[0] = []byte{0x20, 0, 0x0b}
+		wantBodies[1] = []byte{0x20, 0, 0x43, 0, 0, 0x80, 0x3f, 0x92, 0x0b}
+		wantBodies[5] = []byte{0x20, 0, 0x23, 0, 0x14, 0, 0x0b}
+	}
+	if f64Argument {
+		wantBodies[0] = []byte{0x20, 0, 0x0b}
+		wantBodies[1] = []byte{0x20, 0, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x0b}
 		wantBodies[5] = []byte{0x20, 0, 0x23, 0, 0x14, 0, 0x0b}
 	}
 	for i := range m.Code {
