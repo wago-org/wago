@@ -217,8 +217,8 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	}
 	state.capacity = max(state.capacity, helperSlots)
 	state.core3RefIsNullExecution = opts.referenceFunctions && isCore3RefIsNullExecution(m)
-	state.declarationExternRefs = opts.referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
-	state.declarationNonnullRefs = opts.referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
+	state.declarationExternRefs = opts.referenceFunctions && (admitCore3RefDeclarations(m) || admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
+	state.declarationNonnullRefs = opts.referenceFunctions && (admitCore3RefDeclarations(m) || admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
 	summaries := make([]shared.ScalarSummary, len(m.Code))
 	importTailCount := 0
 	integerSummaries := make([]integerSummary, len(m.Code))
@@ -519,9 +519,9 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 		return nil
 	}
 	i31Core := referenceFunctions && admitRV64I31Core(m)
-	declarationExtern := referenceFunctions && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
+	declarationExtern := referenceFunctions && (admitCore3RefDeclarations(m) || admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
 	executionExtern := referenceFunctions && isCore3RefIsNullExecution(m)
-	declarationNonNullExtern := referenceFunctions && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
+	declarationNonNullExtern := referenceFunctions && (admitCore3RefDeclarations(m) || admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
 	publicReferenceCarriers := referenceFunctions && admitPublicReferenceCarrierBoundary(m) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
 	// Public modules may contain only state. Import-only modules execute through
 	// instance-owned bridges; neither shape needs placeholder instructions.

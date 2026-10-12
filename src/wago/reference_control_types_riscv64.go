@@ -43,8 +43,8 @@ func rv64DeclaredControlSignatureProfile(c *Compiled, typ *DefinedTypeDescriptor
 			}
 			if !heap.Defined {
 				executionExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && (rv64Core3RefIsNullExecution(c) || rv64Core3RefIsNullExecutionCodecPrefix(c))
-				declarationExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64Core3ReferenceDeclarationMetadata(c)
-				declarationNonNullExtern := heap.Abstract == AbstractHeapExtern && !v.Ref.Nullable && (rv64Core3RefAsNonNullDeclarationMetadata(c) || rv64Core3RefIsNullDeclarationMetadata(c))
+				declarationExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && (rv64Core3RefDeclarationMetadata(c) || rv64Core3ReferenceDeclarationMetadata(c))
+				declarationNonNullExtern := heap.Abstract == AbstractHeapExtern && !v.Ref.Nullable && (rv64Core3RefDeclarationMetadata(c) || rv64Core3RefAsNonNullDeclarationMetadata(c) || rv64Core3RefIsNullDeclarationMetadata(c))
 				publicCallExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64PublicReferenceCallBoundaryWithPlan(c, false) && rv64PublicReferenceCarrierSignature(c.Funcs[0])
 				publicHostExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64PublicHostReferenceBoundaryWithPlan(c, false)
 				publicDynamicHostExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64PublicDynamicHostReferenceBoundaryWithPlan(c, false)

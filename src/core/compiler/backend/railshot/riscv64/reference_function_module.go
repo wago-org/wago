@@ -397,8 +397,8 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	types := internalReferenceTypes{
 		decoded:                  m.Types,
 		decodedSWAR:              vector,
-		declarationExtern:        !vector && (admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m)),
-		declarationNonNullExtern: !vector && (admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m)),
+		declarationExtern:        !vector && (admitCore3RefDeclarations(m) || admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m)),
+		declarationNonNullExtern: !vector && (admitCore3RefDeclarations(m) || admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m)),
 		publicReferenceCarriers:  publicReferenceCarrierBoundary && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp),
 	}
 	limit := 256

@@ -508,6 +508,69 @@ func rv64Core3ReferenceDeclarationCode(c *Compiled) bool {
 	}
 }
 
+// rv64Core3RefDeclarationMetadata is the exact retained prefix for the pinned
+// ref.0.wasm declaration matrix. The single private function exercises both
+// nullable and non-null abstract/indexed reference types, but has no callable
+// or state surface.
+func rv64Core3RefDeclarationMetadata(c *Compiled) bool {
+	if c == nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || rv64HasReferenceTail(c) {
+		return false
+	}
+	if c.requiredFeatures != CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences || c.requiredAMD64Features != 0 || c.dynamicFuncrefEscape || c.dynamicImports || c.needsFuncRefDescs() || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 1 || len(c.Types) != 2 || len(c.ValueTypes) != 0 || len(c.FuncTypeID) != 1 || c.FuncTypeID[0] != 0x452bd5aba9b3044d || len(c.Entry) != 1 || len(c.InternalEntry) != 1 || c.Entry[0] != 0 || c.InternalEntry[0] != 0 || len(c.code) == 0 || len(c.Exports) != 0 || c.Names != nil {
+		return false
+	}
+	if c.tableCount() != 0 || len(c.extraTables) != 0 || c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 0 || len(c.tableExports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 {
+		return false
+	}
+	sig := c.Funcs[0]
+	wantABI := []ValType{ValFuncRef, ValExternRef, ValFuncRef, ValExternRef, ValFuncRef, ValFuncRef, ValFuncRef, ValFuncRef, ValFuncRef, ValExternRef, ValFuncRef, ValFuncRef}
+	if !sig.HasTypeIndex || sig.TypeIndex != 1 || !slices.Equal(sig.Params, wantABI) || len(sig.Results) != 0 || sig.unsafeCrossTail {
+		return false
+	}
+	if typ := &c.Types[0]; typ.RecGroup != 0 || !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.Describes != 0 || typ.HasDescriptor || typ.Descriptor != 0 || typ.Kind != CompositeTypeFunction || len(typ.Params) != 0 || len(typ.Results) != 0 || len(typ.Fields) != 0 || typ.Array != (FieldTypeDescriptor{}) {
+		return false
+	}
+	ref := func(nullable, defined bool, heap AbstractHeapType) ValueTypeDescriptor {
+		return ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: nullable, Heap: HeapTypeDescriptor{Defined: defined, Abstract: heap}}}
+	}
+	nonNullIndexed := ref(false, true, 0)
+	nullableIndexed := ref(true, true, 0)
+	wantParams := []ValueTypeDescriptor{
+		ref(true, false, AbstractHeapFunc),
+		ref(true, false, AbstractHeapExtern),
+		ref(false, false, AbstractHeapFunc),
+		ref(false, false, AbstractHeapExtern),
+		nonNullIndexed, nonNullIndexed, nonNullIndexed, nonNullIndexed,
+		ref(true, false, AbstractHeapFunc),
+		ref(true, false, AbstractHeapExtern),
+		nullableIndexed, nullableIndexed,
+	}
+	typ := &c.Types[1]
+	return typ.RecGroup == 1 && typ.Final && len(typ.Supers) == 0 && !typ.HasDescribes && typ.Describes == 0 && !typ.HasDescriptor && typ.Descriptor == 0 && typ.Kind == CompositeTypeFunction && slices.Equal(typ.Params, wantParams) && len(typ.Results) == 0 && len(typ.Fields) == 0 && typ.Array == (FieldTypeDescriptor{})
+}
+
+func rv64Core3RefDeclarationCode(c *Compiled) bool {
+	return c != nil && len(c.code) == 672 && sha256.Sum256(c.code) == ([32]byte{0x85, 0x5d, 0xab, 0x7b, 0x1c, 0xec, 0x04, 0x4d, 0x22, 0x68, 0xf2, 0x85, 0xb3, 0x78, 0x54, 0x79, 0x12, 0x21, 0x26, 0xf4, 0x69, 0x28, 0xa7, 0x1c, 0xac, 0xfe, 0x37, 0xfc, 0x56, 0x41, 0x97, 0x58})
+}
+
+func rv64Core3RefDeclarations(c *Compiled) bool {
+	if !rv64Core3RefDeclarationMetadata(c) || !rv64Core3RefDeclarationCode(c) || !c.needsFuncRefContextHeader || len(c.GCTypeDescs) != 2 {
+		return false
+	}
+	for i, desc := range c.GCTypeDescs {
+		if desc.ID != corergc.TypeID(i) || desc.Kind != corergc.KindFunc || !desc.Final || desc.HasSuper || desc.Super != 0 || len(desc.Fields) != 0 || desc.Elem != 0 || desc.Size != 0 || desc.ElemSize != 0 || desc.Align != 0 || desc.HasRefs {
+			return false
+		}
+	}
+	if d := c.memoryDir; d != nil && (len(d.defs) != 0 || len(d.exports) != 0 || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0) {
+		return false
+	}
+	return true
+}
+
 func rv64Core3RefAsNonNullDeclarationCode(c *Compiled) bool {
 	if c == nil {
 		return false

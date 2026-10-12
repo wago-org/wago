@@ -406,6 +406,16 @@ bounds traps, externref token authentication and release, W^X publication,
 live leases and final cleanup. Together these checkpoints complete pinned
 `ref_is_null.wast` file-level qualification under baseline QEMU RV64G; native
 cache and performance qualification remain open.
+The pinned Core 3 `ref.wast` is now file-level qualified. Its exact 47-byte
+no-debug `.0` module retains one private function with the complete nullable
+and non-null abstract/indexed function/extern reference parameter matrix, but
+no export, import, start, element, table, global, descriptor arena or callable
+surface. Exact wire, decoded, native-code and retained-artifact witnesses keep
+nearby sources and forged metadata closed, including the canonical 60-byte
+debug-name form. All twelve remaining official modules are pinned to their
+`unknown type` validation failures before publication. Source, artifact and
+actual compiler-free lifecycle tests cover W^X publication and final cleanup;
+this declaration-only checkpoint adds no general callable externref ABI.
 The first and third executable modules from pinned Core 3
 `br_on_non_null.wast` now qualify separately through source and compiler-free
 artifacts. Exact WABT 1.0.41 bytes from revision
