@@ -1542,16 +1542,34 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 		// Passive source and destination cannot alias. Emit exact, ascending
 		// chunks after both checks; zero length still validates both ranges.
 		f.stats.peep("meminit-unroll")
-		if constantLength != 0 {
-			f.a.MovImm64(X11, 0)
+		off := 0
+		if constantLength >= 16 {
+			vec := f.allocFReg(0)
+			for ; off+16 <= constantLength; off += 16 {
+				f.a.LdrQ(vec, X10, int32(off))
+				f.a.StrQ(X9, int32(off), vec)
+			}
+			f.releaseF(vec)
 		}
-		for off := 0; off < constantLength; {
+		for off < constantLength {
 			size := 8
 			for size > constantLength-off {
 				size >>= 1
 			}
-			f.a.LoadIdx(X12, X10, X11, int32(off), size, false, size == 8)
-			f.a.StoreIdx(X9, X11, X12, int32(off), size)
+			switch size {
+			case 8:
+				f.a.Load64(X12, X10, uint32(off))
+				f.a.Store64(X12, X9, uint32(off))
+			case 4:
+				f.a.Load32(X12, X10, uint32(off))
+				f.a.Store32(X12, X9, uint32(off))
+			case 2:
+				f.a.Ldrh(X12, X10, uint32(off))
+				f.a.Strh(X12, X9, uint32(off))
+			case 1:
+				f.a.Ldrb(X12, X10, uint32(off))
+				f.a.Strb(X12, X9, uint32(off))
+			}
 			off += size
 		}
 	} else {
