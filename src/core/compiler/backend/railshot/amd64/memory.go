@@ -1325,9 +1325,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	// Shared memory uses the directory-backed bulk path; constant unrolling
-	// below is reserved for the ordinary linear-memory mapping.
-	if dstMemory == 0 && srcMemory == 0 && !f.threadedMemory0 && !f.memoryAddr64(0) {
+	if dstMemory == 0 && srcMemory == 0 && !f.memoryAddr64(0) {
 		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.stats.peep("memcopy-unroll")
@@ -1530,9 +1528,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	// Shared memory uses the directory-backed bulk path; constant unrolling
-	// below is reserved for the ordinary linear-memory mapping.
-	if memoryIndex == 0 && !f.threadedMemory0 && !f.memoryAddr64(0) {
+	if memoryIndex == 0 && !f.memoryAddr64(0) {
 		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.memoryFillConst(int(n), memoryIndex)
@@ -1825,7 +1821,7 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	} else {
 		f.a.LeaDisp(t, base, int32(n))
 	}
-	if memoryIndex == 0 {
+	if memoryIndex == 0 && !f.threadedMemory0 {
 		if f.memSizeReg != regNone {
 			f.a.Cmp64(t, f.memSizeReg)
 		} else {
@@ -1846,6 +1842,18 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	if !alreadyPinned {
 		f.pinned = f.pinned.remove(base)
 	}
+}
+
+// bulkMemory0Base returns memory zero's backing for the constant bulk paths.
+// Shared backing is separate from the instance control mapping in RBX.
+func (f *fn) bulkMemory0Base(avoid regMask) (Reg, bool) {
+	if !f.threadedMemory0 {
+		return RBX, false
+	}
+	base := f.allocReg(avoid)
+	f.a.Load64(base, RBX, -offMemoryDirPtr)
+	f.a.Load64(base, base, abi.MemoryDirBaseOffset)
+	return base, true
 }
 
 // memoryFillConst lowers memory.fill with a small constant length as unrolled
@@ -1876,9 +1884,13 @@ func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
 		f.a.MovRegReg32(dst, dst)
 	}
 	f.bulkBoundsCheck(dst, n, memoryIndex)
+	base, baseOwned := f.bulkMemory0Base(maskOf(dst, pat))
 	var chunkBuf [8][2]int
 	for _, c := range bulkChunks(n, &chunkBuf) {
-		f.a.StoreIdx(RBX, dst, pat, int32(c[0]), c[1])
+		f.a.StoreIdx(base, dst, pat, int32(c[0]), c[1])
+	}
+	if baseOwned {
+		f.release(base)
 	}
 	if pat != regNone {
 		f.pinned = f.pinned.remove(pat)
@@ -1906,6 +1918,7 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 	}
 	f.bulkBoundsCheck(dst, n, dstMemory)
 	f.bulkBoundsCheck(src, n, srcMemory)
+	base, baseOwned := f.bulkMemory0Base(maskOf(src, dst))
 	if n > 32 {
 		// 33..64 bytes: SSE 16-byte load-all-then-store-all. At most four XMM
 		// registers, so the load-all footprint stays in the float pool (the GP
@@ -1918,13 +1931,16 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 		var favoid regMask
 		for i, c := range chunks {
 			x := f.allocFReg(favoid)
-			f.mov128LoadIdx(x, RBX, src, int32(c[0]))
+			f.mov128LoadIdx(x, base, src, int32(c[0]))
 			xregs[i] = x
 			favoid = favoid.add(x)
 		}
 		for i, c := range chunks {
-			f.mov128StoreIdx(RBX, dst, xregs[i], int32(c[0]))
+			f.mov128StoreIdx(base, dst, xregs[i], int32(c[0]))
 			f.releaseF(xregs[i])
+		}
+		if baseOwned {
+			f.release(base)
 		}
 		f.pinned = f.pinned.remove(src)
 		f.pinned = f.pinned.remove(dst)
@@ -1940,16 +1956,19 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 	chunks := bulkChunks(n, &chunkBuf)
 	var regBuf [8]Reg
 	regs := regBuf[:len(chunks)]
-	avoid := maskOf(src, dst)
+	avoid := maskOf(src, dst, base)
 	for i, c := range chunks {
 		r := f.allocReg(avoid)
-		f.a.LoadIdx(r, RBX, src, int32(c[0]), c[1], false, c[1] == 8)
+		f.a.LoadIdx(r, base, src, int32(c[0]), c[1], false, c[1] == 8)
 		regs[i] = r
 		avoid = avoid.add(r)
 	}
 	for i, c := range chunks {
-		f.a.StoreIdx(RBX, dst, regs[i], int32(c[0]), c[1])
+		f.a.StoreIdx(base, dst, regs[i], int32(c[0]), c[1])
 		f.release(regs[i])
+	}
+	if baseOwned {
+		f.release(base)
 	}
 	f.pinned = f.pinned.remove(src)
 	f.pinned = f.pinned.remove(dst)

@@ -47,7 +47,7 @@ func TestThreadsSharedBulkMemoryExecutionAndCodec(t *testing.T) {
 	for _, fill := range []bool{false, true} {
 		for _, imported := range []bool{false, true} {
 			for _, pages := range []byte{0, 1} {
-				for _, length := range []int{-1, 0, 1, 7, 16, 33, 64, 65, 1024} {
+				for _, length := range []int{-1, 0, 1, 7, 16, 31, 32, 33, 63, 64, 65, 1024} {
 					t.Run(fmt.Sprintf("fill=%t/imported=%t/pages=%d/length=%d", fill, imported, pages, length), func(t *testing.T) {
 						c, err := cfg.Compile(threadsBulkMemoryModule(fill, imported, pages, length))
 						if err != nil {
