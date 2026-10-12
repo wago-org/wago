@@ -741,13 +741,11 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
 	xa, xaOwned := f.operandRegF(a) // read-only: only compared
-	saved := f.fpinned
-	f.fpinned = saved.add(xa)
+	f.fpinned = f.fpinned.add(xa)
 	xb, xbOwned := f.operandRegF(b) // read-only: only compared
-	f.fpinned = f.fpinned.add(xb)
+	f.fpinned = f.fpinned.remove(xa)
 	dst := f.allocReg(0)
 	f.emitFCmpSetcc(kind, xa, xb, f64, dst)
-	f.fpinned = saved
 	if xaOwned {
 		f.releaseF(xa)
 	}
@@ -763,40 +761,33 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 // unordered (NaN) yields false; eq/ne combine the equal/parity bits. Shared by
 // fcmp (eager boolean).
 func (f *fn) emitFCmpSetcc(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
-	f.stats.peep("float-full-width-boolean")
-	// Allocate all temporaries and clear the full result before UCOMIS.
-	// Allocation can realize pending loads, and XOR overwrites EFLAGS.
-	t := regNone
-	if kind == opEq || kind == opNe {
-		t = f.allocReg(maskOf(dst))
-		f.a.AluRR(0x31, t, t, false)
-	}
-	f.a.AluRR(0x31, dst, dst, false)
 	switch kind {
 	case opEq:
 		f.a.Ucomis(xa, xb, f64)
-		f.a.SetccReg8(condE, dst)
-		f.a.SetccReg8(condNP, t)
+		t := f.allocReg(maskOf(dst))
+		f.a.SetccReg(condE, dst)
+		f.a.SetccReg(condNP, t)
 		f.a.AluRR(aluTable[opAnd].rr, dst, t, false)
 		f.release(t)
 	case opNe:
 		f.a.Ucomis(xa, xb, f64)
-		f.a.SetccReg8(condNE, dst)
-		f.a.SetccReg8(condP, t)
+		t := f.allocReg(maskOf(dst))
+		f.a.SetccReg(condNE, dst)
+		f.a.SetccReg(condP, t)
 		f.a.AluRR(aluTable[opOr].rr, dst, t, false)
 		f.release(t)
 	case opGtS: // fc gt
 		f.a.Ucomis(xa, xb, f64)
-		f.a.SetccReg8(condA, dst)
+		f.a.SetccReg(condA, dst)
 	case opGeS: // fc ge
 		f.a.Ucomis(xa, xb, f64)
-		f.a.SetccReg8(condAE, dst)
+		f.a.SetccReg(condAE, dst)
 	case opLtS: // a<b == b>a (NaN-safe CF form)
 		f.a.Ucomis(xb, xa, f64)
-		f.a.SetccReg8(condA, dst)
+		f.a.SetccReg(condA, dst)
 	case opLeS: // a<=b == b>=a
 		f.a.Ucomis(xb, xa, f64)
-		f.a.SetccReg8(condAE, dst)
+		f.a.SetccReg(condAE, dst)
 	}
 }
 
