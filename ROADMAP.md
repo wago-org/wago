@@ -127,7 +127,11 @@ machine image distinct through its larger type metadata. Official `.41` and
 compile and authenticate, but their structurally different companion fields
 make the imported function types incompatible. The consumer therefore rejects
 the provider before attachment, leaving its resource-retention count unchanged.
-Products after `.42` and native cache/performance qualification remain open.
+Official `.43` and `.44` then prove the positive independent-recursion case:
+separately declared but structurally equivalent self-recursive companions let
+the consumer accept `g`, copy its canonical descriptor identity, and retain the
+provider through logical close. Products after `.44` and native cache/performance
+qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

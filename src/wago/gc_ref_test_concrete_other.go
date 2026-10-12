@@ -73,6 +73,10 @@ func railshotRestoreGCTypeSubtypingStructProjectionLinkArtifact(*Compiled) {}
 func rv64GCTypeSubtypingStructMismatchLink(*Compiled) bool                 { return false }
 func rv64GCTypeSubtypingStructMismatchLinkExecutionCode(*Compiled) bool    { return false }
 func railshotRestoreGCTypeSubtypingStructMismatchLinkArtifact(*Compiled)   {}
+func rv64GCTypeSubtypingIndependentStructLink(*Compiled) bool              { return false }
+func rv64GCTypeSubtypingIndependentStructLinkExecutionCode(*Compiled) bool { return false }
+func railshotRestoreGCTypeSubtypingIndependentStructLinkArtifact(*Compiled) {
+}
 
 func railshotRestoreGCRefCastAbstractArtifact(*Compiled) {}
 func rv64GCRefCastConcrete(*Compiled) bool               { return false }

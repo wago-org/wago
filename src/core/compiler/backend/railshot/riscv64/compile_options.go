@@ -138,6 +138,9 @@ type CompileOptions struct {
 	// GCTypeSubtypingStructMismatchSource identifies the exact official .41
 	// provider or .42 structurally incompatible consumer.
 	GCTypeSubtypingStructMismatchSource uint8
+	// GCTypeSubtypingIndependentStructSource identifies the exact official .43
+	// provider or .44 independently declared compatible consumer.
+	GCTypeSubtypingIndependentStructSource uint8
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -228,6 +231,7 @@ type CompileOptions struct {
 	gcTypeSubtypingStructLink         uint8
 	gcTypeSubtypingStructProjection   uint8
 	gcTypeSubtypingStructMismatch     uint8
+	gcTypeSubtypingIndependentStruct  uint8
 	gcExtern                          bool
 	gcRefCastAbstract                 bool
 	gcStructGet                       bool

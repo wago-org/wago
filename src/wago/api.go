@@ -1168,6 +1168,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	gcTypeSubtypingStructLinkSourceVariant := railshotGCTypeSubtypingStructLinkSource(wasmBytes)
 	gcTypeSubtypingStructProjectionLinkSourceVariant := railshotGCTypeSubtypingStructProjectionLinkSource(wasmBytes)
 	gcTypeSubtypingStructMismatchLinkSourceVariant := railshotGCTypeSubtypingStructMismatchLinkSource(wasmBytes)
+	gcTypeSubtypingIndependentStructLinkSourceVariant := railshotGCTypeSubtypingIndependentStructLinkSource(wasmBytes)
 	exactGCStructGetSource := railshotGCStructGetSource(wasmBytes)
 	exactGCStructMutationSource := railshotGCStructMutationSource(wasmBytes)
 	exactGCStructNullSource := railshotGCStructNullSource(wasmBytes)
@@ -1234,7 +1235,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		// strict because it selects the collector-free function-identity lowering,
 		// but any module with that proven shape receives the same semantics.
 		if product, shapeErr := stagedGCTypeSubtypingProductShape(m); shapeErr == nil {
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCTypeSubtypingDeclarations && gcTypeSubtypingDeclarationsSourceVariant != 0 || product == stagedGCTypeSubtypingRecursiveFunctions && gcTypeSubtypingRecursiveFunctionsSourceVariant != 0 || product == stagedGCTypeSubtypingRefFuncGlobals && gcTypeSubtypingRefFuncGlobalsSourceVariant != 0 || product == stagedGCTypeSubtypingRuntimeCallCast && exactGCTypeSubtypingRuntimeCallCastSource || product == stagedGCTypeSubtypingRuntimeFinalityCallCast && exactGCTypeSubtypingRuntimeFinalityCallCastSource || product == stagedGCTypeSubtypingRuntimeTypedTableCall && exactGCTypeSubtypingRuntimeTypedTableCallSource || (product == stagedGCTypeSubtypingRefTestSingle || product == stagedGCTypeSubtypingRefTestMulti || product == stagedGCTypeSubtypingRefTestDirectionFalse) && gcTypeSubtypingRefTestSingleSourceVariant != 0 || (product == stagedGCTypeSubtypingLinkProvider || product == stagedGCTypeSubtypingLinkConsumer) && gcTypeSubtypingLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingFinalityLinkProvider || product == stagedGCTypeSubtypingFinalityLinkConsumer) && gcTypeSubtypingFinalityLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingStructLinkProvider || product == stagedGCTypeSubtypingStructLinkConsumer) && gcTypeSubtypingStructLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingStructProjectionLinkProvider || product == stagedGCTypeSubtypingStructProjectionLinkConsumer) && gcTypeSubtypingStructProjectionLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingStructMismatchLinkProvider || product == stagedGCTypeSubtypingStructMismatchLinkConsumer) && gcTypeSubtypingStructMismatchLinkSourceVariant != 0) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCTypeSubtypingDeclarations && gcTypeSubtypingDeclarationsSourceVariant != 0 || product == stagedGCTypeSubtypingRecursiveFunctions && gcTypeSubtypingRecursiveFunctionsSourceVariant != 0 || product == stagedGCTypeSubtypingRefFuncGlobals && gcTypeSubtypingRefFuncGlobalsSourceVariant != 0 || product == stagedGCTypeSubtypingRuntimeCallCast && exactGCTypeSubtypingRuntimeCallCastSource || product == stagedGCTypeSubtypingRuntimeFinalityCallCast && exactGCTypeSubtypingRuntimeFinalityCallCastSource || product == stagedGCTypeSubtypingRuntimeTypedTableCall && exactGCTypeSubtypingRuntimeTypedTableCallSource || (product == stagedGCTypeSubtypingRefTestSingle || product == stagedGCTypeSubtypingRefTestMulti || product == stagedGCTypeSubtypingRefTestDirectionFalse) && gcTypeSubtypingRefTestSingleSourceVariant != 0 || (product == stagedGCTypeSubtypingLinkProvider || product == stagedGCTypeSubtypingLinkConsumer) && gcTypeSubtypingLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingFinalityLinkProvider || product == stagedGCTypeSubtypingFinalityLinkConsumer) && gcTypeSubtypingFinalityLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingStructLinkProvider || product == stagedGCTypeSubtypingStructLinkConsumer) && gcTypeSubtypingStructLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingStructProjectionLinkProvider || product == stagedGCTypeSubtypingStructProjectionLinkConsumer) && gcTypeSubtypingStructProjectionLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingStructMismatchLinkProvider || product == stagedGCTypeSubtypingStructMismatchLinkConsumer) && gcTypeSubtypingStructMismatchLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingIndependentStructLinkProvider || product == stagedGCTypeSubtypingIndependentStructLinkConsumer) && gcTypeSubtypingIndependentStructLinkSourceVariant != 0) {
 				return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcTypeSubtypingProduct = product
@@ -1464,6 +1465,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	railshotConfigureGCTypeSubtypingStructLink(gcTypeSubtypingStructLinkSourceVariant, &compileOptions)
 	railshotConfigureGCTypeSubtypingStructProjectionLink(gcTypeSubtypingStructProjectionLinkSourceVariant, &compileOptions)
 	railshotConfigureGCTypeSubtypingStructMismatchLink(gcTypeSubtypingStructMismatchLinkSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingIndependentStructLink(gcTypeSubtypingIndependentStructLinkSourceVariant, &compileOptions)
 	railshotConfigureGCTypeSubtypingRefFuncGlobals(gcTypeSubtypingRefFuncGlobalsSourceVariant, &compileOptions)
 	var cm *railshotCompiledModule
 	if codegen.SourceChecks {
@@ -3863,6 +3865,7 @@ func finishDecodedCompiled(decoded *Compiled) error {
 	railshotRestoreGCTypeSubtypingStructLinkArtifact(decoded)
 	railshotRestoreGCTypeSubtypingStructProjectionLinkArtifact(decoded)
 	railshotRestoreGCTypeSubtypingStructMismatchLinkArtifact(decoded)
+	railshotRestoreGCTypeSubtypingIndependentStructLinkArtifact(decoded)
 	railshotRestoreGCTypeSubtypingRuntimeCallCastArtifact(decoded)
 	railshotRestoreGCTypeSubtypingRuntimeFinalityCallCastArtifact(decoded)
 	railshotRestoreGCTypeSubtypingRuntimeTypedTableCallArtifact(decoded)
