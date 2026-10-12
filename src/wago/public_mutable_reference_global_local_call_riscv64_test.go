@@ -140,6 +140,27 @@ func rv64MutableFuncrefLocalCallVectorModule() []byte {
 	)
 }
 
+func rv64MutableFuncrefLocalCallMixedVectorModule() []byte {
+	types := []wasm.ValType{wasm.I32, wasm.V128, wasm.F64}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{6, 0, 0, 1, 1, 1, 0}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0), wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2), wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("call", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x41, 1, 0x6a, 0x20, 1, 0xfd, 77, 0x20, 2, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x23, 0, 0x14, 0, 0x0b}),
+		)),
+	)
+}
+
 func TestRV64PublicMutableFuncrefGlobalLocalCall(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
@@ -607,6 +628,77 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallVector(t *testing.T) {
 				var trap *coreruntime.TrapError
 				if !errors.As(invokeErr, &trap) || trap.Code != coreruntime.TrapNullReference {
 					t.Fatal("cleared vector mutable funcref call trap", invokeErr)
+				}
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := consumer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := compiled.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicMutableFuncrefGlobalLocalCallMixedVector(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+			defer rt.Close()
+			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-mixed-vector", rv64MutableFuncrefLocalCallMixedVectorModule(), artifact)
+			if !rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) {
+				t.Fatal("mixed vector local-call witness missing")
+			}
+			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+			input := []uint64{0xdeadbeef80000001, 0x0123456789abcdef, 0xfedcba9876543210, math.Float64bits(2.5)}
+			identity := []uint64{0x80000001, input[1], input[2], input[3]}
+			transformed := []uint64{0x80000002, ^input[1], ^input[2], math.Float64bits(3.5)}
+			assertCall := func(want []uint64) {
+				t.Helper()
+				got, err := consumer.Invoke("call", input...)
+				if err != nil || !slices.Equal(got, want) {
+					t.Fatal("mixed vector mutable call_ref", got, err, "want", want)
+				}
+			}
+			if _, err := consumer.Invoke("set_0"); err != nil {
+				t.Fatal("install mixed vector identity", err)
+			}
+			assertCall(identity)
+			if _, err := consumer.Invoke("set_1"); err != nil {
+				t.Fatal("install mixed vector transform", err)
+			}
+			assertCall(transformed)
+
+			types := []wasm.ValType{wasm.I32, wasm.V128, wasm.F64}
+			producerCode := rv64NativeTailCompile(t, "mutable-funcref-local-call-mixed-vector-producer", rv64PublicReferenceTailModule(types, false, true), artifact)
+			producer := rv64NativeTokenInstantiate(t, rt, producerCode, NewImports())
+			descriptor, ok := producer.localFuncrefDescriptor(0)
+			if !ok {
+				t.Fatal("foreign mixed vector producer descriptor")
+			}
+			token, err := rt.refStore.issue(producer, descriptor)
+			if err != nil {
+				t.Fatal("foreign mixed vector producer token", err)
+			}
+			if err := consumer.SetGlobalValue("cell", ValueOf(ValFuncRef, token)); err != nil {
+				t.Fatal("install foreign mixed vector target", err)
+			}
+			assertCall(identity)
+			if _, err := consumer.Invoke("clear"); err != nil {
+				t.Fatal("clear mixed vector target", err)
+			}
+			if got, invokeErr := consumer.Invoke("call", input...); got != nil {
+				t.Fatal("cleared mixed vector call_ref returned a result", got, invokeErr)
+			} else {
+				var trap *coreruntime.TrapError
+				if !errors.As(invokeErr, &trap) || trap.Code != coreruntime.TrapNullReference {
+					t.Fatal("cleared mixed vector mutable funcref call trap", invokeErr)
 				}
 			}
 			if err := producer.Close(); err != nil {

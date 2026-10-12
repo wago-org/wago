@@ -414,12 +414,14 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 	mixedTypes := []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}
 	mixedArgument := i31CoreFunctionType(&m.Types[0], mixedTypes, mixedTypes)
 	vectorArgument := i31CoreFunctionType(&m.Types[0], []wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128})
+	mixedVectorTypes := []wasm.ValType{wasm.I32, wasm.V128, wasm.F64}
+	mixedVectorArgument := i31CoreFunctionType(&m.Types[0], mixedVectorTypes, mixedVectorTypes)
 	wideI32Types := make([]wasm.ValType, 9)
 	for i := range wideI32Types {
 		wideI32Types[i] = wasm.I32
 	}
 	wideI32Argument := i31CoreFunctionType(&m.Types[0], wideI32Types, wideI32Types)
-	if (!zeroArgument && !i32Argument && !i64Argument && !f32Argument && !f64Argument && !mixedArgument && !wideI32Argument && !vectorArgument) || !i31CoreFunctionType(&m.Types[1], nil, nil) {
+	if (!zeroArgument && !i32Argument && !i64Argument && !f32Argument && !f64Argument && !mixedArgument && !wideI32Argument && !vectorArgument && !mixedVectorArgument) || !i31CoreFunctionType(&m.Types[1], nil, nil) {
 		return false
 	}
 	indexed := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{}), false))
@@ -476,6 +478,11 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 		wantBodies[0] = []byte{0x20, 0, 0x0b}
 		wantBodies[1] = []byte{0x20, 0, 0xfd, 77, 0x0b}
 		wantBodies[5] = []byte{0x20, 0, 0x23, 0, 0x14, 0, 0x0b}
+	}
+	if mixedVectorArgument {
+		wantBodies[0] = []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x0b}
+		wantBodies[1] = []byte{0x20, 0, 0x41, 1, 0x6a, 0x20, 1, 0xfd, 77, 0x20, 2, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x0b}
+		wantBodies[5] = []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x23, 0, 0x14, 0, 0x0b}
 	}
 	for i := range m.Code {
 		if m.FuncTypes[i] != (wasm.TypeIdx{Index: wantTypes[i]}) || m.Code[i].LocalDeclBytes != 1 || len(m.Code[i].Locals.Runs) != 0 || !bytes.Equal(m.Code[i].BodyBytes, wantBodies[i]) {
