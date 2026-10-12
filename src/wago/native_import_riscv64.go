@@ -100,8 +100,14 @@ func railshotValidateNativeExport(c *Compiled, index int, export *InstanceExport
 	if producer.jm == nil || producer.base == 0 || producer.nativeContext == 0 || export.localIdx < 0 || export.localIdx >= len(producer.c.Entry) || export.localIdx >= len(producer.c.Funcs) {
 		return fmt.Errorf("native instance export has no retained framed entry")
 	}
-	allowSubtype := rv64GCTypeSubtypingLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingLinkConsumer &&
-		rv64GCTypeSubtypingLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingLinkProvider
+	consumerProduct := c.stagedGCTypeSubtypingProduct()
+	if expectedProvider := consumerProduct.linkProviderProduct(); expectedProvider != 0 && producer.c.stagedGCTypeSubtypingProduct() != expectedProvider {
+		return fmt.Errorf("native instance export signature mismatch: producer is outside the exact gc/type-subtyping link product")
+	}
+	allowSubtype := (rv64GCTypeSubtypingLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingLinkConsumer &&
+		rv64GCTypeSubtypingLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingLinkProvider) ||
+		(rv64GCTypeSubtypingFinalityLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingFinalityLinkConsumer &&
+			rv64GCTypeSubtypingFinalityLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingFinalityLinkProvider)
 	if index < 0 || index >= len(c.importFuncSigs) || !sigMatches(c.importFuncSigs[index], c.Types, export, allowSubtype) {
 		return fmt.Errorf("native instance export signature mismatch")
 	}

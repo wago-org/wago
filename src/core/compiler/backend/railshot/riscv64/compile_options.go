@@ -126,6 +126,9 @@ type CompileOptions struct {
 	// GCTypeSubtypingLinkSource identifies the exact official .29 provider or
 	// .30 consumer in the first recursive-function linking cluster.
 	GCTypeSubtypingLinkSource uint8
+	// GCTypeSubtypingFinalityLinkSource identifies the exact official .34
+	// provider or one of the .35/.36 inverse-finality consumers.
+	GCTypeSubtypingFinalityLinkSource uint8
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.
 	GCStructGetSource bool
@@ -212,6 +215,7 @@ type CompileOptions struct {
 	gcTypeSubtypingRefTestSingle      bool
 	gcTypeSubtypingRefTestVariant     uint8
 	gcTypeSubtypingLink               uint8
+	gcTypeSubtypingFinalityLink       uint8
 	gcExtern                          bool
 	gcRefCastAbstract                 bool
 	gcStructGet                       bool

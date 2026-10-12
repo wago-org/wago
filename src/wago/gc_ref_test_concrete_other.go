@@ -59,6 +59,9 @@ func railshotRestoreGCTypeSubtypingRefTestSingleArtifact(*Compiled) {}
 func rv64GCTypeSubtypingLink(*Compiled) bool                        { return false }
 func rv64GCTypeSubtypingLinkExecutionCode(*Compiled) bool           { return false }
 func railshotRestoreGCTypeSubtypingLinkArtifact(*Compiled)          {}
+func rv64GCTypeSubtypingFinalityLink(*Compiled) bool                { return false }
+func rv64GCTypeSubtypingFinalityLinkExecutionCode(*Compiled) bool   { return false }
+func railshotRestoreGCTypeSubtypingFinalityLinkArtifact(*Compiled)  {}
 
 func railshotRestoreGCRefCastAbstractArtifact(*Compiled) {}
 func rv64GCRefCastConcrete(*Compiled) bool               { return false }

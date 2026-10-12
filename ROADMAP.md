@@ -108,7 +108,13 @@ wrong-subtype linking, W^X publication, and final unmapping are covered under
 baseline QEMU RV64G without a collector. Expected unlinkables `.31` through
 `.33` now compile as three separate exact zero-code consumer artifacts and
 reject their narrowed provider bindings before retention; rollback leaves the
-provider live and unretained. Products after `.33` and native
+provider live and unretained. Official `.34` through `.36` add the exact
+function-finality link cluster: the two exported `() -> ()` provider functions
+remain identity-only across open/final type declarations, while both inverse
+consumer imports are authenticated zero-code artifacts that reject before
+retaining the provider. Source and compiler-free artifact paths pin the scalar
+framed image and metadata without claiming a closed reference-function ABI for
+these scalar signatures. Products after `.36` and native
 cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain

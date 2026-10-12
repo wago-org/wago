@@ -169,6 +169,10 @@ func railshotGCTypeSubtypingLinkSource(data []byte) uint8 {
 	return railshot.GCTypeSubtypingLinkSourceVariant(data)
 }
 
+func railshotGCTypeSubtypingFinalityLinkSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingFinalityLinkSourceVariant(data)
+}
+
 func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
 
 func railshotGCStructMutationSource(data []byte) bool {
@@ -334,6 +338,14 @@ func railshotConfigureGCTypeSubtypingRefTestSingle(sourceVariant uint8, opts *ra
 
 func railshotConfigureGCTypeSubtypingLink(sourceVariant uint8, opts *railshotCompileOptions) {
 	opts.GCTypeSubtypingLinkSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingFinalityLink(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingFinalityLinkSource = sourceVariant
 	if sourceVariant != 0 {
 		opts.NativeReferenceCalls = false
 		opts.NativeReferenceFunctions = false
