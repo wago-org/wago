@@ -145,10 +145,10 @@ func railshotValidateCompiled(c *Compiled) error {
 		return reject("gc/type-subtyping runtime typed-table call metadata requires its exact retained image")
 	}
 	if rv64GCTypeSubtypingRefTestSingleExecutionCode(c) && !exactGCTypeSubtypingRefTestSingle {
-		return reject("gc/type-subtyping single ref.test image requires its exact retained metadata")
+		return reject("gc/type-subtyping ref.test image requires its exact retained metadata")
 	}
 	if rv64GCTypeSubtypingRefTestSingleProfileWithCode(c, true, false) && !exactGCTypeSubtypingRefTestSingle {
-		return reject("gc/type-subtyping single ref.test metadata requires its exact retained image")
+		return reject("gc/type-subtyping ref.test metadata requires its exact retained image")
 	}
 	if rv64OfficialGCRefEqExecutionCode(c) && !exactGCRefEq {
 		return reject("allocating gc/ref.eq image requires its exact retained metadata")

@@ -99,7 +99,7 @@ identical function types retain distinct nominal descriptor keys; the `run`
 export accepts only the declared subtype closures, while both narrower and
 unrelated indirect calls trap. Source, compiler-free artifact, W^X lifetime,
 and hostile retained-state paths are covered without a collector. Official
-`.20` through `.23` add the first recursive function-identity `ref.test`
+`.20` through `.24` add the first recursive function-identity `ref.test`
 checkpoints.
 Its declaratively declared function descriptor is tested against the canonical
 equivalent subtype relation across distinct recursive groups by genuine RV64
@@ -113,7 +113,10 @@ matching supertype descriptor, returning normalized `i32(1)`. The `.22` and
 `.23` products deliberately share their type-4 comparison image while their
 distinct retained graphs select different actual descriptors. Exact source, decoded,
 compiler-free artifact, W^X lease, final-unmap, and private-runtime-permission
-paths are covered. Other `gc/type-subtyping` module shapes remain fail-closed
+paths are covered. `.24` extends the boundary to two genuine tests and a
+multi-value `[1, 1]` result, proving that one deeper nominal subtype satisfies
+both its root and intermediate recursive-group projections. Other
+`gc/type-subtyping` module shapes remain fail-closed
 on RV64.
 Compiler diagnostics builds report finalized code/frame sizes. With `wago_profile`,
 optional source maps record scalar and SWAR opcode origins in finalized code,

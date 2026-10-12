@@ -104,7 +104,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	opts.gcTypeSubtypingRuntimeCallCast = opts.gcTypeSubtypingRuntimeCallCast || decodedGCTypeSubtypingRuntimeTypedTableCall
 	decodedGCTypeSubtypingRefTestSingle := admitRV64GCTypeSubtypingRefTestSingleVariant(m)
 	if opts.GCTypeSubtypingRefTestSingleSource != decodedGCTypeSubtypingRefTestSingle {
-		return nil, unsupported("gc type-subtyping single ref.test source provenance")
+		return nil, unsupported("gc type-subtyping ref.test source provenance")
 	}
 	opts.gcTypeSubtypingRefTestSingle = decodedGCTypeSubtypingRefTestSingle != 0
 	opts.gcTypeSubtypingRefTestVariant = decodedGCTypeSubtypingRefTestSingle
@@ -447,12 +447,12 @@ func stageGCTypeSubtypingRefTestSingle(c *Compiled, opts CompileOptions, m *wasm
 		!c.state.referenceFunctions || c.state.referenceCalls || c.state.ownedTable || len(c.functions) != 2 || len(c.code) == 0 ||
 		opts.NativeTailCalls || opts.localTailCalls || opts.importTailCalls || opts.dynamicTailCalls || opts.NativeReferenceCalls ||
 		!opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext {
-		return nil, unsupported("gc type-subtyping single ref.test staged ABI")
+		return nil, unsupported("gc type-subtyping ref.test staged ABI")
 	}
 	for _, function := range c.functions {
 		if !function.mode.referenceFunctions || function.mode.referenceCalls || !function.mode.production || !function.mode.interruptible ||
 			!function.mode.foreignTableCalls || !function.mode.invocationContext || function.mode.localTailCalls || function.mode.importTailCalls || function.mode.dynamicTailCalls {
-			return nil, unsupported("gc type-subtyping single ref.test function ABI")
+			return nil, unsupported("gc type-subtyping ref.test function ABI")
 		}
 	}
 	return stageAdmittedProductionModule(c, opts)

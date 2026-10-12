@@ -121,7 +121,7 @@ type CompileOptions struct {
 	// the official indexed-function typed-table call_indirect product.
 	GCTypeSubtypingRuntimeTypedTableCallSource bool
 	// GCTypeSubtypingRefTestSingleSource identifies an exact official
-	// single-result recursive-function ref.test product.
+	// bounded recursive-function ref.test product.
 	GCTypeSubtypingRefTestSingleSource uint8
 	// GCStructGetSource is the exact-wire witness for the bounded allocating
 	// struct.new_default/struct.get checkpoint.

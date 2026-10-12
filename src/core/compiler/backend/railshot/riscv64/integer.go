@@ -2080,21 +2080,27 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			case wasm.InstrRefTest:
 				if state.gcTypeSubtypingRefTestSingle {
-					expectedHeap := uint32(4)
-					if state.gcTypeSubtypingRefTestVariant == 4 {
-						expectedHeap = 0
+					if !imm.HasHeapType || imm.HeapType.Kind() != wasm.HeapTypeIndex || imm.HeapType.Type().Rec {
+						return integerSummary{}, unsupported("bounded function ref.test type relation")
 					}
-					if len(state.types) <= 6 || state.gcTypeSubtypingRefTestVariant == 0 || state.gcTypeSubtypingRefTestVariant > 4 || !imm.HasHeapType || imm.HeapType.Kind() != wasm.HeapTypeIndex || imm.HeapType.Type().Rec || imm.HeapType.Type().Index != expectedHeap {
-						return integerSummary{}, unsupported("single function ref.test type relation")
+					target := imm.HeapType.Type().Index
+					variant := state.gcTypeSubtypingRefTestVariant
+					validTarget := (variant > 0 && variant < 4 && target == 4) ||
+						(variant == 4 && target == 0) ||
+						(variant == 5 && (target == 0 || target == 4))
+					accepted := uint32(6)
+					if variant == 3 || variant == 4 {
+						accepted = 4
+					} else if variant == 5 {
+						accepted = 8
+					}
+					if !validTarget || int(accepted) >= len(state.types) {
+						return integerSummary{}, unsupported("bounded function ref.test type relation")
 					}
 					if _, err = popClass(true); err != nil {
 						return integerSummary{}, err
 					}
 					if live && emit != nil {
-						accepted := uint32(6)
-						if state.gcTypeSubtypingRefTestVariant >= 3 {
-							accepted = 4
-						}
 						emit.functionReferenceTest(h, []uint64{state.types[accepted].key}, imm.Subopcode == 21)
 					}
 					if err = push(false); err != nil {
