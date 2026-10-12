@@ -1033,9 +1033,6 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 		}
 		return errors.New("threads currently require memory32")
 	}
-	if mt.Shared && (m.ImportedMemCount() != 1 || len(m.Memories) != 0) {
-		return errors.New("threads currently require shared memory to be imported")
-	}
 	if mt.Shared && !mt.Limits.HasMax {
 		return errors.New("threads currently require shared memory with an exact maximum")
 	}

@@ -425,7 +425,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
 	arenaNeed := c.arenaNeedForImports(imports, syncMode)
-	if c.memoryCount() == 1 && (opts.memoryLimitPages != 0 || c.memoryImport != "" && c.threadedMemory0()) {
+	if c.memoryCount() == 1 && (opts.memoryLimitPages != 0 || c.threadedMemory0()) {
 		if arenaNeed > maxInt()-abi.MemoryDirEntryBytes {
 			return nil, errors.New("instance metadata footprint overflows memory policy directory")
 		}
@@ -544,6 +544,29 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		} else {
 			jm = m.jobMemory()
 		}
+	} else if c.threadedMemory0() {
+		// Shared pages belong to the Memory object; basedata and invocation
+		// control belong to each instance. Exporting the backing must never
+		// expose the producer's trap cell or host-call context to its importers.
+		initialBytes, maxBytes := c.memorySizeBytes()
+		backing, allocErr := runtime.AcquireJobMemoryGrowable(initialBytes, maxBytes)
+		if allocErr != nil {
+			runtime.ReleaseEngine(eng)
+			return nil, allocErr
+		}
+		memObj, ownsMem = &Memory{jm: backing}, true
+		if err = memObj.share(nil, c.memoryDef(0)); err != nil {
+			runtime.ReleaseJobMemory(backing)
+			runtime.ReleaseEngine(eng)
+			return nil, err
+		}
+		jm, err = runtime.AcquireJobMemoryGrowable(0, 0)
+		if err != nil {
+			runtime.ReleaseJobMemory(backing)
+			runtime.ReleaseEngine(eng)
+			return nil, wrapContextError("allocate threaded instance control", err)
+		}
+		threadedControl = true
 	} else {
 		initialBytes, maxBytes := c.memorySizeBytes()
 		if c.boundsMode == BoundsChecksSignalsBased || c.prefersGuardMemory() {
@@ -572,7 +595,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				runtime.ReleaseJobMemory(jm)
 			}
 			if ownsMem {
-				runtime.ReleaseJobMemory(jm)
+				runtime.ReleaseJobMemory(memObj.jobMemory())
 			}
 			memoryAttachments.each((*Memory).detachImporter)
 			return
@@ -1639,6 +1662,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		nativeContext:      nativeContextPtr,
 		threadedMemoryZero: c.threadedMemory0(),
 		moduleIdentity:     opts.moduleIdentity,
+	}
+	if threadedControl && ownsMem {
+		if err := memObj.observeOwner(in); err != nil {
+			return nil, err
+		}
 	}
 	if codeProfileEnabled {
 		b.bindProfileInstance(in)

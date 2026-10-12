@@ -533,7 +533,11 @@ func (in *Instance) releaseResources() {
 	}
 	if in.c.threadedMemory0() {
 		runtime.ReleaseJobMemory(in.jm)
-		if in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
+		if in.ownsMem {
+			backing := in.memory.jobMemory()
+			in.memory.ownerClosed()
+			runtime.ReleaseJobMemory(backing)
+		} else if in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
 			in.memory.detachImporter()
 		}
 	} else if in.ownsMem {
