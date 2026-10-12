@@ -12,6 +12,7 @@ import (
 var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
 	optimization.Bind("atomic-static-bounds", &atomicStaticBoundsEnabled),
+	optimization.Bind("shared-memory-base", &sharedMemoryBaseEnabled),
 	optimization.Bind("atomic-lse", &atomicLSEEnabled),
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
@@ -80,6 +81,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 var (
 	optAtomicStaticBounds   = optimizationBindings.Option("atomic-static-bounds")
 	optAtomicZeroWait       = optimizationBindings.Option("atomic-wait-zero-timeout")
+	optSharedMemoryBase     = optimizationBindings.Option("shared-memory-base")
 	optAtomicLSE            = optimizationBindings.Option("atomic-lse")
 	optBoundsFacts          = optimizationBindings.Option("bounds-facts")
 	optSIMDSuperopt         = optimizationBindings.Option("simd-superopt")

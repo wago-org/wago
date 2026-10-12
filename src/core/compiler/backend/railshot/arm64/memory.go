@@ -669,18 +669,27 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 		f.release(t)
 	}
 	f.pinned = f.pinned.add(ea)
-	dir := f.allocReg(maskOf(ea))
-	f.ld64(dir, linMemReg, -int32(offMemoryDirPtr))
-	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
-	mb := f.allocReg(maskOf(ea, dir))
-	if memoryIndex == 0 && f.threadedMemory0 {
-		base = f.allocReg(maskOf(ea, dir, mb))
-		f.ld64(base, dir, entry+abi.MemoryDirBaseOffset)
+	dir := regNone
+	mb := regNone
+	if memoryIndex == 0 && f.cachedSharedMemoryBase() != regNone {
+		base = f.allocReg(maskOf(ea))
+		f.a.MovReg64(base, f.cachedSharedMemoryBase())
+		mb = f.allocReg(maskOf(ea, base))
 		f.loadSharedMemoryBytes(mb, base)
 	} else {
-		f.ld64(mb, dir, entry+abi.MemoryDirCurrentBytesOffset)
-		base = f.allocReg(maskOf(ea, dir, mb))
-		f.ld64(base, dir, entry+abi.MemoryDirBaseOffset)
+		dir = f.allocReg(maskOf(ea))
+		f.ld64(dir, linMemReg, -int32(offMemoryDirPtr))
+		entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
+		mb = f.allocReg(maskOf(ea, dir))
+		if memoryIndex == 0 && f.threadedMemory0 {
+			base = f.allocReg(maskOf(ea, dir, mb))
+			f.ld64(base, dir, entry+abi.MemoryDirBaseOffset)
+			f.loadSharedMemoryBytes(mb, base)
+		} else {
+			f.ld64(mb, dir, entry+abi.MemoryDirCurrentBytesOffset)
+			base = f.allocReg(maskOf(ea, dir, mb))
+			f.ld64(base, dir, entry+abi.MemoryDirBaseOffset)
+		}
 	}
 	end := f.allocReg(maskOf(ea, dir, mb, base))
 	f.a.MovImm64(end, uint64(size))
@@ -690,7 +699,9 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	f.trapIf(condA, trapMemOOB)
 	f.release(end)
 	f.release(mb)
-	f.release(dir)
+	if dir != regNone {
+		f.release(dir)
+	}
 	f.pinned = f.pinned.remove(ea)
 	return base, ea, disp
 }
@@ -1768,6 +1779,27 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	return nil
 }
 
+var sharedMemoryBaseEnabled = true
+
+// The register is reserved module-wide and established at every wrapper entry.
+// Growth cannot relocate the reservation; helper/cross-context continuations
+// reestablish it from the restored instance's private directory.
+func (f *fn) cachedSharedMemoryBase() Reg {
+	if f.threadedMemory0 && f.memSizeReg == X27 && f.opt(optSharedMemoryBase) {
+		return f.memSizeReg
+	}
+	return regNone
+}
+
+func (f *fn) loadMemoryCache() {
+	if f.cachedSharedMemoryBase() != regNone {
+		f.ld64(f.memSizeReg, linMemReg, -int32(offMemoryDirPtr))
+		f.ld64(f.memSizeReg, f.memSizeReg, abi.MemoryDirBaseOffset)
+	} else {
+		f.ld64(f.memSizeReg, linMemReg, -int32(bdCurBytes))
+	}
+}
+
 // loadSharedMemoryBytes acquires the backing's authoritative size, rather
 // than an instance directory snapshot that another grower can make stale.
 func (f *fn) loadSharedMemoryBytes(dst, base Reg) {
@@ -1777,9 +1809,13 @@ func (f *fn) loadSharedMemoryBytes(dst, base Reg) {
 
 func (f *fn) sharedMemorySize() {
 	out := f.allocReg(0)
-	f.ld64(out, linMemReg, -int32(offMemoryDirPtr))
-	f.ld64(out, out, abi.MemoryDirBaseOffset)
-	f.loadSharedMemoryBytes(out, out)
+	if base := f.cachedSharedMemoryBase(); base != regNone {
+		f.loadSharedMemoryBytes(out, base)
+	} else {
+		f.ld64(out, linMemReg, -int32(offMemoryDirPtr))
+		f.ld64(out, out, abi.MemoryDirBaseOffset)
+		f.loadSharedMemoryBytes(out, out)
+	}
 	f.a.LsrImm(out, out, 16, false)
 	f.pushReg(out, mtI32)
 }
@@ -1992,6 +2028,13 @@ func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
 		f.a.Add64(offset, offset, linMemReg)
 		return
 	}
+	if memoryIndex == 0 && f.cachedSharedMemoryBase() != regNone {
+		f.loadSharedMemoryBytes(X16, f.cachedSharedMemoryBase())
+		f.cmpRR(X12, X16, true)
+		f.trapIf(condA, trapMemOOB)
+		f.a.Add64(offset, offset, f.cachedSharedMemoryBase())
+		return
+	}
 	f.ld64(X13, linMemReg, -int32(offMemoryDirPtr))
 	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
 	if memoryIndex == 0 && f.threadedMemory0 {
@@ -2032,6 +2075,11 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	}
 	if memoryIndex == 0 && !f.threadedMemory0 && f.memSizeReg != regNone {
 		f.cmpRR(t, f.memSizeReg, true)
+	} else if memoryIndex == 0 && f.cachedSharedMemoryBase() != regNone {
+		mb := f.allocReg(maskOf(t))
+		f.loadSharedMemoryBytes(mb, f.cachedSharedMemoryBase())
+		f.cmpRR(t, mb, true)
+		f.release(mb)
 	} else {
 		mb := f.allocReg(maskOf(t))
 		if memoryIndex == 0 && !f.threadedMemory0 {
@@ -2058,6 +2106,9 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 func (f *fn) indexedMemoryBase(memoryIndex uint32, avoid regMask) (Reg, bool) {
 	if memoryIndex == 0 && !f.threadedMemory0 {
 		return linMemReg, false
+	}
+	if memoryIndex == 0 && f.cachedSharedMemoryBase() != regNone {
+		return f.cachedSharedMemoryBase(), false
 	}
 	dir := f.allocReg(avoid)
 	f.ld64(dir, linMemReg, -int32(offMemoryDirPtr))

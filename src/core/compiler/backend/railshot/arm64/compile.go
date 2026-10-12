@@ -304,7 +304,8 @@ type fn struct {
 	lazyZero                bool  // defer declared-local zeroing for small call+memory functions
 	skipFence               bool  // call-free leaf with a provably small frame: no stack-fence check
 
-	// memSizeReg caches the linear-memory size in bytes ([linMemReg-bdCurBytes]) in a
+	// memSizeReg caches the ordinary linear-memory size in bytes, or the stable
+	// backing base for shared memory when shared-memory-base is enabled, in a
 	// dedicated register for the whole module (WARP's REGS::memSize=R27, which
 	// reserves a register when bounds checks are on). regNone in guard mode or when
 	// the module has no memory. wago's ABI keeps the wrapper-arg registers (X0-X3)
@@ -3110,7 +3111,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.syncHostSlots = syncHostSlots
 	f.gcTypeSubtypingRefTest = gcTypeSubtypingRefTest
-	if !guardMode && len(m.Memories) > 0 {
+	if f.threadedMemory0 && f.opt(optSharedMemoryBase) || !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = X27 // explicit bounds: X27 = memBytes for the whole module
 	}
 	if cap(f.localType) < nLocals {
@@ -3178,7 +3179,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		hasCall = false
 		f.stats.peep("all-calls-inlined")
 	}
-	if commonBoundsLimitEnabled && hints.bounds4OpCount() >= 2 && f.memSizeReg != regNone && !hasCall && hints.flags.has(hintHasControlFlow) && len(modGlobals) == 0 &&
+	if !f.threadedMemory0 && commonBoundsLimitEnabled && hints.bounds4OpCount() >= 2 && f.memSizeReg != regNone && !hasCall && hints.flags.has(hintHasControlFlow) && len(modGlobals) == 0 &&
 		mt0.Limits.Min != 0 && touchesMemory {
 		f.memLimitReg, f.memLimitExtent = X25, 4
 		f.reserved = f.reserved.add(f.memLimitReg)
@@ -3213,7 +3214,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// its successful path. Cache memBytes there so X27 can hold one more hot local
 	// without adding a load at every check. Trap stubs may overwrite X17 only on
 	// their terminal path. Calls, control, tables, and bulk helpers retain X27.
-	if f.opt(optLeafScratchMemSize) && f.memSizeReg != regNone && regABI && !hasCall && !hints.flags.has(hintHasControlFlow) &&
+	if !f.threadedMemory0 && f.opt(optLeafScratchMemSize) && f.memSizeReg != regNone && regABI && !hasCall && !hints.flags.has(hintHasControlFlow) &&
 		!hints.flags.has(hintUsesBulkMem) && len(inlinedCallees) == 0 && len(m.Tables) == 0 &&
 		intervalRegionHintStorageEligible(f.opt(optIntervalRegionPins), len(c.BodyBytes), nLocals, f.moduleEH) {
 		f.memSizeReg = X17
@@ -4043,7 +4044,7 @@ func (f *fn) prologue(localScores []uint32) {
 	if f.memSizeReg != regNone {
 		// Offset-0 entry: establish the module-wide memBytes cache. Direct wasm→wasm
 		// register-ABI calls skip this (the caller's value is valid by construction).
-		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
+		f.loadMemoryCache()
 		if f.memLimitReg != regNone {
 			f.a.SubImm64(f.memLimitReg, f.memSizeReg, uint32(f.memLimitExtent))
 		}
@@ -4258,7 +4259,7 @@ func (f *fn) emitHostAdapter(np, rN int) int {
 	if f.memSizeReg != regNone {
 		// Offset-0 entry (from Go, or an indirect call): establish the module-wide
 		// memBytes cache before the internal entry runs (which relies on it).
-		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
+		f.loadMemoryCache()
 	}
 	f.deriveModuleGlobals()   // offset-0 entry: cells → module-pinned registers
 	a.StpPre(LR, X3, SP, -16) // save LR (BL clobbers it) + results ptr; keeps SP 16-aligned

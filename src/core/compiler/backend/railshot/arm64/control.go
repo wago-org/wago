@@ -2385,7 +2385,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	// catch continuation observe the owner, even when caller and callee share Memory.
 	f.restoreEHInstanceContext(recordOff)
 	if f.memSizeReg != regNone {
-		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
+		f.loadMemoryCache()
 	}
 	f.deriveModuleGlobals()
 	f.derivePinnedGlobals()

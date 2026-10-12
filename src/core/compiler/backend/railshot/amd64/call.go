@@ -20,7 +20,7 @@ import (
 // cross-instance continuation must read from the restored caller basedata.
 func (f *fn) refreshCachedMemoryBoundAfterExternalCall() {
 	if f.memSizeReg != regNone {
-		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes)
+		f.loadMemoryCache()
 	}
 }
 

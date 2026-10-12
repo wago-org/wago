@@ -413,7 +413,8 @@ type fn struct {
 	canonicalI32Uses        uint8  // saturated eligible uses; first two retain conservative code
 	hasJumpTableData        bool   // typed embedded data is remapped, but branches retain fixed widths
 
-	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
+	// memSizeReg caches the ordinary linear-memory size in bytes, or the stable
+	// backing base for shared memory when shared-memory-base is enabled, in a
 	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
 	// RSI when bounds checks are on). regNone in guard mode or when the module has
 	// no memory. wago's ABI keeps RSI busy at every call boundary (trap/linMem), so
@@ -3575,7 +3576,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.gcTypeSubtypingRefTest = gcTypeSubtypingRefTest
 	f.gcStructHelpers = gcStructHelpers
 	f.gcArrayHelpers = gcArrayHelpers
-	if !guardMode && len(m.Memories) > 0 {
+	if f.threadedMemory0 && f.opt(optSharedMemoryBase) || !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
 	}
 	if cap(f.localType) < nLocals {
@@ -3662,7 +3663,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.stats.peep("all-calls-inlined")
 	}
 	regABI := f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)))
-	if f.opt(optMemSizeRegionalLease) && f.memSizeReg != regNone && pinLocals && regABI &&
+	if !f.threadedMemory0 && f.opt(optMemSizeRegionalLease) && f.memSizeReg != regNone && pinLocals && regABI &&
 		hints.flags.has(hintIntervalRegionStorage) && !hasCall &&
 		!hints.flags.has(hintHasControlFlow|hintUsesBulkMem) && len(inlinedCallees) == 0 {
 		f.memSizeReg = regNone
@@ -4569,7 +4570,7 @@ func (f *fn) prologue(localScores []uint32) {
 	if f.memSizeReg != regNone {
 		// Offset-0 entry: establish the module-wide memBytes cache. Direct wasm→wasm
 		// register-ABI calls skip this (the caller's value is valid by construction).
-		a.Load64(f.memSizeReg, RBX, -bdCurBytes)
+		f.loadMemoryCache()
 	}
 	f.emitStackFenceCheck(RBX, RAX)
 	f.emitInterruptCheck(RAX) // RAX still free: params load below
@@ -4714,7 +4715,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		if f.memSizeReg != regNone {
 			// Offset-0 entry (from Go, or an indirect call): establish the module-wide
 			// memBytes cache before the internal entry runs (which relies on it).
-			a.Load64(f.memSizeReg, RBX, -bdCurBytes)
+			f.loadMemoryCache()
 		}
 		f.deriveModuleGlobals() // offset-0 entry: cells → module-pinned registers
 		a.Push(RCX)             // results ptr (also keeps RSP 16-aligned at the internal call)

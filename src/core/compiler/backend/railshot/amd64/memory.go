@@ -817,15 +817,22 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	}
 	f.pinned = f.pinned.add(ea)
 	base = f.allocReg(maskOf(ea))
-	f.a.Load64(base, RBX, -offMemoryDirPtr)
-	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
-	mb := f.allocReg(maskOf(ea).add(base))
-	if memoryIndex == 0 && f.threadedMemory0 {
-		f.a.Load64(base, base, entry+abi.MemoryDirBaseOffset)
+	mb := regNone
+	if memoryIndex == 0 && f.cachedSharedMemoryBase() != regNone {
+		f.a.MovReg64(base, f.cachedSharedMemoryBase())
+		mb = f.allocReg(maskOf(ea).add(base))
 		f.a.Load64(mb, base, -bdCurBytes)
 	} else {
-		f.a.Load64(mb, base, entry+abi.MemoryDirCurrentBytesOffset)
-		f.a.Load64(base, base, entry+abi.MemoryDirBaseOffset)
+		f.a.Load64(base, RBX, -offMemoryDirPtr)
+		entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
+		mb = f.allocReg(maskOf(ea).add(base))
+		if memoryIndex == 0 && f.threadedMemory0 {
+			f.a.Load64(base, base, entry+abi.MemoryDirBaseOffset)
+			f.a.Load64(mb, base, -bdCurBytes)
+		} else {
+			f.a.Load64(mb, base, entry+abi.MemoryDirCurrentBytesOffset)
+			f.a.Load64(base, base, entry+abi.MemoryDirBaseOffset)
+		}
 	}
 	t := f.allocReg(maskOf(ea).add(base).add(mb))
 	if addr64 {
@@ -1245,6 +1252,12 @@ func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
 		f.a.Add64(offset, RBX)
 		return
 	}
+	if memoryIndex == 0 && f.cachedSharedMemoryBase() != regNone {
+		f.a.Load64(R8, f.cachedSharedMemoryBase(), -bdCurBytes)
+		f.trapUnlessLE(RDX, R8)
+		f.a.Add64(offset, f.cachedSharedMemoryBase())
+		return
+	}
 	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
 	f.a.Load64(R8, RBX, -offMemoryDirPtr)
 	if memoryIndex == 0 && f.threadedMemory0 {
@@ -1637,12 +1650,35 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	return nil
 }
 
+var sharedMemoryBaseEnabled = true
+
+// The module-wide register holds a stable backing address, never its extent.
+func (f *fn) cachedSharedMemoryBase() Reg {
+	if f.threadedMemory0 && f.memSizeReg == R15 && f.opt(optSharedMemoryBase) {
+		return f.memSizeReg
+	}
+	return regNone
+}
+
+func (f *fn) loadMemoryCache() {
+	if f.cachedSharedMemoryBase() != regNone {
+		f.a.Load64(f.memSizeReg, RBX, -offMemoryDirPtr)
+		f.a.Load64(f.memSizeReg, f.memSizeReg, abi.MemoryDirBaseOffset)
+	} else {
+		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes)
+	}
+}
+
 // memorySize pushes the current linear-memory size in pages.
 func (f *fn) sharedMemorySize() {
 	out := f.allocReg(0)
-	f.a.Load64(out, RBX, -offMemoryDirPtr)
-	f.a.Load64(out, out, abi.MemoryDirBaseOffset)
-	f.a.Load64(out, out, -bdCurBytes)
+	if base := f.cachedSharedMemoryBase(); base != regNone {
+		f.a.Load64(out, base, -bdCurBytes)
+	} else {
+		f.a.Load64(out, RBX, -offMemoryDirPtr)
+		f.a.Load64(out, out, abi.MemoryDirBaseOffset)
+		f.a.Load64(out, out, -bdCurBytes)
+	}
 	f.a.ShiftImm(5, out, 16, true)
 	f.pushReg(out, mtI32)
 }
@@ -1869,6 +1905,11 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 			f.a.Cmp64(t, mb)
 			f.release(mb)
 		}
+	} else if memoryIndex == 0 && f.cachedSharedMemoryBase() != regNone {
+		mb := f.allocReg(maskOf(t))
+		f.a.Load64(mb, f.cachedSharedMemoryBase(), -bdCurBytes)
+		f.a.Cmp64(t, mb)
+		f.release(mb)
 	} else {
 		mb := f.allocReg(maskOf(t))
 		f.a.Load64(mb, RBX, -offMemoryDirPtr)
@@ -1893,6 +1934,9 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 func (f *fn) bulkMemory0Base(avoid regMask) (Reg, bool) {
 	if !f.threadedMemory0 {
 		return RBX, false
+	}
+	if base := f.cachedSharedMemoryBase(); base != regNone {
+		return base, false
 	}
 	base := f.allocReg(avoid)
 	f.a.Load64(base, RBX, -offMemoryDirPtr)

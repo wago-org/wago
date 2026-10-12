@@ -22,8 +22,12 @@ func (f *fn) staticAtomicMem(offset uint64, size int) (base, ea Reg, ok bool) {
 	f.materializePendingTraps()
 	f.dropValue()
 	base = f.allocReg(0)
-	f.a.Load64(base, RBX, -offMemoryDirPtr)
-	f.a.Load64(base, base, 0)
+	if cached := f.cachedSharedMemoryBase(); cached != regNone {
+		f.a.MovReg64(base, cached)
+	} else {
+		f.a.Load64(base, RBX, -offMemoryDirPtr)
+		f.a.Load64(base, base, 0)
+	}
 	ea = f.allocReg(maskOf(base))
 	f.a.MovImm64(ea, address)
 	f.stats.peep("atomic-static-bounds")
