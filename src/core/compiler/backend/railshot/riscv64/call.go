@@ -46,6 +46,11 @@ const (
 	gcArrayCopy          uint32 = 28
 	gcArrayInitData      uint32 = 29
 	gcArrayInitElem      uint32 = 30
+	// guestGlobalClear is an internal relocation key, not a GC helper ID.
+	guestGlobalClear uint32 = ^uint32(0)
+	// guestGlobalClearDispatch matches the permanently invalid zero-index
+	// HostFuncRef dispatch encoding reserved by the runtime bridge.
+	guestGlobalClearDispatch uint32 = 1 << 31
 )
 
 // Shared callees can allocate A0..A3. Caller homes and this saved header are
@@ -63,6 +68,17 @@ func (f *integerEmitter) restoreCallTransport() {
 		f.a.Ld(enc.X13, enc.SP, 32)
 	}
 }
+
+// clearGuestGlobal calls the image-local parked ownership bridge. The exact
+// source classifier proves that the sole operand is ref.null func and that the
+// destination is imported mutable global zero, so no raw reference crosses the
+// Go boundary.
+func (f *integerEmitter) clearGuestGlobal() {
+	f.restoreCallTransport()
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: guestGlobalClear})
+	f.restoreCallTransport()
+}
+
 func (f *integerEmitter) directCall(index uint32, sig functionSpec, base, importedFunctions int) {
 	imported := index < uint32(importedFunctions)
 	if imported {

@@ -1962,7 +1962,7 @@ func asyncReplayable(sig FuncSig) bool {
 }
 
 func (c *Compiled) importsRequireSync(imports resolvedImports, force bool) bool {
-	if force || railshotRequiresNativeOwnerScope(c) || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
+	if force || railshotRequiresNativeOwnerScope(c) || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalClearHelper() {
 		return true
 	}
 	for i := range c.Imports {
@@ -3518,7 +3518,7 @@ func (c *Compiled) validateArenaFootprint() error {
 	if c.syncHostSlots != 0 && int(c.syncHostSlots) != syncHostSlots {
 		return fmt.Errorf("compiled metadata invalid: synchronous host slot capacity %d, want %d", c.syncHostSlots, syncHostSlots)
 	}
-	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
+	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalClearHelper() {
 		hostCallBytes, err = wruntime.HostCtrlFrameBytesForSlots(syncHostSlots)
 		if err != nil {
 			return wrapContextError("compiled metadata invalid", err)

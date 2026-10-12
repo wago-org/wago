@@ -17,8 +17,10 @@ mutable nullable funcref `Global` import and re-export. It preserves shared cell
 identity, mutation visibility and descriptor-owner lifetime through source and
 compiler-free artifacts. One exact executable consumer can read that cell with
 `global.get` and reduce it through `ref.is_null`, while retaining the same
-identity and lifetime guarantees. Guest `global.set`, raw reference escape, and
-broader executable mutable-reference shapes remain unsupported.
+identity and lifetime guarantees. A second exact executable shape can store only
+`ref.null func` into that cell through the parked container ownership transaction,
+including descriptor-owner retirement. Non-null or general guest `global.set`, raw
+reference escape, and broader executable mutable-reference shapes remain unsupported.
 Parked callbacks, retirement and compiler-free artifact tests cover these bounded
 shapes.
 The exact official concrete struct-subtyping `gc/ref_cast` module now has genuine

@@ -13,6 +13,9 @@ func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
 	if rv64MutableFuncrefGlobalGet(c) {
 		return true, nil // Exact read-only imported cell reuses the full-width load gate.
 	}
+	if rv64MutableFuncrefGlobalClear(c) {
+		return true, nil // Exact imported clear mutates only through the parked owner bridge.
+	}
 	has := false
 	for _, g := range c.Globals {
 		has = has || g.Type == ValFuncRef && g.Mutable

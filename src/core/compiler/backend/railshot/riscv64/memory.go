@@ -84,10 +84,12 @@ type moduleState struct {
 	declarationNonnullRefs  bool
 	importReferences        bool
 	localMutableReferences  bool
-	ownedTable              bool
-	ownedTableGrowth        bool
-	table64                 bool
-	tableAddr64             []bool
+	// Exact imported mutable-funcref clears use the parked ownership bridge.
+	mutableFuncrefGlobalClear bool
+	ownedTable                bool
+	ownedTableGrowth          bool
+	table64                   bool
+	tableAddr64               []bool
 	// Compact reference tables store one authenticated opaque carrier per
 	// eight-byte row. Funcref tables retain their 32-byte callable descriptor
 	// rows. Keep physical layout independent from the table index width.
@@ -257,6 +259,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	gcArrayCopy := admitRV64GCArrayCopy(m)
 	i31Core := admitRV64I31Core(m) || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy
 	i31RefEq := i31Core && (admitRV64I31RefEqPilot(m) || gcRefEq)
+	s.mutableFuncrefGlobalClear = admitMutableFunctionGlobalClear(m)
 	s.importReferences = production && importedTables
 	if production && publicExports && importedTables {
 		var err error
@@ -264,7 +267,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		if err != nil {
 			return s, err
 		}
-		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m)
+		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear
 	}
 	s.indexedMemories = production && publicExports
 	var tableErr error
@@ -328,7 +331,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				return s, unsupported("isolated global import")
 			}
 			g := im.Type.GlobalType()
-			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m)) && admitImportedFunctionGlobal(m, g)
+			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear) && admitImportedFunctionGlobal(m, g)
 			if !scalarType(g.Type, true) && !reference {
 				return s, unsupported("nonscalar global import")
 			}

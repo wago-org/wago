@@ -282,7 +282,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		}
 		relocations = append(relocations, calls...)
 	}
-	// Append exact GC helper bridges only when an admitted allocating checkpoint
+	// Append exact internal helper bridges only when an admitted checkpoint
 	// references them. They are ordinary image-relative RV64 code;
 	// no executable address or alternate-backend implementation is retained.
 	type helperBridge struct {
@@ -290,7 +290,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		slots  int
 	}
 	helperEntries := make(map[helperBridge]int, 12)
-	for _, bridge := range []helperBridge{{gcStructAllocDefault, 1}, {gcStructAllocOne, 2}, {gcStructAllocOne, 4}, {gcStructGet, 3}, {gcStructSet, 4}, {gcStructGetS, 3}, {gcStructGetU, 3}, {gcStructRefTest, 4}, {gcStructRefCast, 4}, {gcStructTableSet, 3}, {gcAnyConvertExtern, 1}, {gcExternConvertAny, 1}, {gcArrayAllocDefault, 2}, {gcArrayAllocFixed, 4}, {gcArrayAllocFixed, 5}, {gcArrayAllocUniform, 3}, {gcArrayAllocData, 4}, {gcArrayAllocElem, 4}, {gcArrayDropElem, 1}, {gcArrayFill, 5}, {gcArrayCopy, 7}, {gcArrayGet, 3}, {gcArrayGetS, 3}, {gcArrayGetU, 3}, {gcArraySet, 4}, {gcArrayLen, 1}, {gcArrayInitData, 6}, {gcArrayInitElem, 6}} {
+	for _, bridge := range []helperBridge{{gcStructAllocDefault, 1}, {gcStructAllocOne, 2}, {gcStructAllocOne, 4}, {gcStructGet, 3}, {gcStructSet, 4}, {gcStructGetS, 3}, {gcStructGetU, 3}, {gcStructRefTest, 4}, {gcStructRefCast, 4}, {gcStructTableSet, 3}, {gcAnyConvertExtern, 1}, {gcExternConvertAny, 1}, {gcArrayAllocDefault, 2}, {gcArrayAllocFixed, 4}, {gcArrayAllocFixed, 5}, {gcArrayAllocUniform, 3}, {gcArrayAllocData, 4}, {gcArrayAllocElem, 4}, {gcArrayDropElem, 1}, {gcArrayFill, 5}, {gcArrayCopy, 7}, {gcArrayGet, 3}, {gcArrayGetS, 3}, {gcArrayGetU, 3}, {gcArraySet, 4}, {gcArrayLen, 1}, {gcArrayInitData, 6}, {gcArrayInitElem, 6}, {guestGlobalClear, 0}} {
 		used := false
 		for _, call := range relocations {
 			used = used || call.helper == bridge.helper && (call.helper != gcArrayAllocFixed && call.helper != gcStructAllocOne || call.helperSlots == bridge.slots)
@@ -306,13 +306,19 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		if bridge.helper == gcStructSet || bridge.helper == gcStructTableSet || bridge.helper == gcArraySet || bridge.helper == gcArrayDropElem || bridge.helper == gcArrayFill || bridge.helper == gcArrayCopy || bridge.helper == gcArrayInitData || bridge.helper == gcArrayInitElem {
 			resultSlots = 0
 		}
-		payload, ok := shared.EncodeGCDispatch(bridge.helper, 0)
-		if !ok {
-			return nil, unsupported("GC helper dispatch encoding")
+		dispatch := guestGlobalClearDispatch
+		if bridge.helper != guestGlobalClear {
+			payload, ok := shared.EncodeGCDispatch(bridge.helper, 0)
+			if !ok {
+				return nil, unsupported("GC helper dispatch encoding")
+			}
+			dispatch = gcStructDispatchBit | payload
+		} else {
+			resultSlots = 0
 		}
-		stub := HostIndirectOwnedSyncThunk(gcStructDispatchBit|payload, paramSlots, resultSlots)
+		stub := HostIndirectOwnedSyncThunk(dispatch, paramSlots, resultSlots)
 		if len(stub) == 0 || len(stub) > MaxCodeBytes-len(c.code) {
-			return nil, unsupported("GC helper bridge image bound")
+			return nil, unsupported("internal helper bridge image bound")
 		}
 		key := bridge
 		if key.helper != gcArrayAllocFixed && key.helper != gcStructAllocOne {

@@ -33,8 +33,10 @@ zero-code profile imports and re-exports one same-Runtime mutable nullable
 funcref `Global`, preserving shared mutation and descriptor-owner lifetime. A
 second exact table-free executable profile supports a `global.get`/`ref.is_null`
 consumer of that imported cell through source and compiler-free artifacts. Guest
-`global.set`, raw reference results, and mixed state remain unsupported for that
-profile.
+mutation is limited to a third exact profile whose sole operation stores
+`ref.null func` into that cell through a parked ownership bridge; descriptor-owner
+retirement remains container-managed. Non-null or otherwise general `global.set`,
+raw reference results, and mixed state remain unsupported for these profiles.
 Table-free declarative segments and repeated
 `elem.drop` use dropped element state; unused legacy declarations require no
 function descriptors or element directory. Empty and state-only modules have no

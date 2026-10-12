@@ -215,6 +215,10 @@ func (c *Compiled) usesAtomicWaitHelpers() bool {
 	return cc != nil && cc.flags&compiledCacheAtomicWaitHelpers != 0
 }
 
+func (c *Compiled) usesGuestGlobalClearHelper() bool {
+	return railshotUsesGuestGlobalClearHelper(c)
+}
+
 func (c *Compiled) prefersGuardMemory() bool {
 	cc := c.loadCodeCache()
 	return cc != nil && cc.flags&compiledCacheGuardMemory != 0
