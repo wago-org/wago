@@ -10,7 +10,7 @@ import (
 )
 
 func (f *fn) emitFE(r *wasm.Reader) error {
-	d, err := railshared.DecodeAtomicForMemory(r, f.memoryAddr64(0))
+	d, err := railshared.DecodeAtomicForModule(r, f.m)
 	if err != nil {
 		return err
 	}
@@ -47,7 +47,7 @@ func (f *fn) emitFE(r *wasm.Reader) error {
 
 func (f *fn) atomicWaitHelper(d railshared.Atomic) error {
 	if d.Class == railshared.AtomicWait && f.opt(optAtomicZeroWait) {
-		mt, ok := f.memoryType(0)
+		mt, ok := f.memoryType(d.MemoryIndex)
 		top := f.s.back()
 		if ok && mt.Shared && top.elemKind() == ekValue && top.st.kind == stConst && top.st.cval == 0 {
 			f.consumeGCFrameCallsite()
@@ -65,10 +65,14 @@ func (f *fn) atomicWaitHelper(d railshared.Atomic) error {
 			params[1] = wasm.I64
 		}
 	}
-	if f.memoryAddr64(0) {
+	if f.memoryAddr64(d.MemoryIndex) {
 		params[0] = wasm.I64
 	}
 	f.pushValue(storage{kind: stConst, typ: mtI64, cval: int64(d.Offset)})
+	if d.MemoryIndex != 0 {
+		params = append(params, wasm.I32)
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(d.MemoryIndex)})
+	}
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: []wasm.ValType{wasm.I32}}
 	return f.callHostSync(int(railshared.AtomicWaitDispatchBit|helper), ft)
 }
@@ -99,7 +103,7 @@ func (f *fn) atomicCmpxchg(d railshared.Atomic) error {
 	} else {
 		f.a.MovRegReg32(RAX, expected)
 	}
-	base, ea, disp := f.atomicMem(d.Offset, int(d.Size))
+	base, ea, disp := f.atomicMem(d.MemoryIndex, d.Offset, int(d.Size))
 	f.a.LockCmpxchgIdx(base, ea, replacement, disp, int(d.Size))
 	if d.Size == 1 {
 		f.a.Movzx8(RAX, RAX, d.ResultSize == 8)
@@ -134,7 +138,7 @@ func (f *fn) atomicRMWCAS(d railshared.Atomic) error {
 	f.pinned = f.pinned.add(value)
 	f.spillIfUsed(RAX)
 	f.pinned = f.pinned.add(RAX)
-	base, ea, disp := f.atomicMem(d.Offset, int(d.Size))
+	base, ea, disp := f.atomicMem(d.MemoryIndex, d.Offset, int(d.Size))
 	f.a.LoadIdx(RAX, base, ea, disp, int(d.Size), false, d.ResultSize == 8)
 	next := f.allocReg(maskOf(base).add(ea).add(value).add(RAX))
 	loop := f.a.Len()
@@ -172,11 +176,11 @@ func (f *fn) atomicRMWCAS(d railshared.Atomic) error {
 	return nil
 }
 
-func (f *fn) atomicMem(off uint64, size int) (base, ea Reg, disp int32) {
-	if base, ea, ok := f.staticAtomicMem(off, size); ok {
+func (f *fn) atomicMem(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32) {
+	if base, ea, ok := f.staticAtomicMem(memoryIndex, off, size); ok {
 		return base, ea, 0
 	}
-	if !f.threadedMemory0 {
+	if memoryIndex == 0 && !f.threadedMemory0 {
 		if f.memoryAddr64(0) {
 			ea, _, _, disp = f.memAddr64(off, size)
 		} else {
@@ -185,7 +189,7 @@ func (f *fn) atomicMem(off uint64, size int) (base, ea Reg, disp int32) {
 		base = f.allocReg(maskOf(ea))
 		f.a.MovReg64(base, RBX)
 	} else {
-		base, ea, disp = f.indexedMemAddr(0, off, size)
+		base, ea, disp = f.indexedMemAddr(memoryIndex, off, size)
 	}
 	if size > 1 {
 		addr := f.allocReg(maskOf(base).add(ea))
@@ -200,7 +204,7 @@ func (f *fn) atomicMem(off uint64, size int) (base, ea Reg, disp int32) {
 func (f *fn) atomicLoad(d railshared.Atomic) error {
 	f.materializePendingLoads()
 	f.invalidateStoreForward()
-	base, ea, disp := f.atomicMem(d.Offset, int(d.Size))
+	base, ea, disp := f.atomicMem(d.MemoryIndex, d.Offset, int(d.Size))
 	out := f.allocReg(maskOf(base).add(ea))
 	f.a.LoadIdx(out, base, ea, disp, int(d.Size), false, d.ResultSize == 8)
 	f.release(base)
@@ -218,7 +222,7 @@ func (f *fn) atomicStore(d railshared.Atomic) error {
 	f.invalidateStoreForward()
 	value := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(value)
-	base, ea, disp := f.atomicMem(d.Offset, int(d.Size))
+	base, ea, disp := f.atomicMem(d.MemoryIndex, d.Offset, int(d.Size))
 	f.a.XchgIdx(base, ea, value, disp, int(d.Size))
 	f.release(base)
 	f.release(ea)
@@ -232,7 +236,7 @@ func (f *fn) atomicRMWNative(d railshared.Atomic) error {
 	f.invalidateStoreForward()
 	value := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(value)
-	base, ea, disp := f.atomicMem(d.Offset, int(d.Size))
+	base, ea, disp := f.atomicMem(d.MemoryIndex, d.Offset, int(d.Size))
 	if d.Operation == railshared.AtomicAdd || d.Operation == railshared.AtomicSub {
 		if d.Operation == railshared.AtomicSub {
 			// The low d.Size bits of a full-width two's-complement negation are
@@ -283,7 +287,7 @@ func (f *fn) atomicRMWNoResult(d railshared.Atomic) error {
 	f.invalidateStoreForward()
 	value := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(value)
-	base, ea, disp := f.atomicMem(d.Offset, int(d.Size))
+	base, ea, disp := f.atomicMem(d.MemoryIndex, d.Offset, int(d.Size))
 	opcode := byte(0)
 	switch d.Operation {
 	case railshared.AtomicAdd:

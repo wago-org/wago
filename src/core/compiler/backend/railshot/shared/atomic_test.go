@@ -72,3 +72,26 @@ func TestDecodeAtomicExplicitMemoryZero(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeAtomicIndexedAddressWidth(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		m := &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Addr64: !wide}}, {Limits: wasm.Limits{Addr64: wide}}}}
+		body := []byte{0x10, 0x42, 1, 7}
+		got, err := DecodeAtomicForModule(wasm.NewReader(body), m)
+		if err != nil || got.MemoryIndex != 1 || got.Offset != 7 || got.Align != 2 {
+			t.Fatalf("indexed descriptor = %+v, %v", got, err)
+		}
+		body = []byte{0x10, 0x42, 1, 0x80, 0x80, 0x80, 0x80, 0x10}
+		got, err = DecodeAtomicForModule(wasm.NewReader(body), m)
+		if wide {
+			if err != nil || got.Offset != 1<<32 {
+				t.Fatalf("indexed memory64 = %+v, %v", got, err)
+			}
+		} else if err == nil {
+			t.Fatal("memory32 accepted memory64 offset")
+		}
+		if _, err := DecodeAtomicForModule(wasm.NewReader([]byte{0x10, 0x42, 2, 0}), m); err == nil {
+			t.Fatal("accepted unavailable memory")
+		}
+	}
+}

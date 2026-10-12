@@ -43,7 +43,7 @@ const (
 
 // Atomic describes exactly the architecture-neutral facts needed by direct
 // Railshot lowering. Align is the encoded log2 alignment; Size and ResultSize
-// are bytes. The product accepts memory32 or memory64 index zero.
+// are bytes. MemoryIndex selects the address type and backing.
 type Atomic struct {
 	Sub         uint32
 	Class       AtomicClass
@@ -60,6 +60,15 @@ func DecodeAtomic(r *wasm.Reader) (Atomic, error) {
 }
 
 func DecodeAtomicForMemory(r *wasm.Reader, address64 bool) (Atomic, error) {
+	return decodeAtomic(r, address64, nil)
+}
+
+// DecodeAtomicForModule resolves the offset width after reading the memory index.
+func DecodeAtomicForModule(r *wasm.Reader, m *wasm.Module) (Atomic, error) {
+	return decodeAtomic(r, false, m)
+}
+
+func decodeAtomic(r *wasm.Reader, address64 bool, m *wasm.Module) (Atomic, error) {
 	sub, err := r.U32()
 	if err != nil {
 		return Atomic{}, err
@@ -91,10 +100,18 @@ func DecodeAtomicForMemory(r *wasm.Reader, address64 bool) (Atomic, error) {
 		if readErr != nil {
 			return Atomic{}, readErr
 		}
-		if index != 0 {
+		if index != 0 && m == nil {
 			return Atomic{}, fmt.Errorf("atomic memory index %d is outside the current threads boundary", index)
 		}
+		d.MemoryIndex = index
 		d.Align &= 63
+	}
+	if m != nil {
+		mt, ok := m.MemoryType(d.MemoryIndex)
+		if !ok {
+			return Atomic{}, fmt.Errorf("atomic memory index %d is unavailable", d.MemoryIndex)
+		}
+		address64 = mt.Limits.Addr64
 	}
 	if address64 {
 		d.Offset, err = r.U64()

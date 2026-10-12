@@ -20,7 +20,7 @@ func (f *fn) atomicZeroWait(d railshared.Atomic) error {
 	f.a.TestImm(align, uint32(d.Size-1), false)
 	f.trapIf(condNE, trapAtomicUnaligned)
 	f.release(align)
-	base, ea, disp := f.atomicMem(d.Offset, int(d.Size))
+	base, ea, disp := f.atomicMem(d.MemoryIndex, d.Offset, int(d.Size))
 	out := f.allocReg(maskOf(base).add(ea).add(expected))
 	f.a.LoadIdx(out, base, ea, disp, int(d.Size), false, d.Size == 8)
 	f.a.AluRR(0x39, out, expected, d.Size == 8)

@@ -23,7 +23,7 @@ func (f *fn) atomicZeroWait(d railshared.Atomic) error {
 	}
 	f.trapIf(condNE, trapAtomicUnaligned)
 	f.release(align)
-	addr := f.atomicAddr(d.Offset, int(d.Size))
+	addr := f.atomicAddr(d.MemoryIndex, d.Offset, int(d.Size))
 	out := f.allocReg(maskOf(addr, expected))
 	f.a.Ldar(out, addr, int(d.Size))
 	f.cmpRR(out, expected, d.Size == 8)

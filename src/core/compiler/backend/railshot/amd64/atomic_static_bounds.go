@@ -6,8 +6,8 @@ import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 
 var atomicStaticBoundsEnabled = true
 
-func (f *fn) staticAtomicMem(offset uint64, size int) (base, ea Reg, ok bool) {
-	if !f.opt(optAtomicStaticBounds) {
+func (f *fn) staticAtomicMem(memoryIndex uint32, offset uint64, size int) (base, ea Reg, ok bool) {
+	if memoryIndex != 0 || !f.opt(optAtomicStaticBounds) {
 		return regNone, regNone, false
 	}
 	e := f.s.back()

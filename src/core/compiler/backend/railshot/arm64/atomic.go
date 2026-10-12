@@ -12,7 +12,7 @@ import (
 // emitFE lowers the core threads proposal's 0xfe instruction family. Keep this
 // dispatch exhaustive and fail closed while the family is landed incrementally.
 func (f *fn) emitFE(r *wasm.Reader) error {
-	d, err := railshared.DecodeAtomicForMemory(r, f.memoryAddr64(0))
+	d, err := railshared.DecodeAtomicForModule(r, f.m)
 	if err != nil {
 		return err
 	}
@@ -39,7 +39,7 @@ func (f *fn) emitFE(r *wasm.Reader) error {
 
 func (f *fn) atomicWaitHelper(d railshared.Atomic) error {
 	if d.Class == railshared.AtomicWait && f.opt(optAtomicZeroWait) {
-		mt, ok := f.memoryType(0)
+		mt, ok := f.memoryType(d.MemoryIndex)
 		top := f.s.back()
 		if ok && mt.Shared && top.elemKind() == ekValue && top.st.kind == stConst && top.st.cval == 0 {
 			f.consumeGCFrameCallsite()
@@ -57,10 +57,14 @@ func (f *fn) atomicWaitHelper(d railshared.Atomic) error {
 			params[1] = wasm.I64
 		}
 	}
-	if f.memoryAddr64(0) {
+	if f.memoryAddr64(d.MemoryIndex) {
 		params[0] = wasm.I64
 	}
 	f.pushValue(storage{kind: stConst, typ: mtI64, cval: int64(d.Offset)})
+	if d.MemoryIndex != 0 {
+		params = append(params, wasm.I32)
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(d.MemoryIndex)})
+	}
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: []wasm.ValType{wasm.I32}}
 	return f.callHostSync(int(railshared.AtomicWaitDispatchBit|helper), ft)
 }
@@ -89,7 +93,7 @@ func (f *fn) atomicCmpxchg(d railshared.Atomic) error {
 		}
 		f.pinned = f.pinned.add(compare)
 	}
-	addr := f.atomicAddr(d.Offset, int(d.Size))
+	addr := f.atomicAddr(d.MemoryIndex, d.Offset, int(d.Size))
 	old := f.allocReg(maskOf(addr, replacement, expected, compare))
 	if f.useAtomicLSE() {
 		if d.Size == 8 {
@@ -130,17 +134,17 @@ func (f *fn) atomicCmpxchg(d railshared.Atomic) error {
 	return nil
 }
 
-func (f *fn) atomicAddr(off uint64, size int) Reg {
-	if addr, ok := f.staticAtomicAddr(off, size); ok {
+func (f *fn) atomicAddr(memoryIndex uint32, off uint64, size int) Reg {
+	if addr, ok := f.staticAtomicAddr(memoryIndex, off, size); ok {
 		return addr
 	}
 	var base, ea Reg
 	var disp int32
-	if !f.threadedMemory0 {
+	if memoryIndex == 0 && !f.threadedMemory0 {
 		ea, _, _, disp = f.memAddr(off, size, false, 0, false)
 		base = linMemReg
 	} else {
-		base, ea, disp = f.indexedMemAddr(0, off, size)
+		base, ea, disp = f.indexedMemAddr(memoryIndex, off, size)
 	}
 	addr := f.allocReg(maskOf(base, ea))
 	f.a.Add64(addr, base, ea)
@@ -161,7 +165,7 @@ func (f *fn) atomicAddr(off uint64, size int) Reg {
 func (f *fn) atomicLoad(d railshared.Atomic) error {
 	f.materializePendingLoads()
 	f.invalidateStoreForward()
-	addr := f.atomicAddr(d.Offset, int(d.Size))
+	addr := f.atomicAddr(d.MemoryIndex, d.Offset, int(d.Size))
 	out := f.allocReg(maskOf(addr))
 	f.a.Ldar(out, addr, int(d.Size))
 	f.release(addr)
@@ -178,7 +182,7 @@ func (f *fn) atomicStore(d railshared.Atomic) error {
 	f.invalidateStoreForward()
 	value, owned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(value)
-	addr := f.atomicAddr(d.Offset, int(d.Size))
+	addr := f.atomicAddr(d.MemoryIndex, d.Offset, int(d.Size))
 	f.a.Stlr(value, addr, int(d.Size))
 	f.release(addr)
 	f.pinned = f.pinned.remove(value)
@@ -197,7 +201,7 @@ func (f *fn) atomicRMW(d railshared.Atomic) error {
 	value := f.popValue()
 	vreg, vOwned := f.materializeRead(value)
 	f.pinned = f.pinned.add(vreg)
-	addr := f.atomicAddr(d.Offset, int(d.Size))
+	addr := f.atomicAddr(d.MemoryIndex, d.Offset, int(d.Size))
 
 	old := f.allocReg(maskOf(vreg, addr))
 	wide := d.ResultSize == 8

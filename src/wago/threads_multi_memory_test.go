@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	railshared "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -407,6 +408,254 @@ func TestThreadsImportedSecondaryAddressWidthsGrowthAndCodec(t *testing.T) {
 						}
 					}
 				})
+			}
+		}
+	}
+}
+
+// Secondary atomics deliberately mix the primary and selected address widths.
+// Every defined numeric atomic opcode is exercised through explicit memarg 1.
+func threadsSecondaryAtomicModule(primary64, secondary64, imported, constant bool) []byte {
+	address := wasm.I32
+	limits0, limits1 := byte(3), byte(1)
+	addressOp := byte(0x41)
+	if primary64 {
+		limits0 = 7
+	}
+	if secondary64 {
+		address, limits1, addressOp = wasm.I64, 5, 0x42
+	}
+	var types, functions, exports, bodies [][]byte
+	exports = append(exports, wasmtest.ExportEntry("memory0", 2, 0), wasmtest.ExportEntry("memory1", 2, 1))
+	for sub := byte(0x10); sub <= 0x4e; sub++ {
+		d, err := railshared.DecodeAtomic(wasm.NewReader([]byte{sub, 0, 8}))
+		if err != nil {
+			panic(err)
+		}
+		value := wasm.I32
+		if d.ResultSize == 8 {
+			value = wasm.I64
+		}
+		params := []wasm.ValType{address}
+		operands := 0
+		if d.Class != railshared.AtomicLoad {
+			operands = 1
+		}
+		if d.Class == railshared.AtomicCmpxchg {
+			operands = 2
+		}
+		for j := 0; j < operands; j++ {
+			params = append(params, value)
+		}
+		result := []wasm.ValType{value}
+		if d.Class == railshared.AtomicStore {
+			result = nil
+		}
+		types = append(types, wasmtest.FuncType(params, result))
+		functions = append(functions, wasmtest.ULEB(uint32(len(functions))))
+		exports = append(exports, wasmtest.ExportEntry(fmt.Sprintf("op%x", sub), 0, uint32(len(bodies))))
+		body := []byte{0x20, 0}
+		if constant {
+			body = []byte{addressOp, 0}
+		}
+		for j := 1; j <= operands; j++ {
+			body = append(body, 0x20, byte(j))
+		}
+		align := byte(0)
+		for 1<<align < d.Size {
+			align++
+		}
+		body = append(body, 0xfe, sub, 64|align, 1, 8, 0x0b)
+		bodies = append(bodies, wasmtest.Code(body))
+	}
+	for _, sub := range []byte{0, 1, 2} {
+		params := []wasm.ValType{address, wasm.I32}
+		if sub == 2 {
+			params[1] = wasm.I64
+		}
+		if sub != 0 {
+			params = append(params, wasm.I64)
+		}
+		types = append(types, wasmtest.FuncType(params, []wasm.ValType{wasm.I32}))
+		functions = append(functions, wasmtest.ULEB(uint32(len(functions))))
+		exports = append(exports, wasmtest.ExportEntry(fmt.Sprintf("helper%d", sub), 0, uint32(len(bodies))))
+		body := []byte{0x20, 0, 0x20, 1}
+		align := byte(2)
+		if sub == 2 {
+			align = 3
+		}
+		if sub != 0 {
+			body = append(body, 0x20, 2)
+		}
+		body = append(body, 0xfe, sub, 64|align, 1, 8, 0x0b)
+		bodies = append(bodies, wasmtest.Code(body))
+	}
+
+	if secondary64 {
+		for j, offset := range [][]byte{{0x80, 0x80, 0x80, 0x80, 0x10}, {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 1}} {
+			types = append(types, wasmtest.FuncType([]wasm.ValType{address}, []wasm.ValType{wasm.I32}))
+			functions = append(functions, wasmtest.ULEB(uint32(len(functions))))
+			exports = append(exports, wasmtest.ExportEntry(fmt.Sprintf("high%d", j), 0, uint32(len(bodies))))
+			body := append([]byte{0x20, 0, 0xfe, 0x10, 0x42, 1}, offset...)
+			bodies = append(bodies, wasmtest.Code(append(body, 0x0b)))
+		}
+	}
+	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(types...))}
+	if imported {
+		m0 := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+		m1 := append(wasmtest.Name("env"), wasmtest.Name("secondary")...)
+		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(append(m0, 2, limits0, 1, 3), append(m1, 2, limits1, 1, 3))))
+	}
+	sections = append(sections, wasmtest.Section(3, wasmtest.Vec(functions...)))
+	if !imported {
+		sections = append(sections, wasmtest.Section(5, wasmtest.Vec([]byte{limits0, 1, 3}, []byte{limits1, 1, 3})))
+	}
+	return wasmtest.Module(append(sections, wasmtest.Section(7, wasmtest.Vec(exports...)), wasmtest.Section(10, wasmtest.Vec(bodies...)))...)
+}
+
+func TestThreadsSecondaryAtomicMatrix(t *testing.T) {
+	for _, primary64 := range []bool{false, true} {
+		for _, secondary64 := range []bool{false, true} {
+			for _, imported := range []bool{false, true} {
+				for _, constant := range []bool{false, true} {
+					for _, regABI := range []bool{false, true} {
+						t.Run(fmt.Sprintf("p64=%t/q64=%t/imported=%t/constant=%t/regabi=%t", primary64, secondary64, imported, constant, regABI), func(t *testing.T) {
+							cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", regABI)
+							c, err := cfg.Compile(threadsSecondaryAtomicModule(primary64, secondary64, imported, constant))
+							if err != nil {
+								t.Fatal(err)
+							}
+							defer c.Close()
+							for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+								imports := NewImports()
+								if imported {
+									pc, err := cfg.Compile(threadsPrivateSecondaryModule(primary64, secondary64, false))
+									if err != nil {
+										t.Fatal(err)
+									}
+									defer pc.Close()
+									provider, err := Instantiate(pc)
+									if err != nil {
+										t.Fatal(err)
+									}
+									defer provider.Close()
+									m0, _ := provider.ExportedMemory("memory0")
+									m1, _ := provider.ExportedMemory("memory1")
+									imports.Memory("env", "memory", m0).Memory("env", "secondary", m1)
+								}
+								in, err := Instantiate(compiled, imports)
+								if err != nil {
+									t.Fatal(err)
+								}
+								defer in.Close()
+								m0, _ := in.ExportedMemory("memory0")
+								m1, _ := in.ExportedMemory("memory1")
+								binary.LittleEndian.PutUint64(m0.UnsafeBytes()[8:], 0x123456789abcdef0)
+								for sub := byte(0x10); sub <= 0x4e; sub++ {
+									d, _ := railshared.DecodeAtomic(wasm.NewReader([]byte{sub, 0, 8}))
+									binary.LittleEndian.PutUint64(m1.UnsafeBytes()[8:], 7)
+									args := []uint64{0}
+									if d.Class != railshared.AtomicLoad {
+										args = append(args, 9)
+									}
+									if d.Class == railshared.AtomicCmpxchg {
+										args = []uint64{0, 7, 9}
+									}
+									got, err := in.Invoke(fmt.Sprintf("op%x", sub), args...)
+									if err != nil {
+										t.Fatalf("opcode %x: %v", sub, err)
+									}
+									if d.Class != railshared.AtomicStore && (len(got) != 1 || got[0] != 7) {
+										t.Fatalf("opcode %x old=%v", sub, got)
+									}
+									want := uint64(7)
+									if d.Class == railshared.AtomicStore || d.Class == railshared.AtomicCmpxchg {
+										want = 9
+									}
+									if d.Class == railshared.AtomicRMW {
+										switch d.Operation {
+										case railshared.AtomicAdd:
+											want = 16
+										case railshared.AtomicSub:
+											want = ^uint64(1)
+										case railshared.AtomicAnd:
+											want = 1
+										case railshared.AtomicOr:
+											want = 15
+										case railshared.AtomicXor:
+											want = 14
+										case railshared.AtomicXchg:
+											want = 9
+										}
+									}
+									mask := ^uint64(0)
+									if d.Size < 8 {
+										mask = (uint64(1) << (d.Size * 8)) - 1
+									}
+									actual := binary.LittleEndian.Uint64(m1.UnsafeBytes()[8:])
+									if actual != (7&^mask)|(want&mask) {
+										t.Fatalf("opcode %x memory=%x want=%x", sub, actual, want&mask)
+									}
+									if !constant {
+										badAddresses := []uint64{65536, 1 << 32}
+										if d.Size > 1 {
+											badAddresses = append(badAddresses, 1)
+										}
+										for _, addr := range badAddresses {
+											if addr == 1<<32 && !secondary64 {
+												continue
+											}
+											args[0] = addr
+											before := bytes.Clone(m1.UnsafeBytes())
+											_, err := in.Invoke(fmt.Sprintf("op%x", sub), args...)
+											var trap *TrapError
+											wantTrap := TrapLinMemOutOfBounds
+											if addr == 1 {
+												wantTrap = TrapAtomicUnaligned
+											}
+											if !errors.As(err, &trap) || trap.Code != wantTrap {
+												t.Fatalf("opcode %x addr=%x: %v", sub, addr, err)
+											}
+											if !bytes.Equal(before, m1.UnsafeBytes()) {
+												t.Fatal("trapping atomic changed backing")
+											}
+										}
+									}
+								}
+
+								if secondary64 {
+									for _, name := range []string{"high0", "high1"} {
+										for _, addr := range []uint64{0, ^uint64(0) - 3} {
+											_, err := in.Invoke(name, addr)
+											var trap *TrapError
+											if !errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds {
+												t.Fatalf("%s address=%x: %v", name, addr, err)
+											}
+										}
+									}
+									_, err := in.Invoke("helper0", 1<<32, 1)
+									var trap *TrapError
+									if !errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds {
+										t.Fatalf("high notify: %v", err)
+									}
+								}
+								if got, err := in.Invoke("helper0", 0, 1); err != nil || len(got) != 1 || got[0] != 0 {
+									t.Fatalf("unshared notify=%v,%v", got, err)
+								}
+								for _, name := range []string{"helper1", "helper2"} {
+									_, err := in.Invoke(name, 0, 0, 0)
+									var trap *TrapError
+									if !errors.As(err, &trap) || trap.Code != TrapExpectedSharedMemory {
+										t.Fatalf("unshared %s=%v", name, err)
+									}
+								}
+								if got := binary.LittleEndian.Uint64(m0.UnsafeBytes()[8:]); got != 0x123456789abcdef0 {
+									t.Fatalf("primary changed to %x", got)
+								}
+							}
+						})
+					}
+				}
 			}
 		}
 	}

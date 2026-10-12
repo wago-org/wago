@@ -91,6 +91,18 @@ func (in *Instance) dispatchAtomicWaitHelperContext(helper uint32, args, results
 			ctx = state.(*atomicWaitInvocationContext).ctx
 		}
 	}
+	memoryIndex := uint32(0)
+	if helper == shared.AtomicHelperNotify && len(args) == 4 || (helper == shared.AtomicHelperWait32 || helper == shared.AtomicHelperWait64) && len(args) == 5 {
+		memoryIndex = uint32(args[len(args)-1])
+		args = args[:len(args)-1]
+	}
+	memory := in.memory
+	if memoryIndex != 0 {
+		if in.memoryDir == nil || int(memoryIndex) >= len(in.memoryDir.memories) {
+			panic(atomicWaitHelperError{err: fmt.Errorf("atomic helper memory index %d is unavailable", memoryIndex)})
+		}
+		memory = in.memoryDir.memories[memoryIndex]
+	}
 	var (
 		result uint32
 		err    error
@@ -101,19 +113,19 @@ func (in *Instance) dispatchAtomicWaitHelperContext(helper uint32, args, results
 			err = fmt.Errorf("atomic notify helper arity = %d, want 3", len(args))
 			break
 		}
-		result, err = in.memory.notify(in.atomicHelperAddress(args[0], args[2], 4), uint32(args[1]))
+		result, err = memory.notify(in.atomicHelperAddressAt(memoryIndex, args[0], args[2], 4), uint32(args[1]))
 	case shared.AtomicHelperWait32:
 		if len(args) != 4 {
 			err = fmt.Errorf("atomic wait32 helper arity = %d, want 4", len(args))
 			break
 		}
-		result, err = in.memory.wait32(ctx, in.atomicHelperAddress(args[0], args[3], 4), uint32(args[1]), int64(args[2]))
+		result, err = memory.wait32(ctx, in.atomicHelperAddressAt(memoryIndex, args[0], args[3], 4), uint32(args[1]), int64(args[2]))
 	case shared.AtomicHelperWait64:
 		if len(args) != 4 {
 			err = fmt.Errorf("atomic wait64 helper arity = %d, want 4", len(args))
 			break
 		}
-		result, err = in.memory.wait64(ctx, in.atomicHelperAddress(args[0], args[3], 8), args[1], int64(args[2]))
+		result, err = memory.wait64(ctx, in.atomicHelperAddressAt(memoryIndex, args[0], args[3], 8), args[1], int64(args[2]))
 	default:
 		err = fmt.Errorf("unknown atomic wait helper %d", helper)
 	}
@@ -124,7 +136,11 @@ func (in *Instance) dispatchAtomicWaitHelperContext(helper uint32, args, results
 }
 
 func (in *Instance) atomicHelperAddress(address, offset, width uint64) uint64 {
-	if in.c == nil || !in.c.memoryDef(0).Addr64 {
+	return in.atomicHelperAddressAt(0, address, offset, width)
+}
+
+func (in *Instance) atomicHelperAddressAt(memoryIndex uint32, address, offset, width uint64) uint64 {
+	if in.c == nil || !in.c.memoryDef(int(memoryIndex)).Addr64 {
 		address = uint64(uint32(address))
 	}
 	effective := address + offset

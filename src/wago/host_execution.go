@@ -274,7 +274,7 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 			panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
 		}
 		helper := importIdx &^ shared.AtomicWaitDispatchBit
-		blocking := (helper == shared.AtomicHelperWait32 || helper == shared.AtomicHelperWait64) && len(args) == 4 && int64(args[2]) != 0
+		blocking := (helper == shared.AtomicHelperWait32 || helper == shared.AtomicHelperWait64) && (len(args) == 4 || len(args) == 5) && int64(args[2]) != 0
 		if blocking && root != nil && !root.usesPrivateThreadedExecution() && !root.usesIndependentExecution() {
 			a.dispatchSharedAtomicWait(active, ctrl, helper, args, results)
 		} else {
