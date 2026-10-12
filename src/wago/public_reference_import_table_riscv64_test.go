@@ -15,7 +15,6 @@ import (
 	"time"
 	"unsafe"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -25,6 +24,13 @@ func rv64ReferenceImportTableProducer(t *testing.T, vector, borrowed bool) []byt
 	t.Helper()
 	source := rv64ReferenceGlobalModule(vector, borrowed, false, false, 1)
 	return rv64ReplaceTableStageSection(t, source, 7, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("reference", 3, 0))))
+}
+
+func rv64ReferenceImportOwnedTableProducer(t *testing.T, vector bool) []byte {
+	t.Helper()
+	source := rv64ReferenceGlobalModule(vector, false, false, false, 1)
+	exports := wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("reference", 3, 0), wasmtest.ExportEntry("table", 1, 0)))
+	return rv64ReplaceTableStageSection(t, source, 7, exports)
 }
 
 // A reader has no imported global through which to discover the producer.
@@ -230,7 +236,7 @@ func TestRV64PublicReferenceImportHostTableParked(t *testing.T) {
 	}
 }
 
-func TestRV64PublicReferenceImportHostTableBindingGate(t *testing.T) {
+func TestRV64PublicReferenceImportInstanceOwnedTableBinding(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for _, artifact := range []bool{false, true} {
 			t.Run(fmt.Sprintf("vector%t-artifact%t", vector, artifact), func(t *testing.T) {
@@ -243,6 +249,8 @@ func TestRV64PublicReferenceImportHostTableBindingGate(t *testing.T) {
 				defer g.Close()
 				pc := rv64TableStageCompile(t, "ref-import-table-owned-null", rv64ReferenceGlobalModule(false, false, false, true, 1), artifact)
 				producer := rv64NativeTokenInstantiate(t, rt, pc, NewImports())
+				defer producer.Close()
+				defer pc.Close()
 				destination, err := producer.ExportedTable("table")
 				if err != nil {
 					t.Fatal(err)
@@ -263,20 +271,28 @@ func TestRV64PublicReferenceImportHostTableBindingGate(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					beforeBase, beforeMem, beforeRefs := c.codeCache.base, offHeapSlicePtr(c.codeCache.mem), c.codeCache.refs
 					roots := producer.referenceLifetime().snapshot().ResourceRoots
-					in, err := rt.Instantiate(context.Background(), mod, WithImports(NewImports().Global("env", "ref", g).Table("env", "table", destination)))
-					if in != nil {
-						in.Close()
+					accepted, err := rt.Instantiate(context.Background(), mod, WithImports(NewImports().Global("env", "ref", g).Table("env", "table", destination)))
+					if err != nil {
+						mod.Close()
+						t.Fatal("instance-owned destination rejected", used, err)
 					}
-					if in != nil || !errors.Is(err, railshot.ErrUnsupported) || c.codeCache.base != beforeBase || offHeapSlicePtr(c.codeCache.mem) != beforeMem || c.codeCache.refs != beforeRefs || producer.referenceLifetime().snapshot().ResourceRoots != roots || g.owner.importers != 0 {
-						t.Fatal("instance-owned destination published", used, err)
+					if used {
+						importedGlobalInvoke(t, accepted, "isnull", []uint64{1})
+					}
+					if err := accepted.Close(); err != nil {
+						mod.Close()
+						t.Fatal("close instance-owned destination consumer", err)
+					}
+					if producer.referenceLifetime().snapshot().ResourceRoots != roots || g.owner.importers != 0 || destination.owner.importers != 0 || accepted.hasPhysicalResources() {
+						mod.Close()
+						t.Fatal("instance-owned destination retained consumer resources", used)
 					}
 					table, err := NewTable(2, 5)
 					if err != nil {
 						t.Fatal(err)
 					}
-					accepted, err := rt.Instantiate(context.Background(), mod, WithImports(NewImports().Global("env", "ref", g).Table("env", "table", table)))
+					accepted, err = rt.Instantiate(context.Background(), mod, WithImports(NewImports().Global("env", "ref", g).Table("env", "table", table)))
 					mod.Close()
 					if err != nil {
 						table.Close()
@@ -291,6 +307,108 @@ func TestRV64PublicReferenceImportHostTableBindingGate(t *testing.T) {
 					}
 				}
 			})
+		}
+	}
+}
+
+// A frozen imported global and an instance-owned destination create distinct
+// dependency edges. Exercise both different-owner retirement and same-owner
+// teardown after a descriptor has actually been written into the table.
+func TestRV64PublicReferenceImportInstanceOwnedTableLifecycle(t *testing.T) {
+	for _, vector := range []bool{false, true} {
+		for _, artifact := range []bool{false, true} {
+			for _, sameOwner := range []bool{false, true} {
+				for _, cleanup := range []string{"clear", "close"} {
+					t.Run(fmt.Sprintf("vector%t-artifact%t-same%t-%s", vector, artifact, sameOwner, cleanup), func(t *testing.T) {
+						rt := NewRuntime()
+						descriptorSource := rv64ReferenceImportTableProducer(t, vector, false)
+						if sameOwner {
+							descriptorSource = rv64ReferenceImportOwnedTableProducer(t, vector)
+						}
+						descriptorCode := rv64TableStageCompile(t, fmt.Sprintf("ref-import-owned-table-descriptor-vector%t-same%t", vector, sameOwner), descriptorSource, artifact)
+						descriptorOwner := rv64NativeTokenInstantiate(t, rt, descriptorCode, NewImports())
+						global, err := descriptorOwner.ExportedGlobalObject("reference")
+						if err != nil {
+							t.Fatal(err)
+						}
+						tableOwner, tableCode := descriptorOwner, descriptorCode
+						if !sameOwner {
+							tableCode = rv64TableStageCompile(t, fmt.Sprintf("ref-import-owned-table-destination-vector%t", vector), rv64ReferenceGlobalModule(vector, false, false, true, 1), artifact)
+							tableOwner = rv64NativeTokenInstantiate(t, rt, tableCode, NewImports())
+						}
+						table, err := tableOwner.ExportedTable("table")
+						if err != nil {
+							t.Fatal(err)
+						}
+						consumerCode := rv64TableStageCompile(t, fmt.Sprintf("ref-import-owned-table-consumer-vector%t", vector), rv64ReferenceImportModule(vector, true), artifact)
+						consumer := rv64NativeTokenInstantiate(t, rt, consumerCode, NewImports().Global("env", "ref", global).Table("env", "table", table))
+						readerCode := rv64TableStageCompile(t, fmt.Sprintf("ref-import-owned-table-reader-vector%t", vector), rv64ReferenceGlobalModule(vector, true, false, true, 1), artifact)
+						reader := rv64NativeTokenInstantiate(t, rt, readerCode, NewImports().Table("env", "table", table))
+
+						descriptorCode.Close()
+						if !sameOwner {
+							tableCode.Close()
+						}
+						consumerCode.Close()
+						readerCode.Close()
+						if _, err := consumer.Invoke("install", 0); err != nil {
+							t.Fatal(err)
+						}
+						if err := descriptorOwner.Close(); err != nil {
+							t.Fatal(err)
+						}
+						if !sameOwner {
+							if err := tableOwner.Close(); err != nil {
+								t.Fatal(err)
+							}
+						}
+						if err := consumer.Close(); err != nil {
+							t.Fatal(err)
+						}
+						if consumer.hasPhysicalResources() {
+							t.Fatal("owned destination retained the retired writer")
+						}
+						args, want := []uint64{0xdeadbeef00000007, 0}, []uint64{7}
+						if vector {
+							args = []uint64{0x0123456789abcdef, 0xfedcba9876543210, 0}
+							want = args[:2]
+						}
+						importedGlobalInvoke(t, reader, "call", want, args...)
+						if !descriptorOwner.hasPhysicalResources() || !tableOwner.hasPhysicalResources() {
+							t.Fatal("live owned-table descriptor lost a closed owner")
+						}
+						if !sameOwner {
+							table.mu.Lock()
+							state := table.retained[descriptorOwner]
+							row := table.owner.descriptorDependencies.rows[state]
+							valid := state != nil && state.precise && row != nil && row.producer == descriptorOwner && (row.phase == rv64TableDescriptorPending || row.phase == rv64TableDescriptorTyped)
+							table.mu.Unlock()
+							if !valid {
+								t.Fatal("owned table did not publish its exact descriptor dependency")
+							}
+						}
+						if cleanup == "clear" {
+							if _, err := reader.Invoke("fill", 0, 2); err != nil {
+								t.Fatal(err)
+							}
+							if !sameOwner && descriptorOwner.hasPhysicalResources() {
+								t.Fatal("cleared owned-table descriptor retained its separate owner")
+							}
+						}
+						if err := reader.Close(); err != nil {
+							t.Fatal(err)
+						}
+						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancel()
+						if err := rt.CloseContext(ctx); err != nil {
+							t.Fatal(err)
+						}
+						if descriptorOwner.hasPhysicalResources() || tableOwner.hasPhysicalResources() || consumer.hasPhysicalResources() || reader.hasPhysicalResources() || descriptorCode.codeCache.mem != nil || tableCode.codeCache.mem != nil || consumerCode.codeCache.mem != nil || readerCode.codeCache.mem != nil {
+							t.Fatal("instance-owned reference-table resources remain")
+						}
+					})
+				}
+			}
 		}
 	}
 }

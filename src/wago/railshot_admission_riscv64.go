@@ -848,20 +848,6 @@ func rv64ValidateResolvedTable(c *Compiled, imports resolvedImports, store *refe
 	if err := table.validateImportWithCollector(ValFuncRef, exact, c.Types, store, nil, def.Addr64); err != nil {
 		return err
 	}
-	// Frozen global roots must not create a backedge into an instance-owned
-	// destination. Host-created destinations have no such instance owner.
-	for _, global := range c.GlobalImports {
-		if global.Type != ValFuncRef {
-			continue
-		}
-		table.owner.mu.Lock()
-		instanceOwned := table.owner.instance != nil
-		table.owner.mu.Unlock()
-		if instanceOwned {
-			return fmt.Errorf("%w: reference global imports require a host-created borrowed table", railshot.ErrUnsupported)
-		}
-		break
-	}
 	// The descriptor itself also needs a lease: host tables have no instance root.
 	if err := table.attachImporterWithCollector(ValFuncRef, exact, c.Types, store, nil, def.Addr64); err != nil {
 		return err
