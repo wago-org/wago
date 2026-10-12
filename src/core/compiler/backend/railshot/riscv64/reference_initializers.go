@@ -184,6 +184,34 @@ func admitMutableFunctionGlobalBidirectionalCopy(m *wasm.Module) bool {
 	return true
 }
 
+// admitMutableFunctionGlobalLocalCopy is the first exact mixed-state reference
+// product. One private mutable funcref cell is initialized with the sole local
+// function and copied into one imported mutable cell through the parked owner
+// transaction. The private cell cannot be exported or receive foreign values.
+func admitMutableFunctionGlobalLocalCopy(m *wasm.Module) bool {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 1 || len(m.Globals) != 1 || len(m.Exports) != 1 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+		return false
+	}
+	imp := m.Imports[0]
+	if imp.Module != "env" || imp.Name != "target" || imp.Type.Kind != wasm.ExternGlobal {
+		return false
+	}
+	importType := imp.Type.GlobalType()
+	if !importType.Mutable || !wasm.EqualValType(importType.Type, wasm.FuncRef) {
+		return false
+	}
+	local := m.Globals[0]
+	if !local.Type.Mutable || !wasm.EqualValType(local.Type.Type, wasm.FuncRef) || len(local.Init.Instrs) != 0 || !bytes.Equal(local.Init.BodyBytes, []byte{0xd2, 0, 0x0b}) {
+		return false
+	}
+	sig, ok := m.FuncSignature(0)
+	if !ok || sig.Kind != wasm.CompFunc || len(sig.Params) != 0 || len(sig.Results) != 0 || m.Code[0].LocalDeclBytes != 1 || len(m.Code[0].Locals.Runs) != 0 || !bytes.Equal(m.Code[0].BodyBytes, []byte{0x23, 1, 0x24, 0, 0x0b}) {
+		return false
+	}
+	ex := m.Exports[0]
+	return ex.Name == "copy_local" && ex.Index.Kind == wasm.ExternFunc && ex.Index.Index == 0
+}
+
 // privateIndexedFunctionGlobal admits the table-free typed cells used to hold
 // same-instance recursive call_ref targets. Keep this separate from public
 // funcref globals: the carrier is immutable, non-null, non-exact, initialized
@@ -263,5 +291,5 @@ func admitReferenceGlobalExport(m *wasm.Module, index uint32) error {
 }
 
 func admitImportedFunctionGlobal(m *wasm.Module, typ wasm.GlobalType) bool {
-	return wasm.EqualValType(typ.Type, wasm.FuncRef) && (!typ.Mutable && len(m.Tables)+m.ImportedTableCount() <= 1 || typ.Mutable && (admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m) || admitMutableFunctionGlobalSetSelf(m) || admitMutableFunctionGlobalCopy(m) || admitMutableFunctionGlobalMove(m) || admitMutableFunctionGlobalBidirectionalCopy(m)))
+	return wasm.EqualValType(typ.Type, wasm.FuncRef) && (!typ.Mutable && len(m.Tables)+m.ImportedTableCount() <= 1 || typ.Mutable && (admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m) || admitMutableFunctionGlobalSetSelf(m) || admitMutableFunctionGlobalCopy(m) || admitMutableFunctionGlobalMove(m) || admitMutableFunctionGlobalBidirectionalCopy(m) || admitMutableFunctionGlobalLocalCopy(m)))
 }

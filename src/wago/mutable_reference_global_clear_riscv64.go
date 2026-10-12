@@ -70,7 +70,7 @@ func rv64MutableFuncrefGlobalClear(c *Compiled) bool {
 }
 
 func railshotUsesGuestGlobalStoreHelper(c *Compiled) bool {
-	return rv64MutableFuncrefGlobalClear(c) || rv64MutableFuncrefGlobalStoreSelf(c) || rv64MutableFuncrefGlobalCopy(c) || rv64MutableFuncrefGlobalMove(c) || rv64MutableFuncrefGlobalBidirectionalCopy(c)
+	return rv64MutableFuncrefGlobalClear(c) || rv64MutableFuncrefGlobalStoreSelf(c) || rv64MutableFuncrefGlobalCopy(c) || rv64MutableFuncrefGlobalMove(c) || rv64MutableFuncrefGlobalBidirectionalCopy(c) || rv64MutableFuncrefGlobalLocalCopy(c)
 }
 
 // retainGuestGlobalStoreDescriptor closes the raw-load/park ownership window
@@ -96,6 +96,8 @@ func (in *Instance) retainGuestGlobalStoreDescriptor(dispatch uint32, args, resu
 	case rv64MutableFuncrefGlobalMove(in.c) && len(args) == 0 && len(in.globalCells) == 2:
 		return nil, nil
 	case rv64MutableFuncrefGlobalBidirectionalCopy(in.c) && len(args) == 2 && len(in.globalCells) == 2 && args[1] < 2:
+		descriptor = args[0]
+	case rv64MutableFuncrefGlobalLocalCopy(in.c) && len(args) == 1 && len(in.globalCells) == 2:
 		descriptor = args[0]
 	default:
 		return nil, fmt.Errorf("invalid RV64 guest global store bridge")
@@ -137,6 +139,8 @@ func (in *Instance) dispatchGuestGlobalStore(dispatch uint32, args, results []ui
 		err = in.globalCells[0].SetValue(ValueFuncRef(NullFuncRef()))
 	case rv64MutableFuncrefGlobalBidirectionalCopy(in.c) && len(args) == 2 && len(in.globalCells) == 2 && args[1] < 2:
 		err = in.globalCells[args[1]].copyGuestFuncrefDescriptor(in, args[0])
+	case rv64MutableFuncrefGlobalLocalCopy(in.c) && len(args) == 1 && len(in.globalCells) == 2:
+		err = in.globalCells[0].setGuestFuncrefDescriptor(in, args[0])
 	default:
 		panic(invalidHostReference{err: fmt.Errorf("invalid RV64 guest global store bridge")})
 	}

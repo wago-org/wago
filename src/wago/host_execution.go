@@ -368,9 +368,13 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	// another host entry may overwrite the source container as soon as the lease
 	// is dropped. The helper transaction acquires the destination's independent
 	// root while this temporary unit keeps the descriptor arena live.
-	guestDescriptorOwner, err := active.retainGuestGlobalStoreDescriptor(importIdx, args, results)
-	if err != nil {
-		panic(invalidHostReference{err: err})
+	var guestDescriptorOwner *Instance
+	if importIdx == hostFuncRefDispatchBit {
+		var err error
+		guestDescriptorOwner, err = active.retainGuestGlobalStoreDescriptor(importIdx, args, results)
+		if err != nil {
+			panic(invalidHostReference{err: err})
+		}
 	}
 	if localMu != nil {
 		localMu.Unlock()

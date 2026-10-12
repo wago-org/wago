@@ -105,6 +105,8 @@ func TestRV64GuestGlobalStoreRetainsDescriptorBeforeParking(t *testing.T) {
 	}
 
 	consumer.dispatchGuestGlobalStore(hostFuncRefDispatchBit, []uint64{descriptor}, nil)
+	// Claim before release so a cleanup panic cannot cause the deferred fallback
+	// to release the same unit twice.
 	leaseHeld = false
 	retained.releaseResourceRoot()
 	if got := readGlobalObject(target, ValFuncRef); got != descriptor {

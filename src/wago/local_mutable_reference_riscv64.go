@@ -28,6 +28,9 @@ func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
 	if rv64MutableFuncrefGlobalBidirectionalCopy(c) {
 		return true, nil // Exact indexed copies mutate either imported container safely.
 	}
+	if rv64MutableFuncrefGlobalLocalCopy(c) {
+		return true, nil // Exact mixed-state copy publishes one own local descriptor.
+	}
 	has := false
 	for _, g := range c.Globals {
 		has = has || g.Type == ValFuncRef && g.Mutable

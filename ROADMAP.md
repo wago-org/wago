@@ -30,6 +30,10 @@ and retiring the expected roots for null and aliased moves.
 An additional exact two-function product copies in either direction through an
 indexed parked bridge. Both one-write paths preserve canonical owners, null
 overwrite and alias deduplication without exposing arbitrary multi-write bodies.
+The next exact mixed-state product initializes one private mutable cell to its
+sole local function and copies that own descriptor into one imported mutable
+target. The private cell has no foreign ingress or export, and the parked bridge
+transfers exactly one descriptor-owner root before resuming native execution.
 Other non-null or general guest `global.set`, raw reference escape, and broader
 executable mutable-reference shapes remain unsupported.
 Parked callbacks, retirement and compiler-free artifact tests cover these bounded

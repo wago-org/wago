@@ -49,8 +49,12 @@ seventh exact profile exports independent
 forward and reverse copy functions over the same two imported cells. Its indexed
 parked bridge authenticates the destination index as well as the full-width
 descriptor, so both containers can be written without admitting arbitrary bodies.
-Other non-null or general `global.set`, raw reference results, and mixed state
-remain unsupported for these profiles.
+An eighth exact profile initializes one private mutable cell to its sole local
+function and copies that descriptor into one imported mutable target. The private
+cell is neither exported nor writable from foreign state; the parked bridge
+transfers exactly one own descriptor root into the target. Other non-null or
+general `global.set`, raw reference results, and broader mixed state remain
+unsupported for these profiles.
 Table-free declarative segments and repeated
 `elem.drop` use dropped element state; unused legacy declarations require no
 function descriptors or element directory. Empty and state-only modules have no

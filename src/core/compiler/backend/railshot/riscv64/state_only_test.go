@@ -81,6 +81,81 @@ func mutableFuncrefStoreSelfSource() []byte {
 	)
 }
 
+func mutableFuncrefLocalCopySource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "target", wasm.FuncRef, true))),
+		wasmtest.Section(3, []byte{1, 0}),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.FuncRef, true, []byte{0xd2, 0, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("copy_local", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 1, 0x24, 0, 0x0b}))),
+	)
+}
+
+func TestMutableFuncrefLocalCopyProduction(t *testing.T) {
+	source := mutableFuncrefLocalCopySource()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitMutableFunctionGlobalLocalCopy(m) {
+		t.Fatal("exact mutable funcref local-copy source rejected")
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64})
+	if err != nil || image == nil {
+		t.Fatal("mutable funcref local-copy compilation", err)
+	}
+	wantDigest := [sha256.Size]byte{0xa7, 0x01, 0xd4, 0xfd, 0x30, 0x9a, 0x26, 0x13, 0xea, 0x26, 0x8c, 0x5a, 0xa0, 0xd7, 0xd7, 0x06, 0x32, 0xe7, 0xbd, 0xd8, 0x1c, 0x5e, 0x2b, 0xdd, 0xc8, 0x6e, 0xf6, 0x1e, 0xf1, 0x1d, 0x64, 0xdd}
+	if len(image.Code) != 508 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, []int{0}) || !slices.Equal(image.InternalEntry, []int{0}) {
+		t.Fatalf("mutable funcref local-copy compilation drifted: code=%d digest=%x entries=%v/%v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry)
+	}
+}
+
+func TestMutableFuncrefLocalCopyProductionRejectsBroaderSources(t *testing.T) {
+	module := func(imports, globals, exports, body []byte) []byte {
+		return wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+			wasmtest.Section(2, imports),
+			wasmtest.Section(3, []byte{1, 0}),
+			wasmtest.Section(6, globals),
+			wasmtest.Section(7, exports),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		)
+	}
+	exactImports := wasmtest.Vec(wasmtest.GlobalImportEntry("env", "target", wasm.FuncRef, true))
+	exactGlobals := wasmtest.Vec(wasmtest.GlobalEntry(wasm.FuncRef, true, []byte{0xd2, 0, 0x0b}))
+	exactExports := wasmtest.Vec(wasmtest.ExportEntry("copy_local", 0, 0))
+	exactBody := []byte{0x23, 1, 0x24, 0, 0x0b}
+	for name, source := range map[string][]byte{
+		"import-source": module(exactImports, exactGlobals, exactExports, []byte{0x23, 0, 0x24, 0, 0x0b}),
+		"reverse":       module(exactImports, exactGlobals, exactExports, []byte{0x23, 0, 0x24, 1, 0x0b}),
+		"null-local":    module(exactImports, wasmtest.Vec(wasmtest.GlobalEntry(wasm.FuncRef, true, []byte{0xd0, 0x70, 0x0b})), exactExports, exactBody),
+		"immutable":     module(exactImports, wasmtest.Vec(wasmtest.GlobalEntry(wasm.FuncRef, false, []byte{0xd2, 0, 0x0b})), exactExports, exactBody),
+		"wrong-import": module(
+			wasmtest.Vec(wasmtest.GlobalImportEntry("env", "other", wasm.FuncRef, true)), exactGlobals, exactExports, exactBody,
+		),
+		"wrong-export": module(exactImports, exactGlobals, wasmtest.Vec(wasmtest.ExportEntry("other", 0, 0)), exactBody),
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal("fixture decoding", err)
+			}
+			if admitMutableFunctionGlobalLocalCopy(m) {
+				t.Fatal("broader mutable funcref local-copy source matched exact profile")
+			}
+			staged := false
+			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
+			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
+				t.Fatal("broader mutable funcref local-copy source reached staging", image, err, staged)
+			}
+		})
+	}
+}
+
 func mutableFuncrefCopySource() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),

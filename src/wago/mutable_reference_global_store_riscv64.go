@@ -101,7 +101,7 @@ func (g *Global) setGuestFuncrefDescriptorNoLease(source *Instance, descriptor u
 	exact, exactTypes, hasExact := o.valueType, o.types, o.hasValueType
 	consistent := g.Type == typ && g.Mutable == mutable
 	o.mu.Unlock()
-	if closed || !consistent || typ != ValFuncRef || !mutable || store == nil || source.refStore != store || descriptor == 0 || !rv64MutableFuncrefGlobalStoreSelf(source.c) {
+	if closed || !consistent || typ != ValFuncRef || !mutable || store == nil || source.refStore != store || descriptor == 0 || (!rv64MutableFuncrefGlobalStoreSelf(source.c) && !rv64MutableFuncrefGlobalLocalCopy(source.c)) {
 		return fmt.Errorf("invalid RV64 guest funcref global store")
 	}
 	index, indexed := source.funcrefDescriptorIndex(descriptor)

@@ -184,6 +184,11 @@ bridge. Each of its two exported bodies performs exactly one load and one write;
 the runtime accepts only target indices zero or one after the complete artifact
 shape and code image are authenticated. This permits both transfer directions
 without letting a guest temporary outlive the only container root for a descriptor.
+One exact mixed-state product initializes a private mutable funcref cell with
+its sole local function and copies that full-width descriptor into one imported
+mutable target. The private cell cannot be exported or receive foreign values;
+the same parked transaction transfers one precise own descriptor root to the
+container before native execution resumes.
 Reference-global imports combined with instance-owned imported tables, general
 mutable reference imports/exports and typed references remain gated pending
 separate ownership qualification.
