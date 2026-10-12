@@ -303,7 +303,17 @@ func TestCallerReexport(t *testing.T) {
 }
 
 func TestCallerExternRefScalarDispatchAllocations(t *testing.T) {
-	c := MustCompile(watToWasmCA(t, `(module (import "env" "read" (func $read (param externref) (result i32))) (func (export "read") (param externref) (result i32) local.get 0 call $read))`))
+	// (module (import "env" "read" (func $read (param externref) (result i32)))
+	//   (func (export "read") (param externref) (result i32) local.get 0 call $read))
+	// Keep the wasm bytes here so the allocation check also runs under TinyGo.
+	wasm := []byte{
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x06, 0x01, 0x60,
+		0x01, 0x6f, 0x01, 0x7f, 0x02, 0x0c, 0x01, 0x03, 0x65, 0x6e, 0x76, 0x04,
+		0x72, 0x65, 0x61, 0x64, 0x00, 0x00, 0x03, 0x02, 0x01, 0x00, 0x07, 0x08,
+		0x01, 0x04, 0x72, 0x65, 0x61, 0x64, 0x00, 0x01, 0x0a, 0x08, 0x01, 0x06,
+		0x00, 0x20, 0x00, 0x10, 0x00, 0x0b,
+	}
+	c := MustCompile(wasm)
 	defer c.Close()
 	var retained Caller
 	in, err := Instantiate(c, testImports("env.read", callerSlotHostFunc(func(h Caller, p, r []uint64) {
