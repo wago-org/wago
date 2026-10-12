@@ -932,3 +932,76 @@ unshared-memory wait trap. Guarded race thread/Core 3 regression checks pass on
 ARM64 and AMD64, including staged memory64 on AMD64. This checkpoint does not
 claim new peer timings. Multiple memories with threads, wider proposal
 combinations, full official conformance and overall parity remain open.
+
+
+## Unshared memory32 atomic backing and wider compile costs
+
+Wago `2fd39f1a` repairs dynamic unshared-memory32 atomic addressing. The shared
+directory is absent on this path; canonical backing and its memory32 bounds
+calculation are now used instead. The first wasm.fyi RMW capture then exposed
+the same assumption in the constant-address shortcut. Wago `d793333f` retains
+its minimum-size/alignment proof but selects canonical backing for unshared
+memory. A focused constant-address test reproduced the native fault before the
+fix. The original failed capture remains at `threads-unshared-arm64.json`.
+
+Both ABIs and original/codec products pass store, add, subtract, bitwise
+and/or/xor, exchange and compare-exchange checks for i32/i64 values, with dynamic
+and constant addresses. Dynamic checks cover upper-i32 truncation, alignment,
+offset/bounds failures and no memory mutation on traps. Guarded race thread and
+Core 3 regression checks pass on both native architectures; the final dynamic
+trap cases also pass three repeated guarded race runs on both.
+
+wasm.fyi `67613c0` adds unshared memory32 load/store and RMW contracts. Both
+artifacts reproduce byte for byte, and V8 independently verifies the arithmetic
+oracles. Corrected ARM64 captures use three Wago and three w2c2 launches, five
+verified qualified 50 ms samples per launch and two warmup batches:
+
+| Unshared contract, 262,144 work units | Wago ns | w2c2 ns | Wago / peer |
+| --- | ---: | ---: | ---: |
+| Atomic load/store | 183,163 | 165,533 | 1.107 |
+| Atomic RMW add | 260,352 | 221,488 | 1.175 |
+
+There are no before-speedup claims for the broken path. Adapter identity is
+`d793333fde9cfb12c7077dc76bc6ef696f1cc788/source-b2e8ef80d9dc94ecbaaa64320ddea66fde964827e4fd3e7743738f948328517a`.
+Artifacts have SHA-256
+`08a0477d1e993b8ab4715487727a5075bc4df11a76254a3d7875f42304915b5b`
+and `d06bc621ce43a7caa472003a016a1614cce82e88a95df3a5347f2fdd0e9e3fec`.
+Evidence `threads-unshared-static-arm64.json` has SHA-256
+`883d3e770f7271bc9452536a4d8a6b1b241f2cb47ab42a96747852a6bb522015`.
+The thread family now has 20 sustained contracts and one separate growth probe;
+this is cumulative coverage, not a full same-revision retiming.
+
+A wider compile capture compares `199209f8` with `d793333f` on Apple M4 Max,
+Darwin/ARM64, Go 1.27.1, GOMAXPROCS=1. The input is all 218 module and
+module_definition files in the local Wasmtime Core 3 regression JSON commands
+(excluding invalid-module assertions). Each fresh process warms one complete
+pass, runs Go GC, then measures 100 complete passes: 21,800 compiles, including
+close and GC costs, with decode, validation and native code generation enabled.
+Input reading and warmup are outside the timed/allocation interval. There is no
+instantiation or guest execution in this capture. Six launches alternate
+before/current/current/before/before/current; no builds or other tests overlap.
+
+| Median per process | Before | Current |
+| --- | ---: | ---: |
+| Compile interval | 398,313,084 ns | 392,916,792 ns |
+| Go allocated bytes | 777,964,064 | 777,964,208 |
+| Go allocation count | 2,649,935 | 2,649,935 |
+| Generated code bytes over 100 passes | 17,900,800 | 17,900,800 |
+| Maximum resident set size | 14,123,008 bytes | 14,106,624 bytes |
+| macOS peak memory footprint | 9,404,968 bytes | 9,388,560 bytes |
+
+Latency differs by -1.35%, with effectively identical allocation and process
+memory footprints. Resource peaks come from `/usr/bin/time -l` over the complete
+process, including input buffers, warmup and measurement. They are not an
+isolated live compiler-heap peak or memory-instantiation cost. These modules use
+CoreFeaturesV3; the capture does not measure every new thread combination.
+The retained runner is
+`docs/benchmarks/wasm3-2026-10-12/compile-corpus.go`.
+Ignored input file/hash inventory `core3-compile-inputs.json` has SHA-256
+`e3e38004a705b1c7fdb4aed594458dac7756734356ce0c2996078638719b6091`.
+Raw `threads-memory64-core3-compile-ab.json` has SHA-256
+`b9c8e2e3f1059ef21e3c3edd960ef082c74b0ad5c129fa3b8d9dc3c5dd5b03e0`.
+
+The SSH control master and detached `wago-wasm3-parity` session were verified
+live after these captures. Multiple memories with threads, broader composition,
+full official conformance and overall performance parity remain open.

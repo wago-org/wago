@@ -178,6 +178,14 @@ atomics also use canonical backing and pass guarded race checks on both native
 architectures. Multiple memories with threads, wider proposal combinations,
 full conformance and overall feature/performance parity remain open.
 
+Unshared memory32 dynamic and constant atomic accesses now select canonical
+backing, repairing native faults exposed by targeted tests and the wasm.fyi
+RMW kernel. Fresh qualified ARM64 captures retain 1.107 and 1.175 peer ratios
+for unshared load/store and RMW add. A matched 218-module Core 3 compile capture
+shows equivalent allocated bytes/counts, native code size and process RSS, with
+a 1.35% lower compile-interval median; this is a local corpus check, not all
+feature combinations or memory-instantiation costs.
+
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
 `~/.cache/wago-wasm3-parity/wago`.
