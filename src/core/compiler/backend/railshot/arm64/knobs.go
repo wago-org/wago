@@ -11,6 +11,7 @@ import (
 // during package initialization. Public sense is always "on = enabled".
 var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
+	optimization.Bind("atomic-static-bounds", &atomicStaticBoundsEnabled),
 	optimization.Bind("atomic-lse", &atomicLSEEnabled),
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
@@ -77,6 +78,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 )
 
 var (
+	optAtomicStaticBounds   = optimizationBindings.Option("atomic-static-bounds")
 	optAtomicZeroWait       = optimizationBindings.Option("atomic-wait-zero-timeout")
 	optAtomicLSE            = optimizationBindings.Option("atomic-lse")
 	optBoundsFacts          = optimizationBindings.Option("bounds-facts")

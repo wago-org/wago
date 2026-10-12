@@ -169,6 +169,9 @@ func (f *fn) atomicRMWCAS(d railshared.Atomic) error {
 }
 
 func (f *fn) atomicMem(off uint64, size int) (base, ea Reg, disp int32) {
+	if base, ea, ok := f.staticAtomicMem(off, size); ok {
+		return base, ea, 0
+	}
 	base, ea, disp = f.indexedMemAddr(0, off, size)
 	if size > 1 {
 		addr := f.allocReg(maskOf(base).add(ea))

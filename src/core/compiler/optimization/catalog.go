@@ -431,6 +431,7 @@ var catalog = []Definition{
 	arm64("loop-trap-cell", "Loop trap cell", "cache the stable cancellation cell across call-free loops"),
 	both("atomic-wait-zero-timeout", "Immediate atomic waits", "resolve literal zero-timeout shared-memory waits in native code"),
 	arm64("atomic-lse", "LSE atomics", "use native acquire/release atomic RMW and compare-exchange on LSE hosts"),
+	both("atomic-static-bounds", "Constant atomic bounds", "prove aligned constant atomic addresses against the declared memory minimum"),
 	both("counted-loop-latch", "Counted loop latch", "fold exact top-tested i32 countdown loops into an architecture-safe latch"),
 	both("linear-sum-loop", "Linear sum loops", "hoist bounds and split exact i64 memory reductions across four accumulators"),
 	both("prepared-direct-entry", "Direct prepared entry", "enter compiler-proved integer functions through the register ABI"),

@@ -67,6 +67,7 @@
               "affine-lea",
               "atomic-wait-zero-timeout",
               "atomic-lse",
+              "atomic-static-bounds",
               "assoc-tree",
               "avx512-ternary",
               "avx512-vrotate",

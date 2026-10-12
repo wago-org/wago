@@ -127,6 +127,9 @@ func (f *fn) atomicCmpxchg(d railshared.Atomic) error {
 }
 
 func (f *fn) atomicAddr(off uint64, size int) Reg {
+	if addr, ok := f.staticAtomicAddr(off, size); ok {
+		return addr
+	}
 	base, ea, disp := f.indexedMemAddr(0, off, size)
 	addr := f.allocReg(maskOf(base, ea))
 	f.a.Add64(addr, base, ea)
