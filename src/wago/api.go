@@ -1035,9 +1035,6 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 		return errors.New("threads currently require exactly one memory, shared or unshared")
 	}
 	mt, _ := m.MemoryType(0)
-	if mt.Limits.Addr64 && !mt.Shared {
-		return errors.New("threads currently require shared memory for memory64")
-	}
 	if mt.Shared && !mt.Limits.HasMax {
 		return errors.New("threads currently require shared memory with an exact maximum")
 	}

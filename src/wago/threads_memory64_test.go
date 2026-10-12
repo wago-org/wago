@@ -17,6 +17,14 @@ import (
 )
 
 func threadsMemory64Module(imported bool) []byte {
+	return threadsMemory64ModuleWithSharing(imported, true)
+}
+
+func threadsMemory64ModuleWithSharing(imported, shared bool) []byte {
+	limits := byte(5)
+	if shared {
+		limits = 7
+	}
 	types := [][]byte{
 		wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}),
 		wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I32}, []wasm.ValType{wasm.I32}),
@@ -29,7 +37,7 @@ func threadsMemory64Module(imported bool) []byte {
 	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(types...))}
 	if imported {
 		entry := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
-		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(append(entry, 2, 7, 1, 3))))
+		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(append(entry, 2, limits, 1, 3))))
 	}
 	indexes := []byte{0, 1, 1, 2, 3, 4, 5, 6, 1, 1, 0, 0, 5, 6, 1, 3}
 	decls, exports := make([][]byte, len(indexes)), [][]byte{wasmtest.ExportEntry("memory", 2, 0)}
@@ -40,7 +48,7 @@ func threadsMemory64Module(imported bool) []byte {
 	}
 	sections = append(sections, wasmtest.Section(3, wasmtest.Vec(decls...)))
 	if !imported {
-		sections = append(sections, wasmtest.Section(5, wasmtest.Vec([]byte{7, 1, 3})))
+		sections = append(sections, wasmtest.Section(5, wasmtest.Vec([]byte{limits, 1, 3})))
 	}
 	sections = append(sections, wasmtest.Section(7, wasmtest.Vec(exports...)), wasmtest.Section(10, wasmtest.Vec(
 		wasmtest.Code([]byte{0x20, 0, 0xfe, 0x10, 2, 0, 0x0b}),
@@ -459,6 +467,79 @@ func TestThreadsSharedMemory64DataSegmentsAndCodec(t *testing.T) {
 						}
 						if _, err := in.Invoke("init", 0, 0, 1); (count != 0 && err == nil) || (count == 0 && err != nil) {
 							t.Fatalf("init dropped segment: %v", err)
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestThreadsUnsharedMemory64Atomics(t *testing.T) {
+	for _, imported := range []bool{false, true} {
+		for _, policy := range []uint32{0, 2} {
+			for _, regABI := range []bool{false, true} {
+				t.Run(fmt.Sprintf("imported=%t/policy=%d/regabi=%t", imported, policy, regABI), func(t *testing.T) {
+					cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", regABI).WithMemoryLimitPages(policy)
+					c, err := cfg.Compile(threadsMemory64ModuleWithSharing(imported, false))
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer c.Close()
+					for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+						imports := NewImports()
+						if imported {
+							providerModule, err := cfg.Compile(threadsMemory64ModuleWithSharing(false, false))
+							if err != nil {
+								t.Fatal(err)
+							}
+							defer providerModule.Close()
+							provider, err := Instantiate(providerModule)
+							if err != nil {
+								t.Fatal(err)
+							}
+							defer provider.Close()
+							memory, err := provider.ExportedMemory("memory")
+							if err != nil {
+								t.Fatal(err)
+							}
+							imports.Memory("env", "memory", memory)
+						}
+						in, err := Instantiate(compiled, imports)
+						if err != nil {
+							t.Fatal(err)
+						}
+						defer in.Close()
+						check := func(name string, want uint64, args ...uint64) {
+							t.Helper()
+							got, err := in.Invoke(name, args...)
+							if err != nil || len(got) != 1 || got[0] != want {
+								t.Fatalf("%s = %v, %v; want %d", name, got, err, want)
+							}
+						}
+						check("store", 7, 0, 7)
+						check("add", 7, 0, 2)
+						check("cas", 9, 0, 9, 7)
+						check("load", 7, 0)
+						for _, name := range []string{"load", "load-offset", "load-overflow"} {
+							for _, address := range []uint64{1<<32 | 8, ^uint64(0) - 3} {
+								if _, err := in.Invoke(name, address); err == nil {
+									t.Fatalf("%s accepted high address %x", name, address)
+								}
+							}
+						}
+						check("grow", 1, 1)
+						check("size", 2)
+						check("store", 19, 65536, 19)
+						check("grow", ^uint64(0), 1<<32)
+						check("grow-high-constant", ^uint64(0))
+						check("notify", 0, 0, 1)
+						for _, name := range []string{"wait32", "wait64"} {
+							_, err := in.Invoke(name, 0, 0, 0)
+							trap, ok := err.(*TrapError)
+							if !ok || trap.Code != TrapExpectedSharedMemory {
+								t.Fatalf("%s on unshared memory: %v", name, err)
+							}
 						}
 					}
 				})

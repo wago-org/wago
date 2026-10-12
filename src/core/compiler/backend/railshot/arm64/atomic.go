@@ -134,11 +134,20 @@ func (f *fn) atomicAddr(off uint64, size int) Reg {
 	if addr, ok := f.staticAtomicAddr(off, size); ok {
 		return addr
 	}
-	base, ea, disp := f.indexedMemAddr(0, off, size)
+	var base, ea Reg
+	var disp int32
+	if f.memoryAddr64(0) && !f.threadedMemory0 {
+		ea, _, _, disp = f.memAddr64(off, size)
+		base = linMemReg
+	} else {
+		base, ea, disp = f.indexedMemAddr(0, off, size)
+	}
 	addr := f.allocReg(maskOf(base, ea))
 	f.a.Add64(addr, base, ea)
 	f.addDisp(addr, addr, disp, true)
-	f.release(base)
+	if base != linMemReg {
+		f.release(base)
+	}
 	f.release(ea)
 	if size > 1 {
 		if !f.a.TstImm64(addr, uint64(size-1)) {
