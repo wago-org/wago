@@ -1552,6 +1552,7 @@ func TestStagedGCTypeSubtypingProductPlatformAndBoundsGate(t *testing.T) {
 	pins = append(pins, stagedGCTypeSubtypingExtendedProjectionLinkProviderPin, stagedGCTypeSubtypingExtendedProjectionLinkConsumerPin)
 	pins = append(pins, stagedGCTypeSubtypingDuplicateRecursiveLinkProviderPin, stagedGCTypeSubtypingDuplicateRecursiveLinkConsumerPin)
 	pins = append(pins, stagedGCTypeSubtypingExtendedRecursiveLinkProviderPin, stagedGCTypeSubtypingExtendedRecursiveLinkConsumerPin)
+	pins = append(pins, stagedGCTypeSubtypingCrossGroupMismatchLinkProviderPin, stagedGCTypeSubtypingCrossGroupMismatchLinkConsumerPin)
 	for _, pin := range pins {
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)

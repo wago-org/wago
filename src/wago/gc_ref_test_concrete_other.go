@@ -90,6 +90,12 @@ func rv64GCTypeSubtypingExtendedRecursiveLink(*Compiled) bool              { ret
 func rv64GCTypeSubtypingExtendedRecursiveLinkExecutionCode(*Compiled) bool { return false }
 func railshotRestoreGCTypeSubtypingExtendedRecursiveLinkArtifact(*Compiled) {
 }
+func rv64GCTypeSubtypingCrossGroupMismatchLink(*Compiled) bool { return false }
+func rv64GCTypeSubtypingCrossGroupMismatchLinkExecutionCode(*Compiled) bool {
+	return false
+}
+func railshotRestoreGCTypeSubtypingCrossGroupMismatchLinkArtifact(*Compiled) {
+}
 
 func railshotRestoreGCRefCastAbstractArtifact(*Compiled) {}
 func rv64GCRefCastConcrete(*Compiled) bool               { return false }

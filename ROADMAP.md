@@ -148,7 +148,13 @@ equivalent base groups and their two declared extensions; all eight consumer
 descriptor slots copy the matching provider canonical identity while retaining
 one producer resource. Exact source and compiler-free artifacts, hostile state,
 wrong-binding rejection, W^X publication, and final unmapping are covered under
-baseline QEMU RV64G without a collector. Products after `.50` and native
+baseline QEMU RV64G without a collector. Official `.51` and `.52` add the first
+cross-group recursive-function mismatch: the exact scalar provider remains
+callable, while the independently decoded consumer's superficially equal root
+belongs to a different recursive group and is rejected before import attachment.
+Exact source and compiler-free artifacts authenticate the zero-code consumer and
+shared 576-byte provider image separately; rejection leaves the provider live and
+unretained under baseline QEMU RV64G without a collector. Products after `.52` and native
 cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
