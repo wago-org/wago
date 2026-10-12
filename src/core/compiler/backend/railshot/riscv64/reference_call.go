@@ -99,3 +99,45 @@ func (f *integerEmitter) functionReferenceCast(base int, keys []uint64, nullable
 		}
 	}
 }
+
+// functionReferenceTest checks one canonical local descriptor against the
+// bounded subtype closure and leaves a normalized i32 result. Unlike ref.cast,
+// a signature mismatch is false, and null follows the immediate's nullability.
+func (f *integerEmitter) functionReferenceTest(base int, keys []uint64, nullable bool) {
+	if !f.mode.referenceFunctions || !f.mode.foreignTableCalls || !f.mode.invocationContext || !f.mode.production || !f.mode.interruptible || len(keys) == 0 || len(keys) > 3 {
+		f.err = unsupported("function ref.test owner/signature contract")
+		return
+	}
+	f.Load(14, f.SpillOffset(base), true)
+	if nullable {
+		f.a.Constant32(enc.X6, 1)
+	} else {
+		f.a.Constant32(enc.X6, 0)
+	}
+	done := []int{f.a.BranchLong(enc.EQ, enc.X14, enc.Zero)}
+	if nullable {
+		f.a.Constant32(enc.X6, 0)
+	}
+	f.canonicalReferenceGuard(enc.X14, enc.X5, enc.X7)
+	f.a.Ld(enc.X7, enc.X14, 8)
+	var success []int
+	for _, key := range keys {
+		f.a.Constant64(enc.X5, int64(key))
+		success = append(success, f.a.BranchLong(enc.EQ, enc.X7, enc.X5))
+	}
+	done = append(done, f.Jump())
+	for _, site := range success {
+		if err := f.Patch(site, f.Position()); err != nil {
+			f.err = err
+			return
+		}
+	}
+	f.a.Constant32(enc.X6, 1)
+	for _, site := range done {
+		if err := f.Patch(site, f.Position()); err != nil {
+			f.err = err
+			return
+		}
+	}
+	f.Store(f.SpillOffset(base), 6, false)
+}

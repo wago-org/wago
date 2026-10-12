@@ -72,6 +72,7 @@ type moduleState struct {
 	gcTypeSubtypingRuntimeCallCast    bool
 	gcTypeSubtypingFinalityCallCast   bool
 	gcTypeSubtypingTypedTableCall     bool
+	gcTypeSubtypingRefTestSingle      bool
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool
@@ -214,7 +215,8 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	gcTypeSubtypingDeclarations := admitRV64GCTypeSubtypingDeclarations(m) != 0
-	gcTypeSubtypingReferenceFunctions := admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0 || admitRV64GCTypeSubtypingRuntimeCallCast(m) || admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m) || admitRV64GCTypeSubtypingRuntimeTypedTableCall(m)
+	gcTypeSubtypingRefTestSingle := admitRV64GCTypeSubtypingRefTestSingle(m)
+	gcTypeSubtypingReferenceFunctions := admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0 || admitRV64GCTypeSubtypingRuntimeCallCast(m) || admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m) || admitRV64GCTypeSubtypingRuntimeTypedTableCall(m) || gcTypeSubtypingRefTestSingle
 	gcTypeSubtypingFinalityCallCast := admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m)
 	gcTypeSubtypingTypedTableCall := admitRV64GCTypeSubtypingRuntimeTypedTableCall(m)
 	gcTypeSubtypingRefFuncGlobals := admitRV64GCTypeSubtypingRefFuncGlobals(m) != 0
@@ -448,7 +450,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		for subtypeIndex := range rec.SubTypes {
 			ft := &rec.SubTypes[subtypeIndex].Comp
 			fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
-			if (s.ownedTable || s.importReferences) && !((gcTypeSubtypingDeclarations || gcTypeSubtypingRefFuncGlobals || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
+			if (s.ownedTable || s.importReferences || gcTypeSubtypingRefTestSingle) && !((gcTypeSubtypingDeclarations || gcTypeSubtypingRefFuncGlobals || gcTypeSubtypingRefTestSingle || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
 				var ok bool
 				fn.key, ok = m.StructuralTypeKeyChecked(flatTypeIndex)
 				if !ok {
@@ -459,6 +461,9 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				}
 				if gcTypeSubtypingTypedTableCall {
 					fn.key = rv64GCTypeSubtypingRuntimeTypedTableKey(flatTypeIndex, fn.key)
+				}
+				if gcTypeSubtypingRefTestSingle && ft.Kind == wasm.CompFunc {
+					fn.key = rv64GCTypeSubtypingRefTestSingleKey(flatTypeIndex, fn.key)
 				}
 			}
 			for k, t := range ft.Params {

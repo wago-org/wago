@@ -792,7 +792,7 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 	reject := func(detail string) error { return fmt.Errorf("RV64 closed reference functions: %s", detail) }
 	publicHostReferenceBoundary := rv64PublicHostReferenceBoundary(c)
 	publicDynamicHostReferenceBoundary := rv64PublicDynamicHostReferenceBoundary(c)
-	privateRuntimeCallCast := rv64GCTypeSubtypingRuntimeCallCast(c) || rv64GCTypeSubtypingRuntimeFinalityCallCast(c) || rv64GCTypeSubtypingRuntimeTypedTableCall(c)
+	privateRuntimeCallCast := rv64GCTypeSubtypingRuntimeCallCast(c) || rv64GCTypeSubtypingRuntimeFinalityCallCast(c) || rv64GCTypeSubtypingRuntimeTypedTableCall(c) || rv64GCTypeSubtypingRefTestSingle(c)
 	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports > 0) {
 		return reject("bounded numeric import directory required")
 	}

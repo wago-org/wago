@@ -87,10 +87,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.gcTypeSubtypingRefFuncGlobals = state.gcTypeSubtypingRefFuncGlobals
 		referenceTypes.gcTypeSubtypingRuntimeCallCast = state.gcTypeSubtypingRuntimeCallCast
 		referenceTypes.gcTypeSubtypingFinalityCallCast = state.gcTypeSubtypingFinalityCallCast
+		referenceTypes.gcTypeSubtypingRefTestSingle = state.gcTypeSubtypingRefTestSingle
 	}
 	var locals [256]bool
 	var localRefs [256]bool
-	privateRefs := floating && (state.ownedTable || state.importReferences || state.i31Core || state.gcTypeSubtypingRefFuncGlobals)
+	privateRefs := floating && (state.ownedTable || state.importReferences || state.i31Core || state.gcTypeSubtypingRefFuncGlobals || state.gcTypeSubtypingRefTestSingle)
 	functionRefs := state != nil && state.referenceFunctions
 	i31Refs := state != nil && state.i31Core
 	if functionRefs {
@@ -1581,7 +1582,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if err = profile.classifier.ClassifyInto(&r, op, &imm); err != nil {
 				return integerSummary{}, err
 			}
-			if state == nil || !state.i31Core && !state.gcTypeSubtypingRuntimeCallCast {
+			if state == nil || !state.i31Core && !state.gcTypeSubtypingRuntimeCallCast && !state.gcTypeSubtypingRefTestSingle {
 				return integerSummary{}, unsupported("GC instruction outside exact i31 profile")
 			}
 			switch imm.Kind {
@@ -2077,6 +2078,21 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrRefTest:
+				if state.gcTypeSubtypingRefTestSingle {
+					if len(state.types) <= 6 || !imm.HasHeapType || imm.HeapType.Kind() != wasm.HeapTypeIndex || imm.HeapType.Type().Rec || imm.HeapType.Type().Index != 4 {
+						return integerSummary{}, unsupported("single function ref.test type relation")
+					}
+					if _, err = popClass(true); err != nil {
+						return integerSummary{}, err
+					}
+					if live && emit != nil {
+						emit.functionReferenceTest(h, []uint64{state.types[6].key}, imm.Subopcode == 21)
+					}
+					if err = push(false); err != nil {
+						return integerSummary{}, err
+					}
+					break
+				}
 				concreteHeap := state.gcRefTestConcrete && imm.HasHeapType && (imm.HeapType == wasm.AbsHeap(wasm.HeapStruct) || imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index < 8)
 				tableHeap := state.gcRefTestTable && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index <= 2
 				abstractHeap := state.gcRefTestAbstract && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapAbs

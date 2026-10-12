@@ -78,7 +78,13 @@ declared function types share the same structural carrier. Source/artifact and
 actual compiler-free execution cover the five successful calls, both wrong-
 signature traps, post-trap re-entry, W^X leases/final unmapping, and hostile
 retained metadata under baseline QEMU RV64G without a collector. Products after
-`.19` and native cache/performance qualification remain open.
+`.20` now has the first exact function `ref.test` checkpoint: one private
+canonical descriptor crosses equivalent recursive type groups and produces a
+normalized true result through table-free genuine RV64 lowering. Source and
+compiler-free artifacts pin the full image and retained graph; W^X lifetime,
+hostile metadata, and private-runtime permission are covered without a
+collector. Products after `.20` and native cache/performance qualification
+remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

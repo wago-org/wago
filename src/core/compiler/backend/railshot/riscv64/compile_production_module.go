@@ -25,7 +25,7 @@ func AdmitProductionSource(data []byte) error {
 	if len(data) > MaxModuleBytes {
 		return unsupported("bounded source size")
 	}
-	if admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) || admitPublicHostReferenceBoundaryWire(data) || admitPublicDynamicHostReferenceBoundaryWire(data) || admitRV64I31CoreWire(data) || admitRV64GCRefEqWire(data) || admitRV64GCRefTestTableWire(data) || admitRV64GCRefTestConcreteWire(data) || admitRV64GCRefTestAbstractWire(data) || admitRV64GCExternWire(data) || admitRV64GCRefCastAbstractWire(data) || admitRV64GCRefCastConcreteWire(data) || admitRV64GCBrOnCastAbstractWire(data) || admitRV64GCBrOnCastFailAbstractWire(data) || admitRV64GCBrOnCastConcreteWire(data) || admitRV64GCBrOnCastFailConcreteWire(data) || admitRV64GCBrOnCastNullabilityWire(data) || admitRV64GCBrOnCastFailNullabilityWire(data) || admitRV64GCTypeSubtypingDeclarationsWire(data) || admitRV64GCTypeSubtypingRecursiveFunctionsWire(data) || admitRV64GCTypeSubtypingRefFuncGlobalsWire(data) || admitRV64GCTypeSubtypingRuntimeCallCastWire(data) || admitRV64GCTypeSubtypingRuntimeFinalityCallCastWire(data) || admitRV64GCTypeSubtypingRuntimeTypedTableCallWire(data) || admitRV64GCStructGetWire(data) || admitRV64GCStructMutationWire(data) || admitRV64GCStructNullWire(data) || admitRV64GCStructPackedWire(data) || admitRV64GCStructBasicWire(data) || admitRV64GCStructNumericGlobalsWire(data) || admitRV64GCArrayLocalWire(data) || admitRV64GCArrayUniformWire(data) || admitRV64GCArrayFixedLocalWire(data) || admitRV64GCArrayFixedOfficialWire(data) || admitRV64GCArrayDefaultOfficialWire(data) || admitRV64GCArrayPackedDataWire(data) || admitRV64GCArrayReferenceWire(data) || admitRV64GCArrayInitElemWire(data) || admitRV64GCArrayInitDataWire(data) || admitRV64GCArrayFillWire(data) || admitRV64GCArrayCopyWire(data) {
+	if admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) || admitPublicHostReferenceBoundaryWire(data) || admitPublicDynamicHostReferenceBoundaryWire(data) || admitRV64I31CoreWire(data) || admitRV64GCRefEqWire(data) || admitRV64GCRefTestTableWire(data) || admitRV64GCRefTestConcreteWire(data) || admitRV64GCRefTestAbstractWire(data) || admitRV64GCExternWire(data) || admitRV64GCRefCastAbstractWire(data) || admitRV64GCRefCastConcreteWire(data) || admitRV64GCBrOnCastAbstractWire(data) || admitRV64GCBrOnCastFailAbstractWire(data) || admitRV64GCBrOnCastConcreteWire(data) || admitRV64GCBrOnCastFailConcreteWire(data) || admitRV64GCBrOnCastNullabilityWire(data) || admitRV64GCBrOnCastFailNullabilityWire(data) || admitRV64GCTypeSubtypingDeclarationsWire(data) || admitRV64GCTypeSubtypingRecursiveFunctionsWire(data) || admitRV64GCTypeSubtypingRefFuncGlobalsWire(data) || admitRV64GCTypeSubtypingRuntimeCallCastWire(data) || admitRV64GCTypeSubtypingRuntimeFinalityCallCastWire(data) || admitRV64GCTypeSubtypingRuntimeTypedTableCallWire(data) || admitRV64GCTypeSubtypingRefTestSingleWire(data) || admitRV64GCStructGetWire(data) || admitRV64GCStructMutationWire(data) || admitRV64GCStructNullWire(data) || admitRV64GCStructPackedWire(data) || admitRV64GCStructBasicWire(data) || admitRV64GCStructNumericGlobalsWire(data) || admitRV64GCArrayLocalWire(data) || admitRV64GCArrayUniformWire(data) || admitRV64GCArrayFixedLocalWire(data) || admitRV64GCArrayFixedOfficialWire(data) || admitRV64GCArrayDefaultOfficialWire(data) || admitRV64GCArrayPackedDataWire(data) || admitRV64GCArrayReferenceWire(data) || admitRV64GCArrayInitElemWire(data) || admitRV64GCArrayInitDataWire(data) || admitRV64GCArrayFillWire(data) || admitRV64GCArrayCopyWire(data) {
 		return nil
 	}
 	if err := admitWireStartProfile(data, true, true, true); err != nil {
@@ -102,6 +102,11 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	}
 	opts.gcTypeSubtypingTypedTableCall = decodedGCTypeSubtypingRuntimeTypedTableCall
 	opts.gcTypeSubtypingRuntimeCallCast = opts.gcTypeSubtypingRuntimeCallCast || decodedGCTypeSubtypingRuntimeTypedTableCall
+	decodedGCTypeSubtypingRefTestSingle := admitRV64GCTypeSubtypingRefTestSingle(m)
+	if opts.GCTypeSubtypingRefTestSingleSource != decodedGCTypeSubtypingRefTestSingle {
+		return nil, unsupported("gc type-subtyping single ref.test source provenance")
+	}
+	opts.gcTypeSubtypingRefTestSingle = decodedGCTypeSubtypingRefTestSingle
 	decodedI31Core := admitRV64I31Core(m)
 	if opts.I31CoreSource != decodedI31Core {
 		return nil, unsupported("i31 core source provenance")
@@ -286,7 +291,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	}
 	var usesSWAR bool
 	var err error
-	if !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRecursiveFunctions && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcTypeSubtypingFinalityCallCast {
+	if !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRecursiveFunctions && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcTypeSubtypingFinalityCallCast && !opts.gcTypeSubtypingRefTestSingle {
 		usesSWAR, err = moduleUsesSWAR(m)
 		if err != nil {
 			return nil, err
@@ -307,7 +312,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		}
 	}
 	var referenceTails, indirectTails, referenceCalls, referenceControl bool
-	if !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRecursiveFunctions && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.i31Core && !opts.gcRefEq && !opts.gcRefTestTable && !opts.gcRefTestConcrete && !opts.gcRefTestAbstract && !opts.gcStructGet && !opts.gcStructMutation && !opts.gcStructNull && !opts.gcStructPacked && !opts.gcStructBasic && !opts.gcStructGlobals && !opts.gcArrayLocal && !opts.gcArrayUniform && !opts.gcArrayFixedLocal && !opts.gcArrayFixedOfficial && !opts.gcArrayPackedData && !opts.gcArrayReference && !opts.gcArrayInitElem && !opts.gcArrayInitData && !opts.gcArrayFill && !opts.gcArrayCopy {
+	if !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRecursiveFunctions && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcTypeSubtypingRefTestSingle && !opts.i31Core && !opts.gcRefEq && !opts.gcRefTestTable && !opts.gcRefTestConcrete && !opts.gcRefTestAbstract && !opts.gcStructGet && !opts.gcStructMutation && !opts.gcStructNull && !opts.gcStructPacked && !opts.gcStructBasic && !opts.gcStructGlobals && !opts.gcArrayLocal && !opts.gcArrayUniform && !opts.gcArrayFixedLocal && !opts.gcArrayFixedOfficial && !opts.gcArrayPackedData && !opts.gcArrayReference && !opts.gcArrayInitElem && !opts.gcArrayInitData && !opts.gcArrayFill && !opts.gcArrayCopy {
 		referenceTails, indirectTails, referenceCalls, referenceControl, err = admitProductionDynamicTails(m, opts.NativeReferenceCalls, opts.dynamicTailCalls, usesSWAR, opts.referenceFunctions)
 		if err != nil {
 			return nil, err
@@ -335,7 +340,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if usesSWAR {
 		return compileSWARProductionModule(m, opts)
 	}
-	if !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRecursiveFunctions && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcTypeSubtypingFinalityCallCast {
+	if !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRecursiveFunctions && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcTypeSubtypingFinalityCallCast && !opts.gcTypeSubtypingRefTestSingle {
 		if err := chargeDeclaredTypeBytes(m, &remaining); err != nil {
 			return nil, err
 		}
@@ -369,6 +374,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	}
 	if opts.gcTypeSubtypingTypedTableCall {
 		return stageGCTypeSubtypingRuntimeTypedTableCall(c, opts, m)
+	}
+	if opts.gcTypeSubtypingRefTestSingle {
+		return stageGCTypeSubtypingRefTestSingle(c, opts, m)
 	}
 	if opts.gcTypeSubtypingRuntimeCallCast {
 		return stageGCTypeSubtypingRuntimeCallCast(c, opts, m)
@@ -433,6 +441,22 @@ func stageGCTypeSubtypingRuntimeTypedTableCall(c *Compiled, opts CompileOptions,
 	return stageAdmittedProductionModule(c, opts)
 }
 
+func stageGCTypeSubtypingRefTestSingle(c *Compiled, opts CompileOptions, m *wasm.Module) (*enc.CompiledModule, error) {
+	if c == nil || !admitRV64GCTypeSubtypingRefTestSingle(m) || !c.state.gcTypeSubtypingRefTestSingle ||
+		!c.state.referenceFunctions || c.state.referenceCalls || c.state.ownedTable || len(c.functions) != 2 || len(c.code) == 0 ||
+		opts.NativeTailCalls || opts.localTailCalls || opts.importTailCalls || opts.dynamicTailCalls || opts.NativeReferenceCalls ||
+		!opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext {
+		return nil, unsupported("gc type-subtyping single ref.test staged ABI")
+	}
+	for _, function := range c.functions {
+		if !function.mode.referenceFunctions || function.mode.referenceCalls || !function.mode.production || !function.mode.interruptible ||
+			!function.mode.foreignTableCalls || !function.mode.invocationContext || function.mode.localTailCalls || function.mode.importTailCalls || function.mode.dynamicTailCalls {
+			return nil, unsupported("gc type-subtyping single ref.test function ABI")
+		}
+	}
+	return stageAdmittedProductionModule(c, opts)
+}
+
 func stageGCTypeSubtypingRecursiveFunctions(c *Compiled, opts CompileOptions, m *wasm.Module) (*enc.CompiledModule, error) {
 	if c == nil || admitRV64GCTypeSubtypingRecursiveFunctions(m) == 0 || !c.state.referenceFunctions || !c.state.referenceCalls ||
 		len(c.functions) != 3 || len(c.code) == 0 || opts.NativeTailCalls || opts.localTailCalls || opts.importTailCalls || opts.dynamicTailCalls ||
@@ -488,7 +512,7 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 	if err := admitHostBindings(m, opts); err != nil {
 		return err
 	}
-	if opts.ElideBoundsChecks || opts.GCTypeSubtypingRefTest && !opts.gcTypeSubtypingRuntimeCallCast || (!opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcRefEq && !opts.gcRefTestTable && !opts.gcRefTestConcrete && !opts.gcRefTestAbstract && !opts.gcStructGet && !opts.gcStructMutation && !opts.gcStructNull && !opts.gcStructPacked && !opts.gcStructBasic && !opts.gcStructGlobals && !opts.gcArrayLocal && !opts.gcArrayUniform && !opts.gcArrayFixedLocal && !opts.gcArrayFixedOfficial && !opts.gcArrayPackedData && !opts.gcArrayReference && !opts.gcArrayInitElem && !opts.gcArrayInitData && !opts.gcArrayFill && !opts.gcArrayCopy && (opts.GCStructHelpers || opts.GCArrayHelpers || opts.GCFrameRoots != nil || len(opts.Codegen.Module.GCTypeLayouts) != 0)) || len(opts.CustomInstructions) != 0 || opts.Codegen.Runtime != nil || opts.Codegen.Heap != nil || opts.Codegen.Module.Features.GC && !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.i31Core && !opts.gcRefEq && !opts.gcRefTestTable && !opts.gcRefTestConcrete && !opts.gcRefTestAbstract && !opts.gcStructGet && !opts.gcStructMutation && !opts.gcStructNull && !opts.gcStructPacked && !opts.gcStructBasic && !opts.gcStructGlobals && !opts.gcArrayLocal && !opts.gcArrayUniform && !opts.gcArrayFixedLocal && !opts.gcArrayFixedOfficial && !opts.gcArrayPackedData && !opts.gcArrayReference && !opts.gcArrayInitElem && !opts.gcArrayInitData && !opts.gcArrayFill && !opts.gcArrayCopy || !allowSWAR && opts.Codegen.Module.Features.V128 {
+	if opts.ElideBoundsChecks || opts.GCTypeSubtypingRefTest && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcTypeSubtypingRefTestSingle || (!opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcTypeSubtypingRefTestSingle && !opts.gcRefEq && !opts.gcRefTestTable && !opts.gcRefTestConcrete && !opts.gcRefTestAbstract && !opts.gcStructGet && !opts.gcStructMutation && !opts.gcStructNull && !opts.gcStructPacked && !opts.gcStructBasic && !opts.gcStructGlobals && !opts.gcArrayLocal && !opts.gcArrayUniform && !opts.gcArrayFixedLocal && !opts.gcArrayFixedOfficial && !opts.gcArrayPackedData && !opts.gcArrayReference && !opts.gcArrayInitElem && !opts.gcArrayInitData && !opts.gcArrayFill && !opts.gcArrayCopy && (opts.GCStructHelpers || opts.GCArrayHelpers || opts.GCFrameRoots != nil || len(opts.Codegen.Module.GCTypeLayouts) != 0)) || len(opts.CustomInstructions) != 0 || opts.Codegen.Runtime != nil || opts.Codegen.Heap != nil || opts.Codegen.Module.Features.GC && !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcTypeSubtypingRefTestSingle && !opts.i31Core && !opts.gcRefEq && !opts.gcRefTestTable && !opts.gcRefTestConcrete && !opts.gcRefTestAbstract && !opts.gcStructGet && !opts.gcStructMutation && !opts.gcStructNull && !opts.gcStructPacked && !opts.gcStructBasic && !opts.gcStructGlobals && !opts.gcArrayLocal && !opts.gcArrayUniform && !opts.gcArrayFixedLocal && !opts.gcArrayFixedOfficial && !opts.gcArrayPackedData && !opts.gcArrayReference && !opts.gcArrayInitElem && !opts.gcArrayInitData && !opts.gcArrayFill && !opts.gcArrayCopy || !allowSWAR && opts.Codegen.Module.Features.V128 {
 		return unsupported("production host/guard/GC/custom lowering is pending")
 	}
 	if opts.gcRefEq && (!opts.GCStructHelpers || !opts.GCArrayHelpers || opts.SyncHostSlots < 2) {
@@ -551,7 +575,7 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 	if opts.gcArrayCopy && (opts.GCStructHelpers || !opts.GCArrayHelpers || opts.SyncHostSlots < 7) {
 		return unsupported(fmt.Sprintf("gc array copy helper contract struct=%t array=%t slots=%d", opts.GCStructHelpers, opts.GCArrayHelpers, opts.SyncHostSlots))
 	}
-	if opts.gcTypeSubtypingDeclarations || opts.gcTypeSubtypingRecursiveFunctions || opts.gcTypeSubtypingRefFuncGlobals || opts.gcTypeSubtypingRuntimeCallCast || opts.gcRefEq || opts.gcRefTestTable || opts.gcRefTestConcrete || opts.gcRefTestAbstract || opts.gcStructGet || opts.gcStructMutation || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcStructGlobals || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy {
+	if opts.gcTypeSubtypingDeclarations || opts.gcTypeSubtypingRecursiveFunctions || opts.gcTypeSubtypingRefFuncGlobals || opts.gcTypeSubtypingRuntimeCallCast || opts.gcTypeSubtypingRefTestSingle || opts.gcRefEq || opts.gcRefTestTable || opts.gcRefTestConcrete || opts.gcRefTestAbstract || opts.gcStructGet || opts.gcStructMutation || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcStructGlobals || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy {
 		expected, err := frontend.BuildGCTypeMetadata(m)
 		if err != nil {
 			return err
@@ -563,7 +587,7 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 	// The public frontend emits inert function sentinels for numeric types.
 	// They do not require heap lowering, but nonfunction descriptors do.
 	for _, desc := range opts.Codegen.Module.GCTypeDescs {
-		if !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRecursiveFunctions && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcRefEq && !opts.gcRefTestTable && !opts.gcRefTestConcrete && !opts.gcRefTestAbstract && !opts.gcStructGet && !opts.gcStructMutation && !opts.gcStructNull && !opts.gcStructPacked && !opts.gcStructBasic && !opts.gcStructGlobals && !opts.gcArrayLocal && !opts.gcArrayUniform && !opts.gcArrayFixedLocal && !opts.gcArrayFixedOfficial && !opts.gcArrayPackedData && !opts.gcArrayReference && !opts.gcArrayInitElem && !opts.gcArrayInitData && !opts.gcArrayFill && !opts.gcArrayCopy && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
+		if !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRecursiveFunctions && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcTypeSubtypingRefTestSingle && !opts.gcRefEq && !opts.gcRefTestTable && !opts.gcRefTestConcrete && !opts.gcRefTestAbstract && !opts.gcStructGet && !opts.gcStructMutation && !opts.gcStructNull && !opts.gcStructPacked && !opts.gcStructBasic && !opts.gcStructGlobals && !opts.gcArrayLocal && !opts.gcArrayUniform && !opts.gcArrayFixedLocal && !opts.gcArrayFixedOfficial && !opts.gcArrayPackedData && !opts.gcArrayReference && !opts.gcArrayInitElem && !opts.gcArrayInitData && !opts.gcArrayFill && !opts.gcArrayCopy && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
 			return unsupported("production GC descriptor lowering is pending")
 		}
 	}
