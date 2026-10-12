@@ -587,3 +587,74 @@ p1 yield 21,901,818 ns, 3,420,965 bytes and 94 allocations, with unchanged
 1,587,220 native code bytes. This is near the prior allocation footprint; it
 is not a controlled compile speedup or a corpus-wide peak-RSS result. Evidence
 is `threads-shared-data-register-compile.txt`.
+
+## Host and cross-instance function imports
+
+`9f2782d7` admits slot, typed numeric, HostCall, Caller, and owned HostFuncRef
+imports with shared memory. Host byte views use the live shared backing. Tests
+cover defined/imported memory, artifact reload, register/wrapper ABIs, callback
+growth, independent concurrent roots, and owned binding lifetime.
+
+Native function imports use the global execution lease when their callee control
+can be shared. Private linear-memory roots retain their local lease. Publishing
+a callable control from a callback migrates its continuation to the global
+lease. Foreign dispatch preserves the producer's saved registers and carries
+the public root's identity and callback scope explicitly, without an ambient
+binding at the producer's shared control address.
+
+Blocking waits release the global lease so another root can notify them. They
+inherit the public caller's cancellation context. GC waits publish complete
+native frames and exact liveness masks before releasing collector leases.
+Concurrent roots can resume out of suspension order; parked activation slots
+reuse holes instead of requiring stack order. Tests retain GC structs across
+collection, wakeups, and activation-slot reuse, including a preceding inlined
+zero-timeout wait.
+
+A follow-up deterministic GC-result test exposed a separate ownership problem:
+two callbacks sharing one producer control address attached the first result
+to the second parked activation. Result translation now carries the exact
+activation token through dispatch. The test checks that the first completed
+callback leaves no result root on the still-parked second callback, collects,
+and then verifies the second result.
+
+Three repetitions of guarded race validation pass on Darwin/ARM64 and native
+Linux/AMD64 for `^TestThreads|^TestPluginGCHost|^TestHostReferenceTranslation|`
+`^TestCrossInstance|^TestGCFrame` (15.706 s and 18.608 s). The preceding
+host-import commit also passes the local Core 3 regression corpus; this does
+not establish full official conformance or host-import peer performance.
+
+An alternating before/current/current/before/before/current ARM64 capture at
+`9f2782d7` compares against `15daed25`. Every launch has five verified samples,
+two warmup batches, and a qualified 50 ms target. These are median launch times
+for 262,144 work units:
+
+| Existing thread kernel | Before ns | Current ns | Change |
+| --- | ---: | ---: | ---: |
+| Ordinary load/store | 208,076 | 205,237 | -1.36% |
+| SIMD load/store | 233,434 | 228,025 | -2.32% |
+| Bulk fill | 321,922 | 316,952 | -1.54% |
+| Overlapping bulk copy | 590,386 | 584,979 | -0.92% |
+| Passive data initialization | 294,131 | 294,125 | -0.00% |
+| Memory size / zero growth | 137,950 | 138,148 | +0.14% |
+| Atomic load/store | 271,723 | 272,969 | +0.46% |
+| Atomic RMW add | 243,623 | 243,141 | -0.20% |
+| Atomic compare exchange | 277,631 | 276,270 | -0.49% |
+| Wait mismatch / notify | 13,321,333 | 13,234,542 | -0.65% |
+| Atomic fence | 310,928 | 310,267 | -0.21% |
+
+No peer was retimed in this capture. Current adapter identity is
+`9f2782d7eff967e98378a54951186b491424038a/source-425fd6a2583c9ba507c6d8da2831e6915de198b69bb402bcadbd498bef7768a4`.
+Ignored evidence `threads-host-import-regression-ab-arm64.json` has SHA-256
+`bf847375d5544b4db5cd422c77be8c08ea6b83ffcee9ecf780731e7a1e692d3d`.
+The adjacent plan preserves ordering and exact artifact/adapter commands.
+
+Alternating 300 ms compile captures at the same two revisions yield scalar
+default 6,227/6,276 ns (+0.8%), Core 3 6,141/6,144 ns (+0.05%), and imported
+workers p1 23,654,821/23,490,631 ns (-0.7%). Scalar allocations remain
+19,202/19,058 bytes and 74/73 counts; worker allocations remain approximately
+3,420,931 bytes and 94 counts, with 1,587,220 native code bytes. A preceding
+sequential scalar capture was slower, motivating this alternating comparison.
+These fixtures show no material compile regression; peak RSS and corpus-wide
+compile costs remain unmeasured. Evidence is `threads-host-import-compile-ab.json`
+and `threads-host-import-scalar-compile-ab.json`. The exact-activation GC fix
+is validated separately and is not included in these timing captures.

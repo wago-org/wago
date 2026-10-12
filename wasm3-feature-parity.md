@@ -39,8 +39,11 @@ support alone does not establish performance parity.
   accessible; shared accesses and size queries see growth by other instances.
   Active data segments now initialize shared backing before start execution;
   passive `memory.init` and instance-local `data.drop` are admitted.
+  Host function imports and native cross-instance function imports now execute
+  with shared memory, including callback growth and blocking imported waits.
+  Concurrent foreign callbacks retain their own scope and GC activation roots.
   This remains partial thread support: shared memory64, multiple memories,
-  host function imports, tables, tags, and element segments remain restricted.
+  mutable global imports, tables, tags, and element segments remain restricted.
 
 ## Current validation
 
@@ -145,6 +148,12 @@ guarded race checks pass. Its alternating ARM64 median improves another 30.6%
 (429,827 to 298,301 ns), against a newly interleaved 190,241 ns w2c2 median,
 leaving a 1.568 ratio. Compile fixture allocation footprint and code size remain
 near the prior checkpoint. Full coverage, conformance, and parity remain open.
+
+The host-import checkpoint passes guarded race checks for threads, cross-instance
+calls, GC frame roots, and GC host callbacks on ARM64 and AMD64. Alternating
+ARM64 execution captures show no material regression across the 11 existing
+thread kernels. Alternating compile captures preserve allocations and worker
+code size. Host-import performance contracts and peer parity remain open.
 
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
