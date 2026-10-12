@@ -156,8 +156,10 @@ The host-import checkpoint passes guarded race checks for threads, cross-instanc
 calls, GC frame roots, and GC host callbacks on ARM64 and AMD64. Alternating
 ARM64 execution captures show no material regression across the 11 existing
 thread kernels. Alternating compile captures preserve allocations and worker
-code size. A new owned Go host-callback contract exposes a 314.2 ratio against
-the peer's C callback; callback parity remains open. A new shared-memory table
+code size. Preserving owned typed bindings reduces the pure identity kernel to
+a 3.216 ratio against the peer; an opaque Go callback improves 4.2 times but
+retains a 76.4 ratio against the C callback. Callback parity remains open. The
+pure case uses existing ARM64 native leaf arithmetic specialization. A new shared-memory table
 contract measures 0.432 times the peer median on ARM64. Native AMD64 testing
 exposed and repaired exported-table producer-context selection. The ARM LSE
 metadata flag now occupies padding, restoring the 784-byte Compiled footprint.

@@ -765,3 +765,81 @@ AMD64 (17.078 s), including all threads, cross-instance calls, GC frames, and
 the AMD64 layout checks. This adds numeric-global execution coverage; no
 mutable-global performance contract or reference-global composition claim is
 made here. Shared memory64 and multiple-memory thread combinations remain open.
+
+## Preserve owned typed callbacks
+
+`c6fb630b` stores the original immutable callback binding in HostFuncRef instead
+of wrapping it immediately in a slot callback. HostFuncRef remains 128 bytes.
+Attached pure typed numeric imports use the ordinary per-import scalar portal;
+their owner/store/signature validation and importer lifetime attachments remain
+in place. Scoped callbacks, gates, references, GC bridges, and materialized
+funcrefs retain their ownership-aware paths. Owned reference dispatch preserves
+the exact indexed signature and callback scope. An existing indexed-scalar
+signature test caught over-broad routing during development and now passes.
+
+The focused thread test uses a host-owned shared memory, grows it through another
+instance inside an owned typed callback, publishes the caller's function control
+inside that callback, and verifies native continuation after the private-to-global
+lease migration. It repeats with both ABIs, both cache settings, and artifact
+reload, and checks that closing the owner while its importer lives fails.
+Three-repeat guarded race checks pass on ARM64 (15.573 s) and native AMD64
+(19.056 s) for threads, plugin GC host imports, cross-instance calls, funcrefs,
+GC frames, exact signatures, reference translation, and the AMD64 layout check.
+
+The first controlled ARM64 identity capture against `6e55e4a0` yields
+58,522,125/567,072/182,133 ns for before/current/peer (three interleaved launches,
+five qualified 50 ms samples, two warmup batches). This is a 103.2-times semantic
+kernel improvement and a 3.114 peer ratio. It exposes the existing ARM64
+specialization for verified pure Go i32 leaf arithmetic: instructions are
+validated and copied into a native trampoline, with no Go transition remaining
+for the identity operation. It does not establish a generic Go callback speedup.
+Raw ignored evidence `threads-owned-typed-ab-arm64.json` has SHA-256
+`799fe05519995c844c3e231b4fddfcd94c2b7c34f9220207f2c08b740820c466`.
+
+wasm.fyi `a83302d` and wasm-bench `14994c6` add an explicit opaque callback
+profile beside that pure identity contract. The Wasm bytes and arithmetic oracle
+are identical, but the Go callback calls a noinline helper, so the native leaf
+proof rejects it and the call enters Go. The peer retains its existing noinline
+C identity callback with an opaque compiler memory barrier. The adapter's
+description states the distinction. The new artifact rebuilds byte-for-byte;
+performance-harness tests pass (three checks and one unrelated allocation-fixture
+skip). V8's pure identity capture verifies the same artifact and independent
+oracle; no opaque V8 execution-mode claim is made.
+
+A second alternating before/current/peer capture compares `859351a8` with
+`c6fb630b`, using the updated adapter source for both. Each kernel has three
+launches per revision/runtime, five verified qualified 50 ms samples and two
+warmup batches:
+
+| Callback mode, 262,144 work units | Before ns | Current ns | Peer ns | Change | Current / peer |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Pure identity, native arithmetic eligible | 57,013,792 | 574,743 | 178,689 | -98.99% | 3.216 |
+| Opaque identity, Go transition retained | 57,974,583 | 13,810,073 | 180,695 | -76.18% | 76.427 |
+
+Opaque callbacks improve 4.20 times; Go/C callback transition parity remains
+open. The additional noinline Go helper is part of the opaque binding's measured
+cost. These captures are ARM64; native AMD64 execution is validated separately.
+Both sustained artifacts have SHA-256
+`c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53`.
+Current adapter identity is
+`c6fb630b4e8945c616fb61b357cc128714b3d979/source-746256a88ca127347ed3eb94ccd60ee70bb41c386f7c4042a4e1a595f6413416`.
+Before identity is
+`859351a82a13389d6315de7c3247e9ccb81df307/source-7080eb339a04b1a3d7848c301e79113deeded6a52782f1dc6151645ec6a8400b`.
+Ignored evidence `threads-owned-opaque-ab-arm64.json` has SHA-256
+`1f664ce5f76b2667f5a4646d37fea3ec073152330d833e934ac5e088e1bcd9b0`;
+the adjacent plan retains commands and ordering. Updated peer adapter SHA-256
+is `47e87191034e974e1b67763b4e6fac406946807d04b9e5141eca3d6c2a6b3488`,
+with incremental profile patch at
+`docs/benchmarks/wasm3-2026-10-12/aot-opaque-thread-host.patch`.
+
+An alternating six-launch 300 ms compile capture against `859351a8` yields
+default scalar 6,529/6,175 ns and Core 3 scalar 6,023/5,964 ns. Allocations are
+unchanged at 19,202/19,058 bytes and 74/73 counts. Imported workers p1 yield
+22,965,283/23,550,324 ns (+2.55%), median 3,421,317/3,421,321 bytes, 95 allocations
+in both revisions, and identical 1,587,220 native code bytes. The preceding
+sequential capture also had 95 allocations, so comparison with the older
+94-allocation checkpoint does not attribute that difference to this change.
+Compiled remains 784 bytes. These samples protect this fixture's allocation
+footprint; they do not establish corpus-wide compile latency or peak RSS.
+Evidence is `threads-owned-typed-compile-ab.json` and the two preceding
+`threads-owned-typed-{scalar,worker}-compile.txt` captures.
