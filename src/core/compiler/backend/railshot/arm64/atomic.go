@@ -163,13 +163,15 @@ func (f *fn) atomicLoad(d railshared.Atomic) error {
 func (f *fn) atomicStore(d railshared.Atomic) error {
 	f.materializePendingLoads()
 	f.invalidateStoreForward()
-	value := f.materialize(f.popValue())
+	value, owned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(value)
 	addr := f.atomicAddr(d.Offset, int(d.Size))
 	f.a.Stlr(value, addr, int(d.Size))
 	f.release(addr)
 	f.pinned = f.pinned.remove(value)
-	f.release(value)
+	if owned {
+		f.release(value)
+	}
 	return nil
 }
 

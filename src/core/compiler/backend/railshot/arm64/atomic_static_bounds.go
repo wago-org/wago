@@ -24,13 +24,15 @@ func (f *fn) staticAtomicAddr(offset uint64, size int) (Reg, bool) {
 	addr := f.allocReg(0)
 	f.ld64(addr, linMemReg, -int32(offMemoryDirPtr))
 	f.ld64(addr, addr, 0) // memory zero backing base
-	if ea <= 0x7fffffff {
-		f.addDisp(addr, addr, int32(ea), true)
-	} else {
-		t := f.allocReg(maskOf(addr))
-		f.a.MovImm64(t, ea)
-		f.a.Add64(addr, addr, t)
-		f.release(t)
+	if ea != 0 {
+		if ea <= 0x7fffffff {
+			f.addDisp(addr, addr, int32(ea), true)
+		} else {
+			t := f.allocReg(maskOf(addr))
+			f.a.MovImm64(t, ea)
+			f.a.Add64(addr, addr, t)
+			f.release(t)
+		}
 	}
 	f.stats.peep("atomic-static-bounds")
 	return addr, true
