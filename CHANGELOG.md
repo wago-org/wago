@@ -37,6 +37,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   
 ### Fixed
 
+- Read Bash completion output synchronously while preserving nested arguments,
+  candidate text, and file-completion fallback for empty results.
+
 - Report batched Wago and wazero execution benchmark allocations per operation,
   matching their timing units instead of reporting allocations per batch.
 - Check encoded ARM64 register aliases in NEON shuffle and byte-movemask helpers

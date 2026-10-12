@@ -17,7 +17,14 @@ func TestMain(m *testing.M) {
 			fmt.Fprintln(os.Stderr, "unexpected completion helper arguments:", os.Args[1:])
 			os.Exit(2)
 		}
-		fmt.Fprintln(os.Stdout, "install")
+		if candidates, ok := os.LookupEnv("WAGO_COMPLETION_TEST_CANDIDATES"); ok {
+			fmt.Fprint(os.Stdout, candidates)
+		} else {
+			fmt.Fprintln(os.Stdout, "install")
+		}
+		if os.Getenv("WAGO_COMPLETION_TEST_FAIL") == "1" {
+			os.Exit(2)
+		}
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
@@ -83,6 +90,41 @@ func TestInstalledZshCompletionCanBeSourced(t *testing.T) {
 }
 
 func TestBashCompletionPassesNestedCommandWords(t *testing.T) {
+	// Each observation starts a fresh shell and native completion helper.
+	for observation := 0; observation < 20; observation++ {
+		t.Run(fmt.Sprint(observation), func(t *testing.T) {
+			output := runBashCompletion(t, "", `printf '%s\n' "${COMPREPLY[@]}"`)
+			if got := strings.TrimSpace(output); got != "install" {
+				t.Fatalf("bash nested completion = %q, want install", got)
+			}
+		})
+	}
+}
+
+func TestBashCompletionPreservesCandidateLines(t *testing.T) {
+	for _, tc := range []struct{ name, candidates, want string }{
+		{"empty", "", "0\n"},
+		{"multiple", "install\nuninstall\n", "2\n[install]\n[uninstall]\n"},
+		{"spaces_and_backslashes", " package name \nC:\\path\\name\n*?[x]\n", "3\n[ package name ]\n[C:\\path\\name]\n[*?[x]]\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := runBashCompletion(t, "", `printf '%d\n' "${#COMPREPLY[@]}"; for candidate in "${COMPREPLY[@]}"; do printf '[%s]\n' "$candidate"; done`, "WAGO_COMPLETION_TEST_CANDIDATES="+tc.candidates)
+			if got != tc.want {
+				t.Fatalf("completion = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBashCompletionHelperErrorAllowsFallbackWithErrexit(t *testing.T) {
+	got := runBashCompletion(t, "set -e; ", `printf '%d\n' "${#COMPREPLY[@]}"; printf 'alive\n'`, "WAGO_COMPLETION_TEST_CANDIDATES=", "WAGO_COMPLETION_TEST_FAIL=1")
+	if got != "0\nalive\n" {
+		t.Fatalf("completion = %q, want empty fallback and live shell", got)
+	}
+}
+
+func runBashCompletion(t *testing.T, prefix, check string, environment ...string) string {
+	t.Helper()
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("bash is not installed")
@@ -97,15 +139,14 @@ func TestBashCompletionPassesNestedCommandWords(t *testing.T) {
 	if err := os.WriteFile(path, []byte(script), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(bash, "--noprofile", "--norc", "-c", `. "$1"; COMP_WORDS=(wago version ""); COMP_CWORD=2; _wago_complete; printf '%s\n' "${COMPREPLY[@]}"`, "_", path)
+	command := exec.Command(bash, "--noprofile", "--norc", "-c", prefix+`. "$1"; COMP_WORDS=(wago version ""); COMP_CWORD=2; _wago_complete; `+check, "_", path)
 	command.Env = append(os.Environ(), "PATH="+root+string(os.PathListSeparator)+os.Getenv("PATH"), "WAGO_COMPLETION_TEST_HELPER=1")
+	command.Env = append(command.Env, environment...)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("bash nested completion (%s): %v\n%s", bash, err, output)
 	}
-	if got := strings.TrimSpace(string(output)); got != "install" {
-		t.Fatalf("bash nested completion = %q, want install", got)
-	}
+	return string(output)
 }
 
 func TestZshCompletionPassesNestedCommandWords(t *testing.T) {
