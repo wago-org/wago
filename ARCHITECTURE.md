@@ -149,7 +149,12 @@ module-local GC globals, private immutable local-function tables, one private
 collector-reference table, direct recursion, and no start/tag/EH state. A
 structured-CFG dataflow pass computes exact local liveness per allocation and
 callsite; amd64 adds hidden operand spill offsets, compact safepoint IDs, frame
-size, adapter return, and recursive call return-PC maps. The synchronous helper
+size, adapter return, and recursive call return-PC maps. The compiler retains
+each collector-reference local's type after frame-liveness compaction:
+`local.get` can move a reference to the operand stack before a later allocation,
+even when that local itself is dead at the allocation. The stack value then
+receives its own exact root offset.
+The synchronous helper
 control frame publishes parked RSP, and Go exposes validated off-heap slots from
 each walked frame directly as mutable collector roots. Throughput/Tiny stress
 collection and the root walker remain zero-allocation after warm-up. The current codec
@@ -184,7 +189,8 @@ structurally equivalent target types, preserves cycles/internal sharing, assigns
 new target identity, and rejects non-null opaque store-owned payloads. Direct
 cross-Runtime compact-handle sharing remains impossible. The codec persists helper
 admission, the required native-GC ABI version, and the 16-byte `v128` storage
-contract, but never compact handles. AMD64 final scalar struct/array accesses and initialized final-struct
+contract, but never compact handles. AMD64 final scalar struct/array accesses,
+compact collector-reference reads from final structs, and initialized final-struct
 allocation use collector native ABI version 2. Artifact loading validates the Go/native
 layout and the codec records the required ABI; instantiation validates the immutable
 instance view, local canonical-type map, collector identity, collector version, and
@@ -200,7 +206,12 @@ remain, so one-object repeated runs avoid the fixed leaf while distinct objects 
 sharing. Bounded straight-line reuse may retain one derived object address only while
 its unchanged compact local remains the root and no call,
 allocation, collection, host transition, control/EH edge, local mutation, or other
-invalidating opcode can intervene. Final abstract
+invalidating opcode can intervene. Stack canonicalization retains the pin on a
+valid address certificate so operand allocation cannot overwrite it. Final struct
+reference reads load a zero-extended four-byte compact handle and mark the result
+as a root for later calls and allocation. They use the same checked parent resolver
+as scalar reads; they change no edge and require no write barrier. Open structs,
+function references, and external references retain the getter helper. Final abstract
 reference stores may bypass helpers only when no metadata growth is required;
 vector, non-final, bulk, cardless/unremembered, and Tiny barrier paths remain
 helper-bound. Arm64 builds lower struct/array/i31 and dynamic cast/test helpers

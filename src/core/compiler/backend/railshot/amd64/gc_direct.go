@@ -13,8 +13,8 @@ import (
 )
 
 // directGCScalar describes a pointer-free scalar storage location that can be
-// accessed without entering the parked Go helper. Reference and v128 storage
-// deliberately remain helper-bound until their barrier/vector paths are proven.
+// accessed without entering the parked Go helper. Reference writes and v128
+// storage use separate checked barrier/vector paths.
 type gcSharedStubKind uint8
 
 const (
@@ -2606,6 +2606,17 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 
 func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex uint32, helper uint32) bool {
 	off, scalar, final, ok := f.directGCStructLayout(typeIndex, fieldIndex)
+	collectorRef := false
+	if !ok && helper == gcStructGet {
+		// A read changes no edge and needs no write barrier. Keep this separate
+		// from scalar storage so reference writes and opaque func/extern fields
+		// retain their checked helper/barrier paths.
+		field, fieldFinal, found := f.gcStructFieldLayout(typeIndex, fieldIndex)
+		if found && field.CollectorRef && field.Size == 4 && field.Offset <= math.MaxInt32-gc.PayloadOffset-4 {
+			off, scalar, final, ok = field.Offset, directGCScalar{size: 4, typ: mtI64}, fieldFinal, true
+			collectorRef = true
+		}
+	}
 	if !ok || (!final && !gcSharedStubsEnabled) {
 		return false
 	}
@@ -2640,10 +2651,15 @@ func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex ui
 	}
 	result := f.allocReg(maskOf(obj))
 	signed := helper == gcStructGetS
-	f.a.LoadIdx(result, obj, RSP, disp, scalar.size, signed, scalar.typ == mtI64)
+	f.a.LoadIdx(result, obj, RSP, disp, scalar.size, signed, scalar.typ == mtI64 && !collectorRef)
 	done()
 	f.spillFloor = oldFloor
 	f.pushReg(result, scalar.typ)
+	if collectorRef {
+		// Publish the loaded compact child as a root, without assigning it the
+		// parent's local provenance or retaining its raw address as a value.
+		f.markTopGCReference()
+	}
 	return true
 }
 

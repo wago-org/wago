@@ -147,9 +147,13 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string, ana
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
+		allReferenceLocals := plan.Locals
 		plan.Locals, liveMasks, _, err = gcFrameCompactLiveLocalsArena(plan.Locals, liveMasks)
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
+		}
+		if len(plan.Locals) != len(allReferenceLocals) {
+			plan.AllReferenceLocals = allReferenceLocals
 		}
 		if uint64(safepointBase)+uint64(liveMasks.allocationN) > uint64(shared.GCSafepointIDMax) {
 			return reject("function %d exceeds the dense safepoint ID bound", function)
