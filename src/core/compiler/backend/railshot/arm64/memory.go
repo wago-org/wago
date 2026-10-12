@@ -1506,6 +1506,14 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	constantLength := -1
+	if memoryIndex == 0 && f.threadedMemory0 {
+		if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
+			if n := uint32(top.st.cval); n <= 64 {
+				constantLength = int(n)
+			}
+		}
+	}
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
@@ -1530,7 +1538,25 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.ld64(X13, X13, disp) // segment base pointer
 
 	f.a.Add64(X10, X10, X13) // absolute src
-	f.copyFwdLoop(X9, X10, X11)
+	if constantLength >= 0 {
+		// Passive source and destination cannot alias. Emit exact, ascending
+		// chunks after both checks; zero length still validates both ranges.
+		f.stats.peep("meminit-unroll")
+		if constantLength != 0 {
+			f.a.MovImm64(X11, 0)
+		}
+		for off := 0; off < constantLength; {
+			size := 8
+			for size > constantLength-off {
+				size >>= 1
+			}
+			f.a.LoadIdx(X12, X10, X11, int32(off), size, false, size == 8)
+			f.a.StoreIdx(X9, X11, X12, int32(off), size)
+			off += size
+		}
+	} else {
+		f.copyFwdLoop(X9, X10, X11)
+	}
 
 	f.setDepth(d - 3)
 	return nil

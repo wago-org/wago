@@ -1285,6 +1285,14 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	constantLength := -1
+	if memoryIndex == 0 && f.threadedMemory0 {
+		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
+			if n := uint32(top.st.cval); n <= 64 {
+				constantLength = int(n)
+			}
+		}
+	}
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
@@ -1314,7 +1322,25 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.a.Load64(R8, R8, disp) // segment base pointer
 
 	f.a.Add64(RSI, R8) // absolute src
-	f.a.RepMovsb()
+	if constantLength >= 0 {
+		// Passive source and destination cannot alias. Emit exact, ascending
+		// chunks after both checks; zero length still validates both ranges.
+		f.stats.peep("meminit-unroll")
+		if constantLength != 0 {
+			f.a.MovImm64(RCX, 0)
+		}
+		for off := 0; off < constantLength; {
+			size := 8
+			for size > constantLength-off {
+				size >>= 1
+			}
+			f.a.LoadIdx(RAX, RSI, RCX, int32(off), size, false, size == 8)
+			f.a.StoreIdx(RDI, RCX, RAX, int32(off), size)
+			off += size
+		}
+	} else {
+		f.a.RepMovsb()
+	}
 
 	f.setDepth(d - 3)
 	return nil

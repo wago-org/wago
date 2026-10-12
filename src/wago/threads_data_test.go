@@ -12,7 +12,7 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-func threadsDataModule(imported bool, activeOffset int32) []byte {
+func threadsDataModule(imported bool, activeOffset int32, count int) []byte {
 	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(
 		wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil),
 		wasmtest.FuncType(nil, nil),
@@ -26,13 +26,21 @@ func threadsDataModule(imported bool, activeOffset int32) []byte {
 	if !imported {
 		sections = append(sections, wasmtest.Section(5, wasmtest.Vec([]byte{3, 1, 3})))
 	}
+	initBody := []byte{0x20, 0, 0x20, 1}
+	if count < 0 {
+		initBody = append(initBody, 0x20, 2)
+	} else {
+		initBody = append(initBody, 0x41)
+		initBody = append(initBody, wasmtest.SLEB32(int32(count))...)
+	}
+	initBody = append(initBody, 0xfc, 8, 0, 0, 0x0b)
 	sections = append(sections,
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("init", 0, 0), wasmtest.ExportEntry("drop", 0, 1), wasmtest.ExportEntry("grow", 0, 2))),
 		// The start function verifies active data was initialized on the actual backing.
 		wasmtest.Section(8, []byte{3}),
 		wasmtest.Section(12, []byte{3}),
 		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 8, 0, 0, 0x0b}),
+			wasmtest.Code(initBody),
 			wasmtest.Code([]byte{0xfc, 9, 0, 0x0b}),
 			wasmtest.Code([]byte{0x20, 0, 0x40, 0, 0x0b}),
 			wasmtest.Code([]byte{0x41, 8, 0x2d, 0, 0, 0x41, 0x11, 0x47, 0x04, 0x40, 0x00, 0x0b, 0x0b}),
@@ -45,7 +53,7 @@ func threadsDataModule(imported bool, activeOffset int32) []byte {
 		return append(result, data...)
 	}
 	sections = append(sections, wasmtest.Section(11, wasmtest.Vec(
-		[]byte{1, 8, 1, 3, 5, 7, 9, 11, 13, 15},
+		append([]byte{1, 64}, threadsDataSeed()...),
 		active(8, []byte{0x11, 0x22, 0x33, 0x44}),
 		active(activeOffset, []byte{0x55, 0x66, 0x77}),
 	)))
@@ -56,7 +64,7 @@ func TestThreadsSharedDataExecutionAndCodec(t *testing.T) {
 	cfg := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit)
 	for _, imported := range []bool{false, true} {
 		t.Run(fmt.Sprintf("imported=%t", imported), func(t *testing.T) {
-			c, err := cfg.Compile(threadsDataModule(imported, 10))
+			c, err := cfg.Compile(threadsDataModule(imported, 10, -1))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -79,7 +87,7 @@ func TestThreadsSharedDataExecutionAndCodec(t *testing.T) {
 				if got := in.mem()[8:13]; !bytes.Equal(got, []byte{0x11, 0x22, 0x55, 0x66, 0x77}) {
 					t.Fatalf("active order: %x", got)
 				}
-				source := []byte{1, 3, 5, 7, 9, 11, 13, 15}
+				source := threadsDataSeed()
 				for _, args := range [][3]uint64{{32, 0, 8}, {33, 1, 7}, {65535, 7, 1}, {65536, 8, 0}, {65536, 0, 1}, {20, 8, 1}, {20, 9, 0}, {0xffffffff, 0, 1}, {1<<32 | 31, 1<<32 | 2, 1<<32 | 3}} {
 					before := bytes.Clone(in.mem())
 					dst, src, n := uint64(uint32(args[0])), uint64(uint32(args[1])), uint64(uint32(args[2]))
@@ -102,7 +110,7 @@ func TestThreadsSharedDataExecutionAndCodec(t *testing.T) {
 				if _, err := in.Invoke("init", 65539, 0, 8); err != nil {
 					t.Fatal(err)
 				}
-				if !bytes.Equal(in.mem()[65539:65547], source) {
+				if !bytes.Equal(in.mem()[65539:65547], source[:8]) {
 					t.Fatal("init did not use grown backing")
 				}
 				if _, err := in.Invoke("drop"); err != nil {
@@ -132,7 +140,7 @@ func TestThreadsSharedDataExecutionAndCodec(t *testing.T) {
 
 func TestThreadsSharedActiveDataFailureReleasesMemory(t *testing.T) {
 	cfg := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit)
-	c, err := cfg.Compile(threadsDataModule(true, 65535))
+	c, err := cfg.Compile(threadsDataModule(true, 65535, -1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +163,7 @@ func TestThreadsSharedActiveDataFailureReleasesMemory(t *testing.T) {
 
 func TestThreadsSharedActiveDataConcurrentGrowth(t *testing.T) {
 	cfg := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit)
-	c, err := cfg.Compile(threadsDataModule(true, 10))
+	c, err := cfg.Compile(threadsDataModule(true, 10, -1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,5 +224,48 @@ func TestThreadsSharedActiveDataConcurrentGrowth(t *testing.T) {
 	}
 	if got := memory.UnsafeBytes(); len(got) != 3*65536 || !bytes.Equal(got[8:13], []byte{0x11, 0x22, 0x55, 0x66, 0x77}) {
 		t.Fatal("concurrent initialization or growth lost published state")
+	}
+}
+
+func threadsDataSeed() []byte {
+	source := make([]byte, 64)
+	for i := range source {
+		source[i] = byte(2*i + 1)
+	}
+	return source
+}
+
+func TestThreadsSharedDataConstantLengths(t *testing.T) {
+	cfg := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit)
+	for _, n := range []int{0, 1, 2, 3, 4, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65} {
+		t.Run(fmt.Sprint(n), func(t *testing.T) {
+			c, err := cfg.Compile(threadsDataModule(false, 10, n))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+				in, err := Instantiate(compiled, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer in.Close()
+				for _, pair := range [][2]uint64{{33, 0}, {33, 1}, {33, 64}, {33, 65}, {65536 - uint64(n), 0}, {65537 - uint64(n), 0}} {
+					want := bytes.Clone(in.mem())
+					dst, src := pair[0], pair[1]
+					valid := dst+uint64(n) <= uint64(len(want)) && src+uint64(n) <= 64
+					if valid {
+						copy(want[dst:dst+uint64(n)], threadsDataSeed()[src:src+uint64(n)])
+					}
+					_, err := in.Invoke("init", dst, src, 0)
+					if valid && err != nil || !valid && err == nil {
+						t.Fatalf("n=%d dst=%d src=%d valid=%t: %v", n, dst, src, valid, err)
+					}
+					if !bytes.Equal(want, in.mem()) {
+						t.Fatal("constant init wrote incorrect bytes")
+					}
+				}
+			}
+		})
 	}
 }
