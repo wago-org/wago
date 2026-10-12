@@ -105,7 +105,27 @@ func nativeGCStructAllocLayout(m *wasm.Module, typeIndex uint32) (fields []nativ
 		entry := nativeGCStructAllocField{offset: off, size: size, slot: slot}
 		if field.Storage().Val().Kind() == wasm.ValRef {
 			heap := field.Storage().Val().Ref().Heap()
-			if heap.Kind() != wasm.HeapAbs || (heap.Abs() != wasm.HeapAny && heap.Abs() != wasm.HeapEq) || size != 4 {
+			if size != 4 || !nativeGCCollectorRefStorage(m, typeIndex, field.Storage()) {
+				return nil, 0, 0, false, false
+			}
+			switch heap.Kind() {
+			case wasm.HeapAbs:
+				if heap.Abs() != wasm.HeapAny && heap.Abs() != wasm.HeapEq {
+					return nil, 0, 0, false, false
+				}
+			case wasm.HeapTypeIndex:
+				target := heap.Type().Index
+				if heap.Type().Rec {
+					base, _, found := nativeGCRecGroup(m, typeIndex)
+					if !found {
+						return nil, 0, 0, false, false
+					}
+					target += base
+				}
+				if _, found := nativeGCFlatType(m, target); !found {
+					return nil, 0, 0, false, false
+				}
+			default:
 				return nil, 0, 0, false, false
 			}
 			entry.ref = true
@@ -1498,6 +1518,38 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 		f.emitNativeDeadStructChargeStub(objectSize, objectAlign, inline, resultSlot)
 		return
 	}
+	st, ok := f.stagedStructType(typeIndex)
+	if !ok || len(st.Comp.Fields) != len(fields) {
+		panic("amd64: invalid native struct field types")
+	}
+	var typedTargets []uint32
+	var typedFinal []bool
+	for i, field := range st.Comp.Fields {
+		storage := field.Storage()
+		if storage.Val().Kind() != wasm.ValRef || storage.Val().Ref().Heap().Kind() != wasm.HeapTypeIndex {
+			continue
+		}
+		if typedTargets == nil {
+			typedTargets = make([]uint32, len(fields))
+			typedFinal = make([]bool, len(fields))
+		}
+		target := storage.Val().Ref().Heap().Type().Index
+		if storage.Val().Ref().Heap().Type().Rec {
+			if layout, found := f.gcTypeLayout(typeIndex, wasm.CompStruct); found {
+				target += layout.RecBase
+			} else if base, _, found := nativeGCRecGroup(f.m, typeIndex); found {
+				target += base
+			} else {
+				panic("amd64: native struct reference has no recursive group")
+			}
+		}
+		typedTargets[i] = target
+		targetType, found := f.stagedGCType(target)
+		if !found || (targetType.Comp.Kind != wasm.CompStruct && targetType.Comp.Kind != wasm.CompArray) {
+			panic("amd64: native struct reference target is not a collector type")
+		}
+		typedFinal[i] = targetType.Final
+	}
 	a := f.a
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
@@ -1512,6 +1564,9 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 			preserve[reg-R9] = true
 		}
 	}
+	if typedTargets != nil {
+		a.Push(R12)
+	}
 	a.Push(R8)
 	for i, yes := range preserve {
 		if yes {
@@ -1519,6 +1574,9 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 		}
 	}
 	stackDelta := int32(8)
+	if typedTargets != nil {
+		stackDelta += 8
+	}
 	for _, yes := range preserve {
 		if yes {
 			stackDelta += 8
@@ -1595,11 +1653,18 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 	a.TestSelf(R11, true)
 	addFallback(a.JccPlaceholder(condE))
 	a.Add64(R11, RCX)
+	a.Load64(RAX, R8, gc.NativeViewAllocationCountOffset)
+	a.TestSelf(RAX, true)
+	addFallback(a.JccPlaceholder(condE))
+	if typedTargets != nil {
+		a.MovRegReg32(R12, RCX) // keep the nursery cursor while checking field types
+	}
 
-	for _, field := range fields {
+	for i, field := range fields {
 		if !field.CollectorRef {
 			continue
 		}
+		typed := typedTargets != nil && st.Comp.Fields[i].Storage().Val().Ref().Heap().Kind() == wasm.HeapTypeIndex
 		loadArg32(RAX, field.Slot)
 		a.TestSelf(RAX, false)
 		nullOK := -1
@@ -1611,7 +1676,12 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 		a.MovRegReg32(RDX, RAX)
 		a.AluRI(4, RDX, 1, false)
 		a.TestSelf(RDX, false)
-		i31OK := a.JccPlaceholder(condNE)
+		i31OK := -1
+		if typed {
+			addFallback(a.JccPlaceholder(condNE))
+		} else {
+			i31OK = a.JccPlaceholder(condNE)
+		}
 		a.ShiftImm(5, RAX, 1, false)
 		a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
 		addFallback(a.JccPlaceholder(condAE))
@@ -1625,11 +1695,66 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 		addFallback(a.JccPlaceholder(condE))
 		a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceTiny), false)
 		addFallback(a.JccPlaceholder(condA))
+		if typed {
+			// Verify that a host-supplied or stale reference cannot enter the
+			// object through the native path.
+			a.ImulRI(RAX, gc.NativeViewSpaceStride, true)
+			a.Add64(RAX, R8)
+			a.Load32(RDX, RAX, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceBytesOffset))
+			a.Load32(RCX, R10, gc.NativeHandleOffsetOffset)
+			a.Cmp32(RCX, RDX)
+			addFallback(a.JccPlaceholder(condAE))
+			a.Sub32(RDX, RCX)
+			a.Load32(R10, R10, gc.NativeHandleSizeOffset)
+			a.Cmp32(R10, RDX)
+			addFallback(a.JccPlaceholder(condA))
+			a.AluRI(cmpDigit, R10, int32(gc.HeaderSize), false)
+			addFallback(a.JccPlaceholder(condB))
+			a.Load64(RAX, RAX, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceBaseOffset))
+			a.TestSelf(RAX, true)
+			addFallback(a.JccPlaceholder(condE))
+			a.Add64(RAX, RCX)
+			a.Load32(RAX, RAX, 0)
+			a.Load64(RDX, RBX, -int32(abi.GCNativeViewPtrOffset))
+			a.Load64(RDX, RDX, gc.NativeInstanceViewLocalTypesOffset)
+			a.Load32(RDX, RDX, int32(typedTargets[i]*4))
+			if typedFinal[i] {
+				a.Cmp32(RAX, RDX)
+				addFallback(a.JccPlaceholder(condNE))
+			} else {
+				a.MovRegReg32(R10, RAX)
+				a.AluRM(cmpRMcode, R10, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+				addFallback(a.JccPlaceholder(condAE))
+				a.MovRegReg32(R10, RDX)
+				a.AluRM(cmpRMcode, R10, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+				addFallback(a.JccPlaceholder(condAE))
+				a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
+				a.TestSelf(R10, true)
+				addFallback(a.JccPlaceholder(condE))
+				a.ImulRI(RAX, 8, true)
+				a.LoadIdx(RAX, R10, RAX, 0, 8, false, true)
+				a.ImulRI(RDX, 8, true)
+				a.LoadIdx(RDX, R10, RDX, 0, 8, false, true)
+				a.MovReg64(RCX, RAX)
+				a.ShiftImm(5, RCX, 32, true)
+				a.MovReg64(R10, RDX)
+				a.ShiftImm(5, R10, 32, true)
+				a.Cmp32(RCX, R10)
+				addFallback(a.JccPlaceholder(condB))
+				a.Cmp32(RAX, RDX)
+				addFallback(a.JccPlaceholder(condA))
+			}
+		}
 		valid := a.Len()
 		if nullOK >= 0 {
 			a.PatchRel32(nullOK, valid)
 		}
-		a.PatchRel32(i31OK, valid)
+		if i31OK >= 0 {
+			a.PatchRel32(i31OK, valid)
+		}
+	}
+	if typedTargets != nil {
+		a.MovRegReg32(RCX, R12)
 	}
 
 	// Complete object bytes before publishing the handle's nursery-space byte.
@@ -1708,6 +1833,9 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 		}
 	}
 	a.Pop(R8)
+	if typedTargets != nil {
+		a.Pop(R12)
+	}
 	if !inline {
 		a.Ret()
 	}

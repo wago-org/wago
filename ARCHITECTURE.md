@@ -198,7 +198,12 @@ handle stride before publishing basedata offset 280. Native accesses then trust 
 immutable facts while reloading and validating mutable handle ranges/liveness, heap
 space and backing extents, object extents and canonical types, array bounds,
 remembered membership, any existing object-card interval, and the transactional
-native-allocation epoch. A module-owned 229-byte noncollecting resolver leaf replaces
+native-allocation epoch.
+Final struct constructors also use the native batch when their collector-reference
+fields name final or open struct/array types. Before publishing the object, the
+native path checks each live handle, object extent, and canonical type; open
+targets use subtype intervals. A failed check falls back to the rooted helper.
+A module-owned 229-byte noncollecting resolver leaf replaces
 repeated inline resolver bodies at modules with at least two candidate scalar sites;
 one-site modules retain inline code. A single-function module with reuse enabled is
 lowered inline first and adds the island only when at least two actual resolutions
