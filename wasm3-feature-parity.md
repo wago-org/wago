@@ -24,6 +24,14 @@ support alone does not establish performance parity.
   multiplication uses hardware signed/unsigned widening multiply. Both result
   words use existing multi-value paths. Artifacts preserve the required feature
   bit. Earlier deferred traps materialize in source order.
+- Threads now support instance-owned shared memory as well as imported shared
+  memory. Separate backing and instance-control mappings preserve the existing
+  atomic addressing path, with ownership retained while importers remain live.
+  Memoryless `atomic.fence` is admitted. Constant-zero shared waits now lower
+  directly to native loads and comparisons on arm64 and amd64.
+  This remains partial thread support: ordinary shared-memory loads/stores,
+  growth, multiple memories, and broader import/segment combinations remain
+  restricted.
 
 ## Current validation
 
@@ -66,6 +74,14 @@ with 27 unsupported and 12 failed. All 51 successful pairs match artifacts and
 met the 50 ms sample-duration target. See [the full initial comparison](wasm3-feature-baseline.md).
 Per-feature gap diagnosis, optimized lowerings, missing host profiles, and
 both-platform compile/RSS measurements remain open.
+
+The subsequent thread checkpoint passed all five previously rejected defined
+shared-memory contracts, bringing cumulative Wago coverage to 82/90. Its
+wait/notify contract improved by 48.7% across three launches after the zero-timeout
+lowering. Native execution tests pass on both architectures. See
+[thread implementation and measurement evidence](wasm3-threads-progress.md).
+The eight remaining host-profile rejections are JSPI and JS strings. This
+checkpoint does not establish w2c2 parity or complete thread conformance.
 
 The SSH control connection persists for 24 hours; detached tmux session
 `wago-wasm3-parity` survives disconnection. The dedicated remote workspace is
