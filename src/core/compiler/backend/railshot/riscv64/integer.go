@@ -89,14 +89,15 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.gcTypeSubtypingFinalityCallCast = state.gcTypeSubtypingFinalityCallCast
 		referenceTypes.gcTypeSubtypingRefTestSingle = state.gcTypeSubtypingRefTestSingle
 		referenceTypes.gcTypeSubtypingRefTestVariant = state.gcTypeSubtypingRefTestVariant
+		referenceTypes.gcTypeSubtypingDuplicateRecursive = state.gcTypeSubtypingDuplicateRecursive
 	}
 	var locals [256]bool
 	var localRefs [256]bool
-	privateRefs := floating && (state.ownedTable || state.importReferences || state.i31Core || state.gcTypeSubtypingRefFuncGlobals || state.gcTypeSubtypingRefTestSingle)
+	privateRefs := floating && (state.ownedTable || state.importReferences || state.i31Core || state.gcTypeSubtypingRefFuncGlobals || state.gcTypeSubtypingRefTestSingle || state.gcTypeSubtypingDuplicateRecursive)
 	functionRefs := state != nil && state.referenceFunctions
 	i31Refs := state != nil && state.i31Core
 	if functionRefs {
-		typedFunctionRefs := state.referenceCalls || state.gcTypeSubtypingRefFuncGlobals || state.gcTypeSubtypingRefTestSingle && (state.gcTypeSubtypingRefTestVariant == 6 || state.gcTypeSubtypingRefTestVariant == 7)
+		typedFunctionRefs := state.referenceCalls || state.gcTypeSubtypingRefFuncGlobals || state.gcTypeSubtypingRefTestSingle && (state.gcTypeSubtypingRefTestVariant == 6 || state.gcTypeSubtypingRefTestVariant == 7) || state.gcTypeSubtypingDuplicateRecursive
 		if !privateRefs || state.importedFunctions < 0 || state.importedFunctions > MaxHostFunctionImports || state.importedFunctions > len(state.functions) || state.dynamicTailCalls && (!state.localTailCalls || !state.importTailCalls || !state.foreignTableCalls) {
 			return integerSummary{}, unsupported("private reference functions require same-image direct calls")
 		}
@@ -2682,6 +2683,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.gcTypeSubtypingRefFuncGlobals = state.gcTypeSubtypingRefFuncGlobals
 		referenceTypes.gcTypeSubtypingRuntimeCallCast = state.gcTypeSubtypingRuntimeCallCast
 		referenceTypes.gcTypeSubtypingFinalityCallCast = state.gcTypeSubtypingFinalityCallCast
+		referenceTypes.gcTypeSubtypingDuplicateRecursive = state.gcTypeSubtypingDuplicateRecursive
 	}
 	n := len(ft.Params)
 	for i, t := range ft.Params {

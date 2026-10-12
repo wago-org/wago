@@ -87,6 +87,9 @@ func railshotConfigureGCTypeSubtypingIndependentStructLink(uint8, *railshotCompi
 func railshotGCTypeSubtypingExtendedProjectionLinkSource([]byte) uint8 { return 0 }
 func railshotConfigureGCTypeSubtypingExtendedProjectionLink(uint8, *railshotCompileOptions) {
 }
+func railshotGCTypeSubtypingDuplicateRecursiveLinkSource([]byte) uint8 { return 0 }
+func railshotConfigureGCTypeSubtypingDuplicateRecursiveLink(uint8, *railshotCompileOptions) {
+}
 func railshotGCStructGetSource([]byte) bool                                 { return false }
 func railshotConfigureGCStructGet(bool, *railshotCompileOptions)            {}
 func railshotGCStructMutationSource([]byte) bool                            { return false }

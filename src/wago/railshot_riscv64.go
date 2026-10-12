@@ -33,7 +33,7 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	}
 	maxImportArity := coreruntime.MaxHostArity
 	vectorProfile := false
-	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 && opts.GCTypeSubtypingRefFuncGlobalsSource == 0 && !opts.GCTypeSubtypingRuntimeCallCastSource && !opts.GCTypeSubtypingRuntimeFinalityCallCastSource && !opts.GCTypeSubtypingRuntimeTypedTableCallSource && opts.GCTypeSubtypingRefTestSingleSource == 0 && opts.GCTypeSubtypingLinkSource == 0 && opts.GCTypeSubtypingFinalityLinkSource == 0 && opts.GCTypeSubtypingStructLinkSource == 0 && opts.GCTypeSubtypingStructProjectionSource == 0 && opts.GCTypeSubtypingStructMismatchSource == 0 && opts.GCTypeSubtypingIndependentStructSource == 0 && opts.GCTypeSubtypingExtendedProjectionSource == 0 {
+	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 && opts.GCTypeSubtypingRefFuncGlobalsSource == 0 && !opts.GCTypeSubtypingRuntimeCallCastSource && !opts.GCTypeSubtypingRuntimeFinalityCallCastSource && !opts.GCTypeSubtypingRuntimeTypedTableCallSource && opts.GCTypeSubtypingRefTestSingleSource == 0 && opts.GCTypeSubtypingLinkSource == 0 && opts.GCTypeSubtypingFinalityLinkSource == 0 && opts.GCTypeSubtypingStructLinkSource == 0 && opts.GCTypeSubtypingStructProjectionSource == 0 && opts.GCTypeSubtypingStructMismatchSource == 0 && opts.GCTypeSubtypingIndependentStructSource == 0 && opts.GCTypeSubtypingExtendedProjectionSource == 0 && opts.GCTypeSubtypingDuplicateRecursiveSource == 0 {
 		var err error
 		vectorProfile, err = railshot.UsesSWAR(m)
 		if err != nil {
@@ -191,6 +191,10 @@ func railshotGCTypeSubtypingIndependentStructLinkSource(data []byte) uint8 {
 
 func railshotGCTypeSubtypingExtendedProjectionLinkSource(data []byte) uint8 {
 	return railshot.GCTypeSubtypingExtendedProjectionLinkSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingDuplicateRecursiveLinkSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingDuplicateRecursiveLinkSourceVariant(data)
 }
 
 func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
@@ -406,6 +410,14 @@ func railshotConfigureGCTypeSubtypingIndependentStructLink(sourceVariant uint8, 
 
 func railshotConfigureGCTypeSubtypingExtendedProjectionLink(sourceVariant uint8, opts *railshotCompileOptions) {
 	opts.GCTypeSubtypingExtendedProjectionSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingDuplicateRecursiveLink(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingDuplicateRecursiveSource = sourceVariant
 	if sourceVariant != 0 {
 		opts.NativeReferenceCalls = false
 		opts.NativeReferenceFunctions = false

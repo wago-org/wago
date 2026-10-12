@@ -82,6 +82,10 @@ func rv64GCTypeSubtypingExtendedProjectionLinkExecutionCode(*Compiled) bool {
 	return false
 }
 func railshotRestoreGCTypeSubtypingExtendedProjectionLinkArtifact(*Compiled) {}
+func rv64GCTypeSubtypingDuplicateRecursiveLink(*Compiled) bool               { return false }
+func rv64GCTypeSubtypingDuplicateRecursiveLinkExecutionCode(*Compiled) bool  { return false }
+func railshotRestoreGCTypeSubtypingDuplicateRecursiveLinkArtifact(*Compiled) {
+}
 
 func railshotRestoreGCRefCastAbstractArtifact(*Compiled) {}
 func rv64GCRefCastConcrete(*Compiled) bool               { return false }

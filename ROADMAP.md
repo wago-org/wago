@@ -134,8 +134,15 @@ provider through logical close. Official `.45` and `.46` extend the projected
 recursive-struct link to two imports of the same provider export through distinct
 consumer type projections. Both imported descriptor slots acquire the provider's
 canonical identity, while resource ownership is deduplicated to one retained
-provider and released only after consumer close. Products after `.46` and native
-cache/performance qualification remain open.
+provider and released only after consumer close. Official `.47` and `.48` add the
+duplicate-recursive function-link pair: two provider exports each satisfy two
+consumer imports declared through independently decoded equivalent recursive
+groups. All four imported descriptor slots copy the matching provider canonical
+identity, while resource ownership is deduplicated to one retained provider and
+released only after consumer close. Exact source and compiler-free artifacts,
+hostile retained state, wrong-binding rejection, W^X publication, and final
+unmapping are covered under baseline QEMU RV64G without a collector. Products
+after `.48` and native cache/performance qualification remain open.
 Table-free declarative segments, empty/state-only modules, bounded opaque custom
 metadata and empty supported sections are admitted. State-only modules retain
 resource ownership without allocating executable memory. The public pinned SIMD

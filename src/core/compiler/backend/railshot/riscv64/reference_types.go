@@ -75,6 +75,7 @@ type internalReferenceTypes struct {
 	gcTypeSubtypingFinalityCallCast   bool
 	gcTypeSubtypingRefTestSingle      bool
 	gcTypeSubtypingRefTestVariant     uint8
+	gcTypeSubtypingDuplicateRecursive bool
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -142,6 +143,9 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 		return true
 	}
 	if (types.gcTypeSubtypingRecursiveFunctions || types.gcTypeSubtypingRefFuncGlobals || types.gcTypeSubtypingRuntimeCallCast || types.gcTypeSubtypingRefTestSingle) && heap.Kind() == wasm.HeapTypeIndex {
+		return true
+	}
+	if types.gcTypeSubtypingDuplicateRecursive && (heap == wasm.AbsHeap(wasm.HeapFunc) || heap.Kind() == wasm.HeapTypeIndex) {
 		return true
 	}
 	if types.i31 && heap == wasm.AbsHeap(wasm.HeapI31) {

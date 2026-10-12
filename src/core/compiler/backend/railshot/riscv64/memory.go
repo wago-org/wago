@@ -75,6 +75,7 @@ type moduleState struct {
 	gcTypeSubtypingRefTestSingle      bool
 	gcTypeSubtypingRefTestVariant     uint8
 	gcTypeSubtypingLink               uint8
+	gcTypeSubtypingDuplicateRecursive bool
 	// Private reference signatures use same-image direct calls. Descriptor calls
 	// stay numeric; the flag alone never grants source/artifact admission.
 	referenceFunctions      bool
@@ -218,7 +219,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
 	gcTypeSubtypingDeclarations := admitRV64GCTypeSubtypingDeclarations(m) != 0
 	gcTypeSubtypingRefTestSingle := admitRV64GCTypeSubtypingRefTestSingle(m)
-	gcTypeSubtypingReferenceFunctions := admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0 || admitRV64GCTypeSubtypingRuntimeCallCast(m) || admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m) || admitRV64GCTypeSubtypingRuntimeTypedTableCall(m) || gcTypeSubtypingRefTestSingle || admitRV64GCTypeSubtypingLink(m) != 0
+	gcTypeSubtypingReferenceFunctions := admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0 || admitRV64GCTypeSubtypingRuntimeCallCast(m) || admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m) || admitRV64GCTypeSubtypingRuntimeTypedTableCall(m) || gcTypeSubtypingRefTestSingle || admitRV64GCTypeSubtypingLink(m) != 0 || admitRV64GCTypeSubtypingDuplicateRecursiveLink(m) != 0
 	gcTypeSubtypingFinalityCallCast := admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m)
 	gcTypeSubtypingTypedTableCall := admitRV64GCTypeSubtypingRuntimeTypedTableCall(m)
 	gcTypeSubtypingRefFuncGlobals := admitRV64GCTypeSubtypingRefFuncGlobals(m) != 0
@@ -227,6 +228,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	gcTypeSubtypingStructMismatchLink := admitRV64GCTypeSubtypingStructMismatchLink(m) != 0
 	gcTypeSubtypingIndependentStructLink := admitRV64GCTypeSubtypingIndependentStructLink(m) != 0
 	gcTypeSubtypingExtendedProjectionLink := admitRV64GCTypeSubtypingExtendedProjectionLink(m) != 0
+	gcTypeSubtypingDuplicateRecursiveLink := admitRV64GCTypeSubtypingDuplicateRecursiveLink(m) != 0
 	gcRefEq := admitRV64GCRefEq(m)
 	gcRefTestTable := admitRV64GCRefTestTable(m)
 	gcBrOnCastNullability := admitRV64GCBrOnCastNullability(m) || admitRV64GCBrOnCastFailNullability(m)
@@ -457,7 +459,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		for subtypeIndex := range rec.SubTypes {
 			ft := &rec.SubTypes[subtypeIndex].Comp
 			fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
-			if (s.ownedTable || s.importReferences || gcTypeSubtypingRefTestSingle) && !((gcTypeSubtypingDeclarations || gcTypeSubtypingRefFuncGlobals || gcTypeSubtypingStructLink || gcTypeSubtypingStructProjectionLink || gcTypeSubtypingStructMismatchLink || gcTypeSubtypingIndependentStructLink || gcTypeSubtypingExtendedProjectionLink || gcTypeSubtypingRefTestSingle || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
+			if (s.ownedTable || s.importReferences || gcTypeSubtypingRefTestSingle) && !((gcTypeSubtypingDeclarations || gcTypeSubtypingRefFuncGlobals || gcTypeSubtypingStructLink || gcTypeSubtypingStructProjectionLink || gcTypeSubtypingStructMismatchLink || gcTypeSubtypingIndependentStructLink || gcTypeSubtypingExtendedProjectionLink || gcTypeSubtypingDuplicateRecursiveLink || gcTypeSubtypingRefTestSingle || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
 				var ok bool
 				fn.key, ok = m.StructuralTypeKeyChecked(flatTypeIndex)
 				if !ok {
