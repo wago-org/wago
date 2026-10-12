@@ -492,6 +492,11 @@ func (s *stack) push(id nodeID, e *elem) *elem {
 
 // pushValue pushes a concrete value with the given storage.
 func (s *stack) pushValue(st storage) *elem {
+	// Constants materialize through W-register writes. Record the proof only
+	// for concrete values, not deferred nodes that share this storage payload.
+	if st.kind == stConst && st.typ == mtI32 {
+		st.setValueFacts(st.valueFacts() | factUpper32Zero)
+	}
 	id, e := s.alloc()
 	e.st = st
 	e.setElemKind(ekValue)

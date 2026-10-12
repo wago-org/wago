@@ -62,9 +62,10 @@ func (f *fn) releaseF(r Reg) {
 }
 
 type floatConstReg struct {
-	typ  machineType
-	bits int64
-	reg  Reg
+	typ       machineType
+	bits      int64
+	reg       Reg
+	loopDepth uint16
 }
 
 func (f *fn) fconstMask() regMask {
@@ -146,13 +147,11 @@ func (f *fn) materializeF(e *elem) Reg {
 	case stReg:
 		return e.st.reg
 	case stConst:
-		if !f.makesCalls {
-			if c, ok := f.floatConstReg(e.st); ok {
-				x := f.allocFReg(maskOf(c))
-				f.a.FmovReg(x, c, e.st.typ == mtF64)
-				f.occupyF(e, x)
-				return x
-			}
+		if c, ok := f.floatConstReg(e.st); ok {
+			x := f.allocFReg(maskOf(c))
+			f.a.FmovReg(x, c, e.st.typ == mtF64)
+			f.occupyF(e, x)
+			return x
 		}
 		x := f.allocFReg(0)
 		f.loadFConst(x, e.st)
@@ -200,7 +199,7 @@ func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
 	if e.elemKind() == ekValue && e.st.kind == stLocalReg {
 		return e.st.reg, false
 	}
-	if e.elemKind() == ekValue && e.st.kind == stConst && e.st.typ.isFloat() && !f.makesCalls {
+	if e.elemKind() == ekValue && e.st.kind == stConst && e.st.typ.isFloat() {
 		if r, ok := f.floatConstReg(e.st); ok {
 			return r, false
 		}

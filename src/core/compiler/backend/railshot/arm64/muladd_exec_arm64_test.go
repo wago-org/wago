@@ -69,6 +69,88 @@ func TestMulAddFuse(t *testing.T) {
 	}
 }
 
+func TestNestedMulAddFuse(t *testing.T) {
+	for _, typ := range []wasm.ValType{wasm.I32, wasm.I64} {
+		constant, sub, mul, add := byte(0x41), byte(0x6b), byte(0x6c), byte(0x6a)
+		if typ == wasm.I64 {
+			constant, sub, mul, add = 0x42, 0x7d, 0x7e, 0x7c
+		}
+		// memory.size/drop keeps the fixture in this instruction selector.
+		for _, subtract := range []bool{false, true} {
+			outer := add
+			if subtract {
+				outer = sub
+			}
+			body := []byte{0, 0x3f, 0, 0x1a,
+				0x20, 2, constant, 5, add,
+				0x20, 0, constant, 7, sub,
+				0x20, 1, constant, 11, sub, mul, outer, 0x0b}
+			m := mod1(t, []wasm.ValType{typ, typ, typ}, []wasm.ValType{typ}, body)
+			m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+			for _, enabled := range []bool{false, true} {
+				opts := CompileOptions{Optimizations: map[string]bool{"mul-add-fuse": enabled}}
+				if diagnosticsEnabled {
+					stats := &ModuleStats{}
+					opts.Stats = stats
+					cm, err := CompileModuleWith(m, opts)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if cm.CodeImage != nil {
+						cm.CodeImage.Close()
+					}
+					if (stats.Funcs[0].Peephole["mul-add-fuse"] != 0) != enabled {
+						t.Fatalf("fusion enabled=%v stats=%v", enabled, stats.Funcs[0].Peephole)
+					}
+					opts.Stats = nil
+				}
+				for _, in := range [][3]uint64{{19, 23, 42}, {0, 0, 0}, {0xffffffff, 0x80000000, 0xffffffffffffffff}} {
+					product := (in[0] - 7) * (in[1] - 11)
+					want := in[2] + 5 + product
+					if subtract {
+						want = in[2] + 5 - product
+					}
+					if typ == wasm.I32 {
+						want = uint64(uint32(want))
+					}
+					got, err := runArm64WrapperWithOptions(t, m, opts, in[:]...)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if got != want {
+						t.Fatalf("type=%v enabled=%v subtract=%v inputs=%x got=%x want=%x", typ, enabled, subtract, in, got, want)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestNestedMulAccumulateAliases(t *testing.T) {
+	body := []byte{0, 0x3f, 0, 0x1a, 0x20, 2}
+	for i := byte(1); i <= 7; i++ {
+		body = append(body, 0x20, 0, 0x41, i, 0x6b, 0x20, 1, 0x41, 2*i, 0x6b, 0x6c, 0x6a)
+	}
+	body = append(body, 0x0b)
+	m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+	for _, enabled := range []bool{false, true} {
+		for _, in := range [][3]uint64{{13, 17, 19}, {0, 0, 0}, {0xffffffff, 0x80000000, 0xffffffff}} {
+			want := uint32(in[2])
+			for i := uint32(1); i <= 7; i++ {
+				want += (uint32(in[0]) - i) * (uint32(in[1]) - 2*i)
+			}
+			got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"mul-add-fuse": enabled}}, in[:]...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != uint64(want) {
+				t.Fatalf("enabled=%v inputs=%x got=%x want=%x", enabled, in, got, want)
+			}
+		}
+	}
+}
+
 func concat(parts ...[]byte) []byte {
 	var out []byte
 	for _, p := range parts {

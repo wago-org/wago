@@ -125,3 +125,46 @@ func TestShiftedRegisterALUArm64(t *testing.T) {
 		}
 	}
 }
+
+func TestLeftShiftedRegisterALUArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, wide := range []bool{false, true} {
+		typ, constant, shift := wasm.I32, byte(0x41), byte(0x76)
+		ops := []byte{0x6a, 0x71, 0x72, 0x73}
+		if wide {
+			typ, constant, shift = wasm.I64, 0x42, 0x88
+			ops = []byte{0x7c, 0x83, 0x84, 0x85}
+		}
+		for _, op := range ops {
+			// Keep this instruction-selection test on the deferred-tree backend,
+			// independent of shared-scalar admission.
+			body := []byte{0, 0x3f, 0, 0x1a, 0x20, 0, constant, 13, shift, 0x20, 1, op, 0x22, 0, 0x0b}
+			m := mod1(t, []wasm.ValType{typ, typ}, []wasm.ValType{typ}, body)
+			m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+			stats := &ModuleStats{}
+			cm, err := CompileModuleWith(m, CompileOptions{Stats: stats})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cm.CodeImage != nil {
+				cm.CodeImage.Close()
+			}
+			if stats.Funcs[0].Peephole["shifted-register-alu"] != 1 {
+				t.Fatalf("wide=%v op=%x: left shift not folded", wide, op)
+			}
+			for _, v := range [][2]uint64{{0, 0}, {0xffffffffffffffff, 0x89abcdef}, {0x123456789abcdef0, 0xfedcba9876543210}} {
+				got, err := runArm64WrapperWithOptions(t, m, CompileOptions{}, v[0], v[1])
+				if err != nil {
+					t.Fatal(err)
+				}
+				plain, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"shifted-register-alu": false}}, v[0], v[1])
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got != plain {
+					t.Fatalf("wide=%v op=%x: folded %x != plain %x", wide, op, got, plain)
+				}
+			}
+		}
+	}
+}

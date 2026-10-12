@@ -4,19 +4,20 @@ package amd64
 
 import (
 	"errors"
-	plugincodegen "github.com/wago-org/wago/codegen/amd64"
-	"github.com/wago-org/wago/src/core/plugins"
+	"runtime"
 	"strings"
 	"testing"
 
+	plugincodegen "github.com/wago-org/wago/codegen/amd64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/plugins"
 )
 
 func TestSourceContextSurvivesEarlyFunctionStateFailure(t *testing.T) {
 	t.Setenv("WAGO_DEBUG_PANIC", "")
-	m := mod1(t, nil, nil, []byte{0, 0x0b})
+	m := mod1(t, []wasm.ValType{wasm.I32}, nil, []byte{0, 0x0b})
 	var a wasm.ValidatedModuleAnalysis
 	if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, &a); err != nil {
 		t.Fatal(err)
@@ -26,16 +27,23 @@ func TestSourceContextSurvivesEarlyFunctionStateFailure(t *testing.T) {
 		t.Fatal("context unavailable")
 	}
 	sc := newCompileScratch(0)
+	hints := &funcHintView{} // zero local count conflicts with the one parameter
 	shared.SetSourceContext(&sc.scalar, codegen.SourceContextFor(opts, m))
 	defer sc.scalar.FinishWorker()
 	for _, index := range []int{0, 1} {
 		_, _, _, err := compileFuncAttempt(m, nil, index,
 			false, false, false, false, false,
-			nil, nil, nil, nil, false, 0,
+			nil, hints, nil, nil, false, 0,
 			false, false, false, false,
 			nil, nil, nil, false, inlineTargetTable{}, sc)
 		if err == nil || (index == 0 && !strings.Contains(err.Error(), "internal compiler error")) {
 			t.Fatalf("expected early failure, got %v", err)
+		}
+		if index == 0 {
+			var cause runtime.Error
+			if !errors.As(err, &cause) || !strings.Contains(cause.Error(), "index out of range") {
+				t.Fatalf("fixture must use a bounds panic: %v", err)
+			}
 		}
 		// Setup failed before any source recipe owns a ledger. Context stays
 		// available until worker teardown, so a subsequent attempt can borrow it.

@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"encoding/binary"
 	"os"
 )
 
@@ -24,9 +25,9 @@ const (
 // data words would be misread and its case stubs are reached through computed
 // targets), and each rewrite must not disturb a word another branch targets. So
 // the branch-target set is collected once here and threaded into both passes.
-func (f *fn) finalizePeepholes() {
+func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	compact := nativeFinalizerEnabled && f.compactNative()
-	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !compact {
+	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !f.opt(optGuardedBooleanXor) && !f.opt(optTakenZeroBranch) && !f.opt(optCsetLineage) && !compact {
 		return
 	}
 	// The established size-stable peephole abandons a function when it reaches
@@ -56,16 +57,47 @@ func (f *fn) finalizePeepholes() {
 		targets = make([]uint64, words)
 	}
 	sc.branchTargets = targets
-	for pc := 0; pc < n; pc += 4 {
+	threadEligible := f.opt(optTakenZeroBranch) && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
+	threadCandidate := false
+	guardedEligible := f.opt(optGuardedBooleanXor) && !f.moduleEH && len(f.customInstructions) == 0 && !f.opaqueFragments
+	guardedCandidate := false
+	lineageEligible := f.opt(optCsetLineage) && n <= 4096 && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
+	lineageCandidate := false
+	firstLineageSet := -1
+	b = b[:n:n]
+	for pc := 0; pc <= len(b)-4; pc += 4 {
 		w := rdWord(b, pc)
+		if lineageEligible {
+			// No boolean lineage can precede its first CSET. Stop all
+			// preflight work once a subsequent consumer pair is present.
+			if firstLineageSet < 0 {
+				if w&0x7fff0fe0 == 0x1a9f07e0 {
+					firstLineageSet = pc
+				}
+			} else if pc+8 <= n && csetLineagePair(w, rdWord(b, pc+4)) {
+				lineageCandidate = true
+				lineageEligible = false
+			}
+		}
 		if !compact && isIndirectBranch(w) {
 			return
 		}
 		if t, ok := branchTarget(pc, w); ok {
 			sc.hasBranchTargets = true
 			branchTargetAdd(targets, t, n)
+			if threadEligible && !threadCandidate && w&0x7e000000 == 0x34000000 && t >= 0 && t+4 <= n && t != pc {
+				next := rdWord(b, t)
+				threadCandidate = next&0x7e000000 == 0x34000000 && (w^next)&0xfe00001f == 0
+			}
 			if compact && t == pc+4 && w&0xFC000000 != 0x94000000 {
 				f.recordBranchNext(pc)
+			}
+			// Inspect only bounded direct branch destinations in the existing
+			// scan; other functions never pay a second boolean-region walk.
+			// Include B here because branch folding may turn its preceding
+			// conditional skip into the eventual guarded region branch.
+			if guardedEligible && !guardedCandidate && w&0xfc000000 != 0x94000000 && t >= pc+20 && t <= pc+68 && t <= n {
+				guardedCandidate = rdWord(b, t-8)&0x7fff0fe0 == 0x1a9f07e0 && rdWord(b, t-4)&0x7fe0fc00 == 0x4a000000
 			}
 		}
 	}
@@ -73,8 +105,37 @@ func (f *fn) finalizePeepholes() {
 		f.foldSingleBitBranches(b, n, targets)
 		f.foldBranchPairs(b, n, targets)
 	}
+	if threadCandidate {
+		f.threadTakenZeroBranches(b, n, targets)
+	}
 	if f.opt(optStoreLoadFwd) {
 		f.forwardStoreLoads(b, n, targets)
+	}
+	if f.opt(optCommonExitCompare) {
+		f.foldCommonExitCompares(b, n, targets, entryOffsets...)
+	}
+	if f.opt(optGuardedTestCCMP) {
+		f.foldGuardedTests(b, n, targets)
+	}
+	if guardedCandidate {
+		f.foldGuardedBooleanXors(b, n, targets, entryOffsets...)
+	}
+	if lineageCandidate && firstLineageSet >= 0 {
+		f.foldCsetLineage(b, n, firstLineageSet, targets, entryOffsets...)
+	}
+	// Reuse proofs must see scratch-register writes introduced by every earlier
+	// fold, including guarded tests that materialize their result in X16.
+	if f.opt(optDominatedIndexedBase) && f.a.DominatedIndexedCandidates >= 2 && !f.moduleEH && len(f.customInstructions) == 0 {
+		hits := 0
+		if f.opt(optDominatedIndexedKey) {
+			hits = f.a.FoldDominatedIndexedBasesByKey(entryOffsets...)
+			f.stats.peepN("dominated-indexed-key", hits)
+		} else {
+			hits = f.a.FoldDominatedIndexedBases(entryOffsets...)
+		}
+		for ; hits > 0; hits-- {
+			f.stats.peep("dominated-indexed-base")
+		}
 	}
 }
 
@@ -174,7 +235,8 @@ func (f *fn) foldSingleBitBranches(b []byte, n int, targets []uint64) {
 // target first and only folding pairs whose middle word is not among them.
 
 func (f *fn) foldBranchPairs(b []byte, n int, targets []uint64) {
-	for pc := 0; pc+8 <= n; pc += 4 {
+	b = b[:n:n]
+	for pc := 0; pc <= len(b)-8; pc += 4 {
 		w := rdWord(b, pc)
 		cc, ok := bcondSkipOne(w) // B.cond whose displacement is exactly +2 words
 		if !ok {
@@ -219,7 +281,8 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets []uint64) {
 // entrant that skipped the store must genuinely load from memory.
 
 func (f *fn) forwardStoreLoads(b []byte, n int, targets []uint64) {
-	for pc := 0; pc+8 <= n; pc += 4 {
+	b = b[:n:n]
+	for pc := 0; pc <= len(b)-8; pc += 4 {
 		if f.forwardStoreLoadAt(b, n, pc, targets, true) {
 			pc += 4 // step past the word we just rewrote
 		}
@@ -331,14 +394,11 @@ func spLoadImm(w uint32) (rt Reg, off int, w64, ok bool) {
 
 // rdWord/wrWord read and write a little-endian 32-bit instruction word.
 func rdWord(b []byte, pc int) uint32 {
-	return uint32(b[pc]) | uint32(b[pc+1])<<8 | uint32(b[pc+2])<<16 | uint32(b[pc+3])<<24
+	return binary.LittleEndian.Uint32(b[pc:])
 }
 
 func wrWord(b []byte, pc int, w uint32) {
-	b[pc] = byte(w)
-	b[pc+1] = byte(w >> 8)
-	b[pc+2] = byte(w >> 16)
-	b[pc+3] = byte(w >> 24)
+	binary.LittleEndian.PutUint32(b[pc:], w)
 }
 
 // bcondSkipOne reports whether w is a `B.cond` whose displacement is exactly +2
