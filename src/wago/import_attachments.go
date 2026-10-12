@@ -543,6 +543,21 @@ func retainProducerRootsInImportedContainersForFinalizationWithBeforeTransfer(in
 		return false
 	}
 	var cleanup resourceCleanup
+	// RV64 imports carry exact table and frozen-global dependency receipts. Those
+	// receipts are transferred by each container pass and deliberately exclude
+	// immutable frozen cells from generic producer retention. A generic discovery
+	// pass would reacquire the retiring writer through those raw descriptor views,
+	// leaving construction rollback and terminal close permanently rooted.
+	if railshotNativeContextTrapABI() {
+		var retainedTables, retainedGlobals bool
+		cleanup.run(func() { retainedTables = retainProducerRootsInImportedTablesMode(in, true, nil) })
+		cleanup.run(func() { retainedGlobals = retainProducerRootsInImportedGlobalsMode(in, true, nil) })
+		if beforeTransfer != nil {
+			cleanup.run(beforeTransfer)
+		}
+		cleanup.finish()
+		return retainedTables || retainedGlobals
+	}
 	// One imported container has no other destination to propagate back to.
 	if in.c.tableImportCount()+len(in.c.GlobalImports) > 1 {
 		var tables importDedup[*Table]
