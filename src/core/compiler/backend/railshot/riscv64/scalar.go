@@ -44,8 +44,12 @@ type emissionMode struct {
 	tailPlans              *[]tailImportPlan
 	tailSiteBase           uint32
 	localMutableReferences bool
-	functionIndex          uint32
-	entryPC                uint32
+	// Only an exact public profile may transfer a local descriptor through the
+	// parked host bridge. Other confined mutable reference cells remain direct
+	// instance-local storage even though they use the same carrier class.
+	parkedMutableReferenceGlobals bool
+	functionIndex                 uint32
+	entryPC                       uint32
 }
 
 var _ shared.ScalarTarget = (*target)(nil)

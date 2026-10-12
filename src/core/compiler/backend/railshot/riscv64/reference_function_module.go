@@ -368,7 +368,9 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	publicReferenceCallBoundary := !vector && admitPublicReferenceCallBoundary(m)
 	publicHostReferenceBoundary := !vector && admitPublicHostReferenceBoundary(m)
 	publicDynamicHostReferenceBoundary := !vector && admitPublicDynamicHostReferenceBoundary(m)
-	publicMutableLocalCall := !vector && admitMutableFunctionGlobalLocalCall(m)
+	// Unlike the older scalar-only reference boundaries, this exact local-call
+	// profile is also admitted by the baseline SWAR pipeline for v128 carriers.
+	publicMutableLocalCall := admitMutableFunctionGlobalLocalCall(m)
 	publicReferenceCarrierBoundary := publicReferenceCallBoundary || publicHostReferenceBoundary || publicDynamicHostReferenceBoundary
 	counts, err := countClosedReferenceImports(m)
 	if err != nil {

@@ -107,6 +107,10 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 }
 
 func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions bool, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithParkedReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, false, emit)
+}
+
+func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals bool, emit *integerEmitter) (swarSummary, error) {
 	if dynamicTailCalls && (!importTailCalls || !foreignTableCalls || !localTailCalls) {
 		return swarSummary{}, unsupported("private dynamic tail walker contract")
 	}
@@ -134,6 +138,10 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 		}
 		return swarClassOf(typ)
 	}
+	referenceTypes := internalReferenceTypes{swar: types}
+	globalReference := func(global wasm.GlobalType) bool {
+		return foreignTableCalls && (!global.Mutable || localMutableReferences) && internalFunctionReferenceWithTypes(global.Type, referenceCalls, referenceTypes)
+	}
 
 	descriptorRefs := privateRefs
 	if dataCount < 0 || dataCount > 256 {
@@ -143,8 +151,7 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 		return swarSummary{}, unsupported("SWAR global directory bound")
 	}
 	for _, global := range globals {
-		reference := foreignTableCalls && (!global.Mutable || localMutableReferences) && wasm.EqualValType(global.Type, wasm.FuncRef)
-		if !swarCarrierType(global.Type) && !reference {
+		if !swarCarrierType(global.Type) && !globalReference(global) {
 			return swarSummary{}, unsupported("SWAR global carrier")
 		}
 	}
@@ -195,7 +202,6 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 		}
 	}
 	nlocals := len(ft.Params)
-	referenceTypes := internalReferenceTypes{swar: types}
 	for _, run := range fn.Locals.Runs {
 		if (!swarCarrierType(run.Type) && !(privateRefs && internalFunctionReferenceWithTypes(run.Type, referenceCalls, referenceTypes))) || uint64(run.Count) > uint64(maxSWARLocals-nlocals) {
 			return swarSummary{}, unsupported("SWAR local type/bound")
@@ -648,6 +654,10 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 			}
 			global := globals[index]
 			class := swarGlobalClass(global.Type)
+			reference := globalReference(global)
+			if reference {
+				class = swarFuncRef
+			}
 			if op == 0x24 {
 				if !global.Mutable {
 					return swarSummary{}, unsupported("SWAR immutable global write")
@@ -659,7 +669,21 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 					return swarSummary{}, unsupported("SWAR global write carrier/underflow")
 				}
 				h--
-				if emit != nil {
+				parkedGlobalStore := reference && parkedMutableReferenceGlobals && index == 0
+				if parkedGlobalStore {
+					calls++
+					if calls > maxDirectCalls {
+						return swarSummary{}, unsupported("SWAR mutable funcref store helper count")
+					}
+					if err := reserve(1024); err != nil {
+						return swarSummary{}, err
+					}
+				}
+				if emit != nil && flow.live {
+					if parkedGlobalStore {
+						emit.storeGuestGlobalAt(spill(h))
+						continue
+					}
 					emit.Load(5, spill(h), !class.narrow())
 					if class == swarV128 {
 						emit.Load(6, spill(h)+8, true)
@@ -2049,7 +2073,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		}
 	}
 	profile := makeMemoryProfile(memories, indexedMemories)
-	summary, err := walkSWARPairsWithReferenceFunctionMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, nil)
+	summary, err := walkSWARPairsWithParkedReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -2072,7 +2096,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		return nil, FunctionInfo{}, nil, err
 	}
 	f.frameBytes = frame
-	actual, err := walkSWARPairsWithReferenceFunctionMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, &f)
+	actual, err := walkSWARPairsWithParkedReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}

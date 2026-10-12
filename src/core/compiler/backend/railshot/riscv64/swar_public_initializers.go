@@ -18,7 +18,13 @@ func admitSWARPublicInitializersWithMemories(m *wasm.Module, memories []wasm.Mem
 	if err != nil {
 		return err
 	}
+	localCall := admitMutableFunctionGlobalLocalCall(m)
 	for i, global := range m.Globals {
+		if localCall && i == 0 {
+			// The exact profile pins the indexed nullable type and typed-null
+			// initializer; runtime initialization owns the mutable cell itself.
+			continue
+		}
 		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) {
 			if err := admitLocalFunctionGlobal(global, m, m.ImportedGlobalCount()+i, localMutableReferences); err != nil {
 				return err

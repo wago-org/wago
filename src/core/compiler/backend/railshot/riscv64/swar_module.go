@@ -285,6 +285,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		return nil, err
 	}
 	mode.localMutableReferences = mode.localMutableReferences || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m) || admitMutableFunctionGlobalSetSelf(m) || admitMutableFunctionGlobalCopy(m) || admitMutableFunctionGlobalMove(m) || admitMutableFunctionGlobalBidirectionalCopy(m) || admitMutableFunctionGlobalLocalCopy(m) || admitMutableFunctionGlobalLocalPublish(m) || admitMutableFunctionGlobalLocalTransfer(m) || admitMutableFunctionGlobalLocalExport(m) || admitMutableFunctionGlobalLocalObserve(m) || admitMutableFunctionGlobalLocalCall(m)
+	mode.parkedMutableReferenceGlobals = admitMutableFunctionGlobalLocalCall(m)
 	if mode.localMutableReferences && !(state.publicInitializers && state.exports && mode.foreignTableCalls && mode.interruptible) {
 		return nil, unsupported("mutable reference globals require the retained cooperative public profile")
 	}
@@ -344,7 +345,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	bound := 0
 	importTailCount := 0
 	for i := range m.Code {
-		summaries[i], err = walkSWARPairsWithReferenceFunctionMode(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, nil)
+		summaries[i], err = walkSWARPairsWithParkedReferenceMode(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, nil)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
@@ -402,9 +403,49 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		calls = append(calls, relocations...)
 		image.code = append(image.code, code...)
 	}
+	// SWAR functions normally relocate only to other functions. The exact
+	// mutable-reference profiles additionally use the same parked host bridge as
+	// scalar lowering. Keep those thunks in the guest image so every transfer is
+	// still image-relative and becomes callable only with the rest of the image.
+	helperEntries := make(map[uint32]int, 3)
+	for _, helper := range []struct {
+		key   uint32
+		slots int
+	}{{guestGlobalClear, 0}, {guestGlobalStore, 1}, {guestGlobalStoreIndexed, 2}} {
+		used := false
+		for _, call := range calls {
+			used = used || call.helper == helper.key
+		}
+		if !used {
+			continue
+		}
+		padding := (-len(image.code)) & 15
+		stub := HostIndirectOwnedSyncThunk(guestGlobalStoreDispatch, helper.slots, 0)
+		if len(stub) == 0 || padding > MaxCodeBytes-len(image.hostCode)-len(image.code) || len(stub) > MaxCodeBytes-len(image.hostCode)-len(image.code)-padding {
+			return nil, unsupported("SWAR mutable funcref helper image bound")
+		}
+		for ; padding > 0; padding -= 4 {
+			image.code = append(image.code, 0x13, 0, 0, 0)
+		}
+		helperEntries[helper.key] = len(image.code)
+		image.code = append(image.code, stub...)
+	}
 	a := enc.Asm{B: image.code}
 	for _, call := range calls {
-		if err := a.PatchLong(call.site, int64(image.functions[call.callee].Entry)); err != nil {
+		target := 0
+		if call.helper != 0 {
+			var ok bool
+			target, ok = helperEntries[call.helper]
+			if !ok {
+				return nil, unsupported("SWAR internal helper bridge")
+			}
+		} else {
+			if uint64(call.callee) >= uint64(len(image.functions)) {
+				return nil, unsupported("SWAR direct call relocation target")
+			}
+			target = image.functions[call.callee].Entry
+		}
+		if err := a.PatchLong(call.site, int64(target)); err != nil {
 			return nil, fmt.Errorf("rv64: SWAR direct relocation: %w", err)
 		}
 	}

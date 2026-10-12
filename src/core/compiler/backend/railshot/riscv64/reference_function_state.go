@@ -90,7 +90,10 @@ func admitClosedReferenceNumericStateWithImports(m *wasm.Module, vector bool, re
 			return unsupported("closed reference memory declaration bytes")
 		}
 	}
-	localCall := !vector && admitMutableFunctionGlobalLocalCall(m)
+	// The exact mutable local-call profile may use either scalar carriers or
+	// baseline SWAR v128 carriers. In both paths global zero is the same bounded,
+	// nullable indexed funcref cell handled by the cooperative store bridge.
+	localCall := admitMutableFunctionGlobalLocalCall(m)
 	for i, global := range m.Globals {
 		typ := global.Type.Type
 		_, indexedReference := privateIndexedFunctionGlobal(global, m)

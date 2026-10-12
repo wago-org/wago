@@ -85,8 +85,15 @@ func (f *integerEmitter) clearGuestGlobal() {
 // the same parked ownership bridge. The exact source profile proves that the
 // descriptor was produced by ref.func 0 in this image.
 func (f *integerEmitter) storeGuestGlobal(slot int) {
+	f.storeGuestGlobalAt(f.SpillOffset(slot))
+}
+
+// storeGuestGlobalAt is shared with the SWAR lowering, whose padded v128
+// homes use a different spill function even when the stored value is one
+// full-width funcref descriptor.
+func (f *integerEmitter) storeGuestGlobalAt(offset int32) {
 	f.restoreCallTransport()
-	f.Load(5, f.SpillOffset(slot), true)
+	f.Load(5, offset, true)
 	f.a.Sd(enc.X5, enc.X10, 0)
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: guestGlobalStore})
 	f.restoreCallTransport()

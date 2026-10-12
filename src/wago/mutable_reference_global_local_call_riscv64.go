@@ -24,6 +24,8 @@ var rv64MutableFuncrefLocalCallMixedCodeDigest = [sha256.Size]byte{0x49, 0x44, 0
 
 var rv64MutableFuncrefLocalCallWideI32CodeDigest = [sha256.Size]byte{0x64, 0x95, 0xf2, 0x5e, 0x9d, 0xed, 0xbe, 0x9b, 0xf2, 0xfc, 0x70, 0xe8, 0x47, 0x64, 0xfa, 0xe9, 0xfb, 0x30, 0x94, 0xe3, 0x4b, 0x07, 0x81, 0x9d, 0x2d, 0x56, 0xb6, 0x11, 0xc3, 0x10, 0xd5, 0xe5}
 
+var rv64MutableFuncrefLocalCallVectorCodeDigest = [sha256.Size]byte{0x8d, 0x3a, 0xce, 0x25, 0x5f, 0xea, 0x3a, 0x8e, 0x6c, 0xc4, 0x15, 0x05, 0x36, 0x1b, 0x8e, 0xa4, 0xc0, 0x13, 0xc9, 0x18, 0x55, 0x73, 0x26, 0xca, 0xf1, 0x13, 0xd0, 0xd8, 0x61, 0x99, 0xfb, 0x52}
+
 func rv64MutableFuncrefGlobalLocalCallExecutionCode(c *Compiled) bool {
 	return rv64MutableFuncrefGlobalLocalCallCodeVariant(c) != 0
 }
@@ -53,6 +55,9 @@ func rv64MutableFuncrefGlobalLocalCallCodeVariant(c *Compiled) int {
 	}
 	if len(c.code) == 8044 && digest == rv64MutableFuncrefLocalCallWideI32CodeDigest {
 		return 7
+	}
+	if len(c.code) == 6972 && digest == rv64MutableFuncrefLocalCallVectorCodeDigest {
+		return 8
 	}
 	return 0
 }
@@ -128,6 +133,10 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 		wasmResults = slices.Clone(wasmParams)
 		abiResults = slices.Clone(abiParams)
 		valueResults = slices.Clone(valueParams)
+	case 8:
+		wasmParams, wasmResults = []wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}
+		abiParams, abiResults = []ValType{ValV128}, []ValType{ValV128}
+		valueParams, valueResults = []ValueTypeDescriptor{{Kind: ValueTypeV128}}, []ValueTypeDescriptor{{Kind: ValueTypeV128}}
 	}
 	scalarType := &wasm.CompType{Kind: wasm.CompFunc, Params: wasmParams, Results: wasmResults}
 	voidType := &wasm.CompType{Kind: wasm.CompFunc}
@@ -172,6 +181,9 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 	if variant == 6 || variant == 7 {
 		required |= CoreFeatureMultiValue
 	}
+	if variant == 8 {
+		required |= CoreFeatureSIMD
+	}
 	wantEntry := []int{0, 608, 1216, 1936, 2656, 3312}
 	if variant == 2 || variant == 4 || variant == 5 {
 		wantEntry = []int{0, 608, 1264, 1984, 2704, 3360}
@@ -181,6 +193,8 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 		wantEntry = []int{0, 672, 1504, 2224, 2944, 3600}
 	} else if variant == 7 {
 		wantEntry = []int{0, 800, 1952, 2672, 3392, 4048}
+	} else if variant == 8 {
+		wantEntry = []int{0, 624, 1280, 2000, 2720, 3360}
 	}
 	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && slices.Equal(c.Entry, wantEntry) && slices.Equal(c.InternalEntry, wantEntry) && rv64MutableFuncrefGlobalLocalCallExecutionCode(c)
 }

@@ -302,6 +302,45 @@ func mutableFuncrefLocalCallWideI32Source() []byte {
 	)
 }
 
+func mutableFuncrefLocalCallVectorSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{6, 0, 0, 1, 1, 1, 0}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0), wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2), wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("call", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0xfd, 77, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0x23, 0, 0x14, 0, 0x0b}),
+		)),
+	)
+}
+
+func TestMutableFuncrefLocalCallVectorProduction(t *testing.T) {
+	source := mutableFuncrefLocalCallVectorSource()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil || !admitMutableFunctionGlobalLocalCall(m) {
+		t.Fatal("vector local-call admission", err)
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceFunctions: true, NativeReferenceCalls: true, SyncHostSlots: 64})
+	if err != nil || image == nil {
+		t.Fatal("vector local-call compilation", err)
+	}
+	wantDigest := [sha256.Size]byte{0x8d, 0x3a, 0xce, 0x25, 0x5f, 0xea, 0x3a, 0x8e, 0x6c, 0xc4, 0x15, 0x05, 0x36, 0x1b, 0x8e, 0xa4, 0xc0, 0x13, 0xc9, 0x18, 0x55, 0x73, 0x26, 0xca, 0xf1, 0x13, 0xd0, 0xd8, 0x61, 0x99, 0xfb, 0x52}
+	wantEntry := []int{0, 624, 1280, 2000, 2720, 3360}
+	if len(image.Code) != 6972 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
+		t.Fatalf("vector local-call compilation drifted: code=%d digest=%x entries=%v/%v ref=%t/%t/%t", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl)
+	}
+}
+
 func TestMutableFuncrefLocalCallWideI32Production(t *testing.T) {
 	source := mutableFuncrefLocalCallWideI32Source()
 	if err := AdmitProductionSource(source); err != nil {
@@ -426,7 +465,7 @@ func TestMutableFuncrefLocalCallProduction(t *testing.T) {
 }
 
 func TestMutableFuncrefLocalCallProductionRejectsBroaderSources(t *testing.T) {
-	for variant, source := range map[string]func() []byte{"zero": mutableFuncrefLocalCallSource, "i32": mutableFuncrefLocalCallI32Source, "i64": mutableFuncrefLocalCallI64Source, "f32": mutableFuncrefLocalCallF32Source, "f64": mutableFuncrefLocalCallF64Source, "mixed": mutableFuncrefLocalCallMixedSource, "wide-i32": mutableFuncrefLocalCallWideI32Source} {
+	for variant, source := range map[string]func() []byte{"zero": mutableFuncrefLocalCallSource, "i32": mutableFuncrefLocalCallI32Source, "i64": mutableFuncrefLocalCallI64Source, "f32": mutableFuncrefLocalCallF32Source, "f64": mutableFuncrefLocalCallF64Source, "mixed": mutableFuncrefLocalCallMixedSource, "wide-i32": mutableFuncrefLocalCallWideI32Source, "vector": mutableFuncrefLocalCallVectorSource} {
 		for name, mutate := range map[string]func(*wasm.Module){
 			"abstract-global":       func(m *wasm.Module) { m.Globals[0].Type.Type = wasm.FuncRef },
 			"target-body":           func(m *wasm.Module) { m.Code[0].BodyBytes = []byte{0x00, 0x0b} },
