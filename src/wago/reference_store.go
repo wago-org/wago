@@ -2672,6 +2672,52 @@ func (s *referenceStore) stageGCRefArgument(target *Instance, token uint64, requ
 	return current.ref, nil
 }
 
+// publishGCRefGlobal authenticates one public token and installs its compact
+// reference into an existing checked global-root slot. The caller holds native
+// execution, which prevents token retirement between authentication and the
+// subsequent native-cell write.
+func (s *referenceStore) publishGCRefGlobal(target *Instance, token uint64, required ValueTypeDescriptor, slot uint32) (gc.Ref, error) {
+	if s == nil || target == nil || target.gc == nil || target.c == nil || token == 0 {
+		return gc.Null(), fmt.Errorf("invalid GC reference token")
+	}
+	lockedDomain := target.lockGCCollector()
+	defer unlockGCCollector(lockedDomain)
+	s.mu.Lock()
+	entry, ok := s.gcByToken[token]
+	s.mu.Unlock()
+	if !ok || entry.owner == nil {
+		return gc.Null(), fmt.Errorf("invalid or stale GC reference token")
+	}
+	owner := entry.owner
+	ownerState := owner.existingPublicGCState()
+	if ownerState == nil {
+		return gc.Null(), fmt.Errorf("GC reference token owner state is unavailable")
+	}
+	targetState := target.publicGCState()
+	firstState, secondState := lockGCPublicStates(ownerState, targetState)
+	defer unlockGCPublicStates(firstState, secondState)
+
+	s.mu.Lock()
+	current, ok := s.gcByToken[token]
+	ownerRecord := s.instances[owner]
+	targetRecord := s.instances[target]
+	s.mu.Unlock()
+	ownerIndex := current.ownerIndex
+	if !ok || current.owner != owner || current.ref != entry.ref || current.slot != entry.slot || ownerIndex >= ownerState.resultRootsMade || ownerState.resultToken(ownerIndex) != token || ownerState.resultRootSlot(ownerIndex) != entry.slot {
+		return gc.Null(), fmt.Errorf("invalid or stale GC reference token")
+	}
+	if ownerRecord == nil || ownerRecord.resourcesReleased || targetRecord == nil || targetRecord.resourcesReleased || owner.refStore != s || target.refStore != s || owner.gc == nil || owner.gc != target.gc {
+		return gc.Null(), fmt.Errorf("GC reference token belongs to a different collector domain")
+	}
+	if required.Kind != ValueTypeReference || !target.gcRefMatchesValueType(current.ref, required) {
+		return gc.Null(), fmt.Errorf("GC reference token does not match the required structural global type")
+	}
+	if err := target.gc.SetGlobalSlot(slot, current.ref); err != nil {
+		return gc.Null(), fmt.Errorf("root GC reference global: %w", err)
+	}
+	return current.ref, nil
+}
+
 func (in *Instance) rootGCHostArguments(token gcHostActivationToken, dispatch uint32, args []uint64) error {
 	state := token.state
 	if in == nil || state == nil || in.gc == nil || in.refStore == nil {

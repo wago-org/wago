@@ -222,7 +222,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		}
 		if isGCRefValType(c.Globals[index].Type) {
 			exact, err := c.globalExactType(index)
-			if err != nil || c.Globals[index].Mutable || !rootedExportValue(exact) {
+			if err != nil || !rootedExportValue(exact) {
 				return false
 			}
 		}

@@ -5285,7 +5285,10 @@ func rootedScalarI31GlobalModule() []byte {
 		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
 		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I31Ref, true, []byte{0x41, 0x7f, 0xfb, 0x1c, 0x0b}))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("root", byte(wasm.ExternGlobal), 0),
+		)),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
 }
@@ -5330,10 +5333,6 @@ func TestRV64RootedImmutableReferenceGlobalsExport(t *testing.T) {
 			delete(candidate.GlobalExports, "object")
 			candidate.GlobalExports["renamed"] = 0
 		},
-		"mutability": func(candidate *Compiled) {
-			candidate.Globals = slices.Clone(candidate.Globals)
-			candidate.Globals[0].Mutable = true
-		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate := cloneCompiledMetadata(view)
@@ -5371,12 +5370,9 @@ func TestRV64RootedImmutableReferenceGlobalsExport(t *testing.T) {
 }
 
 func TestRV64RootedScalarMutableStructGlobalExecutes(t *testing.T) {
-	source := rootedScalarMutableStructGlobalModule(false)
+	source := rootedScalarMutableStructGlobalModule(true)
 	if !railshot.AdmitGCRootedScalarSource(source) {
-		t.Fatal("generic rooted mutable struct global was not source-admitted")
-	}
-	if railshot.AdmitGCRootedScalarSource(rootedScalarMutableStructGlobalModule(true)) {
-		t.Fatal("private collector-reference global export was source-admitted")
+		t.Fatal("generic rooted mutable struct global export was not source-admitted")
 	}
 	compiled, err := Compile(rv64RootedScalarConfig(), source)
 	if err != nil {
@@ -5407,6 +5403,34 @@ func TestRV64RootedScalarMutableStructGlobalExecutes(t *testing.T) {
 		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
 			t.Fatalf("run()=%v err=%v want=[42]", got, err)
 		}
+	}
+	root, err := instance.GlobalValue("root")
+	if err != nil || root.Type() != ValAnyRef || root.GCRef().IsNull() || root.Bits() == uint64(uint32(root.Bits())) {
+		t.Fatalf("mutable root global=%v err=%v; want opaque aggregate token", root, err)
+	}
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.SetGlobalValue("root", ValueGCRef(root.GCRef())); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.ReleaseGCRef(root.GCRef()); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := instance.Invoke("get"); err != nil || !slices.Equal(got, []uint64{41}) {
+		t.Fatalf("get() after public global restore=%v err=%v want=[41]", got, err)
+	}
+	if err := instance.SetGlobalValue("root", ValueGCRef(root.GCRef())); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("stale global token ingress=%v", err)
+	}
+	if err := instance.SetGlobalValue("root", ValueGCRef(NullGCRef())); err != nil {
+		t.Fatal(err)
+	}
+	if value, err := instance.GlobalValue("root"); err != nil || !value.GCRef().IsNull() {
+		t.Fatalf("cleared mutable root=%v err=%v", value, err)
 	}
 	resolvedTrap, err := instance.WasmFunc("store_then_trap")
 	if err != nil {
@@ -5503,6 +5527,15 @@ func TestRV64RootedScalarI31GlobalExecutes(t *testing.T) {
 		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{0xfffffffe}) {
 			t.Fatalf("run()=%v err=%v want=[4294967294]", got, err)
 		}
+	}
+	if err := instance.SetGlobalValue("root", ValueI31Ref(NewI31Ref(-3))); err != nil {
+		t.Fatal(err)
+	}
+	if value, err := instance.GlobalValue("root"); err != nil || value.Type() != ValI31Ref || value.I31Ref().Signed() != -3 || value.Bits()>>32 != 0 {
+		t.Fatalf("mutable i31 global=%v err=%v", value, err)
+	}
+	if err := instance.SetGlobalValue("root", ValueOf(ValI31Ref, 0xdeadbeef00000003)); err == nil || !strings.Contains(err.Error(), "invalid i31ref") {
+		t.Fatalf("dirty-upper i31 global ingress=%v", err)
 	}
 }
 

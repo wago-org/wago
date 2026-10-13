@@ -152,7 +152,10 @@ func rv64RootedI31GlobalModule() []byte {
 		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
 		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I31Ref, true, []byte{0x41, 0x7f, 0xfb, 0x1c, 0x0b}))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("root", byte(wasm.ExternGlobal), 0),
+		)),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
 }

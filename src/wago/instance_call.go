@@ -378,6 +378,62 @@ func (in *Instance) setGlobalValueNoLease(name string, v Value, roots *globalVal
 		return fmt.Errorf("exported global %q is immutable", name)
 	}
 	cell := in.globalCells[idx]
+	if in.c.usesGenericGCExecution() && (g.Type == ValAnyRef || g.Type == ValI31Ref) {
+		exact, exactErr := in.c.globalExactType(idx)
+		if exactErr != nil {
+			return fmt.Errorf("global %q exact type: %w", name, exactErr)
+		}
+		state := in.existingPublicGCState()
+		if state == nil {
+			return fmt.Errorf("global %q collector root state is unavailable", name)
+		}
+		var slot uint32
+		found := false
+		for _, mapping := range state.globalRoots {
+			if int(mapping.GlobalIndex) == idx {
+				slot, found = mapping.SlotIndex, true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("global %q collector root mapping is unavailable", name)
+		}
+		bits := v.bits
+		var ref gc.Ref
+		if bits == 0 {
+			if !exact.Ref.Nullable {
+				return fmt.Errorf("global %q requires a non-null reference value", name)
+			}
+		} else if g.Type == ValI31Ref {
+			if bits>>32 != 0 || uint32(bits)&1 == 0 {
+				return fmt.Errorf("global %q has an invalid i31ref value", name)
+			}
+			ref = gc.Ref(uint32(bits))
+			if !in.gcRefMatchesValueType(ref, exact) {
+				return fmt.Errorf("global %q i31ref does not match its exact type", name)
+			}
+		} else {
+			store, storeErr := in.referenceStoreForBoundary()
+			if storeErr != nil {
+				return fmt.Errorf("global %q collector reference store: %w", name, storeErr)
+			}
+			var publishErr error
+			ref, publishErr = store.publishGCRefGlobal(in, bits, exact, slot)
+			if publishErr != nil {
+				return fmt.Errorf("global %q: %w", name, publishErr)
+			}
+			writeGlobalObject(cell, g.Type, uint64(ref))
+			return nil
+		}
+		lockedDomain := in.lockGCCollector()
+		if err := in.gc.SetGlobalSlot(slot, ref); err != nil {
+			unlockGCCollector(lockedDomain)
+			return fmt.Errorf("global %q collector root: %w", name, err)
+		}
+		writeGlobalObject(cell, g.Type, uint64(ref))
+		unlockGCCollector(lockedDomain)
+		return nil
+	}
 	managedReference := false
 	if g.Type == ValFuncRef {
 		in.lifeMu.Lock()

@@ -464,7 +464,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	for i := range m.Exports {
 		if m.Exports[i].Index.Kind == wasm.ExternGlobal {
 			global, ok := m.GlobalTypeByIndex(m.Exports[i].Index.Index)
-			if !ok || global.Type.Kind() == wasm.ValRef && (global.Mutable || !publicRootedValue(global.Type)) {
+			if !ok || global.Type.Kind() == wasm.ValRef && !publicRootedValue(global.Type) {
 				return false
 			}
 			continue
