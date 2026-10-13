@@ -3,14 +3,15 @@ package shared
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 // IntegerSumLoop proves a side-effect-free, unsigned, unit-stride induction
-// reduction. The backend separately proves that Counter starts at zero.
-// The do-while body sums 0..Bound-1 and leaves Counter=max(1,Bound).
+// reduction of an affine integer term. The backend separately proves that Counter starts at zero.
+// The do-while body sums Coefficient*i+Constant and leaves Counter=max(1,Bound).
 // Fences may be coalesced because no memory access, call, trap or escape lies
 // between them. The replacement must still emit one fence when Fenced is true.
 type IntegerSumLoop struct {
 	Counter, Accumulator, Bound uint32
 	End                         int
 	Wide, Fenced                bool
+	Coefficient, Constant       uint64
 }
 
 // InspectIntegerSumLoop does not advance the source reader on either outcome.
@@ -59,9 +60,11 @@ func InspectIntegerSumLoop(source *wasm.Reader) (IntegerSumLoop, bool) {
 			return p, false
 		}
 	}
-	if p.Counter, ok = local(0x20); !ok {
+	term, ok := inspectIntegerAffineTerm(&r, blockType != 0)
+	if !ok {
 		return p, false
 	}
+	p.Coefficient, p.Constant = term.coefficient, term.constant
 	if blockType != 0 && !byteIs(0x0b) {
 		return p, false
 	}
@@ -70,6 +73,9 @@ func InspectIntegerSumLoop(source *wasm.Reader) (IntegerSumLoop, bool) {
 		return p, false
 	}
 	p.Wide = add == 0x7c
+	if term.width != 0 && (term.width == 8) != p.Wide {
+		return p, false
+	}
 	constant, less, valueType := byte(0x41), byte(0x49), byte(0x7f)
 	if p.Wide {
 		constant, less, valueType = 0x42, 0x54, 0x7e
@@ -80,7 +86,7 @@ func InspectIntegerSumLoop(source *wasm.Reader) (IntegerSumLoop, bool) {
 	if x, ok := local(0x21); !ok || x != p.Accumulator {
 		return p, false
 	}
-	if x, ok := local(0x20); !ok || x != p.Counter {
+	if p.Counter, ok = local(0x20); !ok || term.hasVariable && term.variable != p.Counter {
 		return p, false
 	}
 	if !byteIs(constant) {

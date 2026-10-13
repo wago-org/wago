@@ -71,6 +71,21 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	f.pushBinOp(opAnd, typ)
 	f.pushBinOp(opAdd, typ)
 	f.pushBinOp(opMul, typ)
+	if p.Coefficient != 1 {
+		f.pushValue(storage{kind: stConst, typ: typ, cval: int64(p.Coefficient)})
+		f.pushBinOp(opMul, typ)
+	}
+	if p.Constant != 0 {
+		f.pushValue(storage{kind: stConst, typ: typ, cval: int64(p.Constant)})
+		// The constant term is contributed once even when Bound is zero.
+		one()
+		get(p.Bound)
+		get(p.Bound)
+		f.pushUnOp(opEqz, typ)
+		f.emitSelect()
+		f.pushBinOp(opMul, typ)
+		f.pushBinOp(opAdd, typ)
+	}
 	f.pushBinOp(opAdd, typ)
 	f.setLocal(nil, int(p.Accumulator), false)
 	// A do-while loop executes once even for n=0, so its final counter is 1.
@@ -84,6 +99,9 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 		if x < 64 {
 			f.localWritten |= uint64(1) << x
 		}
+	}
+	if p.Coefficient != 1 || p.Constant != 0 {
+		f.stats.peep("integer-affine-sum-loop")
 	}
 	f.stats.peep("integer-sum-loop")
 	return true, nil
