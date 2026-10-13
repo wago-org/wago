@@ -111,7 +111,14 @@ func TestPairedI32DotPublicExecution(t *testing.T) {
 									t.Fatal(err)
 								}
 								defer c.Close()
-								for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+								compiledCases := []*Compiled{c}
+								// Guard-page images cannot be serialized; still execute the original.
+								if !guardPageBuilt {
+									loaded := publicArtifactRoundTrip(t, c)
+									defer loaded.Close()
+									compiledCases = append(compiledCases, loaded)
+								}
+								for _, compiled := range compiledCases {
 									in, err := Instantiate(compiled)
 									if err != nil {
 										t.Fatal(err)
