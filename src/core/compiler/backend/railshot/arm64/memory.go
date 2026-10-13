@@ -1475,32 +1475,23 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 }
 
 // fillLoop emits a forward byte-fill loop (the arm64 analog of `rep stosb`):
-// write 128-byte NEON groups while possible, then 64-, 32-, 16-, and 8-byte chunks
+// write 64-byte NEON groups while possible, then 32-, 16-, and 8-byte chunks
 // and a byte tail.
 func (f *fn) fillLoop(dst, pat, n Reg) {
 	vec := f.allocFReg(0)
 	skip := f.a.Cbz64(n)
 	f.a.FmovFromGpr(vec, pat, true)
 	f.a.NeonInsD(vec, pat, 1)
-	f.cmpImm(n, 128, true)
+	f.cmpImm(n, 64, true)
 	wideTail := f.a.Bcond(condB)
 	wideLoop := f.a.Len()
 	f.a.StpQ(vec, vec, dst, 0)
 	f.a.StpQ(vec, vec, dst, 32)
-	f.a.StpQ(vec, vec, dst, 64)
-	f.a.StpQ(vec, vec, dst, 96)
-	f.a.AddImm64(dst, dst, 128)
-	f.a.SubImm64(n, n, 128)
-	f.cmpImm(n, 128, true)
-	f.patchBranch19(f.a.Bcond(condAE), wideLoop)
-	f.patchBranch19(wideTail, f.a.Len())
-	f.cmpImm(n, 64, true)
-	mediumTail := f.a.Bcond(condB)
-	f.a.StpQ(vec, vec, dst, 0)
-	f.a.StpQ(vec, vec, dst, 32)
 	f.a.AddImm64(dst, dst, 64)
 	f.a.SubImm64(n, n, 64)
-	f.patchBranch19(mediumTail, f.a.Len())
+	f.cmpImm(n, 64, true)
+	f.patchBranch19(f.a.Bcond(condAE), wideLoop)
+	f.patchBranch19(wideTail, f.a.Len())
 	f.cmpImm(n, 32, true)
 	vecTail := f.a.Bcond(condB)
 	f.a.StpQ(vec, vec, dst, 0)
