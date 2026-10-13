@@ -1184,3 +1184,34 @@ publication/audit evidence. Opaque callbacks remain 55.49x; f32 rounding globals
 4.55–5.16x, ordinary imports 3.16x, carry globals 2.54–2.62x, and saturating
 conversion 2.09–2.45x. This ranking uses an earlier serialized peer baseline.
 Full parity and native AMD64 timing remain open. Nothing was deployed.
+
+### Defined float-global value pins — 2026-10-13
+
+Wago `fab6064d` pins up to four hot defined mutable f32/f64 globals in unused
+ARM64 local-pin V registers. Scalar arithmetic sinks directly into the global's
+register; older global.get values materialize before overwrite. Return/trap
+paths publish dirty values, and entry traps reload values before publication.
+Imported globals, calls, EH and GC/custom helper paths are excluded. This adds
+no per-global allocation. Raw NaN payloads, signed zeros, infinities/subnormals,
+read timing, both ABIs/artifacts, public trap coherence, entry/trap diagnostics,
+guarded race checks, pinned conformance and native AMD64 fallback tests pass.
+
+A diagnostic local-state transformation reduced the original float kernel from
+12.7 to 2.63 us and its 64-call path from 780 to 169 us, isolating global memory
+traffic. After pinning, the original module runs at 166 us in that probe. Native
+code confirms all global loads/stores leave the hot loop. These transformed
+module probes diagnose the cause; the original-contract capture determines parity.
+
+A locked seven-contract capture measures the two f32 kernels at **173–177 us**,
+from **781–782 us**. The initial core-glb peer row is highly variable, so its
+apparently passing point is not parity evidence. A fresh two-contract repeat
+measures Wago **179–184 us** against Clang peer **168–169 us**, ratios **1.062
+and 1.090**: both still fail strict parity. The f64 scale cases improve only
+1.9–2.3% and remain 1.48–1.51x the peer. Three unchanged controls vary -0.10%
+to +1.76%. Selected native images grow 16 bytes for f32 and 32 for f64; compile
+corpus pairs measure Core 3 -0.12%, threads +0.69%, unchanged aggregate code
+and effectively unchanged allocations. Individual phase samples remain in the
+[raw report](docs/benchmarks/wasm3-2026-10-13/float-global-pins.json), with both
+captures, repeat verdicts, probes, native-code evidence and validation output.
+Nine Wago captures have durable local receipts. Database integrity and all
+575,121 historical observations pass. Full parity remains open; no deployment.
