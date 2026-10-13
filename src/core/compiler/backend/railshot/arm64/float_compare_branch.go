@@ -6,6 +6,8 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 // Keep float operands through an immediate branch or select, which can consume FCMP's
 // NaN-correct flags directly instead of a CSET followed by an integer compare.
+// memAddr reconciles earlier trapping operands before introducing a load, including
+// comparison loads that will be materialized before a float/vector select fallback.
 func (f *fn) fcmpNext(r *wasm.Reader, kind wOp, f64 bool) {
 	if f.opt(optSTFlags) {
 		look := *r
