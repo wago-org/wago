@@ -43,9 +43,6 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		return reject("RV64 exact roots require a bounded scalar allocation module")
 	}
 	if len(m.Imports) != 0 {
-		if importedFunctions != 0 && (len(m.Tables) != 0 || len(m.Elements) != 0) {
-			return reject("RV64 exact roots require numeric imports without tables")
-		}
 		for i := range m.Imports {
 			im := &m.Imports[i]
 			switch im.Type.Kind {
@@ -115,7 +112,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				}
 			}
 			value, err := wasm.ParseFuncrefElementExpr(expr)
-			if err != nil || !value.Null && uint64(value.FuncIndex) >= uint64(len(m.FuncTypes)) {
+			if err != nil || !value.Null && (uint64(value.FuncIndex) < uint64(importedFunctions) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
 				return reject("RV64 exact roots reject table initializer target")
 			}
 		}
@@ -134,7 +131,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			}
 			values = len(elem.Kind.Funcs)
 			for _, function := range elem.Kind.Funcs {
-				if uint64(function) >= uint64(len(m.FuncTypes)) {
+				if uint64(function) < uint64(importedFunctions) || uint64(function) >= uint64(importedFunctions+len(m.FuncTypes)) {
 					return reject("RV64 exact roots reject element function %d", function)
 				}
 			}
@@ -156,7 +153,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 					}
 				}
 				value, err := wasm.ParseFuncrefElementExpr(expr)
-				if err != nil || !value.Null && uint64(value.FuncIndex) >= uint64(len(m.FuncTypes)) {
+				if err != nil || !value.Null && (uint64(value.FuncIndex) < uint64(importedFunctions) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
 					return reject("RV64 exact roots reject element expression %d:%d", i, j)
 				}
 			}
@@ -179,6 +176,25 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			return reject("RV64 exact roots reject unknown function element modes")
 		}
 		remainingElements -= values
+	}
+	if importedFunctions != 0 && len(m.Tables) != 0 {
+		classifier := wasm.NewModuleInstructionClassifier(m, true)
+		for i := range m.Code {
+			r := wasm.NewReader(m.Code[i].BodyBytes)
+			for r.HasNext() {
+				op, err := r.Byte()
+				if err != nil {
+					return reject("RV64 exact roots reject malformed function %d", i)
+				}
+				var imm wasm.InstructionImmediate
+				if err = classifier.ClassifyInto(r, op, &imm); err != nil {
+					return reject("RV64 exact roots reject malformed function %d", i)
+				}
+				if imm.Kind == wasm.InstrRefFunc && uint64(imm.Index) < uint64(importedFunctions) {
+					return reject("RV64 exact roots reject imported ref.func in private table module")
+				}
+			}
+		}
 	}
 	remainingData := railshot.MaxModuleBytes
 	for i := range m.Data {

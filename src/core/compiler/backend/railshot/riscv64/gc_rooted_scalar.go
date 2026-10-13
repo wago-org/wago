@@ -35,12 +35,8 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		return false
 	}
 	if len(m.Imports) != 0 {
-		// The first generic host boundary is deliberately numeric and table-free.
-		// Imported references and table publication have separate ownership contracts
-		// and must not become reachable through this admission step.
-		if importedFunctions != 0 && (len(m.Tables) != 0 || len(m.Elements) != 0) {
-			return false
-		}
+		// The generic host boundary remains numeric. Imported references must not
+		// become reachable through private tables.
 		for i := range m.Imports {
 			im := &m.Imports[i]
 			switch im.Type.Kind {
@@ -91,7 +87,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		if table.Init != nil {
 			value, err := tableElementExpression(*table.Init)
-			if err != nil || !value.Null && uint64(value.FuncIndex) >= uint64(len(m.FuncTypes)) {
+			if err != nil || !value.Null && (uint64(value.FuncIndex) < uint64(importedFunctions) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
 				return false
 			}
 		}
@@ -110,7 +106,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			}
 			values = len(elem.Kind.Funcs)
 			for _, function := range elem.Kind.Funcs {
-				if uint64(function) >= uint64(len(m.FuncTypes)) {
+				if uint64(function) < uint64(importedFunctions) || uint64(function) >= uint64(importedFunctions+len(m.FuncTypes)) {
 					return false
 				}
 			}
@@ -122,7 +118,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			values = len(elem.Kind.Exprs)
 			for _, expr := range elem.Kind.Exprs {
 				value, err := tableElementExpression(expr)
-				if err != nil || !value.Null && uint64(value.FuncIndex) >= uint64(len(m.FuncTypes)) {
+				if err != nil || !value.Null && (uint64(value.FuncIndex) < uint64(importedFunctions) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
 					return false
 				}
 			}
@@ -148,6 +144,22 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			return false
 		}
 		remainingElements -= values
+	}
+	if importedFunctions != 0 && len(m.Tables) != 0 {
+		classifier := wasm.NewModuleInstructionClassifier(m, true)
+		for i := range m.Code {
+			r := wasm.NewReader(m.Code[i].BodyBytes)
+			for r.HasNext() {
+				op, err := r.Byte()
+				if err != nil {
+					return false
+				}
+				var imm wasm.InstructionImmediate
+				if err = classifier.ClassifyInto(r, op, &imm); err != nil || imm.Kind == wasm.InstrRefFunc && uint64(imm.Index) < uint64(importedFunctions) {
+					return false
+				}
+			}
+		}
 	}
 	for i := range m.Globals {
 		global := &m.Globals[i]

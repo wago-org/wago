@@ -286,7 +286,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		copy(digest[:], h.Sum(nil))
 		return digest, true
 	}
-	if c.tableCount() < 1 || c.tableCount() > 2 || !c.HasTable || !c.hasTableExportMetadata || len(c.FuncTypeID) != len(c.Funcs) {
+	if c.tableCount() < 1 || c.tableCount() > 2 || !c.HasTable || !c.hasTableExportMetadata || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return [32]byte{}, false
 	}
 	needsDescriptors := false
@@ -322,7 +322,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 				_, _ = h.Write([]byte{0})
 				continue
 			}
-			if uint64(value.FuncIndex) >= uint64(len(c.Funcs)) {
+			if uint64(value.FuncIndex) < uint64(c.NumImports) || uint64(value.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) {
 				return false
 			}
 			needsDescriptors = true
@@ -338,7 +338,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		exact, err := c.tableExactType(tableIndex)
 		if err != nil || exact != plain || def.ImportKey != "" || def.ImportHasMax || def.Addr64 || def.Type != ValFuncRef || !def.HasValueType || !def.HasMax ||
 			def.Size < 0 || def.Size > 256 || def.Max < uint64(def.Size) || def.Max > 256 || uint64(def.ValueTypeIndex) >= uint64(len(c.ValueTypes)) || c.ValueTypes[def.ValueTypeIndex] != plain ||
-			!def.HasInitFunc && def.InitFunc != 0 || def.HasInitFunc && (uint64(def.InitFunc) >= uint64(len(c.Funcs)) || railshotNonCallableFunction(c, int(def.InitFunc))) {
+			!def.HasInitFunc && def.InitFunc != 0 || def.HasInitFunc && (uint64(def.InitFunc) < uint64(c.NumImports) || uint64(def.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || railshotNonCallableFunction(c, int(def.InitFunc))) {
 			return [32]byte{}, false
 		}
 		needsDescriptors = needsDescriptors || def.HasInitFunc

@@ -42,9 +42,6 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		len(c.passiveElems) > 256 || len(c.PassiveData) > 256 {
 		return false
 	}
-	if c.NumImports != 0 && (c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0) {
-		return false
-	}
 	importDigest, validImports := rv64RootedImportDigest(c)
 	if !validImports || importDigest != memo.rv64FreshRootedGCImportDigest {
 		return false
