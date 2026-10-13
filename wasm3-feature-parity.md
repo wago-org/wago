@@ -684,3 +684,31 @@ vary over 21,800 Core 3 compiles), and code totals are identical. Peak RSS chang
 +1.15%/+1.13%. `copysign-results.json` retains all 27 performance rows, alternating
 compile captures, source fingerprints, image hashes and complete conformance
 output. Full feature and cross-platform performance parity remain open.
+
+### Uniform integer SIMD lane reductions
+
+`b4ef4c22` extends the bounded original-source affine proof to i32x4/i64x2
+splats, lane-wise add/subtract and affine multiplication, followed by extraction
+of any valid lane. Every lane has the same modular affine value; extraction
+recovers that scalar value for the existing integer sum reduction. Nonlinear
+products, mixed lane widths, vector/scalar mixing, invalid lanes and unextracted
+vector results fall back. The proof adds no persistent compiler or ABI fields.
+
+The fresh SIMD add/multiply contract falls 108,225 -> 100.57 ns, versus unchecked
+w2c2 306.63 ns (0.328x), across three independent processes per profile and five
+verified samples of at least 50 ms. Scalar SIMD arithmetic, signed-zero and
+negative-saturation controls remain below their peer medians. One current
+negative-saturation process has CV 0.125; its raw qualified samples are retained.
+Actual target adapter native image size changes 400 -> 416 bytes: the reduction
+trades a small code increase for removing repeated vector arithmetic.
+
+Shared tests, public execution across both lane widths and every lane, wrapping
+coefficients, both ABIs, optimization off/on, codec reload and extreme bounds
+pass. Guarded race tests and pinned Core 3/threads conformance pass. AMD64 public
+tests cross-compile; native execution remains pending hub access. Full backend
+statistics were not rerun. Core 3/threads compile latency changes +0.10%/+2.80%,
+allocation totals are effectively unchanged (five pool allocations vary over
+21,800 Core 3 compiles), and corpus code totals are identical. Peak RSS changes
+-1.72%/-0.63%. `simd-affine-results.json` retains all 36 performance rows,
+alternating compile captures, source fingerprints, native image hashes and full
+conformance output. Broader SIMD and full feature performance parity remain open.
