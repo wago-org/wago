@@ -501,7 +501,7 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 	}
 	for i := range m.Code {
 		body := bytes.Equal(m.Code[i].BodyBytes, wantBodies[i])
-		if i == 5 && !hostReferenceCarrierArgument {
+		if i == 5 {
 			tailBody := append([]byte(nil), wantBodies[i]...)
 			tailBody[len(tailBody)-3] = 0x15
 			body = body || bytes.Equal(m.Code[i].BodyBytes, tailBody)

@@ -261,6 +261,10 @@ func rv64MutableFuncrefLocalCallHostReferenceCarrierModule() []byte {
 	)
 }
 
+func rv64MutableFuncrefLocalTailCallHostReferenceCarrierModule() []byte {
+	return rv64MutableFuncrefLocalTailCallModule(rv64MutableFuncrefLocalCallHostReferenceCarrierModule())
+}
+
 func rv64MutableFuncrefLocalTailCallMixedVectorModule() []byte {
 	types := []wasm.ValType{wasm.I32, wasm.V128, wasm.F64}
 	return wasmtest.Module(
@@ -1487,6 +1491,141 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallHostReferenceCarriers(t *testing
 	}
 }
 
+func TestRV64PublicMutableFuncrefGlobalLocalTailCallHostReferenceCarriers(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+			defer rv64HostCertificateCloseRuntime(t, rt)
+			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-host-reference-carriers", rv64MutableFuncrefLocalTailCallHostReferenceCarrierModule(), artifact)
+			view := compiled.executionView()
+			m := rv64NativeTailModule(view)
+			if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 22 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) || m == nil || len(m.Plans) != 1 || !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0]) {
+				t.Fatal("host-reference-carrier local-tail-call witness missing")
+			}
+			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+			ref, err := rt.NewExternRef("mutable-tail-host-reference-carrier")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := consumer.Invoke("set_0"); err != nil {
+				t.Fatal("install tail host-reference-carrier identity", err)
+			}
+			cell, err := consumer.GlobalValue("cell")
+			if err != nil || cell.FuncRef().IsNull() {
+				t.Fatal("tail host-reference-carrier argument token", cell, err)
+			}
+			argumentRoot, err := rt.NewFuncRefGlobal(cell.FuncRef(), false)
+			if err != nil {
+				t.Fatal("retain tail host-reference-carrier funcref argument", err)
+			}
+			defer argumentRoot.Close()
+			input := []uint64{0xdeadbeef80000001, cell.Bits(), ValueExternRef(ref).Bits(), ^uint64(0), 0xfeedface40000000, math.Float64bits(2.5)}
+			assertCall := func(wantI32, wantI64, wantF32, wantF64 uint64) {
+				t.Helper()
+				got, err := consumer.Invoke("call", input...)
+				if err != nil || len(got) != 6 || got[0] != wantI32 || got[1] != input[1] || got[2] != input[2] || got[3] != wantI64 || got[4] != wantF32 || got[5] != wantF64 {
+					t.Fatal("mutable host-reference-carrier return_call_ref", got, err)
+				}
+				rv64AssertPublicReferenceCarrierStateClear(t, consumer)
+			}
+			assertCall(0x80000001, ^uint64(0), uint64(math.Float32bits(2)), math.Float64bits(2.5))
+			if _, err := consumer.Invoke("set_1"); err != nil {
+				t.Fatal("install tail host-reference-carrier transform", err)
+			}
+			assertCall(0x80000002, 0, uint64(math.Float32bits(3)), math.Float64bits(3.5))
+
+			foreignCode := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-host-reference-carriers-foreign", rv64MutableFuncrefLocalCallHostReferenceCarrierModule(), artifact)
+			foreign := rv64NativeTokenInstantiate(t, rt, foreignCode, NewImports())
+			foreignDescriptor, ok := foreign.localFuncrefDescriptor(0)
+			if !ok {
+				t.Fatal("foreign host-reference-carrier target descriptor")
+			}
+			foreignToken, err := rt.refStore.issue(foreign, foreignDescriptor)
+			if err != nil {
+				t.Fatal("foreign host-reference-carrier target token", err)
+			}
+			foreignTokenHeld := foreign.referenceLifetime().snapshot()
+			if err := consumer.SetGlobalValue("cell", ValueOf(ValFuncRef, foreignToken)); err != nil {
+				t.Fatal("install foreign host-reference-carrier tail target", err)
+			}
+			foreignInstalled := foreign.referenceLifetime().snapshot()
+			if foreignInstalled.ResourceRoots != foreignTokenHeld.ResourceRoots+1 {
+				t.Fatal("foreign host-reference-carrier tail cell root", foreignTokenHeld, foreignInstalled)
+			}
+			if err := foreign.Close(); err != nil {
+				t.Fatal(err)
+			}
+			assertCall(0x80000001, ^uint64(0), uint64(math.Float32bits(2)), math.Float64bits(2.5))
+			if _, err := consumer.Invoke("clear"); err != nil {
+				t.Fatal("clear foreign host-reference-carrier tail target", err)
+			}
+			if cleared := foreign.referenceLifetime().snapshot(); !cleared.LogicallyClosed || !cleared.PhysicalResources || cleared.ResourceRoots+1 != foreignInstalled.ResourceRoots {
+				t.Fatal("foreign host-reference-carrier tail clear root", foreignInstalled, cleared)
+			}
+
+			calls := 0
+			host := HostCallFunc(func(call HostCall) {
+				calls++
+				if uint32(call.I32(0)) != 0x80000001 || call.FuncRef(1).IsNull() || call.ExternRef(2) != ref || call.I64(3) != -1 || math.Float32bits(call.F32(4)) != math.Float32bits(2) || math.Float64bits(call.F64(5)) != math.Float64bits(2.5) {
+					panic("mutable tail host-reference-carrier arguments")
+				}
+				call.ResultSlots()[0] = 0xfeedface00000000 | uint64(uint32(call.I32(0))+5)
+				call.SetFuncRef(1, call.FuncRef(1))
+				call.SetExternRef(2, call.ExternRef(2))
+				call.SetI64(3, call.I64(3)+5)
+				call.ResultSlots()[4] = 0xfeedface00000000 | uint64(math.Float32bits(call.F32(4)+5))
+				call.SetF64(5, call.F64(5)+5)
+			})
+			types := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64, wasm.F32, wasm.F64}
+			producerCode := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-host-reference-carriers-producer", rv64PublicReferenceTailModule(types, true, true), artifact)
+			owner, err := rt.NewHostFuncRef(host, FuncSig{Params: []ValType{ValI32, ValFuncRef, ValExternRef, ValI64, ValF32, ValF64}, Results: []ValType{ValI32, ValFuncRef, ValExternRef, ValI64, ValF32, ValF64}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer owner.Close()
+			producer := rv64HostTailInstantiate(t, rt, producerCode, NewImports().Function("env", "target", owner))
+			if !rv64PublicDynamicHostReferenceBoundary(producer.c) || len(producer.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("dynamic tail host-reference-carrier producer witness")
+			}
+			descriptor := uint64(offHeapSlicePtr(producer.funcRefDescs)) + coreruntime.FuncRefDescBytes
+			token, err := rt.refStore.issue(producer, descriptor)
+			if err != nil {
+				t.Fatal("dynamic tail host-reference-carrier token", err)
+			}
+			tokenHeld := producer.referenceLifetime().snapshot()
+			if err := consumer.SetGlobalValue("cell", ValueOf(ValFuncRef, token)); err != nil {
+				t.Fatal("install dynamic tail host-reference-carrier target", err)
+			}
+			installed := producer.referenceLifetime().snapshot()
+			if installed.ResourceRoots != tokenHeld.ResourceRoots+1 {
+				t.Fatal("dynamic tail host-reference-carrier cell root", tokenHeld, installed)
+			}
+			assertCall(0x80000006, 4, uint64(math.Float32bits(7)), math.Float64bits(7.5))
+			if calls != 1 {
+				t.Fatal("dynamic tail host-reference-carrier call count", calls)
+			}
+			if _, err := consumer.Invoke("clear"); err != nil {
+				t.Fatal("clear dynamic tail host-reference-carrier target", err)
+			}
+			if cleared := producer.referenceLifetime().snapshot(); cleared.ResourceRoots+1 != installed.ResourceRoots {
+				t.Fatal("dynamic tail host-reference-carrier clear root", installed, cleared)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if !rt.ReleaseExternRef(ref) {
+				t.Fatal("mutable tail host-reference-carrier externref remained pinned")
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := foreignCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestRV64PublicMutableFuncrefGlobalLocalTailCallMixedVector(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
@@ -1885,6 +2024,51 @@ func TestRV64PublicMutableFuncrefGlobalLocalTailCallReferenceCarrierAdmission(t 
 			mutate(bad)
 			if err := railshotValidateCompiled(bad); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile reference-carrier local-tail-call artifact admitted", err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicMutableFuncrefGlobalLocalTailCallHostReferenceCarrierAdmission(t *testing.T) {
+	compiled := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-host-reference-carrier-admission", rv64MutableFuncrefLocalTailCallHostReferenceCarrierModule(), false)
+	defer compiled.Close()
+	view := compiled.executionView()
+	m := rv64NativeTailModule(view)
+	if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 22 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) || m == nil || len(m.Plans) != 1 || !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0]) {
+		t.Fatal("base host-reference-carrier local-tail-call witness rejected")
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"code":                 func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
+		"escape":               func(v *Compiled) { v.dynamicFuncrefEscape = false },
+		"missing-call-abi":     func(v *Compiled) { v.nativeReferenceCallABI = false },
+		"missing-tail-feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureTailCall },
+		"function-parameter": func(v *Compiled) {
+			v.Funcs[5].Params = slices.Clone(v.Funcs[5].Params)
+			v.Funcs[5].Params[4] = ValF64
+		},
+		"type-result-order": func(v *Compiled) {
+			v.Types[0].Results = slices.Clone(v.Types[0].Results)
+			v.Types[0].Results[4], v.Types[0].Results[5] = v.Types[0].Results[5], v.Types[0].Results[4]
+		},
+		"missing-plan":        func(v *Compiled) { rv64StoreNativeTailModule(v, nil) },
+		"plan-kind":           func(v *Compiled) { rv64NativeTailModule(v).Plans[0].Kind = encoder.NativeTailIndirect },
+		"plan-type":           func(v *Compiled) { rv64NativeTailModule(v).Plans[0].TypeIndex = 1 },
+		"plan-function":       func(v *Compiled) { rv64NativeTailModule(v).Plans[0].FunctionIndex = 1 },
+		"plan-source":         func(v *Compiled) { rv64NativeTailModule(v).Plans[0].SourcePC++ },
+		"plan-frame":          func(v *Compiled) { rv64NativeTailModule(v).Plans[0].FrameBytes += 16 },
+		"plan-source-base":    func(v *Compiled) { rv64NativeTailModule(v).Plans[0].SourceBase -= 8 },
+		"plan-source-stride":  func(v *Compiled) { rv64NativeTailModule(v).Plans[0].SourceStride = 16 },
+		"plan-reference-base": func(v *Compiled) { rv64NativeTailModule(v).Plans[0].ReferenceBase -= 8 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := cloneCompiledMetadata(view)
+			bad.validateMemo, bad.codeCache = &validateMemo{}, nil
+			if plan := rv64NativeTailModule(view); plan != nil {
+				rv64StoreNativeTailModule(bad, &encoder.NativeTailModule{Plans: slices.Clone(plan.Plans)})
+			}
+			mutate(bad)
+			if err := railshotValidateCompiled(bad); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatal("hostile host-reference-carrier local-tail-call artifact admitted", err)
 			}
 		})
 	}

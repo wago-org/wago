@@ -43,7 +43,7 @@ func rv64DeclaredControlSignatureProfile(c *Compiled, typ *DefinedTypeDescriptor
 			}
 			if !heap.Defined {
 				mutableVariant := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
-				mutableCarrier := mutableVariant >= 19 && mutableVariant <= 21 && len(c.Funcs) == 6 && rv64PublicReferenceCarrierSignature(c.Funcs[0])
+				mutableCarrier := mutableVariant >= 19 && mutableVariant <= 22 && len(c.Funcs) == 6 && rv64PublicReferenceCarrierSignature(c.Funcs[0])
 				executionExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && (rv64Core3RefIsNullExecution(c) || rv64Core3RefIsNullExecutionCodecPrefix(c))
 				declarationExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && (rv64Core3RefDeclarationMetadata(c) || rv64Core3ReferenceDeclarationMetadata(c))
 				declarationNonNullExtern := heap.Abstract == AbstractHeapExtern && !v.Ref.Nullable && (rv64Core3RefDeclarationMetadata(c) || rv64Core3RefAsNonNullDeclarationMetadata(c) || rv64Core3RefIsNullDeclarationMetadata(c))
@@ -64,7 +64,7 @@ func rv64DeclaredControlSignatureProfile(c *Compiled, typ *DefinedTypeDescriptor
 				return false, false, fmt.Errorf("RV64 indexed heap requires plain bounded numeric callable")
 			}
 			mutableVariant := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
-			if heap.TypeIndex == 0 && (rv64PublicReferenceCallBoundaryWithPlan(c, false) && rv64PublicReferenceCarrierSignature(c.Funcs[0]) || mutableVariant >= 19 && mutableVariant <= 21 && len(c.Funcs) == 6 && rv64PublicReferenceCarrierSignature(c.Funcs[0])) {
+			if heap.TypeIndex == 0 && (rv64PublicReferenceCallBoundaryWithPlan(c, false) && rv64PublicReferenceCarrierSignature(c.Funcs[0]) || mutableVariant >= 19 && mutableVariant <= 22 && len(c.Funcs) == 6 && rv64PublicReferenceCarrierSignature(c.Funcs[0])) {
 				continue
 			}
 			// Do not recurse through another reference-bearing control declaration.
