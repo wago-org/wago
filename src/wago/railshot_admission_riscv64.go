@@ -161,6 +161,8 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			return wasm.HeapAny, true
 		case AbstractHeapEq:
 			return wasm.HeapEq, true
+		case AbstractHeapI31:
+			return wasm.HeapI31, true
 		case AbstractHeapStruct:
 			return wasm.HeapStruct, true
 		case AbstractHeapArray:

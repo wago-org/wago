@@ -315,7 +315,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		heap := typ.Ref().Heap()
 		if heap.Kind() == wasm.HeapAbs {
-			return rootedAbstractObjectHeap(heap.Abs())
+			return rootedAbstractObjectHeap(heap.Abs()) || heap.Abs() == wasm.HeapI31
 		}
 		return heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && int(heap.Type().Index) < flatTypes && admittedAggregates[heap.Type().Index]
 	}
@@ -894,7 +894,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 			if typ >= 0x7c && typ <= 0x7f {
 				continue
 			}
-			if rootedAbstractObjectHeap(wasm.AbsHeapType(typ)) {
+			if rootedAbstractObjectHeap(wasm.AbsHeapType(typ)) || wasm.AbsHeapType(typ) == wasm.HeapI31 {
 				continue
 			}
 			if typ != 0x63 && typ != 0x64 {
@@ -905,7 +905,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 				return false
 			}
 			if heap < 0 {
-				if !rootedAbstractObjectHeapS33(heap) {
+				if !rootedAbstractObjectHeapS33(heap) && heap != -20 {
 					return false
 				}
 				continue

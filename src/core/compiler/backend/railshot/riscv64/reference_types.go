@@ -26,8 +26,9 @@ type internalReferenceTypes struct {
 	// whole-module classifier prevents this from widening other declarations or
 	// executable bodies.
 	publicReferenceCarriers bool
-	// i31 is confined to the exact non-allocating Core 3 product. It admits the
-	// abstract i31 heap as one full-width internal immediate carrier.
+	// i31 admits the abstract i31 heap as one full-width internal immediate
+	// carrier. Whole-module profile gates still keep it off unqualified public
+	// host boundaries, globals, tables, and aggregate storage.
 	i31 bool
 	// gcArrayFixedOfficial admits only the two indexed f32 array heaps and the
 	// abstract array supertype in the pinned official fixed-array product.

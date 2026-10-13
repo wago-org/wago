@@ -2071,3 +2071,88 @@ func TestRV64RootedScalarI31LocalCompiles(t *testing.T) {
 		t.Fatalf("code=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
 	}
 }
+
+func rv64RootedScalarI31InternalCallModule() []byte {
+	callee := []byte{
+		0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x1a,
+		0x20, 0x00,
+		0x0b,
+	}
+	caller := []byte{
+		0x00,
+		0x41, 0x7f, 0xfb, 0x1c, 0x10, 0x00, 0xfb, 0x1e,
+		0x41, 0x7f, 0xfb, 0x1c, 0x10, 0x00, 0xfb, 0x1d,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			[]byte{0x60, 0x01, 0x6c, 0x01, 0x6c},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(callee))), callee...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func TestRV64RootedScalarI31InternalCallCompiles(t *testing.T) {
+	source := rv64RootedScalarI31InternalCallModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("rooted i31 internal call module was not admitted")
+	}
+	m.Exports[0].Index.Index = 0
+	if admitRV64GCRootedScalarModule(m) {
+		t.Fatal("public i31 function boundary was admitted")
+	}
+	m.Exports[0].Index.Index = 1
+	roots := shared.NewGCModuleFrameRootPlan(2)
+	if !roots.MarkFunction(0) || !roots.MarkFunction(1) || !roots.ReserveFunctions(2) {
+		t.Fatal("reserve exact root plans")
+	}
+	callee, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin callee root plan")
+	}
+	*callee = shared.GCFrameRootPlan{
+		Candidate: true, Exact: true, Conservative: true,
+		Locals: []shared.GCFrameLocal{{Index: 0, Offset: shared.RV64CallFrameHeaderBytes}},
+	}
+	if !callee.SetLiveMasks([]uint64{1}, 1, 0) {
+		t.Fatal("install callee root masks")
+	}
+	caller, ok := roots.BeginFunction(1)
+	if !ok {
+		t.Fatal("begin caller root plan")
+	}
+	*caller = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true, SafepointBase: 1}
+	if !caller.SetLiveMasks([]uint64{0, 0}, 0, 2) {
+		t.Fatal("install caller root masks")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || callee.SafepointCount() != 1 || caller.SafepointCount() != 0 || caller.CallsiteCount() != 2 {
+		t.Fatalf("code=%d callee-safepoints=%d caller-safepoints=%d callsites=%d", len(compiled.Code), callee.SafepointCount(), caller.SafepointCount(), caller.CallsiteCount())
+	}
+}
