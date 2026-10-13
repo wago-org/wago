@@ -43,9 +43,9 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 			fp++
 		}
 	}
-	// Three owned GP values and one materialized coefficient/hash source.
-	// Keep division and hash in vector lanes so the count can remain in a GP.
-	if gp < 4 || fp < p.Terms/4+9 {
+	// Four owned GP values at most. Coefficients are packed before the hash
+	// and sum temporaries are allocated; the runtime count resides in a V register.
+	if gp < 4 || fp < p.Terms/4+7 {
 		return false, nil
 	}
 	f.flush()
@@ -120,8 +120,8 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 		}
 		f.pushValue(zeroStorage(mtI32))
 		f.setLocal(nil, int(p.Counter), false)
-		var v [17]Reg
-		used := p.Terms/4 + 9
+		var v [15]Reg
+		used := p.Terms/4 + 7
 		for i := 0; i < used; i++ {
 			v[i] = f.allocFReg(calleeFP)
 			f.fpinned = f.fpinned.add(v[i])
@@ -129,7 +129,7 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 		groups := p.Terms / 4
 		sample, bias := v[groups], v[groups+1]
 		acc := v[groups+2 : groups+6]
-		hash, multiplier, rounding := v[groups+6], v[groups+7], v[groups+8]
+		counter := v[groups+6]
 		for g := 0; g < groups; g++ {
 			for lane := 0; lane < 4; lane++ {
 				get(p.Coefficients[p.Terms-1-g*4-lane])
@@ -144,14 +144,11 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 				}
 			}
 		}
-		get(p.Hash)
-		src, owned := f.materializeRead(f.popValue())
-		f.a.NeonDupGprS(hash, src)
-		if owned {
-			f.release(src)
-		}
-		f.a.MovImm32(tmp, p.Multiplier)
-		f.a.NeonDupGprS(multiplier, tmp)
+		f.a.NeonDupGprS(counter, n)
+		f.pinned = f.pinned.remove(n)
+		f.release(n)
+		hash := copyRead(p.Hash)
+		sum := alloc()
 		f.a.MovImm32(tmp, p.Bias)
 		f.a.NeonDupGprS(bias, tmp)
 		f.a.MovImm64(tmp, uint64(p.Offset))
@@ -170,24 +167,25 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 		f.a.NeonAddS(acc[2], acc[2], acc[3])
 		f.a.NeonAddS(acc[0], acc[0], acc[2])
 		f.a.NeonAddvS(acc[0], acc[0])
+		f.a.NeonUmovS(sum, acc[0], 0)
 		if p.Divisor != 1 {
-			shift := uint8(bits.TrailingZeros32(p.Divisor))
-			// Correct arithmetic-shift floor to signed division toward zero.
-			f.a.NeonSshrS(rounding, acc[0], 31)
-			f.a.NeonUshrS(rounding, rounding, 32-shift)
-			f.a.NeonAddS(acc[0], acc[0], rounding)
-			f.a.NeonSshrS(acc[0], acc[0], shift)
+			f.a.AsrImm(tmp, sum, 31, true)
+			f.a.AndImm32(tmp, tmp, p.Divisor-1)
+			f.a.Add32(sum, sum, tmp)
+			f.a.AsrImm(sum, sum, uint8(bits.TrailingZeros32(p.Divisor)), true)
 		}
-		f.a.NeonEor16b(hash, hash, acc[0])
-		f.a.NeonMulS(hash, hash, multiplier)
+		f.a.Eor32(hash, hash, sum)
+		f.a.MovImm32(tmp, p.Multiplier)
+		f.a.Mul32(hash, hash, tmp)
 		f.a.AddImm64(ptr, ptr, 4)
-		f.a.SubImm32(n, n, 1)
-		again := f.a.Cbnz32(n)
+		f.a.NeonUmovS(tmp, counter, 0)
+		f.a.SubImm32(tmp, tmp, 1)
+		f.a.NeonDupGprS(counter, tmp)
+		again := f.a.Cbnz32(tmp)
 		f.a.PatchBranch19(again, loop)
-		f.a.NeonUmovS(tmp, hash, 0)
-		f.pushReg(tmp, mtI32)
+		f.pushReg(hash, mtI32)
 		f.setLocal(nil, int(p.Hash), false)
-		for _, reg := range []Reg{ptr, n, tmp} {
+		for _, reg := range []Reg{ptr, hash, sum, tmp} {
 			f.release(reg)
 		}
 		for _, reg := range v[:used] {
