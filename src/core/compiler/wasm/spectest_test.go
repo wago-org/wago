@@ -114,11 +114,9 @@ func TestSpecSuite(t *testing.T) {
 		name := strings.ReplaceAll(base, string(filepath.Separator), "_")
 		jsonPath := filepath.Join(tmp, name+".json")
 		args := []string{wast, "-o", jsonPath}
-		// Standardized 1.0/2.0 features are enabled by default. --enable-all also
-		// enables experimental encodings such as compact imports, so reserve it for
-		// the proposal aggregate instead of rewriting the pinned core corpora.
+		// Keep the pinned Core 3 producer free of experimental wire encodings.
 		if version == "3.0" {
-			args = append([]string{"--enable-all"}, args...)
+			args = append(spectest.Release3WABTFlags(), args...)
 		}
 		out, err := exec.Command(wast2json, args...).CombinedOutput()
 		if err != nil {

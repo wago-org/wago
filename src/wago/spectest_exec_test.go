@@ -1580,7 +1580,7 @@ func runSpecExec(t *testing.T, wast2json, interpreter, dir, version string, file
 		jsonPath := filepath.Join(tmp, name+".json")
 		args := []string{wast, "-o", jsonPath}
 		if version == "3.0" {
-			args = append([]string{"--enable-all"}, args...)
+			args = append(spectest.Release3WABTFlags(), args...)
 		}
 		if out, err := exec.Command(wast2json, args...).CombinedOutput(); err != nil {
 			wabtError := fmt.Sprintf("%v: %s", err, firstLine(out))

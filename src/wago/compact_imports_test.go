@@ -14,9 +14,9 @@ import (
 // Both encodings expand to two ordinary function imports. The local function
 // calls them by index so execution also checks expansion order.
 func compactFunctionImportsModule(sameKind bool) []byte {
-	group := []byte{2, 3, 'e', 'n', 'v', 0}
+	group := []byte{1, 3, 'e', 'n', 'v', 0}
 	if sameKind {
-		group = append(group, 0x7e, 0, 2, 1, 'a', 0, 1, 'b', 0)
+		group = append(group, 0x7e, 0, 0, 2, 1, 'a', 1, 'b')
 	} else {
 		group = append(group, 0x7f, 2, 1, 'a', 0, 0, 1, 'b', 0, 0)
 	}
@@ -41,7 +41,7 @@ func TestCompactImportsIndependentOfMultiMemory(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			data := compactFunctionImportsModule(sameKind)
-			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2)
+			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithBoundsChecks(BoundsChecksExplicit)
 			_, err := cfg.Compile(data)
 			var validation *wasm.ValidationError
 			if !errors.As(err, &validation) || validation.Code != wasm.ErrUnsupportedFeature {
@@ -56,7 +56,7 @@ func TestCompactImportsIndependentOfMultiMemory(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer compiled.Close()
-			ordinary, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).Compile(functionImportsModule([]byte{2, 3, 'e', 'n', 'v', 1, 'a', 0, 0, 3, 'e', 'n', 'v', 1, 'b', 0, 0}))
+			ordinary, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithBoundsChecks(BoundsChecksExplicit).Compile(functionImportsModule([]byte{2, 3, 'e', 'n', 'v', 1, 'a', 0, 0, 3, 'e', 'n', 'v', 1, 'b', 0, 0}))
 			if err != nil {
 				t.Fatal(err)
 			}
