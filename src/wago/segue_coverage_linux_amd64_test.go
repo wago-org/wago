@@ -16,16 +16,17 @@ import (
 func TestSegueScalarMemoryCoverage(t *testing.T) {
 	aux, err := os.ReadFile("/proc/self/auxv")
 	if err != nil {
-		t.Fatal(err)
-	}
-	var hwcap2 uint64
-	for i := 0; i+16 <= len(aux); i += 16 {
-		if binary.LittleEndian.Uint64(aux[i:]) == 26 {
-			hwcap2 = binary.LittleEndian.Uint64(aux[i+8:])
-			break
+		t.Logf("kernel_fsgsbase_enabled=unknown: cannot read /proc/self/auxv: %v", err)
+	} else {
+		var hwcap2 uint64
+		for i := 0; i+16 <= len(aux); i += 16 {
+			if binary.LittleEndian.Uint64(aux[i:]) == 26 {
+				hwcap2 = binary.LittleEndian.Uint64(aux[i+8:])
+				break
+			}
 		}
+		t.Logf("kernel_fsgsbase_enabled=%v hwcap2=%#x", hwcap2&2 != 0, hwcap2)
 	}
-	t.Logf("kernel_fsgsbase_enabled=%v hwcap2=%#x", hwcap2&2 != 0, hwcap2)
 	for _, rel := range []string{
 		"corpus/workloads/applications/sqlite3/sqlite3.wasm",
 		"corpus/workloads/semantic/yyjson/yyjson.wasm",
