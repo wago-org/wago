@@ -505,3 +505,15 @@ stack spills. Core 3/threads compile latency changes +0.97%/+0.22%, allocations
 are unchanged, code unchanged/-0.79%, and peak RSS +1.28%/+0.76%.
 `atomic-block-results.json` retains matched profiles and evidence. Refreshing
 the full 90-contract feature corpus and native AMD64 validation remain required.
+
+### Full execution corpus refresh
+
+A fresh wasm.fyi build produces 111 execution contracts rather than the old 90.
+At adapter revision `4680ca19`, Wago passes 103 in each of three processes; eight
+JavaScript host profiles remain unsupported. The SIMD fork passes 67 in each
+process, with 22 unsupported and 22 failed contracts. All 67 successful pairs
+match bytecode and meet the 50 ms sample-duration target. See
+[the current comparison](wasm3-feature-refresh.md) and `feature-refresh-results.json`.
+Large direct-call, numeric, global-recurrence and conversion gaps remain.
+Wide arithmetic/compact imports are still absent from this execution corpus,
+and native AMD64 validation remains pending. Full parity is not achieved.
