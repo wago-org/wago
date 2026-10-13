@@ -13,11 +13,7 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	if !f.opt(optIntegerSumLoop) || f.unreachable || f.interruptible || f.localBase != 0 || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 {
 		return false, nil
 	}
-	var module *wasm.Module
-	if f.opt(optInline) {
-		module = f.m
-	}
-	p, ok := shared.InspectIntegerSumLoopForModule(r, module)
+	p, ok := shared.InspectIntegerSumLoopForModule(r, f.m, f.opt(optInline))
 	if !ok {
 		return false, nil
 	}
@@ -79,8 +75,14 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 		f.pushValue(storage{kind: stConst, typ: typ, cval: int64(p.Coefficient)})
 		f.pushBinOp(opMul, typ)
 	}
-	if p.Constant != 0 {
-		f.pushValue(storage{kind: stConst, typ: typ, cval: int64(p.Constant)})
+	if p.Constant != 0 || p.InvariantGlobal {
+		if p.InvariantGlobal {
+			if err := f.globalGetIndex(p.Global); err != nil {
+				return false, err
+			}
+		} else {
+			f.pushValue(storage{kind: stConst, typ: typ, cval: int64(p.Constant)})
+		}
 		// The constant term is contributed once even when Bound is zero.
 		one()
 		get(p.Bound)
@@ -109,6 +111,9 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	}
 	if p.Calls != 0 {
 		f.stats.peep("integer-sum-pure-call")
+	}
+	if p.InvariantGlobal {
+		f.stats.peep("integer-sum-invariant-global")
 	}
 	f.stats.peep("integer-sum-loop")
 	return true, nil

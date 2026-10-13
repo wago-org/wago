@@ -3,25 +3,54 @@ package shared
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 type integerAffineTerm struct {
-	coefficient, constant uint64
-	variable              uint32
-	hasVariable           bool
-	width                 int
-	calls                 uint8
+	coefficient, constant  uint64
+	width                  int
+	variable, global       uint32
+	hasVariable, hasGlobal bool
+	calls                  uint8
 }
 
 // inspectIntegerAffineTerm evaluates a bounded pure postfix expression as A*i+B
 // modulo its integer width. All local reads must name the same counter. A
 // product is affine only when at least one operand has zero coefficient.
 func inspectIntegerAffineTerm(r *wasm.Reader, blocked bool) (integerAffineTerm, bool) {
-	return inspectIntegerAffineTermForModule(r, blocked, nil)
+	return inspectIntegerAffineTermForModule(r, blocked, nil, false)
 }
 
-func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *wasm.Module) (integerAffineTerm, bool) {
+func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *wasm.Module, allowCalls bool) (integerAffineTerm, bool) {
 	start := r.Offset()
 	first, ok := r.Peek()
-	if !ok || (first != 0x20 && first != 0x41 && first != 0x42) {
+	if !ok || (first != 0x20 && first != 0x41 && first != 0x42 && first != 0x23) {
 		return integerAffineTerm{}, false
+	}
+	// Read the value at invocation time; initializers and imported bits are not
+	// compiler constants. Only a bare immutable integer getter is admitted.
+	if first == 0x23 {
+		if module == nil {
+			return integerAffineTerm{}, false
+		}
+		_, _ = r.Byte()
+		x, err := r.U32()
+		if err != nil {
+			return integerAffineTerm{}, false
+		}
+		gt, ok := module.GlobalTypeByIndex(x)
+		if !ok || gt.Mutable {
+			return integerAffineTerm{}, false
+		}
+		width := 0
+		if wasm.EqualValType(wasm.GlobalValueType(gt), wasm.I32) {
+			width = 4
+		} else if wasm.EqualValType(wasm.GlobalValueType(gt), wasm.I64) {
+			width = 8
+		} else {
+			return integerAffineTerm{}, false
+		}
+		next, ok := r.Peek()
+		if !ok || !(blocked && next == 0x0b || !blocked && (next == 0x6a || next == 0x7c)) {
+			return integerAffineTerm{}, false
+		}
+		return integerAffineTerm{global: x, hasGlobal: true, width: width}, true
 	}
 	// The common single-counter term avoids the expression stack entirely.
 	if first == 0x20 {
@@ -93,7 +122,7 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 			stack[depth] = affineValue{constant: value}
 			depth++
 		case 0x10:
-			if module == nil || depth == 0 || out.calls == 4 {
+			if !allowCalls || module == nil || depth == 0 || out.calls == 4 {
 				return out, false
 			}
 			index, err := r.U32()

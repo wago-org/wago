@@ -3,8 +3,10 @@ package shared
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 // IntegerSumLoop proves a side-effect-free, unsigned, unit-stride induction
-// reduction of an affine integer term. The backend separately proves that Counter starts at zero.
-// The do-while body sums Coefficient*i+Constant and leaves Counter=max(1,Bound).
+// reduction of an affine integer term or an immutable global getter. The backend
+// separately proves that Counter starts at zero.
+// The do-while body sums Coefficient*i+Constant, or the runtime global value,
+// and leaves Counter=max(1,Bound).
 // Fences may be coalesced because no memory access, call, trap or escape lies
 // between them. The replacement must still emit one fence when Fenced is true.
 type IntegerSumLoop struct {
@@ -12,6 +14,8 @@ type IntegerSumLoop struct {
 	End                         int
 	Wide, Fenced                bool
 	Calls                       uint8
+	InvariantGlobal             bool
+	Global                      uint32
 	Coefficient, Constant       uint64
 }
 
@@ -19,12 +23,13 @@ type IntegerSumLoop struct {
 // Recognition is bounded: a fixed grammar and at most four adjacent fences at
 // each admitted position, with no recursive control or expression traversal.
 func InspectIntegerSumLoop(source *wasm.Reader) (IntegerSumLoop, bool) {
-	return InspectIntegerSumLoopForModule(source, nil)
+	return InspectIntegerSumLoopForModule(source, nil, false)
 }
 
-// InspectIntegerSumLoopForModule additionally admits bounded pure unary helper
-// calls. A nil module retains the call-free proof. Helpers cannot call helpers.
-func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module) (IntegerSumLoop, bool) {
+// InspectIntegerSumLoopForModule additionally admits immutable integer getters
+// and bounded pure unary helpers when allowCalls is true. A nil module retains
+// the call-free arithmetic proof. Helpers cannot call helpers.
+func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module, allowCalls bool) (IntegerSumLoop, bool) {
 	r := *source
 	var p IntegerSumLoop
 	byteIs := func(want byte) bool { got, err := r.Byte(); return err == nil && got == want }
@@ -67,11 +72,16 @@ func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module) (I
 			return p, false
 		}
 	}
-	term, ok := inspectIntegerAffineTermForModule(&r, blockType != 0, module)
+	term, ok := inspectIntegerAffineTermForModule(&r, blockType != 0, module, allowCalls)
 	if !ok {
 		return p, false
 	}
 	p.Coefficient, p.Constant, p.Calls = term.coefficient, term.constant, term.calls
+	p.InvariantGlobal, p.Global = term.hasGlobal, term.global
+	// Preserve the existing fence proof: no memory reads between fences.
+	if p.InvariantGlobal && p.Fenced {
+		return p, false
+	}
 	if blockType != 0 && !byteIs(0x0b) {
 		return p, false
 	}

@@ -63,6 +63,10 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	return f.globalGetIndex(x)
+}
+
+func (f *fn) globalGetIndex(x uint32) error {
 	gt, ok := f.globalType(x)
 	if !ok {
 		return fmt.Errorf("arm64: unknown global %d", x)
