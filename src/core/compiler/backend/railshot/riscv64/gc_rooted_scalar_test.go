@@ -527,7 +527,10 @@ func rv64RootedAggregateGlobalInitializerModule() []byte {
 				0x23, 0x00, 0x0b, // global.get 0
 			},
 		)),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("root", byte(wasm.ExternGlobal), 0),
+		)),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
 }

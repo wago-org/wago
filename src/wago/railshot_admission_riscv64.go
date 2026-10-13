@@ -188,6 +188,18 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		target := c.Types[value.Ref.Heap.TypeIndex]
 		return target.Kind == CompositeTypeStruct || target.Kind == CompositeTypeArray
 	}
+	rootedExportValue := func(value ValueTypeDescriptor) bool {
+		if value.Kind <= ValueTypeF64 {
+			return value.Ref == (ReferenceTypeDescriptor{})
+		}
+		if value.Kind != ValueTypeReference || value.Ref.Exact {
+			return false
+		}
+		if !value.Ref.Heap.Defined {
+			return value.Ref.Heap.Abstract == AbstractHeapI31 && value.Ref.Heap.TypeIndex == 0
+		}
+		return rootedValue(value, len(c.Types))
+	}
 	for i := range c.Globals {
 		global := &c.Globals[i]
 		if !isGCRefValType(global.Type) {
@@ -205,8 +217,14 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		}
 	}
 	for _, index := range c.GlobalExports {
-		if index < 0 || index >= len(c.Globals) || isGCRefValType(c.Globals[index].Type) {
+		if index < 0 || index >= len(c.Globals) {
 			return false
+		}
+		if isGCRefValType(c.Globals[index].Type) {
+			exact, err := c.globalExactType(index)
+			if err != nil || c.Globals[index].Mutable || !rootedExportValue(exact) {
+				return false
+			}
 		}
 	}
 	storageKind := func(storage StorageTypeDescriptor, owner int) (gc.StorageKind, bool) {
@@ -536,18 +554,6 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		if !validateFunction(&c.Funcs[function], c.NumImports+function) {
 			return false
 		}
-	}
-	rootedExportValue := func(value ValueTypeDescriptor) bool {
-		if value.Kind <= ValueTypeF64 {
-			return value.Ref == (ReferenceTypeDescriptor{})
-		}
-		if value.Kind != ValueTypeReference || value.Ref.Exact {
-			return false
-		}
-		if !value.Ref.Heap.Defined {
-			return value.Ref.Heap.Abstract == AbstractHeapI31 && value.Ref.Heap.TypeIndex == 0
-		}
-		return rootedValue(value, len(c.Types))
 	}
 	for _, function := range c.Exports {
 		local := function - c.NumImports

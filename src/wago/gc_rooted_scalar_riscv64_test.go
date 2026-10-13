@@ -5290,6 +5290,86 @@ func rootedScalarI31GlobalModule() []byte {
 	)
 }
 
+func rootedScalarPublicImmutableReferenceGlobalsModule() []byte {
+	read := []byte{0x00, 0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	structGlobal := []byte{0x64, 0x00, 0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0x0b}
+	i31Global := wasmtest.GlobalEntry(wasm.I31Ref, false, []byte{0x41, 0x7e, 0xfb, 0x1c, 0x0b})
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			[]byte{0x60, 0x01, 0x64, 0x00, 0x01, 0x7f},
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec(structGlobal, i31Global)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("object", byte(wasm.ExternGlobal), 0),
+			wasmtest.ExportEntry("immediate", byte(wasm.ExternGlobal), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(read))), read...))),
+	)
+}
+
+func TestRV64RootedImmutableReferenceGlobalsExport(t *testing.T) {
+	source := rootedScalarPublicImmutableReferenceGlobalsModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("immutable collector-reference globals were not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.GlobalExports["object"] != 0 || view.GlobalExports["immediate"] != 1 {
+		t.Fatalf("immutable global receipt=%t exports=%v validation=%v", rv64FreshRootedGC(view), view.GlobalExports, railshotValidateCompiled(view))
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"namespace": func(candidate *Compiled) {
+			candidate.GlobalExports = cloneExportMap(candidate.GlobalExports)
+			delete(candidate.GlobalExports, "object")
+			candidate.GlobalExports["renamed"] = 0
+		},
+		"mutability": func(candidate *Compiled) {
+			candidate.Globals = slices.Clone(candidate.Globals)
+			candidate.Globals[0].Mutable = true
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated public reference global retained the rooted receipt")
+			}
+		})
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	object, err := in.GlobalValue("object")
+	if err != nil || object.Type() != ValAnyRef || object.GCRef().IsNull() || object.Bits() == uint64(uint32(object.Bits())) {
+		t.Fatalf("object global=%v err=%v; want opaque aggregate token", object, err)
+	}
+	if err := in.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := in.InvokeValues(context.Background(), "read", ValueGCRef(object.GCRef())); err != nil || len(got) != 1 || got[0].I32() != 42 {
+		t.Fatalf("read(object global)=%v err=%v", got, err)
+	}
+	immediate, err := in.GlobalValue("immediate")
+	if err != nil || immediate.Type() != ValI31Ref || immediate.I31Ref().Signed() != -2 || immediate.Bits()>>32 != 0 {
+		t.Fatalf("i31 global=%v err=%v", immediate, err)
+	}
+	if err := in.ReleaseGCRef(object.GCRef()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.InvokeValues(context.Background(), "read", ValueGCRef(object.GCRef())); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("stale global token ingress=%v", err)
+	}
+}
+
 func TestRV64RootedScalarMutableStructGlobalExecutes(t *testing.T) {
 	source := rootedScalarMutableStructGlobalModule(false)
 	if !railshot.AdmitGCRootedScalarSource(source) {

@@ -293,8 +293,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				return false
 			}
 		case wasm.ExternGlobal:
-			global, ok := m.GlobalTypeByIndex(export.Index.Index)
-			if !ok || global.Type.Kind() == wasm.ValRef {
+			if _, ok := m.GlobalTypeByIndex(export.Index.Index); !ok {
 				return false
 			}
 		case wasm.ExternTable:
@@ -463,7 +462,14 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 	}
 	for i := range m.Exports {
-		if m.Exports[i].Index.Kind == wasm.ExternMem || m.Exports[i].Index.Kind == wasm.ExternGlobal || m.Exports[i].Index.Kind == wasm.ExternTable {
+		if m.Exports[i].Index.Kind == wasm.ExternGlobal {
+			global, ok := m.GlobalTypeByIndex(m.Exports[i].Index.Index)
+			if !ok || global.Type.Kind() == wasm.ValRef && (global.Mutable || !publicRootedValue(global.Type)) {
+				return false
+			}
+			continue
+		}
+		if m.Exports[i].Index.Kind == wasm.ExternMem || m.Exports[i].Index.Kind == wasm.ExternTable {
 			continue
 		}
 		index := m.Exports[i].Index.Index

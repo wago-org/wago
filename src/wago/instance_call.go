@@ -8,6 +8,7 @@ import (
 	"time"
 
 	wruntime "github.com/wago-org/wago/src/core/runtime"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // InvokeValues is the high-level, context-aware, typed invocation: arguments and results
@@ -211,6 +212,36 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 		return value, nil
 	}
 	bits := readGlobalObject(cell, g.Type)
+	if in.c.usesGenericGCExecution() && (g.Type == ValAnyRef || g.Type == ValI31Ref) {
+		exact, err := in.c.globalExactType(idx)
+		if err != nil {
+			return Value{}, fmt.Errorf("global %q exact type: %w", name, err)
+		}
+		if bits != uint64(uint32(bits)) {
+			return Value{}, fmt.Errorf("global %q contains a non-compact collector reference", name)
+		}
+		ref := gc.Ref(uint32(bits))
+		if !in.gcRefMatchesValueType(ref, exact) {
+			return Value{}, fmt.Errorf("global %q contains a collector reference with an incompatible exact structural type", name)
+		}
+		if ref.IsNull() || ref.IsI31() {
+			return Value{typ: g.Type, bits: bits}, nil
+		}
+		store, err := in.referenceStoreForBoundary()
+		if err != nil {
+			return Value{}, fmt.Errorf("global %q collector reference store: %w", name, err)
+		}
+		lockedDomain := in.lockGCCollector()
+		defer unlockGCCollector(lockedDomain)
+		state := in.publicGCState()
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		token, err := store.issueGCRefLocked(in, state, ref, exact)
+		if err != nil {
+			return Value{}, fmt.Errorf("global %q collector reference: %w", name, err)
+		}
+		return Value{typ: g.Type, bits: token}, nil
+	}
 	if (g.Type == ValAnyRef || g.Type == ValExnRef) && bits != 0 {
 		return Value{}, fmt.Errorf("global %q contains a non-null %s value; public GC/exception reference egress is unsupported", name, g.Type)
 	}
