@@ -487,3 +487,15 @@ new Wago captures have local receipts; database integrity and all 575,121
 historical observations pass. Full parity remains open; no deployment.
 
 [All phase samples, verdicts, compiler costs and validation](docs/benchmarks/wasm3-2026-10-13/saturating-float.json).
+
+### Full native-saturation snapshot audit
+
+The frozen `977c8882` refresh completed and locally published all 266 contracts,
+including all 148 main workloads, with no collection or resource failures.
+Its source has 1,092 observations across 266 contracts. Against the retained
+Clang baseline, 16 of 54 paired native feature steady contracts exceed 1x
+and 13 exceed 1.1x; this earlier-peer ranking does not supersede the fresh
+interleaved verdicts above. All receipts, SQLite integrity and 575,121 historical
+observations pass. Full parity remains open. No production deployment.
+
+[Full native-saturation source audit](docs/benchmarks/wasm3-2026-10-13/saturating-full-feature-cohort.json).
