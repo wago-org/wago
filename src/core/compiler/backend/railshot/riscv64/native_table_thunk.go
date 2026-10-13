@@ -15,19 +15,20 @@ const nativeTableFrameBytes = nativeImportFrameBytes + 16 + HostFixedFrameBytes 
 // Keep the private call helper image-relative and bounded. The return address
 // reaches the skip envelope; continuation then reconstructs caller values from
 // their canonical homes. All source/descriptor lifetimes belong to the owner.
-func (f *integerEmitter) nativeTableCall(key uint64, argumentSlots, resultSlots int) {
+func (f *integerEmitter) nativeTableCall(key uint64, argumentSlots, resultSlots int) (returnOffset int, stackAdjust uint32) {
 	if !f.mode.production {
 		f.err = unsupported("foreign table call requires production framed ABI")
-		return
+		return 0, 0
 	}
-	code, err := nativeTableThunkAtInvocation(key, argumentSlots, resultSlots, f.mode.functionIndex, f.sourcePC, f.mode.invocationContext)
+	image, err := nativeTableThunkImageAtInvocation(key, argumentSlots, resultSlots, f.mode.functionIndex, f.sourcePC, f.mode.invocationContext)
 	if err != nil {
 		f.err = err
-		return
+		return 0, 0
 	}
+	code := image.code
 	if len(code) > MaxCodeBytes-f.a.Len()-16 {
 		f.err = unsupported("foreign table bridge image bound")
-		return
+		return 0, 0
 	}
 	call := f.a.JumpLong(true)
 	skip := f.a.JumpLong(false)
@@ -37,11 +38,12 @@ func (f *integerEmitter) nativeTableCall(key uint64, argumentSlots, resultSlots 
 	f.profileOpcode(f.sourcePC)
 	if err := f.a.PatchLong(call, int64(start)); err != nil {
 		f.err = err
-		return
+		return 0, 0
 	}
 	if err := f.a.PatchLong(skip, int64(f.a.Len())); err != nil {
 		f.err = err
 	}
+	return start + int(image.targetReturnOffset), image.frameBytes
 }
 
 // Public owned/imported-table calls and private bridge witnesses share this lowering.
@@ -67,8 +69,19 @@ func nativeTableThunkAt(key uint64, argumentSlots, resultSlots int, functionInde
 }
 
 func nativeTableThunkAtInvocation(key uint64, argumentSlots, resultSlots int, functionIndex, sourcePC uint32, invocation bool) ([]byte, error) {
+	image, err := nativeTableThunkImageAtInvocation(key, argumentSlots, resultSlots, functionIndex, sourcePC, invocation)
+	return image.code, err
+}
+
+type nativeTableThunkImage struct {
+	code               []byte
+	targetReturnOffset uint32
+	frameBytes         uint32
+}
+
+func nativeTableThunkImageAtInvocation(key uint64, argumentSlots, resultSlots int, functionIndex, sourcePC uint32, invocation bool) (nativeTableThunkImage, error) {
 	if argumentSlots < 0 || argumentSlots > 256 || resultSlots < 0 || resultSlots > 256 || functionIndex >= MaxFunctions {
-		return nil, fmt.Errorf("rv64: native table bridge requires bounded signature and source index")
+		return nativeTableThunkImage{}, fmt.Errorf("rv64: native table bridge requires bounded signature and source index")
 	}
 	headerBytes := nativeImportFrameBytes + 16
 	if invocation {
@@ -214,6 +227,7 @@ func nativeTableThunkAtInvocation(key uint64, argumentSlots, resultSlots int, fu
 	}
 	a.Addi(enc.X25, enc.X11, 0)
 	a.Jalr(enc.RA, enc.X28, 0)
+	targetReturnOffset := uint32(a.Len())
 	a.Ld(enc.X25, enc.SP, 8)
 	// The canonical descriptor survives nested calls, host parks and root reentry.
 	a.Ld(enc.Scratch1, enc.SP, nativeImportFrameBytes+8)
@@ -250,18 +264,18 @@ func nativeTableThunkAtInvocation(key uint64, argumentSlots, resultSlots int, fu
 	a.Jalr(enc.Zero, enc.RA, 0)
 	for _, site := range invalid {
 		if err := a.PatchLong(site, int64(a.Len())); err != nil {
-			return nil, err
+			return nativeTableThunkImage{}, err
 		}
 	}
 	f.emitProductionTrap(abi.TrapCalledFnNotLinked, sourcePC)
 	for _, site := range []int{below, short} {
 		if err := a.PatchLong(site, int64(a.Len())); err != nil {
-			return nil, err
+			return nativeTableThunkImage{}, err
 		}
 	}
 	f.emitProductionTrap(abi.TrapStackFenceBreached, sourcePC)
 	if err := a.Err(); err != nil {
-		return nil, err
+		return nativeTableThunkImage{}, err
 	}
-	return a.B, nil
+	return nativeTableThunkImage{code: a.B, targetReturnOffset: targetReturnOffset, frameBytes: uint32(frameBytes)}, nil
 }

@@ -93,6 +93,56 @@ func TestGCNativeFrameRootsRISCV64SavedRAWalk(t *testing.T) {
 	runtime.KeepAlive(code)
 }
 
+func TestGCNativeFrameRootsRISCV64ForeignBridgeStackAdjustment(t *testing.T) {
+	frame := make([]byte, 256)
+	code := make([]byte, 256)
+	base := uintptr(unsafe.Pointer(&frame[0]))
+	codeBase := uintptr(unsafe.Pointer(&code[0]))
+
+	const (
+		calleeFrameBytes = 32
+		bridgeFrameBytes = 64
+		callerBase       = calleeFrameBytes + bridgeFrameBytes
+		callerFrameBytes = 64
+	)
+	// The target callee returns into the bridge allocation. Its callsite map
+	// skips that allocation and resumes at the consumer Wasm frame.
+	binary.LittleEndian.PutUint64(frame[0:], uint64(codeBase+80))
+	binary.LittleEndian.PutUint64(frame[16:], 3)
+	binary.LittleEndian.PutUint64(frame[callerBase:], uint64(codeBase+200))
+	binary.LittleEndian.PutUint64(frame[callerBase+24:], 17)
+
+	roots := gcNativeFrameRoots{
+		base:                 base,
+		offsets:              []uint32{16},
+		frameBytes:           calleeFrameBytes,
+		frameLayout:          gcNativeFrameLayoutRISCV64,
+		codeBase:             codeBase,
+		codeBytes:            uintptr(len(code)),
+		adapterReturnOffsets: []uint32{200},
+		callsites: []compiledGCFrameCallsite{{
+			returnOffset: 80,
+			frameBytes:   callerFrameBytes,
+			stackAdjust:  bridgeFrameBytes,
+			offsets:      []uint32{24},
+		}},
+	}
+	seen := 0
+	roots.RangeRoots(func(slot gc.RootSlot) bool {
+		seen++
+		slot.SetRef(slot.GetRef() + 1)
+		return true
+	})
+	if seen != 2 {
+		t.Fatalf("root count = %d, want 2", seen)
+	}
+	if got := (*gc.Root)(offHeapPtr(base + callerBase + 24)).GetRef(); got != 18 {
+		t.Fatalf("adjusted caller root = %d, want 18", got)
+	}
+	runtime.KeepAlive(frame)
+	runtime.KeepAlive(code)
+}
+
 func TestGCNativeFrameRootsARM64FrameRecordWalk(t *testing.T) {
 	frame := make([]byte, 160)
 	code := make([]byte, 256)

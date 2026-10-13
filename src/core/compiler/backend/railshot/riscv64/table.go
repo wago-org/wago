@@ -2613,19 +2613,21 @@ func (f *integerEmitter) indirectCallKeys(sig functionSpec, keys []uint64, base,
 		f.Load(5, f.SpillOffset(base+j), wide)
 		f.a.Sd(enc.X5, enc.X10, int32(j*8))
 	}
-	if f.mode.gcTypeSubtypingRuntimeCallCast || f.mode.gcRootedScalar {
-		// The generic rooted profile admits only a private local table populated
-		// from local function indexes. Enter its already-authenticated framed
-		// wrapper directly so the caller return PC belongs to this function's
-		// exact frame-root map; the cross-instance bridge is neither needed nor
-		// a valid transparent frame while collection walks the native stack.
+	returnOffset, stackAdjust := 0, uint32(0)
+	if f.mode.gcTypeSubtypingRuntimeCallCast {
+		// This closed type-subtyping pilot admits only private local targets and
+		// retains its direct framed-wrapper contract.
 		f.a.Jalr(enc.RA, enc.X28, 0)
 	} else if f.mode.foreignTableCalls {
-		f.nativeTableCall(sig.key, len(sig.params), len(sig.results))
+		returnOffset, stackAdjust = f.nativeTableCall(sig.key, len(sig.params), len(sig.results))
 	} else {
 		f.a.Jalr(enc.RA, enc.X28, 0)
 	}
-	f.recordGCFrameCallsite(f.a.Len(), hiddenRefs)
+	if f.mode.gcRootedScalar && returnOffset != 0 {
+		f.recordGCFrameCallsiteAdjusted(returnOffset, stackAdjust, hiddenRefs)
+	} else {
+		f.recordGCFrameCallsite(f.a.Len(), hiddenRefs)
+	}
 	f.restoreCallTransport()
 	for j, wide := range sig.results {
 		if wide {

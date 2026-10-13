@@ -71,6 +71,30 @@ func TestRV64RecordGCFrameSafepointRejectsDuplicateHomes(t *testing.T) {
 	}
 }
 
+func TestRV64RecordGCFrameCallsiteBridgeAdjustment(t *testing.T) {
+	plan := &shared.GCFrameRootPlan{
+		Candidate: true,
+		Exact:     true,
+		Locals:    []shared.GCFrameLocal{{Index: 0, Offset: 48}},
+	}
+	if !plan.SetLiveMasks([]uint64{1}, 0, 1) {
+		t.Fatal("set live masks")
+	}
+	emit := integerEmitter{
+		target:       target{header: callFrameHeader, nlocals: 2},
+		frameBytes:   128,
+		gcFrameRoots: plan,
+	}
+	emit.recordGCFrameCallsiteAdjusted(96, 5440, []bool{false, true})
+	site, ok := plan.Callsite(0)
+	if !ok || !plan.Exact || site.ReturnOffset() != 96 || site.StackAdjust() != 5440 {
+		t.Fatalf("bridge callsite = %+v ok=%t exact=%t", site, ok, plan.Exact)
+	}
+	if want := []uint32{48, 72}; !slices.Equal(site.Offsets(), want) {
+		t.Fatalf("bridge roots = %v, want %v", site.Offsets(), want)
+	}
+}
+
 func TestRV64AllocationHelpersCarryExactSafepointIDs(t *testing.T) {
 	source, err := hex.DecodeString(rv64OfficialObjectRefEqHex)
 	if err != nil {

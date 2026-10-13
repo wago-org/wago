@@ -4,9 +4,11 @@ package riscv64
 
 import (
 	"fmt"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/abi"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestPrivateNativeTableThunkBounds(t *testing.T) {
@@ -26,6 +28,25 @@ func TestPrivateNativeTableThunkBounds(t *testing.T) {
 	for _, limits := range [][3]int{{-1, 0, 0}, {257, 0, 0}, {0, -1, 0}, {0, 257, 0}, {0, 0, MaxFunctions}} {
 		if code, err := nativeTableThunk(0, limits[0], limits[1], uint32(limits[2])); code != nil || err == nil {
 			t.Fatal("unbounded table transport emitted", limits, err)
+		}
+	}
+}
+
+func TestPrivateNativeTableThunkFrameWalkMetadata(t *testing.T) {
+	for _, invocation := range []bool{false, true} {
+		image, err := nativeTableThunkImageAtInvocation(7, 2, 3, 1, 9, invocation)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if image.targetReturnOffset < 4 || int(image.targetReturnOffset) >= len(image.code) || image.frameBytes%16 != 0 {
+			t.Fatalf("invalid bridge metadata: return=%d frame=%d code=%d", image.targetReturnOffset, image.frameBytes, len(image.code))
+		}
+		want := uint32(nativeTableFrameBytes)
+		if invocation {
+			want += uint32(abi.RV64InvocationViewBytes + 16)
+		}
+		if image.frameBytes != want {
+			t.Fatalf("invocation=%t frame=%d, want %d", invocation, image.frameBytes, want)
 		}
 	}
 }

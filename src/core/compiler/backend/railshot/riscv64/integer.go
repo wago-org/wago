@@ -53,6 +53,14 @@ type integerEmitter struct {
 // direct callee owns execution. Locals use their canonical homes and retained
 // operands below the consumed argument vector use canonical spill homes.
 func (f *integerEmitter) recordGCFrameCallsite(returnOffset int, hiddenRefs []bool) {
+	f.recordGCFrameCallsiteAdjusted(returnOffset, 0, hiddenRefs)
+}
+
+// recordGCFrameCallsiteAdjusted describes a call whose callee returns through
+// a bounded bridge allocation before reaching the Wasm caller frame. The
+// return PC still belongs to this function image; stackAdjust skips the bridge
+// so the runtime walker resumes at the caller's canonical frame homes.
+func (f *integerEmitter) recordGCFrameCallsiteAdjusted(returnOffset int, stackAdjust uint32, hiddenRefs []bool) {
 	plan := f.gcFrameRoots
 	if plan == nil || !plan.Candidate {
 		return
@@ -86,7 +94,7 @@ func (f *integerEmitter) recordGCFrameCallsite(returnOffset int, hiddenRefs []bo
 			return
 		}
 	}
-	plan.RecordCallsite(uint32(returnOffset), 0, offsets)
+	plan.RecordCallsite(uint32(returnOffset), stackAdjust, offsets)
 }
 
 // recordGCFrameSafepoint snapshots the exact local and hidden operand roots
