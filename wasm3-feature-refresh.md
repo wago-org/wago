@@ -524,3 +524,33 @@ receipts; database integrity and all 575,121 historical observations pass.
 Full parity remains open; no production deployment.
 
 [Raw captures, proofs, red/green checks and compiler costs](docs/benchmarks/wasm3-2026-10-13/integer-float-sum.json).
+
+### Guarded native float-to-integer lowering
+
+`4c60e4c0` borrows float inputs, uses the lower range comparison's unordered
+condition to preserve NaN traps, and emits native unsigned conversion after
+range checks. The red instruction-count regression changes from three to two
+comparisons; the branch-and-bias helper is removed. All eight variants pass
+raw-bit/live-value boundaries, signed/unsigned fractional limits, artifacts,
+both calling conventions, dirty global publication on trap, guarded/race,
+pinned conformance, and native AMD64 fallback checks.
+
+Fresh paired f64-state rows improve **12.8% and 8.7%**, but remain **1.241x
+and 1.400x** the peer; images shrink 16 bytes. The initial f32 core control
+misses parity at **1.058x**, while its before row also misses; both controls
+pass a fresh repeat at **0.9776x and 0.9716x**. Both batches are retained.
+Initial compile corpus pairs show Core 3 +0.29%, threads +4.32%; a justified
+six-process threads repeat shows +0.57%, with unchanged threads code/allocations.
+Core 3 aggregate code decreases 1,600 bytes across 21,800 compiles. Twelve Wago
+captures are published locally across targeted/repeated runs.
+
+The repeat also establishes fresh main baselines: bitmap/B-tree **1.80x/1.78x**,
+Otsu **1.69x**, optimal wrap **1.55x**, autocorrelation **4.05x**. Retained full
+main timings did not reproduce: the old frozen SDK and both controllers measure
+bitmap near 17 us, versus 69 us in its full capture, with identical image sizes.
+These are baseline comparisons, not compiler gains. A new interleaved full
+capture defers publication until timing completes to test possible interference;
+background publication, scheduling and collection-order effects remain unproven.
+Full parity remains open. No production deployment.
+
+[Every capture, failed/repeated verdict, controller/old-SDK probe and validation](docs/benchmarks/wasm3-2026-10-13/trapping-float.json).
