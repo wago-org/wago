@@ -1914,18 +1914,6 @@ func (a *Asm) NeonDupGprH(dst, src Reg) {
 		a.regallocFPWrites(uint32(1) << r(dst))
 	}
 }
-
-// NeonMoviS and NeonMvniS broadcast an eight-bit immediate or its 32-bit
-// complement to each of four integer lanes.
-func (a *Asm) NeonMoviS(dst Reg, imm uint8) { a.neonImm8S(0x4F000400, dst, imm) }
-func (a *Asm) NeonMvniS(dst Reg, imm uint8) { a.neonImm8S(0x6F000400, dst, imm) }
-func (a *Asm) neonImm8S(op uint32, dst Reg, imm uint8) {
-	a.word(op | uint32(imm>>5)<<16 | uint32(imm&31)<<5 | r(dst))
-	if regallocCheckEnabled {
-		a.regallocFPWrites(uint32(1) << r(dst))
-	}
-}
-
 func (a *Asm) NeonDupGprS(dst, src Reg) {
 	a.word(0x4E040C00 | r(src)<<5 | r(dst))
 	if regallocCheckEnabled {

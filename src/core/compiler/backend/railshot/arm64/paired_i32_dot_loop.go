@@ -130,19 +130,10 @@ func (f *fn) tryPairedI32DotLoop(r *wasm.Reader) (bool, error) {
 		f.fpinned = f.fpinned.add(v[i])
 	}
 	x, y, lb, rb, acc, acc1, acc2, acc3 := v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]
-	bias := func(dst Reg, value int32) {
-		switch {
-		case value >= 0 && value <= 255:
-			f.a.NeonMoviS(dst, uint8(value))
-		case value >= -256 && value < 0:
-			f.a.NeonMvniS(dst, ^uint8(value))
-		default:
-			f.a.MovImm32(tmp, value)
-			f.a.NeonDupGprS(dst, tmp)
-		}
-	}
-	bias(lb, p.LeftBias)
-	bias(rb, p.RightBias)
+	f.a.MovImm32(tmp, p.LeftBias)
+	f.a.NeonDupGprS(lb, tmp)
+	f.a.MovImm32(tmp, p.RightBias)
+	f.a.NeonDupGprS(rb, tmp)
 	f.a.NeonEor16b(acc, acc, acc)
 	f.a.NeonEor16b(acc1, acc1, acc1)
 	f.a.NeonEor16b(acc2, acc2, acc2)
