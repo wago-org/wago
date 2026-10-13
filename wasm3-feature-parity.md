@@ -517,3 +517,30 @@ match bytecode and meet the 50 ms sample-duration target. See
 Large direct-call, numeric, global-recurrence and conversion gaps remain.
 Wide arithmetic/compact imports are still absent from this execution corpus,
 and native AMD64 validation remains pending. Full parity is not achieved.
+
+### Modular affine integer reductions
+
+`b9696c08` extends the zero-counter, unsigned unit-stride sum proof to bounded
+pure affine expressions, including reordered/repeated terms and constant-only
+terms. Modulo-width arithmetic preserves wrapping coefficients and offsets;
+nonlinear, mixed-width, effectful and changed-counter expressions fall back.
+The do-while constant contribution uses max(1,bound), including bound zero.
+Original-source initialization, invariant bound, alias exclusions and fence
+retention remain. ARM64 conformance/guarded race tests pass with both ABIs,
+codec, arbitrary coefficients and extreme unsigned bounds. AMD64 cross-compiles;
+native execution remains pending hub access. Statistics retains its same 44
+baseline failures.
+
+The fresh multiply-add contract falls 84,381 -> 102.60 ns (822x), versus unchecked
+w2c2 292.44 ns (0.351x). Its scalar SIMD baseline falls 79,253 -> 101.96 ns.
+Direct calls remain 198,017 ns versus 291.70 ns (679x), so call-containing sums
+remain an important gap. Actual adapter-native images confirm a closed-form
+kernel with the outer 64-call repetition still present.
+
+Six alternating compile processes per revision, across two identical cohorts,
+show Core 3 +0.85%, threads +3.22%, with unchanged allocation/code totals and
+peak RSS +0.35%/+1.02%. The initial threads cohort was +5.60% and variable;
+both raw cohorts remain in the evidence. These descriptive differences merit
+keeping recognition work bounded and avoiding unnecessary work on failed
+candidates. `affine-sum-results.json` retains exact profiles, costs, before/
+after adapter images and validation hashes. Full feature parity remains open.

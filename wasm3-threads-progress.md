@@ -2089,3 +2089,31 @@ compile medians change +0.14%/+1.56%/-0.60%. The tracked
 Broad feature/composition parity and native AMD64 validation remain open; the
 original 90-contract feature baseline needs refreshing before prioritizing
 further feature work.
+
+### Affine integer sum checkpoint
+
+`b9696c08` retains fence semantics while extending the unit-stride integer sum
+proof to pure affine terms. Its do-while semantics include the constant term at
+bound zero. Both integer widths/ABIs, codec, reordered/repeated/negative/wrapped
+terms, nonlinear rejection and extreme unsigned bounds pass. ARM64 pinned
+Core 3/threads and guarded race tests pass; native AMD64 remains pending hub
+connectivity. Full statistics retains the exact same 44 failure names.
+
+The separate 11-contract comparison retains three process medians per profile.
+Multiply-add improves 84,381 -> 102.60 ns (822x), versus unchecked w2c2 292.44 ns;
+its scalar SIMD baseline improves 79,253 -> 101.96 ns, versus peer 293.69 ns.
+Direct-call remains 198,017 vs 291.70 ns. Thread-loop changes are small cohort
+observations and do not establish further feature-wide wins. Before/after code
+images come from the actual pinned adapters and timing configurations: the
+integer kernel is closed form and the outer 64-call loop remains.
+
+Compilation was captured separately, without overlapping builds/tests/timing.
+The first three-process threads cohort was variable (+5.60%), so an identical
+second cohort was captured and both retained. Six processes per revision give
+Core 3 406.990 -> 410.433 ms (+0.85%) and threads 47.676 -> 49.210 ms (+3.22%).
+Allocation/code totals are unchanged; peak RSS changes +0.35%/+1.02%. Scalar/
+Core 3 scalar/imported-worker compile medians change +2.07%/+1.88%/+0.42%,
+with unchanged allocation counts. `affine-sum-results.json` preserves process
+medians, both compile cohorts, source fingerprints, actual native images and
+validation evidence. Pure-helper calls, global recurrences, other feature gaps
+and native AMD64 validation remain required work.
