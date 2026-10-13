@@ -1442,3 +1442,38 @@ for the approximately two-hour local refresh, changed workloads only.
 [Original vector proof and paired evidence](docs/benchmarks/wasm3-2026-10-13/global-xor-shift.json),
 [independent accumulators and noisy-sample confirmation](docs/benchmarks/wasm3-2026-10-13/global-xor-dual.json),
 [eight-iteration refinement and parity confirmation](docs/benchmarks/wasm3-2026-10-13/global-xor-eight.json).
+
+### Checked integer dot loops and scoped local refresh
+
+A general memory32 dot-loop cover (`cab33701`) uses a full-extent checked vector
+path and compiles the original scalar loop on guard failure. Both public ABIs,
+artifact reload, arbitrary overflowing biases, unaligned/end-boundary inputs,
+nested-loop reentry, all written locals, unchanged memory, and exact scalar trap
+code/source frames pass. Shared memory, calls, EH, interrupts, inlining and
+insufficient registers keep fallback. Only the ML kernel selects this cover in
+the corpus. Initial compile cost (+3.8% Core3) prompted delaying the memory-type
+lookup until syntax matches. Six paired filtered runs measure -0.4%/-1.1%
+Core3/threads with unchanged images and effectively unchanged allocations;
+these small differences are not a compile-speed claim. Pinned conformance and
+native AMD64 fallback tests pass.
+
+Matched ML repeats improve 13.4/13.8 us to 6.6/6.2 us. The subsequent eight-element
+refinement (`00c0c600`) improves its parent by 21–26%, reaching 4.9/4.7 us. Native
+ML image size grows 916 → 1,332 → 1,412 bytes. Autocorrelation control code remains
+1,080 bytes and its timing does not show a corresponding compiler gain.
+Incremental corpus compile cost for the emitter-only refinement was not rerun.
+
+The approximately two-hour **local-only** refresh publishes one coherent frozen
+`00c0c600` snapshot for the six changed workloads: both carry variants, yyjson,
+Monocypher, GEMM and ML. All 12 capture receipts are durable, with 24 observations
+across six contracts for Wago. All 575,121 historical observations remain intact;
+SQLite integrity, foreign keys, original snapshot audit and server health pass.
+The intermediate measurements remain evidence and are not individually added
+as snapshots. This partial refresh does not replace the earlier full cohort.
+Fresh carry ratios are **0.998x/1.002x**, confirming observed parity; ML is
+**4.625 us vs 2.625 us (1.762x)** and remains open. Other main and feature gaps
+remain open. The next local refresh is no sooner than approximately 19:45 UTC.
+
+[Checked dot proof, validation and paired measurements](docs/benchmarks/wasm3-2026-10-13/paired-i32-dot.json),
+[eight-element refinement](docs/benchmarks/wasm3-2026-10-13/paired-i32-dot-eight.json),
+[scoped local refresh, receipts and historical audit](docs/benchmarks/wasm3-2026-10-13/changed-corpora-local-refresh.json).
