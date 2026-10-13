@@ -2077,6 +2077,11 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int, pres
 // emitRegisterCallVia emits either a direct internal BL (localIdx >= 0) or an
 // indirect BLR. Explicit operands avoid allocating a closure at every wasm call.
 func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins bool, localIdx int, indirect Reg) uint32 {
+	if indirect != regNone {
+		// Argument staging owns X0-X7, including a target selected under pressure.
+		f.a.MovReg64(X17, indirect)
+		indirect = X17
+	}
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
 	allRoots := f.rootsBottomToTop()
@@ -2908,13 +2913,9 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	}
 	home := f.allocReg(maskOf(idxReg, code))
 	f.ld64(home, idxReg, 24) // entry home linMem base
-	canonical := f.allocReg(maskOf(idxReg, code, home))
-	f.ld64(canonical, idxReg, 32) // canonical descriptor pointer
-	f.trapIfZero(canonical, true, true, trapIndirectOOB)
-	targetContext := f.allocReg(maskOf(idxReg, code, home, canonical))
-	f.ld64(targetContext, canonical, runtime.FuncRefContextOffset)
+	targetContext := f.allocReg(maskOf(idxReg, code, home))
+	f.ld64(targetContext, idxReg, 32) // canonical descriptor pointer
 	f.trapIfZero(targetContext, true, true, trapIndirectOOB)
-	f.release(canonical)
 	f.pinned = f.pinned.remove(idxReg)
 	f.release(idxReg)
 	if sigFitsRegABI(ft) && sigIsIntOnly(ft) || sigFitsReferenceResultRegABI(ft) {
@@ -2936,6 +2937,9 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		kind := f.descriptorEntryKind(home, maskOf(code, home, targetContext))
 		f.cmpImm(kind, uint32(abi.FuncRefInternalTagValue), true)
 		wrapper := f.a.Bcond(condNE)
+		// Internal entries inherit the active instance context. Resolve the
+		// descriptor's context only in the wrapper arm, where it is needed.
+		f.stats.peep("internal-call-indirect-context-elide")
 		f.stripDescriptorHomeTags(home)
 		f.pinned = f.pinned.remove(home)
 		var returnOffset uint32
@@ -2951,6 +2955,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.patchBranch19(wrapper, f.a.Len())
 		f.locals = savedLocals
 		f.setDepthTypesWithGCRoots(types, gcRoots)
+		f.ld64(targetContext, targetContext, runtime.FuncRefContextOffset)
+		f.trapIfZero(targetContext, true, true, trapIndirectOOB)
 		f.st64(linMemReg, -int32(offSpillRegion), code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
@@ -2962,6 +2968,9 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		return nil
 	}
 
+	// This signature always uses the wrapper entry and its descriptor context.
+	f.ld64(targetContext, targetContext, runtime.FuncRefContextOffset)
+	f.trapIfZero(targetContext, true, true, trapIndirectOOB)
 	// Stash the code ptr in linMem scratch so it survives the call staging.
 	kind := f.descriptorEntryKind(home, maskOf(code, home, targetContext))
 	f.stripDescriptorHomeTags(home)
