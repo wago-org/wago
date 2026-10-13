@@ -217,6 +217,74 @@ func TestRV64RootedScalarMultiFieldStructCompiles(t *testing.T) {
 	}
 }
 
+func rootedMixedScalarStructModule() []byte {
+	types := [][]byte{
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}),
+		{0x5f, 0x04, 0x7f, 0x00, 0x7e, 0x01, 0x7d, 0x00, 0x7c, 0x00},
+	}
+	body := []byte{
+		0x01, 0x01, 0x64, 0x01,
+		0x41, 0x01,
+		0x42, 0x02,
+		0x43, 0x00, 0x00, 0x50, 0x40,
+		0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x40,
+		0xfb, 0x00, 0x01, 0x21, 0x00,
+		0x20, 0x00, 0x42, 0x2a, 0xfb, 0x05, 0x01, 0x01,
+		0x20, 0x00, 0xfb, 0x02, 0x01, 0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x01, 0x01,
+		0x20, 0x00, 0xfb, 0x02, 0x01, 0x02,
+		0x20, 0x00, 0xfb, 0x02, 0x01, 0x03,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedMixedScalarStructCompiles(t *testing.T) {
+	source := rootedMixedScalarStructModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(1)
+	if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve exact root plan")
+	}
+	plan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin exact root plan")
+	}
+	*plan = shared.GCFrameRootPlan{
+		Candidate: true, Exact: true, Conservative: true,
+		Locals: []shared.GCFrameLocal{{Index: 0, Offset: shared.RV64CallFrameHeaderBytes}},
+	}
+	if !plan.SetLiveMasks([]uint64{1}, 1, 0) {
+		t.Fatal("install exact root liveness")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 5, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 1 {
+		t.Fatalf("code bytes=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
+	}
+}
+
 func TestRV64RootedScalarTypeWireDistinguishesFieldCountFromRecGroup(t *testing.T) {
 	fields := []byte{0x5f}
 	fields = append(fields, wasmtest.ULEB(78)...)

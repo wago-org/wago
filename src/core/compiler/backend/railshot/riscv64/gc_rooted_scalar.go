@@ -11,7 +11,7 @@ import (
 // admitRV64GCRootedScalarModule is the first source-shape admission shared by
 // generic GC programs instead of a byte-for-byte product fixture. It keeps the
 // runtime boundary deliberately closed while admitting ordinary scalar control
-// over bounded unpacked i32 structs. Instruction admission remains the
+// over bounded unpacked numeric scalar structs. Instruction admission remains the
 // responsibility of the typed integer walker, and exact allocation roots are
 // authenticated independently by validateGCFrameRootPlans.
 func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
@@ -45,7 +45,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				return false
 			}
 			for _, field := range sub.Comp.Fields {
-				if field.Storage() != wasm.StorageVal(wasm.I32) {
+				if field.Storage().Packed() || !scalarType(field.Storage().Val(), true) {
 					return false
 				}
 			}
@@ -159,7 +159,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 			}
 			for range fields {
 				storage, err := r.Byte()
-				if err != nil || storage != 0x7f {
+				if err != nil || storage < 0x7c || storage > 0x7f {
 					return false
 				}
 				mut, err := r.Byte()

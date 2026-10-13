@@ -3,6 +3,7 @@
 package riscv64
 
 import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -194,18 +195,19 @@ func (f *integerEmitter) gcDefaultAllocation(helper uint32, base int, array bool
 	f.Store(f.SpillOffset(base), 5, true)
 }
 
-// gcStructAllocation calls the exact struct.new helper with count narrow
-// scalar fields followed by the type index. References remain full-width in
-// the returned carrier.
-func (f *integerEmitter) gcStructAllocation(base int, typeIndex, count uint32, hiddenRefs []bool) {
+// gcStructAllocation calls the exact struct.new helper with one serialized
+// scalar slot per field followed by the type index. References remain
+// full-width in the returned carrier.
+func (f *integerEmitter) gcStructAllocation(base int, typeIndex uint32, fieldCount int, fields []wasm.FieldType, hiddenRefs []bool) {
 	f.restoreCallTransport()
-	for i := uint32(0); i < count; i++ {
-		f.Load(5, f.SpillOffset(base+int(i)), false)
+	for i := 0; i < fieldCount; i++ {
+		wide := fields != nil && scalarWide(fields[i].Storage().Val())
+		f.Load(5, f.SpillOffset(base+i), wide)
 		f.a.Sd(enc.X5, enc.X10, int32(i*8))
 	}
 	f.a.Constant32(enc.X5, typeIndex)
-	f.a.Sd(enc.X5, enc.X10, int32(count*8))
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructAllocOne, helperSlots: int(count) + 1, safepoint: f.recordGCFrameSafepoint(hiddenRefs)})
+	f.a.Sd(enc.X5, enc.X10, int32(fieldCount*8))
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructAllocOne, helperSlots: fieldCount + 1, safepoint: f.recordGCFrameSafepoint(hiddenRefs)})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {
@@ -507,7 +509,7 @@ func (f *integerEmitter) gcStructGetField0(base int) {
 	f.Store(f.SpillOffset(base), 5, false)
 }
 
-func (f *integerEmitter) gcStructGetI32(base int, typeIndex, fieldIndex, helper uint32) {
+func (f *integerEmitter) gcStructGetScalar(base int, typeIndex, fieldIndex, helper uint32, wide bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0) // object reference
@@ -521,15 +523,19 @@ func (f *integerEmitter) gcStructGetI32(base int, typeIndex, fieldIndex, helper 
 	if f.mode.production {
 		result = enc.X13
 	}
-	f.a.Lwu(enc.X5, result, 0)
-	f.Store(f.SpillOffset(base), 5, false)
+	if wide {
+		f.a.Ld(enc.X5, result, 0)
+	} else {
+		f.a.Lwu(enc.X5, result, 0)
+	}
+	f.Store(f.SpillOffset(base), 5, wide)
 }
 
-func (f *integerEmitter) gcStructSetI32(base int, typeIndex, fieldIndex uint32) {
+func (f *integerEmitter) gcStructSetScalar(base int, typeIndex, fieldIndex uint32, wide bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0) // object reference
-	f.Load(5, f.SpillOffset(base+1), false)
+	f.Load(5, f.SpillOffset(base+1), wide)
 	f.a.Sd(enc.X5, enc.X10, 8) // field value
 	f.a.Constant32(enc.X5, typeIndex)
 	f.a.Sd(enc.X5, enc.X10, 16)

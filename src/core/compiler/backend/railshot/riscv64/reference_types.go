@@ -77,7 +77,7 @@ type internalReferenceTypes struct {
 	gcTypeSubtypingRefTestVariant     uint8
 	gcTypeSubtypingDuplicateRecursive bool
 	// gcRootedScalar admits indexed heaps that name one of the
-	// bounded i32 structs authenticated by the whole-module generic profile.
+	// bounded numeric scalar structs authenticated by the whole-module generic profile.
 	gcRootedScalar bool
 }
 
@@ -90,7 +90,7 @@ func (types internalReferenceTypes) rootedStruct(index uint32) bool {
 		return false
 	}
 	for _, field := range signature.Fields {
-		if field.Storage() != wasm.StorageVal(wasm.I32) {
+		if field.Storage().Packed() || !scalarType(field.Storage().Val(), true) {
 			return false
 		}
 	}
@@ -116,12 +116,20 @@ func (types internalReferenceTypes) rootedStructType(index uint32) *wasm.CompTyp
 	return signature
 }
 
-func (types internalReferenceTypes) rootedStructFields(index uint32) (int, bool) {
+func (types internalReferenceTypes) rootedStructFields(index uint32) ([]wasm.FieldType, bool) {
 	signature := types.rootedStructType(index)
 	if !types.rootedStruct(index) {
-		return 0, false
+		return nil, false
 	}
-	return len(signature.Fields), true
+	return signature.Fields, true
+}
+
+func (types internalReferenceTypes) rootedStructFieldWide(typeIndex, fieldIndex uint32) (bool, bool) {
+	signature := types.rootedStructType(typeIndex)
+	if !types.rootedStruct(typeIndex) || uint64(fieldIndex) >= uint64(len(signature.Fields)) {
+		return false, false
+	}
+	return scalarWide(signature.Fields[fieldIndex].Storage().Val()), true
 }
 
 func (types internalReferenceTypes) rootedStructField(typeIndex, fieldIndex uint32) bool {

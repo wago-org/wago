@@ -118,6 +118,59 @@ func TestRV64RootedScalarMultiFieldStructExecutes(t *testing.T) {
 	}
 }
 
+func rootedMixedScalarStructModule(result wasm.ValType, field byte) []byte {
+	types := [][]byte{
+		wasmtest.FuncType(nil, []wasm.ValType{result}),
+		{0x5f, 0x04, 0x7f, 0x01, 0x7e, 0x01, 0x7d, 0x01, 0x7c, 0x01},
+	}
+	body := []byte{
+		0x01, 0x01, 0x64, 0x01,
+		0x41, 0x01,
+		0x42, 0x02,
+		0x43, 0x00, 0x00, 0x50, 0x40,
+		0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x40,
+		0xfb, 0x00, 0x01, 0x21, 0x00, 0x20, 0x00,
+	}
+	values := [][]byte{
+		{0x41, 0x09},
+		{0x42, 0x2a},
+		{0x43, 0x00, 0x00, 0xc8, 0x40},
+		{0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x40},
+	}
+	body = append(body, values[field]...)
+	body = append(body, 0xfb, 0x05, 0x01, field, 0x20, 0x00, 0xfb, 0x02, 0x01, field, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedMixedScalarStructExecutes(t *testing.T) {
+	for field, tc := range []struct {
+		typ  wasm.ValType
+		want uint64
+	}{{wasm.I32, 9}, {wasm.I64, 42}, {wasm.F32, 0x40c80000}, {wasm.F64, 0x401e000000000000}} {
+		t.Run(fmt.Sprintf("field=%d", field), func(t *testing.T) {
+			compiled, err := Compile(rv64RootedScalarConfig(), rootedMixedScalarStructModule(tc.typ, byte(field)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			got, err := instance.Invoke("run")
+			if err != nil || !slices.Equal(got, []uint64{tc.want}) {
+				t.Fatalf("run()=%#x err=%v want=[%#x]", got, err, tc.want)
+			}
+		})
+	}
+}
+
 func rootedScalarBoundaryStructModule(fieldCount int) []byte {
 	fields := []byte{0x5f}
 	fields = append(fields, wasmtest.ULEB(uint32(fieldCount))...)

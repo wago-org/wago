@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 
@@ -54,11 +55,27 @@ func rv64FreshRootedGC(c *Compiled) bool {
 				!desc.Final || desc.HasSuper || desc.HasRefs {
 				return false
 			}
+			kinds := make([]gc.StorageKind, len(typ.Fields))
 			for field := range typ.Fields {
-				if typ.Fields[field].Storage.Packed || typ.Fields[field].Storage.Value.Kind != ValueTypeI32 ||
-					desc.Fields[field].Kind != gc.StorageI32 || desc.Fields[field].Offset != uint32(field*4) {
+				if typ.Fields[field].Storage.Packed || typ.Fields[field].Storage.Value.Ref != (ReferenceTypeDescriptor{}) {
 					return false
 				}
+				switch typ.Fields[field].Storage.Value.Kind {
+				case ValueTypeI32:
+					kinds[field] = gc.StorageI32
+				case ValueTypeI64:
+					kinds[field] = gc.StorageI64
+				case ValueTypeF32:
+					kinds[field] = gc.StorageF32
+				case ValueTypeF64:
+					kinds[field] = gc.StorageF64
+				default:
+					return false
+				}
+			}
+			expected, err := gc.NewStructDesc(gc.TypeID(i), kinds)
+			if err != nil || desc.Size != expected.Size || desc.Align != expected.Align || !slices.Equal(desc.Fields, expected.Fields) {
+				return false
 			}
 			requiredSlots = max(requiredSlots, len(typ.Fields)+1)
 			hasStruct = true
