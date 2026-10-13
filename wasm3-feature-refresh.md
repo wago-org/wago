@@ -554,3 +554,32 @@ background publication, scheduling and collection-order effects remain unproven.
 Full parity remains open. No production deployment.
 
 [Every capture, failed/repeated verdict, controller/old-SDK probe and validation](docs/benchmarks/wasm3-2026-10-13/trapping-float.json).
+
+### Fresh interleaved full cohort and main priority
+
+Wago `4c60e4c0` and Clang w2c2 `f303ed27` completed 266 contracts each in
+serialized per-workload pairs, under bounded shared-device reservations. The
+main corpus was moved first at a saved boundary; prior captures were reused.
+Publication was deferred until all timings ended and separately locked. All
+532 captures have durable local receipts. The source has 1,112 Wago observations
+across 266 contracts; all 575,121 historical observations, database integrity
+and foreign keys pass. Twenty-nine peer failures match prior failed phases,
+artifacts and contracts; none becomes a numeric timing. No unexpected collection
+or resource failures remain.
+
+Fresh steady ratios are **1.1834x** over 148 shared main contracts, **0.3818x**
+over 54 paired native feature contracts, and **0.8746x** over all 202. Main still
+has 112 contracts above 1x; features have 17 above 1x and 11 above 1.1x. An
+aggregate pass does not complete the per-feature goal. The largest main gaps
+are mesh skinning **6.94x**, video DCT **5.87x**, ML inference **5.40x**, and
+autocorrelation **4.67x**.
+
+A separately locked, oracle-checked owned-WasmFunc diagnostic profiles these
+kernels after warmup. Mesh and DCT measure 26/58 us in that warmed probe versus
+94/171 us in the original single-invocation cohort; ML and autocorrelation are
+closer. Probe timings do not replace original-contract captures. The profile
+attributes most samples to native/external code; it does not yet isolate the
+gap. Publication interference and warmup/order/scheduling effects remain
+unproven. Scope remains local; no production deployment.
+
+[Full new cohort, all original samples, phase-matched failures and receipt/history audit](docs/benchmarks/wasm3-2026-10-13/interleaved-full-feature-cohort.json).
