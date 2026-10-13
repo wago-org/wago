@@ -1966,6 +1966,115 @@ func TestRV64RootedScalarActiveDeclarativeExpressionTableExecutes(t *testing.T) 
 	}
 }
 
+func rootedScalarTableInitializerModule(expr []byte, size uint32) []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	target := []byte{0x00, 0x41, 0x2a, 0x0b}
+	caller := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x41, 0x00, 0x11, 0x01, 0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(4, wasmtest.Vec(tableTestTableWithInit(size, 1, expr))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target))), target...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func TestRV64RootedScalarTableInitializersExecute(t *testing.T) {
+	nonNullSource := rootedScalarTableInitializerModule(tableTestRefFuncExpr(0), 1)
+	if !railshot.AdmitGCRootedScalarSource(nonNullSource) {
+		t.Fatal("bounded rooted ref.func table initializer was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), nonNullSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || !view.HasTableInitFunc || view.TableInitFunc != 0 || len(view.Elems) != 0 {
+		t.Fatal("ref.func table initializer receipt is missing")
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"disabled": func(candidate *Compiled) { candidate.HasTableInitFunc = false },
+		"target":   func(candidate *Compiled) { candidate.TableInitFunc = 1 },
+		"bounds": func(candidate *Compiled) {
+			candidate.TableInitFunc = uint32(len(candidate.Funcs))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated table initializer retained the generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("mutated table initializer validation=%v", err)
+			}
+		})
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{83}) {
+		_ = instance.Close()
+		t.Fatalf("ref.func-initialized run()=%v err=%v want=[83]", got, err)
+	}
+	if err := instance.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	nullSource := rootedScalarTableInitializerModule(tableTestRefNullFuncExpr(), 1)
+	if !railshot.AdmitGCRootedScalarSource(nullSource) {
+		t.Fatal("bounded rooted ref.null table initializer was not source-admitted")
+	}
+	nullCompiled, err := Compile(rv64RootedScalarConfig(), nullSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer nullCompiled.Close()
+	if view := nullCompiled.executionView(); !rv64FreshRootedGC(view) || view.HasTableInitFunc || view.TableInitFunc != 0 {
+		t.Fatal("ref.null table initializer receipt is missing")
+	}
+	nullInstance, err := Instantiate(nullCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer nullInstance.Close()
+	if got, err := nullInstance.Invoke("run"); err == nil {
+		t.Fatalf("ref.null-initialized run()=%v without indirect-call trap", got)
+	}
+
+	zeroCompiled, err := Compile(rv64RootedScalarConfig(), rootedScalarTableInitializerModule(tableTestRefFuncExpr(0), 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zeroCompiled.Close()
+	if view := zeroCompiled.executionView(); !rv64FreshRootedGC(view) || !view.HasTableInitFunc || view.TableInitFunc != 0 || view.TableSize != 0 {
+		t.Fatal("zero-length ref.func table initializer receipt is missing")
+	}
+	zeroInstance, err := Instantiate(zeroCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zeroInstance.Close()
+	if got, err := zeroInstance.Invoke("run"); err == nil {
+		t.Fatalf("zero-length ref.func-initialized run()=%v without bounds trap", got)
+	}
+}
+
 func rootedScalarDeclarativeTableModule() []byte {
 	types := [][]byte{
 		{0x5f, 0x01, 0x7f, 0x00},

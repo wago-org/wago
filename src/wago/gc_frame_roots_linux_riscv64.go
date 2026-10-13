@@ -60,9 +60,26 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	}
 	if len(m.Tables) == 1 {
 		table := &m.Tables[0]
-		if table.Init != nil || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
+		if !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
 			table.Type.Limits.Min > table.Type.Limits.Max || table.Type.Limits.Max > 256 {
 			return reject("RV64 exact roots require one bounded local funcref table32")
+		}
+		if table.Init != nil {
+			expr := *table.Init
+			if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 7 || expr.BodyBytes[0] != 0xd0 && expr.BodyBytes[0] != 0xd2 {
+				return reject("RV64 exact roots reject table initializer expression")
+			}
+			if expr.BodyBytes[0] == 0xd0 {
+				r := wasm.ReaderFrom(expr.BodyBytes[1:])
+				heap, err := r.S33()
+				if err != nil || heap != -16 {
+					return reject("RV64 exact roots require a funcref table initializer")
+				}
+			}
+			value, err := wasm.ParseFuncrefElementExpr(expr)
+			if err != nil || !value.Null && uint64(value.FuncIndex) >= uint64(len(m.FuncTypes)) {
+				return reject("RV64 exact roots reject table initializer target")
+			}
 		}
 	}
 	remainingElements := 256

@@ -38,9 +38,15 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	}
 	if len(m.Tables) == 1 {
 		table := &m.Tables[0]
-		if table.Init != nil || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
+		if !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
 			table.Type.Limits.Min > table.Type.Limits.Max || table.Type.Limits.Max > 256 {
 			return false
+		}
+		if table.Init != nil {
+			value, err := tableElementExpression(*table.Init)
+			if err != nil || !value.Null && uint64(value.FuncIndex) >= uint64(len(m.FuncTypes)) {
+				return false
+			}
 		}
 	}
 	remainingElements := 256

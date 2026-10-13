@@ -183,11 +183,15 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		return digest, true
 	}
 	if c.tableCount() != 1 || !c.HasTable || !c.hasTableExportMetadata || c.TableAddr64 || c.TableType != ValFuncRef || !c.TableHasValueType || !c.TableHasMax ||
-		c.HasTableInitFunc || c.TableInitFunc != 0 || c.TableSize < 0 || c.TableSize > 256 || c.TableMax < uint64(c.TableSize) || c.TableMax > 256 ||
+		c.TableSize < 0 || c.TableSize > 256 || c.TableMax < uint64(c.TableSize) || c.TableMax > 256 ||
 		uint64(c.TableValueTypeIndex) >= uint64(len(c.ValueTypes)) || len(c.FuncTypeID) != len(c.Funcs) {
 		return [32]byte{}, false
 	}
 	needsDescriptors := false
+	if !c.HasTableInitFunc && c.TableInitFunc != 0 || c.HasTableInitFunc && (uint64(c.TableInitFunc) >= uint64(len(c.Funcs)) || railshotNonCallableFunction(c, int(c.TableInitFunc))) {
+		return [32]byte{}, false
+	}
+	needsDescriptors = c.HasTableInitFunc
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 	exact, err := c.tableExactType(0)
 	if err != nil || exact != plain || c.ValueTypes[c.TableValueTypeIndex] != plain {
@@ -241,6 +245,13 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	_, _ = h.Write(word[:])
 	binary.LittleEndian.PutUint32(word[:4], c.TableValueTypeIndex)
 	_, _ = h.Write(word[:4])
+	if c.HasTableInitFunc {
+		_, _ = h.Write([]byte{1})
+		binary.LittleEndian.PutUint32(word[:4], c.TableInitFunc)
+		_, _ = h.Write(word[:4])
+	} else {
+		_, _ = h.Write([]byte{0})
+	}
 	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.Elems)))
 	_, _ = h.Write(word[:4])
 	remaining := 256
