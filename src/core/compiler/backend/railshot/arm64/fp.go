@@ -829,56 +829,31 @@ func (f *fn) loadFConstBits(bits uint64, f64 bool) Reg {
 // out-of-range. srcF64 selects the source width; dstWide the i64 destination.
 func (f *fn) f2iTrunc(dstWide, srcF64, signed bool) {
 	f.materializePendingTraps()
-	x := f.materializeF(f.popValue())
+	x, owned := f.operandRegF(f.popValue())
 	f.fpinned = f.fpinned.add(x)
 
 	minBits, maxBits := truncLimitBits(signed, srcF64, dstWide)
-	f.a.Fcmp(x, x, srcF64)
-	f.trapIf(a64.CondVS, trapTruncOverflow) // NaN (unordered)
 	lo := f.loadFConstBits(minBits, srcF64)
 	f.a.Fcmp(x, lo, srcF64)
 	f.releaseF(lo)
-	f.trapIf(a64.CondLE, trapTruncOverflow) // x <= lower-exclusive limit
+	f.trapIf(a64.CondLE, trapTruncOverflow) // x <= lower-exclusive limit, or unordered (NaN)
 	hi := f.loadFConstBits(maxBits, srcF64)
 	f.a.Fcmp(x, hi, srcF64)
 	f.releaseF(hi)
 	f.trapIf(a64.CondGE, trapTruncOverflow) // x >= upper-exclusive limit
 
 	r := f.allocReg(0)
-	switch {
-	case signed:
+	if signed {
 		f.a.Fcvtzs(r, x, srcF64, dstWide)
-	case !dstWide: // u32: a 64-bit signed cvt is exact on [0, 2^32)
-		f.a.Fcvtzs(r, x, srcF64, true)
-	default: // u64
-		f.truncU64InRange(x, r, srcF64)
+	} else {
+		f.a.Fcvtzu(r, x, srcF64, dstWide)
 	}
 	f.fpinned = f.fpinned.remove(x)
-	f.releaseF(x)
+	if owned {
+		f.releaseF(x)
+	}
 	f.pushReg(r, mtOfInt(dstWide))
 }
-
-// truncU64InRange converts x, already proven in [0, 2^64), to u64: a signed cvt
-// overflows for x >= 2^63, so bias by cvt(x - 2^63) + 2^63.
-func (f *fn) truncU64InRange(x, r Reg, srcF64 bool) {
-	p63 := f.loadFConstBits(floatBits2p63(srcF64), srcF64)
-	f.a.Fcmp(x, p63, srcF64)
-	simple := f.a.Bcond(a64.CondLT) // x < 2^63 (ordered)
-	f.a.Fsub(x, x, p63, srcF64)
-	f.a.Fcvtzs(r, x, srcF64, true)
-	t := f.allocReg(maskOf(r))
-	f.a.MovImm64(t, 0x8000000000000000)
-	f.a.Add64(r, r, t)
-	f.release(t)
-	done := f.a.Branch()
-	f.patchBranch19(simple, f.a.Len())
-	f.a.Fcvtzs(r, x, srcF64, true)
-	f.patchBranch26(done, f.a.Len())
-	f.releaseF(p63)
-}
-
-// floatBits2p63 returns the bit pattern of 2^63 in the given float width.
-func floatBits2p63(f64 bool) uint64 { return floatBits(math.Ldexp(1, 63), f64) }
 
 // --- saturating float→int truncation (0xFC 0-7): NaN→0, out-of-range clamps ---
 
