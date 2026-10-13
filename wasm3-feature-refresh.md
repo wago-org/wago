@@ -599,3 +599,29 @@ historical observations remain intact. Earlier local-range, paired-count and
 scalar-fill-tail experiments were shelved or reverted after measurement.
 
 [Linear-term captures, rollback tests, compiler costs and local receipts](docs/benchmarks/wasm3-2026-10-13/linear-integer-tree.json).
+
+
+The frozen `a7a9b6e9` full refresh completed all **532 captures** (266 per
+engine) and published them only to local wasm.fyi. All receipts are durable;
+Wago has 1,104 observations across 266 contracts, the fresh peer has 3,192,
+and all 575,121 historical observations remain intact. SQLite integrity,
+foreign keys and local server health pass. The 29 failed peer workloads match
+the prior artifacts, contracts and phases; no Wago or resource failures occurred.
+
+Fresh ratios are **1.1710x** for 148 shared main contracts, **0.3772x** for 54
+paired features, and **0.8651x** for all 202. Features still have **17 above 1x**
+and **11 above 1.1x**; this does not complete the per-feature goal. Mesh remains
+about **1.71x** slower, and ML inference is **5.32x** slower. DCT measures
+55.0 us against 25.5 us (2.15x); earlier much colder full-cohort numbers did not
+reproduce and are not credited as compiler improvements. The controlled mesh
+before/after repeats remain the causal evidence for the retained linear terms.
+The controller correction after the first 16 main captures is recorded in the
+report; both controllers have previously matched main-workload semantics.
+
+A subsequent register-pressure correctness fix (`3d5ae7ae`) declines linear
+collection before emission when all surviving sources plus temporaries cannot
+fit. Targeted execution, guarded race and pinned conformance pass, and corpus
+selection is unchanged. The frozen full cohort measures `a7a9b6e9`, not this fix.
+
+[Full frozen cohort, samples, failures and local receipts](docs/benchmarks/wasm3-2026-10-13/linear-integer-full-feature-cohort.json).
+[Register-pressure regression and validation](docs/benchmarks/wasm3-2026-10-13/linear-integer-pressure.json).
