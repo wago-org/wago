@@ -2830,5 +2830,6 @@
     "No full corpus compiler cost/conformance/native AMD64 validation for rejected emitter.",
     "Expanded every post-256-byte remainder test is retained.",
     "All captures private; no table publication."
-  ]
+  ],
+  "validationCoverageCorrection": "Historical guard-page public loops skipped before original execution because artifact serialization is unsupported. Fresh b40fecde fixture evidence has 5140 guarded and 5122 untagged test passes with zero skips; see loop-fixture-ownership-and-coverage.json. Original raw logs retained."
 }

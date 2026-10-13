@@ -3052,5 +3052,6 @@
     "Image grows 1940 to 2132 bytes; unchanged autocorrelation image is 1080 bytes.",
     "Three paired compiler trials against 00c0c600; small timing deltas do not establish compiler speed changes.",
     "No table publication; private measurements only."
-  ]
+  ],
+  "validationCoverageCorrection": "Historical guard-page public loops skipped before original execution because artifact serialization is unsupported. Fresh b40fecde fixture evidence has 5140 guarded and 5122 untagged test passes with zero skips; see loop-fixture-ownership-and-coverage.json. Original raw logs retained."
 }

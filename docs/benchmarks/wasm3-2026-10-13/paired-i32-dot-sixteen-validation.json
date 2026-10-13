@@ -231,5 +231,6 @@
     "ML image grows 1844 to 1940 bytes; unchanged autocorrelation image is 1080 bytes.",
     "All feature and main-workload performance requirements remain open; ML still 1.35\u20131.38 times peer in direct instruction comparison.",
     "Private measurement only; next changed-workload table refresh not before 19:45:22 UTC."
-  ]
+  ],
+  "validationCoverageCorrection": "Historical guard-page public loops skipped before original execution because artifact serialization is unsupported. Fresh b40fecde fixture evidence has 5140 guarded and 5122 untagged test passes with zero skips; see loop-fixture-ownership-and-coverage.json. Original raw logs retained."
 }

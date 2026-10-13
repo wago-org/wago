@@ -2831,5 +2831,6 @@
     "Sixteen-byte image reduction does not establish execution improvement.",
     "Expanded wrap/offset/padded-carrier tests are retained for the measured guard sequence.",
     "All captures private; no table publication."
-  ]
+  ],
+  "validationCoverageCorrection": "Historical guard-page public loops skipped before original execution because artifact serialization is unsupported. Fresh b40fecde fixture evidence has 5140 guarded and 5122 untagged test passes with zero skips; see loop-fixture-ownership-and-coverage.json. Original raw logs retained."
 }
