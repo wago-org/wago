@@ -21,6 +21,10 @@ type integerAffineTerm struct {
 	calls                  uint8
 	writes                 [4]IntegerAffineGlobalWrite
 	writeCount             uint8
+	recurrence             bool
+	globalCoefficient      uint64
+	incrementCoefficient   uint64
+	incrementConstant      uint64
 }
 
 // inspectIntegerAffineTerm evaluates a bounded pure postfix expression as A*i+B

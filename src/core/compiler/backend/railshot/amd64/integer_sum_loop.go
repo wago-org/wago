@@ -70,6 +70,9 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 		}
 	}
 	one := func() { f.pushValue(storage{kind: stConst, typ: typ, cval: 1}) }
+	if p.GlobalRecurrence {
+		return f.emitIntegerGlobalRecurrence(p, typ, get)
+	}
 	// T(n)=floor(n/2)*(n-1+(n&1)). Dividing a factor before multiplying
 	// preserves the complete modulo-2^32/2^64 result, including unsigned extrema.
 	get(p.Accumulator)

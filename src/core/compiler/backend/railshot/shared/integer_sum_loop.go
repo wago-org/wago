@@ -4,10 +4,11 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 // IntegerSumLoop proves an unsigned unit-stride integer reduction.
 // A bounded same-iteration assignment block can also publish final values to
-// defined globals; effectful calls, traps, imported global writes and fences
-// reject it. The backend separately proves that Counter starts at zero.
+// defined globals, or reduce one additive defined-global recurrence. Effectful
+// calls, traps, imported global writes and fences reject these proofs. The backend separately proves that Counter starts at zero.
 // The do-while body sums Coefficient*i+Constant, or the runtime global value,
-// and leaves Counter=max(1,Bound).
+// or an affine term in the current value of the additive recurrence;
+// it leaves Counter=max(1,Bound).
 // Fences may be coalesced because no memory access, call, trap or escape lies
 // between them. The replacement must still emit one fence when Fenced is true.
 type IntegerSumLoop struct {
@@ -16,6 +17,10 @@ type IntegerSumLoop struct {
 	Wide, Fenced                bool
 	Calls                       uint8
 	InvariantGlobal             bool
+	GlobalRecurrence            bool
+	GlobalCoefficient           uint64
+	IncrementCoefficient        uint64
+	IncrementConstant           uint64
 	Global                      uint32
 	Coefficient, Constant       uint64
 	GlobalWrites                [4]IntegerAffineGlobalWrite
@@ -85,15 +90,21 @@ func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module, al
 			width = 8
 		}
 		term, ok = inspectIntegerMixedWidthTerm(&r, module, width)
+		if !ok {
+			r = termStart
+			term, ok = inspectIntegerGlobalRecurrence(&r, module, width)
+		}
 	}
 	if !ok {
 		return p, false
 	}
 	p.Coefficient, p.Constant, p.Calls = term.coefficient, term.constant, term.calls
 	p.InvariantGlobal, p.Global = term.hasGlobal, term.global
+	p.GlobalRecurrence, p.GlobalCoefficient = term.recurrence, term.globalCoefficient
+	p.IncrementCoefficient, p.IncrementConstant = term.incrementCoefficient, term.incrementConstant
 	p.GlobalWrites, p.GlobalWriteCount = term.writes, term.writeCount
 	// Preserve the existing fence proof: no memory reads between fences.
-	if (p.InvariantGlobal || p.GlobalWriteCount != 0) && p.Fenced {
+	if (p.InvariantGlobal || p.GlobalWriteCount != 0 || p.GlobalRecurrence) && p.Fenced {
 		return p, false
 	}
 	if blockType != 0 && !byteIs(0x0b) {
