@@ -2014,22 +2014,27 @@ func (f *fn) v128Store(r *wasm.Reader) error {
 	if memoryIndex != 0 || f.threadedMemory0 {
 		f.materializePendingLoads()
 	}
+	load, reuseAddress := f.inspectSIMDStoreLoadAddress(r, memoryIndex, off)
 	base, ea, releaseBase, eaOwned, _, disp := f.memAddrAt(memoryIndex, off, 16)
 	f.pinned = f.pinned.add(ea)
 	if memoryIndex == 0 && !f.threadedMemory0 {
 		f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, 16)
 	}
 	f.a.StrQIdx(base, ea, x, disp)
-	f.pinned = f.pinned.remove(ea)
 	f.fpinned = f.fpinned.remove(x)
+	f.releaseF(x)
+	var loadErr error
+	if reuseAddress {
+		loadErr = f.emitSIMDStoreLoadAddress(r, load, base, ea, disp)
+	}
+	f.pinned = f.pinned.remove(ea)
 	if releaseBase {
 		f.release(base)
 	}
 	if eaOwned {
 		f.release(ea)
 	}
-	f.releaseF(x)
-	return nil
+	return loadErr
 }
 
 func simdLaneMemSize(sub uint32) int {

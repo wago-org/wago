@@ -2581,12 +2581,17 @@ func (f *fn) v128Store(r *wasm.Reader) error {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
+	load, reuseAddress := f.inspectSIMDStoreLoadAddress(r, memoryIndex, off)
 	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, 16)
 	f.mov128StoreIdx(base, ea, x, disp)
 	f.fpinned = f.fpinned.remove(x)
-	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	f.releaseF(x)
-	return nil
+	var loadErr error
+	if reuseAddress {
+		loadErr = f.emitSIMDStoreLoadAddress(r, load, base, ea, disp)
+	}
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
+	return loadErr
 }
 
 func simdLaneMemSize(sub uint32) int {
