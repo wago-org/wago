@@ -44,8 +44,7 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 		}
 	}
 	// Four owned GP values at most. Coefficients are packed before the hash
-	// and sum temporaries are allocated. A dedicated counter local stays in its
-	// GP register; otherwise the runtime count resides in a V register.
+	// and sum temporaries are allocated; the runtime count resides in a V register.
 	if gp < 4 || fp < p.Terms/4+7 {
 		return false, nil
 	}
@@ -108,20 +107,10 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 	f.pushReg(cond, mtI32)
 	err := f.emitCheckedLoop(r, p.End, func() error {
 		savedPins, savedFPins := f.pinned, f.fpinned
-		ptr := copyRead(p.Pointer)
-		n, floating, pinnedCounter := f.pinReg(int(p.Counter))
-		pinnedCounter = pinnedCounter && !floating
-		if pinnedCounter {
-			f.recoverLocal(int(p.Counter))
-			f.a.MovReg32(n, n)
-			f.pinned = f.pinned.add(n)
-		} else {
-			n = copyRead(p.Counter)
-		}
+		ptr, n := copyRead(p.Pointer), copyRead(p.Counter)
 		tmp := alloc()
-		// This arm is nontrapping, call-free and uninterruptible. The pointer
-		// copy preserves its input while final pointer locals are stored. A
-		// borrowed counter register reaches its final zero value in the loop.
+		// This arm is nontrapping, call-free and uninterruptible. Owned copies
+		// preserve the original inputs while final pointer/count locals are stored.
 		f.a.LslImm64(tmp, n, 2)
 		f.a.Add64(tmp, tmp, ptr)
 		f.a.MovReg32(tmp, tmp)
@@ -129,10 +118,8 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 			f.pushReg(tmp, mtI32)
 			f.setLocal(nil, int(x), false)
 		}
-		if !pinnedCounter {
-			f.pushValue(zeroStorage(mtI32))
-			f.setLocal(nil, int(p.Counter), false)
-		}
+		f.pushValue(zeroStorage(mtI32))
+		f.setLocal(nil, int(p.Counter), false)
 		var v [15]Reg
 		used := p.Terms/4 + 7
 		for i := 0; i < used; i++ {
@@ -157,11 +144,9 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 				}
 			}
 		}
-		if !pinnedCounter {
-			f.a.NeonDupGprS(counter, n)
-			f.pinned = f.pinned.remove(n)
-			f.release(n)
-		}
+		f.a.NeonDupGprS(counter, n)
+		f.pinned = f.pinned.remove(n)
+		f.release(n)
 		hash := copyRead(p.Hash)
 		sum := alloc()
 		f.a.MovImm32(tmp, p.Bias)
@@ -193,22 +178,11 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 		f.a.MovImm32(tmp, p.Multiplier)
 		f.a.Mul32(hash, hash, tmp)
 		f.a.AddImm64(ptr, ptr, 4)
-		var again int
-		if pinnedCounter {
-			f.a.SubImm32(n, n, 1)
-			again = f.a.Cbnz32(n)
-		} else {
-			f.a.NeonUmovS(tmp, counter, 0)
-			f.a.SubImm32(tmp, tmp, 1)
-			f.a.NeonDupGprS(counter, tmp)
-			again = f.a.Cbnz32(tmp)
-		}
+		f.a.NeonUmovS(tmp, counter, 0)
+		f.a.SubImm32(tmp, tmp, 1)
+		f.a.NeonDupGprS(counter, tmp)
+		again := f.a.Cbnz32(tmp)
 		f.a.PatchBranch19(again, loop)
-		if pinnedCounter {
-			f.pushValue(zeroStorage(mtI32))
-			f.setLocal(nil, int(p.Counter), false)
-			f.stats.peep("weighted-window-pinned-counter")
-		}
 		f.pushReg(hash, mtI32)
 		f.setLocal(nil, int(p.Hash), false)
 		for _, reg := range []Reg{ptr, hash, sum, tmp} {

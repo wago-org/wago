@@ -46,7 +46,6 @@ func weightedI32WindowSelectionBody(n int) []byte {
 }
 func TestWeightedI32WindowVectorSelection(t *testing.T) {
 	requireCompilerDiagnostics(t)
-	pinnedSelections := 0
 	for _, n := range []int{4, 8, 12, 32} {
 		b := weightedI32WindowSelectionBody(n)
 		params := make([]wasm.ValType, n+4)
@@ -71,15 +70,7 @@ func TestWeightedI32WindowVectorSelection(t *testing.T) {
 			if got := stats.Funcs[0].Peephole["weighted-i32-window-vector-loop"]; got != want {
 				t.Fatalf("terms%d enabled%t got%d want%d", n, on, got, want)
 			}
-			pinned := stats.Funcs[0].Peephole["weighted-window-pinned-counter"]
-			if !on && pinned != 0 {
-				t.Fatal("disabled optimization borrowed a counter register")
-			}
-			pinnedSelections += pinned
 		}
-	}
-	if pinnedSelections == 0 {
-		t.Fatal("selection fixtures did not exercise a pinned counter")
 	}
 }
 func TestWeightedI32WindowPressureAndEligibility(t *testing.T) {
