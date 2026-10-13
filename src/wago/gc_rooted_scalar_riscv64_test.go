@@ -1815,6 +1815,157 @@ func TestRV64RootedScalarPassiveTableExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarExpressionTableModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	target := []byte{0x00, 0x41, 0x2a, 0x0b}
+	caller := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x41, 0x00, 0x41, 0x00, 0x41, 0x01, 0xfc, 0x0c, 0x00, 0x00,
+		0x41, 0x00, 0x11, 0x01, 0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0x0b,
+	}
+	nuller := []byte{
+		0x00,
+		0x41, 0x00, 0x41, 0x01, 0x41, 0x01, 0xfc, 0x0c, 0x00, 0x00,
+		0x41, 0x00, 0x11, 0x01, 0x00,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(2))),
+		wasmtest.Section(4, []byte{0x01, 0x70, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("null", byte(wasm.ExternFunc), 2),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(tableTestPassiveElemExpr(tableTestRefFuncExpr(0), tableTestRefNullFuncExpr()))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target))), target...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+			append(wasmtest.ULEB(uint32(len(nuller))), nuller...),
+		)),
+	)
+}
+
+func TestRV64RootedScalarExpressionTableExecutes(t *testing.T) {
+	source := rootedScalarExpressionTableModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded rooted expression-table module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.passiveElems) != 1 || !view.passiveElems[0].HasValueType ||
+		len(view.passiveElems[0].Values) != 2 || view.passiveElems[0].Values[0].Null || view.passiveElems[0].Values[0].FuncIndex != 0 ||
+		!view.passiveElems[0].Values[1].Null {
+		t.Fatal("expression-table generic rooted receipt is missing")
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"type": func(candidate *Compiled) {
+			candidate.passiveElems[0].ValueTypeIndex = uint32(len(candidate.ValueTypes))
+		},
+		"null": func(candidate *Compiled) {
+			candidate.passiveElems[0].Values[1].Null = false
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			candidate.passiveElems = slices.Clone(candidate.passiveElems)
+			candidate.passiveElems[0].Values = slices.Clone(candidate.passiveElems[0].Values)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated expression table retained the generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("mutated expression table validation=%v", err)
+			}
+		})
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{83}) {
+		t.Fatalf("run()=%v err=%v want=[83]", got, err)
+	}
+	if got, err := instance.Invoke("null"); err == nil {
+		t.Fatalf("null()=%v without indirect-call trap", got)
+	}
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{83}) {
+		t.Fatalf("run() after null=%v err=%v want=[83]", got, err)
+	}
+}
+
+func rootedScalarActiveDeclarativeExpressionTableModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	target := []byte{0x00, 0x41, 0x2a, 0x0b}
+	caller := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0xfc, 0x0d, 0x01,
+		0x41, 0x00, 0x11, 0x01, 0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0x0b,
+	}
+	declarative := append([]byte{0x07, 0x70}, tableTestExprVec(tableTestRefNullFuncExpr())...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(4, []byte{0x01, 0x70, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(9, wasmtest.Vec(
+			tableTestActiveElemExpr(0, tableTestRefFuncExpr(0)),
+			declarative,
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target))), target...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func TestRV64RootedScalarActiveDeclarativeExpressionTableExecutes(t *testing.T) {
+	source := rootedScalarActiveDeclarativeExpressionTableModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded rooted active/declarative expression-table module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Elems) != 1 || !view.Elems[0].HasValueType || len(view.Elems[0].Values) != 1 ||
+		len(view.passiveElems) != 2 || view.passiveElems[0].Mode != ElemModeActive || !view.passiveElems[0].HasValueType || len(view.passiveElems[0].Values) != 0 ||
+		view.passiveElems[1].Mode != ElemModeDeclarative || !view.passiveElems[1].HasValueType || len(view.passiveElems[1].Values) != 0 {
+		t.Fatal("active/declarative expression-table state is missing")
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for range 2 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{83}) {
+			t.Fatalf("run()=%v err=%v want=[83]", got, err)
+		}
+	}
+}
+
 func rootedScalarDeclarativeTableModule() []byte {
 	types := [][]byte{
 		{0x5f, 0x01, 0x7f, 0x00},

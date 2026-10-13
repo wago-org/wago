@@ -46,8 +46,37 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	remainingElements := 256
 	for i := range m.Elements {
 		elem := &m.Elements[i]
-		if len(m.Tables) != 1 || elem.Mode.Table != 0 || elem.Kind.Kind != wasm.ElemFuncs ||
-			len(elem.Kind.Exprs) != 0 || !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) && elem.Kind.Ref != (wasm.RefType{}) || len(elem.Kind.Funcs) > remainingElements {
+		if len(m.Tables) != 1 || elem.Mode.Table != 0 {
+			return false
+		}
+		values := 0
+		switch elem.Kind.Kind {
+		case wasm.ElemFuncs:
+			if len(elem.Kind.Exprs) != 0 || elem.Kind.Ref != (wasm.RefType{}) {
+				return false
+			}
+			values = len(elem.Kind.Funcs)
+			for _, function := range elem.Kind.Funcs {
+				if uint64(function) >= uint64(len(m.FuncTypes)) {
+					return false
+				}
+			}
+		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
+			if len(elem.Kind.Funcs) != 0 || elem.Kind.Kind == wasm.ElemFuncExprs && elem.Kind.Ref != (wasm.RefType{}) ||
+				elem.Kind.Kind == wasm.ElemTypedExprs && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) {
+				return false
+			}
+			values = len(elem.Kind.Exprs)
+			for _, expr := range elem.Kind.Exprs {
+				value, err := tableElementExpression(expr)
+				if err != nil || !value.Null && uint64(value.FuncIndex) >= uint64(len(m.FuncTypes)) {
+					return false
+				}
+			}
+		default:
+			return false
+		}
+		if values > remainingElements {
 			return false
 		}
 		switch elem.Mode.Kind {
@@ -65,12 +94,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		default:
 			return false
 		}
-		for _, function := range elem.Kind.Funcs {
-			if uint64(function) >= uint64(len(m.FuncTypes)) {
-				return false
-			}
-		}
-		remainingElements -= len(elem.Kind.Funcs)
+		remainingElements -= values
 	}
 	for i := range m.Globals {
 		global := &m.Globals[i]

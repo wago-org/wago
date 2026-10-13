@@ -68,9 +68,48 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	remainingElements := 256
 	for i := range m.Elements {
 		elem := &m.Elements[i]
-		if len(m.Tables) != 1 || elem.Mode.Table != 0 ||
-			elem.Kind.Kind != wasm.ElemFuncs || len(elem.Kind.Exprs) != 0 || !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) && elem.Kind.Ref != (wasm.RefType{}) || len(elem.Kind.Funcs) > remainingElements {
-			return reject("RV64 exact roots require bounded literal active function elements")
+		if len(m.Tables) != 1 || elem.Mode.Table != 0 {
+			return reject("RV64 exact roots require bounded local function elements")
+		}
+		values := 0
+		switch elem.Kind.Kind {
+		case wasm.ElemFuncs:
+			if len(elem.Kind.Exprs) != 0 || elem.Kind.Ref != (wasm.RefType{}) {
+				return reject("RV64 exact roots require canonical legacy function elements")
+			}
+			values = len(elem.Kind.Funcs)
+			for _, function := range elem.Kind.Funcs {
+				if uint64(function) >= uint64(len(m.FuncTypes)) {
+					return reject("RV64 exact roots reject element function %d", function)
+				}
+			}
+		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
+			if len(elem.Kind.Funcs) != 0 || elem.Kind.Kind == wasm.ElemFuncExprs && elem.Kind.Ref != (wasm.RefType{}) ||
+				elem.Kind.Kind == wasm.ElemTypedExprs && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) {
+				return reject("RV64 exact roots require exact nullable funcref expression elements")
+			}
+			values = len(elem.Kind.Exprs)
+			for j, expr := range elem.Kind.Exprs {
+				if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 7 || expr.BodyBytes[0] != 0xd0 && expr.BodyBytes[0] != 0xd2 {
+					return reject("RV64 exact roots reject element expression %d:%d", i, j)
+				}
+				if expr.BodyBytes[0] == 0xd0 {
+					r := wasm.ReaderFrom(expr.BodyBytes[1:])
+					heap, err := r.S33()
+					if err != nil || heap != -16 {
+						return reject("RV64 exact roots reject non-funcref null element %d:%d", i, j)
+					}
+				}
+				value, err := wasm.ParseFuncrefElementExpr(expr)
+				if err != nil || !value.Null && uint64(value.FuncIndex) >= uint64(len(m.FuncTypes)) {
+					return reject("RV64 exact roots reject element expression %d:%d", i, j)
+				}
+			}
+		default:
+			return reject("RV64 exact roots reject unknown function element kind")
+		}
+		if values > remainingElements {
+			return reject("RV64 exact roots require bounded function element payloads")
 		}
 		switch elem.Mode.Kind {
 		case wasm.ElemActive:
@@ -84,12 +123,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		default:
 			return reject("RV64 exact roots reject unknown function element modes")
 		}
-		for _, function := range elem.Kind.Funcs {
-			if uint64(function) >= uint64(len(m.FuncTypes)) {
-				return reject("RV64 exact roots reject element function %d", function)
-			}
-		}
-		remainingElements -= len(elem.Kind.Funcs)
+		remainingElements -= values
 	}
 	remainingData := railshot.MaxModuleBytes
 	for i := range m.Data {
