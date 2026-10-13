@@ -3468,6 +3468,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.preloadLoopIntConsts(hints)
 	if hints.flags.has(hintHasFloatConst) {
 		f.preloadFloatConsts(c.BodyBytes)
+	} else {
+		f.preloadBooleanFloatConsts(c.BodyBytes)
 	}
 	f.preloadV128Consts(c.BodyBytes)
 	if err := f.runBody(c); err != nil {
@@ -4499,6 +4501,8 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	f.zeroDeclaredLocals(localScores)
 	if hasFloatConst {
 		f.preloadFloatConsts(c.BodyBytes)
+	} else {
+		f.preloadBooleanFloatConsts(c.BodyBytes)
 	}
 	f.preloadV128Consts(c.BodyBytes)
 	f.derivePinnedGlobals()

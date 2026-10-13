@@ -36,6 +36,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("direct-go-host-import", &directGoImportEnabled),
 	optimization.Bind("loop-int-const", &loopIntConstEnabled),
 	optimization.Bind("indexed-base-reuse", &indexedBaseReuseEnabled),
+	optimization.Bind("boolean-float-select", &booleanFloatSelectEnabled),
 	optimization.Bind("convert-read", &convertReadEnabled),
 	optimization.Bind("cold-call-local-pins", &coldCallLocalPinsEnabled),
 	optimization.Bind("magic-div", &magicDivEnabled),
@@ -112,6 +113,7 @@ var (
 	optDirectGoHostImport   = optimizationBindings.Option("direct-go-host-import")
 	optLoopIntConst         = optimizationBindings.Option("loop-int-const")
 	optIndexedBaseReuse     = optimizationBindings.Option("indexed-base-reuse")
+	optBooleanFloatSelect   = optimizationBindings.Option("boolean-float-select")
 	optConvertRead          = optimizationBindings.Option("convert-read")
 	optColdCallLocalPins    = optimizationBindings.Option("cold-call-local-pins")
 	optMagicDiv             = optimizationBindings.Option("magic-div")
