@@ -1477,3 +1477,9 @@ remain open. The next local refresh is no sooner than approximately 19:45 UTC.
 [Checked dot proof, validation and paired measurements](docs/benchmarks/wasm3-2026-10-13/paired-i32-dot.json),
 [eight-element refinement](docs/benchmarks/wasm3-2026-10-13/paired-i32-dot-eight.json),
 [scoped local refresh, receipts and historical audit](docs/benchmarks/wasm3-2026-10-13/changed-corpora-local-refresh.json).
+
+### Four-accumulator integer dot refinement (local, 2026-10-13)
+
+Two-accumulator MLA regressed ML by 22–24% and is superseded. Four independent accumulators over sixteen elements recover that loss. In two direct four-way captures, retained fused code (`9f871e03`, restored in `9150471c`) measures 3.667 microseconds against 4.083–4.084 before and 3.833–3.834 with separate multiply/add. Peer measures 2.667–2.708; ML remains slower. Unchanged autocorrelation timing variation and every raw phase are preserved. ML native image grows 1844 to 1940 bytes.
+
+Expanded remainder and seven-free-vector fallback tests, guarded race checks, both public ABIs/artifact reloads, native AMD64 public fallback, pinned Core 3 and official atomic execution pass. Three paired corpus compile trials show unchanged image totals, effectively unchanged allocations, and no measured latency regression; small timing improvements are not speed claims. See `docs/benchmarks/wasm3-2026-10-13/paired-i32-dot-sixteen-{comparison,validation}.json` and prior MLA experiment reports. No local table refresh or production publication accompanies these private captures. The full per-feature and main-corpus goal remains active.
