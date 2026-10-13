@@ -42,7 +42,7 @@ func TestPairedI32DotVectorLoopSelection(t *testing.T) {
 
 func TestPairedI32DotVectorLoopPressureAndEligibilityFallback(t *testing.T) {
 	body := pairedI32DotSelectionBody()[3:]
-	for _, mode := range []string{"gp", "vector", "interruptible", "inline", "exception", "calls"} {
+	for _, mode := range []string{"gp", "vector", "vector-five", "interruptible", "inline", "exception", "calls"} {
 		t.Run(mode, func(t *testing.T) {
 			f := gpClassEmitter()
 			f.policy = currentCodegenPolicy()
@@ -54,6 +54,15 @@ func TestPairedI32DotVectorLoopPressureAndEligibilityFallback(t *testing.T) {
 				f.pinned = allAllocatableGP()
 			case "vector":
 				f.fpinned = ^regMask(0)
+			case "vector-five":
+				f.fpinned = ^regMask(0)
+				available := 0
+				for _, reg := range fpAllocRegs {
+					if (reg < 8 || reg >= 16) && available < 5 {
+						f.fpinned = f.fpinned.remove(reg)
+						available++
+					}
+				}
 			case "interruptible":
 				f.interruptible = true
 			case "inline":

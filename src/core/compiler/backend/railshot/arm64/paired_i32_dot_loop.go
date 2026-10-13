@@ -37,7 +37,7 @@ func (f *fn) tryPairedI32DotLoop(r *wasm.Reader) (bool, error) {
 			vectors++
 		}
 	}
-	if available < 11 || vectors < 5 {
+	if available < 11 || vectors < 6 {
 		return false, nil
 	}
 	f.flush()
@@ -122,33 +122,46 @@ func (f *fn) tryPairedI32DotLoop(r *wasm.Reader) (bool, error) {
 	f.a.Add64(right, right, tmp)
 	f.a.Add64(left, left, linMemReg)
 	f.a.Add64(right, right, linMemReg)
-	var v [5]Reg
+	var v [6]Reg
 	for i := range v {
 		v[i] = f.allocFReg(calleeFP)
 		f.fpinned = f.fpinned.add(v[i])
 	}
-	x, y, lb, rb, acc := v[0], v[1], v[2], v[3], v[4]
+	x, y, lb, rb, acc, acc1 := v[0], v[1], v[2], v[3], v[4], v[5]
 	f.a.MovImm32(tmp, p.LeftBias)
 	f.a.NeonDupGprS(lb, tmp)
 	f.a.MovImm32(tmp, p.RightBias)
 	f.a.NeonDupGprS(rb, tmp)
 	f.a.NeonEor16b(acc, acc, acc)
-	f.a.CmpImm32(n, 16)
+	f.a.NeonEor16b(acc1, acc1, acc1)
+	f.a.CmpImm32(n, 32)
 	small := f.a.Bcond(a64.CondCC)
 	loop := f.a.Len()
-	f.a.LdrQ(x, left, 0)
-	f.a.LdrQ(y, right, 0)
-	f.a.NeonAddS(x, x, lb)
-	f.a.NeonAddS(y, y, rb)
-	f.a.NeonMulS(x, x, y)
-	f.a.NeonAddS(acc, acc, x)
-	f.a.AddImm64(left, left, 16)
-	f.a.AddImm64(right, right, 16)
-	f.a.SubImm32(n, n, 16)
-	f.a.CmpImm32(n, 16)
+	addPair := func(off int32, into Reg) {
+		f.a.LdrQ(x, left, off)
+		f.a.LdrQ(y, right, off)
+		f.a.NeonAddS(x, x, lb)
+		f.a.NeonAddS(y, y, rb)
+		f.a.NeonMulS(x, x, y)
+		f.a.NeonAddS(into, into, x)
+	}
+	addPair(0, acc)
+	addPair(16, acc1)
+	f.a.AddImm64(left, left, 32)
+	f.a.AddImm64(right, right, 32)
+	f.a.SubImm32(n, n, 32)
+	f.a.CmpImm32(n, 32)
 	again := f.a.Bcond(a64.CondCS)
 	f.a.PatchBranch19(again, loop)
 	f.a.PatchBranch19(small, f.a.Len())
+	f.a.CmpImm32(n, 16)
+	noHalf := f.a.Bcond(a64.CondCC)
+	addPair(0, acc)
+	f.a.AddImm64(left, left, 16)
+	f.a.AddImm64(right, right, 16)
+	f.a.SubImm32(n, n, 16)
+	f.a.PatchBranch19(noHalf, f.a.Len())
+	f.a.NeonAddS(acc, acc, acc1)
 	f.a.NeonAddvS(acc, acc)
 	f.a.NeonUmovS(sum, acc, 0)
 	noTail := f.a.Cbz32(n)
