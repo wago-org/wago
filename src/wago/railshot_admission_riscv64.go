@@ -25,7 +25,8 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		return false
 	}
 	if len(c.Types) == 0 || len(c.Types) > railshot.MaxFunctions || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxFunctions ||
-		len(c.FuncTypeID) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions {
+		len(c.FuncTypeID) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions ||
+		compiledStructuralRequiredFeatures(c)&^c.requiredFeatures != 0 {
 		return false
 	}
 	structProduct, arrayProduct := c.stagedGCStructProduct(), c.stagedGCArrayProduct()
@@ -34,7 +35,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		c.usesGCStructHelpers() != structHelpers || c.usesGCArrayHelpers() != arrayHelpers || c.syncHostSlots < 4 ||
 		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports != 0 || len(c.Imports) != 0 ||
 		len(c.importFuncSigs) != 0 || c.HasTable || c.tableCount() != 0 || c.memoryCount() > 1 ||
-		len(c.GlobalImports) != 0 || len(c.Globals) != 0 || c.HasStart || len(c.Elems) != 0 ||
+		len(c.GlobalImports) != 0 || len(c.Globals) > 256 || c.HasStart || len(c.Elems) != 0 ||
 		len(c.passiveElems) != 0 || len(c.PassiveData) != 0 {
 		return false
 	}
@@ -61,6 +62,10 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	}
 	exportDigest, validExports := rv64RootedMemoryExportDigest(c)
 	if !validExports || exportDigest != memo.rv64FreshRootedGCExportDigest {
+		return false
+	}
+	globalDigest, validGlobals := rv64RootedGlobalDigest(c)
+	if !validGlobals || globalDigest != memo.rv64FreshRootedGCGlobalDigest {
 		return false
 	}
 	remainingData := railshot.MaxModuleBytes

@@ -1723,11 +1723,16 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if !validRootedExports {
 			return nil, joinPrimary(fmt.Errorf("compile: invalid rooted memory export receipt"), compiled.Close())
 		}
+		rootedGlobalDigest, validRootedGlobals := rv64RootedGlobalDigest(compiled)
+		if !validRootedGlobals {
+			return nil, joinPrimary(fmt.Errorf("compile: invalid rooted global receipt"), compiled.Close())
+		}
 		compiled.validateMemo.rv64FreshRootedGC = true
 		compiled.validateMemo.rv64FreshRootedGCDigest = sha256.Sum256(compiled.code)
 		compiled.validateMemo.rv64FreshRootedGCReserveMax = compiled.MemMaxPages
 		compiled.validateMemo.rv64FreshRootedGCDataDigest = rootedDataDigest
 		compiled.validateMemo.rv64FreshRootedGCExportDigest = rootedExportDigest
+		compiled.validateMemo.rv64FreshRootedGCGlobalDigest = rootedGlobalDigest
 		if directory := compiled.memoryDir; directory != nil {
 			compiled.validateMemo.rv64FreshRootedGCMemories = uint8(len(directory.defs))
 			if len(directory.defs) == 1 {

@@ -34,8 +34,13 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	if m == nil || len(m.Code) == 0 {
 		return reject("generic GC module has no local function bodies")
 	}
-	if len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) != 0 || m.Start != nil || len(m.Elements) != 0 || m.DataCount != nil || len(m.Data) > 256 || len(m.StringRefs) != 0 {
+	if len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) > 256 || m.Start != nil || len(m.Elements) != 0 || m.DataCount != nil || len(m.Data) > 256 || len(m.StringRefs) != 0 {
 		return reject("RV64 exact roots require a closed scalar allocation module")
+	}
+	for i := range m.Globals {
+		if !rv64RootedScalarGlobal(&m.Globals[i]) {
+			return reject("RV64 exact roots require literal numeric scalar global %d", i)
+		}
 	}
 	if len(m.Memories) == 1 {
 		memory := m.Memories[0]
@@ -54,6 +59,9 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	for i := range m.Exports {
 		export := &m.Exports[i]
 		if export.Index.Kind == wasm.ExternMem && len(m.Memories) == 1 && export.Index.Index == 0 {
+			continue
+		}
+		if export.Index.Kind == wasm.ExternGlobal && uint64(export.Index.Index) < uint64(len(m.Globals)) {
 			continue
 		}
 		if export.Index.Kind != wasm.ExternFunc {
@@ -137,6 +145,34 @@ func rv64RootedI32Const(body []byte) bool {
 		return false
 	}
 	if _, err = r.I32(); err != nil {
+		return false
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && !r.HasNext()
+}
+
+func rv64RootedScalarGlobal(global *wasm.Global) bool {
+	if global == nil || len(global.Init.Instrs) != 0 {
+		return false
+	}
+	r := wasm.ReaderFrom(global.Init.BodyBytes)
+	op, err := r.Byte()
+	if err != nil {
+		return false
+	}
+	switch {
+	case wasm.EqualValType(global.Type.Type, wasm.I32) && op == 0x41:
+		_, err = r.I32()
+	case wasm.EqualValType(global.Type.Type, wasm.I64) && op == 0x42:
+		_, err = r.I64()
+	case wasm.EqualValType(global.Type.Type, wasm.F32) && op == 0x43:
+		_, err = r.LEU32()
+	case wasm.EqualValType(global.Type.Type, wasm.F64) && op == 0x44:
+		_, err = r.LEU64()
+	default:
+		return false
+	}
+	if err != nil {
 		return false
 	}
 	end, err := r.Byte()

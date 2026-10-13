@@ -18,7 +18,7 @@ const maxRootedScalarArrayFixed = 254
 // authenticated independently by validateGCFrameRootPlans.
 func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	if m == nil || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions ||
-		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Globals) != 0 ||
+		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Globals) > 256 ||
 		len(m.Elements) != 0 || len(m.Data) > 256 || m.DataCount != nil || len(m.Tags) != 0 ||
 		len(m.StringRefs) != 0 || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() ||
 		m.BranchHints != nil || m.UsesCompactImports {
@@ -27,6 +27,15 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	if len(m.Memories) == 1 {
 		memory := m.Memories[0]
 		if memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min > memory.Limits.Max || memory.Limits.Max > 256 {
+			return false
+		}
+	}
+	for i := range m.Globals {
+		global := &m.Globals[i]
+		if !scalarType(global.Type.Type, true) || len(global.Init.Instrs) != 0 {
+			return false
+		}
+		if _, err := plainScalarConst(global.Init, global.Type.Type, true); err != nil {
 			return false
 		}
 	}
@@ -47,6 +56,10 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		case wasm.ExternFunc:
 		case wasm.ExternMem:
 			if len(m.Memories) != 1 || export.Index.Index != 0 {
+				return false
+			}
+		case wasm.ExternGlobal:
+			if uint64(export.Index.Index) >= uint64(len(m.Globals)) {
 				return false
 			}
 		default:
@@ -181,7 +194,7 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 	}
 	r := wasm.ReaderFrom(data[8:])
 	const required = uint16(1<<1 | 1<<3 | 1<<7 | 1<<10)
-	const allowed = required | 1<<5 | 1<<11
+	const allowed = required | 1<<5 | 1<<6 | 1<<11
 	var seen uint16
 	var previous byte
 	for r.HasNext() {

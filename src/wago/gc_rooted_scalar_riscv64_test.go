@@ -1331,6 +1331,106 @@ func TestRV64RootedScalarMemoryExportExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarGlobalModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}),
+	}
+	body := []byte{
+		0x00,
+		0x23, 0x00, 0x41, 0x01, 0x6a, 0x24, 0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x23, 0x00, 0x23, 0x01, 0x23, 0x02, 0x23, 0x03, 0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x29, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I64, false, []byte{0x42, 0x7e, 0x0b}),
+			wasmtest.GlobalEntry(wasm.F32, false, []byte{0x43, 0x34, 0x12, 0xc0, 0x7f, 0x0b}),
+			wasmtest.GlobalEntry(wasm.F64, false, []byte{0x44, 0x78, 0x56, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x7f, 0x0b}),
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("counter", byte(wasm.ExternGlobal), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedScalarGlobalExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarGlobalModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Globals) != 4 || len(view.GlobalExports) != 1 || view.GlobalExports["counter"] != 0 {
+		t.Fatal("numeric-global generic rooted receipt is missing")
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"initial-bits": func(candidate *Compiled) {
+			candidate.Globals = slices.Clone(candidate.Globals)
+			candidate.Globals[0].Bits++
+		},
+		"mutability": func(candidate *Compiled) {
+			candidate.Globals = slices.Clone(candidate.Globals)
+			candidate.Globals[0].Mutable = false
+		},
+		"upper-bits": func(candidate *Compiled) {
+			candidate.Globals = slices.Clone(candidate.Globals)
+			candidate.Globals[0].Bits |= 1 << 32
+		},
+		"missing-feature": func(candidate *Compiled) {
+			candidate.requiredFeatures &^= CoreFeatureMutableGlobal
+		},
+		"renamed-export": func(candidate *Compiled) {
+			candidate.GlobalExports = cloneExportMap(candidate.GlobalExports)
+			delete(candidate.GlobalExports, "counter")
+			candidate.GlobalExports["renamed"] = 0
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated global metadata retained the generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("mutated global validation=%v", err)
+			}
+		})
+	}
+	for range 2 {
+		instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := instance.Global("counter"); err != nil || got != 41 {
+			_ = instance.Close()
+			t.Fatalf("initial counter=%d err=%v want=41", got, err)
+		}
+		want := []uint64{42, ^uint64(1), 0x7fc01234, 0x7ff8000000005678}
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, want) {
+			_ = instance.Close()
+			t.Fatalf("run()=%v err=%v want=%v", got, err, want)
+		}
+		if err := instance.SetGlobal("counter", 0xffffffff00000064); err != nil {
+			_ = instance.Close()
+			t.Fatal(err)
+		}
+		want[0] = 101
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, want) {
+			_ = instance.Close()
+			t.Fatalf("run() after host set=%v err=%v want=%v", got, err, want)
+		}
+		if err := instance.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestRV64RootedScalarPassiveDataFailsClosed(t *testing.T) {
 	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false, false, true, false))
 	if err == nil || compiled != nil {
