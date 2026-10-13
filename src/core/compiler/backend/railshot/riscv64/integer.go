@@ -1604,11 +1604,6 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					if !compactOK {
 						return integerSummary{}, unsupported("private table mutation reference layout")
 					}
-					if state.gcRootedScalar && compactReference {
-						// These inline loops do not publish the collector root write
-						// barrier. Keep them closed until they use a GC-aware helper.
-						return integerSummary{}, unsupported("generic rooted collector table bulk mutation")
-					}
 					if imm.Kind == wasm.InstrTableCopy {
 						sourceTableIndex = imm.Index2
 						sourceWide, sourceOK := state.tableWidth(sourceTableIndex)
@@ -1664,15 +1659,32 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						emit.Load(6, emit.SpillOffset(h), wideDestination)
 					}
 				}
+				if state.gcRootedScalar && compactReference {
+					callCount++
+					if callCount > maxDirectCalls {
+						return integerSummary{}, unsupported("GC helper call count/slot budget")
+					}
+				}
 				if live && emit != nil {
-					switch imm.Kind {
-					case wasm.InstrTableCopy:
-						emit.privateTableCopyBetween(tableIndex, sourceTableIndex, compactReference)
-					case wasm.InstrTableFill:
-						emit.privateTableFillAt(tableIndex, compactReference)
-					case wasm.InstrTableGrow:
-						emit.privateTableGrow(deltaSlot, tableWide, tableIndex, compactReference)
-						emit.Store(emit.SpillOffset(h), 5, tableWide)
+					if state.gcRootedScalar && compactReference {
+						switch imm.Kind {
+						case wasm.InstrTableCopy:
+							emit.gcObjectTableCopy(h, tableIndex, sourceTableIndex)
+						case wasm.InstrTableFill:
+							emit.gcObjectTableFill(h, tableIndex)
+						case wasm.InstrTableGrow:
+							emit.gcObjectTableGrow(h, tableIndex)
+						}
+					} else {
+						switch imm.Kind {
+						case wasm.InstrTableCopy:
+							emit.privateTableCopyBetween(tableIndex, sourceTableIndex, compactReference)
+						case wasm.InstrTableFill:
+							emit.privateTableFillAt(tableIndex, compactReference)
+						case wasm.InstrTableGrow:
+							emit.privateTableGrow(deltaSlot, tableWide, tableIndex, compactReference)
+							emit.Store(emit.SpillOffset(h), 5, tableWide)
+						}
 					}
 				}
 				if imm.Kind == wasm.InstrTableGrow {

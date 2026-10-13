@@ -1354,6 +1354,7 @@ type validateMemo struct {
 	// gain a persisted machine-code authenticator.
 	rv64FreshRootedGC                 bool
 	rv64FreshRootedGCDigest           [32]byte
+	rv64FreshRootedGCSyncHostSlots    uint16
 	rv64FreshRootedGCMemories         uint8
 	rv64FreshRootedGCMemoryStaged     bool
 	rv64FreshRootedGCMemMin           uint64

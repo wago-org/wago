@@ -631,6 +631,12 @@ func rootedScalarHelperSlots(m *wasm.Module) int {
 				}
 				slots = max(slots, int(imm.Index2)+2)
 			}
+			switch imm.Kind {
+			case wasm.InstrTableFill:
+				slots = max(slots, 4)
+			case wasm.InstrTableCopy:
+				slots = max(slots, 5)
+			}
 		}
 	}
 	return slots

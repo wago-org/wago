@@ -34,6 +34,9 @@ const (
 	gcArrayCheckUniform        uint32 = 37
 	gcArrayCheckData           uint32 = 38
 	gcArrayCheckFixed          uint32 = 39
+	gcTableFill                uint32 = 40
+	gcTableCopy                uint32 = 41
+	gcTableGrow                uint32 = 42
 )
 
 func gcArrayElementStorage(kind gc.StorageKind) bool {
@@ -86,6 +89,63 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 	}
 
 	switch helper {
+	case gcTableFill:
+		if len(args) != 4 {
+			panic(gcHelperFailuref("gc table fill helper arity = %d, want 4", len(args)))
+		}
+		descriptor, length, _, exact := in.gcRootedTableDescriptor(args[3])
+		start, count := args[0], args[2]
+		if start+count < start || start+count > uint64(length) {
+			panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
+		}
+		ref := in.gcRootedTableReference(args[1], exact)
+		for i := uint64(0); i < count; i++ {
+			binary.LittleEndian.PutUint64(descriptor[8+(start+i)*8:], uint64(ref))
+		}
+		in.gc.WriteBarrierRoot(ref)
+	case gcTableCopy:
+		if len(args) != 5 {
+			panic(gcHelperFailuref("gc table copy helper arity = %d, want 5", len(args)))
+		}
+		destination, destinationLength, _, destinationType := in.gcRootedTableDescriptor(args[3])
+		source, sourceLength, _, _ := in.gcRootedTableDescriptor(args[4])
+		destinationStart, sourceStart, count := args[0], args[1], args[2]
+		if destinationStart+count < destinationStart || destinationStart+count > uint64(destinationLength) ||
+			sourceStart+count < sourceStart || sourceStart+count > uint64(sourceLength) {
+			panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
+		}
+		// Validate the full source against the destination's exact table type
+		// before the first write. copy then provides memmove semantics for an
+		// overlapping same-table range.
+		for i := uint64(0); i < count; i++ {
+			word := binary.LittleEndian.Uint64(source[8+(sourceStart+i)*8:])
+			_ = in.gcRootedTableReference(word, destinationType)
+		}
+		destinationBytes := destination[8+destinationStart*8 : 8+(destinationStart+count)*8]
+		sourceBytes := source[8+sourceStart*8 : 8+(sourceStart+count)*8]
+		copy(destinationBytes, sourceBytes)
+		for i := uint64(0); i < count; i++ {
+			in.gc.WriteBarrierRoot(gc.Ref(uint32(binary.LittleEndian.Uint64(destinationBytes[i*8:]))))
+		}
+	case gcTableGrow:
+		if len(args) != 3 || len(results) < 1 {
+			panic(gcHelperFailuref("gc table grow helper arity = %d/%d, want 3/at-least-1", len(args), len(results)))
+		}
+		descriptor, length, capacity, exact := in.gcRootedTableDescriptor(args[2])
+		ref := in.gcRootedTableReference(args[0], exact)
+		delta := args[1]
+		newLength := uint64(length) + delta
+		if newLength < uint64(length) || newLength > uint64(capacity) {
+			results[0] = uint64(^uint32(0))
+			break
+		}
+		for i := uint64(length); i < newLength; i++ {
+			binary.LittleEndian.PutUint64(descriptor[8+i*8:], uint64(ref))
+		}
+		in.gc.WriteBarrierRoot(ref)
+		// Publish length only after every newly visible root has been initialized.
+		binary.LittleEndian.PutUint32(descriptor, uint32(newLength))
+		results[0] = uint64(length)
 	case gcArrayCheckFixed:
 		if len(args) != 2 {
 			panic(gcHelperFailuref("gc array check-fixed helper arity = %d, want 2", len(args)))
@@ -628,6 +688,52 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 	default:
 		panic(gcHelperFailuref("unknown gc array helper %d", helper))
 	}
+}
+
+// gcRootedTableDescriptor returns a private, bounded compact aggregate table.
+// Generic rooted modules authenticate this shape in their retained receipt;
+// these checks keep a corrupted runtime descriptor from becoming an arbitrary
+// off-heap write primitive.
+func (in *Instance) gcRootedTableDescriptor(table uint64) ([]byte, uint32, uint32, ValueTypeDescriptor) {
+	if table >= uint64(in.c.tableCount()) || in.existingGCRefTestTableState() != nil {
+		panic(gcHelperFailuref("generic GC table %d is unavailable", table))
+	}
+	index := int(table)
+	if _, imported := in.c.tableImportAt(index); imported || in.c.tableEntryBytes(index) != 8 || !isGCRefValType(in.c.tableElementType(index)) {
+		panic(gcHelperFailuref("generic GC table %d is not a private compact table", table))
+	}
+	exact, err := in.c.tableExactType(index)
+	if err != nil || exact.Kind != ValueTypeReference || !exact.Ref.Nullable || !exact.Ref.Heap.Defined || exact.Ref.Exact || int(exact.Ref.Heap.TypeIndex) >= len(in.c.Types) {
+		panic(gcHelperFailuref("generic GC table %d has no aggregate reference type", table))
+	}
+	kind := in.c.Types[exact.Ref.Heap.TypeIndex].Kind
+	if kind != CompositeTypeStruct && kind != CompositeTypeArray {
+		panic(gcHelperFailuref("generic GC table %d has non-aggregate reference type", table))
+	}
+	descriptor := in.tableDescriptor(index)
+	capacity := in.c.tableRuntimeCapacity(index)
+	if capacity < 0 || capacity > int(^uint32(0)) || len(descriptor) != 8+capacity*8 {
+		panic(gcHelperFailuref("generic GC table %d descriptor size is invalid", table))
+	}
+	length, runtimeCapacity := binary.LittleEndian.Uint32(descriptor), binary.LittleEndian.Uint32(descriptor[4:])
+	if runtimeCapacity != uint32(capacity) || length > runtimeCapacity {
+		panic(gcHelperFailuref("generic GC table %d descriptor header is invalid", table))
+	}
+	return descriptor, length, runtimeCapacity, exact
+}
+
+func (in *Instance) gcRootedTableReference(word uint64, exact ValueTypeDescriptor) gc.Ref {
+	ref := gc.Ref(uint32(word))
+	if word != uint64(ref) {
+		panic(gcHelperFailuref("generic GC table mutation contains non-compact reference %#x", word))
+	}
+	if ref.IsNull() {
+		return ref
+	}
+	if !in.gcRefMatchesValueType(ref, exact) {
+		panic(gcHelperFailuref("generic GC table mutation contains an incompatible reference"))
+	}
+	return ref
 }
 
 //go:noinline

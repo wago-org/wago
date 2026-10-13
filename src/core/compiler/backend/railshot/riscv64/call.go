@@ -48,6 +48,9 @@ const (
 	gcArrayCopy          uint32 = 28
 	gcArrayInitData      uint32 = 29
 	gcArrayInitElem      uint32 = 30
+	gcTableFill          uint32 = 40
+	gcTableCopy          uint32 = 41
+	gcTableGrow          uint32 = 42
 	// guestGlobalClear is an internal relocation key, not a GC helper ID.
 	guestGlobalClear        uint32 = ^uint32(0)
 	guestGlobalStore        uint32 = ^uint32(0) - 1
@@ -560,6 +563,54 @@ func (f *integerEmitter) gcObjectTableSet(base int, tableIndex uint32) {
 	f.a.Sd(enc.X5, enc.X10, 16)
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructTableSet})
 	f.restoreCallTransport()
+}
+
+func (f *integerEmitter) gcObjectTableFill(base int, tableIndex uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), false)
+	f.a.Sd(enc.X5, enc.X10, 0) // zero-normalized destination index
+	f.Load(5, f.SpillOffset(base+1), true)
+	f.a.Sd(enc.X5, enc.X10, 8) // compact GC reference
+	f.Load(5, f.SpillOffset(base+2), false)
+	f.a.Sd(enc.X5, enc.X10, 16) // zero-normalized element count
+	f.a.Constant32(enc.X5, tableIndex)
+	f.a.Sd(enc.X5, enc.X10, 24)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcTableFill})
+	f.restoreCallTransport()
+}
+
+func (f *integerEmitter) gcObjectTableCopy(base int, destinationTable, sourceTable uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), false)
+	f.a.Sd(enc.X5, enc.X10, 0) // zero-normalized destination index
+	f.Load(5, f.SpillOffset(base+1), false)
+	f.a.Sd(enc.X5, enc.X10, 8) // zero-normalized source index
+	f.Load(5, f.SpillOffset(base+2), false)
+	f.a.Sd(enc.X5, enc.X10, 16) // zero-normalized element count
+	f.a.Constant32(enc.X5, destinationTable)
+	f.a.Sd(enc.X5, enc.X10, 24)
+	f.a.Constant32(enc.X5, sourceTable)
+	f.a.Sd(enc.X5, enc.X10, 32)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcTableCopy})
+	f.restoreCallTransport()
+}
+
+func (f *integerEmitter) gcObjectTableGrow(base int, tableIndex uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0) // compact GC reference
+	f.Load(5, f.SpillOffset(base+1), false)
+	f.a.Sd(enc.X5, enc.X10, 8) // zero-normalized growth delta
+	f.a.Constant32(enc.X5, tableIndex)
+	f.a.Sd(enc.X5, enc.X10, 16)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcTableGrow})
+	f.restoreCallTransport()
+	result := enc.X11
+	if f.mode.production {
+		result = enc.X13
+	}
+	f.a.Lwu(enc.X5, result, 0)
+	f.Store(f.SpillOffset(base), 5, false)
 }
 
 func (f *integerEmitter) gcObjectRefTest(base int, heap int64, nullable bool) {

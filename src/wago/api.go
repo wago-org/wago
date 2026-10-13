@@ -1737,6 +1737,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 		compiled.validateMemo.rv64FreshRootedGC = true
 		compiled.validateMemo.rv64FreshRootedGCDigest = sha256.Sum256(compiled.code)
+		compiled.validateMemo.rv64FreshRootedGCSyncHostSlots = compiled.syncHostSlots
 		compiled.validateMemo.rv64FreshRootedGCReserveMax = compiled.MemMaxPages
 		compiled.validateMemo.rv64FreshRootedGCDataDigest = rootedDataDigest
 		compiled.validateMemo.rv64FreshRootedGCExportDigest = rootedExportDigest

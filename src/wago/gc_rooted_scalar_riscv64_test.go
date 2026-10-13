@@ -2252,31 +2252,128 @@ func TestRV64RootedAggregateTableExportFailsClosed(t *testing.T) {
 	}
 }
 
-func TestRV64RootedAggregateTableBulkMutationFailsClosed(t *testing.T) {
-	body := []byte{
-		0x00,
-		0x41, 0x00,
-		0x41, 0x2a, 0xfb, 0x00, 0x00,
-		0x41, 0x01, 0xfc, 0x11, 0x00, // table.fill 0
-		0x41, 0x2a,
-		0x0b,
+func rootedScalarAggregateTableBulkModule() []byte {
+	get := func(index byte) []byte {
+		return []byte{0x41, index, 0x25, 0x00, 0xfb, 0x02, 0x00, 0x00}
 	}
-	source := wasmtest.Module(
+	run := []byte{
+		0x00,
+		0x41, 0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0x26, 0x00, // table[0] = struct(42)
+		0x41, 0x01, 0x41, 0x00, 0x41, 0x01, 0xfc, 0x0e, 0x00, 0x00, // copy table[0] to table[1]
+		0x41, 0x00, 0xd0, 0x00, 0x26, 0x00, // clear the original root
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x41, 0x01, 0xfc, 0x0f, 0x00, 0x1a, // grow with struct(7)
+		0x41, 0x00, 0x41, 0x09, 0xfb, 0x00, 0x00, 0x41, 0x01, 0xfc, 0x11, 0x00, // fill table[0] with struct(9)
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a, // force another collection after publication
+	}
+	run = append(run, get(0)...)
+	run = append(run, get(1)...)
+	run = append(run, get(2)...)
+	run = append(run,
+		0xfc, 0x10, 0x00, // table.size
+		0xd0, 0x00, 0x41, 0x02, 0xfc, 0x0f, 0x00, // failed grow returns -1
+		0x0b,
+	)
+	grow := []byte{0x00, 0xd0, 0x00, 0x20, 0x00, 0xfc, 0x0f, 0x00, 0x0b}
+	read := []byte{0x00}
+	read = append(read, get(0)...)
+	read = append(read, get(1)...)
+	read = append(read, get(2)...)
+	read = append(read, 0x0b)
+	fillNull := []byte{0x00, 0x20, 0x00, 0xd0, 0x00, 0x20, 0x01, 0xfc, 0x11, 0x00, 0x0b}
+	copyRange := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0e, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x5f, 0x01, 0x7f, 0x01},
-			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil),
 		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
-		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x01}),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
-		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(3), wasmtest.ULEB(4), wasmtest.ULEB(5))),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x02, 0x04}),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("grow", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 2),
+			wasmtest.ExportEntry("fill-null", byte(wasm.ExternFunc), 3),
+			wasmtest.ExportEntry("copy", byte(wasm.ExternFunc), 4),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(run))), run...),
+			append(wasmtest.ULEB(uint32(len(grow))), grow...),
+			append(wasmtest.ULEB(uint32(len(read))), read...),
+			append(wasmtest.ULEB(uint32(len(fillNull))), fillNull...),
+			append(wasmtest.ULEB(uint32(len(copyRange))), copyRange...),
+		)),
 	)
-	compiled, err := Compile(rv64RootedScalarConfig(), source)
-	if compiled != nil {
-		compiled.Close()
+}
+
+func TestRV64RootedAggregateTableBulkMutationExecutes(t *testing.T) {
+	source := rootedScalarAggregateTableBulkModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("aggregate table bulk module was not source-admitted")
 	}
-	if err == nil || !strings.Contains(err.Error(), "collector table bulk mutation") {
-		t.Fatalf("aggregate table.fill compile error = %v", err)
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.syncHostSlots < 5 {
+		t.Fatalf("aggregate-table bulk receipt=%t slots=%d validation=%v", rv64FreshRootedGC(view), view.syncHostSlots, railshotValidateCompiled(view))
+	}
+	mutated := cloneCompiledMetadata(view)
+	mutated.syncHostSlots = 4
+	if rv64FreshRootedGC(mutated) {
+		t.Fatal("shortened bulk helper arena retained the rooted receipt")
+	}
+	for iteration := range 8 {
+		instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{9, 42, 7, 3, uint64(^uint32(0))}) {
+			instance.Close()
+			t.Fatalf("iteration %d: run()=%v err=%v", iteration, got, err)
+		}
+		if got, err := instance.Invoke("grow", 0xfeedface00000001); err != nil || !slices.Equal(got, []uint64{3}) {
+			instance.Close()
+			t.Fatalf("iteration %d: dirty-upper grow()=%v err=%v", iteration, got, err)
+		}
+		descriptor := instance.tableDescriptor(0)
+		if got, err := instance.Invoke("fill-null", 0xfeedface00000003, 0xdeadbeef00000001); err != nil || len(got) != 0 {
+			instance.Close()
+			t.Fatalf("iteration %d: dirty-upper fill()=%v err=%v", iteration, got, err)
+		}
+		if got, err := instance.Invoke("copy", 0xfeedface00000004, 0xdeadbeef00000004, 0xbaadf00d00000000); err != nil || len(got) != 0 {
+			instance.Close()
+			t.Fatalf("iteration %d: dirty-upper zero-length copy()=%v err=%v", iteration, got, err)
+		}
+		beforeFailure := bytes.Clone(descriptor)
+		got, err := instance.Invoke("fill-null", 0xfeedface00000004, 0xdeadbeef00000001)
+		var trap *TrapError
+		if got != nil || !errors.As(err, &trap) || trap.Code != TrapTableOutOfBounds {
+			instance.Close()
+			t.Fatalf("iteration %d: dirty-upper out-of-bounds fill()=%v err=%v trap=%+v", iteration, got, err, trap)
+		}
+		if !bytes.Equal(descriptor, beforeFailure) {
+			instance.Close()
+			t.Fatalf("iteration %d: failed fill changed descriptor %x -> %x", iteration, beforeFailure, descriptor)
+		}
+		if got, err := instance.Invoke("grow", 0xdeadbeef00000001); err != nil || !slices.Equal(got, []uint64{uint64(^uint32(0))}) {
+			instance.Close()
+			t.Fatalf("iteration %d: failed grow()=%v err=%v", iteration, got, err)
+		}
+		if !bytes.Equal(descriptor, beforeFailure) || binary.LittleEndian.Uint32(descriptor) != 4 || binary.LittleEndian.Uint64(descriptor[8+3*8:]) != 0 {
+			instance.Close()
+			t.Fatalf("iteration %d: failed grow changed descriptor %x -> %x", iteration, beforeFailure, descriptor)
+		}
+		if got, err := instance.Invoke("read"); err != nil || !slices.Equal(got, []uint64{9, 42, 7}) {
+			instance.Close()
+			t.Fatalf("iteration %d: read()=%v err=%v", iteration, got, err)
+		}
+		instance.Close()
 	}
 }
 

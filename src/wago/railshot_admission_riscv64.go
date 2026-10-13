@@ -24,7 +24,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		return false
 	}
 	memo := c.loadValidateMemo()
-	if memo == nil || !memo.rv64FreshRootedGC || sha256.Sum256(c.code) != memo.rv64FreshRootedGCDigest {
+	if memo == nil || !memo.rv64FreshRootedGC || sha256.Sum256(c.code) != memo.rv64FreshRootedGCDigest || c.syncHostSlots != memo.rv64FreshRootedGCSyncHostSlots {
 		return false
 	}
 	if len(c.Types) == 0 || len(c.Types) > railshot.MaxFunctions || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxFunctions ||
