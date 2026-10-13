@@ -258,6 +258,7 @@ type fn struct {
 	immutableTableType  uint64
 	immutableTableTyped bool
 	monomorphicTarget   int
+	affineTable         shared.AffineI32Table
 	// preserveCallerPins marks a simple register-ABI leaf whose internal entry
 	// promises not to clobber the caller's pinned-local registers.  Direct callers
 	// can then keep their hot locals live across the call.
@@ -2782,11 +2783,16 @@ func computeImmutableTableHint(m *wasm.Module, allHints []funcHints, policy Code
 	}
 	if immutableLocalTable {
 		tableType, tableTyped := immutableLocalTableTypeWithPolicy(m, policy)
+		var affine shared.AffineI32Table
+		if policy.EnabledOption(optInline) {
+			affine, _ = shared.InspectAffineI32TableEntries(m)
+		}
 		return immutableTableHint{
 			local:             true,
 			typeKey:           tableType,
 			typed:             tableTyped,
 			monomorphicTarget: immutableLocalTableTarget(m),
+			affine:            affine,
 		}
 	}
 	return immutableTableHint{monomorphicTarget: -1}
@@ -3060,7 +3066,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	localType, localSlot, locals, globalReg := f.localType, f.localSlot, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
 	boundedMemcopy := len(c.BodyBytes) <= 4096 && hints.memOpCount() <= 128
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, memLimitReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow), loadDefinedLocals: loadDefinedLocalMaskForHints(hints), memcopyTail4: policy.EnabledOption(optMemcopyTail4) && boundedMemcopy, memcopyQPairs: policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy, floatLiteralPool: policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, memLimitReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, affineTable: immutableTable.affine, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow), loadDefinedLocals: loadDefinedLocalMaskForHints(hints), memcopyTail4: policy.EnabledOption(optMemcopyTail4) && boundedMemcopy, memcopyQPairs: policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy, floatLiteralPool: policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10}
 	state = f
 	f.adapterBacklink = sc.moduleNeedsAdapterBacklink(calleeHints)
 	if f.nParams >= 64 {

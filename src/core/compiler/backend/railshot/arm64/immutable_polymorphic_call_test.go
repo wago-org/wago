@@ -42,7 +42,7 @@ func TestIndirectCallLazyContextSelection(t *testing.T) {
 								m.Exports = append(m.Exports, wasm.Export{Name: "table", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 0}})
 							}
 							var stats ModuleStats
-							c, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"reg-abi": regABI, "immutable-table": immutable, "immutable-table-type": typed}})
+							c, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"inline": false, "reg-abi": regABI, "immutable-table": immutable, "immutable-table-type": typed}})
 							if err != nil {
 								t.Fatal(err)
 							}

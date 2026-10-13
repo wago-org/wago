@@ -250,6 +250,7 @@ type immutableTableHint struct {
 	typeKey           uint64
 	typed             bool
 	monomorphicTarget int
+	affine            shared.AffineI32Table
 }
 
 func (h *funcHints) noteControlDepth(depth int) {
