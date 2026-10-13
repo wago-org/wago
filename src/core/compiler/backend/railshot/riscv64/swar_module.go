@@ -529,11 +529,15 @@ func admitSWARDecodedBudgetReferences(m *wasm.Module, publicStarts, referencesAl
 			return unsupported("SWAR decoded byte-backed function bound")
 		}
 	}
+	rootedScalar := admitRV64GCRootedScalarModule(m)
 	for _, table := range m.Tables {
 		// Bound expressions before normal validation scans declared functions.
 		if table.Init != nil {
 			if !publicStarts || !consume(len(table.Init.BodyBytes)) {
 				return unsupported("SWAR decoded table initializer")
+			}
+			if rootedScalar && rootedScalarTableReference(wasm.RefVal(table.Type.Ref), m) && rootedScalarAggregateElementExpression(*table.Init, table.Type.Ref, m) {
+				continue
 			}
 			if _, err := admitTableInitializer(*table.Init, m); err != nil {
 				return err

@@ -416,7 +416,15 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		return exact, true
 	}
 	writeValues := func(values []RefInit, allowImported bool, exact ValueTypeDescriptor) bool {
+		canRepeat := false
 		for _, value := range values {
+			if exact != plain && value.RepeatPrevious {
+				if !canRepeat || value.HasGlobal || value.GlobalIndex != 0 || value.Null || value.I31Wrap || value.FuncIndex != 0 || len(value.Expr) != 0 {
+					return false
+				}
+				_, _ = h.Write([]byte{3})
+				continue
+			}
 			if exact != plain && len(value.Expr) != 0 {
 				if value.HasGlobal || value.GlobalIndex != 0 || value.Null || value.I31Wrap || value.RepeatPrevious || value.FuncIndex != 0 || uint64(len(value.Expr)) > remainingElementExprBytes {
 					return false
@@ -426,8 +434,10 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 				binary.LittleEndian.PutUint32(word[:4], uint32(len(value.Expr)))
 				_, _ = h.Write(word[:4])
 				_, _ = h.Write(value.Expr)
+				canRepeat = true
 				continue
 			}
+			canRepeat = false
 			if value.HasGlobal || value.GlobalIndex != 0 || value.I31Wrap || value.RepeatPrevious || len(value.Expr) != 0 {
 				return false
 			}

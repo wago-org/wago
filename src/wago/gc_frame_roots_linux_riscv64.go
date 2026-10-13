@@ -114,6 +114,8 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	for _, public := range publicTables {
 		hasPrivateTable = hasPrivateTable || !public
 	}
+	remainingElements := 256
+	retainedElementSegments := len(m.Elements)
 	for i := range m.Tables {
 		table := &m.Tables[i]
 		elem := wasm.RefVal(table.Type.Ref)
@@ -127,7 +129,17 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		}
 		if table.Init != nil {
 			if rootedTable {
-				return reject("RV64 exact roots reject aggregate-reference table initializer")
+				if !rv64RootedAggregateElement(*table.Init, table.Type.Ref, m) {
+					return reject("RV64 exact roots reject aggregate-reference table initializer")
+				}
+				if !rv64RootedAggregateNullElement(*table.Init, table.Type.Ref) {
+					retainedElementSegments++
+					if table.Type.Limits.Min == 0 || retainedElementSegments > 256 || table.Type.Limits.Min > uint64(remainingElements) {
+						return reject("RV64 exact roots reject aggregate-reference table initializer retained bound")
+					}
+					remainingElements -= int(table.Type.Limits.Min)
+				}
+				continue
 			}
 			expr := *table.Init
 			if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 7 || expr.BodyBytes[0] != 0xd0 && expr.BodyBytes[0] != 0xd2 {
@@ -147,7 +159,6 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			}
 		}
 	}
-	remainingElements := 256
 	for i := range m.Elements {
 		elem := &m.Elements[i]
 		if tableCount == 0 {

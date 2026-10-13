@@ -109,7 +109,28 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 		}
 	}
 	remaining := MaxOwnedTableEntries
-	if public && len(m.Tables) == 1 && m.Tables[0].Init != nil {
+	if rootedScalar {
+		remaining = 256
+	}
+	syntheticAggregateInitializers := 0
+	for i := range m.Tables {
+		table := &m.Tables[i]
+		if table.Init == nil || !rootedScalarTableReference(wasm.RefVal(table.Type.Ref), m) {
+			continue
+		}
+		if !rootedScalar || !rootedScalarAggregateElementExpression(*table.Init, table.Type.Ref, m) {
+			return unsupported("aggregate table initializer expression")
+		}
+		if rootedScalarAggregateNullExpression(*table.Init, table.Type.Ref) {
+			continue
+		}
+		syntheticAggregateInitializers++
+		if len(m.Elements)+syntheticAggregateInitializers > MaxOwnedElementSegments || table.Type.Limits.Min > uint64(remaining) {
+			return unsupported("aggregate table initializer retained bound")
+		}
+		remaining -= int(table.Type.Limits.Min)
+	}
+	if public && len(m.Tables) == 1 && m.Tables[0].Init != nil && !rootedScalarTableReference(wasm.RefVal(m.Tables[0].Type.Ref), m) {
 		global, err := admitTableInitializer(*m.Tables[0].Init, m)
 		if err != nil {
 			return err

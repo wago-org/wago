@@ -2338,6 +2338,90 @@ func rootedScalarAggregateActiveElementModule() []byte {
 	)
 }
 
+func rootedScalarAggregateTableInitializerModule() []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x01, 0xfb, 0x00, 0x00, 0x1a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{
+			0x01, 0x40, 0x00, 0x63, 0x00, 0x01, 0x03, 0x03,
+			0x41, 0x37, 0xfb, 0x00, 0x00, 0x0b,
+		}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedAggregateTableInitializerExecutes(t *testing.T) {
+	source := rootedScalarAggregateTableInitializerModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("aggregate table initializer module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Elems) != 1 || len(view.Elems[0].Values) != 3 || len(view.Elems[0].Values[0].Expr) == 0 ||
+		!view.Elems[0].Values[1].RepeatPrevious || !view.Elems[0].Values[2].RepeatPrevious {
+		t.Fatalf("aggregate table initializer receipt=%t elems=%#v validation=%v", rv64FreshRootedGC(view), view.Elems, railshotValidateCompiled(view))
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"expression": func(candidate *Compiled) {
+			candidate.Elems = slices.Clone(candidate.Elems)
+			candidate.Elems[0].Values = slices.Clone(candidate.Elems[0].Values)
+			candidate.Elems[0].Values[0].Expr = []byte{0xfb, 0x01, 0x00, 0x0b}
+		},
+		"repeat": func(candidate *Compiled) {
+			candidate.Elems = slices.Clone(candidate.Elems)
+			candidate.Elems[0].Values = slices.Clone(candidate.Elems[0].Values)
+			candidate.Elems[0].Values[1].RepeatPrevious = false
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated table initializer retained the generic receipt")
+			}
+		})
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := instance.tableDescriptor(0)
+	want := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+	if want.IsNull() {
+		t.Fatal("aggregate table initializer produced null")
+	}
+	for slot := 1; slot < 3; slot++ {
+		got := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8+slot*8:])))
+		if got != want {
+			t.Fatalf("aggregate table initializer slot %d = %v, want shared %v", slot, got, want)
+		}
+	}
+	value, err := instance.gc.StructGet(want, 0)
+	if err != nil || value.Bits != 55 {
+		t.Fatalf("aggregate table initializer field = %+v, %v", value, err)
+	}
+}
+
 func rootedScalarAggregateFunctionReferenceElementModule() []byte {
 	body := []byte{
 		0x00,

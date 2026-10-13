@@ -96,8 +96,25 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 	if m == nil || len(m.Imports) > MaxProductionImports || len(m.Memories) > MaxProductionMemories || m.MemCount() > MaxProductionMemories || len(m.Tables)+m.ImportedTableCount() > 1 && !admitRV64GCRootedScalarModule(m) && !admitRV64GCRefTestAbstract(m) && !admitRV64GCExtern(m) && !isCore3RefIsNullExecution(m) && !admitMixedTable64ActiveElement(m, true, true) && !admitMixedTable64DualActiveElements(m, true, true) && !admitMixedTable64DualActiveVectors(m, true, true) && !admitStateOnlyTwoTable32(m, true, true) && !admitOwnedTwoTable32Size(m, true, true) && !admitOwnedTwoTable32GetSet(m, true, true) && !admitOwnedTwoTable32Grow(m, true, true) && !admitOwnedTwoTable32Fill(m, true, true) && !admitOwnedTwoTable32Copy(m, true, true) && !admitOwnedTwoTable32CrossCopy(m, true, true) && !admitOwnedTwoTable32InitDrop(m, true, true) && !admitOwnedTwoTable32Indirect(m, true, true) && !admitOwnedTwoTable64Size(m, true, true) && !admitMixedTable64Size(m, true, true) && !admitMixedTable64GetSet(m, true, true) && !admitMixedTable64Grow(m, true, true) && !admitMixedTable64Fill(m, true, true) && !admitMixedTable64Copy(m, true, true) && !admitMixedTable64CrossCopy(m, true, true) && !admitMixedTable64InitDrop(m, true, true) && !admitMixedTable64Indirect(m, true, true) && !admitOwnedTwoTable64GetSet(m, true, true) && !admitOwnedTwoTable64Grow(m, true, true) && !admitOwnedTwoTable64Fill(m, true, true) && !admitOwnedTwoTable64Copy(m, true, true) && !admitOwnedTwoTable64CrossCopy(m, true, true) && !admitOwnedTwoTable64InitDrop(m, true, true) && !admitOwnedTwoTable64Indirect(m, true, true) || m.ImportedGlobalCount()+len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments {
 		return unsupported("public initializer count bound")
 	}
+	rootedScalar := admitRV64GCRootedScalarModule(m)
+	rootedInitializerEntries := uint64(0)
+	rootedInitializerSegments := 0
 	for _, table := range m.Tables {
 		if table.Init != nil {
+			if rootedScalar && rootedScalarTableReference(wasm.RefVal(table.Type.Ref), m) {
+				if !rootedScalarAggregateElementExpression(*table.Init, table.Type.Ref, m) {
+					return unsupported("aggregate table initializer expression")
+				}
+				if rootedScalarAggregateNullExpression(*table.Init, table.Type.Ref) {
+					continue
+				}
+				rootedInitializerSegments++
+				rootedInitializerEntries += table.Type.Limits.Min
+				if len(m.Elements)+rootedInitializerSegments > MaxOwnedElementSegments || rootedInitializerEntries > MaxOwnedTableEntries {
+					return unsupported("aggregate table initializer retained bound")
+				}
+				continue
+			}
 			global := false
 			var err error
 			if admitRV64I31OfficialTableGlobalInitializer(m) {

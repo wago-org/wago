@@ -207,6 +207,87 @@ func TestRV64RootedAggregateTableBulkCompilesToHelpers(t *testing.T) {
 	}
 }
 
+func rv64RootedAggregateTableInitializerModule() []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x01, 0xfb, 0x00, 0x00, 0x1a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		// Core 3's table-with-initializer encoding. The expression constructs one
+		// object which the table initialization semantics repeat into every slot.
+		wasmtest.Section(4, []byte{
+			0x01, 0x40, 0x00, 0x63, 0x00, 0x01, 0x03, 0x03,
+			0x41, 0x37, 0xfb, 0x00, 0x00, 0x0b,
+		}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedAggregateTableInitializerCompiles(t *testing.T) {
+	source := rv64RootedAggregateTableInitializerModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("aggregate table initializer was not admitted")
+	}
+	candidate, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate.Tables[0].Init.BodyBytes = []byte{0x42, 0x37, 0xfb, 0x00, 0x00, 0x0b}
+	if admitRV64GCRootedScalarModule(candidate) {
+		t.Fatal("wrong-width aggregate table initializer was admitted")
+	}
+	empty, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty.Tables[0].Type.Limits.Min = 0
+	if admitRV64GCRootedScalarModule(empty) {
+		t.Fatal("zero-sized allocating aggregate table initializer was admitted")
+	}
+
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(1)
+	if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve exact root plan")
+	}
+	plan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin exact root plan")
+	}
+	*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true}
+	if !plan.SetLiveMasks([]uint64{0}, 1, 0) {
+		t.Fatal("install exact root liveness")
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 1 {
+		t.Fatalf("code=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
+	}
+}
+
 func TestRV64RootedAggregateArrayActiveElementCompiles(t *testing.T) {
 	body := []byte{
 		0x00,

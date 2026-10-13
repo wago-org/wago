@@ -102,6 +102,8 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	for _, public := range publicTables {
 		hasPrivateTable = hasPrivateTable || !public
 	}
+	remainingElements := 256
+	retainedElementSegments := len(m.Elements)
 	for i := range m.Tables {
 		table := &m.Tables[i]
 		elem := wasm.RefVal(table.Type.Ref)
@@ -117,9 +119,17 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		if table.Init != nil {
 			if rootedTable {
-				// The default null initializer is represented by a missing expression.
-				// Non-null table initializers need allocation-root qualification.
-				return false
+				if !rootedScalarAggregateElementExpression(*table.Init, table.Type.Ref, m) {
+					return false
+				}
+				if !rootedScalarAggregateNullExpression(*table.Init, table.Type.Ref) {
+					retainedElementSegments++
+					if table.Type.Limits.Min == 0 || retainedElementSegments > 256 || table.Type.Limits.Min > uint64(remainingElements) {
+						return false
+					}
+					remainingElements -= int(table.Type.Limits.Min)
+				}
+				continue
 			}
 			value, err := tableElementExpression(*table.Init)
 			public := publicTables[importedTables+i]
@@ -128,7 +138,6 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			}
 		}
 	}
-	remainingElements := 256
 	for i := range m.Elements {
 		elem := &m.Elements[i]
 		if tableCount == 0 {
