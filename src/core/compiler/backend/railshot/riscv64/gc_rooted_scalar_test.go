@@ -192,6 +192,54 @@ func TestRV64RootedAggregateTableBulkCompilesToHelpers(t *testing.T) {
 	}
 }
 
+func TestRV64RootedAggregateArrayActiveElementCompiles(t *testing.T) {
+	body := []byte{
+		0x00,
+		0x41, 0x01, 0x41, 0x02, 0xfb, 0x08, 0x00, 0x02, 0x1a,
+		0x0b,
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5e, 0x7f, 0x01},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x04}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x00, 0x01,
+			0x41, 0x0b, 0x41, 0x16, 0xfb, 0x08, 0x00, 0x02, 0x0b}),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	empty, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty.Elements[0].Kind.Exprs[0].BodyBytes = []byte{0xfb, 0x08, 0x00, 0x00, 0x0b}
+	if !admitRV64GCRootedScalarModule(empty) {
+		t.Fatal("empty array.new_fixed element was not admitted")
+	}
+	for name, replace := range map[string][]byte{
+		"wrong-count": {0x41, 0x0b, 0x41, 0x16, 0xfb, 0x08, 0x00, 0x01, 0x0b},
+		"wrong-op":    {0x41, 0x0b, 0x41, 0x16, 0xfb, 0x06, 0x00, 0x02, 0x0b},
+		"wrong-type":  {0x41, 0x0b, 0x41, 0x16, 0xfb, 0x08, 0x01, 0x02, 0x0b},
+		"wrong-value": {0x42, 0x0b, 0x41, 0x16, 0xfb, 0x08, 0x00, 0x02, 0x0b},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			candidate.Elements[0].Kind.Exprs[0].BodyBytes = replace
+			if admitRV64GCRootedScalarModule(candidate) {
+				t.Fatal("malformed array.new_fixed element was admitted")
+			}
+		})
+	}
+}
+
 func rv64RootedTypedSelectModule(typeIndex uint32, nullable, same bool) []byte {
 	types := make([][]byte, typeIndex+1)
 	for i := range types {

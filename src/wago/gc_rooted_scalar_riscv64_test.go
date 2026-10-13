@@ -2338,6 +2338,69 @@ func rootedScalarAggregateActiveElementModule() []byte {
 	)
 }
 
+func rootedScalarAggregateArrayActiveElementModule() []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x01, 0x41, 0x02, 0xfb, 0x08, 0x00, 0x02, 0x1a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5e, 0x7f, 0x01},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x04}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x00, 0x01,
+			0x41, 0x0b, 0x41, 0x16, 0xfb, 0x08, 0x00, 0x02, 0x0b}),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedAggregateArrayActiveElementExecutes(t *testing.T) {
+	source := rootedScalarAggregateArrayActiveElementModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("aggregate array active element module was not source-admitted")
+	}
+	decoded, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootDiagnostic string
+	if plan := newGCFrameRootPlan(decoded, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
+		t.Fatalf("aggregate array active element exact-root plan=%+v diagnostic=%q", plan, rootDiagnostic)
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Elems) != 1 || len(view.Elems[0].Values) != 1 || len(view.Elems[0].Values[0].Expr) == 0 {
+		t.Fatalf("aggregate array active element receipt=%t elems=%#v validation=%v", rv64FreshRootedGC(view), view.Elems, railshotValidateCompiled(view))
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := instance.tableDescriptor(0)
+	ref := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+	for index, want := range []uint64{11, 22} {
+		value, err := instance.gc.ArrayGet(ref, uint32(index))
+		if err != nil || value.Bits != want {
+			t.Fatalf("active array root[%d] = %+v, %v; want %d", index, value, err, want)
+		}
+	}
+}
+
 func TestRV64RootedAggregateActiveElementExecutes(t *testing.T) {
 	source := rootedScalarAggregateActiveElementModule()
 	if !railshot.AdmitGCRootedScalarSource(source) {

@@ -490,15 +490,12 @@ func rootedScalarAggregateType(m *wasm.Module, index uint32) *wasm.CompType {
 	return nil
 }
 
-func rootedScalarAggregateConstOperand(r *wasm.Reader, storage wasm.StorageType) bool {
+func rootedScalarAggregateConstOperandOpcode(r *wasm.Reader, storage wasm.StorageType, op byte) bool {
 	want := storage.Val()
 	if storage.Packed() {
 		want = wasm.I32
 	}
-	op, err := r.Byte()
-	if err != nil {
-		return false
-	}
+	var err error
 	switch {
 	case wasm.EqualValType(want, wasm.I32):
 		_, err = r.I32()
@@ -521,10 +518,15 @@ func rootedScalarAggregateConstOperand(r *wasm.Reader, storage wasm.StorageType)
 	}
 }
 
-// Generic table.init initially admits bounded struct constants composed only of
-// scalar literals. The retained constant-expression evaluator supports more;
+func rootedScalarAggregateConstOperand(r *wasm.Reader, storage wasm.StorageType) bool {
+	op, err := r.Byte()
+	return err == nil && rootedScalarAggregateConstOperandOpcode(r, storage, op)
+}
+
+// Generic table initialization admits bounded aggregate constants composed only
+// of scalar literals. The retained constant-expression evaluator supports more;
 // this narrower source witness keeps instantiation ownership independently
-// reviewable while enabling genuine non-null passive roots.
+// reviewable while enabling genuine non-null roots.
 func rootedScalarAggregateElementExpression(expr wasm.Expr, ref wasm.RefType, m *wasm.Module) bool {
 	if rootedScalarAggregateNullExpression(expr, ref) {
 		return true
@@ -534,20 +536,45 @@ func rootedScalarAggregateElementExpression(expr wasm.Expr, ref wasm.RefType, m 
 	}
 	typeIndex := ref.Heap().Type().Index
 	comp := rootedScalarAggregateType(m, typeIndex)
-	if comp == nil || comp.Kind != wasm.CompStruct {
+	if comp == nil {
 		return false
 	}
 	r := wasm.ReaderFrom(expr.BodyBytes)
-	for _, field := range comp.Fields {
-		if !rootedScalarAggregateConstOperand(&r, field.Storage()) {
-			return false
+	switch comp.Kind {
+	case wasm.CompStruct:
+		for _, field := range comp.Fields {
+			if !rootedScalarAggregateConstOperand(&r, field.Storage()) {
+				return false
+			}
 		}
+		op, err := r.Byte()
+		sub, subErr := r.U32()
+		constructed, typeErr := r.U32()
+		end, endErr := r.Byte()
+		return err == nil && op == 0xfb && subErr == nil && sub == 0 && typeErr == nil && constructed == typeIndex && endErr == nil && end == 0x0b && !r.HasNext()
+	case wasm.CompArray:
+		count := uint32(0)
+		for {
+			op, err := r.Byte()
+			if err != nil {
+				return false
+			}
+			if op == 0xfb {
+				break
+			}
+			if count == 256 || !rootedScalarAggregateConstOperandOpcode(&r, comp.Array.Storage(), op) {
+				return false
+			}
+			count++
+		}
+		sub, subErr := r.U32()
+		constructed, typeErr := r.U32()
+		declared, countErr := r.U32()
+		end, endErr := r.Byte()
+		return subErr == nil && sub == 8 && typeErr == nil && constructed == typeIndex && countErr == nil && declared == count && endErr == nil && end == 0x0b && !r.HasNext()
+	default:
+		return false
 	}
-	op, err := r.Byte()
-	sub, subErr := r.U32()
-	constructed, typeErr := r.U32()
-	end, endErr := r.Byte()
-	return err == nil && op == 0xfb && subErr == nil && sub == 0 && typeErr == nil && constructed == typeIndex && endErr == nil && end == 0x0b && !r.HasNext()
 }
 
 func admitRV64GCRootedScalarWire(data []byte) bool {

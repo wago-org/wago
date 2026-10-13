@@ -45,6 +45,15 @@ func genericGCActiveTableElementModule() []byte {
 	)
 }
 
+func genericGCActiveArrayElementModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 0x01})),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x04}),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x00, 0x01,
+			0x41, 0x0b, 0x41, 0x16, 0xfb, 0x08, 0x00, 0x02, 0x0b}),
+	)
+}
+
 func TestGenericGCActiveTableElementRoots(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCActiveTableElementModule())
 	if err != nil {
@@ -73,6 +82,30 @@ func TestGenericGCActiveTableElementRoots(t *testing.T) {
 		instance.Close()
 		if err != nil || value.Bits != 55 {
 			t.Fatalf("iteration %d: active aggregate root = %+v, %v", iteration, value, err)
+		}
+	}
+}
+
+func TestGenericGCActiveArrayElementRoots(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCActiveArrayElementModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	descriptor := instance.tableDescriptor(0)
+	ref := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	for index, want := range []uint64{11, 22} {
+		value, err := instance.gc.ArrayGet(ref, uint32(index))
+		if err != nil || value.Bits != want {
+			t.Fatalf("active array root[%d] = %+v, %v; want %d", index, value, err, want)
 		}
 	}
 }
