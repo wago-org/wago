@@ -165,8 +165,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
 			aggregate := elem.Kind.Kind == wasm.ElemTypedExprs && rootedScalarTableReference(wasm.RefVal(elem.Kind.Ref), m)
 			if len(elem.Kind.Funcs) != 0 || elem.Kind.Kind == wasm.ElemFuncExprs && elem.Kind.Ref != (wasm.RefType{}) ||
-				elem.Kind.Kind == wasm.ElemTypedExprs && !aggregate && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) ||
-				aggregate && elem.Mode.Kind == wasm.ElemDeclarative {
+				elem.Kind.Kind == wasm.ElemTypedExprs && !aggregate && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) {
 				return false
 			}
 			values = len(elem.Kind.Exprs)

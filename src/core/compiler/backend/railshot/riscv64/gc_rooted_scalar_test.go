@@ -144,8 +144,15 @@ func TestRV64RootedAggregateTableBulkCompilesToHelpers(t *testing.T) {
 	if !admitRV64GCRootedScalarModule(defaulted) {
 		t.Fatal("struct.new_default aggregate element was not admitted")
 	}
+	declarative, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	declarative.Elements[0].Mode.Kind = wasm.ElemDeclarative
+	if !admitRV64GCRootedScalarModule(declarative) {
+		t.Fatal("declarative aggregate element shape was not admitted")
+	}
 	for name, mutate := range map[string]func(*wasm.Module){
-		"declarative": func(candidate *wasm.Module) { candidate.Elements[0].Mode.Kind = wasm.ElemDeclarative },
 		"wrong-null-heap": func(candidate *wasm.Module) {
 			candidate.Elements[0].Kind.Exprs[0].BodyBytes = []byte{0xd0, 0x01, 0x0b}
 		},

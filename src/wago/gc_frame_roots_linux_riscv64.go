@@ -184,8 +184,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
 			aggregate := elem.Kind.Kind == wasm.ElemTypedExprs && rv64RootedAggregateTableReference(m, wasm.RefVal(elem.Kind.Ref))
 			if len(elem.Kind.Funcs) != 0 || elem.Kind.Kind == wasm.ElemFuncExprs && elem.Kind.Ref != (wasm.RefType{}) ||
-				elem.Kind.Kind == wasm.ElemTypedExprs && !aggregate && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) ||
-				aggregate && elem.Mode.Kind == wasm.ElemDeclarative {
+				elem.Kind.Kind == wasm.ElemTypedExprs && !aggregate && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) {
 				return reject("RV64 exact roots require exact nullable funcref expression elements")
 			}
 			values = len(elem.Kind.Exprs)

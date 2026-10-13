@@ -113,6 +113,15 @@ func genericGCActiveNestedArrayElementModule() []byte {
 	)
 }
 
+func genericGCDeclarativeAggregateElementModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 0x01, 0x7f, 0x01})),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x01}),
+		wasmtest.Section(9, []byte{0x01, 0x07, 0x63, 0x00, 0x01,
+			0x41, 0x37, 0xfb, 0x00, 0x00, 0x0b}),
+	)
+}
+
 func TestGenericGCActiveTableElementRoots(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCActiveTableElementModule())
 	if err != nil {
@@ -284,6 +293,28 @@ func TestGenericGCActiveNestedReferenceElements(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestGenericGCDeclarativeAggregateElementIsDropped(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCDeclarativeAggregateElementModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if len(compiled.Elems) != 0 || len(compiled.passiveElems) != 0 {
+		t.Fatalf("declarative aggregate metadata = active %#v, state %#v", compiled.Elems, compiled.passiveElems)
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	if got := binary.LittleEndian.Uint64(instance.tableDescriptor(0)[8:]); got != 0 {
+		t.Fatalf("declarative aggregate populated table slot: %#x", got)
+	}
 }
 
 func TestSharedGCConstructionPublishesRootsBeforeCollection(t *testing.T) {
