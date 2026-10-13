@@ -40,6 +40,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 - Add signed/unsigned SIMD floor-average source checks, baseline benchmarks,
   and a bounded decoded corpus census.
+- Add bounded first/second prepared-call lifecycle diagnostics with guest state
+  controls, explicit setup boundaries and consistent per-batch metrics.
 - Add full-vector widening-multiply source-pair tests, prepared-call benchmarks,
   and a bounded decoded corpus census.
 - Add mixed-scalar host-call checks across nested memory, global, and table
