@@ -91,6 +91,10 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 				if done || err != nil {
 					break
 				}
+				done, err = f.tryShiftedI32DotLoop(r)
+				if done || err != nil {
+					break
+				}
 				done, err = f.tryPairedI32DotLoop(r)
 				if done || err != nil {
 					break
