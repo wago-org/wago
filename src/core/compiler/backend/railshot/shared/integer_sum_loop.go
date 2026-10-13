@@ -24,6 +24,8 @@ type IntegerSumLoop struct {
 	Global                        uint32
 	Coefficient, Constant         uint64
 	Periodic                      bool
+	SignedBits                    uint8
+	NegativeCount                 bool
 	EvenCoefficient, EvenConstant uint64
 	OddCoefficient, OddConstant   uint64
 	GlobalWrites                  [4]IntegerAffineGlobalWrite
@@ -106,6 +108,10 @@ func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module, al
 		p.EvenCoefficient, p.EvenConstant = periodic.EvenCoefficient, periodic.EvenConstant
 		p.OddCoefficient, p.OddConstant = periodic.OddCoefficient, periodic.OddConstant
 	}
+	if !ok && blockType == 0 {
+		r = termStart
+		term, ok = inspectIntegerSignedTerm(&r)
+	}
 	if !ok {
 		return p, false
 	}
@@ -113,6 +119,7 @@ func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module, al
 	p.InvariantGlobal, p.Global = term.hasGlobal, term.global
 	p.GlobalRecurrence, p.GlobalCoefficient = term.recurrence, term.globalCoefficient
 	p.IncrementCoefficient, p.IncrementConstant = term.incrementCoefficient, term.incrementConstant
+	p.SignedBits, p.NegativeCount = term.signedBits, term.negativeCount
 	p.GlobalWrites, p.GlobalWriteCount = term.writes, term.writeCount
 	// Preserve the existing fence proof: no memory reads between fences.
 	if (p.InvariantGlobal || p.GlobalWriteCount != 0 || p.GlobalRecurrence) && p.Fenced {

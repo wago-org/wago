@@ -25,6 +25,8 @@ type integerAffineTerm struct {
 	globalCoefficient      uint64
 	incrementCoefficient   uint64
 	incrementConstant      uint64
+	signedBits             uint8
+	negativeCount          bool
 }
 
 // inspectIntegerAffineTerm evaluates a bounded pure postfix expression as A*i+B
