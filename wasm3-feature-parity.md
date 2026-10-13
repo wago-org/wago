@@ -1513,3 +1513,11 @@ Matched forward/reverse autocorrelation runs drop 50.125/50.292 to 8.666/8.625 m
 ### Audited local refresh of retained 137d3036
 
 Published fourteen captures for seven cumulative changed workloads on 2026-10-13T20:08:11.868036+00:00. This adds autocorrelation to the previous six-workload scope. Every capture has a durable receipt, exact artifact/contract coverage, all four phases, fifteen timing samples and valid memory/code results. All575121 historical observations and the original snapshot audit are preserved; SQLite quick_check is ok and foreign keys have no violations. Wago137d3036 has28 observations/7contracts; peerf303 has3244 observations/266contracts. See changed-corpora-local-refresh-137d3036.json. No unrelated controls or rejected candidates were published. Next refresh is no earlier than 2026-10-13T22:08:11.868036+00:00. Server remains localhost:8788/benchmarks; no production deployment.
+
+### Checked weighted window reduction (M4, 2026-10-13)
+
+Retained e7311446 hoists arbitrary invariant coefficient vectors, guards complete runtime sample extents, and preserves wrapping sums, signed division toward zero, hash iteration order and all final locals. FIR has only four free GP registers; the emitter keeps its count in a caller-only vector register and rejects nonempty operand stacks or insufficient GP/FP pressure before mutation. Exact source scalar fallback preserves load/trap order.
+
+Two matched M4 runs reduce FIR47.750/47.375 to17.625/17.667microseconds (about63% lower), versus peer14.083 in both: FIR remains1.25x slower. Images4644->5188bytes(peer3764); audio/ML control images unchanged and timing variation preserved. Guarded/public/artifact tests, nativeAMD64 fallback and pinnedCore3/atomic conformance pass. Compilerimages/allocations unchanged; measured compile medians lower are not speed claims. The source/ABI/phase/platform scope and all raw results are in weighted-window-i32-dot.json.
+
+Bias factoring e95e0af8 only improves0.48/0.24% and adds32bytes, so it is reverted; full raw evidence in weighted-window-bias-fold.json. No new local table publication (nextnotbefore22:08UTC). The full per-feature/main goal remains active.
