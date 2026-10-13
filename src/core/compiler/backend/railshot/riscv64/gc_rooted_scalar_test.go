@@ -412,6 +412,50 @@ func TestRV64RootedWideScalarArrayCompiles(t *testing.T) {
 	}
 }
 
+func TestRV64RootedScalarArrayCopyRejectsMismatchedStorage(t *testing.T) {
+	types := [][]byte{
+		wasmtest.FuncType(nil, nil),
+		{0x5e, 0x7e, 0x01}, // mutable i64 array
+		{0x5e, 0x7f, 0x01}, // mutable i32 array
+	}
+	body := []byte{
+		0x01, 0x02, 0x64, 0x01,
+		0x41, 0x00, 0xfb, 0x07, 0x01, 0x21, 0x00,
+		0x41, 0x00, 0xfb, 0x07, 0x02, 0x21, 0x01,
+		0x20, 0x00, 0x41, 0x00,
+		0x20, 0x01, 0x41, 0x00,
+		0x41, 0x00, 0xfb, 0x11, 0x01, 0x02,
+		0x0b,
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCArrayHelpers: true, SyncHostSlots: 7,
+		Codegen:    codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+		production: true, publicStarts: true, gcRootedScalar: true,
+	}
+	_, err = compileDecodedModule(m, scalarRegisters[:], opts)
+	if err == nil || !strings.Contains(err.Error(), "array.copy outside exact packed copy profile") {
+		t.Fatalf("mismatched array.copy error = %v", err)
+	}
+}
+
 func TestRV64RootedScalarTypeWireDistinguishesFieldCountFromRecGroup(t *testing.T) {
 	fields := []byte{0x5f}
 	fields = append(fields, wasmtest.ULEB(78)...)

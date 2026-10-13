@@ -376,13 +376,13 @@ func (f *integerEmitter) gcArrayInitializeData(base int, typeIndex, dataIndex ui
 	f.restoreCallTransport()
 }
 
-func (f *integerEmitter) gcArrayFillI32(base int, typeIndex uint32) {
+func (f *integerEmitter) gcArrayFillScalar(base int, typeIndex uint32, wide bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0) // destination array reference
 	f.Load(5, f.SpillOffset(base+1), false)
 	f.a.Sd(enc.X5, enc.X10, 8) // destination element offset
-	f.Load(5, f.SpillOffset(base+2), false)
+	f.Load(5, f.SpillOffset(base+2), wide)
 	f.a.Sd(enc.X5, enc.X10, 16) // fill value
 	f.Load(5, f.SpillOffset(base+3), false)
 	f.a.Sd(enc.X5, enc.X10, 24) // element count
@@ -392,7 +392,7 @@ func (f *integerEmitter) gcArrayFillI32(base int, typeIndex uint32) {
 	f.restoreCallTransport()
 }
 
-func (f *integerEmitter) gcArrayCopyI32(base int, dstType, srcType uint32) {
+func (f *integerEmitter) gcArrayCopyScalar(base int, dstType, srcType uint32) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0) // destination array reference

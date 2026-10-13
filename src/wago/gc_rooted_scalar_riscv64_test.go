@@ -257,6 +257,57 @@ func rootedPackedScalarArrayModule() []byte {
 	)
 }
 
+func rootedWideScalarArrayBulkModule() []byte {
+	const value = int64(0x0102030405060708)
+	types := [][]byte{
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I64, wasm.I64}),
+		{0x5e, 0x7e, 0x01},
+	}
+	body := []byte{
+		0x01, 0x02, 0x64, 0x01,
+		0x41, 0x04, 0xfb, 0x07, 0x01, 0x21, 0x00,
+		0x41, 0x04, 0xfb, 0x07, 0x01, 0x21, 0x01,
+		0x20, 0x00, 0x41, 0x01, 0x42,
+	}
+	body = append(body, wasmtest.SLEB64(value)...)
+	body = append(body,
+		0x41, 0x02, 0xfb, 0x10, 0x01,
+		0x20, 0x01, 0x41, 0x00, 0x20, 0x00, 0x41, 0x01, 0x41, 0x02, 0xfb, 0x11, 0x01, 0x01,
+		0x20, 0x01, 0x41, 0x00, 0xfb, 0x0b, 0x01,
+		0x20, 0x01, 0x41, 0x01, 0xfb, 0x0b, 0x01,
+		0x0b,
+	)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func rootedPackedScalarArrayBulkModule() []byte {
+	types := [][]byte{
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32}),
+		{0x5e, byte(wasm.PackI8), 0x01},
+	}
+	body := []byte{
+		0x01, 0x02, 0x64, 0x01,
+		0x41, 0x03, 0xfb, 0x07, 0x01, 0x21, 0x00,
+		0x41, 0x03, 0xfb, 0x07, 0x01, 0x21, 0x01,
+		0x20, 0x00, 0x41, 0x01, 0x41, 0xff, 0x01, 0x41, 0x01, 0xfb, 0x10, 0x01,
+		0x20, 0x01, 0x41, 0x00, 0x20, 0x00, 0x41, 0x01, 0x41, 0x01, 0xfb, 0x11, 0x01, 0x01,
+		0x20, 0x01, 0x41, 0x00, 0xfb, 0x0c, 0x01,
+		0x20, 0x01, 0x41, 0x00, 0xfb, 0x0d, 0x01,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func TestRV64RootedScalarArraysExecute(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -265,6 +316,8 @@ func TestRV64RootedScalarArraysExecute(t *testing.T) {
 	}{
 		{name: "wide", source: rootedWideScalarArrayModule(), want: []uint64{42, 2}},
 		{name: "packed", source: rootedPackedScalarArrayModule(), want: []uint64{0xffffffff, 0xff}},
+		{name: "wide-bulk", source: rootedWideScalarArrayBulkModule(), want: []uint64{0x0102030405060708, 0x0102030405060708}},
+		{name: "packed-bulk", source: rootedPackedScalarArrayBulkModule(), want: []uint64{0xffffffff, 0xff}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			compiled, err := Compile(rv64RootedScalarConfig(), tc.source)

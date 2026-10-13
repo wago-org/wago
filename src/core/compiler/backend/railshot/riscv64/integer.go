@@ -2043,13 +2043,20 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.gcArrayInitializeData(h, imm.Index, imm.Index2)
 				}
 			case wasm.InstrArrayFill:
-				if !state.gcArrayFill || imm.Index != 1 {
+				genericStorage, genericMutable, genericArray := referenceTypes.rootedArrayStorage(imm.Index)
+				genericFill := state.gcRootedScalar && genericArray && genericMutable
+				genericWide := genericFill && !genericStorage.Packed() && scalarWide(genericStorage.Val())
+				if !genericFill && (!state.gcArrayFill || imm.Index != 1) {
 					return integerSummary{}, unsupported("array.fill outside exact packed fill profile")
 				}
-				for i := 0; i < 3; i++ {
-					if _, err = popClass(false); err != nil {
-						return integerSummary{}, err
-					}
+				if _, err = popClass(false); err != nil { // element count
+					return integerSummary{}, err
+				}
+				if err = popWidth(genericWide); err != nil { // fill value
+					return integerSummary{}, err
+				}
+				if _, err = popClass(false); err != nil { // destination element offset
+					return integerSummary{}, err
 				}
 				if _, err = popClass(true); err != nil {
 					return integerSummary{}, err
@@ -2059,10 +2066,13 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcArrayFillI32(h, imm.Index)
+					emit.gcArrayFillScalar(h, imm.Index, genericWide)
 				}
 			case wasm.InstrArrayCopy:
-				if !state.gcArrayCopy || imm.Index > 1 || imm.Index2 > 1 {
+				destinationStorage, destinationMutable, destinationArray := referenceTypes.rootedArrayStorage(imm.Index)
+				sourceStorage, _, sourceArray := referenceTypes.rootedArrayStorage(imm.Index2)
+				genericCopy := state.gcRootedScalar && destinationArray && destinationMutable && sourceArray && destinationStorage == sourceStorage
+				if !genericCopy && (!state.gcArrayCopy || imm.Index > 1 || imm.Index2 > 1) {
 					return integerSummary{}, unsupported("array.copy outside exact packed copy profile")
 				}
 				if _, err = popClass(false); err != nil { // length
@@ -2085,7 +2095,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcArrayCopyI32(h, imm.Index, imm.Index2)
+					emit.gcArrayCopyScalar(h, imm.Index, imm.Index2)
 				}
 			case wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU:
 				genericStorage, _, genericArray := referenceTypes.rootedArrayStorage(imm.Index)
