@@ -76,19 +76,18 @@ func (f *fn) tryPairedI32DotLoop(r *wasm.Reader) (bool, error) {
 	f.a.MovImm32(tmp, int32(p.Bound))
 	f.a.CmpReg32(counter, tmp)
 	fail(f.a.Bcond(a64.CondCS))
-	// The positive bound is a multiple of eight, so suffix alignment is
-	// exactly counter alignment. Seven is always a logical immediate.
-	f.a.TstImm32(counter, 7)
-	fail(f.a.Bcond(a64.CondNE))
+	f.a.Sub32(tmp, tmp, counter)
+	f.a.MovImm32(cond, 7)
+	f.a.And32(cond, tmp, cond)
+	fail(f.a.Cbnz32(cond))
 	for _, base := range []Reg{left, right} {
-		// copyRead canonicalizes base. Comparing against the unsigned
-		// complement preserves equality at the memory32 address-space end.
-		f.a.MovImm32(limit, int32((uint64(1)<<32)-uint64(p.Bound)))
-		f.a.CmpReg32(base, limit)
-		fail(f.a.Bcond(a64.CondHI))
-		// Keep offset addition wide: the immediate itself may exceed 2^32.
-		f.a.MovImm64(tmp, uint64(p.Bound)+uint64(p.Offset))
+		f.a.MovImm64(tmp, uint64(p.Bound))
 		f.a.Add64(tmp, tmp, base)
+		f.a.MovImm64(limit, 1<<32)
+		f.a.CmpReg64(tmp, limit)
+		fail(f.a.Bcond(a64.CondHI))
+		f.a.MovImm64(limit, uint64(p.Offset))
+		f.a.Add64(tmp, tmp, limit)
 		f.ld64(limit, linMemReg, -int32(bdCurBytes))
 		f.a.CmpReg64(tmp, limit)
 		fail(f.a.Bcond(a64.CondHI))
