@@ -36,7 +36,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports != 0 || len(c.Imports) != 0 ||
 		len(c.importFuncSigs) != 0 || c.HasTable || c.tableCount() != 0 || c.memoryCount() > 1 ||
 		len(c.GlobalImports) != 0 || len(c.Globals) > 256 || len(c.Elems) != 0 ||
-		len(c.passiveElems) != 0 || len(c.PassiveData) != 0 {
+		len(c.passiveElems) != 0 || len(c.PassiveData) > 256 {
 		return false
 	}
 	if c.HasStart != memo.rv64FreshRootedGCHasStart {
@@ -87,6 +87,12 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			return false
 		}
 		remainingData -= len(data.Bytes)
+	}
+	for i := range c.PassiveData {
+		if len(c.PassiveData[i].Bytes) > remainingData {
+			return false
+		}
+		remainingData -= len(c.PassiveData[i].Bytes)
 	}
 	roots := c.genericGCFrameRoots()
 	if roots == nil || len(roots.safepoints) == 0 || len(c.Types) != len(c.GCTypeDescs) {

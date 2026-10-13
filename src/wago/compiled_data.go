@@ -37,25 +37,39 @@ func (c *Compiled) activeDataAt(index int) DataInit {
 	return DataInit{MemoryIndex: d.memoryIndex, Offset: OffsetInit{Base: d.offset}, Bytes: c.compactData.bytes[d.start:d.end:d.end]}
 }
 
-// rv64RootedActiveDataDigest authenticates the exact compiler-produced active
-// data image used by the fresh generic rooted-GC profile. The profile admits
-// only direct memory-0 literal offsets, so every execution-relevant byte has a
-// compact canonical representation.
+// rv64RootedActiveDataDigest authenticates the exact compiler-produced data
+// image used by the fresh generic rooted-GC profile. Active segments admit only
+// direct memory-0 literal offsets; passive slots preserve original data-index
+// order so memory.init/data.drop address the authenticated per-instance state.
 func rv64RootedActiveDataDigest(c *Compiled) ([32]byte, bool) {
-	if c == nil || c.compactData != nil || len(c.Data) > 256 || len(c.PassiveData) != 0 {
+	if c == nil || c.compactData != nil || len(c.Data) > 256 || len(c.PassiveData) > 256 {
 		return [32]byte{}, false
 	}
 	h := sha256.New()
 	var word [8]byte
+	remaining := uint64(1 << 20)
 	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.Data)))
 	_, _ = h.Write(word[:4])
 	for i := range c.Data {
 		data := &c.Data[i]
-		if data.MemoryIndex != 0 || data.Offset.HasGlobal || data.Offset.Global != 0 || len(data.Offset.Expr) != 0 {
+		if data.MemoryIndex != 0 || data.Offset.HasGlobal || data.Offset.Global != 0 || len(data.Offset.Expr) != 0 || uint64(len(data.Bytes)) > remaining {
 			return [32]byte{}, false
 		}
+		remaining -= uint64(len(data.Bytes))
 		binary.LittleEndian.PutUint32(word[:4], data.Offset.Base)
 		_, _ = h.Write(word[:4])
+		binary.LittleEndian.PutUint64(word[:], uint64(len(data.Bytes)))
+		_, _ = h.Write(word[:])
+		_, _ = h.Write(data.Bytes)
+	}
+	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.PassiveData)))
+	_, _ = h.Write(word[:4])
+	for i := range c.PassiveData {
+		data := &c.PassiveData[i]
+		if uint64(len(data.Bytes)) > remaining {
+			return [32]byte{}, false
+		}
+		remaining -= uint64(len(data.Bytes))
 		binary.LittleEndian.PutUint64(word[:], uint64(len(data.Bytes)))
 		_, _ = h.Write(word[:])
 		_, _ = h.Write(data.Bytes)

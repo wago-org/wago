@@ -19,9 +19,12 @@ const maxRootedScalarArrayFixed = 254
 func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	if m == nil || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions ||
 		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Globals) > 256 ||
-		len(m.Elements) != 0 || len(m.Data) > 256 || m.DataCount != nil || len(m.Tags) != 0 ||
+		len(m.Elements) != 0 || len(m.Data) > 256 || len(m.Tags) != 0 ||
 		len(m.StringRefs) != 0 || len(m.Customs) != 0 || m.HasNameMetadata() ||
 		m.BranchHints != nil || m.UsesCompactImports {
+		return false
+	}
+	if m.DataCount != nil && (uint64(*m.DataCount) != uint64(len(m.Data)) || *m.DataCount > 256) {
 		return false
 	}
 	if admitProductionStart(m) != nil {
@@ -45,10 +48,22 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	remainingData := MaxModuleBytes
 	for i := range m.Data {
 		data := &m.Data[i]
-		if len(m.Memories) != 1 || data.Mode.Kind != wasm.DataActive || data.Mode.Mem != 0 || len(data.Mode.Offset.Instrs) != 0 || len(data.Init) > remainingData {
+		if len(data.Init) > remainingData {
 			return false
 		}
-		if _, err := plainScalarConst(data.Mode.Offset, wasm.I32, false); err != nil {
+		switch data.Mode.Kind {
+		case wasm.DataActive:
+			if len(m.Memories) != 1 || data.Mode.Mem != 0 || len(data.Mode.Offset.Instrs) != 0 {
+				return false
+			}
+			if _, err := plainScalarConst(data.Mode.Offset, wasm.I32, false); err != nil {
+				return false
+			}
+		case wasm.DataPassive:
+			if data.Mode.Mem != 0 || len(data.Mode.Offset.Instrs) != 0 || len(data.Mode.Offset.BodyBytes) != 0 {
+				return false
+			}
+		default:
 			return false
 		}
 		remainingData -= len(data.Init)
@@ -197,12 +212,16 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 	}
 	r := wasm.ReaderFrom(data[8:])
 	const required = uint16(1<<1 | 1<<3 | 1<<7 | 1<<10)
-	const allowed = required | 1<<5 | 1<<6 | 1<<8 | 1<<11
+	const allowed = required | 1<<5 | 1<<6 | 1<<8 | 1<<11 | 1<<12
 	var seen uint16
-	var previous byte
+	var previousRank byte
 	for r.HasNext() {
 		id, err := r.Byte()
-		if err != nil || id > 11 || allowed&(1<<id) == 0 || seen&(1<<id) != 0 || id <= previous {
+		rank := id
+		if id == 12 {
+			rank = 9 // data-count is ordered after start and before code
+		}
+		if err != nil || id > 12 || allowed&(1<<id) == 0 || seen&(1<<id) != 0 || rank <= previousRank {
 			return false
 		}
 		n, err := r.U32()
@@ -213,7 +232,7 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 		payload := data[8+start : 8+end]
 		probe := wasm.ReaderFrom(payload)
 		count, err := probe.U32()
-		if err != nil || id == 8 && probe.HasNext() || id != 8 && count == 0 {
+		if err != nil || (id == 8 || id == 12) && probe.HasNext() || id != 8 && id != 12 && count == 0 {
 			return false
 		}
 		// Public decoding flattens a one-element explicit rec group into the same
@@ -227,7 +246,7 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 			return false
 		}
 		seen |= 1 << id
-		previous = id
+		previousRank = rank
 	}
 	if seen&required != required {
 		return false

@@ -39,6 +39,12 @@ func TestCompiledStructuralRequiredFeaturesGlobalGetScope(t *testing.T) {
 	}
 }
 
+func TestCompiledStructuralRequiredFeaturesPassiveData(t *testing.T) {
+	if got := compiledStructuralRequiredFeatures(&Compiled{PassiveData: []PassiveDataInit{{Bytes: []byte{1}}}}); !got.IsEnabled(CoreFeatureBulkMemoryOperations) {
+		t.Fatalf("passive data required features = %s, want bulk-memory-operations", got)
+	}
+}
+
 func TestValidatedAnalysisRequirementsCorpusParity(t *testing.T) {
 	var paths []string
 	err := filepath.WalkDir("../../corpus/workloads", func(path string, entry fs.DirEntry, err error) error {

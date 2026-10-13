@@ -1521,13 +1521,129 @@ func TestRV64RootedScalarStartTrapAbortsInstantiation(t *testing.T) {
 	}
 }
 
-func TestRV64RootedScalarPassiveDataFailsClosed(t *testing.T) {
+func rootedScalarPassiveDataModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32}),
+	}
+	body := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		// Keep an exact collector root live while a second allocation forces GC.
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		// Copy passive data index 1 into memory 0, leaving active index 0 in
+		// the same original data-index namespace.
+		0x41, 0x20, 0x41, 0x00, 0x41, 0x04, 0xfc, 0x08, 0x01, 0x00,
+		0x41, 0xc0, 0x00, 0x28, 0x02, 0x00,
+		0x41, 0x20, 0x28, 0x02, 0x00,
+		0xfc, 0x09, 0x01,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		// Data-count has its proposal-defined order before code, despite its
+		// numeric section id following data.
+		wasmtest.Section(12, wasmtest.ULEB(2)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		wasmtest.Section(11, wasmtest.Vec(
+			[]byte{0x00, 0x41, 0xc0, 0x00, 0x0b, 0x04, 0x07, 0x00, 0x00, 0x00},
+			[]byte{0x01, 0x04, 0x2a, 0x00, 0x00, 0x00},
+		)),
+	)
+}
+
+func TestRV64RootedScalarPassiveDataExecutes(t *testing.T) {
+	source := rootedScalarPassiveDataModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded rooted passive-data module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Data) != 1 || len(view.PassiveData) != 2 || view.PassiveData[0].Bytes != nil || !slices.Equal(view.PassiveData[1].Bytes, []byte{42, 0, 0, 0}) {
+		t.Fatal("passive-data generic rooted receipt is missing")
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"payload": func(candidate *Compiled) {
+			candidate.PassiveData = slices.Clone(candidate.PassiveData)
+			candidate.PassiveData[1].Bytes = slices.Clone(candidate.PassiveData[1].Bytes)
+			candidate.PassiveData[1].Bytes[0]++
+		},
+		"missing-slot": func(candidate *Compiled) { candidate.PassiveData = candidate.PassiveData[:1] },
+		"wrong-index": func(candidate *Compiled) {
+			candidate.PassiveData = slices.Clone(candidate.PassiveData)
+			candidate.PassiveData[0], candidate.PassiveData[1] = candidate.PassiveData[1], candidate.PassiveData[0]
+		},
+		"missing-feature": func(candidate *Compiled) { candidate.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated passive data retained the generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("mutated passive data validation=%v", err)
+			}
+		})
+	}
+
+	first, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := first.Invoke("run"); err != nil || !slices.Equal(got, []uint64{7, 42}) {
+		_ = first.Close()
+		t.Fatalf("first run()=%v err=%v want=[7 42]", got, err)
+	}
+	if got, err := first.Invoke("run"); err == nil || got != nil {
+		_ = first.Close()
+		t.Fatalf("memory.init after data.drop returned %v err=%v", got, err)
+	} else if trap, ok := err.(*TrapError); !ok || trap.Code != TrapLinMemOutOfBounds {
+		_ = first.Close()
+		t.Fatalf("memory.init after data.drop trap=%v, want %v", err, TrapLinMemOutOfBounds)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Dropping a segment mutates instance state only; a fresh instance gets a
+	// fresh passive descriptor directory backed by the immutable compiled bytes.
+	second, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	if got, err := second.Invoke("run"); err != nil || !slices.Equal(got, []uint64{7, 42}) {
+		t.Fatalf("fresh instance run()=%v err=%v want=[7 42]", got, err)
+	}
+}
+
+func TestRV64RootedScalarInertPassiveDataExecutes(t *testing.T) {
+	// A passive declaration itself requires bulk memory but does not require a
+	// data-count section until an instruction addresses the data-index space.
 	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false, false, true, false))
-	if err == nil || compiled != nil {
-		if compiled != nil {
-			_ = compiled.Close()
-		}
-		t.Fatalf("passive data compiled=%v err=%v", compiled, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.PassiveData) != 1 || !slices.Equal(view.PassiveData[0].Bytes, []byte{42, 0, 0, 0}) || !view.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
+		t.Fatal("inert passive-data generic rooted receipt is missing")
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{142, 1, 0}) {
+		t.Fatalf("run()=%v err=%v want=[142 1 0]", got, err)
 	}
 }
 

@@ -816,6 +816,9 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		data := c.activeDataAt(i)
 		out |= requiredFeaturesForConstExprBytes(data.Offset.Expr, len(c.GlobalImports))
 	}
+	if len(c.PassiveData) != 0 {
+		out |= CoreFeatureBulkMemoryOperations
+	}
 	return out
 }
 

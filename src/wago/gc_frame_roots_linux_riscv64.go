@@ -34,8 +34,11 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	if m == nil || len(m.Code) == 0 {
 		return reject("generic GC module has no local function bodies")
 	}
-	if len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) > 256 || len(m.Elements) != 0 || m.DataCount != nil || len(m.Data) > 256 || len(m.StringRefs) != 0 {
+	if len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) > 256 || len(m.Elements) != 0 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
 		return reject("RV64 exact roots require a closed scalar allocation module")
+	}
+	if m.DataCount != nil && (uint64(*m.DataCount) != uint64(len(m.Data)) || *m.DataCount > 256) {
+		return reject("RV64 exact roots require an exact bounded data count")
 	}
 	if m.Start != nil {
 		index := int(*m.Start)
@@ -58,8 +61,20 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	remainingData := railshot.MaxModuleBytes
 	for i := range m.Data {
 		data := &m.Data[i]
-		if len(m.Memories) != 1 || data.Mode.Kind != wasm.DataActive || data.Mode.Mem != 0 || len(data.Mode.Offset.Instrs) != 0 || len(data.Init) > remainingData || !rv64RootedI32Const(data.Mode.Offset.BodyBytes) {
-			return reject("RV64 exact roots require bounded literal active memory32 data")
+		if len(data.Init) > remainingData {
+			return reject("RV64 exact roots require bounded data payloads")
+		}
+		switch data.Mode.Kind {
+		case wasm.DataActive:
+			if len(m.Memories) != 1 || data.Mode.Mem != 0 || len(data.Mode.Offset.Instrs) != 0 || !rv64RootedI32Const(data.Mode.Offset.BodyBytes) {
+				return reject("RV64 exact roots require literal active memory32 data")
+			}
+		case wasm.DataPassive:
+			if data.Mode.Mem != 0 || len(data.Mode.Offset.Instrs) != 0 || len(data.Mode.Offset.BodyBytes) != 0 {
+				return reject("RV64 exact roots require canonical passive data")
+			}
+		default:
+			return reject("RV64 exact roots reject unknown data modes")
 		}
 		remainingData -= len(data.Init)
 	}

@@ -637,6 +637,23 @@ func TestRV64RootedScalarTypeWireDistinguishesFieldCountFromRecGroup(t *testing.
 	}
 }
 
+func TestRV64RootedScalarWireAcceptsZeroDataCount(t *testing.T) {
+	body := []byte{0x00, 0x41, 0x00, 0xfb, 0x00, 0x00, 0x1a, 0x0b}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(12, wasmtest.ULEB(0)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatalf("zero data-count source rejected: %v", err)
+	}
+}
+
 func TestRV64RootedScalarArbitraryStructDefault(t *testing.T) {
 	const typeIndex = uint32(130)
 	types := make([][]byte, typeIndex+1)
