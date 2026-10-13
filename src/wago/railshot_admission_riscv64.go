@@ -17,8 +17,13 @@ import (
 )
 
 func rv64FreshRootedGC(c *Compiled) bool {
-	if c == nil || c.stagedGCStructProduct() != stagedGCStructGeneric || c.stagedGCArrayProduct() != 0 ||
-		!c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.syncHostSlots < 4 ||
+	if c == nil {
+		return false
+	}
+	structProduct, arrayProduct := c.stagedGCStructProduct(), c.stagedGCArrayProduct()
+	structHelpers, arrayHelpers := structProduct == stagedGCStructGeneric, arrayProduct == stagedGCArrayProductGeneric
+	if structProduct != 0 && !structHelpers || arrayProduct != 0 && !arrayHelpers || !structHelpers && !arrayHelpers ||
+		c.usesGCStructHelpers() != structHelpers || c.usesGCArrayHelpers() != arrayHelpers || c.syncHostSlots < 4 ||
 		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports != 0 || len(c.Imports) != 0 ||
 		len(c.importFuncSigs) != 0 || c.HasTable || c.tableCount() != 0 || c.HasMemory || c.memoryCount() != 0 ||
 		len(c.GlobalImports) != 0 || len(c.Globals) != 0 || c.HasStart || len(c.Elems) != 0 ||
@@ -31,7 +36,34 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		roots == nil || len(roots.safepoints) == 0 || len(roots.callsites) != 0 || len(c.Types) != len(c.GCTypeDescs) {
 		return false
 	}
-	hasStruct := false
+	storageKind := func(storage StorageTypeDescriptor) (gc.StorageKind, bool) {
+		if storage.Packed {
+			switch storage.PackedType {
+			case PackedTypeI8:
+				return gc.StorageI8, true
+			case PackedTypeI16:
+				return gc.StorageI16, true
+			default:
+				return 0, false
+			}
+		}
+		if storage.Value.Ref != (ReferenceTypeDescriptor{}) {
+			return 0, false
+		}
+		switch storage.Value.Kind {
+		case ValueTypeI32:
+			return gc.StorageI32, true
+		case ValueTypeI64:
+			return gc.StorageI64, true
+		case ValueTypeF32:
+			return gc.StorageF32, true
+		case ValueTypeF64:
+			return gc.StorageF64, true
+		default:
+			return 0, false
+		}
+	}
+	hasStruct, hasArray := false, false
 	requiredSlots := 4
 	for i, desc := range c.GCTypeDescs {
 		typ := &c.Types[i]
@@ -57,33 +89,11 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			}
 			kinds := make([]gc.StorageKind, len(typ.Fields))
 			for field := range typ.Fields {
-				storage := typ.Fields[field].Storage
-				if storage.Packed {
-					switch storage.PackedType {
-					case PackedTypeI8:
-						kinds[field] = gc.StorageI8
-					case PackedTypeI16:
-						kinds[field] = gc.StorageI16
-					default:
-						return false
-					}
-					continue
-				}
-				if storage.Value.Ref != (ReferenceTypeDescriptor{}) {
+				kind, ok := storageKind(typ.Fields[field].Storage)
+				if !ok {
 					return false
 				}
-				switch storage.Value.Kind {
-				case ValueTypeI32:
-					kinds[field] = gc.StorageI32
-				case ValueTypeI64:
-					kinds[field] = gc.StorageI64
-				case ValueTypeF32:
-					kinds[field] = gc.StorageF32
-				case ValueTypeF64:
-					kinds[field] = gc.StorageF64
-				default:
-					return false
-				}
+				kinds[field] = kind
 			}
 			expected, err := gc.NewStructDesc(gc.TypeID(i), kinds)
 			if err != nil || desc.Size != expected.Size || desc.Align != expected.Align || !slices.Equal(desc.Fields, expected.Fields) {
@@ -91,11 +101,26 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			}
 			requiredSlots = max(requiredSlots, len(typ.Fields)+1)
 			hasStruct = true
+		case gc.KindArray:
+			if typ.Kind != CompositeTypeArray || !desc.Final || desc.HasSuper || desc.HasRefs || len(desc.Fields) != 0 {
+				return false
+			}
+			kind, ok := storageKind(typ.Array.Storage)
+			if !ok {
+				return false
+			}
+			expected, err := gc.NewArrayDesc(gc.TypeID(i), kind)
+			if err != nil || desc.ID != expected.ID || desc.Kind != expected.Kind || desc.Elem != expected.Elem || desc.Size != expected.Size ||
+				desc.ElemSize != expected.ElemSize || desc.Align != expected.Align || desc.HasRefs != expected.HasRefs || desc.Final != expected.Final ||
+				desc.Super != expected.Super || desc.HasSuper != expected.HasSuper {
+				return false
+			}
+			hasArray = true
 		default:
 			return false
 		}
 	}
-	return hasStruct && int(c.syncHostSlots) >= requiredSlots
+	return (!structHelpers || hasStruct) && (!arrayHelpers || hasArray) && int(c.syncHostSlots) >= requiredSlots
 }
 
 // rv64StateOnlyExternrefGlobals is the persisted-artifact witness for a

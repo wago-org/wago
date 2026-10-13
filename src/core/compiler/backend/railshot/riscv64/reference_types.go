@@ -102,7 +102,22 @@ func (types internalReferenceTypes) rootedStruct(index uint32) bool {
 	return true
 }
 
-func (types internalReferenceTypes) rootedStructType(index uint32) *wasm.CompType {
+func (types internalReferenceTypes) rootedArray(index uint32) bool {
+	if !types.gcRootedScalar {
+		return false
+	}
+	signature := types.rootedAggregateType(index, wasm.CompArray)
+	if signature == nil {
+		return false
+	}
+	storage := signature.Array.Storage()
+	if storage.Packed() {
+		return storage.Pack() == wasm.PackI8 || storage.Pack() == wasm.PackI16
+	}
+	return scalarType(storage.Val(), true)
+}
+
+func (types internalReferenceTypes) rootedAggregateType(index uint32, kind wasm.CompTypeKind) *wasm.CompType {
 	var signature *wasm.CompType
 	if types.scalar != nil {
 		if uint64(index) >= uint64(len(types.scalar)) {
@@ -115,10 +130,22 @@ func (types internalReferenceTypes) rootedStructType(index uint32) *wasm.CompTyp
 		}
 		signature = &types.decoded[index].SubTypes[0].Comp
 	}
-	if signature == nil || signature.Kind != wasm.CompStruct {
+	if signature == nil || signature.Kind != kind {
 		return nil
 	}
 	return signature
+}
+
+func (types internalReferenceTypes) rootedStructType(index uint32) *wasm.CompType {
+	return types.rootedAggregateType(index, wasm.CompStruct)
+}
+
+func (types internalReferenceTypes) rootedArrayStorage(index uint32) (wasm.StorageType, bool, bool) {
+	signature := types.rootedAggregateType(index, wasm.CompArray)
+	if !types.rootedArray(index) {
+		return wasm.StorageType{}, false, false
+	}
+	return signature.Array.Storage(), signature.Array.Mut() == wasm.Var, true
 }
 
 func (types internalReferenceTypes) rootedStructFields(index uint32) ([]wasm.FieldType, bool) {
@@ -211,7 +238,7 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 		return false
 	}
 	heap := ref.Heap()
-	if types.gcRootedScalar && heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && types.rootedStruct(heap.Type().Index) {
+	if types.gcRootedScalar && heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && (types.rootedStruct(heap.Type().Index) || types.rootedArray(heap.Type().Index)) {
 		return true
 	}
 	if types.gcStructBasic && heap == wasm.AbsHeap(wasm.HeapAny) {
@@ -344,7 +371,7 @@ func internalExplicitReferenceTypeMode(r *wasm.Reader, typed bool, types interna
 			(types.gcTypeSubtypingRefTestVariant == 7 && heap >= 0 && heap < 8) ||
 			(types.gcTypeSubtypingRefTestVariant == 8 && heap == 0) ||
 			(types.gcTypeSubtypingRefTestVariant == 9 && heap == 2))
-	if heap != -16 && !declarationExtern && !gcAbstract && !runtimeSubtype && !refTestSubtype && !(typed && heap >= 0 && (types.function(uint32(heap)) || types.rootedStruct(uint32(heap)))) {
+	if heap != -16 && !declarationExtern && !gcAbstract && !runtimeSubtype && !refTestSubtype && !(typed && heap >= 0 && (types.function(uint32(heap)) || types.rootedStruct(uint32(heap)) || types.rootedArray(uint32(heap)))) {
 		return false, unsupported("explicit reference type requires abstract func or an admitted function-type index")
 	}
 	return requiresTyped, nil

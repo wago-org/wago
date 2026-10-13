@@ -1278,7 +1278,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			product, ok = stagedGCArrayOpcodeProduct(m)
 		}
 		if ok {
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCArrayProductNumericLocal && exactGCArrayLocalSource) && !(product == stagedGCArrayProductNumericUniform && exactGCArrayUniformSource) && !(product == stagedGCArrayProductNumericFixedLocal && exactGCArrayFixedLocalSource) && !(product == stagedGCArrayProductNumericFixed && exactGCArrayFixedOfficialSource) && !(product == stagedGCArrayProductNumericDefault && exactGCArrayDefaultOfficialSource) && !(product == stagedGCArrayProductPackedData && exactGCArrayPackedDataSource) && !(product == stagedGCArrayProductReferenceElements && exactGCArrayReferenceSource) && !(product == stagedGCArrayProductInitElem && exactGCArrayInitElemSource) && !(product == stagedGCArrayProductInitData && exactGCArrayInitDataSource) && !(product == stagedGCArrayProductBulkFill && exactGCArrayFillSource) && !(product == stagedGCArrayProductBulkCopy && exactGCArrayCopySource) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCArrayProductGeneric && exactGCRootedScalarSource) && !(product == stagedGCArrayProductNumericLocal && exactGCArrayLocalSource) && !(product == stagedGCArrayProductNumericUniform && exactGCArrayUniformSource) && !(product == stagedGCArrayProductNumericFixedLocal && exactGCArrayFixedLocalSource) && !(product == stagedGCArrayProductNumericFixed && exactGCArrayFixedOfficialSource) && !(product == stagedGCArrayProductNumericDefault && exactGCArrayDefaultOfficialSource) && !(product == stagedGCArrayProductPackedData && exactGCArrayPackedDataSource) && !(product == stagedGCArrayProductReferenceElements && exactGCArrayReferenceSource) && !(product == stagedGCArrayProductInitElem && exactGCArrayInitElemSource) && !(product == stagedGCArrayProductInitData && exactGCArrayInitDataSource) && !(product == stagedGCArrayProductBulkFill && exactGCArrayFillSource) && !(product == stagedGCArrayProductBulkCopy && exactGCArrayCopySource) {
 				return nil, fmt.Errorf("compile: unsupported collector-backed array product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcArrayProduct = product
@@ -1312,7 +1312,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		// Generic GC lowering is the complete Core 3 fallback for modules that do
 		// not match a narrower collector-free or specialized product. Product
 		// recognizers select optimizations, not semantic admission boundaries.
-		gcStructProduct = stagedGCStructGeneric
+		// The bounded RV64 source witness keeps struct and array helper families
+		// independent. An array-only module must not gain the generic struct
+		// product merely because the complete backends use it as an umbrella.
+		if supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) || !exactGCRootedScalarSource || moduleUsesGenericGCStructHelpers(m) {
+			gcStructProduct = stagedGCStructGeneric
+		}
 	}
 	if goruntime.GOARCH == "arm64" && !gcStructProduct.requiresHelpers() && requirements.arm64GCRefTestHelper {
 		// ARM64 lowers collector-reference ref.test through the generic checked

@@ -856,7 +856,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if state.gcRootedScalar && (heap < 0 || !referenceTypes.rootedStruct(uint32(heap))) {
+				if state.gcRootedScalar && (heap < 0 || !referenceTypes.rootedStruct(uint32(heap)) && !referenceTypes.rootedArray(uint32(heap))) {
 					return integerSummary{}, unsupported("generic rooted scalar ref.null heap")
 				}
 				abstractNull := state.gcRefTestAbstract && (heap == -13 || heap == -14 || heap == -15 || heap == -16 || heap == -17 || heap == -18 || heap == -21 || heap == -22)
@@ -1830,7 +1830,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU:
 				genericStorage, genericField := referenceTypes.rootedStructFieldStorage(imm.Index, imm.Index2)
 				genericPacked := genericField && genericStorage.Packed()
-				genericGet := state.gcRootedScalar && genericField && (genericPacked && imm.Kind != wasm.InstrStructGet || !genericPacked && imm.Kind == wasm.InstrStructGet)
+				genericGet := state.gcRootedScalar && genericField && ((genericPacked && imm.Kind != wasm.InstrStructGet) || (!genericPacked && imm.Kind == wasm.InstrStructGet))
 				genericWide := genericGet && !genericPacked && scalarWide(genericStorage.Val())
 				regularGet := (state.gcStructGet || state.gcStructMutation) && imm.Index == 0 && imm.Index2 == 0 && imm.Kind == wasm.InstrStructGet
 				basicGet := state.gcStructBasic && imm.Index == 0 && imm.Index2 < 2 && imm.Kind == wasm.InstrStructGet
@@ -1894,13 +1894,15 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.gcStructSetScalar(h, imm.Index, imm.Index2, genericWide)
 				}
 			case wasm.InstrArrayNew:
-				if !(state.gcArrayUniform && imm.Index == 0) && !(state.gcRefTestAbstract && imm.Index == 2) {
+				genericStorage, _, genericArray := referenceTypes.rootedArrayStorage(imm.Index)
+				genericWide := genericArray && !genericStorage.Packed() && scalarWide(genericStorage.Val())
+				if (!state.gcRootedScalar && !(state.gcArrayUniform && imm.Index == 0) && !(state.gcRefTestAbstract && imm.Index == 2)) || (state.gcRootedScalar && !genericArray) {
 					return integerSummary{}, unsupported("array.new outside exact gc array uniform profile")
 				}
 				if _, err = popClass(false); err != nil { // length
 					return integerSummary{}, err
 				}
-				if _, err = popClass(false); err != nil { // uniform value
+				if err = popWidth(genericWide); err != nil { // uniform value
 					return integerSummary{}, err
 				}
 				callCount++
@@ -1908,7 +1910,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcUniformArrayAllocation(h, imm.Index, stackRefs[:h])
+					emit.gcUniformArrayAllocation(h, imm.Index, genericWide, stackRefs[:h])
 				}
 				if err = pushReference(); err != nil {
 					return integerSummary{}, err
@@ -1943,7 +1945,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrArrayNewDefault:
-				if (!state.gcRefEq && !state.gcRefTestAbstract && !state.gcArrayLocal && !state.gcArrayFixedOfficial && !state.gcArrayInitDataWide) || (state.gcRefEq && imm.Index != 2) || (state.gcRefTestAbstract && imm.Index != 2) || (state.gcArrayLocal && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1) || (state.gcArrayInitDataWide && imm.Index > 1) {
+				genericDefault := state.gcRootedScalar && referenceTypes.rootedArray(imm.Index)
+				if !genericDefault && ((!state.gcRefEq && !state.gcRefTestAbstract && !state.gcArrayLocal && !state.gcArrayFixedOfficial && !state.gcArrayInitDataWide) || (state.gcRefEq && imm.Index != 2) || (state.gcRefTestAbstract && imm.Index != 2) || (state.gcArrayLocal && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1) || (state.gcArrayInitDataWide && imm.Index > 1)) {
 					return integerSummary{}, unsupported("array.new_default outside exact GC profile")
 				}
 				if _, err = popClass(false); err != nil {
@@ -2085,11 +2088,15 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.gcArrayCopyI32(h, imm.Index, imm.Index2)
 				}
 			case wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU:
+				genericStorage, _, genericArray := referenceTypes.rootedArrayStorage(imm.Index)
+				genericPacked := genericArray && genericStorage.Packed()
+				genericGet := state.gcRootedScalar && genericArray && ((genericPacked && imm.Kind != wasm.InstrArrayGet) || (!genericPacked && imm.Kind == wasm.InstrArrayGet))
+				genericWide := genericGet && !genericPacked && scalarWide(genericStorage.Val())
 				packedGet := (state.gcArrayPackedData && imm.Index <= 1 || state.gcArrayInitData && (imm.Index == 1 || imm.Index == 2) || state.gcArrayFill && imm.Index == 1 || state.gcArrayCopy && imm.Index == 1) && (imm.Kind == wasm.InstrArrayGetS || imm.Kind == wasm.InstrArrayGetU)
 				referencePackedGet := state.gcArrayReference && imm.Kind == wasm.InstrArrayGetU && imm.Index == 0
 				referenceGet := state.gcArrayReference && imm.Kind == wasm.InstrArrayGet && imm.Index <= 4 || state.gcArrayInitElem && imm.Kind == wasm.InstrArrayGet && imm.Index == 2
 				abstractGet := state.gcRefTestAbstract && imm.Kind == wasm.InstrArrayGetU && imm.Index == 2
-				if !packedGet && !referencePackedGet && !referenceGet && !abstractGet && ((!state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial) || imm.Kind != wasm.InstrArrayGet || (!state.gcArrayFixedOfficial && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1)) {
+				if !genericGet && !packedGet && !referencePackedGet && !referenceGet && !abstractGet && ((!state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial) || imm.Kind != wasm.InstrArrayGet || (!state.gcArrayFixedOfficial && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index > 1)) {
 					return integerSummary{}, unsupported("array.get outside exact gc array local profile")
 				}
 				if _, err = popClass(false); err != nil {
@@ -2112,23 +2119,31 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						} else if imm.Kind == wasm.InstrArrayGetU {
 							helper = gcArrayGetU
 						}
-						emit.gcArrayGetI32(h, imm.Index, helper)
+						emit.gcArrayGetScalar(h, imm.Index, helper, genericWide)
 					}
 				}
 				if referenceGet && imm.Index != 0 {
 					err = pushReference()
 				} else {
-					err = push(false)
+					err = push(genericWide)
 				}
 				if err != nil {
 					return integerSummary{}, err
 				}
 			case wasm.InstrArraySet:
+				genericStorage, genericMutable, genericArray := referenceTypes.rootedArrayStorage(imm.Index)
+				genericSet := state.gcRootedScalar && genericArray && genericMutable
+				genericWide := genericSet && !genericStorage.Packed() && scalarWide(genericStorage.Val())
 				referenceSet := state.gcArrayReference && imm.Index == 2
-				if !referenceSet && ((!state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial && !state.gcArrayPackedData) || (state.gcArrayPackedData && imm.Index != 1) || (!state.gcArrayFixedOfficial && !state.gcArrayPackedData && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index != 1)) {
+				if !genericSet && !referenceSet && ((!state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial && !state.gcArrayPackedData) || (state.gcArrayPackedData && imm.Index != 1) || (!state.gcArrayFixedOfficial && !state.gcArrayPackedData && imm.Index != 0) || (state.gcArrayFixedOfficial && imm.Index != 1)) {
 					return integerSummary{}, unsupported("array.set outside exact gc array local profile")
 				}
-				if _, err = popClass(referenceSet); err != nil {
+				if referenceSet {
+					_, err = popClass(true)
+				} else {
+					err = popWidth(genericWide)
+				}
+				if err != nil {
 					return integerSummary{}, err
 				}
 				if _, err = popClass(false); err != nil {
@@ -2145,11 +2160,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					if referenceSet {
 						emit.gcArraySetRef(h, imm.Index)
 					} else {
-						emit.gcArraySetI32(h, imm.Index)
+						emit.gcArraySetScalar(h, imm.Index, genericWide)
 					}
 				}
 			case wasm.InstrArrayLen:
-				if !state.gcRefTestAbstract && !state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial && !state.gcArrayPackedData && !state.gcArrayReference {
+				if !state.gcRootedScalar && !state.gcRefTestAbstract && !state.gcArrayLocal && !state.gcArrayUniform && !state.gcArrayFixedLocal && !state.gcArrayFixedOfficial && !state.gcArrayPackedData && !state.gcArrayReference {
 					return integerSummary{}, unsupported("array.len outside exact gc array local profile")
 				}
 				if _, err = popClass(true); err != nil {

@@ -158,6 +158,9 @@ func TestRV64RootedMixedScalarStructExecutes(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer compiled.Close()
+			if !rv64FreshRootedGC(compiled.executionView()) {
+				t.Fatal("fresh rooted array compiler receipt is missing")
+			}
 			instance, err := Instantiate(compiled, InstantiateOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -209,6 +212,123 @@ func TestRV64RootedPackedScalarStructExecutes(t *testing.T) {
 	want := []uint64{0xffffffff, 0xff, 0xffffffff, 0xffff}
 	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, want) {
 		t.Fatalf("run()=%#x err=%v want=%#x", got, err, want)
+	}
+}
+
+func rootedWideScalarArrayModule() []byte {
+	types := [][]byte{
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I64, wasm.I32}),
+		{0x5e, 0x7e, 0x01},
+	}
+	body := []byte{
+		0x01, 0x01, 0x64, 0x01,
+		0x42, 0x07, 0x41, 0x02, 0xfb, 0x06, 0x01, 0x21, 0x00,
+		0x20, 0x00, 0x41, 0x01, 0x42, 0x2a, 0xfb, 0x0e, 0x01,
+		0x20, 0x00, 0x41, 0x01, 0xfb, 0x0b, 0x01,
+		0x20, 0x00, 0xfb, 0x0f,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func rootedPackedScalarArrayModule() []byte {
+	types := [][]byte{
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32}),
+		{0x5e, byte(wasm.PackI8), 0x01},
+	}
+	body := []byte{
+		0x01, 0x01, 0x64, 0x01,
+		0x41, 0x02, 0xfb, 0x07, 0x01, 0x21, 0x00,
+		0x20, 0x00, 0x41, 0x01, 0x41, 0xff, 0x01, 0xfb, 0x0e, 0x01,
+		0x20, 0x00, 0x41, 0x01, 0xfb, 0x0c, 0x01,
+		0x20, 0x00, 0x41, 0x01, 0xfb, 0x0d, 0x01,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedScalarArraysExecute(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		source []byte
+		want   []uint64
+	}{
+		{name: "wide", source: rootedWideScalarArrayModule(), want: []uint64{42, 2}},
+		{name: "packed", source: rootedPackedScalarArrayModule(), want: []uint64{0xffffffff, 0xff}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled, err := Compile(rv64RootedScalarConfig(), tc.source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, tc.want) {
+				t.Fatalf("run()=%#x err=%v want=%#x", got, err, tc.want)
+			}
+		})
+	}
+}
+
+func rootedScalarArrayStressModule() []byte {
+	types := [][]byte{
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}),
+		{0x5e, 0x7e, 0x01},
+	}
+	body := []byte{
+		0x01, 0x01, 0x64, 0x01,
+		0x42, 0x2a, 0x41, 0x01, 0xfb, 0x06, 0x01, 0x21, 0x00,
+		0x41, 0x01, 0xfb, 0x07, 0x01, 0x1a,
+		0x20, 0x00, 0x41, 0x00, 0xfb, 0x0b, 0x01,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedScalarArrayStressGCLifetime(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarArrayStressModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
+	defer rt.Close()
+	module, err := rt.Module(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := rt.Instantiate(context.Background(), module, WithImports(NewImports()), WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}))
+	module.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if instance.gc == nil || !instance.gc.CollectsOnAllocation() {
+		t.Fatal("generic rooted array stress collector is not active")
+	}
+	for iteration := range 16 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
+			t.Fatalf("iteration %d: run()=%v err=%v want=[42]", iteration, got, err)
+		}
 	}
 }
 

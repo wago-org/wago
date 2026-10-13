@@ -219,9 +219,9 @@ func (f *integerEmitter) gcStructAllocation(base int, typeIndex uint32, fieldCou
 
 // gcUniformArrayAllocation calls the exact pointer-free array.new helper. Both
 // i32 operands are zero-normalized before filling their complete arena slots.
-func (f *integerEmitter) gcUniformArrayAllocation(base int, typeIndex uint32, hiddenRefs []bool) {
+func (f *integerEmitter) gcUniformArrayAllocation(base int, typeIndex uint32, wide bool, hiddenRefs []bool) {
 	f.restoreCallTransport()
-	f.Load(5, f.SpillOffset(base), false)
+	f.Load(5, f.SpillOffset(base), wide)
 	f.a.Sd(enc.X5, enc.X10, 0) // uniform value
 	f.Load(5, f.SpillOffset(base+1), false)
 	f.a.Sd(enc.X5, enc.X10, 8) // length
@@ -412,7 +412,7 @@ func (f *integerEmitter) gcArrayCopyI32(base int, dstType, srcType uint32) {
 	f.restoreCallTransport()
 }
 
-func (f *integerEmitter) gcArrayGetI32(base int, typeIndex, helper uint32) {
+func (f *integerEmitter) gcArrayGetScalar(base int, typeIndex, helper uint32, wide bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0)
@@ -426,8 +426,12 @@ func (f *integerEmitter) gcArrayGetI32(base int, typeIndex, helper uint32) {
 	if f.mode.production {
 		result = enc.X13
 	}
-	f.a.Lwu(enc.X5, result, 0)
-	f.Store(f.SpillOffset(base), 5, false)
+	if wide {
+		f.a.Ld(enc.X5, result, 0)
+	} else {
+		f.a.Lwu(enc.X5, result, 0)
+	}
+	f.Store(f.SpillOffset(base), 5, wide)
 }
 
 func (f *integerEmitter) gcArrayGetRef(base int, typeIndex uint32) {
@@ -448,13 +452,13 @@ func (f *integerEmitter) gcArrayGetRef(base int, typeIndex uint32) {
 	f.Store(f.SpillOffset(base), 5, true)
 }
 
-func (f *integerEmitter) gcArraySetI32(base int, typeIndex uint32) {
+func (f *integerEmitter) gcArraySetScalar(base int, typeIndex uint32, wide bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0)
 	f.Load(5, f.SpillOffset(base+1), false)
 	f.a.Sd(enc.X5, enc.X10, 8)
-	f.Load(5, f.SpillOffset(base+2), false)
+	f.Load(5, f.SpillOffset(base+2), wide)
 	f.a.Sd(enc.X5, enc.X10, 16)
 	f.a.Constant32(enc.X5, typeIndex)
 	f.a.Sd(enc.X5, enc.X10, 24)

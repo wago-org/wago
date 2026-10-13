@@ -27,7 +27,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			return false
 		}
 	}
-	hasStruct := false
+	hasAggregate := false
 	flatTypes := 0
 	for i := range m.Types {
 		group := &m.Types[i]
@@ -54,7 +54,17 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 					return false
 				}
 			}
-			hasStruct = true
+			hasAggregate = true
+		case wasm.CompArray:
+			storage := sub.Comp.Array.Storage()
+			if storage.Packed() {
+				if storage.Pack() != wasm.PackI8 && storage.Pack() != wasm.PackI16 {
+					return false
+				}
+			} else if !scalarType(storage.Val(), true) {
+				return false
+			}
+			hasAggregate = true
 		case wasm.CompFunc:
 			if len(sub.Comp.Params) > 256 || len(sub.Comp.Results) > 256 {
 				return false
@@ -71,7 +81,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		flatTypes++
 	}
-	if !hasStruct || flatTypes > MaxFunctions || len(m.FuncTypes) != len(m.Code) {
+	if !hasAggregate || flatTypes > MaxFunctions || len(m.FuncTypes) != len(m.Code) {
 		return false
 	}
 	for _, typ := range m.FuncTypes {
@@ -176,6 +186,15 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 			if !valueTypes() || !valueTypes() {
 				return false
 			}
+		case 0x5e:
+			storage, err := r.Byte()
+			if err != nil || storage != byte(wasm.PackI8) && storage != byte(wasm.PackI16) && (storage < 0x7c || storage > 0x7f) {
+				return false
+			}
+			mut, err := r.Byte()
+			if err != nil || mut > 1 {
+				return false
+			}
 		default:
 			// Includes the explicit rec-group marker 0x4e and subtype prefixes.
 			return false
@@ -196,4 +215,36 @@ func rootedScalarHelperSlots(m *wasm.Module) int {
 		slots = max(slots, len(group.SubTypes[0].Comp.Fields)+1)
 	}
 	return slots
+}
+
+func rootedScalarHelperProfile(m *wasm.Module) (structs, arrays, ok bool) {
+	if m == nil {
+		return false, false, false
+	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	for i := range m.Code {
+		r := wasm.NewReader(m.Code[i].BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return false, false, false
+			}
+			var imm wasm.InstructionImmediate
+			if err = classifier.ClassifyInto(r, op, &imm); err != nil {
+				return false, false, false
+			}
+			switch imm.Kind {
+			case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet,
+				wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
+				structs = true
+			case wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed,
+				wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU,
+				wasm.InstrArraySet, wasm.InstrArrayLen, wasm.InstrArrayFill,
+				wasm.InstrArrayCopy, wasm.InstrArrayInitData, wasm.InstrArrayInitElem,
+				wasm.InstrArrayNewData, wasm.InstrArrayNewElem:
+				arrays = true
+			}
+		}
+	}
+	return structs, arrays, true
 }
