@@ -102,6 +102,7 @@ func railshotConfigureGCTypeSubtypingTransitiveMismatchLink(uint8, *railshotComp
 func railshotGCTypeSubtypingNonFlatExportSource([]byte) bool { return false }
 func railshotConfigureGCTypeSubtypingNonFlatExport(bool, *railshotCompileOptions) {
 }
+func railshotGCRootedScalarSource([]byte) bool                              { return false }
 func railshotGCStructGetSource([]byte) bool                                 { return false }
 func railshotConfigureGCStructGet(bool, *railshotCompileOptions)            {}
 func railshotGCStructMutationSource([]byte) bool                            { return false }

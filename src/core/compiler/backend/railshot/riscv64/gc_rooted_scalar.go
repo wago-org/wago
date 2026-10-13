@@ -123,6 +123,10 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 	return err == nil && admitRV64GCRootedScalarModule(m)
 }
 
+// AdmitGCRootedScalarSource reports the bounded generic struct source witness.
+// The decoded backend and root-plan authenticator independently recheck it.
+func AdmitGCRootedScalarSource(data []byte) bool { return admitRV64GCRootedScalarWire(data) }
+
 func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 	r := wasm.ReaderFrom(payload)
 	count, err := r.U32()

@@ -56,7 +56,7 @@ func TestTypedSelectReferenceImmediates(t *testing.T) {
 		for _, nullable := range []bool{false, true} {
 			for _, same := range []bool{true, false} {
 				t.Run(fmt.Sprintf("index=%d/nullable=%t/same=%t", index, nullable, same), func(t *testing.T) {
-					compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), typedSelectReferenceModule(index, nullable, same))
+					compiled, err := Compile(typedSelectReferenceConfig(), typedSelectReferenceModule(index, nullable, same))
 					if err != nil {
 						t.Fatal(err)
 					}

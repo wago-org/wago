@@ -1176,6 +1176,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	gcTypeSubtypingCrossGroupMismatchLinkSourceVariant := railshotGCTypeSubtypingCrossGroupMismatchLinkSource(wasmBytes)
 	gcTypeSubtypingTransitiveMismatchLinkSourceVariant := railshotGCTypeSubtypingTransitiveMismatchLinkSource(wasmBytes)
 	exactGCTypeSubtypingNonFlatExportSource := railshotGCTypeSubtypingNonFlatExportSource(wasmBytes)
+	exactGCRootedScalarSource := railshotGCRootedScalarSource(wasmBytes)
 	exactGCStructGetSource := railshotGCStructGetSource(wasmBytes)
 	exactGCStructMutationSource := railshotGCStructMutationSource(wasmBytes)
 	exactGCStructNullSource := railshotGCStructNullSource(wasmBytes)
@@ -1256,7 +1257,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			product, ok = stagedGCStructGeneric, true
 		}
 		if ok {
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCStructRefEq && exactGCRefEqSource) && !(product == stagedGCStructRefTestTable && exactGCRefTestTableSource) && !(product == stagedGCStructRefTestConcrete && exactGCRefTestConcreteSource) && !(product == stagedGCStructRefTestAbstract && exactGCRefTestAbstractSource) && !(product == stagedGCStructExtern && exactGCExternSource) && !(product == stagedGCStructRefCastAbstract && exactGCRefCastAbstractSource) && !(product == stagedGCStructRefCastConcrete && exactGCRefCastConcreteSource) && !(product == stagedGCStructBrOnCastAbstract && exactGCBrOnCastAbstractSource) && !(product == stagedGCStructBrOnCastFailAbstract && exactGCBrOnCastFailAbstractSource) && !(product == stagedGCStructBrOnCastConcrete && exactGCBrOnCastConcreteSource) && !(product == stagedGCStructBrOnCastFailConcrete && exactGCBrOnCastFailConcreteSource) && !(product == stagedGCStructBrOnCastNullability && exactGCBrOnCastNullabilitySource) && !(product == stagedGCStructBrOnCastFailNullability && exactGCBrOnCastFailNullabilitySource) && !(product == stagedGCStructNumericLocal && (exactGCStructGetSource || exactGCStructMutationSource)) && !(product == stagedGCStructNullDereference && exactGCStructNullSource) && !(product == stagedGCStructPacked && exactGCStructPackedSource) && !(product == stagedGCStructBasic && exactGCStructBasicSource) && !(product == stagedGCStructNumericGlobals && exactGCStructNumericGlobalsSource) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCStructGeneric && exactGCRootedScalarSource) && !(product == stagedGCStructRefEq && exactGCRefEqSource) && !(product == stagedGCStructRefTestTable && exactGCRefTestTableSource) && !(product == stagedGCStructRefTestConcrete && exactGCRefTestConcreteSource) && !(product == stagedGCStructRefTestAbstract && exactGCRefTestAbstractSource) && !(product == stagedGCStructExtern && exactGCExternSource) && !(product == stagedGCStructRefCastAbstract && exactGCRefCastAbstractSource) && !(product == stagedGCStructRefCastConcrete && exactGCRefCastConcreteSource) && !(product == stagedGCStructBrOnCastAbstract && exactGCBrOnCastAbstractSource) && !(product == stagedGCStructBrOnCastFailAbstract && exactGCBrOnCastFailAbstractSource) && !(product == stagedGCStructBrOnCastConcrete && exactGCBrOnCastConcreteSource) && !(product == stagedGCStructBrOnCastFailConcrete && exactGCBrOnCastFailConcreteSource) && !(product == stagedGCStructBrOnCastNullability && exactGCBrOnCastNullabilitySource) && !(product == stagedGCStructBrOnCastFailNullability && exactGCBrOnCastFailNullabilitySource) && !(product == stagedGCStructNumericLocal && (exactGCStructGetSource || exactGCStructMutationSource)) && !(product == stagedGCStructNullDereference && exactGCStructNullSource) && !(product == stagedGCStructPacked && exactGCStructPackedSource) && !(product == stagedGCStructBasic && exactGCStructBasicSource) && !(product == stagedGCStructNumericGlobals && exactGCStructNumericGlobalsSource) {
 				return nil, fmt.Errorf("compile: unsupported collector-backed struct product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcStructProduct = product
@@ -3495,6 +3496,7 @@ func (c *Compiled) validateArenaFootprint() error {
 	}
 	hostCallBytes := 0
 	syncHostSlots := wruntime.MaxHostArity
+	internalHelperSlots := 0
 	for i, sig := range c.importFuncSigs {
 		paramSlots, slotErr := valTypesSlots(sig.Params)
 		if slotErr != nil {
@@ -3518,6 +3520,13 @@ func (c *Compiled) validateArenaFootprint() error {
 		}
 		if gcSlots > syncHostSlots {
 			syncHostSlots = gcSlots
+		}
+		internalHelperSlots, slotErr = gcInternalHelperSlotCapacity(c.GCTypeDescs, c.usesGCStructHelpers(), c.usesGCArrayHelpers())
+		if slotErr != nil {
+			return wrapContextError("compiled metadata invalid", slotErr)
+		}
+		if internalHelperSlots > maxParams {
+			maxParams = internalHelperSlots
 		}
 	}
 	if c.syncHostSlots != 0 && int(c.syncHostSlots) != syncHostSlots {

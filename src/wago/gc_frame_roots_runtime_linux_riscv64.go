@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -16,11 +17,10 @@ func (in *Instance) gcCollectFrameRoots(public *gcPublicState) gcNativeFrameRoot
 }
 
 // gcHelperRoots publishes exact RV64 native roots while a synchronous helper
-// has parked the guest. The RV64 park frame records SP after the function
-// prologue, which is the stable base used by compiler root offsets. Unlike
-// AMD64 and ARM64, each generated frame stores its return address in word zero
-// of the frame itself; gcNativeFrameRoots uses the RV64 layout to follow that
-// chain without applying a return-address or frame-record bias.
+// has parked the guest. The RV64 park frame records the synchronous helper
+// thunk's SP. The thunk owns one fixed call-frame header below the calling Wasm
+// frame, so compiler root offsets start after that header. Unlike AMD64 and
+// ARM64, each generated Wasm frame stores its return address in word zero.
 func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointID uint32, stack *coreruntime.Engine) gc.RootSet {
 	plan := in.c.genericGCFrameRoots()
 	if plan == nil {
@@ -47,9 +47,10 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	}
 	ctrlHead := unsafe.Slice((*byte)(offHeapPtr(ctrl+abi.SyncHostCallSavedNativeSPOffset)), 8)
 	base := uintptr(binary.LittleEndian.Uint64(ctrlHead))
-	if base == 0 {
+	if base == 0 || base > ^uintptr(0)-shared.RV64CallFrameHeaderBytes {
 		panic(gcHelperFailuref("generic GC frame-root control has invalid saved SP %#x", base))
 	}
+	base += shared.RV64CallFrameHeaderBytes
 	if !gcNativeFrameFitsStack(base, frameBytes, stack) {
 		panic(gcHelperFailuref("generic GC native frame exceeds stack bounds"))
 	}

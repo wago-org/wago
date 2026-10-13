@@ -217,6 +217,10 @@ func railshotGCTypeSubtypingNonFlatExportSource(data []byte) bool {
 	return railshot.GCTypeSubtypingNonFlatExportSource(data)
 }
 
+func railshotGCRootedScalarSource(data []byte) bool {
+	return railshot.AdmitGCRootedScalarSource(data)
+}
+
 func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
 
 func railshotGCStructMutationSource(data []byte) bool {
