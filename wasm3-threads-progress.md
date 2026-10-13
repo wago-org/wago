@@ -1812,3 +1812,79 @@ including before/after emitted loops. SIMD still recomputes the address and
 uses an extra instruction for lane displacement. General address reuse and
 encoding improvements are the next candidates, retaining actual shared loads
 and full original bounds/traps. Overall feature-by-feature parity remains open.
+
+## Adjacent SIMD address reuse
+
+`e9185d74` adds controllable `simd-store-load-address` to ARM64/AMD64. The compiler
+matches an adjacent load's source expression against the store's deferred
+address tree. Only unchanged local reads, constants and nontrapping integer
+arithmetic qualify, with a 32-node/256-byte budget. The selected memory and
+static offset must match. The original expression is evaluated normally for
+the vector store; its full 16-byte access check then covers the identical
+following load. Linear memory cannot shrink and the matched expression cannot
+call, grow memory or write locals. Custom instruction and guard-mode paths
+fall back. The load remains an actual native memory instruction, optionally
+using the existing lane-extraction optimization; no stored value is forwarded.
+No persistent compiler/runtime fields are added.
+
+The emitted loop removes the repeated AND/shift/add and memory-base copy,
+while retaining the scalar load after the vector store. Native encoding checks
+verify actual integer/vector reads on ARM64. Semantic tests cover every lane,
+signed/unsigned integers, negative-zero/NaN float bits, memory32/64,
+shared/unshared primary and secondary memories, both ABIs, codec products,
+independent address-reuse/extraction overrides and guard configurations.
+Mismatched expressions/memories/offsets, local changes between accesses, and
+value expressions that mutate an earlier address local preserve their original
+behavior. Full-span and address-overflow traps are checked. Profiling/source-map
+builds pass on both architectures and attribute the combined read to its
+original load opcode.
+
+Native guarded race, broader tests and both pinned official suites pass on each
+architecture: Core 3 2,226 modules/58,238 assertions; threads 51 modules/312
+assertions, with no failures/skips/gaps. Full ARM64 statistics retains exactly
+the same 44 parent failure names.
+
+Fresh production measurements retain eight identical contracts and interleaved
+three-process comparisons against checked/unchecked w2c2. Each process uses
+two warmups and five independently verified >=50 ms batches. All 104 rows
+pass the oracle and duration qualification.
+
+| Contract | Wago 96cbe746 ns | Wago e9185d74 ns | Checked w2c2 ns | Unchecked w2c2 ns |
+| --- | ---: | ---: | ---: | ---: |
+| Ordinary load/store | 103,347 | 101,855 | 2,201,845 | 103,130 |
+| SIMD load/store | 147,903 | 101,376 | 2,209,830 | 108,308 |
+| Bulk fill | 285,352 | 282,170 | 2,085,739 | 192,971 |
+| Atomic load/store | 153,861 | 152,700 | 2,212,460 | 171,947 |
+| Atomic RMW add | 269,237 | 271,228 | 2,232,815 | 233,987 |
+| Compare exchange | 309,690 | 311,870 | 2,219,051 | 292,041 |
+| Wait mismatch + notify | 650,369 | 645,156 | 5,567,902 | 2,007,018 |
+| Fence | 157.27 | 159.48 | 300.59 | 303.91 |
+
+SIMD improves 31.46%, reaching measured parity for this contract: its
+current/unchecked ratio is 0.936x. Current process medians are
+101,300/103,645/101,376 ns versus 111,381/108,308/106,488 ns unchecked.
+Current SIMD within-process CVs are 0.0007–0.0022; one checked SIMD process
+has CV 0.1273 and its variability remains in the report. Ordinary remains at
+0.988x. Small other before/after differences have no significance claim.
+Bulk/RMW/CAS retain unchecked-peer gaps of 1.462x/1.159x/1.068x. These local
+contracts do not establish feature-wide or cross-platform performance parity.
+
+Production compile captures use GOMAXPROCS=1 and three alternating processes
+per revision, with no overlapping builds/tests/timing captures. Core 3's
+21,800 compiles take 414.691 -> 422.137 ms (+1.80%), with effectively unchanged
+allocations and code bytes, retired instructions +0.60%, and peak RSS
+14,336,000 -> 14,319,616 (-0.11%). Threads' 2,700 compiles take
+48.197 -> 49.063 ms (+1.80%), with unchanged allocation bytes/counts,
+code 1,638,400 -> 1,636,800 (-0.10%), and peak RSS
+12,959,744 -> 12,992,512 (+0.25%). Scalar/Core 3 scalar/imported-worker
+compile medians change +0.27%/-0.55%/-0.26%, with unchanged allocation counts.
+
+Tracked `docs/benchmarks/wasm3-2026-10-12/simd-address-results.json` records
+source fingerprints, per-process medians, compile costs and evidence hashes.
+The remaining bulk loop still spills the accumulator at its block, performs
+a live-extent check, constructs a repeated byte with integer multiplication,
+and emits overlapping GPR chunk stores. The peer broadcasts that byte and
+uses two vector stores plus one byte store. Broader straight-line block
+admission for native bulk operations, minimum-bound proofs and vector fill
+lowering are concrete next candidates. Other feature compositions and overall
+feature-by-feature parity remain open.

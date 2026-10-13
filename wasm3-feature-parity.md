@@ -402,3 +402,26 @@ allocations and peak RSS +0.99%. Threads latency is +0.52%, allocation bytes
 `straight-block-results.json` preserves both cohorts and emitted-loop hashes.
 General address reuse is the next SIMD candidate; broader compositions and
 feature-by-feature parity remain open.
+
+### Adjacent SIMD address reuse
+
+`e9185d74` reuses a vector store's address for an adjacent real load when a
+bounded proof finds the same nontrapping local/constant expression, selected
+memory and offset. It preserves the original full-span store check and actual
+read, adds no persistent fields, and falls back for guards/custom instructions.
+Every extraction lane, float edge bits, changed/mismatched addresses, local
+snapshots, memory32/64, shared/unshared primary/secondary memories, both ABIs,
+codec products and profiling are covered. Both native architectures pass
+native guarded race tests, pinned Core 3 and threads; ARM64 retains its same
+44 known statistics failures.
+
+The fresh wasm.fyi SIMD contract improves 31.46%, from 147,903 to 101,376 ns,
+versus unchecked w2c2 at 108,308 ns (0.936x). Ordinary also retains measured
+parity on its contract (0.988x). Bulk/RMW/CAS still trail by 1.462x/1.159x/
+1.068x, and broader feature-wide and cross-platform parity remain unproven.
+
+Core 3 and threads compile latency are each approximately +1.80% in three
+alternating processes; allocations are effectively unchanged, and peak RSS
+changes -0.11%/+0.25%. The tracked `simd-address-results.json` preserves exact
+source fingerprints, process medians and emitted-loop hashes. Bulk-fill
+spills, bounds and scalar chunk lowering are the next measured gap to address.
