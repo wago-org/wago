@@ -171,6 +171,47 @@ func TestRV64RootedMixedScalarStructExecutes(t *testing.T) {
 	}
 }
 
+func rootedPackedScalarStructModule() []byte {
+	types := [][]byte{
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+		{0x5f, 0x02, byte(wasm.PackI8), 0x01, byte(wasm.PackI16), 0x01},
+	}
+	body := []byte{
+		0x01, 0x01, 0x64, 0x01,
+		0x41, 0x01, 0x41, 0x02, 0xfb, 0x00, 0x01, 0x21, 0x00,
+		0x20, 0x00, 0x41, 0xff, 0x01, 0xfb, 0x05, 0x01, 0x00,
+		0x20, 0x00, 0x41, 0xff, 0xff, 0x03, 0xfb, 0x05, 0x01, 0x01,
+		0x20, 0x00, 0xfb, 0x03, 0x01, 0x00,
+		0x20, 0x00, 0xfb, 0x04, 0x01, 0x00,
+		0x20, 0x00, 0xfb, 0x03, 0x01, 0x01,
+		0x20, 0x00, 0xfb, 0x04, 0x01, 0x01,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedPackedScalarStructExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedPackedScalarStructModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	want := []uint64{0xffffffff, 0xff, 0xffffffff, 0xffff}
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, want) {
+		t.Fatalf("run()=%#x err=%v want=%#x", got, err, want)
+	}
+}
+
 func rootedScalarBoundaryStructModule(fieldCount int) []byte {
 	fields := []byte{0x5f}
 	fields = append(fields, wasmtest.ULEB(uint32(fieldCount))...)

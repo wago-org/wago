@@ -201,7 +201,7 @@ func (f *integerEmitter) gcDefaultAllocation(helper uint32, base int, array bool
 func (f *integerEmitter) gcStructAllocation(base int, typeIndex uint32, fieldCount int, fields []wasm.FieldType, hiddenRefs []bool) {
 	f.restoreCallTransport()
 	for i := 0; i < fieldCount; i++ {
-		wide := fields != nil && scalarWide(fields[i].Storage().Val())
+		wide := fields != nil && !fields[i].Storage().Packed() && scalarWide(fields[i].Storage().Val())
 		f.Load(5, f.SpillOffset(base+i), wide)
 		f.a.Sd(enc.X5, enc.X10, int32(i*8))
 	}

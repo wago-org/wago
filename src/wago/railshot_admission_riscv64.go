@@ -57,10 +57,22 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			}
 			kinds := make([]gc.StorageKind, len(typ.Fields))
 			for field := range typ.Fields {
-				if typ.Fields[field].Storage.Packed || typ.Fields[field].Storage.Value.Ref != (ReferenceTypeDescriptor{}) {
+				storage := typ.Fields[field].Storage
+				if storage.Packed {
+					switch storage.PackedType {
+					case PackedTypeI8:
+						kinds[field] = gc.StorageI8
+					case PackedTypeI16:
+						kinds[field] = gc.StorageI16
+					default:
+						return false
+					}
+					continue
+				}
+				if storage.Value.Ref != (ReferenceTypeDescriptor{}) {
 					return false
 				}
-				switch typ.Fields[field].Storage.Value.Kind {
+				switch storage.Value.Kind {
 				case ValueTypeI32:
 					kinds[field] = gc.StorageI32
 				case ValueTypeI64:

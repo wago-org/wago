@@ -1795,7 +1795,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				for i := fieldCount - 1; i >= 0; i-- {
 					wide := false
 					if genericFields != nil {
-						wide = scalarWide(genericFields[i].Storage().Val())
+						storage := genericFields[i].Storage()
+						wide = !storage.Packed() && scalarWide(storage.Val())
 					}
 					if err = popWidth(wide); err != nil {
 						return integerSummary{}, err
@@ -1827,8 +1828,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU:
-				genericWide, genericField := referenceTypes.rootedStructFieldWide(imm.Index, imm.Index2)
-				genericGet := state.gcRootedScalar && genericField && imm.Kind == wasm.InstrStructGet
+				genericStorage, genericField := referenceTypes.rootedStructFieldStorage(imm.Index, imm.Index2)
+				genericPacked := genericField && genericStorage.Packed()
+				genericGet := state.gcRootedScalar && genericField && (genericPacked && imm.Kind != wasm.InstrStructGet || !genericPacked && imm.Kind == wasm.InstrStructGet)
+				genericWide := genericGet && !genericPacked && scalarWide(genericStorage.Val())
 				regularGet := (state.gcStructGet || state.gcStructMutation) && imm.Index == 0 && imm.Index2 == 0 && imm.Kind == wasm.InstrStructGet
 				basicGet := state.gcStructBasic && imm.Index == 0 && imm.Index2 < 2 && imm.Kind == wasm.InstrStructGet
 				nullGet := state.gcStructNull && imm.Index == 0 && imm.Index2 == 1
@@ -1846,7 +1849,13 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				if live && emit != nil {
 					if genericGet {
-						emit.gcStructGetScalar(h, imm.Index, imm.Index2, gcStructGet, genericWide)
+						helper := gcStructGet
+						if genericPacked && imm.Kind == wasm.InstrStructGetS {
+							helper = gcStructGetS
+						} else if genericPacked {
+							helper = gcStructGetU
+						}
+						emit.gcStructGetScalar(h, imm.Index, imm.Index2, helper, genericWide)
 					} else if regularGet {
 						emit.gcStructGetField0(h)
 					} else if basicGet {
@@ -1866,11 +1875,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			case wasm.InstrStructSet:
 				genericSet := state.gcRootedScalar && referenceTypes.mutableStructField(imm.Index, imm.Index2)
-				genericWide, _ := referenceTypes.rootedStructFieldWide(imm.Index, imm.Index2)
+				genericStorage, _ := referenceTypes.rootedStructFieldStorage(imm.Index, imm.Index2)
+				genericWide := genericSet && !genericStorage.Packed() && scalarWide(genericStorage.Val())
 				if !genericSet && !(state.gcStructMutation && imm.Index == 0 && imm.Index2 == 0) && !(state.gcStructNull && imm.Index == 0 && imm.Index2 == 1) && !(state.gcStructPacked && imm.Index == 0 && (imm.Index2 == 1 || imm.Index2 == 3)) && !(state.gcStructBasic && imm.Index == 0 && imm.Index2 == 1) {
 					return integerSummary{}, unsupported("struct.set outside exact gc struct profile")
 				}
-				if err = popWidth(genericSet && genericWide); err != nil {
+				if err = popWidth(genericWide); err != nil {
 					return integerSummary{}, err
 				}
 				if _, err = popClass(true); err != nil {
@@ -1881,7 +1891,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcStructSetScalar(h, imm.Index, imm.Index2, genericSet && genericWide)
+					emit.gcStructSetScalar(h, imm.Index, imm.Index2, genericWide)
 				}
 			case wasm.InstrArrayNew:
 				if !(state.gcArrayUniform && imm.Index == 0) && !(state.gcRefTestAbstract && imm.Index == 2) {

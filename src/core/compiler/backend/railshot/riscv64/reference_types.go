@@ -90,7 +90,12 @@ func (types internalReferenceTypes) rootedStruct(index uint32) bool {
 		return false
 	}
 	for _, field := range signature.Fields {
-		if field.Storage().Packed() || !scalarType(field.Storage().Val(), true) {
+		storage := field.Storage()
+		if storage.Packed() {
+			if storage.Pack() != wasm.PackI8 && storage.Pack() != wasm.PackI16 {
+				return false
+			}
+		} else if !scalarType(storage.Val(), true) {
 			return false
 		}
 	}
@@ -124,12 +129,12 @@ func (types internalReferenceTypes) rootedStructFields(index uint32) ([]wasm.Fie
 	return signature.Fields, true
 }
 
-func (types internalReferenceTypes) rootedStructFieldWide(typeIndex, fieldIndex uint32) (bool, bool) {
+func (types internalReferenceTypes) rootedStructFieldStorage(typeIndex, fieldIndex uint32) (wasm.StorageType, bool) {
 	signature := types.rootedStructType(typeIndex)
 	if !types.rootedStruct(typeIndex) || uint64(fieldIndex) >= uint64(len(signature.Fields)) {
-		return false, false
+		return wasm.StorageType{}, false
 	}
-	return scalarWide(signature.Fields[fieldIndex].Storage().Val()), true
+	return signature.Fields[fieldIndex].Storage(), true
 }
 
 func (types internalReferenceTypes) rootedStructField(typeIndex, fieldIndex uint32) bool {
