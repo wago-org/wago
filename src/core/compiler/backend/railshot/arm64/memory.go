@@ -2269,11 +2269,16 @@ func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
 		}
 		f.pinned = f.pinned.add(pat)
 	}
+	minimumAccess := f.minimumMemoryAccess(memoryIndex, 0, n)
 	dst, dstOwned := f.materializeRead(f.popValue())
 	if !f.memoryAddr64(memoryIndex) {
 		f.a.MovReg32(dst, dst)
 	}
-	f.bulkBoundsCheck(dst, n, memoryIndex)
+	if minimumAccess {
+		f.stats.peep("memory-min-bounds")
+	} else {
+		f.bulkBoundsCheck(dst, n, memoryIndex)
+	}
 	avoid := maskOf(dst)
 	if pat != regNone {
 		avoid = avoid.add(pat)

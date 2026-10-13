@@ -49,3 +49,29 @@ func TestMemoryMinimumBoundsExpressionProof(t *testing.T) {
 		}
 	}
 }
+
+func TestMemoryMinimumBoundsConstantFill(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, shared := range []bool{false, true} {
+		for _, enabled := range []bool{false, true} {
+			body := []byte{0, 0x20, 0, 0x41, 0xff, 0x3f, 0x71, 0x41, 2, 0x74, 0x41, 1, 0x6a, 0x41, 7, 0x41, 33, 0xfc, 11, 0, 0x41, 42, 0x0b}
+			m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+			m.Memories[0].Shared = shared
+			m.Memories[0].Limits.HasMax = true
+			m.Memories[0].Limits.Max = 2
+			var stats ModuleStats
+			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"memory-min-bounds": enabled}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			cm.CodeImage.Close()
+			want := 0
+			if enabled {
+				want = 1
+			}
+			if got := stats.Funcs[0].Peephole["memory-min-bounds"]; got != want {
+				t.Fatalf("shared=%t enabled=%t: fill proofs=%d want=%d", shared, enabled, got, want)
+			}
+		}
+	}
+}

@@ -2082,11 +2082,16 @@ func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
 		}
 		f.pinned = f.pinned.add(pat)
 	}
+	minimumAccess := f.minimumMemoryAccess(memoryIndex, 0, n)
 	dst, dstOwned := f.materializeRead(f.popValue())
 	if !f.memoryAddr64(memoryIndex) {
 		f.a.MovRegReg32(dst, dst)
 	}
-	f.bulkBoundsCheck(dst, n, memoryIndex)
+	if minimumAccess {
+		f.stats.peep("memory-min-bounds")
+	} else {
+		f.bulkBoundsCheck(dst, n, memoryIndex)
+	}
 	base, baseOwned := f.bulkMemory0Base(maskOf(dst, pat))
 	var chunkBuf [8][2]int
 	for _, c := range bulkChunks(n, &chunkBuf) {
