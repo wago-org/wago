@@ -882,98 +882,21 @@ func floatBits2p63(f64 bool) uint64 { return floatBits(math.Ldexp(1, 63), f64) }
 
 // --- saturating float→int truncation (0xFC 0-7): NaN→0, out-of-range clamps ---
 
+// AArch64 FCVTZS/FCVTZU already provide WebAssembly's saturating semantics:
+// truncate toward zero, clamp to the destination range, and map NaN to zero.
+// Reading the operand allows a pinned float local/global to stay borrowed.
 func (f *fn) truncSat(f64src, dstWide, signed bool) {
-	x := f.materializeF(f.popValue())
-	f.fpinned = f.fpinned.add(x)
+	x, owned := f.operandRegF(f.popValue())
 	r := f.allocReg(0)
-	f.pinned = f.pinned.add(r)
-	switch {
-	case signed:
-		f.truncSatSigned(x, r, f64src, dstWide)
-	case dstWide:
-		f.truncSatU64(x, r, f64src)
-	default:
-		f.truncSatU32(x, r, f64src)
-	}
-	f.pinned = f.pinned.remove(r)
-	f.fpinned = f.fpinned.remove(x)
-	f.releaseF(x)
-	f.pushReg(r, mtOfInt(dstWide))
-}
-
-func (f *fn) truncSatSigned(x, r Reg, f64src, dstWide bool) {
-	n := 32
-	if dstWide {
-		n = 64
-	}
-	f.a.Fcvtzs(r, x, f64src, dstWide)
-	f.a.Fcmp(x, x, f64src)
-	notNaN := f.a.Bcond(a64.CondVC) // ordered
-	f.a.MovImm64(r, 0)              // NaN → 0
-	toEnd := f.a.Branch()
-	f.patchBranch19(notNaN, f.a.Len())
-	hi := f.loadFConstBits(floatBits(math.Ldexp(1, n-1), f64src), f64src) // 2^(n-1)
-	f.a.Fcmp(x, hi, f64src)
-	f.releaseF(hi)
-	below := f.a.Bcond(a64.CondLT) // x < 2^(n-1) (ordered; NaN excluded above)
-	if dstWide {
-		f.a.MovImm64(r, 0x7FFFFFFFFFFFFFFF)
+	if signed {
+		f.a.Fcvtzs(r, x, f64src, dstWide)
 	} else {
-		f.a.MovImm32(r, 0x7FFFFFFF)
+		f.a.Fcvtzu(r, x, f64src, dstWide)
 	}
-	f.patchBranch19(below, f.a.Len())
-	f.patchBranch26(toEnd, f.a.Len())
-}
-
-func (f *fn) truncSatU32(x, r Reg, f64src bool) {
-	f.a.Fcvtzs(r, x, f64src, true) // i64 trunc; low 32 is the in-range u32
-	zero := f.loadFConstBits(floatBits(0, f64src), f64src)
-	f.a.Fcmp(x, zero, f64src)
-	f.releaseF(zero)
-	pos := f.a.Bcond(a64.CondGT) // x > 0 (ordered; NaN → not taken)
-	f.a.MovImm64(r, 0)           // NaN/≤0 → 0
-	toEnd := f.a.Branch()
-	f.patchBranch19(pos, f.a.Len())
-	hi := f.loadFConstBits(floatBits(math.Ldexp(1, 32), f64src), f64src)
-	f.a.Fcmp(x, hi, f64src)
-	f.releaseF(hi)
-	below := f.a.Bcond(a64.CondLT)
-	f.a.MovImm32(r, -1) // ≥2^32 → 0xFFFFFFFF
-	f.patchBranch19(below, f.a.Len())
-	f.patchBranch26(toEnd, f.a.Len())
-}
-
-func (f *fn) truncSatU64(x, r Reg, f64src bool) {
-	zero := f.loadFConstBits(floatBits(0, f64src), f64src)
-	f.a.Fcmp(x, zero, f64src)
-	f.releaseF(zero)
-	pos := f.a.Bcond(a64.CondGT)
-	f.a.MovImm64(r, 0)
-	end0 := f.a.Branch()
-	f.patchBranch19(pos, f.a.Len())
-	hi := f.loadFConstBits(floatBits(math.Ldexp(1, 64), f64src), f64src)
-	f.a.Fcmp(x, hi, f64src)
-	f.releaseF(hi)
-	inRange := f.a.Bcond(a64.CondLT)
-	f.a.MovImm64(r, 0xFFFFFFFFFFFFFFFF) // ≥2^64 → all ones
-	endMax := f.a.Branch()
-	f.patchBranch19(inRange, f.a.Len())
-	p63 := f.loadFConstBits(floatBits2p63(f64src), f64src)
-	f.a.Fcmp(x, p63, f64src)
-	simple := f.a.Bcond(a64.CondLT)
-	f.a.Fsub(x, x, p63, f64src)
-	f.a.Fcvtzs(r, x, f64src, true)
-	t := f.allocReg(maskOf(r))
-	f.a.MovImm64(t, 0x8000000000000000)
-	f.a.Add64(r, r, t)
-	f.release(t)
-	biasEnd := f.a.Branch()
-	f.patchBranch19(simple, f.a.Len())
-	f.a.Fcvtzs(r, x, f64src, true)
-	f.patchBranch26(biasEnd, f.a.Len())
-	f.releaseF(p63)
-	f.patchBranch26(endMax, f.a.Len())
-	f.patchBranch26(end0, f.a.Len())
+	if owned {
+		f.releaseF(x)
+	}
+	f.pushReg(r, mtOfInt(dstWide))
 }
 
 func (f *fn) fpromote() { // f32 → f64

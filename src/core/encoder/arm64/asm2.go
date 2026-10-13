@@ -427,6 +427,22 @@ func (a *Asm) Fcvtzs(rd, rn Reg, f64src, dstWide bool) {
 	}
 }
 
+// Fcvtzu converts float to unsigned integer, rounding toward zero with
+// saturation. NaNs and negative values become zero.
+func (a *Asm) Fcvtzu(rd, rn Reg, f64src, dstWide bool) {
+	base := uint32(0x1E390000)
+	if dstWide {
+		base |= 0x80000000
+	}
+	if f64src {
+		base |= 0x00400000
+	}
+	a.word(base | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
+
 // Scvtf converts signed int→float. f64 selects dest precision, srcWide selects an
 // X (64-bit) vs W (32-bit) source.
 func (a *Asm) Scvtf(rd, rn Reg, f64, srcWide bool) {
