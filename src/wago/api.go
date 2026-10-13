@@ -1404,7 +1404,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	gcAllocationSites := moduleHasGCAllocationSitesWithValidation(m, &validationAnalysis)
 	exactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary
 	var gcFrameRootDiagnostic string
-	gcFrameRoots := newGCFrameRootPlan(m, exactNativeGCRoots, &gcFrameRootDiagnostic, &validationAnalysis)
+	gcFrameRoots := newGCFrameRootPlan(m, exactNativeGCRoots, genericGCExecution, &gcFrameRootDiagnostic, &validationAnalysis)
 	indexedFunctionRefTest, indexedFunctionRefCast := requirements.indexedFuncRefTest, requirements.indexedFuncRefCast
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
 	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()

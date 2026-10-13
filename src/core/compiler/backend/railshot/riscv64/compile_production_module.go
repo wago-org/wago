@@ -1012,7 +1012,7 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 		if err != nil {
 			return err
 		}
-		if opts.GCFrameRoots != nil || !reflect.DeepEqual(opts.Codegen.Module.GCTypeDescs, expected.Descs) || !reflect.DeepEqual(opts.Codegen.Module.GCTypeLayouts, expected.Layouts) {
+		if opts.GCFrameRoots != nil && !opts.GCFrameRootsSource || opts.GCFrameRoots == nil && opts.GCFrameRootsSource || !reflect.DeepEqual(opts.Codegen.Module.GCTypeDescs, expected.Descs) || !reflect.DeepEqual(opts.Codegen.Module.GCTypeLayouts, expected.Layouts) {
 			return unsupported("gc ref.eq collector metadata contract")
 		}
 	}

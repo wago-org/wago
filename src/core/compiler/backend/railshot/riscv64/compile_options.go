@@ -55,7 +55,11 @@ type CompileOptions struct {
 	GCTypeSubtypingRefTest          bool
 	GCStructHelpers, GCArrayHelpers bool
 	GCFrameRoots                    *shared.GCModuleFrameRootPlan
-	Codegen                         codegen.Options
+	// GCFrameRootsSource is a frontend provenance witness for an independently
+	// admitted exact-root source profile. A root-plan pointer alone never widens
+	// source admission.
+	GCFrameRootsSource bool
+	Codegen            codegen.Options
 	// Stats collects CompileModuleWith's finalized local-function sizes with
 	// wago_codegenstats or wago_profile. Success replaces the sink; failure
 	// leaves it unchanged. The isolated private pilot does not collect stats.

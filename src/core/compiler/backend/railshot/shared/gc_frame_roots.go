@@ -12,6 +12,9 @@ const (
 	AMD64FrameHeaderBytes = 16
 	ARM64FrameHeaderBytes = 16
 	RV64FrameHeaderBytes  = 16
+	// RV64CallFrameHeaderBytes retains the public result pointer and serialized
+	// call transport in every function that can park in a helper or make a call.
+	RV64CallFrameHeaderBytes = 48
 
 	// ARM64SavedLROffset is the saved LR qword within the 16-byte FP/LR record
 	// immediately above a call-making function's reserved frame. Advancing to the

@@ -16,6 +16,7 @@ type directCall struct {
 	callee      uint32
 	helper      uint32
 	helperSlots int
+	safepoint   uint32
 }
 
 const (
@@ -54,6 +55,28 @@ const (
 	// HostFuncRef dispatch encoding reserved by the runtime bridge.
 	guestGlobalStoreDispatch uint32 = 1 << 31
 )
+
+// gcAllocHelperSlots returns the synchronous arena arity for a helper that can
+// carry a nonzero allocation safepoint. Fixed-array and explicit struct
+// allocation shapes retain the already admitted per-call arity.
+func gcAllocHelperSlots(helper uint32, admitted int) (int, bool) {
+	switch helper {
+	case gcStructAllocDefault:
+		return 1, true
+	case gcStructAllocOne:
+		return admitted, admitted == 2 || admitted == 4
+	case gcArrayAllocDefault:
+		return 2, true
+	case gcArrayAllocUniform:
+		return 3, true
+	case gcArrayAllocFixed:
+		return admitted, admitted == 4 || admitted == 5
+	case gcArrayAllocData, gcArrayAllocElem:
+		return 4, true
+	default:
+		return 0, false
+	}
+}
 
 // Shared callees can allocate A0..A3. Caller homes and this saved header are
 // authoritative across calls; X24 is reserved and unchanged in this same-instance
@@ -150,7 +173,7 @@ func (f *integerEmitter) directCall(index uint32, sig functionSpec, base, import
 // gcDefaultAllocation calls an exact struct or array default-allocation helper.
 // The helper thunk uses the same checked parked-host protocol as a returning
 // import, but is image-local and carries the reserved GC dispatch identity.
-func (f *integerEmitter) gcDefaultAllocation(helper uint32, base int, array bool, typeIndex uint32) {
+func (f *integerEmitter) gcDefaultAllocation(helper uint32, base int, array bool, typeIndex uint32, hiddenRefs []bool) {
 	f.restoreCallTransport()
 	if array {
 		f.Load(5, f.SpillOffset(base), false)
@@ -161,7 +184,7 @@ func (f *integerEmitter) gcDefaultAllocation(helper uint32, base int, array bool
 		f.a.Constant32(enc.X5, typeIndex)
 		f.a.Sd(enc.X5, enc.X10, 0) // type index
 	}
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: helper})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: helper, safepoint: f.recordGCFrameSafepoint(hiddenRefs)})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {
@@ -174,7 +197,7 @@ func (f *integerEmitter) gcDefaultAllocation(helper uint32, base int, array bool
 // gcStructAllocation calls the exact struct.new helper with count narrow
 // scalar fields followed by the type index. References remain full-width in
 // the returned carrier.
-func (f *integerEmitter) gcStructAllocation(base int, typeIndex, count uint32) {
+func (f *integerEmitter) gcStructAllocation(base int, typeIndex, count uint32, hiddenRefs []bool) {
 	f.restoreCallTransport()
 	for i := uint32(0); i < count; i++ {
 		f.Load(5, f.SpillOffset(base+int(i)), false)
@@ -182,7 +205,7 @@ func (f *integerEmitter) gcStructAllocation(base int, typeIndex, count uint32) {
 	}
 	f.a.Constant32(enc.X5, typeIndex)
 	f.a.Sd(enc.X5, enc.X10, int32(count*8))
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructAllocOne, helperSlots: int(count) + 1})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructAllocOne, helperSlots: int(count) + 1, safepoint: f.recordGCFrameSafepoint(hiddenRefs)})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {
@@ -194,7 +217,7 @@ func (f *integerEmitter) gcStructAllocation(base int, typeIndex, count uint32) {
 
 // gcUniformArrayAllocation calls the exact pointer-free array.new helper. Both
 // i32 operands are zero-normalized before filling their complete arena slots.
-func (f *integerEmitter) gcUniformArrayAllocation(base int, typeIndex uint32) {
+func (f *integerEmitter) gcUniformArrayAllocation(base int, typeIndex uint32, hiddenRefs []bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), false)
 	f.a.Sd(enc.X5, enc.X10, 0) // uniform value
@@ -202,7 +225,7 @@ func (f *integerEmitter) gcUniformArrayAllocation(base int, typeIndex uint32) {
 	f.a.Sd(enc.X5, enc.X10, 8) // length
 	f.a.Constant32(enc.X5, typeIndex)
 	f.a.Sd(enc.X5, enc.X10, 16) // type index
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocUniform})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocUniform, safepoint: f.recordGCFrameSafepoint(hiddenRefs)})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {
@@ -212,7 +235,7 @@ func (f *integerEmitter) gcUniformArrayAllocation(base int, typeIndex uint32) {
 	f.Store(f.SpillOffset(base), 5, true)
 }
 
-func (f *integerEmitter) gcFixedArrayAllocation(base int, typeIndex, count uint32) {
+func (f *integerEmitter) gcFixedArrayAllocation(base int, typeIndex, count uint32, hiddenRefs []bool) {
 	f.restoreCallTransport()
 	for i := uint32(0); i < count; i++ {
 		f.Load(5, f.SpillOffset(base+int(i)), false)
@@ -222,7 +245,7 @@ func (f *integerEmitter) gcFixedArrayAllocation(base int, typeIndex, count uint3
 	f.a.Sd(enc.X5, enc.X10, int32(count*8))
 	f.a.Constant32(enc.X5, count)
 	f.a.Sd(enc.X5, enc.X10, int32((count+1)*8))
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocFixed, helperSlots: int(count) + 2})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocFixed, helperSlots: int(count) + 2, safepoint: f.recordGCFrameSafepoint(hiddenRefs)})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {
@@ -236,7 +259,7 @@ func (f *integerEmitter) gcFixedArrayAllocation(base int, typeIndex, count uint3
 // initializer operands. Allocate from the first pointer-free value, then write
 // the remaining two values without another safepoint. This keeps the helper
 // exchange bounded while preserving array.new_fixed operand order exactly.
-func (f *integerEmitter) gcFixedArrayAllocation3ViaUniform(base int, typeIndex uint32) {
+func (f *integerEmitter) gcFixedArrayAllocation3ViaUniform(base int, typeIndex uint32, hiddenRefs []bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), false)
 	f.a.Sd(enc.X5, enc.X10, 0)
@@ -244,7 +267,7 @@ func (f *integerEmitter) gcFixedArrayAllocation3ViaUniform(base int, typeIndex u
 	f.a.Sd(enc.X5, enc.X10, 8)
 	f.a.Constant32(enc.X5, typeIndex)
 	f.a.Sd(enc.X5, enc.X10, 16)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocUniform})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocUniform, safepoint: f.recordGCFrameSafepoint(hiddenRefs)})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {
@@ -267,7 +290,7 @@ func (f *integerEmitter) gcFixedArrayAllocation3ViaUniform(base int, typeIndex u
 	}
 }
 
-func (f *integerEmitter) gcDataArrayAllocation(base int, typeIndex, dataIndex uint32) {
+func (f *integerEmitter) gcDataArrayAllocation(base int, typeIndex, dataIndex uint32, hiddenRefs []bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), false)
 	f.a.Sd(enc.X5, enc.X10, 0) // source byte offset
@@ -277,7 +300,7 @@ func (f *integerEmitter) gcDataArrayAllocation(base int, typeIndex, dataIndex ui
 	f.a.Sd(enc.X5, enc.X10, 16)
 	f.a.Constant32(enc.X5, dataIndex)
 	f.a.Sd(enc.X5, enc.X10, 24)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocData})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocData, safepoint: f.recordGCFrameSafepoint(hiddenRefs)})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {
@@ -287,7 +310,7 @@ func (f *integerEmitter) gcDataArrayAllocation(base int, typeIndex, dataIndex ui
 	f.Store(f.SpillOffset(base), 5, true)
 }
 
-func (f *integerEmitter) gcElementArrayAllocation(base int, typeIndex, elemIndex uint32) {
+func (f *integerEmitter) gcElementArrayAllocation(base int, typeIndex, elemIndex uint32, hiddenRefs []bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), false)
 	f.a.Sd(enc.X5, enc.X10, 0) // source element offset
@@ -297,7 +320,7 @@ func (f *integerEmitter) gcElementArrayAllocation(base int, typeIndex, elemIndex
 	f.a.Sd(enc.X5, enc.X10, 16)
 	f.a.Constant32(enc.X5, elemIndex)
 	f.a.Sd(enc.X5, enc.X10, 24)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocElem})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayAllocElem, safepoint: f.recordGCFrameSafepoint(hiddenRefs)})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {

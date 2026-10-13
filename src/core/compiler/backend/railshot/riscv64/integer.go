@@ -4,6 +4,7 @@ package riscv64
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -41,10 +42,83 @@ type integerTrap struct {
 }
 type integerEmitter struct {
 	target
-	traps      []integerTrap
-	calls      []directCall
-	propagate  []int
-	frameBytes int
+	traps        []integerTrap
+	calls        []directCall
+	propagate    []int
+	frameBytes   int
+	gcFrameRoots *shared.GCFrameRootPlan
+}
+
+// recordGCFrameSafepoint snapshots the exact local and hidden operand roots
+// visible while a parked allocating helper owns execution. Integer lowering
+// already keeps every local and operand in its canonical frame home, so unlike
+// the register backends it does not need a materialization pass here.
+func (f *integerEmitter) recordGCFrameSafepoint(hiddenRefs []bool) uint32 {
+	plan := f.gcFrameRoots
+	if plan == nil || !plan.Candidate {
+		return 0
+	}
+	id := plan.SafepointBase + uint32(plan.SafepointCount()+1)
+	if id == 0 || id > shared.GCSafepointIDMax {
+		plan.Exact = false
+		return 0
+	}
+	site := plan.SafepointCount()
+	if site >= plan.AllocationMaskCount() {
+		plan.Exact = false
+		return id
+	}
+	builder := plan.BeginSafepoint()
+	if !plan.VisitLiveLocals(site, false, func(root int) {
+		builder.AppendOffset(plan.Locals[root].Offset)
+	}) {
+		builder.Abort()
+		plan.Exact = false
+		return id
+	}
+	for slot, root := range hiddenRefs {
+		if root {
+			off := f.SpillOffset(slot)
+			if off < 0 {
+				builder.Abort()
+				plan.Exact = false
+				return id
+			}
+			builder.AppendOffset(uint32(off))
+		}
+	}
+	for _, off := range plan.FixedOffsets() {
+		builder.AppendOffset(off)
+	}
+	offsets, ok := builder.Offsets()
+	if !ok {
+		builder.Abort()
+		plan.Exact = false
+		return id
+	}
+	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
+	for _, off := range offsets {
+		if off%8 != 0 || f.frameBytes < 8 || uint64(off) > uint64(f.frameBytes-8) {
+			builder.Abort()
+			plan.Exact = false
+			return id
+		}
+	}
+	// Locals and hidden operands can intentionally name the same canonical home
+	// only in malformed producer input. Reject duplicates instead of publishing
+	// an ambiguous root vector.
+	for i := 1; i < len(offsets); i++ {
+		if offsets[i] == offsets[i-1] {
+			builder.Abort()
+			plan.Exact = false
+			return id
+		}
+	}
+	if !builder.Commit() {
+		builder.Abort()
+		plan.Exact = false
+	}
+	return id
 }
 
 // The separate fallback uses fixed temporary registers and canonical operand
@@ -1716,7 +1790,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcStructAllocation(h, imm.Index, uint32(fields))
+					emit.gcStructAllocation(h, imm.Index, uint32(fields), stackRefs[:h])
 				}
 				if err = pushReference(); err != nil {
 					return integerSummary{}, err
@@ -1731,7 +1805,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcDefaultAllocation(gcStructAllocDefault, h, false, imm.Index)
+					emit.gcDefaultAllocation(gcStructAllocDefault, h, false, imm.Index, stackRefs[:h])
 				}
 				if err = pushReference(); err != nil {
 					return integerSummary{}, err
@@ -1802,7 +1876,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcUniformArrayAllocation(h, imm.Index)
+					emit.gcUniformArrayAllocation(h, imm.Index, stackRefs[:h])
 				}
 				if err = pushReference(); err != nil {
 					return integerSummary{}, err
@@ -1828,9 +1902,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				if live && emit != nil {
 					if state.gcArrayFixedOfficial && imm.Index == 1 {
-						emit.gcFixedArrayAllocation3ViaUniform(h, imm.Index)
+						emit.gcFixedArrayAllocation3ViaUniform(h, imm.Index, stackRefs[:h])
 					} else {
-						emit.gcFixedArrayAllocation(h, imm.Index, imm.Index2)
+						emit.gcFixedArrayAllocation(h, imm.Index, imm.Index2, stackRefs[:h])
 					}
 				}
 				if err = pushReference(); err != nil {
@@ -1848,7 +1922,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcDefaultAllocation(gcArrayAllocDefault, h, true, imm.Index)
+					emit.gcDefaultAllocation(gcArrayAllocDefault, h, true, imm.Index, stackRefs[:h])
 				}
 				if err = pushReference(); err != nil {
 					return integerSummary{}, err
@@ -1868,7 +1942,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcDataArrayAllocation(h, imm.Index, imm.Index2)
+					emit.gcDataArrayAllocation(h, imm.Index, imm.Index2, stackRefs[:h])
 				}
 				if err = pushReference(); err != nil {
 					return integerSummary{}, err
@@ -1888,7 +1962,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcElementArrayAllocation(h, imm.Index, imm.Index2)
+					emit.gcElementArrayAllocation(h, imm.Index, imm.Index2, stackRefs[:h])
 				}
 				if err = pushReference(); err != nil {
 					return integerSummary{}, err
@@ -2718,7 +2792,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 			n++
 		}
 	}
-	f := integerEmitter{target: target{nlocals: n, mode: mode}}
+	f := integerEmitter{target: target{nlocals: n, mode: mode}, gcFrameRoots: mode.gcFrameRoots}
 	if regallocCheckEnabled {
 		defer f.checkEndLifetimes()
 	}
@@ -2730,12 +2804,31 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		return nil, FunctionInfo{}, nil, err
 	}
 	f.frameBytes = frame
+	if f.gcFrameRoots != nil {
+		f.gcFrameRoots.ResetSafepoints()
+		f.gcFrameRoots.ResetCallsites()
+		f.gcFrameRoots.FrameBytes = uint32(frame)
+		if !f.gcFrameRoots.Candidate || !f.gcFrameRoots.Exact || !f.gcFrameRoots.ValidLiveMasks() {
+			return nil, FunctionInfo{}, nil, unsupported("invalid GC frame-root plan")
+		}
+		previous := uint32(0)
+		for i, root := range f.gcFrameRoots.Locals {
+			if uint64(root.Index) >= uint64(n) || i != 0 && root.Index <= previous || root.Offset != uint32(f.LocalOffset(int(root.Index))) || uint64(root.Offset) > uint64(frame-8) {
+				f.gcFrameRoots.Exact = false
+				return nil, FunctionInfo{}, nil, unsupported("invalid GC frame-root local home")
+			}
+			previous = root.Index
+		}
+	}
 	actual, err := walkInteger(fn, ft, state, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
 	if actual != summary {
 		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: integer admission changed")
+	}
+	if f.gcFrameRoots != nil && (!f.gcFrameRoots.Exact || f.gcFrameRoots.SafepointCount() != f.gcFrameRoots.AllocationMaskCount()) {
+		return nil, FunctionInfo{}, nil, unsupported("incomplete GC frame-root safepoints")
 	}
 	f.profileUnknown()
 	exits := []int{f.Jump()}

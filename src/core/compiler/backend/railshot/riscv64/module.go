@@ -135,6 +135,9 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	if m == nil {
 		return nil, fmt.Errorf("rv64: nil module")
 	}
+	if opts.GCFrameRoots != nil && !validateGCFrameRootPlans(m, opts.GCFrameRoots) {
+		return nil, unsupported("GC frame-root source plan")
+	}
 	if opts.referenceFunctions {
 		if !opts.production || !opts.publicStarts || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext || opts.dynamicTailCalls && !opts.NativeTailCalls || opts.Profile || opts.SourceMaps || opts.UnwindMaps {
 			return nil, unsupported("closed reference module requires private cooperative production")
@@ -252,6 +255,12 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 			mode.functionIndex = uint32(i + state.importedFunctions)
 			mode.entryPC = uint32(m.Code[i].LocalDeclBytes)
 		}
+		if opts.GCFrameRoots != nil {
+			mode.gcFrameRoots = opts.GCFrameRoots.Function(i)
+		}
+		if mode.gcFrameRoots != nil && !fallback[i] {
+			return nil, unsupported("GC frame roots require framed integer lowering")
+		}
 		if fallback[i] {
 			code, info, calls, err = compileIntegerMode(&m.Code[i], ft, &state, integerSummaries[i], mode)
 		} else {
@@ -286,14 +295,39 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	// references them. They are ordinary image-relative RV64 code;
 	// no executable address or alternate-backend implementation is retained.
 	type helperBridge struct {
-		helper uint32
-		slots  int
+		helper    uint32
+		slots     int
+		safepoint uint32
 	}
 	helperEntries := make(map[helperBridge]int, 12)
-	for _, bridge := range []helperBridge{{gcStructAllocDefault, 1}, {gcStructAllocOne, 2}, {gcStructAllocOne, 4}, {gcStructGet, 3}, {gcStructSet, 4}, {gcStructGetS, 3}, {gcStructGetU, 3}, {gcStructRefTest, 4}, {gcStructRefCast, 4}, {gcStructTableSet, 3}, {gcAnyConvertExtern, 1}, {gcExternConvertAny, 1}, {gcArrayAllocDefault, 2}, {gcArrayAllocFixed, 4}, {gcArrayAllocFixed, 5}, {gcArrayAllocUniform, 3}, {gcArrayAllocData, 4}, {gcArrayAllocElem, 4}, {gcArrayDropElem, 1}, {gcArrayFill, 5}, {gcArrayCopy, 7}, {gcArrayGet, 3}, {gcArrayGetS, 3}, {gcArrayGetU, 3}, {gcArraySet, 4}, {gcArrayLen, 1}, {gcArrayInitData, 6}, {gcArrayInitElem, 6}, {guestGlobalClear, 0}, {guestGlobalStore, 1}, {guestGlobalStoreIndexed, 2}} {
+	bridges := []helperBridge{{helper: gcStructAllocDefault, slots: 1}, {helper: gcStructAllocOne, slots: 2}, {helper: gcStructAllocOne, slots: 4}, {helper: gcStructGet, slots: 3}, {helper: gcStructSet, slots: 4}, {helper: gcStructGetS, slots: 3}, {helper: gcStructGetU, slots: 3}, {helper: gcStructRefTest, slots: 4}, {helper: gcStructRefCast, slots: 4}, {helper: gcStructTableSet, slots: 3}, {helper: gcAnyConvertExtern, slots: 1}, {helper: gcExternConvertAny, slots: 1}, {helper: gcArrayAllocDefault, slots: 2}, {helper: gcArrayAllocFixed, slots: 4}, {helper: gcArrayAllocFixed, slots: 5}, {helper: gcArrayAllocUniform, slots: 3}, {helper: gcArrayAllocData, slots: 4}, {helper: gcArrayAllocElem, slots: 4}, {helper: gcArrayDropElem, slots: 1}, {helper: gcArrayFill, slots: 5}, {helper: gcArrayCopy, slots: 7}, {helper: gcArrayGet, slots: 3}, {helper: gcArrayGetS, slots: 3}, {helper: gcArrayGetU, slots: 3}, {helper: gcArraySet, slots: 4}, {helper: gcArrayLen, slots: 1}, {helper: gcArrayInitData, slots: 6}, {helper: gcArrayInitElem, slots: 6}, {helper: guestGlobalClear}, {helper: guestGlobalStore, slots: 1}, {helper: guestGlobalStoreIndexed, slots: 2}}
+	// Keep the historical zero-safepoint bridge order byte-for-byte stable. Exact
+	// root plans add only the distinct helper/safepoint pairs actually referenced
+	// by this image.
+	for _, call := range relocations {
+		if call.helper == 0 || call.safepoint == 0 {
+			continue
+		}
+		slots, ok := gcAllocHelperSlots(call.helper, call.helperSlots)
+		if !ok {
+			return nil, unsupported("missing canonical GC helper bridge shape")
+		}
+		key := helperBridge{helper: call.helper, slots: slots, safepoint: call.safepoint}
+		seen := false
+		for _, bridge := range bridges {
+			if bridge == key {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			bridges = append(bridges, key)
+		}
+	}
+	for _, bridge := range bridges {
 		used := false
 		for _, call := range relocations {
-			used = used || call.helper == bridge.helper && (call.helper != gcArrayAllocFixed && call.helper != gcStructAllocOne || call.helperSlots == bridge.slots)
+			used = used || call.helper == bridge.helper && call.safepoint == bridge.safepoint && (call.helper != gcArrayAllocFixed && call.helper != gcStructAllocOne || call.helperSlots == bridge.slots)
 		}
 		if !used {
 			continue
@@ -308,7 +342,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		}
 		dispatch := guestGlobalStoreDispatch
 		if bridge.helper != guestGlobalClear && bridge.helper != guestGlobalStore && bridge.helper != guestGlobalStoreIndexed {
-			payload, ok := shared.EncodeGCDispatch(bridge.helper, 0)
+			payload, ok := shared.EncodeGCDispatch(bridge.helper, bridge.safepoint)
 			if !ok {
 				return nil, unsupported("GC helper dispatch encoding")
 			}
@@ -338,7 +372,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 			if call.helper == gcArrayAllocFixed || call.helper == gcStructAllocOne {
 				keySlots = call.helperSlots
 			}
-			target, ok = helperEntries[helperBridge{call.helper, keySlots}]
+			target, ok = helperEntries[helperBridge{helper: call.helper, slots: keySlots, safepoint: call.safepoint}]
 			if !ok {
 				return nil, unsupported("missing GC helper bridge")
 			}

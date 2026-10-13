@@ -50,6 +50,7 @@ type emissionMode struct {
 	parkedMutableReferenceGlobals bool
 	functionIndex                 uint32
 	entryPC                       uint32
+	gcFrameRoots                  *shared.GCFrameRootPlan
 }
 
 var _ shared.ScalarTarget = (*target)(nil)

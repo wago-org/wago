@@ -31,6 +31,10 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	if m == nil {
 		return railshot.CompileModuleWith(m, opts)
 	}
+	// The plan was produced from this already decoded and validated module by
+	// newGCFrameRootPlan. The backend still authenticates the bounded source
+	// product and every plan count before emitting a callable image.
+	opts.GCFrameRootsSource = opts.GCFrameRoots != nil
 	maxImportArity := coreruntime.MaxHostArity
 	vectorProfile := false
 	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 && opts.GCTypeSubtypingRefFuncGlobalsSource == 0 && !opts.GCTypeSubtypingRuntimeCallCastSource && !opts.GCTypeSubtypingRuntimeFinalityCallCastSource && !opts.GCTypeSubtypingRuntimeTypedTableCallSource && opts.GCTypeSubtypingRefTestSingleSource == 0 && opts.GCTypeSubtypingLinkSource == 0 && opts.GCTypeSubtypingFinalityLinkSource == 0 && opts.GCTypeSubtypingStructLinkSource == 0 && opts.GCTypeSubtypingStructProjectionSource == 0 && opts.GCTypeSubtypingStructMismatchSource == 0 && opts.GCTypeSubtypingIndependentStructSource == 0 && opts.GCTypeSubtypingExtendedProjectionSource == 0 && opts.GCTypeSubtypingDuplicateRecursiveSource == 0 && opts.GCTypeSubtypingExtendedRecursiveSource == 0 && opts.GCTypeSubtypingCrossGroupMismatchSource == 0 && opts.GCTypeSubtypingTransitiveMismatchSource == 0 && !opts.GCTypeSubtypingNonFlatExportSource {

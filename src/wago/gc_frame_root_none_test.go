@@ -27,8 +27,8 @@ func TestGCFrameRootPlanValidationAnalysisParity(t *testing.T) {
 				t.Fatal(err)
 			}
 			var legacyDiagnostic, analysisDiagnostic string
-			legacy := newGCFrameRootPlan(tc.m, true, &legacyDiagnostic, nil)
-			fromAnalysis := newGCFrameRootPlan(tc.m, true, &analysisDiagnostic, &analysis)
+			legacy := newGCFrameRootPlan(tc.m, true, true, &legacyDiagnostic, nil)
+			fromAnalysis := newGCFrameRootPlan(tc.m, true, true, &analysisDiagnostic, &analysis)
 			if legacyDiagnostic != analysisDiagnostic || !reflect.DeepEqual(legacy, fromAnalysis) {
 				t.Fatalf("root plans differ:\nlegacy:   %#v (%q)\nanalysis: %#v (%q)", legacy, legacyDiagnostic, fromAnalysis, analysisDiagnostic)
 			}
@@ -82,7 +82,7 @@ func gcFrameRootNoneModule(tb testing.TB, functions int) *wasm.Module {
 func TestGCFrameRootPlanOmitsNonCollectingFunction(t *testing.T) {
 	m := gcFrameRootNoneModule(t, 2)
 	var diagnostic string
-	plan := newGCFrameRootPlan(m, true, &diagnostic, nil)
+	plan := newGCFrameRootPlan(m, true, true, &diagnostic, nil)
 	if plan == nil || diagnostic != "" {
 		t.Fatalf("module root plan = %+v, diagnostic = %q", plan, diagnostic)
 	}
@@ -99,10 +99,10 @@ func TestGCFrameRootPlanOmitsNonCollectingFunction(t *testing.T) {
 
 func TestGCFrameRootPlanDiagnosticIsSeparateFailureState(t *testing.T) {
 	diagnostic := "stale"
-	if plan := newGCFrameRootPlan(nil, false, &diagnostic, nil); plan != nil || diagnostic != "" {
+	if plan := newGCFrameRootPlan(nil, false, false, &diagnostic, nil); plan != nil || diagnostic != "" {
 		t.Fatalf("disabled root plan = %+v, diagnostic = %q", plan, diagnostic)
 	}
-	if plan := newGCFrameRootPlan(nil, true, &diagnostic, nil); plan != nil || diagnostic == "" {
+	if plan := newGCFrameRootPlan(nil, true, true, &diagnostic, nil); plan != nil || diagnostic == "" {
 		t.Fatalf("invalid root plan = %+v, diagnostic = %q", plan, diagnostic)
 	}
 }
@@ -135,12 +135,12 @@ func TestGCFrameRootPlanUsesBoundedConservativeLocals(t *testing.T) {
 		return m
 	}
 
-	narrow := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit), true, nil, nil).Function(0)
+	narrow := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit), true, true, nil, nil).Function(0)
 	if narrow == nil || !narrow.Conservative || len(narrow.Locals) != gcFrameConservativeLocalLimit ||
 		narrow.AllocationMaskCount() != 1 || !narrow.LocalLiveAt(0, gcFrameConservativeLocalLimit-1) {
 		t.Fatalf("narrow root plan = %+v, want %d conservative roots", narrow, gcFrameConservativeLocalLimit)
 	}
-	wide := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit+1), true, nil, nil).Function(0)
+	wide := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit+1), true, true, nil, nil).Function(0)
 	if wide == nil || wide.Conservative || len(wide.Locals) != 0 || wide.AllocationMaskCount() != 1 {
 		t.Fatalf("wide root plan = %+v, want exact compaction of dead locals", wide)
 	}
@@ -166,7 +166,7 @@ func BenchmarkGCFrameRootPlanSingleFunction(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {
-				gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil, nil)
+				gcFrameRootPlanSink = newGCFrameRootPlan(m, true, true, nil, nil)
 			}
 		})
 	}
@@ -177,7 +177,7 @@ func BenchmarkGCFrameRootPlanManyNonCollectingFunctions(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil, nil)
+		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, true, nil, nil)
 	}
 }
 
@@ -289,6 +289,6 @@ func BenchmarkGCFrameRootPlanManyCollectingFunctions(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil, nil)
+		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, true, nil, nil)
 	}
 }

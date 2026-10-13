@@ -496,7 +496,7 @@ func BenchmarkGCFrameRootPlanSparseExceptionRoots(b *testing.B) {
 	b.ResetTimer()
 	for range b.N {
 		var diagnostic string
-		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, &diagnostic, nil)
+		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, true, &diagnostic, nil)
 		if gcFrameRootPlanSink == nil || diagnostic != "" {
 			b.Fatalf("exact root plan = %+v, diagnostic = %q", gcFrameRootPlanSink, diagnostic)
 		}
