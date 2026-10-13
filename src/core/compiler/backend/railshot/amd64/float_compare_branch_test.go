@@ -252,6 +252,17 @@ func TestFloatCompareIntegerSelect(t *testing.T) {
 					body = append(body, 0x0b)
 					m := mod1(t, []wasm.ValType{typ, typ, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}, body)
 					for _, features := range []shared.AMD64Features{0, shared.AMD64ModernBaseline} {
+						var stats ModuleStats
+						cm, err := CompileModuleWith(m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: features, Stats: optionalTestStats(&stats)})
+						if err != nil {
+							t.Fatal(err)
+						}
+						if cm.CodeImage != nil {
+							t.Cleanup(func() { cm.CodeImage.Close() })
+						}
+						if diagnosticsEnabled && (stats.Funcs[0].Peephole["float-branch-fuse"] != 1 || stats.Funcs[0].Peephole["select-flags"] != 1) {
+							t.Fatalf("fusion not selected: %v", stats.Funcs[0].Peephole)
+						}
 						for _, a := range values {
 							for _, b := range values {
 								x, y := math.Float64frombits(a), math.Float64frombits(b)
@@ -281,13 +292,9 @@ func TestFloatCompareIntegerSelect(t *testing.T) {
 								if truth {
 									want = left
 								}
-								var stats ModuleStats
-								got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: features, Stats: optionalTestStats(&stats)}, nil, a, b, left, right)
-								if err != nil || got != want {
-									t.Fatalf("wide=%v op=%d invert=%v typed=%v features=%x a=%x b=%x got=%x want=%x err=%v", wide, op, invert, typed, features, a, b, got, want, err)
-								}
-								if diagnosticsEnabled && (stats.Funcs[0].Peephole["float-branch-fuse"] != 1 || stats.Funcs[0].Peephole["select-flags"] != 1) {
-									t.Fatalf("fusion not selected: %v", stats.Funcs[0].Peephole)
+								got := runCompiledAmd64u(t, cm, a, b, left, right)
+								if got != want {
+									t.Fatalf("wide=%v op=%d invert=%v typed=%v features=%x a=%x b=%x got=%x want=%x", wide, op, invert, typed, features, a, b, got, want)
 								}
 							}
 						}

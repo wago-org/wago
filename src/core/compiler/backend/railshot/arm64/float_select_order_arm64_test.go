@@ -28,7 +28,7 @@ func TestFloatSelectDeferredLoadOrder(t *testing.T) {
 				for _, invert := range []bool{false, true} {
 					t.Run(fmt.Sprintf("%s/wide=%v/typed=%v/invert=%v", alternative.name, wide, typed, invert), func(t *testing.T) {
 						// Distinct offsets identify alternatives followed by comparands. Each
-						// guard-backed native load can trap, so this order must match Wasm.
+						// guard-backed load or explicit check can trap; preserve Wasm order.
 						body := []byte{0}
 						for i := 0; i < 4; i++ {
 							body = append(body, 0x20, byte(i))
@@ -53,29 +53,51 @@ func TestFloatSelectDeferredLoadOrder(t *testing.T) {
 						m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{alternative.typ}, body)
 						m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
 						for _, flags := range []bool{true, false} {
-							cm, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: true, Optimizations: map[string]bool{"st-flags": flags}})
-							if err != nil {
-								t.Fatal(err)
-							}
-							var offsets []uint32
-							for i := 0; i+4 <= len(cm.Code); i += 4 {
-								word := binary.LittleEndian.Uint32(cm.Code[i:])
-								// With four accesses, indexed loads form their nonzero displacement
-								// using ADD X16, X16, #imm immediately before the native load.
-								if word&0xffc003ff == 0x91000210 {
-									offset := (word >> 10) & 0xfff
-									if offset == 64 || offset == 128 || offset == 192 || offset == 256 {
-										offsets = append(offsets, offset)
-									}
-								}
-							}
-							if cm.CodeImage != nil {
-								if err := cm.CodeImage.Close(); err != nil {
+							for _, guard := range []bool{true, false} {
+								cm, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: guard, Optimizations: map[string]bool{"st-flags": flags}})
+								if err != nil {
 									t.Fatal(err)
 								}
-							}
-							if !reflect.DeepEqual(offsets, []uint32{64, 128, 192, 256}) {
-								t.Fatalf("st-flags=%v guard-backed load order=%v; want alternatives before comparands", flags, offsets)
+								want := []uint32{64, 128, 192, 256}
+								if !guard {
+									// Bounds-check LEAs use offset + access width, rather than the
+									// displacement used by the eventual nontrapping native load.
+									altSize, cmpSize := uint32(4), uint32(4)
+									if alternative.typ == wasm.F64 {
+										altSize = 8
+									}
+									if alternative.typ == wasm.V128 {
+										altSize = 16
+									}
+									if wide {
+										cmpSize = 8
+									}
+									want[0] += altSize
+									want[1] += altSize
+									want[2] += cmpSize
+									want[3] += cmpSize
+								}
+								var offsets []uint32
+								for i := 0; i+4 <= len(cm.Code); i += 4 {
+									word := binary.LittleEndian.Uint32(cm.Code[i:])
+									// Guard mode identifies displacement ADDs before loads; explicit
+									// mode identifies end-address ADDs before bounds checks. Exclude
+									// SP-based wrapper adjustments from the latter.
+									if guard && word&0xffc003ff == 0x91000210 || !guard && word&0xffc00000 == 0x91000000 && (word>>5)&31 != 31 {
+										offset := (word >> 10) & 0xfff
+										if offset == want[0] || offset == want[1] || offset == want[2] || offset == want[3] {
+											offsets = append(offsets, offset)
+										}
+									}
+								}
+								if cm.CodeImage != nil {
+									if err := cm.CodeImage.Close(); err != nil {
+										t.Fatal(err)
+									}
+								}
+								if !reflect.DeepEqual(offsets, want) {
+									t.Fatalf("st-flags=%v guard=%v access/check order=%v; want %v", flags, guard, offsets, want)
+								}
 							}
 						}
 					})
