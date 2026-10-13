@@ -9,29 +9,32 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // The do-while body sums Coefficient*i+Constant, or the runtime global value,
 // or an affine term in the current value of the additive recurrence;
 // A PopulationCount term instead sums the counter's set bits, optionally
-// after constant rotations. Every proof leaves Counter=max(1,Bound).
+// after constant rotations. A Divisor term includes linear combinations of
+// unsigned counter quotients/remainders by one nonzero constant. Every proof
+// leaves Counter=max(1,Bound).
 // Fences may be coalesced because no memory access, call, trap or escape lies
 // between them. The replacement must still emit one fence when Fenced is true.
 type IntegerSumLoop struct {
-	Counter, Accumulator, Bound   uint32
-	End                           int
-	Wide, Fenced                  bool
-	Calls                         uint8
-	InvariantGlobal               bool
-	GlobalRecurrence              bool
-	GlobalCoefficient             uint64
-	IncrementCoefficient          uint64
-	IncrementConstant             uint64
-	Global                        uint32
-	Coefficient, Constant         uint64
-	Periodic                      bool
-	SignedBits                    uint8
-	NegativeCount                 bool
-	PopulationCount               bool
-	EvenCoefficient, EvenConstant uint64
-	OddCoefficient, OddConstant   uint64
-	GlobalWrites                  [4]IntegerAffineGlobalWrite
-	GlobalWriteCount              uint8
+	Counter, Accumulator, Bound                        uint32
+	End                                                int
+	Wide, Fenced                                       bool
+	Calls                                              uint8
+	InvariantGlobal                                    bool
+	GlobalRecurrence                                   bool
+	GlobalCoefficient                                  uint64
+	IncrementCoefficient                               uint64
+	IncrementConstant                                  uint64
+	Global                                             uint32
+	Coefficient, Constant                              uint64
+	Periodic                                           bool
+	SignedBits                                         uint8
+	NegativeCount                                      bool
+	PopulationCount                                    bool
+	Divisor, QuotientCoefficient, RemainderCoefficient uint64
+	EvenCoefficient, EvenConstant                      uint64
+	OddCoefficient, OddConstant                        uint64
+	GlobalWrites                                       [4]IntegerAffineGlobalWrite
+	GlobalWriteCount                                   uint8
 }
 
 // InspectIntegerSumLoop does not advance the source reader on either outcome.
@@ -118,9 +121,14 @@ func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module, al
 		r = termStart
 		term, ok = inspectIntegerPopcountTerm(&r)
 	}
+	if !ok && blockType == 0 {
+		r = termStart
+		term, ok = inspectIntegerDivisionTerm(&r)
+	}
 	if !ok {
 		return p, false
 	}
+	p.Divisor, p.QuotientCoefficient, p.RemainderCoefficient = term.divisor, term.quotientCoefficient, term.remainderCoefficient
 	p.PopulationCount = term.populationCount
 	p.Coefficient, p.Constant, p.Calls = term.coefficient, term.constant, term.calls
 	p.InvariantGlobal, p.Global = term.hasGlobal, term.global

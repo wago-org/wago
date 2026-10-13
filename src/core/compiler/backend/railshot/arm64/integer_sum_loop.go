@@ -93,6 +93,9 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	if p.PopulationCount {
 		return f.emitIntegerPopcountSum(p, typ, get)
 	}
+	if p.Divisor != 0 {
+		return f.emitIntegerDivisionSum(p, typ, get)
+	}
 	// T(n)=floor(n/2)*(n-1+(n&1)). Dividing a factor before multiplying
 	// preserves the complete modulo-2^32/2^64 result, including unsigned extrema.
 	if p.Periodic {

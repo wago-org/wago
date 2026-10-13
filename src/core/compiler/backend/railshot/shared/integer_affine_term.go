@@ -14,20 +14,21 @@ type IntegerAffineGlobalWrite struct {
 }
 
 type integerAffineTerm struct {
-	coefficient, constant  uint64
-	width                  int
-	variable, global       uint32
-	hasVariable, hasGlobal bool
-	calls                  uint8
-	writes                 [4]IntegerAffineGlobalWrite
-	writeCount             uint8
-	recurrence             bool
-	globalCoefficient      uint64
-	incrementCoefficient   uint64
-	incrementConstant      uint64
-	signedBits             uint8
-	negativeCount          bool
-	populationCount        bool
+	coefficient, constant                              uint64
+	width                                              int
+	variable, global                                   uint32
+	hasVariable, hasGlobal                             bool
+	calls                                              uint8
+	writes                                             [4]IntegerAffineGlobalWrite
+	writeCount                                         uint8
+	recurrence                                         bool
+	globalCoefficient                                  uint64
+	incrementCoefficient                               uint64
+	incrementConstant                                  uint64
+	signedBits                                         uint8
+	negativeCount                                      bool
+	populationCount                                    bool
+	divisor, quotientCoefficient, remainderCoefficient uint64
 }
 
 // inspectIntegerAffineTerm evaluates a bounded pure postfix expression as A*i+B
