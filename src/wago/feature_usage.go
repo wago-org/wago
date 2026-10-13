@@ -797,6 +797,12 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	}
 	for _, elem := range c.Elems {
 		out |= requiredFeaturesForConstExprBytes(elem.Offset.Expr, len(c.GlobalImports))
+		for _, value := range elem.Values {
+			out |= requiredFeaturesForConstExprBytes(value.Expr, len(c.GlobalImports))
+			if value.HasGlobal && int(value.GlobalIndex) >= len(c.GlobalImports) {
+				out |= CoreFeatureExtendedConstExpressions
+			}
+		}
 		out |= requiredFeaturesForStoredType(c, normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, !elem.HasValueType)
 		if elem.RefType == ValExternRef || elem.TableIndex != 0 {
 			out |= CoreFeatureReferenceTypes
@@ -804,6 +810,12 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	}
 	for _, elem := range c.passiveElems {
 		out |= requiredFeaturesForConstExprBytes(elem.Offset.Expr, len(c.GlobalImports))
+		for _, value := range elem.Values {
+			out |= requiredFeaturesForConstExprBytes(value.Expr, len(c.GlobalImports))
+			if value.HasGlobal && int(value.GlobalIndex) >= len(c.GlobalImports) {
+				out |= CoreFeatureExtendedConstExpressions
+			}
+		}
 		out |= requiredFeaturesForStoredType(c, normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, !elem.HasValueType)
 		if elem.RefType == ValExternRef {
 			out |= CoreFeatureReferenceTypes

@@ -2422,6 +2422,217 @@ func TestRV64RootedAggregateTableInitializerExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarAggregateGlobalTableInitializerModule() []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x01, 0xfb, 0x00, 0x00, 0x1a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{
+			0x01, 0x40, 0x00, 0x63, 0x00, 0x01, 0x02, 0x02,
+			0x23, 0x00, 0xfb, 0x00, 0x00, 0x0b,
+		}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x7f, 0x00, 0x41, 0x37, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func rootedScalarAggregateImportedGlobalTableInitializerModule() []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x01, 0xfb, 0x00, 0x00, 0x1a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "base", wasm.I32, false))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{
+			0x01, 0x40, 0x00, 0x63, 0x00, 0x01, 0x02, 0x02,
+			0x23, 0x00, 0xfb, 0x00, 0x00, 0x0b,
+		}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func rootedScalarAggregateReferenceGlobalTableInitializerModule() []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x01, 0xfb, 0x00, 0x00, 0x1a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			[]byte{0x5f, 0x01, 0x63, 0x00, 0x01},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(4, []byte{
+			0x01, 0x40, 0x00, 0x63, 0x01, 0x01, 0x02, 0x02,
+			0x23, 0x00, 0xfb, 0x00, 0x01, 0x0b,
+		}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0x00, 0x00, 0xd0, 0x00, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedAggregateGlobalTableInitializerExecutes(t *testing.T) {
+	source := rootedScalarAggregateGlobalTableInitializerModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("aggregate global table initializer module was not source-admitted")
+	}
+	decoded, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootDiagnostic string
+	if plan := newGCFrameRootPlan(decoded, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
+		t.Fatalf("aggregate global table initializer exact-root plan=%+v diagnostic=%q", plan, rootDiagnostic)
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Globals) != 1 || len(view.Elems) != 1 || len(view.Elems[0].Values) != 2 ||
+		len(view.Elems[0].Values[0].Expr) == 0 || !view.Elems[0].Values[1].RepeatPrevious {
+		t.Fatalf("aggregate global table initializer receipt=%t globals=%#v elems=%#v validation=%v", rv64FreshRootedGC(view), view.Globals, view.Elems, railshotValidateCompiled(view))
+	}
+	if !view.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions) || !compiledStructuralRequiredFeatures(view).IsEnabled(CoreFeatureExtendedConstExpressions) {
+		t.Fatalf("aggregate local-global initializer feature receipt=%#x structural=%#x", view.requiredFeatures, compiledStructuralRequiredFeatures(view))
+	}
+	candidate := cloneCompiledMetadata(view)
+	candidate.requiredFeatures &^= CoreFeatureExtendedConstExpressions
+	if rv64FreshRootedGC(candidate) {
+		t.Fatal("aggregate local-global initializer retained the generic receipt without Extended Const Expressions")
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := instance.tableDescriptor(0)
+	want := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+	got := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[16:])))
+	if want.IsNull() || got != want {
+		t.Fatalf("aggregate global table initializer refs = %v/%v", want, got)
+	}
+	value, err := instance.gc.StructGet(want, 0)
+	if err != nil || value.Bits != 55 {
+		t.Fatalf("aggregate global table initializer field = %+v, %v", value, err)
+	}
+}
+
+func TestRV64RootedAggregateImportedGlobalTableInitializerExecutes(t *testing.T) {
+	source := rootedScalarAggregateImportedGlobalTableInitializerModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("aggregate imported-global table initializer module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.GlobalImports) != 1 || len(view.Elems) != 1 || len(view.Elems[0].Values) != 2 ||
+		len(view.Elems[0].Values[0].Expr) == 0 || !view.Elems[0].Values[1].RepeatPrevious {
+		t.Fatalf("aggregate imported-global table initializer receipt=%t imports=%#v elems=%#v validation=%v", rv64FreshRootedGC(view), view.GlobalImports, view.Elems, railshotValidateCompiled(view))
+	}
+	if view.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions) || compiledStructuralRequiredFeatures(view).IsEnabled(CoreFeatureExtendedConstExpressions) {
+		t.Fatalf("aggregate imported-global initializer unexpectedly requires Extended Const Expressions: receipt=%#x structural=%#x", view.requiredFeatures, compiledStructuralRequiredFeatures(view))
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		Imports: NewImports().Global("env", "base", GlobalImport{Type: ValI32, Bits: 55}),
+		GC:      GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := instance.tableDescriptor(0)
+	want := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+	got := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[16:])))
+	if want.IsNull() || got != want {
+		t.Fatalf("aggregate imported-global table initializer refs = %v/%v", want, got)
+	}
+	value, err := instance.gc.StructGet(want, 0)
+	if err != nil || value.Bits != 55 {
+		t.Fatalf("aggregate imported-global table initializer field = %+v, %v", value, err)
+	}
+}
+
+func TestRV64RootedAggregateReferenceGlobalTableInitializerExecutes(t *testing.T) {
+	source := rootedScalarAggregateReferenceGlobalTableInitializerModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("aggregate reference-global table initializer module was not source-admitted")
+	}
+	decoded, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootDiagnostic string
+	if plan := newGCFrameRootPlan(decoded, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
+		t.Fatalf("aggregate reference-global table initializer exact-root plan=%+v diagnostic=%q", plan, rootDiagnostic)
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Globals) != 1 || len(view.Elems) != 1 || len(view.Elems[0].Values) != 2 ||
+		len(view.Elems[0].Values[0].Expr) == 0 || !view.Elems[0].Values[1].RepeatPrevious {
+		t.Fatalf("aggregate reference-global table initializer receipt=%t globals=%#v elems=%#v validation=%v", rv64FreshRootedGC(view), view.Globals, view.Elems, railshotValidateCompiled(view))
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := instance.tableDescriptor(0)
+	want := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+	got := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[16:])))
+	if want.IsNull() || got != want {
+		t.Fatalf("aggregate reference-global table initializer refs = %v/%v", want, got)
+	}
+	value, err := instance.gc.StructGet(want, 0)
+	if err != nil || value.Bits != 0 {
+		t.Fatalf("aggregate reference-global table initializer field = %+v, %v", value, err)
+	}
+}
+
 func rootedScalarAggregateFunctionReferenceElementModule() []byte {
 	body := []byte{
 		0x00,

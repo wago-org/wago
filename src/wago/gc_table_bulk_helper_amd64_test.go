@@ -159,6 +159,73 @@ func genericGCAggregateTableInitializerModule() []byte {
 	)
 }
 
+func genericGCAggregateGlobalTableInitializerModule() []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x01, 0xfb, 0x00, 0x00, 0x1a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{
+			0x01, 0x40, 0x00, 0x63, 0x00, 0x01, 0x02, 0x02,
+			0x23, 0x00, 0xfb, 0x00, 0x00, 0x0b,
+		}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x7f, 0x00, 0x41, 0x37, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func genericGCAggregateImportedGlobalTableInitializerModule() []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x01, 0xfb, 0x00, 0x00, 0x1a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "base", wasm.I32, false))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{
+			0x01, 0x40, 0x00, 0x63, 0x00, 0x01, 0x02, 0x02,
+			0x23, 0x00, 0xfb, 0x00, 0x00, 0x0b,
+		}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func genericGCAggregateReferenceGlobalTableInitializerModule() []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x01, 0xfb, 0x00, 0x00, 0x1a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			[]byte{0x5f, 0x01, 0x63, 0x00, 0x01},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(4, []byte{
+			0x01, 0x40, 0x00, 0x63, 0x01, 0x01, 0x02, 0x02,
+			0x23, 0x00, 0xfb, 0x00, 0x01, 0x0b,
+		}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0x00, 0x00, 0xd0, 0x00, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func TestGenericGCAggregateTableInitializerRootsOneSharedObject(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCAggregateTableInitializerModule())
 	if err != nil {
@@ -194,6 +261,104 @@ func TestGenericGCAggregateTableInitializerRootsOneSharedObject(t *testing.T) {
 	value, err := instance.gc.StructGet(want, 0)
 	if err != nil || value.Bits != 55 {
 		t.Fatalf("aggregate table initializer field = %+v, %v", value, err)
+	}
+}
+
+func TestGenericGCAggregateGlobalTableInitializer(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCAggregateGlobalTableInitializerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if len(compiled.Globals) != 1 || len(compiled.Elems) != 1 || len(compiled.Elems[0].Values) != 2 || len(compiled.Elems[0].Values[0].Expr) == 0 ||
+		!compiled.Elems[0].Values[1].RepeatPrevious {
+		t.Fatalf("aggregate global table initializer metadata globals=%#v elems=%#v", compiled.Globals, compiled.Elems)
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := instance.tableDescriptor(0)
+	want := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+	got := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[16:])))
+	if want.IsNull() || got != want {
+		t.Fatalf("aggregate global table initializer refs = %v/%v", want, got)
+	}
+	value, err := instance.gc.StructGet(want, 0)
+	if err != nil || value.Bits != 55 {
+		t.Fatalf("aggregate global table initializer field = %+v, %v", value, err)
+	}
+}
+
+func TestGenericGCAggregateImportedGlobalTableInitializer(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCAggregateImportedGlobalTableInitializerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		Imports: NewImports().Global("env", "base", GlobalImport{Type: ValI32, Bits: 55}),
+		GC:      GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := instance.tableDescriptor(0)
+	want := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+	got := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[16:])))
+	if want.IsNull() || got != want {
+		t.Fatalf("aggregate imported-global table initializer refs = %v/%v", want, got)
+	}
+	value, err := instance.gc.StructGet(want, 0)
+	if err != nil || value.Bits != 55 {
+		t.Fatalf("aggregate imported-global table initializer field = %+v, %v", value, err)
+	}
+}
+
+func TestGenericGCAggregateReferenceGlobalTableInitializer(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCAggregateReferenceGlobalTableInitializerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if len(compiled.Globals) != 1 || len(compiled.Elems) != 1 || len(compiled.Elems[0].Values) != 2 || len(compiled.Elems[0].Values[0].Expr) == 0 ||
+		!compiled.Elems[0].Values[1].RepeatPrevious {
+		t.Fatalf("aggregate reference-global table initializer metadata globals=%#v elems=%#v", compiled.Globals, compiled.Elems)
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := instance.tableDescriptor(0)
+	want := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+	got := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[16:])))
+	if want.IsNull() || got != want {
+		t.Fatalf("aggregate reference-global table initializer refs = %v/%v", want, got)
+	}
+	value, err := instance.gc.StructGet(want, 0)
+	if err != nil || value.Bits != 0 {
+		t.Fatalf("aggregate reference-global table initializer field = %+v, %v", value, err)
 	}
 }
 

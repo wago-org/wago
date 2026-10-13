@@ -39,6 +39,31 @@ func TestCompiledStructuralRequiredFeaturesGlobalGetScope(t *testing.T) {
 	}
 }
 
+func TestCompiledStructuralRequiredFeaturesElementGlobalGetScope(t *testing.T) {
+	for name, candidate := range map[string]*Compiled{
+		"import-expression": {
+			GlobalImports: []GlobalImportDef{{Type: ValI32}},
+			Elems:         []ElemInit{{Values: []RefInit{{Expr: []byte{0x23, 0x00, 0x0b}}}}},
+		},
+		"local-expression": {
+			GlobalImports: []GlobalImportDef{{Type: ValI32}},
+			Elems:         []ElemInit{{Values: []RefInit{{Expr: []byte{0x23, 0x01, 0x0b}}}}},
+		},
+		"local-structural": {
+			GlobalImports: []GlobalImportDef{{Type: ValI32}},
+			passiveElems:  []ElemInit{{Values: []RefInit{{HasGlobal: true, GlobalIndex: 1}}}},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := compiledStructuralRequiredFeatures(candidate).IsEnabled(CoreFeatureExtendedConstExpressions)
+			want := name != "import-expression"
+			if got != want {
+				t.Fatalf("Extended Const Expressions=%t, want %t", got, want)
+			}
+		})
+	}
+}
+
 func TestCompiledStructuralRequiredFeaturesPassiveData(t *testing.T) {
 	if got := compiledStructuralRequiredFeatures(&Compiled{PassiveData: []PassiveDataInit{{Bytes: []byte{1}}}}); !got.IsEnabled(CoreFeatureBulkMemoryOperations) {
 		t.Fatalf("passive data required features = %s, want bulk-memory-operations", got)

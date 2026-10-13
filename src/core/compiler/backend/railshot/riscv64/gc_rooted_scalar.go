@@ -507,6 +507,17 @@ func rootedScalarAggregateConstOperandOpcode(r *wasm.Reader, storage wasm.Storag
 	if storage.Packed() {
 		want = wasm.I32
 	}
+	if op == 0x23 {
+		index, err := r.U32()
+		actual, ok := m.GlobalTypeByIndex(index)
+		if err != nil || !ok || actual.Mutable {
+			return false
+		}
+		if want.Kind() != wasm.ValRef {
+			return wasm.EqualValType(actual.Type, want)
+		}
+		return actual.Type.Kind() == wasm.ValRef && m.ReferenceTypeSubtype(actual.Type.Ref(), want.Ref())
+	}
 	var err error
 	switch {
 	case wasm.EqualValType(want, wasm.I32):
