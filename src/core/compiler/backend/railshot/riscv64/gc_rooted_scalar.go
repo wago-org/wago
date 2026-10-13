@@ -32,6 +32,16 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	hasAggregate := false
 	flatTypes := 0
 	admittedAggregates := make([]bool, 0, len(m.Types))
+	rootedValue := func(typ wasm.ValType) bool {
+		if scalarType(typ, true) {
+			return true
+		}
+		if typ.Kind() != wasm.ValRef || typ.Ref().Exact() {
+			return false
+		}
+		heap := typ.Ref().Heap()
+		return heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && int(heap.Type().Index) < flatTypes && admittedAggregates[heap.Type().Index]
+	}
 	for i := range m.Types {
 		group := &m.Types[i]
 		if len(group.SubTypes) != 1 {
@@ -90,7 +100,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			}
 			for _, values := range [][]wasm.ValType{sub.Comp.Params, sub.Comp.Results} {
 				for _, typ := range values {
-					if !scalarType(typ, true) {
+					if !rootedValue(typ) {
 						return false
 					}
 				}
@@ -111,6 +121,25 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		ft, ok := m.TypeFunc(typ.Index)
 		if !ok || ft.Kind != wasm.CompFunc {
 			return false
+		}
+	}
+	// Reference values are private collector carriers. The public host adapter
+	// remains scalar-only until it has an independently qualified ownership ABI.
+	for i := range m.Exports {
+		index := m.Exports[i].Index.Index
+		if uint64(index) >= uint64(len(m.FuncTypes)) {
+			return false
+		}
+		ft, ok := m.TypeFunc(m.FuncTypes[index].Index)
+		if !ok {
+			return false
+		}
+		for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
+			for _, typ := range values {
+				if !scalarType(typ, true) {
+					return false
+				}
+			}
 		}
 	}
 	return true
@@ -168,20 +197,30 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 	if err != nil || count == 0 || count > MaxFunctions {
 		return false
 	}
-	valueTypes := func() bool {
+	kinds := make([]byte, 0, count)
+	valueTypes := func(owner uint32) bool {
 		n, err := r.U32()
 		if err != nil || n > 256 {
 			return false
 		}
 		for range n {
 			typ, err := r.Byte()
-			if err != nil || typ < 0x7c || typ > 0x7f {
+			if err != nil {
+				return false
+			}
+			if typ >= 0x7c && typ <= 0x7f {
+				continue
+			}
+			if typ != 0x63 && typ != 0x64 {
+				return false
+			}
+			heap, err := r.S33()
+			if err != nil || heap < 0 || uint64(heap) >= uint64(owner) || kinds[heap] != 0x5f && kinds[heap] != 0x5e {
 				return false
 			}
 		}
 		return true
 	}
-	kinds := make([]byte, 0, count)
 	storageType := func(owner uint32, references bool) bool {
 		storage, err := r.Byte()
 		if err != nil {
@@ -217,7 +256,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 				}
 			}
 		case 0x60:
-			if !valueTypes() || !valueTypes() {
+			if !valueTypes(owner) || !valueTypes(owner) {
 				return false
 			}
 		case 0x5e:

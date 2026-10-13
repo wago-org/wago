@@ -49,6 +49,46 @@ type integerEmitter struct {
 	gcFrameRoots *shared.GCFrameRootPlan
 }
 
+// recordGCFrameCallsite publishes the caller-frame roots visible while a
+// direct callee owns execution. Locals use their canonical homes and retained
+// operands below the consumed argument vector use canonical spill homes.
+func (f *integerEmitter) recordGCFrameCallsite(returnOffset int, hiddenRefs []bool) {
+	plan := f.gcFrameRoots
+	if plan == nil || !plan.Candidate {
+		return
+	}
+	site := plan.CallsiteCount()
+	if site >= plan.CallMaskCount() || returnOffset <= 0 {
+		plan.Exact = false
+		return
+	}
+	offsets := make([]uint32, 0, len(plan.Locals)+len(hiddenRefs))
+	if !plan.VisitLiveLocals(site, true, func(root int) {
+		offsets = append(offsets, plan.Locals[root].Offset)
+	}) {
+		plan.Exact = false
+		return
+	}
+	for slot, root := range hiddenRefs {
+		if root {
+			off := f.SpillOffset(slot)
+			if off < 0 {
+				plan.Exact = false
+				return
+			}
+			offsets = append(offsets, uint32(off))
+		}
+	}
+	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
+	for i, off := range offsets {
+		if off%8 != 0 || f.frameBytes < 8 || uint64(off) > uint64(f.frameBytes-8) || i != 0 && off == offsets[i-1] {
+			plan.Exact = false
+			return
+		}
+	}
+	plan.RecordCallsite(uint32(returnOffset), 0, offsets)
+}
+
 // recordGCFrameSafepoint snapshots the exact local and hidden operand roots
 // visible while a parked allocating helper owns execution. Integer lowering
 // already keeps every local and operand in its canonical frame home, so unlike
@@ -1049,7 +1089,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 			if live && emit != nil {
-				emit.directCall(idx, sig, h, state.importedFunctions)
+				emit.directCall(idx, sig, h, state.importedFunctions, stackRefs[:h])
 			}
 			for i, wide := range sig.results {
 				if err = push(wide); err != nil {
@@ -2961,7 +3001,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	if actual != summary {
 		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: integer admission changed")
 	}
-	if f.gcFrameRoots != nil && (!f.gcFrameRoots.Exact || f.gcFrameRoots.SafepointCount() != f.gcFrameRoots.AllocationMaskCount()) {
+	if f.gcFrameRoots != nil && (!f.gcFrameRoots.Exact || f.gcFrameRoots.SafepointCount() != f.gcFrameRoots.AllocationMaskCount() || f.gcFrameRoots.CallsiteCount() != f.gcFrameRoots.CallMaskCount()) {
 		return nil, FunctionInfo{}, nil, unsupported("incomplete GC frame-root safepoints")
 	}
 	f.profileUnknown()

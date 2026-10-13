@@ -20,7 +20,7 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 		if plans.FunctionPending(function) {
 			return false
 		}
-		allocations := 0
+		allocations, calls := 0, 0
 		r := wasm.NewReader(m.Code[function].BodyBytes)
 		for r.HasNext() {
 			op, err := r.Byte()
@@ -32,7 +32,9 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 				return false
 			}
 			switch imm.Kind {
-			case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrCallRef,
+			case wasm.InstrCall:
+				calls++
+			case wasm.InstrCallIndirect, wasm.InstrCallRef,
 				wasm.InstrReturnCall, wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
 				return false
 			}
@@ -44,13 +46,13 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 			}
 		}
 		plan := plans.Function(function)
-		if allocations == 0 {
+		if allocations == 0 && calls == 0 {
 			if plan != nil {
 				return false
 			}
 			continue
 		}
-		if plan == nil || !plan.Candidate || !plan.Exact || !plan.Conservative || plan.AllocationMaskCount() != allocations || plan.CallMaskCount() != 0 || plan.HasFixedOffsets() || !plan.ValidLiveMasks() {
+		if plan == nil || !plan.Candidate || !plan.Exact || !plan.Conservative || plan.AllocationMaskCount() != allocations || plan.CallMaskCount() != calls || plan.HasFixedOffsets() || !plan.ValidLiveMasks() {
 			return false
 		}
 		locals, ok := rv64GCFrameLocals(m, function)
@@ -65,6 +67,12 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 		for site := 0; site < allocations; site++ {
 			live := 0
 			if !plan.VisitLiveLocals(site, false, func(int) { live++ }) || live != len(plan.Locals) {
+				return false
+			}
+		}
+		for site := 0; site < calls; site++ {
+			live := 0
+			if !plan.VisitLiveLocals(site, true, func(int) { live++ }) || live != len(plan.Locals) {
 				return false
 			}
 		}

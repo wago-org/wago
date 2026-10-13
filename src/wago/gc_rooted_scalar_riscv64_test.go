@@ -19,6 +19,94 @@ func rv64RootedScalarConfig() *RuntimeConfig {
 	return rv64I31Config().WithCoreFeatures(platformCoreFeatures() | CoreFeatureGC | CoreFeatureTypedFunctionReferences)
 }
 
+func rootedInternalReferenceCallModule(exportInternal bool) []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		{0x60, 0x01, 0x64, 0x00, 0x01, 0x64, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	callee := []byte{0x00, 0xfb, 0x01, 0x00, 0x1a, 0x20, 0x00, 0x0b}
+	caller := []byte{0x01, 0x01, 0x7f,
+		0x41, 0x29, 0xfb, 0x00, 0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x10, 0x00,
+		0xfb, 0x02, 0x00, 0x00, 0x21, 0x00,
+		0xfb, 0x02, 0x00, 0x00, 0x20, 0x00, 0x6a, 0x0b,
+	}
+	export := uint32(1)
+	if exportInternal {
+		export = 0
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), export))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(callee))), callee...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func TestRV64RootedInternalReferenceCallExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedInternalReferenceCallModule(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	roots := view.genericGCFrameRoots()
+	if !rv64FreshRootedGC(view) || roots == nil || len(roots.safepoints) != 3 || len(roots.callsites) != 1 || len(roots.callsites[0].offsets) != 1 {
+		t.Fatalf("rooted call receipt=%t roots=%+v", rv64FreshRootedGC(view), roots)
+	}
+	mutated := *view
+	mutated.Exports = map[string]int{"run": 0}
+	if rv64FreshRootedGC(&mutated) {
+		t.Fatal("collector reference export retained the rooted compiler receipt")
+	}
+	mutated = *view
+	mutated.Funcs = slices.Clone(view.Funcs)
+	mutated.Funcs[0].TypeIndex = 0
+	if rv64FreshRootedGC(&mutated) {
+		t.Fatal("mutated internal function binding retained the rooted compiler receipt")
+	}
+	mutated = *view
+	mutated.FuncTypeID = slices.Clone(view.FuncTypeID)
+	mutated.FuncTypeID[0] ^= 1
+	if rv64FreshRootedGC(&mutated) {
+		t.Fatal("mutated internal function type key retained the rooted compiler receipt")
+	}
+	mutated = *view
+	mutated.Types = slices.Clone(view.Types)
+	mutated.Types[1].Params = make([]ValueTypeDescriptor, 257)
+	if rv64FreshRootedGC(&mutated) {
+		t.Fatal("oversized internal function signature retained the rooted compiler receipt")
+	}
+	rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
+	defer rt.Close()
+	module, err := rt.Module(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := rt.Instantiate(context.Background(), module, WithImports(NewImports()), WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}))
+	module.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for iteration := range 32 {
+		got, err := instance.Invoke("run")
+		if err != nil || !slices.Equal(got, []uint64{83}) {
+			t.Fatalf("iteration %d: run()=%v err=%v want=[83]", iteration, got, err)
+		}
+	}
+}
+
+func TestRV64RootedReferenceExportFailsClosed(t *testing.T) {
+	if _, err := Compile(rv64RootedScalarConfig(), rootedInternalReferenceCallModule(true)); err == nil {
+		t.Fatal("collector reference export unexpectedly compiled")
+	}
+}
+
 func rootedScalarFunctionBeforeStructModule() []byte {
 	body := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x01, 0xfb, 0x02, 0x01, 0x00, 0x0b}
 	return wasmtest.Module(

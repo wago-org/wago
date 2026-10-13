@@ -136,7 +136,7 @@ func (f *integerEmitter) storeGuestGlobalIndexed(slot int, index uint32) {
 	f.restoreCallTransport()
 }
 
-func (f *integerEmitter) directCall(index uint32, sig functionSpec, base, importedFunctions int) {
+func (f *integerEmitter) directCall(index uint32, sig functionSpec, base, importedFunctions int, hiddenRefs []bool) {
 	imported := index < uint32(importedFunctions)
 	if imported {
 		f.importCallTarget(index)
@@ -152,6 +152,7 @@ func (f *integerEmitter) directCall(index uint32, sig functionSpec, base, import
 	} else {
 		f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), callee: index - uint32(importedFunctions)})
 	}
+	f.recordGCFrameCallsite(f.a.Len(), hiddenRefs)
 	f.restoreCallTransport()
 	if !f.mode.production {
 		f.a.Lwu(enc.X7, enc.X12, 0)

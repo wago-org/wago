@@ -750,6 +750,19 @@ func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initiali
 		calls[j].site += entry.Position()
 	}
 	prefixBytes := entry.Position()
+	if roots := info.mode.gcFrameRoots; roots != nil {
+		if !roots.VisitCallsites(func(_ int, callsite shared.GCFrameCallsite) bool {
+			off := uint64(callsite.ReturnOffset()) + uint64(prefixBytes)
+			if off > uint64(^uint32(0)) {
+				return false
+			}
+			callsite.SetReturnOffset(uint32(off))
+			return true
+		}) {
+			roots.Exact = false
+			return nil, FunctionInfo{}, unsupported("invalid GC frame-root callsite")
+		}
+	}
 	entry.a.B = append(entry.a.B, body...)
 	entry.a.Ld(enc.RA, enc.SP, 0)
 	entry.a.Constant64(enc.Scratch0, int64(frame))

@@ -14,6 +14,90 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+func rv64RootedInternalReferenceCallModule(exportInternal bool) []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		{0x60, 0x01, 0x64, 0x00, 0x01, 0x64, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	callee := []byte{0x00, 0xfb, 0x01, 0x00, 0x1a, 0x20, 0x00, 0x0b}
+	caller := []byte{0x01, 0x01, 0x7f,
+		0x41, 0x29, 0xfb, 0x00, 0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x10, 0x00,
+		0xfb, 0x02, 0x00, 0x00, 0x21, 0x00,
+		0xfb, 0x02, 0x00, 0x00, 0x20, 0x00, 0x6a, 0x0b,
+	}
+	export := uint32(1)
+	if exportInternal {
+		export = 0
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), export))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(callee))), callee...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func TestRV64RootedInternalReferenceCallCompiles(t *testing.T) {
+	source := rv64RootedInternalReferenceCallModule(false)
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(2)
+	if !roots.MarkFunction(0) || !roots.MarkFunction(1) || !roots.ReserveFunctions(2) {
+		t.Fatal("reserve exact root plans")
+	}
+	callee, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin callee root plan")
+	}
+	*callee = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true, Locals: []shared.GCFrameLocal{{Index: 0, Offset: shared.RV64CallFrameHeaderBytes}}}
+	if !callee.SetLiveMasks([]uint64{1}, 1, 0) {
+		t.Fatal("install callee root masks")
+	}
+	caller, ok := roots.BeginFunction(1)
+	if !ok {
+		t.Fatal("begin caller root plan")
+	}
+	*caller = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true, SafepointBase: 1}
+	if !caller.SetLiveMasks([]uint64{0, 0, 0}, 2, 1) {
+		t.Fatal("install caller root masks")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || callee.SafepointCount() != 1 || caller.SafepointCount() != 2 || caller.CallsiteCount() != 1 {
+		t.Fatalf("code=%d callee-safepoints=%d caller-safepoints=%d callsites=%d", len(compiled.Code), callee.SafepointCount(), caller.SafepointCount(), caller.CallsiteCount())
+	}
+	site, ok := caller.Callsite(0)
+	if !ok || site.ReturnOffset() == 0 || site.StackAdjust() != 0 || len(site.Offsets()) != 1 {
+		t.Fatalf("caller callsite = %+v ok=%t", site, ok)
+	}
+}
+
+func TestRV64RootedReferenceExportRejected(t *testing.T) {
+	if err := AdmitProductionSource(rv64RootedInternalReferenceCallModule(true)); err == nil {
+		t.Fatal("collector reference export unexpectedly admitted")
+	}
+}
+
 func rv64RootedTypedSelectModule(typeIndex uint32, nullable, same bool) []byte {
 	types := make([][]byte, typeIndex+1)
 	for i := range types {

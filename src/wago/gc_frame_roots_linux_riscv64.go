@@ -9,10 +9,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// newGCFrameRootPlan is the first bounded RV64 exact-root producer. It admits
-// closed, table-free scalar modules whose only collection boundaries are GC
-// allocation helpers. Native Wasm calls remain fail-closed until RV64 emits
-// their return-PC callsite maps as well as allocation safepoints.
+// newGCFrameRootPlan is the bounded RV64 exact-root producer for closed,
+// table-free scalar modules. Allocation helpers publish safepoint roots and
+// direct Wasm calls publish return-PC caller-frame maps.
 func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
 	if diagnostic != nil {
 		*diagnostic = ""
@@ -89,53 +88,25 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				}
 			}
 		}
-		if ok, err := rv64GCFrameAllocationOnly(m.Code[function].BodyBytes, &classifier); err != nil {
-			return reject("function %d instruction scan: %v", function, err)
-		} else if !ok {
-			return reject("function %d contains a native call without an RV64 callsite map", function)
-		}
 		plan.Conservative = true
 		liveMasks, err := gcFrameAllLiveMasksArenaWithClassifier(m.Code[function].BodyBytes, len(plan.Locals), &classifier)
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
-		if liveMasks.callN != 0 {
-			return reject("function %d contains a native call without an RV64 callsite map", function)
-		}
 		plan.Locals, liveMasks, _, err = gcFrameCompactLiveLocalsArena(plan.Locals, liveMasks)
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
-		if liveMasks.allocationN == 0 {
-			return reject("function %d is collecting without an RV64 allocation safepoint", function)
+		if liveMasks.allocationN == 0 && liveMasks.callN == 0 {
+			return reject("function %d is collecting without an RV64 root boundary", function)
 		}
 		if uint64(safepointBase)+uint64(liveMasks.allocationN) > uint64(shared.GCSafepointIDMax) {
 			return reject("function %d exceeds the dense safepoint ID bound", function)
 		}
-		if !plan.SetLiveMasks(liveMasks.words, liveMasks.allocationN, 0) {
+		if !plan.SetLiveMasks(liveMasks.words, liveMasks.allocationN, liveMasks.callN) {
 			return reject("function %d has malformed exact local liveness masks", function)
 		}
 		safepointBase += uint32(liveMasks.allocationN)
 	}
 	return modulePlan
-}
-
-func rv64GCFrameAllocationOnly(body []byte, classifier *wasm.ModuleInstructionClassifier) (bool, error) {
-	r := wasm.NewReader(body)
-	for r.HasNext() {
-		op, err := r.Byte()
-		if err != nil {
-			return false, err
-		}
-		var imm wasm.InstructionImmediate
-		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
-			return false, err
-		}
-		switch imm.Kind {
-		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrCallRef,
-			wasm.InstrReturnCall, wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
-			return false, nil
-		}
-	}
-	return true, nil
 }

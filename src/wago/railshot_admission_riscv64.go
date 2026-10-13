@@ -20,6 +20,10 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	if c == nil {
 		return false
 	}
+	if len(c.Types) == 0 || len(c.Types) > railshot.MaxFunctions || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxFunctions ||
+		len(c.FuncTypeID) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions {
+		return false
+	}
 	structProduct, arrayProduct := c.stagedGCStructProduct(), c.stagedGCArrayProduct()
 	structHelpers, arrayHelpers := structProduct == stagedGCStructGeneric, arrayProduct == stagedGCArrayProductGeneric
 	if structProduct != 0 && !structHelpers || arrayProduct != 0 && !arrayHelpers || !structHelpers && !arrayHelpers ||
@@ -33,8 +37,21 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	memo := c.loadValidateMemo()
 	roots := c.genericGCFrameRoots()
 	if memo == nil || !memo.rv64FreshRootedGC || sha256.Sum256(c.code) != memo.rv64FreshRootedGCDigest ||
-		roots == nil || len(roots.safepoints) == 0 || len(roots.callsites) != 0 || len(c.Types) != len(c.GCTypeDescs) {
+		roots == nil || len(roots.safepoints) == 0 || len(c.Types) != len(c.GCTypeDescs) {
 		return false
+	}
+	if validateCompiledGCFrameRoots(c, roots) != nil {
+		return false
+	}
+	rootedValue := func(value ValueTypeDescriptor, owner int) bool {
+		if value.Kind <= ValueTypeF64 {
+			return value.Ref == (ReferenceTypeDescriptor{})
+		}
+		if value.Kind != ValueTypeReference || value.Ref.Exact || !value.Ref.Heap.Defined || int(value.Ref.Heap.TypeIndex) >= owner || int(value.Ref.Heap.TypeIndex) >= len(c.Types) {
+			return false
+		}
+		target := c.Types[value.Ref.Heap.TypeIndex]
+		return target.Kind == CompositeTypeStruct || target.Kind == CompositeTypeArray
 	}
 	storageKind := func(storage StorageTypeDescriptor, owner int) (gc.StorageKind, bool) {
 		if storage.Packed {
@@ -89,12 +106,12 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		}
 		switch desc.Kind {
 		case gc.KindFunc:
-			if typ.Kind != CompositeTypeFunction || !desc.Final || desc.HasSuper || len(desc.Fields) != 0 || desc.Elem != 0 || desc.HasRefs {
+			if typ.Kind != CompositeTypeFunction || len(typ.Params) > 256 || len(typ.Results) > 256 || !desc.Final || desc.HasSuper || len(desc.Fields) != 0 || desc.Elem != 0 || desc.HasRefs {
 				return false
 			}
 			for _, values := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
 				for _, value := range values {
-					if value.Kind > ValueTypeF64 {
+					if !rootedValue(value, i) {
 						return false
 					}
 				}
@@ -137,6 +154,136 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			hasArray = true
 		default:
 			return false
+		}
+	}
+	if len(c.Funcs) != len(c.FuncTypeID) {
+		return false
+	}
+	structural := &wasm.Module{Types: make([]wasm.RecType, len(c.Types))}
+	toWasmValue := func(value ValueTypeDescriptor) (wasm.ValType, bool) {
+		switch value.Kind {
+		case ValueTypeI32:
+			return wasm.I32, true
+		case ValueTypeI64:
+			return wasm.I64, true
+		case ValueTypeF32:
+			return wasm.F32, true
+		case ValueTypeF64:
+			return wasm.F64, true
+		case ValueTypeReference:
+			if !value.Ref.Heap.Defined {
+				return wasm.ValType{}, false
+			}
+			return wasm.RefVal(wasm.Ref(value.Ref.Nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: value.Ref.Heap.TypeIndex}), value.Ref.Exact)), true
+		default:
+			return wasm.ValType{}, false
+		}
+	}
+	toWasmField := func(field FieldTypeDescriptor) (wasm.FieldType, bool) {
+		var storage wasm.StorageType
+		if field.Storage.Packed {
+			switch field.Storage.PackedType {
+			case PackedTypeI8:
+				storage = wasm.StoragePacked(wasm.PackI8)
+			case PackedTypeI16:
+				storage = wasm.StoragePacked(wasm.PackI16)
+			default:
+				return wasm.FieldType{}, false
+			}
+		} else {
+			value, ok := toWasmValue(field.Storage.Value)
+			if !ok {
+				return wasm.FieldType{}, false
+			}
+			storage = wasm.StorageVal(value)
+		}
+		mut := wasm.Const
+		if field.Mutable {
+			mut = wasm.Var
+		}
+		return wasm.NewFieldType(storage, mut), true
+	}
+	for i := range c.Types {
+		typ := &c.Types[i]
+		comp := wasm.CompType{}
+		switch typ.Kind {
+		case CompositeTypeFunction:
+			comp.Kind = wasm.CompFunc
+			comp.Params = make([]wasm.ValType, len(typ.Params))
+			comp.Results = make([]wasm.ValType, len(typ.Results))
+			for j := range typ.Params {
+				var ok bool
+				comp.Params[j], ok = toWasmValue(typ.Params[j])
+				if !ok {
+					return false
+				}
+			}
+			for j := range typ.Results {
+				var ok bool
+				comp.Results[j], ok = toWasmValue(typ.Results[j])
+				if !ok {
+					return false
+				}
+			}
+		case CompositeTypeStruct:
+			comp.Kind = wasm.CompStruct
+			comp.Fields = make([]wasm.FieldType, len(typ.Fields))
+			for j := range typ.Fields {
+				var ok bool
+				comp.Fields[j], ok = toWasmField(typ.Fields[j])
+				if !ok {
+					return false
+				}
+			}
+		case CompositeTypeArray:
+			comp.Kind = wasm.CompArray
+			var ok bool
+			comp.Array, ok = toWasmField(typ.Array)
+			if !ok {
+				return false
+			}
+		default:
+			return false
+		}
+		structural.Types[i] = wasm.RecType{SubTypes: []wasm.SubType{{Final: true, Comp: comp}}}
+	}
+	for function := range c.Funcs {
+		sig := &c.Funcs[function]
+		if !sig.HasTypeIndex || int(sig.TypeIndex) >= len(c.Types) {
+			return false
+		}
+		typ := &c.Types[sig.TypeIndex]
+		if typ.Kind != CompositeTypeFunction || len(sig.Params) != len(typ.Params) || len(sig.Results) != len(typ.Results) {
+			return false
+		}
+		key, ok := structural.StructuralTypeKeyChecked(sig.TypeIndex)
+		if !ok || c.FuncTypeID[function] != key {
+			return false
+		}
+		for i, exact := range typ.Params {
+			abi, ok := exact.ABIType(c.Types)
+			if !ok || sig.Params[i] != abi {
+				return false
+			}
+		}
+		for i, exact := range typ.Results {
+			abi, ok := exact.ABIType(c.Types)
+			if !ok || sig.Results[i] != abi {
+				return false
+			}
+		}
+	}
+	for _, function := range c.Exports {
+		if function < 0 || function >= len(c.Funcs) {
+			return false
+		}
+		typ := &c.Types[c.Funcs[function].TypeIndex]
+		for _, values := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
+			for _, value := range values {
+				if value.Kind > ValueTypeF64 || value.Ref != (ReferenceTypeDescriptor{}) {
+					return false
+				}
+			}
 		}
 	}
 	// The struct-dispatch helper family also owns dynamic ref.test/ref.cast for
@@ -762,7 +909,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		for _, types := range [][]ValType{sig.Params, sig.Results} {
 			for _, typ := range types {
-				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!typedI31 || typ != ValI31Ref) && (!(exactGCExtern || exactGCBrOnCastNullability || exactGCBrOnCastFailNullability || exactGCStructBasic || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy) || typ != ValAnyRef) {
+				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!typedI31 || typ != ValI31Ref) && (!(freshRootedGC || exactGCExtern || exactGCBrOnCastNullability || exactGCBrOnCastFailNullability || exactGCStructBasic || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy) || typ != ValAnyRef) {
 					return reject("unsupported signature")
 				}
 			}
