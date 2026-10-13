@@ -2894,7 +2894,7 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		ctrl:                        offHeapSlicePtr(in.ctrl),
 		state:                       in.ensurePluginState(),
 		entryNativeMu:               heldNativeMu,
-		parkedNativeContextReusable: in.gc == nil && !in.c.threadedMemory0(),
+		parkedNativeContextReusable: in.parkedHostControlReusable(),
 	}
 	if codeProfileEnabled && (in.boundaryProfile() != nil || activeHostInvocationContext(in).profileSession() != nil) {
 		span, restore := activation.beginProfileActivation()

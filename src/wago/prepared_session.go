@@ -119,7 +119,7 @@ func (fn *WasmFunc) OpenSession() (*PreparedSession, error) {
 				state:                       pluginState,
 				entryNativeMu:               entry.local,
 				preparedMigration:           &state.hostGate.migrated,
-				parkedNativeContextReusable: in.gc == nil && !in.c.threadedMemory0(),
+				parkedNativeContextReusable: in.parkedHostControlReusable(),
 			}
 			if preparedHostFixedEnabled {
 				switch in.syncHosts[0].scalarKind {

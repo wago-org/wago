@@ -321,6 +321,12 @@ func (in *Instance) invalidateNativeContext() {
 	}
 }
 
+// Host return can reuse private control while refreshing shared-memory entries.
+// Collector-owned context still needs the full bind after every callback.
+func (in *Instance) parkedHostControlReusable() bool {
+	return in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) == 0
+}
+
 func (in *Instance) canReuseParkedNativeContext(version uint64) bool {
 	return in.canReuseParkedNativeContextWithState(version, in.ensurePluginState())
 }

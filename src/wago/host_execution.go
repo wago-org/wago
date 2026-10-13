@@ -578,6 +578,16 @@ func (l parkedIndependentHostLease) resume(a *hostLoopActivation) {
 	}
 	if migrated || !a.parkedNativeContextReusable || l.version == ^uint64(0) || a.state.nativeContextVersion.Load() != l.version {
 		a.root.restoreTypedScalarNativeContext(l.ctrl)
+		return
+	}
+	// Shared memory zero has instance-private basedata and control, so another
+	// tenant cannot overwrite this invocation's trap, stack or import context.
+	// The memory directory still needs live sizes after every callback: a
+	// different goroutine may have grown the shared backing while we parked.
+	if a.root.threadedMemoryZero {
+		if err := a.root.refreshMemoryDirectory(); err != nil {
+			panic(invalidHostReference{err: err})
+		}
 	}
 }
 
