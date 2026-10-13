@@ -77,12 +77,12 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			if len(elem.Mode.Offset.Instrs) != 0 || !rv64RootedI32Const(elem.Mode.Offset.BodyBytes) {
 				return reject("RV64 exact roots require bounded literal active function elements")
 			}
-		case wasm.ElemPassive:
+		case wasm.ElemPassive, wasm.ElemDeclarative:
 			if len(elem.Mode.Offset.Instrs) != 0 || len(elem.Mode.Offset.BodyBytes) != 0 {
-				return reject("RV64 exact roots require canonical passive function elements")
+				return reject("RV64 exact roots require canonical inactive function elements")
 			}
 		default:
-			return reject("RV64 exact roots reject declarative function elements")
+			return reject("RV64 exact roots reject unknown function element modes")
 		}
 		for _, function := range elem.Kind.Funcs {
 			if uint64(function) >= uint64(len(m.FuncTypes)) {

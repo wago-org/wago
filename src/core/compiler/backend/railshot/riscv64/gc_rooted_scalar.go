@@ -58,7 +58,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			if _, err := plainScalarConst(elem.Mode.Offset, wasm.I32, false); err != nil {
 				return false
 			}
-		case wasm.ElemPassive:
+		case wasm.ElemPassive, wasm.ElemDeclarative:
 			if len(elem.Mode.Offset.Instrs) != 0 || len(elem.Mode.Offset.BodyBytes) != 0 {
 				return false
 			}

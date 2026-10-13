@@ -459,7 +459,23 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 	}
 	for i := range c.passiveElems {
 		elem := &c.passiveElems[i]
-		if (elem.Mode != ElemModeDeclarative && elem.Mode != ElemModePassive) || !validValues(elem.RefType, elem.Values) {
+		switch elem.Mode {
+		case ElemModeActive:
+			// Original-index state retains active slots as already-dropped empty
+			// descriptors when a later table.init/elem.drop immediate addresses
+			// the same element index space.
+			if len(elem.Values) != 0 || int(elem.TableIndex) >= c.tableCount() || normalizedElemRefType(elem.RefType) != c.tableElementType(int(elem.TableIndex)) {
+				return false
+			}
+		case ElemModeDeclarative:
+			if len(elem.Values) != 0 {
+				return false
+			}
+		case ElemModePassive:
+			if !validValues(elem.RefType, elem.Values) {
+				return false
+			}
+		default:
 			return false
 		}
 	}

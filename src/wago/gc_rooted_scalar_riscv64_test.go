@@ -1815,6 +1815,63 @@ func TestRV64RootedScalarPassiveTableExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarDeclarativeTableModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	target := []byte{0x00, 0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a, 0x41, 0x2a, 0x0b}
+	caller := []byte{0x00, 0xfc, 0x0d, 0x01, 0x41, 0x00, 0x11, 0x01, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(4, []byte{0x01, 0x70, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(9, []byte{
+			0x02,
+			0x00, 0x41, 0x00, 0x0b, 0x01, 0x00,
+			0x03, 0x00, 0x01, 0x00,
+		}),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target))), target...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func TestRV64RootedScalarDeclarativeTableExecutes(t *testing.T) {
+	source := rootedScalarDeclarativeTableModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded rooted declarative-table module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Elems) != 1 || len(view.passiveElems) != 2 || view.passiveElems[0].Mode != ElemModeActive || len(view.passiveElems[0].Values) != 0 || view.passiveElems[1].Mode != ElemModeDeclarative || len(view.passiveElems[1].Values) != 0 {
+		digest, valid := rv64RootedTableDigest(view)
+		t.Fatalf("declarative-table original-index state is missing: fresh=%t validation=%v digest=%t/%t active=%+v state=%+v", rv64FreshRootedGC(view), railshotValidateCompiled(view), valid, digest == view.validateMemo.rv64FreshRootedGCTableDigest, view.Elems, view.passiveElems)
+	}
+	for range 2 {
+		instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for range 2 {
+			if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
+				_ = instance.Close()
+				t.Fatalf("run()=%v err=%v want=[42]", got, err)
+			}
+		}
+		if err := instance.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func rootedScalarBoundaryStructModule(fieldCount int) []byte {
 	fields := []byte{0x5f}
 	fields = append(fields, wasmtest.ULEB(uint32(fieldCount))...)
