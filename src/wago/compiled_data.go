@@ -7,6 +7,8 @@ import (
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
+const rv64RootedMaxHostFunctionImports = 256
+
 // compactActiveData is an immutable execution-only representation. Public
 // DataInit metadata remains unchanged and independently mutable. Common constant
 // offsets need neither a global index nor an expression slice in every record.
@@ -45,7 +47,7 @@ func (c *Compiled) activeDataAt(index int) DataInit {
 // containing dots. Imported signatures remain reference-free until collector
 // ownership can cross the public host ABI.
 func rv64RootedImportDigest(c *Compiled) ([32]byte, bool) {
-	if c == nil || c.NumImports < 0 || c.NumImports > 4 || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports ||
+	if c == nil || c.NumImports < 0 || c.NumImports > rv64RootedMaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports ||
 		c.dynamicImports != (c.NumImports != 0) || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return [32]byte{}, false
 	}

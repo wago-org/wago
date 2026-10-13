@@ -16,6 +16,9 @@ import (
 	rv64runtime "github.com/wago-org/wago/src/core/runtime/riscv64"
 )
 
+var _ [railshot.MaxHostFunctionImports - rv64RootedMaxHostFunctionImports]struct{}
+var _ [rv64RootedMaxHostFunctionImports - railshot.MaxHostFunctionImports]struct{}
+
 func rv64FreshRootedGC(c *Compiled) bool {
 	if c == nil {
 		return false
@@ -33,13 +36,13 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	structHelpers, arrayHelpers := structProduct == stagedGCStructGeneric, arrayProduct == stagedGCArrayProductGeneric
 	if structProduct != 0 && !structHelpers || arrayProduct != 0 && !arrayHelpers || !structHelpers && !arrayHelpers ||
 		c.usesGCStructHelpers() != structHelpers || c.usesGCArrayHelpers() != arrayHelpers || c.syncHostSlots < 4 ||
-		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports < 0 || c.NumImports > 4 || len(c.Imports) != c.NumImports ||
+		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports ||
 		len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports != 0) || c.tableCount() > 2 || c.memoryCount() > 1 ||
 		len(c.GlobalImports) != 0 || len(c.Globals) > 256 || len(c.Elems) > 256 ||
 		len(c.passiveElems) > 256 || len(c.PassiveData) > 256 {
 		return false
 	}
-	if c.NumImports != 0 && (c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.HasStart) {
+	if c.NumImports != 0 && (c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0) {
 		return false
 	}
 	importDigest, validImports := rv64RootedImportDigest(c)
@@ -50,12 +53,21 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		return false
 	}
 	if c.HasStart {
-		if c.StartIsImport || c.StartImportIdx != 0 || c.StartLocalFunc < 0 || uint64(c.StartLocalFunc) >= uint64(len(c.Funcs)) ||
-			uint32(c.StartLocalFunc) != memo.rv64FreshRootedGCStartLocal || c.StartLocalFunc >= len(c.Entry) ||
+		if c.StartIsImport != memo.rv64FreshRootedGCStartImport {
+			return false
+		}
+		if c.StartIsImport {
+			if c.StartLocalFunc != 0 || c.StartImportIdx < 0 || c.StartImportIdx >= c.NumImports || c.StartImportIdx >= len(c.importFuncSigs) ||
+				uint32(c.StartImportIdx) != memo.rv64FreshRootedGCStartImportIndex || memo.rv64FreshRootedGCStartLocal != 0 ||
+				len(c.importFuncSigs[c.StartImportIdx].Params) != 0 || len(c.importFuncSigs[c.StartImportIdx].Results) != 0 {
+				return false
+			}
+		} else if c.StartImportIdx != 0 || c.StartLocalFunc < 0 || uint64(c.StartLocalFunc) >= uint64(len(c.Funcs)) ||
+			uint32(c.StartLocalFunc) != memo.rv64FreshRootedGCStartLocal || memo.rv64FreshRootedGCStartImportIndex != 0 || c.StartLocalFunc >= len(c.Entry) ||
 			len(c.Funcs[c.StartLocalFunc].Params) != 0 || len(c.Funcs[c.StartLocalFunc].Results) != 0 {
 			return false
 		}
-	} else if c.StartIsImport || c.StartImportIdx != 0 || c.StartLocalFunc != 0 || memo.rv64FreshRootedGCStartLocal != 0 {
+	} else if c.StartIsImport || c.StartImportIdx != 0 || c.StartLocalFunc != 0 || memo.rv64FreshRootedGCStartImport || memo.rv64FreshRootedGCStartLocal != 0 || memo.rv64FreshRootedGCStartImportIndex != 0 {
 		return false
 	}
 	directory := c.memoryDir

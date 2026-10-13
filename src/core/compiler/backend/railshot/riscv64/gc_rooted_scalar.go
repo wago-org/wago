@@ -10,7 +10,7 @@ import (
 )
 
 const maxRootedScalarArrayFixed = 254
-const maxRootedScalarHostImports = 4
+const maxRootedScalarHostImports = MaxHostFunctionImports
 
 // admitRV64GCRootedScalarModule is the first source-shape admission shared by
 // generic GC programs instead of a byte-for-byte product fixture. It keeps the
@@ -34,7 +34,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		// The first generic host boundary is deliberately numeric and table-free.
 		// Imported references, starts and table publication have separate ownership
 		// contracts and must not become reachable through this admission step.
-		if len(m.Tables) != 0 || len(m.Elements) != 0 || m.Start != nil {
+		if len(m.Tables) != 0 || len(m.Elements) != 0 {
 			return false
 		}
 		for i := range m.Imports {

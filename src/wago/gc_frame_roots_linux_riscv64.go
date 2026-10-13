@@ -36,12 +36,12 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		return reject("generic GC module has no local function bodies")
 	}
 	importedFunctions := m.ImportedFuncCount()
-	if importedFunctions != len(m.Imports) || importedFunctions > 4 || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > 2 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
+	if importedFunctions != len(m.Imports) || importedFunctions > railshot.MaxHostFunctionImports || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > 2 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
 		return reject("RV64 exact roots require a bounded scalar allocation module")
 	}
 	if importedFunctions != 0 {
-		if len(m.Tables) != 0 || len(m.Elements) != 0 || m.Start != nil {
-			return reject("RV64 exact roots require numeric imports without tables or start")
+		if len(m.Tables) != 0 || len(m.Elements) != 0 {
+			return reject("RV64 exact roots require numeric imports without tables")
 		}
 		for i := range m.Imports {
 			ft, ok := m.ImportFuncType(i)
@@ -62,9 +62,17 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	}
 	if m.Start != nil {
 		index := int(*m.Start)
-		sig, ok := m.LocalFuncType(index)
-		if !ok || index >= len(m.Code) || len(sig.Params) != 0 || len(sig.Results) != 0 {
-			return reject("RV64 exact roots require a bounded local void start")
+		var sig *wasm.CompType
+		var ok bool
+		if index < importedFunctions {
+			sig, ok = m.ImportFuncType(index)
+		} else {
+			local := index - importedFunctions
+			sig, ok = m.LocalFuncType(local)
+			ok = ok && local < len(m.Code)
+		}
+		if !ok || sig == nil || len(sig.Params) != 0 || len(sig.Results) != 0 {
+			return reject("RV64 exact roots require a bounded void start")
 		}
 	}
 	for i := range m.Globals {

@@ -327,8 +327,10 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	if !validCompiledGCFunctionTables(c) || len(c.Funcs) == 0 {
 		return fmt.Errorf("GC frame-root metadata requires a validated local call graph with private tables")
 	}
-	if c.HasStart && (c.StartIsImport || c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Funcs)) {
-		return fmt.Errorf("GC frame-root metadata requires an exact local start function")
+	if c.HasStart {
+		if _, err := compiledStartIndex(c); err != nil {
+			return fmt.Errorf("GC frame-root metadata requires an exact start function: %w", err)
+		}
 	}
 	for i := range c.GlobalImports {
 		global := c.GlobalImports[i]

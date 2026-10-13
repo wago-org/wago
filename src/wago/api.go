@@ -1745,7 +1745,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		compiled.validateMemo.rv64FreshRootedGCImportDigest = rootedImportDigest
 		compiled.validateMemo.rv64FreshRootedGCHasStart = compiled.HasStart
 		if compiled.HasStart {
-			compiled.validateMemo.rv64FreshRootedGCStartLocal = uint32(compiled.StartLocalFunc)
+			compiled.validateMemo.rv64FreshRootedGCStartImport = compiled.StartIsImport
+			if compiled.StartIsImport {
+				compiled.validateMemo.rv64FreshRootedGCStartImportIndex = uint32(compiled.StartImportIdx)
+			} else {
+				compiled.validateMemo.rv64FreshRootedGCStartLocal = uint32(compiled.StartLocalFunc)
+			}
 		}
 		if directory := compiled.memoryDir; directory != nil {
 			compiled.validateMemo.rv64FreshRootedGCMemories = uint8(len(directory.defs))
