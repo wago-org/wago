@@ -998,3 +998,16 @@ The fixed host loop remains 71.43% cumulative, native resume 26.27%, and memory
 directory refresh 12.21% (overlapping samples). Reconstructed compiler assembly
 retains the inner-loop memory store/load and callback branch; this is not the
 original temporary capture library. Bounded execution remains unadmitted.
+
+### Shared backing handle checkpoint — 2026-10-13
+
+Production `283ec369` adds retained shared backing handles and producer-close
+host-return coverage. The matched local wasm.fyi capture improves opaque
+callbacks another 4.3% to 10.605 ms, still 57.00x the Clang peer. ARM64 normal,
+guarded-race and pinned official validation pass, as do native AMD64 threads
+tests with local atomic fixtures copied. The
+[checkpoint](wasm3-feature-refresh.md#shared-backing-handle-checkpoint--2026-10-13)
+and [raw evidence](docs/benchmarks/wasm3-2026-10-13/shared-backing-host-return.json)
+record compile latency (Core 3 -0.73%, threads +3.73%), unchanged code sizes,
+cache allocation cost, all phase captures and local receipts. This remains
+partial progress toward parity; no production deployment occurred.

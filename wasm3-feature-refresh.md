@@ -182,3 +182,30 @@ contains all phase samples, contract/artifact hashes, raw compile measurements,
 red/green regression output, correctness checks, and six local publication
 receipts. The new Wago results are available at http://localhost:8788/benchmarks/.
 No production deployment occurred. Full parity and native AMD64 timing remain open.
+
+### Shared backing handle checkpoint — 2026-10-13
+
+Wago `283ec369` retains nonmoving shared backing handles in indexed-memory
+directories, avoiding owner mutex acquisition during callback return while
+still acquire-reading each live size. A new regression closes the producer
+inside a host callback, verifies two consumer invocations, and confirms the
+last consumer releases backing. ARM64 threads normal/guarded-race and pinned
+Core 3/threads suites pass. Native AMD64 threads tests pass after copying the
+missing atomic fixtures; optional pinned official suites were skipped there.
+
+The fresh six-contract, four-phase capture (15 timing samples per successful
+row) improves opaque callbacks from 11.084 ms at `17c78d48` to 10.605 ms
+(4.3%), versus 0.186 ms at Clang w2c2 `f303ed27`: still **57.00x slower**.
+The five other steady controls range from -1.3% to +1.1%, and all native image
+sizes match. Six new Wago captures are published only to the local server.
+
+Alternating compile process pairs show Core 3 -0.73%, threads +3.73%; code
+sizes are identical and allocations effectively unchanged. Median RSS changes
+-0.12% and -2.00%, respectively. Threads compile-cost neutrality is unproven.
+The cache adds a 24-byte slice header to allocated indexed-memory sidecars
+and a pointer array when shared memories exist; ordinary single-memory
+instances still have no sidecar. Warmed atomic invocation remains allocation-free.
+The [raw report](docs/benchmarks/wasm3-2026-10-13/shared-backing-host-return.json)
+retains phase samples, hashes, compile rows, pilot evidence, validation logs,
+and local publication receipts. Database integrity and all 575,121 historical
+observations pass the post-publication audit. Full parity remains open.
