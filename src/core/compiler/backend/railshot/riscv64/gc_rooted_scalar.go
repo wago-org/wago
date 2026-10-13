@@ -365,7 +365,9 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 					if heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapFunc {
 						continue
 					}
-					if heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec || int(heap.Type().Index) >= flatTypes || !admittedAggregates[heap.Type().Index] {
+					if heap.Kind() != wasm.HeapTypeIndex ||
+						(heap.Type().Rec && (heap.Type().Index != 0 || !aggregateSubtype)) ||
+						(!heap.Type().Rec && (int(heap.Type().Index) >= flatTypes || !admittedAggregates[heap.Type().Index])) {
 						return false
 					}
 				}
@@ -571,10 +573,20 @@ type rootedScalarAggregateStackValue struct {
 	i32         uint32
 }
 
-func (p *rootedScalarAggregateParser) valueMatches(value rootedScalarAggregateStackValue, storage wasm.StorageType) bool {
+func (p *rootedScalarAggregateParser) valueMatches(value rootedScalarAggregateStackValue, storage wasm.StorageType, owner uint32) bool {
 	want := storage.Val()
 	if storage.Packed() {
 		want = wasm.I32
+	}
+	if want.Kind() == wasm.ValRef {
+		ref := want.Ref()
+		heap := ref.Heap()
+		if heap.Kind() == wasm.HeapTypeIndex && heap.Type().Rec {
+			if heap.Type().Index != 0 {
+				return false
+			}
+			want = wasm.RefVal(wasm.Ref(ref.Nullable(), wasm.IndexedHeap(wasm.TypeIdx{Index: owner}), ref.Exact()))
+		}
 	}
 	if want.Kind() != wasm.ValRef {
 		return wasm.EqualValType(value.typ, want)
@@ -680,7 +692,7 @@ func (p *rootedScalarAggregateParser) validateExpression(expr wasm.Expr, require
 				}
 				base = stackLen - len(comp.Fields)
 				for i := range comp.Fields {
-					if !p.valueMatches(stack[base+i], comp.Fields[i].Storage()) {
+					if !p.valueMatches(stack[base+i], comp.Fields[i].Storage(), typeIndex) {
 						return false
 					}
 					constructorDepth = max(constructorDepth, stack[base+i].depth+1)
@@ -695,7 +707,7 @@ func (p *rootedScalarAggregateParser) validateExpression(expr wasm.Expr, require
 					}
 				}
 			case 6:
-				if comp.Kind != wasm.CompArray || stackLen < 2 || !p.valueMatches(stack[stackLen-2], comp.Array.Storage()) ||
+				if comp.Kind != wasm.CompArray || stackLen < 2 || !p.valueMatches(stack[stackLen-2], comp.Array.Storage(), typeIndex) ||
 					!wasm.EqualValType(stack[stackLen-1].typ, wasm.I32) || !stack[stackLen-1].knownI32 || stack[stackLen-1].i32 > 256 {
 					return false
 				}
@@ -714,7 +726,7 @@ func (p *rootedScalarAggregateParser) validateExpression(expr wasm.Expr, require
 				}
 				base = stackLen - int(count)
 				for i := base; i < stackLen; i++ {
-					if !p.valueMatches(stack[i], comp.Array.Storage()) {
+					if !p.valueMatches(stack[i], comp.Array.Storage(), typeIndex) {
 						return false
 					}
 					constructorDepth = max(constructorDepth, stack[i].depth+1)
@@ -880,7 +892,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 		}
 		return true
 	}
-	storageType := func(owner uint32, references bool) bool {
+	storageType := func(owner uint32, references, selfReference bool) bool {
 		storage, err := r.Byte()
 		if err != nil {
 			return false
@@ -895,7 +907,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 			return false
 		}
 		heap, err := r.S33()
-		return err == nil && (heap == -16 || heap >= 0 && uint64(heap) < uint64(owner) && (kinds[heap] == 0x5f || kinds[heap] == 0x5e))
+		return err == nil && (heap == -16 || heap >= 0 && (selfReference && uint64(heap) == uint64(owner) || uint64(heap) < uint64(owner) && (kinds[heap] == 0x5f || kinds[heap] == 0x5e)))
 	}
 	for owner := uint32(0); owner < count; owner++ {
 		form, err := r.Byte()
@@ -928,7 +940,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 				return false
 			}
 			for range fields {
-				if !storageType(owner, true) {
+				if !storageType(owner, true, true) {
 					return false
 				}
 				mut, err := r.Byte()
@@ -941,7 +953,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 				return false
 			}
 		case 0x5e:
-			if !storageType(owner, true) {
+			if !storageType(owner, true, false) {
 				return false
 			}
 			mut, err := r.Byte()

@@ -226,11 +226,14 @@ func rv64FreshRootedGC(c *Compiled) bool {
 				}
 				return gc.StorageFuncRef, true
 			}
-			if int(ref.Heap.TypeIndex) >= owner || int(ref.Heap.TypeIndex) >= len(c.Types) {
+			if int(ref.Heap.TypeIndex) > owner || int(ref.Heap.TypeIndex) >= len(c.Types) {
 				return 0, false
 			}
 			target := c.Types[ref.Heap.TypeIndex]
 			if target.Kind != CompositeTypeStruct && target.Kind != CompositeTypeArray {
+				return 0, false
+			}
+			if int(ref.Heap.TypeIndex) == owner && c.Types[owner].Kind != CompositeTypeStruct {
 				return 0, false
 			}
 			if ref.Nullable {

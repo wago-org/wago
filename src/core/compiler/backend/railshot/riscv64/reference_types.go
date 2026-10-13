@@ -108,7 +108,16 @@ func (types internalReferenceTypes) rootedCollectorReference(storage wasm.Storag
 	}
 	ref := storage.Val().Ref()
 	heap := ref.Heap()
-	if ref.Exact() || heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec || heap.Type().Index >= owner {
+	if ref.Exact() || heap.Kind() != wasm.HeapTypeIndex {
+		return false
+	}
+	if heap.Type().Rec {
+		// The generic profile admits only compact singleton recursion groups.
+		// Resolve rec.0 to the containing struct without recursively asking
+		// rootedStruct to validate the same field again.
+		return heap.Type().Index == 0 && types.rootedStructType(owner) != nil
+	}
+	if heap.Type().Index >= owner {
 		return false
 	}
 	target := heap.Type().Index

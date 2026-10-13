@@ -202,6 +202,26 @@ func genericGCAggregateGlobalInitializerModule() []byte {
 	)
 }
 
+func genericGCSelfRecursiveStructModule() []byte {
+	body := []byte{
+		0x00,
+		0x23, 0x00, 0x41, 0x29, 0xfb, 0x00, 0x00, 0x24, 0x00,
+		0x23, 0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0x24, 0x00,
+		0xd0, 0x00, 0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x02, 0x63, 0x00, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func genericGCAggregateGlobalTableInitializerModule() []byte {
 	body := []byte{
 		0x00,
@@ -370,6 +390,35 @@ func TestGenericGCAggregateGlobalInitializer(t *testing.T) {
 	value, err := instance.gc.StructGet(ref, 0)
 	if err != nil || value.Bits != 33 {
 		t.Fatalf("aggregate global initializer = %v/%+v, %v", ref, value, err)
+	}
+}
+
+func TestGenericGCSelfRecursiveStruct(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCSelfRecursiveStructModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err = instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if err = instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	root := gc.Ref(uint32(readGlobalObject(instance.globalCells[0], instance.c.Globals[0].Type)))
+	childValue, err := instance.gc.StructGet(root, 0)
+	if err != nil || childValue.Ref == 0 {
+		t.Fatalf("self-recursive root child=%+v, %v", childValue, err)
+	}
+	rootValue, rootErr := instance.gc.StructGet(root, 1)
+	childField, childErr := instance.gc.StructGet(childValue.Ref, 1)
+	if rootErr != nil || childErr != nil || rootValue.Bits != 42 || childField.Bits != 41 {
+		t.Fatalf("self-recursive values root=%+v/%v child=%+v/%v", rootValue, rootErr, childField, childErr)
 	}
 }
 
