@@ -28,3 +28,18 @@ func TestStraightBlockRetainsOperandResidency(t *testing.T) {
 		}
 	}
 }
+
+func TestStraightBlockContainsNativeFill(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	body := []byte{0, 0x20, 0, 0x02, 0x7f, 0x20, 1, 0x41, 7, 0x41, 33, 0xfc, 11, 0, 0x41, 7, 0x0b, 0x6a, 0x0b}
+	m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	var stats ModuleStats
+	c, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.CodeImage.Close()
+	if got := stats.Funcs[0].Peephole["straight-line-block"]; got != 1 {
+		t.Fatalf("fill blocks=%d want 1", got)
+	}
+}
