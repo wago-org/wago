@@ -1184,7 +1184,8 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 			return false, false, false, false, unsupported("control declaration metadata")
 		}
-		if types.rootedStruct(uint32(typeIndex)) || types.rootedArray(uint32(typeIndex)) {
+		if types.rootedStruct(uint32(typeIndex)) || types.rootedArray(uint32(typeIndex)) ||
+			types.gcRootedScalar && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
 			continue
 		}
 		_, witness, err := admitDeclaredControlSignature(&sub.Comp, types, true, referenceCalls, vector)

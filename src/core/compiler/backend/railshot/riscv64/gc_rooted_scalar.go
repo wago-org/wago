@@ -336,6 +336,9 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 						return false
 					}
 					heap := value.Ref().Heap()
+					if heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapFunc {
+						continue
+					}
 					if heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec || int(heap.Type().Index) >= flatTypes || !admittedAggregates[heap.Type().Index] {
 						return false
 					}
@@ -355,7 +358,8 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 					return false
 				}
 				heap := value.Ref().Heap()
-				if heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec || int(heap.Type().Index) >= flatTypes || !admittedAggregates[heap.Type().Index] {
+				if !(heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapFunc) &&
+					(heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec || int(heap.Type().Index) >= flatTypes || !admittedAggregates[heap.Type().Index]) {
 					return false
 				}
 			}
@@ -513,17 +517,29 @@ func rootedScalarAggregateConstOperandOpcode(r *wasm.Reader, storage wasm.Storag
 		_, err = r.Bytes(16)
 		return op == 0xfd && subErr == nil && sub == 12 && err == nil
 	case want.Kind() == wasm.ValRef:
-		heap, heapErr := r.S33()
-		if op != 0xd0 || heapErr != nil || !want.Ref().Nullable() {
+		switch op {
+		case 0xd0:
+			heap, heapErr := r.S33()
+			if heapErr != nil || !want.Ref().Nullable() {
+				return false
+			}
+			var actual wasm.HeapType
+			if heap >= 0 {
+				actual = wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)})
+			} else {
+				actual = wasm.AbsHeap(wasm.AbsHeapType(byte(heap & 0x7f)))
+			}
+			return m.ReferenceTypeSubtype(wasm.Ref(true, actual, false), want.Ref())
+		case 0xd2:
+			index, indexErr := r.U32()
+			if indexErr != nil || index < uint32(m.ImportedFuncCount()) {
+				return false
+			}
+			typeIndex, ok := m.FuncTypeIndex(index)
+			return ok && !typeIndex.Rec && m.ReferenceTypeSubtype(wasm.Ref(false, wasm.IndexedHeap(typeIndex), false), want.Ref())
+		default:
 			return false
 		}
-		var actual wasm.HeapType
-		if heap >= 0 {
-			actual = wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)})
-		} else {
-			actual = wasm.AbsHeap(wasm.AbsHeapType(byte(heap & 0x7f)))
-		}
-		return m.ReferenceTypeSubtype(wasm.Ref(true, actual, false), want.Ref())
 	default:
 		return false
 	}
@@ -831,11 +847,14 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 		if storage == byte(wasm.PackI8) || storage == byte(wasm.PackI16) || storage >= 0x7c && storage <= 0x7f {
 			return true
 		}
+		if references && storage == 0x70 { // funcref
+			return true
+		}
 		if !references || storage != 0x63 && storage != 0x64 {
 			return false
 		}
 		heap, err := r.S33()
-		return err == nil && heap >= 0 && uint64(heap) < uint64(owner) && (kinds[heap] == 0x5f || kinds[heap] == 0x5e)
+		return err == nil && (heap == -16 || heap >= 0 && uint64(heap) < uint64(owner) && (kinds[heap] == 0x5f || kinds[heap] == 0x5e))
 	}
 	for owner := uint32(0); owner < count; owner++ {
 		form, err := r.Byte()

@@ -198,7 +198,19 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		}
 		if storage.Value.Kind == ValueTypeReference {
 			ref := storage.Value.Ref
-			if ref.Exact || !ref.Heap.Defined || int(ref.Heap.TypeIndex) >= owner || int(ref.Heap.TypeIndex) >= len(c.Types) {
+			if ref.Exact {
+				return 0, false
+			}
+			if !ref.Heap.Defined {
+				if ref.Heap.Abstract != AbstractHeapFunc || ref.Heap.TypeIndex != 0 {
+					return 0, false
+				}
+				if ref.Nullable {
+					return gc.StorageFuncRefNull, true
+				}
+				return gc.StorageFuncRef, true
+			}
+			if int(ref.Heap.TypeIndex) >= owner || int(ref.Heap.TypeIndex) >= len(c.Types) {
 				return 0, false
 			}
 			target := c.Types[ref.Heap.TypeIndex]
@@ -326,6 +338,9 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			default:
 				return wasm.FieldType{}, false
 			}
+		} else if value := field.Storage.Value; value.Kind == ValueTypeReference && !value.Ref.Heap.Defined &&
+			!value.Ref.Exact && value.Ref.Heap.Abstract == AbstractHeapFunc && value.Ref.Heap.TypeIndex == 0 {
+			storage = wasm.StorageVal(wasm.RefVal(wasm.Ref(value.Ref.Nullable, wasm.AbsHeap(wasm.HeapFunc), false)))
 		} else {
 			value, ok := toWasmValue(field.Storage.Value)
 			if !ok {

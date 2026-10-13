@@ -2338,6 +2338,27 @@ func rootedScalarAggregateActiveElementModule() []byte {
 	)
 }
 
+func rootedScalarAggregateFunctionReferenceElementModule() []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x01, 0xfb, 0x00, 0x01, 0x1a, // numeric struct allocation/safepoint
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x64, 0x70, 0x01}, // mutable (ref func) field
+			[]byte{0x5f, 0x01, 0x7f, 0x01},       // allocation/safepoint witness
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x00, 0x01,
+			0xd2, 0x00, 0xfb, 0x00, 0x00, 0x0b}),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func rootedScalarAggregateArrayActiveElementModule() []byte {
 	body := []byte{
 		0x00,
@@ -2445,6 +2466,47 @@ func TestRV64RootedAggregateActiveElementExecutes(t *testing.T) {
 		if err != nil || !slices.Equal(got, []uint64{55}) {
 			t.Fatalf("iteration %d: read()=%v err=%v", iteration, got, err)
 		}
+	}
+}
+
+func TestRV64RootedAggregateFunctionReferenceElementExecutes(t *testing.T) {
+	source := rootedScalarAggregateFunctionReferenceElementModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("aggregate function-reference element module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Types) != 3 || len(view.Types[0].Fields) != 1 ||
+		view.Types[0].Fields[0].Storage.Value.Ref.Heap.Abstract != AbstractHeapFunc {
+		t.Fatalf("aggregate function-reference receipt=%t types=%#v validation=%v", rv64FreshRootedGC(view), view.Types, railshotValidateCompiled(view))
+	}
+	mutated := cloneCompiledMetadata(view)
+	mutated.Types = slices.Clone(view.Types)
+	mutated.Types[0].Fields = slices.Clone(view.Types[0].Fields)
+	mutated.Types[0].Fields[0].Storage.Value.Ref.Heap.Abstract = AbstractHeapExtern
+	if rv64FreshRootedGC(mutated) {
+		t.Fatal("mutated aggregate function-reference storage retained the rooted receipt")
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := instance.tableDescriptor(0)
+	outer := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+	value, err := instance.gc.StructGet(outer, 0)
+	if err != nil || value.Kind != native.StorageFuncRef || value.Bits == 0 {
+		t.Fatalf("active aggregate function reference = %+v, %v", value, err)
 	}
 }
 

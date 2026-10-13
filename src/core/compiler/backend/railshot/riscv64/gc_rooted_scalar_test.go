@@ -334,6 +334,93 @@ func TestRV64RootedAggregateNullableReferenceElements(t *testing.T) {
 	}
 }
 
+func TestRV64RootedAggregateLocalFunctionReferenceElement(t *testing.T) {
+	body := []byte{0x00, 0x41, 0x01, 0xfb, 0x00, 0x01, 0x1a, 0x0b}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x64, 0x70, 0x01}, // mutable (ref func) field
+			[]byte{0x5f, 0x01, 0x7f, 0x01},       // allocation/safepoint witness
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x00, 0x01,
+			0xd2, 0x00, 0xfb, 0x00, 0x00, 0x0b}),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(1)
+	if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve exact root plan")
+	}
+	plan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin exact root plan")
+	}
+	*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true}
+	if !plan.SetLiveMasks([]uint64{0}, 1, 0) {
+		t.Fatal("install exact root liveness")
+	}
+	compiled, err := CompileModuleWith(candidate, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 1 {
+		t.Fatalf("code bytes=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
+	}
+	candidate.Elements[0].Kind.Exprs[0].BodyBytes = []byte{0xd2, 0x01, 0xfb, 0x00, 0x00, 0x0b}
+	if admitRV64GCRootedScalarModule(candidate) {
+		t.Fatal("out-of-range aggregate ref.func operand was admitted")
+	}
+}
+
+func TestRV64RootedAggregateRejectsImportedFunctionReferenceElement(t *testing.T) {
+	functionImport := append(wasmtest.Name("env"), wasmtest.Name("f")...)
+	functionImport = append(functionImport, byte(wasm.ExternFunc))
+	functionImport = append(functionImport, wasmtest.ULEB(2)...)
+	body := []byte{0x00, 0x41, 0x01, 0xfb, 0x00, 0x01, 0x1a, 0x0b}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x64, 0x70, 0x01}, // mutable (ref func) field
+			[]byte{0x5f, 0x01, 0x7f, 0x01},       // allocation/safepoint witness
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(functionImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x00, 0x01,
+			0xd2, 0x01, 0xfb, 0x00, 0x00, 0x0b}),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate.Elements[0].Kind.Exprs[0].BodyBytes = []byte{0xd2, 0x00, 0xfb, 0x00, 0x00, 0x0b}
+	if admitRV64GCRootedScalarModule(candidate) {
+		t.Fatal("imported aggregate ref.func operand escaped private-table isolation")
+	}
+}
+
 func TestRV64RootedAggregateNestedDefaultReferenceElements(t *testing.T) {
 	tests := map[string]struct {
 		types   [][]byte

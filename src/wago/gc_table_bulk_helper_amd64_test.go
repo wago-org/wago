@@ -122,6 +122,22 @@ func genericGCDeclarativeAggregateElementModule() []byte {
 	)
 }
 
+func genericGCActiveFunctionReferenceElementModule() []byte {
+	body := []byte{0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x70, 0x01}, // mutable funcref field
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x00, 0x01,
+			0xd2, 0x00, 0xfb, 0x00, 0x00, 0x0b}),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func TestGenericGCActiveTableElementRoots(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCActiveTableElementModule())
 	if err != nil {
@@ -293,6 +309,28 @@ func TestGenericGCActiveNestedReferenceElements(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestGenericGCActiveFunctionReferenceElement(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCActiveFunctionReferenceElementModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := instance.tableDescriptor(0)
+	outer := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+	value, err := instance.gc.StructGet(outer, 0)
+	if err != nil || value.Kind != gc.StorageFuncRefNull || value.Bits == 0 {
+		t.Fatalf("active aggregate function reference = %+v, %v", value, err)
+	}
 }
 
 func TestGenericGCDeclarativeAggregateElementIsDropped(t *testing.T) {
