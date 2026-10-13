@@ -587,3 +587,21 @@ RSS +1.05%/+0.25%. `global-sum-results.json` retains exact profiles, images,
 validation evidence and the mutable-getter diagnostic. That diagnostic already
 loads the mutable value once into a pinned register; reusing the existing pin
 proof is the next candidate. Full feature parity remains open.
+
+### Existing pinned mutable-global sums
+
+`58c783ce` extends bare getter reduction to mutable globals only when the backend
+already has a stable native value pin. The original call-free loop reads that
+register, so no additional host/concurrency invariant is introduced. Missing
+pins and fenced getters retain their loops. Same-function reads after reduction
+retain the original global value; both widths/ABI selections, imports, canonical
+initialization/codec values and previous sum cases pass. Pinned ARM64 Core 3/
+threads and guarded race pass; full statistics retains the exact 44 failures.
+AMD64 test binaries cross-compile; native execution remains pending hub access.
+
+Mutable exported-read improves 65,544 -> 128.19 ns (511x), versus unchecked w2c2
+285.48 ns (0.449x). Three alternating compile processes per revision give Core 3
++0.17%, threads +2.31%, unchanged allocation/code totals and peak RSS +0.35%/
+-0.88%. `pinned-global-sum-results.json` retains exact profiles, actual adapter
+images and validation hashes. State-changing global recurrences, conversions,
+sign operations, phase 4 benchmark coverage and full parity remain open.

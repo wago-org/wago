@@ -2171,3 +2171,26 @@ unchanged allocations. `global-sum-results.json` retains source fingerprints,
 all profiles, before/after native images, validation and the mutable diagnostic.
 Mutable/global state recurrences, conversions/sign operations, native AMD64
 validation and full feature parity remain open.
+
+### Pinned mutable getter checkpoint
+
+`58c783ce` requires the existing native value pin before reducing mutable getter
+sums. A missing pin or any loop fence keeps the original lowering. Tests cover
+both widths, requested ABI selections, imports, metadata/codec canonical values,
+disabled sum selection and unchanged globals read afterward in the same function.
+Selector tests verify pinned admission and unavailable-pin fallback. ARM64 pinned
+Core 3/threads and guarded race pass, with the exact same 44 backend statistics
+failures. AMD64 binaries cross-compile; hub still times out for native validation.
+
+Three interleaved process medians give mutable exported-read 65,544 -> 128.19 ns
+(511x), versus unchecked w2c2 285.48 ns. Scalar affine/helper/immutable contracts
+retain their earlier gains. Other small thread-loop changes are descriptive.
+Native before/current images are captured through the actual pinned adapters.
+
+Separate GOMAXPROCS=1 compile captures show Core 3 +0.17%, threads +2.31%, with
+unchanged allocation/code totals and peak RSS +0.35%/-0.88%. Scalar/Core 3 scalar/
+imported-worker compile medians change +0.19%/+0.77%/-0.08%, with unchanged
+allocation counts. `pinned-global-sum-results.json` retains all execution and
+compile profiles plus native/validation evidence. Phase 4 wide-arithmetic and
+compact-import corpus coverage, broader feature gaps and native AMD64 validation
+remain required work.
