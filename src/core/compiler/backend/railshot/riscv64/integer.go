@@ -2354,7 +2354,15 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					(referenceTypes.rootedStruct(imm.HeapType.Type().Index) || referenceTypes.rootedArray(imm.HeapType.Type().Index))
 				concreteHeap := (state.gcRefTestConcrete && imm.HasHeapType && (imm.HeapType == wasm.AbsHeap(wasm.HeapStruct) || imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index < 8)) || genericHeap
 				tableHeap := state.gcRefTestTable && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index <= 2
-				abstractHeap := state.gcRefTestAbstract && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapAbs
+				genericAbstractHeap := state.gcRootedScalar && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapAbs
+				if genericAbstractHeap {
+					switch imm.HeapType.Abs() {
+					case wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
+					default:
+						genericAbstractHeap = false
+					}
+				}
+				abstractHeap := state.gcRefTestAbstract && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapAbs || genericAbstractHeap
 				if abstractHeap {
 					switch imm.HeapType.Abs() {
 					case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone, wasm.HeapFunc, wasm.HeapNoFunc, wasm.HeapExtern, wasm.HeapNoExtern:
@@ -2469,7 +2477,15 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 					break
 				}
-				if state.gcRefTestAbstract && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapAbs {
+				genericAbstractHeap := state.gcRootedScalar && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapAbs
+				if genericAbstractHeap {
+					switch imm.HeapType.Abs() {
+					case wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
+					default:
+						genericAbstractHeap = false
+					}
+				}
+				if state.gcRefTestAbstract && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapAbs || genericAbstractHeap {
 					heap := int64(0)
 					switch imm.HeapType.Abs() {
 					case wasm.HeapNone:
@@ -2501,6 +2517,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						return integerSummary{}, err
 					}
 					break
+				}
+				if state.gcRootedScalar {
+					return integerSummary{}, unsupported("ref.cast heap outside generic rooted profile")
 				}
 				if _, err = popClass(true); err != nil {
 					return integerSummary{}, err

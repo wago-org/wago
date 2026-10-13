@@ -639,7 +639,7 @@ func rootedIndexedReferenceTestCastModule() []byte {
 	types := [][]byte{
 		{0x5f, 0x01, 0x7f, 0x01}, // mutable i32 leaf
 		{0x5e, 0x63, 0x00, 0x01}, // mutable array of (ref null 0)
-		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
 	}
 	body := []byte{
 		0x01, 0x01, 0x63, 0x00,
@@ -649,6 +649,13 @@ func rootedIndexedReferenceTestCastModule() []byte {
 		0x20, 0x00, 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x00,
 		0xd0, 0x00, 0xfb, 0x15, 0x00,
 		0xd0, 0x00, 0xfb, 0x17, 0x00, 0xd1,
+		0x20, 0x00, 0xfb, 0x14, byte(wasm.HeapStruct),
+		0x20, 0x00, 0xfb, 0x14, byte(wasm.HeapArray),
+		0x20, 0x00, 0xfb, 0x14, byte(wasm.HeapEq),
+		0x20, 0x00, 0xfb, 0x16, byte(wasm.HeapStruct), 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x00,
+		0x41, 0x00, 0xfb, 0x07, 0x01, 0xfb, 0x14, byte(wasm.HeapArray),
+		0xd0, 0x00, 0xfb, 0x15, byte(wasm.HeapNone),
+		0xd0, 0x00, 0xfb, 0x17, byte(wasm.HeapNone), 0xd1,
 		0x0b,
 	}
 	return wasmtest.Module(
@@ -670,9 +677,36 @@ func TestRV64RootedIndexedReferenceTestCastExecutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	want := []uint64{1, 0, 42, 1, 1}
+	want := []uint64{1, 0, 42, 1, 1, 1, 0, 1, 42, 1, 1, 1}
 	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, want) {
 		t.Fatalf("run()=%v err=%v want=%v", got, err, want)
+	}
+}
+
+func TestRV64RootedUnsupportedAbstractCastFailsClosed(t *testing.T) {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x01},
+		wasmtest.FuncType(nil, nil),
+	}
+	body := []byte{
+		0x00,
+		0x41, 0x01, 0xfb, 0x00, 0x00,
+		0xfb, 0x16, byte(wasm.HeapEq),
+		0xfb, 0x16, byte(wasm.HeapI31),
+		0x1a, 0x0b,
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if compiled != nil {
+		compiled.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "ref.cast heap outside generic rooted profile") {
+		t.Fatalf("unsupported abstract ref.cast error=%v", err)
 	}
 }
 
