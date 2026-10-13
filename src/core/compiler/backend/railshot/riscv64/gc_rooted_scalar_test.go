@@ -117,7 +117,7 @@ func TestRV64RootedAggregateTableBulkCompilesToHelpers(t *testing.T) {
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
 		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x02, 0x04}),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
-		wasmtest.Section(9, []byte{0x01, 0x05, 0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b}),
+		wasmtest.Section(9, []byte{0x01, 0x05, 0x63, 0x00, 0x01, 0x41, 0x37, 0xfb, 0x00, 0x00, 0x0b}),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
 	if err := AdmitProductionSource(source); err != nil {
@@ -135,6 +135,12 @@ func TestRV64RootedAggregateTableBulkCompilesToHelpers(t *testing.T) {
 		"declarative": func(candidate *wasm.Module) { candidate.Elements[0].Mode.Kind = wasm.ElemDeclarative },
 		"wrong-null-heap": func(candidate *wasm.Module) {
 			candidate.Elements[0].Kind.Exprs[0].BodyBytes = []byte{0xd0, 0x01, 0x0b}
+		},
+		"wrong-constructor-type": func(candidate *wasm.Module) {
+			candidate.Elements[0].Kind.Exprs[0].BodyBytes = []byte{0x41, 0x37, 0xfb, 0x00, 0x01, 0x0b}
+		},
+		"wrong-field-literal": func(candidate *wasm.Module) {
+			candidate.Elements[0].Kind.Exprs[0].BodyBytes = []byte{0x42, 0x37, 0xfb, 0x00, 0x00, 0x0b}
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

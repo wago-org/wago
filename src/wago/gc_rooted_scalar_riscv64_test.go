@@ -2304,7 +2304,7 @@ func rootedScalarAggregateTableBulkModule() []byte {
 			wasmtest.ExportEntry("init", byte(wasm.ExternFunc), 5),
 			wasmtest.ExportEntry("drop", byte(wasm.ExternFunc), 6),
 		)),
-		wasmtest.Section(9, []byte{0x01, 0x05, 0x63, 0x00, 0x02, 0xd0, 0x00, 0x0b, 0xd0, 0x00, 0x0b}),
+		wasmtest.Section(9, []byte{0x01, 0x05, 0x63, 0x00, 0x02, 0x41, 0x37, 0xfb, 0x00, 0x00, 0x0b, 0xd0, 0x00, 0x0b}),
 		wasmtest.Section(10, wasmtest.Vec(
 			append(wasmtest.ULEB(uint32(len(run))), run...),
 			append(wasmtest.ULEB(uint32(len(grow))), grow...),
@@ -2336,7 +2336,7 @@ func TestRV64RootedAggregateTableBulkMutationExecutes(t *testing.T) {
 	}
 	defer compiled.Close()
 	view := compiled.executionView()
-	if !rv64FreshRootedGC(view) || view.syncHostSlots < 5 || len(view.passiveElems) != 1 || len(view.passiveElems[0].Values) != 2 || !view.passiveElems[0].Values[0].Null {
+	if !rv64FreshRootedGC(view) || view.syncHostSlots < 5 || len(view.passiveElems) != 1 || len(view.passiveElems[0].Values) != 2 || len(view.passiveElems[0].Values[0].Expr) == 0 || !view.passiveElems[0].Values[1].Null {
 		t.Fatalf("aggregate-table bulk receipt=%t slots=%d validation=%v", rv64FreshRootedGC(view), view.syncHostSlots, railshotValidateCompiled(view))
 	}
 	mutated := cloneCompiledMetadata(view)
@@ -2347,9 +2347,10 @@ func TestRV64RootedAggregateTableBulkMutationExecutes(t *testing.T) {
 	mutated = cloneCompiledMetadata(view)
 	mutated.passiveElems = slices.Clone(view.passiveElems)
 	mutated.passiveElems[0].Values = slices.Clone(view.passiveElems[0].Values)
-	mutated.passiveElems[0].Values[0].Null = false
+	mutated.passiveElems[0].Values[0].Expr = slices.Clone(mutated.passiveElems[0].Values[0].Expr)
+	mutated.passiveElems[0].Values[0].Expr[1] = 0x38
 	if rv64FreshRootedGC(mutated) {
-		t.Fatal("non-null aggregate passive element retained the rooted receipt")
+		t.Fatal("mutated aggregate passive element retained the rooted receipt")
 	}
 	for iteration := range 8 {
 		instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
@@ -2396,13 +2397,22 @@ func TestRV64RootedAggregateTableBulkMutationExecutes(t *testing.T) {
 			instance.Close()
 			t.Fatalf("iteration %d: read()=%v err=%v", iteration, got, err)
 		}
-		if got, err := instance.Invoke("init", 0xfeedface00000000, 0xdeadbeef00000000, 0xbaadf00d00000001); err != nil || len(got) != 0 || binary.LittleEndian.Uint64(descriptor[8:]) != 0 {
+		if got, err := instance.Invoke("init", 0xfeedface00000000, 0xdeadbeef00000000, 0xbaadf00d00000001); err != nil || len(got) != 0 || binary.LittleEndian.Uint64(descriptor[8:]) == 0 {
 			instance.Close()
 			t.Fatalf("iteration %d: dirty-upper init()=%v err=%v descriptor=%x", iteration, got, err, descriptor)
 		}
+		initialized := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
 		if got, err := instance.Invoke("drop"); err != nil || len(got) != 0 {
 			instance.Close()
 			t.Fatalf("iteration %d: drop()=%v err=%v", iteration, got, err)
+		}
+		if err := instance.CollectGC(); err != nil {
+			instance.Close()
+			t.Fatalf("iteration %d: collect after table.init/drop: %v", iteration, err)
+		}
+		if value, err := instance.gc.StructGet(initialized, 0); err != nil || value.Bits != 55 {
+			instance.Close()
+			t.Fatalf("iteration %d: initialized table root after drop/GC = %+v, %v", iteration, value, err)
 		}
 		if got, err := instance.Invoke("init", 0xfeedface00000004, 0xdeadbeef00000000, 0xbaadf00d00000000); err != nil || len(got) != 0 {
 			instance.Close()

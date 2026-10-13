@@ -134,7 +134,7 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 		}
 		aggregate := rootedScalar && e.Kind.Kind == wasm.ElemTypedExprs && rootedScalarTableReference(wasm.RefVal(e.Kind.Ref), m)
 		for _, expr := range e.Kind.Exprs {
-			if aggregate && rootedScalarAggregateNullExpression(expr, e.Kind.Ref) {
+			if aggregate && rootedScalarAggregateElementExpression(expr, e.Kind.Ref, m) {
 				continue
 			}
 			if _, err := elementInitializerExpression(expr, m, e.Mode.Kind, public); err != nil {
@@ -2573,7 +2573,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 				return false, unsupported("public nullable funcref element expressions required")
 			}
 			for _, expr := range e.Kind.Exprs {
-				if aggregate && rootedScalarAggregateNullExpression(expr, e.Kind.Ref) {
+				if aggregate && rootedScalarAggregateElementExpression(expr, e.Kind.Ref, m) {
 					continue
 				}
 				value, err := elementInitializerExpression(expr, m, e.Mode.Kind, production && importedTables)

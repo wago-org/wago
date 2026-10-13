@@ -29,7 +29,9 @@ func genericGCTableHelperModule() []byte {
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
 		wasmtest.Section(4, []byte{0x02, 0x63, 0x00, 0x01, 0x02, 0x04, 0x63, 0x00, 0x01, 0x02, 0x04}),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
-		wasmtest.Section(9, []byte{0x01, 0x05, 0x63, 0x00, 0x02, 0xd0, 0x00, 0x0b, 0xd0, 0x00, 0x0b}),
+		wasmtest.Section(9, []byte{0x01, 0x05, 0x63, 0x00, 0x02,
+			0x41, 0x37, 0xfb, 0x00, 0x00, 0x0b,
+			0x41, 0x16, 0xfb, 0x00, 0x00, 0x0b}),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
 }
@@ -48,20 +50,18 @@ func TestGenericGCTableBulkHelpers(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	allocate := func(value uint64) gc.Ref {
-		t.Helper()
-		var result [1]uint64
-		instance.dispatchGCHelper(gcStructAllocOne, []uint64{value, 0}, result[:])
-		return gc.Ref(uint32(result[0]))
-	}
-	first, second := allocate(42), allocate(7)
 	descriptor := instance.tableDescriptor(0)
 	secondDescriptor := instance.tableDescriptor(1)
-	instance.dispatchGCHelper(gcTableFill, []uint64{0, uint64(first), 1, 0}, nil)
 	elemDesc := unsafe.Slice((*byte)(offHeapPtr(instance.jm.PassiveElemPtr())), coreruntime.PassiveElemDescBytes)
 	elemEntries := unsafe.Slice((*byte)(offHeapPtr(uintptr(binary.LittleEndian.Uint64(elemDesc)))), 16)
-	binary.LittleEndian.PutUint64(elemEntries, uint64(first))
-	instance.gc.WriteBarrierRoot(first)
+	first, second := gc.Ref(uint32(binary.LittleEndian.Uint64(elemEntries))), gc.Ref(uint32(binary.LittleEndian.Uint64(elemEntries[8:])))
+	for ref, want := range map[gc.Ref]uint64{first: 55, second: 22} {
+		value, err := instance.gc.StructGet(ref, 0)
+		if err != nil || value.Bits != want {
+			t.Fatalf("instantiated passive root %v = %+v, %v; want %d", ref, value, err, want)
+		}
+	}
+	instance.dispatchGCHelper(gcTableFill, []uint64{0, uint64(first), 1, 0}, nil)
 	binary.LittleEndian.PutUint64(elemEntries[8:], uint64(1)<<63)
 	beforeInit := bytes.Clone(descriptor)
 	var invalidSource any
@@ -73,7 +73,6 @@ func TestGenericGCTableBulkHelpers(t *testing.T) {
 		t.Fatalf("invalid table.init source panic/descriptor = %#v/%x, before %x", invalidSource, descriptor, beforeInit)
 	}
 	binary.LittleEndian.PutUint64(elemEntries[8:], uint64(second))
-	instance.gc.WriteBarrierRoot(second)
 	instance.dispatchGCHelper(gcTableInit, []uint64{0, 0, 2, 0, 0}, nil)
 	instance.dispatchGCHelper(gcTableElemDrop, []uint64{0}, nil)
 	instance.dispatchGCHelper(gcTableElemDrop, []uint64{0}, nil)
@@ -132,7 +131,7 @@ func TestGenericGCTableBulkHelpers(t *testing.T) {
 		t.Fatal(err)
 	}
 	value, err := instance.gc.StructGet(first, 0)
-	if err != nil || value.Bits != 42 {
+	if err != nil || value.Bits != 55 {
 		t.Fatalf("copied rooted object = %+v, %v", value, err)
 	}
 }

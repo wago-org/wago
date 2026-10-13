@@ -339,8 +339,8 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 
 // rv64RootedTableDigest authenticates the bounded table directory for generic
 // rooted-GC code, including exact imported identities and the public table
-// namespace. Callable rows remain retained canonical descriptors; general
-// reference constant expressions remain a separate ownership boundary.
+// namespace. Callable rows remain retained canonical descriptors; bounded
+// aggregate element expressions are authenticated byte-for-byte.
 func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	if c == nil || len(c.tableExports) > 256 || len(c.Elems) > 256 || len(c.passiveElems) > 256 {
 		return [32]byte{}, false
@@ -348,6 +348,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	h := sha256.New()
 	var word [8]byte
 	remainingNames := uint64(1 << 20)
+	remainingElementExprBytes := uint64(1 << 20)
 	if c.tableCount() == 0 {
 		if c.HasTable || len(c.extraTables) != 0 || c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.TableAddr64 || c.TableType != 0 || c.TableHasValueType || c.TableValueTypeIndex != 0 ||
 			c.HasTableInitFunc || c.TableInitFunc != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
@@ -416,6 +417,17 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	}
 	writeValues := func(values []RefInit, allowImported bool, exact ValueTypeDescriptor) bool {
 		for _, value := range values {
+			if exact != plain && len(value.Expr) != 0 {
+				if value.HasGlobal || value.GlobalIndex != 0 || value.Null || value.I31Wrap || value.RepeatPrevious || value.FuncIndex != 0 || uint64(len(value.Expr)) > remainingElementExprBytes {
+					return false
+				}
+				remainingElementExprBytes -= uint64(len(value.Expr))
+				_, _ = h.Write([]byte{2})
+				binary.LittleEndian.PutUint32(word[:4], uint32(len(value.Expr)))
+				_, _ = h.Write(word[:4])
+				_, _ = h.Write(value.Expr)
+				continue
+			}
 			if value.HasGlobal || value.GlobalIndex != 0 || value.I31Wrap || value.RepeatPrevious || len(value.Expr) != 0 {
 				return false
 			}

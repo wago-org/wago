@@ -186,8 +186,8 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			values = len(elem.Kind.Exprs)
 			for j, expr := range elem.Kind.Exprs {
 				if aggregate {
-					if !rv64RootedAggregateNullElement(expr, elem.Kind.Ref) {
-						return reject("RV64 exact roots reject aggregate null element %d:%d", i, j)
+					if !rv64RootedAggregateElement(expr, elem.Kind.Ref, m) {
+						return reject("RV64 exact roots reject aggregate element %d:%d", i, j)
 					}
 					continue
 				}
@@ -397,6 +397,78 @@ func rv64RootedAggregateNullElement(expr wasm.Expr, ref wasm.RefType) bool {
 	heap, heapErr := r.S33()
 	end, endErr := r.Byte()
 	return err == nil && op == 0xd0 && heapErr == nil && heap >= 0 && uint64(heap) == uint64(ref.Heap().Type().Index) && endErr == nil && end == 0x0b && !r.HasNext()
+}
+
+func rv64RootedAggregateType(m *wasm.Module, index uint32) *wasm.CompType {
+	if m == nil {
+		return nil
+	}
+	flat := uint32(0)
+	for group := range m.Types {
+		for member := range m.Types[group].SubTypes {
+			if flat == index {
+				return &m.Types[group].SubTypes[member].Comp
+			}
+			flat++
+		}
+	}
+	return nil
+}
+
+func rv64RootedAggregateConstOperand(r *wasm.Reader, storage wasm.StorageType) bool {
+	want := storage.Val()
+	if storage.Packed() {
+		want = wasm.I32
+	}
+	op, err := r.Byte()
+	if err != nil {
+		return false
+	}
+	switch {
+	case wasm.EqualValType(want, wasm.I32):
+		_, err = r.I32()
+		return op == 0x41 && err == nil
+	case wasm.EqualValType(want, wasm.I64):
+		_, err = r.I64()
+		return op == 0x42 && err == nil
+	case wasm.EqualValType(want, wasm.F32):
+		_, err = r.Bytes(4)
+		return op == 0x43 && err == nil
+	case wasm.EqualValType(want, wasm.F64):
+		_, err = r.Bytes(8)
+		return op == 0x44 && err == nil
+	case wasm.EqualValType(want, wasm.V128):
+		sub, subErr := r.U32()
+		_, err = r.Bytes(16)
+		return op == 0xfd && subErr == nil && sub == 12 && err == nil
+	default:
+		return false
+	}
+}
+
+func rv64RootedAggregateElement(expr wasm.Expr, ref wasm.RefType, m *wasm.Module) bool {
+	if rv64RootedAggregateNullElement(expr, ref) {
+		return true
+	}
+	if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 4 || len(expr.BodyBytes) > 4096 || ref.Heap().Kind() != wasm.HeapTypeIndex {
+		return false
+	}
+	typeIndex := ref.Heap().Type().Index
+	comp := rv64RootedAggregateType(m, typeIndex)
+	if comp == nil || comp.Kind != wasm.CompStruct {
+		return false
+	}
+	r := wasm.ReaderFrom(expr.BodyBytes)
+	for _, field := range comp.Fields {
+		if !rv64RootedAggregateConstOperand(&r, field.Storage()) {
+			return false
+		}
+	}
+	op, err := r.Byte()
+	sub, subErr := r.U32()
+	constructed, typeErr := r.U32()
+	end, endErr := r.Byte()
+	return err == nil && op == 0xfb && subErr == nil && sub == 0 && typeErr == nil && constructed == typeIndex && endErr == nil && end == 0x0b && !r.HasNext()
 }
 
 func rv64RootedScalarGlobal(m *wasm.Module, global *wasm.Global, limit int) bool {

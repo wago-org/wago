@@ -169,7 +169,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			values = len(elem.Kind.Exprs)
 			for _, expr := range elem.Kind.Exprs {
 				if aggregate {
-					if !rootedScalarAggregateNullExpression(expr, elem.Kind.Ref) {
+					if !rootedScalarAggregateElementExpression(expr, elem.Kind.Ref, m) {
 						return false
 					}
 					continue
@@ -469,6 +469,82 @@ func rootedScalarAggregateNullExpression(expr wasm.Expr, ref wasm.RefType) bool 
 	heap, heapErr := r.S33()
 	end, endErr := r.Byte()
 	return err == nil && op == 0xd0 && heapErr == nil && heap >= 0 && uint64(heap) == uint64(ref.Heap().Type().Index) && endErr == nil && end == 0x0b && !r.HasNext()
+}
+
+func rootedScalarAggregateType(m *wasm.Module, index uint32) *wasm.CompType {
+	if m == nil {
+		return nil
+	}
+	flat := uint32(0)
+	for group := range m.Types {
+		for member := range m.Types[group].SubTypes {
+			if flat == index {
+				return &m.Types[group].SubTypes[member].Comp
+			}
+			flat++
+		}
+	}
+	return nil
+}
+
+func rootedScalarAggregateConstOperand(r *wasm.Reader, storage wasm.StorageType) bool {
+	want := storage.Val()
+	if storage.Packed() {
+		want = wasm.I32
+	}
+	op, err := r.Byte()
+	if err != nil {
+		return false
+	}
+	switch {
+	case wasm.EqualValType(want, wasm.I32):
+		_, err = r.I32()
+		return op == 0x41 && err == nil
+	case wasm.EqualValType(want, wasm.I64):
+		_, err = r.I64()
+		return op == 0x42 && err == nil
+	case wasm.EqualValType(want, wasm.F32):
+		_, err = r.Bytes(4)
+		return op == 0x43 && err == nil
+	case wasm.EqualValType(want, wasm.F64):
+		_, err = r.Bytes(8)
+		return op == 0x44 && err == nil
+	case wasm.EqualValType(want, wasm.V128):
+		sub, subErr := r.U32()
+		_, err = r.Bytes(16)
+		return op == 0xfd && subErr == nil && sub == 12 && err == nil
+	default:
+		return false
+	}
+}
+
+// Generic table.init initially admits bounded struct constants composed only of
+// scalar literals. The retained constant-expression evaluator supports more;
+// this narrower source witness keeps instantiation ownership independently
+// reviewable while enabling genuine non-null passive roots.
+func rootedScalarAggregateElementExpression(expr wasm.Expr, ref wasm.RefType, m *wasm.Module) bool {
+	if rootedScalarAggregateNullExpression(expr, ref) {
+		return true
+	}
+	if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 4 || len(expr.BodyBytes) > 4096 || ref.Heap().Kind() != wasm.HeapTypeIndex {
+		return false
+	}
+	typeIndex := ref.Heap().Type().Index
+	comp := rootedScalarAggregateType(m, typeIndex)
+	if comp == nil || comp.Kind != wasm.CompStruct {
+		return false
+	}
+	r := wasm.ReaderFrom(expr.BodyBytes)
+	for _, field := range comp.Fields {
+		if !rootedScalarAggregateConstOperand(&r, field.Storage()) {
+			return false
+		}
+	}
+	op, err := r.Byte()
+	sub, subErr := r.U32()
+	constructed, typeErr := r.U32()
+	end, endErr := r.Byte()
+	return err == nil && op == 0xfb && subErr == nil && sub == 0 && typeErr == nil && constructed == typeIndex && endErr == nil && end == 0x0b && !r.HasNext()
 }
 
 func admitRV64GCRootedScalarWire(data []byte) bool {
