@@ -1,6 +1,9 @@
 package shared
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"encoding/binary"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 type integerAffineTerm struct {
 	coefficient, constant  uint64
@@ -20,7 +23,7 @@ func inspectIntegerAffineTerm(r *wasm.Reader, blocked bool) (integerAffineTerm, 
 func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *wasm.Module, allowCalls bool) (integerAffineTerm, bool) {
 	start := r.Offset()
 	first, ok := r.Peek()
-	if !ok || (first != 0x20 && first != 0x41 && first != 0x42 && first != 0x23) {
+	if !ok || (first != 0x20 && first != 0x41 && first != 0x42 && first != 0x23 && first != 0x43 && first != 0x44) {
 		return integerAffineTerm{}, false
 	}
 	// Read the value at invocation time; initializers and imported bits are not
@@ -68,11 +71,13 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 			return integerAffineTerm{}, false
 		}
 	}
-	// floatSign is zero for an integer, otherwise a finite float whose sign
-	// is proven: f32 nonnegative/nonpositive = 1/2, f64 = 3/4.
+	// floatSign is zero for an integer, otherwise a proven IEEE sign bit:
+	// f32 clear/set = 1/2, f64 clear/set = 3/4. Constants preserve all bits,
+	// including signed zeros and NaN payloads; no floating arithmetic is folded.
 	type affineValue struct {
 		coefficient, constant uint64
 		floatSign             uint8
+		floatConstant         bool
 	}
 	var stack [16]affineValue
 	var out integerAffineTerm
@@ -109,6 +114,29 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 			}
 			out.variable, out.hasVariable = x, true
 			stack[depth] = affineValue{coefficient: 1}
+			depth++
+		case 0x43, 0x44:
+			if depth == len(stack) {
+				return out, false
+			}
+			width, sign := 4, uint8(1)
+			if op == 0x44 {
+				width, sign = 8, 3
+			}
+			raw, err := r.Bytes(width)
+			if err != nil {
+				return out, false
+			}
+			var bits uint64
+			if width == 4 {
+				bits = uint64(binary.LittleEndian.Uint32(raw))
+			} else {
+				bits = binary.LittleEndian.Uint64(raw)
+			}
+			if bits>>uint(width*8-1) != 0 {
+				sign++
+			}
+			stack[depth] = affineValue{constant: bits, floatSign: sign, floatConstant: true}
 			depth++
 		case 0x41, 0x42:
 			if depth == len(stack) {
@@ -178,6 +206,59 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 				return out, false
 			}
 			stack[depth-1].floatSign = base + 1 - (sign - base)
+			if stack[depth-1].floatConstant {
+				mask := uint64(1) << 31
+				if op == 0x9a {
+					mask = uint64(1) << 63
+				}
+				stack[depth-1].constant ^= mask
+			}
+		case 0x98, 0xa6: // f32/f64.copysign
+			if depth < 2 {
+				return out, false
+			}
+			a, b := stack[depth-2], stack[depth-1]
+			base, mask := uint8(1), uint64(1)<<31
+			if op == 0xa6 {
+				base, mask = 3, uint64(1)<<63
+			}
+			if !a.floatConstant || (a.floatSign != base && a.floatSign != base+1) || (b.floatSign != base && b.floatSign != base+1) {
+				return out, false
+			}
+			a.constant &^= mask
+			if b.floatSign == base+1 {
+				a.constant |= mask
+			}
+			a.floatSign = b.floatSign
+			depth--
+			stack[depth-1] = a
+		case 0xbc, 0xbd: // i32/i64.reinterpret_f32/f64
+			if depth == 0 {
+				return out, false
+			}
+			a := &stack[depth-1]
+			width, base := 4, uint8(1)
+			if op == 0xbd {
+				width, base = 8, 3
+			}
+			if !a.floatConstant || (a.floatSign != base && a.floatSign != base+1) || !setWidth(width) {
+				return out, false
+			}
+			a.floatSign, a.floatConstant = 0, false
+		case 0x46: // i32.eq with two proven integer constants
+			if depth < 2 || !setWidth(4) {
+				return out, false
+			}
+			a, b := stack[depth-2], stack[depth-1]
+			if a.floatSign != 0 || b.floatSign != 0 || a.coefficient != 0 || b.coefficient != 0 {
+				return out, false
+			}
+			value := uint64(0)
+			if uint32(a.constant) == uint32(b.constant) {
+				value = 1
+			}
+			depth--
+			stack[depth-1] = affineValue{constant: value}
 		case 0xfc:
 			sub, err := r.U32()
 			if err != nil || depth == 0 {
@@ -198,7 +279,8 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 			if stack[depth-1].floatSign != sign || !setWidth(width) {
 				return out, false
 			}
-			// Finite nonpositive inputs, including -0, saturate to unsigned zero.
+			// A set sign bit yields a nonpositive value or NaN: both saturate
+			// to unsigned zero, including -0 and negative infinity.
 			stack[depth-1] = affineValue{}
 		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e:
 			width := 4
