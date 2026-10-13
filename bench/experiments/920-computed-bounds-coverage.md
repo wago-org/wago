@@ -20,3 +20,5 @@ The focused test passes. Production compiler, native bytes, and compile allocati
 Recommendation: leave draft and do not add a key for this no-match source form. Broader backend-stage admission would need separate measurement before implementation.
 
 A followup broadened the focused scan to the commutative, immediately reversed `i32.const; local.get; i32.add; scalar load` shape. Across the same six applications it found **zero reversed forms**, and the forward-form and repeated-key counts stayed exactly as above. The same focused test passes with `-count=2`. This rules out only that additional syntactic shape; nested arithmetic and backend-derived identities are still unmeasured. No production bounds key or result change follows.
+
+Review correction: the scan now retains every exact key until the next conservative barrier. A focused A/B/A regression fails with the previous last-key-only counter and passes with the corrected window. Local writes and stores still clear all keys. Rechecking all six modules leaves every count above unchanged. This remains survey evidence; no production bounds-proof key is added.
