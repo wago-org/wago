@@ -37,7 +37,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	if structProduct != 0 && !structHelpers || arrayProduct != 0 && !arrayHelpers || !structHelpers && !arrayHelpers ||
 		c.usesGCStructHelpers() != structHelpers || c.usesGCArrayHelpers() != arrayHelpers || c.syncHostSlots < 4 ||
 		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports ||
-		len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports != 0) || c.tableCount() > 2 || c.memoryCount() > 1 ||
+		len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports != 0) || c.tableCount() > 2 || c.memoryCount() > rv64RootedMaxMemories ||
 		len(c.GlobalImports) > 256 || len(c.GlobalImports) > len(c.Globals) || len(c.Globals) > 256 || len(c.Elems) > 256 ||
 		len(c.passiveElems) > 256 || len(c.PassiveData) > 256 {
 		return false
@@ -68,17 +68,22 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		return false
 	}
 	directory := c.memoryDir
-	if directory == nil || len(directory.defs) > 1 || !directory.exactExports || directory.staged != memo.rv64FreshRootedGCMemoryStaged || directory.stagedMemory64 ||
+	if directory == nil || len(directory.defs) > rv64RootedMaxMemories || !directory.exactExports || directory.staged != memo.rv64FreshRootedGCMemoryStaged || len(directory.defs) > 1 && !directory.staged || directory.stagedMemory64 ||
 		len(directory.gcStructGlobals) != 0 || len(directory.gcArrayGlobals) != 0 || directory.gcArrayElement != nil || directory.gcI31TableInit != nil ||
 		len(directory.ehTags) != 0 || len(directory.ehTagExports) != 0 || uint8(len(directory.defs)) != memo.rv64FreshRootedGCMemories {
 		return false
 	}
-	if len(directory.defs) == 1 {
-		memory := directory.defs[0]
-		if !c.HasMemory || memory.Shared || memory.Addr64 || !memory.HasMax || memory.Min > memory.Max || memory.Max > 256 ||
-			uint64(c.MemMinPages) != memory.Min || uint64(c.MemMaxPages) < memory.Min || uint64(c.MemMaxPages) > memory.Max || c.MemHasMax != memory.HasMax || c.memoryImport != memory.ImportKey ||
-			memory.Min != memo.rv64FreshRootedGCMemMin || memory.Max != memo.rv64FreshRootedGCMemMax || c.MemMaxPages != memo.rv64FreshRootedGCReserveMax {
+	if len(directory.defs) != 0 {
+		primary := directory.defs[0]
+		if !c.HasMemory || uint64(c.MemMinPages) != primary.Min || uint64(c.MemMaxPages) < primary.Min || uint64(c.MemMaxPages) > primary.Max || c.MemHasMax != primary.HasMax || c.memoryImport != primary.ImportKey ||
+			primary.Min != memo.rv64FreshRootedGCMemMin || primary.Max != memo.rv64FreshRootedGCMemMax || c.MemMaxPages != memo.rv64FreshRootedGCReserveMax {
 			return false
+		}
+		for i := range directory.defs {
+			memory := directory.defs[i]
+			if memory.Shared || memory.Addr64 || !memory.HasMax || memory.Min > memory.Max || memory.Max > 256 {
+				return false
+			}
 		}
 	} else if c.HasMemory || c.MemMinPages != 0 || c.MemMaxPages != 0 || c.MemHasMax || c.memoryImport != "" ||
 		memo.rv64FreshRootedGCMemMin != 0 || memo.rv64FreshRootedGCMemMax != 0 || memo.rv64FreshRootedGCReserveMax != 0 {
@@ -112,7 +117,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	remainingData := railshot.MaxModuleBytes
 	for i := 0; i < c.activeDataCount(); i++ {
 		data := c.activeDataAt(i)
-		if len(directory.defs) != 1 || len(data.Bytes) > remainingData {
+		if uint64(data.MemoryIndex) >= uint64(len(directory.defs)) || len(data.Bytes) > remainingData {
 			return false
 		}
 		remainingData -= len(data.Bytes)

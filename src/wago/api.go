@@ -1755,7 +1755,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if directory := compiled.memoryDir; directory != nil {
 			compiled.validateMemo.rv64FreshRootedGCMemories = uint8(len(directory.defs))
 			compiled.validateMemo.rv64FreshRootedGCMemoryStaged = directory.staged
-			if len(directory.defs) == 1 {
+			if len(directory.defs) != 0 {
 				compiled.validateMemo.rv64FreshRootedGCMemMin = directory.defs[0].Min
 				compiled.validateMemo.rv64FreshRootedGCMemMax = directory.defs[0].Max
 			}

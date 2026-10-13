@@ -11,6 +11,7 @@ import (
 
 const maxRootedScalarArrayFixed = 254
 const maxRootedScalarHostImports = MaxHostFunctionImports
+const maxRootedScalarMemories = 4
 
 // admitRV64GCRootedScalarModule is the first source-shape admission shared by
 // generic GC programs instead of a byte-for-byte product fixture. It keeps the
@@ -20,7 +21,7 @@ const maxRootedScalarHostImports = MaxHostFunctionImports
 // authenticated independently by validateGCFrameRootPlans.
 func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	if m == nil || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions ||
-		len(m.Tables) > 2 || len(m.Memories) > 1 || len(m.Globals) > 256 ||
+		len(m.Tables) > 2 || len(m.Memories) > maxRootedScalarMemories || len(m.Globals) > 256 ||
 		len(m.Elements) > 256 || len(m.Data) > 256 || len(m.Tags) != 0 ||
 		len(m.StringRefs) != 0 || len(m.Customs) != 0 || m.HasNameMetadata() ||
 		m.BranchHints != nil || m.UsesCompactImports {
@@ -31,7 +32,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	importedMemories := m.ImportedMemCount()
 	memoryCount := importedMemories + len(m.Memories)
 	if importedFunctions+importedGlobals+importedMemories != len(m.Imports) || importedFunctions > maxRootedScalarHostImports || importedFunctions+len(m.Code) > MaxFunctions ||
-		importedGlobals+len(m.Globals) > 256 || memoryCount > 1 {
+		importedGlobals+len(m.Globals) > 256 || memoryCount > maxRootedScalarMemories {
 		return false
 	}
 	if len(m.Imports) != 0 {
@@ -73,8 +74,8 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	if admitProductionStart(m) != nil {
 		return false
 	}
-	if len(m.Memories) == 1 {
-		memory := m.Memories[0]
+	for i := range m.Memories {
+		memory := m.Memories[i]
 		if memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min > memory.Limits.Max || memory.Limits.Max > 256 {
 			return false
 		}
@@ -186,7 +187,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		switch data.Mode.Kind {
 		case wasm.DataActive:
-			if memoryCount != 1 || data.Mode.Mem != 0 || len(data.Mode.Offset.Instrs) != 0 {
+			if uint64(data.Mode.Mem) >= uint64(memoryCount) || len(data.Mode.Offset.Instrs) != 0 {
 				return false
 			}
 			if _, err := plainScalarConst(data.Mode.Offset, wasm.I32, false); err != nil {
@@ -209,7 +210,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				return false
 			}
 		case wasm.ExternMem:
-			if memoryCount != 1 || export.Index.Index != 0 {
+			if uint64(export.Index.Index) >= uint64(memoryCount) {
 				return false
 			}
 		case wasm.ExternGlobal:

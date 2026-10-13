@@ -8,6 +8,7 @@ import (
 )
 
 const rv64RootedMaxHostFunctionImports = 256
+const rv64RootedMaxMemories = 4
 
 // compactActiveData is an immutable execution-only representation. Public
 // DataInit metadata remains unchanged and independently mutable. Common constant
@@ -109,8 +110,8 @@ func rv64RootedImportDigest(c *Compiled) ([32]byte, bool) {
 }
 
 // rv64RootedActiveDataDigest authenticates the exact compiler-produced data
-// image used by the fresh generic rooted-GC profile. Active segments admit only
-// direct memory-0 literal offsets; passive slots preserve original data-index
+// image used by the fresh generic rooted-GC profile. Active segments admit
+// direct indexed-memory literal offsets; passive slots preserve original data-index
 // order so memory.init/data.drop address the authenticated per-instance state.
 func rv64RootedActiveDataDigest(c *Compiled) ([32]byte, bool) {
 	if c == nil || c.compactData != nil || len(c.Data) > 256 || len(c.PassiveData) > 256 {
@@ -123,10 +124,12 @@ func rv64RootedActiveDataDigest(c *Compiled) ([32]byte, bool) {
 	_, _ = h.Write(word[:4])
 	for i := range c.Data {
 		data := &c.Data[i]
-		if data.MemoryIndex != 0 || data.Offset.HasGlobal || data.Offset.Global != 0 || len(data.Offset.Expr) != 0 || uint64(len(data.Bytes)) > remaining {
+		if uint64(data.MemoryIndex) >= uint64(c.memoryCount()) || data.Offset.HasGlobal || data.Offset.Global != 0 || len(data.Offset.Expr) != 0 || uint64(len(data.Bytes)) > remaining {
 			return [32]byte{}, false
 		}
 		remaining -= uint64(len(data.Bytes))
+		binary.LittleEndian.PutUint32(word[:4], data.MemoryIndex)
+		_, _ = h.Write(word[:4])
 		binary.LittleEndian.PutUint32(word[:4], data.Offset.Base)
 		_, _ = h.Write(word[:4])
 		binary.LittleEndian.PutUint64(word[:], uint64(len(data.Bytes)))
@@ -150,36 +153,58 @@ func rv64RootedActiveDataDigest(c *Compiled) ([32]byte, bool) {
 	return digest, true
 }
 
-// rv64RootedMemoryExportDigest authenticates the exact public memory namespace
-// used by the fresh generic rooted-GC profile. Names are sorted so the receipt
-// is independent of Go map iteration order; this profile exposes only memory 0.
+// rv64RootedMemoryExportDigest authenticates the bounded memory directory and
+// exact public namespace used by the fresh generic rooted-GC profile. Names are
+// sorted so the receipt is independent of Go map iteration order.
 func rv64RootedMemoryExportDigest(c *Compiled) ([32]byte, bool) {
-	if c == nil || c.memoryDir == nil || !c.memoryDir.exactExports || len(c.memoryDir.exports) > 1024 || len(c.Exports)+len(c.memoryDir.exports) > 1024 {
+	if c == nil || c.memoryDir == nil || len(c.memoryDir.defs) > rv64RootedMaxMemories || !c.memoryDir.exactExports || len(c.memoryDir.exports) > 1024 || len(c.Exports)+len(c.memoryDir.exports) > 1024 {
 		return [32]byte{}, false
 	}
 	h := sha256.New()
 	var word [8]byte
-	if len(c.memoryDir.defs) == 1 && c.memoryDir.defs[0].ImportKey != "" {
-		_, _, memoryEnds, _, exact := c.importModuleEndSections()
-		key := c.memoryDir.defs[0].ImportKey
-		if !exact || len(memoryEnds) != 1 || validateImportModuleEnd(key, memoryEnds[0]) != nil || len(key) > 1<<20 {
+	_, _, memoryEnds, _, exact := c.importModuleEndSections()
+	if !exact {
+		return [32]byte{}, false
+	}
+	remaining := uint64(1 << 20)
+	imports := 0
+	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.memoryDir.defs)))
+	_, _ = h.Write(word[:4])
+	for i := range c.memoryDir.defs {
+		def := &c.memoryDir.defs[i]
+		if def.Shared || def.Addr64 || !def.HasMax || def.Min > def.Max || def.Max > 256 {
 			return [32]byte{}, false
 		}
-		_, _ = h.Write([]byte{1})
-		binary.LittleEndian.PutUint64(word[:], uint64(len(key)))
+		flags := byte(1)
+		if def.ImportKey != "" {
+			if imports != i || imports >= len(memoryEnds) || validateImportModuleEnd(def.ImportKey, memoryEnds[imports]) != nil || uint64(len(def.ImportKey)) > remaining {
+				return [32]byte{}, false
+			}
+			remaining -= uint64(len(def.ImportKey))
+			flags |= 2
+			imports++
+		}
+		_, _ = h.Write([]byte{flags})
+		binary.LittleEndian.PutUint64(word[:], def.Min)
 		_, _ = h.Write(word[:])
-		_, _ = h.Write([]byte(key))
-		binary.LittleEndian.PutUint64(word[:], memoryEnds[0])
+		binary.LittleEndian.PutUint64(word[:], def.Max)
 		_, _ = h.Write(word[:])
-	} else {
-		_, _ = h.Write([]byte{0})
+		binary.LittleEndian.PutUint64(word[:], uint64(len(def.ImportKey)))
+		_, _ = h.Write(word[:])
+		_, _ = h.Write([]byte(def.ImportKey))
+		if def.ImportKey != "" {
+			binary.LittleEndian.PutUint64(word[:], memoryEnds[imports-1])
+			_, _ = h.Write(word[:])
+		}
+	}
+	if imports != len(memoryEnds) {
+		return [32]byte{}, false
 	}
 	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.memoryDir.exports)))
 	_, _ = h.Write(word[:4])
-	remaining := uint64(1 << 20)
 	for _, name := range sortedKeys(c.memoryDir.exports) {
 		index := c.memoryDir.exports[name]
-		if index != 0 || len(c.memoryDir.defs) != 1 || uint64(len(name)) > remaining {
+		if index < 0 || index >= len(c.memoryDir.defs) || uint64(len(name)) > remaining {
 			return [32]byte{}, false
 		}
 		remaining -= uint64(len(name))

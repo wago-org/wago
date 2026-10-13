@@ -1149,6 +1149,60 @@ func rootedScalarMemoryModule(grow, activeData, passiveData, memoryExport bool) 
 	return wasmtest.Module(sections...)
 }
 
+func rootedScalarMultiMemoryModule(imported bool) []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil),
+		wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+	}
+	size1 := []byte{0x00, 0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a, 0x3f, 0x01, 0x0b}
+	store1 := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x36, 0x42, 0x01, 0x00, 0x0b}
+	load1 := []byte{0x00, 0x20, 0x00, 0x28, 0x42, 0x01, 0x00, 0x0b}
+	load0 := []byte{0x00, 0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}
+	data1 := []byte{0x02, 0x01, 0x41, 0x10, 0x0b, 0x04, 0x78, 0x56, 0x34, 0x12}
+	sections := [][]byte{
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+	}
+	if imported {
+		memoryImport := func(name string, min, max byte) []byte {
+			entry := append(append(wasmtest.Name("env.memories"), wasmtest.Name(name)...), byte(wasm.ExternMem))
+			return append(entry, 0x01, min, max)
+		}
+		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(
+			memoryImport("memory.0", 1, 1),
+			memoryImport("memory.1", 2, 2),
+		)))
+	}
+	sections = append(sections,
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(3), wasmtest.ULEB(3))),
+	)
+	if !imported {
+		sections = append(sections, wasmtest.Section(5, wasmtest.Vec(
+			[]byte{0x01, 0x01, 0x01},
+			[]byte{0x01, 0x02, 0x02},
+		)))
+	}
+	sections = append(sections,
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("size1", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("store1", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("load1", byte(wasm.ExternFunc), 2),
+			wasmtest.ExportEntry("load0", byte(wasm.ExternFunc), 3),
+			wasmtest.ExportEntry("m0", byte(wasm.ExternMem), 0),
+			wasmtest.ExportEntry("m1", byte(wasm.ExternMem), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(size1))), size1...),
+			append(wasmtest.ULEB(uint32(len(store1))), store1...),
+			append(wasmtest.ULEB(uint32(len(load1))), load1...),
+			append(wasmtest.ULEB(uint32(len(load0))), load0...),
+		)),
+		wasmtest.Section(11, wasmtest.Vec(data1)),
+	)
+	return wasmtest.Module(sections...)
+}
+
 func rootedScalarImportedMemoryModule() []byte {
 	types := [][]byte{
 		{0x5f, 0x01, 0x7f, 0x00},
@@ -1243,6 +1297,154 @@ func TestRV64RootedScalarMemoryExecutes(t *testing.T) {
 		if err = instance.Close(); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestRV64RootedScalarMultiMemoryExecutes(t *testing.T) {
+	source := rootedScalarMultiMemoryModule(false)
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded rooted multi-memory module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig().WithFeature(CoreFeatureMultiMemory, true), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.memoryCount() != 2 || view.memoryDir == nil || !view.memoryDir.staged || len(view.Data) != 1 || view.Data[0].MemoryIndex != 1 ||
+		view.memoryExportMap()["m0"] != 0 || view.memoryExportMap()["m1"] != 1 || !view.requiredFeatures.IsEnabled(CoreFeatureMultiMemory) {
+		t.Fatalf("rooted multi-memory receipt=%t memories=%d directory=%+v data=%+v exports=%v features=%v validation=%v", rv64FreshRootedGC(view), view.memoryCount(), view.memoryDir, view.Data, view.memoryExportMap(), view.requiredFeatures, railshotValidateCompiled(view))
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"definition": func(candidate *Compiled) {
+			directory := *candidate.memoryDir
+			directory.defs = slices.Clone(directory.defs)
+			candidate.memoryDir = &directory
+			candidate.memoryDir.defs[1].Max++
+		},
+		"data-target": func(candidate *Compiled) {
+			candidate.Data = slices.Clone(candidate.Data)
+			candidate.Data[0].MemoryIndex = 0
+		},
+		"export-target": func(candidate *Compiled) {
+			directory := *candidate.memoryDir
+			directory.exports = cloneExportMap(directory.exports)
+			candidate.memoryDir = &directory
+			candidate.memoryDir.exports["m1"] = 0
+		},
+		"feature": func(candidate *Compiled) {
+			candidate.requiredFeatures &^= CoreFeatureMultiMemory
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated multi-memory metadata retained the generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("mutated multi-memory validation=%v", err)
+			}
+		})
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for range 4 {
+		if got, err := instance.Invoke("size1"); err != nil || !slices.Equal(got, []uint64{2}) {
+			t.Fatalf("size1()=%v err=%v want=[2]", got, err)
+		}
+	}
+	if got, err := instance.Invoke("load1", 16); err != nil || !slices.Equal(got, []uint64{0x12345678}) {
+		t.Fatalf("active memory-1 data=%v err=%v want=[0x12345678]", got, err)
+	}
+	if _, err := instance.Invoke("store1", 0xdeadbeef00000020, 0xfeedface12345678); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := instance.Invoke("load1", 0xbaadf00d00000020); err != nil || !slices.Equal(got, []uint64{0x12345678}) {
+		t.Fatalf("memory-1 load=%v err=%v want=[0x12345678]", got, err)
+	}
+	if got, err := instance.Invoke("load0", 0xbaadf00d00000020); err != nil || !slices.Equal(got, []uint64{0}) {
+		t.Fatalf("memory-0 isolation load=%v err=%v want=[0]", got, err)
+	}
+	memory1, err := instance.ExportedMemory("m1")
+	if err != nil || memory1 == nil || len(memory1.UnsafeBytes()) != 2*65536 {
+		t.Fatalf("memory-1 export=%p bytes=%d err=%v", memory1, func() int {
+			if memory1 == nil {
+				return 0
+			}
+			return len(memory1.UnsafeBytes())
+		}(), err)
+	}
+}
+
+func TestRV64RootedScalarImportedMultiMemoryExecutes(t *testing.T) {
+	source := rootedScalarMultiMemoryModule(true)
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded rooted imported multi-memory module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig().WithFeature(CoreFeatureMultiMemory, true), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.memoryCount() != 2 || view.memoryImportCount() != 2 || view.memoryDef(0).ImportKey == "" || view.memoryDef(1).ImportKey == "" {
+		t.Fatalf("rooted imported multi-memory receipt=%t memories=%d imports=%d defs=%+v validation=%v", rv64FreshRootedGC(view), view.memoryCount(), view.memoryImportCount(), view.memoryDir.defs, railshotValidateCompiled(view))
+	}
+	candidate := cloneCompiledMetadata(view)
+	directory := *candidate.memoryDir
+	directory.defs = slices.Clone(directory.defs)
+	candidate.memoryDir = &directory
+	candidate.memoryDir.defs[1].ImportKey = "env.memories.other"
+	if rv64FreshRootedGC(candidate) {
+		t.Fatal("renamed secondary memory import retained the generic receipt")
+	}
+	if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+		t.Fatalf("renamed secondary memory validation=%v", err)
+	}
+	memory0, err := NewMemory(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory0.Close()
+	memory1, err := NewMemory(2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory1.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		Imports: NewImports().Memory("env.memories", "memory.0", memory0).Memory("env.memories", "memory.1", memory1),
+		GC:      GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if exported, err := instance.ExportedMemory("m0"); err != nil || exported != memory0 {
+		t.Fatalf("memory-0 export=%p want=%p err=%v", exported, memory0, err)
+	}
+	if exported, err := instance.ExportedMemory("m1"); err != nil || exported != memory1 {
+		t.Fatalf("memory-1 export=%p want=%p err=%v", exported, memory1, err)
+	}
+	for range 4 {
+		if got, err := instance.Invoke("size1"); err != nil || !slices.Equal(got, []uint64{2}) {
+			t.Fatalf("size1()=%v err=%v want=[2]", got, err)
+		}
+	}
+	if got, err := instance.Invoke("load1", 16); err != nil || !slices.Equal(got, []uint64{0x12345678}) {
+		t.Fatalf("imported memory-1 active data=%v err=%v want=[0x12345678]", got, err)
+	}
+	if _, err := instance.Invoke("store1", 32, 0x76543210); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := instance.Invoke("load1", 32); err != nil || !slices.Equal(got, []uint64{0x76543210}) {
+		t.Fatalf("imported memory-1 load=%v err=%v want=[0x76543210]", got, err)
+	}
+	if got, err := instance.Invoke("load0", 32); err != nil || !slices.Equal(got, []uint64{0}) {
+		t.Fatalf("imported memory-0 isolation load=%v err=%v want=[0]", got, err)
 	}
 }
 
