@@ -68,7 +68,12 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 			return integerAffineTerm{}, false
 		}
 	}
-	type affineValue struct{ coefficient, constant uint64 }
+	// floatSign is zero for an integer, otherwise a finite float whose sign
+	// is proven: f32 nonnegative/nonpositive = 1/2, f64 = 3/4.
+	type affineValue struct {
+		coefficient, constant uint64
+		floatSign             uint8
+	}
 	var stack [16]affineValue
 	var out integerAffineTerm
 	depth := 0
@@ -86,6 +91,9 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 		}
 		// With one term left, the unblocked add consumes the earlier accumulator.
 		if depth == 1 && (blocked && op == 0x0b || !blocked && (op == 0x6a || op == 0x7c)) {
+			if stack[0].floatSign != 0 {
+				return out, false
+			}
 			out.coefficient, out.constant = stack[0].coefficient, stack[0].constant
 			return out, true
 		}
@@ -123,7 +131,7 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 			stack[depth] = affineValue{constant: value}
 			depth++
 		case 0x10:
-			if !allowCalls || module == nil || depth == 0 || out.calls == 4 {
+			if !allowCalls || module == nil || depth == 0 || stack[depth-1].floatSign != 0 || out.calls == 4 {
 				return out, false
 			}
 			index, err := r.U32()
@@ -142,12 +150,62 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 				a.constant = uint64(uint32(a.constant))
 			}
 			out.calls++
+		case 0xb3, 0xb5, 0xb8, 0xba: // f32/f64.convert_i32/i64_u
+			width := 4
+			if op == 0xb5 || op == 0xba {
+				width = 8
+			}
+			if depth == 0 || stack[depth-1].floatSign != 0 || !setWidth(width) {
+				return out, false
+			}
+			sign := uint8(1)
+			if op == 0xb8 || op == 0xba {
+				sign = 3
+			}
+			// Every unsigned integer converts to a finite nonnegative float,
+			// including rounded UINT64_MAX. The affine bits are no longer useful.
+			stack[depth-1] = affineValue{floatSign: sign}
+		case 0x8c, 0x9a: // f32/f64.neg
+			if depth == 0 {
+				return out, false
+			}
+			sign := stack[depth-1].floatSign
+			base := uint8(1)
+			if op == 0x9a {
+				base = 3
+			}
+			if sign != base && sign != base+1 {
+				return out, false
+			}
+			stack[depth-1].floatSign = base + 1 - (sign - base)
+		case 0xfc:
+			sub, err := r.U32()
+			if err != nil || depth == 0 {
+				return out, false
+			}
+			width, sign := 4, uint8(2)
+			switch sub {
+			case 1: // i32.trunc_sat_f32_u
+			case 3:
+				sign = 4 // i32.trunc_sat_f64_u
+			case 5:
+				width = 8 // i64.trunc_sat_f32_u
+			case 7:
+				width, sign = 8, 4 // i64.trunc_sat_f64_u
+			default:
+				return out, false
+			}
+			if stack[depth-1].floatSign != sign || !setWidth(width) {
+				return out, false
+			}
+			// Finite nonpositive inputs, including -0, saturate to unsigned zero.
+			stack[depth-1] = affineValue{}
 		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e:
 			width := 4
 			if op >= 0x7c {
 				width = 8
 			}
-			if depth < 2 || !setWidth(width) {
+			if depth < 2 || stack[depth-2].floatSign != 0 || stack[depth-1].floatSign != 0 || !setWidth(width) {
 				return out, false
 			}
 			a, b := stack[depth-2], stack[depth-1]
