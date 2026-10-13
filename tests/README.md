@@ -1,5 +1,8 @@
 # Tests
 
+The [integer conditional-join pressure profile](integer-join-pressure.md) checks
+computed values, branch outcomes, and bounded native placement on AMD64.
+
 Package-local Go tests stay beside the implementation they exercise. This
 directory contains repository-level conformance, integration, fuzz, corpus,
 fixture, and support code:
