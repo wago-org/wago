@@ -518,6 +518,31 @@ func rootedScalarAggregateConstOperandOpcode(r *wasm.Reader, storage wasm.Storag
 	}
 }
 
+func rootedScalarAggregateScalarStorage(storage wasm.StorageType) bool {
+	if storage.Packed() {
+		return true
+	}
+	want := storage.Val()
+	return wasm.EqualValType(want, wasm.I32) || wasm.EqualValType(want, wasm.I64) || wasm.EqualValType(want, wasm.F32) || wasm.EqualValType(want, wasm.F64) || wasm.EqualValType(want, wasm.V128)
+}
+
+func rootedScalarAggregateBoundedLength(r *wasm.Reader) bool {
+	op, err := r.Byte()
+	if err != nil || op != 0x41 {
+		return false
+	}
+	length, err := r.I32()
+	return err == nil && uint32(length) <= 256
+}
+
+func rootedScalarAggregateConstructorEnd(r *wasm.Reader, sub, typeIndex uint32) bool {
+	op, err := r.Byte()
+	gotSub, subErr := r.U32()
+	constructed, typeErr := r.U32()
+	end, endErr := r.Byte()
+	return err == nil && op == 0xfb && subErr == nil && gotSub == sub && typeErr == nil && constructed == typeIndex && endErr == nil && end == 0x0b && !r.HasNext()
+}
+
 func rootedScalarAggregateConstOperand(r *wasm.Reader, storage wasm.StorageType) bool {
 	op, err := r.Byte()
 	return err == nil && rootedScalarAggregateConstOperandOpcode(r, storage, op)
@@ -542,36 +567,56 @@ func rootedScalarAggregateElementExpression(expr wasm.Expr, ref wasm.RefType, m 
 	r := wasm.ReaderFrom(expr.BodyBytes)
 	switch comp.Kind {
 	case wasm.CompStruct:
+		scalarDefault := true
+		for _, field := range comp.Fields {
+			scalarDefault = scalarDefault && rootedScalarAggregateScalarStorage(field.Storage())
+		}
 		for _, field := range comp.Fields {
 			if !rootedScalarAggregateConstOperand(&r, field.Storage()) {
-				return false
+				r = wasm.ReaderFrom(expr.BodyBytes)
+				return scalarDefault && rootedScalarAggregateConstructorEnd(&r, 1, typeIndex)
 			}
 		}
-		op, err := r.Byte()
-		sub, subErr := r.U32()
-		constructed, typeErr := r.U32()
-		end, endErr := r.Byte()
-		return err == nil && op == 0xfb && subErr == nil && sub == 0 && typeErr == nil && constructed == typeIndex && endErr == nil && end == 0x0b && !r.HasNext()
+		if rootedScalarAggregateConstructorEnd(&r, 0, typeIndex) {
+			return true
+		}
+		r = wasm.ReaderFrom(expr.BodyBytes)
+		return scalarDefault && rootedScalarAggregateConstructorEnd(&r, 1, typeIndex)
 	case wasm.CompArray:
-		count := uint32(0)
-		for {
-			op, err := r.Byte()
-			if err != nil {
-				return false
-			}
-			if op == 0xfb {
-				break
-			}
-			if count == 256 || !rootedScalarAggregateConstOperandOpcode(&r, comp.Array.Storage(), op) {
-				return false
-			}
-			count++
+		if !rootedScalarAggregateScalarStorage(comp.Array.Storage()) {
+			return false
 		}
-		sub, subErr := r.U32()
-		constructed, typeErr := r.U32()
-		declared, countErr := r.U32()
-		end, endErr := r.Byte()
-		return subErr == nil && sub == 8 && typeErr == nil && constructed == typeIndex && countErr == nil && declared == count && endErr == nil && end == 0x0b && !r.HasNext()
+		fixed := func() bool {
+			fixedReader := wasm.ReaderFrom(expr.BodyBytes)
+			count := uint32(0)
+			for {
+				op, err := fixedReader.Byte()
+				if err != nil {
+					return false
+				}
+				if op == 0xfb {
+					break
+				}
+				if count == 256 || !rootedScalarAggregateConstOperandOpcode(&fixedReader, comp.Array.Storage(), op) {
+					return false
+				}
+				count++
+			}
+			sub, subErr := fixedReader.U32()
+			constructed, typeErr := fixedReader.U32()
+			declared, countErr := fixedReader.U32()
+			end, endErr := fixedReader.Byte()
+			return subErr == nil && sub == 8 && typeErr == nil && constructed == typeIndex && countErr == nil && declared == count && endErr == nil && end == 0x0b && !fixedReader.HasNext()
+		}
+		if fixed() {
+			return true
+		}
+		r = wasm.ReaderFrom(expr.BodyBytes)
+		if rootedScalarAggregateConstOperand(&r, comp.Array.Storage()) && rootedScalarAggregateBoundedLength(&r) && rootedScalarAggregateConstructorEnd(&r, 6, typeIndex) {
+			return true
+		}
+		r = wasm.ReaderFrom(expr.BodyBytes)
+		return rootedScalarAggregateBoundedLength(&r) && rootedScalarAggregateConstructorEnd(&r, 7, typeIndex)
 	default:
 		return false
 	}

@@ -136,6 +136,14 @@ func TestRV64RootedAggregateTableBulkCompilesToHelpers(t *testing.T) {
 	if !admitRV64GCRootedScalarModule(active) {
 		t.Fatal("active aggregate element shape was not admitted")
 	}
+	defaulted, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaulted.Elements[0].Kind.Exprs[0].BodyBytes = []byte{0xfb, 0x01, 0x00, 0x0b}
+	if !admitRV64GCRootedScalarModule(defaulted) {
+		t.Fatal("struct.new_default aggregate element was not admitted")
+	}
 	for name, mutate := range map[string]func(*wasm.Module){
 		"declarative": func(candidate *wasm.Module) { candidate.Elements[0].Mode.Kind = wasm.ElemDeclarative },
 		"wrong-null-heap": func(candidate *wasm.Module) {
@@ -221,11 +229,31 @@ func TestRV64RootedAggregateArrayActiveElementCompiles(t *testing.T) {
 	if !admitRV64GCRootedScalarModule(empty) {
 		t.Fatal("empty array.new_fixed element was not admitted")
 	}
+	for name, body := range map[string][]byte{
+		"new":         {0x41, 0x07, 0x41, 0x03, 0xfb, 0x06, 0x00, 0x0b},
+		"default":     {0x41, 0x02, 0xfb, 0x07, 0x00, 0x0b},
+		"default-max": {0x41, 0x80, 0x02, 0xfb, 0x07, 0x00, 0x0b},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			candidate.Elements[0].Kind.Exprs[0].BodyBytes = body
+			if !admitRV64GCRootedScalarModule(candidate) {
+				t.Fatalf("array.%s element was not admitted", name)
+			}
+		})
+	}
 	for name, replace := range map[string][]byte{
-		"wrong-count": {0x41, 0x0b, 0x41, 0x16, 0xfb, 0x08, 0x00, 0x01, 0x0b},
-		"wrong-op":    {0x41, 0x0b, 0x41, 0x16, 0xfb, 0x06, 0x00, 0x02, 0x0b},
-		"wrong-type":  {0x41, 0x0b, 0x41, 0x16, 0xfb, 0x08, 0x01, 0x02, 0x0b},
-		"wrong-value": {0x42, 0x0b, 0x41, 0x16, 0xfb, 0x08, 0x00, 0x02, 0x0b},
+		"wrong-count":         {0x41, 0x0b, 0x41, 0x16, 0xfb, 0x08, 0x00, 0x01, 0x0b},
+		"wrong-op":            {0x41, 0x0b, 0x41, 0x16, 0xfb, 0x06, 0x00, 0x02, 0x0b},
+		"wrong-type":          {0x41, 0x0b, 0x41, 0x16, 0xfb, 0x08, 0x01, 0x02, 0x0b},
+		"wrong-value":         {0x42, 0x0b, 0x41, 0x16, 0xfb, 0x08, 0x00, 0x02, 0x0b},
+		"new-negative-length": {0x41, 0x07, 0x41, 0x7f, 0xfb, 0x06, 0x00, 0x0b},
+		"new-oversize-length": {0x41, 0x07, 0x41, 0x81, 0x02, 0xfb, 0x06, 0x00, 0x0b},
+		"default-negative":    {0x41, 0x7f, 0xfb, 0x07, 0x00, 0x0b},
+		"default-oversize":    {0x41, 0x81, 0x02, 0xfb, 0x07, 0x00, 0x0b},
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate, err := wasm.DecodeModule(source)
@@ -234,7 +262,7 @@ func TestRV64RootedAggregateArrayActiveElementCompiles(t *testing.T) {
 			}
 			candidate.Elements[0].Kind.Exprs[0].BodyBytes = replace
 			if admitRV64GCRootedScalarModule(candidate) {
-				t.Fatal("malformed array.new_fixed element was admitted")
+				t.Fatal("malformed array constructor element was admitted")
 			}
 		})
 	}

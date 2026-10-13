@@ -448,6 +448,31 @@ func rv64RootedAggregateConstOperandOpcode(r *wasm.Reader, storage wasm.StorageT
 	}
 }
 
+func rv64RootedAggregateScalarStorage(storage wasm.StorageType) bool {
+	if storage.Packed() {
+		return true
+	}
+	want := storage.Val()
+	return wasm.EqualValType(want, wasm.I32) || wasm.EqualValType(want, wasm.I64) || wasm.EqualValType(want, wasm.F32) || wasm.EqualValType(want, wasm.F64) || wasm.EqualValType(want, wasm.V128)
+}
+
+func rv64RootedAggregateBoundedLength(r *wasm.Reader) bool {
+	op, err := r.Byte()
+	if err != nil || op != 0x41 {
+		return false
+	}
+	length, err := r.I32()
+	return err == nil && uint32(length) <= 256
+}
+
+func rv64RootedAggregateConstructorEnd(r *wasm.Reader, sub, typeIndex uint32) bool {
+	op, err := r.Byte()
+	gotSub, subErr := r.U32()
+	constructed, typeErr := r.U32()
+	end, endErr := r.Byte()
+	return err == nil && op == 0xfb && subErr == nil && gotSub == sub && typeErr == nil && constructed == typeIndex && endErr == nil && end == 0x0b && !r.HasNext()
+}
+
 func rv64RootedAggregateConstOperand(r *wasm.Reader, storage wasm.StorageType) bool {
 	op, err := r.Byte()
 	return err == nil && rv64RootedAggregateConstOperandOpcode(r, storage, op)
@@ -468,36 +493,56 @@ func rv64RootedAggregateElement(expr wasm.Expr, ref wasm.RefType, m *wasm.Module
 	r := wasm.ReaderFrom(expr.BodyBytes)
 	switch comp.Kind {
 	case wasm.CompStruct:
+		scalarDefault := true
+		for _, field := range comp.Fields {
+			scalarDefault = scalarDefault && rv64RootedAggregateScalarStorage(field.Storage())
+		}
 		for _, field := range comp.Fields {
 			if !rv64RootedAggregateConstOperand(&r, field.Storage()) {
-				return false
+				r = wasm.ReaderFrom(expr.BodyBytes)
+				return scalarDefault && rv64RootedAggregateConstructorEnd(&r, 1, typeIndex)
 			}
 		}
-		op, err := r.Byte()
-		sub, subErr := r.U32()
-		constructed, typeErr := r.U32()
-		end, endErr := r.Byte()
-		return err == nil && op == 0xfb && subErr == nil && sub == 0 && typeErr == nil && constructed == typeIndex && endErr == nil && end == 0x0b && !r.HasNext()
+		if rv64RootedAggregateConstructorEnd(&r, 0, typeIndex) {
+			return true
+		}
+		r = wasm.ReaderFrom(expr.BodyBytes)
+		return scalarDefault && rv64RootedAggregateConstructorEnd(&r, 1, typeIndex)
 	case wasm.CompArray:
-		count := uint32(0)
-		for {
-			op, err := r.Byte()
-			if err != nil {
-				return false
-			}
-			if op == 0xfb {
-				break
-			}
-			if count == 256 || !rv64RootedAggregateConstOperandOpcode(&r, comp.Array.Storage(), op) {
-				return false
-			}
-			count++
+		if !rv64RootedAggregateScalarStorage(comp.Array.Storage()) {
+			return false
 		}
-		sub, subErr := r.U32()
-		constructed, typeErr := r.U32()
-		declared, countErr := r.U32()
-		end, endErr := r.Byte()
-		return subErr == nil && sub == 8 && typeErr == nil && constructed == typeIndex && countErr == nil && declared == count && endErr == nil && end == 0x0b && !r.HasNext()
+		fixed := func() bool {
+			fixedReader := wasm.ReaderFrom(expr.BodyBytes)
+			count := uint32(0)
+			for {
+				op, err := fixedReader.Byte()
+				if err != nil {
+					return false
+				}
+				if op == 0xfb {
+					break
+				}
+				if count == 256 || !rv64RootedAggregateConstOperandOpcode(&fixedReader, comp.Array.Storage(), op) {
+					return false
+				}
+				count++
+			}
+			sub, subErr := fixedReader.U32()
+			constructed, typeErr := fixedReader.U32()
+			declared, countErr := fixedReader.U32()
+			end, endErr := fixedReader.Byte()
+			return subErr == nil && sub == 8 && typeErr == nil && constructed == typeIndex && countErr == nil && declared == count && endErr == nil && end == 0x0b && !fixedReader.HasNext()
+		}
+		if fixed() {
+			return true
+		}
+		r = wasm.ReaderFrom(expr.BodyBytes)
+		if rv64RootedAggregateConstOperand(&r, comp.Array.Storage()) && rv64RootedAggregateBoundedLength(&r) && rv64RootedAggregateConstructorEnd(&r, 6, typeIndex) {
+			return true
+		}
+		r = wasm.ReaderFrom(expr.BodyBytes)
+		return rv64RootedAggregateBoundedLength(&r) && rv64RootedAggregateConstructorEnd(&r, 7, typeIndex)
 	default:
 		return false
 	}

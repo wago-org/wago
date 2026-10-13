@@ -39,18 +39,21 @@ func genericGCTableHelperModule() []byte {
 func genericGCActiveTableElementModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 0x01, 0x7f, 0x01})),
-		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x04}),
-		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x00, 0x01,
-			0x41, 0x37, 0xfb, 0x00, 0x00, 0x0b}),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x02, 0x04}),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x00, 0x02,
+			0x41, 0x37, 0xfb, 0x00, 0x00, 0x0b,
+			0xfb, 0x01, 0x00, 0x0b}),
 	)
 }
 
 func genericGCActiveArrayElementModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 0x01})),
-		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x04}),
-		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x00, 0x01,
-			0x41, 0x0b, 0x41, 0x16, 0xfb, 0x08, 0x00, 0x02, 0x0b}),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x03, 0x04}),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x00, 0x03,
+			0x41, 0x0b, 0x41, 0x16, 0xfb, 0x08, 0x00, 0x02, 0x0b,
+			0x41, 0x07, 0x41, 0x03, 0xfb, 0x06, 0x00, 0x0b,
+			0x41, 0x02, 0xfb, 0x07, 0x00, 0x0b}),
 	)
 }
 
@@ -60,7 +63,7 @@ func TestGenericGCActiveTableElementRoots(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	if len(compiled.Elems) != 1 || len(compiled.Elems[0].Values) != 1 || len(compiled.Elems[0].Values[0].Expr) == 0 {
+	if len(compiled.Elems) != 1 || len(compiled.Elems[0].Values) != 2 || len(compiled.Elems[0].Values[0].Expr) == 0 || len(compiled.Elems[0].Values[1].Expr) == 0 {
 		t.Fatalf("active aggregate element metadata = %#v", compiled.Elems)
 	}
 	for iteration := range 8 {
@@ -79,9 +82,14 @@ func TestGenericGCActiveTableElementRoots(t *testing.T) {
 			t.Fatalf("iteration %d: collect active root: %v", iteration, err)
 		}
 		value, err := instance.gc.StructGet(ref, 0)
+		defaultRef := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[16:])))
+		defaultValue, defaultErr := instance.gc.StructGet(defaultRef, 0)
 		instance.Close()
 		if err != nil || value.Bits != 55 {
 			t.Fatalf("iteration %d: active aggregate root = %+v, %v", iteration, value, err)
+		}
+		if defaultErr != nil || defaultValue.Bits != 0 {
+			t.Fatalf("iteration %d: default active aggregate root = %+v, %v", iteration, defaultValue, defaultErr)
 		}
 	}
 }
@@ -97,15 +105,17 @@ func TestGenericGCActiveArrayElementRoots(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	descriptor := instance.tableDescriptor(0)
-	ref := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
 	if err := instance.CollectGC(); err != nil {
 		t.Fatal(err)
 	}
-	for index, want := range []uint64{11, 22} {
-		value, err := instance.gc.ArrayGet(ref, uint32(index))
-		if err != nil || value.Bits != want {
-			t.Fatalf("active array root[%d] = %+v, %v; want %d", index, value, err, want)
+	descriptor := instance.tableDescriptor(0)
+	for slot, values := range [][]uint64{{11, 22}, {7, 7, 7}, {0, 0}} {
+		ref := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8+slot*8:])))
+		for index, want := range values {
+			value, err := instance.gc.ArrayGet(ref, uint32(index))
+			if err != nil || value.Bits != want {
+				t.Fatalf("active array root[%d][%d] = %+v, %v; want %d", slot, index, value, err, want)
+			}
 		}
 	}
 }
