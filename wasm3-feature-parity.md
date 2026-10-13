@@ -1366,3 +1366,19 @@ gap. Publication interference and warmup/order/scheduling effects remain
 unproven. Scope remains local; no production deployment.
 
 [Full new cohort, all original samples, phase-matched failures and receipt/history audit](docs/benchmarks/wasm3-2026-10-13/interleaved-full-feature-cohort.json).
+
+General ARM64 wrapping integer linear-term collection (`a7a9b6e9`) reduces repeated
+pure local terms without matching workload IDs. Two original-contract captures
+with reversed Wago ordering improve mesh skinning **17.4% / 21.1%** (26.6/26.7 us
+to 22.0/21.1 us), shrinking its image **1080 to 804 bytes**. It still misses peer
+parity at **1.74x / 1.71x**. Five contracts and all raw outcomes are retained;
+the first f32 state control misses strict parity slightly (1.0065x), so this
+is not a feature-parity completion claim. Initial compile cost +2.32%/+1.45%
+for Core 3/threads becomes +0.875%/-0.972% in a six-process repeat, with unchanged
+aggregate images and allocations. Guarded race, exact integer oracles, pinned
+Core 3/atomics and native AMD64 fallback execution pass. Ten current captures
+(40 observations, five contracts) are published only locally; all 575121
+historical observations remain intact. Earlier local-range, paired-count and
+scalar-fill-tail experiments were shelved or reverted after measurement.
+
+[Linear-term captures, rollback tests, compiler costs and local receipts](docs/benchmarks/wasm3-2026-10-13/linear-integer-tree.json).
