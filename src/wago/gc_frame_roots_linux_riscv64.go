@@ -318,6 +318,15 @@ func rv64RootedScalarGlobal(m *wasm.Module, global *wasm.Global, limit int) bool
 	if global == nil || len(global.Init.Instrs) != 0 {
 		return false
 	}
+	if wasm.EqualValType(global.Type.Type, wasm.I32) || wasm.EqualValType(global.Type.Type, wasm.I64) {
+		return railshot.ValidateIntegerInitializer(global.Init.BodyBytes, global.Type.Type, func(index uint32) (wasm.ValType, bool) {
+			if uint64(index) >= uint64(limit) {
+				return wasm.ValType{}, false
+			}
+			typ, ok := m.GlobalTypeByIndex(index)
+			return typ.Type, ok && !typ.Mutable
+		}) == nil
+	}
 	r := wasm.ReaderFrom(global.Init.BodyBytes)
 	op, err := r.Byte()
 	if err != nil {

@@ -101,6 +101,9 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		if global.HasInitGlobal && !rv64InitializerGlobal(c, global.InitGlobal, global.Type, i) {
 			return false
 		}
+		if len(global.InitExpr) != 0 && rv64ValidateIntegerInitializer(c, global.InitExpr, global.Type, i) != nil {
+			return false
+		}
 	}
 	tableDigest, validTable := rv64RootedTableDigest(c)
 	if !validTable || tableDigest != memo.rv64FreshRootedGCTableDigest {

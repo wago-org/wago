@@ -5,6 +5,7 @@ package wago
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -1516,6 +1517,33 @@ func rootedScalarGlobalCopyModule() []byte {
 	)
 }
 
+func rootedScalarIntegerGlobalExpressionModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I64}),
+	}
+	body := []byte{
+		0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x23, 0x02, 0x23, 0x03,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(2, wasmtest.Vec(
+			wasmtest.GlobalImportEntry("env", "i32", wasm.I32, false),
+			wasmtest.GlobalImportEntry("env", "i64", wasm.I64, false),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, false, []byte{0x23, 0x00, 0x41, 0x02, 0x6c, 0x41, 0x01, 0x6a, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I64, true, []byte{0x23, 0x01, 0x42, 0x03, 0x7c, 0x0b}),
+		)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func TestRV64RootedScalarGlobalExecutes(t *testing.T) {
 	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarGlobalModule())
 	if err != nil {
@@ -1654,6 +1682,74 @@ func TestRV64RootedScalarGlobalCopiesExecute(t *testing.T) {
 	for range 4 {
 		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, want) {
 			t.Fatalf("run()=%v err=%v want=%v", got, err, want)
+		}
+	}
+}
+
+func TestRV64RootedScalarIntegerGlobalExpressionsExecute(t *testing.T) {
+	source := rootedScalarIntegerGlobalExpressionModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("rooted integer global-expression module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.GlobalImports) != 2 || len(view.Globals) != 4 || !view.requiredFeatures.IsEnabled(CoreFeatureExtendedConst) {
+		t.Fatalf("rooted integer-expression receipt=%t imports=%d globals=%d features=%v validation=%v", rv64FreshRootedGC(view), len(view.GlobalImports), len(view.Globals), view.requiredFeatures, railshotValidateCompiled(view))
+	}
+	for i := 2; i < 4; i++ {
+		global := &view.Globals[i]
+		if len(global.InitExpr) == 0 || global.HasInitGlobal || global.InitGlobal != 0 {
+			t.Fatalf("global %d expression initializer=%+v", i, global)
+		}
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"expression": func(candidate *Compiled) {
+			candidate.Globals = slices.Clone(candidate.Globals)
+			candidate.Globals[2].InitExpr = slices.Clone(candidate.Globals[2].InitExpr)
+			candidate.Globals[2].InitExpr[2] = 0x42
+		},
+		"scope": func(candidate *Compiled) {
+			candidate.Globals = slices.Clone(candidate.Globals)
+			candidate.Globals[2].InitExpr = []byte{0x23, 0x02, 0x0b}
+		},
+		"bits": func(candidate *Compiled) {
+			candidate.Globals = slices.Clone(candidate.Globals)
+			candidate.Globals[2].Bits++
+		},
+		"feature": func(candidate *Compiled) {
+			candidate.requiredFeatures &^= CoreFeatureExtendedConst
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated integer-expression metadata retained the generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("mutated integer-expression validation=%v", err)
+			}
+		})
+	}
+	i32, i64 := NewGlobalI32(41, false), NewGlobalI64(-2, false)
+	defer i32.Close()
+	defer i64.Close()
+	binary.LittleEndian.PutUint64(i32.cell, 0xfeedface00000029)
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		Imports: NewImports().Global("env", "i32", i32).Global("env", "i64", i64),
+		GC:      GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for range 4 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{83, 1}) {
+			t.Fatalf("run()=%v err=%v want=[83 1]", got, err)
 		}
 	}
 }

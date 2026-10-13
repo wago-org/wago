@@ -166,7 +166,11 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		if !scalarType(global.Type.Type, true) || len(global.Init.Instrs) != 0 {
 			return false
 		}
-		if len(global.Init.BodyBytes) != 0 && global.Init.BodyBytes[0] == 0x23 {
+		if wasm.EqualValType(global.Type.Type, wasm.I32) || wasm.EqualValType(global.Type.Type, wasm.I64) {
+			if err := admitModuleIntegerInitializer(global.Init, global.Type.Type, m, importedGlobals+i); err != nil {
+				return false
+			}
+		} else if len(global.Init.BodyBytes) != 0 && global.Init.BodyBytes[0] == 0x23 {
 			if err := admitGlobalExpression(global.Init, m, global.Type.Type, importedGlobals+i); err != nil {
 				return false
 			}
