@@ -8,6 +8,15 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Simplify scalar floating self-comparisons with full-width booleans and no GP temporary.
+  Fuse ARM64 and Linux AMD64 scalar float comparisons into immediate branches and
+  integer selections, including boolean inversion, without materializing an intermediate
+  integer boolean.
+  Write ARM64 scalar abs/neg local assignments directly with native instructions,
+  and lower copysign to one sign mask plus bitwise select, preserving NaN payloads.
+  Write AMD64 scalar abs/neg/copysign local assignments directly, avoiding result
+  copies, and simplify copysign with identical inputs without altering signaling NaNs.
+
 - Reuse exception payload summaries across functions on AMD64 and ARM64 to
   reduce compilation work for modules with many tags and `catch_all_ref` handlers.
 - Improve ARM64 execution with guarded scalar and vector loop lowering, bounded

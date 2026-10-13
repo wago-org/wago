@@ -331,6 +331,16 @@ func (a *Asm) VFCmpPacked(dst, s1, s2 Reg, f64 bool, imm byte) {
 	a.vex3RRIMap(vexMap0F, packedPP(f64), 0xC2, dst, s1, s2, imm)
 }
 
+// VFCmpScalar compares only the low scalar lane, copying upper lanes from s1.
+// The raw predicate immediate leaves language comparison semantics to the caller.
+func (a *Asm) VFCmpScalar(dst, s1, s2 Reg, f64 bool, imm byte) {
+	pp := byte(2)
+	if f64 {
+		pp = 3
+	}
+	a.vex3RRIMap(vexMap0F, pp, 0xC2, dst, s1, s2, imm)
+}
+
 // VSseRRR is the 3-operand form of SseRR (for the packed-logical ops andps/pd,
 // orps/pd, xorps/pd used by neg/abs/copysign): dst = src1 <op> src2. pp is the
 // legacy prefix code (0 = none = ps, 1 = 66 = pd).

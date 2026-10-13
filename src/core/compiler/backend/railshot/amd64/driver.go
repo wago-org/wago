@@ -611,8 +611,14 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 
 	// f32 unary/binary
 	case 0x8b:
+		if done, err := f.tryFsignLocalSet(r, false, false); done || err != nil {
+			return err
+		}
 		f.fabs(false)
 	case 0x8c:
+		if done, err := f.tryFsignLocalSet(r, false, true); done || err != nil {
+			return err
+		}
 		f.fneg(false)
 	case 0x8d:
 		f.fround(false, roundCeil)
@@ -649,11 +655,20 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x97:
 		f.fminmax(false, true)
 	case 0x98:
+		if done, err := f.tryFcopysignLocalSet(r, false); done || err != nil {
+			return err
+		}
 		f.fcopysign(false)
 	// f64 unary/binary
 	case 0x99:
+		if done, err := f.tryFsignLocalSet(r, true, false); done || err != nil {
+			return err
+		}
 		f.fabs(true)
 	case 0x9a:
+		if done, err := f.tryFsignLocalSet(r, true, true); done || err != nil {
+			return err
+		}
 		f.fneg(true)
 	case 0x9b:
 		f.fround(true, roundCeil)
@@ -690,6 +705,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0xa5:
 		f.fminmax(true, true)
 	case 0xa6:
+		if done, err := f.tryFcopysignLocalSet(r, true); done || err != nil {
+			return err
+		}
 		f.fcopysign(true)
 
 	// float→int truncation (trapping)
@@ -833,6 +851,26 @@ func (f *fn) popValue() *elem {
 }
 
 func (f *fn) tryFbinLocalSet(r *wasm.Reader, memOp byte, f64 bool) (bool, error) {
+	return f.tryFscalarLocalSet(r, f64, 2, func(dst Reg) { f.fbinInto(dst, memOp, f64) }, "float-local-sink")
+}
+
+func (f *fn) tryFsignLocalSet(r *wasm.Reader, f64, neg bool) (bool, error) {
+	return f.tryFscalarLocalSet(r, f64, 1, func(dst Reg) {
+		if neg {
+			f.fsignInto(dst, 0x57, fSignMask64, fSignMask32, f64)
+		} else {
+			f.fsignInto(dst, 0x54, fMagMask64, fMagMask32, f64)
+		}
+	}, "float-sign-local-sink")
+}
+
+func (f *fn) tryFcopysignLocalSet(r *wasm.Reader, f64 bool) (bool, error) {
+	return f.tryFscalarLocalSet(r, f64, 2, func(dst Reg) { f.fcopysignInto(dst, f64) }, "float-copysign-local-sink")
+}
+
+// Realize old references before overwriting the local, leaving the current
+// scalar inputs available to read in place even when they alias the destination.
+func (f *fn) tryFscalarLocalSet(r *wasm.Reader, f64 bool, arity int, emit func(Reg), stat string) (bool, error) {
 	save := r.Offset()
 	op, ok := r.Peek()
 	if !ok || (op != 0x21 && op != 0x22) {
@@ -861,12 +899,15 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, memOp byte, f64 bool) (bool, error)
 		}
 		return false, nil
 	}
-	left := baseOfValentBlock(right).prev
+	left := right
+	if arity == 2 {
+		left = baseOfValentBlock(right).prev
+	}
 	f.realizeLocalRefs(x, left)
 	f.evictRelinquishedFReg(pr)
-	f.fbinInto(pr, memOp, f64)
+	emit(pr)
 	f.markLocalDirty(x)
-	f.stats.peep("float-local-sink")
+	f.stats.peep(stat)
 	if op == 0x22 {
 		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
 	}
