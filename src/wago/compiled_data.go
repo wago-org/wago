@@ -294,6 +294,21 @@ func rv64RootedMemoryExportDigest(c *Compiled) ([32]byte, bool) {
 		binary.LittleEndian.PutUint32(word[:4], uint32(index))
 		_, _ = h.Write(word[:4])
 	}
+	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.Exports)))
+	_, _ = h.Write(word[:4])
+	for _, name := range sortedKeys(c.Exports) {
+		index := c.Exports[name]
+		local := index - c.NumImports
+		if local < 0 || local >= len(c.Funcs) || uint64(len(name)) > remaining {
+			return [32]byte{}, false
+		}
+		remaining -= uint64(len(name))
+		binary.LittleEndian.PutUint64(word[:], uint64(len(name)))
+		_, _ = h.Write(word[:])
+		_, _ = h.Write([]byte(name))
+		binary.LittleEndian.PutUint32(word[:4], uint32(index))
+		_, _ = h.Write(word[:4])
+	}
 	var digest [32]byte
 	copy(digest[:], h.Sum(nil))
 	return digest, true

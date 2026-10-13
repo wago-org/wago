@@ -107,9 +107,96 @@ func TestRV64RootedInternalReferenceCallExecutes(t *testing.T) {
 	}
 }
 
-func TestRV64RootedReferenceExportFailsClosed(t *testing.T) {
-	if _, err := Compile(rv64RootedScalarConfig(), rootedInternalReferenceCallModule(true)); err == nil {
-		t.Fatal("collector reference export unexpectedly compiled")
+func rootedScalarPublicReferenceModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x01},
+		{0x60, 0x00, 0x01, 0x64, 0x00},
+		{0x60, 0x01, 0x64, 0x00, 0x01, 0x7f},
+		wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I31Ref}),
+		wasmtest.FuncType([]wasm.ValType{wasm.I31Ref}, []wasm.ValType{wasm.I32}),
+	}
+	makeStruct := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0x0b}
+	readStruct := []byte{0x00, 0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	wrapI31 := []byte{0x00, 0x20, 0x00, 0xfb, 0x1c, 0x0b}
+	unwrapI31 := []byte{0x00, 0x20, 0x00, 0xfb, 0x1d, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(3), wasmtest.ULEB(4))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("make", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("wrap_i31", byte(wasm.ExternFunc), 2),
+			wasmtest.ExportEntry("unwrap_i31", byte(wasm.ExternFunc), 3),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(makeStruct))), makeStruct...),
+			append(wasmtest.ULEB(uint32(len(readStruct))), readStruct...),
+			append(wasmtest.ULEB(uint32(len(wrapI31))), wrapI31...),
+			append(wasmtest.ULEB(uint32(len(unwrapI31))), unwrapI31...),
+		)),
+	)
+}
+
+func TestRV64RootedReferenceExportsExecute(t *testing.T) {
+	source := rootedScalarPublicReferenceModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded public collector-reference module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.genericGCFrameRoots() == nil {
+		t.Fatalf("public collector-reference receipt=%t roots=%+v validation=%v", rv64FreshRootedGC(view), view.genericGCFrameRoots(), railshotValidateCompiled(view))
+	}
+	candidate := cloneCompiledMetadata(view)
+	candidate.Exports = make(map[string]int, len(view.Exports))
+	for name, function := range view.Exports {
+		candidate.Exports[name] = function
+	}
+	delete(candidate.Exports, "make")
+	candidate.Exports["renamed"] = 0
+	if rv64FreshRootedGC(candidate) {
+		t.Fatal("mutated public function namespace retained the rooted compiler receipt")
+	}
+
+	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	values, err := in.InvokeValues(context.Background(), "make")
+	if err != nil || len(values) != 1 || values[0].Type() != ValAnyRef || values[0].GCRef().IsNull() || values[0].Bits()>>32 == 0 {
+		t.Fatalf("make()=%v err=%v; want one opaque aggregate token", values, err)
+	}
+	ref := values[0].GCRef()
+	if err := in.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	runtime.GC()
+	if got, err := in.InvokeValues(context.Background(), "read", ValueGCRef(ref)); err != nil || len(got) != 1 || got[0].I32() != 42 {
+		t.Fatalf("typed read(token)=%v err=%v; want i32(42)", got, err)
+	}
+	if got, err := in.Invoke("read", values[0].Bits()); err != nil || !slices.Equal(got, []uint64{42}) {
+		t.Fatalf("raw read(token)=%v err=%v; want [42]", got, err)
+	}
+	if got, err := in.Invoke("wrap_i31", 0xdeadbeeffffffffe); err != nil || !slices.Equal(got, []uint64{0xfffffffd}) {
+		t.Fatalf("wrap_i31(dirty -2)=%#x err=%v; want [0xfffffffd]", got, err)
+	}
+	wrapped, err := in.InvokeValues(context.Background(), "wrap_i31", ValueI32(-2))
+	if err != nil || len(wrapped) != 1 || wrapped[0].Type() != ValI31Ref || wrapped[0].I31Ref().Signed() != -2 {
+		t.Fatalf("typed wrap_i31(-2)=%v err=%v", wrapped, err)
+	}
+	if got, err := in.Invoke("unwrap_i31", wrapped[0].Bits()); err != nil || !slices.Equal(got, []uint64{0xfffffffe}) {
+		t.Fatalf("unwrap_i31(-2)=%#x err=%v; want zero-normalized i32 -2", got, err)
+	}
+	if err := in.ReleaseGCRef(ref); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.Invoke("read", values[0].Bits()); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("stale aggregate token ingress=%v", err)
 	}
 }
 

@@ -537,6 +537,18 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			return false
 		}
 	}
+	rootedExportValue := func(value ValueTypeDescriptor) bool {
+		if value.Kind <= ValueTypeF64 {
+			return value.Ref == (ReferenceTypeDescriptor{})
+		}
+		if value.Kind != ValueTypeReference || value.Ref.Exact {
+			return false
+		}
+		if !value.Ref.Heap.Defined {
+			return value.Ref.Heap.Abstract == AbstractHeapI31 && value.Ref.Heap.TypeIndex == 0
+		}
+		return rootedValue(value, len(c.Types))
+	}
 	for _, function := range c.Exports {
 		local := function - c.NumImports
 		if local < 0 || local >= len(c.Funcs) {
@@ -545,7 +557,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		typ := &c.Types[c.Funcs[local].TypeIndex]
 		for _, values := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
 			for _, value := range values {
-				if value.Kind > ValueTypeF64 || value.Ref != (ReferenceTypeDescriptor{}) {
+				if !rootedExportValue(value) {
 					return false
 				}
 			}
@@ -1168,13 +1180,16 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	mutableReferenceCarrier := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
 	declarationExtern := exactGCRefTestAbstract || exactGCExtern || exactGCRefCastAbstract || exactGCBrOnCastAbstract || exactGCBrOnCastFailAbstract || exactCore3RefIsNull || rv64Core3RefDeclarations(c) || rv64Core3ReferenceDeclarations(c) || rv64Core3RefAsNonNullDeclarations(c) || rv64Core3RefIsNullDeclarations(c) || rv64PublicReferenceCallBoundary(c) || rv64PublicHostReferenceBoundary(c) || rv64PublicDynamicHostReferenceBoundary(c) || mutableReferenceCarrier >= 19 && mutableReferenceCarrier <= 28
+	freshRootedReference := func(typ ValType) bool {
+		return freshRootedGC && (typ == ValAnyRef || typ == ValI31Ref)
+	}
 	for _, sig := range c.Funcs {
 		if len(sig.Params) > maxArity || len(sig.Results) > maxArity {
 			return reject("signature arity")
 		}
 		for _, types := range [][]ValType{sig.Params, sig.Results} {
 			for _, typ := range types {
-				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!typedI31 || typ != ValI31Ref) && (!(freshRootedGC || exactGCExtern || exactGCBrOnCastNullability || exactGCBrOnCastFailNullability || exactGCStructBasic || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy) || typ != ValAnyRef) {
+				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!typedI31 || typ != ValI31Ref) && !freshRootedReference(typ) && (!(exactGCExtern || exactGCBrOnCastNullability || exactGCBrOnCastFailNullability || exactGCStructBasic || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy) || typ != ValAnyRef) {
 					return reject("unsupported signature")
 				}
 			}

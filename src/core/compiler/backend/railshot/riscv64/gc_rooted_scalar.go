@@ -427,8 +427,23 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			return false
 		}
 	}
-	// Reference values are private collector carriers. The public host adapter
-	// remains scalar-only until it has an independently qualified ownership ABI.
+	// The shared public host adapter translates indexed aggregate references
+	// through owned GC tokens and keeps i31 values immediate. Abstract object
+	// results can also carry i31 values under a ValAnyRef ABI slot, so keep them
+	// private until that mixed public representation has its own contract.
+	publicRootedValue := func(typ wasm.ValType) bool {
+		if scalarType(typ, true) {
+			return true
+		}
+		if typ.Kind() != wasm.ValRef || typ.Ref().Exact() {
+			return false
+		}
+		heap := typ.Ref().Heap()
+		if heap.Kind() == wasm.HeapAbs {
+			return heap.Abs() == wasm.HeapI31
+		}
+		return heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && int(heap.Type().Index) < flatTypes && admittedAggregates[heap.Type().Index]
+	}
 	for i := range m.Exports {
 		if m.Exports[i].Index.Kind == wasm.ExternMem || m.Exports[i].Index.Kind == wasm.ExternGlobal || m.Exports[i].Index.Kind == wasm.ExternTable {
 			continue
@@ -443,7 +458,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
 			for _, typ := range values {
-				if !scalarType(typ, true) {
+				if !publicRootedValue(typ) {
 					return false
 				}
 			}

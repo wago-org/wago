@@ -92,9 +92,25 @@ func TestRV64RootedInternalReferenceCallCompiles(t *testing.T) {
 	}
 }
 
-func TestRV64RootedReferenceExportRejected(t *testing.T) {
-	if err := AdmitProductionSource(rv64RootedInternalReferenceCallModule(true)); err == nil {
-		t.Fatal("collector reference export unexpectedly admitted")
+func TestRV64RootedReferenceExportAdmitted(t *testing.T) {
+	if err := AdmitProductionSource(rv64RootedInternalReferenceCallModule(true)); err != nil {
+		t.Fatalf("collector reference export was not admitted: %v", err)
+	}
+}
+
+func TestRV64RootedAbstractReferenceExportRejected(t *testing.T) {
+	body := []byte{0x00, 0x20, 0x00, 0x0b}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType([]wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.AnyRef}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("echo", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	if err := AdmitProductionSource(source); err == nil {
+		t.Fatal("mixed-representation abstract reference export unexpectedly admitted")
 	}
 }
 
@@ -2320,8 +2336,8 @@ func TestRV64RootedScalarI31InternalCallCompiles(t *testing.T) {
 		t.Fatal("rooted i31 internal call module was not admitted")
 	}
 	m.Exports[0].Index.Index = 0
-	if admitRV64GCRootedScalarModule(m) {
-		t.Fatal("public i31 function boundary was admitted")
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("public i31 function boundary was not admitted")
 	}
 	m.Exports[0].Index.Index = 1
 	roots := shared.NewGCModuleFrameRootPlan(2)
