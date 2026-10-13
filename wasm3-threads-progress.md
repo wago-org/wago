@@ -2025,3 +2025,32 @@ Tracked `docs/benchmarks/wasm3-2026-10-12/bulk-min-results.json` retains source
 fingerprints, process medians, compile costs, grow-requirement failure evidence,
 current native loop hashes and the hub connection failure. Native AMD64
 revalidation, bulk/RMW/CAS gaps and broader feature parity remain required work.
+
+### Native constant vector-fill checkpoint
+
+`0c1ae29d` replaces repeated integer-pattern construction and scalar chunks with
+native byte broadcast and overlapping 16-byte stores for constant 16–64 byte
+fills. The full selected span is proved or checked before writing. Every length
+15–65, six byte patterns, unaligned and end-of-memory destinations, primary/
+secondary shared and unshared memories, unchanged value locals, codec reload
+and out-of-bounds no-write behavior pass on ARM64. Both native backends compile;
+native AMD64 execution remains pending hub connectivity. Pinned ARM64 Core 3
+passes 2,226 modules/58,238 assertions and official threads 51/312, with no
+failures/skips/gaps. The full statistics suite retains the exact same 44 failures.
+
+Three interleaved processes per revision/profile through wasm.fyi give bulk-fill
+235,261 -> 161,310 ns (-31.43%), versus unchecked w2c2 194,986 ns (0.827x).
+Other current/unchecked ratios are ordinary 0.986, SIMD 0.946, atomic load/store
+0.882, RMW 1.133, CAS 1.016, wait/notify 0.330 and fence 0.530. These are
+contract-specific observations; small changes do not prove broader parity.
+
+Separate GOMAXPROCS=1 compile captures run without overlapping builds or tests:
+Core 3's 21,800 compiles take 464.268 -> 443.427 ms (-4.49%) with unchanged
+allocation/code totals and peak RSS +0.81%; threads' 2,700 compiles take
+50.712 -> 51.283 ms (+1.13%), allocations -0.21%, code -0.29% and peak RSS
++1.79%. Scalar/Core 3 scalar/imported-worker compile medians change -1.25%/
+-1.04%/-1.17%, with unchanged allocations. The tracked `bulk-vector-results.json`
+retains all medians, revisions, bytecode hashes and validation evidence.
+Emitted code keeps actual stores and the subsequent byte read. Atomic RMW/CAS
+block boundary spills, native AMD64 validation and broader feature parity remain
+required work.

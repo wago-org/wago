@@ -465,3 +465,23 @@ threads -2.63%, with small allocation/code reductions and peak RSS -0.46%/
 +0.13%. `bulk-min-results.json` preserves exact profiles, costs, native loops
 and the remote-validation limitation. Vector fill lowering, native AMD64
 revalidation and full feature-by-feature parity remain open.
+
+### Constant native vector fills
+
+`0c1ae29d` broadcasts the low byte into native vectors for 16–64 byte constant
+fills. Overlapping final stores stay inside the requested span, and the full
+bounds check precedes every write. Earlier reads/traps and the original value
+local are preserved. The independent `bulk-fill-vector` selection retains the
+scalar path for comparison. This uses mandatory native vector support without
+requiring guest SIMD instructions.
+
+The fresh wasm.fyi bulk-fill contract improves 31.43%, from 235,261 to 161,310 ns,
+versus unchecked SIMD-capable w2c2 at 194,986 ns (0.827x). This proves local
+parity for that contract; broad compositions and native AMD64 parity remain
+unproven. Core 3 compile latency changes -4.49%, threads +1.13%; allocations
+are unchanged/-0.21%, code unchanged/-0.29%, and peak RSS +0.81%/+1.79%.
+Small cohort differences are descriptive. `bulk-vector-results.json` preserves
+source fingerprints, all process medians, costs and emitted-loop evidence.
+ARM64 pinned Core 3/threads pass and the full backend retains its exact 44
+baseline statistics failures. Native AMD64 remains pending hub SSH access.
+RMW/CAS block reconciliation and full feature-by-feature parity remain open.
