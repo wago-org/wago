@@ -122,7 +122,7 @@ func (f *fn) tryPairedI32DotLoop(r *wasm.Reader) (bool, error) {
 	f.a.Add64(right, right, tmp)
 	f.a.Add64(left, left, linMemReg)
 	f.a.Add64(right, right, linMemReg)
-	// Four independent wrapping sums decouple the vector additions.
+	// Four independent wrapping sums hide the multiply-accumulate dependency.
 	// Reduce them only after the complete batches and exact remainder loads.
 	var v [8]Reg
 	for i := range v {
@@ -146,8 +146,7 @@ func (f *fn) tryPairedI32DotLoop(r *wasm.Reader) (bool, error) {
 		f.a.LdrQ(y, right, off)
 		f.a.NeonAddS(x, x, lb)
 		f.a.NeonAddS(y, y, rb)
-		f.a.NeonMulS(x, x, y)
-		f.a.NeonAddS(into, into, x)
+		f.a.NeonMlaS(into, x, y)
 	}
 	addPair(0, acc)
 	addPair(16, acc1)
