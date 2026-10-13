@@ -37,7 +37,7 @@ func (f *fn) tryPairedI32DotLoop(r *wasm.Reader) (bool, error) {
 			vectors++
 		}
 	}
-	if available < 11 || vectors < 6 {
+	if available < 11 || vectors < 8 {
 		return false, nil
 	}
 	f.flush()
@@ -122,19 +122,23 @@ func (f *fn) tryPairedI32DotLoop(r *wasm.Reader) (bool, error) {
 	f.a.Add64(right, right, tmp)
 	f.a.Add64(left, left, linMemReg)
 	f.a.Add64(right, right, linMemReg)
-	var v [6]Reg
+	// Four independent wrapping sums hide the multiply-accumulate dependency.
+	// Reduce them only after the complete batches and exact remainder loads.
+	var v [8]Reg
 	for i := range v {
 		v[i] = f.allocFReg(calleeFP)
 		f.fpinned = f.fpinned.add(v[i])
 	}
-	x, y, lb, rb, acc, acc1 := v[0], v[1], v[2], v[3], v[4], v[5]
+	x, y, lb, rb, acc, acc1, acc2, acc3 := v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]
 	f.a.MovImm32(tmp, p.LeftBias)
 	f.a.NeonDupGprS(lb, tmp)
 	f.a.MovImm32(tmp, p.RightBias)
 	f.a.NeonDupGprS(rb, tmp)
 	f.a.NeonEor16b(acc, acc, acc)
 	f.a.NeonEor16b(acc1, acc1, acc1)
-	f.a.CmpImm32(n, 32)
+	f.a.NeonEor16b(acc2, acc2, acc2)
+	f.a.NeonEor16b(acc3, acc3, acc3)
+	f.a.CmpImm32(n, 64)
 	small := f.a.Bcond(a64.CondCC)
 	loop := f.a.Len()
 	addPair := func(off int32, into Reg) {
@@ -146,13 +150,23 @@ func (f *fn) tryPairedI32DotLoop(r *wasm.Reader) (bool, error) {
 	}
 	addPair(0, acc)
 	addPair(16, acc1)
-	f.a.AddImm64(left, left, 32)
-	f.a.AddImm64(right, right, 32)
-	f.a.SubImm32(n, n, 32)
-	f.a.CmpImm32(n, 32)
+	addPair(32, acc2)
+	addPair(48, acc3)
+	f.a.AddImm64(left, left, 64)
+	f.a.AddImm64(right, right, 64)
+	f.a.SubImm32(n, n, 64)
+	f.a.CmpImm32(n, 64)
 	again := f.a.Bcond(a64.CondCS)
 	f.a.PatchBranch19(again, loop)
 	f.a.PatchBranch19(small, f.a.Len())
+	f.a.CmpImm32(n, 32)
+	noEight := f.a.Bcond(a64.CondCC)
+	addPair(0, acc)
+	addPair(16, acc1)
+	f.a.AddImm64(left, left, 32)
+	f.a.AddImm64(right, right, 32)
+	f.a.SubImm32(n, n, 32)
+	f.a.PatchBranch19(noEight, f.a.Len())
 	f.a.CmpImm32(n, 16)
 	noHalf := f.a.Bcond(a64.CondCC)
 	addPair(0, acc)
@@ -161,6 +175,8 @@ func (f *fn) tryPairedI32DotLoop(r *wasm.Reader) (bool, error) {
 	f.a.SubImm32(n, n, 16)
 	f.a.PatchBranch19(noHalf, f.a.Len())
 	f.a.NeonAddS(acc, acc, acc1)
+	f.a.NeonAddS(acc2, acc2, acc3)
+	f.a.NeonAddS(acc, acc, acc2)
 	f.a.NeonAddvS(acc, acc)
 	f.a.NeonUmovS(sum, acc, 0)
 	noTail := f.a.Cbz32(n)
