@@ -2144,3 +2144,30 @@ change -5.34%/-3.30%/+0.41%, with unchanged allocations. These small cohorts
 remain descriptive. `pure-call-sum-results.json` retains both compile cohorts,
 all execution profiles, native images and validation evidence. Remaining
 non-call feature gaps and native AMD64 validation still require work.
+
+### Invariant runtime global checkpoint
+
+`bdb5b094` adds bare immutable integer getters to the unit-stride sum proof.
+The value is read at invocation time, including imported values; initializer
+bits are not compiler constants. Do-while count max(1,bound), source counter
+initialization, alias exclusions and modular arithmetic remain. Mutable globals
+and global loops containing fences fall back. Both widths/ABIs, disabled
+inlining, defined canonical values after metadata edits/codec, imported negative
+values and unsigned extrema pass. Pinned ARM64 Core 3/threads and guarded race
+pass; full backend retains its same 44 failures. AMD64 cross-compiles, with
+native validation pending hub access.
+
+Three interleaved process medians give immutable getter 72,522 -> 130.58 ns
+(555x), versus unchecked w2c2 291.39 ns. Mutable exported-read remains 66,396 vs
+290.90 ns (228x). Other small execution changes are descriptive. Actual adapter
+images retain a runtime global read in the replacement kernel. The mutable
+control's emitted loop already uses a stable pinned value, making reuse of that
+existing native pin proof a concrete candidate.
+
+Separate three-process GOMAXPROCS=1 compile captures show Core 3 +0.40%, threads
+-2.34%, unchanged allocation/code totals, and peak RSS +1.05%/+0.25%. Scalar/
+Core 3 scalar/imported-worker compile medians change -0.85%/-0.39%/-0.52%, with
+unchanged allocations. `global-sum-results.json` retains source fingerprints,
+all profiles, before/after native images, validation and the mutable diagnostic.
+Mutable/global state recurrences, conversions/sign operations, native AMD64
+validation and full feature parity remain open.

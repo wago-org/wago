@@ -566,3 +566,24 @@ Core 3 +0.52%, threads +0.87%, with unchanged allocation/code totals; peak RSS
 capture. `pure-call-sum-results.json` retains both cohorts and exact evidence.
 Global-state loops, conversions, sign/narrow operations and broader feature
 parity remain open.
+
+### Runtime immutable-global sums
+
+`bdb5b094` reduces a bare immutable integer global getter to one invocation-time
+read multiplied by the unsigned do-while count. It handles defined and imported
+values without baking initializer bits into code. Both widths/ABIs, disabled
+inlining, canonical instance values after metadata edits/codec, negative values
+and extreme unsigned bounds pass. Mutable globals and fenced global-read loops
+remain on the original lowering. ARM64 pinned conformance/guarded race passes;
+full statistics retains its exact 44 failures. AMD64 test binaries cross-compile;
+native execution remains pending hub connectivity.
+
+The immutable-global contract improves 72,522 -> 130.58 ns (555x), versus
+unchecked w2c2 291.39 ns (0.448x). Mutable exported-read remains 66,396 versus
+290.90 ns (228x), requiring further work. Actual adapter images retain the
+runtime global read. Three alternating compile processes per revision give
+Core 3 +0.40%, threads -2.34%, with unchanged allocation/code totals and peak
+RSS +1.05%/+0.25%. `global-sum-results.json` retains exact profiles, images,
+validation evidence and the mutable-getter diagnostic. That diagnostic already
+loads the mutable value once into a pinned register; reusing the existing pin
+proof is the next candidate. Full feature parity remains open.
