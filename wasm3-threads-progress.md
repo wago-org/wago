@@ -1950,3 +1950,78 @@ source fingerprints, process medians, compile costs and before/after loop hashes
 Bulk's remaining live-extent check and scalar repeated-byte/chunk stores remain
 concrete candidates for minimum-bound and vector-fill lowering. Other feature
 compositions and feature-by-feature performance parity remain open.
+
+## Constant-fill minimum bounds and grow-only helper requirements
+
+`17b57ff4` extends the existing `memory-min-bounds` proof to constant fills in
+the existing native unrolled paths. Before materializing the address, it proves
+the original unsigned expression plus the entire fill span fits the selected
+memory's declared minimum. The actual fill and address expression remain;
+only a proven live-extent check is omitted. Zero-length fills, zero minima,
+wrapping/unknown ranges and accesses crossing the minimum keep the original
+bounds path. No fields or options are added; memory64 and other paths without
+constant-fill lowering retain their existing behavior.
+
+The expanded growth tests exposed a separate correctness issue fixed by
+`44998d24`: module requirements only selected the shared-growth helper context
+for memory 0. A module growing shared memory 1 beside an unshared primary,
+without wait/notify instructions, emitted a helper call with no control pointer
+and crashed at native argument marshalling. The requirement scan now checks
+all grown memories, including byte-backed and instruction-backed bodies, and
+uses the existing persisted helper bit. A grow-only four-parameter module
+executes grow-zero, successful growth and maximum failure on memory32/64,
+with both ABIs and original/codec products. Unshared growth alone still does
+not select the helper context.
+
+ARM64 guarded race tests cover independent bound-proof/block overrides,
+bounded/wrapping/cross-minimum expressions, selected memory32/64,
+shared/unshared primary and secondary memories, both ABIs and codec products.
+A crossing access traps before growth and succeeds after growth. Zero-minimum
+bounded fills trap before growth, zero-length endpoint access succeeds, and
+fills work after growth. Earlier memory reads and trap order remain covered.
+Pinned ARM64 Core 3 passes 2,226 modules/58,238 assertions and official threads
+passes 51 modules/312 assertions, with no failures/skips/gaps. Full ARM64
+statistics retains exactly the same 44 parent failure names. Final Linux/AMD64
+public/backend test binaries cross-compile successfully, but native execution
+is pending because repeated SSH connections to hub time out. This checkpoint
+does not claim native AMD64 validation.
+
+Fresh production execution compares the combined helper fix and fill proof
+against `e43a4700`, with eight identical contracts, interleaved three processes
+per profile, two warmups and five verified >=50 ms batches per process. All
+104 rows pass the independent oracle and duration qualification.
+
+| Contract | Wago e43a4700 ns | Wago 17b57ff4 ns | Checked w2c2 ns | Unchecked w2c2 ns |
+| --- | ---: | ---: | ---: | ---: |
+| Ordinary load/store | 102,117 | 101,125 | 2,160,171 | 99,972 |
+| SIMD load/store | 101,217 | 101,697 | 1,663,167 | 105,085 |
+| Bulk fill | 256,003 | 233,014 | 2,196,024 | 187,667 |
+| Atomic load/store | 149,674 | 149,680 | 2,169,184 | 165,432 |
+| Atomic RMW add | 256,806 | 259,589 | 2,184,569 | 219,070 |
+| Compare exchange | 294,907 | 290,034 | 2,196,997 | 277,441 |
+| Wait mismatch + notify | 638,547 | 641,754 | 5,389,458 | 2,001,231 |
+| Fence | 154.49 | 155.37 | 286.39 | 287.77 |
+
+Bulk improves 8.98%; its current/unchecked ratio remains 1.242x. Current
+process medians are 226,955/237,782/233,014 ns. Small other before/after
+changes have no significance claim. One unchecked CAS process has CV 0.0988.
+The emitted bulk loop no longer loads the live shared extent or branches on
+it, but still constructs the repeated byte with integer multiplication and
+uses scalar chunk stores. Vector fill lowering remains a concrete candidate.
+Broader feature-wide/cross-platform parity remains open.
+
+Production compile captures use GOMAXPROCS=1 and three alternating processes
+per revision, with no overlapping builds/tests/timing captures. Core 3's
+21,800 compiles take 405.018 -> 404.038 ms (-0.24%), allocation bytes
+776,898,928 -> 776,871,080 (-0.004%), code 17,757,600 -> 17,744,400 (-0.07%),
+and peak RSS 14,336,000 -> 14,270,464 (-0.46%). Threads' 2,700 compiles take
+46.694 -> 45.466 ms (-2.63%), allocation bytes 85,410,328 -> 85,344,728
+(-0.08%), code 1,636,800 -> 1,628,800 (-0.49%), and peak RSS
+12,976,128 -> 12,992,512 (+0.13%). Scalar/Core 3 scalar/imported-worker
+compile medians change +0.87%/+0.80%/-1.52%, with unchanged allocation counts.
+These small local cohorts remain descriptive.
+
+Tracked `docs/benchmarks/wasm3-2026-10-12/bulk-min-results.json` retains source
+fingerprints, process medians, compile costs, grow-requirement failure evidence,
+current native loop hashes and the hub connection failure. Native AMD64
+revalidation, bulk/RMW/CAS gaps and broader feature parity remain required work.

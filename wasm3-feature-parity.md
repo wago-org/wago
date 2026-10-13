@@ -443,3 +443,25 @@ variation do not establish additional parity wins. Core 3 compile latency is
 -0.35%/-0.38%. The tracked `bulk-block-results.json` retains exact profiles,
 process medians, costs and emitted-loop hashes. Bulk bounds and scalar chunk
 lowering, broader compositions and full performance parity remain open.
+
+### Constant-fill minimum bounds and secondary grow-only context
+
+`44998d24` fixes a native crash when a module only grows shared secondary memory:
+helper requirements now inspect every grown memory, rather than only memory 0.
+Grow-only memory32/64 modules execute both ABIs and survive codec reload;
+unshared growth alone does not request the helper context.
+
+`17b57ff4` proves existing constant-fill spans against the selected declared
+minimum, retaining address evaluation and writes while dropping a proven live
+bounds check. Zero/wrapping/unknown/cross-minimum accesses fall back. Zero-minimum
+and post-growth cases are covered. ARM64 guarded race tests and both pinned
+conformance suites pass; full statistics retains its same 44 known failures.
+Linux/AMD64 test binaries cross-compile, but native validation remains pending
+because hub SSH connections time out.
+
+The fresh bulk-fill contract improves 8.98%, from 256,003 to 233,014 ns,
+still 1.242x slower than unchecked w2c2. Core 3 compile latency is -0.24%,
+threads -2.63%, with small allocation/code reductions and peak RSS -0.46%/
++0.13%. `bulk-min-results.json` preserves exact profiles, costs, native loops
+and the remote-validation limitation. Vector fill lowering, native AMD64
+revalidation and full feature-by-feature parity remain open.
