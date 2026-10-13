@@ -1045,3 +1045,34 @@ The [full cohort report](docs/benchmarks/wasm3-2026-10-13/b1-full-feature-cohort
 retains all new Wago feature samples, every full capture hash, references to
 unchanged peer samples, explicit outcomes and publication/audit evidence.
 Full feature parity and native AMD64 timing remain open. Nothing was deployed.
+
+### Affine signed-narrowing sums — 2026-10-13
+
+Wago `05e48a87` adds an ARM64 reduction for proven pure affine counter terms
+with signed 8/16/32-bit narrowing, including high-word negative counts. A
+bounded Euclidean floor sum preserves modular arithmetic and unsigned do-while
+semantics. The proof excludes effects, traps, nested control and interruptible
+entries; register pressure falls back before consuming source. Native AMD64
+retains the original signed loop. Scalar oracles cover both ABIs, artifacts,
+ambient stack values, overflowing coefficients and unsigned extrema. Guarded
+race/register checks, ARM64 diagnostics, pinned Core 3/threads conformance and
+native AMD64 fallback execution all pass.
+
+A fresh locked seven-contract comparison retains all four phases and 15 timing
+samples per row. All five signed-extension contracts change from failed parity
+at **6.70–8.43x** the peer to passing at **0.0177–0.0751x**: Wago takes
+**191–827 ns**, versus Clang w2c2 `f303ed27` at **10,802–11,032 ns** (13–57x
+faster). Same-artifact/contract assertions fail on `b1cd6134` and pass on the new
+source. Branch-mixed changes +1.07%; opaque callbacks -1.11% and remain 57.27x
+slower than the peer. These controls retain their native image sizes.
+
+The five selected sign modules add **112–192 bytes** of native code; cold
+compile medians change **-0.67% to +8.25%**. Three alternating compile processes
+per revision show Core 3 **+1.52%**, threads **-0.80%**, unchanged aggregate code
+and effectively unchanged allocations; median RSS changes +0.23%/+1.40%.
+The [raw report](docs/benchmarks/wasm3-2026-10-13/signed-narrowing-sum.json)
+retains samples, hashes, parity checks, proof/validation logs, compile rows and
+seven durable local publication receipts. Database integrity and all 575,121
+historical observations remain intact. Full feature parity and native AMD64
+timing remain open. The server remains http://localhost:8788/benchmarks/;
+nothing was deployed.
