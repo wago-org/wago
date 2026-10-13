@@ -5258,6 +5258,78 @@ func TestRV64RootedScalarI31GlobalExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarI31TableModule(exportTable bool) []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x00, 0x41, 0x7e, 0xfb, 0x1c, 0x26, 0x00,
+		0x41, 0x01, 0x41, 0x7d, 0xfb, 0x1c, 0x41, 0x01, 0xfc, 0x11, 0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x41, 0x00, 0x25, 0x00, 0xfb, 0x1d,
+		0x41, 0x01, 0x25, 0x00, 0xfb, 0x1d,
+		0x41, 0x7c, 0xfb, 0x1c, 0x41, 0x01, 0xfc, 0x0f, 0x00,
+		0x41, 0x02, 0x25, 0x00, 0xfb, 0x1d,
+		0x41, 0x00, 0x41, 0x02, 0x41, 0x01, 0xfc, 0x0e, 0x00, 0x00,
+		0x41, 0x00, 0x25, 0x00, 0xfb, 0x1d,
+		0x0b,
+	}
+	exports := [][]byte{wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0)}
+	if exportTable {
+		exports = append(exports, wasmtest.ExportEntry("values", byte(wasm.ExternTable), 0))
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{0x01, byte(wasm.HeapI31), 0x01, 0x02, 0x04}),
+		wasmtest.Section(7, wasmtest.Vec(exports...)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedScalarI31TableExecutes(t *testing.T) {
+	source := rootedScalarI31TableModule(false)
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("generic rooted i31 table was not source-admitted")
+	}
+	if railshot.AdmitGCRootedScalarSource(rootedScalarI31TableModule(true)) {
+		t.Fatal("public generic rooted i31 table was source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.tableCount() != 1 || view.tableElementType(0) != ValI31Ref || view.tableEntryBytes(0) != 8 {
+		t.Fatalf("rooted i31-table receipt=%t tables=%d type=%v stride=%d validation=%v", rv64FreshRootedGC(view), view.tableCount(), view.tableElementType(0), view.tableEntryBytes(0), railshotValidateCompiled(view))
+	}
+	candidate := cloneCompiledMetadata(view)
+	candidate.ValueTypes = slices.Clone(candidate.ValueTypes)
+	candidate.ValueTypes[candidate.tableDef(0).ValueTypeIndex].Ref.Heap.Abstract = AbstractHeapAny
+	candidate.TableType = ValAnyRef
+	if rv64FreshRootedGC(candidate) {
+		t.Fatal("retargeted abstract-any table retained the generic rooted receipt")
+	}
+	for iteration := range 8 {
+		instance, err := Instantiate(compiled, InstantiateOptions{
+			GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []uint64{0xfffffffe, 0xfffffffd, 2, 0xfffffffc, 0xfffffffc}
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, want) {
+			_ = instance.Close()
+			t.Fatalf("iteration %d: run()=%v err=%v want=%v", iteration, got, err, want)
+		}
+		if err := instance.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func rootedScalarMixedFunctionGlobalImportModule() []byte {
 	types := [][]byte{
 		{0x5f, 0x01, 0x7f, 0x00},

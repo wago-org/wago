@@ -487,18 +487,38 @@ func rootedScalarTableReference(typ wasm.ValType, m *wasm.Module) bool {
 	}
 	ref := typ.Ref()
 	heap := ref.Heap()
-	return ref.Nullable() && !ref.Exact() && heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && rootedScalarAggregateAt(m, heap.Type().Index)
+	if !ref.Nullable() || ref.Exact() {
+		return false
+	}
+	switch heap.Kind() {
+	case wasm.HeapAbs:
+		return heap.Abs() == wasm.HeapI31
+	case wasm.HeapTypeIndex:
+		return !heap.Type().Rec && rootedScalarAggregateAt(m, heap.Type().Index)
+	default:
+		return false
+	}
 }
 
 func rootedScalarAggregateNullExpression(expr wasm.Expr, ref wasm.RefType) bool {
-	if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 7 || ref.Heap().Kind() != wasm.HeapTypeIndex {
+	if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 7 {
 		return false
 	}
 	r := wasm.ReaderFrom(expr.BodyBytes)
 	op, err := r.Byte()
 	heap, heapErr := r.S33()
 	end, endErr := r.Byte()
-	return err == nil && op == 0xd0 && heapErr == nil && heap >= 0 && uint64(heap) == uint64(ref.Heap().Type().Index) && endErr == nil && end == 0x0b && !r.HasNext()
+	if err != nil || op != 0xd0 || heapErr != nil || endErr != nil || end != 0x0b || r.HasNext() {
+		return false
+	}
+	switch ref.Heap().Kind() {
+	case wasm.HeapAbs:
+		return heap < 0 && wasm.AbsHeapType(byte(heap&0x7f)) == ref.Heap().Abs()
+	case wasm.HeapTypeIndex:
+		return heap >= 0 && uint64(heap) == uint64(ref.Heap().Type().Index)
+	default:
+		return false
+	}
 }
 
 func rootedScalarAggregateType(m *wasm.Module, index uint32) *wasm.CompType {

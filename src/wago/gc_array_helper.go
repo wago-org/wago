@@ -724,7 +724,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 	}
 }
 
-// gcRootedTableDescriptor returns a private, bounded compact aggregate table.
+// gcRootedTableDescriptor returns a private, bounded compact collector table.
 // Generic rooted modules authenticate this shape in their retained receipt;
 // these checks keep a corrupted runtime descriptor from becoming an arbitrary
 // off-heap write primitive.
@@ -737,12 +737,19 @@ func (in *Instance) gcRootedTableDescriptor(table uint64) ([]byte, uint32, uint3
 		panic(gcHelperFailuref("generic GC table %d is not a private compact table", table))
 	}
 	exact, err := in.c.tableExactType(index)
-	if err != nil || exact.Kind != ValueTypeReference || !exact.Ref.Nullable || !exact.Ref.Heap.Defined || exact.Ref.Exact || int(exact.Ref.Heap.TypeIndex) >= len(in.c.Types) {
-		panic(gcHelperFailuref("generic GC table %d has no aggregate reference type", table))
+	if err != nil || exact.Kind != ValueTypeReference || !exact.Ref.Nullable || exact.Ref.Exact {
+		panic(gcHelperFailuref("generic GC table %d has no collector reference type", table))
 	}
-	kind := in.c.Types[exact.Ref.Heap.TypeIndex].Kind
-	if kind != CompositeTypeStruct && kind != CompositeTypeArray {
-		panic(gcHelperFailuref("generic GC table %d has non-aggregate reference type", table))
+	if exact.Ref.Heap.Defined {
+		if exact.Ref.Heap.Abstract != 0 || int(exact.Ref.Heap.TypeIndex) >= len(in.c.Types) {
+			panic(gcHelperFailuref("generic GC table %d has invalid aggregate reference type", table))
+		}
+		kind := in.c.Types[exact.Ref.Heap.TypeIndex].Kind
+		if kind != CompositeTypeStruct && kind != CompositeTypeArray {
+			panic(gcHelperFailuref("generic GC table %d has non-aggregate reference type", table))
+		}
+	} else if exact.Ref.Heap.Abstract != AbstractHeapI31 || exact.Ref.Heap.TypeIndex != 0 {
+		panic(gcHelperFailuref("generic GC table %d has unsupported abstract reference type", table))
 	}
 	descriptor := in.tableDescriptor(index)
 	capacity := in.c.tableRuntimeCapacity(index)

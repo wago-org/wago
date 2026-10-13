@@ -483,9 +483,14 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	}
 	needsDescriptors := false
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
-	rootedAggregate := func(exact ValueTypeDescriptor) bool {
-		if exact.Kind != ValueTypeReference || !exact.Ref.Nullable || exact.Ref.Exact || !exact.Ref.Heap.Defined ||
-			exact.Ref.Heap.Abstract != 0 || uint64(exact.Ref.Heap.TypeIndex) >= uint64(len(c.Types)) {
+	rootedReference := func(exact ValueTypeDescriptor) bool {
+		if exact.Kind != ValueTypeReference || !exact.Ref.Nullable || exact.Ref.Exact {
+			return false
+		}
+		if !exact.Ref.Heap.Defined {
+			return exact.Ref.Heap.Abstract == AbstractHeapI31 && exact.Ref.Heap.TypeIndex == 0
+		}
+		if exact.Ref.Heap.Abstract != 0 || uint64(exact.Ref.Heap.TypeIndex) >= uint64(len(c.Types)) {
 			return false
 		}
 		kind := c.Types[exact.Ref.Heap.TypeIndex].Kind
@@ -493,7 +498,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	}
 	writeElemType := func(elem *ElemInit) (ValueTypeDescriptor, bool) {
 		normalized := normalizedElemRefType(elem.RefType)
-		if elem.RefType != 0 && elem.RefType != ValFuncRef && normalized != ValAnyRef {
+		if elem.RefType != 0 && elem.RefType != ValFuncRef && normalized != ValAnyRef && normalized != ValI31Ref {
 			return ValueTypeDescriptor{}, false
 		}
 		if !elem.HasValueType {
@@ -507,7 +512,8 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 			return ValueTypeDescriptor{}, false
 		}
 		exact := c.ValueTypes[elem.ValueTypeIndex]
-		if exact == plain && normalized != ValFuncRef || exact != plain && (!rootedAggregate(exact) || normalized != ValAnyRef) {
+		abi, abiOK := exact.ABIType(c.Types)
+		if exact == plain && normalized != ValFuncRef || exact != plain && (!rootedReference(exact) || !abiOK || normalized != abi) {
 			return ValueTypeDescriptor{}, false
 		}
 		_, _ = h.Write([]byte{1})
@@ -566,10 +572,11 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		def := c.tableDef(tableIndex)
 		exact, err := c.tableExactType(tableIndex)
 		functionTable := exact == plain
-		aggregateTable := rootedAggregate(exact)
-		if err != nil || !functionTable && !aggregateTable || def.Addr64 || !def.HasValueType ||
+		rootedTable := rootedReference(exact)
+		abi, abiOK := exact.ABIType(c.Types)
+		if err != nil || !functionTable && !rootedTable || !abiOK || def.Addr64 || !def.HasValueType ||
 			uint64(def.ValueTypeIndex) >= uint64(len(c.ValueTypes)) || c.ValueTypes[def.ValueTypeIndex] != exact ||
-			functionTable && def.Type != ValFuncRef || aggregateTable && (def.Type != ValAnyRef || publicTables[tableIndex]) {
+			functionTable && def.Type != ValFuncRef || rootedTable && (def.Type != abi || publicTables[tableIndex]) {
 			return [32]byte{}, false
 		}
 		if imported, ok := c.tableImportAt(tableIndex); ok {
@@ -594,7 +601,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 			continue
 		}
 		if tableIndex < importCount || def.ImportKey != "" || def.ImportHasMax || !def.HasMax || def.Size < 0 || def.Size > 256 || def.Max < uint64(def.Size) || def.Max > 256 ||
-			aggregateTable && (def.HasInitFunc || def.InitFunc != 0) ||
+			rootedTable && (def.HasInitFunc || def.InitFunc != 0) ||
 			!def.HasInitFunc && def.InitFunc != 0 || def.HasInitFunc && ((!publicTables[tableIndex] && uint64(def.InitFunc) < uint64(c.NumImports)) || uint64(def.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || railshotNonCallableFunction(c, int(def.InitFunc))) {
 			return [32]byte{}, false
 		}
@@ -606,7 +613,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		_, _ = h.Write(word[:])
 		binary.LittleEndian.PutUint32(word[:4], def.ValueTypeIndex)
 		_, _ = h.Write(word[:4])
-		if aggregateTable {
+		if rootedTable {
 			refFlags := byte(0)
 			if exact.Ref.Nullable {
 				refFlags |= 1
@@ -653,7 +660,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 			return [32]byte{}, false
 		}
 		exact, err := c.tableExactType(int(elem.TableIndex))
-		if err != nil || exact != plain && !rootedAggregate(exact) {
+		if err != nil || exact != plain && !rootedReference(exact) {
 			return [32]byte{}, false
 		}
 		remaining -= len(elem.Values)

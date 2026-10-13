@@ -388,25 +388,42 @@ func rv64RootedAggregateTableReference(m *wasm.Module, typ wasm.ValType) bool {
 	}
 	ref := typ.Ref()
 	heap := ref.Heap()
-	if !ref.Nullable() || ref.Exact() || heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec {
+	if !ref.Nullable() || ref.Exact() {
 		return false
 	}
-	comp := rv64RootedAggregateType(m, heap.Type().Index)
-	if comp == nil {
+	switch heap.Kind() {
+	case wasm.HeapAbs:
+		return heap.Abs() == wasm.HeapI31
+	case wasm.HeapTypeIndex:
+		if heap.Type().Rec {
+			return false
+		}
+		comp := rv64RootedAggregateType(m, heap.Type().Index)
+		return comp != nil && (comp.Kind == wasm.CompStruct || comp.Kind == wasm.CompArray)
+	default:
 		return false
 	}
-	return comp.Kind == wasm.CompStruct || comp.Kind == wasm.CompArray
 }
 
 func rv64RootedAggregateNullElement(expr wasm.Expr, ref wasm.RefType) bool {
-	if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 7 || ref.Heap().Kind() != wasm.HeapTypeIndex {
+	if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 7 {
 		return false
 	}
 	r := wasm.ReaderFrom(expr.BodyBytes)
 	op, err := r.Byte()
 	heap, heapErr := r.S33()
 	end, endErr := r.Byte()
-	return err == nil && op == 0xd0 && heapErr == nil && heap >= 0 && uint64(heap) == uint64(ref.Heap().Type().Index) && endErr == nil && end == 0x0b && !r.HasNext()
+	if err != nil || op != 0xd0 || heapErr != nil || endErr != nil || end != 0x0b || r.HasNext() {
+		return false
+	}
+	switch ref.Heap().Kind() {
+	case wasm.HeapAbs:
+		return heap < 0 && wasm.AbsHeapType(byte(heap&0x7f)) == ref.Heap().Abs()
+	case wasm.HeapTypeIndex:
+		return heap >= 0 && uint64(heap) == uint64(ref.Heap().Type().Index)
+	default:
+		return false
+	}
 }
 
 func rv64RootedAggregateType(m *wasm.Module, index uint32) *wasm.CompType {

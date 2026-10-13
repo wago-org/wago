@@ -163,6 +163,80 @@ func TestRV64RootedI31GlobalCompiles(t *testing.T) {
 	}
 }
 
+func rv64RootedI31TableModule(exportTable bool) []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x00, 0x41, 0x7e, 0xfb, 0x1c, 0x26, 0x00,
+		0x41, 0x01, 0x41, 0x7d, 0xfb, 0x1c, 0x41, 0x01, 0xfc, 0x11, 0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x41, 0x00, 0x25, 0x00, 0xfb, 0x1d,
+		0x41, 0x01, 0x25, 0x00, 0xfb, 0x1d,
+		0x41, 0x7c, 0xfb, 0x1c, 0x41, 0x01, 0xfc, 0x0f, 0x00,
+		0x41, 0x02, 0x25, 0x00, 0xfb, 0x1d,
+		0x41, 0x00, 0x41, 0x02, 0x41, 0x01, 0xfc, 0x0e, 0x00, 0x00,
+		0x41, 0x00, 0x25, 0x00, 0xfb, 0x1d,
+		0x0b,
+	}
+	exports := [][]byte{wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0)}
+	if exportTable {
+		exports = append(exports, wasmtest.ExportEntry("values", byte(wasm.ExternTable), 0))
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{0x01, byte(wasm.HeapI31), 0x01, 0x02, 0x04}),
+		wasmtest.Section(7, wasmtest.Vec(exports...)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedI31TableCompiles(t *testing.T) {
+	source := rv64RootedI31TableModule(false)
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("private rooted i31 table was not admitted")
+	}
+	if AdmitGCRootedScalarSource(rv64RootedI31TableModule(true)) {
+		t.Fatal("public rooted i31 table was admitted")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(1)
+	if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve exact root plan")
+	}
+	plan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin exact root plan")
+	}
+	*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true}
+	if !plan.SetLiveMasks([]uint64{0}, 1, 0) {
+		t.Fatal("install exact root liveness")
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 5, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 1 {
+		t.Fatalf("code=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
+	}
+}
+
 func TestRV64RootedAggregateTableBulkCompilesToHelpers(t *testing.T) {
 	body := []byte{
 		0x00,
