@@ -1227,3 +1227,25 @@ repeat above remains the qualified parity result. SQLite integrity, receipts,
 and all 575,121 historical observations pass. No production deployment.
 
 [Full source audit and ranking](docs/benchmarks/wasm3-2026-10-13/float-global-full-feature-cohort.json).
+
+### Boolean float selection closes the f32 rounding-state gap
+
+`d9940863` proves bounded pure i32 expressions of one local's low bit, computes
+both IEEE conversion results with integer-only rounding, and selects cached FP
+constants with TST/FCSEL. It requires a small call-free loop and two compatible
+cache entries; effects, captured older reads, other locals, and conflicting hot
+float literals fall back. Both float widths, signednesses, calling conventions,
+artifacts, randomized IEEE rounding, guarded execution, conformance and native
+AMD64 fallback pass.
+
+The seven-contract locked comparison measures both original f32 rounding-state
+paths at **152–153 us**, from **169–171 us**, against Clang w2c2 **157–158 us**
+(ratios **0.9716 and 0.9725**). A fresh repeat measures **152–153 us** against
+**155–156 us**, ratios **0.9838 and 0.9789**: both pass strict parity in both
+captures. Selected native images stay 432 bytes. Core 3 compile corpus +0.27%,
+threads +2.57%, with unchanged aggregate code and allocations. The unrelated
+f64 scale and dependent global cases still exceed peer latency; full parity
+remains open. Nine captures have durable local receipts; database integrity
+and all 575,121 historical observations pass. Local only, no deployment.
+
+[Raw paired phases, repeat, pilot, compiler costs and validation](docs/benchmarks/wasm3-2026-10-13/boolean-float-select.json).
