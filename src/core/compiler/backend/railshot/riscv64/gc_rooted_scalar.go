@@ -559,15 +559,62 @@ func rootedScalarAggregateConstructorEnd(r *wasm.Reader, sub, typeIndex uint32) 
 	return err == nil && op == 0xfb && subErr == nil && gotSub == sub && typeErr == nil && constructed == typeIndex && endErr == nil && end == 0x0b && !r.HasNext()
 }
 
-func rootedScalarAggregateConstOperand(r *wasm.Reader, storage wasm.StorageType, m *wasm.Module) bool {
-	op, err := r.Byte()
-	return err == nil && rootedScalarAggregateConstOperandOpcode(r, storage, op, m)
+func rootedScalarAggregateDefaultReferenceOperand(r *wasm.Reader, storage wasm.StorageType, m *wasm.Module, allocations *int) bool {
+	want := storage.Val()
+	if storage.Packed() || want.Kind() != wasm.ValRef || want.Ref().Heap().Kind() != wasm.HeapTypeIndex || want.Ref().Heap().Type().Rec || *allocations >= 256 {
+		return false
+	}
+	typeIndex := want.Ref().Heap().Type().Index
+	comp := rootedScalarAggregateType(m, typeIndex)
+	if comp == nil {
+		return false
+	}
+	candidate := *r
+	switch comp.Kind {
+	case wasm.CompStruct:
+		for _, field := range comp.Fields {
+			if !rootedScalarAggregateDefaultableStorage(field.Storage()) {
+				return false
+			}
+		}
+		op, err := candidate.Byte()
+		sub, subErr := candidate.U32()
+		constructed, typeErr := candidate.U32()
+		if err != nil || op != 0xfb || subErr != nil || sub != 1 || typeErr != nil || constructed != typeIndex {
+			return false
+		}
+	case wasm.CompArray:
+		if !rootedScalarAggregateDefaultableStorage(comp.Array.Storage()) || !rootedScalarAggregateBoundedLength(&candidate) {
+			return false
+		}
+		op, err := candidate.Byte()
+		sub, subErr := candidate.U32()
+		constructed, typeErr := candidate.U32()
+		if err != nil || op != 0xfb || subErr != nil || sub != 7 || typeErr != nil || constructed != typeIndex {
+			return false
+		}
+	default:
+		return false
+	}
+	*r = candidate
+	(*allocations)++
+	return true
 }
 
-// Generic table initialization admits bounded aggregate constants composed only
-// of scalar literals. The retained constant-expression evaluator supports more;
-// this narrower source witness keeps instantiation ownership independently
-// reviewable while enabling genuine non-null roots.
+func rootedScalarAggregateConstOperand(r *wasm.Reader, storage wasm.StorageType, m *wasm.Module, allocations *int) bool {
+	start := *r
+	op, err := r.Byte()
+	if err == nil && rootedScalarAggregateConstOperandOpcode(r, storage, op, m) {
+		return true
+	}
+	*r = start
+	return rootedScalarAggregateDefaultReferenceOperand(r, storage, m, allocations)
+}
+
+// Generic table initialization admits bounded aggregate constants composed of
+// scalar/null literals and bounded default-constructed reference operands. The
+// retained constant-expression evaluator supports more; this narrower source
+// witness keeps instantiation ownership independently reviewable.
 func rootedScalarAggregateElementExpression(expr wasm.Expr, ref wasm.RefType, m *wasm.Module) bool {
 	if rootedScalarAggregateNullExpression(expr, ref) {
 		return true
@@ -581,6 +628,7 @@ func rootedScalarAggregateElementExpression(expr wasm.Expr, ref wasm.RefType, m 
 		return false
 	}
 	r := wasm.ReaderFrom(expr.BodyBytes)
+	allocations := 1
 	switch comp.Kind {
 	case wasm.CompStruct:
 		scalarDefault := true
@@ -588,7 +636,7 @@ func rootedScalarAggregateElementExpression(expr wasm.Expr, ref wasm.RefType, m 
 			scalarDefault = scalarDefault && rootedScalarAggregateDefaultableStorage(field.Storage())
 		}
 		for _, field := range comp.Fields {
-			if !rootedScalarAggregateConstOperand(&r, field.Storage(), m) {
+			if !rootedScalarAggregateConstOperand(&r, field.Storage(), m, &allocations) {
 				r = wasm.ReaderFrom(expr.BodyBytes)
 				return scalarDefault && rootedScalarAggregateConstructorEnd(&r, 1, typeIndex)
 			}
@@ -604,19 +652,20 @@ func rootedScalarAggregateElementExpression(expr wasm.Expr, ref wasm.RefType, m 
 		}
 		fixed := func() bool {
 			fixedReader := wasm.ReaderFrom(expr.BodyBytes)
+			fixedAllocations := allocations
 			count := uint32(0)
 			for {
+				start := fixedReader
+				if count < 256 && rootedScalarAggregateConstOperand(&fixedReader, comp.Array.Storage(), m, &fixedAllocations) {
+					count++
+					continue
+				}
+				fixedReader = start
 				op, err := fixedReader.Byte()
-				if err != nil {
+				if err != nil || op != 0xfb {
 					return false
 				}
-				if op == 0xfb {
-					break
-				}
-				if count == 256 || !rootedScalarAggregateConstOperandOpcode(&fixedReader, comp.Array.Storage(), op, m) {
-					return false
-				}
-				count++
+				break
 			}
 			sub, subErr := fixedReader.U32()
 			constructed, typeErr := fixedReader.U32()
@@ -628,7 +677,8 @@ func rootedScalarAggregateElementExpression(expr wasm.Expr, ref wasm.RefType, m 
 			return true
 		}
 		r = wasm.ReaderFrom(expr.BodyBytes)
-		if rootedScalarAggregateConstOperand(&r, comp.Array.Storage(), m) && rootedScalarAggregateBoundedLength(&r) && rootedScalarAggregateConstructorEnd(&r, 6, typeIndex) {
+		allocations = 1
+		if rootedScalarAggregateConstOperand(&r, comp.Array.Storage(), m, &allocations) && rootedScalarAggregateBoundedLength(&r) && rootedScalarAggregateConstructorEnd(&r, 6, typeIndex) {
 			return true
 		}
 		r = wasm.ReaderFrom(expr.BodyBytes)

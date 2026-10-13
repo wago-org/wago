@@ -327,6 +327,88 @@ func TestRV64RootedAggregateNullableReferenceElements(t *testing.T) {
 	}
 }
 
+func TestRV64RootedAggregateNestedDefaultReferenceElements(t *testing.T) {
+	tests := map[string]struct {
+		types   [][]byte
+		entries []byte
+		count   byte
+	}{
+		"struct": {
+			types: [][]byte{
+				{0x5f, 0x01, 0x7f, 0x01},       // mutable i32 leaf
+				{0x5f, 0x01, 0x64, 0x00, 0x01}, // mutable non-null (ref 0) holder
+			},
+			entries: []byte{0xfb, 0x01, 0x00, 0xfb, 0x00, 0x01, 0x0b},
+			count:   1,
+		},
+		"array": {
+			types: [][]byte{
+				{0x5e, 0x7f, 0x01},       // mutable i32 inner array
+				{0x5e, 0x64, 0x00, 0x01}, // mutable non-null (ref 0) outer array
+			},
+			entries: []byte{
+				0x41, 0x02, 0xfb, 0x07, 0x00, 0x41, 0x03, 0xfb, 0x07, 0x00, 0xfb, 0x08, 0x01, 0x02, 0x0b,
+				0x41, 0x01, 0xfb, 0x07, 0x00, 0x41, 0x02, 0xfb, 0x06, 0x01, 0x0b,
+			},
+			count: 2,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			types := append([][]byte(nil), test.types...)
+			types = append(types, wasmtest.FuncType(nil, nil))
+			elements := []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x01, test.count}
+			elements = append(elements, test.entries...)
+			body := []byte{0x00, 0x0b}
+			source := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(types...)),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+				wasmtest.Section(4, []byte{0x01, 0x63, 0x01, 0x01, test.count, 0x04}),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+				wasmtest.Section(9, elements),
+				wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+			)
+			if err := AdmitProductionSource(source); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestRV64RootedAggregateNestedAllocationBound(t *testing.T) {
+	body := []byte{0x00, 0x0b}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01}, // mutable i32 leaf struct
+			[]byte{0x5e, 0x64, 0x00, 0x01}, // mutable non-null (ref 0) outer array
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x01, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x01, 0x01,
+			0xfb, 0x01, 0x00, 0xfb, 0x08, 0x01, 0x01, 0x0b}),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	for _, count := range []uint32{255, 256} {
+		candidate, err := wasm.DecodeModule(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expr := make([]byte, 0, int(count)*3+8)
+		for range count {
+			expr = append(expr, 0xfb, 0x01, 0x00)
+		}
+		expr = append(expr, 0xfb, 0x08, 0x01)
+		expr = append(expr, wasmtest.ULEB(count)...)
+		expr = append(expr, 0x0b)
+		candidate.Elements[0].Kind.Exprs[0].BodyBytes = expr
+		if got, want := admitRV64GCRootedScalarModule(candidate), count == 255; got != want {
+			t.Fatalf("nested allocation count %d admitted = %v, want %v", count, got, want)
+		}
+	}
+}
+
 func rv64RootedTypedSelectModule(typeIndex uint32, nullable, same bool) []byte {
 	types := make([][]byte, typeIndex+1)
 	for i := range types {

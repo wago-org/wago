@@ -489,9 +489,56 @@ func rv64RootedAggregateConstructorEnd(r *wasm.Reader, sub, typeIndex uint32) bo
 	return err == nil && op == 0xfb && subErr == nil && gotSub == sub && typeErr == nil && constructed == typeIndex && endErr == nil && end == 0x0b && !r.HasNext()
 }
 
-func rv64RootedAggregateConstOperand(r *wasm.Reader, storage wasm.StorageType, m *wasm.Module) bool {
+func rv64RootedAggregateDefaultReferenceOperand(r *wasm.Reader, storage wasm.StorageType, m *wasm.Module, allocations *int) bool {
+	want := storage.Val()
+	if storage.Packed() || want.Kind() != wasm.ValRef || want.Ref().Heap().Kind() != wasm.HeapTypeIndex || want.Ref().Heap().Type().Rec || *allocations >= 256 {
+		return false
+	}
+	typeIndex := want.Ref().Heap().Type().Index
+	comp := rv64RootedAggregateType(m, typeIndex)
+	if comp == nil {
+		return false
+	}
+	candidate := *r
+	switch comp.Kind {
+	case wasm.CompStruct:
+		for _, field := range comp.Fields {
+			if !rv64RootedAggregateDefaultableStorage(field.Storage()) {
+				return false
+			}
+		}
+		op, err := candidate.Byte()
+		sub, subErr := candidate.U32()
+		constructed, typeErr := candidate.U32()
+		if err != nil || op != 0xfb || subErr != nil || sub != 1 || typeErr != nil || constructed != typeIndex {
+			return false
+		}
+	case wasm.CompArray:
+		if !rv64RootedAggregateDefaultableStorage(comp.Array.Storage()) || !rv64RootedAggregateBoundedLength(&candidate) {
+			return false
+		}
+		op, err := candidate.Byte()
+		sub, subErr := candidate.U32()
+		constructed, typeErr := candidate.U32()
+		if err != nil || op != 0xfb || subErr != nil || sub != 7 || typeErr != nil || constructed != typeIndex {
+			return false
+		}
+	default:
+		return false
+	}
+	*r = candidate
+	(*allocations)++
+	return true
+}
+
+func rv64RootedAggregateConstOperand(r *wasm.Reader, storage wasm.StorageType, m *wasm.Module, allocations *int) bool {
+	start := *r
 	op, err := r.Byte()
-	return err == nil && rv64RootedAggregateConstOperandOpcode(r, storage, op, m)
+	if err == nil && rv64RootedAggregateConstOperandOpcode(r, storage, op, m) {
+		return true
+	}
+	*r = start
+	return rv64RootedAggregateDefaultReferenceOperand(r, storage, m, allocations)
 }
 
 func rv64RootedAggregateElement(expr wasm.Expr, ref wasm.RefType, m *wasm.Module) bool {
@@ -507,6 +554,7 @@ func rv64RootedAggregateElement(expr wasm.Expr, ref wasm.RefType, m *wasm.Module
 		return false
 	}
 	r := wasm.ReaderFrom(expr.BodyBytes)
+	allocations := 1
 	switch comp.Kind {
 	case wasm.CompStruct:
 		scalarDefault := true
@@ -514,7 +562,7 @@ func rv64RootedAggregateElement(expr wasm.Expr, ref wasm.RefType, m *wasm.Module
 			scalarDefault = scalarDefault && rv64RootedAggregateDefaultableStorage(field.Storage())
 		}
 		for _, field := range comp.Fields {
-			if !rv64RootedAggregateConstOperand(&r, field.Storage(), m) {
+			if !rv64RootedAggregateConstOperand(&r, field.Storage(), m, &allocations) {
 				r = wasm.ReaderFrom(expr.BodyBytes)
 				return scalarDefault && rv64RootedAggregateConstructorEnd(&r, 1, typeIndex)
 			}
@@ -530,19 +578,20 @@ func rv64RootedAggregateElement(expr wasm.Expr, ref wasm.RefType, m *wasm.Module
 		}
 		fixed := func() bool {
 			fixedReader := wasm.ReaderFrom(expr.BodyBytes)
+			fixedAllocations := allocations
 			count := uint32(0)
 			for {
+				start := fixedReader
+				if count < 256 && rv64RootedAggregateConstOperand(&fixedReader, comp.Array.Storage(), m, &fixedAllocations) {
+					count++
+					continue
+				}
+				fixedReader = start
 				op, err := fixedReader.Byte()
-				if err != nil {
+				if err != nil || op != 0xfb {
 					return false
 				}
-				if op == 0xfb {
-					break
-				}
-				if count == 256 || !rv64RootedAggregateConstOperandOpcode(&fixedReader, comp.Array.Storage(), op, m) {
-					return false
-				}
-				count++
+				break
 			}
 			sub, subErr := fixedReader.U32()
 			constructed, typeErr := fixedReader.U32()
@@ -554,7 +603,8 @@ func rv64RootedAggregateElement(expr wasm.Expr, ref wasm.RefType, m *wasm.Module
 			return true
 		}
 		r = wasm.ReaderFrom(expr.BodyBytes)
-		if rv64RootedAggregateConstOperand(&r, comp.Array.Storage(), m) && rv64RootedAggregateBoundedLength(&r) && rv64RootedAggregateConstructorEnd(&r, 6, typeIndex) {
+		allocations = 1
+		if rv64RootedAggregateConstOperand(&r, comp.Array.Storage(), m, &allocations) && rv64RootedAggregateBoundedLength(&r) && rv64RootedAggregateConstructorEnd(&r, 6, typeIndex) {
 			return true
 		}
 		r = wasm.ReaderFrom(expr.BodyBytes)
