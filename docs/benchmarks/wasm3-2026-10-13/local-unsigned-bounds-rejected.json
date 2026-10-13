@@ -1,0 +1,266 @@
+{
+  "status": "shelved",
+  "reason": "Ten additional checks eliminated across 1042 compiled functions; none in the five largest inspected application gaps; compile cost outweighs unmeasured execution gain. No speedup claimed.",
+  "baseline": "4c60e4c0a5bdbed1035c2768504cddf22a450509",
+  "platform": "Apple M4 Max / darwin-arm64 / Go 1.27.1",
+  "selectionDelta": [
+    {
+      "workload": "wago/coremark/2k-performance",
+      "function": 4,
+      "before": 3,
+      "current": 4
+    },
+    {
+      "workload": "wago/nanosvg/parse-structure",
+      "function": 34,
+      "before": 20,
+      "current": 22
+    },
+    {
+      "workload": "wago/pcre2/compile-match",
+      "function": 9,
+      "before": 1,
+      "current": 3
+    },
+    {
+      "workload": "wago/pcre2/compile-match",
+      "function": 21,
+      "before": 0,
+      "current": 1
+    },
+    {
+      "workload": "wago/pcre2/compile-match",
+      "function": 38,
+      "before": 1,
+      "current": 5
+    }
+  ],
+  "compileSummary": {
+    "core3": {
+      "before": {
+        "Modules": 218,
+        "Passes": 100,
+        "Compiles": 21800,
+        "CodeBytes": 17742800,
+        "ElapsedNS": 384603084,
+        "AllocBytes": 776861864,
+        "Allocations": 2646637
+      },
+      "current": {
+        "Modules": 218,
+        "Passes": 100,
+        "Compiles": 21800,
+        "CodeBytes": 17742800,
+        "ElapsedNS": 391188667,
+        "AllocBytes": 776862464,
+        "Allocations": 2646642
+      },
+      "timeRatio": 1.017123063422965
+    },
+    "threads": {
+      "before": {
+        "Modules": 27,
+        "Passes": 100,
+        "Compiles": 2700,
+        "CodeBytes": 1611200,
+        "ElapsedNS": 45050334,
+        "AllocBytes": 85165512,
+        "Allocations": 370151
+      },
+      "current": {
+        "Modules": 27,
+        "Passes": 100,
+        "Compiles": 2700,
+        "CodeBytes": 1611200,
+        "ElapsedNS": 45940708,
+        "AllocBytes": 85165512,
+        "Allocations": 370151
+      },
+      "timeRatio": 1.019763982215981
+    }
+  },
+  "compileRaw": {
+    "gomaxprocs": 1,
+    "rows": [
+      {
+        "kind": "core3",
+        "label": "before",
+        "revision": "4c60e4c0a5bdbed1035c2768504cddf22a450509",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/trapping-float/current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/core3-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":218,\"Passes\":100,\"Compiles\":21800,\"CodeBytes\":17742800,\"ElapsedNS\":388466083,\"AllocBytes\":776861576,\"Allocations\":2646635}\n",
+        "stderr": "        0.42 real         0.38 user         0.01 sys\n            14319616  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 766  page reclaims\n                 316  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   2  signals received\n                  63  voluntary context switches\n                 809  involuntary context switches\n          6338984351  instructions retired\n          1757047076  cycles elapsed\n             9437712  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "core3",
+        "label": "current",
+        "revision": "7c68ba45648b7e9a915ca073837da3e586516214",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-unsigned-bounds/current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/core3-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":218,\"Passes\":100,\"Compiles\":21800,\"CodeBytes\":17742800,\"ElapsedNS\":414134500,\"AllocBytes\":776862536,\"Allocations\":2646648}\n",
+        "stderr": "        0.64 real         0.41 user         0.02 sys\n            14008320  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1062  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   2  signals received\n                   0  voluntary context switches\n                 750  involuntary context switches\n          6322635241  instructions retired\n          1777980091  cycles elapsed\n             9257488  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "core3",
+        "label": "current",
+        "revision": "7c68ba45648b7e9a915ca073837da3e586516214",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-unsigned-bounds/current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/core3-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":218,\"Passes\":100,\"Compiles\":21800,\"CodeBytes\":17742800,\"ElapsedNS\":391188667,\"AllocBytes\":776862464,\"Allocations\":2646642}\n",
+        "stderr": "        0.40 real         0.39 user         0.00 sys\n            14155776  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1071  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   1  signals received\n                   0  voluntary context switches\n                 974  involuntary context switches\n          6323115322  instructions retired\n          1740198841  cycles elapsed\n             9323024  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "core3",
+        "label": "before",
+        "revision": "4c60e4c0a5bdbed1035c2768504cddf22a450509",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/trapping-float/current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/core3-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":218,\"Passes\":100,\"Compiles\":21800,\"CodeBytes\":17742800,\"ElapsedNS\":382684250,\"AllocBytes\":776861864,\"Allocations\":2646637}\n",
+        "stderr": "        0.39 real         0.38 user         0.00 sys\n            14204928  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1069  page reclaims\n                   5  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   1  signals received\n                   0  voluntary context switches\n                 615  involuntary context switches\n          6280839336  instructions retired\n          1701018926  cycles elapsed\n             9355792  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "core3",
+        "label": "before",
+        "revision": "4c60e4c0a5bdbed1035c2768504cddf22a450509",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/trapping-float/current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/core3-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":218,\"Passes\":100,\"Compiles\":21800,\"CodeBytes\":17742800,\"ElapsedNS\":384603084,\"AllocBytes\":776861912,\"Allocations\":2646637}\n",
+        "stderr": "        0.39 real         0.38 user         0.00 sys\n            14467072  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1090  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 655  involuntary context switches\n          6271367728  instructions retired\n          1692788831  cycles elapsed\n             9667136  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "core3",
+        "label": "current",
+        "revision": "7c68ba45648b7e9a915ca073837da3e586516214",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-unsigned-bounds/current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/core3-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":218,\"Passes\":100,\"Compiles\":21800,\"CodeBytes\":17742800,\"ElapsedNS\":380313208,\"AllocBytes\":776861552,\"Allocations\":2646633}\n",
+        "stderr": "        0.39 real         0.38 user         0.00 sys\n            14024704  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1063  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 100  involuntary context switches\n          6295693811  instructions retired\n          1718609813  cycles elapsed\n             9241128  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "threads",
+        "label": "before",
+        "revision": "4c60e4c0a5bdbed1035c2768504cddf22a450509",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/trapping-float/current-threads-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/threads-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":27,\"Passes\":100,\"Compiles\":2700,\"CodeBytes\":1611200,\"ElapsedNS\":46379459,\"AllocBytes\":85165512,\"Allocations\":370151}\n",
+        "stderr": "        0.06 real         0.04 user         0.00 sys\n            13254656  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 745  page reclaims\n                 277  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   7  signals received\n                  36  voluntary context switches\n                 205  involuntary context switches\n           906444163  instructions retired\n           230084805  cycles elapsed\n             9011728  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "threads",
+        "label": "current",
+        "revision": "7c68ba45648b7e9a915ca073837da3e586516214",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-unsigned-bounds/current-threads-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/threads-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":27,\"Passes\":100,\"Compiles\":2700,\"CodeBytes\":1611200,\"ElapsedNS\":66027041,\"AllocBytes\":85165512,\"Allocations\":370151}\n",
+        "stderr": "        0.28 real         0.07 user         0.01 sys\n            13041664  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1003  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   1  signals received\n                   0  voluntary context switches\n                 140  involuntary context switches\n           895893813  instructions retired\n           236048187  cycles elapsed\n             8831504  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "threads",
+        "label": "current",
+        "revision": "7c68ba45648b7e9a915ca073837da3e586516214",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-unsigned-bounds/current-threads-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/threads-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":27,\"Passes\":100,\"Compiles\":2700,\"CodeBytes\":1611200,\"ElapsedNS\":45940708,\"AllocBytes\":85165512,\"Allocations\":370151}\n",
+        "stderr": "        0.05 real         0.04 user         0.00 sys\n            13090816  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1006  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  77  involuntary context switches\n           881639117  instructions retired\n           211013999  cycles elapsed\n             8897064  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "threads",
+        "label": "before",
+        "revision": "4c60e4c0a5bdbed1035c2768504cddf22a450509",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/trapping-float/current-threads-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/threads-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":27,\"Passes\":100,\"Compiles\":2700,\"CodeBytes\":1611200,\"ElapsedNS\":44892000,\"AllocBytes\":85165512,\"Allocations\":370151}\n",
+        "stderr": "        0.04 real         0.04 user         0.00 sys\n            13123584  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1008  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 120  involuntary context switches\n           874859537  instructions retired\n           208163281  cycles elapsed\n             8897064  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "threads",
+        "label": "before",
+        "revision": "4c60e4c0a5bdbed1035c2768504cddf22a450509",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/trapping-float/current-threads-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/threads-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":27,\"Passes\":100,\"Compiles\":2700,\"CodeBytes\":1611200,\"ElapsedNS\":45050334,\"AllocBytes\":85165512,\"Allocations\":370151}\n",
+        "stderr": "        0.04 real         0.04 user         0.00 sys\n            12992512  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1000  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  76  involuntary context switches\n           881466055  instructions retired\n           208849692  cycles elapsed\n             8765992  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "threads",
+        "label": "current",
+        "revision": "7c68ba45648b7e9a915ca073837da3e586516214",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-unsigned-bounds/current-threads-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/threads-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":27,\"Passes\":100,\"Compiles\":2700,\"CodeBytes\":1611200,\"ElapsedNS\":45571250,\"AllocBytes\":85165512,\"Allocations\":370151}\n",
+        "stderr": "        0.04 real         0.04 user         0.00 sys\n            13107200  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1007  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  74  involuntary context switches\n           881797705  instructions retired\n           211581281  cycles elapsed\n             8897040  peak memory footprint\n",
+        "exit_code": 0
+      }
+    ]
+  },
+  "validation": {
+    "red.txt": "--- FAIL: TestMemoryMinimumBoundsAfterMaskedLocal (0.00s)\n    local_unsigned_bounds_test.go:26: control=false proofs=0 want=1\nFAIL\nFAIL\tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/arm64\t0.190s\nFAIL\n",
+    "green.txt": "ok  \tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/arm64\t0.297s\n",
+    "correctness.txt": "ok  \tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/arm64\t0.343s\nok  \tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/shared\t0.172s\nok  \tgithub.com/wago-org/wago/src/wago\t0.321s\n",
+    "guarded.txt": "ok  \tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/arm64\t0.193s\nok  \tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/shared\t0.326s\nok  \tgithub.com/wago-org/wago/src/wago\t0.315s\n"
+  },
+  "limitations": [
+    "Direct backend inspection skipped unsupported GC helper paths and component modules.",
+    "Prototype never published to wasm.fyi; no runtime speedup claim.",
+    "Only targeted correctness validation; broad conformance unnecessary after shelving."
+  ]
+}
