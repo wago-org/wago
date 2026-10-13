@@ -2292,6 +2292,34 @@ func rootedScalarImportedTableProviderModule() []byte {
 	)
 }
 
+func rootedScalarPublicTableHostTargetModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("host")...), byte(wasm.ExternFunc))
+	functionImport = append(functionImport, wasmtest.ULEB(1)...)
+	caller := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x41, 0x00, 0x11, 0x01, 0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(2, wasmtest.Vec(functionImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{0x01, 0x70, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0),
+		)),
+		wasmtest.Section(9, []byte{0x01, 0x00, 0x41, 0x00, 0x0b, 0x01, 0x00}),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(caller))), caller...))),
+	)
+}
+
 func TestRV64RootedScalarImportedTableExecutes(t *testing.T) {
 	for _, exportTable := range []bool{false, true} {
 		t.Run(fmt.Sprintf("export%t", exportTable), func(t *testing.T) {
@@ -2376,6 +2404,51 @@ func TestRV64RootedScalarImportedTableExecutes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRV64RootedScalarPublicTableHostTargetExecutes(t *testing.T) {
+	source := rootedScalarPublicTableHostTargetModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded rooted public-table host target was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	roots := view.genericGCFrameRoots()
+	if !rv64FreshRootedGC(view) || view.NumImports != 1 || view.tableImportCount() != 0 || view.tableCount() != 1 || view.tableExports["table"] != 0 || roots == nil || len(roots.callsites) != 1 || len(roots.callsites[0].offsets) != 1 {
+		t.Fatalf("public-table host receipt=%t imports=%d tables=%d/%d exports=%v roots=%+v validation=%v", rv64FreshRootedGC(view), view.NumImports, view.tableImportCount(), view.tableCount(), view.tableExports, roots, railshotValidateCompiled(view))
+	}
+	calls := 0
+	host := slotHostFunc(func(module HostModule, _, results []uint64) {
+		calls++
+		gcModule, ok := module.(GCHostModule)
+		if !ok {
+			panic("rooted host module has no collector surface")
+		}
+		if err := gcModule.CollectGC(); err != nil {
+			panic(err)
+		}
+		results[0] = 17
+	})
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		Imports: NewImports().Function("env", "host", host),
+		GC:      GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for range 16 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{58}) {
+			t.Fatalf("run()=%v err=%v want=[58]", got, err)
+		}
+	}
+	if calls != 16 {
+		t.Fatalf("host calls=%d want=16", calls)
 	}
 }
 
