@@ -74,7 +74,7 @@ func TestWeightedI32WindowVectorSelection(t *testing.T) {
 	}
 }
 func TestWeightedI32WindowPressureAndEligibility(t *testing.T) {
-	for _, mode := range []string{"stack", "gp-three", "vector-fourteen", "interruptible", "inline", "exception", "calls"} {
+	for _, mode := range []string{"stack", "gp-three", "vector-sixteen", "interruptible", "inline", "exception", "calls"} {
 		t.Run(mode, func(t *testing.T) {
 			f := gpClassEmitter()
 			f.policy = currentCodegenPolicy()
@@ -94,11 +94,11 @@ func TestWeightedI32WindowPressureAndEligibility(t *testing.T) {
 						f.pinned = f.pinned.remove(reg)
 					}
 				}
-			case "vector-fourteen":
+			case "vector-sixteen":
 				f.fpinned = ^regMask(0)
 				n := 0
 				for _, reg := range fpAllocRegs {
-					if (reg < 8 || reg >= 16) && n < 14 {
+					if (reg < 8 || reg >= 16) && n < 16 {
 						f.fpinned = f.fpinned.remove(reg)
 						n++
 					}
