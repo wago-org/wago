@@ -20,6 +20,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
 	optimization.Bind("simd-load-extract", &simdLoadExtractEnabled),
+	optimization.Bind("straight-line-block", &straightLineBlockEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
 	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
 	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
@@ -91,6 +92,7 @@ var (
 	optSharedMemoryBase     = optimizationBindings.Option("shared-memory-base")
 	optAtomicLSE            = optimizationBindings.Option("atomic-lse")
 	optBoundsFacts          = optimizationBindings.Option("bounds-facts")
+	optStraightLineBlock    = optimizationBindings.Option("straight-line-block")
 	optSIMDLoadExtract      = optimizationBindings.Option("simd-load-extract")
 	optSIMDSuperopt         = optimizationBindings.Option("simd-superopt")
 	optIntervalRegionPins   = optimizationBindings.Option("interval-region-pins")
