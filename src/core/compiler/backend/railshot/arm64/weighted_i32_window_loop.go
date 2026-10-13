@@ -151,14 +151,6 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 		sum := alloc()
 		f.a.MovImm32(tmp, p.Bias)
 		f.a.NeonDupGprS(bias, tmp)
-		// Distribute the uniform bias in the wrapping i32 ring. Coefficients
-		// are invariant, so this correction is computed once per checked loop.
-		f.a.NeonEor16b(acc[0], acc[0], acc[0])
-		for _, weight := range v[:groups] {
-			f.a.NeonAddS(acc[0], acc[0], weight)
-		}
-		f.a.NeonMulS(acc[0], acc[0], bias)
-		f.a.NeonAddvS(bias, acc[0])
 		f.a.MovImm64(tmp, uint64(p.Offset))
 		f.a.Add64(ptr, ptr, tmp)
 		f.a.Add64(ptr, ptr, linMemReg)
@@ -168,6 +160,7 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 		}
 		for g := 0; g < groups; g++ {
 			f.a.LdrQ(sample, ptr, int32(g*16))
+			f.a.NeonAddS(sample, sample, bias)
 			f.a.NeonMlaS(acc[g%4], sample, v[g])
 		}
 		f.a.NeonAddS(acc[0], acc[0], acc[1])
@@ -175,8 +168,6 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 		f.a.NeonAddS(acc[0], acc[0], acc[2])
 		f.a.NeonAddvS(acc[0], acc[0])
 		f.a.NeonUmovS(sum, acc[0], 0)
-		f.a.NeonUmovS(tmp, bias, 0)
-		f.a.Add32(sum, sum, tmp)
 		if p.Divisor != 1 {
 			f.a.AsrImm(tmp, sum, 31, true)
 			f.a.AndImm32(tmp, tmp, p.Divisor-1)
