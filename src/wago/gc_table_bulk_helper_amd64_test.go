@@ -5,6 +5,8 @@ package wago
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
+	"slices"
 	"testing"
 	"unsafe"
 
@@ -241,6 +243,30 @@ func genericGCSelfRecursiveArrayModule() []byte {
 	)
 }
 
+func genericGCExactAggregateStorageModule(array bool) []byte {
+	outer := []byte{0x5f, 0x01, 0x64, 0x62, 0x00, 0x00}
+	body := []byte{0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0xfb, 0x16, 0x62, 0x00, 0xfb, 0x00, 0x01, 0x24, 0x00,
+		0x23, 0x00, 0xfb, 0x02, 0x01, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	if array {
+		outer = []byte{0x5e, 0x64, 0x62, 0x00, 0x00}
+		body = []byte{0x00,
+			0x41, 0x29, 0xfb, 0x00, 0x00, 0xfb, 0x16, 0x62, 0x00, 0xfb, 0x08, 0x01, 0x01, 0x24, 0x00,
+			0x23, 0x00, 0x41, 0x00, 0xfb, 0x0b, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			outer,
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0x01, 0x01, 0xd0, 0x01, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func genericGCAggregateGlobalTableInitializerModule() []byte {
 	body := []byte{
 		0x00,
@@ -466,6 +492,60 @@ func TestGenericGCSelfRecursiveArray(t *testing.T) {
 	leaf, err := instance.gc.ArrayGet(child.Ref, 0)
 	if err != nil || leaf.Ref != 0 {
 		t.Fatalf("self-recursive array leaf=%+v, %v", leaf, err)
+	}
+}
+
+func TestGenericGCExactAggregateStorage(t *testing.T) {
+	for _, array := range []bool{false, true} {
+		t.Run(fmt.Sprintf("array=%t", array), func(t *testing.T) {
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCExactAggregateStorageModule(array))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			typeDigest, ok := rv64RootedTypeDigest(compiled)
+			if !ok {
+				t.Fatal("exact aggregate type directory was not digestible")
+			}
+			candidate := *compiled
+			candidate.Types = slices.Clone(compiled.Types)
+			if array {
+				candidate.Types[1].Array.Storage.Value.Ref.Exact = false
+			} else {
+				candidate.Types[1].Fields = slices.Clone(compiled.Types[1].Fields)
+				candidate.Types[1].Fields[0].Storage.Value.Ref.Exact = false
+			}
+			if mutatedDigest, valid := rv64RootedTypeDigest(&candidate); !valid || mutatedDigest == typeDigest {
+				t.Fatalf("exact-bit mutation digest=%x valid=%t, original=%x", mutatedDigest, valid, typeDigest)
+			}
+			candidate.Types[1].Params = make([]ValueTypeDescriptor, 257)
+			if _, valid := rv64RootedTypeDigest(&candidate); valid {
+				t.Fatal("oversized nested type directory retained a digest")
+			}
+			instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{41}) {
+				t.Fatalf("run()=%v err=%v want=[41]", got, err)
+			}
+			if err = instance.CollectGC(); err != nil {
+				t.Fatal(err)
+			}
+			outer := gc.Ref(uint32(readGlobalObject(instance.globalCells[0], instance.c.Globals[0].Type)))
+			child, err := instance.gc.StructGet(outer, 0)
+			if array {
+				child, err = instance.gc.ArrayGet(outer, 0)
+			}
+			if err != nil || child.Ref == 0 {
+				t.Fatalf("exact aggregate child=%+v, %v", child, err)
+			}
+			value, err := instance.gc.StructGet(child.Ref, 0)
+			if err != nil || value.Bits != 41 {
+				t.Fatalf("exact aggregate value=%+v, %v", value, err)
+			}
+		})
 	}
 }
 

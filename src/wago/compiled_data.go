@@ -10,6 +10,86 @@ import (
 const rv64RootedMaxHostFunctionImports = 256
 const rv64RootedMaxMemories = 4
 
+// rv64RootedTypeDigest authenticates the complete flattened structural type
+// directory retained by a fresh generic RV64 compilation. GC descriptors only
+// encode physical layout, so semantic properties such as reference exactness
+// and heap identity need their own receipt.
+func rv64RootedTypeDigest(c *Compiled) ([32]byte, bool) {
+	if c == nil || len(c.Types) == 0 || len(c.Types) > 1<<16 {
+		return [32]byte{}, false
+	}
+	descriptorBudget := len(c.Types)
+	for i := range c.Types {
+		typ := &c.Types[i]
+		if len(typ.Supers) > 1 || len(typ.Params) > 256 || len(typ.Results) > 256 || len(typ.Fields) > 255 {
+			return [32]byte{}, false
+		}
+		descriptorBudget += len(typ.Supers) + len(typ.Params) + len(typ.Results) + len(typ.Fields) + 1
+		if descriptorBudget > 1<<16 {
+			return [32]byte{}, false
+		}
+	}
+	if validateDefinedTypeDescriptors(c.Types) != nil {
+		return [32]byte{}, false
+	}
+	h := sha256.New()
+	var word [4]byte
+	writeU32 := func(value uint32) {
+		binary.LittleEndian.PutUint32(word[:], value)
+		_, _ = h.Write(word[:])
+	}
+	writeBool := func(value bool) {
+		if value {
+			_, _ = h.Write([]byte{1})
+		} else {
+			_, _ = h.Write([]byte{0})
+		}
+	}
+	writeValue := func(value ValueTypeDescriptor) {
+		_, _ = h.Write([]byte{byte(value.Kind), byte(value.Ref.Heap.Abstract)})
+		writeBool(value.Ref.Nullable)
+		writeBool(value.Ref.Exact)
+		writeBool(value.Ref.Heap.Defined)
+		writeU32(value.Ref.Heap.TypeIndex)
+	}
+	writeField := func(field FieldTypeDescriptor) {
+		writeBool(field.Storage.Packed)
+		_, _ = h.Write([]byte{byte(field.Storage.PackedType)})
+		writeValue(field.Storage.Value)
+		writeBool(field.Mutable)
+	}
+	writeValues := func(values []ValueTypeDescriptor) {
+		writeU32(uint32(len(values)))
+		for _, value := range values {
+			writeValue(value)
+		}
+	}
+	writeU32(uint32(len(c.Types)))
+	for _, typ := range c.Types {
+		writeU32(typ.RecGroup)
+		writeBool(typ.Final)
+		writeU32(uint32(len(typ.Supers)))
+		for _, super := range typ.Supers {
+			writeU32(super)
+		}
+		writeBool(typ.HasDescribes)
+		writeU32(typ.Describes)
+		writeBool(typ.HasDescriptor)
+		writeU32(typ.Descriptor)
+		_, _ = h.Write([]byte{byte(typ.Kind)})
+		writeValues(typ.Params)
+		writeValues(typ.Results)
+		writeU32(uint32(len(typ.Fields)))
+		for _, field := range typ.Fields {
+			writeField(field)
+		}
+		writeField(typ.Array)
+	}
+	var digest [32]byte
+	copy(digest[:], h.Sum(nil))
+	return digest, true
+}
+
 // compactActiveData is an immutable execution-only representation. Public
 // DataInit metadata remains unchanged and independently mutable. Common constant
 // offsets need neither a global index nor an expression slice in every record.

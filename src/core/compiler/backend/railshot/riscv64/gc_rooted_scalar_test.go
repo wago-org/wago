@@ -446,6 +446,86 @@ func TestRV64RootedSelfRecursiveArrayCompiles(t *testing.T) {
 	}
 }
 
+func rv64RootedExactAggregateStorageModule(array bool) []byte {
+	outer := []byte{0x5f, 0x01, 0x64, 0x62, 0x00, 0x00}
+	body := []byte{0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0xfb, 0x16, 0x62, 0x00, 0xfb, 0x00, 0x01, 0x24, 0x00,
+		0x23, 0x00, 0xfb, 0x02, 0x01, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	if array {
+		outer = []byte{0x5e, 0x64, 0x62, 0x00, 0x00}
+		body = []byte{0x00,
+			0x41, 0x29, 0xfb, 0x00, 0x00, 0xfb, 0x16, 0x62, 0x00, 0xfb, 0x08, 0x01, 0x01, 0x24, 0x00,
+			0x23, 0x00, 0x41, 0x00, 0xfb, 0x0b, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			outer,
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0x01, 0x01, 0xd0, 0x01, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedExactAggregateStorageCompiles(t *testing.T) {
+	for _, array := range []bool{false, true} {
+		t.Run(fmt.Sprintf("array=%t", array), func(t *testing.T) {
+			source := rv64RootedExactAggregateStorageModule(array)
+			m, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			storage := m.Types[1].SubTypes[0].Comp.Array.Storage()
+			if !array {
+				storage = m.Types[1].SubTypes[0].Comp.Fields[0].Storage()
+			}
+			field := storage.Val().Ref()
+			if !field.Exact() || field.Heap().Type().Index != 0 {
+				t.Fatalf("exact field=%+v", field)
+			}
+			if !admitRV64GCRootedScalarModule(m) {
+				t.Fatal("exact aggregate field was not admitted")
+			}
+			if err := AdmitProductionSource(source); err != nil {
+				t.Fatal(err)
+			}
+			metadata, err := frontend.BuildGCTypeMetadata(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(metadata.Descs) < 2 || !metadata.Descs[1].HasRefs {
+				t.Fatalf("exact field metadata=%+v", metadata.Descs)
+			}
+			roots := shared.NewGCModuleFrameRootPlan(1)
+			if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+				t.Fatal("reserve exact root plan")
+			}
+			plan, ok := roots.BeginFunction(0)
+			if !ok {
+				t.Fatal("begin exact root plan")
+			}
+			*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true}
+			if !plan.SetLiveMasks([]uint64{0, 0}, 2, 0) {
+				t.Fatal("install exact root liveness")
+			}
+			compiled, err := CompileModuleWith(m, CompileOptions{
+				DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+				GCStructHelpers: true, GCArrayHelpers: array, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+				Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(compiled.Code) == 0 || plan.SafepointCount() != 2 {
+				t.Fatalf("code=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
+			}
+		})
+	}
+}
+
 func TestRV64RootedAggregateSubtypeTableInitializerCompiles(t *testing.T) {
 	for _, nested := range []bool{false, true} {
 		t.Run(fmt.Sprintf("nested=%t", nested), func(t *testing.T) {

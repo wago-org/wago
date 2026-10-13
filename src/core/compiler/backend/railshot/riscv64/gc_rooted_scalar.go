@@ -358,14 +358,15 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 					}
 				} else if !scalarType(storage.Val(), true) {
 					value := storage.Val()
-					if value.Kind() != wasm.ValRef || value.Ref().Exact() {
+					if value.Kind() != wasm.ValRef {
 						return false
 					}
 					heap := value.Ref().Heap()
-					if heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapFunc {
+					if !value.Ref().Exact() && heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapFunc {
 						continue
 					}
 					if heap.Kind() != wasm.HeapTypeIndex ||
+						(value.Ref().Exact() && heap.Type().Rec) ||
 						(heap.Type().Rec && (heap.Type().Index != 0 || !aggregateSubtype)) ||
 						(!heap.Type().Rec && (int(heap.Type().Index) >= flatTypes || !admittedAggregates[heap.Type().Index])) {
 						return false
@@ -382,12 +383,13 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				}
 			} else if !scalarType(storage.Val(), true) {
 				value := storage.Val()
-				if value.Kind() != wasm.ValRef || value.Ref().Exact() {
+				if value.Kind() != wasm.ValRef {
 					return false
 				}
 				heap := value.Ref().Heap()
-				if !(heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapFunc) &&
+				if !(!value.Ref().Exact() && heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapFunc) &&
 					(heap.Kind() != wasm.HeapTypeIndex ||
+						(value.Ref().Exact() && heap.Type().Rec) ||
 						(heap.Type().Rec && (heap.Type().Index != 0 || !aggregateSubtype)) ||
 						(!heap.Type().Rec && (int(heap.Type().Index) >= flatTypes || !admittedAggregates[heap.Type().Index]))) {
 					return false
@@ -552,7 +554,7 @@ func newRootedScalarAggregateParser(m *wasm.Module) *rootedScalarAggregateParser
 }
 
 func (p *rootedScalarAggregateParser) constructedSubtype(typeIndex uint32, required wasm.RefType) bool {
-	if p == nil || !p.valid || required.Exact() || required.Heap().Kind() != wasm.HeapTypeIndex || required.Heap().Type().Rec {
+	if p == nil || !p.valid || required.Heap().Kind() != wasm.HeapTypeIndex || required.Heap().Type().Rec {
 		return false
 	}
 	target := required.Heap().Type().Index
@@ -562,6 +564,9 @@ func (p *rootedScalarAggregateParser) constructedSubtype(typeIndex uint32, requi
 	actualComp, targetComp := rootedScalarAggregateType(p.m, typeIndex), rootedScalarAggregateType(p.m, target)
 	if actualComp == nil || targetComp == nil || actualComp.Kind != targetComp.Kind || actualComp.Kind != wasm.CompStruct && actualComp.Kind != wasm.CompArray {
 		return false
+	}
+	if required.Exact() {
+		return typeIndex == target
 	}
 	return p.entry[target] <= p.entry[typeIndex] && p.entry[typeIndex] < p.exit[target]
 }
@@ -908,8 +913,13 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 		if !references || storage != 0x63 && storage != 0x64 {
 			return false
 		}
+		exact := false
+		if marker, ok := r.Peek(); ok && marker == 0x62 {
+			_, _ = r.Byte()
+			exact = true
+		}
 		heap, err := r.S33()
-		return err == nil && (heap == -16 || heap >= 0 && (selfReference && uint64(heap) == uint64(owner) || uint64(heap) < uint64(owner) && (kinds[heap] == 0x5f || kinds[heap] == 0x5e)))
+		return err == nil && (!exact && heap == -16 || heap >= 0 && (!exact || uint64(heap) != uint64(owner)) && (selfReference && uint64(heap) == uint64(owner) || uint64(heap) < uint64(owner) && (kinds[heap] == 0x5f || kinds[heap] == 0x5e)))
 	}
 	for owner := uint32(0); owner < count; owner++ {
 		form, err := r.Byte()

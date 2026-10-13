@@ -686,7 +686,7 @@ func (f *integerEmitter) gcObjectRefTestBranch(base int, heap int64, nullable bo
 	f.a.Lwu(enc.X5, result, 0)
 }
 
-func (f *integerEmitter) gcObjectRefCast(base int, heap int64, nullable bool) {
+func (f *integerEmitter) gcObjectRefCast(base int, heap int64, nullable, exact bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0)
@@ -697,7 +697,10 @@ func (f *integerEmitter) gcObjectRefCast(base int, heap int64, nullable bool) {
 		f.a.Constant32(enc.X5, 1)
 	}
 	f.a.Sd(enc.X5, enc.X10, 16)
-	f.a.Constant32(enc.X5, 0) // exact heap markers are not admitted here.
+	f.a.Constant32(enc.X5, 0)
+	if exact {
+		f.a.Constant32(enc.X5, 1)
+	}
 	f.a.Sd(enc.X5, enc.X10, 24)
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructRefCast})
 	f.restoreCallTransport()

@@ -619,7 +619,7 @@ func (p supportPass) types() error {
 					for fi := range st.Comp.Fields {
 						storage := st.Comp.Fields[fi].Storage()
 						if !storage.Packed() {
-							if err := p.valType(storage.Val(), fmt.Sprintf("%s field %d", ctx, fi)); err != nil {
+							if err := p.aggregateStorageType(storage.Val(), fmt.Sprintf("%s field %d", ctx, fi)); err != nil {
 								return err
 							}
 						}
@@ -627,7 +627,7 @@ func (p supportPass) types() error {
 				case wasm.CompArray:
 					storage := st.Comp.Array.Storage()
 					if !storage.Packed() {
-						if err := p.valType(storage.Val(), ctx+" array element"); err != nil {
+						if err := p.aggregateStorageType(storage.Val(), ctx+" array element"); err != nil {
 							return err
 						}
 					}
@@ -2393,6 +2393,37 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 		return p.unsupported("reference type", feature, context)
 	}
 	return p.unsupported("value type", valTypeName(v), context)
+}
+
+// aggregateStorageType admits exact indexed aggregate references only in GC
+// storage. Exactness changes validation and casting, but not the collector's
+// reference layout. Keep the exception local to aggregate fields/elements so
+// signatures, globals, and tables retain their existing capability gates.
+func (p supportPass) aggregateStorageType(v wasm.ValType, context string) error {
+	if v.Kind() == wasm.ValRef && p.supportedExactAggregateStorageRef(v.Ref()) {
+		return nil
+	}
+	return p.valType(v, context)
+}
+
+func (p supportPass) supportedExactAggregateStorageRef(rt wasm.RefType) bool {
+	if !p.feat.ReferenceTypes || !p.feat.TypedFunctionReferences || !rt.Exact() {
+		return false
+	}
+	heap := rt.Heap()
+	if heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec || p.m == nil {
+		return false
+	}
+	index := heap.Type().Index
+	for gi := range p.m.Types {
+		if index < uint32(len(p.m.Types[gi].SubTypes)) {
+			kind := p.m.Types[gi].SubTypes[index].Comp.Kind
+			return kind == wasm.CompStruct && (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts || p.feat.GCStructProducts) ||
+				kind == wasm.CompArray && (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts || p.feat.GCArrayProducts)
+		}
+		index -= uint32(len(p.m.Types[gi].SubTypes))
+	}
+	return false
 }
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {

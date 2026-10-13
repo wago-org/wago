@@ -108,7 +108,7 @@ func (types internalReferenceTypes) rootedCollectorReference(storage wasm.Storag
 	}
 	ref := storage.Val().Ref()
 	heap := ref.Heap()
-	if ref.Exact() || heap.Kind() != wasm.HeapTypeIndex {
+	if heap.Kind() != wasm.HeapTypeIndex {
 		return false
 	}
 	if heap.Type().Rec {

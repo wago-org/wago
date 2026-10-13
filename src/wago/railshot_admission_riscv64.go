@@ -32,6 +32,10 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		compiledStructuralRequiredFeatures(c)&^c.requiredFeatures != 0 {
 		return false
 	}
+	typeDigest, validTypes := rv64RootedTypeDigest(c)
+	if !validTypes || typeDigest != memo.rv64FreshRootedGCTypeDigest {
+		return false
+	}
 	structProduct, arrayProduct := c.stagedGCStructProduct(), c.stagedGCArrayProduct()
 	structHelpers, arrayHelpers := structProduct == stagedGCStructGeneric, arrayProduct == stagedGCArrayProductGeneric
 	if structProduct != 0 && !structHelpers || arrayProduct != 0 && !arrayHelpers || !structHelpers && !arrayHelpers ||
@@ -214,11 +218,8 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		}
 		if storage.Value.Kind == ValueTypeReference {
 			ref := storage.Value.Ref
-			if ref.Exact {
-				return 0, false
-			}
 			if !ref.Heap.Defined {
-				if ref.Heap.Abstract != AbstractHeapFunc || ref.Heap.TypeIndex != 0 {
+				if ref.Exact || ref.Heap.Abstract != AbstractHeapFunc || ref.Heap.TypeIndex != 0 {
 					return 0, false
 				}
 				if ref.Nullable {
@@ -226,7 +227,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 				}
 				return gc.StorageFuncRef, true
 			}
-			if int(ref.Heap.TypeIndex) > owner || int(ref.Heap.TypeIndex) >= len(c.Types) {
+			if int(ref.Heap.TypeIndex) > owner || int(ref.Heap.TypeIndex) >= len(c.Types) || ref.Exact && int(ref.Heap.TypeIndex) == owner {
 				return 0, false
 			}
 			target := c.Types[ref.Heap.TypeIndex]

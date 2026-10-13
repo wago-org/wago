@@ -2618,6 +2618,143 @@ func TestRV64RootedSelfRecursiveArrayExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarExactAggregateStorageModule(array bool) []byte {
+	outer := []byte{0x5f, 0x01, 0x64, 0x62, 0x00, 0x00}
+	body := []byte{0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0xfb, 0x16, 0x62, 0x00, 0xfb, 0x00, 0x01, 0x24, 0x00,
+		0x23, 0x00, 0xfb, 0x02, 0x01, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	if array {
+		outer = []byte{0x5e, 0x64, 0x62, 0x00, 0x00}
+		body = []byte{0x00,
+			0x41, 0x29, 0xfb, 0x00, 0x00, 0xfb, 0x16, 0x62, 0x00, 0xfb, 0x08, 0x01, 0x01, 0x24, 0x00,
+			0x23, 0x00, 0x41, 0x00, 0xfb, 0x0b, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			outer,
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0x01, 0x01, 0xd0, 0x01, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func rootedScalarExactAggregateSubtypeCastModule() []byte {
+	body := []byte{0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x01,
+		0xfb, 0x16, 0x62, 0x00,
+		0xfb, 0x00, 0x02, 0x1a,
+		0x41, 0x01, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x50, 0x00, 0x5f, 0x01, 0x7f, 0x01},
+			[]byte{0x4f, 0x01, 0x00, 0x5f, 0x01, 0x7f, 0x01},
+			[]byte{0x5f, 0x01, 0x64, 0x62, 0x00, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(3))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedExactAggregateStorageExecutes(t *testing.T) {
+	for _, array := range []bool{false, true} {
+		t.Run(fmt.Sprintf("array=%t", array), func(t *testing.T) {
+			source := rootedScalarExactAggregateStorageModule(array)
+			if !railshot.AdmitGCRootedScalarSource(source) {
+				t.Fatal("exact aggregate field module was not source-admitted")
+			}
+			compiled, err := Compile(rv64RootedScalarConfig(), source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			view := compiled.executionView()
+			storage := view.Types[1].Array.Storage
+			if !array {
+				storage = view.Types[1].Fields[0].Storage
+			}
+			if !rv64FreshRootedGC(view) || !storage.Value.Ref.Exact || storage.Value.Ref.Heap.TypeIndex != 0 {
+				t.Fatalf("exact aggregate field receipt=%t types=%+v validation=%v", rv64FreshRootedGC(view), view.Types, railshotValidateCompiled(view))
+			}
+			mutated := cloneCompiledMetadata(view)
+			mutated.Types = slices.Clone(view.Types)
+			if array {
+				mutated.Types[1].Array.Storage.Value.Ref.Heap.TypeIndex = 2
+			} else {
+				mutated.Types[1].Fields = slices.Clone(view.Types[1].Fields)
+				mutated.Types[1].Fields[0].Storage.Value.Ref.Heap.TypeIndex = 2
+			}
+			if rv64FreshRootedGC(mutated) {
+				t.Fatal("out-of-scope exact aggregate field retained generic receipt")
+			}
+			mutated = cloneCompiledMetadata(view)
+			mutated.Types = slices.Clone(view.Types)
+			if array {
+				mutated.Types[1].Array.Storage.Value.Ref.Exact = false
+			} else {
+				mutated.Types[1].Fields = slices.Clone(view.Types[1].Fields)
+				mutated.Types[1].Fields[0].Storage.Value.Ref.Exact = false
+			}
+			if rv64FreshRootedGC(mutated) {
+				t.Fatal("mutated exact aggregate contract retained generic receipt")
+			}
+			instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{41}) {
+				t.Fatalf("run()=%v err=%v want=[41]", got, err)
+			}
+			if err = instance.CollectGC(); err != nil {
+				t.Fatal(err)
+			}
+			outer := native.Ref(uint32(readGlobalObject(instance.globalCells[0], instance.c.Globals[0].Type)))
+			child, err := instance.gc.StructGet(outer, 0)
+			if array {
+				child, err = instance.gc.ArrayGet(outer, 0)
+			}
+			if err != nil || child.Ref == 0 {
+				t.Fatalf("exact aggregate child=%+v, %v", child, err)
+			}
+			value, err := instance.gc.StructGet(child.Ref, 0)
+			if err != nil || value.Bits != 41 {
+				t.Fatalf("exact aggregate value=%+v, %v", value, err)
+			}
+		})
+	}
+}
+
+func TestRV64RootedExactAggregateSubtypeCastTraps(t *testing.T) {
+	source := rootedScalarExactAggregateSubtypeCastModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("exact aggregate subtype-cast module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if view := compiled.executionView(); !rv64FreshRootedGC(view) {
+		t.Fatalf("exact subtype-cast receipt=false validation=%v", railshotValidateCompiled(view))
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err = instance.Invoke("run"); err == nil {
+		t.Fatal("exact cast accepted a proper subtype")
+	} else if trap, ok := err.(*TrapError); !ok || trap.Code != TrapCastFailure {
+		t.Fatalf("exact subtype cast trap=%v, want %v", err, TrapCastFailure)
+	}
+}
+
 func TestRV64RootedAggregateTableInitializerExecutes(t *testing.T) {
 	source := rootedScalarAggregateTableInitializerModule()
 	if !railshot.AdmitGCRootedScalarSource(source) {

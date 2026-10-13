@@ -2540,7 +2540,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					target := imm.HeapType.Type().Index
 					if live && emit != nil {
 						keys := []uint64{state.types[target].key}
-						if !state.gcTypeSubtypingFinalityCallCast {
+						if !imm.Cast.SourceNullable && !state.gcTypeSubtypingFinalityCallCast {
 							for subtype := target + 1; subtype < 3; subtype++ {
 								keys = append(keys, state.types[subtype].key)
 							}
@@ -2564,7 +2564,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						return integerSummary{}, unsupported("GC helper call count/slot budget")
 					}
 					if live && emit != nil {
-						emit.gcObjectRefCast(h, heap, imm.Subopcode == 23)
+						emit.gcObjectRefCast(h, heap, imm.Subopcode == 23, imm.Cast.SourceNullable)
 					}
 					if err = pushReference(); err != nil {
 						return integerSummary{}, err
@@ -2605,7 +2605,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						return integerSummary{}, unsupported("GC helper call count/slot budget")
 					}
 					if live && emit != nil {
-						emit.gcObjectRefCast(h, heap, imm.Subopcode == 23)
+						emit.gcObjectRefCast(h, heap, imm.Subopcode == 23, imm.Cast.SourceNullable)
 					}
 					if err = pushReference(); err != nil {
 						return integerSummary{}, err
