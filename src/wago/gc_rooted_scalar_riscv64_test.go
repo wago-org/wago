@@ -785,6 +785,53 @@ func TestRV64RootedScalarI31ArraySurvivesGC(t *testing.T) {
 	}
 }
 
+func rootedScalarReferenceControlModule() []byte {
+	body := []byte{
+		0x01, 0x01, 0x64, 0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x20, 0x00, 0x20, 0x00, 0xd3,
+		0x41, 0x07, 0xfb, 0x1c, 0x41, 0x07, 0xfb, 0x1c, 0xd3,
+		0xd0, 0x6c, 0xd1,
+		0x41, 0x09, 0xfb, 0x1c, 0xd4, 0xfb, 0x1e,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedScalarReferenceControlExecutes(t *testing.T) {
+	source := rootedScalarReferenceControlModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("rooted reference control module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) {
+		t.Fatalf("rooted reference control receipt=false validation=%v", railshotValidateCompiled(view))
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for iteration := range 16 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{1, 1, 1, 9}) {
+			t.Fatalf("iteration %d: run()=%v err=%v", iteration, got, err)
+		}
+	}
+}
+
 func rootedReferenceFieldStructModule() []byte {
 	types := [][]byte{
 		{0x5f, 0x01, 0x7f, 0x01},       // mutable i32 leaf

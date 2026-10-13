@@ -905,7 +905,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				genericRootedNull := state.gcRootedScalar && heap >= 0 && (referenceTypes.rootedStruct(uint32(heap)) || referenceTypes.rootedArray(uint32(heap)))
+				genericRootedNull := state.gcRootedScalar && (heap >= 0 && (referenceTypes.rootedStruct(uint32(heap)) || referenceTypes.rootedArray(uint32(heap))) || rootedAbstractObjectHeapS33(heap) || heap == -20)
 				if state.gcRootedScalar && !genericRootedNull {
 					return integerSummary{}, unsupported("generic rooted scalar ref.null heap")
 				}
@@ -933,7 +933,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case 0xd4:
-				if !state.referenceCalls && !state.gcRefTestAbstract {
+				if !state.referenceCalls && !state.gcRefTestAbstract && !state.gcRootedScalar {
 					return integerSummary{}, unsupported("ref.as_non_null requires private typed-reference profile")
 				}
 				// An unknown value at an unreachable floor is polymorphic. An
@@ -969,7 +969,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case 0xd3:
-				if !state.i31RefEq {
+				if !state.i31RefEq && !state.gcRootedScalar {
 					return integerSummary{}, unsupported("ref.eq outside exact compact i31 profile")
 				}
 				if _, err = popClass(true); err != nil {

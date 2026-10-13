@@ -2286,3 +2286,68 @@ func TestRV64RootedScalarI31ArrayCompiles(t *testing.T) {
 		t.Fatalf("code=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
 	}
 }
+
+func rv64RootedScalarReferenceControlModule() []byte {
+	body := []byte{
+		0x01, 0x01, 0x64, 0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x20, 0x00, 0x20, 0x00, 0xd3,
+		0x41, 0x07, 0xfb, 0x1c, 0x41, 0x07, 0xfb, 0x1c, 0xd3,
+		0xd0, 0x6c, 0xd1,
+		0x41, 0x09, 0xfb, 0x1c, 0xd4, 0xfb, 0x1e,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedScalarReferenceControlCompiles(t *testing.T) {
+	source := rv64RootedScalarReferenceControlModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("rooted reference control module was not admitted")
+	}
+	roots := shared.NewGCModuleFrameRootPlan(1)
+	if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve exact root plan")
+	}
+	plan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin exact root plan")
+	}
+	*plan = shared.GCFrameRootPlan{
+		Candidate: true, Exact: true, Conservative: true,
+		Locals: []shared.GCFrameLocal{{Index: 0, Offset: shared.RV64CallFrameHeaderBytes}},
+	}
+	if !plan.SetLiveMasks([]uint64{1}, 1, 0) {
+		t.Fatal("install exact root liveness")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 1 {
+		t.Fatalf("code=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
+	}
+}
