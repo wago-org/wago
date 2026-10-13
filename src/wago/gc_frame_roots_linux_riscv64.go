@@ -8,11 +8,12 @@ import (
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
-// newGCFrameRootPlan is the bounded RV64 exact-root producer for closed,
-// table-free scalar modules. Allocation helpers publish safepoint roots and
-// direct Wasm calls publish return-PC caller-frame maps.
+// newGCFrameRootPlan is the bounded RV64 exact-root producer for rooted scalar
+// modules. Allocation helpers publish safepoint roots and Wasm/host calls
+// publish return-PC caller-frame maps.
 func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
 	if diagnostic != nil {
 		*diagnostic = ""
@@ -34,8 +35,27 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	if m == nil || len(m.Code) == 0 {
 		return reject("generic GC module has no local function bodies")
 	}
-	if len(m.Imports) != 0 || len(m.Tables) > 2 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
-		return reject("RV64 exact roots require a closed scalar allocation module")
+	importedFunctions := m.ImportedFuncCount()
+	if importedFunctions != len(m.Imports) || importedFunctions > 4 || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > 2 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
+		return reject("RV64 exact roots require a bounded scalar allocation module")
+	}
+	if importedFunctions != 0 {
+		if len(m.Tables) != 0 || len(m.Elements) != 0 || m.Start != nil {
+			return reject("RV64 exact roots require numeric imports without tables or start")
+		}
+		for i := range m.Imports {
+			ft, ok := m.ImportFuncType(i)
+			if !ok || len(ft.Params) > coreruntime.MaxHostArity || len(ft.Results) > coreruntime.MaxHostArity {
+				return reject("RV64 exact roots reject function import %d", i)
+			}
+			for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
+				for _, typ := range values {
+					if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
+						return reject("RV64 exact roots reject non-scalar function import %d", i)
+					}
+				}
+			}
+		}
 	}
 	if m.DataCount != nil && (uint64(*m.DataCount) != uint64(len(m.Data)) || *m.DataCount > 256) {
 		return reject("RV64 exact roots require an exact bounded data count")
@@ -172,6 +192,9 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		}
 		if export.Index.Kind != wasm.ExternFunc {
 			return reject("RV64 exact roots reject non-function export %d", i)
+		}
+		if uint64(export.Index.Index) < uint64(importedFunctions) || uint64(export.Index.Index) >= uint64(importedFunctions+len(m.Code)) {
+			return reject("RV64 exact roots reject imported or unavailable function export %d", i)
 		}
 	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)

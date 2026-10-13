@@ -25,7 +25,11 @@ const (
 	// complete resumable register prefix ends immediately before hcTrampoline.
 	ARM64SyncHostCallSavedLROffset = 96
 	ARM64SyncHostCallSavedBytes    = 176
-	AMD64CallReturnAddressBytes    = 8
+	// RV64SyncHostCallSavedBytes is the complete guest park prefix through the
+	// bridge SP. Host arguments and results follow this prefix and must not be
+	// restored when a parked GC activation is removed.
+	RV64SyncHostCallSavedBytes  = 208
+	AMD64CallReturnAddressBytes = 8
 	// RV64 cold traps restore the production bridge stack and continuation.
 	// Offset 16 is occupied by the memory maximum-pages cache.
 	RV64TrapContinuationOffset = 32

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -2203,6 +2204,165 @@ func TestRV64RootedScalarDeclarativeTableExecutes(t *testing.T) {
 		if err := instance.Close(); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func rootedScalarHostImportModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	importEntry := append(append(wasmtest.Name("env.calls"), wasmtest.Name("host.fn")...), byte(wasm.ExternFunc))
+	importEntry = append(importEntry, wasmtest.ULEB(1)...)
+	body := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x41, 0x29, 0x10, 0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func rootedScalarHostImportArityModule(arity int) []byte {
+	params := make([]wasm.ValType, arity)
+	for i := range params {
+		params[i] = wasm.I32
+	}
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(params, nil),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	importEntry := append(append(wasmtest.Name("env"), wasmtest.Name("host")...), byte(wasm.ExternFunc))
+	importEntry = append(importEntry, wasmtest.ULEB(1)...)
+	body := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x21, 0x00,
+	}
+	for range arity {
+		body = append(body, 0x41, 0x00)
+	}
+	body = append(body, 0x10, 0x00, 0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedScalarHostImportArityBound(t *testing.T) {
+	bounded := rootedScalarHostImportArityModule(64)
+	if !railshot.AdmitGCRootedScalarSource(bounded) {
+		t.Fatal("64-slot rooted numeric host import was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), bounded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view := compiled.executionView(); !rv64FreshRootedGC(view) || view.genericGCFrameRoots() == nil {
+		_ = compiled.Close()
+		t.Fatal("64-slot rooted numeric host import lost its exact root plan")
+	}
+	if err := compiled.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	oversized := rootedScalarHostImportArityModule(65)
+	if railshot.AdmitGCRootedScalarSource(oversized) {
+		t.Fatal("65-slot rooted numeric host import was source-admitted")
+	}
+	if candidate, err := Compile(rv64RootedScalarConfig(), oversized); err == nil || candidate != nil {
+		if candidate != nil {
+			_ = candidate.Close()
+		}
+		t.Fatal("65-slot rooted numeric host import compiled")
+	}
+}
+
+func TestRV64RootedScalarHostImportExecutes(t *testing.T) {
+	source := rootedScalarHostImportModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded rooted numeric host import was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	roots := view.genericGCFrameRoots()
+	if !rv64FreshRootedGC(view) || view.NumImports != 1 || len(view.importFuncSigs) != 1 || roots == nil || len(roots.callsites) != 1 || len(roots.callsites[0].offsets) != 1 {
+		t.Fatalf("rooted host-call receipt=%t imports=%d roots=%+v validation=%v", rv64FreshRootedGC(view), view.NumImports, roots, railshotValidateCompiled(view))
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"name": func(candidate *Compiled) {
+			candidate.Imports = slices.Clone(candidate.Imports)
+			candidate.Imports[0] = "env.other.host.fn"
+		},
+		"separator": func(candidate *Compiled) {
+			memo := *candidate.loadValidateMemo()
+			memo.importModuleEnds = slices.Clone(memo.importModuleEnds)
+			memo.importModuleEnds[0]++
+			candidate.validateMemo = &memo
+		},
+		"signature": func(candidate *Compiled) {
+			candidate.importFuncSigs = slices.Clone(candidate.importFuncSigs)
+			candidate.importFuncSigs[0].Params = []ValType{ValI64}
+		},
+		"type-key": func(candidate *Compiled) {
+			candidate.FuncTypeID = slices.Clone(candidate.FuncTypeID)
+			candidate.FuncTypeID[0] ^= 1
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated host import retained the generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("mutated host import validation=%v", err)
+			}
+		})
+	}
+	calls := 0
+	host := slotHostFunc(func(module HostModule, params, results []uint64) {
+		calls++
+		runtime.GC()
+		gcModule, ok := module.(GCHostModule)
+		if !ok {
+			panic("rooted host module has no collector surface")
+		}
+		if err := gcModule.CollectGC(); err != nil {
+			panic(err)
+		}
+		results[0] = uint64(uint32(params[0]) + 1)
+	})
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		Imports: NewImports().Function("env.calls", "host.fn", host),
+		GC:      GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for range 8 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{83}) {
+			t.Fatalf("run()=%v err=%v want=[83]", got, err)
+		}
+	}
+	if calls != 8 {
+		t.Fatalf("host calls=%d want=8", calls)
 	}
 }
 

@@ -1731,6 +1731,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if !validRootedTable {
 			return nil, joinPrimary(fmt.Errorf("compile: invalid rooted table receipt"), compiled.Close())
 		}
+		rootedImportDigest, validRootedImports := rv64RootedImportDigest(compiled)
+		if !validRootedImports {
+			return nil, joinPrimary(fmt.Errorf("compile: invalid rooted import receipt"), compiled.Close())
+		}
 		compiled.validateMemo.rv64FreshRootedGC = true
 		compiled.validateMemo.rv64FreshRootedGCDigest = sha256.Sum256(compiled.code)
 		compiled.validateMemo.rv64FreshRootedGCReserveMax = compiled.MemMaxPages
@@ -1738,6 +1742,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		compiled.validateMemo.rv64FreshRootedGCExportDigest = rootedExportDigest
 		compiled.validateMemo.rv64FreshRootedGCGlobalDigest = rootedGlobalDigest
 		compiled.validateMemo.rv64FreshRootedGCTableDigest = rootedTableDigest
+		compiled.validateMemo.rv64FreshRootedGCImportDigest = rootedImportDigest
 		compiled.validateMemo.rv64FreshRootedGCHasStart = compiled.HasStart
 		if compiled.HasStart {
 			compiled.validateMemo.rv64FreshRootedGCStartLocal = uint32(compiled.StartLocalFunc)

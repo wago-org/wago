@@ -72,6 +72,9 @@ func resumeNative(ctrl, stack uintptr) {
 
 const registerFixedHostCtrlFrames = true
 
+var _ [abi.RV64SyncHostCallSavedBytes - hcTrampoline]byte
+var _ [hcTrampoline - abi.RV64SyncHostCallSavedBytes]byte
+
 // Unknown frames may only be activation-owned fixed frames on this Engine's
 // live foreign stack. Authenticate before constructing a slice or reading wire
 // counts; registered instance frames keep their independently known lengths.

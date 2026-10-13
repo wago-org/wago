@@ -3,6 +3,8 @@ package wago
 import (
 	"crypto/sha256"
 	"encoding/binary"
+
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 // compactActiveData is an immutable execution-only representation. Public
@@ -35,6 +37,73 @@ func (c *Compiled) activeDataAt(index int) DataInit {
 	}
 	d := c.compactData.records[index]
 	return DataInit{MemoryIndex: d.memoryIndex, Offset: OffsetInit{Base: d.offset}, Bytes: c.compactData.bytes[d.start:d.end:d.end]}
+}
+
+// rv64RootedImportDigest authenticates the bounded numeric host boundary used
+// by freshly compiled generic rooted-GC modules. The exact module/name split is
+// part of the receipt: concatenated import keys alone cannot distinguish names
+// containing dots. Imported signatures remain reference-free until collector
+// ownership can cross the public host ABI.
+func rv64RootedImportDigest(c *Compiled) ([32]byte, bool) {
+	if c == nil || c.NumImports < 0 || c.NumImports > 4 || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports ||
+		c.dynamicImports != (c.NumImports != 0) || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
+		return [32]byte{}, false
+	}
+	functionEnds, _, _, _, exact := c.importModuleEndSections()
+	if !exact || len(functionEnds) != c.NumImports {
+		return [32]byte{}, false
+	}
+	h := sha256.New()
+	var word [8]byte
+	binary.LittleEndian.PutUint32(word[:4], uint32(c.NumImports))
+	_, _ = h.Write(word[:4])
+	remaining := uint64(1 << 20)
+	for i := range c.Imports {
+		key, moduleEnd := c.Imports[i], functionEnds[i]
+		if moduleEnd == 0 || validateImportModuleEnd(key, moduleEnd) != nil || uint64(len(key)) > remaining {
+			return [32]byte{}, false
+		}
+		remaining -= uint64(len(key))
+		binary.LittleEndian.PutUint64(word[:], uint64(len(key)))
+		_, _ = h.Write(word[:])
+		_, _ = h.Write([]byte(key))
+		binary.LittleEndian.PutUint64(word[:], moduleEnd)
+		_, _ = h.Write(word[:])
+
+		sig := &c.importFuncSigs[i]
+		if !sig.HasTypeIndex || sig.unsafeCrossTail || uint64(sig.TypeIndex) >= uint64(len(c.Types)) || len(sig.Params) > coreruntime.MaxHostArity || len(sig.Results) > coreruntime.MaxHostArity {
+			return [32]byte{}, false
+		}
+		typ := &c.Types[sig.TypeIndex]
+		if typ.Kind != CompositeTypeFunction || len(sig.Params) != len(typ.Params) || len(sig.Results) != len(typ.Results) {
+			return [32]byte{}, false
+		}
+		binary.LittleEndian.PutUint32(word[:4], sig.TypeIndex)
+		_, _ = h.Write(word[:4])
+		binary.LittleEndian.PutUint64(word[:], c.FuncTypeID[i])
+		_, _ = h.Write(word[:])
+		for pair, values := range [][]ValType{sig.Params, sig.Results} {
+			binary.LittleEndian.PutUint32(word[:4], uint32(len(values)))
+			_, _ = h.Write(word[:4])
+			exactValues := typ.Params
+			if pair != 0 {
+				exactValues = typ.Results
+			}
+			for j, value := range values {
+				if value != ValI32 && value != ValI64 && value != ValF32 && value != ValF64 {
+					return [32]byte{}, false
+				}
+				abi, ok := exactValues[j].ABIType(c.Types)
+				if !ok || abi != value {
+					return [32]byte{}, false
+				}
+				_, _ = h.Write([]byte{byte(value)})
+			}
+		}
+	}
+	var digest [32]byte
+	copy(digest[:], h.Sum(nil))
+	return digest, true
 }
 
 // rv64RootedActiveDataDigest authenticates the exact compiler-produced data

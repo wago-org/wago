@@ -33,10 +33,17 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	structHelpers, arrayHelpers := structProduct == stagedGCStructGeneric, arrayProduct == stagedGCArrayProductGeneric
 	if structProduct != 0 && !structHelpers || arrayProduct != 0 && !arrayHelpers || !structHelpers && !arrayHelpers ||
 		c.usesGCStructHelpers() != structHelpers || c.usesGCArrayHelpers() != arrayHelpers || c.syncHostSlots < 4 ||
-		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports != 0 || len(c.Imports) != 0 ||
-		len(c.importFuncSigs) != 0 || c.tableCount() > 2 || c.memoryCount() > 1 ||
+		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports < 0 || c.NumImports > 4 || len(c.Imports) != c.NumImports ||
+		len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports != 0) || c.tableCount() > 2 || c.memoryCount() > 1 ||
 		len(c.GlobalImports) != 0 || len(c.Globals) > 256 || len(c.Elems) > 256 ||
 		len(c.passiveElems) > 256 || len(c.PassiveData) > 256 {
+		return false
+	}
+	if c.NumImports != 0 && (c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.HasStart) {
+		return false
+	}
+	importDigest, validImports := rv64RootedImportDigest(c)
+	if !validImports || importDigest != memo.rv64FreshRootedGCImportDigest {
 		return false
 	}
 	if c.HasStart != memo.rv64FreshRootedGCHasStart {
@@ -241,7 +248,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			return false
 		}
 	}
-	if len(c.Funcs) != len(c.FuncTypeID) {
+	if len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return false
 	}
 	structural := &wasm.Module{Types: make([]wasm.RecType, len(c.Types))}
@@ -336,8 +343,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		}
 		structural.Types[i] = wasm.RecType{SubTypes: []wasm.SubType{{Final: true, Comp: comp}}}
 	}
-	for function := range c.Funcs {
-		sig := &c.Funcs[function]
+	validateFunction := func(sig *FuncSig, ordinal int) bool {
 		if !sig.HasTypeIndex || int(sig.TypeIndex) >= len(c.Types) {
 			return false
 		}
@@ -346,7 +352,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			return false
 		}
 		key, ok := structural.StructuralTypeKeyChecked(sig.TypeIndex)
-		if !ok || c.FuncTypeID[function] != key {
+		if !ok || ordinal < 0 || ordinal >= len(c.FuncTypeID) || c.FuncTypeID[ordinal] != key {
 			return false
 		}
 		for i, exact := range typ.Params {
@@ -361,12 +367,24 @@ func rv64FreshRootedGC(c *Compiled) bool {
 				return false
 			}
 		}
+		return true
 	}
-	for _, function := range c.Exports {
-		if function < 0 || function >= len(c.Funcs) {
+	for function := range c.importFuncSigs {
+		if !validateFunction(&c.importFuncSigs[function], function) {
 			return false
 		}
-		typ := &c.Types[c.Funcs[function].TypeIndex]
+	}
+	for function := range c.Funcs {
+		if !validateFunction(&c.Funcs[function], c.NumImports+function) {
+			return false
+		}
+	}
+	for _, function := range c.Exports {
+		local := function - c.NumImports
+		if local < 0 || local >= len(c.Funcs) {
+			return false
+		}
+		typ := &c.Types[c.Funcs[local].TypeIndex]
 		for _, values := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
 			for _, value := range values {
 				if value.Kind > ValueTypeF64 || value.Ref != (ReferenceTypeDescriptor{}) {

@@ -1362,6 +1362,7 @@ type validateMemo struct {
 	rv64FreshRootedGCExportDigest [32]byte
 	rv64FreshRootedGCGlobalDigest [32]byte
 	rv64FreshRootedGCTableDigest  [32]byte
+	rv64FreshRootedGCImportDigest [32]byte
 	rv64FreshRootedGCHasStart     bool
 	rv64FreshRootedGCStartLocal   uint32
 	structuralCallIdentities      atomic.Pointer[structuralCallIdentityCache]

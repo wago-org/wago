@@ -6,9 +6,11 @@ import (
 	"bytes"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 const maxRootedScalarArrayFixed = 254
+const maxRootedScalarHostImports = 4
 
 // admitRV64GCRootedScalarModule is the first source-shape admission shared by
 // generic GC programs instead of a byte-for-byte product fixture. It keeps the
@@ -18,11 +20,36 @@ const maxRootedScalarArrayFixed = 254
 // authenticated independently by validateGCFrameRootPlans.
 func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	if m == nil || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions ||
-		len(m.Imports) != 0 || len(m.Tables) > 2 || len(m.Memories) > 1 || len(m.Globals) > 256 ||
+		len(m.Tables) > 2 || len(m.Memories) > 1 || len(m.Globals) > 256 ||
 		len(m.Elements) > 256 || len(m.Data) > 256 || len(m.Tags) != 0 ||
 		len(m.StringRefs) != 0 || len(m.Customs) != 0 || m.HasNameMetadata() ||
 		m.BranchHints != nil || m.UsesCompactImports {
 		return false
+	}
+	importedFunctions := m.ImportedFuncCount()
+	if importedFunctions != len(m.Imports) || importedFunctions > maxRootedScalarHostImports || importedFunctions+len(m.Code) > MaxFunctions {
+		return false
+	}
+	if importedFunctions != 0 {
+		// The first generic host boundary is deliberately numeric and table-free.
+		// Imported references, starts and table publication have separate ownership
+		// contracts and must not become reachable through this admission step.
+		if len(m.Tables) != 0 || len(m.Elements) != 0 || m.Start != nil {
+			return false
+		}
+		for i := range m.Imports {
+			ft, ok := m.ImportFuncType(i)
+			if !ok || len(ft.Params) > coreruntime.MaxHostArity || len(ft.Results) > coreruntime.MaxHostArity {
+				return false
+			}
+			for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
+				for _, typ := range values {
+					if !scalarType(typ, true) {
+						return false
+					}
+				}
+			}
+		}
 	}
 	if m.DataCount != nil && (uint64(*m.DataCount) != uint64(len(m.Data)) || *m.DataCount > 256) {
 		return false
@@ -138,6 +165,9 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		export := &m.Exports[i]
 		switch export.Index.Kind {
 		case wasm.ExternFunc:
+			if uint64(export.Index.Index) < uint64(importedFunctions) || uint64(export.Index.Index) >= uint64(importedFunctions+len(m.FuncTypes)) {
+				return false
+			}
 		case wasm.ExternMem:
 			if len(m.Memories) != 1 || export.Index.Index != 0 {
 				return false
@@ -250,14 +280,14 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	// Reference values are private collector carriers. The public host adapter
 	// remains scalar-only until it has an independently qualified ownership ABI.
 	for i := range m.Exports {
-		if m.Exports[i].Index.Kind == wasm.ExternMem {
+		if m.Exports[i].Index.Kind == wasm.ExternMem || m.Exports[i].Index.Kind == wasm.ExternGlobal {
 			continue
 		}
 		index := m.Exports[i].Index.Index
-		if uint64(index) >= uint64(len(m.FuncTypes)) {
+		if uint64(index) < uint64(importedFunctions) || uint64(index) >= uint64(importedFunctions+len(m.FuncTypes)) {
 			return false
 		}
-		ft, ok := m.TypeFunc(m.FuncTypes[index].Index)
+		ft, ok := m.TypeFunc(m.FuncTypes[index-uint32(importedFunctions)].Index)
 		if !ok {
 			return false
 		}
@@ -278,7 +308,7 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 	}
 	r := wasm.ReaderFrom(data[8:])
 	const required = uint16(1<<1 | 1<<3 | 1<<7 | 1<<10)
-	const allowed = required | 1<<4 | 1<<5 | 1<<6 | 1<<8 | 1<<9 | 1<<11 | 1<<12
+	const allowed = required | 1<<2 | 1<<4 | 1<<5 | 1<<6 | 1<<8 | 1<<9 | 1<<11 | 1<<12
 	var seen uint16
 	var previousRank byte
 	for r.HasNext() {
