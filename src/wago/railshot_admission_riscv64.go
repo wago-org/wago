@@ -1333,49 +1333,68 @@ func rv64ScalarHostSignature(sig FuncSig) error {
 // Reject incompatible storage/targets before executable mapping or element writes.
 // A temporary physical lease makes row authentication safe even during retirement.
 func rv64ValidateResolvedTable(c *Compiled, imports resolvedImports, store *referenceStore) error {
-	def, imported := c.tableImportAt(0)
-	if !imported {
+	importCount := c.tableImportCount()
+	if importCount == 0 {
 		return nil
 	}
-	table, ok := imports.table(c.tableImportBindingKey(0))
-	if !ok || table == nil {
-		return fmt.Errorf("missing imported table %q", def.Key)
-	}
-	exact, err := c.tableExactType(0)
-	if err != nil {
-		return err
-	}
-	if err := table.validateImportWithCollector(ValFuncRef, exact, c.Types, store, nil, def.Addr64); err != nil {
-		return err
-	}
-	// The descriptor itself also needs a lease: host tables have no instance root.
-	if err := table.attachImporterWithCollector(ValFuncRef, exact, c.Types, store, nil, def.Addr64); err != nil {
-		return err
-	}
-	defer table.detachImporter(store)
+	tables := make([]*Table, 0, importCount)
+	// The descriptors themselves also need leases: host tables have no instance
+	// root. Balance every successful acquisition after the native scan releases
+	// its transient owner roots.
+	defer func() {
+		for i := len(tables) - 1; i >= 0; i-- {
+			tables[i].detachImporter(store)
+		}
+	}()
 	var roots rv64NativeTableTargets
 	// Final-root release can reenter native execution. Unlock first.
 	defer roots.release()
+	for tableIndex := 0; tableIndex < importCount; tableIndex++ {
+		def, imported := c.tableImportAt(tableIndex)
+		if !imported {
+			return fmt.Errorf("%w: imported table directory %d is missing", railshot.ErrUnsupported, tableIndex)
+		}
+		table, ok := imports.table(c.tableImportBindingKey(tableIndex))
+		if !ok || table == nil {
+			return fmt.Errorf("missing imported table %q", def.Key)
+		}
+		exact, err := c.tableExactType(tableIndex)
+		if err != nil {
+			return err
+		}
+		if err := table.validateImportWithCollector(ValFuncRef, exact, c.Types, store, nil, def.Addr64); err != nil {
+			return fmt.Errorf("imported table %d: %w", tableIndex, err)
+		}
+		if err := table.attachImporterWithCollector(ValFuncRef, exact, c.Types, store, nil, def.Addr64); err != nil {
+			return fmt.Errorf("imported table %d: %w", tableIndex, err)
+		}
+		tables = append(tables, table)
+	}
 	nativeExecutionMu.Lock()
 	defer nativeExecutionMu.Unlock()
 	edges := 0
-	if err := roots.tableRoots(table, &edges); err != nil {
-		return fmt.Errorf("%w: %v", railshot.ErrUnsupported, err)
-	}
-	table.owner.mu.Lock()
-	table.mu.Lock()
-	size, capacity := uint64(binary.LittleEndian.Uint32(table.desc)), uint64(binary.LittleEndian.Uint32(table.desc[4:]))
-	valid := size >= def.Min && size <= capacity && capacity <= railshot.MaxOwnedTableEntries && 8+capacity*coreruntime.TableEntryBytes <= uint64(len(table.desc)) && (!def.HasMax || table.owner.declaredHasMax && capacity <= def.Max)
-	table.mu.Unlock()
-	table.owner.mu.Unlock()
-	if !valid {
-		return fmt.Errorf("%w: imported table capacity/limits/extent", railshot.ErrUnsupported)
+	for tableIndex, table := range tables {
+		def, _ := c.tableImportAt(tableIndex)
+		if err := roots.tableRoots(table, &edges); err != nil {
+			return fmt.Errorf("%w: imported table %d: %v", railshot.ErrUnsupported, tableIndex, err)
+		}
+		table.owner.mu.Lock()
+		table.mu.Lock()
+		size, capacity := uint64(binary.LittleEndian.Uint32(table.desc)), uint64(binary.LittleEndian.Uint32(table.desc[4:]))
+		valid := size >= def.Min && size <= capacity && capacity <= railshot.MaxOwnedTableEntries && 8+capacity*coreruntime.TableEntryBytes <= uint64(len(table.desc)) && (!def.HasMax || table.owner.declaredHasMax && capacity <= def.Max)
+		table.mu.Unlock()
+		table.owner.mu.Unlock()
+		if !valid {
+			return fmt.Errorf("%w: imported table %d capacity/limits/extent", railshot.ErrUnsupported, tableIndex)
+		}
 	}
 	if err := roots.validateReachable(); err != nil {
 		return fmt.Errorf("%w: %v", railshot.ErrUnsupported, err)
 	}
-	if err := roots.validateTable(table.desc, coreruntime.TableEntryBytes); err != nil {
-		return fmt.Errorf("%w: %v", railshot.ErrUnsupported, err)
+	for tableIndex, table := range tables {
+		if err := roots.validateTable(table.desc, coreruntime.TableEntryBytes); err != nil {
+			return fmt.Errorf("%w: imported table %d: %v", railshot.ErrUnsupported, tableIndex, err)
+		}
 	}
 	return nil
 }

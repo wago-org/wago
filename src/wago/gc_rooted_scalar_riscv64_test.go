@@ -2278,6 +2278,30 @@ func rootedScalarImportedTableModule(exportTable bool) []byte {
 	)
 }
 
+func rootedScalarTwoImportedTablesModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	tableImport := func(name string) []byte {
+		return append(append(wasmtest.Name("env"), wasmtest.Name(name)...), byte(wasm.ExternTable), 0x70, 0x01, 0x01, 0x02)
+	}
+	caller := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x41, 0x00, 0x11, 0x01, 0x01,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(2, wasmtest.Vec(tableImport("first"), tableImport("second"))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(caller))), caller...))),
+	)
+}
+
 func rootedScalarImportedTableProviderModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
@@ -2404,6 +2428,101 @@ func TestRV64RootedScalarImportedTableExecutes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRV64RootedScalarTwoImportedTablesExecute(t *testing.T) {
+	source := rootedScalarTwoImportedTablesModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded rooted two-imported-table module was not source-admitted")
+	}
+	consumerCode, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumerCode.Close()
+	view := consumerCode.executionView()
+	if !rv64FreshRootedGC(view) || view.tableImportCount() != 2 || view.tableCount() != 2 {
+		t.Fatalf("two-imported-table receipt=%t imports=%d tables=%d validation=%v", rv64FreshRootedGC(view), view.tableImportCount(), view.tableCount(), railshotValidateCompiled(view))
+	}
+	providerCode, err := Compile(rv64RootedScalarConfig(), rootedScalarImportedTableProviderModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer providerCode.Close()
+	rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
+	defer rt.Close()
+	providerModule, err := rt.Module(providerCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	providers := make([]*Instance, 2)
+	tables := make([]*Table, 2)
+	for i := range providers {
+		providers[i], err = rt.Instantiate(context.Background(), providerModule, WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}))
+		if err != nil {
+			providerModule.Close()
+			t.Fatal(err)
+		}
+		defer providers[i].Close()
+		tables[i], err = providers[i].ExportedTable("table")
+		if err != nil {
+			providerModule.Close()
+			t.Fatal(err)
+		}
+		defer tables[i].Close()
+	}
+	providerModule.Close()
+	consumerModule, err := rt.Module(consumerCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumer, err := rt.Instantiate(context.Background(), consumerModule,
+		WithImports(NewImports().Table("env", "first", tables[0]).Table("env", "second", tables[1])),
+		WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}),
+	)
+	consumerModule.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	if consumer.gc == nil || providers[0].gc != consumer.gc || providers[1].gc != consumer.gc {
+		t.Fatal("two imported tables did not join one Runtime GC domain")
+	}
+	for range 16 {
+		if got, err := consumer.Invoke("run"); err != nil || !slices.Equal(got, []uint64{58}) {
+			t.Fatalf("run()=%v err=%v want=[58]", got, err)
+		}
+	}
+}
+
+func TestRV64RootedScalarSecondImportedTableValidatedBeforePublication(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarTwoImportedTablesModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	first, err := NewTable(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := NewTable(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	binary.LittleEndian.PutUint64(second.desc[8:], 1)
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		Imports: NewImports().Table("env", "first", first).Table("env", "second", second),
+		GC:      GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if instance != nil {
+		_ = instance.Close()
+		t.Fatal("malformed second imported table was published")
+	}
+	if err == nil || !strings.Contains(err.Error(), "imported table 1") {
+		t.Fatalf("malformed second imported table error=%v", err)
 	}
 }
 
