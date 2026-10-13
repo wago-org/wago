@@ -2545,6 +2545,166 @@ func TestRV64RootedSelfRecursiveStructExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarMutuallyRecursiveStructModule() []byte {
+	body := []byte{
+		0x00,
+		0xd0, 0x00, 0xfb, 0x00, 0x01, 0x24, 0x01,
+		0x23, 0x01, 0xfb, 0x00, 0x00, 0x24, 0x00,
+		0x23, 0x01, 0x23, 0x00, 0xfb, 0x05, 0x01, 0x00,
+		0x23, 0x00, 0xfb, 0x02, 0x00, 0x00, 0xfb, 0x02, 0x01, 0x00, 0xd1,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{
+				0x4e, 0x02,
+				0x5f, 0x01, 0x63, 0x01, 0x01,
+				0x5f, 0x01, 0x63, 0x00, 0x01,
+			},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(6, wasmtest.Vec(
+			[]byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b},
+			[]byte{0x63, 0x01, 0x01, 0xd0, 0x01, 0x0b},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedMutuallyRecursiveStructsExecute(t *testing.T) {
+	source := rootedScalarMutuallyRecursiveStructModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("mutually recursive struct module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Types) < 3 || view.Types[0].RecGroup != 0 || view.Types[1].RecGroup != 0 || view.Types[2].RecGroup != 1 ||
+		len(view.Types[0].Fields) != 1 || len(view.Types[1].Fields) != 1 ||
+		view.Types[0].Fields[0].Storage.Value.Ref.Heap.TypeIndex != 1 || view.Types[1].Fields[0].Storage.Value.Ref.Heap.TypeIndex != 0 {
+		t.Fatalf("mutually recursive receipt=%t types=%+v validation=%v", rv64FreshRootedGC(view), view.Types, railshotValidateCompiled(view))
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"split-group": func(candidate *Compiled) {
+			candidate.Types[1].RecGroup = 1
+		},
+		"field-target": func(candidate *Compiled) {
+			candidate.Types[0].Fields = slices.Clone(candidate.Types[0].Fields)
+			candidate.Types[0].Fields[0].Storage.Value.Ref.Heap.TypeIndex = 0
+		},
+		"recursive-exact": func(candidate *Compiled) {
+			candidate.Types[0].Fields = slices.Clone(candidate.Types[0].Fields)
+			candidate.Types[0].Fields[0].Storage.Value.Ref.Exact = true
+		},
+	} {
+		t.Run("receipt-"+name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			candidate.Types = slices.Clone(view.Types)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated recursive group retained generic receipt")
+			}
+		})
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{0}) {
+		t.Fatalf("run()=%v err=%v want=[0]", got, err)
+	}
+	if err = instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	a := native.Ref(uint32(readGlobalObject(instance.globalCells[0], instance.c.Globals[0].Type)))
+	b, err := instance.gc.StructGet(a, 0)
+	if err != nil || b.Ref == 0 {
+		t.Fatalf("A.b=%+v, %v", b, err)
+	}
+	back, err := instance.gc.StructGet(b.Ref, 0)
+	if err != nil || back.Ref != a {
+		t.Fatalf("A.b.a=%+v, %v want=%v", back, err, a)
+	}
+}
+
+func rootedScalarMutuallyRecursiveStructArrayModule() []byte {
+	body := []byte{
+		0x00,
+		0xd0, 0x00, 0x41, 0x01, 0xfb, 0x06, 0x01, 0x24, 0x01,
+		0x23, 0x01, 0xfb, 0x00, 0x00, 0x24, 0x00,
+		0x23, 0x01, 0x41, 0x00, 0x23, 0x00, 0xfb, 0x0e, 0x01,
+		0x23, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x41, 0x00, 0xfb, 0x0b, 0x01, 0xd1,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{
+				0x4e, 0x02,
+				0x5f, 0x01, 0x63, 0x01, 0x01,
+				0x5e, 0x63, 0x00, 0x01,
+			},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(6, wasmtest.Vec(
+			[]byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b},
+			[]byte{0x63, 0x01, 0x01, 0xd0, 0x01, 0x0b},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedMutuallyRecursiveStructArrayExecutes(t *testing.T) {
+	source := rootedScalarMutuallyRecursiveStructArrayModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("mutually recursive struct/array module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Types) < 3 || view.Types[0].RecGroup != 0 || view.Types[1].RecGroup != 0 ||
+		view.Types[0].Kind != CompositeTypeStruct || view.Types[1].Kind != CompositeTypeArray ||
+		view.Types[0].Fields[0].Storage.Value.Ref.Heap.TypeIndex != 1 || view.Types[1].Array.Storage.Value.Ref.Heap.TypeIndex != 0 {
+		t.Fatalf("recursive struct/array receipt=%t types=%+v validation=%v", rv64FreshRootedGC(view), view.Types, railshotValidateCompiled(view))
+	}
+	candidate := cloneCompiledMetadata(view)
+	candidate.Types = slices.Clone(view.Types)
+	candidate.Types[1].Array.Storage.Value.Ref.Exact = true
+	if rv64FreshRootedGC(candidate) {
+		t.Fatal("exact recursive array element retained generic receipt")
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{0}) {
+		t.Fatalf("run()=%v err=%v want=[0]", got, err)
+	}
+	if err = instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	a := native.Ref(uint32(readGlobalObject(instance.globalCells[0], instance.c.Globals[0].Type)))
+	b, err := instance.gc.StructGet(a, 0)
+	if err != nil || b.Ref == 0 {
+		t.Fatalf("A.b=%+v, %v", b, err)
+	}
+	back, err := instance.gc.ArrayGet(b.Ref, 0)
+	if err != nil || back.Ref != a {
+		t.Fatalf("A.b[0]=%+v, %v want=%v", back, err, a)
+	}
+}
+
 func rootedScalarSelfRecursiveArrayModule() []byte {
 	body := []byte{
 		0x00,

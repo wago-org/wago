@@ -406,6 +406,17 @@ func (m *Module) subtypeByTypeIdx(idx TypeIdx) (*SubType, bool) {
 	return st, ok
 }
 
+// TypeSubType returns the stored subtype at a flattened module type index.
+// The returned pointer aliases immutable module storage. The module's cached
+// type directory keeps lookup constant-time for nontrivial recursive-group
+// directories.
+func (m *Module) TypeSubType(typeIdx uint32) (*SubType, bool) {
+	if m == nil {
+		return nil, false
+	}
+	return m.subtypeByTypeIdx(TypeIdx{Index: typeIdx})
+}
+
 //go:noinline
 func (m *Module) subtypeByTypeIdxWithRecGroup(idx TypeIdx) (*SubType, int, bool) {
 	if idx.Rec {

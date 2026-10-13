@@ -51,18 +51,22 @@ func moduleUsesSWAR(m *wasm.Module) (bool, error) {
 		return false, unsupported("SWAR selector memory/import count bound")
 	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	flatTypes := 0
 	for _, group := range m.Types {
-		if len(group.SubTypes) != 1 {
-			return false, unsupported("decoded type group")
+		flatTypes += len(group.SubTypes)
+		if flatTypes > MaxFunctions {
+			return false, unsupported("decoded type directory bound")
 		}
-		sig := &group.SubTypes[0].Comp
-		if len(sig.Params) > 256 || len(sig.Results) > 256 {
-			return false, unsupported("decoded signature bound")
-		}
-		for _, list := range [][]wasm.ValType{sig.Params, sig.Results} {
-			for _, typ := range list {
-				if wasm.EqualValType(typ, wasm.V128) {
-					return true, nil
+		for subtypeIndex := range group.SubTypes {
+			sig := &group.SubTypes[subtypeIndex].Comp
+			if len(sig.Params) > 256 || len(sig.Results) > 256 {
+				return false, unsupported("decoded signature bound")
+			}
+			for _, list := range [][]wasm.ValType{sig.Params, sig.Results} {
+				for _, typ := range list {
+					if wasm.EqualValType(typ, wasm.V128) {
+						return true, nil
+					}
 				}
 			}
 		}

@@ -117,10 +117,13 @@ type moduleState struct {
 	functions         []functionSpec
 	importedFunctions int
 	types             []functionSpec
-	resultCapacity    int
-	capacity          int
-	memoryExports     map[string]bool
-	globalExports     map[string]int
+	// recTypeDir preserves recursive-group boundaries for the generic rooted GC
+	// profile with bounded O(1) flattened lookup.
+	recTypeDir     internalReferenceTypeDirectory
+	resultCapacity int
+	capacity       int
+	memoryExports  map[string]bool
+	globalExports  map[string]int
 }
 
 func (s *moduleState) publicReferenceCarrierType(index uint32) bool {

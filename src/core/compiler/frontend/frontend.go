@@ -619,7 +619,7 @@ func (p supportPass) types() error {
 					for fi := range st.Comp.Fields {
 						storage := st.Comp.Fields[fi].Storage()
 						if !storage.Packed() {
-							if err := p.aggregateStorageType(storage.Val(), fmt.Sprintf("%s field %d", ctx, fi)); err != nil {
+							if err := p.aggregateStorageType(storage.Val(), fmt.Sprintf("%s field %d", ctx, fi), gi); err != nil {
 								return err
 							}
 						}
@@ -627,7 +627,7 @@ func (p supportPass) types() error {
 				case wasm.CompArray:
 					storage := st.Comp.Array.Storage()
 					if !storage.Packed() {
-						if err := p.aggregateStorageType(storage.Val(), ctx+" array element"); err != nil {
+						if err := p.aggregateStorageType(storage.Val(), ctx+" array element", gi); err != nil {
 							return err
 						}
 					}
@@ -2399,11 +2399,27 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 // storage. Exactness changes validation and casting, but not the collector's
 // reference layout. Keep the exception local to aggregate fields/elements so
 // signatures, globals, and tables retain their existing capability gates.
-func (p supportPass) aggregateStorageType(v wasm.ValType, context string) error {
+func (p supportPass) aggregateStorageType(v wasm.ValType, context string, group int) error {
+	if v.Kind() == wasm.ValRef && p.supportedRecursiveAggregateStorageRef(v.Ref(), group) {
+		return nil
+	}
 	if v.Kind() == wasm.ValRef && p.supportedExactAggregateStorageRef(v.Ref()) {
 		return nil
 	}
 	return p.valType(v, context)
+}
+
+func (p supportPass) supportedRecursiveAggregateStorageRef(rt wasm.RefType, group int) bool {
+	if !p.feat.ReferenceTypes || !p.feat.TypedFunctionReferences || rt.Exact() || p.m == nil || group < 0 || group >= len(p.m.Types) {
+		return false
+	}
+	heap := rt.Heap()
+	if heap.Kind() != wasm.HeapTypeIndex || !heap.Type().Rec || int(heap.Type().Index) >= len(p.m.Types[group].SubTypes) {
+		return false
+	}
+	kind := p.m.Types[group].SubTypes[heap.Type().Index].Comp.Kind
+	return kind == wasm.CompStruct && (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts || p.feat.GCStructProducts) ||
+		kind == wasm.CompArray && (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts || p.feat.GCArrayProducts)
 }
 
 func (p supportPass) supportedExactAggregateStorageRef(rt wasm.RefType) bool {

@@ -410,10 +410,25 @@ func rv64RootedAggregateNullElement(expr wasm.Expr, ref wasm.RefType) bool {
 }
 
 func rv64RootedAggregateType(m *wasm.Module, index uint32) *wasm.CompType {
-	if m == nil || uint64(index) >= uint64(len(m.Types)) || len(m.Types[index].SubTypes) != 1 {
+	if m == nil {
 		return nil
 	}
-	return &m.Types[index].SubTypes[0].Comp
+	sub, ok := m.TypeSubType(index)
+	if !ok {
+		return nil
+	}
+	return &sub.Comp
+}
+
+func rv64RootedFlatTypeCount(m *wasm.Module) int {
+	if m == nil {
+		return 0
+	}
+	total := 0
+	for i := range m.Types {
+		total += len(m.Types[i].SubTypes)
+	}
+	return total
 }
 
 type rv64RootedAggregateParser struct {
@@ -424,27 +439,30 @@ type rv64RootedAggregateParser struct {
 
 func newRV64RootedAggregateParser(m *wasm.Module) *rv64RootedAggregateParser {
 	p := &rv64RootedAggregateParser{m: m}
-	if m == nil || len(m.Types) > railshot.MaxFunctions {
+	flatCount := rv64RootedFlatTypeCount(m)
+	if m == nil || flatCount == 0 || flatCount > railshot.MaxFunctions {
 		return p
 	}
-	children := make([][]uint32, len(m.Types))
-	roots := make([]uint32, 0, len(m.Types))
+	children := make([][]uint32, flatCount)
+	roots := make([]uint32, 0, flatCount)
+	flat := uint32(0)
 	for i := range m.Types {
-		if len(m.Types[i].SubTypes) != 1 {
-			return p
+		for member := range m.Types[i].SubTypes {
+			sub := &m.Types[i].SubTypes[member]
+			if len(sub.Supers) == 0 {
+				roots = append(roots, flat)
+				flat++
+				continue
+			}
+			if len(sub.Supers) != 1 || sub.Supers[0].Rec || sub.Supers[0].Index >= flat {
+				return p
+			}
+			children[sub.Supers[0].Index] = append(children[sub.Supers[0].Index], flat)
+			flat++
 		}
-		sub := &m.Types[i].SubTypes[0]
-		if len(sub.Supers) == 0 {
-			roots = append(roots, uint32(i))
-			continue
-		}
-		if len(sub.Supers) != 1 || sub.Supers[0].Rec || uint64(sub.Supers[0].Index) >= uint64(i) {
-			return p
-		}
-		children[sub.Supers[0].Index] = append(children[sub.Supers[0].Index], uint32(i))
 	}
-	p.entry = make([]uint32, len(m.Types))
-	p.exit = make([]uint32, len(m.Types))
+	p.entry = make([]uint32, flatCount)
+	p.exit = make([]uint32, flatCount)
 	clock := uint32(0)
 	var visit func(uint32)
 	visit = func(index uint32) {
@@ -458,12 +476,12 @@ func newRV64RootedAggregateParser(m *wasm.Module) *rv64RootedAggregateParser {
 	for _, root := range roots {
 		visit(root)
 	}
-	p.valid = clock == uint32(len(m.Types))
+	p.valid = clock == uint32(flatCount)
 	return p
 }
 
 func (p *rv64RootedAggregateParser) constructedSubtype(typeIndex uint32, required wasm.RefType) bool {
-	if p == nil || !p.valid || required.Exact() || required.Heap().Kind() != wasm.HeapTypeIndex || required.Heap().Type().Rec {
+	if p == nil || !p.valid || required.Heap().Kind() != wasm.HeapTypeIndex || required.Heap().Type().Rec {
 		return false
 	}
 	target := required.Heap().Type().Index
@@ -473,6 +491,9 @@ func (p *rv64RootedAggregateParser) constructedSubtype(typeIndex uint32, require
 	actualComp, targetComp := rv64RootedAggregateType(p.m, typeIndex), rv64RootedAggregateType(p.m, target)
 	if actualComp == nil || targetComp == nil || actualComp.Kind != targetComp.Kind || actualComp.Kind != wasm.CompStruct && actualComp.Kind != wasm.CompArray {
 		return false
+	}
+	if required.Exact() {
+		return typeIndex == target
 	}
 	return p.entry[target] <= p.entry[typeIndex] && p.entry[typeIndex] < p.exit[target]
 }

@@ -11,6 +11,7 @@ type internalReferenceTypes struct {
 	scalar            []functionSpec
 	swar              []*wasm.CompType
 	decoded           []wasm.RecType
+	rootedDirectory   internalReferenceTypeDirectory
 	decodedSWAR       bool
 	declarationExtern bool
 	// This exact execution permission admits nullable abstract extern carriers
@@ -81,6 +82,50 @@ type internalReferenceTypes struct {
 	gcRootedScalar bool
 }
 
+// internalReferenceTypeDirectory preserves flattened recursive-group identity
+// without rescanning the group list at each instruction. It aliases immutable
+// decoded module storage and is bounded by the rooted whole-module profile.
+type internalReferenceTypeDirectory struct {
+	flat      []*wasm.SubType
+	groupBase []uint32
+	groupSize []uint32
+}
+
+func newInternalReferenceTypeDirectory(types []wasm.RecType) (internalReferenceTypeDirectory, bool) {
+	total := 0
+	for i := range types {
+		total += len(types[i].SubTypes)
+		if total > MaxFunctions {
+			return internalReferenceTypeDirectory{}, false
+		}
+	}
+	if total == 0 {
+		return internalReferenceTypeDirectory{}, false
+	}
+	directory := internalReferenceTypeDirectory{
+		flat:      make([]*wasm.SubType, 0, total),
+		groupBase: make([]uint32, 0, total),
+		groupSize: make([]uint32, 0, total),
+	}
+	for groupIndex := range types {
+		group := &types[groupIndex]
+		base, size := uint32(len(directory.flat)), uint32(len(group.SubTypes))
+		for member := range group.SubTypes {
+			directory.flat = append(directory.flat, &group.SubTypes[member])
+			directory.groupBase = append(directory.groupBase, base)
+			directory.groupSize = append(directory.groupSize, size)
+		}
+	}
+	return directory, true
+}
+
+func (directory internalReferenceTypeDirectory) lookup(index uint32) (*wasm.SubType, uint32, uint32, bool) {
+	if uint64(index) >= uint64(len(directory.flat)) || len(directory.groupBase) != len(directory.flat) || len(directory.groupSize) != len(directory.flat) {
+		return nil, 0, 0, false
+	}
+	return directory.flat[index], directory.groupBase[index], directory.groupSize[index], true
+}
+
 func (types internalReferenceTypes) rootedStruct(index uint32) bool {
 	if !types.gcRootedScalar {
 		return false
@@ -111,17 +156,17 @@ func (types internalReferenceTypes) rootedCollectorReference(storage wasm.Storag
 	if heap.Kind() != wasm.HeapTypeIndex {
 		return false
 	}
+	target := heap.Type().Index
 	if heap.Type().Rec {
-		// The generic profile admits only compact singleton recursion groups.
-		// Resolve rec.0 to the containing aggregate without recursively asking
-		// rootedStruct/rootedArray to validate the same storage again.
-		return heap.Type().Index == 0 && (types.rootedStructType(owner) != nil || types.rootedAggregateType(owner, wasm.CompArray) != nil)
-	}
-	if heap.Type().Index >= owner {
+		_, groupBase, groupSize, ok := types.rootedDirectory.lookup(owner)
+		if !ok || target >= groupSize {
+			return false
+		}
+		target += groupBase
+	} else if target >= owner {
 		return false
 	}
-	target := heap.Type().Index
-	return types.rootedStruct(target) || types.rootedArray(target)
+	return types.rootedStructType(target) != nil || types.rootedAggregateType(target, wasm.CompArray) != nil
 }
 
 func (types internalReferenceTypes) rootedStructFieldReference(typeIndex, fieldIndex uint32) bool {
@@ -224,10 +269,11 @@ func (types internalReferenceTypes) rootedAggregateType(index uint32, kind wasm.
 		}
 		signature = types.scalar[index].signature
 	} else {
-		if uint64(index) >= uint64(len(types.decoded)) || len(types.decoded[index].SubTypes) != 1 {
+		sub, _, _, ok := types.rootedDirectory.lookup(index)
+		if !ok {
 			return nil
 		}
-		signature = &types.decoded[index].SubTypes[0].Comp
+		signature = &sub.Comp
 	}
 	if signature == nil || signature.Kind != kind {
 		return nil
@@ -280,7 +326,7 @@ func (types internalReferenceTypes) function(index uint32) bool {
 	var signature *wasm.CompType
 	vector := types.swar != nil || types.decodedSWAR
 	if types.scalar != nil {
-		if types.swar != nil || types.decoded != nil || types.decodedSWAR || len(types.scalar) > MaxFunctions || uint64(index) >= uint64(len(types.scalar)) {
+		if types.swar != nil || types.decoded != nil && !types.gcRootedScalar || types.decodedSWAR || len(types.scalar) > MaxFunctions || uint64(index) >= uint64(len(types.scalar)) {
 			return false
 		}
 		signature = types.scalar[index].signature
@@ -290,14 +336,19 @@ func (types internalReferenceTypes) function(index uint32) bool {
 		}
 		signature = types.swar[index]
 	} else {
-		if len(types.decoded) > MaxFunctions || uint64(index) >= uint64(len(types.decoded)) {
-			return false
+		var sub *wasm.SubType
+		if types.gcRootedScalar {
+			var ok bool
+			sub, _, _, ok = types.rootedDirectory.lookup(index)
+			if !ok {
+				return false
+			}
+		} else {
+			if len(types.decoded) > MaxFunctions || uint64(index) >= uint64(len(types.decoded)) || len(types.decoded[index].SubTypes) != 1 {
+				return false
+			}
+			sub = &types.decoded[index].SubTypes[0]
 		}
-		group := &types.decoded[index]
-		if len(group.SubTypes) != 1 {
-			return false
-		}
-		sub := &group.SubTypes[0]
 		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 			return false
 		}

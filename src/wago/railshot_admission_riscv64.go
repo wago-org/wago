@@ -227,7 +227,9 @@ func rv64FreshRootedGC(c *Compiled) bool {
 				}
 				return gc.StorageFuncRef, true
 			}
-			if int(ref.Heap.TypeIndex) > owner || int(ref.Heap.TypeIndex) >= len(c.Types) || ref.Exact && int(ref.Heap.TypeIndex) == owner {
+			targetIndex := int(ref.Heap.TypeIndex)
+			if targetIndex >= len(c.Types) || targetIndex > owner && c.Types[targetIndex].RecGroup != c.Types[owner].RecGroup ||
+				ref.Exact && c.Types[targetIndex].RecGroup == c.Types[owner].RecGroup {
 				return 0, false
 			}
 			target := c.Types[ref.Heap.TypeIndex]
@@ -256,13 +258,23 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		}
 	}
 	hasStruct, hasArray := false, false
+	groupSizes := make([]int, len(c.Types))
+	for i := range c.Types {
+		if int(c.Types[i].RecGroup) >= len(groupSizes) {
+			return false
+		}
+		groupSizes[c.Types[i].RecGroup]++
+	}
 	requiredSlots := 4
 	if arrayHelpers {
 		requiredSlots = rv64GenericArrayFixedSlots
 	}
 	for i, desc := range c.GCTypeDescs {
 		typ := &c.Types[i]
-		if typ.RecGroup != uint32(i) || typ.HasDescribes || typ.HasDescriptor {
+		if typ.HasDescribes || typ.HasDescriptor {
+			return false
+		}
+		if groupSizes[typ.RecGroup] > 1 && (!typ.Final || len(typ.Supers) != 0 || typ.Kind == CompositeTypeFunction) {
 			return false
 		}
 		if typ.Kind == CompositeTypeFunction {
@@ -349,8 +361,21 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	if len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return false
 	}
-	structural := &wasm.Module{Types: make([]wasm.RecType, len(c.Types))}
-	toWasmValue := func(value ValueTypeDescriptor) (wasm.ValType, bool) {
+	groupCount := int(c.Types[len(c.Types)-1].RecGroup) + 1
+	groupStarts := make([]uint32, groupCount)
+	groupMembers := make([]int, groupCount)
+	for i := range c.Types {
+		group := int(c.Types[i].RecGroup)
+		if groupMembers[group] == 0 {
+			groupStarts[group] = uint32(i)
+		}
+		groupMembers[group]++
+	}
+	structural := &wasm.Module{Types: make([]wasm.RecType, groupCount)}
+	for group := range structural.Types {
+		structural.Types[group].SubTypes = make([]wasm.SubType, 0, groupMembers[group])
+	}
+	toWasmValue := func(owner int, value ValueTypeDescriptor) (wasm.ValType, bool) {
 		switch value.Kind {
 		case ValueTypeI32:
 			return wasm.I32, true
@@ -362,7 +387,12 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			return wasm.F64, true
 		case ValueTypeReference:
 			if value.Ref.Heap.Defined {
-				return wasm.RefVal(wasm.Ref(value.Ref.Nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: value.Ref.Heap.TypeIndex}), value.Ref.Exact)), true
+				index := wasm.TypeIdx{Index: value.Ref.Heap.TypeIndex}
+				if c.Types[value.Ref.Heap.TypeIndex].RecGroup == c.Types[owner].RecGroup {
+					index.Index -= groupStarts[c.Types[owner].RecGroup]
+					index.Rec = true
+				}
+				return wasm.RefVal(wasm.Ref(value.Ref.Nullable, wasm.IndexedHeap(index), value.Ref.Exact)), true
 			}
 			heap, ok := rootedAbstract(value.Ref.Heap.Abstract)
 			if !ok || value.Ref.Heap.TypeIndex != 0 || value.Ref.Exact {
@@ -373,7 +403,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			return wasm.ValType{}, false
 		}
 	}
-	toWasmField := func(field FieldTypeDescriptor) (wasm.FieldType, bool) {
+	toWasmField := func(owner int, field FieldTypeDescriptor) (wasm.FieldType, bool) {
 		var storage wasm.StorageType
 		if field.Storage.Packed {
 			switch field.Storage.PackedType {
@@ -388,7 +418,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			!value.Ref.Exact && value.Ref.Heap.Abstract == AbstractHeapFunc && value.Ref.Heap.TypeIndex == 0 {
 			storage = wasm.StorageVal(wasm.RefVal(wasm.Ref(value.Ref.Nullable, wasm.AbsHeap(wasm.HeapFunc), false)))
 		} else {
-			value, ok := toWasmValue(field.Storage.Value)
+			value, ok := toWasmValue(owner, field.Storage.Value)
 			if !ok {
 				return wasm.FieldType{}, false
 			}
@@ -410,14 +440,14 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			comp.Results = make([]wasm.ValType, len(typ.Results))
 			for j := range typ.Params {
 				var ok bool
-				comp.Params[j], ok = toWasmValue(typ.Params[j])
+				comp.Params[j], ok = toWasmValue(i, typ.Params[j])
 				if !ok {
 					return false
 				}
 			}
 			for j := range typ.Results {
 				var ok bool
-				comp.Results[j], ok = toWasmValue(typ.Results[j])
+				comp.Results[j], ok = toWasmValue(i, typ.Results[j])
 				if !ok {
 					return false
 				}
@@ -427,7 +457,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			comp.Fields = make([]wasm.FieldType, len(typ.Fields))
 			for j := range typ.Fields {
 				var ok bool
-				comp.Fields[j], ok = toWasmField(typ.Fields[j])
+				comp.Fields[j], ok = toWasmField(i, typ.Fields[j])
 				if !ok {
 					return false
 				}
@@ -435,7 +465,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		case CompositeTypeArray:
 			comp.Kind = wasm.CompArray
 			var ok bool
-			comp.Array, ok = toWasmField(typ.Array)
+			comp.Array, ok = toWasmField(i, typ.Array)
 			if !ok {
 				return false
 			}
@@ -444,9 +474,15 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		}
 		sub := wasm.SubType{Final: typ.Final, HasPrefix: !typ.Final || len(typ.Supers) != 0, Comp: comp}
 		if len(typ.Supers) == 1 {
-			sub.Supers = []wasm.TypeIdx{{Index: typ.Supers[0]}}
+			index := wasm.TypeIdx{Index: typ.Supers[0]}
+			if c.Types[typ.Supers[0]].RecGroup == typ.RecGroup {
+				index.Index -= groupStarts[typ.RecGroup]
+				index.Rec = true
+			}
+			sub.Supers = []wasm.TypeIdx{index}
 		}
-		structural.Types[i] = wasm.RecType{SubTypes: []wasm.SubType{sub}}
+		group := typ.RecGroup
+		structural.Types[group].SubTypes = append(structural.Types[group].SubTypes, sub)
 	}
 	if err := wasm.ValidateModule(structural); err != nil {
 		return false

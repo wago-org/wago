@@ -182,27 +182,31 @@ func chargeDeclaredTypeBytes(m *wasm.Module, remaining *int) error {
 	if len(m.Types) > MaxFunctions || *remaining < 0 {
 		return unsupported("decoded declared type byte bound")
 	}
+	flatTypes := 0
 	for _, group := range m.Types {
-		if len(group.SubTypes) != 1 {
-			return unsupported("decoded declared type group")
+		flatTypes += len(group.SubTypes)
+		if flatTypes > MaxFunctions {
+			return unsupported("decoded declared type directory bound")
 		}
-		sig := &group.SubTypes[0].Comp
-		if len(sig.Params) > 256 || len(sig.Results) > 256 {
-			return unsupported("decoded declared type arity")
-		}
-		charge := 0
-		for _, list := range [][]wasm.ValType{sig.Params, sig.Results} {
-			for _, value := range list {
-				charge++
-				if value.Kind() == wasm.ValRef {
-					charge += 5
+		for subtypeIndex := range group.SubTypes {
+			sig := &group.SubTypes[subtypeIndex].Comp
+			if len(sig.Params) > 256 || len(sig.Results) > 256 {
+				return unsupported("decoded declared type arity")
+			}
+			charge := 0
+			for _, list := range [][]wasm.ValType{sig.Params, sig.Results} {
+				for _, value := range list {
+					charge++
+					if value.Kind() == wasm.ValRef {
+						charge += 5
+					}
 				}
 			}
+			if charge > *remaining {
+				return unsupported("decoded declared type byte bound")
+			}
+			*remaining -= charge
 		}
-		if charge > *remaining {
-			return unsupported("decoded declared type byte bound")
-		}
-		*remaining -= charge
 	}
 	return nil
 }

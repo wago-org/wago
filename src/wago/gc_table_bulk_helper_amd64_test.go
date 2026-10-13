@@ -243,6 +243,62 @@ func genericGCSelfRecursiveArrayModule() []byte {
 	)
 }
 
+func genericGCMutuallyRecursiveStructModule() []byte {
+	body := []byte{
+		0x00,
+		0xd0, 0x00, 0xfb, 0x00, 0x01, 0x24, 0x01,
+		0x23, 0x01, 0xfb, 0x00, 0x00, 0x24, 0x00,
+		0x23, 0x01, 0x23, 0x00, 0xfb, 0x05, 0x01, 0x00,
+		0x23, 0x00, 0xfb, 0x02, 0x00, 0x00, 0xfb, 0x02, 0x01, 0x00, 0xd1,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{
+				0x4e, 0x02,
+				0x5f, 0x01, 0x63, 0x01, 0x01,
+				0x5f, 0x01, 0x63, 0x00, 0x01,
+			},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(6, wasmtest.Vec(
+			[]byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b},
+			[]byte{0x63, 0x01, 0x01, 0xd0, 0x01, 0x0b},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func genericGCMutuallyRecursiveStructArrayModule() []byte {
+	body := []byte{
+		0x00,
+		0xd0, 0x00, 0x41, 0x01, 0xfb, 0x06, 0x01, 0x24, 0x01,
+		0x23, 0x01, 0xfb, 0x00, 0x00, 0x24, 0x00,
+		0x23, 0x01, 0x41, 0x00, 0x23, 0x00, 0xfb, 0x0e, 0x01,
+		0x23, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x41, 0x00, 0xfb, 0x0b, 0x01, 0xd1,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{
+				0x4e, 0x02,
+				0x5f, 0x01, 0x63, 0x01, 0x01,
+				0x5e, 0x63, 0x00, 0x01,
+			},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(6, wasmtest.Vec(
+			[]byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b},
+			[]byte{0x63, 0x01, 0x01, 0xd0, 0x01, 0x0b},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func genericGCExactAggregateStorageModule(array bool) []byte {
 	outer := []byte{0x5f, 0x01, 0x64, 0x62, 0x00, 0x00}
 	body := []byte{0x00,
@@ -492,6 +548,62 @@ func TestGenericGCSelfRecursiveArray(t *testing.T) {
 	leaf, err := instance.gc.ArrayGet(child.Ref, 0)
 	if err != nil || leaf.Ref != 0 {
 		t.Fatalf("self-recursive array leaf=%+v, %v", leaf, err)
+	}
+}
+
+func TestGenericGCMutuallyRecursiveStructs(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCMutuallyRecursiveStructModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{0}) {
+		t.Fatalf("run()=%v err=%v want=[0]", got, err)
+	}
+	if err = instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	a := gc.Ref(uint32(readGlobalObject(instance.globalCells[0], instance.c.Globals[0].Type)))
+	b, err := instance.gc.StructGet(a, 0)
+	if err != nil || b.Ref == 0 {
+		t.Fatalf("A.b=%+v, %v", b, err)
+	}
+	back, err := instance.gc.StructGet(b.Ref, 0)
+	if err != nil || back.Ref != a {
+		t.Fatalf("A.b.a=%+v, %v want=%v", back, err, a)
+	}
+}
+
+func TestGenericGCMutuallyRecursiveStructArray(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCMutuallyRecursiveStructArrayModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{0}) {
+		t.Fatalf("run()=%v err=%v want=[0]", got, err)
+	}
+	if err = instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	a := gc.Ref(uint32(readGlobalObject(instance.globalCells[0], instance.c.Globals[0].Type)))
+	b, err := instance.gc.StructGet(a, 0)
+	if err != nil || b.Ref == 0 {
+		t.Fatalf("A.b=%+v, %v", b, err)
+	}
+	back, err := instance.gc.ArrayGet(b.Ref, 0)
+	if err != nil || back.Ref != a {
+		t.Fatalf("A.b[0]=%+v, %v want=%v", back, err, a)
 	}
 }
 

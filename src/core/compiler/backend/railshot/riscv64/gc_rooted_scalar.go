@@ -321,98 +321,96 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	}
 	for i := range m.Types {
 		group := &m.Types[i]
-		if len(group.SubTypes) != 1 {
+		if len(group.SubTypes) == 0 || flatTypes+len(group.SubTypes) > MaxFunctions {
 			return false
 		}
-		sub := &group.SubTypes[0]
-		if sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
-			return false
-		}
-		aggregateSubtype := sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray
-		if !sub.HasPrefix {
-			if !sub.Final || len(sub.Supers) != 0 {
+		multi := len(group.SubTypes) > 1
+		for member := range group.SubTypes {
+			sub := &group.SubTypes[member]
+			if sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 				return false
 			}
-		} else if !aggregateSubtype || len(sub.Supers) > 1 {
-			return false
-		} else if len(sub.Supers) == 1 {
-			super := sub.Supers[0]
-			if super.Rec || int(super.Index) >= flatTypes || !admittedAggregates[super.Index] {
+			aggregateSubtype := sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray
+			if multi && (!aggregateSubtype || sub.HasPrefix || !sub.Final || len(sub.Supers) != 0) {
 				return false
 			}
-			superComp := rootedScalarAggregateType(m, super.Index)
-			if superComp == nil || superComp.Kind != sub.Comp.Kind {
-				return false
-			}
-		}
-		switch sub.Comp.Kind {
-		case wasm.CompStruct:
-			if len(sub.Comp.Fields) == 0 || len(sub.Comp.Fields) > 255 {
-				return false
-			}
-			for _, field := range sub.Comp.Fields {
-				storage := field.Storage()
-				if storage.Packed() {
-					if storage.Pack() != wasm.PackI8 && storage.Pack() != wasm.PackI16 {
-						return false
-					}
-				} else if !scalarType(storage.Val(), true) {
-					value := storage.Val()
-					if value.Kind() != wasm.ValRef {
-						return false
-					}
-					heap := value.Ref().Heap()
-					if !value.Ref().Exact() && heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapFunc {
-						continue
-					}
-					if heap.Kind() != wasm.HeapTypeIndex ||
-						(value.Ref().Exact() && heap.Type().Rec) ||
-						(heap.Type().Rec && (heap.Type().Index != 0 || !aggregateSubtype)) ||
-						(!heap.Type().Rec && (int(heap.Type().Index) >= flatTypes || !admittedAggregates[heap.Type().Index])) {
-						return false
-					}
-				}
-			}
-			admittedAggregates = append(admittedAggregates, true)
-			hasAggregate = true
-		case wasm.CompArray:
-			storage := sub.Comp.Array.Storage()
-			if storage.Packed() {
-				if storage.Pack() != wasm.PackI8 && storage.Pack() != wasm.PackI16 {
+			if !sub.HasPrefix {
+				if !sub.Final || len(sub.Supers) != 0 {
 					return false
 				}
-			} else if !scalarType(storage.Val(), true) {
+			} else if !aggregateSubtype || len(sub.Supers) > 1 {
+				return false
+			} else if len(sub.Supers) == 1 {
+				super := sub.Supers[0]
+				if super.Rec || int(super.Index) >= flatTypes || !admittedAggregates[super.Index] {
+					return false
+				}
+				superComp := rootedScalarAggregateType(m, super.Index)
+				if superComp == nil || superComp.Kind != sub.Comp.Kind {
+					return false
+				}
+			}
+			rootedStorage := func(storage wasm.StorageType) bool {
+				if storage.Packed() {
+					return storage.Pack() == wasm.PackI8 || storage.Pack() == wasm.PackI16
+				}
+				if scalarType(storage.Val(), true) {
+					return true
+				}
 				value := storage.Val()
 				if value.Kind() != wasm.ValRef {
 					return false
 				}
 				heap := value.Ref().Heap()
-				if !(!value.Ref().Exact() && heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapFunc) &&
-					(heap.Kind() != wasm.HeapTypeIndex ||
-						(value.Ref().Exact() && heap.Type().Rec) ||
-						(heap.Type().Rec && (heap.Type().Index != 0 || !aggregateSubtype)) ||
-						(!heap.Type().Rec && (int(heap.Type().Index) >= flatTypes || !admittedAggregates[heap.Type().Index]))) {
+				if !value.Ref().Exact() && heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapFunc {
+					return true
+				}
+				if heap.Kind() != wasm.HeapTypeIndex || value.Ref().Exact() && heap.Type().Rec {
 					return false
 				}
+				if heap.Type().Rec {
+					return int(heap.Type().Index) < len(group.SubTypes) &&
+						(group.SubTypes[heap.Type().Index].Comp.Kind == wasm.CompStruct || group.SubTypes[heap.Type().Index].Comp.Kind == wasm.CompArray)
+				}
+				return int(heap.Type().Index) < flatTypes && admittedAggregates[heap.Type().Index]
 			}
-			admittedAggregates = append(admittedAggregates, true)
-			hasAggregate = true
-		case wasm.CompFunc:
-			if len(sub.Comp.Params) > 256 || len(sub.Comp.Results) > 256 {
-				return false
-			}
-			for _, values := range [][]wasm.ValType{sub.Comp.Params, sub.Comp.Results} {
-				for _, typ := range values {
-					if !rootedValue(typ) {
+			switch sub.Comp.Kind {
+			case wasm.CompStruct:
+				if len(sub.Comp.Fields) == 0 || len(sub.Comp.Fields) > 255 {
+					return false
+				}
+				for _, field := range sub.Comp.Fields {
+					storage := field.Storage()
+					if !rootedStorage(storage) {
 						return false
 					}
 				}
+				admittedAggregates = append(admittedAggregates, true)
+				hasAggregate = true
+			case wasm.CompArray:
+				storage := sub.Comp.Array.Storage()
+				if !rootedStorage(storage) {
+					return false
+				}
+				admittedAggregates = append(admittedAggregates, true)
+				hasAggregate = true
+			case wasm.CompFunc:
+				if len(sub.Comp.Params) > 256 || len(sub.Comp.Results) > 256 {
+					return false
+				}
+				for _, values := range [][]wasm.ValType{sub.Comp.Params, sub.Comp.Results} {
+					for _, typ := range values {
+						if !rootedValue(typ) {
+							return false
+						}
+					}
+				}
+				admittedAggregates = append(admittedAggregates, false)
+			default:
+				return false
 			}
-			admittedAggregates = append(admittedAggregates, false)
-		default:
-			return false
+			flatTypes++
 		}
-		flatTypes++
 	}
 	if !hasAggregate || flatTypes > MaxFunctions || len(m.FuncTypes) != len(m.Code) {
 		return false
@@ -501,10 +499,25 @@ func rootedScalarAggregateNullExpression(expr wasm.Expr, ref wasm.RefType) bool 
 }
 
 func rootedScalarAggregateType(m *wasm.Module, index uint32) *wasm.CompType {
-	if m == nil || uint64(index) >= uint64(len(m.Types)) || len(m.Types[index].SubTypes) != 1 {
+	if m == nil {
 		return nil
 	}
-	return &m.Types[index].SubTypes[0].Comp
+	sub, ok := m.TypeSubType(index)
+	if !ok {
+		return nil
+	}
+	return &sub.Comp
+}
+
+func rootedScalarFlatTypeCount(m *wasm.Module) int {
+	if m == nil {
+		return 0
+	}
+	total := 0
+	for i := range m.Types {
+		total += len(m.Types[i].SubTypes)
+	}
+	return total
 }
 
 type rootedScalarAggregateParser struct {
@@ -515,27 +528,31 @@ type rootedScalarAggregateParser struct {
 
 func newRootedScalarAggregateParser(m *wasm.Module) *rootedScalarAggregateParser {
 	p := &rootedScalarAggregateParser{m: m}
-	if m == nil || len(m.Types) > MaxFunctions {
+	flatCount := rootedScalarFlatTypeCount(m)
+	if m == nil || flatCount == 0 || flatCount > MaxFunctions {
 		return p
 	}
-	children := make([][]uint32, len(m.Types))
-	roots := make([]uint32, 0, len(m.Types))
-	for i := range m.Types {
-		if len(m.Types[i].SubTypes) != 1 {
-			return p
+	children := make([][]uint32, flatCount)
+	roots := make([]uint32, 0, flatCount)
+	flat := uint32(0)
+	for gi := range m.Types {
+		group := &m.Types[gi]
+		for si := range group.SubTypes {
+			sub := &group.SubTypes[si]
+			if len(sub.Supers) == 0 {
+				roots = append(roots, flat)
+				flat++
+				continue
+			}
+			if len(sub.Supers) != 1 || sub.Supers[0].Rec || sub.Supers[0].Index >= flat {
+				return p
+			}
+			children[sub.Supers[0].Index] = append(children[sub.Supers[0].Index], flat)
+			flat++
 		}
-		sub := &m.Types[i].SubTypes[0]
-		if len(sub.Supers) == 0 {
-			roots = append(roots, uint32(i))
-			continue
-		}
-		if len(sub.Supers) != 1 || sub.Supers[0].Rec || uint64(sub.Supers[0].Index) >= uint64(i) {
-			return p
-		}
-		children[sub.Supers[0].Index] = append(children[sub.Supers[0].Index], uint32(i))
 	}
-	p.entry = make([]uint32, len(m.Types))
-	p.exit = make([]uint32, len(m.Types))
+	p.entry = make([]uint32, flatCount)
+	p.exit = make([]uint32, flatCount)
 	clock := uint32(0)
 	var visit func(uint32)
 	visit = func(index uint32) {
@@ -549,7 +566,7 @@ func newRootedScalarAggregateParser(m *wasm.Module) *rootedScalarAggregateParser
 	for _, root := range roots {
 		visit(root)
 	}
-	p.valid = clock == uint32(len(m.Types))
+	p.valid = clock == uint32(flatCount)
 	return p
 }
 
@@ -862,9 +879,9 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 	if err != nil || count == 0 || count > MaxFunctions {
 		return false
 	}
-	kinds := make([]byte, 0, count)
-	finals := make([]bool, 0, count)
-	valueTypes := func(owner uint32) bool {
+	kinds := make([]byte, 0, MaxFunctions)
+	finals := make([]bool, 0, MaxFunctions)
+	valueTypes := func(owner, groupBase, groupLimit uint32) bool {
 		n, err := r.U32()
 		if err != nil || n > 256 {
 			return false
@@ -893,13 +910,16 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 				}
 				continue
 			}
+			if uint64(heap) >= uint64(groupBase) && uint64(heap) < uint64(groupLimit) {
+				continue
+			}
 			if uint64(heap) >= uint64(owner) || kinds[heap] != 0x5f && kinds[heap] != 0x5e {
 				return false
 			}
 		}
 		return true
 	}
-	storageType := func(owner uint32, references, selfReference bool) bool {
+	storageType := func(owner, groupBase, groupLimit uint32, references bool) bool {
 		storage, err := r.Byte()
 		if err != nil {
 			return false
@@ -919,15 +939,30 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 			exact = true
 		}
 		heap, err := r.S33()
-		return err == nil && (!exact && heap == -16 || heap >= 0 && (!exact || uint64(heap) != uint64(owner)) && (selfReference && uint64(heap) == uint64(owner) || uint64(heap) < uint64(owner) && (kinds[heap] == 0x5f || kinds[heap] == 0x5e)))
+		if err != nil {
+			return false
+		}
+		if !exact && heap == -16 {
+			return true
+		}
+		if heap < 0 {
+			return false
+		}
+		if uint64(heap) >= uint64(groupBase) && uint64(heap) < uint64(groupLimit) {
+			return !exact
+		}
+		return uint64(heap) < uint64(owner) && (kinds[heap] == 0x5f || kinds[heap] == 0x5e)
 	}
-	for owner := uint32(0); owner < count; owner++ {
+	parseSubtype := func(owner, groupBase, groupLimit uint32, multi bool) bool {
 		form, err := r.Byte()
 		if err != nil {
 			return false
 		}
 		compForm, final, prefixed, superKind := form, true, false, byte(0)
 		if form == 0x4f || form == 0x50 {
+			if multi {
+				return false
+			}
 			prefixed, final = true, form == 0x4f
 			supers, err := r.U32()
 			if err != nil || supers > 1 {
@@ -952,7 +987,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 				return false
 			}
 			for range fields {
-				if !storageType(owner, true, true) {
+				if !storageType(owner, groupBase, groupLimit, true) {
 					return false
 				}
 				mut, err := r.Byte()
@@ -961,11 +996,11 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 				}
 			}
 		case 0x60:
-			if prefixed || !valueTypes(owner) || !valueTypes(owner) {
+			if multi || prefixed || !valueTypes(owner, groupBase, groupLimit) || !valueTypes(owner, groupBase, groupLimit) {
 				return false
 			}
 		case 0x5e:
-			if !storageType(owner, true, true) {
+			if !storageType(owner, groupBase, groupLimit, true) {
 				return false
 			}
 			mut, err := r.Byte()
@@ -973,7 +1008,6 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 				return false
 			}
 		default:
-			// Includes the explicit rec-group marker 0x4e.
 			return false
 		}
 		if superKind != 0 && compForm != superKind {
@@ -981,6 +1015,24 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 		}
 		kinds = append(kinds, compForm)
 		finals = append(finals, final)
+		return true
+	}
+	for range count {
+		groupBase := uint32(len(kinds))
+		members := uint32(1)
+		if marker, ok := r.Peek(); ok && marker == 0x4e {
+			_, _ = r.Byte()
+			members, err = r.U32()
+			if err != nil || members < 2 || uint64(groupBase)+uint64(members) > MaxFunctions {
+				return false
+			}
+		}
+		groupLimit := groupBase + members
+		for member := uint32(0); member < members; member++ {
+			if !parseSubtype(groupBase+member, groupBase, groupLimit, members > 1) {
+				return false
+			}
+		}
 	}
 	return !r.HasNext()
 }
@@ -991,10 +1043,11 @@ func rootedScalarHelperSlots(m *wasm.Module) int {
 		return slots
 	}
 	for _, group := range m.Types {
-		if len(group.SubTypes) != 1 || group.SubTypes[0].Comp.Kind != wasm.CompStruct {
-			continue
+		for i := range group.SubTypes {
+			if group.SubTypes[i].Comp.Kind == wasm.CompStruct {
+				slots = max(slots, len(group.SubTypes[i].Comp.Fields)+1)
+			}
 		}
-		slots = max(slots, len(group.SubTypes[0].Comp.Fields)+1)
 	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {

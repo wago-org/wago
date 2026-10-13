@@ -383,6 +383,185 @@ func TestRV64RootedSelfRecursiveStructCompiles(t *testing.T) {
 	}
 }
 
+func rv64RootedMutuallyRecursiveStructModule() []byte {
+	body := []byte{
+		0x00,
+		// B(null A) -> global B, then A(B) -> global A.
+		0xd0, 0x00, 0xfb, 0x00, 0x01, 0x24, 0x01,
+		0x23, 0x01, 0xfb, 0x00, 0x00, 0x24, 0x00,
+		// Close the object cycle by setting B.a = A.
+		0x23, 0x01, 0x23, 0x00, 0xfb, 0x05, 0x01, 0x00,
+		// Observe A.b.a as a non-null reference.
+		0x23, 0x00, 0xfb, 0x02, 0x00, 0x00, 0xfb, 0x02, 0x01, 0x00, 0xd1,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{
+				0x4e, 0x02,
+				0x5f, 0x01, 0x63, 0x01, 0x01, // A { mutable (ref null B) }
+				0x5f, 0x01, 0x63, 0x00, 0x01, // B { mutable (ref null A) }
+			},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(6, wasmtest.Vec(
+			[]byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b},
+			[]byte{0x63, 0x01, 0x01, 0xd0, 0x01, 0x0b},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedMutuallyRecursiveStructsCompile(t *testing.T) {
+	source := rv64RootedMutuallyRecursiveStructModule()
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
+		t.Fatal("mutually recursive fixture", err)
+	}
+	if len(m.Types) != 2 || len(m.Types[0].SubTypes) != 2 {
+		t.Fatalf("recursive groups=%d members=%d", len(m.Types), len(m.Types[0].SubTypes))
+	}
+	directory, ok := newInternalReferenceTypeDirectory(m.Types)
+	if !ok {
+		t.Fatal("build flattened recursive type directory")
+	}
+	for index, want := range []struct {
+		base, size uint32
+	}{{0, 2}, {0, 2}, {2, 1}} {
+		sub, base, size, found := directory.lookup(uint32(index))
+		if !found || sub == nil || base != want.base || size != want.size {
+			t.Fatalf("directory[%d]=%p/%d/%d/%t want base=%d size=%d", index, sub, base, size, found, want.base, want.size)
+		}
+	}
+	if _, _, _, found := directory.lookup(3); found {
+		t.Fatal("flattened recursive type directory accepted out-of-range index")
+	}
+	for member := range m.Types[0].SubTypes {
+		heap := m.Types[0].SubTypes[member].Comp.Fields[0].Storage().Val().Ref().Heap().Type()
+		if !heap.Rec || heap.Index != uint32(1-member) {
+			t.Fatalf("member %d recursive field=%+v", member, heap)
+		}
+	}
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("mutually recursive structs were not admitted")
+	}
+	if err = AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metadata.Descs) < 2 || !metadata.Descs[0].HasRefs || !metadata.Descs[1].HasRefs {
+		t.Fatalf("mutually recursive metadata=%+v", metadata.Descs)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(1)
+	if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve exact root plan")
+	}
+	plan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin exact root plan")
+	}
+	*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true}
+	if !plan.SetLiveMasks([]uint64{0, 0}, 2, 0) {
+		t.Fatal("install exact root liveness")
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 2 {
+		t.Fatalf("code=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
+	}
+}
+
+func rv64RootedMutuallyRecursiveStructArrayModule() []byte {
+	body := []byte{
+		0x00,
+		// B = array.new 1(null A, 1); A = struct.new 0(B).
+		0xd0, 0x00, 0x41, 0x01, 0xfb, 0x06, 0x01, 0x24, 0x01,
+		0x23, 0x01, 0xfb, 0x00, 0x00, 0x24, 0x00,
+		// Close the cycle with B[0] = A, then observe A.b[0].
+		0x23, 0x01, 0x41, 0x00, 0x23, 0x00, 0xfb, 0x0e, 0x01,
+		0x23, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x41, 0x00, 0xfb, 0x0b, 0x01, 0xd1,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{
+				0x4e, 0x02,
+				0x5f, 0x01, 0x63, 0x01, 0x01,
+				0x5e, 0x63, 0x00, 0x01,
+			},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(6, wasmtest.Vec(
+			[]byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b},
+			[]byte{0x63, 0x01, 0x01, 0xd0, 0x01, 0x0b},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedMutuallyRecursiveStructArrayCompile(t *testing.T) {
+	source := rv64RootedMutuallyRecursiveStructArrayModule()
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
+		t.Fatal("mutually recursive struct/array fixture", err)
+	}
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("mutually recursive struct/array group was not admitted")
+	}
+	if err = AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metadata.Descs) < 2 || !metadata.Descs[0].HasRefs || !metadata.Descs[1].HasRefs {
+		t.Fatalf("mutually recursive struct/array metadata=%+v", metadata.Descs)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(1)
+	if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve exact root plan")
+	}
+	plan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin exact root plan")
+	}
+	*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true}
+	if !plan.SetLiveMasks([]uint64{0, 0}, 2, 0) {
+		t.Fatal("install exact root liveness")
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, GCArrayHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 2 {
+		t.Fatalf("code=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
+	}
+}
+
 func rv64RootedSelfRecursiveArrayModule() []byte {
 	body := []byte{
 		0x00,
@@ -1671,6 +1850,55 @@ func TestRV64RootedScalarTypeWireDistinguishesFieldCountFromRecGroup(t *testing.
 	explicitRec := append([]byte{0x4e, 0x01}, fields...)
 	if err := AdmitProductionSource(module(explicitRec, function)); err == nil {
 		t.Fatal("explicit rec-group wrapper escaped rooted scalar wire admission")
+	}
+}
+
+func TestRV64RootedScalarTypeWireBoundsRecursiveGroups(t *testing.T) {
+	function := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	valid := wasmtest.Vec(
+		[]byte{
+			0x4e, 0x02,
+			0x5f, 0x01, 0x63, 0x01, 0x01,
+			0x5f, 0x01, 0x63, 0x00, 0x01,
+		},
+		function,
+	)
+	if !admitRV64GCRootedScalarTypeWire(valid) {
+		t.Fatal("bounded two-member recursive group was rejected")
+	}
+	for name, group := range map[string][]byte{
+		"exact-member": {
+			0x4e, 0x02,
+			0x5f, 0x01, 0x63, 0x62, 0x01, 0x01,
+			0x5f, 0x01, 0x63, 0x00, 0x01,
+		},
+		"out-of-group-forward": {
+			0x4e, 0x02,
+			0x5f, 0x01, 0x63, 0x02, 0x01,
+			0x5f, 0x01, 0x63, 0x00, 0x01,
+		},
+		"empty": {0x4e, 0x00},
+		"function-member": {
+			0x4e, 0x02,
+			0x60, 0x00, 0x00,
+			0x60, 0x00, 0x00,
+		},
+		"aggregate-to-function": {
+			0x4e, 0x02,
+			0x5f, 0x01, 0x63, 0x01, 0x01,
+			0x60, 0x00, 0x00,
+		},
+		"prefixed-member": {
+			0x4e, 0x02,
+			0x50, 0x00, 0x5f, 0x01, 0x63, 0x01, 0x01,
+			0x5f, 0x01, 0x63, 0x00, 0x01,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if admitRV64GCRootedScalarTypeWire(wasmtest.Vec(group, function)) {
+				t.Fatal("invalid recursive group escaped raw type admission")
+			}
+		})
 	}
 }
 

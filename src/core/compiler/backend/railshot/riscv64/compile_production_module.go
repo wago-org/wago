@@ -1167,37 +1167,52 @@ func stageAdmittedProductionModule(c *Compiled, opts CompileOptions) (*enc.Compi
 func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, vector, referenceFunctions bool) (bool, bool, bool, bool, error) {
 	referenceTails, indirectTails, hasReferenceCall, hasReferenceControl := false, false, false, false
 	publicReferenceBoundary := referenceFunctions && (!vector && admitPublicReferenceCarrierBoundary(m) || admitMutableFunctionGlobalLocalCall(m) && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp))
+	rootedScalar := admitRV64GCRootedScalarModule(m)
+	var rootedDirectory internalReferenceTypeDirectory
+	if rootedScalar {
+		var ok bool
+		rootedDirectory, ok = newInternalReferenceTypeDirectory(m.Types)
+		if !ok {
+			return false, false, false, false, unsupported("control declaration rooted type directory")
+		}
+	}
 	types := internalReferenceTypes{
 		decoded:                  m.Types,
+		rootedDirectory:          rootedDirectory,
 		decodedSWAR:              vector,
 		declarationExtern:        !vector && referenceFunctions && (admitCore3RefDeclarations(m) || admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m)),
 		executionExtern:          !vector && referenceFunctions && isCore3RefIsNullExecution(m),
 		declarationNonNullExtern: !vector && referenceFunctions && (admitCore3RefDeclarations(m) || admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m)),
 		publicReferenceCarriers:  publicReferenceBoundary && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp),
-		gcRootedScalar:           admitRV64GCRootedScalarModule(m),
+		gcRootedScalar:           rootedScalar,
 	}
-	for typeIndex, group := range m.Types {
-		if len(group.SubTypes) != 1 {
+	flatTypeIndex := uint32(0)
+	for _, group := range m.Types {
+		if len(group.SubTypes) != 1 && !types.gcRootedScalar {
 			return false, false, false, false, unsupported("control declaration group")
 		}
-		sub := &group.SubTypes[0]
-		if types.gcRootedScalar && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
-			// The whole-module rooted-scalar witness has already bounded and
-			// authenticated flat aggregate subtype declarations. They are data
-			// carriers, not callable control signatures.
-			continue
+		for subtypeIndex := range group.SubTypes {
+			sub := &group.SubTypes[subtypeIndex]
+			typeIndex := flatTypeIndex
+			flatTypeIndex++
+			if types.gcRootedScalar && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
+				// The whole-module rooted-scalar witness has already bounded and
+				// authenticated flat aggregate subtype declarations. They are data
+				// carriers, not callable control signatures.
+				continue
+			}
+			if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
+				return false, false, false, false, unsupported("control declaration metadata")
+			}
+			if types.rootedStruct(typeIndex) || types.rootedArray(typeIndex) {
+				continue
+			}
+			_, witness, err := admitDeclaredControlSignature(&sub.Comp, types, true, referenceCalls, vector)
+			if err != nil {
+				return false, false, false, false, err
+			}
+			hasReferenceControl = hasReferenceControl || witness
 		}
-		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
-			return false, false, false, false, unsupported("control declaration metadata")
-		}
-		if types.rootedStruct(uint32(typeIndex)) || types.rootedArray(uint32(typeIndex)) {
-			continue
-		}
-		_, witness, err := admitDeclaredControlSignature(&sub.Comp, types, true, referenceCalls, vector)
-		if err != nil {
-			return false, false, false, false, err
-		}
-		hasReferenceControl = hasReferenceControl || witness
 	}
 	// Control-only declarations do not relax actual function signatures. The
 	// closed function ABI is selected separately after whole-module proof.
