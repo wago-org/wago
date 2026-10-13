@@ -95,7 +95,7 @@ func pairedI32DotOracle(mem []byte, left, right, counter, acc, bound, offset uin
 
 func TestPairedI32DotPublicExecution(t *testing.T) {
 	baselineTraps := make(map[string][]TrapFrame)
-	for _, bound := range []uint32{8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 256} {
+	for _, bound := range []uint32{8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256} {
 		for _, bias := range [][2]int32{{-128, -128}, {2147483647, -2147483648}, {0, 1}} {
 			for _, offset := range []uint32{0, 7} {
 				for _, nested := range []bool{false, true} {
