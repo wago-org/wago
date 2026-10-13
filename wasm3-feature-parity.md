@@ -1076,3 +1076,22 @@ seven durable local publication receipts. Database integrity and all 575,121
 historical observations remain intact. Full feature parity and native AMD64
 timing remain open. The server remains http://localhost:8788/benchmarks/;
 nothing was deployed.
+
+### Complete 05e48a87 local refresh — 2026-10-13
+
+All 266 contracts completed without collection/resource failures and have durable
+local receipts. The source has 1,092 observations covering 266 contracts (1,064
+full-refresh observations plus 28 from the seven-contract targeted comparison).
+All 148 main contracts pass. Database integrity and all 575,121 historical
+observations remain intact. The 54 passing feature pairs now have **19 above
+strict parity**, down from 24, and 18 above the 1.1 triage threshold. This full
+ranking uses the retained earlier Clang peer; the interleaved signed-narrowing
+comparison remains the direct improvement evidence.
+
+Largest remaining gaps are opaque callbacks 53.79x, rotate/popcount 6.38x,
+division 5.70x, f32 rounding globals 4.51–4.61x, and ordinary imports 3.16x.
+The [full cohort report](docs/benchmarks/wasm3-2026-10-13/signed-full-feature-cohort.json)
+retains new feature samples, all 266 hashes, peer references, classifications,
+publication/audit evidence and the documented post-collection capture relocation.
+All 266 previous b1 snapshots remain intact. Full parity remains open; the server
+is local and no production deployment occurred.
