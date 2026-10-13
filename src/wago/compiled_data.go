@@ -543,8 +543,31 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 				canRepeat = true
 				continue
 			}
+			if value.HasGlobal {
+				if value.Null || value.RepeatPrevious || value.FuncIndex != 0 || len(value.Expr) != 0 ||
+					int(value.GlobalIndex) >= len(c.Globals) || c.Globals[value.GlobalIndex].Mutable {
+					return false
+				}
+				abi, abiOK := exact.ABIType(c.Types)
+				if value.I31Wrap {
+					if !abiOK || abi != ValI31Ref || c.Globals[value.GlobalIndex].Type != ValI32 {
+						return false
+					}
+					_, _ = h.Write([]byte{6})
+				} else {
+					actual, err := c.globalExactType(int(value.GlobalIndex))
+					if err != nil || !valueTypeSubtype(actual, c.Types, exact, c.Types) {
+						return false
+					}
+					_, _ = h.Write([]byte{5})
+				}
+				binary.LittleEndian.PutUint32(word[:4], value.GlobalIndex)
+				_, _ = h.Write(word[:4])
+				canRepeat = true
+				continue
+			}
 			canRepeat = false
-			if value.HasGlobal || value.GlobalIndex != 0 || value.I31Wrap || value.RepeatPrevious || len(value.Expr) != 0 {
+			if value.GlobalIndex != 0 || value.I31Wrap || value.RepeatPrevious || len(value.Expr) != 0 {
 				return false
 			}
 			if value.Null {
@@ -555,7 +578,15 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 				continue
 			}
 			if exact != plain {
-				return false
+				abi, abiOK := exact.ABIType(c.Types)
+				if !abiOK || abi != ValI31Ref || value.FuncIndex&1 == 0 {
+					return false
+				}
+				_, _ = h.Write([]byte{4})
+				binary.LittleEndian.PutUint32(word[:4], value.FuncIndex)
+				_, _ = h.Write(word[:4])
+				canRepeat = true
+				continue
 			}
 			if (!allowImported && uint64(value.FuncIndex) < uint64(c.NumImports)) || uint64(value.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) {
 				return false
