@@ -116,6 +116,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	}
 	remainingElements := 256
 	retainedElementSegments := len(m.Elements)
+	aggregateParser := newRV64RootedAggregateParser(m)
 	for i := range m.Tables {
 		table := &m.Tables[i]
 		elem := wasm.RefVal(table.Type.Ref)
@@ -129,7 +130,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		}
 		if table.Init != nil {
 			if rootedTable {
-				if !rv64RootedAggregateElement(*table.Init, table.Type.Ref, m) {
+				if !rv64RootedAggregateElement(*table.Init, table.Type.Ref, aggregateParser) {
 					return reject("RV64 exact roots reject aggregate-reference table initializer")
 				}
 				if !rv64RootedAggregateNullElement(*table.Init, table.Type.Ref) {
@@ -201,7 +202,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			values = len(elem.Kind.Exprs)
 			for j, expr := range elem.Kind.Exprs {
 				if aggregate {
-					if !rv64RootedAggregateElement(expr, elem.Kind.Ref, m) {
+					if !rv64RootedAggregateElement(expr, elem.Kind.Ref, aggregateParser) {
 						return reject("RV64 exact roots reject aggregate element %d:%d", i, j)
 					}
 					continue
@@ -390,17 +391,11 @@ func rv64RootedAggregateTableReference(m *wasm.Module, typ wasm.ValType) bool {
 	if !ref.Nullable() || ref.Exact() || heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec {
 		return false
 	}
-	flat := uint32(0)
-	for group := range m.Types {
-		for member := range m.Types[group].SubTypes {
-			if flat == heap.Type().Index {
-				kind := m.Types[group].SubTypes[member].Comp.Kind
-				return kind == wasm.CompStruct || kind == wasm.CompArray
-			}
-			flat++
-		}
+	comp := rv64RootedAggregateType(m, heap.Type().Index)
+	if comp == nil {
+		return false
 	}
-	return false
+	return comp.Kind == wasm.CompStruct || comp.Kind == wasm.CompArray
 }
 
 func rv64RootedAggregateNullElement(expr wasm.Expr, ref wasm.RefType) bool {
@@ -415,82 +410,251 @@ func rv64RootedAggregateNullElement(expr wasm.Expr, ref wasm.RefType) bool {
 }
 
 func rv64RootedAggregateType(m *wasm.Module, index uint32) *wasm.CompType {
-	if m == nil {
+	if m == nil || uint64(index) >= uint64(len(m.Types)) || len(m.Types[index].SubTypes) != 1 {
 		return nil
 	}
-	flat := uint32(0)
-	for group := range m.Types {
-		for member := range m.Types[group].SubTypes {
-			if flat == index {
-				return &m.Types[group].SubTypes[member].Comp
-			}
-			flat++
-		}
-	}
-	return nil
+	return &m.Types[index].SubTypes[0].Comp
 }
 
-func rv64RootedAggregateConstOperandOpcode(r *wasm.Reader, storage wasm.StorageType, op byte, m *wasm.Module) bool {
+type rv64RootedAggregateParser struct {
+	m           *wasm.Module
+	valid       bool
+	entry, exit []uint32
+}
+
+func newRV64RootedAggregateParser(m *wasm.Module) *rv64RootedAggregateParser {
+	p := &rv64RootedAggregateParser{m: m}
+	if m == nil || len(m.Types) > railshot.MaxFunctions {
+		return p
+	}
+	children := make([][]uint32, len(m.Types))
+	roots := make([]uint32, 0, len(m.Types))
+	for i := range m.Types {
+		if len(m.Types[i].SubTypes) != 1 {
+			return p
+		}
+		sub := &m.Types[i].SubTypes[0]
+		if len(sub.Supers) == 0 {
+			roots = append(roots, uint32(i))
+			continue
+		}
+		if len(sub.Supers) != 1 || sub.Supers[0].Rec || uint64(sub.Supers[0].Index) >= uint64(i) {
+			return p
+		}
+		children[sub.Supers[0].Index] = append(children[sub.Supers[0].Index], uint32(i))
+	}
+	p.entry = make([]uint32, len(m.Types))
+	p.exit = make([]uint32, len(m.Types))
+	clock := uint32(0)
+	var visit func(uint32)
+	visit = func(index uint32) {
+		p.entry[index] = clock
+		clock++
+		for _, child := range children[index] {
+			visit(child)
+		}
+		p.exit[index] = clock
+	}
+	for _, root := range roots {
+		visit(root)
+	}
+	p.valid = clock == uint32(len(m.Types))
+	return p
+}
+
+func (p *rv64RootedAggregateParser) constructedSubtype(typeIndex uint32, required wasm.RefType) bool {
+	if p == nil || !p.valid || required.Exact() || required.Heap().Kind() != wasm.HeapTypeIndex || required.Heap().Type().Rec {
+		return false
+	}
+	target := required.Heap().Type().Index
+	if uint64(typeIndex) >= uint64(len(p.entry)) || uint64(target) >= uint64(len(p.entry)) {
+		return false
+	}
+	actualComp, targetComp := rv64RootedAggregateType(p.m, typeIndex), rv64RootedAggregateType(p.m, target)
+	if actualComp == nil || targetComp == nil || actualComp.Kind != targetComp.Kind || actualComp.Kind != wasm.CompStruct && actualComp.Kind != wasm.CompArray {
+		return false
+	}
+	return p.entry[target] <= p.entry[typeIndex] && p.entry[typeIndex] < p.exit[target]
+}
+
+type rv64RootedAggregateStackValue struct {
+	typ         wasm.ValType
+	constructed bool
+	typeIndex   uint32
+	depth       int
+	knownI32    bool
+	i32         uint32
+}
+
+func (p *rv64RootedAggregateParser) valueMatches(value rv64RootedAggregateStackValue, storage wasm.StorageType) bool {
 	want := storage.Val()
 	if storage.Packed() {
 		want = wasm.I32
 	}
-	if op == 0x23 {
-		index, err := r.U32()
-		actual, ok := m.GlobalTypeByIndex(index)
-		if err != nil || !ok || actual.Mutable {
+	if want.Kind() != wasm.ValRef {
+		return wasm.EqualValType(value.typ, want)
+	}
+	if value.typ.Kind() != wasm.ValRef {
+		return false
+	}
+	if value.constructed {
+		return p.constructedSubtype(value.typeIndex, want.Ref())
+	}
+	return p.m.ReferenceTypeSubtype(value.typ.Ref(), want.Ref())
+}
+
+func (p *rv64RootedAggregateParser) validateExpression(expr wasm.Expr, required wasm.RefType) bool {
+	if p == nil || !p.valid || len(expr.Instrs) != 0 || len(expr.BodyBytes) < 4 || len(expr.BodyBytes) > 4096 {
+		return false
+	}
+	var stack [512]rv64RootedAggregateStackValue
+	stackLen, allocations, work := 0, 0, 0
+	push := func(value rv64RootedAggregateStackValue) bool {
+		if stackLen == len(stack) {
 			return false
 		}
-		if want.Kind() != wasm.ValRef {
-			return wasm.EqualValType(actual.Type, want)
-		}
-		return actual.Type.Kind() == wasm.ValRef && m.ReferenceTypeSubtype(actual.Type.Ref(), want.Ref())
+		stack[stackLen] = value
+		stackLen++
+		return true
 	}
-	var err error
-	switch {
-	case wasm.EqualValType(want, wasm.I32):
-		_, err = r.I32()
-		return op == 0x41 && err == nil
-	case wasm.EqualValType(want, wasm.I64):
-		_, err = r.I64()
-		return op == 0x42 && err == nil
-	case wasm.EqualValType(want, wasm.F32):
-		_, err = r.Bytes(4)
-		return op == 0x43 && err == nil
-	case wasm.EqualValType(want, wasm.F64):
-		_, err = r.Bytes(8)
-		return op == 0x44 && err == nil
-	case wasm.EqualValType(want, wasm.V128):
-		sub, subErr := r.U32()
-		_, err = r.Bytes(16)
-		return op == 0xfd && subErr == nil && sub == 12 && err == nil
-	case want.Kind() == wasm.ValRef:
+	r := wasm.ReaderFrom(expr.BodyBytes)
+	for r.HasNext() {
+		work++
+		if work > rv64RootedAggregateParseWork {
+			return false
+		}
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		value := rv64RootedAggregateStackValue{}
 		switch op {
+		case 0x41:
+			var literal int32
+			literal, err = r.I32()
+			value.typ, value.knownI32, value.i32 = wasm.I32, true, uint32(literal)
+		case 0x42:
+			_, err = r.I64()
+			value.typ = wasm.I64
+		case 0x43:
+			_, err = r.Bytes(4)
+			value.typ = wasm.F32
+		case 0x44:
+			_, err = r.Bytes(8)
+			value.typ = wasm.F64
+		case 0x23:
+			index, indexErr := r.U32()
+			global, ok := p.m.GlobalTypeByIndex(index)
+			if indexErr != nil || !ok || global.Mutable {
+				return false
+			}
+			value.typ = global.Type
 		case 0xd0:
 			heap, heapErr := r.S33()
-			if heapErr != nil || !want.Ref().Nullable() {
+			if heapErr != nil {
 				return false
 			}
-			var actual wasm.HeapType
 			if heap >= 0 {
-				actual = wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)})
+				value.typ = wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false))
 			} else {
-				actual = wasm.AbsHeap(wasm.AbsHeapType(byte(heap & 0x7f)))
+				value.typ = wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.AbsHeapType(byte(heap&0x7f))), false))
 			}
-			return m.ReferenceTypeSubtype(wasm.Ref(true, actual, false), want.Ref())
 		case 0xd2:
 			index, indexErr := r.U32()
-			if indexErr != nil || index < uint32(m.ImportedFuncCount()) {
+			if indexErr != nil || index < uint32(p.m.ImportedFuncCount()) {
 				return false
 			}
-			typeIndex, ok := m.FuncTypeIndex(index)
-			return ok && !typeIndex.Rec && m.ReferenceTypeSubtype(wasm.Ref(false, wasm.IndexedHeap(typeIndex), false), want.Ref())
+			typeIndex, ok := p.m.FuncTypeIndex(index)
+			if !ok || typeIndex.Rec {
+				return false
+			}
+			value.typ = wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(typeIndex), false))
+		case 0xfd:
+			sub, subErr := r.U32()
+			if subErr != nil || sub != 12 {
+				return false
+			}
+			_, err = r.Bytes(16)
+			value.typ = wasm.V128
+		case 0xfb:
+			sub, subErr := r.U32()
+			typeIndex, typeErr := r.U32()
+			if subErr != nil || typeErr != nil {
+				return false
+			}
+			comp := rv64RootedAggregateType(p.m, typeIndex)
+			if comp == nil || allocations == 256 {
+				return false
+			}
+			base, constructorDepth := stackLen, 1
+			switch sub {
+			case 0:
+				if comp.Kind != wasm.CompStruct || len(comp.Fields) > stackLen {
+					return false
+				}
+				base = stackLen - len(comp.Fields)
+				for i := range comp.Fields {
+					if !p.valueMatches(stack[base+i], comp.Fields[i].Storage()) {
+						return false
+					}
+					constructorDepth = max(constructorDepth, stack[base+i].depth+1)
+				}
+			case 1:
+				if comp.Kind != wasm.CompStruct {
+					return false
+				}
+				for i := range comp.Fields {
+					if !rv64RootedAggregateDefaultableStorage(comp.Fields[i].Storage()) {
+						return false
+					}
+				}
+			case 6:
+				if comp.Kind != wasm.CompArray || stackLen < 2 || !p.valueMatches(stack[stackLen-2], comp.Array.Storage()) ||
+					!wasm.EqualValType(stack[stackLen-1].typ, wasm.I32) || !stack[stackLen-1].knownI32 || stack[stackLen-1].i32 > 256 {
+					return false
+				}
+				base = stackLen - 2
+				constructorDepth = max(constructorDepth, stack[base].depth+1)
+			case 7:
+				if comp.Kind != wasm.CompArray || stackLen < 1 || !rv64RootedAggregateDefaultableStorage(comp.Array.Storage()) ||
+					!wasm.EqualValType(stack[stackLen-1].typ, wasm.I32) || !stack[stackLen-1].knownI32 || stack[stackLen-1].i32 > 256 {
+					return false
+				}
+				base = stackLen - 1
+			case 8:
+				count, countErr := r.U32()
+				if comp.Kind != wasm.CompArray || countErr != nil || count > 256 || int(count) > stackLen {
+					return false
+				}
+				base = stackLen - int(count)
+				for i := base; i < stackLen; i++ {
+					if !p.valueMatches(stack[i], comp.Array.Storage()) {
+						return false
+					}
+					constructorDepth = max(constructorDepth, stack[i].depth+1)
+				}
+			default:
+				return false
+			}
+			if constructorDepth > 16 {
+				return false
+			}
+			stackLen = base
+			allocations++
+			value = rv64RootedAggregateStackValue{
+				typ:         wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false)),
+				constructed: true, typeIndex: typeIndex, depth: constructorDepth,
+			}
+		case 0x0b:
+			return !r.HasNext() && stackLen == 1 && stack[0].constructed && p.constructedSubtype(stack[0].typeIndex, required)
 		default:
 			return false
 		}
-	default:
-		return false
+		if err != nil || !push(value) {
+			return false
+		}
 	}
+	return false
 }
 
 func rv64RootedAggregateSupportedStorage(storage wasm.StorageType) bool {
@@ -505,188 +669,14 @@ func rv64RootedAggregateDefaultableStorage(storage wasm.StorageType) bool {
 	return rv64RootedAggregateSupportedStorage(storage) && (storage.Packed() || storage.Val().Kind() != wasm.ValRef || storage.Val().Ref().IsDefaultable())
 }
 
-func rv64RootedAggregateBoundedLength(r *wasm.Reader) bool {
-	op, err := r.Byte()
-	if err != nil || op != 0x41 {
-		return false
-	}
-	length, err := r.I32()
-	return err == nil && uint32(length) <= 256
-}
-
-func rv64RootedAggregateConstructor(r *wasm.Reader, sub, typeIndex uint32) bool {
-	op, err := r.Byte()
-	gotSub, subErr := r.U32()
-	constructed, typeErr := r.U32()
-	return err == nil && op == 0xfb && subErr == nil && gotSub == sub && typeErr == nil && constructed == typeIndex
-}
-
-func rv64RootedAggregateConstructorEnd(r *wasm.Reader, sub, typeIndex uint32) bool {
-	if !rv64RootedAggregateConstructor(r, sub, typeIndex) {
-		return false
-	}
-	end, endErr := r.Byte()
-	return endErr == nil && end == 0x0b && !r.HasNext()
-}
-
-func rv64RootedAggregateReferenceOperand(r *wasm.Reader, storage wasm.StorageType, m *wasm.Module, allocations *int, depth int) bool {
-	want := storage.Val()
-	if storage.Packed() || want.Kind() != wasm.ValRef || want.Ref().Heap().Kind() != wasm.HeapTypeIndex || want.Ref().Heap().Type().Rec || *allocations >= 256 || depth >= 16 {
-		return false
-	}
-	typeIndex := want.Ref().Heap().Type().Index
-	comp := rv64RootedAggregateType(m, typeIndex)
-	if comp == nil {
-		return false
-	}
-	switch comp.Kind {
-	case wasm.CompStruct:
-		candidate := *r
-		candidateAllocations := *allocations
-		explicit := true
-		for _, field := range comp.Fields {
-			if !rv64RootedAggregateConstOperand(&candidate, field.Storage(), m, &candidateAllocations, depth+1) {
-				explicit = false
-				break
-			}
-		}
-		if explicit && candidateAllocations < 256 && rv64RootedAggregateConstructor(&candidate, 0, typeIndex) {
-			*r = candidate
-			*allocations = candidateAllocations + 1
-			return true
-		}
-		for _, field := range comp.Fields {
-			if !rv64RootedAggregateDefaultableStorage(field.Storage()) {
-				return false
-			}
-		}
-		candidate = *r
-		if rv64RootedAggregateConstructor(&candidate, 1, typeIndex) {
-			*r = candidate
-			(*allocations)++
-			return true
-		}
-	case wasm.CompArray:
-		candidate := *r
-		candidateAllocations := *allocations
-		count := uint32(0)
-		for count < 256 {
-			start := candidate
-			if !rv64RootedAggregateConstOperand(&candidate, comp.Array.Storage(), m, &candidateAllocations, depth+1) {
-				candidate = start
-				break
-			}
-			count++
-		}
-		fixed := candidate
-		declaredOK := rv64RootedAggregateConstructor(&fixed, 8, typeIndex)
-		declared, declaredErr := fixed.U32()
-		if declaredOK && declaredErr == nil && declared == count && candidateAllocations < 256 {
-			*r = fixed
-			*allocations = candidateAllocations + 1
-			return true
-		}
-		candidate = *r
-		candidateAllocations = *allocations
-		if rv64RootedAggregateConstOperand(&candidate, comp.Array.Storage(), m, &candidateAllocations, depth+1) && rv64RootedAggregateBoundedLength(&candidate) && candidateAllocations < 256 && rv64RootedAggregateConstructor(&candidate, 6, typeIndex) {
-			*r = candidate
-			*allocations = candidateAllocations + 1
-			return true
-		}
-		candidate = *r
-		if rv64RootedAggregateDefaultableStorage(comp.Array.Storage()) && rv64RootedAggregateBoundedLength(&candidate) && rv64RootedAggregateConstructor(&candidate, 7, typeIndex) {
-			*r = candidate
-			(*allocations)++
-			return true
-		}
-	default:
-		return false
-	}
-	return false
-}
-
-func rv64RootedAggregateConstOperand(r *wasm.Reader, storage wasm.StorageType, m *wasm.Module, allocations *int, depth int) bool {
-	start := *r
-	op, err := r.Byte()
-	if err == nil && rv64RootedAggregateConstOperandOpcode(r, storage, op, m) {
-		return true
-	}
-	*r = start
-	return rv64RootedAggregateReferenceOperand(r, storage, m, allocations, depth)
-}
-
-func rv64RootedAggregateElement(expr wasm.Expr, ref wasm.RefType, m *wasm.Module) bool {
+func rv64RootedAggregateElement(expr wasm.Expr, ref wasm.RefType, p *rv64RootedAggregateParser) bool {
 	if rv64RootedAggregateNullElement(expr, ref) {
 		return true
 	}
-	if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 4 || len(expr.BodyBytes) > 4096 || ref.Heap().Kind() != wasm.HeapTypeIndex {
-		return false
-	}
-	typeIndex := ref.Heap().Type().Index
-	comp := rv64RootedAggregateType(m, typeIndex)
-	if comp == nil {
-		return false
-	}
-	r := wasm.ReaderFrom(expr.BodyBytes)
-	allocations := 1
-	switch comp.Kind {
-	case wasm.CompStruct:
-		scalarDefault := true
-		for _, field := range comp.Fields {
-			scalarDefault = scalarDefault && rv64RootedAggregateDefaultableStorage(field.Storage())
-		}
-		for _, field := range comp.Fields {
-			if !rv64RootedAggregateConstOperand(&r, field.Storage(), m, &allocations, 1) {
-				r = wasm.ReaderFrom(expr.BodyBytes)
-				return scalarDefault && rv64RootedAggregateConstructorEnd(&r, 1, typeIndex)
-			}
-		}
-		if rv64RootedAggregateConstructorEnd(&r, 0, typeIndex) {
-			return true
-		}
-		r = wasm.ReaderFrom(expr.BodyBytes)
-		return scalarDefault && rv64RootedAggregateConstructorEnd(&r, 1, typeIndex)
-	case wasm.CompArray:
-		if !rv64RootedAggregateSupportedStorage(comp.Array.Storage()) {
-			return false
-		}
-		fixed := func() bool {
-			fixedReader := wasm.ReaderFrom(expr.BodyBytes)
-			fixedAllocations := allocations
-			count := uint32(0)
-			for {
-				start := fixedReader
-				if count < 256 && rv64RootedAggregateConstOperand(&fixedReader, comp.Array.Storage(), m, &fixedAllocations, 1) {
-					count++
-					continue
-				}
-				fixedReader = start
-				op, err := fixedReader.Byte()
-				if err != nil || op != 0xfb {
-					return false
-				}
-				break
-			}
-			sub, subErr := fixedReader.U32()
-			constructed, typeErr := fixedReader.U32()
-			declared, countErr := fixedReader.U32()
-			end, endErr := fixedReader.Byte()
-			return subErr == nil && sub == 8 && typeErr == nil && constructed == typeIndex && countErr == nil && declared == count && endErr == nil && end == 0x0b && !fixedReader.HasNext()
-		}
-		if fixed() {
-			return true
-		}
-		r = wasm.ReaderFrom(expr.BodyBytes)
-		allocations = 1
-		if rv64RootedAggregateConstOperand(&r, comp.Array.Storage(), m, &allocations, 1) && rv64RootedAggregateBoundedLength(&r) && rv64RootedAggregateConstructorEnd(&r, 6, typeIndex) {
-			return true
-		}
-		r = wasm.ReaderFrom(expr.BodyBytes)
-		return rv64RootedAggregateDefaultableStorage(comp.Array.Storage()) && rv64RootedAggregateBoundedLength(&r) && rv64RootedAggregateConstructorEnd(&r, 7, typeIndex)
-	default:
-		return false
-	}
+	return p.validateExpression(expr, ref)
 }
+
+const rv64RootedAggregateParseWork = 8192
 
 func rv64RootedScalarGlobal(m *wasm.Module, global *wasm.Global, limit int) bool {
 	if global == nil || len(global.Init.Instrs) != 0 {

@@ -159,6 +159,26 @@ func genericGCAggregateTableInitializerModule() []byte {
 	)
 }
 
+func genericGCAggregateSubtypeTableInitializerModule() []byte {
+	body := []byte{0x00, 0x41, 0x01, 0xfb, 0x00, 0x01, 0x1a, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x50, 0x00, 0x5f, 0x01, 0x7f, 0x01},       // open struct supertype
+			[]byte{0x4f, 0x01, 0x00, 0x5f, 0x01, 0x7f, 0x01}, // final struct subtype
+			[]byte{0x5f, 0x01, 0x7e, 0x01},                   // unrelated aggregate
+			[]byte{0x5f, 0x01, 0x63, 0x00, 0x01},             // holder of (ref null 0)
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(4))),
+		wasmtest.Section(4, []byte{
+			0x01, 0x40, 0x00, 0x63, 0x03, 0x01, 0x02, 0x02,
+			0x41, 0x37, 0xfb, 0x00, 0x01, 0xfb, 0x00, 0x03, 0x0b,
+		}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func genericGCAggregateGlobalTableInitializerModule() []byte {
 	body := []byte{
 		0x00,
@@ -261,6 +281,40 @@ func TestGenericGCAggregateTableInitializerRootsOneSharedObject(t *testing.T) {
 	value, err := instance.gc.StructGet(want, 0)
 	if err != nil || value.Bits != 55 {
 		t.Fatalf("aggregate table initializer field = %+v, %v", value, err)
+	}
+}
+
+func TestGenericGCAggregateSubtypeTableInitializer(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCAggregateSubtypeTableInitializerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := instance.tableDescriptor(0)
+	holder := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+	repeated := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[16:])))
+	if holder.IsNull() || repeated != holder {
+		t.Fatalf("aggregate subtype table initializer refs = %v/%v", holder, repeated)
+	}
+	childValue, err := instance.gc.StructGet(holder, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := childValue.Ref
+	value, err := instance.gc.StructGet(child, 0)
+	if err != nil || value.Bits != 55 {
+		t.Fatalf("aggregate subtype child = %v/%+v, %v", child, value, err)
 	}
 }
 

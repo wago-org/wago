@@ -245,7 +245,32 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	}
 	for i, desc := range c.GCTypeDescs {
 		typ := &c.Types[i]
-		if typ.RecGroup != uint32(i) || !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.HasDescriptor {
+		if typ.RecGroup != uint32(i) || typ.HasDescribes || typ.HasDescriptor {
+			return false
+		}
+		if typ.Kind == CompositeTypeFunction {
+			if !typ.Final || len(typ.Supers) != 0 {
+				return false
+			}
+		} else if typ.Kind == CompositeTypeStruct || typ.Kind == CompositeTypeArray {
+			if len(typ.Supers) > 1 {
+				return false
+			}
+			if len(typ.Supers) == 1 {
+				super := typ.Supers[0]
+				if uint64(super) >= uint64(i) || c.Types[super].Kind != typ.Kind || c.Types[super].Final {
+					return false
+				}
+			}
+		} else {
+			return false
+		}
+		wantSuper := len(typ.Supers) == 1
+		var super gc.TypeID
+		if wantSuper {
+			super = gc.TypeID(typ.Supers[0])
+		}
+		if desc.Final != typ.Final || desc.HasSuper != wantSuper || desc.Super != super {
 			return false
 		}
 		switch desc.Kind {
@@ -261,8 +286,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 				}
 			}
 		case gc.KindStruct:
-			if typ.Kind != CompositeTypeStruct || len(typ.Fields) == 0 || len(typ.Fields) > 255 || len(typ.Fields) != len(desc.Fields) ||
-				!desc.Final || desc.HasSuper {
+			if typ.Kind != CompositeTypeStruct || len(typ.Fields) == 0 || len(typ.Fields) > 255 || len(typ.Fields) != len(desc.Fields) {
 				return false
 			}
 			kinds := make([]gc.StorageKind, len(typ.Fields))
@@ -274,6 +298,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 				kinds[field] = kind
 			}
 			expected, err := gc.NewStructDesc(gc.TypeID(i), kinds)
+			expected.Final, expected.Super, expected.HasSuper = typ.Final, super, wantSuper
 			if err != nil || desc.ID != expected.ID || desc.Kind != expected.Kind || desc.Elem != expected.Elem || desc.Size != expected.Size ||
 				desc.ElemSize != expected.ElemSize || desc.Align != expected.Align || desc.HasRefs != expected.HasRefs || desc.Final != expected.Final ||
 				desc.Super != expected.Super || desc.HasSuper != expected.HasSuper || !slices.Equal(desc.Fields, expected.Fields) {
@@ -282,7 +307,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			requiredSlots = max(requiredSlots, len(typ.Fields)+1)
 			hasStruct = true
 		case gc.KindArray:
-			if typ.Kind != CompositeTypeArray || !desc.Final || desc.HasSuper || len(desc.Fields) != 0 {
+			if typ.Kind != CompositeTypeArray || len(desc.Fields) != 0 {
 				return false
 			}
 			kind, ok := storageKind(typ.Array.Storage, i)
@@ -290,6 +315,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 				return false
 			}
 			expected, err := gc.NewArrayDesc(gc.TypeID(i), kind)
+			expected.Final, expected.Super, expected.HasSuper = typ.Final, super, wantSuper
 			if err != nil || desc.ID != expected.ID || desc.Kind != expected.Kind || desc.Elem != expected.Elem || desc.Size != expected.Size ||
 				desc.ElemSize != expected.ElemSize || desc.Align != expected.Align || desc.HasRefs != expected.HasRefs || desc.Final != expected.Final ||
 				desc.Super != expected.Super || desc.HasSuper != expected.HasSuper {
@@ -299,6 +325,9 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		default:
 			return false
 		}
+	}
+	if err := gc.ValidateTypeDescs(c.GCTypeDescs); err != nil {
+		return false
 	}
 	if len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return false
@@ -396,7 +425,14 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		default:
 			return false
 		}
-		structural.Types[i] = wasm.RecType{SubTypes: []wasm.SubType{{Final: true, Comp: comp}}}
+		sub := wasm.SubType{Final: typ.Final, HasPrefix: !typ.Final || len(typ.Supers) != 0, Comp: comp}
+		if len(typ.Supers) == 1 {
+			sub.Supers = []wasm.TypeIdx{{Index: typ.Supers[0]}}
+		}
+		structural.Types[i] = wasm.RecType{SubTypes: []wasm.SubType{sub}}
+	}
+	if err := wasm.ValidateModule(structural); err != nil {
+		return false
 	}
 	validateFunction := func(sig *FuncSig, ordinal int) bool {
 		if !sig.HasTypeIndex || int(sig.TypeIndex) >= len(c.Types) {

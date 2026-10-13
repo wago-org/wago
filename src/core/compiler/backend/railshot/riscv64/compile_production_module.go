@@ -1181,11 +1181,16 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 			return false, false, false, false, unsupported("control declaration group")
 		}
 		sub := &group.SubTypes[0]
+		if types.gcRootedScalar && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
+			// The whole-module rooted-scalar witness has already bounded and
+			// authenticated flat aggregate subtype declarations. They are data
+			// carriers, not callable control signatures.
+			continue
+		}
 		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 			return false, false, false, false, unsupported("control declaration metadata")
 		}
-		if types.rootedStruct(uint32(typeIndex)) || types.rootedArray(uint32(typeIndex)) ||
-			types.gcRootedScalar && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
+		if types.rootedStruct(uint32(typeIndex)) || types.rootedArray(uint32(typeIndex)) {
 			continue
 		}
 		_, witness, err := admitDeclaredControlSignature(&sub.Comp, types, true, referenceCalls, vector)

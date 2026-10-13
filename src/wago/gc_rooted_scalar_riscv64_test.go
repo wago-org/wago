@@ -2359,6 +2359,26 @@ func rootedScalarAggregateTableInitializerModule() []byte {
 	)
 }
 
+func rootedScalarAggregateSubtypeTableInitializerModule() []byte {
+	body := []byte{0x00, 0x41, 0x01, 0xfb, 0x00, 0x01, 0x1a, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x50, 0x00, 0x5f, 0x01, 0x7f, 0x01},       // open struct supertype
+			[]byte{0x4f, 0x01, 0x00, 0x5f, 0x01, 0x7f, 0x01}, // final struct subtype
+			[]byte{0x5f, 0x01, 0x7e, 0x01},                   // unrelated aggregate
+			[]byte{0x5f, 0x01, 0x63, 0x00, 0x01},             // holder of (ref null 0)
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(4))),
+		wasmtest.Section(4, []byte{
+			0x01, 0x40, 0x00, 0x63, 0x03, 0x01, 0x02, 0x02,
+			0x41, 0x37, 0xfb, 0x00, 0x01, 0xfb, 0x00, 0x03, 0x0b,
+		}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func TestRV64RootedAggregateTableInitializerExecutes(t *testing.T) {
 	source := rootedScalarAggregateTableInitializerModule()
 	if !railshot.AdmitGCRootedScalarSource(source) {
@@ -2419,6 +2439,84 @@ func TestRV64RootedAggregateTableInitializerExecutes(t *testing.T) {
 	value, err := instance.gc.StructGet(want, 0)
 	if err != nil || value.Bits != 55 {
 		t.Fatalf("aggregate table initializer field = %+v, %v", value, err)
+	}
+}
+
+func TestRV64RootedAggregateSubtypeTableInitializerExecutes(t *testing.T) {
+	source := rootedScalarAggregateSubtypeTableInitializerModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("aggregate subtype table initializer module was not source-admitted")
+	}
+	decoded, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootDiagnostic string
+	if plan := newGCFrameRootPlan(decoded, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
+		t.Fatalf("aggregate subtype table initializer exact-root plan=%+v diagnostic=%q", plan, rootDiagnostic)
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Elems) != 1 || len(view.Elems[0].Values) != 2 || !view.Elems[0].Values[1].RepeatPrevious {
+		t.Fatalf("aggregate subtype table initializer receipt=%t elems=%#v validation=%v", rv64FreshRootedGC(view), view.Elems, railshotValidateCompiled(view))
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"type-super": func(candidate *Compiled) {
+			candidate.Types[1].Supers = nil
+		},
+		"descriptor-super": func(candidate *Compiled) {
+			candidate.GCTypeDescs[1].HasSuper = false
+		},
+		"final-super": func(candidate *Compiled) {
+			candidate.Types[0].Final = true
+			candidate.GCTypeDescs[0].Final = true
+		},
+		"incompatible-layout": func(candidate *Compiled) {
+			candidate.Types[1].Fields[0].Storage.Value = ValueTypeDescriptor{Kind: ValueTypeI64}
+			desc, err := native.NewStructDesc(1, []native.StorageKind{native.StorageI64})
+			if err != nil {
+				t.Fatal(err)
+			}
+			desc.Final, desc.Super, desc.HasSuper = true, 0, true
+			candidate.GCTypeDescs[1] = desc
+		},
+	} {
+		t.Run("receipt-"+name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated aggregate subtype metadata retained the generic receipt")
+			}
+		})
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := instance.tableDescriptor(0)
+	holder := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+	repeated := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[16:])))
+	if holder.IsNull() || repeated != holder {
+		t.Fatalf("aggregate subtype table initializer refs = %v/%v", holder, repeated)
+	}
+	childValue, err := instance.gc.StructGet(holder, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := instance.gc.StructGet(childValue.Ref, 0)
+	if err != nil || value.Bits != 55 {
+		t.Fatalf("aggregate subtype child = %v/%+v, %v", childValue.Ref, value, err)
 	}
 }
 

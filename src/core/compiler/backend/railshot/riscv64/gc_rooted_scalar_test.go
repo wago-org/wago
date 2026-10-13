@@ -230,6 +230,90 @@ func rv64RootedAggregateTableInitializerModule() []byte {
 	)
 }
 
+func rv64RootedAggregateSubtypeTableInitializerModule(nested bool, unrelated bool) []byte {
+	types := [][]byte{
+		{0x50, 0x00, 0x5f, 0x01, 0x7f, 0x01},       // open struct supertype
+		{0x4f, 0x01, 0x00, 0x5f, 0x01, 0x7f, 0x01}, // final struct subtype
+		{0x5f, 0x01, 0x7e, 0x01},                   // unrelated i64 struct
+	}
+	tableType := uint32(0)
+	init := []byte{0x41, 0x37, 0xfb, 0x00, 0x01}
+	if unrelated {
+		init = []byte{0x42, 0x37, 0xfb, 0x00, 0x02}
+	}
+	if nested {
+		tableType = 3
+		types = append(types, []byte{0x5f, 0x01, 0x63, 0x00, 0x01}) // holder of (ref null 0)
+		init = append(init, 0xfb, 0x00, 0x03)
+	}
+	functionType := uint32(len(types))
+	types = append(types, wasmtest.FuncType(nil, nil))
+	body := []byte{0x00, 0x41, 0x01, 0xfb, 0x00, 0x01, 0x1a, 0x0b}
+	table := []byte{0x01, 0x40, 0x00, 0x63}
+	table = append(table, byte(tableType))
+	table = append(table, 0x01, 0x02, 0x02)
+	table = append(table, init...)
+	table = append(table, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(functionType))),
+		wasmtest.Section(4, table),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedAggregateSubtypeTableInitializerCompiles(t *testing.T) {
+	for _, nested := range []bool{false, true} {
+		t.Run(fmt.Sprintf("nested=%t", nested), func(t *testing.T) {
+			source := rv64RootedAggregateSubtypeTableInitializerModule(nested, false)
+			if err := AdmitProductionSource(source); err != nil {
+				decoded, decodeErr := wasm.DecodeModule(source)
+				t.Fatalf("%v (root-wire=%t decode=%v decoded=%t)", err, admitRV64GCRootedScalarWire(source), decodeErr, decodeErr == nil && admitRV64GCRootedScalarModule(decoded))
+			}
+			m, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !admitRV64GCRootedScalarModule(m) {
+				t.Fatal("aggregate subtype table initializer was not admitted")
+			}
+			metadata, err := frontend.BuildGCTypeMetadata(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			roots := shared.NewGCModuleFrameRootPlan(1)
+			if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+				t.Fatal("reserve exact root plan")
+			}
+			plan, ok := roots.BeginFunction(0)
+			if !ok {
+				t.Fatal("begin exact root plan")
+			}
+			*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true}
+			if !plan.SetLiveMasks([]uint64{0}, 1, 0) {
+				t.Fatal("install exact root liveness")
+			}
+			compiled, err := CompileModuleWith(m, CompileOptions{
+				DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+				GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+				Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(compiled.Code) == 0 || plan.SafepointCount() != 1 {
+				t.Fatalf("code=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
+			}
+		})
+	}
+	for _, nested := range []bool{false, true} {
+		if err := AdmitProductionSource(rv64RootedAggregateSubtypeTableInitializerModule(nested, true)); err == nil {
+			t.Fatalf("unrelated aggregate constructor escaped subtype table admission (nested=%t)", nested)
+		}
+	}
+}
+
 func TestRV64RootedAggregateTableInitializerCompiles(t *testing.T) {
 	source := rv64RootedAggregateTableInitializerModule()
 	if err := AdmitProductionSource(source); err != nil {
@@ -1324,6 +1408,40 @@ func TestRV64RootedScalarTypeWireDistinguishesFieldCountFromRecGroup(t *testing.
 	explicitRec := append([]byte{0x4e, 0x01}, fields...)
 	if err := AdmitProductionSource(module(explicitRec, function)); err == nil {
 		t.Fatal("explicit rec-group wrapper escaped rooted scalar wire admission")
+	}
+}
+
+func TestRV64RootedScalarTypeWireAcceptsFlatAggregateSubtypes(t *testing.T) {
+	body := []byte{0x00, 0x41, 0x07, 0xfb, 0x00, 0x01, 0x1a, 0x0b}
+	module := func(types ...[]byte) []byte {
+		return wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(types...)),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+			wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		)
+	}
+	open := []byte{0x50, 0x00, 0x5f, 0x01, 0x7f, 0x01}
+	child := []byte{0x4f, 0x01, 0x00, 0x5f, 0x01, 0x7f, 0x01}
+	function := wasmtest.FuncType(nil, nil)
+	source := module(open, child, function)
+	if err := AdmitProductionSource(source); err != nil {
+		decoded, decodeErr := wasm.DecodeModule(source)
+		t.Fatalf("flat aggregate subtype source rejected: %v (root-wire=%t decode=%v decoded=%t)", err, admitRV64GCRootedScalarWire(source), decodeErr, decodeErr == nil && admitRV64GCRootedScalarModule(decoded))
+	}
+	if m, err := wasm.DecodeModule(source); err != nil || !admitRV64GCRootedScalarModule(m) {
+		t.Fatalf("flat aggregate subtype decoded admission=%t err=%v", err == nil && admitRV64GCRootedScalarModule(m), err)
+	}
+	for name, bad := range map[string][]byte{
+		"future-super": {0x4f, 0x01, 0x02, 0x5f, 0x01, 0x7f, 0x01},
+		"wrong-kind":   {0x4f, 0x01, 0x00, 0x5e, 0x7f, 0x01},
+		"function":     {0x4f, 0x01, 0x00, 0x60, 0x00, 0x00},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := AdmitProductionSource(module(open, bad, function)); err == nil {
+				t.Fatal("invalid flat aggregate subtype escaped wire admission")
+			}
+		})
 	}
 }
 
