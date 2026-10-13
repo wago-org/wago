@@ -12,19 +12,22 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // Fences may be coalesced because no memory access, call, trap or escape lies
 // between them. The replacement must still emit one fence when Fenced is true.
 type IntegerSumLoop struct {
-	Counter, Accumulator, Bound uint32
-	End                         int
-	Wide, Fenced                bool
-	Calls                       uint8
-	InvariantGlobal             bool
-	GlobalRecurrence            bool
-	GlobalCoefficient           uint64
-	IncrementCoefficient        uint64
-	IncrementConstant           uint64
-	Global                      uint32
-	Coefficient, Constant       uint64
-	GlobalWrites                [4]IntegerAffineGlobalWrite
-	GlobalWriteCount            uint8
+	Counter, Accumulator, Bound   uint32
+	End                           int
+	Wide, Fenced                  bool
+	Calls                         uint8
+	InvariantGlobal               bool
+	GlobalRecurrence              bool
+	GlobalCoefficient             uint64
+	IncrementCoefficient          uint64
+	IncrementConstant             uint64
+	Global                        uint32
+	Coefficient, Constant         uint64
+	Periodic                      bool
+	EvenCoefficient, EvenConstant uint64
+	OddCoefficient, OddConstant   uint64
+	GlobalWrites                  [4]IntegerAffineGlobalWrite
+	GlobalWriteCount              uint8
 }
 
 // InspectIntegerSumLoop does not advance the source reader on either outcome.
@@ -94,6 +97,14 @@ func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module, al
 			r = termStart
 			term, ok = inspectIntegerGlobalRecurrence(&r, module, width)
 		}
+	}
+	if !ok && blockType == 0 {
+		r = termStart
+		var periodic IntegerSumLoop
+		term, periodic, ok = inspectIntegerParityTerm(&r)
+		p.Periodic = periodic.Periodic
+		p.EvenCoefficient, p.EvenConstant = periodic.EvenCoefficient, periodic.EvenConstant
+		p.OddCoefficient, p.OddConstant = periodic.OddCoefficient, periodic.OddConstant
 	}
 	if !ok {
 		return p, false

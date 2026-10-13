@@ -75,40 +75,44 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	}
 	// T(n)=floor(n/2)*(n-1+(n&1)). Dividing a factor before multiplying
 	// preserves the complete modulo-2^32/2^64 result, including unsigned extrema.
-	get(p.Accumulator)
-	get(p.Bound)
-	one()
-	f.pushBinOp(opShrU, typ)
-	get(p.Bound)
-	one()
-	f.pushBinOp(opSub, typ)
-	get(p.Bound)
-	one()
-	f.pushBinOp(opAnd, typ)
-	f.pushBinOp(opAdd, typ)
-	f.pushBinOp(opMul, typ)
-	if p.Coefficient != 1 {
-		f.pushValue(storage{kind: stConst, typ: typ, cval: int64(p.Coefficient)})
-		f.pushBinOp(opMul, typ)
-	}
-	if p.Constant != 0 || p.InvariantGlobal {
-		if p.InvariantGlobal {
-			if err := f.globalGetIndex(p.Global); err != nil {
-				return false, err
-			}
-		} else {
-			f.pushValue(storage{kind: stConst, typ: typ, cval: int64(p.Constant)})
-		}
-		// The constant term is contributed once even when Bound is zero.
+	if p.Periodic {
+		f.emitIntegerParitySum(p, typ, get)
+	} else {
+		get(p.Accumulator)
+		get(p.Bound)
 		one()
+		f.pushBinOp(opShrU, typ)
 		get(p.Bound)
+		one()
+		f.pushBinOp(opSub, typ)
 		get(p.Bound)
-		f.pushUnOp(opEqz, typ)
-		f.emitSelect()
+		one()
+		f.pushBinOp(opAnd, typ)
+		f.pushBinOp(opAdd, typ)
 		f.pushBinOp(opMul, typ)
+		if p.Coefficient != 1 {
+			f.pushValue(storage{kind: stConst, typ: typ, cval: int64(p.Coefficient)})
+			f.pushBinOp(opMul, typ)
+		}
+		if p.Constant != 0 || p.InvariantGlobal {
+			if p.InvariantGlobal {
+				if err := f.globalGetIndex(p.Global); err != nil {
+					return false, err
+				}
+			} else {
+				f.pushValue(storage{kind: stConst, typ: typ, cval: int64(p.Constant)})
+			}
+			// The constant term is contributed once even when Bound is zero.
+			one()
+			get(p.Bound)
+			get(p.Bound)
+			f.pushUnOp(opEqz, typ)
+			f.emitSelect()
+			f.pushBinOp(opMul, typ)
+			f.pushBinOp(opAdd, typ)
+		}
 		f.pushBinOp(opAdd, typ)
 	}
-	f.pushBinOp(opAdd, typ)
 	f.setLocal(nil, int(p.Accumulator), false)
 	// A do-while loop executes once even for n=0, so its final counter is 1.
 	one()

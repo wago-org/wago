@@ -35,6 +35,10 @@ func inspectIntegerAffineTerm(r *wasm.Reader, blocked bool) (integerAffineTerm, 
 }
 
 func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *wasm.Module, allowCalls bool) (integerAffineTerm, bool) {
+	return inspectIntegerAffineTermUntil(r, blocked, module, allowCalls, 0x0b)
+}
+
+func inspectIntegerAffineTermUntil(r *wasm.Reader, blocked bool, module *wasm.Module, allowCalls bool, terminal byte) (integerAffineTerm, bool) {
 	start := r.Offset()
 	first, ok := r.Peek()
 	if !ok || (first != 0x20 && first != 0x41 && first != 0x42 && first != 0x23 && first != 0x43 && first != 0x44) {
@@ -65,7 +69,7 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 			return integerAffineTerm{}, false
 		}
 		next, ok := r.Peek()
-		if !ok || !(blocked && next == 0x0b || !blocked && (next == 0x6a || next == 0x7c)) {
+		if !ok || !(blocked && next == terminal || !blocked && (next == 0x6a || next == 0x7c)) {
 			return integerAffineTerm{}, false
 		}
 		return integerAffineTerm{global: x, hasGlobal: true, width: width}, true
@@ -78,7 +82,7 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 			return integerAffineTerm{}, false
 		}
 		next, ok := r.Peek()
-		if ok && (blocked && next == 0x0b || !blocked && (next == 0x6a || next == 0x7c)) {
+		if ok && (blocked && next == terminal || !blocked && (next == 0x6a || next == 0x7c)) {
 			return integerAffineTerm{coefficient: 1, variable: x, hasVariable: true}, true
 		}
 		if r.JumpTo(start) != nil {
@@ -110,7 +114,7 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 			return out, false
 		}
 		// With one term left, the unblocked add consumes the earlier accumulator.
-		if depth == 1 && (blocked && op == 0x0b || !blocked && (op == 0x6a || op == 0x7c)) {
+		if depth == 1 && (blocked && op == terminal || !blocked && (op == 0x6a || op == 0x7c)) {
 			if stack[0].floatSign != 0 || stack[0].vectorWidth != 0 {
 				return out, false
 			}
