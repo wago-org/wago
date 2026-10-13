@@ -16,6 +16,7 @@ import (
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	native "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -3339,6 +3340,163 @@ func rootedScalarNumericGlobalImportModule() []byte {
 		)),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
+}
+
+func rootedScalarMutableStructGlobalModule(exportGlobal bool) []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	global := []byte{0x01, 0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b}
+	body := []byte{
+		0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x24, 0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x23, 0x00, 0xfb, 0x02, 0x00, 0x00,
+		0x41, 0x01, 0x6a,
+		0x0b,
+	}
+	trap := []byte{0x00, 0x41, 0x37, 0xfb, 0x00, 0x00, 0x24, 0x00, 0x00, 0x41, 0x00, 0x0b}
+	get := []byte{0x00, 0x23, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	exports := [][]byte{
+		wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0),
+		wasmtest.ExportEntry("store_then_trap", byte(wasm.ExternFunc), 1),
+		wasmtest.ExportEntry("get", byte(wasm.ExternFunc), 2),
+	}
+	if exportGlobal {
+		exports = append(exports, wasmtest.ExportEntry("root", byte(wasm.ExternGlobal), 0))
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(6, global),
+		wasmtest.Section(7, wasmtest.Vec(exports...)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(body))), body...),
+			append(wasmtest.ULEB(uint32(len(trap))), trap...),
+			append(wasmtest.ULEB(uint32(len(get))), get...),
+		)),
+	)
+}
+
+func rootedScalarMutableArrayGlobalModule() []byte {
+	types := [][]byte{
+		{0x5e, 0x7f, 0x01},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	global := []byte{0x01, 0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b}
+	body := []byte{
+		0x00,
+		0x41, 0x29, 0x41, 0x01, 0xfb, 0x06, 0x00, 0x24, 0x00,
+		0x41, 0x07, 0x41, 0x01, 0xfb, 0x06, 0x00, 0x1a,
+		0x23, 0x00, 0x41, 0x00, 0xfb, 0x0b, 0x00,
+		0x41, 0x01, 0x6a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, global),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedScalarMutableStructGlobalExecutes(t *testing.T) {
+	source := rootedScalarMutableStructGlobalModule(false)
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("generic rooted mutable struct global was not source-admitted")
+	}
+	if railshot.AdmitGCRootedScalarSource(rootedScalarMutableStructGlobalModule(true)) {
+		t.Fatal("private collector-reference global export was source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Globals) != 1 || view.Globals[0].Type != ValAnyRef || !view.Globals[0].Mutable {
+		t.Fatalf("rooted mutable-global receipt=%t globals=%+v validation=%v", rv64FreshRootedGC(view), view.Globals, railshotValidateCompiled(view))
+	}
+	candidate := cloneCompiledMetadata(view)
+	candidate.ValueTypes = slices.Clone(candidate.ValueTypes)
+	candidate.ValueTypes[candidate.Globals[0].ValueTypeIndex].Ref.Heap.TypeIndex = 1
+	if rv64FreshRootedGC(candidate) {
+		t.Fatal("retargeted rooted global exact type retained the generic receipt")
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if roots := instance.publicGCState().globalRoots; len(roots) != 1 || roots[0].GlobalIndex != 0 {
+		t.Fatalf("generic rooted mutable-global roots=%+v", roots)
+	}
+	for range 16 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
+			t.Fatalf("run()=%v err=%v want=[42]", got, err)
+		}
+	}
+	resolvedTrap, err := instance.WasmFunc("store_then_trap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, call := range map[string]func() ([]uint64, error){
+		"ordinary": func() ([]uint64, error) { return instance.Invoke("store_then_trap") },
+		"resolved": func() ([]uint64, error) { return resolvedTrap.Invoke() },
+	} {
+		if got, err := call(); err == nil || got != nil {
+			t.Fatalf("%s store_then_trap()=%v err=%v, want trap", name, got, err)
+		}
+		// Model a different tenant collecting immediately after the trapping call's
+		// complete-call lease is released. Instance.CollectGC would first synchronize
+		// this instance and would therefore hide a failed trap-path publication.
+		lease := instance.lockGCInvocation(newInvocationID())
+		domain := instance.lockGCCollector()
+		err = instance.gc.CollectFull(native.EmptyRoots{})
+		unlockGCCollector(domain)
+		lease.unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := instance.Invoke("get"); err != nil || !slices.Equal(got, []uint64{55}) {
+			t.Fatalf("%s get() after trapped store and foreign collection=%v err=%v want=[55]", name, got, err)
+		}
+	}
+}
+
+func TestRV64RootedScalarMutableArrayGlobalExecutes(t *testing.T) {
+	source := rootedScalarMutableArrayGlobalModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("generic rooted mutable array global was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Globals) != 1 || view.Globals[0].Type != ValAnyRef || !view.Globals[0].Mutable {
+		t.Fatalf("rooted mutable-array-global receipt=%t globals=%+v validation=%v", rv64FreshRootedGC(view), view.Globals, railshotValidateCompiled(view))
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if roots := instance.publicGCState().globalRoots; len(roots) != 1 || roots[0].GlobalIndex != 0 {
+		t.Fatalf("generic rooted mutable-array-global roots=%+v", roots)
+	}
+	for range 16 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
+			t.Fatalf("run()=%v err=%v want=[42]", got, err)
+		}
+	}
 }
 
 func rootedScalarMixedFunctionGlobalImportModule() []byte {

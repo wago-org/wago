@@ -350,6 +350,38 @@ func rv64RootedScalarGlobal(m *wasm.Module, global *wasm.Global, limit int) bool
 	if global == nil || len(global.Init.Instrs) != 0 {
 		return false
 	}
+	if global.Type.Type.Kind() == wasm.ValRef {
+		ref := global.Type.Type.Ref()
+		heap := ref.Heap()
+		if !ref.Nullable() || ref.Exact() || heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec {
+			return false
+		}
+		flat := uint32(0)
+		aggregate := false
+		for group := range m.Types {
+			for member := range m.Types[group].SubTypes {
+				if flat == heap.Type().Index {
+					kind := m.Types[group].SubTypes[member].Comp.Kind
+					aggregate = kind == wasm.CompStruct || kind == wasm.CompArray
+				}
+				flat++
+			}
+		}
+		if !aggregate {
+			return false
+		}
+		r := wasm.ReaderFrom(global.Init.BodyBytes)
+		op, err := r.Byte()
+		if err != nil || op != 0xd0 {
+			return false
+		}
+		index, err := r.S33()
+		if err != nil || index < 0 || uint64(index) != uint64(heap.Type().Index) {
+			return false
+		}
+		end, err := r.Byte()
+		return err == nil && end == 0x0b && !r.HasNext()
+	}
 	if wasm.EqualValType(global.Type.Type, wasm.I32) || wasm.EqualValType(global.Type.Type, wasm.I64) {
 		return railshot.ValidateIntegerInitializer(global.Init.BodyBytes, global.Type.Type, func(index uint32) (wasm.ValType, bool) {
 			if uint64(index) >= uint64(limit) {

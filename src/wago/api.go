@@ -4900,17 +4900,14 @@ func (in *Instance) invokeWithTokenAdmittedBody(export string, args []uint64, co
 		}
 		defer stopCancel()
 	}
+	var executionErr error
 	if in.syncMode {
-		var err error
 		if contexts.interrupt != nil && in.contextBoundedTypedI64Eligible(ic) {
 			// Admission, ownership, and the cancellation watcher above are shared
 			// with the general path. Only the final native driver changes.
-			err = in.callCachedBoundedTypedHostContext(entry, contexts.callback)
+			executionErr = in.callCachedBoundedTypedHostContext(entry, contexts.callback)
 		} else {
-			err = in.callNativeSyncWithTrapContext(entry, in.trap, contexts.callback)
-		}
-		if err != nil {
-			return nil, err
+			executionErr = in.callNativeSyncWithTrapContext(entry, in.trap, contexts.callback)
 		}
 	} else {
 		privateScalar := invokePrivateEntryEnabled && contexts.interrupt == nil && !in.nativeControlIsShared() &&
@@ -4919,22 +4916,18 @@ func (in *Instance) invokeWithTokenAdmittedBody(export string, args []uint64, co
 		if privateScalar {
 			entryMode = ic.entryMode
 		}
-		var err error
 		if entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
-			err = in.callPreparedIsolated(entry, in.trap, false, ic.boundedWrapper)
+			executionErr = in.callPreparedIsolated(entry, in.trap, false, ic.boundedWrapper)
 		} else if entryMode != preparedEntryGeneral {
-			err = in.callPreparedPrivate(entry, in.trap)
+			executionErr = in.callPreparedPrivate(entry, in.trap)
 		} else {
-			err = in.callNativeAsync(entry, false)
+			executionErr = in.callNativeAsync(entry, false)
 		}
-		if err != nil {
-			return nil, err
-		}
-		if err := in.replayHostLog(); err != nil {
-			return nil, err
+		if executionErr == nil {
+			executionErr = in.replayHostLog()
 		}
 	}
-	if err := in.reconcileGCGlobalRoots(); err != nil {
+	if err := in.reconcileGCGlobalRootsAfter(executionErr); err != nil {
 		return nil, err
 	}
 	goruntime.KeepAlive(in)
@@ -5086,19 +5079,16 @@ func (in *Instance) invokeAttachedLocalContextBody(li int, args []uint64, contex
 		}
 	}
 	defer stopCancel()
+	var executionErr error
 	if in.syncMode {
-		if err := in.callNativeSyncWithTrapContext(entry, activeTrap, contexts.callback); err != nil {
-			return nil, err
-		}
+		executionErr = in.callNativeSyncWithTrapContext(entry, activeTrap, contexts.callback)
 	} else {
-		if err := in.callNativeAsyncWithTrap(entry, false, activeTrap); err != nil {
-			return nil, err
-		}
-		if err := in.replayHostLog(); err != nil {
-			return nil, err
+		executionErr = in.callNativeAsyncWithTrap(entry, false, activeTrap)
+		if executionErr == nil {
+			executionErr = in.replayHostLog()
 		}
 	}
-	if err := in.reconcileGCGlobalRoots(); err != nil {
+	if err := in.reconcileGCGlobalRootsAfter(executionErr); err != nil {
 		return nil, err
 	}
 	goruntime.KeepAlive(in)

@@ -371,10 +371,7 @@ func (in *Instance) invokeVoidEntryAdmitted(ctx context.Context, entry uintptr, 
 		} else {
 			err = in.callVoidNative(entry)
 		}
-		if err != nil {
-			return err
-		}
-		return in.reconcileGCGlobalRoots()
+		return in.reconcileGCGlobalRootsAfter(err)
 	}
 	stopCancel, err := in.startCancellationWatch(ctx, in.trap)
 	if err != nil {
@@ -386,10 +383,7 @@ func (in *Instance) invokeVoidEntryAdmitted(ctx context.Context, entry uintptr, 
 	} else {
 		err = in.callVoidNative(entry)
 	}
-	if err != nil {
-		return contextInterruptError(ctx, err)
-	}
-	return contextInterruptError(ctx, in.reconcileGCGlobalRoots())
+	return in.reconcileGCGlobalRootsAfter(contextInterruptError(ctx, err))
 }
 
 func (in *Instance) callVoidNative(entry uintptr) error {

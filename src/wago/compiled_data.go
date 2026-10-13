@@ -220,9 +220,10 @@ func rv64RootedMemoryExportDigest(c *Compiled) ([32]byte, bool) {
 }
 
 // rv64RootedGlobalDigest authenticates numeric imported cells, literal local
-// scalar cells, and their exact public namespace. Generic rooted code addresses
-// globals by index, so ownership, type, width, mutability, and initial bits must
-// remain compiler-owned facts.
+// scalar cells, nullable local collector-reference cells, and their exact public
+// namespace. Generic rooted code addresses globals by index, so ownership,
+// exact type, width, mutability, and initial bits must remain compiler-owned
+// facts.
 func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 	if c == nil || len(c.GlobalImports) > len(c.Globals) || len(c.Globals) > 256 || len(c.GlobalExports) > 1024 ||
 		len(c.Exports)+len(c.GlobalExports)+len(c.memoryExportMap()) > 1024 {
@@ -237,9 +238,11 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 	remaining := uint64(1 << 20)
 	for i := range c.Globals {
 		global := &c.Globals[i]
-		if global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 ||
+		collectorRef := isGCRefValType(global.Type)
+		if global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && !collectorRef ||
 			!global.HasValueType || global.HasInitFunc || global.InitFunc != 0 ||
-			global.V128 != (V128{}) || (global.Type == ValI32 || global.Type == ValF32) && global.Bits>>32 != 0 {
+			global.V128 != (V128{}) || (global.Type == ValI32 || global.Type == ValF32) && global.Bits>>32 != 0 ||
+			collectorRef && (i < len(c.GlobalImports) || global.Bits != 0 || global.HasInitGlobal || global.InitGlobal != 0 || len(global.InitExpr) != 0) {
 			return [32]byte{}, false
 		}
 		if len(global.InitExpr) != 0 {
@@ -261,7 +264,7 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 		}
 		exact, err := c.globalExactType(i)
 		plain, ok := valueTypeDescriptorFromValType(global.Type)
-		if err != nil || !ok || exact != plain {
+		if err != nil || !ok || (!collectorRef && exact != plain) || collectorRef && exact.Kind != ValueTypeReference {
 			return [32]byte{}, false
 		}
 		flags := byte(1)
@@ -292,6 +295,21 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 		_, _ = h.Write([]byte{byte(global.Type), flags})
 		binary.LittleEndian.PutUint32(word[:4], global.ValueTypeIndex)
 		_, _ = h.Write(word[:4])
+		if collectorRef {
+			refFlags := byte(0)
+			if exact.Ref.Nullable {
+				refFlags |= 1
+			}
+			if exact.Ref.Exact {
+				refFlags |= 2
+			}
+			if exact.Ref.Heap.Defined {
+				refFlags |= 4
+			}
+			_, _ = h.Write([]byte{refFlags, byte(exact.Ref.Heap.Abstract)})
+			binary.LittleEndian.PutUint32(word[:4], exact.Ref.Heap.TypeIndex)
+			_, _ = h.Write(word[:4])
+		}
 		binary.LittleEndian.PutUint32(word[:4], uint32(global.InitGlobal))
 		_, _ = h.Write(word[:4])
 		binary.LittleEndian.PutUint64(word[:], uint64(len(global.InitExpr)))

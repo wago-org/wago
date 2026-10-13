@@ -168,6 +168,23 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		target := c.Types[value.Ref.Heap.TypeIndex]
 		return target.Kind == CompositeTypeStruct || target.Kind == CompositeTypeArray
 	}
+	for i := range c.Globals {
+		global := &c.Globals[i]
+		if !isGCRefValType(global.Type) {
+			continue
+		}
+		exact, err := c.globalExactType(i)
+		if i < len(c.GlobalImports) || global.Type != ValAnyRef || err != nil || exact.Kind != ValueTypeReference ||
+			!exact.Ref.Nullable || exact.Ref.Exact || !exact.Ref.Heap.Defined || !rootedValue(exact, len(c.Types)) ||
+			global.Bits != 0 || global.HasInitFunc || global.InitFunc != 0 || global.HasInitGlobal || global.InitGlobal != 0 || len(global.InitExpr) != 0 {
+			return false
+		}
+	}
+	for _, index := range c.GlobalExports {
+		if index < 0 || index >= len(c.Globals) || isGCRefValType(c.Globals[index].Type) {
+			return false
+		}
+	}
 	storageKind := func(storage StorageTypeDescriptor, owner int) (gc.StorageKind, bool) {
 		if storage.Packed {
 			switch storage.PackedType {
@@ -1062,6 +1079,9 @@ func railshotValidateCompiled(c *Compiled) error {
 	hasReferenceGlobal := false
 	stateOnlyExternrefs := rv64StateOnlyExternrefGlobals(c)
 	for i, global := range c.Globals {
+		if freshRootedGC && isGCRefValType(global.Type) {
+			continue // The generic receipt pins exact nullable aggregate roots.
+		}
 		if exactGCTypeSubtypingRefFuncGlobals {
 			continue // The exact metadata digest pins every indexed ref.func global.
 		}

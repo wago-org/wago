@@ -621,23 +621,17 @@ func (fn *WasmFunc) invokeGeneralAdmittedBody(args []uint64, argumentOwners *rai
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
+	var executionErr error
 	if in.syncMode {
-		if err := in.callNativeSync(fn.entry); err != nil {
-			return nil, err
-		}
+		executionErr = in.callNativeSync(fn.entry)
 	} else {
 		prepared := directPreparedCallEnabled && preparedCallEnabled && in.ownsMem
-		err := in.callNativeAsync(fn.entry, prepared)
-		if err != nil {
-			return nil, err
-		}
-		if len(in.hostLog) != 0 {
-			if err := in.replayHostLog(); err != nil {
-				return nil, err
-			}
+		executionErr = in.callNativeAsync(fn.entry, prepared)
+		if executionErr == nil && len(in.hostLog) != 0 {
+			executionErr = in.replayHostLog()
 		}
 	}
-	if err := in.reconcileGCGlobalRoots(); err != nil {
+	if err := in.reconcileGCGlobalRootsAfter(executionErr); err != nil {
 		return nil, err
 	}
 	goruntime.KeepAlive(in)

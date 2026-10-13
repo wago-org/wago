@@ -194,7 +194,16 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	}
 	for i := range m.Globals {
 		global := &m.Globals[i]
-		if !scalarType(global.Type.Type, true) || len(global.Init.Instrs) != 0 {
+		if len(global.Init.Instrs) != 0 {
+			return false
+		}
+		if global.Type.Type.Kind() == wasm.ValRef {
+			if !rootedScalarNullGlobal(*global, m) {
+				return false
+			}
+			continue
+		}
+		if !scalarType(global.Type.Type, true) {
 			return false
 		}
 		if wasm.EqualValType(global.Type.Type, wasm.I32) || wasm.EqualValType(global.Type.Type, wasm.I64) {
@@ -244,7 +253,8 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				return false
 			}
 		case wasm.ExternGlobal:
-			if uint64(export.Index.Index) >= uint64(importedGlobals+len(m.Globals)) {
+			global, ok := m.GlobalTypeByIndex(export.Index.Index)
+			if !ok || global.Type.Kind() == wasm.ValRef {
 				return false
 			}
 		case wasm.ExternTable:
@@ -375,6 +385,44 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 	}
 	return true
+}
+
+// rootedScalarNullGlobal admits the first generic persistent collector state:
+// a concrete nullable reference to an already-declared aggregate, initialized to
+// null. Non-null constant expressions remain closed until their allocation and
+// construction roots can be authenticated independently.
+func rootedScalarNullGlobal(global wasm.Global, m *wasm.Module) bool {
+	ref := global.Type.Type.Ref()
+	heap := ref.Heap()
+	if !ref.Nullable() || ref.Exact() || heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec ||
+		!rootedScalarAggregateAt(m, heap.Type().Index) ||
+		len(global.Init.Instrs) != 0 || len(global.Init.BodyBytes) < 3 || len(global.Init.BodyBytes) > 7 || global.Init.BodyBytes[0] != 0xd0 {
+		return false
+	}
+	r := wasm.ReaderFrom(global.Init.BodyBytes[1:])
+	index, err := r.S33()
+	if err != nil || index < 0 || uint64(index) != uint64(heap.Type().Index) {
+		return false
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && !r.HasNext()
+}
+
+func rootedScalarAggregateAt(m *wasm.Module, index uint32) bool {
+	if m == nil {
+		return false
+	}
+	flat := uint32(0)
+	for group := range m.Types {
+		for member := range m.Types[group].SubTypes {
+			if flat == index {
+				kind := m.Types[group].SubTypes[member].Comp.Kind
+				return kind == wasm.CompStruct || kind == wasm.CompArray
+			}
+			flat++
+		}
+	}
+	return false
 }
 
 func admitRV64GCRootedScalarWire(data []byte) bool {
