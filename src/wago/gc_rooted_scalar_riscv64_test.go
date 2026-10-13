@@ -2545,6 +2545,79 @@ func TestRV64RootedSelfRecursiveStructExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarSelfRecursiveArrayModule() []byte {
+	body := []byte{
+		0x00,
+		0xd0, 0x00, 0xfb, 0x08, 0x00, 0x01, 0x24, 0x00,
+		0x23, 0x00, 0xfb, 0x08, 0x00, 0x01, 0x24, 0x00,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5e, 0x63, 0x00, 0x01},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedSelfRecursiveArrayExecutes(t *testing.T) {
+	source := rootedScalarSelfRecursiveArrayModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("self-recursive array module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Types) < 1 || view.Types[0].RecGroup != 0 ||
+		view.Types[0].Array.Storage.Value.Ref.Heap.TypeIndex != 0 {
+		t.Fatalf("self-recursive array receipt=%t types=%+v validation=%v", rv64FreshRootedGC(view), view.Types, railshotValidateCompiled(view))
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"rec-group": func(candidate *Compiled) {
+			candidate.Types[0].RecGroup = 1
+		},
+		"element-target": func(candidate *Compiled) {
+			candidate.Types[0].Array.Storage.Value.Ref.Heap.TypeIndex = 1
+		},
+	} {
+		t.Run("receipt-"+name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			candidate.Types = slices.Clone(view.Types)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated self-recursive array retained generic receipt")
+			}
+		})
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err = instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if err = instance.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	root := native.Ref(uint32(readGlobalObject(instance.globalCells[0], instance.c.Globals[0].Type)))
+	child, err := instance.gc.ArrayGet(root, 0)
+	if err != nil || child.Ref == 0 {
+		t.Fatalf("self-recursive array child=%+v, %v", child, err)
+	}
+	leaf, err := instance.gc.ArrayGet(child.Ref, 0)
+	if err != nil || leaf.Ref != 0 {
+		t.Fatalf("self-recursive array leaf=%+v, %v", leaf, err)
+	}
+}
+
 func TestRV64RootedAggregateTableInitializerExecutes(t *testing.T) {
 	source := rootedScalarAggregateTableInitializerModule()
 	if !railshot.AdmitGCRootedScalarSource(source) {

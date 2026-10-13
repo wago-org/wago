@@ -113,9 +113,9 @@ func (types internalReferenceTypes) rootedCollectorReference(storage wasm.Storag
 	}
 	if heap.Type().Rec {
 		// The generic profile admits only compact singleton recursion groups.
-		// Resolve rec.0 to the containing struct without recursively asking
-		// rootedStruct to validate the same field again.
-		return heap.Type().Index == 0 && types.rootedStructType(owner) != nil
+		// Resolve rec.0 to the containing aggregate without recursively asking
+		// rootedStruct/rootedArray to validate the same storage again.
+		return heap.Type().Index == 0 && (types.rootedStructType(owner) != nil || types.rootedAggregateType(owner, wasm.CompArray) != nil)
 	}
 	if heap.Type().Index >= owner {
 		return false
