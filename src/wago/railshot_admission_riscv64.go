@@ -43,11 +43,34 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	if validateCompiledGCFrameRoots(c, roots) != nil {
 		return false
 	}
+	rootedAbstract := func(heap AbstractHeapType) (wasm.AbsHeapType, bool) {
+		switch heap {
+		case AbstractHeapNone:
+			return wasm.HeapNone, true
+		case AbstractHeapAny:
+			return wasm.HeapAny, true
+		case AbstractHeapEq:
+			return wasm.HeapEq, true
+		case AbstractHeapStruct:
+			return wasm.HeapStruct, true
+		case AbstractHeapArray:
+			return wasm.HeapArray, true
+		default:
+			return 0, false
+		}
+	}
 	rootedValue := func(value ValueTypeDescriptor, owner int) bool {
 		if value.Kind <= ValueTypeF64 {
 			return value.Ref == (ReferenceTypeDescriptor{})
 		}
-		if value.Kind != ValueTypeReference || value.Ref.Exact || !value.Ref.Heap.Defined || int(value.Ref.Heap.TypeIndex) >= owner || int(value.Ref.Heap.TypeIndex) >= len(c.Types) {
+		if value.Kind != ValueTypeReference || value.Ref.Exact {
+			return false
+		}
+		if !value.Ref.Heap.Defined {
+			_, ok := rootedAbstract(value.Ref.Heap.Abstract)
+			return ok && value.Ref.Heap.TypeIndex == 0
+		}
+		if int(value.Ref.Heap.TypeIndex) >= owner || int(value.Ref.Heap.TypeIndex) >= len(c.Types) {
 			return false
 		}
 		target := c.Types[value.Ref.Heap.TypeIndex]
@@ -171,10 +194,14 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		case ValueTypeF64:
 			return wasm.F64, true
 		case ValueTypeReference:
-			if !value.Ref.Heap.Defined {
+			if value.Ref.Heap.Defined {
+				return wasm.RefVal(wasm.Ref(value.Ref.Nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: value.Ref.Heap.TypeIndex}), value.Ref.Exact)), true
+			}
+			heap, ok := rootedAbstract(value.Ref.Heap.Abstract)
+			if !ok || value.Ref.Heap.TypeIndex != 0 || value.Ref.Exact {
 				return wasm.ValType{}, false
 			}
-			return wasm.RefVal(wasm.Ref(value.Ref.Nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: value.Ref.Heap.TypeIndex}), value.Ref.Exact)), true
+			return wasm.RefVal(wasm.Ref(value.Ref.Nullable, wasm.AbsHeap(heap), false)), true
 		default:
 			return wasm.ValType{}, false
 		}

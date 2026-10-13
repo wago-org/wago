@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -1000,6 +1001,101 @@ func TestRV64RootedBranchCastOnlyHelperExecutes(t *testing.T) {
 	defer instance.Close()
 	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{77}) {
 		t.Fatalf("run()=%v err=%v want=[77]", got, err)
+	}
+}
+
+func rootedAbstractReferenceCallModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},       // immutable struct (field i32)
+		{0x60, 0x00, 0x01, 0x64, 0x6b}, // () -> (ref struct), used as the block signature
+		{0x60, 0x01, 0x6e, 0x01, 0x6b}, // (anyref) -> structref
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	cast := []byte{
+		0x00,
+		0x02, 0x01,
+		0x20, 0x00,
+		0xfb, 0x18, 0x01, 0x00, byte(wasm.HeapAny), byte(wasm.HeapStruct),
+		0x00,
+		0x0b,
+		0x0b,
+	}
+	caller := []byte{
+		0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00,
+		0x10, 0x00,
+		0xfb, 0x16, 0x00,
+		0xfb, 0x02, 0x00, 0x00,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(3))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(cast))), cast...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func TestRV64RootedAbstractReferenceCallExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedAbstractReferenceCallModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.Types[2].Params[0].Ref.Heap.Abstract != AbstractHeapAny || view.Types[2].Results[0].Ref.Heap.Abstract != AbstractHeapStruct {
+		t.Fatal("generic abstract reference signature receipt is missing")
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"unsupported-heap": func(candidate *Compiled) { candidate.Types[2].Params[0].Ref.Heap.Abstract = AbstractHeapFunc },
+		"abstract-index":   func(candidate *Compiled) { candidate.Types[2].Params[0].Ref.Heap.TypeIndex = 1 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			candidate.validateMemo = view.validateMemo
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("hostile abstract signature retained generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("hostile abstract signature validation=%v", err)
+			}
+		})
+	}
+	for _, gc := range []GCConfig{{}, {CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}} {
+		instance, err := Instantiate(compiled, InstantiateOptions{GC: gc})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
+			_ = instance.Close()
+			t.Fatalf("run()=%v err=%v want=[42]", got, err)
+		}
+		if err = instance.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestRV64RootedAbstractReferenceAdmissionFailsClosed(t *testing.T) {
+	source := rootedAbstractReferenceCallModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("generic abstract object signature was not source-admitted")
+	}
+	needle := []byte{0x60, 0x01, byte(wasm.HeapAny), 0x01, byte(wasm.HeapStruct)}
+	at := bytes.Index(source, needle)
+	if at < 0 {
+		t.Fatal("abstract signature encoding not found")
+	}
+	for _, heap := range []wasm.AbsHeapType{wasm.HeapI31, wasm.HeapFunc, wasm.HeapExtern} {
+		candidate := slices.Clone(source)
+		candidate[at+2] = byte(heap)
+		if railshot.AdmitGCRootedScalarSource(candidate) {
+			t.Fatalf("unsupported abstract heap %#x was source-admitted", byte(heap))
+		}
 	}
 }
 

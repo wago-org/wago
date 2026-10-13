@@ -158,6 +158,24 @@ func (types internalReferenceTypes) rootedArrayDefaultable(index uint32) bool {
 	return ok && (!types.rootedArrayElementReference(index) || storage.Val().Ref().Nullable())
 }
 
+func rootedAbstractObjectHeap(heap wasm.AbsHeapType) bool {
+	switch heap {
+	case wasm.HeapNone, wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray:
+		return true
+	default:
+		return false
+	}
+}
+
+func rootedAbstractObjectHeapS33(heap int64) bool {
+	switch heap {
+	case -15, -18, -19, -21, -22:
+		return true
+	default:
+		return false
+	}
+}
+
 // rootedObjectHeap lowers only the bounded collector heaps authenticated by the
 // generic rooted module profile. The returned negative values are the runtime
 // helper's stable encodings for abstract object heaps.
@@ -170,6 +188,9 @@ func (types internalReferenceTypes) rootedObjectHeap(heapType wasm.HeapType) (in
 		}
 		return int64(index), true
 	case wasm.HeapAbs:
+		if !rootedAbstractObjectHeap(heapType.Abs()) {
+			return 0, false
+		}
 		switch heapType.Abs() {
 		case wasm.HeapNone:
 			return -15, true
@@ -307,8 +328,13 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 		return false
 	}
 	heap := ref.Heap()
-	if types.gcRootedScalar && heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && (types.rootedStruct(heap.Type().Index) || types.rootedArray(heap.Type().Index)) {
-		return true
+	if types.gcRootedScalar {
+		if heap.Kind() == wasm.HeapAbs && rootedAbstractObjectHeap(heap.Abs()) {
+			return true
+		}
+		if heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && (types.rootedStruct(heap.Type().Index) || types.rootedArray(heap.Type().Index)) {
+			return true
+		}
 	}
 	if types.gcStructBasic && heap == wasm.AbsHeap(wasm.HeapAny) {
 		return true
@@ -389,7 +415,7 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 // Both lower through the existing internal full-width result class.
 func internalReferenceBlockType(r *wasm.Reader, typed bool, types internalReferenceTypes) (int64, error) {
 	lead, ok := r.Peek()
-	if ok && (types.gcRefTestAbstract && (lead == 0x6a || lead == 0x6b || lead == 0x6c || lead == 0x6d || lead == 0x6e) || types.gcRefTestConcrete && lead == 0x6b || types.gcBrOnCastNullability && lead == 0x6e) {
+	if ok && (types.gcRootedScalar && rootedAbstractObjectHeap(wasm.AbsHeapType(lead)) || types.gcRefTestAbstract && (lead == 0x6a || lead == 0x6b || lead == 0x6c || lead == 0x6d || lead == 0x6e) || types.gcRefTestConcrete && lead == 0x6b || types.gcBrOnCastNullability && lead == 0x6e) {
 		if _, err := r.S33(); err != nil {
 			return 0, err
 		}
@@ -431,6 +457,7 @@ func internalExplicitReferenceTypeMode(r *wasm.Reader, typed bool, types interna
 	}
 	declarationExtern := block && types.declarationExtern && lead == 0x64 && heap == -17
 	gcAbstract := block && (types.gcRefTestAbstract && (heap == -15 || heap == -18 || heap == -19 || heap == -20 || heap == -21 || heap == -22 || heap == 1 || heap == 2) || types.gcBrOnCastNullability && (heap == -18 || heap == 0))
+	rootedAbstract := types.gcRootedScalar && rootedAbstractObjectHeapS33(heap)
 	runtimeSubtype := types.gcTypeSubtypingRuntimeCallCast && heap >= 0 && heap < 3 && (!types.gcTypeSubtypingFinalityCallCast || heap < 2)
 	refTestSubtype := types.gcTypeSubtypingRefTestSingle &&
 		((types.gcTypeSubtypingRefTestVariant > 0 && types.gcTypeSubtypingRefTestVariant < 4 && heap == 4) ||
@@ -440,7 +467,7 @@ func internalExplicitReferenceTypeMode(r *wasm.Reader, typed bool, types interna
 			(types.gcTypeSubtypingRefTestVariant == 7 && heap >= 0 && heap < 8) ||
 			(types.gcTypeSubtypingRefTestVariant == 8 && heap == 0) ||
 			(types.gcTypeSubtypingRefTestVariant == 9 && heap == 2))
-	if heap != -16 && !declarationExtern && !gcAbstract && !runtimeSubtype && !refTestSubtype && !(typed && heap >= 0 && (types.function(uint32(heap)) || types.rootedStruct(uint32(heap)) || types.rootedArray(uint32(heap)))) {
+	if heap != -16 && !declarationExtern && !gcAbstract && !rootedAbstract && !runtimeSubtype && !refTestSubtype && !(typed && heap >= 0 && (types.function(uint32(heap)) || types.rootedStruct(uint32(heap)) || types.rootedArray(uint32(heap)))) {
 		return false, unsupported("explicit reference type requires abstract func or an admitted function-type index")
 	}
 	return requiresTyped, nil
