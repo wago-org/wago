@@ -796,6 +796,15 @@ func (a *Asm) BtImm(r Reg, bit uint8, w bool) {
 	a.emit(bit)
 }
 
+// BtReg copies the selected register bit to CF. The caller must check bounds
+// before this instruction, because hardware masks the dynamic bit index.
+func (a *Asm) BtReg(value, index Reg, wide bool) {
+	if wide || value >= 8 || index >= 8 {
+		a.emit(a.rex(wide, index >= 8, false, value >= 8))
+	}
+	a.emit(0x0f, 0xa3, 0xc0|byte(index&7)<<3|byte(value&7))
+}
+
 type Cond byte
 
 const (

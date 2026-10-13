@@ -2726,6 +2726,24 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		f.restoreBranchHandlers(fi)
 		f.branchJump(fr)
 	}
+	if mask, target, ok := shared.BitsetBranchTable(labels, def); ok {
+		f.a.AluRI(cmpDigit, ireg, int32(len(labels)), false)
+		outside := f.a.JccPlaceholder(condAE)
+		if ireg == RAX {
+			f.a.MovRegReg32(RDX, ireg)
+			ireg = RDX
+		}
+		f.a.MovImm64(RAX, mask)
+		f.a.BtReg(RAX, ireg, true)
+		member := f.a.JccPlaceholder(condB)
+		f.a.PatchRel32(outside, f.a.Len())
+		emitCase(def)
+		f.a.PatchRel32(member, f.a.Len())
+		emitCase(target)
+		f.stats.peep("br-table-bitset")
+		f.unreachable = true
+		return nil
+	}
 	if len(labels) >= brTableJumpMin {
 		f.hasJumpTableData = true
 		compactIDs, uniqueN, compactStubAt := f.brTableCompactPlan(labels, def)
