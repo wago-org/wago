@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"testing"
 
@@ -217,7 +218,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalTransfer(t *testing.T) {
 }
 
 func TestRV64PublicMutableFuncrefGlobalLocalTransferAdmission(t *testing.T) {
-	compiled := rv64TableStageCompile(t, "mutable-funcref-local-transfer-admission", rv64MutableFuncrefLocalTransferModule(), false)
+	compiled := rv64TableStageCompile(t, "mutable-funcref-local-transfer-admission", rv64MutableFuncrefLocalTransferModule(), os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load")
 	defer compiled.Close()
 	if !rv64MutableFuncrefGlobalLocalTransfer(compiled.executionView()) {
 		t.Fatal("base local-transfer witness rejected")
@@ -228,8 +229,22 @@ func TestRV64PublicMutableFuncrefGlobalLocalTransferAdmission(t *testing.T) {
 		"global-export": func(v *Compiled) { v.GlobalExports = map[string]int{"cell": 2} },
 		"import-name":   func(v *Compiled) { v.GlobalImports[0].Name = "other" },
 		"immutable":     func(v *Compiled) { v.Globals[2].Mutable = false },
-		"entry":         func(v *Compiled) { v.Entry = []int{0, 288, 580} },
-		"feature":       func(v *Compiled) { v.requiredFeatures &^= CoreFeatureMutableGlobal },
+		"entry": func(v *Compiled) {
+			v.Entry = slices.Clone(v.Entry)
+			v.Entry[len(v.Entry)-1] += 4
+		},
+		"entry-variant": func(v *Compiled) {
+			v.Entry = []int{0, 288, 576}
+			if len(v.code) == 1100 {
+				v.Entry = []int{0, 672, 1344}
+			}
+			v.InternalEntry = slices.Clone(v.Entry)
+		},
+		"internal-entry": func(v *Compiled) {
+			v.InternalEntry = slices.Clone(v.InternalEntry)
+			v.InternalEntry[len(v.InternalEntry)-1] += 4
+		},
+		"feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureMutableGlobal },
 	} {
 		t.Run(name, func(t *testing.T) {
 			bad := *compiled.executionView()

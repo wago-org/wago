@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"testing"
 
@@ -141,7 +142,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalExport(t *testing.T) {
 			if err = compiled.Close(); err != nil {
 				t.Fatal(err)
 			}
-			if err = rt.Close(); err != nil {
+			if err = rt.CloseContext(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 			if retired := producer.referenceLifetime().snapshot(); !retired.LogicallyClosed || retired.PhysicalResources || retired.ResourceRoots != 0 {
@@ -152,7 +153,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalExport(t *testing.T) {
 }
 
 func TestRV64PublicMutableFuncrefGlobalLocalExportAdmission(t *testing.T) {
-	compiled := rv64TableStageCompile(t, "mutable-funcref-local-export-admission", rv64MutableFuncrefLocalExportModule(), false)
+	compiled := rv64TableStageCompile(t, "mutable-funcref-local-export-admission", rv64MutableFuncrefLocalExportModule(), os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load")
 	defer compiled.Close()
 	if !rv64MutableFuncrefGlobalLocalExport(compiled.executionView()) {
 		t.Fatal("base local-export witness rejected")
@@ -164,8 +165,22 @@ func TestRV64PublicMutableFuncrefGlobalLocalExportAdmission(t *testing.T) {
 		},
 		"global-export": func(v *Compiled) { v.GlobalExports = map[string]int{"other": 0} },
 		"immutable":     func(v *Compiled) { v.Globals[0].Mutable = false },
-		"entry":         func(v *Compiled) { v.Entry = []int{0, 208, 416, 752, 1092} },
-		"feature":       func(v *Compiled) { v.requiredFeatures &^= CoreFeatureMutableGlobal },
+		"entry": func(v *Compiled) {
+			v.Entry = slices.Clone(v.Entry)
+			v.Entry[len(v.Entry)-1] += 4
+		},
+		"entry-variant": func(v *Compiled) {
+			v.Entry = []int{0, 208, 416, 752, 1088}
+			if len(v.code) == 1580 {
+				v.Entry = []int{0, 576, 1152, 1872, 2592}
+			}
+			v.InternalEntry = slices.Clone(v.Entry)
+		},
+		"internal-entry": func(v *Compiled) {
+			v.InternalEntry = slices.Clone(v.InternalEntry)
+			v.InternalEntry[len(v.InternalEntry)-1] += 4
+		},
+		"feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureMutableGlobal },
 	} {
 		t.Run(name, func(t *testing.T) {
 			bad := *compiled.executionView()

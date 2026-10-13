@@ -15,8 +15,22 @@ import (
 // pinned after native qualification without weakening structural admission.
 var rv64MutableFuncrefLocalTransferCodeDigest = [sha256.Size]byte{0x23, 0x8e, 0x2e, 0xca, 0x4f, 0x71, 0xe2, 0x0f, 0x02, 0x35, 0xae, 0xc6, 0x14, 0x8b, 0x5b, 0x6f, 0x59, 0x4e, 0xbb, 0xdb, 0x58, 0x81, 0xe4, 0xa4, 0x51, 0x16, 0xee, 0x91, 0x2c, 0x24, 0xce, 0x48}
 
+// The checked compiler emits a separate exact image. Both images retain the
+// same metadata and ownership proof, including their own entry offsets.
+var rv64MutableFuncrefLocalTransferCheckedCodeDigest = [sha256.Size]byte{0xcc, 0xc9, 0x25, 0x22, 0x0f, 0x98, 0x09, 0x8c, 0xc1, 0xfe, 0x33, 0x09, 0xff, 0x55, 0x4c, 0x19, 0xa8, 0x09, 0xcc, 0xee, 0xbe, 0x96, 0xcd, 0x1a, 0x16, 0x2b, 0x37, 0xf2, 0x7d, 0x59, 0x69, 0x0b}
+
 func rv64MutableFuncrefGlobalLocalTransferExecutionCode(c *Compiled) bool {
-	return c != nil && len(c.code) == 1100 && sha256.Sum256(c.code) == rv64MutableFuncrefLocalTransferCodeDigest
+	if c == nil {
+		return false
+	}
+	switch len(c.code) {
+	case 1100:
+		return sha256.Sum256(c.code) == rv64MutableFuncrefLocalTransferCodeDigest
+	case 2236:
+		return sha256.Sum256(c.code) == rv64MutableFuncrefLocalTransferCheckedCodeDigest
+	default:
+		return false
+	}
 }
 
 // rv64MutableFuncrefGlobalLocalTransfer authenticates a bounded private
@@ -76,7 +90,11 @@ func rv64MutableFuncrefGlobalLocalTransfer(c *Compiled) bool {
 		return false
 	}
 	required := CoreFeatureReferenceTypes | CoreFeatureMutableGlobal
-	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && slices.Equal(c.Entry, []int{0, 288, 576}) && slices.Equal(c.InternalEntry, []int{0, 288, 576}) && rv64MutableFuncrefGlobalLocalTransferExecutionCode(c)
+	wantEntry := []int{0, 288, 576}
+	if len(c.code) == 2236 {
+		wantEntry = []int{0, 672, 1344}
+	}
+	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && slices.Equal(c.Entry, wantEntry) && slices.Equal(c.InternalEntry, wantEntry) && rv64MutableFuncrefGlobalLocalTransferExecutionCode(c)
 }
 
 // ensureGuestLocalFuncrefGlobalOwner gives the admitted private cell the same

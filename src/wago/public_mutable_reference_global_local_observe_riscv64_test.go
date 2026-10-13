@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"testing"
 
@@ -124,7 +125,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalObserve(t *testing.T) {
 			if err = compiled.Close(); err != nil {
 				t.Fatal(err)
 			}
-			if err = rt.Close(); err != nil {
+			if err = rt.CloseContext(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 			if final := producer.referenceLifetime().snapshot(); final.PhysicalResources || final.ResourceRoots != 0 {
@@ -135,7 +136,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalObserve(t *testing.T) {
 }
 
 func TestRV64PublicMutableFuncrefGlobalLocalObserveAdmission(t *testing.T) {
-	compiled := rv64TableStageCompile(t, "mutable-funcref-local-observe-admission", rv64MutableFuncrefLocalObserveModule(), false)
+	compiled := rv64TableStageCompile(t, "mutable-funcref-local-observe-admission", rv64MutableFuncrefLocalObserveModule(), os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load")
 	defer compiled.Close()
 	if !rv64MutableFuncrefGlobalLocalObserve(compiled.executionView()) {
 		t.Fatal("base local-observe witness rejected")
@@ -151,7 +152,21 @@ func TestRV64PublicMutableFuncrefGlobalLocalObserveAdmission(t *testing.T) {
 			v.Funcs = slices.Clone(v.Funcs)
 			v.Funcs[5].Results = nil
 		},
-		"entry":   func(v *Compiled) { v.Entry = []int{0, 208, 416, 752, 1088, 1364} },
+		"entry": func(v *Compiled) {
+			v.Entry = slices.Clone(v.Entry)
+			v.Entry[len(v.Entry)-1] += 4
+		},
+		"entry-variant": func(v *Compiled) {
+			v.Entry = []int{0, 208, 416, 752, 1088, 1360}
+			if len(v.code) == 1836 {
+				v.Entry = []int{0, 576, 1152, 1872, 2592, 3248}
+			}
+			v.InternalEntry = slices.Clone(v.Entry)
+		},
+		"internal-entry": func(v *Compiled) {
+			v.InternalEntry = slices.Clone(v.InternalEntry)
+			v.InternalEntry[len(v.InternalEntry)-1] += 4
+		},
 		"feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureMutableGlobal },
 	} {
 		t.Run(name, func(t *testing.T) {

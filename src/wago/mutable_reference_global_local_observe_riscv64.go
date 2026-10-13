@@ -12,8 +12,22 @@ import (
 
 var rv64MutableFuncrefLocalObserveCodeDigest = [sha256.Size]byte{0x1c, 0xe0, 0xb9, 0x89, 0xdc, 0x57, 0xc1, 0xfe, 0xaa, 0x22, 0x5f, 0x7a, 0x01, 0xd1, 0x10, 0x11, 0xd6, 0x8c, 0xa9, 0x2f, 0x08, 0x9e, 0x5e, 0x11, 0xff, 0xcc, 0x25, 0xbb, 0xc3, 0x12, 0x18, 0x7d}
 
+// The checked compiler emits a separate exact image. Both images retain the
+// same metadata and ownership proof, including their own entry offsets.
+var rv64MutableFuncrefLocalObserveCheckedCodeDigest = [sha256.Size]byte{0xed, 0xbc, 0x37, 0x81, 0x59, 0xa9, 0x85, 0xbe, 0x2b, 0xf7, 0x15, 0xdf, 0x07, 0x3b, 0x0f, 0x27, 0x4c, 0x59, 0x97, 0x1a, 0x86, 0x8b, 0x50, 0x04, 0x7e, 0xbe, 0x51, 0x5c, 0x92, 0x67, 0xd1, 0x2a}
+
 func rv64MutableFuncrefGlobalLocalObserveExecutionCode(c *Compiled) bool {
-	return c != nil && len(c.code) == 1836 && sha256.Sum256(c.code) == rv64MutableFuncrefLocalObserveCodeDigest
+	if c == nil {
+		return false
+	}
+	switch len(c.code) {
+	case 1836:
+		return sha256.Sum256(c.code) == rv64MutableFuncrefLocalObserveCodeDigest
+	case 4092:
+		return sha256.Sum256(c.code) == rv64MutableFuncrefLocalObserveCheckedCodeDigest
+	default:
+		return false
+	}
 }
 
 // rv64MutableFuncrefGlobalLocalObserve authenticates the first host-visible
@@ -79,5 +93,8 @@ func rv64MutableFuncrefGlobalLocalObserve(c *Compiled) bool {
 	}
 	required := CoreFeatureReferenceTypes | CoreFeatureMutableGlobal
 	wantEntry := []int{0, 208, 416, 752, 1088, 1360}
+	if len(c.code) == 4092 {
+		wantEntry = []int{0, 576, 1152, 1872, 2592, 3248}
+	}
 	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && slices.Equal(c.Entry, wantEntry) && slices.Equal(c.InternalEntry, wantEntry) && rv64MutableFuncrefGlobalLocalObserveExecutionCode(c)
 }

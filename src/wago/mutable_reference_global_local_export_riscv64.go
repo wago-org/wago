@@ -12,8 +12,22 @@ import (
 
 var rv64MutableFuncrefLocalExportCodeDigest = [sha256.Size]byte{0x43, 0xe5, 0xa7, 0xf5, 0xb0, 0x84, 0xca, 0x26, 0xfc, 0x98, 0x7a, 0x08, 0x17, 0x13, 0x2d, 0xfc, 0x87, 0xaa, 0x47, 0x0a, 0x69, 0x8d, 0xec, 0xd9, 0x9b, 0x81, 0x44, 0x36, 0xd6, 0xc8, 0xaa, 0xa1}
 
+// The checked compiler emits a separate exact image. Both images retain the
+// same metadata and ownership proof, including their own entry offsets.
+var rv64MutableFuncrefLocalExportCheckedCodeDigest = [sha256.Size]byte{0xde, 0x82, 0xbb, 0x79, 0xdc, 0x8c, 0xb4, 0x21, 0x27, 0x9b, 0xbe, 0x38, 0xd2, 0x96, 0xe0, 0x73, 0xaf, 0xb5, 0x9a, 0x48, 0x53, 0x18, 0x03, 0x33, 0xb0, 0x7a, 0x77, 0xa8, 0xdf, 0xaf, 0x5a, 0x2f}
+
 func rv64MutableFuncrefGlobalLocalExportExecutionCode(c *Compiled) bool {
-	return c != nil && len(c.code) == 1580 && sha256.Sum256(c.code) == rv64MutableFuncrefLocalExportCodeDigest
+	if c == nil {
+		return false
+	}
+	switch len(c.code) {
+	case 1580:
+		return sha256.Sum256(c.code) == rv64MutableFuncrefLocalExportCodeDigest
+	case 3468:
+		return sha256.Sum256(c.code) == rv64MutableFuncrefLocalExportCheckedCodeDigest
+	default:
+		return false
+	}
 }
 
 // rv64MutableFuncrefGlobalLocalExport authenticates one host-visible mutable
@@ -64,5 +78,9 @@ func rv64MutableFuncrefGlobalLocalExport(c *Compiled) bool {
 		return false
 	}
 	required := CoreFeatureReferenceTypes | CoreFeatureMutableGlobal
-	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && slices.Equal(c.Entry, []int{0, 208, 416, 752, 1088}) && slices.Equal(c.InternalEntry, []int{0, 208, 416, 752, 1088}) && rv64MutableFuncrefGlobalLocalExportExecutionCode(c)
+	wantEntry := []int{0, 208, 416, 752, 1088}
+	if len(c.code) == 3468 {
+		wantEntry = []int{0, 576, 1152, 1872, 2592}
+	}
+	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && slices.Equal(c.Entry, wantEntry) && slices.Equal(c.InternalEntry, wantEntry) && rv64MutableFuncrefGlobalLocalExportExecutionCode(c)
 }
