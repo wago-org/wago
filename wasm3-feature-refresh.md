@@ -432,3 +432,15 @@ and effectively unchanged allocations. Individual phase samples remain in the
 captures, repeat verdicts, probes, native-code evidence and validation output.
 Nine Wago captures have durable local receipts. Database integrity and all
 575,121 historical observations pass. Full parity remains open; no deployment.
+
+### Full float-global snapshot refresh
+
+The `fab6064d` local refresh completed all 266 contracts, including all 148
+main workloads. Its 266 full captures have durable receipts; with targeted
+captures, the source has 1,100 observations across 266 contracts. Against the
+retained Clang w2c2 snapshot, 15 of 54 paired native feature steady contracts
+remain above 1x and 14 above 1.1x. This ranks remaining work; the fresh f32
+repeat above remains the qualified parity result. SQLite integrity, receipts,
+and all 575,121 historical observations pass. No production deployment.
+
+[Full source audit and ranking](docs/benchmarks/wasm3-2026-10-13/float-global-full-feature-cohort.json).
