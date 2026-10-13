@@ -38,7 +38,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		c.usesGCStructHelpers() != structHelpers || c.usesGCArrayHelpers() != arrayHelpers || c.syncHostSlots < 4 ||
 		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports ||
 		len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports != 0) || c.tableCount() > 2 || c.memoryCount() > 1 ||
-		len(c.GlobalImports) != 0 || len(c.Globals) > 256 || len(c.Elems) > 256 ||
+		len(c.GlobalImports) > 256 || len(c.GlobalImports) > len(c.Globals) || len(c.Globals) > 256 || len(c.Elems) > 256 ||
 		len(c.passiveElems) > 256 || len(c.PassiveData) > 256 {
 		return false
 	}

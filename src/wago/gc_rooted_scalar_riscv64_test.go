@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"runtime"
 	"slices"
 	"strings"
@@ -2287,12 +2288,13 @@ func rootedScalarImportedStartModule() []byte {
 		wasmtest.FuncType(nil, nil),
 		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
 	}
+	globalImport := append(append(wasmtest.Name("env"), wasmtest.Name("base")...), byte(wasm.ExternGlobal), 0x7f, 0x00)
 	importEntry := append(append(wasmtest.Name("env"), wasmtest.Name("start")...), byte(wasm.ExternFunc))
 	importEntry = append(importEntry, wasmtest.ULEB(1)...)
 	body := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(types...)),
-		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(2, wasmtest.Vec(globalImport, importEntry)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
 		wasmtest.Section(8, wasmtest.ULEB(0)),
@@ -2321,6 +2323,68 @@ func rootedScalarLocalStartWithImportModule() []byte {
 			append(wasmtest.ULEB(uint32(len(start))), start...),
 			append(wasmtest.ULEB(uint32(len(run))), run...),
 		)),
+	)
+}
+
+func rootedScalarNumericGlobalImportModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}),
+	}
+	globalImport := func(name string, typ wasm.ValType, mutable bool) []byte {
+		entry := append(append(wasmtest.Name("env"), wasmtest.Name(name)...), byte(wasm.ExternGlobal))
+		mut := byte(0)
+		if mutable {
+			mut = 1
+		}
+		return append(entry, wasm.MustEncodeValType(typ), mut)
+	}
+	body := []byte{
+		0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x1a,
+		0x23, 0x00, 0x41, 0x01, 0x6a, 0x24, 0x00,
+		0x23, 0x00, 0x23, 0x01, 0x23, 0x02, 0x23, 0x03,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(2, wasmtest.Vec(
+			globalImport("i32", wasm.I32, true),
+			globalImport("i64", wasm.I64, false),
+			globalImport("f32", wasm.F32, false),
+			globalImport("f64", wasm.F64, false),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("cell", byte(wasm.ExternGlobal), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func rootedScalarMixedFunctionGlobalImportModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	globalImport := append(append(wasmtest.Name("env"), wasmtest.Name("base")...), byte(wasm.ExternGlobal), 0x7f, 0x00)
+	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("host")...), byte(wasm.ExternFunc))
+	functionImport = append(functionImport, wasmtest.ULEB(1)...)
+	body := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x23, 0x00, 0x10, 0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(2, wasmtest.Vec(globalImport, functionImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
 }
 
@@ -2386,7 +2450,7 @@ func TestRV64RootedScalarImportedStartExecutes(t *testing.T) {
 	}
 	defer compiled.Close()
 	view := compiled.executionView()
-	if !rv64FreshRootedGC(view) || !view.HasStart || !view.StartIsImport || view.StartImportIdx != 0 {
+	if !rv64FreshRootedGC(view) || !view.HasStart || !view.StartIsImport || view.StartImportIdx != 0 || len(view.GlobalImports) != 1 {
 		t.Fatalf("rooted imported start receipt=%t start=%t imported=%t index=%d validation=%v", rv64FreshRootedGC(view), view.HasStart, view.StartIsImport, view.StartImportIdx, railshotValidateCompiled(view))
 	}
 	for name, mutate := range map[string]func(*Compiled){
@@ -2413,7 +2477,7 @@ func TestRV64RootedScalarImportedStartExecutes(t *testing.T) {
 		}
 	})
 	instance, err := Instantiate(compiled, InstantiateOptions{
-		Imports: NewImports().Function("env", "start", start),
+		Imports: NewImports().Global("env", "base", GlobalImport{Type: ValI32, Bits: 7}).Function("env", "start", start),
 		GC:      GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
 	})
 	if err != nil {
@@ -2455,6 +2519,141 @@ func TestRV64RootedScalarLocalStartWithImportExecutes(t *testing.T) {
 	defer instance.Close()
 	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{7}) {
 		t.Fatalf("run()=%v err=%v want=[7]", got, err)
+	}
+}
+
+func TestRV64RootedScalarNumericGlobalImportsExecute(t *testing.T) {
+	source := rootedScalarNumericGlobalImportModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("rooted numeric global imports were not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.GlobalImports) != 4 || len(view.Globals) != 4 {
+		t.Fatalf("rooted imported-global receipt=%t imports=%d globals=%d validation=%v", rv64FreshRootedGC(view), len(view.GlobalImports), len(view.Globals), railshotValidateCompiled(view))
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"name": func(candidate *Compiled) {
+			candidate.GlobalImports = slices.Clone(candidate.GlobalImports)
+			candidate.GlobalImports[0].Name = "other"
+		},
+		"mutability": func(candidate *Compiled) {
+			candidate.GlobalImports = slices.Clone(candidate.GlobalImports)
+			candidate.GlobalImports[0].Mutable = false
+		},
+		"cell-type": func(candidate *Compiled) {
+			candidate.Globals = slices.Clone(candidate.Globals)
+			candidate.Globals[0].Type = ValI64
+		},
+		"count": func(candidate *Compiled) {
+			candidate.GlobalImports = append(slices.Clone(candidate.GlobalImports), make([]GlobalImportDef, 253)...)
+			candidate.Globals = append(slices.Clone(candidate.Globals), make([]GlobalDef, 253)...)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated numeric global import retained the generic receipt")
+			}
+		})
+	}
+	i32 := NewGlobalI32(41, true)
+	i64 := NewGlobalI64(-7, false)
+	f32 := NewGlobalF32(math.Float32frombits(0x7f800001), false)
+	f64 := NewGlobalF64(math.Float64frombits(0x7ff0000000000001), false)
+	for _, global := range []*Global{i32, i64, f32, f64} {
+		defer global.Close()
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		Imports: NewImports().
+			Global("env", "i32", i32).
+			Global("env", "i64", i64).
+			Global("env", "f32", f32).
+			Global("env", "f64", f64),
+		GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	want := []uint64{42, I64(-7), 0x7f800001, 0x7ff0000000000001}
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, want) {
+		t.Fatalf("run()=%x err=%v want=%x", got, err, want)
+	}
+	if got := i32.Get(); got != 42 {
+		t.Fatalf("shared mutable i32=%d want=42", got)
+	}
+	if exported, err := instance.ExportedGlobalObject("cell"); err != nil || exported != i32 {
+		t.Fatalf("imported global re-export lost identity: exported=%p want=%p err=%v", exported, i32, err)
+	}
+	dirty, err := Instantiate(compiled, InstantiateOptions{
+		Imports: NewImports().
+			Global("env", "i32", GlobalImport{Type: ValI32, Bits: 0xdeadbeef00000029, Mutable: true}).
+			Global("env", "i64", GlobalImport{Type: ValI64, Bits: I64(-7)}).
+			Global("env", "f32", GlobalImport{Type: ValF32, Bits: 0xfeedface7f800001}).
+			Global("env", "f64", GlobalImport{Type: ValF64, Bits: 0x7ff0000000000001}),
+		GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := dirty.Invoke("run"); err != nil || !slices.Equal(got, want) {
+		_ = dirty.Close()
+		t.Fatalf("dirty run()=%x err=%v want=%x", got, err, want)
+	}
+	if err := dirty.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRV64RootedScalarMixedFunctionGlobalImportsExecute(t *testing.T) {
+	source := rootedScalarMixedFunctionGlobalImportModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("rooted mixed function/global imports were not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.NumImports != 1 || len(view.GlobalImports) != 1 || len(view.genericGCFrameRoots().callsites) != 1 {
+		t.Fatalf("rooted mixed import receipt=%t funcs=%d globals=%d roots=%+v validation=%v", rv64FreshRootedGC(view), view.NumImports, len(view.GlobalImports), view.genericGCFrameRoots(), railshotValidateCompiled(view))
+	}
+	base := NewGlobalI32(1, false)
+	defer base.Close()
+	calls := 0
+	host := slotHostFunc(func(module HostModule, params, results []uint64) {
+		calls++
+		gcModule, ok := module.(GCHostModule)
+		if !ok {
+			panic("rooted mixed import module has no collector surface")
+		}
+		if err := gcModule.CollectGC(); err != nil {
+			panic(err)
+		}
+		results[0] = uint64(uint32(params[0]) + 1)
+	})
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		Imports: NewImports().Global("env", "base", base).Function("env", "host", host),
+		GC:      GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for range 4 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{43}) {
+			t.Fatalf("run()=%v err=%v want=[43]", got, err)
+		}
+	}
+	if calls != 4 {
+		t.Fatalf("host calls=%d want=4", calls)
 	}
 }
 

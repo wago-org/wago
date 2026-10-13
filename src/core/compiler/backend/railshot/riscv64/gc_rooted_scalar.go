@@ -27,27 +27,40 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		return false
 	}
 	importedFunctions := m.ImportedFuncCount()
-	if importedFunctions != len(m.Imports) || importedFunctions > maxRootedScalarHostImports || importedFunctions+len(m.Code) > MaxFunctions {
+	importedGlobals := m.ImportedGlobalCount()
+	if importedFunctions+importedGlobals != len(m.Imports) || importedFunctions > maxRootedScalarHostImports || importedFunctions+len(m.Code) > MaxFunctions ||
+		importedGlobals+len(m.Globals) > 256 {
 		return false
 	}
-	if importedFunctions != 0 {
+	if len(m.Imports) != 0 {
 		// The first generic host boundary is deliberately numeric and table-free.
-		// Imported references, starts and table publication have separate ownership
-		// contracts and must not become reachable through this admission step.
+		// Imported references and table publication have separate ownership contracts
+		// and must not become reachable through this admission step.
 		if len(m.Tables) != 0 || len(m.Elements) != 0 {
 			return false
 		}
 		for i := range m.Imports {
-			ft, ok := m.ImportFuncType(i)
-			if !ok || len(ft.Params) > coreruntime.MaxHostArity || len(ft.Results) > coreruntime.MaxHostArity {
-				return false
-			}
-			for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
-				for _, typ := range values {
-					if !scalarType(typ, true) {
-						return false
+			im := &m.Imports[i]
+			switch im.Type.Kind {
+			case wasm.ExternFunc:
+				ft, ok := m.ImportFuncType(i)
+				if !ok || len(ft.Params) > coreruntime.MaxHostArity || len(ft.Results) > coreruntime.MaxHostArity {
+					return false
+				}
+				for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
+					for _, typ := range values {
+						if !scalarType(typ, true) {
+							return false
+						}
 					}
 				}
+			case wasm.ExternGlobal:
+				typ := im.Type.GlobalType().Type
+				if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
+					return false
+				}
+			default:
+				return false
 			}
 		}
 	}
@@ -173,7 +186,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				return false
 			}
 		case wasm.ExternGlobal:
-			if uint64(export.Index.Index) >= uint64(len(m.Globals)) {
+			if uint64(export.Index.Index) >= uint64(importedGlobals+len(m.Globals)) {
 				return false
 			}
 		default:

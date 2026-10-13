@@ -179,18 +179,22 @@ func rv64RootedMemoryExportDigest(c *Compiled) ([32]byte, bool) {
 	return digest, true
 }
 
-// rv64RootedGlobalDigest authenticates literal local scalar cells and their
-// exact public namespace. Generic rooted code addresses globals by index, so
-// type, width, mutability and initial bits must remain compiler-owned facts.
+// rv64RootedGlobalDigest authenticates numeric imported cells, literal local
+// scalar cells, and their exact public namespace. Generic rooted code addresses
+// globals by index, so ownership, type, width, mutability, and initial bits must
+// remain compiler-owned facts.
 func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
-	if c == nil || len(c.GlobalImports) != 0 || len(c.Globals) > 256 || len(c.GlobalExports) > 1024 ||
+	if c == nil || len(c.GlobalImports) > len(c.Globals) || len(c.Globals) > 256 || len(c.GlobalExports) > 1024 ||
 		len(c.Exports)+len(c.GlobalExports)+len(c.memoryExportMap()) > 1024 {
 		return [32]byte{}, false
 	}
 	h := sha256.New()
 	var word [8]byte
+	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.GlobalImports)))
+	_, _ = h.Write(word[:4])
 	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.Globals)))
 	_, _ = h.Write(word[:4])
+	remaining := uint64(1 << 20)
 	for i := range c.Globals {
 		global := &c.Globals[i]
 		if global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 ||
@@ -207,6 +211,21 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 		if global.Mutable {
 			flags |= 2
 		}
+		if i < len(c.GlobalImports) {
+			imp := &c.GlobalImports[i]
+			if imp.Type != global.Type || imp.Mutable != global.Mutable || !imp.HasValueType ||
+				imp.ValueTypeIndex != global.ValueTypeIndex || global.Bits != 0 || uint64(len(imp.Module))+uint64(len(imp.Name)) > remaining {
+				return [32]byte{}, false
+			}
+			remaining -= uint64(len(imp.Module)) + uint64(len(imp.Name))
+			flags |= 4
+			binary.LittleEndian.PutUint64(word[:], uint64(len(imp.Module)))
+			_, _ = h.Write(word[:])
+			_, _ = h.Write([]byte(imp.Module))
+			binary.LittleEndian.PutUint64(word[:], uint64(len(imp.Name)))
+			_, _ = h.Write(word[:])
+			_, _ = h.Write([]byte(imp.Name))
+		}
 		_, _ = h.Write([]byte{byte(global.Type), flags})
 		binary.LittleEndian.PutUint32(word[:4], global.ValueTypeIndex)
 		_, _ = h.Write(word[:4])
@@ -215,7 +234,6 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 	}
 	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.GlobalExports)))
 	_, _ = h.Write(word[:4])
-	remaining := uint64(1 << 20)
 	for _, name := range sortedKeys(c.GlobalExports) {
 		index := c.GlobalExports[name]
 		if index < 0 || index >= len(c.Globals) || uint64(len(name)) > remaining {

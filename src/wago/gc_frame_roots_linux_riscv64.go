@@ -36,24 +36,36 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		return reject("generic GC module has no local function bodies")
 	}
 	importedFunctions := m.ImportedFuncCount()
-	if importedFunctions != len(m.Imports) || importedFunctions > railshot.MaxHostFunctionImports || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > 2 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
+	importedGlobals := m.ImportedGlobalCount()
+	if importedFunctions+importedGlobals != len(m.Imports) || importedFunctions > railshot.MaxHostFunctionImports || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > 2 || len(m.Memories) > 1 || len(m.Tags) != 0 || importedGlobals+len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
 		return reject("RV64 exact roots require a bounded scalar allocation module")
 	}
-	if importedFunctions != 0 {
+	if len(m.Imports) != 0 {
 		if len(m.Tables) != 0 || len(m.Elements) != 0 {
 			return reject("RV64 exact roots require numeric imports without tables")
 		}
 		for i := range m.Imports {
-			ft, ok := m.ImportFuncType(i)
-			if !ok || len(ft.Params) > coreruntime.MaxHostArity || len(ft.Results) > coreruntime.MaxHostArity {
-				return reject("RV64 exact roots reject function import %d", i)
-			}
-			for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
-				for _, typ := range values {
-					if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
-						return reject("RV64 exact roots reject non-scalar function import %d", i)
+			im := &m.Imports[i]
+			switch im.Type.Kind {
+			case wasm.ExternFunc:
+				ft, ok := m.ImportFuncType(i)
+				if !ok || len(ft.Params) > coreruntime.MaxHostArity || len(ft.Results) > coreruntime.MaxHostArity {
+					return reject("RV64 exact roots reject function import %d", i)
+				}
+				for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
+					for _, typ := range values {
+						if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
+							return reject("RV64 exact roots reject non-scalar function import %d", i)
+						}
 					}
 				}
+			case wasm.ExternGlobal:
+				typ := im.Type.GlobalType().Type
+				if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
+					return reject("RV64 exact roots reject non-scalar global import %d", i)
+				}
+			default:
+				return reject("RV64 exact roots reject resource import %d", i)
 			}
 		}
 	}
@@ -61,16 +73,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		return reject("RV64 exact roots require an exact bounded data count")
 	}
 	if m.Start != nil {
-		index := int(*m.Start)
-		var sig *wasm.CompType
-		var ok bool
-		if index < importedFunctions {
-			sig, ok = m.ImportFuncType(index)
-		} else {
-			local := index - importedFunctions
-			sig, ok = m.LocalFuncType(local)
-			ok = ok && local < len(m.Code)
-		}
+		sig, ok := m.FuncSignature(uint32(*m.Start))
 		if !ok || sig == nil || len(sig.Params) != 0 || len(sig.Results) != 0 {
 			return reject("RV64 exact roots require a bounded void start")
 		}
@@ -195,7 +198,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		if export.Index.Kind == wasm.ExternMem && len(m.Memories) == 1 && export.Index.Index == 0 {
 			continue
 		}
-		if export.Index.Kind == wasm.ExternGlobal && uint64(export.Index.Index) < uint64(len(m.Globals)) {
+		if export.Index.Kind == wasm.ExternGlobal && uint64(export.Index.Index) < uint64(importedGlobals+len(m.Globals)) {
 			continue
 		}
 		if export.Index.Kind != wasm.ExternFunc {
