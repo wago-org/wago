@@ -153,3 +153,32 @@ guarded race tests, with retained alternating compile-cost evidence. Targeted in
 diagnostic tests now pass on native AMD64 at `root@remote`; Hub is unavailable
 for maintenance. Full AMD64 conformance and timed parity captures remain open. This report does not
 establish all feature combinations or complete feature-by-feature parity.
+
+### Private shared-memory control reuse — 2026-10-13
+
+Wago `17c78d48` reuses instance-private threaded control after owned host
+callbacks, while refreshing the shared-memory directory on every return.
+Migration, changed context versions, and GC execution still restore context.
+The regression covers defined/imported shared memory, concurrent growth,
+both register ABIs, and artifact roundtrips. ARM64 normal/guarded-race tests,
+pinned Core 3/threads conformance, and native AMD64 targeted tests pass.
+
+A fresh locked comparison uses the same six contracts, four phases and
+15 timing samples per successful row against Wago `e0067d93` and Clang w2c2
+`f303ed27`. Opaque callbacks fall from 14.145 ms to 11.136 ms (21.3%), but
+remain 60.87x the peer's 0.183 ms. The other five steady controls change
+between -0.9% and +1.6%; their small differences require further confirmation.
+All six generated Wago native images retain their code size.
+
+Three alternating compile process pairs compare the exact parent `5458bb4f`
+(documentation-only changes since `e0067d93`) with `17c78d48`. Median Core 3
+corpus latency changes -1.39%, threads +1.34%; generated code is identical,
+threads allocations are identical, and Core 3 differs by six allocations and
+600 bytes across 21,800 compiles. Median process RSS changes +0.23% and -2.00%,
+respectively. These are targeted measurements, not proof of all compile costs.
+
+The [retained report](docs/benchmarks/wasm3-2026-10-13/host-control-reuse.json)
+contains all phase samples, contract/artifact hashes, raw compile measurements,
+red/green regression output, correctness checks, and six local publication
+receipts. The new Wago results are available at http://localhost:8788/benchmarks/.
+No production deployment occurred. Full parity and native AMD64 timing remain open.
