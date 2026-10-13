@@ -251,6 +251,11 @@ func TestStoreBoundExternrefTableReleasesRootsAtRuntimeClose(t *testing.T) {
 	if err := rt.Close(); err != nil {
 		t.Fatalf("Runtime Close: %v", err)
 	}
+	// Runtime.Close publishes shutdown; live instances finish teardown
+	// asynchronously. Wait before asserting released roots and importer counts.
+	if err := rt.WaitClosed(context.Background()); err != nil {
+		t.Fatalf("Runtime WaitClosed: %v", err)
+	}
 	if value, ok := rt.ExternRefValue(ref); ok {
 		t.Fatalf("root after Runtime.Close = %#v, %v; want released", value, ok)
 	}
