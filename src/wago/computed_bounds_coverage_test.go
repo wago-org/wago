@@ -111,7 +111,9 @@ func countComputedBoundsSource(m *wasm.Module) (loads, forms, reversedForms, rep
 				continue
 			}
 			stage = 0
-			if (op >= 0x36 && op <= 0x40) || op == 0x10 || op == 0x11 || op == 0x12 || op == 0x13 || op == 0xfc || op == 0xfd || op == 0xfe || op <= 0x0f || op == 0x21 || op == 0x22 {
+			// Include all supported calls/control and conservatively kill the whole
+			// GC prefix. Unsupported legacy EH fails in the classifier above.
+			if (op >= 0x36 && op <= 0x40) || op <= 0x15 || op == 0x1f || op == 0xd5 || op == 0xd6 || op == 0xfb || op == 0xfc || op == 0xfd || op == 0xfe || op == 0x21 || op == 0x22 {
 				clear(prior)
 			}
 		}
@@ -130,6 +132,20 @@ func TestComputedBoundsSourceWindow(t *testing.T) {
 		want    int
 	}{
 		{"same_window", nil, 1},
+		{"straight_line_integer_work", []byte{0x41, 0, 0x1a}, 1},
+		{"call", []byte{0x10, 0}, 0},
+		{"call_indirect", []byte{0x11, 0, 0}, 0},
+		{"return_call", []byte{0x12, 0}, 0},
+		{"return_call_indirect", []byte{0x13, 0, 0}, 0},
+		{"call_ref", []byte{0x14, 0}, 0},
+		{"return_call_ref", []byte{0x15, 0}, 0},
+		{"try_table", []byte{0x1f, 0x40, 0}, 0},
+		{"throw", []byte{0x08, 0}, 0},
+		{"throw_ref", []byte{0x0a}, 0},
+		{"br_on_null", []byte{0xd5, 0}, 0},
+		{"br_on_non_null", []byte{0xd6, 0}, 0},
+		{"br_on_cast", []byte{0xfb, 0x18, 0, 0, 0x6e, 0x6d}, 0},
+		{"br_on_cast_fail", []byte{0xfb, 0x19, 0, 0, 0x6e, 0x6d}, 0},
 		{"local_write", []byte{0x41, 0, 0x21, 0}, 0},
 		{"store", []byte{0x41, 0, 0x41, 0, 0x36, 2, 0}, 0},
 	} {
