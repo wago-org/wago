@@ -145,7 +145,17 @@ func (types internalReferenceTypes) rootedArray(index uint32) bool {
 	if storage.Packed() {
 		return storage.Pack() == wasm.PackI8 || storage.Pack() == wasm.PackI16
 	}
-	return scalarType(storage.Val(), true)
+	return scalarType(storage.Val(), true) || types.rootedCollectorReference(storage, index)
+}
+
+func (types internalReferenceTypes) rootedArrayElementReference(index uint32) bool {
+	storage, _, ok := types.rootedArrayStorage(index)
+	return ok && types.rootedCollectorReference(storage, index)
+}
+
+func (types internalReferenceTypes) rootedArrayDefaultable(index uint32) bool {
+	storage, _, ok := types.rootedArrayStorage(index)
+	return ok && (!types.rootedArrayElementReference(index) || storage.Val().Ref().Nullable())
 }
 
 func (types internalReferenceTypes) rootedAggregateType(index uint32, kind wasm.CompTypeKind) *wasm.CompType {

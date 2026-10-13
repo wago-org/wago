@@ -121,7 +121,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			requiredSlots = max(requiredSlots, len(typ.Fields)+1)
 			hasStruct = true
 		case gc.KindArray:
-			if typ.Kind != CompositeTypeArray || !desc.Final || desc.HasSuper || desc.HasRefs || len(desc.Fields) != 0 {
+			if typ.Kind != CompositeTypeArray || !desc.Final || desc.HasSuper || len(desc.Fields) != 0 {
 				return false
 			}
 			kind, ok := storageKind(typ.Array.Storage, i)

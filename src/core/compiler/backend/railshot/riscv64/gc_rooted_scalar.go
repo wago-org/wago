@@ -73,7 +73,14 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 					return false
 				}
 			} else if !scalarType(storage.Val(), true) {
-				return false
+				value := storage.Val()
+				if value.Kind() != wasm.ValRef || value.Ref().Exact() {
+					return false
+				}
+				heap := value.Ref().Heap()
+				if heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec || int(heap.Type().Index) >= flatTypes || !admittedAggregates[heap.Type().Index] {
+					return false
+				}
 			}
 			admittedAggregates = append(admittedAggregates, true)
 			hasAggregate = true
@@ -214,7 +221,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 				return false
 			}
 		case 0x5e:
-			if !storageType(owner, false) {
+			if !storageType(owner, true) {
 				return false
 			}
 			mut, err := r.Byte()

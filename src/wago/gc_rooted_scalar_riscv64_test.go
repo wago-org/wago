@@ -559,6 +559,82 @@ func TestRV64RootedReferenceFieldStructStressGC(t *testing.T) {
 	}
 }
 
+func rootedReferenceArrayModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x01}, // mutable i32 leaf
+		{0x5e, 0x63, 0x00, 0x01}, // mutable array of (ref null 0)
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32}),
+	}
+	body := []byte{
+		0x02, 0x01, 0x64, 0x00, 0x03, 0x64, 0x01,
+		// The uniform initializer exists only on the operand stack while the
+		// array allocation may collect.
+		0x41, 0x07, 0xfb, 0x00, 0x00,
+		0x41, 0x02, 0xfb, 0x06, 0x01, 0x21, 0x01,
+		0x41, 0x02, 0xfb, 0x07, 0x01, 0x21, 0x02,
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x20, 0x02, 0x41, 0x00, 0x20, 0x00, 0x41, 0x02, 0xfb, 0x10, 0x01,
+		0x20, 0x01, 0x41, 0x00, 0x20, 0x00, 0xfb, 0x0e, 0x01,
+		0x20, 0x01, 0x41, 0x01, 0x20, 0x02, 0x41, 0x00, 0x41, 0x01, 0xfb, 0x11, 0x01, 0x01,
+		// Both fixed initializers remain stack roots while the second leaf and
+		// then the array itself allocate.
+		0x41, 0x09, 0xfb, 0x00, 0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00,
+		0xfb, 0x08, 0x01, 0x02, 0x21, 0x03,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0x41, 0x01, 0xfb, 0x0b, 0x01, 0xfb, 0x02, 0x00, 0x00,
+		0x20, 0x03, 0x41, 0x01, 0xfb, 0x0b, 0x01, 0xfb, 0x02, 0x00, 0x00,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedReferenceArrayExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedReferenceArrayModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42, 42}) {
+		t.Fatalf("run()=%v err=%v want=[42 42]", got, err)
+	}
+}
+
+func TestRV64RootedReferenceArrayStressGC(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedReferenceArrayModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
+	defer rt.Close()
+	module, err := rt.Module(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := rt.Instantiate(context.Background(), module, WithImports(NewImports()), WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}))
+	module.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for iteration := range 16 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42, 42}) {
+			t.Fatalf("iteration %d: run()=%v err=%v want=[42 42]", iteration, got, err)
+		}
+	}
+}
+
 func rootedScalarBoundaryStructModule(fieldCount int) []byte {
 	fields := []byte{0x5f}
 	fields = append(fields, wasmtest.ULEB(uint32(fieldCount))...)
