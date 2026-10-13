@@ -97,7 +97,7 @@ func TestPairedI32DotPublicExecution(t *testing.T) {
 	baselineTraps := make(map[string][]TrapFrame)
 	for _, bound := range []uint32{8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256} {
 		for _, bias := range [][2]int32{{-128, -128}, {2147483647, -2147483648}, {0, 1}} {
-			for _, offset := range []uint32{0, 7} {
+			for _, offset := range []uint32{0, 7, ^uint32(0)} {
 				for _, nested := range []bool{false, true} {
 					for _, on := range []bool{false, true} {
 						for _, regABI := range []bool{false, true} {
@@ -123,10 +123,16 @@ func TestPairedI32DotPublicExecution(t *testing.T) {
 									}
 									before := bytes.Clone(mem)
 									edge := uint32(len(mem)) - bound - offset
-									for _, args := range [][3]uint32{{0, 64, 0}, {3, 129, 0}, {64, 64, 0}, {edge, edge, 0}, {0, 64, 8}, {0, 64, 16}, {0, 64, bound}, {0, 64, 1}, {^uint32(15), 32, 0}, {^uint32(15), 32, 16}, {uint32(len(mem)) - 4, 64, 0}, {0, 64, ^uint32(3)}} {
+									wrapEdge := uint32((uint64(1) << 32) - uint64(bound))
+									for _, args := range [][3]uint32{{wrapEdge - 1, 64, 0}, {wrapEdge, 64, 0}, {wrapEdge + 1, 64, 0}, {wrapEdge, 64, bound - 8}, {wrapEdge + 8, 64, bound - 8}, {0, 64, 0}, {3, 129, 0}, {64, 64, 0}, {edge, edge, 0}, {0, 64, 8}, {0, 64, 16}, {0, 64, bound}, {0, 64, 1}, {^uint32(15), 32, 0}, {^uint32(15), 32, 16}, {uint32(len(mem)) - 4, 64, 0}, {0, 64, ^uint32(3)}} {
 										seed := uint32(0xfedcba98)
 										want, traps := pairedI32DotOracle(before, args[0], args[1], args[2], seed, bound, offset, bias[0], bias[1], nested)
-										got, err := in.Invoke("run", uint64(args[0]), uint64(args[1]), uint64(args[2]), uint64(seed))
+										// Exercise canonical and padded i32 carriers under both ABIs.
+										padding := uint64(0)
+										if args[2]&8 == 0 {
+											padding = 0xfedcba9800000000
+										}
+										got, err := in.Invoke("run", uint64(args[0])|padding, uint64(args[1])|padding, uint64(args[2])|padding, uint64(seed)|padding)
 										if traps {
 											var trap *TrapError
 											if !errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds {
