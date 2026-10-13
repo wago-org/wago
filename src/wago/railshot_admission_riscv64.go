@@ -36,7 +36,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		roots == nil || len(roots.safepoints) == 0 || len(roots.callsites) != 0 || len(c.Types) != len(c.GCTypeDescs) {
 		return false
 	}
-	storageKind := func(storage StorageTypeDescriptor) (gc.StorageKind, bool) {
+	storageKind := func(storage StorageTypeDescriptor, owner int) (gc.StorageKind, bool) {
 		if storage.Packed {
 			switch storage.PackedType {
 			case PackedTypeI8:
@@ -46,6 +46,20 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			default:
 				return 0, false
 			}
+		}
+		if storage.Value.Kind == ValueTypeReference {
+			ref := storage.Value.Ref
+			if ref.Exact || !ref.Heap.Defined || int(ref.Heap.TypeIndex) >= owner || int(ref.Heap.TypeIndex) >= len(c.Types) {
+				return 0, false
+			}
+			target := c.Types[ref.Heap.TypeIndex]
+			if target.Kind != CompositeTypeStruct && target.Kind != CompositeTypeArray {
+				return 0, false
+			}
+			if ref.Nullable {
+				return gc.StorageRefNull, true
+			}
+			return gc.StorageRef, true
 		}
 		if storage.Value.Ref != (ReferenceTypeDescriptor{}) {
 			return 0, false
@@ -87,19 +101,21 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			}
 		case gc.KindStruct:
 			if typ.Kind != CompositeTypeStruct || len(typ.Fields) == 0 || len(typ.Fields) > 255 || len(typ.Fields) != len(desc.Fields) ||
-				!desc.Final || desc.HasSuper || desc.HasRefs {
+				!desc.Final || desc.HasSuper {
 				return false
 			}
 			kinds := make([]gc.StorageKind, len(typ.Fields))
 			for field := range typ.Fields {
-				kind, ok := storageKind(typ.Fields[field].Storage)
+				kind, ok := storageKind(typ.Fields[field].Storage, i)
 				if !ok {
 					return false
 				}
 				kinds[field] = kind
 			}
 			expected, err := gc.NewStructDesc(gc.TypeID(i), kinds)
-			if err != nil || desc.Size != expected.Size || desc.Align != expected.Align || !slices.Equal(desc.Fields, expected.Fields) {
+			if err != nil || desc.ID != expected.ID || desc.Kind != expected.Kind || desc.Elem != expected.Elem || desc.Size != expected.Size ||
+				desc.ElemSize != expected.ElemSize || desc.Align != expected.Align || desc.HasRefs != expected.HasRefs || desc.Final != expected.Final ||
+				desc.Super != expected.Super || desc.HasSuper != expected.HasSuper || !slices.Equal(desc.Fields, expected.Fields) {
 				return false
 			}
 			requiredSlots = max(requiredSlots, len(typ.Fields)+1)
@@ -108,7 +124,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			if typ.Kind != CompositeTypeArray || !desc.Final || desc.HasSuper || desc.HasRefs || len(desc.Fields) != 0 {
 				return false
 			}
-			kind, ok := storageKind(typ.Array.Storage)
+			kind, ok := storageKind(typ.Array.Storage, i)
 			if !ok {
 				return false
 			}

@@ -456,6 +456,42 @@ func TestRV64RootedScalarArrayCopyRejectsMismatchedStorage(t *testing.T) {
 	}
 }
 
+func TestRV64RootedReferenceFieldRejectsNonDefaultableStructDefault(t *testing.T) {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x01},       // mutable i32 leaf
+		{0x5f, 0x01, 0x64, 0x00, 0x01}, // mutable non-null (ref 0) holder
+		wasmtest.FuncType(nil, nil),
+	}
+	body := []byte{0x00, 0xfb, 0x01, 0x01, 0x1a, 0x0b}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 64,
+		Codegen:    codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+		production: true, publicStarts: true, gcRootedScalar: true,
+	}
+	_, err = compileDecodedModule(m, scalarRegisters[:], opts)
+	if err == nil || !strings.Contains(err.Error(), "struct.new_default outside exact GC profile") {
+		t.Fatalf("non-defaultable struct.new_default error = %v", err)
+	}
+}
+
 func TestRV64RootedScalarTypeWireDistinguishesFieldCountFromRecGroup(t *testing.T) {
 	fields := []byte{0x5f}
 	fields = append(fields, wasmtest.ULEB(78)...)

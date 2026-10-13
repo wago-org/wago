@@ -31,6 +31,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	}
 	hasAggregate := false
 	flatTypes := 0
+	admittedAggregates := make([]bool, 0, len(m.Types))
 	for i := range m.Types {
 		group := &m.Types[i]
 		if len(group.SubTypes) != 1 {
@@ -53,9 +54,17 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 						return false
 					}
 				} else if !scalarType(storage.Val(), true) {
-					return false
+					value := storage.Val()
+					if value.Kind() != wasm.ValRef || value.Ref().Exact() {
+						return false
+					}
+					heap := value.Ref().Heap()
+					if heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec || int(heap.Type().Index) >= flatTypes || !admittedAggregates[heap.Type().Index] {
+						return false
+					}
 				}
 			}
+			admittedAggregates = append(admittedAggregates, true)
 			hasAggregate = true
 		case wasm.CompArray:
 			storage := sub.Comp.Array.Storage()
@@ -66,6 +75,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			} else if !scalarType(storage.Val(), true) {
 				return false
 			}
+			admittedAggregates = append(admittedAggregates, true)
 			hasAggregate = true
 		case wasm.CompFunc:
 			if len(sub.Comp.Params) > 256 || len(sub.Comp.Results) > 256 {
@@ -78,6 +88,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 					}
 				}
 			}
+			admittedAggregates = append(admittedAggregates, false)
 		default:
 			return false
 		}
@@ -163,7 +174,22 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 		}
 		return true
 	}
-	for range count {
+	kinds := make([]byte, 0, count)
+	storageType := func(owner uint32, references bool) bool {
+		storage, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		if storage == byte(wasm.PackI8) || storage == byte(wasm.PackI16) || storage >= 0x7c && storage <= 0x7f {
+			return true
+		}
+		if !references || storage != 0x63 && storage != 0x64 {
+			return false
+		}
+		heap, err := r.S33()
+		return err == nil && heap >= 0 && uint64(heap) < uint64(owner) && (kinds[heap] == 0x5f || kinds[heap] == 0x5e)
+	}
+	for owner := uint32(0); owner < count; owner++ {
 		form, err := r.Byte()
 		if err != nil {
 			return false
@@ -175,8 +201,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 				return false
 			}
 			for range fields {
-				storage, err := r.Byte()
-				if err != nil || storage != byte(wasm.PackI8) && storage != byte(wasm.PackI16) && (storage < 0x7c || storage > 0x7f) {
+				if !storageType(owner, true) {
 					return false
 				}
 				mut, err := r.Byte()
@@ -189,8 +214,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 				return false
 			}
 		case 0x5e:
-			storage, err := r.Byte()
-			if err != nil || storage != byte(wasm.PackI8) && storage != byte(wasm.PackI16) && (storage < 0x7c || storage > 0x7f) {
+			if !storageType(owner, false) {
 				return false
 			}
 			mut, err := r.Byte()
@@ -201,6 +225,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 			// Includes the explicit rec-group marker 0x4e and subtype prefixes.
 			return false
 		}
+		kinds = append(kinds, form)
 	}
 	return !r.HasNext()
 }

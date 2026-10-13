@@ -493,6 +493,72 @@ func TestRV64RootedScalarArrayStressGCLifetime(t *testing.T) {
 	}
 }
 
+func rootedReferenceFieldStructModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x01},       // mutable i32 leaf
+		{0x5f, 0x01, 0x63, 0x00, 0x01}, // mutable (ref null 0) holder
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	body := []byte{
+		0x02, 0x01, 0x64, 0x00, 0x01, 0x64, 0x01,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x20, 0x00, 0xfb, 0x00, 0x01, 0x21, 0x01,
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x20, 0x01, 0x20, 0x00, 0xfb, 0x05, 0x01, 0x00,
+		0xfb, 0x01, 0x00, 0x1a,
+		0x20, 0x01, 0xfb, 0x02, 0x01, 0x00,
+		0xfb, 0x02, 0x00, 0x00,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedReferenceFieldStructExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedReferenceFieldStructModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
+		t.Fatalf("run()=%v err=%v want=[42]", got, err)
+	}
+}
+
+func TestRV64RootedReferenceFieldStructStressGC(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedReferenceFieldStructModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
+	defer rt.Close()
+	module, err := rt.Module(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := rt.Instantiate(context.Background(), module, WithImports(NewImports()), WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}))
+	module.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for iteration := range 16 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
+			t.Fatalf("iteration %d: run()=%v err=%v want=[42]", iteration, got, err)
+		}
+	}
+}
+
 func rootedScalarBoundaryStructModule(fieldCount int) []byte {
 	fields := []byte{0x5f}
 	fields = append(fields, wasmtest.ULEB(uint32(fieldCount))...)

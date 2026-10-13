@@ -1795,11 +1795,18 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				for i := fieldCount - 1; i >= 0; i-- {
 					wide := false
+					reference := false
 					if genericFields != nil {
 						storage := genericFields[i].Storage()
 						wide = !storage.Packed() && scalarWide(storage.Val())
+						reference = referenceTypes.rootedStructFieldReference(imm.Index, uint32(i))
 					}
-					if err = popWidth(wide); err != nil {
+					if reference {
+						_, err = popClass(true)
+					} else {
+						err = popWidth(wide)
+					}
+					if err != nil {
 						return integerSummary{}, err
 					}
 				}
@@ -1814,8 +1821,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrStructNewDefault:
+				genericDefault := state.gcRootedScalar && referenceTypes.rootedStructDefaultable(imm.Index)
 				refTestTableNew := state.gcRefTestTable && (imm.Index == 1 || imm.Index == 2) || state.gcRefTestConcrete && imm.Index < 8 || state.gcRefTestAbstract && imm.Index == 1
-				if !state.gcRootedScalar && !refTestTableNew && ((!state.gcRefEq && !state.gcStructGet && !state.gcStructMutation && !state.gcStructBasic) || imm.Index != 0) {
+				if !genericDefault && !refTestTableNew && ((!state.gcRefEq && !state.gcStructGet && !state.gcStructMutation && !state.gcStructBasic) || imm.Index != 0) {
 					return integerSummary{}, unsupported("struct.new_default outside exact GC profile")
 				}
 				callCount++
@@ -1831,8 +1839,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU:
 				genericStorage, genericField := referenceTypes.rootedStructFieldStorage(imm.Index, imm.Index2)
 				genericPacked := genericField && genericStorage.Packed()
+				genericReference := state.gcRootedScalar && referenceTypes.rootedStructFieldReference(imm.Index, imm.Index2)
 				genericGet := state.gcRootedScalar && genericField && ((genericPacked && imm.Kind != wasm.InstrStructGet) || (!genericPacked && imm.Kind == wasm.InstrStructGet))
-				genericWide := genericGet && !genericPacked && scalarWide(genericStorage.Val())
+				genericWide := genericGet && !genericPacked && (scalarWide(genericStorage.Val()) || genericReference)
 				regularGet := (state.gcStructGet || state.gcStructMutation) && imm.Index == 0 && imm.Index2 == 0 && imm.Kind == wasm.InstrStructGet
 				basicGet := state.gcStructBasic && imm.Index == 0 && imm.Index2 < 2 && imm.Kind == wasm.InstrStructGet
 				nullGet := state.gcStructNull && imm.Index == 0 && imm.Index2 == 1
@@ -1871,17 +1880,28 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						emit.gcStructGetScalar(h, imm.Index, imm.Index2, helper, false)
 					}
 				}
-				if err = push(genericGet && genericWide); err != nil {
+				if genericReference {
+					err = pushReference()
+				} else {
+					err = push(genericGet && genericWide)
+				}
+				if err != nil {
 					return integerSummary{}, err
 				}
 			case wasm.InstrStructSet:
 				genericSet := state.gcRootedScalar && referenceTypes.mutableStructField(imm.Index, imm.Index2)
 				genericStorage, _ := referenceTypes.rootedStructFieldStorage(imm.Index, imm.Index2)
-				genericWide := genericSet && !genericStorage.Packed() && scalarWide(genericStorage.Val())
+				genericReference := genericSet && referenceTypes.rootedStructFieldReference(imm.Index, imm.Index2)
+				genericWide := genericSet && !genericStorage.Packed() && (scalarWide(genericStorage.Val()) || genericReference)
 				if !genericSet && !(state.gcStructMutation && imm.Index == 0 && imm.Index2 == 0) && !(state.gcStructNull && imm.Index == 0 && imm.Index2 == 1) && !(state.gcStructPacked && imm.Index == 0 && (imm.Index2 == 1 || imm.Index2 == 3)) && !(state.gcStructBasic && imm.Index == 0 && imm.Index2 == 1) {
 					return integerSummary{}, unsupported("struct.set outside exact gc struct profile")
 				}
-				if err = popWidth(genericWide); err != nil {
+				if genericReference {
+					_, err = popClass(true)
+				} else {
+					err = popWidth(genericWide)
+				}
+				if err != nil {
 					return integerSummary{}, err
 				}
 				if _, err = popClass(true); err != nil {

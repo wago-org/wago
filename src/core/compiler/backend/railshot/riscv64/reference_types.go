@@ -95,7 +95,38 @@ func (types internalReferenceTypes) rootedStruct(index uint32) bool {
 			if storage.Pack() != wasm.PackI8 && storage.Pack() != wasm.PackI16 {
 				return false
 			}
-		} else if !scalarType(storage.Val(), true) {
+		} else if !scalarType(storage.Val(), true) && !types.rootedCollectorReference(storage, index) {
+			return false
+		}
+	}
+	return true
+}
+
+func (types internalReferenceTypes) rootedCollectorReference(storage wasm.StorageType, owner uint32) bool {
+	if storage.Packed() || storage.Val().Kind() != wasm.ValRef {
+		return false
+	}
+	ref := storage.Val().Ref()
+	heap := ref.Heap()
+	if ref.Exact() || heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec || heap.Type().Index >= owner {
+		return false
+	}
+	target := heap.Type().Index
+	return types.rootedStruct(target) || types.rootedArray(target)
+}
+
+func (types internalReferenceTypes) rootedStructFieldReference(typeIndex, fieldIndex uint32) bool {
+	storage, ok := types.rootedStructFieldStorage(typeIndex, fieldIndex)
+	return ok && types.rootedCollectorReference(storage, typeIndex)
+}
+
+func (types internalReferenceTypes) rootedStructDefaultable(index uint32) bool {
+	fields, ok := types.rootedStructFields(index)
+	if !ok {
+		return false
+	}
+	for fieldIndex, field := range fields {
+		if types.rootedStructFieldReference(index, uint32(fieldIndex)) && !field.Storage().Val().Ref().Nullable() {
 			return false
 		}
 	}
