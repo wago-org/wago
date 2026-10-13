@@ -518,6 +518,48 @@ func mutableFuncrefLocalCallReferenceCarrierSource() []byte {
 	)
 }
 
+func mutableFuncrefLocalCallHostReferenceCarrierSource() []byte {
+	types := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64, wasm.F32, wasm.F64}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{6, 0, 0, 1, 1, 1, 0}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0), wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2), wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("call", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x20, 5, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x41, 1, 0x6a, 0x20, 1, 0x20, 2, 0x20, 3, 0x42, 1, 0x7c, 0x20, 4, 0x43, 0, 0, 0x80, 0x3f, 0x92, 0x20, 5, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x20, 5, 0x23, 0, 0x14, 0, 0x0b}),
+		)),
+	)
+}
+
+func TestMutableFuncrefLocalCallHostReferenceCarrierProduction(t *testing.T) {
+	source := mutableFuncrefLocalCallHostReferenceCarrierSource()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil || !admitMutableFunctionGlobalReferenceCarrierCall(m) {
+		t.Fatal("host-reference-carrier local-call admission", err)
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceFunctions: true, NativeReferenceCalls: true, SyncHostSlots: 64})
+	if err != nil || image == nil {
+		t.Fatal("host-reference-carrier local-call compilation", err)
+	}
+	wantDigest := [sha256.Size]byte{0x16, 0x5a, 0x6a, 0x0b, 0xfc, 0xc4, 0x61, 0x8b, 0x54, 0xb1, 0xcc, 0x30, 0xe4, 0xa9, 0xf9, 0x4b, 0xbe, 0x76, 0x88, 0x46, 0x23, 0x0c, 0xd0, 0xc5, 0x89, 0x8f, 0x33, 0xd7, 0x02, 0xbe, 0x4a, 0x96}
+	wantEntry := []int{0, 720, 1600, 2320, 3040, 3696}
+	if len(image.Code) != 7532 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || image.NativeTail != nil {
+		t.Fatalf("host-reference-carrier local-call compilation drifted: code=%d digest=%x entries=%v/%v refs=%t/%t/%t tail=%+v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, image.NativeTail)
+	}
+}
+
 func TestMutableFuncrefLocalCallReferenceCarrierProduction(t *testing.T) {
 	source := mutableFuncrefLocalCallReferenceCarrierSource()
 	if err := AdmitProductionSource(source); err != nil {
@@ -765,26 +807,47 @@ func TestMutableFuncrefLocalCallProduction(t *testing.T) {
 }
 
 func TestMutableFuncrefLocalCallProductionRejectsBroaderSources(t *testing.T) {
+	hostCarrierTail := mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallHostReferenceCarrierSource())
+	if err := AdmitProductionSource(hostCarrierTail); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("unimplemented host-reference-carrier tail source admitted", err)
+	}
+	hostCarrierTailModule, err := wasm.DecodeModule(hostCarrierTail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if admitMutableFunctionGlobalLocalCall(hostCarrierTailModule) {
+		t.Fatal("unimplemented host-reference-carrier tail shape admitted")
+	}
+	staged := false
+	image, err := CompileModuleWith(hostCarrierTailModule, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceFunctions: true, NativeReferenceCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
+	if image != nil || !errors.Is(err, ErrUnsupported) || staged {
+		t.Fatal("unimplemented host-reference-carrier tail source reached staging", image, err, staged)
+	}
+
 	for variant, source := range map[string]func() []byte{
-		"zero":              mutableFuncrefLocalCallSource,
-		"zero-tail":         func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallSource()) },
-		"i32":               mutableFuncrefLocalCallI32Source,
-		"i32-tail":          mutableFuncrefLocalTailCallI32Source,
-		"i64":               mutableFuncrefLocalCallI64Source,
-		"i64-tail":          func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallI64Source()) },
-		"f32":               mutableFuncrefLocalCallF32Source,
-		"f32-tail":          func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallF32Source()) },
-		"f64":               mutableFuncrefLocalCallF64Source,
-		"f64-tail":          func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallF64Source()) },
-		"mixed":             mutableFuncrefLocalCallMixedSource,
-		"mixed-tail":        func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallMixedSource()) },
-		"wide-i32":          mutableFuncrefLocalCallWideI32Source,
-		"wide-i32-tail":     func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallWideI32Source()) },
-		"vector":            mutableFuncrefLocalCallVectorSource,
-		"vector-tail":       mutableFuncrefLocalTailCallVectorSource,
-		"mixed-vector":      mutableFuncrefLocalCallMixedVectorSource,
-		"mixed-vector-tail": mutableFuncrefLocalTailCallMixedVectorSource,
-		"reference-carrier": mutableFuncrefLocalCallReferenceCarrierSource,
+		"zero":                   mutableFuncrefLocalCallSource,
+		"zero-tail":              func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallSource()) },
+		"i32":                    mutableFuncrefLocalCallI32Source,
+		"i32-tail":               mutableFuncrefLocalTailCallI32Source,
+		"i64":                    mutableFuncrefLocalCallI64Source,
+		"i64-tail":               func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallI64Source()) },
+		"f32":                    mutableFuncrefLocalCallF32Source,
+		"f32-tail":               func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallF32Source()) },
+		"f64":                    mutableFuncrefLocalCallF64Source,
+		"f64-tail":               func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallF64Source()) },
+		"mixed":                  mutableFuncrefLocalCallMixedSource,
+		"mixed-tail":             func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallMixedSource()) },
+		"wide-i32":               mutableFuncrefLocalCallWideI32Source,
+		"wide-i32-tail":          func() []byte { return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallWideI32Source()) },
+		"vector":                 mutableFuncrefLocalCallVectorSource,
+		"vector-tail":            mutableFuncrefLocalTailCallVectorSource,
+		"mixed-vector":           mutableFuncrefLocalCallMixedVectorSource,
+		"mixed-vector-tail":      mutableFuncrefLocalTailCallMixedVectorSource,
+		"reference-carrier":      mutableFuncrefLocalCallReferenceCarrierSource,
+		"host-reference-carrier": mutableFuncrefLocalCallHostReferenceCarrierSource,
+		"host-reference-carrier-tail": func() []byte {
+			return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallHostReferenceCarrierSource())
+		},
 		"reference-carrier-tail": func() []byte {
 			return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallReferenceCarrierSource())
 		},

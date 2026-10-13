@@ -419,12 +419,14 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 	referenceCarrierParams := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64}
 	referenceCarrierResults := []wasm.ValType{wasm.ExternRef, wasm.FuncRef, wasm.I32, wasm.I64}
 	referenceCarrierArgument := i31CoreFunctionType(&m.Types[0], referenceCarrierParams, referenceCarrierResults) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
+	hostReferenceCarrierTypes := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64, wasm.F32, wasm.F64}
+	hostReferenceCarrierArgument := i31CoreFunctionType(&m.Types[0], hostReferenceCarrierTypes, hostReferenceCarrierTypes) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
 	wideI32Types := make([]wasm.ValType, 9)
 	for i := range wideI32Types {
 		wideI32Types[i] = wasm.I32
 	}
 	wideI32Argument := i31CoreFunctionType(&m.Types[0], wideI32Types, wideI32Types)
-	if (!zeroArgument && !i32Argument && !i64Argument && !f32Argument && !f64Argument && !mixedArgument && !wideI32Argument && !vectorArgument && !mixedVectorArgument && !referenceCarrierArgument) || !i31CoreFunctionType(&m.Types[1], nil, nil) {
+	if (!zeroArgument && !i32Argument && !i64Argument && !f32Argument && !f64Argument && !mixedArgument && !wideI32Argument && !vectorArgument && !mixedVectorArgument && !referenceCarrierArgument && !hostReferenceCarrierArgument) || !i31CoreFunctionType(&m.Types[1], nil, nil) {
 		return false
 	}
 	indexed := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{}), false))
@@ -492,9 +494,14 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 		wantBodies[1] = []byte{0x20, 2, 0x20, 1, 0x20, 0, 0x41, 1, 0x6a, 0x20, 3, 0x42, 1, 0x7c, 0x0b}
 		wantBodies[5] = []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x23, 0, 0x14, 0, 0x0b}
 	}
+	if hostReferenceCarrierArgument {
+		wantBodies[0] = []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x20, 5, 0x0b}
+		wantBodies[1] = []byte{0x20, 0, 0x41, 1, 0x6a, 0x20, 1, 0x20, 2, 0x20, 3, 0x42, 1, 0x7c, 0x20, 4, 0x43, 0, 0, 0x80, 0x3f, 0x92, 0x20, 5, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x0b}
+		wantBodies[5] = []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x20, 5, 0x23, 0, 0x14, 0, 0x0b}
+	}
 	for i := range m.Code {
 		body := bytes.Equal(m.Code[i].BodyBytes, wantBodies[i])
-		if i == 5 {
+		if i == 5 && !hostReferenceCarrierArgument {
 			tailBody := append([]byte(nil), wantBodies[i]...)
 			tailBody[len(tailBody)-3] = 0x15
 			body = body || bytes.Equal(m.Code[i].BodyBytes, tailBody)

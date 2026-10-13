@@ -51,6 +51,8 @@ var rv64MutableFuncrefLocalCallReferenceCarrierCodeDigest = [sha256.Size]byte{0x
 
 var rv64MutableFuncrefLocalTailCallReferenceCarrierCodeDigest = [sha256.Size]byte{0x58, 0xfe, 0xf3, 0x22, 0xcd, 0x50, 0x38, 0x5a, 0x8d, 0x09, 0x3c, 0x15, 0x4c, 0x07, 0x6e, 0x3e, 0x34, 0x0e, 0x4a, 0xf7, 0x17, 0x9d, 0x99, 0xf2, 0x76, 0x27, 0x81, 0xf9, 0x91, 0x40, 0xe6, 0x4c}
 
+var rv64MutableFuncrefLocalCallHostReferenceCarrierCodeDigest = [sha256.Size]byte{0x16, 0x5a, 0x6a, 0x0b, 0xfc, 0xc4, 0x61, 0x8b, 0x54, 0xb1, 0xcc, 0x30, 0xe4, 0xa9, 0xf9, 0x4b, 0xbe, 0x76, 0x88, 0x46, 0x23, 0x0c, 0xd0, 0xc5, 0x89, 0x8f, 0x33, 0xd7, 0x02, 0xbe, 0x4a, 0x96}
+
 func rv64MutableFuncrefGlobalLocalCallExecutionCode(c *Compiled) bool {
 	return rv64MutableFuncrefGlobalLocalCallCodeVariant(c) != 0
 }
@@ -119,6 +121,9 @@ func rv64MutableFuncrefGlobalLocalCallCodeVariant(c *Compiled) int {
 	}
 	if len(c.code) == 4956 && digest == rv64MutableFuncrefLocalTailCallReferenceCarrierCodeDigest {
 		return 20
+	}
+	if len(c.code) == 7532 && digest == rv64MutableFuncrefLocalCallHostReferenceCarrierCodeDigest {
+		return 21
 	}
 	return 0
 }
@@ -221,6 +226,21 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 				return false
 			}
 		}
+	case 21:
+		wasmParams = []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64, wasm.F32, wasm.F64}
+		wasmResults = slices.Clone(wasmParams)
+		abiParams = []ValType{ValI32, ValFuncRef, ValExternRef, ValI64, ValF32, ValF64}
+		abiResults = slices.Clone(abiParams)
+		valueParams = make([]ValueTypeDescriptor, len(abiParams))
+		valueResults = make([]ValueTypeDescriptor, len(abiResults))
+		for i, typ := range abiParams {
+			var ok bool
+			valueParams[i], ok = valueTypeDescriptorFromValType(typ)
+			if !ok {
+				return false
+			}
+		}
+		copy(valueResults, valueParams)
 	}
 	if variant >= 10 && variant <= 18 || variant == 20 {
 		wantPlan := encoder.NativeTailPlan{Kind: encoder.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 5, FrameBytes: 80, SourceBase: 56, SourceStride: 8, ReferenceBase: 64}
@@ -284,7 +304,7 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 		return false
 	}
 	required := CoreFeatureReferenceTypes | CoreFeatureMutableGlobal | CoreFeatureTypedFunctionReferences
-	if variant == 6 || variant == 7 || variant == 9 || variant == 12 || variant == 17 || variant == 18 || variant == 19 || variant == 20 {
+	if variant == 6 || variant == 7 || variant == 9 || variant == 12 || variant == 17 || variant == 18 || variant == 19 || variant == 20 || variant == 21 {
 		required |= CoreFeatureMultiValue
 	}
 	if variant == 8 || variant == 9 || variant == 11 || variant == 12 {
@@ -308,6 +328,8 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 		wantEntry = []int{0, 768, 1680, 2400, 3120, 3760}
 	} else if variant == 19 || variant == 20 {
 		wantEntry = []int{0, 672, 1408, 2128, 2848, 3504}
+	} else if variant == 21 {
+		wantEntry = []int{0, 720, 1600, 2320, 3040, 3696}
 	}
 	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && slices.Equal(c.Entry, wantEntry) && slices.Equal(c.InternalEntry, wantEntry) && rv64MutableFuncrefGlobalLocalCallExecutionCode(c)
 }

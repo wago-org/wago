@@ -91,7 +91,7 @@ func rv64NativeDefinedTailOwnerCounts(in *Instance) (int, int, error) {
 	values := 0
 	publicReferenceCarriers := rv64PublicReferenceCallBoundary(in.c) && rv64PublicReferenceCarrierTarget(in.c, 0)
 	mutableVariant := rv64MutableFuncrefGlobalLocalCallCodeVariant(in.c)
-	mutableReferenceCarriers := mutableVariant == 19 || mutableVariant == 20
+	mutableReferenceCarriers := mutableVariant >= 19 && mutableVariant <= 21
 	for i, sig := range in.c.Funcs[:n] {
 		if railshotNonCallableFunction(in.c, i) {
 			continue

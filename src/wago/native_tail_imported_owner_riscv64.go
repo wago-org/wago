@@ -35,7 +35,7 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 	publicReferenceCarriers := rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierTarget(c, 0)
 	publicDynamicHostReferenceCarriers := rv64PublicDynamicHostReferenceBoundary(c)
 	mutableVariant := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
-	mutableReferenceCarriers := mutableVariant == 19 || mutableVariant == 20
+	mutableReferenceCarriers := mutableVariant >= 19 && mutableVariant <= 21
 	for i := 0; i < n; i++ {
 		if railshotNonCallableFunction(c, i) {
 			counts.NonCallable++
