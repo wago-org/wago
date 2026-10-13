@@ -312,3 +312,30 @@ retains new feature samples, all 266 hashes, peer references, classifications,
 publication/audit evidence and the documented post-collection capture relocation.
 All 266 previous b1 snapshots remain intact. Full parity remains open; the server
 is local and no production deployment occurred.
+
+### Pure population-count sums — 2026-10-13
+
+Wago `04cda5a4` adds an ARM64 reduction for population counts of pure unsigned
+unit-stride i32/i64 counters, optionally after bounded constant rotations. The
+highest-bit decomposition sums complete bit cycles without traversing the loop;
+up to 32/64 descent steps preserve modulo-width accumulation, ambient values
+and the final counter. Effects, traps, nonconstant rotations, shifts, nested
+control and interruptible entries reject the proof. Scalar execution, independent
+per-bit cycle extrema, both ABIs/artifacts, guarded race/register checks,
+ARM64 diagnostics, pinned conformance and native AMD64 fallback execution pass.
+
+In a fresh locked four-contract capture, rotate/popcount changes from
+**79,646.7 ns** to **91.5 ns**, versus Clang w2c2 `f303ed27` **11,618.7 ns**:
+current/peer **0.00787**, about **127x faster**. Matched parity fails on the
+previous source (6.86x) and passes on this source. The branch and sign-extension
+controls change +0.44%/+0.77%; division changes -0.98% and remains 5.87x slower.
+The selected popcount native image grows only **16 bytes** (384 to 400), with
+cold compile median -1.45% (23,000 to 22,666 ns). Alternating compile corpus
+processes show Core 3 +1.61%, threads +2.07%, unchanged aggregate code and
+effectively unchanged allocations; median RSS changes +1.05%/+1.27%.
+
+The [raw report](docs/benchmarks/wasm3-2026-10-13/popcount-sum.json) retains
+all samples, hashes, parity checks, compile rows and validation output. Four
+new captures have durable local receipts; database integrity and all 575,121
+historical observations pass. Full parity remains open. Native AMD64 timing
+is still pending, and nothing was deployed.
