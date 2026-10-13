@@ -78,6 +78,7 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 		coefficient, constant uint64
 		floatSign             uint8
 		floatConstant         bool
+		vectorWidth           uint8
 	}
 	var stack [16]affineValue
 	var out integerAffineTerm
@@ -96,13 +97,63 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 		}
 		// With one term left, the unblocked add consumes the earlier accumulator.
 		if depth == 1 && (blocked && op == 0x0b || !blocked && (op == 0x6a || op == 0x7c)) {
-			if stack[0].floatSign != 0 {
+			if stack[0].floatSign != 0 || stack[0].vectorWidth != 0 {
 				return out, false
 			}
 			out.coefficient, out.constant = stack[0].coefficient, stack[0].constant
 			return out, true
 		}
 		_, _ = r.Byte()
+		// A splat gives every lane the same affine integer. Lane-wise arithmetic
+		// preserves that equality, so extraction can recover the scalar proof.
+		vectorArithmetic := uint8(0)
+		if op == 0xfd {
+			sub, err := r.U32()
+			if err != nil {
+				return out, false
+			}
+			switch sub {
+			case 17, 18: // i32x4/i64x2.splat
+				width := 4
+				if sub == 18 {
+					width = 8
+				}
+				if depth == 0 || stack[depth-1].floatSign != 0 || stack[depth-1].vectorWidth != 0 || !setWidth(width) {
+					return out, false
+				}
+				stack[depth-1].vectorWidth = uint8(width)
+				continue
+			case 27, 29: // i32x4/i64x2.extract_lane
+				width, lanes := uint8(4), byte(4)
+				if sub == 29 {
+					width, lanes = 8, 2
+				}
+				lane, err := r.Byte()
+				if err != nil || lane >= lanes || depth == 0 || stack[depth-1].vectorWidth != width {
+					return out, false
+				}
+				stack[depth-1].vectorWidth = 0
+				continue
+			case 174, 177, 181: // i32x4.add/sub/mul
+				vectorArithmetic = 4
+				op = 0x6a
+				if sub == 177 {
+					op = 0x6b
+				} else if sub == 181 {
+					op = 0x6c
+				}
+			case 206, 209, 213: // i64x2.add/sub/mul
+				vectorArithmetic = 8
+				op = 0x7c
+				if sub == 209 {
+					op = 0x7d
+				} else if sub == 213 {
+					op = 0x7e
+				}
+			default:
+				return out, false
+			}
+		}
 		switch op {
 		case 0x20:
 			x, err := r.U32()
@@ -159,7 +210,7 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 			stack[depth] = affineValue{constant: value}
 			depth++
 		case 0x10:
-			if !allowCalls || module == nil || depth == 0 || stack[depth-1].floatSign != 0 || out.calls == 4 {
+			if !allowCalls || module == nil || depth == 0 || stack[depth-1].floatSign != 0 || stack[depth-1].vectorWidth != 0 || out.calls == 4 {
 				return out, false
 			}
 			index, err := r.U32()
@@ -183,7 +234,7 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 			if op == 0xb5 || op == 0xba {
 				width = 8
 			}
-			if depth == 0 || stack[depth-1].floatSign != 0 || !setWidth(width) {
+			if depth == 0 || stack[depth-1].floatSign != 0 || stack[depth-1].vectorWidth != 0 || !setWidth(width) {
 				return out, false
 			}
 			sign := uint8(1)
@@ -250,7 +301,7 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 				return out, false
 			}
 			a, b := stack[depth-2], stack[depth-1]
-			if a.floatSign != 0 || b.floatSign != 0 || a.coefficient != 0 || b.coefficient != 0 {
+			if a.floatSign != 0 || b.floatSign != 0 || a.vectorWidth != 0 || b.vectorWidth != 0 || a.coefficient != 0 || b.coefficient != 0 {
 				return out, false
 			}
 			value := uint64(0)
@@ -291,7 +342,11 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 				return out, false
 			}
 			a, b := stack[depth-2], stack[depth-1]
+			if a.vectorWidth != vectorArithmetic || b.vectorWidth != vectorArithmetic {
+				return out, false
+			}
 			var v affineValue
+			v.vectorWidth = vectorArithmetic
 			switch op {
 			case 0x6a, 0x7c:
 				v.coefficient = a.coefficient + b.coefficient
