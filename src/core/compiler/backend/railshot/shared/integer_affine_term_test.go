@@ -136,7 +136,7 @@ func TestIntegerSumInvariantGlobal(t *testing.T) {
 	}
 	m.Globals[0].Type.Mutable = true
 	r = wasm.ReaderFrom(body)
-	if _, ok := InspectIntegerSumLoopForModule(&r, m, true); ok {
-		t.Fatal("accepted mutable global")
+	if p, ok := InspectIntegerSumLoopForModule(&r, m, true); !ok || !p.InvariantGlobal {
+		t.Fatal("did not expose mutable candidate for backend pin proof")
 	}
 }

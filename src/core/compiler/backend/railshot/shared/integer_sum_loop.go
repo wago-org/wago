@@ -3,7 +3,7 @@ package shared
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 // IntegerSumLoop proves a side-effect-free, unsigned, unit-stride induction
-// reduction of an affine integer term or an immutable global getter. The backend
+// reduction of an affine integer term or a global getter. The backend
 // separately proves that Counter starts at zero.
 // The do-while body sums Coefficient*i+Constant, or the runtime global value,
 // and leaves Counter=max(1,Bound).
@@ -26,8 +26,9 @@ func InspectIntegerSumLoop(source *wasm.Reader) (IntegerSumLoop, bool) {
 	return InspectIntegerSumLoopForModule(source, nil, false)
 }
 
-// InspectIntegerSumLoopForModule additionally admits immutable integer getters
-// and bounded pure unary helpers when allowCalls is true. A nil module retains
+// InspectIntegerSumLoopForModule additionally exposes integer getter candidates
+// and bounded pure unary helpers when allowCalls is true. The backend must
+// prove a mutable getter is already value-pinned. A nil module retains
 // the call-free arithmetic proof. Helpers cannot call helpers.
 func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module, allowCalls bool) (IntegerSumLoop, bool) {
 	r := *source

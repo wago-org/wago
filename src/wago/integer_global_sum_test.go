@@ -26,9 +26,9 @@ func integerGlobalSumModule(wide, imported, mutable, fenced bool) []byte {
 	if fenced {
 		body = append(body, 0x0b)
 	}
-	body = append(body, add, 0x21, 1, 0x20, 2, c, 1, add, 0x21, 2, 0x20, 2, 0x20, 0, lt, 0x0d, 0, 0x0b, 0x20, 1, 0x20, 2, 0x0b)
+	body = append(body, add, 0x21, 1, 0x20, 2, c, 1, add, 0x21, 2, 0x20, 2, 0x20, 0, lt, 0x0d, 0, 0x0b, 0x20, 1, 0x20, 2, 0x23, 0, 0x0b)
 	code := append([]byte{1, 1, vt}, body...)
-	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{typ, typ}, []wasm.ValType{typ, typ, typ}), wasmtest.FuncType(nil, []wasm.ValType{typ})))}
+	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{typ, typ}, []wasm.ValType{typ, typ, typ, typ}), wasmtest.FuncType(nil, []wasm.ValType{typ})))}
 	if imported {
 		entry := append(wasmtest.Name("env"), wasmtest.Name("g")...)
 		entry = append(entry, 3, vt, mut)
@@ -115,7 +115,7 @@ func TestIntegerInvariantGlobalSumPublicExecution(t *testing.T) {
 												want = uint64(uint32(want))
 											}
 											got, err := in.Invoke("sum", n, seed)
-											if err != nil || len(got) != 3 || got[0] != prefix || got[1] != want || got[2] != k {
+											if err != nil || len(got) != 4 || got[3] != value || got[0] != prefix || got[1] != want || got[2] != k {
 												t.Fatalf("n=%x bits=%x got=%v err=%v want=[%x %x %x]", n, bits, got, err, prefix, want, k)
 											}
 										}

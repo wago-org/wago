@@ -26,6 +26,19 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 			return false, nil
 		}
 	}
+	if p.InvariantGlobal {
+		gt, ok := f.globalType(p.Global)
+		if !ok {
+			return false, nil
+		}
+		if gt.Mutable {
+			// Reuse the existing native value pin: the original call-free loop
+			// already reads this stable register, not the global cell each time.
+			if _, pinned := f.pinnedGlobalValueReg(p.Global); !pinned {
+				return false, nil
+			}
+		}
+	}
 	// Original source, not fused-emitter write history, proves initialization.
 	// An enclosing loop could reenter here after a later counter assignment.
 	for _, frame := range f.ctrl {

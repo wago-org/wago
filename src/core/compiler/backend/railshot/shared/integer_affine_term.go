@@ -24,7 +24,8 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 		return integerAffineTerm{}, false
 	}
 	// Read the value at invocation time; initializers and imported bits are not
-	// compiler constants. Only a bare immutable integer getter is admitted.
+	// compiler constants. Only a bare integer getter is admitted. Mutable values require the
+	// backend's independent whole-function value-pin proof.
 	if first == 0x23 {
 		if module == nil {
 			return integerAffineTerm{}, false
@@ -35,7 +36,7 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 			return integerAffineTerm{}, false
 		}
 		gt, ok := module.GlobalTypeByIndex(x)
-		if !ok || gt.Mutable {
+		if !ok {
 			return integerAffineTerm{}, false
 		}
 		width := 0
