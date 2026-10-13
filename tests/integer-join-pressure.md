@@ -91,8 +91,7 @@ on both builds. All 12 fixture source/native hash pairs match.
 Measured natively on Linux AMD64, Ryzen 7 8845HS, Go 1.27.2, with ordinary
 builds, `GOMAXPROCS=1`, CPU 4 affinity, one compiler worker, explicit bounds,
 and AMD64 feature mask 0. Eight pairs alternate main/PR then PR/main order.
-Each fresh process measures all 12 rows at 100 ms per row. All 192 samples are
-retained. CPU frequency and other host work were not isolated.
+Each fresh process measures all 12 rows at 100 ms per row. All 192 [raw paired samples](integer-join-pressure-20261013.csv) are retained. CPU frequency and other host work were not isolated.
 
 The delta is the median of eight paired `(PR/main - 1)*100` values, rather than
 the ratio of the two group medians. Brackets show the observed paired min/max;
