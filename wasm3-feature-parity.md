@@ -515,7 +515,7 @@ process, with 22 unsupported and 22 failed contracts. All 67 successful pairs
 match bytecode and meet the 50 ms sample-duration target. See
 [the current comparison](wasm3-feature-refresh.md) and `feature-refresh-results.json`.
 Large direct-call, numeric, global-recurrence and conversion gaps remain.
-Wide arithmetic/compact imports are still absent from this execution corpus,
+Wide arithmetic/compact imports were absent from this 111-contract capture,
 and native AMD64 validation remains pending. Full parity is not achieved.
 
 ### Modular affine integer reductions
@@ -605,3 +605,24 @@ Mutable exported-read improves 65,544 -> 128.19 ns (511x), versus unchecked w2c2
 -0.88%. `pinned-global-sum-results.json` retains exact profiles, actual adapter
 images and validation hashes. State-changing global recurrences, conversions,
 sign operations, phase 4 benchmark coverage and full parity remain open.
+
+### Source-built wide-arithmetic contracts
+
+wasm.fyi `9a11c7f` adds four original execution kernels for `i64.add128`,
+`i64.sub128`, `i64.mul_wide_s`, and `i64.mul_wide_u`, with varying full-width
+operands and observable checksums of both result words. A separate base-65536
+limb oracle checks every one of the 4096 inputs per instruction, including
+carry/borrow and signed multiplication. All 12 small contracts (sizes 1, 64,
+4096) pass through the existing Wago adapter. No runtime or adapter production
+change is required: the selected default feature set already admits them.
+
+On Apple M4 Max ARM64, three independent processes each pass all four
+4096x64 performance contracts with five verified samples of at least 50 ms.
+Process-median times are 221,503 ns for add, 222,680 ns for subtract,
+173,337 ns for signed multiply, and 174,586 ns for unsigned multiply.
+The pinned SIMD-capable w2c2 fork rejects opcodes 0xfc13 through 0xfc16;
+Node/V8 also rejects them. There is no successful peer pair and no numeric
+parity claim. `wide-arithmetic-results.json` retains recipes, hashes, all
+36 performance/rejection rows and all 12 small-contract checks. This
+corpus-only change does not alter Wago compile behavior. Compact imports
+coverage and the broader feature performance gaps remain open.
