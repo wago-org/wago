@@ -98,6 +98,30 @@ func (f *fn) tryLinearIntegerTree(node *elem, dest Reg) Reg {
 	if !duplicate || w.operations < nonzero*2+3 {
 		return regNone
 	}
+	// Keep every surviving borrowed source live while materializing stack locals.
+	// Reserve room for those loads plus the result and coefficient before emitting
+	// anything: unlike the original tree, this cover holds all sources at once.
+	blocked := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
+	needed := 2
+	for _, t := range w.terms[:w.count] {
+		if t.coefficient == 0 {
+			continue
+		}
+		if t.source.st.kind == stLocalReg {
+			blocked = blocked.add(t.source.st.reg)
+		} else {
+			needed++
+		}
+	}
+	available := 0
+	for _, r := range gpAlloc {
+		if !blocked.has(r) {
+			available++
+		}
+	}
+	if available < needed {
+		return regNone
+	}
 	savedPins := f.pinned
 	for i := 0; i < w.count; i++ {
 		t := &w.terms[i]

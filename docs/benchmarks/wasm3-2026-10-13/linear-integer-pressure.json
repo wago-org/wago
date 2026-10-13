@@ -1,0 +1,20 @@
+{
+  "status": "correctness-fallback",
+  "baselineRevision": "a7a9b6e9410d9df152e661240f31b6d6f6751068",
+  "trigger": "Repeated borrowed local terms with only one available temporary register",
+  "before": "Coefficient materialization exhausts GP registers after starting emission",
+  "after": "Count surviving borrowed registers and required local loads plus two temporaries; decline before changing the tree or emitting instructions",
+  "validation": {
+    "pressure-red.txt": "--- FAIL: TestLinearIntegerTreePressureFallsBackBeforeEmission (0.00s)\n    --- FAIL: TestLinearIntegerTreePressureFallsBackBeforeEmission/pinned (0.00s)\npanic: no GP register available after applying the transient register floor [recovered, repanicked]\n\ngoroutine 7 [running]:\ntesting.tRunner.func1.2({0x102e32288, 0x102db85a0})\n\t/Users/work/.gvm/gos/go1.27.1/src/testing/testing.go:2123 +0x1a0\ntesting.tRunner.func1()\n\t/Users/work/.gvm/gos/go1.27.1/src/testing/testing.go:2126 +0x2c8\npanic({0x102e32288?, 0x102db85a0?})\n\t/Users/work/.gvm/gos/go1.27.1/src/runtime/panic.go:859 +0x120\ngithub.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).allocReg(...)\n\t/Users/work/Code/Wago/wago/src/core/compiler/backend/railshot/arm64/regalloc.go:110\ngithub.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.(*fn).tryLinearIntegerTree(0x11ab61b04008, 0x11ab61b022e0, 0xff)\n\t/Users/work/Code/Wago/wago/src/core/compiler/backend/railshot/arm64/linear_integer_tree.go:136 +0x920\ngithub.com/wago-org/wago/src/core/compiler/backend/railshot/arm64.TestLinearIntegerTreePressureFallsBackBeforeEmission.func1(0x11ab61afc488)\n\t/Users/work/Code/Wago/wago/src/core/compiler/backend/railshot/arm64/linear_integer_tree_test.go:107 +0x2a4\ntesting.tRunner(0x11ab61afc488, 0x11ab61a40330)\n\t/Users/work/.gvm/gos/go1.27.1/src/testing/testing.go:2193 +0xc4\ncreated by testing.(*T).Run in goroutine 6\n\t/Users/work/.gvm/gos/go1.27.1/src/testing/testing.go:2258 +0x3b8\nFAIL\tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/arm64\t0.225s\nFAIL\n",
+    "pressure-green.txt": "ok  \tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/arm64\t0.324s\nok  \tgithub.com/wago-org/wago/src/wago\t0.312s\n",
+    "pressure-race.txt": "ok  \tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/arm64\t1.381s\nok  \tgithub.com/wago-org/wago/src/wago\t1.374s\n",
+    "pressure-conformance.txt": "ok  \tgithub.com/wago-org/wago/src/wago\t3.670s\n"
+  },
+  "corpusSelectionUnchanged": true,
+  "selectionSha256": "53fdad43252ce1b7e98780f78057425379ad9748d444aa222db122b91cd320c9",
+  "limitations": [
+    "Synthetic backend pressure regression; no application failure claimed.",
+    "Active full cohort remains frozen at a7a9b6e9 and does not measure this guard.",
+    "No new performance improvement claimed."
+  ]
+}

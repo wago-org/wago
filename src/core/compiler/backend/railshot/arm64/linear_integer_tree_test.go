@@ -77,3 +77,61 @@ func TestLinearIntegerTreeProofRejectsEffectsAndUnknownSources(t *testing.T) {
 		t.Fatal("exhausted proof admitted")
 	}
 }
+
+func TestLinearIntegerTreePressureFallsBackBeforeEmission(t *testing.T) {
+	for _, blocker := range []string{"pinned", "local", "reserved"} {
+		t.Run(blocker, func(t *testing.T) {
+			f := gpClassEmitter()
+			f.policy = currentCodegenPolicy()
+			f.hasLoop = true
+			blocked := allAllocatableGP().remove(X0).remove(X1)
+			switch blocker {
+			case "pinned":
+				f.pinned = blocked
+			case "local":
+				f.pinnedLocalMask = blocked
+			case "reserved":
+				f.reserved = blocked
+			}
+			// Six repeated terms need a result and coefficient register while
+			// X0 remains borrowed. Only X1 is available for both temporaries.
+			for i := 0; i < 6; i++ {
+				f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: X0, idx: 0})
+				f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
+				f.pushBinOp(opMul, mtI32)
+				if i != 0 {
+					f.pushBinOp(opAdd, mtI32)
+				}
+			}
+			root, pins := f.s.back(), f.pinned
+			if got := f.tryLinearIntegerTree(root, regNone); got != regNone {
+				t.Fatalf("pressure selected register %d", got)
+			}
+			if len(f.a.B) != 0 || f.pinned != pins || f.s.back() != root || !root.isDeferred() {
+				t.Fatal("pressure fallback changed emission, pins, or deferred tree")
+			}
+		})
+	}
+}
+
+func TestLinearIntegerTreePressureAccountsForLocalLoads(t *testing.T) {
+	f := gpClassEmitter()
+	f.policy = currentCodegenPolicy()
+	f.hasLoop = true
+	f.reserved = allAllocatableGP().remove(X0).remove(X1)
+	for i := 0; i < 6; i++ {
+		f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
+		f.pushBinOp(opMul, mtI32)
+		if i != 0 {
+			f.pushBinOp(opAdd, mtI32)
+		}
+	}
+	root := f.s.back()
+	if got := f.tryLinearIntegerTree(root, regNone); got != regNone {
+		t.Fatalf("pressure selected register %d", got)
+	}
+	if len(f.a.B) != 0 || f.pinned != 0 || f.s.back() != root || !root.isDeferred() {
+		t.Fatal("pressure fallback changed emission, pins, or deferred tree")
+	}
+}
