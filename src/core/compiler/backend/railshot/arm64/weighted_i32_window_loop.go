@@ -120,16 +120,25 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 		}
 		f.pushValue(zeroStorage(mtI32))
 		f.setLocal(nil, int(p.Counter), false)
-		var v [15]Reg
-		used := p.Terms/4 + 7
+		groups := p.Terms / 4
+		// Keep biased sample vectors across iterations when the caller-saved
+		// budget allows it. The narrower vector path remains available under
+		// pressure, without spilling live locals or using callee-saved V regs.
+		sliding := groups > 1 && fp >= 2*groups+6
+		var v [22]Reg
+		used := groups + 7
+		samplesEnd := groups + 1
+		if sliding {
+			used = 2*groups + 6
+			samplesEnd = 2 * groups
+		}
 		for i := 0; i < used; i++ {
 			v[i] = f.allocFReg(calleeFP)
 			f.fpinned = f.fpinned.add(v[i])
 		}
-		groups := p.Terms / 4
-		sample, bias := v[groups], v[groups+1]
-		acc := v[groups+2 : groups+6]
-		counter := v[groups+6]
+		samples, bias := v[groups:samplesEnd], v[samplesEnd]
+		acc := v[samplesEnd+1 : samplesEnd+5]
+		counter := v[samplesEnd+5]
 		for g := 0; g < groups; g++ {
 			for lane := 0; lane < 4; lane++ {
 				get(p.Coefficients[p.Terms-1-g*4-lane])
@@ -154,13 +163,24 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 		f.a.MovImm64(tmp, uint64(p.Offset))
 		f.a.Add64(ptr, ptr, tmp)
 		f.a.Add64(ptr, ptr, linMemReg)
+		if sliding {
+			for g, sample := range samples {
+				f.a.LdrQ(sample, ptr, int32(g*16))
+				f.a.NeonAddS(sample, sample, bias)
+			}
+		}
 		loop := f.a.Len()
 		for _, a := range acc {
 			f.a.NeonEor16b(a, a, a)
 		}
 		for g := 0; g < groups; g++ {
-			f.a.LdrQ(sample, ptr, int32(g*16))
-			f.a.NeonAddS(sample, sample, bias)
+			sample := samples[0]
+			if sliding {
+				sample = samples[g]
+			} else {
+				f.a.LdrQ(sample, ptr, int32(g*16))
+				f.a.NeonAddS(sample, sample, bias)
+			}
 			f.a.NeonMlaS(acc[g%4], sample, v[g])
 		}
 		f.a.NeonAddS(acc[0], acc[0], acc[1])
@@ -181,8 +201,23 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 		f.a.NeonUmovS(tmp, counter, 0)
 		f.a.SubImm32(tmp, tmp, 1)
 		f.a.NeonDupGprS(counter, tmp)
-		again := f.a.Cbnz32(tmp)
-		f.a.PatchBranch19(again, loop)
+		if sliding {
+			// Do not load a following window after the final iteration. The
+			// checked span covers every remaining window, including its tail.
+			done := f.a.Cbz32(tmp)
+			for g := 0; g < groups-1; g++ {
+				f.a.NeonExt16b(samples[g], samples[g], samples[g+1], 4)
+			}
+			last := samples[groups-1]
+			f.a.LdrQ(last, ptr, int32((groups-1)*16))
+			f.a.NeonAddS(last, last, bias)
+			f.a.PatchBranch26(f.a.Branch(), loop)
+			f.a.PatchBranch19(done, f.a.Len())
+			f.stats.peep("weighted-window-sliding-samples")
+		} else {
+			again := f.a.Cbnz32(tmp)
+			f.a.PatchBranch19(again, loop)
+		}
 		f.pushReg(hash, mtI32)
 		f.setLocal(nil, int(p.Hash), false)
 		for _, reg := range []Reg{ptr, hash, sum, tmp} {

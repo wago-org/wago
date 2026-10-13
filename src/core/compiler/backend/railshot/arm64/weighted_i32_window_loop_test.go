@@ -70,6 +70,13 @@ func TestWeightedI32WindowVectorSelection(t *testing.T) {
 			if got := stats.Funcs[0].Peephole["weighted-i32-window-vector-loop"]; got != want {
 				t.Fatalf("terms%d enabled%t got%d want%d", n, on, got, want)
 			}
+			sliding := 0
+			if on && n > 4 {
+				sliding = 1
+			}
+			if got := stats.Funcs[0].Peephole["weighted-window-sliding-samples"]; got != sliding {
+				t.Fatalf("terms%d enabled%t sliding%d want%d", n, on, got, sliding)
+			}
 		}
 	}
 }
