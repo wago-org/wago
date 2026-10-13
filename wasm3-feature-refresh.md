@@ -242,3 +242,23 @@ retains samples, hashes, parity checks, compile rows and validation output.
 Five new Wago captures are published locally; database integrity and all
 575,121 historical observations remain intact. Native AMD64 timing, callbacks,
 sign/bit operations, division and full feature parity remain open.
+
+### Complete b1cd6134 local refresh — 2026-10-13
+
+The persistent collector completed all 266 Wago contracts (148 main, 118
+feature), all four phases, without collection or resource failures. All 266
+captures have durable local publication receipts. The new source has 1,084
+observations covering 266 contracts: 1,064 from the full refresh and 20 retained
+from its earlier targeted capture. Database integrity and all 575,121 historical
+observations pass the audit. The local server remains http://localhost:8788/benchmarks/.
+
+Against the retained full Clang peer baseline, 54 feature steady contracts pass
+both engines; 24 are above strict parity and 23 above the 1.1 triage threshold.
+Opaque callbacks are 54.46x the peer, sign extension 5.88–7.30x, rotate/popcount
+6.35x, division 5.42x, and f32 global rounding 4.53–4.61x. Branch-mixed now
+passes parity. This full ranking uses an earlier serialized peer baseline;
+the targeted interleaved branch comparison remains the direct gain evidence.
+The [full cohort report](docs/benchmarks/wasm3-2026-10-13/b1-full-feature-cohort.json)
+retains all new Wago feature samples, every full capture hash, references to
+unchanged peer samples, explicit outcomes and publication/audit evidence.
+Full feature parity and native AMD64 timing remain open. Nothing was deployed.
