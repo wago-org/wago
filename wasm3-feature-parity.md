@@ -626,3 +626,32 @@ parity claim. `wide-arithmetic-results.json` retains recipes, hashes, all
 36 performance/rejection rows and all 12 small-contract checks. This
 corpus-only change does not alter Wago compile behavior. Compact imports
 coverage and the broader feature performance gaps remain open.
+
+### Finite-sign proof for unsigned saturating sums
+
+`a5d84624` extends the bounded original-source affine expression proof with
+finite floating-point signs. Unsigned i32/i64 conversion produces a finite
+nonnegative f32/f64; negation reverses the proven sign; unsigned saturation of
+a proven nonpositive value yields zero, including negative zero. The remaining
+integer term can use the existing modular sum reduction. Signed conversions,
+unknown signs, mismatched widths, unfinished float values, effects and traps
+fall back. No persistent compiler state or ABI fields are added.
+
+The current wasm.fyi negative-clamp contract falls from 132,006 ns to 84.79 ns,
+versus unchecked w2c2 279.40 ns (0.303x), across three independent processes per
+profile, five verified samples each and minimum 50 ms batches. Actual adapter
+native images shrink from 432 to 384 bytes. The signed-zero contract remains
+147,448 ns versus 276.45 ns (533x); its gap is explicitly still open.
+
+Shared proof tests, public execution across both integer/float widths, both
+ABIs, optimization off/on, codec reload and extreme unsigned bounds pass.
+Guarded race tests and the full pinned Core 3/threads conformance gates pass.
+AMD64 public tests cross-compile; native execution remains pending. Full backend
+statistics were not rerun for this change. Core 3 compile latency changes
+-0.48%, threads +2.95%; allocation totals are effectively unchanged (Core 3
+varies by two pool allocations over 21,800 compiles), with identical code totals.
+Peak RSS changes +0.35%/-0.50%. Small scalar/Core 3 scalar/imported-worker
+compile medians change +0.63%/+1.06%/+0.88%, with unchanged allocation counts.
+`float-sign-results.json` retains raw performance, alternating compile captures,
+exact source fingerprints, image hashes and conformance output. These results
+establish parity for this contract; the full feature parity objective remains open.
