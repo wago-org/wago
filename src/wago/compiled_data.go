@@ -65,6 +65,35 @@ func rv64RootedActiveDataDigest(c *Compiled) ([32]byte, bool) {
 	return digest, true
 }
 
+// rv64RootedMemoryExportDigest authenticates the exact public memory namespace
+// used by the fresh generic rooted-GC profile. Names are sorted so the receipt
+// is independent of Go map iteration order; this profile exposes only memory 0.
+func rv64RootedMemoryExportDigest(c *Compiled) ([32]byte, bool) {
+	if c == nil || c.memoryDir == nil || !c.memoryDir.exactExports || len(c.memoryDir.exports) > 1024 || len(c.Exports)+len(c.memoryDir.exports) > 1024 {
+		return [32]byte{}, false
+	}
+	h := sha256.New()
+	var word [8]byte
+	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.memoryDir.exports)))
+	_, _ = h.Write(word[:4])
+	remaining := uint64(1 << 20)
+	for _, name := range sortedKeys(c.memoryDir.exports) {
+		index := c.memoryDir.exports[name]
+		if index != 0 || len(c.memoryDir.defs) != 1 || uint64(len(name)) > remaining {
+			return [32]byte{}, false
+		}
+		remaining -= uint64(len(name))
+		binary.LittleEndian.PutUint64(word[:], uint64(len(name)))
+		_, _ = h.Write(word[:])
+		_, _ = h.Write([]byte(name))
+		binary.LittleEndian.PutUint32(word[:4], uint32(index))
+		_, _ = h.Write(word[:4])
+	}
+	var digest [32]byte
+	copy(digest[:], h.Sum(nil))
+	return digest, true
+}
+
 // compactActiveDataSize also guards the uint32 byte-range representation. Rare
 // offset forms and nil-vs-empty metadata retain the ordinary exact deep copy.
 func compactActiveDataSize(c *Compiled) (int, bool) {

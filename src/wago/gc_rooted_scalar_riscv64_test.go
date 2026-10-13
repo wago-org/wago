@@ -1099,7 +1099,7 @@ func TestRV64RootedAbstractReferenceAdmissionFailsClosed(t *testing.T) {
 	}
 }
 
-func rootedScalarMemoryModule(grow, activeData, passiveData bool) []byte {
+func rootedScalarMemoryModule(grow, activeData, passiveData, memoryExport bool) []byte {
 	results := []wasm.ValType{wasm.I32, wasm.I32}
 	if grow {
 		results = append(results, wasm.I32, wasm.I32)
@@ -1127,11 +1127,15 @@ func rootedScalarMemoryModule(grow, activeData, passiveData bool) []byte {
 		body = append(body, 0x41, 0x20, 0x28, 0x02, 0x00)
 	}
 	body = append(body, 0x0b)
+	exports := [][]byte{wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0)}
+	if memoryExport {
+		exports = append(exports, wasmtest.ExportEntry("memory", byte(wasm.ExternMem), 0))
+	}
 	sections := [][]byte{
 		wasmtest.Section(1, wasmtest.Vec(types...)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
 		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02})),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(7, wasmtest.Vec(exports...)),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	}
 	if activeData {
@@ -1143,7 +1147,7 @@ func rootedScalarMemoryModule(grow, activeData, passiveData bool) []byte {
 }
 
 func TestRV64RootedScalarMemoryExecutes(t *testing.T) {
-	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(true, false, false))
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(true, false, false, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1210,7 +1214,7 @@ func TestRV64RootedScalarMemoryExecutes(t *testing.T) {
 }
 
 func TestRV64RootedScalarPinnedMemoryExecutes(t *testing.T) {
-	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false, false, false))
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false, false, false, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1230,7 +1234,7 @@ func TestRV64RootedScalarPinnedMemoryExecutes(t *testing.T) {
 }
 
 func TestRV64RootedScalarActiveDataExecutes(t *testing.T) {
-	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false, true, false))
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false, true, false, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1273,8 +1277,62 @@ func TestRV64RootedScalarActiveDataExecutes(t *testing.T) {
 	}
 }
 
+func TestRV64RootedScalarMemoryExportExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false, true, false, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.memoryDir == nil || len(view.memoryDir.exports) != 1 || view.memoryDir.exports["memory"] != 0 {
+		t.Fatal("exported-memory generic rooted receipt is missing")
+	}
+	for name, mutate := range map[string]func(map[string]int){
+		"removed": func(exports map[string]int) { delete(exports, "memory") },
+		"renamed": func(exports map[string]int) {
+			delete(exports, "memory")
+			exports["renamed"] = 0
+		},
+		"bad-index": func(exports map[string]int) { exports["memory"] = 1 },
+		"injected":  func(exports map[string]int) { exports["alias"] = 0 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			directory := *candidate.memoryDir
+			directory.exports = cloneExportMap(candidate.memoryDir.exports)
+			candidate.memoryDir = &directory
+			mutate(directory.exports)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated memory export namespace retained the generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("mutated memory export validation=%v", err)
+			}
+		})
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.ExportedMemory("missing"); err == nil {
+		t.Fatal("undeclared memory export was accepted")
+	}
+	memory, err := instance.ExportedMemory("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := memory.UnsafeBytes()[32]; got != 42 {
+		t.Fatalf("active data byte=%d want=42", got)
+	}
+	memory.UnsafeBytes()[32] = 77
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{142, 1, 77}) {
+		t.Fatalf("run()=%v err=%v want=[142 1 77]", got, err)
+	}
+}
+
 func TestRV64RootedScalarPassiveDataFailsClosed(t *testing.T) {
-	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false, false, true))
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false, false, true, false))
 	if err == nil || compiled != nil {
 		if compiled != nil {
 			_ = compiled.Close()

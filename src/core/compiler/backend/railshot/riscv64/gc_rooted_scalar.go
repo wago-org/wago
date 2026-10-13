@@ -42,7 +42,14 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		remainingData -= len(data.Init)
 	}
 	for i := range m.Exports {
-		if m.Exports[i].Index.Kind != wasm.ExternFunc {
+		export := &m.Exports[i]
+		switch export.Index.Kind {
+		case wasm.ExternFunc:
+		case wasm.ExternMem:
+			if len(m.Memories) != 1 || export.Index.Index != 0 {
+				return false
+			}
+		default:
 			return false
 		}
 	}
@@ -146,6 +153,9 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	// Reference values are private collector carriers. The public host adapter
 	// remains scalar-only until it has an independently qualified ownership ABI.
 	for i := range m.Exports {
+		if m.Exports[i].Index.Kind == wasm.ExternMem {
+			continue
+		}
 		index := m.Exports[i].Index.Index
 		if uint64(index) >= uint64(len(m.FuncTypes)) {
 			return false

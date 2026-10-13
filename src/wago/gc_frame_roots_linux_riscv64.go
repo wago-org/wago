@@ -52,7 +52,11 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		remainingData -= len(data.Init)
 	}
 	for i := range m.Exports {
-		if m.Exports[i].Index.Kind != wasm.ExternFunc {
+		export := &m.Exports[i]
+		if export.Index.Kind == wasm.ExternMem && len(m.Memories) == 1 && export.Index.Index == 0 {
+			continue
+		}
+		if export.Index.Kind != wasm.ExternFunc {
 			return reject("RV64 exact roots reject non-function export %d", i)
 		}
 	}

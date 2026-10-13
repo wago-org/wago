@@ -39,7 +39,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		return false
 	}
 	directory := c.memoryDir
-	if directory == nil || len(directory.defs) > 1 || len(directory.exports) != 0 || !directory.exactExports || directory.staged || directory.stagedMemory64 ||
+	if directory == nil || len(directory.defs) > 1 || !directory.exactExports || directory.staged || directory.stagedMemory64 ||
 		len(directory.gcStructGlobals) != 0 || len(directory.gcArrayGlobals) != 0 || directory.gcArrayElement != nil || directory.gcI31TableInit != nil ||
 		len(directory.ehTags) != 0 || len(directory.ehTagExports) != 0 || uint8(len(directory.defs)) != memo.rv64FreshRootedGCMemories {
 		return false
@@ -57,6 +57,10 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	}
 	dataDigest, validData := rv64RootedActiveDataDigest(c)
 	if !validData || dataDigest != memo.rv64FreshRootedGCDataDigest {
+		return false
+	}
+	exportDigest, validExports := rv64RootedMemoryExportDigest(c)
+	if !validExports || exportDigest != memo.rv64FreshRootedGCExportDigest {
 		return false
 	}
 	remainingData := railshot.MaxModuleBytes

@@ -1352,14 +1352,15 @@ type validateMemo struct {
 	// rv64FreshRootedGC is a process-local compiler receipt. It is never encoded;
 	// loaded artifacts therefore remain fail-closed until generic RV64 images
 	// gain a persisted machine-code authenticator.
-	rv64FreshRootedGC           bool
-	rv64FreshRootedGCDigest     [32]byte
-	rv64FreshRootedGCMemories   uint8
-	rv64FreshRootedGCMemMin     uint64
-	rv64FreshRootedGCMemMax     uint64
-	rv64FreshRootedGCReserveMax uint32
-	rv64FreshRootedGCDataDigest [32]byte
-	structuralCallIdentities    atomic.Pointer[structuralCallIdentityCache]
+	rv64FreshRootedGC             bool
+	rv64FreshRootedGCDigest       [32]byte
+	rv64FreshRootedGCMemories     uint8
+	rv64FreshRootedGCMemMin       uint64
+	rv64FreshRootedGCMemMax       uint64
+	rv64FreshRootedGCReserveMax   uint32
+	rv64FreshRootedGCDataDigest   [32]byte
+	rv64FreshRootedGCExportDigest [32]byte
+	structuralCallIdentities      atomic.Pointer[structuralCallIdentityCache]
 	// importModuleEnds stores one plus the module-name byte length for each
 	// non-global import, grouped as functions, tables, memories, then tags. A
 	// zero entry retains the legacy first-dot interpretation for hand-built
