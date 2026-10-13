@@ -1684,6 +1684,10 @@ func (g *Global) validateReferenceImportWithCollector(store *referenceStore, col
 		return fmt.Errorf("reference global belongs to an incompatible reference store")
 	}
 	typ, source := o.typ, o.instance
+	actual := o.valueType
+	if !o.hasValueType {
+		actual, _ = valueTypeDescriptorFromValType(typ)
+	}
 	bits := readGlobalObject(g, typ)
 	retained := make([]retainedSnapshot, 0, len(o.retained))
 	for root, state := range o.retained {
@@ -1703,14 +1707,16 @@ func (g *Global) validateReferenceImportWithCollector(store *referenceStore, col
 		if bits != uint64(ref) {
 			return fmt.Errorf("collector-reference global contains non-compact reference %#x", bits)
 		}
-		if ref.IsNull() || ref.IsI31() {
-			return nil
-		}
-		if !ref.IsObj() {
+		if !ref.IsNull() && !ref.IsI31() && !ref.IsObj() {
 			return fmt.Errorf("collector-reference global contains invalid reference %#x", bits)
 		}
-		if _, err := collector.ObjectType(ref); err != nil {
-			return fmt.Errorf("collector-reference global contains stale or foreign object: %w", err)
+		if ref.IsObj() {
+			if _, err := collector.ObjectType(ref); err != nil {
+				return fmt.Errorf("collector-reference global contains stale or foreign object: %w", err)
+			}
+		}
+		if !source.gcRefMatchesValueType(ref, actual) {
+			return fmt.Errorf("collector-reference global contains a reference with an incompatible exact structural type")
 		}
 		return nil
 	}

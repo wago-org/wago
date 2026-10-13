@@ -2,7 +2,11 @@
 
 package wago
 
-import "fmt"
+import (
+	"fmt"
+
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
+)
 
 type importGlobalReference struct {
 	global     *Global
@@ -196,8 +200,16 @@ func rv64FreezeGlobalReferences(c *Compiled, globals []*resolvedGlobalImport, st
 // Preflight runs before executable mapping; ordinary construction repeats the
 // check after attaching every import. No tokens are issued during admission.
 func rv64ValidateResolvedGlobals(c *Compiled, imports resolvedImports, store *referenceStore) error {
+	var attached []*Global
+	// Detachment may release a producer's final physical root and invoke
+	// cleanup. Keep it outside native serialization, as the table preflight does.
+	defer func() {
+		for i := len(attached) - 1; i >= 0; i-- {
+			attached[i].detachReferenceImporter()
+		}
+	}()
 	for i, imp := range c.GlobalImports {
-		if imp.Type != ValFuncRef {
+		if imp.Type != ValFuncRef && !isGCRefValType(imp.Type) {
 			continue
 		}
 		provided, ok := imports.global(c.globalImportBindingKey(i))
@@ -208,18 +220,38 @@ func rv64ValidateResolvedGlobals(c *Compiled, imports resolvedImports, store *re
 		if err := c.validateImportedGlobal(imp.Module+"."+imp.Name, global, imp); err != nil {
 			return err
 		}
-		if err := global.attachReferenceImporter(store); err != nil {
-			return err
+		var collector *gc.Collector
+		if isGCRefValType(imp.Type) {
+			if global.owner != nil {
+				global.owner.mu.Lock()
+				if global.owner.instance != nil {
+					collector = global.owner.instance.gc
+				}
+				global.owner.mu.Unlock()
+			}
 		}
+		var attachErr error
+		if isGCRefValType(imp.Type) {
+			nativeExecutionMu.Lock()
+			attachErr = global.attachReferenceImporterWithCollector(store, collector)
+			nativeExecutionMu.Unlock()
+		} else {
+			attachErr = global.attachReferenceImporterWithCollector(store, collector)
+		}
+		if attachErr != nil {
+			return attachErr
+		}
+		attached = append(attached, global)
 		if imp.Mutable {
-			global.detachReferenceImporter()
+			continue
+		}
+		if isGCRefValType(imp.Type) {
 			continue
 		}
 		entry, err := rv64RetainGlobalDescriptor(global, store)
 		if entry.owner != nil {
 			entry.owner.releaseResourceRoot()
 		}
-		global.detachReferenceImporter()
 		if err != nil {
 			return err
 		}

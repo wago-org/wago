@@ -1066,12 +1066,19 @@ func railshotValidateCompiled(c *Compiled) error {
 		return reject("global import index shape")
 	}
 	for i, global := range c.GlobalImports {
-		reference := global.Type == ValFuncRef && (!global.Mutable || stateOnlyMutableFuncrefImport || mutableFuncrefGlobalGet || mutableFuncrefGlobalClear || mutableFuncrefGlobalStoreSelf || mutableFuncrefGlobalCopy || mutableFuncrefGlobalMove || mutableFuncrefGlobalBidirectionalCopy || mutableFuncrefGlobalLocalCopy || mutableFuncrefGlobalLocalPublish || mutableFuncrefGlobalLocalTransfer) && c.tableCount() <= 1
-		if reference {
+		funcref := global.Type == ValFuncRef && (!global.Mutable || stateOnlyMutableFuncrefImport || mutableFuncrefGlobalGet || mutableFuncrefGlobalClear || mutableFuncrefGlobalStoreSelf || mutableFuncrefGlobalCopy || mutableFuncrefGlobalMove || mutableFuncrefGlobalBidirectionalCopy || mutableFuncrefGlobalLocalCopy || mutableFuncrefGlobalLocalPublish || mutableFuncrefGlobalLocalTransfer) && c.tableCount() <= 1
+		collectorRef := freshRootedGC && isGCRefValType(global.Type)
+		reference := funcref || collectorRef
+		if funcref {
 			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 			exact, err := exactValueType(global.Type, global.HasValueType, global.ValueTypeIndex, c.ValueTypes, c.Types)
 			if err != nil || exact != plain {
 				return reject("reference global import exact type")
+			}
+		} else if collectorRef {
+			exact, err := exactValueType(global.Type, global.HasValueType, global.ValueTypeIndex, c.ValueTypes, c.Types)
+			if err != nil || exact.Kind != ValueTypeReference {
+				return reject("collector-reference global import exact type")
 			}
 		}
 		if (!reference && global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && (!vectorProfile || global.Type != ValV128)) || global.Type != c.Globals[i].Type || global.Mutable != c.Globals[i].Mutable {

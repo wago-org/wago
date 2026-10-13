@@ -290,14 +290,19 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s.mutableFuncrefGlobalLocalExport = admitMutableFunctionGlobalLocalExport(m)
 	s.mutableFuncrefGlobalLocalObserve = admitMutableFunctionGlobalLocalObserve(m)
 	s.mutableFuncrefGlobalLocalCall = admitMutableFunctionGlobalLocalCall(m)
-	s.importReferences = production && importedTables
+	s.importReferences = production && (importedTables || gcRootedScalar)
+	if production && gcRootedScalar {
+		// Rooted admission proves every compact reference global and every
+		// width-sensitive use. Mutable local and imported GC cells therefore use
+		// the ordinary shared 64-bit global slot, not the funcref park bridge.
+		s.localMutableReferences = true
+	}
 	if production && publicExports && importedTables {
-		var err error
-		s.localMutableReferences, err = admitLocalMutableFunctionGlobals(m)
+		mutableFunctionGlobals, err := admitLocalMutableFunctionGlobals(m)
 		if err != nil {
 			return s, err
 		}
-		s.localMutableReferences = s.localMutableReferences || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy || s.mutableFuncrefGlobalLocalCopy || s.mutableFuncrefGlobalLocalPublish || s.mutableFuncrefGlobalLocalTransfer || s.mutableFuncrefGlobalLocalExport || s.mutableFuncrefGlobalLocalObserve || s.mutableFuncrefGlobalLocalCall
+		s.localMutableReferences = s.localMutableReferences || mutableFunctionGlobals || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy || s.mutableFuncrefGlobalLocalCopy || s.mutableFuncrefGlobalLocalPublish || s.mutableFuncrefGlobalLocalTransfer || s.mutableFuncrefGlobalLocalExport || s.mutableFuncrefGlobalLocalObserve || s.mutableFuncrefGlobalLocalCall
 	}
 	s.indexedMemories = production && publicExports
 	var tableErr error
@@ -369,10 +374,11 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			}
 			g := im.Type.GlobalType()
 			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy || s.mutableFuncrefGlobalLocalCopy || s.mutableFuncrefGlobalLocalPublish || s.mutableFuncrefGlobalLocalTransfer) && admitImportedFunctionGlobal(m, g)
-			if !scalarType(g.Type, true) && !reference {
+			collectorReference := gcRootedScalar && rootedScalarGlobalReference(g.Type, m)
+			if !scalarType(g.Type, true) && !reference && !collectorReference {
 				return s, unsupported("nonscalar global import")
 			}
-			s.globals = append(s.globals, globalSpec{wide: reference || scalarWide(g.Type), mutable: g.Mutable, typ: g.Type})
+			s.globals = append(s.globals, globalSpec{wide: reference || collectorReference || scalarWide(g.Type), mutable: g.Mutable, reference: collectorReference, typ: g.Type})
 		default:
 			return s, unsupported("nonmemory/nonglobal import")
 		}

@@ -79,7 +79,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				}
 			case wasm.ExternGlobal:
 				typ := im.Type.GlobalType().Type
-				if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
+				if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !rv64RootedAggregateTableReference(m, typ) {
 					return reject("RV64 exact roots reject non-scalar global import %d", i)
 				}
 			case wasm.ExternMem:
@@ -89,7 +89,8 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				}
 			case wasm.ExternTable:
 				table := im.Type.TableType()
-				if !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) || table.Limits.Addr64 || !table.Limits.HasMax || table.Limits.Min > table.Limits.Max || table.Limits.Max > 256 {
+				elem := wasm.RefVal(table.Ref)
+				if !wasm.EqualValType(elem, wasm.FuncRef) && !rv64RootedAggregateTableReference(m, elem) || table.Limits.Addr64 || !table.Limits.HasMax || table.Limits.Min > table.Limits.Max || table.Limits.Max > 256 {
 					return reject("RV64 exact roots reject table import %d", i)
 				}
 			default:
@@ -141,9 +142,6 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		if (!wasm.EqualValType(elem, wasm.FuncRef) && !rootedTable) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
 			table.Type.Limits.Min > table.Type.Limits.Max || table.Type.Limits.Max > 256 {
 			return reject("RV64 exact roots require a bounded local function or aggregate-reference table32")
-		}
-		if rootedTable && publicTables[importedTables+i] {
-			return reject("RV64 exact roots reject public aggregate-reference table %d", i)
 		}
 		if table.Init != nil {
 			if rootedTable {

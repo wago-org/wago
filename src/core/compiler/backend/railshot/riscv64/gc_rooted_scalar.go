@@ -59,7 +59,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				}
 			case wasm.ExternGlobal:
 				typ := im.Type.GlobalType().Type
-				if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
+				if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !rootedScalarGlobalReference(typ, m) {
 					return false
 				}
 			case wasm.ExternMem:
@@ -533,6 +533,13 @@ func rootedScalarTableReference(typ wasm.ValType, m *wasm.Module) bool {
 	default:
 		return false
 	}
+}
+
+// Public rooted globals and compact rooted tables intentionally share the
+// same first-stage reference envelope. Both are nullable, non-exact carriers
+// for either one admitted nominal aggregate or the collector-free i31 value.
+func rootedScalarGlobalReference(typ wasm.ValType, m *wasm.Module) bool {
+	return rootedScalarTableReference(typ, m)
 }
 
 func rootedScalarAggregateNullExpression(expr wasm.Expr, ref wasm.RefType) bool {
