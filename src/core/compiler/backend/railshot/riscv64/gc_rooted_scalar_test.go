@@ -159,6 +159,89 @@ func TestRV64RootedScalarMutableStructCompiles(t *testing.T) {
 	}
 }
 
+func TestRV64RootedScalarMultiFieldStructCompiles(t *testing.T) {
+	types := [][]byte{
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		{0x5f, 0x05, 0x7f, 0x00, 0x7f, 0x00, 0x7f, 0x00, 0x7f, 0x01, 0x7f, 0x00},
+	}
+	body := []byte{
+		0x01, 0x01, 0x64, 0x01,
+		0x41, 0x01, 0x41, 0x02, 0x41, 0x03, 0x41, 0x04, 0x41, 0x05, 0xfb, 0x00, 0x01, 0x21, 0x00,
+		0x20, 0x00, 0x41, 0x28, 0xfb, 0x05, 0x01, 0x03,
+		0x20, 0x00, 0xfb, 0x02, 0x01, 0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x01, 0x03, 0x6a,
+		0x20, 0x00, 0xfb, 0x02, 0x01, 0x04, 0x6a, 0x0b,
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(1)
+	if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve exact root plan")
+	}
+	plan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin exact root plan")
+	}
+	*plan = shared.GCFrameRootPlan{
+		Candidate: true, Exact: true, Conservative: true,
+		Locals: []shared.GCFrameLocal{{Index: 0, Offset: shared.RV64CallFrameHeaderBytes}},
+	}
+	if !plan.SetLiveMasks([]uint64{1}, 1, 0) {
+		t.Fatal("install exact root liveness")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 6, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 1 {
+		t.Fatalf("code bytes=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
+	}
+}
+
+func TestRV64RootedScalarTypeWireDistinguishesFieldCountFromRecGroup(t *testing.T) {
+	fields := []byte{0x5f}
+	fields = append(fields, wasmtest.ULEB(78)...)
+	for range 78 {
+		fields = append(fields, 0x7f, 0x00)
+	}
+	function := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	body := []byte{0x00, 0xfb, 0x01, 0x00, 0xfb, 0x02, 0x00, 0x4d, 0x0b}
+	module := func(types ...[]byte) []byte {
+		return wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(types...)),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+			wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		)
+	}
+	if err := AdmitProductionSource(module(fields, function)); err != nil {
+		t.Fatalf("78-field struct source rejected: %v", err)
+	}
+	explicitRec := append([]byte{0x4e, 0x01}, fields...)
+	if err := AdmitProductionSource(module(explicitRec, function)); err == nil {
+		t.Fatal("explicit rec-group wrapper escaped rooted scalar wire admission")
+	}
+}
+
 func TestRV64RootedScalarArbitraryStructDefault(t *testing.T) {
 	const typeIndex = uint32(130)
 	types := make([][]byte, typeIndex+1)

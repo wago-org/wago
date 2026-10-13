@@ -207,7 +207,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	helperSlots := 0
 	switch {
 	case opts.gcRootedScalar:
-		helperSlots = 4
+		helperSlots = rootedScalarHelperSlots(m)
 	case opts.gcArrayCopy:
 		helperSlots = 7
 	case opts.gcArrayInitElem || opts.gcArrayInitData:

@@ -72,6 +72,43 @@ func TestRV64RootedScalarMutableStructExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarMultiFieldStructModule() []byte {
+	body := []byte{
+		0x01, 0x01, 0x64, 0x01,
+		0x41, 0x01, 0x41, 0x02, 0x41, 0x03, 0x41, 0x04, 0x41, 0x05, 0xfb, 0x00, 0x01, 0x21, 0x00,
+		0x20, 0x00, 0x41, 0x28, 0xfb, 0x05, 0x01, 0x03,
+		0x20, 0x00, 0xfb, 0x02, 0x01, 0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x01, 0x03, 0x6a,
+		0x20, 0x00, 0xfb, 0x02, 0x01, 0x04, 0x6a, 0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			[]byte{0x5f, 0x05, 0x7f, 0x00, 0x7f, 0x00, 0x7f, 0x00, 0x7f, 0x01, 0x7f, 0x00},
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedScalarMultiFieldStructExecutes(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), rootedScalarMultiFieldStructModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	got, err := instance.Invoke("run")
+	if err != nil || !slices.Equal(got, []uint64{46}) {
+		t.Fatalf("run()=%v err=%v want=[46]", got, err)
+	}
+}
+
 func TestRV64FreshRootedScalarReceipt(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), typedSelectReferenceModule(130, true, false))
 	if err != nil {

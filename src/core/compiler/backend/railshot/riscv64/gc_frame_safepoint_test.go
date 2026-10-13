@@ -214,7 +214,9 @@ func TestRV64SafepointHelperBridgeArities(t *testing.T) {
 	}{
 		{gcStructAllocDefault, 0, 1},
 		{gcStructAllocOne, 2, 2},
+		{gcStructAllocOne, 3, 3},
 		{gcStructAllocOne, 4, 4},
+		{gcStructAllocOne, 256, 256},
 		{gcArrayAllocDefault, 0, 2},
 		{gcArrayAllocUniform, 0, 3},
 		{gcArrayAllocFixed, 4, 4},
@@ -229,7 +231,7 @@ func TestRV64SafepointHelperBridgeArities(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		helper, admitted uint32
-	}{{gcStructGet, 0}, {gcStructAllocOne, 3}, {gcArrayAllocFixed, 6}} {
+	}{{gcStructGet, 0}, {gcStructAllocOne, 1}, {gcStructAllocOne, 257}, {gcArrayAllocFixed, 6}} {
 		if got, ok := gcAllocHelperSlots(tc.helper, int(tc.admitted)); ok {
 			t.Fatalf("helper %d/%d unexpectedly admitted with %d slots", tc.helper, tc.admitted, got)
 		}

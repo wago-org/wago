@@ -64,7 +64,7 @@ func gcAllocHelperSlots(helper uint32, admitted int) (int, bool) {
 	case gcStructAllocDefault:
 		return 1, true
 	case gcStructAllocOne:
-		return admitted, admitted == 2 || admitted == 4
+		return admitted, admitted >= 2 && admitted <= 256
 	case gcArrayAllocDefault:
 		return 2, true
 	case gcArrayAllocUniform:

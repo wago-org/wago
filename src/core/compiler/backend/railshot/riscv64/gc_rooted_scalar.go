@@ -11,7 +11,7 @@ import (
 // admitRV64GCRootedScalarModule is the first source-shape admission shared by
 // generic GC programs instead of a byte-for-byte product fixture. It keeps the
 // runtime boundary deliberately closed while admitting ordinary scalar control
-// over one-field i32 structs. Instruction admission remains the
+// over bounded unpacked i32 structs. Instruction admission remains the
 // responsibility of the typed integer walker, and exact allocation roots are
 // authenticated independently by validateGCFrameRootPlans.
 func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
@@ -41,8 +41,13 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		switch sub.Comp.Kind {
 		case wasm.CompStruct:
-			if len(sub.Comp.Fields) != 1 || sub.Comp.Fields[0].Storage() != wasm.StorageVal(wasm.I32) {
+			if len(sub.Comp.Fields) == 0 || len(sub.Comp.Fields) > 255 {
 				return false
+			}
+			for _, field := range sub.Comp.Fields {
+				if field.Storage() != wasm.StorageVal(wasm.I32) {
+					return false
+				}
 			}
 			hasStruct = true
 		case wasm.CompFunc:
@@ -99,10 +104,11 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 		if err != nil || count == 0 {
 			return false
 		}
-		// The bounded profile has only numeric function types and i32
-		// structs, so 0x4e cannot occur in a legal type payload. Rejecting it here
-		// preserves the explicit-rec-group distinction lost by public decoding.
-		if id == 1 && bytes.IndexByte(payload[probe.Offset():], 0x4e) >= 0 {
+		// Public decoding flattens a one-element explicit rec group into the same
+		// module shape as an implicit singleton. Preserve that wire distinction by
+		// parsing entry boundaries instead of scanning raw bytes: 0x4e is also a
+		// perfectly valid vector length (78) inside a struct or function type.
+		if id == 1 && !admitRV64GCRootedScalarTypeWire(payload) {
 			return false
 		}
 		if err := r.JumpTo(end); err != nil {
@@ -115,4 +121,70 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 	}
 	m, err := wasm.DecodeModule(data)
 	return err == nil && admitRV64GCRootedScalarModule(m)
+}
+
+func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
+	r := wasm.ReaderFrom(payload)
+	count, err := r.U32()
+	if err != nil || count == 0 || count > MaxFunctions {
+		return false
+	}
+	valueTypes := func() bool {
+		n, err := r.U32()
+		if err != nil || n > 256 {
+			return false
+		}
+		for range n {
+			typ, err := r.Byte()
+			if err != nil || typ < 0x7c || typ > 0x7f {
+				return false
+			}
+		}
+		return true
+	}
+	for range count {
+		form, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		switch form {
+		case 0x5f:
+			fields, err := r.U32()
+			if err != nil || fields == 0 || fields > 255 {
+				return false
+			}
+			for range fields {
+				storage, err := r.Byte()
+				if err != nil || storage != 0x7f {
+					return false
+				}
+				mut, err := r.Byte()
+				if err != nil || mut > 1 {
+					return false
+				}
+			}
+		case 0x60:
+			if !valueTypes() || !valueTypes() {
+				return false
+			}
+		default:
+			// Includes the explicit rec-group marker 0x4e and subtype prefixes.
+			return false
+		}
+	}
+	return !r.HasNext()
+}
+
+func rootedScalarHelperSlots(m *wasm.Module) int {
+	slots := 4 // struct.set is the largest non-allocation helper.
+	if m == nil {
+		return slots
+	}
+	for _, group := range m.Types {
+		if len(group.SubTypes) != 1 || group.SubTypes[0].Comp.Kind != wasm.CompStruct {
+			continue
+		}
+		slots = max(slots, len(group.SubTypes[0].Comp.Fields)+1)
+	}
+	return slots
 }

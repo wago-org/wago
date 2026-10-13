@@ -956,7 +956,7 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 	if opts.gcRefEq && (!opts.GCStructHelpers || !opts.GCArrayHelpers || opts.SyncHostSlots < 2) {
 		return unsupported("gc ref.eq helper contract")
 	}
-	if opts.gcRootedScalar && (!opts.GCStructHelpers || opts.GCArrayHelpers || opts.SyncHostSlots < 4) {
+	if opts.gcRootedScalar && (!opts.GCStructHelpers || opts.GCArrayHelpers || opts.SyncHostSlots < rootedScalarHelperSlots(m)) {
 		return unsupported("generic rooted scalar GC helper contract")
 	}
 	if opts.gcRefTestTable && (!opts.GCStructHelpers || opts.GCArrayHelpers || opts.SyncHostSlots < 4) {

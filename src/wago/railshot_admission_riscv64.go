@@ -31,6 +31,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		return false
 	}
 	hasStruct := false
+	requiredSlots := 4
 	for i, desc := range c.GCTypeDescs {
 		typ := &c.Types[i]
 		if typ.RecGroup != uint32(i) || !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.HasDescriptor {
@@ -49,17 +50,23 @@ func rv64FreshRootedGC(c *Compiled) bool {
 				}
 			}
 		case gc.KindStruct:
-			if typ.Kind != CompositeTypeStruct || len(typ.Fields) != 1 || typ.Fields[0].Storage.Packed || typ.Fields[0].Storage.Value.Kind != ValueTypeI32 ||
-				!desc.Final || desc.HasSuper || len(desc.Fields) != 1 || desc.Fields[0].Kind != gc.StorageI32 ||
-				desc.Fields[0].Offset != 0 || desc.HasRefs {
+			if typ.Kind != CompositeTypeStruct || len(typ.Fields) == 0 || len(typ.Fields) > 255 || len(typ.Fields) != len(desc.Fields) ||
+				!desc.Final || desc.HasSuper || desc.HasRefs {
 				return false
 			}
+			for field := range typ.Fields {
+				if typ.Fields[field].Storage.Packed || typ.Fields[field].Storage.Value.Kind != ValueTypeI32 ||
+					desc.Fields[field].Kind != gc.StorageI32 || desc.Fields[field].Offset != uint32(field*4) {
+					return false
+				}
+			}
+			requiredSlots = max(requiredSlots, len(typ.Fields)+1)
 			hasStruct = true
 		default:
 			return false
 		}
 	}
-	return hasStruct
+	return hasStruct && int(c.syncHostSlots) >= requiredSlots
 }
 
 // rv64StateOnlyExternrefGlobals is the persisted-artifact witness for a

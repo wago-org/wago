@@ -1780,7 +1780,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			case wasm.InstrStructNew:
 				fields := 3
 				if state.gcRootedScalar {
-					fields = 1
+					var ok bool
+					fields, ok = referenceTypes.rootedStructFields(imm.Index)
+					if !ok {
+						return integerSummary{}, unsupported("struct.new outside generic rooted scalar profile")
+					}
 				} else if state.gcRefTestAbstract && imm.Index == 1 {
 					fields = 1
 				} else if !state.gcStructBasic || imm.Index != 0 {
@@ -1817,12 +1821,13 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU:
-				regularGet := (state.gcRootedScalar || (state.gcStructGet || state.gcStructMutation) && imm.Index == 0) && imm.Index2 == 0 && imm.Kind == wasm.InstrStructGet
+				genericGet := state.gcRootedScalar && referenceTypes.rootedStructField(imm.Index, imm.Index2) && imm.Kind == wasm.InstrStructGet
+				regularGet := (state.gcStructGet || state.gcStructMutation) && imm.Index == 0 && imm.Index2 == 0 && imm.Kind == wasm.InstrStructGet
 				basicGet := state.gcStructBasic && imm.Index == 0 && imm.Index2 < 2 && imm.Kind == wasm.InstrStructGet
 				nullGet := state.gcStructNull && imm.Index == 0 && imm.Index2 == 1
 				packedGet := state.gcStructPacked && imm.Index == 0 && imm.Index2 < 4 && imm.Kind != wasm.InstrStructGet
 				abstractGet := state.gcRefTestAbstract && imm.Index == 1 && imm.Index2 == 0 && imm.Kind == wasm.InstrStructGetS
-				if !regularGet && !basicGet && !nullGet && !packedGet && !abstractGet {
+				if !genericGet && !regularGet && !basicGet && !nullGet && !packedGet && !abstractGet {
 					return integerSummary{}, unsupported("struct.get outside exact gc struct.get profile")
 				}
 				if _, err = popClass(true); err != nil {
@@ -1833,12 +1838,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					if regularGet {
-						if state.gcRootedScalar {
-							emit.gcStructGetI32(h, imm.Index, imm.Index2, gcStructGet)
-						} else {
-							emit.gcStructGetField0(h)
-						}
+					if genericGet {
+						emit.gcStructGetI32(h, imm.Index, imm.Index2, gcStructGet)
+					} else if regularGet {
+						emit.gcStructGetField0(h)
 					} else if basicGet {
 						emit.gcStructGetI32(h, imm.Index, imm.Index2, gcStructGet)
 					} else if nullGet {
@@ -1855,7 +1858,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrStructSet:
-				genericSet := state.gcRootedScalar && imm.Index2 == 0 && referenceTypes.rootedStruct(imm.Index) && referenceTypes.mutableStructField(imm.Index, imm.Index2)
+				genericSet := state.gcRootedScalar && referenceTypes.mutableStructField(imm.Index, imm.Index2)
 				if !genericSet && !(state.gcStructMutation && imm.Index == 0 && imm.Index2 == 0) && !(state.gcStructNull && imm.Index == 0 && imm.Index2 == 1) && !(state.gcStructPacked && imm.Index == 0 && (imm.Index2 == 1 || imm.Index2 == 3)) && !(state.gcStructBasic && imm.Index == 0 && imm.Index2 == 1) {
 					return integerSummary{}, unsupported("struct.set outside exact gc struct profile")
 				}
