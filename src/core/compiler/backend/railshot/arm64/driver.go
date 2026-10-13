@@ -901,6 +901,9 @@ func (f *fn) popValue() *elem {
 // (§4a — arm64 has no memory operands), so the memOp parameter is dropped: vop is
 // the NEON scalar op (`f.a.Fadd`/`Fsub`/`Fmul`/`Fdiv`).
 func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool), f64 bool) (bool, error) {
+	if op, ok := r.Peek(); ok && op == 0x24 {
+		return f.tryFbinGlobalSet(r, vop, f64)
+	}
 	save := r.Offset()
 	op, ok := r.Peek()
 	if !ok || (op != 0x21 && op != 0x22) {

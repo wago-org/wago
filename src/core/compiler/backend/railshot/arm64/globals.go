@@ -47,7 +47,7 @@ func (f *fn) invalidateGlobalsCache() {
 }
 
 // pinnedGlobalValueReg returns the register holding global x's live value, when x
-// is value-pinned (a hot mutable int global in a call-free function). See
+// is value-pinned (a hot mutable scalar global). See
 // assignPinnedLocals / loadPinnedGlobals / storePinnedGlobals.
 func (f *fn) pinnedGlobalValueReg(x uint32) (Reg, bool) {
 	if int(x) < len(f.globalReg) {
@@ -72,7 +72,7 @@ func (f *fn) globalGetIndex(x uint32) error {
 		return fmt.Errorf("arm64: unknown global %d", x)
 	}
 	gtv := wasm.GlobalValueType(gt)
-	// Value-pinned (int) global: the current value already lives in a register.
+	// Value-pinned scalar global: the current value already lives in a register.
 	// Push a borrowed reference (WARP liftToRegInPlace) — no copy, no memory access
 	// at all — kept sound by realize-on-set (realizeGlobalRefs) and by flush/
 	// flushBelow materializing it before a call or control-flow boundary.
@@ -80,6 +80,10 @@ func (f *fn) globalGetIndex(x uint32) error {
 		typ := mtI32
 		if wasm.EqualValType(gtv, wasm.I64) {
 			typ = mtI64
+		} else if wasm.EqualValType(gtv, wasm.F32) {
+			typ = mtF32
+		} else if wasm.EqualValType(gtv, wasm.F64) {
+			typ = mtF64
 		}
 		f.pushValue(storage{kind: stGlobReg, typ: typ, reg: reg, idx: x})
 		return nil
@@ -132,7 +136,7 @@ func (f *fn) realizeGlobalRefs(x uint32, skipFrom *elem) {
 		next := f.s.next(e)
 		switch {
 		case e.elemKind() == ekValue && e.st.kind == stGlobReg && e.st.idx == x:
-			f.materialize(e)
+			f.materializeByType(e)
 		case e.elemKind() == ekDeferred && subtreeRefsGlobal(f.s, e, x):
 			f.condense(e, regNone)
 		}
@@ -182,6 +186,24 @@ func (f *fn) globalSetIndex(x uint32) error {
 	}
 	if wasm.EqualValType(gtv, wasm.F32) || wasm.EqualValType(gtv, wasm.F64) {
 		f64 := wasm.EqualValType(gtv, wasm.F64)
+		if reg, ok := f.pinnedGlobalValueReg(x); ok {
+			e := f.s.back()
+			f.realizeGlobalRefs(x, f.s.baseOfValentBlock(e))
+			if e.elemKind() == ekValue && (e.st.kind == stLocalReg || e.st.kind == stGlobReg) {
+				if e.st.reg != reg {
+					f.a.FmovReg(reg, e.st.reg, f64)
+				}
+			} else {
+				src := f.materializeF(e)
+				if src != reg {
+					f.a.FmovReg(reg, src, f64)
+				}
+				f.releaseF(src)
+			}
+			f.erase(e)
+			f.globalReg[x] |= globalRegDirty
+			return nil
+		}
 		xmm := f.materializeF(f.popValue())
 		f.fpinned = f.fpinned.add(xmm)
 		cell := f.globalCellPtr(x) // cached, pinned

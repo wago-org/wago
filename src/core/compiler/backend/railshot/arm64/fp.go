@@ -173,8 +173,8 @@ func (f *fn) materializeF(e *elem) Reg {
 		f.a.LdrF(x, a64.SP, f.localOff(e.st.index()), e.st.typ == mtF64)
 		f.occupyF(e, x)
 		return x
-	case stLocalReg:
-		// Borrowed pinned float local: copy into an owned V register so the caller
+	case stLocalReg, stGlobReg:
+		// Borrowed pinned float local/global: copy into an owned V register so the caller
 		// may clobber it without corrupting the local.
 		x := f.allocFReg(0)
 		f.a.FmovReg(x, e.st.reg, e.st.typ == mtF64)
@@ -192,12 +192,12 @@ func (f *fn) materializeF(e *elem) Reg {
 
 // operandRegF returns a register holding e's value for READ-ONLY use as a NEON
 // source operand (never written, so it need not be a private copy). A pinned float
-// local is used directly and must not be released (owned=false); everything else is
+// local/global is used directly and must not be released (owned=false); everything else is
 // materialized into an owned scratch register the caller releases (owned=true).
 // This avoids the fmov-to-scratch that materializeF emits for a pinned local when
 // the value is only being read — the dominant per-op float overhead.
 func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
-	if e.elemKind() == ekValue && e.st.kind == stLocalReg {
+	if e.elemKind() == ekValue && (e.st.kind == stLocalReg || e.st.kind == stGlobReg) {
 		return e.st.reg, false
 	}
 	if e.elemKind() == ekValue && e.st.kind == stConst && e.st.typ.isFloat() && !f.makesCalls {

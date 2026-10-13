@@ -3807,6 +3807,7 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 			}
 		}
 	}
+	usedFP := 0
 	for k, local := range fc {
 		if k >= fpPinLimit {
 			break
@@ -3819,7 +3820,9 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		f.locals[i].isFloat = true
 		f.fpinnedLocalMask = f.fpinnedLocalMask.add(pinnedFLocalRegs[k])
 		f.stats.addPinnedLocal()
+		usedFP++
 	}
+	f.assignPinnedFloatGlobals(globalHints, hasCall, loopMin, usedFP, fpPinLimit)
 }
 
 // pinLeafRegABIIntParams maps integer parameters of a call-free register-ABI
@@ -3852,13 +3855,18 @@ func (f *fn) globalIs64(g int) bool {
 	return wasm.EqualValType(wasm.GlobalValueType(gt), wasm.I64)
 }
 
-const globalRegDirty Reg = 1 << 7
+const (
+	globalRegDirty Reg = 1 << 7
+	globalRegFloat Reg = 1 << 6
+)
+
+func globalRegIsFloat(state Reg) bool { return state != regNone && state&globalRegFloat != 0 }
 
 func globalRegValue(state Reg) Reg {
 	if state == regNone {
 		return regNone
 	}
-	return state &^ globalRegDirty
+	return state &^ (globalRegDirty | globalRegFloat)
 }
 
 func globalRegIsDirty(state Reg) bool {
@@ -3935,11 +3943,7 @@ func (f *fn) storeGlobalPins(scratch Reg, valuePins bool) {
 		}
 		f.ld64(scratch, linMemReg, -int32(abi.GlobalsPtrOffset))
 		f.ld64(scratch, scratch, int32(g*8))
-		if f.globalIs64(g) {
-			f.st64(scratch, 0, reg)
-		} else {
-			f.st32(scratch, 0, reg)
-		}
+		f.storePinnedGlobalValue(g, state, scratch)
 	}
 }
 
@@ -3955,11 +3959,7 @@ func (f *fn) storeDirtyGlobalPins(scratch Reg) {
 		}
 		f.ld64(scratch, linMemReg, -int32(abi.GlobalsPtrOffset))
 		f.ld64(scratch, scratch, int32(g*8))
-		if f.globalIs64(g) {
-			f.st64(scratch, 0, reg)
-		} else {
-			f.st32(scratch, 0, reg)
-		}
+		f.storePinnedGlobalValue(g, state, scratch)
 	}
 }
 
@@ -3977,15 +3977,31 @@ func (f *fn) derivePinnedGlobals() {
 func (f *fn) derivePinnedGlobalsIn(regs regMask) {
 	for g, state := range f.globalReg {
 		reg := globalRegValue(state)
-		if reg == regNone || f.isModuleGlobal(g) || !regs.has(reg) {
+		if reg == regNone || f.isModuleGlobal(g) {
 			continue
 		}
-		f.ld64(reg, linMemReg, -int32(abi.GlobalsPtrOffset)) // globals array base
-		f.ld64(reg, reg, int32(g*8))                         // &cell[g]
-		if f.globalIs64(g) {
-			f.ld64(reg, reg, 0)
+		if globalRegIsFloat(state) {
+			// Narrow masks describe GP clobbers, not the overlapping V-register bank.
+			if regs != ^regMask(0) {
+				continue
+			}
+			cell := f.allocReg(maskOf(X0))
+			f.ld64(cell, linMemReg, -int32(abi.GlobalsPtrOffset))
+			f.ld64(cell, cell, int32(g*8))
+			gt, _ := f.globalType(uint32(g))
+			f.a.LdrF(reg, cell, 0, wasm.EqualValType(wasm.GlobalValueType(gt), wasm.F64))
+			f.release(cell)
 		} else {
-			f.ld32(reg, reg, 0) // i32: low half, zero-extended
+			if !regs.has(reg) {
+				continue
+			}
+			f.ld64(reg, linMemReg, -int32(abi.GlobalsPtrOffset))
+			f.ld64(reg, reg, int32(g*8))
+			if f.globalIs64(g) {
+				f.ld64(reg, reg, 0)
+			} else {
+				f.ld32(reg, reg, 0)
+			}
 		}
 	}
 }
@@ -4003,17 +4019,13 @@ func (f *fn) storePinnedGlobals(dirtyOnly bool) {
 func (f *fn) storePinnedGlobalsIn(regs regMask, dirtyOnly bool) {
 	for g, state := range f.globalReg {
 		reg := globalRegValue(state)
-		if reg == regNone || f.isModuleGlobal(g) || !regs.has(reg) || (dirtyOnly && !globalRegIsDirty(state)) {
+		if reg == regNone || f.isModuleGlobal(g) || (globalRegIsFloat(state) && regs != ^regMask(0)) || (!globalRegIsFloat(state) && !regs.has(reg)) || (dirtyOnly && !globalRegIsDirty(state)) {
 			continue
 		}
 		t := f.allocReg(maskOf(reg, X0))
 		f.ld64(t, linMemReg, -int32(abi.GlobalsPtrOffset))
 		f.ld64(t, t, int32(g*8))
-		if f.globalIs64(g) {
-			f.st64(t, 0, reg)
-		} else {
-			f.st32(t, 0, reg)
-		}
+		f.storePinnedGlobalValue(g, state, t)
 		f.release(t)
 	}
 }
