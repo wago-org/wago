@@ -76,7 +76,16 @@ func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module, al
 			return p, false
 		}
 	}
+	termStart := r
 	term, ok := inspectIntegerAffineTermForModule(&r, blockType != 0, module, allowCalls)
+	if !ok && blockType != 0 {
+		r = termStart
+		width := 4
+		if blockType == 0x7e {
+			width = 8
+		}
+		term, ok = inspectIntegerMixedWidthTerm(&r, module, width)
+	}
 	if !ok {
 		return p, false
 	}

@@ -9,6 +9,7 @@ import (
 // Imported globals are excluded because separate indices can alias one cell.
 type IntegerAffineGlobalWrite struct {
 	Index                 uint32
+	Wide                  bool
 	Coefficient, Constant uint64
 }
 
@@ -230,7 +231,7 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 				a.coefficient = uint64(uint32(a.coefficient))
 				a.constant = uint64(uint32(a.constant))
 			}
-			out.writes[slot] = IntegerAffineGlobalWrite{Index: x, Coefficient: a.coefficient, Constant: a.constant}
+			out.writes[slot] = IntegerAffineGlobalWrite{Index: x, Coefficient: a.coefficient, Constant: a.constant, Wide: width == 8}
 			if slot == out.writeCount {
 				out.writeCount++
 			}

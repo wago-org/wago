@@ -122,13 +122,24 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 		get(p.Counter)
 		one()
 		f.pushBinOp(opSub, typ)
+		writeType := mtI32
+		if w.Wide {
+			writeType = mtI64
+		}
+		if writeType != typ {
+			if w.Wide {
+				f.pushUnOp(opZExt32, mtI64)
+			} else {
+				f.pushUnOp(opWrap, mtI32)
+			}
+		}
 		if w.Coefficient != 1 {
-			f.pushValue(storage{kind: stConst, typ: typ, cval: int64(w.Coefficient)})
-			f.pushBinOp(opMul, typ)
+			f.pushValue(storage{kind: stConst, typ: writeType, cval: int64(w.Coefficient)})
+			f.pushBinOp(opMul, writeType)
 		}
 		if w.Constant != 0 {
-			f.pushValue(storage{kind: stConst, typ: typ, cval: int64(w.Constant)})
-			f.pushBinOp(opAdd, typ)
+			f.pushValue(storage{kind: stConst, typ: writeType, cval: int64(w.Constant)})
+			f.pushBinOp(opAdd, writeType)
 		}
 		if err := f.globalSetIndex(w.Index); err != nil {
 			return false, err
