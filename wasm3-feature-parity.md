@@ -485,3 +485,23 @@ source fingerprints, all process medians, costs and emitted-loop evidence.
 ARM64 pinned Core 3/threads pass and the full backend retains its exact 44
 baseline statistics failures. Native AMD64 remains pending hub SSH access.
 RMW/CAS block reconciliation and full feature-by-feature parity remain open.
+
+### Native atomic block residency
+
+`4680ca19` admits native atomic load/store/RMW/CAS/fence operations into the
+existing bounded straight-line block proof. Wait/notify helper paths remain
+excluded. Native lowering keeps memory barriers, earlier reads and trap order;
+memory32/64, primary/secondary memories, both ABIs and artifact reload pass.
+ARM64 guarded race tests and pinned Core 3/threads pass; the full backend retains
+its exact 44 baseline statistics failures. AMD64 binaries cross-compile, while
+hub SSH remains unavailable for native validation.
+
+Fresh wasm.fyi contracts improve atomic load/store 8.45%, RMW 13.50%, and CAS
+5.60%. RMW is 235,514 ns versus unchecked w2c2 237,939 ns (0.990x); CAS is
+292,612 versus 291,637 ns (1.003x). One unchecked CAS process has CV 0.139;
+these observations do not prove broader parity. The current RMW loop retains
+its accumulator and shared base, with real STLR/LDADDAL operations and no loop
+stack spills. Core 3/threads compile latency changes +0.97%/+0.22%, allocations
+are unchanged, code unchanged/-0.79%, and peak RSS +1.28%/+0.76%.
+`atomic-block-results.json` retains matched profiles and evidence. Refreshing
+the full 90-contract feature corpus and native AMD64 validation remain required.

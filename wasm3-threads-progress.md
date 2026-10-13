@@ -2054,3 +2054,38 @@ retains all medians, revisions, bytecode hashes and validation evidence.
 Emitted code keeps actual stores and the subsequent byte read. Atomic RMW/CAS
 block boundary spills, native AMD64 validation and broader feature parity remain
 required work.
+
+### Native atomic block checkpoint
+
+`4680ca19` retains stack operands through bounded blocks containing native
+atomic load/store/RMW/CAS/fence. Wait and notify remain excluded because they
+can enter host helpers. Native barrier and source-order lowering is unchanged.
+Memory32/64 primary/secondary memory, both ABIs, codec reload, older loads and
+before/after traps pass. ARM64 guarded race tests, pinned Core 3 (2,226 modules,
+58,238 assertions) and official threads (51/312) pass. The full backend retains
+exactly the same 44 statistics failures. AMD64 test binaries cross-compile;
+hub connectivity still blocks native AMD64 execution.
+
+Three interleaved process medians, in ns per invocation:
+
+| Contract | Before | Current | Unchecked w2c2 |
+| --- | ---: | ---: | ---: |
+| Atomic load/store | 150,776 | 138,033 | 172,031 |
+| Atomic RMW add | 272,286 | 235,514 | 237,939 |
+| Compare exchange | 309,965 | 292,612 | 291,637 |
+
+Load/store improves 8.45%, RMW 13.50% and CAS 5.60%. RMW is 0.990x the peer;
+CAS is 1.003x, with one unchecked process at CV 0.139 (peer medians
+337,411/291,637/288,897 ns). Emitted RMW code retains the accumulator and
+shared base across the real STLR/LDADDAL operations without loop stack spills.
+Small variations in other contracts do not establish further wins.
+
+Separate GOMAXPROCS=1 captures show Core 3 compile latency 412.911 -> 416.907 ms
+(+0.97%), threads 48.415 -> 48.521 ms (+0.22%), with unchanged allocation bytes.
+Core 3 code is unchanged; threads code falls 1,624,000 -> 1,611,200 bytes
+(-0.79%). Peak RSS changes +1.28%/+0.76%. Scalar/Core 3 scalar/imported-worker
+compile medians change +0.14%/+1.56%/-0.60%. The tracked
+`atomic-block-results.json` retains all profiles, costs and evidence hashes.
+Broad feature/composition parity and native AMD64 validation remain open; the
+original 90-contract feature baseline needs refreshing before prioritizing
+further feature work.
