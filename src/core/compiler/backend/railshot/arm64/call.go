@@ -2913,11 +2913,19 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	}
 	home := f.allocReg(maskOf(idxReg, code))
 	f.ld64(home, idxReg, 24) // entry home linMem base
-	targetContext := f.allocReg(maskOf(idxReg, code, home))
-	f.ld64(targetContext, idxReg, 32) // canonical descriptor pointer
-	f.trapIfZero(targetContext, true, true, trapIndirectOOB)
-	f.pinned = f.pinned.remove(idxReg)
-	f.release(idxReg)
+	// The uniform private-table proof only accepts active function-index elements
+	// and no table initializer. Without function imports, its non-null entries
+	// therefore have valid local descriptors. Keep the entry cursor until the
+	// wrapper arm needs that descriptor, while retaining the runtime ABI tag fork.
+	localDescriptors := tableIdx == 0 && f.immutableLocalTable && f.immutableTableTyped && f.immutableTableType == canon && f.m.ImportedFuncCount() == 0
+	targetContext := idxReg
+	if !localDescriptors {
+		targetContext = f.allocReg(maskOf(idxReg, code, home))
+		f.ld64(targetContext, idxReg, 32) // canonical descriptor pointer
+		f.trapIfZero(targetContext, true, true, trapIndirectOOB)
+		f.pinned = f.pinned.remove(idxReg)
+		f.release(idxReg)
+	}
 	if sigFitsRegABI(ft) && sigIsIntOnly(ft) || sigFitsReferenceResultRegABI(ft) {
 		// Flush once, then emit both guarded paths from the same canonical stack
 		// state. The compiler state for locals is restored before producing the
@@ -2940,6 +2948,9 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		// Internal entries inherit the active instance context. Resolve the
 		// descriptor's context only in the wrapper arm, where it is needed.
 		f.stats.peep("internal-call-indirect-context-elide")
+		if localDescriptors {
+			f.stats.peep("immutable-local-indirect-descriptor-elide")
+		}
 		f.stripDescriptorHomeTags(home)
 		f.pinned = f.pinned.remove(home)
 		var returnOffset uint32
@@ -2955,6 +2966,10 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.patchBranch19(wrapper, f.a.Len())
 		f.locals = savedLocals
 		f.setDepthTypesWithGCRoots(types, gcRoots)
+		if localDescriptors {
+			f.ld64(targetContext, targetContext, 32)
+			f.trapIfZero(targetContext, true, true, trapIndirectOOB)
+		}
 		f.ld64(targetContext, targetContext, runtime.FuncRefContextOffset)
 		f.trapIfZero(targetContext, true, true, trapIndirectOOB)
 		f.st64(linMemReg, -int32(offSpillRegion), code)
@@ -2969,6 +2984,10 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	}
 
 	// This signature always uses the wrapper entry and its descriptor context.
+	if localDescriptors {
+		f.ld64(targetContext, targetContext, 32)
+		f.trapIfZero(targetContext, true, true, trapIndirectOOB)
+	}
 	f.ld64(targetContext, targetContext, runtime.FuncRefContextOffset)
 	f.trapIfZero(targetContext, true, true, trapIndirectOOB)
 	// Stash the code ptr in linMem scratch so it survives the call staging.
