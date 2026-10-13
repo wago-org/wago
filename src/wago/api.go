@@ -3526,7 +3526,7 @@ func (c *Compiled) validateArenaFootprint() error {
 		if gcSlots > syncHostSlots {
 			syncHostSlots = gcSlots
 		}
-		internalHelperSlots, slotErr = gcInternalHelperSlotCapacity(c.GCTypeDescs, c.usesGCStructHelpers(), c.usesGCArrayHelpers())
+		internalHelperSlots, slotErr = gcInternalHelperSlotCapacity(c.GCTypeDescs, c.usesGCStructHelpers(), c.usesGCArrayHelpers(), compiledArchitecture == 4 && c.stagedGCArrayProduct() == stagedGCArrayProductGeneric)
 		if slotErr != nil {
 			return wrapContextError("compiled metadata invalid", slotErr)
 		}

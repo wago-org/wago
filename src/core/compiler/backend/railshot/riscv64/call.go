@@ -71,7 +71,7 @@ func gcAllocHelperSlots(helper uint32, admitted int) (int, bool) {
 	case gcArrayAllocUniform:
 		return 3, true
 	case gcArrayAllocFixed:
-		return admitted, admitted == 4 || admitted == 5
+		return admitted, admitted >= 2 && admitted <= 64
 	case gcArrayAllocData, gcArrayAllocElem:
 		return 4, true
 	default:
@@ -237,10 +237,10 @@ func (f *integerEmitter) gcUniformArrayAllocation(base int, typeIndex uint32, wi
 	f.Store(f.SpillOffset(base), 5, true)
 }
 
-func (f *integerEmitter) gcFixedArrayAllocation(base int, typeIndex, count uint32, hiddenRefs []bool) {
+func (f *integerEmitter) gcFixedArrayAllocation(base int, typeIndex, count uint32, wide bool, hiddenRefs []bool) {
 	f.restoreCallTransport()
 	for i := uint32(0); i < count; i++ {
-		f.Load(5, f.SpillOffset(base+int(i)), false)
+		f.Load(5, f.SpillOffset(base+int(i)), wide)
 		f.a.Sd(enc.X5, enc.X10, int32(i*8))
 	}
 	f.a.Constant32(enc.X5, typeIndex)

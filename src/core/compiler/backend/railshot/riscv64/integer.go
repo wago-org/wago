@@ -1916,18 +1916,24 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrArrayNewFixed:
+				genericStorage, _, genericArray := referenceTypes.rootedArrayStorage(imm.Index)
+				genericFixed := state.gcRootedScalar && genericArray && imm.Index2 <= 62
+				genericWide := genericFixed && !genericStorage.Packed() && scalarWide(genericStorage.Val())
 				localFixed := state.gcArrayFixedLocal && imm.Index == 0 && imm.Index2 == 3
 				officialFixed := state.gcArrayFixedOfficial && (imm.Index == 0 && imm.Index2 == 2 || imm.Index == 1 && imm.Index2 == 3)
-				if !localFixed && !officialFixed {
+				if state.gcRootedScalar && genericArray && imm.Index2 > 62 {
+					return integerSummary{}, unsupported("generic array.new_fixed exceeds 62-element helper bound")
+				}
+				if !genericFixed && !localFixed && !officialFixed {
 					return integerSummary{}, unsupported("array.new_fixed outside exact gc array fixed local profile")
 				}
 				for range imm.Index2 {
-					if _, err = popClass(false); err != nil {
+					if err = popWidth(genericWide); err != nil {
 						return integerSummary{}, err
 					}
 				}
 				calls := 1
-				if state.gcArrayFixedOfficial && imm.Index == 1 {
+				if !genericFixed && state.gcArrayFixedOfficial && imm.Index == 1 {
 					calls = 3
 				}
 				callCount += calls
@@ -1935,10 +1941,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					if state.gcArrayFixedOfficial && imm.Index == 1 {
+					if !genericFixed && state.gcArrayFixedOfficial && imm.Index == 1 {
 						emit.gcFixedArrayAllocation3ViaUniform(h, imm.Index, stackRefs[:h])
 					} else {
-						emit.gcFixedArrayAllocation(h, imm.Index, imm.Index2, stackRefs[:h])
+						emit.gcFixedArrayAllocation(h, imm.Index, imm.Index2, genericWide, stackRefs[:h])
 					}
 				}
 				if err = pushReference(); err != nil {

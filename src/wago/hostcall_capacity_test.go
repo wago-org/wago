@@ -28,17 +28,18 @@ func TestGCInternalHelperSlotCapacity(t *testing.T) {
 	}
 	descs := []gc.TypeDesc{{Kind: gc.KindStruct, Fields: fields}}
 	for _, tc := range []struct {
-		name            string
-		structs, arrays bool
-		want            int
+		name                     string
+		structs, arrays, generic bool
+		want                     int
 	}{
 		{name: "none", want: 0},
 		{name: "fixed-struct", structs: true, want: 79},
 		{name: "array", arrays: true, want: 7},
+		{name: "generic-array", arrays: true, generic: true, want: coreruntime.MaxHostArity},
 		{name: "both", structs: true, arrays: true, want: 79},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := gcInternalHelperSlotCapacity(descs, tc.structs, tc.arrays)
+			got, err := gcInternalHelperSlotCapacity(descs, tc.structs, tc.arrays, tc.generic)
 			if err != nil || got != tc.want {
 				t.Fatalf("internal helper slot capacity = %d, %v; want %d", got, err, tc.want)
 			}

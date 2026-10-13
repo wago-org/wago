@@ -214,6 +214,26 @@ func rootedScalarHelperSlots(m *wasm.Module) int {
 		}
 		slots = max(slots, len(group.SubTypes[0].Comp.Fields)+1)
 	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	for i := range m.Code {
+		r := wasm.NewReader(m.Code[i].BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return 65
+			}
+			var imm wasm.InstructionImmediate
+			if err = classifier.ClassifyInto(r, op, &imm); err != nil {
+				return 65
+			}
+			if imm.Kind == wasm.InstrArrayNewFixed {
+				if imm.Index2 > 62 {
+					return 65
+				}
+				slots = max(slots, int(imm.Index2)+2)
+			}
+		}
+	}
 	return slots
 }
 

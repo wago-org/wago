@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
@@ -308,6 +309,79 @@ func rootedPackedScalarArrayBulkModule() []byte {
 	)
 }
 
+func rootedWideScalarArrayFixedModule() []byte {
+	const last = int64(0x0102030405060708)
+	types := [][]byte{
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}),
+		{0x5e, 0x7e, 0x01},
+	}
+	body := []byte{0x00}
+	for value := int64(1); value <= 5; value++ {
+		body = append(body, 0x42)
+		body = append(body, wasmtest.SLEB64(value)...)
+	}
+	body = append(body, 0x42)
+	body = append(body, wasmtest.SLEB64(last)...)
+	body = append(body,
+		0xfb, 0x08, 0x01, 0x06,
+		0x41, 0x05, 0xfb, 0x0b, 0x01,
+		0x0b,
+	)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func rootedWideScalarArrayFixedEdgeModule(count byte) []byte {
+	const value = int64(0x0102030405060708)
+	result := wasm.I32
+	body := []byte{0x00}
+	if count == 1 {
+		result = wasm.I64
+		body = append(body, 0x42)
+		body = append(body, wasmtest.SLEB64(value)...)
+	}
+	body = append(body, 0xfb, 0x08, 0x01, count)
+	if count == 0 {
+		body = append(body, 0xfb, 0x0f)
+	} else {
+		body = append(body, 0x41, 0x00, 0xfb, 0x0b, 0x01)
+	}
+	body = append(body, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{result}),
+			[]byte{0x5e, 0x7e, 0x01},
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func rootedWideScalarArrayFixedBoundModule(count uint32) []byte {
+	body := []byte{0x00}
+	for value := uint32(0); value < count; value++ {
+		body = append(body, 0x42)
+		body = append(body, wasmtest.SLEB64(int64(value))...)
+	}
+	body = append(body, 0xfb, 0x08, 0x01)
+	body = append(body, wasmtest.ULEB(count)...)
+	body = append(body, 0xfb, 0x0f, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			[]byte{0x5e, 0x7e, 0x01},
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func TestRV64RootedScalarArraysExecute(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -318,6 +392,10 @@ func TestRV64RootedScalarArraysExecute(t *testing.T) {
 		{name: "packed", source: rootedPackedScalarArrayModule(), want: []uint64{0xffffffff, 0xff}},
 		{name: "wide-bulk", source: rootedWideScalarArrayBulkModule(), want: []uint64{0x0102030405060708, 0x0102030405060708}},
 		{name: "packed-bulk", source: rootedPackedScalarArrayBulkModule(), want: []uint64{0xffffffff, 0xff}},
+		{name: "wide-fixed", source: rootedWideScalarArrayFixedModule(), want: []uint64{0x0102030405060708}},
+		{name: "wide-fixed-empty", source: rootedWideScalarArrayFixedEdgeModule(0), want: []uint64{0}},
+		{name: "wide-fixed-one", source: rootedWideScalarArrayFixedEdgeModule(1), want: []uint64{0x0102030405060708}},
+		{name: "wide-fixed-bound", source: rootedWideScalarArrayFixedBoundModule(62), want: []uint64{62}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			compiled, err := Compile(rv64RootedScalarConfig(), tc.source)
@@ -334,6 +412,16 @@ func TestRV64RootedScalarArraysExecute(t *testing.T) {
 				t.Fatalf("run()=%#x err=%v want=%#x", got, err, tc.want)
 			}
 		})
+	}
+}
+
+func TestRV64RootedScalarArrayFixedRejectsBeyondHelperFrame(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedWideScalarArrayFixedBoundModule(63))
+	if compiled != nil {
+		compiled.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "generic rooted scalar GC helper contract") {
+		t.Fatalf("63-element array.new_fixed error = %v", err)
 	}
 }
 

@@ -47,7 +47,7 @@ func gcSyncHostSlotCapacity(descs []gc.TypeDesc) (int, error) {
 // internal helper calls. Unlike the control frame, this arena has no 64-slot
 // inline prefix: its allocation must cover the exact largest helper shape or a
 // helper write would overlap the adjacent result and trap cells.
-func gcInternalHelperSlotCapacity(descs []gc.TypeDesc, structHelpers, arrayHelpers bool) (int, error) {
+func gcInternalHelperSlotCapacity(descs []gc.TypeDesc, structHelpers, arrayHelpers, genericArrays bool) (int, error) {
 	slots := 0
 	if structHelpers {
 		// final cast/get is the largest fixed struct helper; constructors may be
@@ -57,6 +57,11 @@ func gcInternalHelperSlotCapacity(descs []gc.TypeDesc, structHelpers, arrayHelpe
 	if arrayHelpers {
 		// array.copy is the largest array helper.
 		slots = max(slots, 7)
+	}
+	if genericArrays {
+		// RV64 generic array.new_fixed is bounded so its values, type index, and
+		// count fit the existing 64-slot synchronous helper frame.
+		slots = max(slots, coreruntime.MaxHostArity)
 	}
 	if !structHelpers {
 		return slots, nil
