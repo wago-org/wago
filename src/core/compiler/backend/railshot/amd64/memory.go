@@ -2062,6 +2062,10 @@ func (f *fn) bulkMemory0Base(avoid regMask) (Reg, bool) {
 // memoryFillConst lowers memory.fill with a small constant length as unrolled
 // stores of a byte-replicated pattern — no flush, no rep-stos microcode startup.
 func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
+	if n >= 16 && f.opt(optBulkFillVector) {
+		f.memoryFillVector(n, memoryIndex)
+		return
+	}
 	f.stats.peep("memfill-unroll")
 	f.materializePendingLoads() // pending loads must read pre-fill memory
 	f.erase(f.s.back())         // n (const)

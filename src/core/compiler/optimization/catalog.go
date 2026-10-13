@@ -436,6 +436,7 @@ var catalog = []Definition{
 	both("atomic-static-bounds", "Constant atomic bounds", "prove aligned constant atomic addresses against the declared memory minimum"),
 	both("counted-loop-latch", "Counted loop latch", "fold exact top-tested i32 countdown loops into an architecture-safe latch"),
 	both("straight-line-block", "Straight-line blocks", "retain operand residency through small blocks without branches or calls"),
+	both("bulk-fill-vector", "Constant vector fills", "broadcast a byte into native vector stores for 16 to 64 byte constant fills"),
 	both("simd-store-load-address", "Adjacent SIMD memory addresses", "reuse an identical pure address expression for a vector store and following real load"),
 	both("simd-load-extract", "SIMD load lane extraction", "load the consumed scalar lane while retaining the original vector access bounds"),
 	both("memory-min-bounds", "Declared minimum memory bounds", "prove bounded integer address expressions fit the selected memory minimum"),

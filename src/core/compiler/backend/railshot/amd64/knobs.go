@@ -20,6 +20,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
 	optimization.Bind("simd-load-extract", &simdLoadExtractEnabled),
 	optimization.Bind("simd-store-load-address", &simdStoreLoadAddressEnabled),
+	optimization.Bind("bulk-fill-vector", &bulkFillVectorEnabled),
 	optimization.Bind("straight-line-block", &straightLineBlockEnabled),
 	optimization.Bind("simd-reduction-borrow", &simdReductionBorrowEnabled),
 	optimization.Bind("prepared-direct-entry", &preparedDirectEntryEnabled),
@@ -95,6 +96,7 @@ var (
 	optAtomicZeroWait          = optimizationBindings.Option("atomic-wait-zero-timeout")
 	optBoundsFacts             = optimizationBindings.Option("bounds-facts")
 	optStraightLineBlock       = optimizationBindings.Option("straight-line-block")
+	optBulkFillVector          = optimizationBindings.Option("bulk-fill-vector")
 	optSIMDStoreLoadAddress    = optimizationBindings.Option("simd-store-load-address")
 	optSIMDLoadExtract         = optimizationBindings.Option("simd-load-extract")
 	optSIMDSuperopt            = optimizationBindings.Option("simd-superopt")
