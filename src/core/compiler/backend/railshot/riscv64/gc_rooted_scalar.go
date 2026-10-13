@@ -104,11 +104,23 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	}
 	for i := range m.Tables {
 		table := &m.Tables[i]
-		if !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
+		elem := wasm.RefVal(table.Type.Ref)
+		rootedTable := rootedScalarTableReference(elem, m)
+		if (!wasm.EqualValType(elem, wasm.FuncRef) && !rootedTable) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
 			table.Type.Limits.Min > table.Type.Limits.Max || table.Type.Limits.Max > 256 {
 			return false
 		}
+		if rootedTable && publicTables[importedTables+i] {
+			// Collector references remain private until the public Table API has
+			// an independently qualified ownership and type-identity contract.
+			return false
+		}
 		if table.Init != nil {
+			if rootedTable {
+				// The default null initializer is represented by a missing expression.
+				// Non-null table initializers need allocation-root qualification.
+				return false
+			}
 			value, err := tableElementExpression(*table.Init)
 			public := publicTables[importedTables+i]
 			if err != nil || !value.Null && ((!public && uint64(value.FuncIndex) < uint64(importedFunctions)) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
@@ -126,6 +138,12 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		allowImported := !hasPrivateTable
 		if elem.Mode.Kind == wasm.ElemActive {
 			if uint64(elem.Mode.Table) >= uint64(tableCount) {
+				return false
+			}
+			table, ok := m.TableType(uint32(elem.Mode.Table))
+			if !ok || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
+				// Generic aggregate-table element expressions remain closed until
+				// their persistent initialization barriers are qualified.
 				return false
 			}
 			allowImported = publicTables[elem.Mode.Table]
@@ -423,6 +441,15 @@ func rootedScalarAggregateAt(m *wasm.Module, index uint32) bool {
 		}
 	}
 	return false
+}
+
+func rootedScalarTableReference(typ wasm.ValType, m *wasm.Module) bool {
+	if typ.Kind() != wasm.ValRef {
+		return false
+	}
+	ref := typ.Ref()
+	heap := ref.Heap()
+	return ref.Nullable() && !ref.Exact() && heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && rootedScalarAggregateAt(m, heap.Type().Index)
 }
 
 func admitRV64GCRootedScalarWire(data []byte) bool {

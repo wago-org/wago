@@ -412,7 +412,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 				panic(gcHelperFailuref("generic GC table %d descriptor is unavailable", table))
 			}
 			if index >= uint64(binary.LittleEndian.Uint32(descriptor)) {
-				panic(gcHelperTrap(coreruntime.TrapIndirectOutOfBounds))
+				panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
 			}
 			word := args[1]
 			ref := gc.Ref(uint32(word))

@@ -382,6 +382,14 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	}
 	needsDescriptors := false
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+	rootedAggregate := func(exact ValueTypeDescriptor) bool {
+		if exact.Kind != ValueTypeReference || !exact.Ref.Nullable || exact.Ref.Exact || !exact.Ref.Heap.Defined ||
+			exact.Ref.Heap.Abstract != 0 || uint64(exact.Ref.Heap.TypeIndex) >= uint64(len(c.Types)) {
+			return false
+		}
+		kind := c.Types[exact.Ref.Heap.TypeIndex].Kind
+		return kind == CompositeTypeStruct || kind == CompositeTypeArray
+	}
 	writeElemType := func(elem *ElemInit) bool {
 		if elem.RefType != 0 && elem.RefType != ValFuncRef {
 			return false
@@ -427,12 +435,15 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	for tableIndex := 0; tableIndex < c.tableCount(); tableIndex++ {
 		def := c.tableDef(tableIndex)
 		exact, err := c.tableExactType(tableIndex)
-		if err != nil || exact != plain || def.Addr64 || def.Type != ValFuncRef || !def.HasValueType ||
-			uint64(def.ValueTypeIndex) >= uint64(len(c.ValueTypes)) || c.ValueTypes[def.ValueTypeIndex] != plain {
+		functionTable := exact == plain
+		aggregateTable := rootedAggregate(exact)
+		if err != nil || !functionTable && !aggregateTable || def.Addr64 || !def.HasValueType ||
+			uint64(def.ValueTypeIndex) >= uint64(len(c.ValueTypes)) || c.ValueTypes[def.ValueTypeIndex] != exact ||
+			functionTable && def.Type != ValFuncRef || aggregateTable && (def.Type != ValAnyRef || publicTables[tableIndex]) {
 			return [32]byte{}, false
 		}
 		if imported, ok := c.tableImportAt(tableIndex); ok {
-			if tableIndex >= importCount || imported.Key == "" || !imported.HasMax || imported.Addr64 || imported.Type != ValFuncRef || !imported.HasValueType ||
+			if !functionTable || tableIndex >= importCount || imported.Key == "" || !imported.HasMax || imported.Addr64 || imported.Type != ValFuncRef || !imported.HasValueType ||
 				imported.Min > imported.Max || imported.Max > 256 || imported.ValueTypeIndex != def.ValueTypeIndex || tableModuleEnds[tableIndex] == 0 ||
 				validateImportModuleEnd(imported.Key, tableModuleEnds[tableIndex]) != nil || uint64(len(imported.Key)) > remainingNames || def.HasInitFunc || def.InitFunc != 0 {
 				return [32]byte{}, false
@@ -453,6 +464,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 			continue
 		}
 		if tableIndex < importCount || def.ImportKey != "" || def.ImportHasMax || !def.HasMax || def.Size < 0 || def.Size > 256 || def.Max < uint64(def.Size) || def.Max > 256 ||
+			aggregateTable && (def.HasInitFunc || def.InitFunc != 0) ||
 			!def.HasInitFunc && def.InitFunc != 0 || def.HasInitFunc && ((!publicTables[tableIndex] && uint64(def.InitFunc) < uint64(c.NumImports)) || uint64(def.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || railshotNonCallableFunction(c, int(def.InitFunc))) {
 			return [32]byte{}, false
 		}
@@ -464,6 +476,21 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		_, _ = h.Write(word[:])
 		binary.LittleEndian.PutUint32(word[:4], def.ValueTypeIndex)
 		_, _ = h.Write(word[:4])
+		if aggregateTable {
+			refFlags := byte(0)
+			if exact.Ref.Nullable {
+				refFlags |= 1
+			}
+			if exact.Ref.Exact {
+				refFlags |= 2
+			}
+			if exact.Ref.Heap.Defined {
+				refFlags |= 4
+			}
+			_, _ = h.Write([]byte{refFlags, byte(exact.Ref.Heap.Abstract)})
+			binary.LittleEndian.PutUint32(word[:4], exact.Ref.Heap.TypeIndex)
+			_, _ = h.Write(word[:4])
+		}
 		if def.HasInitFunc {
 			_, _ = h.Write([]byte{1})
 			binary.LittleEndian.PutUint32(word[:4], def.InitFunc)
@@ -493,6 +520,10 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		elem := &c.Elems[i]
 		if elem.Mode != ElemModeActive || uint64(elem.TableIndex) >= uint64(c.tableCount()) ||
 			elem.Offset.HasGlobal || elem.Offset.Global != 0 || len(elem.Offset.Expr) != 0 || len(elem.Values) > remaining {
+			return [32]byte{}, false
+		}
+		exact, err := c.tableExactType(int(elem.TableIndex))
+		if err != nil || exact != plain {
 			return [32]byte{}, false
 		}
 		remaining -= len(elem.Values)

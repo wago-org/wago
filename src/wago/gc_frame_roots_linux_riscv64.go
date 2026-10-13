@@ -116,11 +116,19 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	}
 	for i := range m.Tables {
 		table := &m.Tables[i]
-		if !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
+		elem := wasm.RefVal(table.Type.Ref)
+		rootedTable := rv64RootedAggregateTableReference(m, elem)
+		if (!wasm.EqualValType(elem, wasm.FuncRef) && !rootedTable) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
 			table.Type.Limits.Min > table.Type.Limits.Max || table.Type.Limits.Max > 256 {
-			return reject("RV64 exact roots require one bounded local funcref table32")
+			return reject("RV64 exact roots require a bounded local function or aggregate-reference table32")
+		}
+		if rootedTable && publicTables[importedTables+i] {
+			return reject("RV64 exact roots reject public aggregate-reference table %d", i)
 		}
 		if table.Init != nil {
+			if rootedTable {
+				return reject("RV64 exact roots reject aggregate-reference table initializer")
+			}
 			expr := *table.Init
 			if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 7 || expr.BodyBytes[0] != 0xd0 && expr.BodyBytes[0] != 0xd2 {
 				return reject("RV64 exact roots reject table initializer expression")
@@ -150,6 +158,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		if elem.Mode.Kind == wasm.ElemActive {
 			if uint64(elem.Mode.Table) >= uint64(tableCount) {
 				return reject("RV64 exact roots reject active element table index %d", elem.Mode.Table)
+			}
+			table, ok := m.TableType(uint32(elem.Mode.Table))
+			if !ok || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
+				return reject("RV64 exact roots reject aggregate-reference table elements")
 			}
 			allowImported = publicTables[elem.Mode.Table]
 		}
@@ -344,6 +356,28 @@ func rv64RootedI32Const(body []byte) bool {
 	}
 	end, err := r.Byte()
 	return err == nil && end == 0x0b && !r.HasNext()
+}
+
+func rv64RootedAggregateTableReference(m *wasm.Module, typ wasm.ValType) bool {
+	if m == nil || typ.Kind() != wasm.ValRef {
+		return false
+	}
+	ref := typ.Ref()
+	heap := ref.Heap()
+	if !ref.Nullable() || ref.Exact() || heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec {
+		return false
+	}
+	flat := uint32(0)
+	for group := range m.Types {
+		for member := range m.Types[group].SubTypes {
+			if flat == heap.Type().Index {
+				kind := m.Types[group].SubTypes[member].Comp.Kind
+				return kind == wasm.CompStruct || kind == wasm.CompArray
+			}
+			flat++
+		}
+	}
+	return false
 }
 
 func rv64RootedScalarGlobal(m *wasm.Module, global *wasm.Global, limit int) bool {

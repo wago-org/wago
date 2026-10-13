@@ -1031,7 +1031,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				if live && emit != nil {
-					gcTableSet := op == 0x26 && (state.gcRefTestTable || state.gcRefTestConcrete || state.gcRefTestAbstract && idx != 1)
+					gcTableSet := op == 0x26 && (state.gcRootedScalar && compactReference || state.gcRefTestTable || state.gcRefTestConcrete || state.gcRefTestAbstract && idx != 1)
 					if gcTableSet {
 						emit.gcObjectTableSet(h, idx)
 					} else {
@@ -1575,11 +1575,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 							emit.Load(reg, emit.SpillOffset(h), wide)
 						}
 					}
+					compactReference, compactOK := state.tableCompactReference(imm.Index2)
+					if !compactOK {
+						return integerSummary{}, unsupported("private table.init reference layout")
+					}
+					if state.gcRootedScalar && compactReference {
+						return integerSummary{}, unsupported("generic rooted collector table.init")
+					}
 					if live && emit != nil {
-						compactReference, compactOK := state.tableCompactReference(imm.Index2)
-						if !compactOK {
-							return integerSummary{}, unsupported("private table.init reference layout")
-						}
 						emit.privateTableInitAt(imm.Index, imm.Index2, compactReference)
 					}
 				}
@@ -1600,6 +1603,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					compactReference, compactOK = state.tableCompactReference(tableIndex)
 					if !compactOK {
 						return integerSummary{}, unsupported("private table mutation reference layout")
+					}
+					if state.gcRootedScalar && compactReference {
+						// These inline loops do not publish the collector root write
+						// barrier. Keep them closed until they use a GC-aware helper.
+						return integerSummary{}, unsupported("generic rooted collector table bulk mutation")
 					}
 					if imm.Kind == wasm.InstrTableCopy {
 						sourceTableIndex = imm.Index2

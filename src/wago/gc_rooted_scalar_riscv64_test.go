@@ -2173,6 +2173,170 @@ func TestRV64RootedScalarInertPassiveDataExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarAggregateTableModule(array, exportTable bool) []byte {
+	aggregate := []byte{0x5f, 0x01, 0x7f, 0x01}
+	otherAggregate := []byte{0x5e, 0x7e, 0x01}
+	newValue := []byte{0x41, 0x2a, 0xfb, 0x00, 0x00}
+	newGarbage := []byte{0x41, 0x07, 0xfb, 0x00, 0x00}
+	readValue := []byte{0x41, 0x00, 0x25, 0x00, 0xfb, 0x02, 0x00, 0x00}
+	if array {
+		aggregate = []byte{0x5e, 0x7f, 0x01}
+		otherAggregate = []byte{0x5f, 0x01, 0x7e, 0x01}
+		newValue = []byte{0x41, 0x2a, 0x41, 0x01, 0xfb, 0x06, 0x00}
+		newGarbage = []byte{0x41, 0x07, 0x41, 0x01, 0xfb, 0x06, 0x00}
+		readValue = []byte{0x41, 0x00, 0x25, 0x00, 0x41, 0x00, 0xfb, 0x0b, 0x00}
+	}
+	body := []byte{0x00, 0x41, 0x00}
+	body = append(body, newValue...)
+	body = append(body, 0x26, 0x00)
+	body = append(body, newGarbage...)
+	body = append(body, 0x1a)
+	body = append(body, readValue...)
+	body = append(body, 0x0b)
+	exports := [][]byte{wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0)}
+	if exportTable {
+		exports = append(exports, wasmtest.ExportEntry("objects", byte(wasm.ExternTable), 0))
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(aggregate, otherAggregate, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		// One private bounded table of nullable references to aggregate type 0.
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(exports...)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedAggregateTablesExecute(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		array bool
+	}{{name: "struct"}, {name: "array", array: true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := rootedScalarAggregateTableModule(tc.array, false)
+			if !railshot.AdmitGCRootedScalarSource(source) {
+				t.Fatal("private aggregate-reference table was not source-admitted")
+			}
+			compiled, err := Compile(rv64RootedScalarConfig(), source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			view := compiled.executionView()
+			if !rv64FreshRootedGC(view) || view.tableCount() != 1 || view.tableElementType(0) != ValAnyRef || view.tableEntryBytes(0) != 8 {
+				t.Fatalf("aggregate-table receipt=%t tables=%d type=%v stride=%d validation=%v", rv64FreshRootedGC(view), view.tableCount(), view.tableElementType(0), view.tableEntryBytes(0), railshotValidateCompiled(view))
+			}
+			candidate := cloneCompiledMetadata(view)
+			candidate.ValueTypes = slices.Clone(view.ValueTypes)
+			candidate.ValueTypes[view.tableDef(0).ValueTypeIndex].Ref.Heap.TypeIndex = 1
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("nominal aggregate-table retarget retained the rooted receipt")
+			}
+			instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			for iteration := range 16 {
+				if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
+					t.Fatalf("iteration %d: run()=%v err=%v want=[42]", iteration, got, err)
+				}
+			}
+		})
+	}
+}
+
+func TestRV64RootedAggregateTableExportFailsClosed(t *testing.T) {
+	if railshot.AdmitGCRootedScalarSource(rootedScalarAggregateTableModule(false, true)) {
+		t.Fatal("collector-reference table export unexpectedly source-admitted")
+	}
+}
+
+func TestRV64RootedAggregateTableBulkMutationFailsClosed(t *testing.T) {
+	body := []byte{
+		0x00,
+		0x41, 0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00,
+		0x41, 0x01, 0xfc, 0x11, 0x00, // table.fill 0
+		0x41, 0x2a,
+		0x0b,
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if compiled != nil {
+		compiled.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "collector table bulk mutation") {
+		t.Fatalf("aggregate table.fill compile error = %v", err)
+	}
+}
+
+func rootedScalarAggregateTableBoundsModule() []byte {
+	set := []byte{
+		0x00,
+		0x20, 0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00,
+		0x26, 0x00,
+		0x0b,
+	}
+	get := []byte{
+		0x00,
+		0x41, 0x00, 0x25, 0x00,
+		0xfb, 0x02, 0x00, 0x00,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("set", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("get", byte(wasm.ExternFunc), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(set))), set...),
+			append(wasmtest.ULEB(uint32(len(get))), get...),
+		)),
+	)
+}
+
+func TestRV64RootedAggregateTableSetBoundsAndI32Normalization(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarAggregateTableBoundsModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("set", 0xfeedface00000000); err != nil || len(got) != 0 {
+		t.Fatalf("dirty-upper in-bounds set=%v err=%v", got, err)
+	}
+	got, err := instance.Invoke("set", 0xfeedface00000001)
+	var trap *TrapError
+	if got != nil || !errors.As(err, &trap) || trap.Code != TrapTableOutOfBounds {
+		t.Fatalf("dirty-upper index==size set=%v err=%v trap=%+v, want %v", got, err, trap, TrapTableOutOfBounds)
+	}
+	if got, err := instance.Invoke("get"); err != nil || !slices.Equal(got, []uint64{42}) {
+		t.Fatalf("table changed after failed set: get()=%v err=%v want=[42]", got, err)
+	}
+}
+
 func rootedScalarIndirectTableModule() []byte {
 	types := [][]byte{
 		{0x5f, 0x01, 0x7f, 0x00},
