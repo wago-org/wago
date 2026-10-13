@@ -357,3 +357,32 @@ and ordinary imports 3.24x. The [full cohort report](docs/benchmarks/wasm3-2026-
 retains all new feature samples, full capture hashes, unchanged peer references,
 classifications and local publication/audit evidence. Full parity remains open.
 The server is local and no production deployment occurred.
+
+### Pure unsigned quotient/remainder sums — 2026-10-13
+
+Wago `ea4efcc6` reduces bounded pure expressions of the form
+`A*i+B+C*(i/D)+E*(i%D)` on both ARM64 and AMD64. A single nonzero unsigned
+constant divisor excludes division traps; the bare counter is the only admitted
+dividend. Complete quotient cycles and remainder sums preserve modular i32/i64
+arithmetic, unsigned do-while semantics, ambient values and final counters.
+Effects, signed/dynamic/zero division, nonlinear products and nested control
+reject the proof. Scalar oracles, both ABIs/artifacts, complementary arbitrary-
+precision quotient-level extrema on both native architectures, guarded ARM64
+race/register checks and pinned Core 3/threads conformance pass.
+
+A fresh locked four-contract comparison changes division from **241,472 ns**
+to **220.8 ns**, versus Clang w2c2 `f303ed27` **40,979.5 ns**: current/peer
+**0.00539**, about **186x faster**. Matched parity fails on `04cda5a4` at 5.89x
+and passes on the new source. Branch/sign/popcount controls change -0.26%,
++0.13% and -1.57%. The selected native image grows **224 bytes** (464 to 688)
+and cold compile median increases **59.83%** (24,792 to 39,625 ns).
+
+Initial three-process compile corpus pairs measured Core 3 -1.05%, threads
++6.38%. A fresh six-process-per-revision repeat did not reproduce that thread
+cost: Core 3 +0.62%, threads -0.73%, unchanged aggregate code and effectively
+unchanged allocations; median RSS -0.46%/+0.19%. Both runs are retained in the
+[raw report](docs/benchmarks/wasm3-2026-10-13/division-sum.json), together with
+phase samples, hashes, parity checks and validation output. Four captures have
+durable local receipts; database integrity and all 575,121 historical
+observations pass. Native AMD64 timing and full feature parity remain open.
+No production deployment occurred.
