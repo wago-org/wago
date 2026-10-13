@@ -74,19 +74,7 @@ func TestSparseFuncRefCoverage(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			refs, referenced := 0, make([]bool, len(c.FuncTypeID))
-			for _, segment := range c.Elems {
-				if normalizedElemRefType(segment.RefType) != ValFuncRef {
-					continue
-				}
-				for _, value := range segment.Values {
-					if value.Null || value.HasGlobal || value.Expr != nil || int(value.FuncIndex) >= len(referenced) {
-						continue
-					}
-					refs++
-					referenced[value.FuncIndex] = true
-				}
-			}
+			refs, referenced := simpleElemFuncRefTargets(c)
 			unique := 0
 			pages := make(map[int]bool)
 			for i, yes := range referenced {
@@ -124,5 +112,53 @@ func TestFuncRefDescriptorPageSpan(t *testing.T) {
 		if len(pages) != tc.want {
 			t.Errorf("descriptor %d touches %d pages; want %d", tc.index, len(pages), tc.want)
 		}
+	}
+}
+
+func simpleElemFuncRefTargets(c *Compiled) (refs int, referenced []bool) {
+	referenced = make([]bool, len(c.FuncTypeID))
+	// Passive state slots for active/declarative segments have no payload,
+	// so the two slices do not duplicate entries.
+	for _, segments := range [][]ElemInit{c.Elems, c.passiveElems} {
+		for _, segment := range segments {
+			if normalizedElemRefType(segment.RefType) != ValFuncRef {
+				continue
+			}
+			for _, value := range segment.Values {
+				if value.Null || value.HasGlobal || value.Expr != nil || int(value.FuncIndex) >= len(referenced) {
+					continue
+				}
+				refs++
+				referenced[value.FuncIndex] = true
+			}
+		}
+	}
+	return refs, referenced
+}
+
+func TestSparseFuncRefPassiveElementCoverage(t *testing.T) {
+	data, err := os.ReadFile("testdata/gc_array_init_elem_generic.wasm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if len(c.Elems) != 0 || len(c.passiveElems) == 0 {
+		t.Fatal("fixture must contain passive elements without active elements")
+	}
+	refs, referenced := simpleElemFuncRefTargets(c)
+	unique := 0
+	pages := make(map[int]bool)
+	for i, yes := range referenced {
+		if yes {
+			unique++
+			addFuncRefDescriptorPages(pages, i)
+		}
+	}
+	if refs != 1 || unique != 1 || !referenced[0] || len(pages) != 1 {
+		t.Fatalf("element_refs=%d unique_targets=%d target0=%v pages=%d; want 1, 1, true, 1", refs, unique, referenced[0], len(pages))
 	}
 }
