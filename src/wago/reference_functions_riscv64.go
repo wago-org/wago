@@ -361,7 +361,8 @@ func rv64PublicReferenceCarrierTarget(c *Compiled, function int) bool {
 }
 
 func rv64MutableReferenceCarrierTarget(c *Compiled, function int) bool {
-	if c == nil || rv64MutableFuncrefGlobalLocalCallCodeVariant(c) != 19 || function < 0 || function > 1 || len(c.Funcs) != 6 || len(c.Types) != 2 || !c.nativeReferenceFunctionABI || !c.nativeReferenceCallABI || !c.nativeReferenceControlABI {
+	variant := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
+	if c == nil || variant != 19 && variant != 20 || function < 0 || function > 1 || len(c.Funcs) != 6 || len(c.Types) != 2 || !c.nativeReferenceFunctionABI || !c.nativeReferenceCallABI || !c.nativeReferenceControlABI {
 		return false
 	}
 	sig := c.Funcs[function]

@@ -140,8 +140,11 @@ func railshotStagePublicFuncrefArgument(in *Instance, arguments *railshotPublicF
 	// this invocation quiesces its independent native execution. Once foreign
 	// code becomes callable, both sides permanently join the shared native domain.
 	if owner != in && !rv64PublicReferenceCallBoundary(owner.c) {
-		owner.releaseResourceRoot()
-		return fmt.Errorf("RV64 reference argument owner is outside the public call boundary")
+		function, indexed := owner.funcrefDescriptorIndex(descriptor)
+		if !indexed || !rv64MutableReferenceCarrierTarget(owner.c, function) {
+			owner.releaseResourceRoot()
+			return fmt.Errorf("RV64 reference argument owner is outside the public call boundary")
+		}
 	}
 	for _, existing := range scope.owners[:scope.count] {
 		if existing == owner {

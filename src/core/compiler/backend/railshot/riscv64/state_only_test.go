@@ -523,9 +523,6 @@ func TestMutableFuncrefLocalCallReferenceCarrierProduction(t *testing.T) {
 	if err := AdmitProductionSource(source); err != nil {
 		t.Fatal(err)
 	}
-	if err := AdmitProductionSource(mutableFuncrefLocalTailCallSource(source)); !errors.Is(err, ErrUnsupported) {
-		t.Fatal("reference-carrier return_call_ref admitted before its runtime profile", err)
-	}
 	m, err := wasm.DecodeModule(source)
 	if err != nil || !admitMutableFunctionGlobalReferenceCarrierCall(m) {
 		t.Fatal("reference-carrier local-call admission", err)
@@ -538,6 +535,27 @@ func TestMutableFuncrefLocalCallReferenceCarrierProduction(t *testing.T) {
 	wantEntry := []int{0, 672, 1408, 2128, 2848, 3504}
 	if len(image.Code) != 7228 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || image.NativeTail != nil {
 		t.Fatalf("reference-carrier local-call compilation drifted: code=%d digest=%x entries=%v/%v refs=%t/%t/%t tail=%+v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, image.NativeTail)
+	}
+}
+
+func TestMutableFuncrefLocalTailCallReferenceCarrierProduction(t *testing.T) {
+	source := mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallReferenceCarrierSource())
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil || !admitMutableFunctionGlobalReferenceCarrierCall(m) {
+		t.Fatal("reference-carrier local-tail-call admission", err)
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceFunctions: true, NativeReferenceCalls: true, NativeTailCalls: true, SyncHostSlots: 64})
+	if err != nil || image == nil {
+		t.Fatal("reference-carrier local-tail-call compilation", err)
+	}
+	wantDigest := [sha256.Size]byte{0x58, 0xfe, 0xf3, 0x22, 0xcd, 0x50, 0x38, 0x5a, 0x8d, 0x09, 0x3c, 0x15, 0x4c, 0x07, 0x6e, 0x3e, 0x34, 0x0e, 0x4a, 0xf7, 0x17, 0x9d, 0x99, 0xf2, 0x76, 0x27, 0x81, 0xf9, 0x91, 0x40, 0xe6, 0x4c}
+	wantEntry := []int{0, 672, 1408, 2128, 2848, 3504}
+	wantPlan := enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 11, FrameBytes: 128, SourceBase: 80, SourceStride: 8, ReferenceBase: 112}
+	if len(image.Code) != 4956 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || image.NativeTail == nil || !slices.Equal(image.NativeTail.Plans, []enc.NativeTailPlan{wantPlan}) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
+		t.Fatalf("reference-carrier local-tail-call compilation drifted: code=%d digest=%x entries=%v/%v refs=%t/%t/%t tail=%+v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, image.NativeTail)
 	}
 }
 
@@ -767,6 +785,9 @@ func TestMutableFuncrefLocalCallProductionRejectsBroaderSources(t *testing.T) {
 		"mixed-vector":      mutableFuncrefLocalCallMixedVectorSource,
 		"mixed-vector-tail": mutableFuncrefLocalTailCallMixedVectorSource,
 		"reference-carrier": mutableFuncrefLocalCallReferenceCarrierSource,
+		"reference-carrier-tail": func() []byte {
+			return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallReferenceCarrierSource())
+		},
 	} {
 		for name, mutate := range map[string]func(*wasm.Module){
 			"abstract-global":       func(m *wasm.Module) { m.Globals[0].Type.Type = wasm.FuncRef },

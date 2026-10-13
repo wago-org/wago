@@ -149,7 +149,7 @@ func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wa
 				return err
 			}
 		} else if err := integerNumericSignature(target, true); err != nil {
-			publicReferenceTail := p.kind == enc.NativeTailReference && ((admitPublicReferenceCallBoundary(m) && p.typeIndex == 0) || (admitPublicDynamicHostReferenceBoundary(m) && p.typeIndex == 2))
+			publicReferenceTail := p.kind == enc.NativeTailReference && ((admitPublicReferenceCallBoundary(m) && p.typeIndex == 0) || (admitPublicDynamicHostReferenceBoundary(m) && p.typeIndex == 2) || (admitMutableFunctionGlobalReferenceCarrierCall(m) && p.typeIndex == 0))
 			publicHostTail := p.kind == enc.NativeTailDirectImport && admitPublicHostReferenceBoundary(m) && p.importIndex == 0
 			if (!publicReferenceTail && !publicHostTail) || !publicReferenceCarrierTarget(target) {
 				return err
