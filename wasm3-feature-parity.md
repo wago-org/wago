@@ -892,3 +892,45 @@ were not rerun, and native AMD64 performance remains unmeasured.
 compile cohorts, source plans, image hashes, original red test, inherited failure
 and corrected diagnostic output. Mutable accumulation, carry/float recurrences,
 callbacks and full feature parity remain open.
+
+### Additive defined-global recurrence reductions
+
+`fb801d8f` proves one defined mutable integer recurrence `g <- g+A*i+B` and an
+affine returned term in the old/current global and loop counter. Recognition is
+bounded to 32 operations/128 bytes and a fixed stack. Imported cells, other
+globals, repeated stores, nonlinear updates, conversions, calls, memory accesses,
+trapping arithmetic and fenced recurrence bodies reject the proof. Existing
+untouched-counter, interruptibility, GC/EH and enclosing-loop restrictions remain.
+Runtime global seeds are read at invocation; they are not specialized to corpus
+initializers. Canonical setters preserve old stack values and publish final cells.
+No persistent ABI or function fields are added.
+
+For `N=max(1,Bound)`, the recurrence sum uses `T(N)` and `choose(N,3)`.
+`T(N)` divides its even factor before multiplication, and division by three uses
+its inverse modulo the integer width. This preserves wrapping results across the
+entire unsigned i32/i64 range. Final state is `g_initial+A*T(N)+B*N`. Tests use an
+independent big-integer oracle with exact division before modular reduction,
+including nonzero runtime seeds, signed coefficients, constant/cancelled terms,
+reads before and after the store, both ABIs, artifact reload, rollback, unsigned
+extrema, old borrowed global stack values, separate post-return reads, and traps
+that must occur before any reduction store.
+
+The core/mutable-global accumulation contracts improve 69,944 -> 147 ns and
+69,965 -> 147 ns (476x/475x), versus unchecked w2c2 294/290 ns. All 72 primary
+process rows have qualified durations and verified outputs. The inspected core
+native image changes 400 -> 464 bytes. All six controls have byte-identical
+before/current native images; their timing changes range -0.56% to +1.95%. The
+split-i64 and global-swap controls retain their peer advantage; carry-overflow
+remains approximately 2.67-2.69x the peer and is not solved by this proof.
+
+Alternating three-process compile captures change Core 3 latency -0.09% and
+threads +0.28%, with effectively unchanged allocations and identical corpus code
+totals. Native ARM64 and Remote Linux AMD64 integer-sum execution and targeted
+compiler diagnostic tests pass. ARM64 guarded race and pinned Core 3/threads
+conformance pass. Full backend statistics were not rerun, and native AMD64
+performance remains unmeasured.
+
+`global-recurrence-sum-results.json` retains all primary and earlier captures,
+compile cohorts, source plans, image hashes, original red test and validation
+output. Floating/carry recurrences, callbacks, branch/bit operations, conversions
+and full feature parity remain open.

@@ -41,7 +41,7 @@ each capture, so unrelated small timing differences are descriptive.
 
 ## Later targeted checkpoints
 
-Later captures close four of the large global-state gaps from the full snapshot:
+Later captures close six of the large global-state gaps from the full snapshot:
 
 | Contract | Production revision | Wago ns | Peer ns | Wago/peer |
 | --- | --- | ---: | ---: | ---: |
@@ -49,18 +49,21 @@ Later captures close four of the large global-state gaps from the full snapshot:
 | `mutable-globals/global-swap` | `32c26ea3` | 166.00 | 290.07 | 0.572 |
 | `core-glb/i64-global-split` | `81fba84c` | 129.88 | 294.19 | 0.441 |
 | `mutable-globals/i64-global-split` | `81fba84c` | 131.44 | 294.89 | 0.446 |
+| `core-glb/mutable-accumulate` | `fb801d8f` | 146.97 | 293.52 | 0.501 |
+| `mutable-globals/mutable-accumulate` | `fb801d8f` | 147.21 | 290.25 | 0.507 |
 
 These are matched targeted captures, separate from the full cohort below. Their
-[global assignment report](docs/benchmarks/wasm3-2026-10-12/global-write-sum-results.json)
-and [mixed-width report](docs/benchmarks/wasm3-2026-10-12/mixed-width-sum-results.json)
+[global assignment report](docs/benchmarks/wasm3-2026-10-12/global-write-sum-results.json),
+[mixed-width report](docs/benchmarks/wasm3-2026-10-12/mixed-width-sum-results.json),
+and [recurrence report](docs/benchmarks/wasm3-2026-10-12/global-recurrence-sum-results.json)
 retain raw rows, compile costs and validation. The aliased ordinary host control
-also improves to 3.585x the peer in its later targeted checkpoint. Mutable
-accumulation and other prior-value recurrences remain substantive gaps.
+also improves to 3.585x the peer in its later targeted checkpoint. Carry and floating
+recurrences remain substantive gaps.
 
 ## Paired gaps in the full capture
 
 Twenty-nine paired contracts exceeded 1.1x the peer median in this full snapshot;
-four global-state contracts are closed by the later checkpoints above. This is a triage
+six global-state contracts are closed by the later checkpoints above. This is a triage
 threshold, not a universal completion rule. Global-state loops, opaque Go
 callbacks, branch/bit operations and conversions remain substantive gaps.
 
