@@ -159,6 +159,21 @@ func rv64RootedMemoryExportDigest(c *Compiled) ([32]byte, bool) {
 	}
 	h := sha256.New()
 	var word [8]byte
+	if len(c.memoryDir.defs) == 1 && c.memoryDir.defs[0].ImportKey != "" {
+		_, _, memoryEnds, _, exact := c.importModuleEndSections()
+		key := c.memoryDir.defs[0].ImportKey
+		if !exact || len(memoryEnds) != 1 || validateImportModuleEnd(key, memoryEnds[0]) != nil || len(key) > 1<<20 {
+			return [32]byte{}, false
+		}
+		_, _ = h.Write([]byte{1})
+		binary.LittleEndian.PutUint64(word[:], uint64(len(key)))
+		_, _ = h.Write(word[:])
+		_, _ = h.Write([]byte(key))
+		binary.LittleEndian.PutUint64(word[:], memoryEnds[0])
+		_, _ = h.Write(word[:])
+	} else {
+		_, _ = h.Write([]byte{0})
+	}
 	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.memoryDir.exports)))
 	_, _ = h.Write(word[:4])
 	remaining := uint64(1 << 20)

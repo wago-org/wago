@@ -71,14 +71,14 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		return false
 	}
 	directory := c.memoryDir
-	if directory == nil || len(directory.defs) > 1 || !directory.exactExports || directory.staged || directory.stagedMemory64 ||
+	if directory == nil || len(directory.defs) > 1 || !directory.exactExports || directory.staged != memo.rv64FreshRootedGCMemoryStaged || directory.stagedMemory64 ||
 		len(directory.gcStructGlobals) != 0 || len(directory.gcArrayGlobals) != 0 || directory.gcArrayElement != nil || directory.gcI31TableInit != nil ||
 		len(directory.ehTags) != 0 || len(directory.ehTagExports) != 0 || uint8(len(directory.defs)) != memo.rv64FreshRootedGCMemories {
 		return false
 	}
 	if len(directory.defs) == 1 {
 		memory := directory.defs[0]
-		if !c.HasMemory || memory.ImportKey != "" || memory.Shared || memory.Addr64 || !memory.HasMax || memory.Min > memory.Max || memory.Max > 256 ||
+		if !c.HasMemory || memory.Shared || memory.Addr64 || !memory.HasMax || memory.Min > memory.Max || memory.Max > 256 ||
 			uint64(c.MemMinPages) != memory.Min || uint64(c.MemMaxPages) < memory.Min || uint64(c.MemMaxPages) > memory.Max || c.MemHasMax != memory.HasMax || c.memoryImport != memory.ImportKey ||
 			memory.Min != memo.rv64FreshRootedGCMemMin || memory.Max != memo.rv64FreshRootedGCMemMax || c.MemMaxPages != memo.rv64FreshRootedGCReserveMax {
 			return false

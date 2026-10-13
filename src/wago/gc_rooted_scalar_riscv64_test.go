@@ -1148,6 +1148,36 @@ func rootedScalarMemoryModule(grow, activeData, passiveData, memoryExport bool) 
 	return wasmtest.Module(sections...)
 }
 
+func rootedScalarImportedMemoryModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}),
+	}
+	memoryImport := append(append(wasmtest.Name("env.memories"), wasmtest.Name("memory.0")...), byte(wasm.ExternMem), 0x01, 0x01, 0x02)
+	body := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x41, 0x10, 0x41, 0xe4, 0x00, 0x36, 0x02, 0x00,
+		0x41, 0x10, 0x28, 0x02, 0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0x3f, 0x00,
+		0x41, 0x20, 0x28, 0x02, 0x00,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("memory", byte(wasm.ExternMem), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		wasmtest.Section(11, wasmtest.Vec([]byte{0x00, 0x41, 0x20, 0x0b, 0x04, 0x2a, 0x00, 0x00, 0x00})),
+	)
+}
+
 func TestRV64RootedScalarMemoryExecutes(t *testing.T) {
 	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(true, false, false, false))
 	if err != nil {
@@ -1212,6 +1242,99 @@ func TestRV64RootedScalarMemoryExecutes(t *testing.T) {
 		if err = instance.Close(); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestRV64RootedScalarImportedMemoryExecutes(t *testing.T) {
+	source := rootedScalarImportedMemoryModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded rooted imported memory was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.memoryCount() != 1 || view.memoryImport == "" || view.memoryDef(0).ImportKey != view.memoryImport {
+		exportDigest, exportValid := rv64RootedMemoryExportDigest(view)
+		dataDigest, dataValid := rv64RootedActiveDataDigest(view)
+		globalDigest, globalValid := rv64RootedGlobalDigest(view)
+		tableDigest, tableValid := rv64RootedTableDigest(view)
+		importDigest, importValid := rv64RootedImportDigest(view)
+		t.Fatalf("rooted imported-memory receipt=%t count=%d key=%q/%q export=%t/%t data=%t/%t global=%t/%t table=%t/%t import=%t/%t has=%t minmax=%d/%d/%t dir=%+v fields=%+v roots=%v validation=%v", rv64FreshRootedGC(view), view.memoryCount(), view.memoryImport, view.memoryDef(0).ImportKey, exportValid, exportDigest == view.validateMemo.rv64FreshRootedGCExportDigest, dataValid, dataDigest == view.validateMemo.rv64FreshRootedGCDataDigest, globalValid, globalDigest == view.validateMemo.rv64FreshRootedGCGlobalDigest, tableValid, tableDigest == view.validateMemo.rv64FreshRootedGCTableDigest, importValid, importDigest == view.validateMemo.rv64FreshRootedGCImportDigest, view.HasMemory, view.MemMinPages, view.MemMaxPages, view.MemHasMax, view.memoryDir, view.memoryDef(0), validateCompiledGCFrameRoots(view, view.genericGCFrameRoots()), railshotValidateCompiled(view))
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"key": func(candidate *Compiled) {
+			directory := *candidate.memoryDir
+			directory.defs = slices.Clone(directory.defs)
+			directory.defs[0].ImportKey = "env.other.memory.0"
+			candidate.memoryDir = &directory
+			candidate.memoryImport = directory.defs[0].ImportKey
+		},
+		"separator": func(candidate *Compiled) {
+			memo := *candidate.loadValidateMemo()
+			memo.importModuleEnds = slices.Clone(memo.importModuleEnds)
+			memo.importModuleEnds[0]++
+			candidate.validateMemo = &memo
+		},
+		"staged": func(candidate *Compiled) {
+			directory := *candidate.memoryDir
+			directory.staged = !directory.staged
+			candidate.memoryDir = &directory
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated imported memory retained the generic receipt")
+			}
+		})
+	}
+	memory, err := NewMemory(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		Imports: NewImports().Memory("env.memories", "memory.0", memory),
+		GC:      GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{142, 1, 42}) {
+		t.Fatalf("run()=%v err=%v want=[142 1 42]", got, err)
+	}
+	if exported, err := instance.ExportedMemory("memory"); err != nil || exported != memory {
+		t.Fatalf("imported memory re-export lost identity: exported=%p want=%p err=%v", exported, memory, err)
+	}
+	unstaged, err := Compile(rv64RootedScalarConfig().WithFeature(CoreFeatureMultiMemory, false), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unstaged.Close()
+	unstagedView := unstaged.executionView()
+	if !rv64FreshRootedGC(unstagedView) || unstagedView.memoryDir.staged || unstagedView.validateMemo.rv64FreshRootedGCMemoryStaged {
+		t.Fatalf("MVP imported memory lost its exact unstaged receipt: fresh=%t staged=%t/%t", rv64FreshRootedGC(unstagedView), unstagedView.memoryDir.staged, unstagedView.validateMemo.rv64FreshRootedGCMemoryStaged)
+	}
+	mvpMemory, err := NewMemory(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mvpMemory.Close()
+	mvpInstance, err := Instantiate(unstaged, InstantiateOptions{
+		Imports: NewImports().Memory("env.memories", "memory.0", mvpMemory),
+		GC:      GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mvpInstance.Close()
+	if got, err := mvpInstance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{142, 1, 42}) {
+		t.Fatalf("MVP run()=%v err=%v want=[142 1 42]", got, err)
 	}
 }
 

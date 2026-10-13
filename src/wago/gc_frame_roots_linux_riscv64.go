@@ -37,7 +37,9 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	}
 	importedFunctions := m.ImportedFuncCount()
 	importedGlobals := m.ImportedGlobalCount()
-	if importedFunctions+importedGlobals != len(m.Imports) || importedFunctions > railshot.MaxHostFunctionImports || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > 2 || len(m.Memories) > 1 || len(m.Tags) != 0 || importedGlobals+len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
+	importedMemories := m.ImportedMemCount()
+	memoryCount := importedMemories + len(m.Memories)
+	if importedFunctions+importedGlobals+importedMemories != len(m.Imports) || importedFunctions > railshot.MaxHostFunctionImports || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > 2 || memoryCount > 1 || len(m.Tags) != 0 || importedGlobals+len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
 		return reject("RV64 exact roots require a bounded scalar allocation module")
 	}
 	if len(m.Imports) != 0 {
@@ -63,6 +65,11 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				typ := im.Type.GlobalType().Type
 				if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
 					return reject("RV64 exact roots reject non-scalar global import %d", i)
+				}
+			case wasm.ExternMem:
+				memory := im.Type.MemType()
+				if memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min > memory.Limits.Max || memory.Limits.Max > 256 {
+					return reject("RV64 exact roots reject memory import %d", i)
 				}
 			default:
 				return reject("RV64 exact roots reject resource import %d", i)
@@ -181,7 +188,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		}
 		switch data.Mode.Kind {
 		case wasm.DataActive:
-			if len(m.Memories) != 1 || data.Mode.Mem != 0 || len(data.Mode.Offset.Instrs) != 0 || !rv64RootedI32Const(data.Mode.Offset.BodyBytes) {
+			if memoryCount != 1 || data.Mode.Mem != 0 || len(data.Mode.Offset.Instrs) != 0 || !rv64RootedI32Const(data.Mode.Offset.BodyBytes) {
 				return reject("RV64 exact roots require literal active memory32 data")
 			}
 		case wasm.DataPassive:
@@ -195,7 +202,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	}
 	for i := range m.Exports {
 		export := &m.Exports[i]
-		if export.Index.Kind == wasm.ExternMem && len(m.Memories) == 1 && export.Index.Index == 0 {
+		if export.Index.Kind == wasm.ExternMem && memoryCount == 1 && export.Index.Index == 0 {
 			continue
 		}
 		if export.Index.Kind == wasm.ExternGlobal && uint64(export.Index.Index) < uint64(importedGlobals+len(m.Globals)) {

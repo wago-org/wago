@@ -1355,6 +1355,7 @@ type validateMemo struct {
 	rv64FreshRootedGC                 bool
 	rv64FreshRootedGCDigest           [32]byte
 	rv64FreshRootedGCMemories         uint8
+	rv64FreshRootedGCMemoryStaged     bool
 	rv64FreshRootedGCMemMin           uint64
 	rv64FreshRootedGCMemMax           uint64
 	rv64FreshRootedGCReserveMax       uint32
