@@ -144,3 +144,55 @@ func TestThreadsOwnedHostControlReuseAndConcurrentGrowth(t *testing.T) {
 		}
 	}
 }
+
+func TestThreadsHostReturnRetainsClosedSharedProducer(t *testing.T) {
+	cfg := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit)
+	rt := NewRuntime(WithRuntimeConfig(cfg))
+	defer rt.Close()
+	producerModule, err := rt.Compile(threadsGrowModule(false, 1, 3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producerModule.Close()
+	producer, err := rt.Instantiate(context.Background(), producerModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	memory, err := producer.ExportedMemory("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, err := rt.NewHostFuncRef(func(v int32) int32 {
+		if err := producer.Close(); err != nil {
+			panic(HostTrap{Err: err})
+		}
+		return v
+	}, FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer host.Close()
+	module, err := rt.Compile(threadedHostContextModule(true, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	consumer, err := rt.Instantiate(context.Background(), module, WithImports(NewImports().Memory("env", "memory", memory).Function("env", "host", host)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	for _, input := range []uint64{7, 11} {
+		got, err := consumer.Invoke("run", input)
+		if err != nil || len(got) != 1 || got[0] != input*2+1 {
+			t.Fatalf("host return after producer close: %v, %v", got, err)
+		}
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if memory.jobMemory() != nil {
+		t.Fatal("last consumer did not release the closed producer's shared backing")
+	}
+}

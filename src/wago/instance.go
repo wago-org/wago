@@ -114,9 +114,13 @@ func nativeUint64Slots(bytes []byte) []uint64 {
 type instanceMemoryDirectory struct {
 	memories []*Memory
 	owns     []bool
-	native   []byte     // fixed 16-byte entries consumed by indexed native code
-	invokeMu sync.Mutex // threaded memory zero: protects reusable Invoke scratch state
-	nativeMu sync.Mutex // threaded memory zero: one mutable native activation per instance
+	// Shared backings cannot move and remain attached until physical release.
+	// Retaining their handles avoids taking each owner's mutex on host return;
+	// their current size must still be read atomically on every refresh.
+	sharedBackings []*runtime.JobMemory
+	native         []byte     // fixed 16-byte entries consumed by indexed native code
+	invokeMu       sync.Mutex // threaded memory zero: protects reusable Invoke scratch state
+	nativeMu       sync.Mutex // threaded memory zero: one mutable native activation per instance
 }
 
 // invokeCache memoizes per-export work so hot Invoke loops skip the exports map

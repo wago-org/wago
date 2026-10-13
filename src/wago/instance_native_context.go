@@ -355,12 +355,20 @@ func (in *Instance) refreshMemoryDirectory() error {
 		if memory == nil {
 			return fmt.Errorf("indexed memory %d is unavailable", i)
 		}
-		jm := memory.jobMemory()
+		var jm *wruntime.JobMemory
+		if i < len(dir.sharedBackings) {
+			jm = dir.sharedBackings[i]
+		}
+		shared := jm != nil
+		if !shared {
+			jm = memory.jobMemory()
+			shared = in.c.memoryDef(i).Shared
+		}
 		if jm == nil {
 			return fmt.Errorf("indexed memory %d owner is closed", i)
 		}
 		entry := dir.native[i*abi.MemoryDirEntryBytes:]
-		if !in.c.memoryDef(i).Shared {
+		if !shared {
 			jm.SetGuardOwner(in.jm.LinMemBase())
 		}
 		pages := jm.CurrentPages()

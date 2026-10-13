@@ -1804,6 +1804,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	if memoryCount > 1 || threadedControl {
 		in.memoryDir = &instanceMemoryDirectory{memories: memoryObjs, owns: memoryOwns, native: nativeMemoryDir}
+		for i, memory := range memoryObjs {
+			if c.memoryDef(i).Shared {
+				if in.memoryDir.sharedBackings == nil {
+					in.memoryDir.sharedBackings = make([]*runtime.JobMemory, len(memoryObjs))
+				}
+				in.memoryDir.sharedBackings[i] = memory.jobMemory()
+			}
+		}
 	}
 	if gcGlobalRootCount != 0 {
 		state := in.ensurePluginState()
