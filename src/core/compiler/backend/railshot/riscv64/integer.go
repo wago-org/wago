@@ -1733,30 +1733,43 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			switch imm.Kind {
 			case wasm.InstrBrOnCast, wasm.InstrBrOnCastFail:
-				if (!state.gcRefTestAbstract && !state.gcRefTestConcrete) || !imm.HasHeapType || !imm.HasHeapType2 || uint64(imm.Index) >= uint64(depth) {
+				genericRooted := state.gcRootedScalar
+				if (!state.gcRefTestAbstract && !state.gcRefTestConcrete && !genericRooted) || !imm.HasHeapType || !imm.HasHeapType2 || uint64(imm.Index) >= uint64(depth) {
 					return integerSummary{}, unsupported("branch cast outside exact GC profile")
 				}
+				if genericRooted {
+					if _, ok := referenceTypes.rootedObjectHeap(imm.HeapType); !ok {
+						return integerSummary{}, unsupported("branch cast source heap outside generic rooted profile")
+					}
+				}
 				heap := int64(0)
-				switch imm.HeapType2.Kind() {
-				case wasm.HeapTypeIndex:
-					index := imm.HeapType2.Type().Index
-					if imm.HeapType2.Type().Rec || state.gcRefTestConcrete && index >= 8 || !state.gcRefTestConcrete && (index < 1 || index > 2) {
-						return integerSummary{}, unsupported("branch cast indexed heap outside exact GC profile")
+				if genericRooted {
+					var ok bool
+					if heap, ok = referenceTypes.rootedObjectHeap(imm.HeapType2); !ok {
+						return integerSummary{}, unsupported("branch cast target heap outside generic rooted profile")
 					}
-					heap = int64(index)
-				case wasm.HeapAbs:
-					switch imm.HeapType2.Abs() {
-					case wasm.HeapI31:
-						heap = -20
-					case wasm.HeapStruct:
-						heap = -21
-					case wasm.HeapArray:
-						heap = -22
+				} else {
+					switch imm.HeapType2.Kind() {
+					case wasm.HeapTypeIndex:
+						index := imm.HeapType2.Type().Index
+						if imm.HeapType2.Type().Rec || state.gcRefTestConcrete && index >= 8 || !state.gcRefTestConcrete && (index < 1 || index > 2) {
+							return integerSummary{}, unsupported("branch cast indexed heap outside exact GC profile")
+						}
+						heap = int64(index)
+					case wasm.HeapAbs:
+						switch imm.HeapType2.Abs() {
+						case wasm.HeapI31:
+							heap = -20
+						case wasm.HeapStruct:
+							heap = -21
+						case wasm.HeapArray:
+							heap = -22
+						default:
+							return integerSummary{}, unsupported("branch cast heap outside exact abstract profile")
+						}
 					default:
-						return integerSummary{}, unsupported("branch cast heap outside exact abstract profile")
+						return integerSummary{}, unsupported("branch cast heap encoding outside exact abstract profile")
 					}
-				default:
-					return integerSummary{}, unsupported("branch cast heap encoding outside exact abstract profile")
 				}
 				fr := &ctrl[depth-1-int(imm.Index)]
 				values, references := fr.results, fr.resultRefs

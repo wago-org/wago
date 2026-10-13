@@ -861,6 +861,148 @@ func TestRV64RootedIndexedReferenceCastTraps(t *testing.T) {
 	}
 }
 
+func rootedIndexedBranchCastModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},             // immutable struct (field i32)
+		{0x60, 0x00, 0x01, 0x64, 0x00},       // () -> (ref 0)
+		{0x60, 0x00, 0x01, 0x63, 0x00},       // () -> (ref null 0)
+		{0x60, 0x00, 0x02, 0x7f, 0x64, 0x00}, // () -> (i32, (ref 0))
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+	}
+	body := []byte{
+		0x01, 0x01, 0x7f, // one i32 local
+
+		// A successful indexed br_on_cast carries the original object to the label.
+		0x02, 0x01,
+		0x41, 0x29, 0xfb, 0x00, 0x00,
+		0xfb, 0x18, 0x00, 0x00, byte(wasm.HeapAny), 0x00,
+		0x1a, 0x41, 0xe3, 0x00, 0xfb, 0x00, 0x00,
+		0x0b, 0xfb, 0x02, 0x00, 0x00,
+
+		// Null fails a nullable-source to non-null-target cast and takes fallback.
+		0x02, 0x01,
+		0xd0, 0x00,
+		0xfb, 0x18, 0x01, 0x00, byte(wasm.HeapAny), 0x00,
+		0x1a, 0x41, 0xcd, 0x00, 0xfb, 0x00, 0x00,
+		0x0b, 0xfb, 0x02, 0x00, 0x00,
+
+		// A successful br_on_cast_fail falls through with the refined reference.
+		0x02, 0x01,
+		0x41, 0x2a, 0xfb, 0x00, 0x00,
+		0xfb, 0x19, 0x00, 0x00, 0x00, 0x00,
+		0xfb, 0x02, 0x00, 0x00, 0x21, 0x00,
+		0x41, 0x2b, 0xfb, 0x00, 0x00,
+		0x0b, 0x1a, 0x20, 0x00,
+
+		// A failed br_on_cast_fail branches with the original nullable source.
+		0x02, 0x02,
+		0xd0, 0x00,
+		0xfb, 0x19, 0x01, 0x00, 0x00, 0x00,
+		0x1a, 0x41, 0xe3, 0x00, 0xfb, 0x00, 0x00,
+		0x0b, 0xd1,
+
+		// A nullable target accepts null and branches with it on br_on_cast.
+		0x02, 0x02,
+		0xd0, 0x00,
+		0xfb, 0x18, 0x03, 0x00, 0x00, 0x00,
+		0x1a, 0x41, 0x37, 0xfb, 0x00, 0x00,
+		0x0b, 0xd1,
+
+		// The same nullable-target success falls through on br_on_cast_fail.
+		0x41, 0x00, 0x21, 0x00,
+		0x02, 0x01,
+		0xd0, 0x00,
+		0xfb, 0x19, 0x03, 0x00, 0x00, 0x00,
+		0xd1, 0x21, 0x00,
+		0x41, 0x37, 0xfb, 0x00, 0x00,
+		0x0b, 0x1a, 0x20, 0x00,
+
+		// A successful branch transports the typed label's scalar prefix too.
+		0x02, 0x03,
+		0x41, 0x09,
+		0x41, 0x2c, 0xfb, 0x00, 0x00,
+		0xfb, 0x18, 0x00, 0x00, 0x00, 0x00,
+		0x1a, 0x1a, 0x41, 0xe3, 0x00, 0x41, 0x37, 0xfb, 0x00, 0x00,
+		0x0b, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(4))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedIndexedBranchCastsExecute(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedIndexedBranchCastModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	want := []uint64{41, 77, 42, 1, 1, 1, 53}
+	for _, gc := range []GCConfig{{}, {CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}} {
+		instance, err := Instantiate(compiled, InstantiateOptions{GC: gc})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, want) {
+			_ = instance.Close()
+			t.Fatalf("run()=%v err=%v want=%v", got, err, want)
+		}
+		if err = instance.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func rootedBranchCastHelperOnlyModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},                         // immutable struct (field i32)
+		{0x5e, 0x7f, 0x00},                               // immutable i32 array
+		{0x60, 0x00, 0x01, 0x64, 0x00},                   // () -> (ref 0), used as the block signature
+		{0x60, 0x01, 0x63, 0x00, 0x01, 0x7f},             // ((ref null 0)) -> i32
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}), // public scalar entry
+	}
+	cast := []byte{
+		0x00,
+		0x02, 0x02,
+		0x20, 0x00,
+		0xfb, 0x18, 0x01, 0x00, 0x00, 0x00,
+		0x1a, 0x41, 0xcd, 0x00, 0x0f,
+		0x0b, 0x1a, 0x41, 0x01, 0x0b,
+	}
+	// The unrelated empty array allocation supplies the generic profile's
+	// required allocation safepoint while leaving branch-cast as the only
+	// struct-helper operation in the module.
+	caller := []byte{0x00, 0x41, 0x00, 0xfb, 0x07, 0x01, 0x1a, 0xd0, 0x00, 0x10, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(3), wasmtest.ULEB(4))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(cast))), cast...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func TestRV64RootedBranchCastOnlyHelperExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedBranchCastHelperOnlyModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{77}) {
+		t.Fatalf("run()=%v err=%v want=[77]", got, err)
+	}
+}
+
 func rootedScalarBoundaryStructModule(fieldCount int) []byte {
 	fields := []byte{0x5f}
 	fields = append(fields, wasmtest.ULEB(uint32(fieldCount))...)

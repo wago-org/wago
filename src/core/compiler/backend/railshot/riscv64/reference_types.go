@@ -158,6 +158,34 @@ func (types internalReferenceTypes) rootedArrayDefaultable(index uint32) bool {
 	return ok && (!types.rootedArrayElementReference(index) || storage.Val().Ref().Nullable())
 }
 
+// rootedObjectHeap lowers only the bounded collector heaps authenticated by the
+// generic rooted module profile. The returned negative values are the runtime
+// helper's stable encodings for abstract object heaps.
+func (types internalReferenceTypes) rootedObjectHeap(heapType wasm.HeapType) (int64, bool) {
+	switch heapType.Kind() {
+	case wasm.HeapTypeIndex:
+		index := heapType.Type().Index
+		if heapType.Type().Rec || !types.rootedStruct(index) && !types.rootedArray(index) {
+			return 0, false
+		}
+		return int64(index), true
+	case wasm.HeapAbs:
+		switch heapType.Abs() {
+		case wasm.HeapNone:
+			return -15, true
+		case wasm.HeapAny:
+			return -18, true
+		case wasm.HeapEq:
+			return -19, true
+		case wasm.HeapStruct:
+			return -21, true
+		case wasm.HeapArray:
+			return -22, true
+		}
+	}
+	return 0, false
+}
+
 func (types internalReferenceTypes) rootedAggregateType(index uint32, kind wasm.CompTypeKind) *wasm.CompType {
 	var signature *wasm.CompType
 	if types.scalar != nil {

@@ -330,7 +330,7 @@ func rootedScalarHelperProfile(m *wasm.Module) (structs, arrays, ok bool) {
 			case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet,
 				wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
 				structs = true
-			case wasm.InstrRefTest, wasm.InstrRefCast:
+			case wasm.InstrRefTest, wasm.InstrRefCast, wasm.InstrBrOnCast, wasm.InstrBrOnCastFail:
 				structs = true
 			case wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed,
 				wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU,
