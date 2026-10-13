@@ -2299,6 +2299,34 @@ func rootedScalarDeclarativeTableModule() []byte {
 	)
 }
 
+func rootedScalarImportedStatePrivateTableModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	globalImport := wasmtest.GlobalImportEntry("env", "base", wasm.I32, false)
+	memoryImport := append(append(wasmtest.Name("env.state"), wasmtest.Name("memory.0")...), byte(wasm.ExternMem), 0x01, 0x01, 0x01)
+	target := []byte{0x00, 0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a, 0x23, 0x00, 0x0b}
+	caller := []byte{0x00, 0x41, 0x00, 0x11, 0x01, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(2, wasmtest.Vec(globalImport, memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(4, []byte{0x01, 0x70, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("base", byte(wasm.ExternGlobal), 0),
+			wasmtest.ExportEntry("memory", byte(wasm.ExternMem), 0),
+		)),
+		wasmtest.Section(9, []byte{0x01, 0x00, 0x41, 0x00, 0x0b, 0x01, 0x00}),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target))), target...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
 func TestRV64RootedScalarDeclarativeTableExecutes(t *testing.T) {
 	source := rootedScalarDeclarativeTableModule()
 	if !railshot.AdmitGCRootedScalarSource(source) {
@@ -2328,6 +2356,48 @@ func TestRV64RootedScalarDeclarativeTableExecutes(t *testing.T) {
 		if err := instance.Close(); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestRV64RootedScalarImportedStatePrivateTableExecutes(t *testing.T) {
+	source := rootedScalarImportedStatePrivateTableModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("rooted imported state with a private function table was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.NumImports != 0 || len(view.GlobalImports) != 1 || view.memoryImport == "" || view.tableCount() != 1 {
+		t.Fatalf("rooted imported-state table receipt=%t funcs=%d globals=%d memory=%q tables=%d validation=%v", rv64FreshRootedGC(view), view.NumImports, len(view.GlobalImports), view.memoryImport, view.tableCount(), railshotValidateCompiled(view))
+	}
+	base := NewGlobalI32(42, false)
+	defer base.Close()
+	memory, err := NewMemory(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		Imports: NewImports().Global("env", "base", base).Memory("env.state", "memory.0", memory),
+		GC:      GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for range 4 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
+			t.Fatalf("run()=%v err=%v want=[42]", got, err)
+		}
+	}
+	if exported, err := instance.ExportedMemory("memory"); err != nil || exported != memory {
+		t.Fatalf("private-table memory re-export lost identity: exported=%p want=%p err=%v", exported, memory, err)
+	}
+	if exported, err := instance.ExportedGlobalObject("base"); err != nil || exported != base {
+		t.Fatalf("private-table global re-export lost identity: exported=%p want=%p err=%v", exported, base, err)
 	}
 }
 

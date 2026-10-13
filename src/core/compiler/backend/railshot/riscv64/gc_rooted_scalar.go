@@ -38,7 +38,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		// The first generic host boundary is deliberately numeric and table-free.
 		// Imported references and table publication have separate ownership contracts
 		// and must not become reachable through this admission step.
-		if len(m.Tables) != 0 || len(m.Elements) != 0 {
+		if importedFunctions != 0 && (len(m.Tables) != 0 || len(m.Elements) != 0) {
 			return false
 		}
 		for i := range m.Imports {

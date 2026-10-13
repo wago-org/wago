@@ -43,7 +43,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		return reject("RV64 exact roots require a bounded scalar allocation module")
 	}
 	if len(m.Imports) != 0 {
-		if len(m.Tables) != 0 || len(m.Elements) != 0 {
+		if importedFunctions != 0 && (len(m.Tables) != 0 || len(m.Elements) != 0) {
 			return reject("RV64 exact roots require numeric imports without tables")
 		}
 		for i := range m.Imports {
