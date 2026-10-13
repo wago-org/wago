@@ -200,6 +200,87 @@ func TestRV64RootedReferenceExportsExecute(t *testing.T) {
 	}
 }
 
+func rootedScalarReferenceHostImportModule() []byte {
+	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
+	functionImport = append(functionImport, wasmtest.ULEB(1)...)
+	body := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0x10, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			[]byte{0x60, 0x01, 0x64, 0x00, 0x01, 0x64, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(functionImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedReferenceHostImportExecutes(t *testing.T) {
+	source := rootedScalarReferenceHostImportModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded collector-reference host import was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	roots := view.genericGCFrameRoots()
+	if !rv64FreshRootedGC(view) || roots == nil || len(roots.callsites) != 1 || len(roots.callsites[0].offsets) != 1 {
+		t.Fatalf("reference host receipt=%t roots=%+v validation=%v", rv64FreshRootedGC(view), roots, railshotValidateCompiled(view))
+	}
+	candidate := cloneCompiledMetadata(view)
+	candidate.importFuncSigs = slices.Clone(candidate.importFuncSigs)
+	candidate.importFuncSigs[0].Params = slices.Clone(candidate.importFuncSigs[0].Params)
+	candidate.importFuncSigs[0].Params[0] = ValI31Ref
+	if rv64FreshRootedGC(candidate) {
+		t.Fatal("mutated collector-reference host ABI retained the rooted compiler receipt")
+	}
+
+	rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
+	defer rt.Close()
+	var calls int
+	host, err := rt.NewGCHostFuncRef(slotHostFunc(func(module HostModule, params, results []uint64) {
+		calls++
+		if len(params) != 1 || len(results) != 1 || params[0] == 0 || params[0] == uint64(uint32(params[0])) {
+			panic("collector-reference host argument is not an opaque token")
+		}
+		gcHost, ok := module.(GCHostModule)
+		if !ok {
+			panic("collector-reference host call has no GC surface")
+		}
+		if err := gcHost.CollectGC(); err != nil {
+			panic(err)
+		}
+		results[0] = params[0]
+	}), FuncSig{Params: []ValType{ValAnyRef}, Results: []ValType{ValAnyRef}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer host.Close()
+	module, err := rt.Module(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := rt.Instantiate(context.Background(), module, WithImports(testImports("env.echo", host)), WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}))
+	module.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	for range 8 {
+		if got, err := in.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
+			t.Fatalf("run()=%v err=%v want=[42]", got, err)
+		}
+	}
+	if calls != 8 {
+		t.Fatalf("collector-reference host calls=%d want=8", calls)
+	}
+}
+
 func rootedScalarFunctionBeforeStructModule() []byte {
 	body := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x01, 0xfb, 0x02, 0x01, 0x00, 0x0b}
 	return wasmtest.Module(

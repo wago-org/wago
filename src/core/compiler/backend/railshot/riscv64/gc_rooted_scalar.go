@@ -38,8 +38,10 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		return false
 	}
 	if len(m.Imports) != 0 {
-		// The generic host boundary remains numeric. Imported references must not
-		// become reachable through private tables.
+		// Reference imports are provisionally restricted to non-exact carriers
+		// here, then matched against the fully flattened rooted type directory
+		// below. Imported functions must not become reachable through private
+		// tables.
 		for i := range m.Imports {
 			im := &m.Imports[i]
 			switch im.Type.Kind {
@@ -50,7 +52,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				}
 				for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
 					for _, typ := range values {
-						if !scalarType(typ, true) {
+						if !scalarType(typ, true) && (typ.Kind() != wasm.ValRef || typ.Ref().Exact()) {
 							return false
 						}
 					}
@@ -443,6 +445,22 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			return heap.Abs() == wasm.HeapI31
 		}
 		return heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && int(heap.Type().Index) < flatTypes && admittedAggregates[heap.Type().Index]
+	}
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != wasm.ExternFunc {
+			continue
+		}
+		ft, ok := m.ImportFuncType(i)
+		if !ok {
+			return false
+		}
+		for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
+			for _, typ := range values {
+				if !publicRootedValue(typ) {
+					return false
+				}
+			}
+		}
 	}
 	for i := range m.Exports {
 		if m.Exports[i].Index.Kind == wasm.ExternMem || m.Exports[i].Index.Kind == wasm.ExternGlobal || m.Exports[i].Index.Kind == wasm.ExternTable {

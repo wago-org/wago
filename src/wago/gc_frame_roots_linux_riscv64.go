@@ -44,6 +44,23 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	if importedFunctions+importedGlobals+importedMemories+importedTables != len(m.Imports) || importedFunctions > railshot.MaxHostFunctionImports || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > 2 || tableCount > 2 || memoryCount > rv64RootedMaxMemories || len(m.Tags) != 0 || importedGlobals+len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
 		return reject("RV64 exact roots require a bounded scalar allocation module")
 	}
+	rootedImportValue := func(typ wasm.ValType) bool {
+		if wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64) || wasm.EqualValType(typ, wasm.F32) || wasm.EqualValType(typ, wasm.F64) {
+			return true
+		}
+		if typ.Kind() != wasm.ValRef || typ.Ref().Exact() {
+			return false
+		}
+		heap := typ.Ref().Heap()
+		if heap.Kind() == wasm.HeapAbs {
+			return heap.Abs() == wasm.HeapI31
+		}
+		if heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec {
+			return false
+		}
+		target, ok := m.TypeSubType(heap.Type().Index)
+		return ok && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray)
+	}
 	if len(m.Imports) != 0 {
 		for i := range m.Imports {
 			im := &m.Imports[i]
@@ -55,8 +72,8 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				}
 				for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
 					for _, typ := range values {
-						if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
-							return reject("RV64 exact roots reject non-scalar function import %d", i)
+						if !rootedImportValue(typ) {
+							return reject("RV64 exact roots reject unsupported function import %d", i)
 						}
 					}
 				}

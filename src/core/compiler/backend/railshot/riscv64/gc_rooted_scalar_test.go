@@ -114,6 +114,29 @@ func TestRV64RootedAbstractReferenceExportRejected(t *testing.T) {
 	}
 }
 
+func rv64RootedReferenceHostImportModule() []byte {
+	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
+	functionImport = append(functionImport, wasmtest.ULEB(1)...)
+	body := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0x10, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			[]byte{0x60, 0x01, 0x64, 0x00, 0x01, 0x64, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(functionImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedReferenceHostImportAdmitted(t *testing.T) {
+	if err := AdmitProductionSource(rv64RootedReferenceHostImportModule()); err != nil {
+		t.Fatalf("collector-reference host import was not admitted: %v", err)
+	}
+}
+
 func rv64RootedI31GlobalModule() []byte {
 	body := []byte{
 		0x00,

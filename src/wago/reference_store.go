@@ -1097,10 +1097,10 @@ type gcPublicState struct {
 	globalRoots           []gcGlobalRootMapping // generic-GC safe-boundary roots; allocated only when needed
 	hostActivations       [gcHostActivationLimit]gcHostActivation
 	hostActivationCount   uint8
-	hostArgumentRootSlots [gcHostActivationLimit][7]uint32
+	hostArgumentRootSlots [gcHostActivationLimit][coreruntime.MaxHostArity]uint32
 	hostArgumentRootsMade [gcHostActivationLimit]uint8
 	hostArgumentRootCount [gcHostActivationLimit]uint8
-	hostResultRootSlots   [gcHostActivationLimit][2]uint32
+	hostResultRootSlots   [gcHostActivationLimit][coreruntime.MaxHostArity]uint32
 	hostResultRootsMade   [gcHostActivationLimit]uint8
 	hostResultRootCount   [gcHostActivationLimit]uint8
 	hostRootPlan          *compiledGCFrameRoots

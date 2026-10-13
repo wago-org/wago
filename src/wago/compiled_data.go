@@ -122,11 +122,11 @@ func (c *Compiled) activeDataAt(index int) DataInit {
 	return DataInit{MemoryIndex: d.memoryIndex, Offset: OffsetInit{Base: d.offset}, Bytes: c.compactData.bytes[d.start:d.end:d.end]}
 }
 
-// rv64RootedImportDigest authenticates the bounded numeric host boundary used
-// by freshly compiled generic rooted-GC modules. The exact module/name split is
+// rv64RootedImportDigest authenticates the bounded host boundary used by
+// freshly compiled generic rooted-GC modules. The exact module/name split is
 // part of the receipt: concatenated import keys alone cannot distinguish names
-// containing dots. Imported signatures remain reference-free until collector
-// ownership can cross the public host ABI.
+// containing dots. Collector references are limited to indexed aggregates and
+// direct i31 values, whose public carriers have distinct ownership contracts.
 func rv64RootedImportDigest(c *Compiled) ([32]byte, bool) {
 	if c == nil || c.NumImports < 0 || c.NumImports > rv64RootedMaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports ||
 		c.dynamicImports != (c.NumImports != 0) || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
@@ -138,6 +138,23 @@ func rv64RootedImportDigest(c *Compiled) ([32]byte, bool) {
 	}
 	h := sha256.New()
 	var word [8]byte
+	rootedImportValue := func(exact ValueTypeDescriptor, abi ValType) bool {
+		if exact.Kind <= ValueTypeF64 {
+			want, ok := exact.ABIType(c.Types)
+			return ok && want == abi
+		}
+		if exact.Kind != ValueTypeReference || exact.Ref.Exact {
+			return false
+		}
+		if !exact.Ref.Heap.Defined {
+			return exact.Ref.Heap.Abstract == AbstractHeapI31 && exact.Ref.Heap.TypeIndex == 0 && abi == ValI31Ref
+		}
+		if int(exact.Ref.Heap.TypeIndex) >= len(c.Types) || abi != ValAnyRef {
+			return false
+		}
+		target := c.Types[exact.Ref.Heap.TypeIndex]
+		return target.Kind == CompositeTypeStruct || target.Kind == CompositeTypeArray
+	}
 	binary.LittleEndian.PutUint32(word[:4], uint32(c.NumImports))
 	_, _ = h.Write(word[:4])
 	remaining := uint64(1 << 20)
@@ -173,11 +190,7 @@ func rv64RootedImportDigest(c *Compiled) ([32]byte, bool) {
 				exactValues = typ.Results
 			}
 			for j, value := range values {
-				if value != ValI32 && value != ValI64 && value != ValF32 && value != ValF64 {
-					return [32]byte{}, false
-				}
-				abi, ok := exactValues[j].ABIType(c.Types)
-				if !ok || abi != value {
+				if !rootedImportValue(exactValues[j], value) {
 					return [32]byte{}, false
 				}
 				_, _ = h.Write([]byte{byte(value)})
