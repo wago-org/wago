@@ -1647,6 +1647,86 @@ func TestRV64RootedScalarInertPassiveDataExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarIndirectTableModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	target := []byte{0x00, 0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a, 0x41, 0x2a, 0x0b}
+	caller := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x41, 0x00, 0x11, 0x01, 0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(4, []byte{0x01, 0x70, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(9, []byte{0x01, 0x00, 0x41, 0x00, 0x0b, 0x01, 0x00}),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target))), target...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func TestRV64RootedScalarIndirectTableExecutes(t *testing.T) {
+	source := rootedScalarIndirectTableModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded rooted indirect-table module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if fresh, validation := rv64FreshRootedGC(view), railshotValidateCompiled(view); !fresh || validation != nil || view.tableCount() != 1 || view.TableSize != 1 || view.TableMax != 1 || len(view.Elems) != 1 || len(view.Elems[0].Values) != 1 || view.Elems[0].Values[0].FuncIndex != 0 {
+		t.Fatalf("indirect-table generic rooted receipt is missing: fresh=%t validation=%v", fresh, validation)
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"size":    func(candidate *Compiled) { candidate.TableSize = 2 },
+		"maximum": func(candidate *Compiled) { candidate.TableMax = 2 },
+		"target": func(candidate *Compiled) {
+			candidate.Elems = slices.Clone(candidate.Elems)
+			candidate.Elems[0].Values = slices.Clone(candidate.Elems[0].Values)
+			candidate.Elems[0].Values[0].FuncIndex = 1
+		},
+		"offset": func(candidate *Compiled) {
+			candidate.Elems = slices.Clone(candidate.Elems)
+			candidate.Elems[0].Offset.Base = 1
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated indirect table retained the generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("mutated indirect table validation=%v", err)
+			}
+		})
+	}
+	for range 2 {
+		instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{83}) {
+			_ = instance.Close()
+			t.Fatalf("run()=%v err=%v want=[83]", got, err)
+		}
+		if err := instance.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func rootedScalarBoundaryStructModule(fieldCount int) []byte {
 	fields := []byte{0x5f}
 	fields = append(fields, wasmtest.ULEB(uint32(fieldCount))...)

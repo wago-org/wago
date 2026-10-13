@@ -38,6 +38,7 @@ type emissionMode struct {
 	importTailCalls                bool
 	dynamicTailCalls               bool
 	referenceCalls                 bool
+	gcRootedScalar                 bool
 	gcTypeSubtypingRuntimeCallCast bool
 	// Private same-image direct calls only; never source/artifact admission.
 	referenceFunctions     bool

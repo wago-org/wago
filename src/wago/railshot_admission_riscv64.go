@@ -34,8 +34,8 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	if structProduct != 0 && !structHelpers || arrayProduct != 0 && !arrayHelpers || !structHelpers && !arrayHelpers ||
 		c.usesGCStructHelpers() != structHelpers || c.usesGCArrayHelpers() != arrayHelpers || c.syncHostSlots < 4 ||
 		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports != 0 || len(c.Imports) != 0 ||
-		len(c.importFuncSigs) != 0 || c.HasTable || c.tableCount() != 0 || c.memoryCount() > 1 ||
-		len(c.GlobalImports) != 0 || len(c.Globals) > 256 || len(c.Elems) != 0 ||
+		len(c.importFuncSigs) != 0 || c.tableCount() > 1 || c.memoryCount() > 1 ||
+		len(c.GlobalImports) != 0 || len(c.Globals) > 256 || len(c.Elems) > 256 ||
 		len(c.passiveElems) != 0 || len(c.PassiveData) > 256 {
 		return false
 	}
@@ -78,6 +78,10 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	}
 	globalDigest, validGlobals := rv64RootedGlobalDigest(c)
 	if !validGlobals || globalDigest != memo.rv64FreshRootedGCGlobalDigest {
+		return false
+	}
+	tableDigest, validTable := rv64RootedTableDigest(c)
+	if !validTable || tableDigest != memo.rv64FreshRootedGCTableDigest {
 		return false
 	}
 	remainingData := railshot.MaxModuleBytes

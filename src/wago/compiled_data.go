@@ -162,6 +162,70 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 	return digest, true
 }
 
+// rv64RootedTableDigest authenticates the first bounded private table boundary
+// for generic rooted-GC code. Only one local table32 and legacy active ref.func
+// payloads are admitted here; public tables and mutable/passive element state
+// remain separate ownership boundaries.
+func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
+	if c == nil || len(c.extraTables) != 0 || c.tableImport != "" || len(c.tableExports) != 0 || len(c.passiveElems) != 0 || len(c.Elems) > 256 {
+		return [32]byte{}, false
+	}
+	h := sha256.New()
+	var word [8]byte
+	if c.tableCount() == 0 {
+		if c.HasTable || c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.TableAddr64 || c.TableType != 0 || c.TableHasValueType || c.TableValueTypeIndex != 0 ||
+			c.HasTableInitFunc || c.TableInitFunc != 0 || len(c.Elems) != 0 {
+			return [32]byte{}, false
+		}
+		_, _ = h.Write([]byte{0})
+		var digest [32]byte
+		copy(digest[:], h.Sum(nil))
+		return digest, true
+	}
+	if c.tableCount() != 1 || !c.HasTable || !c.hasTableExportMetadata || c.TableAddr64 || c.TableType != ValFuncRef || !c.TableHasValueType || !c.TableHasMax ||
+		c.HasTableInitFunc || c.TableInitFunc != 0 || c.TableSize < 0 || c.TableSize > 256 || c.TableMax < uint64(c.TableSize) || c.TableMax > 256 ||
+		uint64(c.TableValueTypeIndex) >= uint64(len(c.ValueTypes)) || !c.needsFuncRefDescs() || len(c.FuncTypeID) != len(c.Funcs) {
+		return [32]byte{}, false
+	}
+	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+	exact, err := c.tableExactType(0)
+	if err != nil || exact != plain || c.ValueTypes[c.TableValueTypeIndex] != plain {
+		return [32]byte{}, false
+	}
+	_, _ = h.Write([]byte{1})
+	binary.LittleEndian.PutUint64(word[:], uint64(c.TableSize))
+	_, _ = h.Write(word[:])
+	binary.LittleEndian.PutUint64(word[:], c.TableMax)
+	_, _ = h.Write(word[:])
+	binary.LittleEndian.PutUint32(word[:4], c.TableValueTypeIndex)
+	_, _ = h.Write(word[:4])
+	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.Elems)))
+	_, _ = h.Write(word[:4])
+	remaining := 256
+	for i := range c.Elems {
+		elem := &c.Elems[i]
+		if elem.Mode != ElemModeActive || elem.TableIndex != 0 || elem.RefType != 0 && elem.RefType != ValFuncRef || elem.HasValueType || elem.ValueTypeIndex != 0 ||
+			elem.Offset.HasGlobal || elem.Offset.Global != 0 || len(elem.Offset.Expr) != 0 || len(elem.Values) > remaining {
+			return [32]byte{}, false
+		}
+		remaining -= len(elem.Values)
+		binary.LittleEndian.PutUint32(word[:4], elem.Offset.Base)
+		_, _ = h.Write(word[:4])
+		binary.LittleEndian.PutUint32(word[:4], uint32(len(elem.Values)))
+		_, _ = h.Write(word[:4])
+		for _, value := range elem.Values {
+			if value.Null || value.HasGlobal || value.GlobalIndex != 0 || value.I31Wrap || value.RepeatPrevious || len(value.Expr) != 0 || uint64(value.FuncIndex) >= uint64(len(c.Funcs)) {
+				return [32]byte{}, false
+			}
+			binary.LittleEndian.PutUint32(word[:4], value.FuncIndex)
+			_, _ = h.Write(word[:4])
+		}
+	}
+	var digest [32]byte
+	copy(digest[:], h.Sum(nil))
+	return digest, true
+}
+
 // compactActiveDataSize also guards the uint32 byte-range representation. Rare
 // offset forms and nil-vs-empty metadata retain the ordinary exact deep copy.
 func compactActiveDataSize(c *Compiled) (int, bool) {

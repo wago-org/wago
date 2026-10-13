@@ -1397,9 +1397,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 								keys = append(keys, state.types[subtype].key)
 							}
 						}
-						emit.indirectCallKeys(sig, keys, h, indexSlot, tableWide, tableIndex)
+						emit.indirectCallKeys(sig, keys, h, indexSlot, tableWide, tableIndex, stackRefs[:h])
 					} else {
-						emit.indirectCall(sig, h, indexSlot, tableWide, tableIndex)
+						emit.indirectCall(sig, h, indexSlot, tableWide, tableIndex, stackRefs[:h])
 					}
 				}
 			}

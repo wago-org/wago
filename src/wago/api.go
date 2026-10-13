@@ -1727,12 +1727,17 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if !validRootedGlobals {
 			return nil, joinPrimary(fmt.Errorf("compile: invalid rooted global receipt"), compiled.Close())
 		}
+		rootedTableDigest, validRootedTable := rv64RootedTableDigest(compiled)
+		if !validRootedTable {
+			return nil, joinPrimary(fmt.Errorf("compile: invalid rooted table receipt"), compiled.Close())
+		}
 		compiled.validateMemo.rv64FreshRootedGC = true
 		compiled.validateMemo.rv64FreshRootedGCDigest = sha256.Sum256(compiled.code)
 		compiled.validateMemo.rv64FreshRootedGCReserveMax = compiled.MemMaxPages
 		compiled.validateMemo.rv64FreshRootedGCDataDigest = rootedDataDigest
 		compiled.validateMemo.rv64FreshRootedGCExportDigest = rootedExportDigest
 		compiled.validateMemo.rv64FreshRootedGCGlobalDigest = rootedGlobalDigest
+		compiled.validateMemo.rv64FreshRootedGCTableDigest = rootedTableDigest
 		compiled.validateMemo.rv64FreshRootedGCHasStart = compiled.HasStart
 		if compiled.HasStart {
 			compiled.validateMemo.rv64FreshRootedGCStartLocal = uint32(compiled.StartLocalFunc)

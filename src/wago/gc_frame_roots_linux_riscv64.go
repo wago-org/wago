@@ -34,7 +34,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	if m == nil || len(m.Code) == 0 {
 		return reject("generic GC module has no local function bodies")
 	}
-	if len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) > 256 || len(m.Elements) != 0 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
+	if len(m.Imports) != 0 || len(m.Tables) > 1 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
 		return reject("RV64 exact roots require a closed scalar allocation module")
 	}
 	if m.DataCount != nil && (uint64(*m.DataCount) != uint64(len(m.Data)) || *m.DataCount > 256) {
@@ -57,6 +57,27 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		if memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min > memory.Limits.Max || memory.Limits.Max > 256 {
 			return reject("RV64 exact roots require bounded local memory32")
 		}
+	}
+	if len(m.Tables) == 1 {
+		table := &m.Tables[0]
+		if table.Init != nil || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
+			table.Type.Limits.Min > table.Type.Limits.Max || table.Type.Limits.Max > 256 {
+			return reject("RV64 exact roots require one bounded local funcref table32")
+		}
+	}
+	remainingElements := 256
+	for i := range m.Elements {
+		elem := &m.Elements[i]
+		if len(m.Tables) != 1 || elem.Mode.Kind != wasm.ElemActive || elem.Mode.Table != 0 || len(elem.Mode.Offset.Instrs) != 0 || !rv64RootedI32Const(elem.Mode.Offset.BodyBytes) ||
+			elem.Kind.Kind != wasm.ElemFuncs || len(elem.Kind.Exprs) != 0 || !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) && elem.Kind.Ref != (wasm.RefType{}) || len(elem.Kind.Funcs) > remainingElements {
+			return reject("RV64 exact roots require bounded literal active function elements")
+		}
+		for _, function := range elem.Kind.Funcs {
+			if uint64(function) >= uint64(len(m.FuncTypes)) {
+				return reject("RV64 exact roots reject element function %d", function)
+			}
+		}
+		remainingElements -= len(elem.Kind.Funcs)
 	}
 	remainingData := railshot.MaxModuleBytes
 	for i := range m.Data {

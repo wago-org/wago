@@ -2598,11 +2598,11 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 	return hasTable, nil
 }
 
-func (f *integerEmitter) indirectCall(sig functionSpec, base, indexSlot int, indexWide bool, tableIndex uint32) {
-	f.indirectCallKeys(sig, []uint64{sig.key}, base, indexSlot, indexWide, tableIndex)
+func (f *integerEmitter) indirectCall(sig functionSpec, base, indexSlot int, indexWide bool, tableIndex uint32, hiddenRefs []bool) {
+	f.indirectCallKeys(sig, []uint64{sig.key}, base, indexSlot, indexWide, tableIndex, hiddenRefs)
 }
 
-func (f *integerEmitter) indirectCallKeys(sig functionSpec, keys []uint64, base, indexSlot int, indexWide bool, tableIndex uint32) {
+func (f *integerEmitter) indirectCallKeys(sig functionSpec, keys []uint64, base, indexSlot int, indexWide bool, tableIndex uint32, hiddenRefs []bool) {
 	f.Load(5, f.SpillOffset(indexSlot), indexWide) // table32 zero-normalizes dirty incoming i32; table64 preserves all bits
 	f.ownedIndirectTargetAtKeys(keys, tableIndex)
 	// All dynamic guards precede writes to potentially smaller shared call arenas.
@@ -2611,13 +2611,19 @@ func (f *integerEmitter) indirectCallKeys(sig functionSpec, keys []uint64, base,
 		f.Load(5, f.SpillOffset(base+j), wide)
 		f.a.Sd(enc.X5, enc.X10, int32(j*8))
 	}
-	if f.mode.gcTypeSubtypingRuntimeCallCast {
+	if f.mode.gcTypeSubtypingRuntimeCallCast || f.mode.gcRootedScalar {
+		// The generic rooted profile admits only a private local table populated
+		// from local function indexes. Enter its already-authenticated framed
+		// wrapper directly so the caller return PC belongs to this function's
+		// exact frame-root map; the cross-instance bridge is neither needed nor
+		// a valid transparent frame while collection walks the native stack.
 		f.a.Jalr(enc.RA, enc.X28, 0)
 	} else if f.mode.foreignTableCalls {
 		f.nativeTableCall(sig.key, len(sig.params), len(sig.results))
 	} else {
 		f.a.Jalr(enc.RA, enc.X28, 0)
 	}
+	f.recordGCFrameCallsite(f.a.Len(), hiddenRefs)
 	f.restoreCallTransport()
 	for j, wide := range sig.results {
 		if wide {

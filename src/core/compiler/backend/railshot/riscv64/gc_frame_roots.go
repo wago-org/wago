@@ -34,7 +34,9 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 			switch imm.Kind {
 			case wasm.InstrCall:
 				calls++
-			case wasm.InstrCallIndirect, wasm.InstrCallRef,
+			case wasm.InstrCallIndirect:
+				calls++
+			case wasm.InstrCallRef,
 				wasm.InstrReturnCall, wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
 				return false
 			}

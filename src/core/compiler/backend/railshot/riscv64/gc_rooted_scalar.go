@@ -18,8 +18,8 @@ const maxRootedScalarArrayFixed = 254
 // authenticated independently by validateGCFrameRootPlans.
 func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	if m == nil || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions ||
-		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Globals) > 256 ||
-		len(m.Elements) != 0 || len(m.Data) > 256 || len(m.Tags) != 0 ||
+		len(m.Imports) != 0 || len(m.Tables) > 1 || len(m.Memories) > 1 || len(m.Globals) > 256 ||
+		len(m.Elements) > 256 || len(m.Data) > 256 || len(m.Tags) != 0 ||
 		len(m.StringRefs) != 0 || len(m.Customs) != 0 || m.HasNameMetadata() ||
 		m.BranchHints != nil || m.UsesCompactImports {
 		return false
@@ -35,6 +35,30 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		if memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min > memory.Limits.Max || memory.Limits.Max > 256 {
 			return false
 		}
+	}
+	if len(m.Tables) == 1 {
+		table := &m.Tables[0]
+		if table.Init != nil || !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
+			table.Type.Limits.Min > table.Type.Limits.Max || table.Type.Limits.Max > 256 {
+			return false
+		}
+	}
+	remainingElements := 256
+	for i := range m.Elements {
+		elem := &m.Elements[i]
+		if len(m.Tables) != 1 || elem.Mode.Kind != wasm.ElemActive || elem.Mode.Table != 0 || len(elem.Mode.Offset.Instrs) != 0 || elem.Kind.Kind != wasm.ElemFuncs ||
+			len(elem.Kind.Exprs) != 0 || !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) && elem.Kind.Ref != (wasm.RefType{}) || len(elem.Kind.Funcs) > remainingElements {
+			return false
+		}
+		if _, err := plainScalarConst(elem.Mode.Offset, wasm.I32, false); err != nil {
+			return false
+		}
+		for _, function := range elem.Kind.Funcs {
+			if uint64(function) >= uint64(len(m.FuncTypes)) {
+				return false
+			}
+		}
+		remainingElements -= len(elem.Kind.Funcs)
 	}
 	for i := range m.Globals {
 		global := &m.Globals[i]
@@ -212,7 +236,7 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 	}
 	r := wasm.ReaderFrom(data[8:])
 	const required = uint16(1<<1 | 1<<3 | 1<<7 | 1<<10)
-	const allowed = required | 1<<5 | 1<<6 | 1<<8 | 1<<11 | 1<<12
+	const allowed = required | 1<<4 | 1<<5 | 1<<6 | 1<<8 | 1<<9 | 1<<11 | 1<<12
 	var seen uint16
 	var previousRank byte
 	for r.HasNext() {

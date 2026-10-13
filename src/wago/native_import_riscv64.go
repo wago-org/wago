@@ -463,8 +463,28 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 			}
 			return params, results, nil
 		}
+		rootedGC := rv64FreshRootedGC(c)
 		for i := range c.Types {
 			typ := &c.Types[i]
+			if rootedGC {
+				// Generic rooted modules retain their complete GC type graph next to
+				// the function signatures. Struct and array definitions are not
+				// callable directory entries, while reference values in a function
+				// signature still occupy one physical transport cell.
+				if typ.Kind != CompositeTypeFunction {
+					continue
+				}
+				p, err := rv64RootedSignatureSlots(typ.Params)
+				if err != nil {
+					return 0, 0, err
+				}
+				r, err := rv64RootedSignatureSlots(typ.Results)
+				if err != nil {
+					return 0, 0, err
+				}
+				params, results = max(params, p), max(results, r)
+				continue
+			}
 			controlOnly, err := rv64DeclaredControlSignature(c, typ)
 			if err != nil {
 				return 0, 0, err
@@ -484,6 +504,24 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		}
 	}
 	return params, results, nil
+}
+
+func rv64RootedSignatureSlots(values []ValueTypeDescriptor) (int, error) {
+	slots := 0
+	for _, value := range values {
+		switch value.Kind {
+		case ValueTypeI32, ValueTypeI64, ValueTypeF32, ValueTypeF64, ValueTypeReference:
+			slots++
+		case ValueTypeV128:
+			slots += 2
+		default:
+			return 0, fmt.Errorf("RV64 rooted signature carrier kind")
+		}
+		if slots > 256 {
+			return 0, fmt.Errorf("RV64 rooted signature physical slot bound")
+		}
+	}
+	return slots, nil
 }
 
 // Count directly from immutable descriptors without allocating ABI slices.
