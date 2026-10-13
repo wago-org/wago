@@ -1426,6 +1426,7 @@ func (a *Asm) NeonUrhaddB(dst, n, m Reg)   { a.neon3(0x6E201400, 1, dst, n, m) }
 func (a *Asm) NeonUrhaddH(dst, n, m Reg)   { a.neon3(0x6E201400, 2, dst, n, m) }
 func (a *Asm) NeonMulH(dst, n, m Reg)      { a.neon3(0x4E209C00, 2, dst, n, m) }
 func (a *Asm) NeonMulS(dst, n, m Reg)      { a.neon3(0x4E209C00, 4, dst, n, m) }
+func (a *Asm) NeonMlaS(dst, n, m Reg)      { a.neon3(0x4E209400, 4, dst, n, m) }
 func (a *Asm) NeonSqrdmulhH(dst, n, m Reg) { a.neon3(0x6E20B400, 2, dst, n, m) }
 func (a *Asm) NeonHaddH(dst, n, m Reg)     { a.neon3(0x4E202800, 2, dst, n, m) }
 func (a *Asm) NeonHaddS(dst, n, m Reg)     { a.neon3(0x4E202800, 4, dst, n, m) }

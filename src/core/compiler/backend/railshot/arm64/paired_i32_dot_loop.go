@@ -142,8 +142,7 @@ func (f *fn) tryPairedI32DotLoop(r *wasm.Reader) (bool, error) {
 		f.a.LdrQ(y, right, off)
 		f.a.NeonAddS(x, x, lb)
 		f.a.NeonAddS(y, y, rb)
-		f.a.NeonMulS(x, x, y)
-		f.a.NeonAddS(into, into, x)
+		f.a.NeonMlaS(into, x, y)
 	}
 	addPair(0, acc)
 	addPair(16, acc1)
