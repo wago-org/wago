@@ -20,6 +20,10 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	if c == nil {
 		return false
 	}
+	memo := c.loadValidateMemo()
+	if memo == nil || !memo.rv64FreshRootedGC || sha256.Sum256(c.code) != memo.rv64FreshRootedGCDigest {
+		return false
+	}
 	if len(c.Types) == 0 || len(c.Types) > railshot.MaxFunctions || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxFunctions ||
 		len(c.FuncTypeID) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions {
 		return false
@@ -29,15 +33,30 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	if structProduct != 0 && !structHelpers || arrayProduct != 0 && !arrayHelpers || !structHelpers && !arrayHelpers ||
 		c.usesGCStructHelpers() != structHelpers || c.usesGCArrayHelpers() != arrayHelpers || c.syncHostSlots < 4 ||
 		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports != 0 || len(c.Imports) != 0 ||
-		len(c.importFuncSigs) != 0 || c.HasTable || c.tableCount() != 0 || c.HasMemory || c.memoryCount() != 0 ||
+		len(c.importFuncSigs) != 0 || c.HasTable || c.tableCount() != 0 || c.memoryCount() > 1 ||
 		len(c.GlobalImports) != 0 || len(c.Globals) != 0 || c.HasStart || len(c.Elems) != 0 ||
 		len(c.passiveElems) != 0 || len(c.Data) != 0 || len(c.PassiveData) != 0 {
 		return false
 	}
-	memo := c.loadValidateMemo()
+	directory := c.memoryDir
+	if directory == nil || len(directory.defs) > 1 || len(directory.exports) != 0 || !directory.exactExports || directory.staged || directory.stagedMemory64 ||
+		len(directory.gcStructGlobals) != 0 || len(directory.gcArrayGlobals) != 0 || directory.gcArrayElement != nil || directory.gcI31TableInit != nil ||
+		len(directory.ehTags) != 0 || len(directory.ehTagExports) != 0 || uint8(len(directory.defs)) != memo.rv64FreshRootedGCMemories {
+		return false
+	}
+	if len(directory.defs) == 1 {
+		memory := directory.defs[0]
+		if !c.HasMemory || memory.ImportKey != "" || memory.Shared || memory.Addr64 || !memory.HasMax || memory.Min > memory.Max || memory.Max > 256 ||
+			uint64(c.MemMinPages) != memory.Min || uint64(c.MemMaxPages) < memory.Min || uint64(c.MemMaxPages) > memory.Max || c.MemHasMax != memory.HasMax || c.memoryImport != memory.ImportKey ||
+			memory.Min != memo.rv64FreshRootedGCMemMin || memory.Max != memo.rv64FreshRootedGCMemMax || c.MemMaxPages != memo.rv64FreshRootedGCReserveMax {
+			return false
+		}
+	} else if c.HasMemory || c.MemMinPages != 0 || c.MemMaxPages != 0 || c.MemHasMax || c.memoryImport != "" ||
+		memo.rv64FreshRootedGCMemMin != 0 || memo.rv64FreshRootedGCMemMax != 0 || memo.rv64FreshRootedGCReserveMax != 0 {
+		return false
+	}
 	roots := c.genericGCFrameRoots()
-	if memo == nil || !memo.rv64FreshRootedGC || sha256.Sum256(c.code) != memo.rv64FreshRootedGCDigest ||
-		roots == nil || len(roots.safepoints) == 0 || len(c.Types) != len(c.GCTypeDescs) {
+	if roots == nil || len(roots.safepoints) == 0 || len(c.Types) != len(c.GCTypeDescs) {
 		return false
 	}
 	if validateCompiledGCFrameRoots(c, roots) != nil {

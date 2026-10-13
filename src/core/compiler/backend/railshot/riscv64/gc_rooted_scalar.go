@@ -18,11 +18,17 @@ const maxRootedScalarArrayFixed = 254
 // authenticated independently by validateGCFrameRootPlans.
 func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	if m == nil || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions ||
-		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 ||
+		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Globals) != 0 ||
 		len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 ||
 		len(m.StringRefs) != 0 || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() ||
 		m.BranchHints != nil || m.UsesCompactImports {
 		return false
+	}
+	if len(m.Memories) == 1 {
+		memory := m.Memories[0]
+		if memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min > memory.Limits.Max || memory.Limits.Max > 256 {
+			return false
+		}
 	}
 	for i := range m.Exports {
 		if m.Exports[i].Index.Kind != wasm.ExternFunc {
@@ -152,12 +158,14 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 	if len(data) < 8 || len(data) > MaxModuleBytes || !bytes.Equal(data[:8], []byte{0, 'a', 's', 'm', 1, 0, 0, 0}) {
 		return false
 	}
-	want := [...]byte{1, 3, 7, 10}
 	r := wasm.ReaderFrom(data[8:])
-	section := 0
+	const required = uint16(1<<1 | 1<<3 | 1<<7 | 1<<10)
+	const allowed = required | 1<<5
+	var seen uint16
+	var previous byte
 	for r.HasNext() {
 		id, err := r.Byte()
-		if err != nil || section >= len(want) || id != want[section] {
+		if err != nil || id > 10 || allowed&(1<<id) == 0 || seen&(1<<id) != 0 || id <= previous {
 			return false
 		}
 		n, err := r.U32()
@@ -181,9 +189,10 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 		if err := r.JumpTo(end); err != nil {
 			return false
 		}
-		section++
+		seen |= 1 << id
+		previous = id
 	}
-	if section != len(want) {
+	if seen&required != required {
 		return false
 	}
 	m, err := wasm.DecodeModule(data)

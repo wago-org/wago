@@ -1099,6 +1099,124 @@ func TestRV64RootedAbstractReferenceAdmissionFailsClosed(t *testing.T) {
 	}
 }
 
+func rootedScalarMemoryModule(grow bool) []byte {
+	results := []wasm.ValType{wasm.I32, wasm.I32}
+	if grow {
+		results = append(results, wasm.I32, wasm.I32)
+	}
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, results),
+	}
+	body := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x41, 0x10, 0x41, 0xe4, 0x00, 0x36, 0x02, 0x00,
+		0x41, 0x10, 0x28, 0x02, 0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0x3f, 0x00,
+	}
+	if grow {
+		body = append(body, 0x41, 0x01, 0x40, 0x00, 0x3f, 0x00)
+	}
+	body = append(body, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedScalarMemoryExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.memoryCount() != 1 || !view.HasMemory || view.memoryDef(0).Min != 1 || view.memoryDef(0).Max != 2 {
+		t.Fatal("generic rooted memory receipt is missing")
+	}
+	candidate := cloneCompiledMetadata(view)
+	directory := *candidate.memoryDir
+	directory.defs = slices.Clone(candidate.memoryDir.defs)
+	candidate.memoryDir = &directory
+	candidate.memoryDir.defs[0].Max = 257
+	if rv64FreshRootedGC(candidate) {
+		t.Fatal("oversized rooted memory retained the generic receipt")
+	}
+	if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+		t.Fatalf("oversized rooted memory validation=%v", err)
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"cached-min":        func(candidate *Compiled) { candidate.MemMinPages = 0 },
+		"cached-max":        func(candidate *Compiled) { candidate.MemMaxPages = 1 },
+		"cached-has-max":    func(candidate *Compiled) { candidate.MemHasMax = false },
+		"missing-directory": func(candidate *Compiled) { candidate.memoryDir = nil },
+		"declared-max": func(candidate *Compiled) {
+			directory := *candidate.memoryDir
+			directory.defs = slices.Clone(directory.defs)
+			candidate.memoryDir = &directory
+			candidate.memoryDir.defs[0].Max = 3
+		},
+		"declared-min-and-cache": func(candidate *Compiled) {
+			directory := *candidate.memoryDir
+			directory.defs = slices.Clone(directory.defs)
+			candidate.memoryDir = &directory
+			candidate.memoryDir.defs[0].Min = 0
+			candidate.MemMinPages = 0
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("incoherent primary memory metadata retained the generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("incoherent primary memory metadata validation=%v", err)
+			}
+		})
+	}
+	for _, gc := range []GCConfig{{}, {CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}} {
+		instance, err := Instantiate(compiled, InstantiateOptions{GC: gc})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []uint64{142, 1, 1, 2}
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, want) {
+			_ = instance.Close()
+			t.Fatalf("run()=%v err=%v want=%v", got, err, want)
+		}
+		if err = instance.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestRV64RootedScalarPinnedMemoryExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.MemMinPages != 1 || view.MemMaxPages != 1 || !view.MemHasMax || view.memoryDef(0).Max != 2 {
+		t.Fatal("pinned generic rooted memory receipt is missing")
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{142, 1}) {
+		t.Fatalf("run()=%v err=%v want=[142 1]", got, err)
+	}
+}
+
 func rootedScalarBoundaryStructModule(fieldCount int) []byte {
 	fields := []byte{0x5f}
 	fields = append(fields, wasmtest.ULEB(uint32(fieldCount))...)

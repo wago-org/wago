@@ -1717,6 +1717,14 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if compiledArchitecture == 4 && genericGCExecution && validGCFrameRoots {
 		compiled.validateMemo.rv64FreshRootedGC = true
 		compiled.validateMemo.rv64FreshRootedGCDigest = sha256.Sum256(compiled.code)
+		compiled.validateMemo.rv64FreshRootedGCReserveMax = compiled.MemMaxPages
+		if directory := compiled.memoryDir; directory != nil {
+			compiled.validateMemo.rv64FreshRootedGCMemories = uint8(len(directory.defs))
+			if len(directory.defs) == 1 {
+				compiled.validateMemo.rv64FreshRootedGCMemMin = directory.defs[0].Min
+				compiled.validateMemo.rv64FreshRootedGCMemMax = directory.defs[0].Max
+			}
+		}
 	}
 	return publishCompilerCompiled(compiled)
 }
