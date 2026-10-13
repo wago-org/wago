@@ -1745,3 +1745,70 @@ Tracked `docs/benchmarks/wasm3-2026-10-12/simd-load-extract-results.json`
 records exact source fingerprints, per-process medians, compile costs and raw
 evidence hashes. Remaining unchecked-peer gaps, proposal compositions and
 feature-by-feature parity still need work.
+
+## Operand residency through straight-line blocks
+
+`96cbe746` adds controllable `straight-line-block` to both native backends. A
+bounded allocation-free scan proves at most 31 ordinary instructions followed
+by `end`, within 128 bytes. It rejects nested control, branches, calls, growth,
+GC operations and atomics, and applies only to reachable zero-parameter blocks
+with zero or one numeric/vector result, outside EH/GC/custom instruction paths.
+The compiler keeps the control frame and its stack-height contract, while
+omitting entry/exit reconciliation because there are no alternative edges.
+A distinct unused block-site sentinel records this proof without expanding
+control frames or changing packed flags. Ordinary lowering and opcode tracking
+remain in place for the block body.
+
+The emitted SIMD loop loses the accumulator store/reload pair and result move.
+Tests verify older local and memory snapshots, stores before/after division
+traps, detached operands around enclosing if arms, both ABIs, original/codec
+products, shared/unshared memory and explicit/signal-based bounds configurations.
+The per-compile override and bounded proof rejection cases are covered. One old
+backend fixture declared a void block that left an i32 result; it now declares
+that result correctly and retains its canonical-address/high-bit assertions.
+Native guarded race and broader tests pass on ARM64/AMD64. Pinned Core 3 passes
+2,226 modules/58,238 assertions and official threads passes 51 modules/312
+assertions on each architecture. ARM64 full statistics retains the same 44
+parent failure names. AMD64's packed-control-field assertions also pass.
+
+Fresh production measurements again use eight identical contracts, interleaved
+three processes per profile, two warmups and five verified >=50 ms batches per
+process. All 104 rows pass their independent oracle and duration qualification.
+
+| Contract | Wago 9914eafb ns | Wago 96cbe746 ns | Checked w2c2 ns | Unchecked w2c2 ns |
+| --- | ---: | ---: | ---: | ---: |
+| Ordinary load/store | 139,226 | 101,525 | 2,178,125 | 101,923 |
+| SIMD load/store | 148,869 | 145,473 | 1,596,325 | 107,959 |
+| Bulk fill | 284,509 | 280,108 | 1,913,582 | 188,560 |
+| Atomic load/store | 151,105 | 149,992 | 2,176,960 | 167,115 |
+| Atomic RMW add | 261,743 | 260,034 | 2,190,333 | 224,139 |
+| Compare exchange | 300,306 | 297,084 | 2,192,777 | 281,325 |
+| Wait mismatch + notify | 639,699 | 643,779 | 5,462,938 | 1,945,324 |
+| Fence | 155.60 | 158.05 | 291.27 | 291.24 |
+
+Ordinary improves 27.08% and reaches measured parity for this contract:
+current/unchecked is 0.996x. SIMD improves 2.28%, but its ratio remains 1.347x.
+SIMD unchecked-peer process medians vary 105,049/129,185/107,959 ns, despite
+low within-process CV, so the report preserves that variation. One checked SIMD
+process has CV 0.1575. Small before/after changes on the other contracts carry
+no significance claim. Remaining SIMD/bulk/RMW/CAS gaps and other contracts
+still require work; this comparison does not establish feature-wide parity.
+
+All compile captures use production binaries, GOMAXPROCS=1, alternating
+revisions, and no overlapping builds/tests/performance captures. The initial
+three-process Core 3 cohort measures 409.752 -> 421.014 ms (+2.75%) for 21,800
+compiles, with unchanged code/allocations. A separate six-process-per-revision
+repeat measures 398.177 -> 404.267 ms (+1.53%), allocations 776,898,208 ->
+776,898,768 (effectively unchanged), retired instructions +0.55%, and peak RSS
+14,032,896 -> 14,172,160 (+0.99%). Both cohorts remain in the report.
+Threads' 2,700 compiles measure 48.351 -> 48.601 ms (+0.52%), allocation bytes
+85,487,144 -> 85,410,328 (-0.09%), code 1,641,600 -> 1,638,400 (-0.19%), and
+peak RSS 12,779,520 -> 12,845,056 (+0.51%). Scalar/Core 3 scalar/imported-worker
+compile medians change -1.93%/-0.29%/-0.18%, with unchanged allocation counts.
+
+Tracked `docs/benchmarks/wasm3-2026-10-12/straight-block-results.json` retains
+source fingerprints, process medians, both compile cohorts and evidence hashes,
+including before/after emitted loops. SIMD still recomputes the address and
+uses an extra instruction for lane displacement. General address reuse and
+encoding improvements are the next candidates, retaining actual shared loads
+and full original bounds/traps. Overall feature-by-feature parity remains open.

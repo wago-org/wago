@@ -376,3 +376,29 @@ Alternating production compile measurements show Core 3 latency +0.27%,
 threads latency -0.11%, essentially unchanged allocations, and peak RSS
 -0.35%/+2.08%. The tracked `simd-load-extract-results.json` report preserves
 revision/source fingerprints, process medians, compile costs and evidence hashes.
+
+### Straight-line block operand residency
+
+`96cbe746` keeps operands resident through small blocks proven to contain no
+branches, nested control or calls. The bounded scan leaves the control frame
+and stack-height contract intact and adds no fields or packed flags. Older
+local/memory snapshots, trap ordering and enclosing-if operands are covered
+with both ABIs, codec products and guard configurations. Both architectures
+pass native guarded race tests, pinned Core 3 (2,226 modules/58,238 assertions)
+and official threads (51 modules/312 assertions); ARM64 retains the same 44
+known statistics failures. A malformed old block fixture now declares its
+actual i32 result, preserving all canonical-address checks.
+
+Fresh wasm.fyi measurements show ordinary shared load/store improving 27.08%,
+from 139,226 to 101,525 ns, versus unchecked w2c2 at 101,923 ns. This contract
+reaches measured parity (0.996x); SIMD still trails by 1.347x, bulk by 1.486x,
+RMW by 1.160x and CAS by 1.056x. The SIMD peer shows substantial inter-process
+variation, retained in the report. These results do not prove feature-wide parity.
+
+Core 3 compile latency is +2.75% in the initial three-process cohort and +1.53%
+in a separate six-process repeat; the latter shows essentially unchanged
+allocations and peak RSS +0.99%. Threads latency is +0.52%, allocation bytes
+-0.09%, code bytes -0.19% and peak RSS +0.51%. The tracked
+`straight-block-results.json` preserves both cohorts and emitted-loop hashes.
+General address reuse is the next SIMD candidate; broader compositions and
+feature-by-feature parity remain open.
