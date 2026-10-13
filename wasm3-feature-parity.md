@@ -776,3 +776,40 @@ all 27 performance/rejection rows, all nine correctness checks, original failure
 evidence, image hashes, source recipes, compile captures and full conformance
 output in `compact-import-results.json`. This closes the missing compact-import
 corpus coverage while leaving its peer comparison and host-call gap unresolved.
+
+### ARM64 native leaves shared by aliased host imports
+
+`3c8b9b52` removes the compile-only single-import restriction on native scalar
+leaf candidates. Instance admission permits multiple cells only when every
+binding has the same typed i32 shape and callback code, no plugin gates or GC
+domains, and the independent runtime body proof admits straight-line arithmetic
+with no closure, receiver, memory or Go state reads. One existing instance-owned
+native leaf is shared across those cells. Different bodies, captured state and
+effectful callbacks retain Go dispatch. No persistent compiler/ABI fields are
+added. Single-import admission avoids reflection; bounded native entry still
+requires the stricter single-import proof, and native aliases retain syscall
+scheduling rather than treating callbacks as Go safe points.
+
+The eight-import ordinary control improves 20,454,833 -> 1,063,738 ns (19.23x),
+versus unchecked w2c2 296,750 ns (3.585x). Actual compact module/type groups
+improve to 1,076,354/1,071,151 ns, but the peer still rejects their wire encodings.
+The single-import thread identity control remains 610,460 -> 609,475 ns. The
+initial opaque-control capture changes +3.78%; an alternating three-process
+confirmation changes +0.64%, retaining both cohorts rather than claiming a
+regression or gain. Ordinary-control compiled native images are byte-identical
+at 1,184 bytes: the gain comes from per-instance dispatch binding.
+
+Regression tests cover signed/wrapping values, optimization rollback, artifact
+reload fallback, mixed callbacks, identical-code closures with different captured
+values, retained owned references, and GC progress/cancellation with one Go P.
+Guarded race and pinned Core 3/threads conformance pass. AMD64 public tests
+cross-compile; this lowering remains ARM64-only, and recent shared changes still
+need native hub validation. Full backend statistics were not rerun.
+
+Core 3 compile latency changes +1.32%, with effectively unchanged allocations
+and identical code totals. Threads changes +4.78% in the initial three-process
+cohort and -1.27% in a targeted alternating follow-up; the combined six-process
+median changes +2.87%, with unchanged allocations/code. `leaf-alias-results.json`
+retains all 45 primary performance rows, six opaque-confirmation rows, both
+compile cohorts, native image hashes and full conformance output. The remaining
+3.58x alias-call gap, opaque callback gap and full feature parity remain open.
