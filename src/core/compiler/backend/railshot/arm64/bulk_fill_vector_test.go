@@ -29,6 +29,13 @@ func TestBulkFillVectorSelection(t *testing.T) {
 			if enabled && n >= 16 && n <= 64 {
 				want = 1
 			}
+			tailWant := 0
+			if want == 1 && n%16 == 1 {
+				tailWant = 1
+			}
+			if got := stats.Funcs[0].Peephole["memfill-byte-tail"]; got != tailWant {
+				t.Fatalf("n=%d enabled=%t tail=%d want=%d", n, enabled, got, tailWant)
+			}
 			if got := stats.Funcs[0].Peephole["memfill-vector"]; got != want {
 				t.Fatalf("n=%d enabled=%t got=%d want=%d", n, enabled, got, want)
 			}
