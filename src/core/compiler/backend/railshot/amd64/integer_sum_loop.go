@@ -17,7 +17,7 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	if p.SignedBits != 0 {
+	if p.SignedBits != 0 || p.PopulationCount {
 		return false, nil
 	}
 	typ := mtI32

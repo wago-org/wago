@@ -8,7 +8,8 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // calls, traps, imported global writes and fences reject these proofs. The backend separately proves that Counter starts at zero.
 // The do-while body sums Coefficient*i+Constant, or the runtime global value,
 // or an affine term in the current value of the additive recurrence;
-// it leaves Counter=max(1,Bound).
+// A PopulationCount term instead sums the counter's set bits, optionally
+// after constant rotations. Every proof leaves Counter=max(1,Bound).
 // Fences may be coalesced because no memory access, call, trap or escape lies
 // between them. The replacement must still emit one fence when Fenced is true.
 type IntegerSumLoop struct {
@@ -26,6 +27,7 @@ type IntegerSumLoop struct {
 	Periodic                      bool
 	SignedBits                    uint8
 	NegativeCount                 bool
+	PopulationCount               bool
 	EvenCoefficient, EvenConstant uint64
 	OddCoefficient, OddConstant   uint64
 	GlobalWrites                  [4]IntegerAffineGlobalWrite
@@ -112,9 +114,14 @@ func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module, al
 		r = termStart
 		term, ok = inspectIntegerSignedTerm(&r)
 	}
+	if !ok && blockType == 0 {
+		r = termStart
+		term, ok = inspectIntegerPopcountTerm(&r)
+	}
 	if !ok {
 		return p, false
 	}
+	p.PopulationCount = term.populationCount
 	p.Coefficient, p.Constant, p.Calls = term.coefficient, term.constant, term.calls
 	p.InvariantGlobal, p.Global = term.hasGlobal, term.global
 	p.GlobalRecurrence, p.GlobalCoefficient = term.recurrence, term.globalCoefficient

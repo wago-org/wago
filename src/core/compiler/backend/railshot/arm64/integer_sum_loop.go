@@ -17,7 +17,7 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	if p.SignedBits != 0 {
+	if p.SignedBits != 0 || p.PopulationCount {
 		available := 0
 		blocked := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
 		for _, reg := range gpAlloc {
@@ -26,7 +26,7 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 			}
 		}
 		// Leave room for counter materialization and up to two new regional pins
-		// as well as the eight arithmetic scratch registers. Pressure falls back.
+		// as well as up to eight arithmetic scratch registers. Pressure falls back.
 		if available < 11 {
 			return false, nil
 		}
@@ -89,6 +89,9 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	}
 	if p.SignedBits != 0 {
 		return f.emitIntegerSignedSum(p, typ, get)
+	}
+	if p.PopulationCount {
+		return f.emitIntegerPopcountSum(p, typ, get)
 	}
 	// T(n)=floor(n/2)*(n-1+(n&1)). Dividing a factor before multiplying
 	// preserves the complete modulo-2^32/2^64 result, including unsigned extrema.

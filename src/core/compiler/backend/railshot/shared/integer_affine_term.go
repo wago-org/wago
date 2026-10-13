@@ -27,6 +27,7 @@ type integerAffineTerm struct {
 	incrementConstant      uint64
 	signedBits             uint8
 	negativeCount          bool
+	populationCount        bool
 }
 
 // inspectIntegerAffineTerm evaluates a bounded pure postfix expression as A*i+B
