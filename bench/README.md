@@ -5,6 +5,9 @@ and artifacts live in the repository-level `corpus` directory. The benchmark
 module is deliberately separate from the runtime module so comparison-engine
 dependencies do not become runtime dependencies.
 
+See [prepared semantic adapter checks](semantic-adapter-schedule.md) for
+correctness tests of the Wago and wazero argument schedules.
+
 Run benchmarks from the repository root through `just`:
 
 ```sh
