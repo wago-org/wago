@@ -452,8 +452,8 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 // Collector-reference copies retain the exact source heap type. The compact
 // ValType carrier alone cannot prove the WebAssembly reference-subtyping rule.
 func rv64InitializerReferenceGlobal(c *Compiled, index int, required ValueTypeDescriptor, limit int) bool {
-	if c == nil || index < 0 || index < len(c.GlobalImports) || index >= limit || index >= len(c.Globals) ||
-		!c.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions) {
+	if c == nil || index < 0 || index >= limit || index >= len(c.Globals) ||
+		index >= len(c.GlobalImports) && !c.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions) {
 		return false
 	}
 	source := &c.Globals[index]

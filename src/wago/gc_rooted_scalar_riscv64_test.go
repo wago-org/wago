@@ -5524,6 +5524,30 @@ func rootedScalarSharedGlobalConsumerModule(mutable bool) []byte {
 	)
 }
 
+func rootedScalarImportedGlobalCopyModule() []byte {
+	globalImport := append(append(wasmtest.Name("provider"), wasmtest.Name("g")...), byte(wasm.ExternGlobal), 0x63, 0x00, 0x00)
+	body := []byte{
+		0x00,
+		0x41, 0x09, 0xfb, 0x00, 0x00, 0x1a,
+		0x23, 0x01, 0xd4, 0xfb, 0x02, 0x00, 0x00,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(globalImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0x00, 0x00, 0x23, 0x00, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("copy", byte(wasm.ExternGlobal), 1),
+			wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func TestRV64RootedSharedReferenceGlobalImports(t *testing.T) {
 	for _, mutable := range []bool{false, true} {
 		t.Run(map[bool]string{false: "immutable", true: "mutable"}[mutable], func(t *testing.T) {
@@ -5615,6 +5639,83 @@ func TestRV64RootedSharedReferenceGlobalImports(t *testing.T) {
 						t.Fatal(err)
 					}
 				})
+			}
+		})
+	}
+}
+
+func TestRV64RootedImportedReferenceGlobalInitializer(t *testing.T) {
+	providerSource := rootedScalarSharedGlobalProviderModule(false)
+	consumerSource := rootedScalarImportedGlobalCopyModule()
+	if !railshot.AdmitGCRootedScalarSource(providerSource) || !railshot.AdmitGCRootedScalarSource(consumerSource) {
+		t.Fatal("imported collector-reference global initializer was not source-admitted")
+	}
+	consumerModule, err := wasm.DecodeModule(consumerSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootDiagnostic string
+	if plan := newGCFrameRootPlan(consumerModule, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
+		t.Fatalf("imported collector-reference initializer root plan=%v diagnostic=%q", plan, rootDiagnostic)
+	}
+	providerBase, err := Compile(rv64RootedScalarConfig(), providerSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer providerBase.Close()
+	consumerBase, err := Compile(rv64RootedScalarConfig(), consumerSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumerBase.Close()
+	view := consumerBase.executionView()
+	if !rv64FreshRootedGC(view) || len(view.GlobalImports) != 1 || len(view.Globals) != 2 || !view.Globals[1].HasInitGlobal || view.Globals[1].InitGlobal != 0 {
+		t.Fatalf("imported global initializer receipt=%t imports=%d globals=%#v validation=%v", rv64FreshRootedGC(view), len(view.GlobalImports), view.Globals, railshotValidateCompiled(view))
+	}
+	if compiledStructuralRequiredFeatures(view).IsEnabled(CoreFeatureExtendedConstExpressions) {
+		t.Fatal("imported global initializer unexpectedly requires Extended Const Expressions")
+	}
+
+	for _, artifact := range []bool{false, true} {
+		t.Run(map[bool]string{false: "compiled", true: "artifact"}[artifact], func(t *testing.T) {
+			providerCode, consumerCode := providerBase, consumerBase
+			if artifact {
+				providerCode = publicArtifactRoundTrip(t, providerBase)
+				consumerCode = publicArtifactRoundTrip(t, consumerBase)
+				defer providerCode.Close()
+				defer consumerCode.Close()
+			}
+			store := newReferenceStore(false)
+			defer store.closeRuntime()
+			gcConfig := GCConfig{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}
+			provider, err := instantiateCore(providerCode, InstantiateOptions{GC: gcConfig, store: store})
+			if err != nil {
+				t.Fatal(err)
+			}
+			global, err := provider.ExportedGlobalObject("g")
+			if err != nil {
+				_ = provider.Close()
+				t.Fatal(err)
+			}
+			consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.g", global)})
+			if err != nil {
+				_ = provider.Close()
+				t.Fatal(err)
+			}
+			if got, callErr := consumer.Invoke("read"); callErr != nil || !slices.Equal(got, []uint64{42}) {
+				t.Fatalf("copied imported global read=%v err=%v", got, callErr)
+			}
+			if err := provider.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := consumer.CollectGC(); err != nil {
+				t.Fatal(err)
+			}
+			if got, callErr := consumer.Invoke("read"); callErr != nil || !slices.Equal(got, []uint64{42}) {
+				t.Fatalf("copied global after provider close=%v err=%v", got, callErr)
+			}
+			if err := consumer.Close(); err != nil {
+				t.Fatal(err)
 			}
 		})
 	}
