@@ -16,7 +16,9 @@ JavaScript host profiles and zero failures. w2c2 passes 67, rejects 26 as unsupp
 and fails 22 during translation or guest execution. The 67 successful pairs use
 identical bytecode and qualified durations; rejected/failed contracts have no
 numeric comparison. Four wide-arithmetic contracts pass in Wago but remain
-unsupported by the peer. Compact imports are still absent from this corpus.
+unsupported by the peer. Compact imports were absent from this snapshot; the
+later source-built coverage exposed and repaired decoder errors (see
+[the compact checkpoint](wasm3-feature-parity.md#source-built-compact-imports-reveal-and-repair-decoder-errors)).
 Four lifecycle probes and nine compilation probes remain separate from these
 execution measurements. The cancelled Go JSPI/CSP analogues have not been added.
 

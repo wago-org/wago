@@ -736,3 +736,43 @@ pair; compact imports remain absent. Full feature and native AMD64 parity remain
 open. No compiler changes or new compile-regression claims are made by this
 report-only refresh; the latest production cost evidence remains in
 `simd-affine-results.json`.
+
+### Source-built compact imports reveal and repair decoder errors
+
+wasm.fyi `78f4c4b` adds both proposal encodings and an ordinary-import control,
+with eight repeated identity imports and calls to the first and last expanded
+function indices. Wire tests check the actual 0x7f/0x7e group bytes; independent
+arithmetic oracles cover sizes 1, 64 and 4096. All artifacts reproduce byte-for-byte
+with pinned wasm-tools 1.260.0.
+
+The initial Wago run rejected both grouped forms. Earlier hand-built tests had
+used the expanded import count instead of the outer encoded-group count, and
+shared only an external kind rather than the complete external type. `7228b4b1`
+corrects both decoder rules, bounds expansion by input bytes and metadata budget,
+and updates those tests. Mixed/empty groups, shared memory types, public feature
+admission, native code equivalence and codec reload pass. Older native compact
+checks used the incorrect hand-built encoding and do not validate this fix.
+
+Pinned WABT 1.0.41 also produces a malformed group count when --enable-all
+compacts ordinary imports; wasm-tools independently rejects that output. Core 3
+conformance now explicitly enables only Core 3 producer features through
+`spectest.Release3WABTFlags`, excluding experimental compact encodings. Core 3
+again passes 2,226 modules/58,238 assertions with zero failures/skips/gaps, and
+threads passes. Full decoder tests and the guarded-build race test (explicit
+bounds for serializable artifacts) pass. The final AMD64 public test binary
+cross-compiles; native execution remains pending hub access.
+
+All nine small contracts and all three performance contracts pass in Wago.
+The three actual adapter native images are byte-identical, each 940 bytes.
+Three-process execution medians are 20,845,056 ns for module groups, 21,083,778 ns
+for type groups and 21,076,320 ns for ordinary imports. V8 and w2c2 reject both
+grouped encodings. The ordinary control is 298,882 ns in w2c2 (70.52x Wago/peer),
+exposing a separate multiple-import identity host-call gap; it is not a compact
+peer comparison. Full feature parity remains open.
+
+Alternating Core 3/threads compile captures change latency +2.99%/+2.32%, with
+effectively unchanged allocations and identical code totals. The report retains
+all 27 performance/rejection rows, all nine correctness checks, original failure
+evidence, image hashes, source recipes, compile captures and full conformance
+output in `compact-import-results.json`. This closes the missing compact-import
+corpus coverage while leaving its peer comparison and host-call gap unresolved.
