@@ -160,6 +160,10 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	return f.globalSetIndex(x)
+}
+
+func (f *fn) globalSetIndex(x uint32) error {
 	f.invalidateBoundsCertFor(2, x)
 	gt, ok := f.globalType(x)
 	if !ok {

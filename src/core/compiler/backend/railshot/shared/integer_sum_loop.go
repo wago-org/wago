@@ -2,9 +2,10 @@ package shared
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
-// IntegerSumLoop proves a side-effect-free, unsigned, unit-stride induction
-// reduction of an affine integer term or a global getter. The backend
-// separately proves that Counter starts at zero.
+// IntegerSumLoop proves an unsigned unit-stride integer reduction.
+// A bounded same-iteration assignment block can also publish final values to
+// defined globals; effectful calls, traps, imported global writes and fences
+// reject it. The backend separately proves that Counter starts at zero.
 // The do-while body sums Coefficient*i+Constant, or the runtime global value,
 // and leaves Counter=max(1,Bound).
 // Fences may be coalesced because no memory access, call, trap or escape lies
@@ -17,6 +18,8 @@ type IntegerSumLoop struct {
 	InvariantGlobal             bool
 	Global                      uint32
 	Coefficient, Constant       uint64
+	GlobalWrites                [4]IntegerAffineGlobalWrite
+	GlobalWriteCount            uint8
 }
 
 // InspectIntegerSumLoop does not advance the source reader on either outcome.
@@ -79,8 +82,9 @@ func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module, al
 	}
 	p.Coefficient, p.Constant, p.Calls = term.coefficient, term.constant, term.calls
 	p.InvariantGlobal, p.Global = term.hasGlobal, term.global
+	p.GlobalWrites, p.GlobalWriteCount = term.writes, term.writeCount
 	// Preserve the existing fence proof: no memory reads between fences.
-	if p.InvariantGlobal && p.Fenced {
+	if (p.InvariantGlobal || p.GlobalWriteCount != 0) && p.Fenced {
 		return p, false
 	}
 	if blockType != 0 && !byteIs(0x0b) {

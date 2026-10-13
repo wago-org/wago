@@ -5,12 +5,21 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+// IntegerAffineGlobalWrite records a final defined-global value A*i+B.
+// Imported globals are excluded because separate indices can alias one cell.
+type IntegerAffineGlobalWrite struct {
+	Index                 uint32
+	Coefficient, Constant uint64
+}
+
 type integerAffineTerm struct {
 	coefficient, constant  uint64
 	width                  int
 	variable, global       uint32
 	hasVariable, hasGlobal bool
 	calls                  uint8
+	writes                 [4]IntegerAffineGlobalWrite
+	writeCount             uint8
 }
 
 // inspectIntegerAffineTerm evaluates a bounded pure postfix expression as A*i+B
@@ -166,6 +175,66 @@ func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *was
 			out.variable, out.hasVariable = x, true
 			stack[depth] = affineValue{coefficient: 1}
 			depth++
+		case 0x23: // Only forward a value assigned earlier in this same iteration.
+			x, err := r.U32()
+			if err != nil || depth == len(stack) {
+				return out, false
+			}
+			found := false
+			for j := uint8(0); j < out.writeCount; j++ {
+				w := out.writes[j]
+				if w.Index == x {
+					stack[depth] = affineValue{coefficient: w.Coefficient, constant: w.Constant}
+					depth++
+					found = true
+					break
+				}
+			}
+			if !found {
+				return out, false
+			}
+		case 0x24:
+			if !blocked || module == nil || depth == 0 || stack[depth-1].floatSign != 0 || stack[depth-1].vectorWidth != 0 {
+				return out, false
+			}
+			x, err := r.U32()
+			if err != nil || uint64(x) < uint64(module.ImportedGlobalCount()) {
+				return out, false
+			}
+			gt, ok := module.GlobalTypeByIndex(x)
+			if !ok || !gt.Mutable {
+				return out, false
+			}
+			width := 0
+			if wasm.EqualValType(wasm.GlobalValueType(gt), wasm.I32) {
+				width = 4
+			} else if wasm.EqualValType(wasm.GlobalValueType(gt), wasm.I64) {
+				width = 8
+			}
+			if width == 0 || !setWidth(width) {
+				return out, false
+			}
+			slot := out.writeCount
+			for j := uint8(0); j < out.writeCount; j++ {
+				if out.writes[j].Index == x {
+					slot = j
+					break
+				}
+			}
+			if int(slot) == len(out.writes) {
+				return out, false
+			}
+			a := stack[depth-1]
+			depth--
+			if width == 4 {
+				a.coefficient = uint64(uint32(a.coefficient))
+				a.constant = uint64(uint32(a.constant))
+			}
+			out.writes[slot] = IntegerAffineGlobalWrite{Index: x, Coefficient: a.coefficient, Constant: a.constant}
+			if slot == out.writeCount {
+				out.writeCount++
+			}
+
 		case 0x43, 0x44:
 			if depth == len(stack) {
 				return out, false

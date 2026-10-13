@@ -114,6 +114,30 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	f.pushUnOp(opEqz, typ)
 	f.emitSelect()
 	f.setLocal(nil, int(p.Counter), false)
+	// Publish every final global through canonical setters. All reads in the
+	// original body were dominated by same-iteration writes; no prior global
+	// value or aliased imported cell participates in this proof.
+	for i := uint8(0); i < p.GlobalWriteCount; i++ {
+		w := p.GlobalWrites[i]
+		get(p.Counter)
+		one()
+		f.pushBinOp(opSub, typ)
+		if w.Coefficient != 1 {
+			f.pushValue(storage{kind: stConst, typ: typ, cval: int64(w.Coefficient)})
+			f.pushBinOp(opMul, typ)
+		}
+		if w.Constant != 0 {
+			f.pushValue(storage{kind: stConst, typ: typ, cval: int64(w.Constant)})
+			f.pushBinOp(opAdd, typ)
+		}
+		if err := f.globalSetIndex(w.Index); err != nil {
+			return false, err
+		}
+	}
+	if p.GlobalWriteCount != 0 {
+		f.stats.peep("integer-sum-global-writes")
+	}
+
 	for _, x := range []uint32{p.Counter, p.Accumulator} {
 		if x < 64 {
 			f.localWritten |= uint64(1) << x
