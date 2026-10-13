@@ -39,10 +39,13 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   in the common scalar store path and during second-input preparation in `fbin`
   and `fbinInto`.
 - Simplify scalar floating self-comparisons with full-width booleans and no GP temporary.
-  Fuse ARM64 scalar float comparisons into immediate branches and integer selections,
-  including boolean inversion, without materializing an intermediate integer boolean.
+  Fuse ARM64 and Linux AMD64 scalar float comparisons into immediate branches and
+  integer selections, including boolean inversion, without materializing an intermediate
+  integer boolean.
   Write ARM64 scalar abs/neg local assignments directly with native instructions,
   and lower copysign to one sign mask plus bitwise select, preserving NaN payloads.
+  Write AMD64 scalar abs/neg/copysign local assignments directly, avoiding result
+  copies, and simplify copysign with identical inputs without altering signaling NaNs.
 
 - Prepare native reservations only when the active backend has a matching
   consumer, avoiding unused ARM64 live-struct and large-array batches. Retain

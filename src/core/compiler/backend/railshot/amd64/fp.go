@@ -646,26 +646,39 @@ func (f *fn) fsqrt(f64 bool) {
 	f.pushFReg(dst, mtOf2(f64))
 }
 
-// fsign applies a sign/magnitude bit op (neg = xorps sign; abs = andps magnitude)
-// via the 3-operand VEX form so a borrowed pinned-local operand is read directly
-// (dst = src <op> mask) instead of copied into the destination first.
-func (f *fn) fsign(op byte, mask64 uint64, mask32 uint32, f64 bool) {
+// fsignInto can write an immediate local assignment directly, eliminating the
+// result copy. Both the AVX three-operand and SSE2 paths preserve source bits.
+func (f *fn) fsignInto(dst Reg, op byte, mask64 uint64, mask32 uint32, f64 bool) Reg {
+	saved := f.fpinned
+	if dst != regNone {
+		f.fpinned = f.fpinned.add(dst)
+	}
 	src, owned := f.operandRegF(f.popValue())
 	f.fpinned = f.fpinned.add(src)
 	m := f.allocFReg(0)
+	f.fpinned = f.fpinned.add(m)
 	f.loadFMask(m, mask64, mask32, f64)
-	f.fpinned = f.fpinned.remove(src)
-	dst := src
-	if !owned { // borrowed pinned local: write a fresh dest, leave the local intact
-		dst = f.allocFReg(maskOf(src, m))
+	if dst == regNone {
+		dst = src
+		if !owned {
+			dst = f.allocFReg(maskOf(src, m))
+		}
 	}
-	var pp byte // VEX pp: 66 (pd) for f64, none (ps) for f32
+	var pp byte
 	if f64 {
 		pp = 0b01
 	}
 	f.scalarLogic(pp, op, dst, src, m)
+	f.fpinned = saved
 	f.releaseF(m)
-	f.pushFReg(dst, mtOf2(f64))
+	if owned && dst != src {
+		f.releaseF(src)
+	}
+	return dst
+}
+
+func (f *fn) fsign(op byte, mask64 uint64, mask32 uint32, f64 bool) {
+	f.pushFReg(f.fsignInto(regNone, op, mask64, mask32, f64), mtOf2(f64))
 }
 
 func (f *fn) fneg(f64 bool) { f.fsign(0x57, fSignMask64, fSignMask32, f64) }
@@ -688,17 +701,41 @@ func (f *fn) fround(f64 bool, mode byte) {
 //
 // Select the form that can reuse an owned operand. The VEX three-operand
 // sequence also reads pinned float locals directly instead of copying both.
-func (f *fn) fcopysign(f64 bool) {
+func (f *fn) fcopysignInto(dst Reg, f64 bool) Reg {
 	b := f.popValue()
 	a := f.popValue()
+	saved := f.fpinned
+	if dst != regNone {
+		f.fpinned = f.fpinned.add(dst)
+	}
 	xa, xaOwned := f.operandRegF(a)
 	f.fpinned = f.fpinned.add(xa)
 	xb, xbOwned := f.operandRegF(b)
 	f.fpinned = f.fpinned.add(xb)
 
-	dst := regNone
+	// The last XOR must read an original operand that the destination did
+	// not overwrite. Equal inputs are an identity, including signaling NaNs.
+	if xa == xb {
+		if dst == regNone {
+			dst = xa
+			if !xaOwned && !xbOwned {
+				dst = f.allocFReg(maskOf(xa))
+			}
+		}
+		if dst != xa {
+			f.a.FMov(dst, xa, f64)
+		}
+		f.fpinned = saved
+		if (xaOwned || xbOwned) && dst != xa {
+			f.releaseF(xa)
+		}
+		f.stats.peep("float-copysign-self")
+		return dst
+	}
 	useMagnitude := false
 	switch {
+	case dst != regNone:
+		useMagnitude = dst == xa
 	case xbOwned:
 		dst = xb // preserve a; finish with a ^ sign(a^b)
 	case xaOwned:
@@ -707,7 +744,9 @@ func (f *fn) fcopysign(f64 bool) {
 	default:
 		dst = f.allocFReg(maskOf(xa, xb))
 	}
+	f.fpinned = f.fpinned.add(dst)
 	m := f.allocFReg(maskOf(dst))
+	f.fpinned = f.fpinned.add(m)
 	if useMagnitude {
 		f.loadFMask(m, fMagMask64, fMagMask32, f64)
 	} else {
@@ -725,7 +764,7 @@ func (f *fn) fcopysign(f64 bool) {
 		f.scalarLogic(pp, 0x57, dst, xa, dst) // dst = a ^ sign(a^b)
 	}
 	f.releaseF(m)
-	f.fpinned = f.fpinned.remove(xa).remove(xb)
+	f.fpinned = saved
 	if xaOwned && xa != dst {
 		f.releaseF(xa)
 	}
@@ -733,7 +772,11 @@ func (f *fn) fcopysign(f64 bool) {
 		f.releaseF(xb)
 	}
 	f.stats.peep("fcopysign-xor-mask")
-	f.pushFReg(dst, mtOf2(f64))
+	return dst
+}
+
+func (f *fn) fcopysign(f64 bool) {
+	f.pushFReg(f.fcopysignInto(regNone, f64), mtOf2(f64))
 }
 
 // fcmp lowers a NaN-correct float comparison to a 0/1 i32 result.
