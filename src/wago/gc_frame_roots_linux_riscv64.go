@@ -38,8 +38,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	importedFunctions := m.ImportedFuncCount()
 	importedGlobals := m.ImportedGlobalCount()
 	importedMemories := m.ImportedMemCount()
+	importedTables := m.ImportedTableCount()
 	memoryCount := importedMemories + len(m.Memories)
-	if importedFunctions+importedGlobals+importedMemories != len(m.Imports) || importedFunctions > railshot.MaxHostFunctionImports || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > 2 || memoryCount > rv64RootedMaxMemories || len(m.Tags) != 0 || importedGlobals+len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
+	tableCount := importedTables + len(m.Tables)
+	if importedFunctions+importedGlobals+importedMemories+importedTables != len(m.Imports) || importedFunctions > railshot.MaxHostFunctionImports || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > 2 || tableCount > 2 || memoryCount > rv64RootedMaxMemories || len(m.Tags) != 0 || importedGlobals+len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
 		return reject("RV64 exact roots require a bounded scalar allocation module")
 	}
 	if len(m.Imports) != 0 {
@@ -68,6 +70,11 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				if memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min > memory.Limits.Max || memory.Limits.Max > 256 {
 					return reject("RV64 exact roots reject memory import %d", i)
 				}
+			case wasm.ExternTable:
+				table := im.Type.TableType()
+				if !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) || table.Limits.Addr64 || !table.Limits.HasMax || table.Limits.Min > table.Limits.Max || table.Limits.Max > 256 {
+					return reject("RV64 exact roots reject table import %d", i)
+				}
 			default:
 				return reject("RV64 exact roots reject resource import %d", i)
 			}
@@ -93,6 +100,20 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			return reject("RV64 exact roots require bounded local memory32 %d", i)
 		}
 	}
+	publicTables := make([]bool, tableCount)
+	for i := 0; i < importedTables; i++ {
+		publicTables[i] = true
+	}
+	for i := range m.Exports {
+		export := m.Exports[i]
+		if export.Index.Kind == wasm.ExternTable && uint64(export.Index.Index) < uint64(tableCount) {
+			publicTables[export.Index.Index] = true
+		}
+	}
+	hasPrivateTable := false
+	for _, public := range publicTables {
+		hasPrivateTable = hasPrivateTable || !public
+	}
 	for i := range m.Tables {
 		table := &m.Tables[i]
 		if !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
@@ -112,7 +133,8 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				}
 			}
 			value, err := wasm.ParseFuncrefElementExpr(expr)
-			if err != nil || !value.Null && (uint64(value.FuncIndex) < uint64(importedFunctions) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
+			public := publicTables[importedTables+i]
+			if err != nil || !value.Null && ((!public && uint64(value.FuncIndex) < uint64(importedFunctions)) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
 				return reject("RV64 exact roots reject table initializer target")
 			}
 		}
@@ -120,10 +142,17 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	remainingElements := 256
 	for i := range m.Elements {
 		elem := &m.Elements[i]
-		if len(m.Tables) == 0 {
+		if tableCount == 0 {
 			return reject("RV64 exact roots require bounded local function elements")
 		}
 		values := 0
+		allowImported := !hasPrivateTable
+		if elem.Mode.Kind == wasm.ElemActive {
+			if uint64(elem.Mode.Table) >= uint64(tableCount) {
+				return reject("RV64 exact roots reject active element table index %d", elem.Mode.Table)
+			}
+			allowImported = publicTables[elem.Mode.Table]
+		}
 		switch elem.Kind.Kind {
 		case wasm.ElemFuncs:
 			if len(elem.Kind.Exprs) != 0 || elem.Kind.Ref != (wasm.RefType{}) {
@@ -131,7 +160,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			}
 			values = len(elem.Kind.Funcs)
 			for _, function := range elem.Kind.Funcs {
-				if uint64(function) < uint64(importedFunctions) || uint64(function) >= uint64(importedFunctions+len(m.FuncTypes)) {
+				if (!allowImported && uint64(function) < uint64(importedFunctions)) || uint64(function) >= uint64(importedFunctions+len(m.FuncTypes)) {
 					return reject("RV64 exact roots reject element function %d", function)
 				}
 			}
@@ -153,7 +182,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 					}
 				}
 				value, err := wasm.ParseFuncrefElementExpr(expr)
-				if err != nil || !value.Null && (uint64(value.FuncIndex) < uint64(importedFunctions) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
+				if err != nil || !value.Null && ((!allowImported && uint64(value.FuncIndex) < uint64(importedFunctions)) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
 					return reject("RV64 exact roots reject element expression %d:%d", i, j)
 				}
 			}
@@ -165,7 +194,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		}
 		switch elem.Mode.Kind {
 		case wasm.ElemActive:
-			if uint64(elem.Mode.Table) >= uint64(len(m.Tables)) || len(elem.Mode.Offset.Instrs) != 0 || !rv64RootedI32Const(elem.Mode.Offset.BodyBytes) {
+			if uint64(elem.Mode.Table) >= uint64(tableCount) || len(elem.Mode.Offset.Instrs) != 0 || !rv64RootedI32Const(elem.Mode.Offset.BodyBytes) {
 				return reject("RV64 exact roots require bounded literal active function elements")
 			}
 		case wasm.ElemPassive, wasm.ElemDeclarative:
@@ -177,7 +206,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		}
 		remainingElements -= values
 	}
-	if importedFunctions != 0 && len(m.Tables) != 0 {
+	if importedFunctions != 0 && hasPrivateTable {
 		classifier := wasm.NewModuleInstructionClassifier(m, true)
 		for i := range m.Code {
 			r := wasm.NewReader(m.Code[i].BodyBytes)
@@ -222,6 +251,9 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			continue
 		}
 		if export.Index.Kind == wasm.ExternGlobal && uint64(export.Index.Index) < uint64(importedGlobals+len(m.Globals)) {
+			continue
+		}
+		if export.Index.Kind == wasm.ExternTable && uint64(export.Index.Index) < uint64(tableCount) {
 			continue
 		}
 		if export.Index.Kind != wasm.ExternFunc {

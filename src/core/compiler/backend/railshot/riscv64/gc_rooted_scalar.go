@@ -30,9 +30,11 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	importedFunctions := m.ImportedFuncCount()
 	importedGlobals := m.ImportedGlobalCount()
 	importedMemories := m.ImportedMemCount()
+	importedTables := m.ImportedTableCount()
 	memoryCount := importedMemories + len(m.Memories)
-	if importedFunctions+importedGlobals+importedMemories != len(m.Imports) || importedFunctions > maxRootedScalarHostImports || importedFunctions+len(m.Code) > MaxFunctions ||
-		importedGlobals+len(m.Globals) > 256 || memoryCount > maxRootedScalarMemories {
+	tableCount := importedTables + len(m.Tables)
+	if importedFunctions+importedGlobals+importedMemories+importedTables != len(m.Imports) || importedFunctions > maxRootedScalarHostImports || importedFunctions+len(m.Code) > MaxFunctions ||
+		importedGlobals+len(m.Globals) > 256 || memoryCount > maxRootedScalarMemories || tableCount > 2 {
 		return false
 	}
 	if len(m.Imports) != 0 {
@@ -63,6 +65,12 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				if memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min > memory.Limits.Max || memory.Limits.Max > 256 {
 					return false
 				}
+			case wasm.ExternTable:
+				table := im.Type.TableType()
+				if !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) || table.Limits.Addr64 || !table.Limits.HasMax ||
+					table.Limits.Min > table.Limits.Max || table.Limits.Max > 256 {
+					return false
+				}
 			default:
 				return false
 			}
@@ -80,6 +88,20 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			return false
 		}
 	}
+	publicTables := make([]bool, tableCount)
+	for i := 0; i < importedTables; i++ {
+		publicTables[i] = true
+	}
+	for i := range m.Exports {
+		export := m.Exports[i]
+		if export.Index.Kind == wasm.ExternTable && uint64(export.Index.Index) < uint64(tableCount) {
+			publicTables[export.Index.Index] = true
+		}
+	}
+	hasPrivateTable := false
+	for _, public := range publicTables {
+		hasPrivateTable = hasPrivateTable || !public
+	}
 	for i := range m.Tables {
 		table := &m.Tables[i]
 		if !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
@@ -88,7 +110,8 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		if table.Init != nil {
 			value, err := tableElementExpression(*table.Init)
-			if err != nil || !value.Null && (uint64(value.FuncIndex) < uint64(importedFunctions) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
+			public := publicTables[importedTables+i]
+			if err != nil || !value.Null && ((!public && uint64(value.FuncIndex) < uint64(importedFunctions)) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
 				return false
 			}
 		}
@@ -96,10 +119,17 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	remainingElements := 256
 	for i := range m.Elements {
 		elem := &m.Elements[i]
-		if len(m.Tables) == 0 {
+		if tableCount == 0 {
 			return false
 		}
 		values := 0
+		allowImported := !hasPrivateTable
+		if elem.Mode.Kind == wasm.ElemActive {
+			if uint64(elem.Mode.Table) >= uint64(tableCount) {
+				return false
+			}
+			allowImported = publicTables[elem.Mode.Table]
+		}
 		switch elem.Kind.Kind {
 		case wasm.ElemFuncs:
 			if len(elem.Kind.Exprs) != 0 || elem.Kind.Ref != (wasm.RefType{}) {
@@ -107,7 +137,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			}
 			values = len(elem.Kind.Funcs)
 			for _, function := range elem.Kind.Funcs {
-				if uint64(function) < uint64(importedFunctions) || uint64(function) >= uint64(importedFunctions+len(m.FuncTypes)) {
+				if (!allowImported && uint64(function) < uint64(importedFunctions)) || uint64(function) >= uint64(importedFunctions+len(m.FuncTypes)) {
 					return false
 				}
 			}
@@ -119,7 +149,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			values = len(elem.Kind.Exprs)
 			for _, expr := range elem.Kind.Exprs {
 				value, err := tableElementExpression(expr)
-				if err != nil || !value.Null && (uint64(value.FuncIndex) < uint64(importedFunctions) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
+				if err != nil || !value.Null && ((!allowImported && uint64(value.FuncIndex) < uint64(importedFunctions)) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
 					return false
 				}
 			}
@@ -131,7 +161,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		switch elem.Mode.Kind {
 		case wasm.ElemActive:
-			if uint64(elem.Mode.Table) >= uint64(len(m.Tables)) || len(elem.Mode.Offset.Instrs) != 0 {
+			if uint64(elem.Mode.Table) >= uint64(tableCount) || len(elem.Mode.Offset.Instrs) != 0 {
 				return false
 			}
 			if _, err := plainScalarConst(elem.Mode.Offset, wasm.I32, false); err != nil {
@@ -146,7 +176,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		remainingElements -= values
 	}
-	if importedFunctions != 0 && len(m.Tables) != 0 {
+	if importedFunctions != 0 && hasPrivateTable {
 		classifier := wasm.NewModuleInstructionClassifier(m, true)
 		for i := range m.Code {
 			r := wasm.NewReader(m.Code[i].BodyBytes)
@@ -215,6 +245,10 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			}
 		case wasm.ExternGlobal:
 			if uint64(export.Index.Index) >= uint64(importedGlobals+len(m.Globals)) {
+				return false
+			}
+		case wasm.ExternTable:
+			if uint64(export.Index.Index) >= uint64(tableCount) {
 				return false
 			}
 		default:

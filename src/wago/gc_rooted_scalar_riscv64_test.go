@@ -2252,6 +2252,133 @@ func TestRV64RootedScalarIndirectTableExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarImportedTableModule(exportTable bool) []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 0x01, 0x01, 0x02)
+	caller := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x41, 0x00, 0x11, 0x01, 0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0x0b,
+	}
+	exports := [][]byte{wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0)}
+	if exportTable {
+		exports = append(exports, wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(2, wasmtest.Vec(tableImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(exports...)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(caller))), caller...))),
+	)
+}
+
+func rootedScalarImportedTableProviderModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{0x01, 0x70, 0x01, 0x01, 0x02}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(9, []byte{0x01, 0x00, 0x41, 0x00, 0x0b, 0x01, 0x00}),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a, 0x41, 17, 0x0b}))),
+	)
+}
+
+func TestRV64RootedScalarImportedTableExecutes(t *testing.T) {
+	for _, exportTable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("export%t", exportTable), func(t *testing.T) {
+			source := rootedScalarImportedTableModule(exportTable)
+			if !railshot.AdmitGCRootedScalarSource(source) {
+				t.Fatal("bounded rooted imported-table module was not source-admitted")
+			}
+			consumerCode, err := Compile(rv64RootedScalarConfig(), source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer consumerCode.Close()
+			view := consumerCode.executionView()
+			roots := view.genericGCFrameRoots()
+			if !rv64FreshRootedGC(view) || view.tableImportCount() != 1 || view.tableCount() != 1 || roots == nil || len(roots.callsites) != 1 || roots.callsites[0].stackAdjust == 0 || len(roots.callsites[0].offsets) != 1 {
+				t.Fatalf("imported-table receipt=%t imports=%d tables=%d roots=%+v validation=%v", rv64FreshRootedGC(view), view.tableImportCount(), view.tableCount(), roots, railshotValidateCompiled(view))
+			}
+			mutated := cloneCompiledMetadata(view)
+			mutated.tableImportMin++
+			if rv64FreshRootedGC(mutated) {
+				t.Fatal("mutated imported-table limit retained the generic receipt")
+			}
+			if exportTable {
+				mutated = cloneCompiledMetadata(view)
+				mutated.tableExports = map[string]int{"table": 1}
+				if rv64FreshRootedGC(mutated) {
+					t.Fatal("mutated imported-table export retained the generic receipt")
+				}
+			}
+			providerCode, err := Compile(rv64RootedScalarConfig(), rootedScalarImportedTableProviderModule())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer providerCode.Close()
+			rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
+			defer rt.Close()
+			providerModule, err := rt.Module(providerCode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			provider, err := rt.Instantiate(context.Background(), providerModule, WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}))
+			providerModule.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer provider.Close()
+			table, err := provider.ExportedTable("table")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer table.Close()
+			consumerModule, err := rt.Module(consumerCode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			consumer, err := rt.Instantiate(context.Background(), consumerModule,
+				WithImports(NewImports().Table("env", "table", table)),
+				WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}),
+			)
+			consumerModule.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer consumer.Close()
+			if provider.gc == nil || provider.gc != consumer.gc {
+				t.Fatalf("imported table did not join the provider and consumer GC domains: provider=%p consumer=%p", provider.gc, consumer.gc)
+			}
+			if provider.refStore == nil || provider.refStore != consumer.refStore {
+				t.Fatalf("imported table did not retain one reference store: provider=%p consumer=%p", provider.refStore, consumer.refStore)
+			}
+			if !provider.refStore.ownsGCCollector(provider.gc) {
+				t.Fatal("imported table GC domain collector is not owned by the shared reference store")
+			}
+			consumerReturnPC := consumer.base + uintptr(roots.callsites[0].returnOffset)
+			if owner := provider.refStore.gcFrameOwner(consumerReturnPC, provider.gc); owner != consumer {
+				t.Fatalf("consumer table-bridge continuation owner=%p want=%p pc=%#x", owner, consumer, consumerReturnPC)
+			}
+			for iteration := range 32 {
+				got, err := consumer.Invoke("run")
+				if err != nil || !slices.Equal(got, []uint64{58}) {
+					t.Fatalf("iteration %d: run()=%v err=%v want=[58]", iteration, got, err)
+				}
+			}
+		})
+	}
+}
+
 func rootedScalarPassiveTableModule() []byte {
 	types := [][]byte{
 		{0x5f, 0x01, 0x7f, 0x00},
@@ -2858,6 +2985,39 @@ func rootedScalarHostImportPrivateTableModule(tableTarget uint32) []byte {
 	)
 }
 
+func rootedScalarHostImportMixedTableModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	functionImport := append(append(wasmtest.Name("env.calls"), wasmtest.Name("host.fn")...), byte(wasm.ExternFunc))
+	functionImport = append(functionImport, wasmtest.ULEB(1)...)
+	tableImport := append(append(wasmtest.Name("env.tables"), wasmtest.Name("public")...), byte(wasm.ExternTable), 0x70, 0x01, 0x01, 0x01)
+	target := []byte{0x00, 0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a, 0x41, 0x2a, 0x0b}
+	caller := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x41, 0x00, 0x11, 0x02, 0x01,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0x0b,
+	}
+	// Active segment for table index 1, initialized with imported function 0.
+	element := []byte{0x01, 0x02, 0x01, 0x41, 0x00, 0x0b, 0x00, 0x01, 0x00}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(2, wasmtest.Vec(functionImport, tableImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(2))),
+		wasmtest.Section(4, []byte{0x01, 0x70, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 2))),
+		wasmtest.Section(9, element),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target))), target...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
 func rootedScalarHostImportArityModule(arity int) []byte {
 	params := make([]wasm.ValType, arity)
 	for i := range params {
@@ -3367,6 +3527,9 @@ func TestRV64RootedScalarHostImportPrivateTableExecutes(t *testing.T) {
 	}
 	if railshot.AdmitGCRootedScalarSource(rootedScalarHostImportPrivateTableModule(0)) {
 		t.Fatal("table element exposing an imported function was source-admitted")
+	}
+	if railshot.AdmitGCRootedScalarSource(rootedScalarHostImportMixedTableModule()) {
+		t.Fatal("public imported table caused a private local table to expose an imported function")
 	}
 	compiled, err := Compile(rv64RootedScalarConfig(), source)
 	if err != nil {

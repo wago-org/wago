@@ -143,6 +143,74 @@ func TestGCNativeFrameRootsRISCV64ForeignBridgeStackAdjustment(t *testing.T) {
 	runtime.KeepAlive(code)
 }
 
+func TestGCNativeFrameRootsCallsiteFreeForeignTargetReturnsToCallerOwner(t *testing.T) {
+	frame := make([]byte, 256)
+	providerCode := make([]byte, 256)
+	consumerCode := make([]byte, 256)
+	base := uintptr(unsafe.Pointer(&frame[0]))
+	providerCodeBase := uintptr(unsafe.Pointer(&providerCode[0]))
+	consumerCodeBase := uintptr(unsafe.Pointer(&consumerCode[0]))
+
+	const (
+		providerFrameBytes = 32
+		bridgeFrameBytes   = 64
+		consumerBase       = providerFrameBytes + bridgeFrameBytes
+		consumerFrameBytes = 64
+	)
+	binary.LittleEndian.PutUint64(frame[0:], uint64(consumerCodeBase+80))
+	binary.LittleEndian.PutUint64(frame[16:], 3)
+	binary.LittleEndian.PutUint64(frame[consumerBase:], uint64(consumerCodeBase+200))
+	binary.LittleEndian.PutUint64(frame[consumerBase+24:], 17)
+
+	collector := new(gc.Collector)
+	domain := &gcStoreDomain{collector: collector}
+	providerRoots := &compiledGCFrameRoots{}
+	consumerRoots := &compiledGCFrameRoots{
+		adapterReturnOffsets: []uint32{200},
+		callsites: []compiledGCFrameCallsite{{
+			returnOffset: 80,
+			frameBytes:   consumerFrameBytes,
+			stackAdjust:  bridgeFrameBytes,
+			offsets:      []uint32{24},
+		}},
+	}
+	provider := &Instance{c: &Compiled{code: providerCode, validateMemo: &validateMemo{gcFrameRoots: providerRoots}}, gc: collector, base: providerCodeBase}
+	consumer := &Instance{c: &Compiled{code: consumerCode, validateMemo: &validateMemo{gcFrameRoots: consumerRoots}}, gc: collector, base: consumerCodeBase}
+	store := &referenceStore{
+		instances: map[*Instance]*referenceStoreInstance{provider: {}, consumer: {}},
+		gcDomains: &gcDomainTopology{first: domain, last: domain, n: 1},
+	}
+	provider.refStore, consumer.refStore = store, store
+
+	roots := gcNativeFrameRoots{
+		owner:       provider,
+		base:        base,
+		offsets:     []uint32{16},
+		frameBytes:  providerFrameBytes,
+		frameLayout: gcNativeFrameLayoutRISCV64,
+		codeBase:    providerCodeBase,
+		codeBytes:   uintptr(len(providerCode)),
+		callsites:   providerRoots.callsites,
+	}
+	seen := 0
+	if !roots.rangeChain(func(slot gc.RootSlot) bool {
+		seen++
+		slot.SetRef(slot.GetRef() + 1)
+		return true
+	}, nil, nil) {
+		t.Fatal("root traversal stopped early")
+	}
+	if seen != 2 {
+		t.Fatalf("root count = %d, want 2", seen)
+	}
+	if got := (*gc.Root)(offHeapPtr(base + consumerBase + 24)).GetRef(); got != 18 {
+		t.Fatalf("foreign caller root = %d, want 18", got)
+	}
+	runtime.KeepAlive(frame)
+	runtime.KeepAlive(providerCode)
+	runtime.KeepAlive(consumerCode)
+}
+
 func TestGCNativeFrameRootsARM64FrameRecordWalk(t *testing.T) {
 	frame := make([]byte, 160)
 	code := make([]byte, 256)

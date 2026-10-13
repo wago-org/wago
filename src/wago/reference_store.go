@@ -958,6 +958,11 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 		}
 	}
 	for {
+		// A host-activation aggregate can carry no direct native frame of its own;
+		// its parked activation records are walked separately below.
+		if base == 0 {
+			return true
+		}
 		if stackTop != 0 && (base >= stackTop || uintptr(frameBytes) > stackTop-base) {
 			panic(gcHelperFailuref("generic GC native frame exceeds stack bounds"))
 		}
@@ -974,9 +979,9 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 				return false
 			}
 		}
-		if len(callsites) == 0 {
-			return true
-		}
+		// A callsite-free foreign target can still return through a caller owned by
+		// another instance. Inspect the saved return PC before concluding that the
+		// chain is complete; the caller's root plan supplies the continuation map.
 		returnPCBias, callerFrameBias := uintptr(0), uintptr(abi.AMD64CallReturnAddressBytes)
 		returnAddressAfterFrame := true
 		switch r.frameLayout & gcNativeFrameLayoutMask {
