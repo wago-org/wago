@@ -386,3 +386,18 @@ phase samples, hashes, parity checks and validation output. Four captures have
 durable local receipts; database integrity and all 575,121 historical
 observations pass. Native AMD64 timing and full feature parity remain open.
 No production deployment occurred.
+
+### Complete ea4efcc6 local refresh — 2026-10-13
+
+All 266 contracts completed without collection/resource failures and have durable
+local receipts. All 148 main contracts pass. The source has 1,080 observations
+covering 266 contracts, including 16 from the targeted capture. Database integrity
+and all 575,121 historical observations pass. Of 54 passing feature pairs, 18
+remain above strict parity and 16 above the 1.1 triage threshold. Division stays
+faster than the retained peer; its interleaved capture is the direct gain evidence.
+The [full cohort report](docs/benchmarks/wasm3-2026-10-13/division-full-feature-cohort.json)
+retains samples, every full capture hash, peer references, classifications and
+publication/audit evidence. Opaque callbacks remain 55.49x; f32 rounding globals
+4.55–5.16x, ordinary imports 3.16x, carry globals 2.54–2.62x, and saturating
+conversion 2.09–2.45x. This ranking uses an earlier serialized peer baseline.
+Full parity and native AMD64 timing remain open. Nothing was deployed.
