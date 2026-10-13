@@ -440,6 +440,7 @@ var catalog = []Definition{
 	both("simd-store-load-address", "Adjacent SIMD memory addresses", "reuse an identical pure address expression for a vector store and following real load"),
 	both("simd-load-extract", "SIMD load lane extraction", "load the consumed scalar lane while retaining the original vector access bounds"),
 	both("memory-min-bounds", "Declared minimum memory bounds", "prove bounded integer address expressions fit the selected memory minimum"),
+	arm64("linear-integer-tree", "Repeated integer linear terms", "collect repeated pure local terms in bounded wrapping i32 expressions"),
 	arm64("boolean-float-select", "Boolean float conversion", "select cached IEEE constants for bounded pure low-bit integer expressions"),
 	both("integer-sum-loop", "Integer induction sums", "replace proven zero-based unsigned local sums with exact modular arithmetic and retain any fence"),
 	both("linear-sum-loop", "Linear sum loops", "hoist bounds and split exact i64 memory reductions across four accumulators"),

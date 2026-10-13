@@ -142,6 +142,9 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 // place (const→imm, memory→register load, reg→reg). AArch64 is three-operand, so
 // the in-place accumulate is `op Rd,Rn,Rm` with Rd==Rn==dest.
 func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
+	if r := f.tryLinearIntegerTree(node, dest); r != regNone {
+		return r
+	}
 	w := node.st.typ.is64()
 	left := f.s.arg0(node)
 	right := f.s.arg1(node)
