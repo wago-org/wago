@@ -3334,7 +3334,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// path. A monomorphic table (single target) collapses to a direct call.
 	directRegisterCall := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
 	descriptorRegisterCall := (sigFitsRegABI(ft) && sigIsIntOnly(ft)) || (f.stagedTailDescriptors && (sigFitsRegABI(ft) || sigFitsReferenceResultRegABI(ft)))
-	if immutableTable && tableHint.monomorphicTarget >= 0 && directRegisterCall {
+	if immutableTable && f.opt(optRegABI) && tableHint.monomorphicTarget >= 0 && directRegisterCall {
 		f.pinned = f.pinned.remove(idxReg)
 		f.release(idxReg)
 		f.release(code)
@@ -3345,7 +3345,10 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		}
 		return nil
 	}
-	if immutableTable && descriptorRegisterCall {
+	// Ordinary local integer descriptors publish internal entries for at most
+	// two results. Disabled register ABI, wider results, and other signatures
+	// retain wrapper entries and must use the home-aware dispatch below.
+	if immutableTable && f.opt(optRegABI) && sigIsIntOnly(ft) && len(ft.Results) <= 2 && descriptorRegisterCall {
 		home := f.allocReg(maskOf(idxReg, code))
 		f.a.Load64(home, idxReg, 8+runtime.TableEntryHomeLinMemOffset)
 		kind := f.descriptorEntryKind(home, maskOf(idxReg, code, home))

@@ -114,3 +114,35 @@ func TestImmutablePolymorphicWideIntegerExecution(t *testing.T) {
 	}
 
 }
+
+func TestMonomorphicCallIndirectRegisterABIModes(t *testing.T) {
+	for _, abi := range []bool{false, true} {
+		t.Run(fmt.Sprintf("abi%t", abi), func(t *testing.T) {
+			c, err := NewRuntimeConfig().WithOptimization("reg-abi", abi).Compile(callIndirectModule(3, 1))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			loaded := publicArtifactRoundTrip(t, c)
+			defer loaded.Close()
+			for _, compiled := range []*Compiled{c, loaded} {
+				in, err := Instantiate(compiled)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer in.Close()
+				got, err := in.Invoke("caller", 0, 10, 3)
+				if err != nil || len(got) != 1 || got[0] != 13 {
+					t.Fatalf("call returned %v, %v; want 13", got, err)
+				}
+				for _, idx := range []uint64{1, 3} {
+					_, err := in.Invoke("caller", idx, 10, 3)
+					var trap *TrapError
+					if !errors.As(err, &trap) || trap.Code != TrapIndirectOutOfBounds {
+						t.Fatalf("idx%d: expected indirect trap, got %v", idx, err)
+					}
+				}
+			}
+		})
+	}
+}

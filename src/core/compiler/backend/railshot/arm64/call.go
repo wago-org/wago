@@ -2891,7 +2891,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// testing the internal-entry tag, emitting the wrapper/cross-instance path, and
 	// reconciling two compiler states. The ordinary OOB/null/type checks above are
 	// still required and deliberately remain on this hot path.
-	if tableIdx == 0 && f.immutableLocalTable && f.monomorphicTarget >= 0 && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+	if tableIdx == 0 && f.opt(optRegABI) && f.immutableLocalTable && f.monomorphicTarget >= 0 && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
 		f.pinned = f.pinned.remove(idxReg)
 		f.release(idxReg)
 		f.pinned = f.pinned.remove(code)
