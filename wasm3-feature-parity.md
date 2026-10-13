@@ -934,3 +934,31 @@ performance remains unmeasured.
 compile cohorts, source plans, image hashes, original red test and validation
 output. Floating/carry recurrences, callbacks, branch/bit operations, conversions
 and full feature parity remain open.
+
+### Fresh local full-corpus checkpoint — 2026-10-13
+
+The completed local wasm.fyi refresh records Wago `e0067d93` against the
+SIMD-capable Clang w2c2 `f303ed27` fork across 118 feature and 148 main
+contracts per engine, with all four lifecycle phases and 15 verified timing
+samples on successful rows. Existing history and failed/unsupported outcomes
+are retained; local database integrity checks pass. The refreshed
+[feature comparison](wasm3-feature-refresh.md#fresh-local-snapshot--2026-10-13)
+and [raw cohort report](docs/benchmarks/wasm3-2026-10-13/current-feature-cohort.json)
+replace the older full-corpus ranking for triage. Opaque host callbacks remain
+75.72x the peer, branch-mixed 9.11x, and sign/bit operations roughly 6.28–7.62x.
+This checkpoint does not establish full parity or new compile-cost neutrality.
+The server remains local at http://localhost:8788/benchmarks/; no production
+deployment was performed.
+
+The isolated owned-opaque host capture reproduces the gap at 76.18x the peer
+(14.199 ms versus 0.186 ms). A separate matched-workload Go CPU diagnostic
+confirms bounded host-segment and bounded numeric admission are false despite
+the scalar ABI and private threaded execution. The existing fixed host-return
+loop accounts for 75.84% cumulative samples; native resume, syscall transitions
+and context refresh are prominent. C callback source retains `noinline` plus
+an asm memory effect; native peer call attribution remains unchecked. The
+[diagnostic report](docs/benchmarks/wasm3-2026-10-13/opaque-host-diagnosis.json)
+retains both fresh matched captures, the red parity command/output, temporary
+benchmark source, oracle verification, and sampled CPU output. This is diagnosis,
+not a performance improvement or evidence of compile-cost neutrality. The
+temporary test was removed from the production tree.

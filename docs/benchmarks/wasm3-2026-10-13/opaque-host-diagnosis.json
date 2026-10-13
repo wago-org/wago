@@ -1,0 +1,540 @@
+{
+  "schema": 1,
+  "purpose": "Isolated matched reproduction and sampled CPU diagnosis of opaque host-call gap; diagnostic timings are not optimization gains.",
+  "captures": [
+    {
+      "sha256": "fc2a462ab7a1845a16fb270c8e238137cfba44b4fa57ebffb1b29cb36d654e3f",
+      "capture": {
+        "capturedAt": "2026-10-13T07:05:48.218Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-13T05:56:24.446Z",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              398878042,
+              293881833,
+              276963125,
+              276567834,
+              275867292,
+              270253084,
+              274742750,
+              276169125,
+              275611959,
+              277659541,
+              273156166,
+              272721875,
+              271351708,
+              269609834,
+              271237500
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 275611959,
+            "memoryStatus": "ok",
+            "peakRssBytes": 57032704,
+            "codeStatus": "ok",
+            "codeBytes": 2964,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              5625,
+              4709,
+              875,
+              833,
+              1334,
+              5000,
+              4250,
+              917,
+              792,
+              1250,
+              5084,
+              7000,
+              1375,
+              1500,
+              1333
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 1334,
+            "memoryStatus": "ok",
+            "peakRssBytes": 56950784,
+            "codeStatus": "ok",
+            "codeBytes": 2964,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              182458,
+              175083,
+              231458,
+              301709,
+              301625,
+              176333,
+              175125,
+              174833,
+              174916,
+              174791,
+              191584,
+              175042,
+              212292,
+              301709,
+              301667
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 212292,
+            "memoryStatus": "ok",
+            "peakRssBytes": 56868864,
+            "codeStatus": "ok",
+            "codeBytes": 2964,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              186175.72463768115,
+              184420.65217391305,
+              183768.35652173913,
+              186563.40579710144,
+              187198.91304347827,
+              186324.515942029,
+              185948.91304347827,
+              186379.83188405796,
+              186398.5507246377,
+              188587.3188405797,
+              188403.02028985508,
+              187368.115942029,
+              187900.24347826088,
+              187683.81449275362,
+              189646.3768115942
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 186379.83188405796,
+            "memoryStatus": "ok",
+            "peakRssBytes": 56852480,
+            "codeStatus": "ok",
+            "codeBytes": 2964,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "sha256": "60b396e5402d376e94a8fb10477e6d835d221a82cef76bfd334bad30e9e2564e",
+      "capture": {
+        "capturedAt": "2026-10-13T07:05:32.480Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "e0067d93f95f4c4b297d9dc67c27e6a2442a6f92",
+          "ref": "jairus/wasm3-feature-parity@e0067d93",
+          "asOf": "2026-10-13T05:56:24.446Z",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              187167,
+              39083,
+              40292,
+              33958,
+              25375,
+              161042,
+              45042,
+              36000,
+              33166,
+              36083,
+              142000,
+              54000,
+              35042,
+              33166,
+              33167
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "wago",
+            "version": "e0067d93f95f4c4b297d9dc67c27e6a2442a6f92/source-2d92f9b95eab119588c72d034c4c2dd0263bcca236a6833e69ae968fefa75b7d",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 36083,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9846784,
+            "codeStatus": "ok",
+            "codeBytes": 832,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              11250,
+              10834,
+              7291,
+              9208,
+              7667,
+              12375,
+              21542,
+              11042,
+              10458,
+              7209,
+              11292,
+              11083,
+              6958,
+              7833,
+              14167
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "wago",
+            "version": "e0067d93f95f4c4b297d9dc67c27e6a2442a6f92/source-2d92f9b95eab119588c72d034c4c2dd0263bcca236a6833e69ae968fefa75b7d",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 11042,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9617408,
+            "codeStatus": "ok",
+            "codeBytes": 832,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              13772834,
+              14150667,
+              14108042,
+              14151375,
+              14081542,
+              13550625,
+              14046000,
+              14066917,
+              14165083,
+              14194416,
+              14071875,
+              14145500,
+              14206500,
+              13987666,
+              14226542
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "wago",
+            "version": "e0067d93f95f4c4b297d9dc67c27e6a2442a6f92/source-2d92f9b95eab119588c72d034c4c2dd0263bcca236a6833e69ae968fefa75b7d",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 14108042,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9617408,
+            "codeStatus": "ok",
+            "codeBytes": 832,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              13334033.4,
+              13313266.6,
+              13327208.4,
+              13180708.4,
+              13217625,
+              14199208.4,
+              14395650,
+              14239275,
+              13996250,
+              13944408.4,
+              14536691.6,
+              14492683.4,
+              14317108.4,
+              14405633.4,
+              14389091.8
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "wago",
+            "version": "e0067d93f95f4c4b297d9dc67c27e6a2442a6f92/source-2d92f9b95eab119588c72d034c4c2dd0263bcca236a6833e69ae968fefa75b7d",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 14199208.4,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9781248,
+            "codeStatus": "ok",
+            "codeBytes": 832,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    }
+  ],
+  "plan": {
+    "machine": "Apple M4 Max",
+    "anchor": "2026-10-09T08:07:55.636Z",
+    "cutoff": "2026-04-09T08:07:55.636Z",
+    "corpusRoot": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/corpus",
+    "harness": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/harness",
+    "controller": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/controller",
+    "env": {
+      "PATH": "/Users/work/.gvm/pkgsets/go1.27.1/global/bin:/Users/work/.gvm/gos/go1.27.1/bin:/Users/work/.gvm/pkgsets/go1.27.1/global/overlay/bin:/Users/work/.gvm/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Users/work/.codex/packages/app-server-daemon/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/work/.codex/tmp/arg0/codex-arg06bBxDS:/Users/work/.codex/tmp/arg0/codex-arg0iRgRhx:/opt/homebrew/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex-path:/Users/work/.wago/bin:/Users/work/.wasmer/bin:/Users/work/.opencode/bin:/Users/work/.bun/bin:/Users/work/.local/bin",
+      "SDKROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+      "WASMBENCH_TOOL_CACHE": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-main-20261012/tool-cache",
+      "WASMFYI_HISTORY_FAST": "1",
+      "WASMFYI_BUILD_JOBS": "8"
+    },
+    "collection": {
+      "suite": "wago",
+      "validationProfile": "all",
+      "v8CompilerMode": "optimizing-only",
+      "runtimes": [
+        "wago"
+      ],
+      "featureRuntimes": [],
+      "wagoSource": "../../Wago/wago",
+      "launches": 3,
+      "workers": 1,
+      "samples": 5,
+      "scenarioSamples": {
+        "*": 5,
+        "compile": 5,
+        "instantiate": 5,
+        "first-call": 5,
+        "steady": 5
+      },
+      "operations": 1,
+      "warmup": 0,
+      "memory": true,
+      "timingPeakRSS": true,
+      "code": true,
+      "timeout": "5m",
+      "phaseBarriers": false,
+      "featureRuntimesByPlatform": {},
+      "corpusByCorpus": true,
+      "includeFeatures": false,
+      "capture": "latency",
+      "threads": 1,
+      "adaptiveSampling": false,
+      "supportsSteadyOperations": true
+    },
+    "jobs": [
+      {
+        "id": "wago-e0067d93",
+        "engine": "wago",
+        "harness": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/harness",
+        "controller": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/controller",
+        "env": {},
+        "historical": false,
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "e0067d93f95f4c4b297d9dc67c27e6a2442a6f92",
+          "ref": "jairus/wasm3-feature-parity@e0067d93",
+          "asOf": "2026-10-13T05:56:24.446Z",
+          "kind": "snapshot"
+        }
+      },
+      {
+        "id": "w2c2-f303ed27",
+        "engine": "w2c2-clang",
+        "harness": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/harness",
+        "controller": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/controller",
+        "env": {},
+        "historical": false,
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-13T05:56:24.446Z",
+          "kind": "snapshot"
+        }
+      }
+    ],
+    "workloads": [
+      {
+        "id": "features/threads/host-opaque-identity/performance-4096x64",
+        "sha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53"
+      }
+    ],
+    "captureDirectory": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/opaque-host-current-20261013/captures",
+    "executionPolicy": {
+      "measurementCores": 1,
+      "compilationCores": "available"
+    },
+    "cpu": null,
+    "toolRoot": "/home/hub/.cache/wasm-fyi",
+    "platformSpecs": {
+      "cores": 16,
+      "memoryBytes": 68719476736
+    },
+    "historyNotBefore": "2026-06-28"
+  },
+  "redCommand": "python3 .validation/wasm3-parity/opaque-host-current-20261013/check-parity.py",
+  "redOutput": "Wago 14199208.4 ns; w2c2 186379.83188405796 ns; ratio 76.1842537170704\nTraceback (most recent call last):\n  File \"/Users/work/Code/Wago/wago/.validation/wasm3-parity/opaque-host-current-20261013/check-parity.py\", line 9, in <module>\n    assert ratio<=1.0,'opaque host-call execution remains slower than the matched peer'\n           ^^^^^^^^^^\nAssertionError: opaque host-call execution remains slower than the matched peer\n",
+  "diagnosticBenchmark": "goos: darwin\ngoarch: arm64\npkg: github.com/wago-org/wago/src/wago\ncpu: Apple M4 Max\nBenchmarkWasm3OpaqueFeatureDiagnostic \t     175\t  13575642 ns/op\n--- BENCH: BenchmarkWasm3OpaqueFeatureDiagnostic\n    zz_wasm3_opaque_diagnostic_test.go:17: boundedSegments=false ownedRuntime=true sharedMemory=true boundedNumeric=false scalarFast=true privateThreaded=true\n    zz_wasm3_opaque_diagnostic_test.go:17: boundedSegments=false ownedRuntime=true sharedMemory=true boundedNumeric=false scalarFast=true privateThreaded=true\n    zz_wasm3_opaque_diagnostic_test.go:17: boundedSegments=false ownedRuntime=true sharedMemory=true boundedNumeric=false scalarFast=true privateThreaded=true\nPASS\nok  \tgithub.com/wago-org/wago/src/wago\t4.379s\n",
+  "cpuProfileTop": "File: diagnostic.test\nType: cpu\nTime: 2026-10-13 03:26:20 EDT\nDuration: 3.94s, Total samples = 3.56s (90.32%)\nShowing nodes accounting for 3.26s, 91.57% of 3.56s total\nDropped 11 nodes (cum <= 0.02s)\nShowing top 24 nodes out of 53\n      flat  flat%   sum%        cum   cum%\n     0.65s 18.26% 18.26%      0.65s 18.26%  runtime._ExternalCode\n     0.37s 10.39% 28.65%      2.70s 75.84%  github.com/wago-org/wago/src/core/runtime.(*Engine).callWithHostLoopFixed\n     0.28s  7.87% 36.52%      0.87s 24.44%  github.com/wago-org/wago/src/core/runtime.resumeNative\n     0.21s  5.90% 42.42%      0.21s  5.90%  github.com/wago-org/wago/src/core/runtime.resumeNativeRaw\n     0.19s  5.34% 47.75%      0.19s  5.34%  runtime.exitsyscall\n     0.18s  5.06% 52.81%      0.31s  8.71%  runtime.reentersyscall\n     0.17s  4.78% 57.58%      0.41s 11.52%  github.com/wago-org/wago/src/wago.(*Instance).refreshMemoryDirectory\n     0.13s  3.65% 61.24%      1.29s 36.24%  github.com/wago-org/wago/src/wago.(*hostLoopActivation).dispatchSingleTypedI32FixedPortal\n     0.12s  3.37% 64.61%      0.12s  3.37%  github.com/wago-org/wago/src/core/runtime.clearTrapUnlessInterrupted (inline)\n     0.11s  3.09% 67.70%      1.02s 28.65%  github.com/wago-org/wago/src/wago.parkedIndependentHostLease.resume\n     0.10s  2.81% 70.51%      0.11s  3.09%  github.com/wago-org/wago/src/core/runtime.(*JobMemory).BindInstanceContextBytes\n     0.09s  2.53% 73.03%      0.09s  2.53%  internal/sync.(*Mutex).Lock (inline)\n     0.09s  2.53% 75.56%      0.09s  2.53%  runtime.save\n     0.08s  2.25% 77.81%      0.08s  2.25%  github.com/wago-org/wago/src/core/runtime.(*JobMemory).LinMemBase (inline)\n     0.07s  1.97% 79.78%      0.07s  1.97%  internal/sync.(*Mutex).Unlock (inline)\n     0.06s  1.69% 81.46%      0.07s  1.97%  github.com/wago-org/wago/src/core/runtime.(*JobMemory).putU64 (inline)\n     0.06s  1.69% 83.15%      0.06s  1.69%  github.com/wago-org/wago/src/wago.(*Instance).ensurePluginState\n     0.05s  1.40% 84.55%      0.05s  1.40%  encoding/binary.littleEndian.Uint32 (inline)\n     0.05s  1.40% 85.96%      0.11s  3.09%  github.com/wago-org/wago/src/wago.(*Instance).invalidateNativeContext\n     0.05s  1.40% 87.36%      0.06s  1.69%  runtime.getcallerfp\n     0.04s  1.12% 88.48%      0.04s  1.12%  encoding/binary.littleEndian.PutUint64 (inline)\n     0.04s  1.12% 89.61%      0.13s  3.65%  github.com/wago-org/wago/src/core/runtime.(*JobMemory).RebindTrapCell\n     0.04s  1.12% 90.73%      0.09s  2.53%  github.com/wago-org/wago/src/wago.(*hostLoopActivation).parkIndependentHostCallbackWithMu\n     0.03s  0.84% 91.57%      0.03s  0.84%  github.com/wago-org/wago/src/core/runtime.offHeapPointer (inline)\n",
+  "diagnosticSource": "package wago\nimport (\n \"context\"\n \"os\"\n \"testing\"\n)\n//go:noinline\nfunc wasm3OpaqueDiagnosticIdentity(v int32) int32 {return v}\nfunc BenchmarkWasm3OpaqueFeatureDiagnostic(b *testing.B) {\n data,e:=os.ReadFile(os.Getenv(\"WAGO_OPAQUE_DIAGNOSTIC_FIXTURE\"));if e!=nil {b.Fatal(e)}\n cfg:=NewRuntimeConfig().WithMaxModuleBytes(uint64(len(data))).WithFeature(CoreFeatureThreads,true).WithBoundsChecks(BoundsChecksExplicit)\n rt:=NewRuntime(WithRuntimeConfig(cfg));defer rt.Close()\n host,e:=rt.NewHostFuncRef(func(v int32)int32{return wasm3OpaqueDiagnosticIdentity(v)},FuncSig{Params:[]ValType{ValI32},Results:[]ValType{ValI32}});if e!=nil{b.Fatal(e)};defer host.Close()\n mod,e:=rt.Compile(data);if e!=nil{b.Fatal(e)};defer mod.Close()\n in,e:=rt.Instantiate(context.Background(),mod,WithImports(NewImports().Function(\"wasmbench\",\"identity\",host)));if e!=nil{b.Fatal(e)};defer in.Close()\n fn,e:=in.WasmFunc(\"performance\");if e!=nil{b.Fatal(e)}\n b.Logf(\"boundedSegments=%v ownedRuntime=%v sharedMemory=%v boundedNumeric=%v scalarFast=%v privateThreaded=%v\",in.c.boundedHostSegments(),in.rt!=nil,in.threadedMemoryZero,fn.boundedNumericHost,fn.scalarFast,in.usesPrivateThreadedExecution())\n got,e:=fn.Invoke(4096);if e!=nil||len(got)!=1||got[0]!=536739840{b.Fatalf(\"oracle %v %v\",got,e)}\n b.ResetTimer()\n for i:=0;i<b.N;i++ {got,e=fn.Invoke(4096);if e!=nil||len(got)!=1||got[0]!=536739840{b.Fatalf(\"oracle %v %v\",got,e)}}\n}\n",
+  "cpuProfileSha256": "95d05da8f6bf79b710855331fd90c98f93d28b56e75291c8a87d7f2dd92ac53d",
+  "findings": [
+    "The exact performance export and owned callback profile reproduce the independent-oracle checksum.",
+    "The isolated matched cohort remains 76.184x slower than w2c2; successful phases each retain 15 samples.",
+    "The compiled module does not pass bounded host-segment proof.",
+    "The resolved function uses the scalar ABI but does not admit bounded numeric host dispatch; owned runtime and shared memory are present.",
+    "The sampled host-return loop has 75.84 percent cumulative CPU, native resume 24.44 percent, fixed portal dispatcher 36.24 percent, and parked-lease resume 28.65 percent. Percentages overlap and must not be summed.",
+    "The peer adapter source marks the C callback noinline and retains an asm memory side effect; generated machine-code attribution has not yet been checked.",
+    "The temporary Go diagnostic benchmark was removed from the production worktree after profiling."
+  ],
+  "nextAction": "Preserve callback/store/lifetime and shared-memory publication semantics while reducing native resume and repeated context-refresh costs; admission changes require general correctness and concurrent-growth regressions before timed comparison.",
+  "limitations": [
+    "One short sampled CPU profile; external native work lacks function attribution.",
+    "Compile latency and allocation impact of a production fix remain unmeasured because no production fix was made.",
+    "Server remains local; no deployment performed."
+  ]
+}

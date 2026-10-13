@@ -1,5 +1,54 @@
 # WebAssembly feature execution comparison
 
+## Fresh local snapshot — 2026-10-13
+
+The latest full capture uses Wago `e0067d93` and SIMD-capable JairusSW/w2c2
+`f303ed27`, compiled with Clang on Apple M4 Max Darwin/ARM64. It covers
+118 feature contracts and 148 main contracts per engine. All four lifecycle
+phases and their explicit failed/unsupported outcomes are published to the local
+wasm.fyi tables; the server remains at http://localhost:8788/benchmarks/.
+No production deployment was made. The 575,121 existing historical observations
+are preserved, and SQLite integrity and foreign-key checks pass.
+
+Three independent launches retain five verified timing samples each. Feature
+steady batches calibrate to at least 50 ms; these values cover the entire repeated
+guest invocation. The peer uses unchecked native C with `-O3 -march=native`;
+Wago retains its managed checks. This is a new cohort, separate from the earlier
+raw-probe capture below. [The source-pinned report](docs/benchmarks/wasm3-2026-10-13/current-feature-cohort.json)
+retains every feature row and sample, capture hashes, matched contract/artifact
+identities, outcome counts, and the database audit.
+
+There are 54 successful steady pairs; 25 exceed 1.1x the peer.
+This is a triage threshold, not a completion criterion. Wago passes 107 feature
+steady contracts with 11 unsupported and no failures; w2c2 passes 54, rejects 35
+as unsupported, and records 29 failures. All 148 main contracts pass for both
+engines. Five Wago JSPI outcomes were repaired through declared-capability
+controller admission; the runtime binary and successful timings are unchanged,
+and the original failed captures remain archived locally.
+
+| Largest remaining feature gaps | Wago ns | w2c2 ns | Ratio |
+| --- | ---: | ---: | ---: |
+| `features/threads/host-opaque-identity/performance-4096x64` | 14,902,466.6 | 196,811.4 | 75.720 |
+| `features/core-ctl/branch-mixed/performance-4096x64` | 179,567.1 | 19,711.0 | 9.110 |
+| `features/sign-extension/i64-extend32-high-word/performance-4096x64` | 91,528.4 | 12,008.8 | 7.622 |
+| `features/sign-extension/i64-extend16/performance-4096x64` | 84,854.1 | 12,029.5 | 7.054 |
+| `features/sign-extension/i64-extend8/performance-4096x64` | 86,641.7 | 12,337.9 | 7.022 |
+| `features/core-num/integer-rotate-popcount/performance-4096x64` | 80,204.2 | 12,216.8 | 6.565 |
+| `features/sign-extension/i32-extend8/performance-4096x64` | 78,757.0 | 12,137.5 | 6.489 |
+| `features/sign-extension/i32-extend16/performance-4096x64` | 77,948.3 | 12,413.6 | 6.279 |
+| `features/core-num/integer-div-rem/performance-4096x64` | 252,460.6 | 42,271.2 | 5.972 |
+| `features/core-glb/f32-rounding-state/performance-4096x64` | 804,359.2 | 171,897.0 | 4.679 |
+| `features/mutable-globals/f32-rounding-state/performance-4096x64` | 791,358.4 | 169,387.7 | 4.672 |
+| `features/compact-imports/ordinary-baseline/performance-4096x64` | 1,094,750.0 | 334,717.1 | 3.271 |
+
+The earlier global-state improvements remain in the fresh full cohort. The
+opaque host-call gap is the first investigation priority; branch, bit, sign,
+conversion, floating-global and carry gaps remain open. Close differences need
+targeted confirmation, and native AMD64 performance and full stage 4/5 coverage
+remain unproven. Cancelled Go JSPI/CSP analogues remain cancelled.
+
+## Earlier 115-contract cohort
+
 The full implementation and performance objective remains open. This full
 115-contract capture uses Wago production revision `b4ef4c22` on Apple M4 Max
 Darwin/ARM64 and the pinned SIMD-capable w2c2 fork. The full Wago adapter identity
