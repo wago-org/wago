@@ -1,0 +1,4101 @@
+{
+  "revision": "aee8f154",
+  "status": "retained-after-matched-repeat; local publication deferred",
+  "proof": "Two independent modulo-2^64 vector accumulators, combined before low-i32 extraction. Existing proof and scalar tail unchanged. Six caller-saved vector registers required before consuming source; unsupported register pressure keeps scalar fallback.",
+  "validation": "ok  \tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/shared\t1.257s\nok  \tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/arm64\t1.261s\nok  \tgithub.com/wago-org/wago/src/wago\t1.434s\n",
+  "batches": {
+    "capture": {
+      "status": {
+        "status": "completed",
+        "started": "2026-10-13T16:52:05.194Z",
+        "updated": "2026-10-13T16:52:49.618Z",
+        "machine": "Apple M4 Max",
+        "current": null,
+        "completed": 9,
+        "total": 9,
+        "errors": [],
+        "resourceFailures": [],
+        "resourceStatuses": {
+          "memory": {
+            "ok": 36
+          },
+          "code": {
+            "ok": 36
+          }
+        },
+        "runnerMs": 44369.30274999999,
+        "captureMs": 39.97358200000346
+      },
+      "plan": {
+        "machine": "Apple M4 Max",
+        "anchor": "2026-10-09T08:07:55.636Z",
+        "cutoff": "2026-04-09T08:07:55.636Z",
+        "corpusRoot": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/corpus",
+        "harness": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/harness",
+        "controller": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/controller",
+        "env": {
+          "PATH": "/Users/work/.gvm/pkgsets/go1.27.1/global/bin:/Users/work/.gvm/gos/go1.27.1/bin:/Users/work/.gvm/pkgsets/go1.27.1/global/overlay/bin:/Users/work/.gvm/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Users/work/.codex/packages/app-server-daemon/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/work/.codex/tmp/arg0/codex-arg06bBxDS:/Users/work/.codex/tmp/arg0/codex-arg0iRgRhx:/opt/homebrew/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex-path:/Users/work/.wago/bin:/Users/work/.wasmer/bin:/Users/work/.opencode/bin:/Users/work/.bun/bin:/Users/work/.local/bin",
+          "SDKROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+          "WASMBENCH_TOOL_CACHE": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-main-20261012/tool-cache",
+          "WASMFYI_HISTORY_FAST": "1",
+          "WASMFYI_BUILD_JOBS": "8"
+        },
+        "collection": {
+          "suite": "wago",
+          "validationProfile": "all",
+          "v8CompilerMode": "optimizing-only",
+          "runtimes": [
+            "wago"
+          ],
+          "featureRuntimes": [],
+          "wagoSource": "../../Wago/wago",
+          "launches": 3,
+          "workers": 1,
+          "samples": 5,
+          "scenarioSamples": {
+            "*": 5,
+            "compile": 5,
+            "instantiate": 5,
+            "first-call": 5,
+            "steady": 5
+          },
+          "operations": 1,
+          "warmup": 0,
+          "memory": true,
+          "timingPeakRSS": true,
+          "code": true,
+          "timeout": "5m",
+          "phaseBarriers": false,
+          "featureRuntimesByPlatform": {},
+          "corpusByCorpus": true,
+          "includeFeatures": false,
+          "capture": "latency",
+          "threads": 1,
+          "adaptiveSampling": false,
+          "supportsSteadyOperations": true
+        },
+        "jobs": [
+          {
+            "id": "wago-8f807e02",
+            "engine": "wago",
+            "harness": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-shift-harness",
+            "controller": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/controller-host-profile",
+            "env": {},
+            "historical": false,
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f",
+              "ref": "jairus/wasm3-feature-parity@8f807e02",
+              "asOf": "2026-10-13T16:47:54.653155+00:00",
+              "kind": "snapshot"
+            }
+          },
+          {
+            "id": "wago-aee8f154",
+            "engine": "wago",
+            "harness": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual-harness",
+            "controller": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/controller-host-profile",
+            "env": {},
+            "historical": false,
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "aee8f154b1749ad85e453cb0f8932f61edfc40da",
+              "ref": "jairus/wasm3-feature-parity@aee8f154",
+              "asOf": "2026-10-13T16:51:48.966885+00:00",
+              "kind": "snapshot"
+            }
+          },
+          {
+            "id": "w2c2-f303ed27",
+            "engine": "w2c2-clang",
+            "harness": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/harness",
+            "controller": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/controller-host-profile",
+            "env": {},
+            "historical": false,
+            "source": {
+              "repository": "JairusSW/w2c2",
+              "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+              "ref": "main@f303ed27",
+              "asOf": "2026-10-13T05:56:24.446Z",
+              "kind": "snapshot"
+            }
+          }
+        ],
+        "workloads": [
+          {
+            "id": "features/core-glb/i64-carry-overflow/performance-4096x64",
+            "sha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915"
+          },
+          {
+            "id": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+            "sha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee"
+          },
+          {
+            "id": "applications/mesh-skinning",
+            "sha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da"
+          }
+        ],
+        "captureDirectory": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/capture/captures",
+        "executionPolicy": {
+          "measurementCores": 1,
+          "compilationCores": "available"
+        },
+        "cpu": null,
+        "toolRoot": "/home/hub/.cache/wasm-fyi",
+        "platformSpecs": {
+          "cores": 16,
+          "memoryBytes": 68719476736
+        },
+        "historyNotBefore": "2026-06-28",
+        "publicationPolicy": "deferred until all timing completes; publication acquires shared device lock",
+        "workloadOrder": "main-first"
+      },
+      "comparisons": [
+        {
+          "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+          "beforeNs": 64968.00755939525,
+          "currentNs": 37488.153360137854,
+          "peerNs": 33282.40938592112,
+          "changePercent": -42.29751724205899,
+          "currentOverPeer": 1.1263653699300933,
+          "nativeBytesBefore": 576,
+          "nativeBytesCurrent": 592
+        },
+        {
+          "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+          "beforeNs": 64991.37001078748,
+          "currentNs": 37129.73321858864,
+          "peerNs": 32794.78215353938,
+          "changePercent": -42.869748379783765,
+          "currentOverPeer": 1.1321841701754194,
+          "nativeBytesBefore": 576,
+          "nativeBytesCurrent": 592
+        },
+        {
+          "workload": "applications/mesh-skinning",
+          "beforeNs": 21416,
+          "currentNs": 21167,
+          "peerNs": 12292,
+          "changePercent": -1.1626821068360105,
+          "currentOverPeer": 1.722014318255776,
+          "nativeBytesBefore": 804,
+          "nativeBytesCurrent": 804
+        }
+      ],
+      "captures": [
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/capture/captures/w2c2-f303ed27-1fdcaffed5f39f5c.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:52:31.533Z",
+            "source": {
+              "repository": "JairusSW/w2c2",
+              "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+              "ref": "main@f303ed27",
+              "asOf": "2026-10-13T05:56:24.446Z",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  288932917,
+                  305123375,
+                  282845792,
+                  287050667,
+                  286763917,
+                  284576083,
+                  278221208,
+                  280545125,
+                  281615667,
+                  278397667,
+                  279441834,
+                  280470708,
+                  279834167,
+                  290155084,
+                  278806834
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 280545125,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57966592,
+                "codeStatus": "ok",
+                "codeBytes": 5340,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  1208,
+                  500,
+                  375,
+                  333,
+                  375,
+                  1209,
+                  416,
+                  333,
+                  333,
+                  333,
+                  1333,
+                  541,
+                  375,
+                  292,
+                  334
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 375,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57999360,
+                "codeStatus": "ok",
+                "codeBytes": 5340,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  31542,
+                  31209,
+                  31250,
+                  31209,
+                  31250,
+                  31500,
+                  31250,
+                  31208,
+                  31250,
+                  31167,
+                  31750,
+                  31291,
+                  31250,
+                  31208,
+                  31208
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 31250,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57966592,
+                "codeStatus": "ok",
+                "codeBytes": 5340,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  32944.79131303045,
+                  33855.446330504245,
+                  32894.928607089365,
+                  34100.91113330005,
+                  33589.282576135796,
+                  33374.604593110336,
+                  32633.65351972042,
+                  33282.40938592112,
+                  33604.3020469296,
+                  32931.020469296054,
+                  32721.958562156764,
+                  33155.37144283575,
+                  32418.434847728407,
+                  33407.61757363954,
+                  33581.35696455317
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 33282.40938592112,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57917440,
+                "codeStatus": "ok",
+                "codeBytes": 5340,
+                "codeKind": "engine-reported"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/capture/captures/w2c2-f303ed27-717d567555e13f97.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:52:49.615Z",
+            "source": {
+              "repository": "JairusSW/w2c2",
+              "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+              "ref": "main@f303ed27",
+              "asOf": "2026-10-13T05:56:24.446Z",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  282885000,
+                  285681750,
+                  279638875,
+                  278302833,
+                  287164375,
+                  286703541,
+                  282708166,
+                  279087333,
+                  282844291,
+                  287681792,
+                  268335667,
+                  279555833,
+                  280729208,
+                  278858166,
+                  278232583
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 282844291,
+                "memoryStatus": "ok",
+                "peakRssBytes": 58032128,
+                "codeStatus": "ok",
+                "codeBytes": 5348,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  1291,
+                  417,
+                  333,
+                  291,
+                  333,
+                  1166,
+                  416,
+                  333,
+                  334,
+                  333,
+                  1125,
+                  416,
+                  334,
+                  333,
+                  292
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 334,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57966592,
+                "codeStatus": "ok",
+                "codeBytes": 5348,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  36125,
+                  41250,
+                  39625,
+                  37875,
+                  35666,
+                  36084,
+                  35791,
+                  35708,
+                  43250,
+                  37625,
+                  32334,
+                  34708,
+                  41708,
+                  37916,
+                  39250
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 37875,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57999360,
+                "codeStatus": "ok",
+                "codeBytes": 5348,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  33060.69292123629,
+                  32253.780159521437,
+                  33072.53240279163,
+                  33130.79511465603,
+                  32639.892821535395,
+                  32698.34247258225,
+                  32697.65702891326,
+                  32794.78215353938,
+                  33478.50199401795,
+                  33374.31455633101,
+                  32643.880857427717,
+                  32501.30857427717,
+                  33349.26470588235,
+                  32780.387836490525,
+                  32623.379860418743
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 32794.78215353938,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57917440,
+                "codeStatus": "ok",
+                "codeBytes": 5348,
+                "codeKind": "engine-reported"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/capture/captures/w2c2-f303ed27-f8770321978b4c46.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:52:13.476Z",
+            "source": {
+              "repository": "JairusSW/w2c2",
+              "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+              "ref": "main@f303ed27",
+              "asOf": "2026-10-13T05:56:24.446Z",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  278856625,
+                  275721375,
+                  263777750,
+                  268421958,
+                  269094041,
+                  271260042,
+                  285383750,
+                  258714208,
+                  264377958,
+                  269325458,
+                  274480667,
+                  266487041,
+                  259382708,
+                  276366125,
+                  269914917
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 269325458,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57360384,
+                "codeStatus": "ok",
+                "codeBytes": 3032,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  5042,
+                  4958,
+                  625,
+                  625,
+                  542,
+                  5208,
+                  5167,
+                  792,
+                  791,
+                  625,
+                  4750,
+                  4375,
+                  625,
+                  541,
+                  541
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 625,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57278464,
+                "codeStatus": "ok",
+                "codeBytes": 3032,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  12625,
+                  12416,
+                  12250,
+                  12250,
+                  12250,
+                  12834,
+                  12459,
+                  12334,
+                  12250,
+                  12166,
+                  12834,
+                  12667,
+                  12541,
+                  12500,
+                  12541
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 12334,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57262080,
+                "codeStatus": "ok",
+                "codeBytes": 3032,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  12292,
+                  12291,
+                  12375,
+                  12292,
+                  12250,
+                  12375,
+                  12333,
+                  12208,
+                  12208,
+                  12291,
+                  12375,
+                  12333,
+                  12292,
+                  12208,
+                  12209
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 12292,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57278464,
+                "codeStatus": "ok",
+                "codeBytes": 3032,
+                "codeKind": "engine-reported"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/capture/captures/wago-8f807e02-1fdcaffed5f39f5c.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:52:16.001Z",
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f",
+              "ref": "jairus/wasm3-feature-parity@8f807e02",
+              "asOf": "2026-10-13T16:47:54.653155+00:00",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  179333,
+                  41542,
+                  25208,
+                  22833,
+                  25667,
+                  140041,
+                  41292,
+                  24292,
+                  24416,
+                  22959,
+                  132583,
+                  40750,
+                  24375,
+                  23541,
+                  22958
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 24416,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9469952,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  5250,
+                  3292,
+                  667,
+                  625,
+                  417,
+                  4458,
+                  2667,
+                  667,
+                  542,
+                  375,
+                  5166,
+                  2750,
+                  625,
+                  500,
+                  458
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 667,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9371648,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  100791,
+                  66833,
+                  67667,
+                  66791,
+                  67333,
+                  79041,
+                  66834,
+                  67708,
+                  66750,
+                  67375,
+                  75625,
+                  67875,
+                  68958,
+                  67250,
+                  67667
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 67375,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9240576,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  64715.9384449244,
+                  64760.57343412527,
+                  64968.45788336933,
+                  65232.4060475162,
+                  66911.98704103671,
+                  64754.544276457884,
+                  64634.764578833696,
+                  64986.9060475162,
+                  64821.0939524838,
+                  67037.48164146868,
+                  64939.479481641465,
+                  64968.00755939525,
+                  65035.36717062635,
+                  64900.467602591794,
+                  65137.95896328294
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 64968.00755939525,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9748480,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/capture/captures/wago-8f807e02-717d567555e13f97.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:52:34.119Z",
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f",
+              "ref": "jairus/wasm3-feature-parity@8f807e02",
+              "asOf": "2026-10-13T16:47:54.653155+00:00",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  177625,
+                  42500,
+                  24583,
+                  24333,
+                  24750,
+                  133958,
+                  42791,
+                  25167,
+                  26583,
+                  27208,
+                  133250,
+                  43583,
+                  25375,
+                  23583,
+                  26083
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 26083,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9502720,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  4583,
+                  2792,
+                  584,
+                  458,
+                  375,
+                  5416,
+                  3542,
+                  709,
+                  500,
+                  375,
+                  4667,
+                  2625,
+                  625,
+                  542,
+                  417
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 625,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9371648,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  76458,
+                  67875,
+                  68959,
+                  67750,
+                  67750,
+                  74542,
+                  66875,
+                  67709,
+                  66750,
+                  67250,
+                  74500,
+                  69708,
+                  68750,
+                  68708,
+                  70875
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 67875,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9388032,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  71572.95037756203,
+                  71697.81553398058,
+                  71849.96440129449,
+                  72104.4142394822,
+                  71675.61165048544,
+                  65001.75296655879,
+                  64874.86515641856,
+                  64832.3451995685,
+                  64879.76483279396,
+                  65083.333333333336,
+                  64982.11111111111,
+                  64894.147788565264,
+                  65183.20819848975,
+                  64991.37001078748,
+                  65888.43905070118
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 64991.37001078748,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9797632,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/capture/captures/wago-8f807e02-f8770321978b4c46.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:52:05.400Z",
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f",
+              "ref": "jairus/wasm3-feature-parity@8f807e02",
+              "asOf": "2026-10-13T16:47:54.653155+00:00",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  187375,
+                  50875,
+                  37250,
+                  34417,
+                  37084,
+                  136459,
+                  50750,
+                  36458,
+                  51250,
+                  35375,
+                  143833,
+                  51792,
+                  37500,
+                  35417,
+                  37209
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 37500,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9256960,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  5000,
+                  2416,
+                  625,
+                  458,
+                  375,
+                  5083,
+                  2750,
+                  583,
+                  375,
+                  333,
+                  5125,
+                  2541,
+                  625,
+                  375,
+                  375
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 625,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9207808,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  26833,
+                  21625,
+                  21083,
+                  21084,
+                  21208,
+                  27125,
+                  21292,
+                  21208,
+                  21083,
+                  21084,
+                  26834,
+                  21333,
+                  21250,
+                  21084,
+                  21208
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 21208,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9043968,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  27291,
+                  21125,
+                  21250,
+                  21166,
+                  21166,
+                  27458,
+                  21584,
+                  21416,
+                  21416,
+                  21250,
+                  26708,
+                  21916,
+                  23541,
+                  21375,
+                  21375
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 21416,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9109504,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/capture/captures/wago-aee8f154-1fdcaffed5f39f5c.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:52:18.703Z",
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "aee8f154b1749ad85e453cb0f8932f61edfc40da",
+              "ref": "jairus/wasm3-feature-parity@aee8f154",
+              "asOf": "2026-10-13T16:51:48.966885+00:00",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  255625,
+                  55084,
+                  54834,
+                  37250,
+                  29125,
+                  134959,
+                  42917,
+                  24458,
+                  24125,
+                  55000,
+                  131625,
+                  43291,
+                  53458,
+                  35791,
+                  29458
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 43291,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9535488,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  4750,
+                  2542,
+                  625,
+                  458,
+                  375,
+                  4750,
+                  2666,
+                  625,
+                  459,
+                  375,
+                  4625,
+                  2792,
+                  583,
+                  458,
+                  416
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 625,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9338880,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  43750,
+                  36250,
+                  36167,
+                  36208,
+                  35958,
+                  46792,
+                  37250,
+                  37000,
+                  39375,
+                  37000,
+                  43042,
+                  36334,
+                  36000,
+                  36000,
+                  36209
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 36209,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9306112,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  37559.06547960942,
+                  37468.600229753014,
+                  37533.02699597932,
+                  37378.06318207926,
+                  37702.062607696724,
+                  37077.82883400345,
+                  37064.52211372774,
+                  37302.603676048246,
+                  37315.35956346927,
+                  37219.4859276278,
+                  37488.153360137854,
+                  37613.249282021825,
+                  37513.21079839173,
+                  37319.619758759334,
+                  37135.33888569788
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 37488.153360137854,
+                "memoryStatus": "ok",
+                "peakRssBytes": 10108928,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/capture/captures/wago-aee8f154-717d567555e13f97.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:52:36.802Z",
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "aee8f154b1749ad85e453cb0f8932f61edfc40da",
+              "ref": "jairus/wasm3-feature-parity@aee8f154",
+              "asOf": "2026-10-13T16:51:48.966885+00:00",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  174292,
+                  43125,
+                  25208,
+                  22541,
+                  25542,
+                  132083,
+                  40458,
+                  39000,
+                  20583,
+                  28292,
+                  130792,
+                  41041,
+                  24458,
+                  24209,
+                  25083
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 25542,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9551872,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  5375,
+                  2500,
+                  667,
+                  417,
+                  375,
+                  5041,
+                  5292,
+                  1125,
+                  542,
+                  417,
+                  5250,
+                  2708,
+                  666,
+                  416,
+                  375
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 667,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9437184,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  44583,
+                  37167,
+                  37209,
+                  37125,
+                  37167,
+                  44708,
+                  36625,
+                  36416,
+                  36167,
+                  37584,
+                  37958,
+                  32292,
+                  32250,
+                  32250,
+                  34250
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 36625,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9306112,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  37381.40619621342,
+                  37126.936316695355,
+                  37214.02294893861,
+                  37584.409064830754,
+                  37656.96156052782,
+                  37129.73321858864,
+                  37199.32128514056,
+                  37299.34021801491,
+                  36948.17326448652,
+                  37103.17441193345,
+                  36553.85829030407,
+                  36468.75616752725,
+                  36469.06655192198,
+                  37085.93918531268,
+                  37101.525530694205
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 37129.73321858864,
+                "memoryStatus": "ok",
+                "peakRssBytes": 10141696,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/capture/captures/wago-aee8f154-f8770321978b4c46.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:52:06.048Z",
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "aee8f154b1749ad85e453cb0f8932f61edfc40da",
+              "ref": "jairus/wasm3-feature-parity@aee8f154",
+              "asOf": "2026-10-13T16:51:48.966885+00:00",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  1579458,
+                  117167,
+                  84959,
+                  79125,
+                  82542,
+                  256791,
+                  94667,
+                  70083,
+                  64583,
+                  70000,
+                  227541,
+                  85208,
+                  62625,
+                  61041,
+                  124916
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 84959,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9273344,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  7417,
+                  8000,
+                  2291,
+                  833,
+                  583,
+                  6625,
+                  4333,
+                  875,
+                  542,
+                  500,
+                  6459,
+                  3584,
+                  833,
+                  542,
+                  500
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 875,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9109504,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  31250,
+                  25416,
+                  25291,
+                  25166,
+                  25250,
+                  30541,
+                  24292,
+                  26500,
+                  24000,
+                  23625,
+                  29625,
+                  23209,
+                  23167,
+                  22708,
+                  22625
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 24292,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9043968,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  28125,
+                  22042,
+                  21833,
+                  21791,
+                  21791,
+                  27500,
+                  21167,
+                  20917,
+                  21000,
+                  23292,
+                  27625,
+                  21291,
+                  21042,
+                  20916,
+                  20625
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 21167,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9109504,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "repeat": {
+      "status": {
+        "status": "completed",
+        "started": "2026-10-13T16:53:19.917Z",
+        "updated": "2026-10-13T16:54:12.162Z",
+        "machine": "Apple M4 Max",
+        "current": null,
+        "completed": 9,
+        "total": 9,
+        "errors": [],
+        "resourceFailures": [],
+        "resourceStatuses": {
+          "memory": {
+            "ok": 36
+          },
+          "code": {
+            "ok": 36
+          }
+        },
+        "runnerMs": 52174.257710000005,
+        "captureMs": 52.839206000008744
+      },
+      "plan": {
+        "machine": "Apple M4 Max",
+        "anchor": "2026-10-09T08:07:55.636Z",
+        "cutoff": "2026-04-09T08:07:55.636Z",
+        "corpusRoot": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/corpus",
+        "harness": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/harness",
+        "controller": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/controller",
+        "env": {
+          "PATH": "/Users/work/.gvm/pkgsets/go1.27.1/global/bin:/Users/work/.gvm/gos/go1.27.1/bin:/Users/work/.gvm/pkgsets/go1.27.1/global/overlay/bin:/Users/work/.gvm/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Users/work/.codex/packages/app-server-daemon/releases/0.162.1-aarch64-apple-darwin/codex-path:/Users/work/.codex/tmp/arg0/codex-arg06bBxDS:/Users/work/.codex/tmp/arg0/codex-arg0iRgRhx:/opt/homebrew/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex-path:/Users/work/.wago/bin:/Users/work/.wasmer/bin:/Users/work/.opencode/bin:/Users/work/.bun/bin:/Users/work/.local/bin",
+          "SDKROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+          "WASMBENCH_TOOL_CACHE": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-main-20261012/tool-cache",
+          "WASMFYI_HISTORY_FAST": "1",
+          "WASMFYI_BUILD_JOBS": "8"
+        },
+        "collection": {
+          "suite": "wago",
+          "validationProfile": "all",
+          "v8CompilerMode": "optimizing-only",
+          "runtimes": [
+            "wago"
+          ],
+          "featureRuntimes": [],
+          "wagoSource": "../../Wago/wago",
+          "launches": 3,
+          "workers": 1,
+          "samples": 5,
+          "scenarioSamples": {
+            "*": 5,
+            "compile": 5,
+            "instantiate": 5,
+            "first-call": 5,
+            "steady": 5
+          },
+          "operations": 1,
+          "warmup": 0,
+          "memory": true,
+          "timingPeakRSS": true,
+          "code": true,
+          "timeout": "5m",
+          "phaseBarriers": false,
+          "featureRuntimesByPlatform": {},
+          "corpusByCorpus": true,
+          "includeFeatures": false,
+          "capture": "latency",
+          "threads": 1,
+          "adaptiveSampling": false,
+          "supportsSteadyOperations": true
+        },
+        "jobs": [
+          {
+            "id": "w2c2-f303ed27",
+            "engine": "w2c2-clang",
+            "harness": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/harness",
+            "controller": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/controller-host-profile",
+            "env": {},
+            "historical": false,
+            "source": {
+              "repository": "JairusSW/w2c2",
+              "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+              "ref": "main@f303ed27",
+              "asOf": "2026-10-13T05:56:24.446Z",
+              "kind": "snapshot"
+            }
+          },
+          {
+            "id": "wago-aee8f154",
+            "engine": "wago",
+            "harness": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual-harness",
+            "controller": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/controller-host-profile",
+            "env": {},
+            "historical": false,
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "aee8f154b1749ad85e453cb0f8932f61edfc40da",
+              "ref": "jairus/wasm3-feature-parity@aee8f154",
+              "asOf": "2026-10-13T16:51:48.966885+00:00",
+              "kind": "snapshot"
+            }
+          },
+          {
+            "id": "wago-8f807e02",
+            "engine": "wago",
+            "harness": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-shift-harness",
+            "controller": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/controller-host-profile",
+            "env": {},
+            "historical": false,
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f",
+              "ref": "jairus/wasm3-feature-parity@8f807e02",
+              "asOf": "2026-10-13T16:47:54.653155+00:00",
+              "kind": "snapshot"
+            }
+          }
+        ],
+        "workloads": [
+          {
+            "id": "features/core-glb/i64-carry-overflow/performance-4096x64",
+            "sha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915"
+          },
+          {
+            "id": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+            "sha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee"
+          },
+          {
+            "id": "applications/mesh-skinning",
+            "sha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da"
+          }
+        ],
+        "captureDirectory": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/repeat/captures",
+        "executionPolicy": {
+          "measurementCores": 1,
+          "compilationCores": "available"
+        },
+        "cpu": null,
+        "toolRoot": "/home/hub/.cache/wasm-fyi",
+        "platformSpecs": {
+          "cores": 16,
+          "memoryBytes": 68719476736
+        },
+        "historyNotBefore": "2026-06-28",
+        "publicationPolicy": "deferred until all timing completes; publication acquires shared device lock",
+        "workloadOrder": "main-first"
+      },
+      "comparisons": [
+        {
+          "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+          "beforeNs": 67881.47249190939,
+          "currentNs": 37342.917104495034,
+          "peerNs": 96890.29582484726,
+          "changePercent": -44.98805677949041,
+          "currentOverPeer": 0.3854144193346404,
+          "nativeBytesBefore": 576,
+          "nativeBytesCurrent": 592
+        },
+        {
+          "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+          "beforeNs": 178989.3209200438,
+          "currentNs": 37551.670878805286,
+          "peerNs": 35223.8703888335,
+          "changePercent": -79.0201612667272,
+          "currentOverPeer": 1.0660858805200957,
+          "nativeBytesBefore": 576,
+          "nativeBytesCurrent": 592
+        },
+        {
+          "workload": "applications/mesh-skinning",
+          "beforeNs": 21041,
+          "currentNs": 21084,
+          "peerNs": 12333,
+          "changePercent": 0.2043629105080491,
+          "currentOverPeer": 1.7095597178302115,
+          "nativeBytesBefore": 804,
+          "nativeBytesCurrent": 804
+        }
+      ],
+      "captures": [
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/repeat/captures/w2c2-f303ed27-1fdcaffed5f39f5c.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:53:45.748Z",
+            "source": {
+              "repository": "JairusSW/w2c2",
+              "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+              "ref": "main@f303ed27",
+              "asOf": "2026-10-13T05:56:24.446Z",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  314397166,
+                  287311792,
+                  293616167,
+                  297104125,
+                  293232083,
+                  287180625,
+                  300365666,
+                  284343291,
+                  282653833,
+                  284014542,
+                  274149208,
+                  287386333,
+                  283726084,
+                  277240291,
+                  287088666
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 284343291,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57966592,
+                "codeStatus": "ok",
+                "codeBytes": 5340,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  1500,
+                  375,
+                  334,
+                  333,
+                  292,
+                  1166,
+                  500,
+                  375,
+                  292,
+                  291,
+                  1000,
+                  375,
+                  334,
+                  292,
+                  333
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 334,
+                "memoryStatus": "ok",
+                "peakRssBytes": 58015744,
+                "codeStatus": "ok",
+                "codeBytes": 5340,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  31542,
+                  31334,
+                  31250,
+                  31250,
+                  31209,
+                  36250,
+                  35792,
+                  35666,
+                  35625,
+                  35708,
+                  31458,
+                  31291,
+                  31208,
+                  31250,
+                  31167
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 31250,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57917440,
+                "codeStatus": "ok",
+                "codeBytes": 5340,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  95858.96130346232,
+                  108845.5534623218,
+                  142719.21639511202,
+                  113007.40427698575,
+                  108134.75916496945,
+                  123787.04175152749,
+                  87644.96384928717,
+                  127355.94908350306,
+                  75060.18788187373,
+                  96890.29582484726,
+                  63939.77036659878,
+                  37691.00050916497,
+                  42218.38951120163,
+                  58125.23319755601,
+                  36825.123217922606
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 96890.29582484726,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57917440,
+                "codeStatus": "ok",
+                "codeBytes": 5340,
+                "codeKind": "engine-reported"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/repeat/captures/w2c2-f303ed27-717d567555e13f97.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:54:04.504Z",
+            "source": {
+              "repository": "JairusSW/w2c2",
+              "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+              "ref": "main@f303ed27",
+              "asOf": "2026-10-13T05:56:24.446Z",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  313342959,
+                  290677250,
+                  285489167,
+                  290171750,
+                  290238250,
+                  292764250,
+                  283694458,
+                  289637083,
+                  294609875,
+                  297984209,
+                  294143625,
+                  293482625,
+                  293043750,
+                  277068875,
+                  289354750
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 292764250,
+                "memoryStatus": "ok",
+                "peakRssBytes": 58048512,
+                "codeStatus": "ok",
+                "codeBytes": 5348,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  1208,
+                  417,
+                  334,
+                  333,
+                  292,
+                  1125,
+                  459,
+                  375,
+                  333,
+                  292,
+                  1041,
+                  417,
+                  375,
+                  334,
+                  333
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 375,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57966592,
+                "codeStatus": "ok",
+                "codeBytes": 5348,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  34708,
+                  38125,
+                  35625,
+                  35125,
+                  44292,
+                  31625,
+                  31209,
+                  31250,
+                  31167,
+                  31167,
+                  31625,
+                  31250,
+                  31291,
+                  31167,
+                  31250
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 31250,
+                "memoryStatus": "ok",
+                "peakRssBytes": 58048512,
+                "codeStatus": "ok",
+                "codeBytes": 5348,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  34657.382352941175,
+                  35214.04536390828,
+                  34736.872881355936,
+                  35428.09072781655,
+                  35140.22482552343,
+                  35223.8703888335,
+                  35544.57477567298,
+                  34691.75772681954,
+                  35664.77666999003,
+                  34445.9332003988,
+                  35390.99401794616,
+                  36229.68594217348,
+                  36509.26370887338,
+                  35832.627118644064,
+                  34646.95513459621
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 35223.8703888335,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57950208,
+                "codeStatus": "ok",
+                "codeBytes": 5348,
+                "codeKind": "engine-reported"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/repeat/captures/w2c2-f303ed27-f8770321978b4c46.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:53:27.887Z",
+            "source": {
+              "repository": "JairusSW/w2c2",
+              "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+              "ref": "main@f303ed27",
+              "asOf": "2026-10-13T05:56:24.446Z",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  367697958,
+                  307392209,
+                  273251584,
+                  285504166,
+                  286427042,
+                  283833417,
+                  279692125,
+                  282536167,
+                  282796083,
+                  282345292,
+                  276660542,
+                  280703375,
+                  296458709,
+                  265855959,
+                  297692459
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 282536167,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57311232,
+                "codeStatus": "ok",
+                "codeBytes": 3032,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  4750,
+                  4875,
+                  750,
+                  667,
+                  583,
+                  6167,
+                  7917,
+                  625,
+                  583,
+                  625,
+                  5833,
+                  6042,
+                  1125,
+                  791,
+                  792
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 750,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57278464,
+                "codeStatus": "ok",
+                "codeBytes": 3032,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  18042,
+                  17667,
+                  17375,
+                  15625,
+                  17333,
+                  12792,
+                  12500,
+                  12292,
+                  12333,
+                  12334,
+                  12708,
+                  12416,
+                  14167,
+                  13583,
+                  12500
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 12708,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57425920,
+                "codeStatus": "ok",
+                "codeBytes": 3032,
+                "codeKind": "engine-reported"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  12500,
+                  12375,
+                  12333,
+                  12250,
+                  12250,
+                  12292,
+                  12292,
+                  12292,
+                  12250,
+                  12334,
+                  16875,
+                  17542,
+                  16083,
+                  12333,
+                  12250
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "w2c2-clang",
+                "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                "backend": "c-aot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 12333,
+                "memoryStatus": "ok",
+                "peakRssBytes": 57344000,
+                "codeStatus": "ok",
+                "codeBytes": 3032,
+                "codeKind": "engine-reported"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/repeat/captures/wago-8f807e02-1fdcaffed5f39f5c.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:53:51.290Z",
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f",
+              "ref": "jairus/wasm3-feature-parity@8f807e02",
+              "asOf": "2026-10-13T16:47:54.653155+00:00",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  189209,
+                  46333,
+                  25917,
+                  23500,
+                  24584,
+                  143791,
+                  43541,
+                  24541,
+                  23584,
+                  24041,
+                  167875,
+                  45041,
+                  25125,
+                  23292,
+                  25250
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 25250,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9568256,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  5125,
+                  2500,
+                  709,
+                  500,
+                  458,
+                  5042,
+                  3791,
+                  625,
+                  541,
+                  417,
+                  5417,
+                  2709,
+                  667,
+                  667,
+                  500
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 667,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9453568,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  74708,
+                  69542,
+                  67583,
+                  66667,
+                  66708,
+                  74459,
+                  66792,
+                  67500,
+                  67834,
+                  67791,
+                  75666,
+                  67958,
+                  68833,
+                  68834,
+                  67875
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 67791,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9338880,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  67611.20064724919,
+                  68209.142394822,
+                  68170.98166127292,
+                  68327.8953613808,
+                  66777.37324703344,
+                  68041.84681769148,
+                  67385.65264293419,
+                  67605.22330097087,
+                  68115.42610571737,
+                  67443.18662351673,
+                  67924.53290183387,
+                  67881.47249190939,
+                  67492.22330097087,
+                  68801.690399137,
+                  67832.88349514564
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 67881.47249190939,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9699328,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/repeat/captures/wago-8f807e02-717d567555e13f97.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:54:12.158Z",
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f",
+              "ref": "jairus/wasm3-feature-parity@8f807e02",
+              "asOf": "2026-10-13T16:47:54.653155+00:00",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  177542,
+                  41791,
+                  28000,
+                  22750,
+                  25166,
+                  131708,
+                  42709,
+                  25000,
+                  23833,
+                  25416,
+                  141333,
+                  42208,
+                  24666,
+                  24375,
+                  25542
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 25542,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9551872,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  5375,
+                  2833,
+                  625,
+                  500,
+                  375,
+                  4459,
+                  2750,
+                  667,
+                  500,
+                  459,
+                  5084,
+                  3125,
+                  667,
+                  541,
+                  375
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 667,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9371648,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  77959,
+                  66833,
+                  67834,
+                  66792,
+                  66708,
+                  78250,
+                  66875,
+                  67708,
+                  67625,
+                  67583,
+                  73209,
+                  66834,
+                  67875,
+                  66750,
+                  66708
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 66834,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9338880,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  71538.51807228915,
+                  69607.9769989047,
+                  70012.9156626506,
+                  70204.49945235488,
+                  70329.72836801753,
+                  144349.12376779848,
+                  147840.81818181818,
+                  179135.5881708653,
+                  346933.8269441402,
+                  178989.3209200438,
+                  214947.79189485213,
+                  181974.53450164295,
+                  173691.40197152246,
+                  212073.24753559692,
+                  258366.05585980284
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 178989.3209200438,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9732096,
+                "codeStatus": "ok",
+                "codeBytes": 576,
+                "codeKind": "native-image"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/repeat/captures/wago-8f807e02-f8770321978b4c46.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:53:28.328Z",
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f",
+              "ref": "jairus/wasm3-feature-parity@8f807e02",
+              "asOf": "2026-10-13T16:47:54.653155+00:00",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  180000,
+                  51292,
+                  37541,
+                  30750,
+                  34042,
+                  152792,
+                  52250,
+                  39084,
+                  37958,
+                  39875,
+                  145000,
+                  60708,
+                  48917,
+                  41166,
+                  42083
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 39875,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9273344,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  5583,
+                  3334,
+                  625,
+                  458,
+                  375,
+                  6583,
+                  2834,
+                  625,
+                  416,
+                  375,
+                  5208,
+                  3375,
+                  708,
+                  416,
+                  375
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 625,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9240576,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  26958,
+                  21375,
+                  20875,
+                  20834,
+                  20833,
+                  30667,
+                  21667,
+                  21375,
+                  21542,
+                  21125,
+                  34875,
+                  22000,
+                  21583,
+                  21417,
+                  21000
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 21542,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9125888,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  30292,
+                  21458,
+                  21417,
+                  21083,
+                  21417,
+                  28375,
+                  19041,
+                  18875,
+                  18583,
+                  18917,
+                  31125,
+                  21417,
+                  21000,
+                  20708,
+                  21041
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "8f807e025b9941d6fd5078fd50cdfc86e6eb986f/source-14b6b3b4eba3802096154a364fde0f49f1c438cbaa0863e731457c419eccfe41",
+                "backend": "railshot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 21041,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9158656,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/repeat/captures/wago-aee8f154-1fdcaffed5f39f5c.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:53:48.645Z",
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "aee8f154b1749ad85e453cb0f8932f61edfc40da",
+              "ref": "jairus/wasm3-feature-parity@aee8f154",
+              "asOf": "2026-10-13T16:51:48.966885+00:00",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  335625,
+                  120375,
+                  71000,
+                  77750,
+                  67334,
+                  321000,
+                  91833,
+                  47166,
+                  50875,
+                  73292,
+                  199875,
+                  46500,
+                  25500,
+                  24792,
+                  28250
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 73292,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9486336,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  5458,
+                  3417,
+                  667,
+                  459,
+                  375,
+                  11167,
+                  7208,
+                  1333,
+                  1250,
+                  1542,
+                  11875,
+                  6583,
+                  1500,
+                  1333,
+                  1209
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 1500,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9355264,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  101500,
+                  81375,
+                  79375,
+                  80750,
+                  79292,
+                  96916,
+                  79625,
+                  79167,
+                  93667,
+                  79459,
+                  46417,
+                  36917,
+                  36792,
+                  36750,
+                  36542
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 79625,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9256960,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "core-glb"
+                  ],
+                  "abi": "core",
+                  "bytes": 252,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/core-glb-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  37064.14185639229,
+                  37412.09398715704,
+                  38108.04670169294,
+                  37978.03561004086,
+                  37287.87215411559,
+                  36906.49912434326,
+                  37342.917104495034,
+                  37767.75598365441,
+                  37457.0198482195,
+                  37170.24226503211,
+                  36656.8155283129,
+                  36560.76123759486,
+                  36543.296555750145,
+                  37355.15178050204,
+                  37347.10040863981
+                ],
+                "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+                "wasm": "core-glb-i64-carry-overflow.wasm",
+                "artifactSha256": "49dce88ec11bba2f4e92adaa6c980c55e8fb0dd38349e4e57fbb0097070ef915",
+                "contractSha256": "5193b30e2a4d0a46fb47933672ad2891dff3f89e9976a860a180b2712583f55c",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 37342.917104495034,
+                "memoryStatus": "ok",
+                "peakRssBytes": 10059776,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/repeat/captures/wago-aee8f154-717d567555e13f97.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:54:07.235Z",
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "aee8f154b1749ad85e453cb0f8932f61edfc40da",
+              "ref": "jairus/wasm3-feature-parity@aee8f154",
+              "asOf": "2026-10-13T16:51:48.966885+00:00",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  178667,
+                  42708,
+                  35792,
+                  34209,
+                  29958,
+                  132291,
+                  46792,
+                  25375,
+                  27166,
+                  28167,
+                  134500,
+                  44125,
+                  25583,
+                  25083,
+                  25084
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 28167,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9568256,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  5125,
+                  3208,
+                  625,
+                  416,
+                  375,
+                  5208,
+                  2584,
+                  625,
+                  416,
+                  417,
+                  4791,
+                  2334,
+                  708,
+                  458,
+                  375
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 625,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9437184,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  43875,
+                  36625,
+                  36541,
+                  37833,
+                  36959,
+                  42666,
+                  36250,
+                  36041,
+                  37292,
+                  40042,
+                  43459,
+                  39333,
+                  37208,
+                  36917,
+                  36084
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 37208,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9273344,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "features",
+                  "purpose": "",
+                  "tags": [
+                    "mutable-globals"
+                  ],
+                  "abi": "core",
+                  "bytes": 259,
+                  "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/mutable-globals-i64-carry-overflow.wat",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  37575.914417001724,
+                  37479.63354394026,
+                  37551.670878805286,
+                  37604.20275703619,
+                  37413.36358414704,
+                  37927.221137277425,
+                  37948.496840896034,
+                  37831.08385985066,
+                  37788.770821367034,
+                  37998.539919586445,
+                  37206.41872487076,
+                  37204.52843193567,
+                  37152.42676622631,
+                  37184.59218839747,
+                  37197.778862722575
+                ],
+                "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+                "wasm": "mutable-globals-i64-carry-overflow.wasm",
+                "artifactSha256": "9d994613b9f6216f4f5638e8ebd855a3de4e78fad3218e035599671f9833b2ee",
+                "contractSha256": "65ad849bc8edb572f4eb818f2f0b4220983cd0b3c5f10c9f9bf81554a629965e",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 37551.670878805286,
+                "memoryStatus": "ok",
+                "peakRssBytes": 10190848,
+                "codeStatus": "ok",
+                "codeBytes": 592,
+                "codeKind": "native-image"
+              }
+            ]
+          }
+        },
+        {
+          "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-xor-dual/repeat/captures/wago-aee8f154-f8770321978b4c46.json",
+          "capture": {
+            "capturedAt": "2026-10-13T16:53:28.103Z",
+            "source": {
+              "repository": "wago-org/wago",
+              "revision": "aee8f154b1749ad85e453cb0f8932f61edfc40da",
+              "ref": "jairus/wasm3-feature-parity@aee8f154",
+              "asOf": "2026-10-13T16:51:48.966885+00:00",
+              "kind": "snapshot"
+            },
+            "platform": {
+              "os": "darwin",
+              "arch": "arm64",
+              "cpu": "Apple M4 Max",
+              "cores": 16,
+              "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+              "memoryBytes": 68719476736
+            },
+            "results": [
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  183834,
+                  51292,
+                  37000,
+                  31750,
+                  34083,
+                  148166,
+                  53375,
+                  38750,
+                  34458,
+                  35792,
+                  179375,
+                  54375,
+                  38250,
+                  35334,
+                  39166
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "compile",
+                "latencyStatus": "ok",
+                "latencyNs": 38750,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9289728,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  5917,
+                  3250,
+                  625,
+                  417,
+                  375,
+                  5500,
+                  2791,
+                  666,
+                  458,
+                  416,
+                  5834,
+                  2459,
+                  666,
+                  417,
+                  333
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "instantiate",
+                "latencyStatus": "ok",
+                "latencyNs": 666,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9158656,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  29542,
+                  21625,
+                  21458,
+                  21417,
+                  21375,
+                  28125,
+                  21333,
+                  21167,
+                  21167,
+                  20833,
+                  32042,
+                  21709,
+                  21500,
+                  21125,
+                  21458
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "first-call",
+                "latencyStatus": "ok",
+                "latencyNs": 21458,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9093120,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              },
+              {
+                "display": {
+                  "group": "3D & rendering",
+                  "purpose": "Fixed-point skeletal skinning with four bone influences and 3\u00d74 matrices",
+                  "tags": [
+                    "mvp"
+                  ],
+                  "abi": "core",
+                  "bytes": 537,
+                  "source": "sources/kernels.c",
+                  "reset": "stateless"
+                },
+                "timingSamples": 15,
+                "samplesNs": [
+                  29375,
+                  21583,
+                  21375,
+                  21291,
+                  21291,
+                  27167,
+                  21209,
+                  21084,
+                  21000,
+                  21000,
+                  28708,
+                  21333,
+                  21041,
+                  21000,
+                  21042
+                ],
+                "workload": "applications/mesh-skinning",
+                "wasm": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da.wasm",
+                "artifactSha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da",
+                "contractSha256": "f38b6020a92fcad245b3b79a38b3e82a4b4bc0d1b61fdccb46e91c3174952125",
+                "engine": "wago",
+                "version": "aee8f154b1749ad85e453cb0f8932f61edfc40da/source-48b3171a6fc5982051c5627508d61e57b0f63049c2f562d5196cd09d66fc5ebb",
+                "backend": "railshot",
+                "phase": "steady",
+                "latencyStatus": "ok",
+                "latencyNs": 21084,
+                "memoryStatus": "ok",
+                "peakRssBytes": 9093120,
+                "codeStatus": "ok",
+                "codeBytes": 804,
+                "codeKind": "native-image"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "compileCost": "No incremental corpus compile-cost measurement; original vector-cover cost is recorded separately in global-xor-shift.json.",
+  "limitations": [
+    "This targeted result does not establish overall parity.",
+    "Native carry image grows 576 to 592 bytes; mesh control remains 804 bytes."
+  ]
+}
