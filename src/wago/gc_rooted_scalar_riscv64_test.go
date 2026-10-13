@@ -395,7 +395,7 @@ func TestRV64RootedScalarArraysExecute(t *testing.T) {
 		{name: "wide-fixed", source: rootedWideScalarArrayFixedModule(), want: []uint64{0x0102030405060708}},
 		{name: "wide-fixed-empty", source: rootedWideScalarArrayFixedEdgeModule(0), want: []uint64{0}},
 		{name: "wide-fixed-one", source: rootedWideScalarArrayFixedEdgeModule(1), want: []uint64{0x0102030405060708}},
-		{name: "wide-fixed-bound", source: rootedWideScalarArrayFixedBoundModule(62), want: []uint64{62}},
+		{name: "wide-fixed-bound", source: rootedWideScalarArrayFixedBoundModule(254), want: []uint64{254}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			compiled, err := Compile(rv64RootedScalarConfig(), tc.source)
@@ -416,12 +416,12 @@ func TestRV64RootedScalarArraysExecute(t *testing.T) {
 }
 
 func TestRV64RootedScalarArrayFixedRejectsBeyondHelperFrame(t *testing.T) {
-	compiled, err := Compile(rv64RootedScalarConfig(), rootedWideScalarArrayFixedBoundModule(63))
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedWideScalarArrayFixedBoundModule(255))
 	if compiled != nil {
 		compiled.Close()
 	}
 	if err == nil || !strings.Contains(err.Error(), "generic rooted scalar GC helper contract") {
-		t.Fatalf("63-element array.new_fixed error = %v", err)
+		t.Fatalf("255-element array.new_fixed error = %v", err)
 	}
 }
 

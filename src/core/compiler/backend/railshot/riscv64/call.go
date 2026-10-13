@@ -71,7 +71,7 @@ func gcAllocHelperSlots(helper uint32, admitted int) (int, bool) {
 	case gcArrayAllocUniform:
 		return 3, true
 	case gcArrayAllocFixed:
-		return admitted, admitted >= 2 && admitted <= 64
+		return admitted, admitted >= 2 && admitted <= maxRootedScalarArrayFixed+2
 	case gcArrayAllocData, gcArrayAllocElem:
 		return 4, true
 	default:

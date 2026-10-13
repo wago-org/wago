@@ -1917,12 +1917,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			case wasm.InstrArrayNewFixed:
 				genericStorage, _, genericArray := referenceTypes.rootedArrayStorage(imm.Index)
-				genericFixed := state.gcRootedScalar && genericArray && imm.Index2 <= 62
+				genericFixed := state.gcRootedScalar && genericArray && imm.Index2 <= maxRootedScalarArrayFixed
 				genericWide := genericFixed && !genericStorage.Packed() && scalarWide(genericStorage.Val())
 				localFixed := state.gcArrayFixedLocal && imm.Index == 0 && imm.Index2 == 3
 				officialFixed := state.gcArrayFixedOfficial && (imm.Index == 0 && imm.Index2 == 2 || imm.Index == 1 && imm.Index2 == 3)
-				if state.gcRootedScalar && genericArray && imm.Index2 > 62 {
-					return integerSummary{}, unsupported("generic array.new_fixed exceeds 62-element helper bound")
+				if state.gcRootedScalar && genericArray && imm.Index2 > maxRootedScalarArrayFixed {
+					return integerSummary{}, unsupported("generic array.new_fixed exceeds 254-element helper bound")
 				}
 				if !genericFixed && !localFixed && !officialFixed {
 					return integerSummary{}, unsupported("array.new_fixed outside exact gc array fixed local profile")

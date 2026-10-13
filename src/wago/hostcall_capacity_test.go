@@ -35,7 +35,7 @@ func TestGCInternalHelperSlotCapacity(t *testing.T) {
 		{name: "none", want: 0},
 		{name: "fixed-struct", structs: true, want: 79},
 		{name: "array", arrays: true, want: 7},
-		{name: "generic-array", arrays: true, generic: true, want: coreruntime.MaxHostArity},
+		{name: "generic-array", arrays: true, generic: true, want: rv64GenericArrayFixedSlots},
 		{name: "both", structs: true, arrays: true, want: 79},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

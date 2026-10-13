@@ -1433,6 +1433,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if gcSlots > syncHostSlots {
 			syncHostSlots = gcSlots
 		}
+		if goruntime.GOARCH == "riscv64" && gcArrayProduct == stagedGCArrayProductGeneric {
+			syncHostSlots = max(syncHostSlots, rv64GenericArrayFixedSlots)
+		}
 	}
 	compileOptions := railshotCompileOptions{BitCountFeatures: bitCountHostFeaturesSupported(), Workers: workers, DeferCodeMapping: true, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats, SourceMaps: codeProfileEnabled && cfg.codeProfile.IncludeSources(), UnwindMaps: codeProfileEnabled && cfg.codeProfile.IncludeUnwind(), Profile: codeProfileEnabled && cfg.codeProfile != nil}
 	railshotConfigureI31Core(exactI31CoreSource, &compileOptions)
@@ -3525,6 +3528,9 @@ func (c *Compiled) validateArenaFootprint() error {
 		}
 		if gcSlots > syncHostSlots {
 			syncHostSlots = gcSlots
+		}
+		if compiledArchitecture == 4 && c.stagedGCArrayProduct() == stagedGCArrayProductGeneric {
+			syncHostSlots = max(syncHostSlots, rv64GenericArrayFixedSlots)
 		}
 		internalHelperSlots, slotErr = gcInternalHelperSlotCapacity(c.GCTypeDescs, c.usesGCStructHelpers(), c.usesGCArrayHelpers(), compiledArchitecture == 4 && c.stagedGCArrayProduct() == stagedGCArrayProductGeneric)
 		if slotErr != nil {

@@ -65,6 +65,9 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	}
 	hasStruct, hasArray := false, false
 	requiredSlots := 4
+	if arrayHelpers {
+		requiredSlots = rv64GenericArrayFixedSlots
+	}
 	for i, desc := range c.GCTypeDescs {
 		typ := &c.Types[i]
 		if typ.RecGroup != uint32(i) || !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.HasDescriptor {

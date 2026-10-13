@@ -8,6 +8,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+const maxRootedScalarArrayFixed = 254
+
 // admitRV64GCRootedScalarModule is the first source-shape admission shared by
 // generic GC programs instead of a byte-for-byte product fixture. It keeps the
 // runtime boundary deliberately closed while admitting ordinary scalar control
@@ -227,8 +229,8 @@ func rootedScalarHelperSlots(m *wasm.Module) int {
 				return 65
 			}
 			if imm.Kind == wasm.InstrArrayNewFixed {
-				if imm.Index2 > 62 {
-					return 65
+				if imm.Index2 > maxRootedScalarArrayFixed {
+					return maxRootedScalarArrayFixed + 3
 				}
 				slots = max(slots, int(imm.Index2)+2)
 			}

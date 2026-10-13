@@ -8,6 +8,8 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
+const rv64GenericArrayFixedSlots = 256
+
 // gcStructConstructorSlotCapacity derives the largest flattened struct
 // constructor shape. The trailing slot carries the type index.
 func gcStructConstructorSlotCapacity(descs []gc.TypeDesc, floor int) (int, error) {
@@ -60,8 +62,8 @@ func gcInternalHelperSlotCapacity(descs []gc.TypeDesc, structHelpers, arrayHelpe
 	}
 	if genericArrays {
 		// RV64 generic array.new_fixed is bounded so its values, type index, and
-		// count fit the existing 64-slot synchronous helper frame.
-		slots = max(slots, coreruntime.MaxHostArity)
+		// count fit the persisted extended synchronous helper frame.
+		slots = max(slots, rv64GenericArrayFixedSlots)
 	}
 	if !structHelpers {
 		return slots, nil
