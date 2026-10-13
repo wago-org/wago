@@ -2075,6 +2075,80 @@ func TestRV64RootedScalarTableInitializersExecute(t *testing.T) {
 	}
 }
 
+func rootedScalarTwoTableModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	target := []byte{0x00, 0x41, 0x2a, 0x0b}
+	caller := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x41, 0x00, 0x11, 0x01, 0x01,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x01, 0x01, 0x01},
+			tableTestTableWithInit(1, 1, tableTestRefFuncExpr(0)),
+		)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElemAt(0, 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target))), target...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func TestRV64RootedScalarTwoTablesExecute(t *testing.T) {
+	source := rootedScalarTwoTableModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded rooted two-table module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.tableCount() != 2 || len(view.extraTables) != 1 || !view.extraTables[0].HasInitFunc || view.extraTables[0].InitFunc != 0 || len(view.Elems) != 1 || view.Elems[0].TableIndex != 0 {
+		t.Fatal("two-table generic rooted receipt is missing")
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"capacity":    func(candidate *Compiled) { candidate.extraTables[0].Max = 2 },
+		"initializer": func(candidate *Compiled) { candidate.extraTables[0].HasInitFunc = false },
+		"target":      func(candidate *Compiled) { candidate.Elems[0].TableIndex = 1 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			candidate.extraTables = slices.Clone(candidate.extraTables)
+			candidate.Elems = slices.Clone(candidate.Elems)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated two-table directory retained the generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("mutated two-table validation=%v", err)
+			}
+		})
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for range 2 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{83}) {
+			t.Fatalf("run()=%v err=%v want=[83]", got, err)
+		}
+	}
+}
+
 func rootedScalarDeclarativeTableModule() []byte {
 	types := [][]byte{
 		{0x5f, 0x01, 0x7f, 0x00},

@@ -162,18 +162,18 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 	return digest, true
 }
 
-// rv64RootedTableDigest authenticates the first bounded private table boundary
-// for generic rooted-GC code. Only one local table32 and exact nullable
+// rv64RootedTableDigest authenticates the bounded private table directory
+// for generic rooted-GC code. Only local table32 storage and exact nullable
 // funcref literals are admitted here; public tables and general constant
 // expressions remain separate ownership boundaries.
 func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
-	if c == nil || len(c.extraTables) != 0 || c.tableImport != "" || len(c.tableExports) != 0 || len(c.Elems) > 256 || len(c.passiveElems) > 256 {
+	if c == nil || c.tableImport != "" || len(c.tableExports) != 0 || len(c.Elems) > 256 || len(c.passiveElems) > 256 {
 		return [32]byte{}, false
 	}
 	h := sha256.New()
 	var word [8]byte
 	if c.tableCount() == 0 {
-		if c.HasTable || c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.TableAddr64 || c.TableType != 0 || c.TableHasValueType || c.TableValueTypeIndex != 0 ||
+		if c.HasTable || len(c.extraTables) != 0 || c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.TableAddr64 || c.TableType != 0 || c.TableHasValueType || c.TableValueTypeIndex != 0 ||
 			c.HasTableInitFunc || c.TableInitFunc != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
 			return [32]byte{}, false
 		}
@@ -182,21 +182,11 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		copy(digest[:], h.Sum(nil))
 		return digest, true
 	}
-	if c.tableCount() != 1 || !c.HasTable || !c.hasTableExportMetadata || c.TableAddr64 || c.TableType != ValFuncRef || !c.TableHasValueType || !c.TableHasMax ||
-		c.TableSize < 0 || c.TableSize > 256 || c.TableMax < uint64(c.TableSize) || c.TableMax > 256 ||
-		uint64(c.TableValueTypeIndex) >= uint64(len(c.ValueTypes)) || len(c.FuncTypeID) != len(c.Funcs) {
+	if c.tableCount() < 1 || c.tableCount() > 2 || !c.HasTable || !c.hasTableExportMetadata || len(c.FuncTypeID) != len(c.Funcs) {
 		return [32]byte{}, false
 	}
 	needsDescriptors := false
-	if !c.HasTableInitFunc && c.TableInitFunc != 0 || c.HasTableInitFunc && (uint64(c.TableInitFunc) >= uint64(len(c.Funcs)) || railshotNonCallableFunction(c, int(c.TableInitFunc))) {
-		return [32]byte{}, false
-	}
-	needsDescriptors = c.HasTableInitFunc
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
-	exact, err := c.tableExactType(0)
-	if err != nil || exact != plain || c.ValueTypes[c.TableValueTypeIndex] != plain {
-		return [32]byte{}, false
-	}
 	writeElemType := func(elem *ElemInit) bool {
 		if elem.RefType != 0 && elem.RefType != ValFuncRef {
 			return false
@@ -238,30 +228,42 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		}
 		return true
 	}
-	_, _ = h.Write([]byte{1})
-	binary.LittleEndian.PutUint64(word[:], uint64(c.TableSize))
-	_, _ = h.Write(word[:])
-	binary.LittleEndian.PutUint64(word[:], c.TableMax)
-	_, _ = h.Write(word[:])
-	binary.LittleEndian.PutUint32(word[:4], c.TableValueTypeIndex)
-	_, _ = h.Write(word[:4])
-	if c.HasTableInitFunc {
-		_, _ = h.Write([]byte{1})
-		binary.LittleEndian.PutUint32(word[:4], c.TableInitFunc)
+	_, _ = h.Write([]byte{byte(c.tableCount())})
+	for tableIndex := 0; tableIndex < c.tableCount(); tableIndex++ {
+		def := c.tableDef(tableIndex)
+		exact, err := c.tableExactType(tableIndex)
+		if err != nil || exact != plain || def.ImportKey != "" || def.ImportHasMax || def.Addr64 || def.Type != ValFuncRef || !def.HasValueType || !def.HasMax ||
+			def.Size < 0 || def.Size > 256 || def.Max < uint64(def.Size) || def.Max > 256 || uint64(def.ValueTypeIndex) >= uint64(len(c.ValueTypes)) || c.ValueTypes[def.ValueTypeIndex] != plain ||
+			!def.HasInitFunc && def.InitFunc != 0 || def.HasInitFunc && (uint64(def.InitFunc) >= uint64(len(c.Funcs)) || railshotNonCallableFunction(c, int(def.InitFunc))) {
+			return [32]byte{}, false
+		}
+		needsDescriptors = needsDescriptors || def.HasInitFunc
+		binary.LittleEndian.PutUint64(word[:], uint64(def.Size))
+		_, _ = h.Write(word[:])
+		binary.LittleEndian.PutUint64(word[:], def.Max)
+		_, _ = h.Write(word[:])
+		binary.LittleEndian.PutUint32(word[:4], def.ValueTypeIndex)
 		_, _ = h.Write(word[:4])
-	} else {
-		_, _ = h.Write([]byte{0})
+		if def.HasInitFunc {
+			_, _ = h.Write([]byte{1})
+			binary.LittleEndian.PutUint32(word[:4], def.InitFunc)
+			_, _ = h.Write(word[:4])
+		} else {
+			_, _ = h.Write([]byte{0})
+		}
 	}
 	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.Elems)))
 	_, _ = h.Write(word[:4])
 	remaining := 256
 	for i := range c.Elems {
 		elem := &c.Elems[i]
-		if elem.Mode != ElemModeActive || elem.TableIndex != 0 ||
+		if elem.Mode != ElemModeActive || uint64(elem.TableIndex) >= uint64(c.tableCount()) ||
 			elem.Offset.HasGlobal || elem.Offset.Global != 0 || len(elem.Offset.Expr) != 0 || len(elem.Values) > remaining {
 			return [32]byte{}, false
 		}
 		remaining -= len(elem.Values)
+		binary.LittleEndian.PutUint32(word[:4], elem.TableIndex)
+		_, _ = h.Write(word[:4])
 		if !writeElemType(elem) {
 			return [32]byte{}, false
 		}
@@ -277,7 +279,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	_, _ = h.Write(word[:4])
 	for i := range c.passiveElems {
 		elem := &c.passiveElems[i]
-		if elem.TableIndex != 0 ||
+		if elem.Mode == ElemModeActive && uint64(elem.TableIndex) >= uint64(c.tableCount()) || elem.Mode != ElemModeActive && elem.TableIndex != 0 ||
 			elem.Offset.Base != 0 || elem.Offset.HasGlobal || elem.Offset.Global != 0 || len(elem.Offset.Expr) != 0 ||
 			elem.Mode != ElemModeActive && elem.Mode != ElemModePassive && elem.Mode != ElemModeDeclarative || len(elem.Values) > remaining {
 			return [32]byte{}, false
@@ -286,6 +288,8 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 			return [32]byte{}, false
 		}
 		remaining -= len(elem.Values)
+		binary.LittleEndian.PutUint32(word[:4], elem.TableIndex)
+		_, _ = h.Write(word[:4])
 		if !writeElemType(elem) {
 			return [32]byte{}, false
 		}

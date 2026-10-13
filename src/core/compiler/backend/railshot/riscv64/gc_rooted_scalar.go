@@ -18,7 +18,7 @@ const maxRootedScalarArrayFixed = 254
 // authenticated independently by validateGCFrameRootPlans.
 func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	if m == nil || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions ||
-		len(m.Imports) != 0 || len(m.Tables) > 1 || len(m.Memories) > 1 || len(m.Globals) > 256 ||
+		len(m.Imports) != 0 || len(m.Tables) > 2 || len(m.Memories) > 1 || len(m.Globals) > 256 ||
 		len(m.Elements) > 256 || len(m.Data) > 256 || len(m.Tags) != 0 ||
 		len(m.StringRefs) != 0 || len(m.Customs) != 0 || m.HasNameMetadata() ||
 		m.BranchHints != nil || m.UsesCompactImports {
@@ -36,8 +36,8 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			return false
 		}
 	}
-	if len(m.Tables) == 1 {
-		table := &m.Tables[0]
+	for i := range m.Tables {
+		table := &m.Tables[i]
 		if !wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.FuncRef) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
 			table.Type.Limits.Min > table.Type.Limits.Max || table.Type.Limits.Max > 256 {
 			return false
@@ -52,7 +52,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	remainingElements := 256
 	for i := range m.Elements {
 		elem := &m.Elements[i]
-		if len(m.Tables) != 1 || elem.Mode.Table != 0 {
+		if len(m.Tables) == 0 {
 			return false
 		}
 		values := 0
@@ -87,14 +87,14 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		switch elem.Mode.Kind {
 		case wasm.ElemActive:
-			if len(elem.Mode.Offset.Instrs) != 0 {
+			if uint64(elem.Mode.Table) >= uint64(len(m.Tables)) || len(elem.Mode.Offset.Instrs) != 0 {
 				return false
 			}
 			if _, err := plainScalarConst(elem.Mode.Offset, wasm.I32, false); err != nil {
 				return false
 			}
 		case wasm.ElemPassive, wasm.ElemDeclarative:
-			if len(elem.Mode.Offset.Instrs) != 0 || len(elem.Mode.Offset.BodyBytes) != 0 {
+			if elem.Mode.Table != 0 || len(elem.Mode.Offset.Instrs) != 0 || len(elem.Mode.Offset.BodyBytes) != 0 {
 				return false
 			}
 		default:

@@ -92,7 +92,8 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 		return unsupported("table import count bound")
 	}
 	tableCount := len(m.Tables) + m.ImportedTableCount()
-	if tableCount > 1 && !(public && (isCore3RefIsNullExecution(m) || admitMixedTable64ActiveElement(m, true, public) || admitMixedTable64DualActiveElements(m, true, public) || admitMixedTable64DualActiveVectors(m, true, public))) && !admitStateOnlyTwoTable32(m, true, public) && !admitOwnedTwoTable32Size(m, true, public) && !admitOwnedTwoTable32GetSet(m, true, public) && !admitOwnedTwoTable32Grow(m, true, public) && !admitOwnedTwoTable32Fill(m, true, public) && !admitOwnedTwoTable32Copy(m, true, public) && !admitOwnedTwoTable32CrossCopy(m, true, public) && !admitOwnedTwoTable32InitDrop(m, true, public) && !admitOwnedTwoTable32Indirect(m, true, public) && !admitOwnedTwoTable64Size(m, true, public) && !admitMixedTable64Size(m, true, public) && !admitMixedTable64GetSet(m, true, public) && !admitMixedTable64Grow(m, true, public) && !admitMixedTable64Fill(m, true, public) && !admitMixedTable64Copy(m, true, public) && !admitMixedTable64CrossCopy(m, true, public) && !admitMixedTable64InitDrop(m, true, public) && !admitMixedTable64Indirect(m, true, public) && !admitOwnedTwoTable64GetSet(m, true, public) && !admitOwnedTwoTable64Grow(m, true, public) && !admitOwnedTwoTable64Fill(m, true, public) && !admitOwnedTwoTable64Copy(m, true, public) && !admitOwnedTwoTable64CrossCopy(m, true, public) && !admitOwnedTwoTable64InitDrop(m, true, public) && !admitOwnedTwoTable64Indirect(m, true, public) || len(m.Elements) > MaxOwnedElementSegments {
+	rootedScalar := admitRV64GCRootedScalarModule(m)
+	if tableCount > 1 && !rootedScalar && !(public && (isCore3RefIsNullExecution(m) || admitMixedTable64ActiveElement(m, true, public) || admitMixedTable64DualActiveElements(m, true, public) || admitMixedTable64DualActiveVectors(m, true, public))) && !admitStateOnlyTwoTable32(m, true, public) && !admitOwnedTwoTable32Size(m, true, public) && !admitOwnedTwoTable32GetSet(m, true, public) && !admitOwnedTwoTable32Grow(m, true, public) && !admitOwnedTwoTable32Fill(m, true, public) && !admitOwnedTwoTable32Copy(m, true, public) && !admitOwnedTwoTable32CrossCopy(m, true, public) && !admitOwnedTwoTable32InitDrop(m, true, public) && !admitOwnedTwoTable32Indirect(m, true, public) && !admitOwnedTwoTable64Size(m, true, public) && !admitMixedTable64Size(m, true, public) && !admitMixedTable64GetSet(m, true, public) && !admitMixedTable64Grow(m, true, public) && !admitMixedTable64Fill(m, true, public) && !admitMixedTable64Copy(m, true, public) && !admitMixedTable64CrossCopy(m, true, public) && !admitMixedTable64InitDrop(m, true, public) && !admitMixedTable64Indirect(m, true, public) && !admitOwnedTwoTable64GetSet(m, true, public) && !admitOwnedTwoTable64Grow(m, true, public) && !admitOwnedTwoTable64Fill(m, true, public) && !admitOwnedTwoTable64Copy(m, true, public) && !admitOwnedTwoTable64CrossCopy(m, true, public) && !admitOwnedTwoTable64InitDrop(m, true, public) && !admitOwnedTwoTable64Indirect(m, true, public) || len(m.Elements) > MaxOwnedElementSegments {
 		return unsupported("private table/element count")
 	}
 	// The exact reference-array checkpoint owns a passive GC initializer rather
@@ -2499,6 +2500,7 @@ func admitOwnedTwoTable32InitDrop(m *wasm.Module, production, public bool) bool 
 // Imported storage uses the retained canonical target ABI, never the private
 // same-instance pilot. Count and capacity limits precede validation/copies.
 func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, error) {
+	rootedScalar := admitRV64GCRootedScalarModule(m)
 	// Exact i31-table products use compact immediate carriers rather than
 	// callable funcref descriptors. Their classifiers pin the sole table and
 	// either every table instruction/segment or the imported initializer.
@@ -2539,7 +2541,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 			return false, unsupported("private nullable funcref table32 only")
 		}
 	}
-	if len(m.Tables) != 0 && m.Tables[0].Init != nil {
+	if len(m.Tables) != 0 && m.Tables[0].Init != nil && !rootedScalar {
 		if !importedTables {
 			return false, unsupported("table initializer requires retained public table ABI")
 		}
@@ -2552,7 +2554,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 		if !hasTable && e.Mode.Kind != wasm.ElemDeclarative && e.Mode.Kind != wasm.ElemPassive {
 			return false, unsupported("table-free elements must be passive or declarative")
 		}
-		if (e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive && e.Mode.Kind != wasm.ElemDeclarative) || e.Mode.Table != 0 && !admitMixedTable64DualActiveElements(m, production, importedTables) && !admitMixedTable64DualActiveVectors(m, production, importedTables) && !admitMixedTable64ActiveIndirect(m, production, importedTables) {
+		if (e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive && e.Mode.Kind != wasm.ElemDeclarative) || e.Mode.Table != 0 && !rootedScalar && !admitMixedTable64DualActiveElements(m, production, importedTables) && !admitMixedTable64DualActiveVectors(m, production, importedTables) && !admitMixedTable64ActiveIndirect(m, production, importedTables) {
 			return false, unsupported("element mode/table")
 		}
 		switch e.Kind.Kind {
@@ -2562,7 +2564,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 			}
 		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
 			// Flag4 has an implicit funcref type; its decoder leaves Ref unset.
-			if !importedTables || len(e.Kind.Funcs) != 0 || e.Kind.Kind == wasm.ElemTypedExprs && !wasm.EqualValType(wasm.RefVal(e.Kind.Ref), wasm.FuncRef) {
+			if !importedTables && !rootedScalar || len(e.Kind.Funcs) != 0 || e.Kind.Kind == wasm.ElemTypedExprs && !wasm.EqualValType(wasm.RefVal(e.Kind.Ref), wasm.FuncRef) {
 				return false, unsupported("public nullable funcref element expressions required")
 			}
 			for _, expr := range e.Kind.Exprs {
