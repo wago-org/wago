@@ -1,6 +1,7 @@
 package shared
 
 import (
+	"bytes"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
@@ -72,6 +73,55 @@ func TestIntegerAffineTermProof(t *testing.T) {
 			if _, ok := inspectIntegerAffineTerm(&r, false); ok {
 				t.Fatalf("wide=%t accepted %s", wide, name)
 			}
+		}
+	}
+}
+
+func TestIntegerSumPureHelperCall(t *testing.T) {
+	helper := []byte{0x20, 0, 0x41, 3, 0x6c, 0x41, 1, 0x6a, 0x0b}
+	m, err := wasm.DecodeModule(wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(helper)))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte{0x40, 0x20, 1, 0x20, 2, 0x10, 0, 0x6a, 0x21, 1, 0x20, 2, 0x41, 1, 0x6a, 0x21, 2, 0x20, 2, 0x20, 0, 0x49, 0x0d, 0, 0x0b}
+	r := wasm.ReaderFrom(body)
+	p, ok := InspectIntegerSumLoopForModule(&r, m)
+	if !ok || p.Coefficient != 3 || p.Constant != 1 || p.Calls != 1 || p.Counter != 2 || r.Offset() != 0 {
+		t.Fatalf("plan=%+v ok=%t offset=%d", p, ok, r.Offset())
+	}
+	for calls := 4; calls <= 5; calls++ {
+		term := append([]byte{0x20, 2}, bytes.Repeat([]byte{0x10, 0}, calls)...)
+		changed := bytes.Replace(body, []byte{0x20, 2, 0x10, 0}, term, 1)
+		r = wasm.ReaderFrom(changed)
+		p, ok = InspectIntegerSumLoopForModule(&r, m)
+		if ok != (calls == 4) || ok && (p.Calls != 4 || p.Coefficient != 81 || p.Constant != 40) {
+			t.Fatalf("calls=%d plan=%+v ok=%t", calls, p, ok)
+		}
+	}
+	m.Code[0].Locals.Runs = []wasm.LocalRun{{Count: 1, Type: wasm.I32}}
+	r = wasm.ReaderFrom(body)
+	if _, ok := InspectIntegerSumLoopForModule(&r, m); ok {
+		t.Fatal("accepted declared helper local")
+	}
+	m.Code[0].Locals.Runs = nil
+	m.Imports = []wasm.Import{{Module: "env", Name: "f", Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 0})}}
+	r = wasm.ReaderFrom(body)
+	if _, ok := InspectIntegerSumLoopForModule(&r, m); ok {
+		t.Fatal("accepted imported helper")
+	}
+	changed := bytes.Replace(body, []byte{0x10, 0}, []byte{0x10, 1}, 1)
+	r = wasm.ReaderFrom(changed)
+	if _, ok := InspectIntegerSumLoopForModule(&r, m); !ok {
+		t.Fatal("rejected local helper after import")
+	}
+	m.Imports = nil
+	for name, bad := range map[string][]byte{
+		"global": {0x23, 0, 0x0b}, "load": {0x20, 0, 0x28, 2, 0, 0x0b}, "call": {0x20, 0, 0x10, 0, 0x0b}, "trap": {0x00, 0x0b}, "nonlinear": {0x20, 0, 0x20, 0, 0x6c, 0x0b}, "mixed-width": {0x42, 1, 0x0b},
+	} {
+		m.Code[0].BodyBytes = bad
+		r = wasm.ReaderFrom(body)
+		if _, ok := InspectIntegerSumLoopForModule(&r, m); ok {
+			t.Fatalf("accepted %s helper", name)
 		}
 	}
 }

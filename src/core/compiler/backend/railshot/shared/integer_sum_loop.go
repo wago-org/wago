@@ -11,6 +11,7 @@ type IntegerSumLoop struct {
 	Counter, Accumulator, Bound uint32
 	End                         int
 	Wide, Fenced                bool
+	Calls                       uint8
 	Coefficient, Constant       uint64
 }
 
@@ -18,6 +19,12 @@ type IntegerSumLoop struct {
 // Recognition is bounded: a fixed grammar and at most four adjacent fences at
 // each admitted position, with no recursive control or expression traversal.
 func InspectIntegerSumLoop(source *wasm.Reader) (IntegerSumLoop, bool) {
+	return InspectIntegerSumLoopForModule(source, nil)
+}
+
+// InspectIntegerSumLoopForModule additionally admits bounded pure unary helper
+// calls. A nil module retains the call-free proof. Helpers cannot call helpers.
+func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module) (IntegerSumLoop, bool) {
 	r := *source
 	var p IntegerSumLoop
 	byteIs := func(want byte) bool { got, err := r.Byte(); return err == nil && got == want }
@@ -60,11 +67,11 @@ func InspectIntegerSumLoop(source *wasm.Reader) (IntegerSumLoop, bool) {
 			return p, false
 		}
 	}
-	term, ok := inspectIntegerAffineTerm(&r, blockType != 0)
+	term, ok := inspectIntegerAffineTermForModule(&r, blockType != 0, module)
 	if !ok {
 		return p, false
 	}
-	p.Coefficient, p.Constant = term.coefficient, term.constant
+	p.Coefficient, p.Constant, p.Calls = term.coefficient, term.constant, term.calls
 	if blockType != 0 && !byteIs(0x0b) {
 		return p, false
 	}

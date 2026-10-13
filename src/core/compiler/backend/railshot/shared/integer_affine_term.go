@@ -7,16 +7,41 @@ type integerAffineTerm struct {
 	variable              uint32
 	hasVariable           bool
 	width                 int
+	calls                 uint8
 }
 
 // inspectIntegerAffineTerm evaluates a bounded pure postfix expression as A*i+B
 // modulo its integer width. All local reads must name the same counter. A
 // product is affine only when at least one operand has zero coefficient.
 func inspectIntegerAffineTerm(r *wasm.Reader, blocked bool) (integerAffineTerm, bool) {
+	return inspectIntegerAffineTermForModule(r, blocked, nil)
+}
+
+func inspectIntegerAffineTermForModule(r *wasm.Reader, blocked bool, module *wasm.Module) (integerAffineTerm, bool) {
+	start := r.Offset()
+	first, ok := r.Peek()
+	if !ok || (first != 0x20 && first != 0x41 && first != 0x42) {
+		return integerAffineTerm{}, false
+	}
+	// The common single-counter term avoids the expression stack entirely.
+	if first == 0x20 {
+		_, _ = r.Byte()
+		x, err := r.U32()
+		if err != nil {
+			return integerAffineTerm{}, false
+		}
+		next, ok := r.Peek()
+		if ok && (blocked && next == 0x0b || !blocked && (next == 0x6a || next == 0x7c)) {
+			return integerAffineTerm{coefficient: 1, variable: x, hasVariable: true}, true
+		}
+		if r.JumpTo(start) != nil {
+			return integerAffineTerm{}, false
+		}
+	}
 	type affineValue struct{ coefficient, constant uint64 }
 	var stack [16]affineValue
 	var out integerAffineTerm
-	depth, start := 0, r.Offset()
+	depth := 0
 	setWidth := func(width int) bool {
 		if out.width != 0 && out.width != width {
 			return false
@@ -67,6 +92,26 @@ func inspectIntegerAffineTerm(r *wasm.Reader, blocked bool) (integerAffineTerm, 
 			}
 			stack[depth] = affineValue{constant: value}
 			depth++
+		case 0x10:
+			if module == nil || depth == 0 || out.calls == 4 {
+				return out, false
+			}
+			index, err := r.U32()
+			if err != nil {
+				return out, false
+			}
+			helper, ok := inspectIntegerAffineHelper(module, index)
+			if !ok || !setWidth(helper.width) {
+				return out, false
+			}
+			a := &stack[depth-1]
+			a.coefficient *= helper.coefficient
+			a.constant = a.constant*helper.coefficient + helper.constant
+			if helper.width == 4 {
+				a.coefficient = uint64(uint32(a.coefficient))
+				a.constant = uint64(uint32(a.constant))
+			}
+			out.calls++
 		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e:
 			width := 4
 			if op >= 0x7c {
@@ -102,4 +147,41 @@ func inspectIntegerAffineTerm(r *wasm.Reader, blocked bool) (integerAffineTerm, 
 		}
 	}
 	return out, false
+}
+
+// Only original, byte-backed, local integer leaves qualify. Imported functions,
+// declared locals, indirect calls and any effects or control reject the proof.
+func inspectIntegerAffineHelper(module *wasm.Module, index uint32) (integerAffineTerm, bool) {
+	var zero integerAffineTerm
+	imported := uint64(module.ImportedFuncCount())
+	if uint64(index) < imported {
+		return zero, false
+	}
+	local := uint64(index) - imported
+	if local >= uint64(len(module.Code)) {
+		return zero, false
+	}
+	ft, ok := module.LocalFuncType(int(local))
+	if !ok || len(ft.Params) != 1 || len(ft.Results) != 1 || !wasm.EqualValType(ft.Params[0], ft.Results[0]) {
+		return zero, false
+	}
+	width := 0
+	if wasm.EqualValType(ft.Params[0], wasm.I32) {
+		width = 4
+	} else if wasm.EqualValType(ft.Params[0], wasm.I64) {
+		width = 8
+	} else {
+		return zero, false
+	}
+	fn := &module.Code[local]
+	if len(fn.Locals.Runs) != 0 || len(fn.BodyBytes) == 0 || len(fn.BodyBytes) > 128 {
+		return zero, false
+	}
+	r := wasm.ReaderFrom(fn.BodyBytes)
+	p, ok := inspectIntegerAffineTerm(&r, true)
+	if !ok || p.hasVariable && p.variable != 0 || p.width != 0 && p.width != width || r.Offset() != len(fn.BodyBytes)-1 {
+		return zero, false
+	}
+	p.width = width
+	return p, true
 }

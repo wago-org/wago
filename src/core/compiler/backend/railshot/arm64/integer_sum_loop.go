@@ -13,7 +13,11 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	if !f.opt(optIntegerSumLoop) || f.unreachable || f.interruptible || f.localBase != 0 || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 {
 		return false, nil
 	}
-	p, ok := shared.InspectIntegerSumLoop(r)
+	var module *wasm.Module
+	if f.opt(optInline) {
+		module = f.m
+	}
+	p, ok := shared.InspectIntegerSumLoopForModule(r, module)
 	if !ok {
 		return false, nil
 	}
@@ -102,6 +106,9 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	}
 	if p.Coefficient != 1 || p.Constant != 0 {
 		f.stats.peep("integer-affine-sum-loop")
+	}
+	if p.Calls != 0 {
+		f.stats.peep("integer-sum-pure-call")
 	}
 	f.stats.peep("integer-sum-loop")
 	return true, nil
