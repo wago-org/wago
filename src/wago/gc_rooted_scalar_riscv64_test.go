@@ -382,6 +382,25 @@ func rootedWideScalarArrayFixedBoundModule(count uint32) []byte {
 	)
 }
 
+func rootedScalarArrayNullModule() []byte {
+	types := [][]byte{
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		{0x5e, 0x7f, 0x01},
+	}
+	body := []byte{
+		0x00,
+		0x41, 0x01, 0xfb, 0x07, 0x01, 0x1a,
+		0xd0, 0x01, 0xd1,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func TestRV64RootedScalarArraysExecute(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -396,6 +415,7 @@ func TestRV64RootedScalarArraysExecute(t *testing.T) {
 		{name: "wide-fixed-empty", source: rootedWideScalarArrayFixedEdgeModule(0), want: []uint64{0}},
 		{name: "wide-fixed-one", source: rootedWideScalarArrayFixedEdgeModule(1), want: []uint64{0x0102030405060708}},
 		{name: "wide-fixed-bound", source: rootedWideScalarArrayFixedBoundModule(254), want: []uint64{254}},
+		{name: "indexed-null", source: rootedScalarArrayNullModule(), want: []uint64{1}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			compiled, err := Compile(rv64RootedScalarConfig(), tc.source)

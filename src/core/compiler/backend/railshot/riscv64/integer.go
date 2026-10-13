@@ -856,11 +856,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if state.gcRootedScalar && (heap < 0 || !referenceTypes.rootedStruct(uint32(heap)) && !referenceTypes.rootedArray(uint32(heap))) {
+				genericRootedNull := state.gcRootedScalar && heap >= 0 && (referenceTypes.rootedStruct(uint32(heap)) || referenceTypes.rootedArray(uint32(heap)))
+				if state.gcRootedScalar && !genericRootedNull {
 					return integerSummary{}, unsupported("generic rooted scalar ref.null heap")
 				}
 				abstractNull := state.gcRefTestAbstract && (heap == -13 || heap == -14 || heap == -15 || heap == -16 || heap == -17 || heap == -18 || heap == -21 || heap == -22)
-				if heap != -16 && !abstractNull && !(state.i31Core && heap == -20) && !(state.i31RefTest && heap == -18) && !(state.i31RefEq && heap == -19) && !(state.core3RefIsNullExecution && heap == -17) && !(state.gcRefTestConcrete && (heap == -21 || heap >= 0 && heap < 8)) && !(state.gcTypeSubtypingRuntimeCallCast && heap >= 0 && heap < 3) && !(state.gcTypeSubtypingLink == rv64GCTypeSubtypingLinkProviderVariant && heap >= 0 && heap < 3) && !(state.gcArrayInitElem && heap == 2) && !(state.gcArrayInitData && heap == 1) && !(state.gcArrayFill && heap == 1) && !(state.gcArrayCopy && (heap == 0 || heap == 1)) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
+				if heap != -16 && !genericRootedNull && !abstractNull && !(state.i31Core && heap == -20) && !(state.i31RefTest && heap == -18) && !(state.i31RefEq && heap == -19) && !(state.core3RefIsNullExecution && heap == -17) && !(state.gcRefTestConcrete && (heap == -21 || heap >= 0 && heap < 8)) && !(state.gcTypeSubtypingRuntimeCallCast && heap >= 0 && heap < 3) && !(state.gcTypeSubtypingLink == rv64GCTypeSubtypingLinkProviderVariant && heap >= 0 && heap < 3) && !(state.gcArrayInitElem && heap == 2) && !(state.gcArrayInitData && heap == 1) && !(state.gcArrayFill && heap == 1) && !(state.gcArrayCopy && (heap == 0 || heap == 1)) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return integerSummary{}, unsupported("private abstract funcref null only")
 				}
 				if live && emit != nil {

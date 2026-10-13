@@ -1268,8 +1268,9 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 					return false, false, false, false, err
 				}
 				if heap >= 0 {
-					if !(referenceCalls || dynamicTails && !referenceFunctions) || !types.function(uint32(heap)) {
-						return false, false, false, false, unsupported("indexed ref.null requires retained typed-reference protocol and an in-range function type")
+					indexed := uint32(heap)
+					if !(referenceCalls || dynamicTails && !referenceFunctions) || !types.function(indexed) && !types.rootedStruct(indexed) && !types.rootedArray(indexed) {
+						return false, false, false, false, unsupported("indexed ref.null requires retained typed-reference protocol and an admitted indexed type")
 					}
 					// A typed null still requires the persisted feature witness even
 					// without a reference call, or when its body is unreachable.
