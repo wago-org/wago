@@ -1282,3 +1282,28 @@ interleaved verdicts above. All receipts, SQLite integrity and 575,121 historica
 observations pass. Full parity remains open. No production deployment.
 
 [Full native-saturation source audit](docs/benchmarks/wasm3-2026-10-13/saturating-full-feature-cohort.json).
+
+### Exact dyadic and saturated float sum reductions
+
+`a52aecc5` recognizes two bounded pure loop terms on ARM64 and AMD64: exact
+positive f64 dyadic products of an unsigned i32 counter, converted to i64 and
+wrapped to i32, and scaled counter+1 terms proven to always clamp to the i32
+maximum. It proves significand precision and destination range over the whole
+unsigned counter domain, then reuses existing integer/quotient reductions.
+Rounding-sensitive f32 products, effects and changed recurrences fall back.
+Both calling conventions, artifacts, enabled/disabled paths, maximum unsigned
+counts, guarded/race execution, pinned conformance and native AMD64 optimized
+execution pass. Existing float sign-sum coverage is retained separately.
+
+The fresh locked seven-contract comparison measures overflow clamp **101 ns**
+versus Clang w2c2 **52.8 us** (ratio **0.001915**, about **522x faster**), and
+i64 in-range **117 ns** versus **80.2 us** (ratio **0.001462**, about **684x
+faster**). Both f32 rounding-state controls remain below peer latency. The
+rounding-sensitive f32 in-range loop remains **1.607x** slower. Selected code
+grows 32 bytes for clamp and 80 for i64; phase samples retain selected cold
+compile costs. Core 3 compile corpus +1.62%, threads +0.93%, same aggregate code
+and effectively unchanged allocations. Seven Wago captures have durable local
+receipts; database integrity and all 575,121 historical observations pass.
+Full parity remains open; no production deployment.
+
+[Raw captures, proofs, red/green checks and compiler costs](docs/benchmarks/wasm3-2026-10-13/integer-float-sum.json).
