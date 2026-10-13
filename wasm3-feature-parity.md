@@ -712,3 +712,27 @@ allocation totals are effectively unchanged (five pool allocations vary over
 -1.72%/-0.63%. `simd-affine-results.json` retains all 36 performance rows,
 alternating compile captures, source fingerprints, native image hashes and full
 conformance output. Broader SIMD and full feature performance parity remain open.
+
+### Full execution corpus refresh after arithmetic proofs
+
+A fresh wasm.fyi `9a11c7f` build yields 115 execution contracts, plus four
+lifecycle and nine compilation probes kept separate. At Wago `b4ef4c22`, all
+107 supported execution contracts pass in each of three processes; eight
+JavaScript host profiles remain unsupported. The pinned SIMD w2c2 fork passes
+67, reports 26 unsupported and 22 failed contracts in each process. All 67
+successful pairs match bytecode and meet the 50 ms sample minimum.
+
+The full capture retains the gains for affine arithmetic, pure helpers, invariant
+globals, negative saturation, exact copysign bits and uniform SIMD lanes: eight
+formerly large gaps now have current Wago medians below the peer. Twenty-nine
+paired contracts still exceed a 1.1x triage ratio, led by i64 global splitting
+(350x), global swapping (335x), mutable accumulation (237x) and opaque Go
+callbacks (75x). Timing variation is retained, including a maximum process CV
+of 0.362 on bulk fill; small differences require targeted confirmation.
+`feature-refresh-oct13-results.json` retains all 690 raw rows, hashes, recipes
+and rejected outcomes; [the refreshed comparison](wasm3-feature-refresh.md)
+supersedes the earlier table. Wide arithmetic passes but has no supported peer
+pair; compact imports remain absent. Full feature and native AMD64 parity remain
+open. No compiler changes or new compile-regression claims are made by this
+report-only refresh; the latest production cost evidence remains in
+`simd-affine-results.json`.
