@@ -271,10 +271,16 @@ func rv64RootedAggregateGlobalInitializerModule() []byte {
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
 		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
-		wasmtest.Section(6, wasmtest.Vec([]byte{
-			0x64, 0x00, 0x00, // immutable (ref 0)
-			0x41, 0x21, 0xfb, 0x00, 0x00, 0x0b, // struct.new 0 (33)
-		})),
+		wasmtest.Section(6, wasmtest.Vec(
+			[]byte{
+				0x64, 0x00, 0x00, // immutable (ref 0)
+				0x41, 0x21, 0xfb, 0x00, 0x00, 0x0b, // struct.new 0 (33)
+			},
+			[]byte{
+				0x63, 0x00, 0x00, // immutable (ref null 0)
+				0x23, 0x00, 0x0b, // global.get 0
+			},
+		)),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
@@ -292,9 +298,17 @@ func TestRV64RootedAggregateGlobalInitializerCompiles(t *testing.T) {
 	if !admitRV64GCRootedScalarModule(m) {
 		t.Fatal("aggregate global initializer was not admitted")
 	}
-	m.Globals[0].Init.BodyBytes = []byte{0x23, 0x00, 0x0b}
+	if len(m.Globals) != 2 {
+		t.Fatalf("globals=%d want=2", len(m.Globals))
+	}
+	m.Globals[1].Init.BodyBytes = []byte{0x23, 0x01, 0x0b}
 	if admitRV64GCRootedScalarModule(m) {
 		t.Fatal("self-referential aggregate global initializer was admitted")
+	}
+	m.Globals[1].Init.BodyBytes = []byte{0x23, 0x00, 0x0b}
+	m.Globals[0].Init.BodyBytes = []byte{0x23, 0x01, 0x0b}
+	if admitRV64GCRootedScalarModule(m) {
+		t.Fatal("forward aggregate global initializer was admitted")
 	}
 	m.Globals[0].Init.BodyBytes = []byte{0x41, 0x21, 0xfb, 0x00, 0x01, 0x0b}
 	if admitRV64GCRootedScalarModule(m) {

@@ -242,7 +242,7 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 		if global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && !collectorRef ||
 			!global.HasValueType || global.HasInitFunc || global.InitFunc != 0 ||
 			global.V128 != (V128{}) || (global.Type == ValI32 || global.Type == ValF32) && global.Bits>>32 != 0 ||
-			collectorRef && (i < len(c.GlobalImports) || global.Bits != 0 || global.HasInitGlobal || global.InitGlobal != 0) {
+			collectorRef && (i < len(c.GlobalImports) || global.Bits != 0) {
 			return [32]byte{}, false
 		}
 		if len(global.InitExpr) != 0 {
@@ -257,7 +257,7 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 				return [32]byte{}, false
 			}
 			parent := &c.Globals[global.InitGlobal]
-			if parent.Mutable || parent.Type != global.Type {
+			if !collectorRef && (parent.Mutable || parent.Type != global.Type) {
 				return [32]byte{}, false
 			}
 		} else if global.InitGlobal != 0 {
@@ -266,6 +266,9 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 		exact, err := c.globalExactType(i)
 		plain, ok := valueTypeDescriptorFromValType(global.Type)
 		if err != nil || !ok || (!collectorRef && exact != plain) || collectorRef && exact.Kind != ValueTypeReference {
+			return [32]byte{}, false
+		}
+		if collectorRef && global.HasInitGlobal && !rv64InitializerReferenceGlobal(c, global.InitGlobal, exact, i) {
 			return [32]byte{}, false
 		}
 		flags := byte(1)
@@ -336,6 +339,22 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 	var digest [32]byte
 	copy(digest[:], h.Sum(nil))
 	return digest, true
+}
+
+// Collector-reference copies retain the exact source heap type. The compact
+// ValType carrier alone cannot prove the WebAssembly reference-subtyping rule.
+func rv64InitializerReferenceGlobal(c *Compiled, index int, required ValueTypeDescriptor, limit int) bool {
+	if c == nil || index < 0 || index < len(c.GlobalImports) || index >= limit || index >= len(c.Globals) ||
+		!c.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions) {
+		return false
+	}
+	source := &c.Globals[index]
+	if source.Mutable || !isGCRefValType(source.Type) {
+		return false
+	}
+	actual, err := c.globalExactType(index)
+	return err == nil && actual.Kind == ValueTypeReference && required.Kind == ValueTypeReference &&
+		valueTypeSubtype(actual, c.Types, required, c.Types)
 }
 
 // rv64RootedTableDigest authenticates the bounded table directory for generic

@@ -103,8 +103,15 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	}
 	for i := range c.Globals {
 		global := &c.Globals[i]
-		if global.HasInitGlobal && !rv64InitializerGlobal(c, global.InitGlobal, global.Type, i) {
-			return false
+		if global.HasInitGlobal {
+			if isGCRefValType(global.Type) {
+				exact, err := c.globalExactType(i)
+				if err != nil || !rv64InitializerReferenceGlobal(c, global.InitGlobal, exact, i) {
+					return false
+				}
+			} else if !rv64InitializerGlobal(c, global.InitGlobal, global.Type, i) {
+				return false
+			}
 		}
 		if len(global.InitExpr) != 0 {
 			if isGCRefValType(global.Type) {
@@ -183,8 +190,9 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		exact, err := c.globalExactType(i)
 		if i < len(c.GlobalImports) || global.Type != ValAnyRef || err != nil || exact.Kind != ValueTypeReference ||
 			exact.Ref.Exact || !exact.Ref.Heap.Defined || !rootedValue(exact, len(c.Types)) ||
-			global.Bits != 0 || global.HasInitFunc || global.InitFunc != 0 || global.HasInitGlobal || global.InitGlobal != 0 ||
-			(len(global.InitExpr) == 0 && !exact.Ref.Nullable) {
+			global.Bits != 0 || global.HasInitFunc || global.InitFunc != 0 ||
+			(global.HasInitGlobal && (len(global.InitExpr) != 0 || !rv64InitializerReferenceGlobal(c, global.InitGlobal, exact, i))) ||
+			(!global.HasInitGlobal && (global.InitGlobal != 0 || len(global.InitExpr) == 0 && !exact.Ref.Nullable)) {
 			return false
 		}
 	}

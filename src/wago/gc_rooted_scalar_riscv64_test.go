@@ -2387,10 +2387,16 @@ func rootedScalarAggregateGlobalInitializerModule() []byte {
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
 		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
-		wasmtest.Section(6, wasmtest.Vec([]byte{
-			0x64, 0x00, 0x00,
-			0x41, 0x21, 0xfb, 0x00, 0x00, 0x0b,
-		})),
+		wasmtest.Section(6, wasmtest.Vec(
+			[]byte{
+				0x64, 0x00, 0x00,
+				0x41, 0x21, 0xfb, 0x00, 0x00, 0x0b,
+			},
+			[]byte{
+				0x63, 0x00, 0x00,
+				0x23, 0x00, 0x0b,
+			},
+		)),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
@@ -2415,12 +2421,22 @@ func TestRV64RootedAggregateGlobalInitializerExecutes(t *testing.T) {
 	}
 	defer compiled.Close()
 	view := compiled.executionView()
-	if !rv64FreshRootedGC(view) || len(view.Globals) != 1 || len(view.Globals[0].InitExpr) == 0 {
+	if !rv64FreshRootedGC(view) || len(view.Globals) != 2 || len(view.Globals[0].InitExpr) == 0 ||
+		!view.Globals[1].HasInitGlobal || view.Globals[1].InitGlobal != 0 || len(view.Globals[1].InitExpr) != 0 {
 		t.Fatalf("aggregate global initializer receipt=%t globals=%#v validation=%v", rv64FreshRootedGC(view), view.Globals, railshotValidateCompiled(view))
 	}
 	for name, mutate := range map[string]func(*Compiled){
 		"missing": func(candidate *Compiled) { candidate.Globals[0].InitExpr = nil },
 		"self":    func(candidate *Compiled) { candidate.Globals[0].InitExpr = []byte{0x23, 0x00, 0x0b} },
+		"copy-self": func(candidate *Compiled) {
+			candidate.Globals[1].InitGlobal = 1
+		},
+		"copy-mutable-source": func(candidate *Compiled) {
+			candidate.Globals[0].Mutable = true
+		},
+		"copy-feature": func(candidate *Compiled) {
+			candidate.requiredFeatures &^= CoreFeatureExtendedConstExpressions
+		},
 	} {
 		t.Run("receipt-"+name, func(t *testing.T) {
 			candidate := cloneCompiledMetadata(view)
@@ -2443,6 +2459,10 @@ func TestRV64RootedAggregateGlobalInitializerExecutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	ref := native.Ref(uint32(readGlobalObject(instance.globalCells[0], instance.c.Globals[0].Type)))
+	copyRef := native.Ref(uint32(readGlobalObject(instance.globalCells[1], instance.c.Globals[1].Type)))
+	if copyRef != ref {
+		t.Fatalf("aggregate global copy=%v want=%v", copyRef, ref)
+	}
 	value, err := instance.gc.StructGet(ref, 0)
 	if err != nil || value.Bits != 33 {
 		t.Fatalf("aggregate global initializer = %v/%+v, %v", ref, value, err)

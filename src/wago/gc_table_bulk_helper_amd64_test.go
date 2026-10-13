@@ -187,10 +187,16 @@ func genericGCAggregateGlobalInitializerModule() []byte {
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
 		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
-		wasmtest.Section(6, wasmtest.Vec([]byte{
-			0x64, 0x00, 0x00,
-			0x41, 0x21, 0xfb, 0x00, 0x00, 0x0b,
-		})),
+		wasmtest.Section(6, wasmtest.Vec(
+			[]byte{
+				0x64, 0x00, 0x00,
+				0x41, 0x21, 0xfb, 0x00, 0x00, 0x0b,
+			},
+			[]byte{
+				0x63, 0x00, 0x00,
+				0x23, 0x00, 0x0b,
+			},
+		)),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
@@ -341,7 +347,8 @@ func TestGenericGCAggregateGlobalInitializer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	if len(compiled.Globals) != 1 || len(compiled.Globals[0].InitExpr) == 0 {
+	if len(compiled.Globals) != 2 || len(compiled.Globals[0].InitExpr) == 0 ||
+		!compiled.Globals[1].HasInitGlobal || compiled.Globals[1].InitGlobal != 0 {
 		t.Fatalf("aggregate global initializer metadata = %#v", compiled.Globals)
 	}
 	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
@@ -356,6 +363,10 @@ func TestGenericGCAggregateGlobalInitializer(t *testing.T) {
 		t.Fatal(err)
 	}
 	ref := gc.Ref(uint32(readGlobalObject(instance.globalCells[0], instance.c.Globals[0].Type)))
+	copyRef := gc.Ref(uint32(readGlobalObject(instance.globalCells[1], instance.c.Globals[1].Type)))
+	if copyRef != ref {
+		t.Fatalf("aggregate global copy=%v want=%v", copyRef, ref)
+	}
 	value, err := instance.gc.StructGet(ref, 0)
 	if err != nil || value.Bits != 33 {
 		t.Fatalf("aggregate global initializer = %v/%+v, %v", ref, value, err)
