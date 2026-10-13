@@ -1888,3 +1888,65 @@ uses two vector stores plus one byte store. Broader straight-line block
 admission for native bulk operations, minimum-bound proofs and vector fill
 lowering are concrete next candidates. Other feature compositions and overall
 feature-by-feature parity remain open.
+
+## Native fill inside straight-line blocks
+
+`e43a4700` extends the bounded `straight-line-block` proof to `memory.fill`.
+Both backends lower this operation entirely in native code, so it introduces
+no source branch, nested control or helper call. The scanner still rejects
+other miscellaneous-prefix operations, including memory.copy and table.grow;
+existing EH/GC/custom-instruction exclusions remain. The original fill lowering
+and control frame/stack-height contract are retained. No fields or options are
+added. The emitted constant-fill loop loses its accumulator store/reload and
+result-register move around the block.
+
+Tests cover constant/dynamic lengths 0–257 across native dispatch boundaries,
+byte truncation, selected memory32/64, shared/unshared primary and secondary
+memories, both ABIs, original/codec products and explicit/signal-based bounds.
+Older memory reads retain their pre-fill values; earlier division traps prevent
+writes, and later division traps leave completed fills visible. End-of-memory,
+zero-length endpoint, address overflow and excessive-length traps are checked.
+Native guarded race and broader tests pass on ARM64/AMD64. Pinned Core 3 again
+passes 2,226 modules/58,238 assertions and official threads passes 51 modules/
+312 assertions on each architecture, with no failures/skips/gaps. ARM64 full
+statistics retains exactly the same 44 parent failure names.
+
+Fresh production measurements use the same eight contracts, interleaved three
+processes per profile, two warmups and five verified >=50 ms batches per process.
+All 104 rows pass their independent oracle and duration qualification.
+
+| Contract | Wago e9185d74 ns | Wago e43a4700 ns | Checked w2c2 ns | Unchecked w2c2 ns |
+| --- | ---: | ---: | ---: | ---: |
+| Ordinary load/store | 102,453 | 102,532 | 2,175,991 | 102,357 |
+| SIMD load/store | 102,480 | 101,378 | 1,652,905 | 129,898 |
+| Bulk fill | 281,294 | 264,174 | 2,200,297 | 191,984 |
+| Atomic load/store | 151,879 | 150,666 | 2,185,981 | 168,515 |
+| Atomic RMW add | 264,981 | 261,334 | 2,181,562 | 235,697 |
+| Compare exchange | 301,060 | 297,153 | 2,189,316 | 317,242 |
+| Wait mismatch + notify | 642,796 | 650,667 | 5,476,288 | 1,989,857 |
+| Fence | 159.03 | 156.21 | 293.14 | 294.37 |
+
+Bulk improves 6.09%; its current/unchecked ratio is still 1.376x. Current
+process medians are 266,314/254,948/264,174 ns; the unchecked peer is
+192,879/190,729/191,984 ns. Other before/after differences carry no significance
+claim. SIMD's unchecked process medians vary 130,299/105,618/129,898 ns; its
+higher peer median is not a new Wago optimization. CAS's ratio is 0.937x in
+this cohort, but prior fresh measurements showed a gap and one unchecked CAS
+process has CV 0.1140, so broader CAS parity remains unresolved. Full
+feature-wide/cross-platform parity remains open.
+
+Production compile captures use GOMAXPROCS=1 and three alternating processes
+per revision, with no overlapping builds/tests/timing captures. Core 3's
+21,800 compiles take 417.312 -> 417.074 ms (-0.06%), with unchanged code bytes
+and effectively unchanged allocations/counts. Peak RSS is
+14,221,312 -> 14,172,160 (-0.35%). Threads' 2,700 compiles take
+47.683 -> 47.772 ms (+0.19%), with unchanged allocation bytes/counts and
+code bytes; peak RSS is 12,992,512 -> 12,943,360 (-0.38%). Scalar/Core 3
+scalar/imported-worker compile medians change -6.06%/-4.50%/-1.03%; these
+small local cohorts are descriptive, not evidence of a compile-speed gain.
+
+Tracked `docs/benchmarks/wasm3-2026-10-12/bulk-block-results.json` preserves
+source fingerprints, process medians, compile costs and before/after loop hashes.
+Bulk's remaining live-extent check and scalar repeated-byte/chunk stores remain
+concrete candidates for minimum-bound and vector-fill lowering. Other feature
+compositions and feature-by-feature performance parity remain open.

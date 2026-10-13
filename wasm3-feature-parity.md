@@ -425,3 +425,21 @@ alternating processes; allocations are effectively unchanged, and peak RSS
 changes -0.11%/+0.25%. The tracked `simd-address-results.json` preserves exact
 source fingerprints, process medians and emitted-loop hashes. Bulk-fill
 spills, bounds and scalar chunk lowering are the next measured gap to address.
+
+### Native fill block residency
+
+`e43a4700` admits native `memory.fill` into the existing bounded straight-line
+block proof, preserving its lowering and control frame while removing entry/
+exit spills. Constant/dynamic/zero lengths, dispatch boundaries, byte
+truncation, selected memory32/64, shared/unshared memories, both ABIs, codec
+products, older reads and trap ordering pass on both architectures. Pinned
+Core 3 and official threads pass again; ARM64 retains its 44 known statistics
+failures.
+
+The fresh bulk-fill contract improves 6.09%, from 281,294 to 264,174 ns,
+but still trails unchecked w2c2 by 1.376x. Other small changes and peer process
+variation do not establish additional parity wins. Core 3 compile latency is
+-0.06%, threads +0.19%, with unchanged code/allocations and peak RSS
+-0.35%/-0.38%. The tracked `bulk-block-results.json` retains exact profiles,
+process medians, costs and emitted-loop hashes. Bulk bounds and scalar chunk
+lowering, broader compositions and full performance parity remain open.
