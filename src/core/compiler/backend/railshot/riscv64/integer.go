@@ -2333,9 +2333,6 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrRefI31:
-				if state.gcRootedScalar {
-					return integerSummary{}, unsupported("ref.i31 outside exact i31 profile")
-				}
 				if _, err = popClass(false); err != nil {
 					return integerSummary{}, err
 				}
@@ -2348,9 +2345,6 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrI31GetS, wasm.InstrI31GetU:
-				if state.gcRootedScalar {
-					return integerSummary{}, unsupported("i31.get outside exact i31 profile")
-				}
 				if _, err = popClass(true); err != nil {
 					return integerSummary{}, err
 				}

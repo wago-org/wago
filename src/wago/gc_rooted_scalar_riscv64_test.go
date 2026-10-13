@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	native "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -582,6 +583,53 @@ func TestRV64RootedScalarArrayStressGCLifetime(t *testing.T) {
 	for iteration := range 16 {
 		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
 			t.Fatalf("iteration %d: run()=%v err=%v want=[42]", iteration, got, err)
+		}
+	}
+}
+
+func rootedScalarI31LocalModule() []byte {
+	body := []byte{
+		0x01, 0x01, 0x6c,
+		0x41, 0x7f, 0xfb, 0x1c, 0x21, 0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x1a,
+		0x20, 0x00, 0xfb, 0x1e,
+		0x20, 0x00, 0xfb, 0x1d,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedScalarI31LocalSurvivesGC(t *testing.T) {
+	source := rootedScalarI31LocalModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("rooted i31 local module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	roots := view.genericGCFrameRoots()
+	if !rv64FreshRootedGC(view) || roots == nil || len(roots.safepoints) != 1 || len(roots.safepoints[0].offsets) != 1 || roots.safepoints[0].offsets[0] != shared.RV64CallFrameHeaderBytes {
+		t.Fatalf("rooted i31 receipt=%t roots=%+v validation=%v", rv64FreshRootedGC(view), roots, railshotValidateCompiled(view))
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for iteration := range 16 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{0x7fffffff, 0xffffffff}) {
+			t.Fatalf("iteration %d: run()=%#x err=%v", iteration, got, err)
 		}
 	}
 }
