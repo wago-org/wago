@@ -92,7 +92,7 @@ func TestSparseFuncRefCoverage(t *testing.T) {
 			for i, yes := range referenced {
 				if yes {
 					unique++
-					pages[((i+1)*runtime.FuncRefDescBytes)/4096] = true
+					addFuncRefDescriptorPages(pages, i)
 				}
 			}
 			bytes := 0
@@ -101,5 +101,28 @@ func TestSparseFuncRefCoverage(t *testing.T) {
 			}
 			t.Logf("functions=%d descriptor_needed=%v compile_flag=%v funcref_table=%v element_refs=%d unique_element_targets=%d body_ref_func_sites=%d unique_body_targets=%d dense_descriptor_bytes=%d element_touched_pages=%d total_descriptor_pages=%d exports=%d", len(c.FuncTypeID), c.needsFuncRefDescs(), c.NeedsFuncRefDescs, c.hasFuncrefTable(), refs, unique, bodySites, bodyUnique, bytes, len(pages), (bytes+4095)/4096, len(c.Exports))
 		})
+	}
+}
+
+func addFuncRefDescriptorPages(pages map[int]bool, index int) {
+	start := (index + 1) * runtime.FuncRefDescBytes
+	pages[start/4096] = true
+	pages[(start+runtime.FuncRefDescBytes-1)/4096] = true
+}
+
+func TestFuncRefDescriptorPageSpan(t *testing.T) {
+	for _, tc := range []struct {
+		index int
+		want  int
+	}{
+		{0, 1},
+		{101, 2}, // Descriptor bytes 4080 through 4119 cross the 4096 boundary.
+		{102, 1},
+	} {
+		pages := make(map[int]bool)
+		addFuncRefDescriptorPages(pages, tc.index)
+		if len(pages) != tc.want {
+			t.Errorf("descriptor %d touches %d pages; want %d", tc.index, len(pages), tc.want)
+		}
 	}
 }
