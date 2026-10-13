@@ -3,7 +3,7 @@
   "baseline": "e7311446fa1a585c04fa0ff6ea4abea73b3a6553",
   "disposition": "Rejected and reverted: no reproducible material FIR improvement; 0.00% and 0.23% lower latency, code size unchanged.",
   "validation": {
-    "guardedTargetedSelectionAndPublicExecution": "passed final-selection-validation.txt",
+    "guardedTargetedSelectionAndPublicExecution": "Public execution passed; initial selection assertion skipped without diagnostics. Frozen candidate selection rerun with wago_codegenstats,wago_regalloccheck passed diagnostic-selection-validation.txt.",
     "earlierGuardedAndUntaggedMatrices": "1162 and 1153 passing cases; no failures or skips",
     "compilerCostConformanceAMD64": "Not rerun for this rejected ARM-only refinement"
   },
