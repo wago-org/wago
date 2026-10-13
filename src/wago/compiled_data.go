@@ -1,5 +1,10 @@
 package wago
 
+import (
+	"crypto/sha256"
+	"encoding/binary"
+)
+
 // compactActiveData is an immutable execution-only representation. Public
 // DataInit metadata remains unchanged and independently mutable. Common constant
 // offsets need neither a global index nor an expression slice in every record.
@@ -30,6 +35,34 @@ func (c *Compiled) activeDataAt(index int) DataInit {
 	}
 	d := c.compactData.records[index]
 	return DataInit{MemoryIndex: d.memoryIndex, Offset: OffsetInit{Base: d.offset}, Bytes: c.compactData.bytes[d.start:d.end:d.end]}
+}
+
+// rv64RootedActiveDataDigest authenticates the exact compiler-produced active
+// data image used by the fresh generic rooted-GC profile. The profile admits
+// only direct memory-0 literal offsets, so every execution-relevant byte has a
+// compact canonical representation.
+func rv64RootedActiveDataDigest(c *Compiled) ([32]byte, bool) {
+	if c == nil || c.compactData != nil || len(c.Data) > 256 || len(c.PassiveData) != 0 {
+		return [32]byte{}, false
+	}
+	h := sha256.New()
+	var word [8]byte
+	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.Data)))
+	_, _ = h.Write(word[:4])
+	for i := range c.Data {
+		data := &c.Data[i]
+		if data.MemoryIndex != 0 || data.Offset.HasGlobal || data.Offset.Global != 0 || len(data.Offset.Expr) != 0 {
+			return [32]byte{}, false
+		}
+		binary.LittleEndian.PutUint32(word[:4], data.Offset.Base)
+		_, _ = h.Write(word[:4])
+		binary.LittleEndian.PutUint64(word[:], uint64(len(data.Bytes)))
+		_, _ = h.Write(word[:])
+		_, _ = h.Write(data.Bytes)
+	}
+	var digest [32]byte
+	copy(digest[:], h.Sum(nil))
+	return digest, true
 }
 
 // compactActiveDataSize also guards the uint32 byte-range representation. Rare

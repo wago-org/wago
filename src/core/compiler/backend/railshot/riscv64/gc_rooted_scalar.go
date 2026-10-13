@@ -19,7 +19,7 @@ const maxRootedScalarArrayFixed = 254
 func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	if m == nil || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions ||
 		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Globals) != 0 ||
-		len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 ||
+		len(m.Elements) != 0 || len(m.Data) > 256 || m.DataCount != nil || len(m.Tags) != 0 ||
 		len(m.StringRefs) != 0 || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() ||
 		m.BranchHints != nil || m.UsesCompactImports {
 		return false
@@ -29,6 +29,17 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		if memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min > memory.Limits.Max || memory.Limits.Max > 256 {
 			return false
 		}
+	}
+	remainingData := MaxModuleBytes
+	for i := range m.Data {
+		data := &m.Data[i]
+		if len(m.Memories) != 1 || data.Mode.Kind != wasm.DataActive || data.Mode.Mem != 0 || len(data.Mode.Offset.Instrs) != 0 || len(data.Init) > remainingData {
+			return false
+		}
+		if _, err := plainScalarConst(data.Mode.Offset, wasm.I32, false); err != nil {
+			return false
+		}
+		remainingData -= len(data.Init)
 	}
 	for i := range m.Exports {
 		if m.Exports[i].Index.Kind != wasm.ExternFunc {
@@ -160,12 +171,12 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 	}
 	r := wasm.ReaderFrom(data[8:])
 	const required = uint16(1<<1 | 1<<3 | 1<<7 | 1<<10)
-	const allowed = required | 1<<5
+	const allowed = required | 1<<5 | 1<<11
 	var seen uint16
 	var previous byte
 	for r.HasNext() {
 		id, err := r.Byte()
-		if err != nil || id > 10 || allowed&(1<<id) == 0 || seen&(1<<id) != 0 || id <= previous {
+		if err != nil || id > 11 || allowed&(1<<id) == 0 || seen&(1<<id) != 0 || id <= previous {
 			return false
 		}
 		n, err := r.U32()

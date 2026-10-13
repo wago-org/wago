@@ -35,7 +35,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports != 0 || len(c.Imports) != 0 ||
 		len(c.importFuncSigs) != 0 || c.HasTable || c.tableCount() != 0 || c.memoryCount() > 1 ||
 		len(c.GlobalImports) != 0 || len(c.Globals) != 0 || c.HasStart || len(c.Elems) != 0 ||
-		len(c.passiveElems) != 0 || len(c.Data) != 0 || len(c.PassiveData) != 0 {
+		len(c.passiveElems) != 0 || len(c.PassiveData) != 0 {
 		return false
 	}
 	directory := c.memoryDir
@@ -54,6 +54,18 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	} else if c.HasMemory || c.MemMinPages != 0 || c.MemMaxPages != 0 || c.MemHasMax || c.memoryImport != "" ||
 		memo.rv64FreshRootedGCMemMin != 0 || memo.rv64FreshRootedGCMemMax != 0 || memo.rv64FreshRootedGCReserveMax != 0 {
 		return false
+	}
+	dataDigest, validData := rv64RootedActiveDataDigest(c)
+	if !validData || dataDigest != memo.rv64FreshRootedGCDataDigest {
+		return false
+	}
+	remainingData := railshot.MaxModuleBytes
+	for i := 0; i < c.activeDataCount(); i++ {
+		data := c.activeDataAt(i)
+		if len(directory.defs) != 1 || len(data.Bytes) > remainingData {
+			return false
+		}
+		remainingData -= len(data.Bytes)
 	}
 	roots := c.genericGCFrameRoots()
 	if roots == nil || len(roots.safepoints) == 0 || len(c.Types) != len(c.GCTypeDescs) {

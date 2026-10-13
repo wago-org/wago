@@ -5,6 +5,7 @@ package wago
 import (
 	"fmt"
 
+	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -33,7 +34,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	if m == nil || len(m.Code) == 0 {
 		return reject("generic GC module has no local function bodies")
 	}
-	if len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) != 0 || m.Start != nil || len(m.Elements) != 0 || m.DataCount != nil || len(m.Data) != 0 || len(m.StringRefs) != 0 {
+	if len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) != 0 || m.Start != nil || len(m.Elements) != 0 || m.DataCount != nil || len(m.Data) > 256 || len(m.StringRefs) != 0 {
 		return reject("RV64 exact roots require a closed scalar allocation module")
 	}
 	if len(m.Memories) == 1 {
@@ -41,6 +42,14 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		if memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min > memory.Limits.Max || memory.Limits.Max > 256 {
 			return reject("RV64 exact roots require bounded local memory32")
 		}
+	}
+	remainingData := railshot.MaxModuleBytes
+	for i := range m.Data {
+		data := &m.Data[i]
+		if len(m.Memories) != 1 || data.Mode.Kind != wasm.DataActive || data.Mode.Mem != 0 || len(data.Mode.Offset.Instrs) != 0 || len(data.Init) > remainingData || !rv64RootedI32Const(data.Mode.Offset.BodyBytes) {
+			return reject("RV64 exact roots require bounded literal active memory32 data")
+		}
+		remainingData -= len(data.Init)
 	}
 	for i := range m.Exports {
 		if m.Exports[i].Index.Kind != wasm.ExternFunc {
@@ -115,4 +124,17 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		safepointBase += uint32(liveMasks.allocationN)
 	}
 	return modulePlan
+}
+
+func rv64RootedI32Const(body []byte) bool {
+	r := wasm.ReaderFrom(body)
+	op, err := r.Byte()
+	if err != nil || op != 0x41 {
+		return false
+	}
+	if _, err = r.I32(); err != nil {
+		return false
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && !r.HasNext()
 }

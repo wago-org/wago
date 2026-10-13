@@ -1099,10 +1099,13 @@ func TestRV64RootedAbstractReferenceAdmissionFailsClosed(t *testing.T) {
 	}
 }
 
-func rootedScalarMemoryModule(grow bool) []byte {
+func rootedScalarMemoryModule(grow, activeData, passiveData bool) []byte {
 	results := []wasm.ValType{wasm.I32, wasm.I32}
 	if grow {
 		results = append(results, wasm.I32, wasm.I32)
+	}
+	if activeData || passiveData {
+		results = append(results, wasm.I32)
 	}
 	types := [][]byte{
 		{0x5f, 0x01, 0x7f, 0x00},
@@ -1120,18 +1123,27 @@ func rootedScalarMemoryModule(grow bool) []byte {
 	if grow {
 		body = append(body, 0x41, 0x01, 0x40, 0x00, 0x3f, 0x00)
 	}
+	if activeData || passiveData {
+		body = append(body, 0x41, 0x20, 0x28, 0x02, 0x00)
+	}
 	body = append(body, 0x0b)
-	return wasmtest.Module(
+	sections := [][]byte{
 		wasmtest.Section(1, wasmtest.Vec(types...)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
 		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02})),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
-	)
+	}
+	if activeData {
+		sections = append(sections, wasmtest.Section(11, wasmtest.Vec([]byte{0x00, 0x41, 0x20, 0x0b, 0x04, 0x2a, 0x00, 0x00, 0x00})))
+	} else if passiveData {
+		sections = append(sections, wasmtest.Section(11, wasmtest.Vec([]byte{0x01, 0x04, 0x2a, 0x00, 0x00, 0x00})))
+	}
+	return wasmtest.Module(sections...)
 }
 
 func TestRV64RootedScalarMemoryExecutes(t *testing.T) {
-	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(true))
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(true, false, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1198,7 +1210,7 @@ func TestRV64RootedScalarMemoryExecutes(t *testing.T) {
 }
 
 func TestRV64RootedScalarPinnedMemoryExecutes(t *testing.T) {
-	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false))
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false, false, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1214,6 +1226,60 @@ func TestRV64RootedScalarPinnedMemoryExecutes(t *testing.T) {
 	defer instance.Close()
 	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{142, 1}) {
 		t.Fatalf("run()=%v err=%v want=[142 1]", got, err)
+	}
+}
+
+func TestRV64RootedScalarActiveDataExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false, true, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Data) != 1 || view.Data[0].Offset.Base != 32 || !slices.Equal(view.Data[0].Bytes, []byte{42, 0, 0, 0}) {
+		t.Fatal("active-data generic rooted receipt is missing")
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"payload": func(candidate *Compiled) {
+			candidate.Data = slices.Clone(candidate.Data)
+			candidate.Data[0].Bytes = slices.Clone(candidate.Data[0].Bytes)
+			candidate.Data[0].Bytes[0]++
+		},
+		"offset": func(candidate *Compiled) {
+			candidate.Data = slices.Clone(candidate.Data)
+			candidate.Data[0].Offset.Base++
+		},
+		"missing": func(candidate *Compiled) { candidate.Data = nil },
+		"passive": func(candidate *Compiled) { candidate.PassiveData = []PassiveDataInit{{Bytes: []byte{1}}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated active data retained the generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("mutated active data validation=%v", err)
+			}
+		})
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{142, 1, 42}) {
+		t.Fatalf("run()=%v err=%v want=[142 1 42]", got, err)
+	}
+}
+
+func TestRV64RootedScalarPassiveDataFailsClosed(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false, false, true))
+	if err == nil || compiled != nil {
+		if compiled != nil {
+			_ = compiled.Close()
+		}
+		t.Fatalf("passive data compiled=%v err=%v", compiled, err)
 	}
 }
 
