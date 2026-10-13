@@ -41,7 +41,11 @@ func catchAllPayloadRootKinds(m *wasm.Module) ([shared.EHPayloadLanes]nativeabi.
 		return nil
 	}
 	tag := uint32(0)
+	importedTags := uint32(m.ImportedTagCount())
 	for i := range m.Imports {
+		if tag == importedTags {
+			break
+		}
 		im := &m.Imports[i]
 		if im.Type.Kind != wasm.ExternTag {
 			continue
