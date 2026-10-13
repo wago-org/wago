@@ -68,9 +68,21 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	remainingElements := 256
 	for i := range m.Elements {
 		elem := &m.Elements[i]
-		if len(m.Tables) != 1 || elem.Mode.Kind != wasm.ElemActive || elem.Mode.Table != 0 || len(elem.Mode.Offset.Instrs) != 0 || !rv64RootedI32Const(elem.Mode.Offset.BodyBytes) ||
+		if len(m.Tables) != 1 || elem.Mode.Table != 0 ||
 			elem.Kind.Kind != wasm.ElemFuncs || len(elem.Kind.Exprs) != 0 || !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) && elem.Kind.Ref != (wasm.RefType{}) || len(elem.Kind.Funcs) > remainingElements {
 			return reject("RV64 exact roots require bounded literal active function elements")
+		}
+		switch elem.Mode.Kind {
+		case wasm.ElemActive:
+			if len(elem.Mode.Offset.Instrs) != 0 || !rv64RootedI32Const(elem.Mode.Offset.BodyBytes) {
+				return reject("RV64 exact roots require bounded literal active function elements")
+			}
+		case wasm.ElemPassive:
+			if len(elem.Mode.Offset.Instrs) != 0 || len(elem.Mode.Offset.BodyBytes) != 0 {
+				return reject("RV64 exact roots require canonical passive function elements")
+			}
+		default:
+			return reject("RV64 exact roots reject declarative function elements")
 		}
 		for _, function := range elem.Kind.Funcs {
 			if uint64(function) >= uint64(len(m.FuncTypes)) {

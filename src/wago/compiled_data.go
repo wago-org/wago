@@ -163,18 +163,18 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 }
 
 // rv64RootedTableDigest authenticates the first bounded private table boundary
-// for generic rooted-GC code. Only one local table32 and legacy active ref.func
-// payloads are admitted here; public tables and mutable/passive element state
+// for generic rooted-GC code. Only one local table32 and legacy active/passive
+// ref.func payloads are admitted here; public tables and expression elements
 // remain separate ownership boundaries.
 func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
-	if c == nil || len(c.extraTables) != 0 || c.tableImport != "" || len(c.tableExports) != 0 || len(c.passiveElems) != 0 || len(c.Elems) > 256 {
+	if c == nil || len(c.extraTables) != 0 || c.tableImport != "" || len(c.tableExports) != 0 || len(c.Elems) > 256 || len(c.passiveElems) > 256 {
 		return [32]byte{}, false
 	}
 	h := sha256.New()
 	var word [8]byte
 	if c.tableCount() == 0 {
 		if c.HasTable || c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.TableAddr64 || c.TableType != 0 || c.TableHasValueType || c.TableValueTypeIndex != 0 ||
-			c.HasTableInitFunc || c.TableInitFunc != 0 || len(c.Elems) != 0 {
+			c.HasTableInitFunc || c.TableInitFunc != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
 			return [32]byte{}, false
 		}
 		_, _ = h.Write([]byte{0})
@@ -211,6 +211,30 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		remaining -= len(elem.Values)
 		binary.LittleEndian.PutUint32(word[:4], elem.Offset.Base)
 		_, _ = h.Write(word[:4])
+		binary.LittleEndian.PutUint32(word[:4], uint32(len(elem.Values)))
+		_, _ = h.Write(word[:4])
+		for _, value := range elem.Values {
+			if value.Null || value.HasGlobal || value.GlobalIndex != 0 || value.I31Wrap || value.RepeatPrevious || len(value.Expr) != 0 || uint64(value.FuncIndex) >= uint64(len(c.Funcs)) {
+				return [32]byte{}, false
+			}
+			binary.LittleEndian.PutUint32(word[:4], value.FuncIndex)
+			_, _ = h.Write(word[:4])
+		}
+	}
+	binary.LittleEndian.PutUint32(word[:4], uint32(len(c.passiveElems)))
+	_, _ = h.Write(word[:4])
+	for i := range c.passiveElems {
+		elem := &c.passiveElems[i]
+		if elem.TableIndex != 0 || elem.RefType != 0 && elem.RefType != ValFuncRef || elem.HasValueType || elem.ValueTypeIndex != 0 ||
+			elem.Offset.Base != 0 || elem.Offset.HasGlobal || elem.Offset.Global != 0 || len(elem.Offset.Expr) != 0 ||
+			elem.Mode != ElemModeActive && elem.Mode != ElemModePassive || len(elem.Values) > remaining {
+			return [32]byte{}, false
+		}
+		if elem.Mode == ElemModeActive && len(elem.Values) != 0 {
+			return [32]byte{}, false
+		}
+		remaining -= len(elem.Values)
+		_, _ = h.Write([]byte{byte(elem.Mode)})
 		binary.LittleEndian.PutUint32(word[:4], uint32(len(elem.Values)))
 		_, _ = h.Write(word[:4])
 		for _, value := range elem.Values {

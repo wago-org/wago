@@ -36,7 +36,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports != 0 || len(c.Imports) != 0 ||
 		len(c.importFuncSigs) != 0 || c.tableCount() > 1 || c.memoryCount() > 1 ||
 		len(c.GlobalImports) != 0 || len(c.Globals) > 256 || len(c.Elems) > 256 ||
-		len(c.passiveElems) != 0 || len(c.PassiveData) > 256 {
+		len(c.passiveElems) > 256 || len(c.PassiveData) > 256 {
 		return false
 	}
 	if c.HasStart != memo.rv64FreshRootedGCHasStart {

@@ -46,11 +46,23 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	remainingElements := 256
 	for i := range m.Elements {
 		elem := &m.Elements[i]
-		if len(m.Tables) != 1 || elem.Mode.Kind != wasm.ElemActive || elem.Mode.Table != 0 || len(elem.Mode.Offset.Instrs) != 0 || elem.Kind.Kind != wasm.ElemFuncs ||
+		if len(m.Tables) != 1 || elem.Mode.Table != 0 || elem.Kind.Kind != wasm.ElemFuncs ||
 			len(elem.Kind.Exprs) != 0 || !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) && elem.Kind.Ref != (wasm.RefType{}) || len(elem.Kind.Funcs) > remainingElements {
 			return false
 		}
-		if _, err := plainScalarConst(elem.Mode.Offset, wasm.I32, false); err != nil {
+		switch elem.Mode.Kind {
+		case wasm.ElemActive:
+			if len(elem.Mode.Offset.Instrs) != 0 {
+				return false
+			}
+			if _, err := plainScalarConst(elem.Mode.Offset, wasm.I32, false); err != nil {
+				return false
+			}
+		case wasm.ElemPassive:
+			if len(elem.Mode.Offset.Instrs) != 0 || len(elem.Mode.Offset.BodyBytes) != 0 {
+				return false
+			}
+		default:
 			return false
 		}
 		for _, function := range elem.Kind.Funcs {

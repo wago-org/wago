@@ -1727,6 +1727,94 @@ func TestRV64RootedScalarIndirectTableExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarPassiveTableModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	target := []byte{0x00, 0x41, 0x2a, 0x0b}
+	caller := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x41, 0x00, 0x41, 0x00, 0x41, 0x01, 0xfc, 0x0c, 0x00, 0x00,
+		0x41, 0x00, 0x11, 0x01, 0x00,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x6a,
+		0xfc, 0x0d, 0x00,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(4, []byte{0x01, 0x70, 0x01, 0x01, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(9, []byte{0x01, 0x01, 0x00, 0x01, 0x00}),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(target))), target...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+		)),
+	)
+}
+
+func TestRV64RootedScalarPassiveTableExecutes(t *testing.T) {
+	source := rootedScalarPassiveTableModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("bounded rooted passive-table module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || !view.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) || len(view.passiveElems) != 1 || view.passiveElems[0].Mode != ElemModePassive || len(view.passiveElems[0].Values) != 1 || view.passiveElems[0].Values[0].FuncIndex != 0 {
+		t.Fatal("passive-table generic rooted receipt is missing")
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"mode": func(candidate *Compiled) { candidate.passiveElems[0].Mode = ElemModeDeclarative },
+		"target": func(candidate *Compiled) {
+			candidate.passiveElems[0].Values[0].FuncIndex = 1
+		},
+		"offset": func(candidate *Compiled) { candidate.passiveElems[0].Offset.Base = 1 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			candidate.passiveElems = slices.Clone(candidate.passiveElems)
+			candidate.passiveElems[0].Values = slices.Clone(candidate.passiveElems[0].Values)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated passive table retained the generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("mutated passive table validation=%v", err)
+			}
+		})
+	}
+	first, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := first.Invoke("run"); err != nil || !slices.Equal(got, []uint64{83}) {
+		_ = first.Close()
+		t.Fatalf("first run()=%v err=%v want=[83]", got, err)
+	}
+	if got, err := first.Invoke("run"); err == nil {
+		_ = first.Close()
+		t.Fatalf("dropped passive segment rerun=%v without trap", got)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	second, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	if got, err := second.Invoke("run"); err != nil || !slices.Equal(got, []uint64{83}) {
+		t.Fatalf("fresh instance run()=%v err=%v want=[83]", got, err)
+	}
+}
+
 func rootedScalarBoundaryStructModule(fieldCount int) []byte {
 	fields := []byte{0x5f}
 	fields = append(fields, wasmtest.ULEB(uint32(fieldCount))...)
