@@ -339,3 +339,21 @@ all samples, hashes, parity checks, compile rows and validation output. Four
 new captures have durable local receipts; database integrity and all 575,121
 historical observations pass. Full parity remains open. Native AMD64 timing
 is still pending, and nothing was deployed.
+
+### Complete 04cda5a4 local refresh — 2026-10-13
+
+All 266 contracts completed without collection/resource failures and have durable
+local publication receipts. All 148 main contracts pass. The source has 1,080
+observations covering 266 contracts: 1,064 full-refresh observations plus 16
+from its targeted capture. Database integrity and all 575,121 historical
+observations pass. The 54 passing feature pairs have 19 ratios above strict
+parity, including dependent-read/write at 1.023 and f64 sqrt/convert at 1.006;
+17 exceed the 1.1 triage threshold. Rotate/popcount remains faster in this full
+refresh; its interleaved capture remains the direct gain evidence. This ranking
+uses an earlier retained peer baseline and near-parity ratios are noisy.
+
+Opaque callbacks remain 55.60x, division 5.74x, f32 rounding globals 4.52–4.64x,
+and ordinary imports 3.24x. The [full cohort report](docs/benchmarks/wasm3-2026-10-13/popcount-full-feature-cohort.json)
+retains all new feature samples, full capture hashes, unchanged peer references,
+classifications and local publication/audit evidence. Full parity remains open.
+The server is local and no production deployment occurred.
