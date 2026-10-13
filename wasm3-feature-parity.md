@@ -1408,3 +1408,37 @@ selection is unchanged. The frozen full cohort measures `a7a9b6e9`, not this fix
 
 [Full frozen cohort, samples, failures and local receipts](docs/benchmarks/wasm3-2026-10-13/linear-integer-full-feature-cohort.json).
 [Register-pressure regression and validation](docs/benchmarks/wasm3-2026-10-13/linear-integer-pressure.json).
+
+### Carry-overflow targeted parity, October 13
+
+General ARM64 covers now preserve an i64 global increment, logical XOR/shift,
+and wrapping i32 reduction in vector batches. The source proof excludes
+imported globals, calls, memory, traps and escaping control; pressure,
+interruptible execution and unsupported contexts retain the scalar path.
+Both ABIs, artifact reload, signed/overflowing steps, shifts and every scalar
+remainder pass guarded race execution tests. The original vector change also
+passes pinned conformance and native AMD64 fallback execution.
+
+Frozen `32716b7f` measures **33.6–35.0 us** on the two carry-overflow contracts,
+against **34.2–34.9 us** in the peer batches without large outliers. The final
+confirmation ratios are **0.982x** (core globals) and **0.993x** (mutable globals).
+Earlier comparable pairs are 1.003x and 1.001x: these workloads have reached
+observed parity; differences of this size do not establish a reliable speed lead.
+The eight-iteration refinement improves its prior frozen build by 5–11% across
+three batches. Two peer outliers (63 and 108 us) remain in the raw evidence and
+are not credited as causal wins. Browser and storage CPU activity was observed;
+its contribution to individual samples is uncertain.
+
+The carry native image grows from 400 bytes before vectorization to 656 bytes.
+The original vector proof's Core3/threads compilation medians rise about
+1.55%/2.33%, with aggregate images and allocation bytes effectively unchanged.
+Incremental corpus compile cost for the two subsequent emitter refinements was
+not remeasured; all targeted captures retain compile latency and resources.
+Mesh control code stays 804 bytes; one 5.5% timing fluctuation does not repeat.
+This is a targeted result and does not replace the older frozen full cohort or
+complete the remaining per-feature and main-corpus goal. Publication is queued
+for the approximately two-hour local refresh, changed workloads only.
+
+[Original vector proof and paired evidence](docs/benchmarks/wasm3-2026-10-13/global-xor-shift.json),
+[independent accumulators and noisy-sample confirmation](docs/benchmarks/wasm3-2026-10-13/global-xor-dual.json),
+[eight-iteration refinement and parity confirmation](docs/benchmarks/wasm3-2026-10-13/global-xor-eight.json).
