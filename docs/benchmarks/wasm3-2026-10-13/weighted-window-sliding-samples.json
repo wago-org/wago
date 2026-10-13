@@ -1,0 +1,4153 @@
+{
+  "disposition": "Rejected and reverted: FIR 0.00% and 0.47% changes, plus 48 native bytes and greater vector register demand. No material speed gain.",
+  "validation": {
+    "diagnosticsCases": 1162,
+    "plainCases": 1153,
+    "failures": 0,
+    "skips": 0,
+    "actualFIRSelection": "selection.txt confirms new sliding path",
+    "compilerCostConformanceNativeAMD64": "Not rerun for this rejected refinement"
+  },
+  "runs": {
+    "capture": {
+      "status": {
+        "status": "completed",
+        "started": "2026-10-13T22:14:27.505Z",
+        "updated": "2026-10-13T22:14:53.690Z",
+        "machine": "Apple M4 Max",
+        "current": null,
+        "completed": 9,
+        "total": 9,
+        "errors": [],
+        "resourceFailures": [],
+        "resourceStatuses": {
+          "memory": {
+            "ok": 36
+          },
+          "code": {
+            "ok": 36
+          }
+        },
+        "runnerMs": 26139.707042,
+        "captureMs": 30.354374000006203
+      },
+      "pairs": [
+        {
+          "workload": "applications/audio-fir",
+          "beforeNs": 17667,
+          "afterNs": 17667,
+          "changePercent": 0.0,
+          "beforeCodeBytes": 5188,
+          "afterCodeBytes": 5236,
+          "peer": {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              14167,
+              14125,
+              14125,
+              14041,
+              14000,
+              14750,
+              14583,
+              14500,
+              14458,
+              14458,
+              14208,
+              17458,
+              14500,
+              14416,
+              14458
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 14458,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58540032,
+            "codeStatus": "ok",
+            "codeBytes": 3764,
+            "codeKind": "engine-reported"
+          }
+        },
+        {
+          "workload": "applications/audio-autocorrelation",
+          "beforeNs": 8625,
+          "afterNs": 8625,
+          "changePercent": 0.0,
+          "beforeCodeBytes": 1864,
+          "afterCodeBytes": 1864,
+          "peer": {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              47833,
+              47834,
+              47417,
+              47250,
+              47250,
+              39000,
+              38708,
+              38625,
+              38458,
+              38500,
+              12708,
+              12583,
+              12542,
+              12458,
+              12375
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 38625,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58523648,
+            "codeStatus": "ok",
+            "codeBytes": 3600,
+            "codeKind": "engine-reported"
+          }
+        },
+        {
+          "workload": "applications/ml-inference",
+          "beforeNs": 3709,
+          "afterNs": 3833,
+          "changePercent": 3.343219196548941,
+          "beforeCodeBytes": 2132,
+          "afterCodeBytes": 2132,
+          "peer": {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              3125,
+              3083,
+              3000,
+              3000,
+              3000,
+              2833,
+              2667,
+              2625,
+              2625,
+              2583,
+              2875,
+              2708,
+              2625,
+              2584,
+              2541
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 2625,
+            "memoryStatus": "ok",
+            "peakRssBytes": 57982976,
+            "codeStatus": "ok",
+            "codeBytes": 3284,
+            "codeKind": "engine-reported"
+          }
+        }
+      ]
+    },
+    "repeat": {
+      "status": {
+        "status": "completed",
+        "started": "2026-10-13T22:16:36.356Z",
+        "updated": "2026-10-13T22:17:00.653Z",
+        "machine": "Apple M4 Max",
+        "current": null,
+        "completed": 9,
+        "total": 9,
+        "errors": [],
+        "resourceFailures": [],
+        "resourceStatuses": {
+          "memory": {
+            "ok": 36
+          },
+          "code": {
+            "ok": 36
+          }
+        },
+        "runnerMs": 24251.395624999997,
+        "captureMs": 30.733959000003154
+      },
+      "pairs": [
+        {
+          "workload": "applications/audio-fir",
+          "beforeNs": 17709,
+          "afterNs": 17625,
+          "changePercent": -0.47433508385567036,
+          "beforeCodeBytes": 5188,
+          "afterCodeBytes": 5236,
+          "peer": {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              14584,
+              14583,
+              14500,
+              14459,
+              14541,
+              14292,
+              14083,
+              14084,
+              14083,
+              14042,
+              14334,
+              14125,
+              14084,
+              14042,
+              14084
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 14084,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58474496,
+            "codeStatus": "ok",
+            "codeBytes": 3764,
+            "codeKind": "engine-reported"
+          }
+        },
+        {
+          "workload": "applications/audio-autocorrelation",
+          "beforeNs": 8709,
+          "afterNs": 8625,
+          "changePercent": -0.9645194626248688,
+          "beforeCodeBytes": 1864,
+          "afterCodeBytes": 1864,
+          "peer": {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              11125,
+              11084,
+              11042,
+              10959,
+              13000,
+              11500,
+              11458,
+              11333,
+              11334,
+              11292,
+              11125,
+              11083,
+              11000,
+              10958,
+              11083
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 11084,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58523648,
+            "codeStatus": "ok",
+            "codeBytes": 3600,
+            "codeKind": "engine-reported"
+          }
+        },
+        {
+          "workload": "applications/ml-inference",
+          "beforeNs": 3625,
+          "afterNs": 3708,
+          "changePercent": 2.289655172413796,
+          "beforeCodeBytes": 2132,
+          "afterCodeBytes": 2132,
+          "peer": {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              2792,
+              2709,
+              2625,
+              2625,
+              2584,
+              3083,
+              3125,
+              3000,
+              3083,
+              2958,
+              2916,
+              2667,
+              2667,
+              2625,
+              2625
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 2667,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58064896,
+            "codeStatus": "ok",
+            "codeBytes": 3284,
+            "codeKind": "engine-reported"
+          }
+        }
+      ]
+    }
+  },
+  "rawCaptures": [
+    {
+      "run": "capture",
+      "file": "w2c2-f303ed27-71ad84533989822d.json",
+      "sha256": "42116f72f0310d642c7a19332df38df57a59a3a7e5a75604163fd8ce0fe4175f",
+      "capture": {
+        "capturedAt": "2026-10-13T22:14:44.364Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-13T05:56:24.446Z",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              305006708,
+              290821292,
+              269038750,
+              298741292,
+              280067458,
+              279584042,
+              287382459,
+              275154875,
+              268807291,
+              260668041,
+              282377542,
+              267281125,
+              270779250,
+              321599417,
+              328049042
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 282377542,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58621952,
+            "codeStatus": "ok",
+            "codeBytes": 3764,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              5083,
+              4917,
+              1000,
+              958,
+              917,
+              4958,
+              5541,
+              1209,
+              1000,
+              958,
+              4959,
+              4708,
+              1167,
+              958,
+              917
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 1167,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58572800,
+            "codeStatus": "ok",
+            "codeBytes": 3764,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              17333,
+              14250,
+              15416,
+              15917,
+              14375,
+              16792,
+              14167,
+              14083,
+              14084,
+              14084,
+              16417,
+              14208,
+              14125,
+              14042,
+              14083
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 14125,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58621952,
+            "codeStatus": "ok",
+            "codeBytes": 3764,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              14167,
+              14125,
+              14125,
+              14041,
+              14000,
+              14750,
+              14583,
+              14500,
+              14458,
+              14458,
+              14208,
+              17458,
+              14500,
+              14416,
+              14458
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 14458,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58540032,
+            "codeStatus": "ok",
+            "codeBytes": 3764,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "run": "capture",
+      "file": "w2c2-f303ed27-91303650ff773435.json",
+      "sha256": "6616c33aea92aa203c1ae970fe6e228fc6f82b5d8e8eef649d9ea2b0bc5010ed",
+      "capture": {
+        "capturedAt": "2026-10-13T22:14:53.688Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-13T05:56:24.446Z",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              297093709,
+              283983417,
+              304024000,
+              285853041,
+              277580750,
+              426608583,
+              334098167,
+              279436000,
+              273842500,
+              376199834,
+              343707500,
+              290969083,
+              280556375,
+              295311625,
+              604192083
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 295311625,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58540032,
+            "codeStatus": "ok",
+            "codeBytes": 3600,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              4917,
+              5000,
+              834,
+              708,
+              750,
+              4375,
+              5333,
+              791,
+              666,
+              750,
+              4584,
+              4708,
+              875,
+              791,
+              708
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 834,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58458112,
+            "codeStatus": "ok",
+            "codeBytes": 3600,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              11959,
+              10958,
+              10917,
+              10875,
+              10875,
+              12458,
+              11125,
+              11000,
+              10875,
+              10875,
+              12167,
+              11042,
+              10916,
+              10833,
+              10875
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 10917,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58540032,
+            "codeStatus": "ok",
+            "codeBytes": 3600,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              47833,
+              47834,
+              47417,
+              47250,
+              47250,
+              39000,
+              38708,
+              38625,
+              38458,
+              38500,
+              12708,
+              12583,
+              12542,
+              12458,
+              12375
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 38625,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58523648,
+            "codeStatus": "ok",
+            "codeBytes": 3600,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "run": "capture",
+      "file": "w2c2-f303ed27-f65481f1b5e10360.json",
+      "sha256": "5090a14bd22c9eaf598597e8e39b26116d44906e634baf3a59cab8c318491028",
+      "capture": {
+        "capturedAt": "2026-10-13T22:14:36.190Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-13T05:56:24.446Z",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              309778166,
+              292133625,
+              275188209,
+              256212208,
+              269356750,
+              270086084,
+              273897792,
+              418126709,
+              299885083,
+              287327458,
+              297263666,
+              286513000,
+              282667125,
+              279600917,
+              272744375
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 282667125,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58081280,
+            "codeStatus": "ok",
+            "codeBytes": 3284,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              5375,
+              4084,
+              1083,
+              1000,
+              917,
+              5500,
+              5333,
+              1041,
+              875,
+              875,
+              5750,
+              5250,
+              1042,
+              917,
+              875
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 1042,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58097664,
+            "codeStatus": "ok",
+            "codeBytes": 3284,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              4500,
+              2833,
+              2708,
+              2625,
+              2625,
+              4667,
+              2833,
+              2750,
+              2666,
+              2583,
+              4583,
+              2833,
+              2625,
+              2625,
+              2625
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 2708,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58081280,
+            "codeStatus": "ok",
+            "codeBytes": 3284,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              3125,
+              3083,
+              3000,
+              3000,
+              3000,
+              2833,
+              2667,
+              2625,
+              2625,
+              2583,
+              2875,
+              2708,
+              2625,
+              2584,
+              2541
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 2625,
+            "memoryStatus": "ok",
+            "peakRssBytes": 57982976,
+            "codeStatus": "ok",
+            "codeBytes": 3284,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "run": "capture",
+      "file": "wago-55b8e94e-71ad84533989822d.json",
+      "sha256": "7f133050fceee6700abaf508098c8e7980d20c3a8251c71a0ba8ae577a10bb2c",
+      "capture": {
+        "capturedAt": "2026-10-13T22:14:36.583Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "55b8e94e7af92a703b8feeab884185a412f95413",
+          "ref": "jairus/wasm3-feature-parity@55b8e94e",
+          "asOf": "2026-10-13T22:13:56.570918+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              291708,
+              141792,
+              125791,
+              121167,
+              123541,
+              261708,
+              142708,
+              112208,
+              111542,
+              109167,
+              237708,
+              133459,
+              113125,
+              108542,
+              108666
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 113125,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9633792,
+            "codeStatus": "ok",
+            "codeBytes": 5236,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              5625,
+              2541,
+              625,
+              417,
+              375,
+              5292,
+              2542,
+              666,
+              458,
+              375,
+              5125,
+              3375,
+              667,
+              459,
+              417
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 666,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9486336,
+            "codeStatus": "ok",
+            "codeBytes": 5236,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              25583,
+              17792,
+              17625,
+              17584,
+              17625,
+              28875,
+              18125,
+              17750,
+              17625,
+              17667,
+              25416,
+              17792,
+              17709,
+              17583,
+              17833
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 17750,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9388032,
+            "codeStatus": "ok",
+            "codeBytes": 5236,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              25459,
+              17834,
+              17667,
+              17625,
+              16042,
+              25708,
+              17834,
+              17667,
+              17667,
+              17625,
+              25708,
+              17750,
+              17542,
+              17500,
+              17542
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 17667,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9420800,
+            "codeStatus": "ok",
+            "codeBytes": 5236,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "run": "capture",
+      "file": "wago-55b8e94e-91303650ff773435.json",
+      "sha256": "40da4c372456908d235797e77e174ee1ecefc9f58c1d2603910947be2b4b4a4d",
+      "capture": {
+        "capturedAt": "2026-10-13T22:14:44.751Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "55b8e94e7af92a703b8feeab884185a412f95413",
+          "ref": "jairus/wasm3-feature-parity@55b8e94e",
+          "asOf": "2026-10-13T22:13:56.570918+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              206834,
+              61000,
+              43500,
+              41000,
+              41959,
+              163042,
+              61459,
+              43958,
+              40542,
+              36250,
+              159125,
+              61375,
+              44084,
+              39042,
+              36708
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 43958,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9797632,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              7583,
+              1209,
+              500,
+              375,
+              375,
+              5667,
+              1291,
+              500,
+              500,
+              375,
+              6666,
+              1292,
+              458,
+              416,
+              375
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 500,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9977856,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              15208,
+              8792,
+              8709,
+              8625,
+              8584,
+              15666,
+              8833,
+              8625,
+              8625,
+              8583,
+              14750,
+              8792,
+              8625,
+              8625,
+              8583
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 8625,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9682944,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              16000,
+              8834,
+              8625,
+              8625,
+              8541,
+              16042,
+              8666,
+              8625,
+              8583,
+              8500,
+              15042,
+              8709,
+              8666,
+              8708,
+              8542
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 8625,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9601024,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "run": "capture",
+      "file": "wago-55b8e94e-f65481f1b5e10360.json",
+      "sha256": "531ac935d07129772d9b5e667a488851b2fa53e60c5583275085833516a738b7",
+      "capture": {
+        "capturedAt": "2026-10-13T22:14:28.446Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "55b8e94e7af92a703b8feeab884185a412f95413",
+          "ref": "jairus/wasm3-feature-parity@55b8e94e",
+          "asOf": "2026-10-13T22:13:56.570918+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              1812625,
+              131208,
+              90333,
+              93583,
+              89792,
+              295583,
+              110083,
+              80250,
+              77583,
+              78542,
+              254292,
+              96875,
+              70833,
+              94584,
+              73209
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 93583,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9551872,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              7250,
+              4084,
+              1000,
+              667,
+              583,
+              7791,
+              3458,
+              1041,
+              708,
+              625,
+              6667,
+              3875,
+              917,
+              625,
+              583
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 1000,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9388032,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              13875,
+              4917,
+              4708,
+              4708,
+              4666,
+              12875,
+              4625,
+              4375,
+              4375,
+              4416,
+              12042,
+              4459,
+              4166,
+              4125,
+              4125
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 4416,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9273344,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              11291,
+              4167,
+              4000,
+              3917,
+              3916,
+              11000,
+              4000,
+              3833,
+              3750,
+              3750,
+              10750,
+              3750,
+              3625,
+              3583,
+              3583
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 3833,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9371648,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "run": "capture",
+      "file": "wago-6b46132b-71ad84533989822d.json",
+      "sha256": "7eb91d6cd83acd76fbaab8f75df6760adc7f05a690d730234db0004b55e98cad",
+      "capture": {
+        "capturedAt": "2026-10-13T22:14:36.387Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "6b46132b932cfc0fd4d526469f2ef46834248673",
+          "ref": "jairus/wasm3-feature-parity@6b46132b",
+          "asOf": "2026-10-13T21:39:24.100287+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              308458,
+              142458,
+              124833,
+              120958,
+              127167,
+              248500,
+              141833,
+              126291,
+              115375,
+              108875,
+              243833,
+              145667,
+              126833,
+              114042,
+              113500
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 126833,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9584640,
+            "codeStatus": "ok",
+            "codeBytes": 5188,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              5292,
+              2500,
+              666,
+              458,
+              417,
+              5375,
+              2792,
+              583,
+              500,
+              333,
+              5209,
+              2750,
+              708,
+              458,
+              375
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 666,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9371648,
+            "codeStatus": "ok",
+            "codeBytes": 5188,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              22416,
+              15958,
+              15750,
+              15750,
+              15792,
+              25208,
+              17834,
+              17667,
+              17666,
+              17583,
+              25334,
+              17875,
+              17584,
+              17708,
+              16916
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 17667,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9420800,
+            "codeStatus": "ok",
+            "codeBytes": 5188,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              25041,
+              17833,
+              17584,
+              17667,
+              17584,
+              25708,
+              17834,
+              17667,
+              17625,
+              17500,
+              25125,
+              17708,
+              17666,
+              17625,
+              17541
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 17667,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9420800,
+            "codeStatus": "ok",
+            "codeBytes": 5188,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "run": "capture",
+      "file": "wago-6b46132b-91303650ff773435.json",
+      "sha256": "35c285b1a4ace733f849aaa62a1eea3d74a5c756f9f833f8e0a6e8e6f2a4f30a",
+      "capture": {
+        "capturedAt": "2026-10-13T22:14:44.559Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "6b46132b932cfc0fd4d526469f2ef46834248673",
+          "ref": "jairus/wasm3-feature-parity@6b46132b",
+          "asOf": "2026-10-13T21:39:24.100287+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              203334,
+              60625,
+              40500,
+              38791,
+              34833,
+              159542,
+              62042,
+              44125,
+              42208,
+              42167,
+              159834,
+              63208,
+              46333,
+              42000,
+              40875
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 44125,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9732096,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              6292,
+              1250,
+              500,
+              458,
+              417,
+              7041,
+              1250,
+              542,
+              375,
+              334,
+              7750,
+              1250,
+              500,
+              375,
+              375
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 500,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9977856,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              15417,
+              8958,
+              8791,
+              8875,
+              8834,
+              15625,
+              8791,
+              8625,
+              8625,
+              8583,
+              15667,
+              8750,
+              8666,
+              8625,
+              8625
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 8666,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9633792,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              16625,
+              8750,
+              8625,
+              8583,
+              8500,
+              16500,
+              8750,
+              8625,
+              8583,
+              8542,
+              16583,
+              8708,
+              8583,
+              8542,
+              8542
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 8625,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9551872,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "run": "capture",
+      "file": "wago-6b46132b-f65481f1b5e10360.json",
+      "sha256": "d02ac2a371c2ddd82ef01207e9656b31f13cc752681ea92ddda61bf37c0a9b3b",
+      "capture": {
+        "capturedAt": "2026-10-13T22:14:27.742Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "6b46132b932cfc0fd4d526469f2ef46834248673",
+          "ref": "jairus/wasm3-feature-parity@6b46132b",
+          "asOf": "2026-10-13T21:39:24.100287+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              885625,
+              59333,
+              41291,
+              43625,
+              44083,
+              166917,
+              57666,
+              41375,
+              45500,
+              39083,
+              154709,
+              60000,
+              47625,
+              46292,
+              43084
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 45500,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9584640,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              5375,
+              3042,
+              708,
+              458,
+              375,
+              5083,
+              3000,
+              708,
+              458,
+              417,
+              7333,
+              2958,
+              708,
+              458,
+              375
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 708,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9256960,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              9708,
+              3875,
+              3709,
+              3625,
+              3542,
+              10084,
+              3916,
+              3750,
+              3708,
+              3666,
+              9792,
+              4000,
+              3708,
+              3666,
+              3666
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 3709,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9256960,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              10833,
+              3791,
+              3709,
+              3667,
+              3583,
+              10708,
+              3792,
+              3709,
+              3625,
+              3583,
+              10666,
+              3708,
+              3667,
+              3625,
+              3584
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 3709,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9256960,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "run": "repeat",
+      "file": "w2c2-f303ed27-71ad84533989822d.json",
+      "sha256": "22c95f4c70c9cecf8498e99b2356e255c115882b5f0821714a78d6487b9a7f21",
+      "capture": {
+        "capturedAt": "2026-10-13T22:16:52.696Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-13T05:56:24.446Z",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              278680959,
+              290570167,
+              287850958,
+              305955708,
+              303339041,
+              285029125,
+              337785875,
+              317070500,
+              299242833,
+              295352666,
+              277632792,
+              284940292,
+              284768000,
+              290617209,
+              285839417
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 290570167,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58589184,
+            "codeStatus": "ok",
+            "codeBytes": 3764,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              4458,
+              5250,
+              1084,
+              917,
+              958,
+              4584,
+              5083,
+              1042,
+              917,
+              916,
+              4416,
+              5209,
+              1084,
+              958,
+              917
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 1084,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58589184,
+            "codeStatus": "ok",
+            "codeBytes": 3764,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              65167,
+              58625,
+              58042,
+              58542,
+              58041,
+              17417,
+              14209,
+              14125,
+              14042,
+              14042,
+              17000,
+              14208,
+              14083,
+              14000,
+              14000
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 14125,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58507264,
+            "codeStatus": "ok",
+            "codeBytes": 3764,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              14584,
+              14583,
+              14500,
+              14459,
+              14541,
+              14292,
+              14083,
+              14084,
+              14083,
+              14042,
+              14334,
+              14125,
+              14084,
+              14042,
+              14084
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 14084,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58474496,
+            "codeStatus": "ok",
+            "codeBytes": 3764,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "run": "repeat",
+      "file": "w2c2-f303ed27-91303650ff773435.json",
+      "sha256": "819803ab686dcaf179c753aa2423d9c63d8f8d659fd897a6327b130e3666e2b2",
+      "capture": {
+        "capturedAt": "2026-10-13T22:17:00.650Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-13T05:56:24.446Z",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              288353333,
+              289042208,
+              282070084,
+              278715959,
+              275545625,
+              262919458,
+              265513875,
+              273080375,
+              277952583,
+              274911375,
+              272618417,
+              285913000,
+              284944167,
+              267438625,
+              274034709
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 274034709,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58556416,
+            "codeStatus": "ok",
+            "codeBytes": 3600,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              4375,
+              4459,
+              750,
+              667,
+              708,
+              4834,
+              5708,
+              875,
+              708,
+              667,
+              4625,
+              4208,
+              834,
+              709,
+              709
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 834,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58507264,
+            "codeStatus": "ok",
+            "codeBytes": 3600,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              12250,
+              11084,
+              10958,
+              10917,
+              10875,
+              12375,
+              11041,
+              10917,
+              10916,
+              10959,
+              12333,
+              11042,
+              10958,
+              10916,
+              10875
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 10958,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58507264,
+            "codeStatus": "ok",
+            "codeBytes": 3600,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              11125,
+              11084,
+              11042,
+              10959,
+              13000,
+              11500,
+              11458,
+              11333,
+              11334,
+              11292,
+              11125,
+              11083,
+              11000,
+              10958,
+              11083
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 11084,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58523648,
+            "codeStatus": "ok",
+            "codeBytes": 3600,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "run": "repeat",
+      "file": "w2c2-f303ed27-f65481f1b5e10360.json",
+      "sha256": "df9c10b1a0d7dec8b65d1df4c0b385323fdd80f9cb99d134f22d931a34c62546",
+      "capture": {
+        "capturedAt": "2026-10-13T22:16:44.284Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-13T05:56:24.446Z",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              342812000,
+              288883750,
+              277904875,
+              269963000,
+              266256042,
+              257375291,
+              261916083,
+              275043875,
+              259601500,
+              284095875,
+              279328500,
+              268757708,
+              267767833,
+              271626292,
+              258616500
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 268757708,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58097664,
+            "codeStatus": "ok",
+            "codeBytes": 3284,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              4416,
+              5125,
+              959,
+              833,
+              834,
+              4417,
+              4833,
+              917,
+              833,
+              833,
+              4792,
+              4834,
+              1083,
+              917,
+              917
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 959,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58015744,
+            "codeStatus": "ok",
+            "codeBytes": 3284,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              4709,
+              2833,
+              2667,
+              2625,
+              2625,
+              4916,
+              2750,
+              2625,
+              2666,
+              2625,
+              13375,
+              2791,
+              2625,
+              2583,
+              2584
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 2666,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58081280,
+            "codeStatus": "ok",
+            "codeBytes": 3284,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              2792,
+              2709,
+              2625,
+              2625,
+              2584,
+              3083,
+              3125,
+              3000,
+              3083,
+              2958,
+              2916,
+              2667,
+              2667,
+              2625,
+              2625
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 2667,
+            "memoryStatus": "ok",
+            "peakRssBytes": 58064896,
+            "codeStatus": "ok",
+            "codeBytes": 3284,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "run": "repeat",
+      "file": "wago-55b8e94e-71ad84533989822d.json",
+      "sha256": "a1b13633b2cd96947cbe4d71321930ee4b2cd4c7a6e6fb20c61e2edd84e59487",
+      "capture": {
+        "capturedAt": "2026-10-13T22:16:44.485Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "55b8e94e7af92a703b8feeab884185a412f95413",
+          "ref": "jairus/wasm3-feature-parity@55b8e94e",
+          "asOf": "2026-10-13T22:13:56.570918+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              304334,
+              146542,
+              126833,
+              125917,
+              122959,
+              242833,
+              144375,
+              127375,
+              109500,
+              110833,
+              241250,
+              141833,
+              112709,
+              109375,
+              110791
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 126833,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9699328,
+            "codeStatus": "ok",
+            "codeBytes": 5236,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              5042,
+              2208,
+              709,
+              500,
+              417,
+              7292,
+              2958,
+              708,
+              417,
+              417,
+              11625,
+              2583,
+              708,
+              459,
+              375
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 708,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9469952,
+            "codeStatus": "ok",
+            "codeBytes": 5236,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              25833,
+              17875,
+              17666,
+              17625,
+              17625,
+              26208,
+              17917,
+              17667,
+              17625,
+              17667,
+              25042,
+              17833,
+              17667,
+              17666,
+              17625
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 17667,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9437184,
+            "codeStatus": "ok",
+            "codeBytes": 5236,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              26042,
+              18083,
+              17791,
+              17875,
+              17791,
+              25458,
+              17667,
+              17625,
+              17542,
+              17583,
+              25250,
+              17708,
+              17625,
+              17584,
+              17541
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 17625,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9420800,
+            "codeStatus": "ok",
+            "codeBytes": 5236,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "run": "repeat",
+      "file": "wago-55b8e94e-91303650ff773435.json",
+      "sha256": "b2f8c2e34778363b27c04ef6d82eae94c53331073d12b91a77134eab221f9100",
+      "capture": {
+        "capturedAt": "2026-10-13T22:16:52.892Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "55b8e94e7af92a703b8feeab884185a412f95413",
+          "ref": "jairus/wasm3-feature-parity@55b8e94e",
+          "asOf": "2026-10-13T22:13:56.570918+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              194167,
+              60083,
+              48625,
+              43584,
+              40000,
+              158209,
+              61500,
+              44042,
+              41750,
+              35250,
+              157708,
+              60916,
+              45833,
+              42042,
+              37250
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 45833,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9699328,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              7708,
+              1209,
+              417,
+              375,
+              375,
+              6750,
+              1167,
+              500,
+              416,
+              375,
+              7041,
+              1333,
+              500,
+              417,
+              333
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 500,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9977856,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              14500,
+              8791,
+              8667,
+              8583,
+              8625,
+              15208,
+              8750,
+              8625,
+              8625,
+              8584,
+              14625,
+              8959,
+              8791,
+              8750,
+              8708
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 8667,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9650176,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              15000,
+              8709,
+              8625,
+              8583,
+              8583,
+              15917,
+              8708,
+              8625,
+              8583,
+              8584,
+              15792,
+              8750,
+              8667,
+              8667,
+              8625
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 8625,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9666560,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "run": "repeat",
+      "file": "wago-55b8e94e-f65481f1b5e10360.json",
+      "sha256": "766c98b008f3afaf3470e11a4b11ec6867b1d58d8fce46d11559d0af45773e8c",
+      "capture": {
+        "capturedAt": "2026-10-13T22:16:36.562Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "55b8e94e7af92a703b8feeab884185a412f95413",
+          "ref": "jairus/wasm3-feature-parity@55b8e94e",
+          "asOf": "2026-10-13T22:13:56.570918+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              198208,
+              61042,
+              43375,
+              42166,
+              40792,
+              175500,
+              65250,
+              48000,
+              47292,
+              43625,
+              171875,
+              66375,
+              44083,
+              44375,
+              41375
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 44375,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9453568,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              5208,
+              2875,
+              667,
+              458,
+              375,
+              6791,
+              2708,
+              792,
+              458,
+              375,
+              5167,
+              2375,
+              667,
+              458,
+              417
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 667,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9388032,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              11375,
+              3833,
+              3625,
+              3667,
+              3625,
+              11375,
+              3792,
+              3625,
+              3625,
+              3583,
+              10458,
+              3833,
+              3625,
+              3625,
+              3625
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 3625,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9273344,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              11333,
+              3750,
+              3583,
+              3583,
+              3541,
+              12208,
+              3875,
+              3792,
+              3709,
+              3666,
+              11542,
+              3875,
+              3708,
+              3666,
+              3625
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "55b8e94e7af92a703b8feeab884185a412f95413/source-9c9dab49d1f46108ee3866a00d062792e7d1a0d3fb4372da3987042fe87589ef",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 3708,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9256960,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "run": "repeat",
+      "file": "wago-6b46132b-71ad84533989822d.json",
+      "sha256": "75eab1fcac202b8b2c53363bd32fb68b7ac580791cea3273765dc3bc70a4b9c7",
+      "capture": {
+        "capturedAt": "2026-10-13T22:16:44.683Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "6b46132b932cfc0fd4d526469f2ef46834248673",
+          "ref": "jairus/wasm3-feature-parity@6b46132b",
+          "asOf": "2026-10-13T21:39:24.100287+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              292458,
+              127000,
+              112708,
+              108209,
+              129042,
+              240625,
+              143208,
+              128416,
+              123791,
+              124125,
+              236583,
+              139666,
+              125125,
+              121375,
+              124250
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 127000,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9568256,
+            "codeStatus": "ok",
+            "codeBytes": 5188,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              5125,
+              2167,
+              750,
+              459,
+              416,
+              4917,
+              3375,
+              625,
+              417,
+              417,
+              5209,
+              2584,
+              667,
+              459,
+              416
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 667,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9437184,
+            "codeStatus": "ok",
+            "codeBytes": 5188,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              26000,
+              17916,
+              17708,
+              17625,
+              17625,
+              24583,
+              17833,
+              17583,
+              17667,
+              17584,
+              25292,
+              17833,
+              17708,
+              17625,
+              17083
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 17708,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9420800,
+            "codeStatus": "ok",
+            "codeBytes": 5188,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "32-tap fixed-point FIR audio filtering",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 1611,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              25375,
+              17833,
+              17709,
+              17542,
+              17708,
+              25667,
+              17833,
+              17666,
+              17666,
+              17709,
+              25583,
+              17750,
+              17584,
+              17625,
+              17583
+            ],
+            "workload": "applications/audio-fir",
+            "wasm": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c.wasm",
+            "artifactSha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c",
+            "contractSha256": "8d3bf06b448b9ff36e49947d1420ebe2473f8a1d5f144ec1a74d0f98249d5837",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 17709,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9338880,
+            "codeStatus": "ok",
+            "codeBytes": 5188,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "run": "repeat",
+      "file": "wago-6b46132b-91303650ff773435.json",
+      "sha256": "3e125d9b7f3616de4a7740943ff29dc389a0734c63b12859a07ae63d3d0c3dea",
+      "capture": {
+        "capturedAt": "2026-10-13T22:16:53.084Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "6b46132b932cfc0fd4d526469f2ef46834248673",
+          "ref": "jairus/wasm3-feature-parity@6b46132b",
+          "asOf": "2026-10-13T21:39:24.100287+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              207708,
+              87333,
+              61125,
+              49416,
+              44666,
+              161167,
+              58875,
+              43209,
+              41959,
+              39916,
+              160583,
+              60666,
+              43125,
+              43167,
+              40083
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 43209,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9650176,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              6000,
+              1166,
+              500,
+              375,
+              375,
+              6333,
+              1208,
+              458,
+              375,
+              333,
+              5792,
+              1208,
+              541,
+              417,
+              417
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 500,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9994240,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              14208,
+              8834,
+              8583,
+              8625,
+              8583,
+              13916,
+              8833,
+              8666,
+              8666,
+              8584,
+              13458,
+              8833,
+              8709,
+              8625,
+              8625
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 8666,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9617408,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Audio",
+              "purpose": "Pitch-analysis autocorrelation over 32 positive sample lags",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 567,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              15375,
+              8792,
+              8709,
+              8708,
+              8666,
+              15834,
+              8875,
+              8667,
+              8750,
+              8625,
+              15917,
+              8750,
+              8583,
+              8584,
+              8542
+            ],
+            "workload": "applications/audio-autocorrelation",
+            "wasm": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3.wasm",
+            "artifactSha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3",
+            "contractSha256": "38140e8818cea239ed67f015c4e7c6cc834b74c65f55a3e030a9f653f530de8a",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 8709,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9650176,
+            "codeStatus": "ok",
+            "codeBytes": 1864,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "run": "repeat",
+      "file": "wago-6b46132b-f65481f1b5e10360.json",
+      "sha256": "5e980c449be5d9fe7eecd577ae1bc0d6fa186c6e6670563d7f138dbfdee79c8b",
+      "capture": {
+        "capturedAt": "2026-10-13T22:16:36.758Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "6b46132b932cfc0fd4d526469f2ef46834248673",
+          "ref": "jairus/wasm3-feature-parity@6b46132b",
+          "asOf": "2026-10-13T21:39:24.100287+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "darwin",
+          "arch": "arm64",
+          "cpu": "Apple M4 Max",
+          "cores": 16,
+          "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+          "memoryBytes": 68719476736
+        },
+        "results": [
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              201041,
+              56917,
+              41334,
+              38625,
+              37166,
+              156167,
+              58000,
+              41042,
+              43167,
+              35209,
+              156709,
+              58417,
+              42792,
+              43042,
+              37417
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 43042,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9469952,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              5417,
+              2250,
+              750,
+              500,
+              416,
+              5166,
+              2500,
+              625,
+              458,
+              375,
+              4875,
+              2458,
+              750,
+              500,
+              416
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 750,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9355264,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              10125,
+              3792,
+              3708,
+              3667,
+              3625,
+              10541,
+              3917,
+              3750,
+              3709,
+              3666,
+              10166,
+              3875,
+              3667,
+              3666,
+              3667
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 3708,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9338880,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "Machine learning",
+              "purpose": "Int8 dense inference: 64 input channels, 32 outputs, ReLU activation",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 505,
+              "source": "sources/kernels.c",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              11417,
+              3833,
+              3667,
+              3625,
+              3625,
+              10375,
+              3875,
+              3625,
+              3625,
+              3625,
+              10625,
+              3792,
+              3625,
+              3583,
+              3584
+            ],
+            "workload": "applications/ml-inference",
+            "wasm": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a.wasm",
+            "artifactSha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a",
+            "contractSha256": "46afc070650c1a25cad29e63980b063dfaa9c791f351aae7de2cbf6e03c1db8d",
+            "engine": "wago",
+            "version": "6b46132b932cfc0fd4d526469f2ef46834248673/source-a736c495fbda78ff66842ad48a13c325247dc32a85cbe2bb5cfe07a0fac2e3f5",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 3625,
+            "memoryStatus": "ok",
+            "peakRssBytes": 9355264,
+            "codeStatus": "ok",
+            "codeBytes": 2132,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    }
+  ],
+  "publication": "Private local experiment; excluded from local server refreshes",
+  "nextFinding": "Full FIR contract includes deterministic input generation. Artifact and source show a two-store index-mix loop with two XOR-shifts and runtime bound; existing hash-store proof recognizes a different mixer and constant bound."
+}
