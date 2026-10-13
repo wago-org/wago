@@ -423,6 +423,7 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 	hostReferenceCarrierArgument := i31CoreFunctionType(&m.Types[0], hostReferenceCarrierTypes, hostReferenceCarrierTypes) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
 	referenceVectorCarrierTypes := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.V128, wasm.F64}
 	referenceVectorCarrierArgument := i31CoreFunctionType(&m.Types[0], referenceVectorCarrierTypes, referenceVectorCarrierTypes) && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp)
+	referenceVectorLocalTransfer := referenceVectorCarrierArgument && mutableReferenceVectorLocalTransferLocals(m)
 	wideI32Types := make([]wasm.ValType, 9)
 	for i := range wideI32Types {
 		wideI32Types[i] = wasm.I32
@@ -502,9 +503,13 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 		wantBodies[5] = []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x20, 5, 0x23, 0, 0x14, 0, 0x0b}
 	}
 	if referenceVectorCarrierArgument {
-		wantBodies[0] = []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x0b}
-		wantBodies[1] = []byte{0x20, 0, 0x41, 1, 0x6a, 0x20, 1, 0x20, 2, 0x20, 3, 0xfd, 77, 0x20, 4, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x0b}
-		wantBodies[5] = []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x23, 0, 0x14, 0, 0x0b}
+		if referenceVectorLocalTransfer {
+			wantBodies[0], wantBodies[1], wantBodies[5] = mutableReferenceVectorLocalTransferBodies(false)
+		} else {
+			wantBodies[0] = []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x0b}
+			wantBodies[1] = []byte{0x20, 0, 0x41, 1, 0x6a, 0x20, 1, 0x20, 2, 0x20, 3, 0xfd, 77, 0x20, 4, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x0b}
+			wantBodies[5] = []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x23, 0, 0x14, 0, 0x0b}
+		}
 	}
 	for i := range m.Code {
 		body := bytes.Equal(m.Code[i].BodyBytes, wantBodies[i])
@@ -513,7 +518,8 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 			tailBody[len(tailBody)-3] = 0x15
 			body = body || bytes.Equal(m.Code[i].BodyBytes, tailBody)
 		}
-		if m.FuncTypes[i] != (wasm.TypeIdx{Index: wantTypes[i]}) || m.Code[i].LocalDeclBytes != 1 || len(m.Code[i].Locals.Runs) != 0 || !body {
+		withLocals := referenceVectorLocalTransfer && (i == 0 || i == 1 || i == 5)
+		if m.FuncTypes[i] != (wasm.TypeIdx{Index: wantTypes[i]}) || withLocals != (m.Code[i].LocalDeclBytes == 11 && mutableReferenceVectorLocalRuns(m.Code[i].Locals.Runs)) || !withLocals && (m.Code[i].LocalDeclBytes != 1 || len(m.Code[i].Locals.Runs) != 0) || !body {
 			return false
 		}
 	}
@@ -526,6 +532,48 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 	}
 	ex := m.Exports[6]
 	return ex.Name == "cell" && ex.Index.Kind == wasm.ExternGlobal && ex.Index.Index == 0
+}
+
+func mutableReferenceVectorLocalRuns(runs []wasm.LocalRun) bool {
+	want := [...]wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.V128, wasm.F64}
+	if len(runs) != len(want) {
+		return false
+	}
+	for i := range want {
+		if runs[i].Count != 1 || !wasm.EqualValType(runs[i].Type, want[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func mutableReferenceVectorLocalTransferLocals(m *wasm.Module) bool {
+	return len(m.Code) == 6 && mutableReferenceVectorLocalRuns(m.Code[0].Locals.Runs) && mutableReferenceVectorLocalRuns(m.Code[1].Locals.Runs) && mutableReferenceVectorLocalRuns(m.Code[5].Locals.Runs)
+}
+
+func mutableReferenceVectorLocalTransferBodies(tail bool) (identity, transform, call []byte) {
+	stage := func(body []byte, parameter, local byte) []byte {
+		return append(body, 0x20, parameter, 0x21, local)
+	}
+	for i := byte(0); i < 5; i++ {
+		identity = stage(identity, i, i+5)
+		call = stage(call, i, i+5)
+	}
+	transform = append(transform, 0x20, 0, 0x41, 1, 0x6a, 0x21, 5)
+	transform = stage(transform, 1, 6)
+	transform = stage(transform, 2, 7)
+	transform = append(transform, 0x20, 3, 0xfd, 77, 0x21, 8)
+	transform = append(transform, 0x20, 4, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x21, 9)
+	for i := byte(0); i < 5; i++ {
+		identity = append(identity, 0x20, i+5)
+		transform = append(transform, 0x20, i+5)
+		call = append(call, 0x20, i+5)
+	}
+	call = append(call, 0x23, 0, 0x14, 0, 0x0b)
+	if tail {
+		call[len(call)-3] = 0x15
+	}
+	return append(identity, 0x0b), append(transform, 0x0b), call
 }
 
 // privateIndexedFunctionGlobal admits the table-free typed cells used to hold

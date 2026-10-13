@@ -287,6 +287,64 @@ func rv64MutableFuncrefLocalCallReferenceVectorCarrierModule() []byte {
 	)
 }
 
+func rv64MutableReferenceVectorLocalTransferBodies(tail bool) (identity, transform, call []byte) {
+	stage := func(body []byte, parameter, local byte) []byte {
+		return append(body, 0x20, parameter, 0x21, local)
+	}
+	for i := byte(0); i < 5; i++ {
+		identity = stage(identity, i, i+5)
+		call = stage(call, i, i+5)
+	}
+	transform = append(transform, 0x20, 0, 0x41, 1, 0x6a, 0x21, 5)
+	transform = stage(transform, 1, 6)
+	transform = stage(transform, 2, 7)
+	transform = append(transform, 0x20, 3, 0xfd, 77, 0x21, 8)
+	transform = append(transform, 0x20, 4, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x21, 9)
+	for i := byte(0); i < 5; i++ {
+		identity = append(identity, 0x20, i+5)
+		transform = append(transform, 0x20, i+5)
+		call = append(call, 0x20, i+5)
+	}
+	call = append(call, 0x23, 0, 0x14, 0, 0x0b)
+	if tail {
+		call[len(call)-3] = 0x15
+	}
+	return append(identity, 0x0b), append(transform, 0x0b), call
+}
+
+func rv64MutableFuncrefLocalCallReferenceVectorLocalTransferModule() []byte {
+	types := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.V128, wasm.F64}
+	identity, transform, call := rv64MutableReferenceVectorLocalTransferBodies(false)
+	codeWithLocals := func(body []byte) []byte {
+		fn := []byte{byte(len(types))}
+		for _, typ := range types {
+			fn = append(fn, 1, wasm.MustEncodeValType(typ))
+		}
+		fn = append(fn, body...)
+		return append(wasmtest.ULEB(uint32(len(fn))), fn...)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{6, 0, 0, 1, 1, 1, 0}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0), wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2), wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("call", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			codeWithLocals(identity), codeWithLocals(transform),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}), codeWithLocals(call),
+		)),
+	)
+}
+
+func rv64MutableFuncrefLocalTailCallReferenceVectorLocalTransferModule() []byte {
+	return rv64MutableFuncrefLocalTailCallModule(rv64MutableFuncrefLocalCallReferenceVectorLocalTransferModule())
+}
+
 func rv64MutableFuncrefLocalTailCallReferenceVectorCarrierModule() []byte {
 	return rv64MutableFuncrefLocalTailCallModule(rv64MutableFuncrefLocalCallReferenceVectorCarrierModule())
 }
@@ -1766,6 +1824,104 @@ func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorCarriers(t *testing.T
 	}
 }
 
+func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorLocalTransfers(t *testing.T) {
+	for _, tail := range []bool{false, true} {
+		for _, artifact := range []bool{false, true} {
+			t.Run(fmt.Sprintf("tail%t-artifact%t", tail, artifact), func(t *testing.T) {
+				rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+				defer rv64HostCertificateCloseRuntime(t, rt)
+				source := rv64MutableFuncrefLocalCallReferenceVectorLocalTransferModule()
+				variant := 25
+				if tail {
+					source = rv64MutableFuncrefLocalTailCallReferenceVectorLocalTransferModule()
+					variant = 26
+				}
+				compiled := rv64NativeTailCompile(t, fmt.Sprintf("mutable-funcref-local-reference-vector-transfers-tail%t", tail), source, artifact)
+				view := compiled.executionView()
+				if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) {
+					t.Fatal("reference-vector local-transfer witness missing")
+				}
+				if m := rv64NativeTailModule(view); tail && (m == nil || len(m.Plans) != 1 || !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0])) {
+					t.Fatal("reference-vector local-transfer tail plan missing", m)
+				} else if !tail && m != nil {
+					t.Fatal("ordinary reference-vector local-transfer retained tail plan")
+				}
+				consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+				ref, err := rt.NewExternRef("mutable-reference-vector-local-transfer")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err = consumer.Invoke("set_0"); err != nil {
+					t.Fatal("install local-transfer identity", err)
+				}
+				cell, err := consumer.GlobalValue("cell")
+				if err != nil || cell.FuncRef().IsNull() {
+					t.Fatal("local-transfer funcref argument", cell, err)
+				}
+				argumentRoot, err := rt.NewFuncRefGlobal(cell.FuncRef(), false)
+				if err != nil {
+					t.Fatal("retain local-transfer funcref argument", err)
+				}
+				defer argumentRoot.Close()
+				input := []uint64{0xdeadbeef80000001, cell.Bits(), ValueExternRef(ref).Bits(), 0x0123456789abcdef, 0xfedcba9876543210, math.Float64bits(2.5)}
+				identity := []uint64{0x80000001, input[1], input[2], input[3], input[4], input[5]}
+				transformed := []uint64{0x80000002, input[1], input[2], ^input[3], ^input[4], math.Float64bits(3.5)}
+				assertCall := func(want []uint64) {
+					t.Helper()
+					got, err := consumer.Invoke("call", input...)
+					if err != nil || !slices.Equal(got, want) {
+						t.Fatal("mutable reference-vector local-transfer call_ref", got, err, "want", want)
+					}
+					rv64AssertPublicReferenceArgumentScopesClear(t, consumer)
+				}
+				assertCall(identity)
+				if _, err = consumer.Invoke("set_1"); err != nil {
+					t.Fatal("install local-transfer transform", err)
+				}
+				assertCall(transformed)
+
+				producer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+				descriptor, ok := producer.localFuncrefDescriptor(0)
+				if !ok {
+					t.Fatal("foreign local-transfer target descriptor")
+				}
+				token, err := rt.refStore.issue(producer, descriptor)
+				if err != nil {
+					t.Fatal("foreign local-transfer target token", err)
+				}
+				before := producer.referenceLifetime().snapshot()
+				if err = consumer.SetGlobalValue("cell", ValueOf(ValFuncRef, token)); err != nil {
+					t.Fatal("install foreign local-transfer target", err)
+				}
+				installed := producer.referenceLifetime().snapshot()
+				if installed.ResourceRoots != before.ResourceRoots+1 {
+					t.Fatal("foreign local-transfer cell root", before, installed)
+				}
+				if err = producer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				assertCall(identity)
+				if _, err = consumer.Invoke("clear"); err != nil {
+					t.Fatal("clear foreign local-transfer target", err)
+				}
+				cleared := producer.referenceLifetime().snapshot()
+				if !cleared.LogicallyClosed || !cleared.PhysicalResources || cleared.ResourceRoots+1 != installed.ResourceRoots {
+					t.Fatal("foreign local-transfer root not retired", installed, cleared)
+				}
+				if !rt.ReleaseExternRef(ref) {
+					t.Fatal("local-transfer externref remained pinned")
+				}
+				if err = consumer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err = compiled.Close(); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
+
 func TestRV64PublicMutableFuncrefGlobalLocalTailCallMixedVector(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
@@ -2264,6 +2420,63 @@ func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorCarrierAdmission(t *t
 					mutate(bad)
 					if err := railshotValidateCompiled(bad); !errors.Is(err, railshot.ErrUnsupported) {
 						t.Fatal("hostile reference-vector-carrier artifact admitted", err)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorLocalTransferAdmission(t *testing.T) {
+	for _, tail := range []bool{false, true} {
+		t.Run(fmt.Sprintf("tail%t", tail), func(t *testing.T) {
+			source := rv64MutableFuncrefLocalCallReferenceVectorLocalTransferModule()
+			variant := 25
+			if tail {
+				source = rv64MutableFuncrefLocalTailCallReferenceVectorLocalTransferModule()
+				variant = 26
+			}
+			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-reference-vector-transfer-admission", source, false)
+			defer compiled.Close()
+			view := compiled.executionView()
+			if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) {
+				t.Fatal("base reference-vector local-transfer witness rejected")
+			}
+			for name, mutate := range map[string]func(*Compiled){
+				"code":               func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
+				"entry":              func(v *Compiled) { v.Entry[1] += 16 },
+				"missing-simd":       func(v *Compiled) { v.requiredFeatures &^= CoreFeatureSIMD },
+				"missing-multivalue": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureMultiValue },
+				"missing-call-abi":   func(v *Compiled) { v.nativeReferenceCallABI = false },
+				"plan-source": func(v *Compiled) {
+					if m := rv64NativeTailModule(v); m != nil {
+						m.Plans[0].SourcePC--
+					}
+				},
+				"plan-frame": func(v *Compiled) {
+					if m := rv64NativeTailModule(v); m != nil {
+						m.Plans[0].FrameBytes -= 16
+					}
+				},
+				"plan-source-base": func(v *Compiled) {
+					if m := rv64NativeTailModule(v); m != nil {
+						m.Plans[0].SourceBase -= 16
+					}
+				},
+			} {
+				t.Run(name, func(t *testing.T) {
+					if !tail && (name == "plan-source" || name == "plan-frame" || name == "plan-source-base") {
+						return
+					}
+					bad := cloneCompiledMetadata(view)
+					bad.validateMemo, bad.codeCache = &validateMemo{}, nil
+					bad.Entry = slices.Clone(bad.Entry)
+					if m := rv64NativeTailModule(view); m != nil {
+						rv64StoreNativeTailModule(bad, &encoder.NativeTailModule{Plans: slices.Clone(m.Plans)})
+					}
+					mutate(bad)
+					if err := railshotValidateCompiled(bad); !errors.Is(err, railshot.ErrUnsupported) {
+						t.Fatal("hostile reference-vector local-transfer artifact admitted", err)
 					}
 				})
 			}

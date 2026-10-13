@@ -564,6 +564,69 @@ func mutableFuncrefLocalCallReferenceVectorCarrierSource() []byte {
 	)
 }
 
+func mutableFuncrefLocalCallReferenceVectorLocalTransferSource() []byte {
+	types := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.V128, wasm.F64}
+	identity, transform, call := mutableReferenceVectorLocalTransferBodies(false)
+	codeWithLocals := func(body []byte) []byte {
+		fn := []byte{byte(len(types))}
+		for _, typ := range types {
+			fn = append(fn, 1, wasm.MustEncodeValType(typ))
+		}
+		fn = append(fn, body...)
+		return append(wasmtest.ULEB(uint32(len(fn))), fn...)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{6, 0, 0, 1, 1, 1, 0}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0), wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2), wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("call", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			codeWithLocals(identity), codeWithLocals(transform),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}), codeWithLocals(call),
+		)),
+	)
+}
+
+func TestMutableFuncrefLocalCallReferenceVectorLocalTransferProduction(t *testing.T) {
+	for _, tail := range []bool{false, true} {
+		t.Run(fmt.Sprintf("tail%t", tail), func(t *testing.T) {
+			source := mutableFuncrefLocalCallReferenceVectorLocalTransferSource()
+			if tail {
+				source = mutableFuncrefLocalTailCallSource(source)
+			}
+			if err := AdmitProductionSource(source); err != nil {
+				t.Fatal(err)
+			}
+			m, err := wasm.DecodeModule(source)
+			if err != nil || !admitMutableFunctionGlobalReferenceCarrierCall(m) {
+				t.Fatal("reference-vector local-transfer admission", err)
+			}
+			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceFunctions: true, NativeReferenceCalls: true, NativeTailCalls: tail, SyncHostSlots: 64})
+			if err != nil || image == nil {
+				t.Fatal("reference-vector local-transfer compilation", err)
+			}
+			wantCode := 8588
+			wantDigest := [sha256.Size]byte{0xff, 0x85, 0x3f, 0x60, 0xa5, 0x4b, 0x84, 0x3d, 0x3e, 0x03, 0x13, 0x7a, 0xec, 0xf6, 0xea, 0xd3, 0xe6, 0x59, 0xc0, 0x2a, 0x6e, 0x20, 0x0e, 0x52, 0x20, 0xa1, 0x26, 0xfb, 0xd6, 0x1b, 0x44, 0xc6}
+			var wantTail *enc.NativeTailModule
+			if tail {
+				wantCode = 6188
+				wantDigest = [sha256.Size]byte{0x67, 0x24, 0xb4, 0x36, 0x3c, 0x75, 0x67, 0xcc, 0xdf, 0xef, 0x2f, 0x05, 0x45, 0x12, 0x19, 0x0a, 0xc9, 0x29, 0x3f, 0x46, 0xb6, 0xbb, 0xf4, 0x53, 0x10, 0x7f, 0xad, 0x69, 0x95, 0x66, 0x2d, 0x5d}
+				wantTail = &enc.NativeTailModule{Plans: []enc.NativeTailPlan{{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 43, FrameBytes: 304, SourceBase: 208, SourceStride: 16, ReferenceBase: 288}}}
+			}
+			wantEntry := []int{0, 1072, 2288, 3008, 3728, 4368}
+			if len(image.Code) != wantCode || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || !reflect.DeepEqual(image.NativeTail, wantTail) {
+				t.Fatalf("reference-vector local-transfer compilation drifted: tail=%t code=%d digest=%x entries=%v/%v refs=%t/%t/%t tail-plan=%+v", tail, len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, image.NativeTail)
+			}
+		})
+	}
+}
+
 func TestMutableFuncrefLocalCallReferenceVectorCarrierProduction(t *testing.T) {
 	for _, tail := range []bool{false, true} {
 		t.Run(fmt.Sprintf("tail%t", tail), func(t *testing.T) {
@@ -913,6 +976,10 @@ func TestMutableFuncrefLocalCallProductionRejectsBroaderSources(t *testing.T) {
 		"reference-vector-carrier": mutableFuncrefLocalCallReferenceVectorCarrierSource,
 		"reference-vector-carrier-tail": func() []byte {
 			return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallReferenceVectorCarrierSource())
+		},
+		"reference-vector-local-transfer": mutableFuncrefLocalCallReferenceVectorLocalTransferSource,
+		"reference-vector-local-transfer-tail": func() []byte {
+			return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallReferenceVectorLocalTransferSource())
 		},
 		"reference-carrier-tail": func() []byte {
 			return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallReferenceCarrierSource())
