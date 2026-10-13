@@ -130,7 +130,7 @@ func watchedProcessDescendants(root int, tracked map[int]uint64, limit int) ([]w
 			continue
 		}
 		tasks, err := watchedProcessTasks(parent.pid, maxWatchedThreads)
-		if errors.Is(err, os.ErrNotExist) {
+		if watchedProcessScanGone(err) {
 			continue
 		}
 		if err != nil {
@@ -138,7 +138,7 @@ func watchedProcessDescendants(root int, tracked map[int]uint64, limit int) ([]w
 		}
 		for _, task := range tasks {
 			file, openErr := os.Open("/proc/" + strconv.Itoa(parent.pid) + "/task/" + strconv.Itoa(task) + "/children")
-			if errors.Is(openErr, os.ErrNotExist) {
+			if watchedProcessScanGone(openErr) {
 				continue
 			}
 			if openErr != nil {
@@ -170,7 +170,7 @@ func watchedProcessDescendants(root int, tracked map[int]uint64, limit int) ([]w
 			}
 			scanErr := scanner.Err()
 			closeErr := file.Close()
-			if scanErr != nil {
+			if scanErr != nil && !watchedProcessScanGone(scanErr) {
 				return processes, scanErr
 			}
 			if closeErr != nil {
@@ -179,6 +179,11 @@ func watchedProcessDescendants(root int, tracked map[int]uint64, limit int) ([]w
 		}
 	}
 	return processes, nil
+}
+
+// A process or thread can exit between its identity check and a procfs read.
+func watchedProcessScanGone(err error) bool {
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH)
 }
 
 func watchedProcessTasks(pid, limit int) ([]int, error) {

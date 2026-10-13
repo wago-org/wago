@@ -8,6 +8,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Combine bounded ARM64 scalar shift and mask pairs with existing bitfield
+  encodings, including masks applied before an unsigned right shift.
 - Reuse exception payload summaries across functions on AMD64 and ARM64 to
   reduce compilation work for modules with many tags and `catch_all_ref` handlers.
 - Improve ARM64 execution with guarded scalar and vector loop lowering, bounded

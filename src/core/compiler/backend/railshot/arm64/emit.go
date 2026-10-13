@@ -142,6 +142,11 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 // place (const→imm, memory→register load, reg→reg). AArch64 is three-operand, so
 // the in-place accumulate is `op Rd,Rn,Rm` with Rd==Rn==dest.
 func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
+	if node.deferredOp() == opAnd {
+		if r := f.tryBitfieldPair(node, dest); r != regNone {
+			return r
+		}
+	}
 	w := node.st.typ.is64()
 	left := f.s.arg0(node)
 	right := f.s.arg1(node)
@@ -899,6 +904,9 @@ func (f *fn) addDisp(dst, base Reg, disp int32, w bool) {
 // (shift any register by any register, taken mod width) — so none of x86's "force
 // the count into CL / spill RCX / pin RCX" dance is needed.
 func (f *fn) condenseShift(node *elem, dest Reg) Reg {
+	if r := f.tryBitfieldPair(node, dest); r != regNone {
+		return r
+	}
 	w := node.st.typ.is64()
 	digit := shiftDigit(node.deferredOp())
 	left := f.s.arg0(node)

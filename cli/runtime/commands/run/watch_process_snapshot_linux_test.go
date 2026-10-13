@@ -21,6 +21,33 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func TestWatchedProcessScanGone(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+		gone bool
+	}{
+		{"success", nil, false},
+		{"missing process", syscall.ENOENT, true},
+		{"exited process", syscall.ESRCH, true},
+		{"open tasks after exit", &os.PathError{Op: "open", Path: "/proc/123/task", Err: syscall.ESRCH}, true},
+		{"read tasks after exit", &os.PathError{Op: "readdirent", Path: "/proc/123/task", Err: syscall.ESRCH}, true},
+		{"read children after exit", &os.PathError{Op: "read", Path: "/proc/123/task/123/children", Err: syscall.ESRCH}, true},
+		{"missing thread", &os.PathError{Op: "open", Path: "/proc/123/task/124/children", Err: syscall.ENOENT}, true},
+		{"permission denied", &os.PathError{Op: "open", Path: "/proc/123/task", Err: syscall.EACCES}, false},
+		{"read failure", &os.PathError{Op: "read", Path: "/proc/123/task/123/children", Err: syscall.EIO}, false},
+		{"file limit", syscall.EMFILE, false},
+		{"thread limit", errors.New("watched process exceeds 4096 threads"), false},
+		{"descendant limit", errors.New("watched process tree exceeds 4096 descendants"), false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := watchedProcessScanGone(test.err); got != test.gone {
+				t.Fatalf("watchedProcessScanGone(%v) = %v, want %v", test.err, got, test.gone)
+			}
+		})
+	}
+}
+
 func TestWatchedSupervisorCleansSanitizedDaemon(t *testing.T) {
 	const testName = "^TestWatchedSupervisorCleansSanitizedDaemon$"
 	if os.Getenv("WAGO_WATCH_SUPERVISOR_GUEST_TEST") == "1" {
