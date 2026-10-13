@@ -338,8 +338,11 @@ func TestRV64RootedAggregateNestedDefaultReferenceElements(t *testing.T) {
 				{0x5f, 0x01, 0x7f, 0x01},       // mutable i32 leaf
 				{0x5f, 0x01, 0x64, 0x00, 0x01}, // mutable non-null (ref 0) holder
 			},
-			entries: []byte{0xfb, 0x01, 0x00, 0xfb, 0x00, 0x01, 0x0b},
-			count:   1,
+			entries: []byte{
+				0xfb, 0x01, 0x00, 0xfb, 0x00, 0x01, 0x0b,
+				0x41, 0x2a, 0xfb, 0x00, 0x00, 0xfb, 0x00, 0x01, 0x0b,
+			},
+			count: 2,
 		},
 		"array": {
 			types: [][]byte{
@@ -349,8 +352,11 @@ func TestRV64RootedAggregateNestedDefaultReferenceElements(t *testing.T) {
 			entries: []byte{
 				0x41, 0x02, 0xfb, 0x07, 0x00, 0x41, 0x03, 0xfb, 0x07, 0x00, 0xfb, 0x08, 0x01, 0x02, 0x0b,
 				0x41, 0x01, 0xfb, 0x07, 0x00, 0x41, 0x02, 0xfb, 0x06, 0x01, 0x0b,
+				0x41, 0x05, 0x41, 0x06, 0xfb, 0x08, 0x00, 0x02,
+				0x41, 0x07, 0x41, 0x02, 0xfb, 0x06, 0x00,
+				0xfb, 0x08, 0x01, 0x02, 0x0b,
 			},
-			count: 2,
+			count: 3,
 		},
 	}
 	for name, test := range tests {
@@ -405,6 +411,49 @@ func TestRV64RootedAggregateNestedAllocationBound(t *testing.T) {
 		candidate.Elements[0].Kind.Exprs[0].BodyBytes = expr
 		if got, want := admitRV64GCRootedScalarModule(candidate), count == 255; got != want {
 			t.Fatalf("nested allocation count %d admitted = %v, want %v", count, got, want)
+		}
+	}
+}
+
+func TestRV64RootedAggregateNestedDepthBound(t *testing.T) {
+	for _, total := range []uint32{16, 17} {
+		types := make([][]byte, 0, total+1)
+		types = append(types, []byte{0x5f, 0x01, 0x7f, 0x01})
+		for index := uint32(1); index < total; index++ {
+			typ := []byte{0x5f, 0x01, 0x64}
+			typ = append(typ, wasmtest.SLEB32(int32(index-1))...)
+			typ = append(typ, 0x01)
+			types = append(types, typ)
+		}
+		types = append(types, wasmtest.FuncType(nil, nil))
+		expr := []byte{0x41, 0x00, 0xfb, 0x00, 0x00}
+		for index := uint32(1); index < total; index++ {
+			expr = append(expr, 0xfb, 0x00)
+			expr = append(expr, wasmtest.ULEB(index)...)
+		}
+		expr = append(expr, 0x0b)
+		elements := []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63}
+		elements = append(elements, wasmtest.SLEB32(int32(total-1))...)
+		elements = append(elements, 0x01)
+		elements = append(elements, expr...)
+		body := []byte{0x00, 0x0b}
+		table := []byte{0x01, 0x63}
+		table = append(table, wasmtest.SLEB32(int32(total-1))...)
+		table = append(table, 0x01, 0x01, 0x01)
+		source := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(types...)),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(total))),
+			wasmtest.Section(4, table),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+			wasmtest.Section(9, elements),
+			wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		)
+		candidate, err := wasm.DecodeModule(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := admitRV64GCRootedScalarModule(candidate), total == 16; got != want {
+			t.Fatalf("aggregate nesting depth %d admitted = %v, want %v", total, got, want)
 		}
 	}
 }

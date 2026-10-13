@@ -90,9 +90,10 @@ func genericGCActiveNestedStructElementModule() []byte {
 			[]byte{0x5f, 0x01, 0x7f, 0x01},       // mutable i32 leaf
 			[]byte{0x5f, 0x01, 0x64, 0x00, 0x01}, // mutable non-null (ref 0) holder
 		)),
-		wasmtest.Section(4, []byte{0x01, 0x63, 0x01, 0x01, 0x01, 0x04}),
-		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x01, 0x01,
-			0xfb, 0x01, 0x00, 0xfb, 0x00, 0x01, 0x0b}),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x01, 0x01, 0x02, 0x04}),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x01, 0x02,
+			0xfb, 0x01, 0x00, 0xfb, 0x00, 0x01, 0x0b,
+			0x41, 0x2a, 0xfb, 0x00, 0x00, 0xfb, 0x00, 0x01, 0x0b}),
 	)
 }
 
@@ -102,10 +103,13 @@ func genericGCActiveNestedArrayElementModule() []byte {
 			[]byte{0x5e, 0x7f, 0x01},       // mutable i32 inner array
 			[]byte{0x5e, 0x64, 0x00, 0x01}, // mutable non-null (ref 0) outer array
 		)),
-		wasmtest.Section(4, []byte{0x01, 0x63, 0x01, 0x01, 0x02, 0x04}),
-		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x01, 0x02,
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x01, 0x01, 0x03, 0x04}),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x01, 0x03,
 			0x41, 0x02, 0xfb, 0x07, 0x00, 0x41, 0x03, 0xfb, 0x07, 0x00, 0xfb, 0x08, 0x01, 0x02, 0x0b,
-			0x41, 0x01, 0xfb, 0x07, 0x00, 0x41, 0x02, 0xfb, 0x06, 0x01, 0x0b}),
+			0x41, 0x01, 0xfb, 0x07, 0x00, 0x41, 0x02, 0xfb, 0x06, 0x01, 0x0b,
+			0x41, 0x05, 0x41, 0x06, 0xfb, 0x08, 0x00, 0x02,
+			0x41, 0x07, 0x41, 0x02, 0xfb, 0x06, 0x00,
+			0xfb, 0x08, 0x01, 0x02, 0x0b}),
 	)
 }
 
@@ -232,15 +236,18 @@ func TestGenericGCActiveNestedReferenceElements(t *testing.T) {
 		if err := instance.CollectGC(); err != nil {
 			t.Fatal(err)
 		}
-		outer := gc.Ref(uint32(binary.LittleEndian.Uint64(instance.tableDescriptor(0)[8:])))
-		innerValue, err := instance.gc.StructGet(outer, 0)
-		inner := innerValue.Ref
-		if err != nil || inner.IsNull() {
-			t.Fatalf("nested struct reference = %+v, %v", innerValue, err)
-		}
-		leaf, err := instance.gc.StructGet(inner, 0)
-		if err != nil || leaf.Bits != 0 {
-			t.Fatalf("nested struct leaf = %+v, %v", leaf, err)
+		descriptor := instance.tableDescriptor(0)
+		for slot, want := range []uint64{0, 42} {
+			outer := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8+slot*8:])))
+			innerValue, err := instance.gc.StructGet(outer, 0)
+			inner := innerValue.Ref
+			if err != nil || inner.IsNull() {
+				t.Fatalf("nested struct reference[%d] = %+v, %v", slot, innerValue, err)
+			}
+			leaf, err := instance.gc.StructGet(inner, 0)
+			if err != nil || leaf.Bits != want {
+				t.Fatalf("nested struct leaf[%d] = %+v, %v; want %d", slot, leaf, err, want)
+			}
 		}
 	})
 	t.Run("array", func(t *testing.T) {
@@ -258,7 +265,7 @@ func TestGenericGCActiveNestedReferenceElements(t *testing.T) {
 			t.Fatal(err)
 		}
 		descriptor := instance.tableDescriptor(0)
-		for slot := range 2 {
+		for slot := range 3 {
 			outer := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8+slot*8:])))
 			for index := range 2 {
 				innerValue, err := instance.gc.ArrayGet(outer, uint32(index))
@@ -266,9 +273,13 @@ func TestGenericGCActiveNestedReferenceElements(t *testing.T) {
 				if err != nil || inner.IsNull() {
 					t.Fatalf("nested array reference[%d][%d] = %+v, %v", slot, index, innerValue, err)
 				}
+				want := uint64(0)
+				if slot == 2 {
+					want = []uint64{5, 7}[index]
+				}
 				leaf, err := instance.gc.ArrayGet(inner, 0)
-				if err != nil || leaf.Bits != 0 {
-					t.Fatalf("nested array leaf[%d][%d] = %+v, %v", slot, index, leaf, err)
+				if err != nil || leaf.Bits != want {
+					t.Fatalf("nested array leaf[%d][%d] = %+v, %v; want %d", slot, index, leaf, err, want)
 				}
 			}
 		}
