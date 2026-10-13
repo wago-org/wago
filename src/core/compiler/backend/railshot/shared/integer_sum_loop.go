@@ -125,6 +125,10 @@ func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module, al
 		r = termStart
 		term, ok = inspectIntegerDivisionTerm(&r)
 	}
+	if !ok && blockType == 0 {
+		r = termStart
+		term, ok = inspectIntegerFloatTerm(&r)
+	}
 	if !ok {
 		return p, false
 	}
