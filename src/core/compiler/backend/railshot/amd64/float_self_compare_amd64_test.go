@@ -16,11 +16,8 @@ func TestFloatSelfComparePressureAndBits(t *testing.T) {
 			ft, compare, reinterpret = wasm.F64, 0x61, 0xbd
 			vals = []uint64{0, 0x8000000000000000, 0x7ff0000000000000, 0xfff0000000000000, 0x7ff8000000001234, 0x7ff0000000001234, 0xfff8000000004321, 0x3ff0000000000000}
 		}
-		for _, ne := range []bool{false, true} {
-			op := compare
-			if ne {
-				op++
-			}
+		for k := byte(0); k < 6; k++ {
+			op := compare + k
 			body := []byte{1, 24, 0x7f, 0x3f, 0, 0x1a}
 			for i := 0; i < 24; i++ {
 				body = append(body, 0x20, 1, 0x41, byte(i+1), 0x6a, 0x22, byte(i+2))
@@ -67,8 +64,11 @@ func TestFloatSelfComparePressureAndBits(t *testing.T) {
 					x = float64(math.Float32frombits(uint32(bits)))
 				}
 				truth := !math.IsNaN(x)
-				if ne {
+				switch k {
+				case 1:
 					truth = !truth
+				case 2, 3:
+					truth = false
 				}
 				boolean := uint64(0)
 				branchWant := uint64(2)
@@ -82,11 +82,36 @@ func TestFloatSelfComparePressureAndBits(t *testing.T) {
 				}
 				want ^= bits
 				if got := runCompiledAmd64u(t, cm, bits, 7); got != want {
-					t.Fatalf("wide=%v ne=%v bits=%x got=%x want=%x", wide, ne, bits, got, want)
+					t.Fatalf("wide=%v op=%d bits=%x got=%x want=%x", wide, k, bits, got, want)
 				}
 				if got := runCompiledAmd64u(t, bc, bits); got != branchWant {
-					t.Fatalf("wide=%v ne=%v bits=%x branch=%x want=%x", wide, ne, bits, got, branchWant)
+					t.Fatalf("wide=%v op=%d bits=%x branch=%x want=%x", wide, k, bits, got, branchWant)
 				}
+			}
+		}
+	}
+}
+
+// A strict self-relation is constant only after evaluating its operand.
+func TestFloatSelfCompareLoadTrap(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		ft, load, align, compare := byte(0x7d), byte(0x2a), byte(2), byte(0x5b)
+		if wide {
+			ft, load, align, compare = 0x7c, 0x2b, 3, 0x61
+		}
+		for k := byte(0); k < 6; k++ {
+			body := []byte{1, 1, ft, 0x20, 0, load, align, 0, 0x22, 1, 0x20, 1, compare + k, 0x0b}
+			m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+			got, _, err := runMemAmd64(t, m, nil, 0)
+			want := uint64(1)
+			if k == 1 || k == 2 || k == 3 {
+				want = 0
+			}
+			if err != nil || got != want {
+				t.Fatalf("wide=%v op=%d got=%d err=%v want=%d", wide, k, got, err, want)
+			}
+			if _, _, err := runMemAmd64(t, m, nil, 65536); err == nil {
+				t.Fatalf("wide=%v op=%d: self-comparison eliminated the load trap", wide, k)
 			}
 		}
 	}

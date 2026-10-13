@@ -38,7 +38,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   `wago_regalloccheck` is enabled. Also guard inputs during address preparation
   in the common scalar store path and during second-input preparation in `fbin`
   and `fbinInto`.
-- Materialize scalar floating self-comparisons with one full-width parity result and no GP temporary.
+- Simplify scalar floating self-comparisons with full-width booleans and no GP temporary.
+  Fuse ARM64 scalar float comparisons into immediate branches and integer selections,
+  including boolean inversion, without materializing an intermediate integer boolean.
 
 - Prepare native reservations only when the active backend has a matching
   consumer, avoiding unused ARM64 live-struct and large-array batches. Retain

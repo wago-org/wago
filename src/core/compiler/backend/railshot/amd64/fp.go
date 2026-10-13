@@ -757,22 +757,25 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 	f.pushReg(dst, mtI32)
 }
 
-// emitFCmpSetcc emits UCOMIS(S/D) plus the NaN-correct SETcc sequence for a float
-// relational op, landing a 0/1 i32 boolean in dst. The ordered ops (gt/ge/lt/le)
+// emitFCmpSetcc emits a NaN-correct float comparison, landing a 0/1 i32 boolean
+// in dst. Strict self-relations need only a zeroing instruction. The ordered ops (gt/ge/lt/le)
 // use the CF-clear `above`/`above-equal` forms (via operand swap for lt/le) so
 // unordered (NaN) yields false; eq/ne combine the equal/parity bits. Shared by
 // fcmp (eager boolean).
 func (f *fn) emitFCmpSetcc(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
-	if xa == xb && (kind == opEq || kind == opNe) {
-		// Both inputs have already been evaluated. An ordered self-compare
-		// is equal; an unordered one is not. Clear before producing flags.
+	if xa == xb {
+		// Both inputs have already been evaluated. Strict self-relations are
+		// always false; eq/le/ge are true exactly when the input is ordered.
+		// Clear before producing flags and preserve the input bits.
 		cc := condNP
 		if kind == opNe {
 			cc = condP
 		}
 		f.a.AluRR(aluTable[opXor].rr, dst, dst, false)
-		f.a.Ucomis(xa, xb, f64)
-		f.a.SetccReg8(cc, dst)
+		if kind != opLtS && kind != opGtS {
+			f.a.Ucomis(xa, xb, f64)
+			f.a.SetccReg8(cc, dst)
+		}
 		f.stats.peep("float-self-compare-full-width")
 		return
 	}

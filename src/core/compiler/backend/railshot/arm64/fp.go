@@ -729,11 +729,13 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
 	xa, xaOwned := f.operandRegF(a) // read-only: only compared
-	f.fpinned = f.fpinned.add(xa)
+	saved := f.fpinned
+	f.fpinned = saved.add(xa)
 	xb, xbOwned := f.operandRegF(b) // read-only: only compared
-	f.fpinned = f.fpinned.remove(xa)
+	f.fpinned = f.fpinned.add(xb)
 	dst := f.allocReg(0)
 	f.emitFCmpCset(kind, xa, xb, f64, dst)
+	f.fpinned = saved
 	if xaOwned {
 		f.releaseF(xa)
 	}
@@ -748,6 +750,12 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 // (unordered clears N=V, so NaN yields false); lt/le swap the operands. Shared by
 // fcmp (eager boolean).
 func (f *fn) emitFCmpCset(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
+	if xa == xb && (kind == opLtS || kind == opGtS) {
+		// Inputs have been evaluated; strict self-relations are false even for NaN.
+		f.a.MovImm32(dst, 0)
+		f.stats.peep("float-self-compare-zero")
+		return
+	}
 	switch kind {
 	case opEq: // ordered equal: EQ requires Z=1, which unordered does not set
 		f.a.Fcmp(xa, xb, f64)
