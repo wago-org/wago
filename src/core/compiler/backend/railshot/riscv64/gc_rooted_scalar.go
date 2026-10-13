@@ -362,6 +362,9 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 					return false
 				}
 				heap := value.Ref().Heap()
+				if !value.Ref().Exact() && heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapI31 {
+					return true
+				}
 				if !value.Ref().Exact() && heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapFunc {
 					return true
 				}
@@ -927,7 +930,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 		if storage == byte(wasm.PackI8) || storage == byte(wasm.PackI16) || storage >= 0x7c && storage <= 0x7f {
 			return true
 		}
-		if references && storage == 0x70 { // funcref
+		if references && (storage == 0x70 || storage == byte(wasm.HeapI31)) { // funcref or i31ref
 			return true
 		}
 		if !references || storage != 0x63 && storage != 0x64 {
@@ -942,7 +945,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 		if err != nil {
 			return false
 		}
-		if !exact && heap == -16 {
+		if !exact && (heap == -16 || heap == -20) {
 			return true
 		}
 		if heap < 0 {

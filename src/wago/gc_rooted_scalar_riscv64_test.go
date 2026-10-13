@@ -689,6 +689,102 @@ func TestRV64RootedScalarI31InternalCallSurvivesGC(t *testing.T) {
 	}
 }
 
+func rootedScalarI31StructModule() []byte {
+	body := []byte{
+		0x01, 0x01, 0x64, 0x00,
+		0x41, 0x7f, 0xfb, 0x1c, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x20, 0x00, 0x41, 0x7e, 0xfb, 0x1c, 0xfb, 0x05, 0x00, 0x00,
+		0x41, 0x01, 0xfb, 0x1c, 0xfb, 0x00, 0x00, 0x1a,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0xfb, 0x1e,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0xfb, 0x1d,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x6c, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedScalarI31StructSurvivesGC(t *testing.T) {
+	source := rootedScalarI31StructModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("rooted i31 struct module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	roots := view.genericGCFrameRoots()
+	if !rv64FreshRootedGC(view) || roots == nil || len(roots.safepoints) != 2 || len(roots.safepoints[1].offsets) != 1 {
+		t.Fatalf("rooted i31 struct receipt=%t roots=%+v validation=%v", rv64FreshRootedGC(view), roots, railshotValidateCompiled(view))
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for iteration := range 16 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{0x7ffffffe, 0xfffffffe}) {
+			t.Fatalf("iteration %d: run()=%#x err=%v", iteration, got, err)
+		}
+	}
+}
+
+func rootedScalarI31ArrayModule() []byte {
+	body := []byte{
+		0x01, 0x01, 0x64, 0x00,
+		0x41, 0x7f, 0xfb, 0x1c, 0x41, 0x02, 0xfb, 0x06, 0x00, 0x21, 0x00,
+		0x20, 0x00, 0x41, 0x00, 0x41, 0x7e, 0xfb, 0x1c, 0xfb, 0x0e, 0x00,
+		0x41, 0x01, 0xfb, 0x1c, 0x41, 0x01, 0xfb, 0x06, 0x00, 0x1a,
+		0x20, 0x00, 0x41, 0x00, 0xfb, 0x0b, 0x00, 0xfb, 0x1e,
+		0x20, 0x00, 0x41, 0x00, 0xfb, 0x0b, 0x00, 0xfb, 0x1d,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5e, 0x6c, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedScalarI31ArraySurvivesGC(t *testing.T) {
+	source := rootedScalarI31ArrayModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("rooted i31 array module was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	roots := view.genericGCFrameRoots()
+	if !rv64FreshRootedGC(view) || roots == nil || len(roots.safepoints) != 2 || len(roots.safepoints[1].offsets) != 1 {
+		t.Fatalf("rooted i31 array receipt=%t roots=%+v validation=%v", rv64FreshRootedGC(view), roots, railshotValidateCompiled(view))
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for iteration := range 16 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{0x7ffffffe, 0xfffffffe}) {
+			t.Fatalf("iteration %d: run()=%#x err=%v", iteration, got, err)
+		}
+	}
+}
+
 func rootedReferenceFieldStructModule() []byte {
 	types := [][]byte{
 		{0x5f, 0x01, 0x7f, 0x01},       // mutable i32 leaf

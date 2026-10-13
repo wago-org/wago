@@ -221,13 +221,23 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		if storage.Value.Kind == ValueTypeReference {
 			ref := storage.Value.Ref
 			if !ref.Heap.Defined {
-				if ref.Exact || ref.Heap.Abstract != AbstractHeapFunc || ref.Heap.TypeIndex != 0 {
+				if ref.Exact || ref.Heap.TypeIndex != 0 {
 					return 0, false
 				}
-				if ref.Nullable {
-					return gc.StorageFuncRefNull, true
+				switch ref.Heap.Abstract {
+				case AbstractHeapFunc:
+					if ref.Nullable {
+						return gc.StorageFuncRefNull, true
+					}
+					return gc.StorageFuncRef, true
+				case AbstractHeapI31:
+					if ref.Nullable {
+						return gc.StorageRefNull, true
+					}
+					return gc.StorageRef, true
+				default:
+					return 0, false
 				}
-				return gc.StorageFuncRef, true
 			}
 			targetIndex := int(ref.Heap.TypeIndex)
 			if targetIndex >= len(c.Types) || targetIndex > owner && c.Types[targetIndex].RecGroup != c.Types[owner].RecGroup ||
