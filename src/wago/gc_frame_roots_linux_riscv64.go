@@ -600,8 +600,19 @@ func (p *rv64RootedAggregateParser) validateExpression(expr wasm.Expr, required 
 			value.typ = wasm.V128
 		case 0xfb:
 			sub, subErr := r.U32()
+			if subErr != nil {
+				return false
+			}
+			if sub == 28 { // ref.i31
+				if stackLen < 1 || !wasm.EqualValType(stack[stackLen-1].typ, wasm.I32) {
+					return false
+				}
+				stackLen--
+				value.typ = wasm.RefVal(wasm.Ref(false, wasm.AbsHeap(wasm.HeapI31), false))
+				break
+			}
 			typeIndex, typeErr := r.U32()
-			if subErr != nil || typeErr != nil {
+			if typeErr != nil {
 				return false
 			}
 			comp := rv64RootedAggregateType(p.m, typeIndex)
@@ -710,11 +721,21 @@ func rv64RootedScalarGlobal(m *wasm.Module, global *wasm.Global, limit int, p *r
 	if global.Type.Type.Kind() == wasm.ValRef {
 		ref := global.Type.Type.Ref()
 		heap := ref.Heap()
-		if ref.Exact() || heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec || !p.validateExpression(global.Init, ref, limit) {
+		if ref.Exact() || !p.validateExpression(global.Init, ref, limit) {
 			return false
 		}
-		comp := rv64RootedAggregateType(m, heap.Type().Index)
-		return comp != nil && (comp.Kind == wasm.CompStruct || comp.Kind == wasm.CompArray)
+		switch heap.Kind() {
+		case wasm.HeapAbs:
+			return heap.Abs() == wasm.HeapI31
+		case wasm.HeapTypeIndex:
+			if heap.Type().Rec {
+				return false
+			}
+			comp := rv64RootedAggregateType(m, heap.Type().Index)
+			return comp != nil && (comp.Kind == wasm.CompStruct || comp.Kind == wasm.CompArray)
+		default:
+			return false
+		}
 	}
 	if wasm.EqualValType(global.Type.Type, wasm.I32) || wasm.EqualValType(global.Type.Type, wasm.I64) {
 		return railshot.ValidateIntegerInitializer(global.Init.BodyBytes, global.Type.Type, func(index uint32) (wasm.ValType, bool) {

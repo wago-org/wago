@@ -703,8 +703,19 @@ func (p *rootedScalarAggregateParser) validateExpression(expr wasm.Expr, require
 			value.typ = wasm.V128
 		case 0xfb:
 			sub, subErr := r.U32()
+			if subErr != nil {
+				return false
+			}
+			if sub == 28 { // ref.i31
+				if stackLen < 1 || !wasm.EqualValType(stack[stackLen-1].typ, wasm.I32) {
+					return false
+				}
+				stackLen--
+				value.typ = wasm.RefVal(wasm.Ref(false, wasm.AbsHeap(wasm.HeapI31), false))
+				break
+			}
 			typeIndex, typeErr := r.U32()
-			if subErr != nil || typeErr != nil {
+			if typeErr != nil {
 				return false
 			}
 			comp := rootedScalarAggregateType(p.m, typeIndex)
@@ -820,8 +831,17 @@ func rootedScalarAggregateGlobal(global wasm.Global, p *rootedScalarAggregatePar
 	}
 	ref := global.Type.Type.Ref()
 	heap := ref.Heap()
-	return !ref.Exact() && heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec &&
-		rootedScalarAggregateAt(p.m, heap.Type().Index) && p.validateExpression(global.Init, ref, globalLimit)
+	if ref.Exact() {
+		return false
+	}
+	switch heap.Kind() {
+	case wasm.HeapAbs:
+		return heap.Abs() == wasm.HeapI31 && p.validateExpression(global.Init, ref, globalLimit)
+	case wasm.HeapTypeIndex:
+		return !heap.Type().Rec && rootedScalarAggregateAt(p.m, heap.Type().Index) && p.validateExpression(global.Init, ref, globalLimit)
+	default:
+		return false
+	}
 }
 func admitRV64GCRootedScalarWire(data []byte) bool {
 	if len(data) < 8 || len(data) > MaxModuleBytes || !bytes.Equal(data[:8], []byte{0, 'a', 's', 'm', 1, 0, 0, 0}) {

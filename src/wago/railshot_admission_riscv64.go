@@ -194,8 +194,10 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			continue
 		}
 		exact, err := c.globalExactType(i)
-		if i < len(c.GlobalImports) || global.Type != ValAnyRef || err != nil || exact.Kind != ValueTypeReference ||
-			exact.Ref.Exact || !exact.Ref.Heap.Defined || !rootedValue(exact, len(c.Types)) ||
+		abiType, abiOK := exact.ABIType(c.Types)
+		rootedGlobalType := exact.Ref.Heap.Defined || exact.Ref.Heap.Abstract == AbstractHeapI31
+		if i < len(c.GlobalImports) || err != nil || !abiOK || global.Type != abiType || exact.Kind != ValueTypeReference ||
+			exact.Ref.Exact || !rootedGlobalType || !rootedValue(exact, len(c.Types)) ||
 			global.Bits != 0 || global.HasInitFunc || global.InitFunc != 0 ||
 			(global.HasInitGlobal && (len(global.InitExpr) != 0 || !rv64InitializerReferenceGlobal(c, global.InitGlobal, exact, i))) ||
 			(!global.HasInitGlobal && (global.InitGlobal != 0 || len(global.InitExpr) == 0 && !exact.Ref.Nullable)) {

@@ -98,6 +98,71 @@ func TestRV64RootedReferenceExportRejected(t *testing.T) {
 	}
 }
 
+func rv64RootedI31GlobalModule() []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x7e, 0xfb, 0x1c, 0x24, 0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x23, 0x00, 0xfb, 0x1d,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I31Ref, true, []byte{0x41, 0x7f, 0xfb, 0x1c, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedI31GlobalCompiles(t *testing.T) {
+	source := rv64RootedI31GlobalModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("rooted i31 global was not admitted")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(1)
+	if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve exact root plan")
+	}
+	plan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin exact root plan")
+	}
+	*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true}
+	if !plan.SetLiveMasks([]uint64{0}, 1, 0) {
+		t.Fatal("install exact root liveness")
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 1 {
+		t.Fatalf("code=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
+	}
+	m.Globals[0].Type.Type = wasm.AnyRef
+	if admitRV64GCRootedScalarModule(m) {
+		t.Fatal("abstract anyref global escaped rooted i31 admission")
+	}
+}
+
 func TestRV64RootedAggregateTableBulkCompilesToHelpers(t *testing.T) {
 	body := []byte{
 		0x00,

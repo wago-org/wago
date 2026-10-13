@@ -5102,6 +5102,26 @@ func rootedScalarMutableArrayGlobalModule() []byte {
 	)
 }
 
+func rootedScalarI31GlobalModule() []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x7e, 0xfb, 0x1c, 0x24, 0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x23, 0x00, 0xfb, 0x1d,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I31Ref, true, []byte{0x41, 0x7f, 0xfb, 0x1c, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func TestRV64RootedScalarMutableStructGlobalExecutes(t *testing.T) {
 	source := rootedScalarMutableStructGlobalModule(false)
 	if !railshot.AdmitGCRootedScalarSource(source) {
@@ -5195,6 +5215,45 @@ func TestRV64RootedScalarMutableArrayGlobalExecutes(t *testing.T) {
 	for range 16 {
 		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
 			t.Fatalf("run()=%v err=%v want=[42]", got, err)
+		}
+	}
+}
+
+func TestRV64RootedScalarI31GlobalExecutes(t *testing.T) {
+	source := rootedScalarI31GlobalModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("generic rooted i31 global was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Globals) != 1 || view.Globals[0].Type != ValI31Ref || !view.Globals[0].Mutable {
+		t.Fatalf("rooted i31-global receipt=%t globals=%+v validation=%v", rv64FreshRootedGC(view), view.Globals, railshotValidateCompiled(view))
+	}
+	candidate := cloneCompiledMetadata(view)
+	candidate.ValueTypes = slices.Clone(candidate.ValueTypes)
+	candidate.ValueTypes[candidate.Globals[0].ValueTypeIndex].Ref.Heap.Abstract = AbstractHeapAny
+	candidate.Globals = slices.Clone(candidate.Globals)
+	candidate.Globals[0].Type = ValAnyRef
+	if rv64FreshRootedGC(candidate) {
+		t.Fatal("retargeted abstract-any global retained the generic rooted receipt")
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if roots := instance.publicGCState().globalRoots; len(roots) != 1 || roots[0].GlobalIndex != 0 {
+		t.Fatalf("generic rooted i31-global roots=%+v", roots)
+	}
+	for range 16 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{0xfffffffe}) {
+			t.Fatalf("run()=%v err=%v want=[4294967294]", got, err)
 		}
 	}
 }
