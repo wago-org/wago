@@ -2117,3 +2117,30 @@ with unchanged allocation counts. `affine-sum-results.json` preserves process
 medians, both compile cohorts, source fingerprints, actual native images and
 validation evidence. Pure-helper calls, global recurrences, other feature gaps
 and native AMD64 validation remain required work.
+
+### Pure-helper sum checkpoint
+
+`d74e57cd` admits bounded pure unary byte-backed local integer helpers into the
+modular affine recurrence proof. Imports, state, memory, control, nested calls,
+declared locals and incompatible widths reject. Four calls per term is the
+maximum. Disabled inlining retains calls. Original counter initialization,
+invariant bounds, aliases, do-while zero bounds and fence retention are unchanged.
+Stateful helper calls execute exactly; both widths/ABIs, codec and unsigned
+extrema pass. ARM64 pinned Core 3/threads and guarded race tests pass, and full
+statistics retains its exact 44 baseline failures. Native AMD64 remains pending
+hub access after successful test cross-compilation.
+
+Three interleaved process medians give direct-call 196,243 -> 112.65 ns
+(1,742x), versus unchecked w2c2 288.94 ns. Scalar affine contracts retain their
+previous gains. Small thread-contract changes do not establish additional
+feature-wide wins. Native images come from the actual revision-pinned adapters
+and timing configuration, retaining all source fingerprints.
+
+Separate compile captures initially show Core 3 +4.85% despite lower instruction
+counts, so an identical second cohort is also retained. Six processes per
+revision give Core 3 +0.52%, threads +0.87%, unchanged allocation/code totals,
+and peak RSS +0.58%/-0.76%. Scalar/Core 3 scalar/imported-worker compile medians
+change -5.34%/-3.30%/+0.41%, with unchanged allocations. These small cohorts
+remain descriptive. `pure-call-sum-results.json` retains both compile cohorts,
+all execution profiles, native images and validation evidence. Remaining
+non-call feature gaps and native AMD64 validation still require work.

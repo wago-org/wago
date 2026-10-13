@@ -544,3 +544,25 @@ both raw cohorts remain in the evidence. These descriptive differences merit
 keeping recognition work bounded and avoiding unnecessary work on failed
 candidates. `affine-sum-results.json` retains exact profiles, costs, before/
 after adapter images and validation hashes. Full feature parity remains open.
+
+### Pure-helper integer reductions
+
+`d74e57cd` composes bounded unary local integer leaf summaries into the existing
+affine sum proof. Imported/effectful/recursive/mixed-width helpers, declared
+locals and more than four helper calls reject. Disabling inlining retains
+calls. A common single-counter fast path avoids expression-stack work; effectful
+starts reject early. Source initialization, unsigned bounds, aliases, do-while
+zero bounds and retained fences remain. Stateful helper invocation counts,
+both widths/ABIs, codec, extreme bounds, guarded race and pinned ARM64
+conformance pass; full statistics retains its exact 44 failures. AMD64 binaries
+cross-compile, but hub still times out for native execution.
+
+Direct-call improves 196,243 -> 112.65 ns (1,742x), versus unchecked w2c2
+288.94 ns (0.390x). Other small cohort differences make no new parity claims.
+Actual before/current images come from the pinned adapters and workload config.
+Six alternating compile processes per revision across two retained cohorts give
+Core 3 +0.52%, threads +0.87%, with unchanged allocation/code totals; peak RSS
++0.58%/-0.76%. The first Core 3 cohort was +4.85%, prompting an identical second
+capture. `pure-call-sum-results.json` retains both cohorts and exact evidence.
+Global-state loops, conversions, sign/narrow operations and broader feature
+parity remain open.

@@ -1,0 +1,851 @@
+{
+  "schema": 1,
+  "platform": {
+    "cpu": "Apple M4 Max",
+    "os": "darwin",
+    "arch": "arm64",
+    "go": "go1.27.1"
+  },
+  "baseline_revision": "b9696c0886a2e810be5fbcd55a3c2e64089f9660",
+  "current_revision": "d74e57cdf0b9c2ca4c4cfc8bc5336c9ef24ef39c",
+  "phase": "steady",
+  "processes_per_profile": 3,
+  "samples_per_process": 5,
+  "minimum_batch_ns": 50000000,
+  "warmups": 2,
+  "workloads": {
+    "features/core-num/integer-multiply-add/performance-4096x64": {
+      "artifact_sha256": "983d4c30d9493f09597054d838ca5a2a139fb147c6a7da6256a303f00ef2ded7",
+      "units_per_invocation": 262144,
+      "args": [
+        4096
+      ],
+      "profiles": {
+        "before": {
+          "version": "b9696c0886a2e810be5fbcd55a3c2e64089f9660/source-3aabe7b9c90f4728740f99766f0aba03f3ef909f01f392f152dd69ab6605683e",
+          "process_medians_ns": [
+            99.44131790014909,
+            101.57483548420136,
+            105.25580049835962
+          ],
+          "median_ns": 101.57483548420136,
+          "cv_range": [
+            0.0039513223469373185,
+            0.008954065039104009
+          ]
+        },
+        "current": {
+          "version": "d74e57cdf0b9c2ca4c4cfc8bc5336c9ef24ef39c/source-081127b30d27aa3ea3ac5e14152006b6459a35e149586bf8e1b80b309e519b92",
+          "process_medians_ns": [
+            100.9432880073925,
+            100.65404925508498,
+            101.27472494241809
+          ],
+          "median_ns": 100.9432880073925,
+          "cv_range": [
+            0.007554301051460847,
+            0.017263166629392323
+          ]
+        },
+        "checked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            285.6989984234877,
+            288.1950726394442,
+            297.1734227711395
+          ],
+          "median_ns": 288.1950726394442,
+          "cv_range": [
+            0.011783317905367793,
+            0.02030916874175869
+          ]
+        },
+        "unchecked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            287.42132072288166,
+            286.9766481040946,
+            290.1694725080095
+          ],
+          "median_ns": 287.42132072288166,
+          "cv_range": [
+            0.008904280906952992,
+            0.012098826423464949
+          ]
+        }
+      },
+      "current_vs_before": 0.9937824415486541,
+      "current_vs_unchecked": 0.3512032014657582
+    },
+    "features/core-ctl/direct-call/performance-4096x64": {
+      "artifact_sha256": "bab7cb06eb629f21fce7df4eef30f830af56b8ebb864570e28f641901c66c67a",
+      "units_per_invocation": 262144,
+      "args": [
+        4096
+      ],
+      "profiles": {
+        "before": {
+          "version": "b9696c0886a2e810be5fbcd55a3c2e64089f9660/source-3aabe7b9c90f4728740f99766f0aba03f3ef909f01f392f152dd69ab6605683e",
+          "process_medians_ns": [
+            191464.2330383481,
+            196242.57401812688,
+            203982.1800643087
+          ],
+          "median_ns": 196242.57401812688,
+          "cv_range": [
+            0.006636352116965505,
+            0.015224524588875405
+          ]
+        },
+        "current": {
+          "version": "d74e57cdf0b9c2ca4c4cfc8bc5336c9ef24ef39c/source-081127b30d27aa3ea3ac5e14152006b6459a35e149586bf8e1b80b309e519b92",
+          "process_medians_ns": [
+            110.48227291043108,
+            112.64813817442236,
+            113.63348026447606
+          ],
+          "median_ns": 112.64813817442236,
+          "cv_range": [
+            0.00877138143759955,
+            0.03559908110372939
+          ]
+        },
+        "checked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            281.14894464885833,
+            291.2309400343284,
+            293.31490729658213
+          ],
+          "median_ns": 291.2309400343284,
+          "cv_range": [
+            0.00921714600953865,
+            0.016608879793756883
+          ]
+        },
+        "unchecked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            283.2799758586734,
+            288.93845825267425,
+            289.30220876529603
+          ],
+          "median_ns": 288.93845825267425,
+          "cv_range": [
+            0.012289671208065286,
+            0.013740119293748337
+          ]
+        }
+      },
+      "current_vs_before": 0.0005740249726036363,
+      "current_vs_unchecked": 0.3898689667538563
+    },
+    "features/simd/arithmetic-scalar-baseline/performance-4096x64": {
+      "artifact_sha256": "89edc7867d914ddbe78066d73bd44d4cbc013d8cc03e7799174ce32e2b1beb36",
+      "units_per_invocation": 262144,
+      "args": [
+        4096
+      ],
+      "profiles": {
+        "before": {
+          "version": "b9696c0886a2e810be5fbcd55a3c2e64089f9660/source-3aabe7b9c90f4728740f99766f0aba03f3ef909f01f392f152dd69ab6605683e",
+          "process_medians_ns": [
+            99.46318843896098,
+            100.69386122267554,
+            103.1698685241877
+          ],
+          "median_ns": 100.69386122267554,
+          "cv_range": [
+            0.004996845474681028,
+            0.011411067342774988
+          ]
+        },
+        "current": {
+          "version": "d74e57cdf0b9c2ca4c4cfc8bc5336c9ef24ef39c/source-081127b30d27aa3ea3ac5e14152006b6459a35e149586bf8e1b80b309e519b92",
+          "process_medians_ns": [
+            98.20444419744167,
+            100.83077074505832,
+            101.46645465098894
+          ],
+          "median_ns": 100.83077074505832,
+          "cv_range": [
+            0.008334899923170963,
+            0.010507086495474315
+          ]
+        },
+        "checked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            281.3250003314932,
+            290.3508614218326,
+            287.77471007213956
+          ],
+          "median_ns": 287.77471007213956,
+          "cv_range": [
+            0.007157816182385474,
+            0.019216060144055965
+          ]
+        },
+        "unchecked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            283.3534288513901,
+            285.3408504155377,
+            285.396571002609
+          ],
+          "median_ns": 285.3408504155377,
+          "cv_range": [
+            0.006032324752446146,
+            0.013571639008478522
+          ]
+        }
+      },
+      "current_vs_before": 1.0013596610629523,
+      "current_vs_unchecked": 0.3533695599428541
+    },
+    "features/threads/ordinary-load-store/performance-4096x64": {
+      "artifact_sha256": "027a08c1b9310459a2a0bfb8c6ea879a29e6acbde2424e0597ae79386d7c3d29",
+      "units_per_invocation": 262144,
+      "args": [
+        4096
+      ],
+      "profiles": {
+        "before": {
+          "version": "b9696c0886a2e810be5fbcd55a3c2e64089f9660/source-3aabe7b9c90f4728740f99766f0aba03f3ef909f01f392f152dd69ab6605683e",
+          "process_medians_ns": [
+            101827.6396039604,
+            101704.35598705502,
+            101445.00201207244
+          ],
+          "median_ns": 101704.35598705502,
+          "cv_range": [
+            0.0025154596293691387,
+            0.007378073737192619
+          ]
+        },
+        "current": {
+          "version": "d74e57cdf0b9c2ca4c4cfc8bc5336c9ef24ef39c/source-081127b30d27aa3ea3ac5e14152006b6459a35e149586bf8e1b80b309e519b92",
+          "process_medians_ns": [
+            101164.52277227723,
+            101170.88293650794,
+            101158.64880952382
+          ],
+          "median_ns": 101164.52277227723,
+          "cv_range": [
+            0.0016405642410826488,
+            0.0029132990007475945
+          ]
+        },
+        "checked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            2131395.8333333335,
+            2185109.172413793,
+            2166233.9743589745
+          ],
+          "median_ns": 2166233.9743589745,
+          "cv_range": [
+            0.0036951034089553873,
+            0.007331719327202469
+          ]
+        },
+        "unchecked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            99073.12164579607,
+            99731.21645796065,
+            99855.62075134169
+          ],
+          "median_ns": 99731.21645796065,
+          "cv_range": [
+            0.0041047964995474286,
+            0.01230824283353877
+          ]
+        }
+      },
+      "current_vs_before": 0.9946921328045526,
+      "current_vs_unchecked": 1.0143716918856671
+    },
+    "features/threads/simd-load-store/performance-4096x64": {
+      "artifact_sha256": "d65685be0a864609faca641f09229c46e586d9632ef8daf660a475f032980b5b",
+      "units_per_invocation": 262144,
+      "args": [
+        4096
+      ],
+      "profiles": {
+        "before": {
+          "version": "b9696c0886a2e810be5fbcd55a3c2e64089f9660/source-3aabe7b9c90f4728740f99766f0aba03f3ef909f01f392f152dd69ab6605683e",
+          "process_medians_ns": [
+            101194.57735247209,
+            102049.4569105691,
+            102399.39637826962
+          ],
+          "median_ns": 102049.4569105691,
+          "cv_range": [
+            0.0026635241021729823,
+            0.011064245094855466
+          ]
+        },
+        "current": {
+          "version": "d74e57cdf0b9c2ca4c4cfc8bc5336c9ef24ef39c/source-081127b30d27aa3ea3ac5e14152006b6459a35e149586bf8e1b80b309e519b92",
+          "process_medians_ns": [
+            100881.54274353877,
+            101019.26877470355,
+            101145.09288537549
+          ],
+          "median_ns": 101019.26877470355,
+          "cv_range": [
+            0.0014702883972058417,
+            0.0036153968404397624
+          ]
+        },
+        "checked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            1595253.0487804879,
+            1615850,
+            1635120.825
+          ],
+          "median_ns": 1615850,
+          "cv_range": [
+            0.023268878305362756,
+            0.04569254995483696
+          ]
+        },
+        "unchecked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            105054.74457429048,
+            105218.55430711611,
+            105290.06521739131
+          ],
+          "median_ns": 105218.55430711611,
+          "cv_range": [
+            0.002142219308796807,
+            0.004879821413274024
+          ]
+        }
+      },
+      "current_vs_before": 0.9899050110891982,
+      "current_vs_unchecked": 0.9600898761623781
+    },
+    "features/threads/bulk-fill/performance-4096x64": {
+      "artifact_sha256": "ac330e6ee7d95873b2eb56d4be994c2cf88eb9a5fc8fbb8c211b25df575871fe",
+      "units_per_invocation": 262144,
+      "args": [
+        4096
+      ],
+      "profiles": {
+        "before": {
+          "version": "b9696c0886a2e810be5fbcd55a3c2e64089f9660/source-3aabe7b9c90f4728740f99766f0aba03f3ef909f01f392f152dd69ab6605683e",
+          "process_medians_ns": [
+            158782.41895261846,
+            158143.9968553459,
+            157640.234375
+          ],
+          "median_ns": 158143.9968553459,
+          "cv_range": [
+            0.0037140486350762123,
+            0.010274984573667678
+          ]
+        },
+        "current": {
+          "version": "d74e57cdf0b9c2ca4c4cfc8bc5336c9ef24ef39c/source-081127b30d27aa3ea3ac5e14152006b6459a35e149586bf8e1b80b309e519b92",
+          "process_medians_ns": [
+            157453.253125,
+            158238.8525,
+            159193.9223057644
+          ],
+          "median_ns": 158238.8525,
+          "cv_range": [
+            0.0012933308487613785,
+            0.0037665588491623547
+          ]
+        },
+        "checked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            2172933.3333333335,
+            2141688.2413793104,
+            2196818
+          ],
+          "median_ns": 2172933.3333333335,
+          "cv_range": [
+            0.02743545326654871,
+            0.08697165000431449
+          ]
+        },
+        "unchecked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            186447.02359882006,
+            190806.5910447761,
+            188206.35608308605
+          ],
+          "median_ns": 188206.35608308605,
+          "cv_range": [
+            0.00410068123746509,
+            0.02073661659485347
+          ]
+        }
+      },
+      "current_vs_before": 1.0005998055350838,
+      "current_vs_unchecked": 0.8407731587457306
+    },
+    "features/threads/atomic-load-store/performance-4096x64": {
+      "artifact_sha256": "dd80332bb6e2b413a9545003ef87713567f1ed5b0dffb856275308db208b108c",
+      "units_per_invocation": 262144,
+      "args": [
+        4096
+      ],
+      "profiles": {
+        "before": {
+          "version": "b9696c0886a2e810be5fbcd55a3c2e64089f9660/source-3aabe7b9c90f4728740f99766f0aba03f3ef909f01f392f152dd69ab6605683e",
+          "process_medians_ns": [
+            135993.32264957266,
+            137235.44086021505,
+            137710.68548387097
+          ],
+          "median_ns": 137235.44086021505,
+          "cv_range": [
+            0.007999658649599475,
+            0.011397270640920318
+          ]
+        },
+        "current": {
+          "version": "d74e57cdf0b9c2ca4c4cfc8bc5336c9ef24ef39c/source-081127b30d27aa3ea3ac5e14152006b6459a35e149586bf8e1b80b309e519b92",
+          "process_medians_ns": [
+            136575.5159914712,
+            135843.86021505378,
+            141285.1456521739
+          ],
+          "median_ns": 136575.5159914712,
+          "cv_range": [
+            0.004637615665040365,
+            0.013078136178803155
+          ]
+        },
+        "checked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            2155916.6666666665,
+            2165651.3666666667,
+            2161602
+          ],
+          "median_ns": 2161602,
+          "cv_range": [
+            0.0025349337118010912,
+            0.011225163158993577
+          ]
+        },
+        "unchecked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            165515.5587467363,
+            166055.00787401575,
+            166048.5
+          ],
+          "median_ns": 166048.5,
+          "cv_range": [
+            0.0016875607209647307,
+            0.013371973707336268
+          ]
+        }
+      },
+      "current_vs_before": 0.9951912941394196,
+      "current_vs_unchecked": 0.8225037624035821
+    },
+    "features/threads/atomic-rmw-add/performance-4096x64": {
+      "artifact_sha256": "9935afa239f1cdfc33c269ae938aa538d5da58eee2402985ce38d99d0c5a5315",
+      "units_per_invocation": 262144,
+      "args": [
+        4096
+      ],
+      "profiles": {
+        "before": {
+          "version": "b9696c0886a2e810be5fbcd55a3c2e64089f9660/source-3aabe7b9c90f4728740f99766f0aba03f3ef909f01f392f152dd69ab6605683e",
+          "process_medians_ns": [
+            209987.74509803922,
+            214571.40880503145,
+            212646.00409836066
+          ],
+          "median_ns": 212646.00409836066,
+          "cv_range": [
+            0.0035679178330472764,
+            0.04344310648125665
+          ]
+        },
+        "current": {
+          "version": "d74e57cdf0b9c2ca4c4cfc8bc5336c9ef24ef39c/source-081127b30d27aa3ea3ac5e14152006b6459a35e149586bf8e1b80b309e519b92",
+          "process_medians_ns": [
+            213670.1610738255,
+            212914.98316498316,
+            217942.164
+          ],
+          "median_ns": 213670.1610738255,
+          "cv_range": [
+            0.008089983228898411,
+            0.009577363358635656
+          ]
+        },
+        "checked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            2154663.793103448,
+            2168722.2,
+            2234886.4827586208
+          ],
+          "median_ns": 2168722.2,
+          "cv_range": [
+            0.004198648474132347,
+            0.00772796628636036
+          ]
+        },
+        "unchecked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            214703.1577181208,
+            218395.46666666667,
+            221491.0807017544
+          ],
+          "median_ns": 218395.46666666667,
+          "cv_range": [
+            0.005173789295011406,
+            0.010160520752427066
+          ]
+        }
+      },
+      "current_vs_before": 1.004816253095408,
+      "current_vs_unchecked": 0.9783635362722372
+    },
+    "features/threads/atomic-compare-exchange/performance-4096x64": {
+      "artifact_sha256": "05eacbc0f22968cbd1700ce70add554c06df42880b647b7ab2a073f4c58c1cd6",
+      "units_per_invocation": 262144,
+      "args": [
+        4096
+      ],
+      "profiles": {
+        "before": {
+          "version": "b9696c0886a2e810be5fbcd55a3c2e64089f9660/source-3aabe7b9c90f4728740f99766f0aba03f3ef909f01f392f152dd69ab6605683e",
+          "process_medians_ns": [
+            265525.3458333333,
+            267587.0253164557,
+            274070.7586206897
+          ],
+          "median_ns": 267587.0253164557,
+          "cv_range": [
+            0.0051181685295791,
+            0.00904498775869026
+          ]
+        },
+        "current": {
+          "version": "d74e57cdf0b9c2ca4c4cfc8bc5336c9ef24ef39c/source-081127b30d27aa3ea3ac5e14152006b6459a35e149586bf8e1b80b309e519b92",
+          "process_medians_ns": [
+            264742.21991701244,
+            268106.3628691983,
+            275145.55947136565
+          ],
+          "median_ns": 268106.3628691983,
+          "cv_range": [
+            0.0023192814159274174,
+            0.016436700266770538
+          ]
+        },
+        "checked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            2170873.6333333333,
+            2200758.3333333335,
+            2180533.0344827585
+          ],
+          "median_ns": 2180533.0344827585,
+          "cv_range": [
+            0.005718716736314684,
+            0.05644345412790071
+          ]
+        },
+        "unchecked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            271691.8798283262,
+            274209.7938596491,
+            277831.49115044245
+          ],
+          "median_ns": 274209.7938596491,
+          "cv_range": [
+            0.002567752383232691,
+            0.04280939856593828
+          ]
+        }
+      },
+      "current_vs_before": 1.0019408173925042,
+      "current_vs_unchecked": 0.9777417469137709
+    },
+    "features/threads/wait-mismatch-notify/performance-4096x64": {
+      "artifact_sha256": "a85a706319b79d0118fd21c99aa294a1f47d3cbb789a779bc4238d1f58c910f2",
+      "units_per_invocation": 262144,
+      "args": [
+        4096
+      ],
+      "profiles": {
+        "before": {
+          "version": "b9696c0886a2e810be5fbcd55a3c2e64089f9660/source-3aabe7b9c90f4728740f99766f0aba03f3ef909f01f392f152dd69ab6605683e",
+          "process_medians_ns": [
+            646659.0909090909,
+            636390.1515151515,
+            639710.8775510204
+          ],
+          "median_ns": 639710.8775510204,
+          "cv_range": [
+            0.00399894212566111,
+            0.013649380356853013
+          ]
+        },
+        "current": {
+          "version": "d74e57cdf0b9c2ca4c4cfc8bc5336c9ef24ef39c/source-081127b30d27aa3ea3ac5e14152006b6459a35e149586bf8e1b80b309e519b92",
+          "process_medians_ns": [
+            633651.67,
+            637913.33,
+            644091.25
+          ],
+          "median_ns": 637913.33,
+          "cv_range": [
+            0.0023621116758726314,
+            0.009355603689952263
+          ]
+        },
+        "checked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            5362972.166666667,
+            5419114.583333333,
+            5423763.916666667
+          ],
+          "median_ns": 5419114.583333333,
+          "cv_range": [
+            0.005668625480980261,
+            0.01003657599507963
+          ]
+        },
+        "unchecked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            1942783.0882352942,
+            1987943.1818181819,
+            2010674.2424242424
+          ],
+          "median_ns": 1987943.1818181819,
+          "cv_range": [
+            0.024760060394704943,
+            0.028226618397538473
+          ]
+        }
+      },
+      "current_vs_before": 0.997190062551536,
+      "current_vs_unchecked": 0.32089112799318614
+    },
+    "features/threads/atomic-fence/performance-4096x64": {
+      "artifact_sha256": "1a7e144dff6701f33a7085898e90a078c51acd08a80a621ff06abd6c515d6a09",
+      "units_per_invocation": 262144,
+      "args": [
+        4096
+      ],
+      "profiles": {
+        "before": {
+          "version": "b9696c0886a2e810be5fbcd55a3c2e64089f9660/source-3aabe7b9c90f4728740f99766f0aba03f3ef909f01f392f152dd69ab6605683e",
+          "process_medians_ns": [
+            153.36254164706568,
+            154.39282328449818,
+            157.66118095463207
+          ],
+          "median_ns": 154.39282328449818,
+          "cv_range": [
+            0.006030692639359653,
+            0.021411062423417955
+          ]
+        },
+        "current": {
+          "version": "d74e57cdf0b9c2ca4c4cfc8bc5336c9ef24ef39c/source-081127b30d27aa3ea3ac5e14152006b6459a35e149586bf8e1b80b309e519b92",
+          "process_medians_ns": [
+            153.22192289560022,
+            154.6413112427301,
+            154.25353506335983
+          ],
+          "median_ns": 154.25353506335983,
+          "cv_range": [
+            0.00622618975019426,
+            0.011760641150044306
+          ]
+        },
+        "checked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            279.33196627627103,
+            288.2269327467002,
+            285.9982680842382
+          ],
+          "median_ns": 285.9982680842382,
+          "cv_range": [
+            0.006394281105044897,
+            0.013978668717010475
+          ]
+        },
+        "unchecked": {
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "process_medians_ns": [
+            286.48800465470816,
+            282.8249064524961,
+            286.4973103709001
+          ],
+          "median_ns": 286.48800465470816,
+          "cv_range": [
+            0.009146609787982617,
+            0.020292812078971382
+          ]
+        }
+      },
+      "current_vs_before": 0.9990978322814806,
+      "current_vs_unchecked": 0.5384292974125569
+    }
+  },
+  "compile": {
+    "core3": {
+      "gomaxprocs": 1,
+      "processes_per_revision": 6,
+      "before": {
+        "Modules": 218.0,
+        "Passes": 100.0,
+        "Compiles": 21800.0,
+        "CodeBytes": 17744400.0,
+        "ElapsedNS": 404262562.0,
+        "AllocBytes": 776871400.0,
+        "Allocations": 2646735.0,
+        "maximum resident set size": 14065664.0,
+        "peak memory footprint": 9257500.0,
+        "instructions retired": 6266257043.5,
+        "cycles elapsed": 1696649815.0
+      },
+      "current": {
+        "Modules": 218.0,
+        "Passes": 100.0,
+        "Compiles": 21800.0,
+        "CodeBytes": 17744400.0,
+        "ElapsedNS": 406378916.5,
+        "AllocBytes": 776871392.0,
+        "Allocations": 2646735.0,
+        "maximum resident set size": 14147584.0,
+        "peak memory footprint": 9372176.0,
+        "instructions retired": 6245716787.5,
+        "cycles elapsed": 1709465426.5
+      }
+    },
+    "threads": {
+      "gomaxprocs": 1,
+      "processes_per_revision": 6,
+      "before": {
+        "Modules": 27.0,
+        "Passes": 100.0,
+        "Compiles": 2700.0,
+        "CodeBytes": 1611200.0,
+        "ElapsedNS": 46351271.0,
+        "AllocBytes": 85165512.0,
+        "Allocations": 370151.0,
+        "maximum resident set size": 12967936.0,
+        "peak memory footprint": 8757776.0,
+        "instructions retired": 857261137.0,
+        "cycles elapsed": 205912096.0
+      },
+      "current": {
+        "Modules": 27.0,
+        "Passes": 100.0,
+        "Compiles": 2700.0,
+        "CodeBytes": 1611200.0,
+        "ElapsedNS": 46753708.0,
+        "AllocBytes": 85165512.0,
+        "Allocations": 370151.0,
+        "maximum resident set size": 12869632.0,
+        "peak memory footprint": 8684036.0,
+        "instructions retired": 857022789.0,
+        "cycles elapsed": 205470835.5
+      }
+    }
+  },
+  "native_compile": {
+    "before": {
+      "BenchmarkCompileSmallScalar": {
+        "ns_per_op": 9293.0,
+        "bytes_per_op": 19184.0,
+        "allocations_per_op": 74.0
+      },
+      "BenchmarkCompileSmallScalarCore3": {
+        "ns_per_op": 9109.0,
+        "bytes_per_op": 19040.0,
+        "allocations_per_op": 73.0
+      },
+      "BenchmarkCompileImportedWorkers/p1": {
+        "ns_per_op": 24561687.5,
+        "bytes_per_op": 3418633.0,
+        "allocations_per_op": 93.0
+      }
+    },
+    "current": {
+      "BenchmarkCompileSmallScalar": {
+        "ns_per_op": 8796.5,
+        "bytes_per_op": 19184.0,
+        "allocations_per_op": 74.0
+      },
+      "BenchmarkCompileSmallScalarCore3": {
+        "ns_per_op": 8808.5,
+        "bytes_per_op": 19040.0,
+        "allocations_per_op": 73.0
+      },
+      "BenchmarkCompileImportedWorkers/p1": {
+        "ns_per_op": 24661722.5,
+        "bytes_per_op": 3418633.0,
+        "allocations_per_op": 93.0
+      }
+    }
+  },
+  "compile_manifests": "notify-empty-results.json: identical Core 3 and threads artifact hashes",
+  "peer_configuration": "w2c2-peer-runtime.json: checked=1/unchecked=0; same SDK and futex source flags",
+  "evidence": {
+    "threads-pure-call-sum-arm64.json": "76c04c86f6eee9041ffa65a6d5dbac26e00c979a6fd58fa04726347aecc69eaa",
+    "threads-pure-call-sum-compile-ab.json": "97c936a0537e7bea88a22b10e734fea156216fe86b669830d724a7e409d87965",
+    "threads-pure-call-sum-plan.json": "daeecc67f5a35ad35441e9f98e347ed19d7881547220ff02e534c12f457659b1",
+    "pure-call-sum-red.txt": "cbc016587c5271d74a1217297e287cd1aafe257a380cb9a03576748656d61beb",
+    "pure-call-sum-shared.txt": "25993c1676232cbc724bd08470da923b6d40bb2ca292b48cc107bdef253ab964",
+    "pure-call-sum-selection.txt": "214d4b5773335019c634c973247a691221db366015736b636c6427260c58e61a",
+    "pure-call-sum-public.txt": "78198f2fffdfba9cca33c0e9b87f6681d36f851acc07859d2419e42e5a8d0ac6",
+    "pure-call-sum-guard.txt": "75cabc7c12580f8165dff57951fd991b924d996cd7a7abf0b44744791e76b5ce",
+    "pure-call-sum-conformance.txt": "bc64f9e6eef60c0fb73d8cbcf5804867dced81df01e9bde1d2a55a2d786433a8",
+    "pure-call-sum-backend-full.txt": "c09deea1d75861da57da3be42f1848299fd3c36289f5c7ef4bd9deab9dffece2",
+    "pure-call-sum-hub.txt": "10e764d4b76decaef4af57d5955133e0b890bddd24eb9d5c0db7eda6315560b8",
+    "pure-call-sum-native.disasm.txt": "8d7e18c5de0161e6fc26305fa7254e9aee3f661d3fb194ec8d35f6cb1df616eb",
+    "pure-call-sum-native.json": "c182cda417d91fc76fa0721752784faf1bd7d9c76d30b0943161464fc4d41822",
+    "pure-call-sum-before-native.disasm.txt": "2bb42e2c3ceed54719a565f7ade2ad326ad25184f67c2b23f78b9ad761cd2108",
+    "pure-call-sum-before-native.json": "9830782654fd0450515bcff8bb3fee5494395d1f20f03c8b7f789eb11cc2c58f",
+    "threads-pure-call-sum-compile-initial.json": "94e3873df0ee103628f10e20fa917a66db4b52045785559312aeb4ab7df8e6b8",
+    "threads-pure-call-sum-compile-repeat.json": "e1b6ea52e49be25d68a20fad8fd94500808d8be2d6dad4bfc67ed1b0800b876e"
+  },
+  "validation": {
+    "native_guarded_race": [
+      "arm64"
+    ],
+    "amd64_validation": "cross-compiled; native pending hub SSH timeout",
+    "core3_arm64": {
+      "modules": 2226,
+      "assertions": 58238,
+      "failed": 0,
+      "skipped": 0
+    },
+    "threads_arm64": {
+      "modules": 51,
+      "assertions": 312,
+      "failed": 0,
+      "skipped": 0
+    },
+    "full_arm64_statistics": "same 44 failure names as parent",
+    "proof": "bounded pure unary byte-backed local integer leaves compose affine recurrence summaries; imports, locals, recursive/effectful/mixed-width helpers and more than four calls reject; source initialization, aliases, invariant bounds, do-while zero bound, widths/ABIs, codec, fences and unsigned extrema retained; stateful helper calls execute exactly"
+  },
+  "next_diagnosis": "Direct calls, global state recurrences, conversions and broad feature parity remain open; native AMD64 validation remains pending."
+}
