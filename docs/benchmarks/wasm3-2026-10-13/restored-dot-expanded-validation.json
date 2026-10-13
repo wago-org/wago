@@ -1,0 +1,30 @@
+{
+  "revision": "e4b2e4fb",
+  "productionEmitter": "a32a1076; fixed dot and encoder sources verified identical with git diff",
+  "restoredValidation": {
+    "restored-plain": {
+      "actions": {
+        "run": 8194,
+        "output": 16388,
+        "pass": 8194
+      },
+      "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/ml-code-inspection/restored-plain.jsonl",
+      "sha256": "24e9da634067ca97fa9101e6247d4e913c54749c9cf0ed46eb2f2d39093f8b1f"
+    },
+    "restored-guarded": {
+      "actions": {
+        "run": 8212,
+        "output": 16424,
+        "pass": 8212
+      },
+      "path": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/ml-code-inspection/restored-guarded.jsonl",
+      "sha256": "9e4698d1ac99e793d9819a485c936623d03e72c60256036259c2c819830af9f1"
+    }
+  },
+  "nativeAMD64": "PASS\n",
+  "limitations": [
+    "No new execution-speed or compiler-cost claim from the fixture changes.",
+    "Guard-page originals execute; artifacts are checked in untagged run because guard-page serialization is unsupported.",
+    "Full feature/main-corpus parity remains open."
+  ]
+}
