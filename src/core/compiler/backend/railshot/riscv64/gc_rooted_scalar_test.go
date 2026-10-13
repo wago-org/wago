@@ -93,7 +93,7 @@ func TestRV64RootedScalarTypedSelectCompiles(t *testing.T) {
 					roots := rv64RootedTypedSelectPlan(t, m)
 					compiled, err := CompileModuleWith(m, CompileOptions{
 						DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
-						GCStructHelpers: true, SyncHostSlots: 3, GCFrameRoots: roots, GCFrameRootsSource: true,
+						GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
 						Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
 					})
 					if err != nil {
@@ -108,17 +108,54 @@ func TestRV64RootedScalarTypedSelectCompiles(t *testing.T) {
 	}
 }
 
-func TestRV64RootedScalarRejectsMutableStruct(t *testing.T) {
-	source := rv64RootedTypedSelectModule(0, false, false)
-	// The first field mutability byte follows the struct field's i32 type.
-	for i := 8; i+3 < len(source); i++ {
-		if source[i] == 0x5f && source[i+1] == 0x01 && source[i+2] == 0x7f && source[i+3] == 0x00 {
-			source[i+3] = 0x01
-			break
-		}
+func TestRV64RootedScalarMutableStructCompiles(t *testing.T) {
+	types := [][]byte{
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		{0x5f, 0x01, 0x7f, 0x01},
 	}
-	if err := AdmitProductionSource(source); err == nil {
-		t.Fatal("mutable generic struct escaped rooted scalar source admission")
+	body := []byte{0x01, 0x01, 0x64, 0x01, 0x41, 0x0b, 0xfb, 0x00, 0x01, 0x21, 0x00, 0x20, 0x00, 0x41, 0x2a, 0xfb, 0x05, 0x01, 0x00, 0x20, 0x00, 0xfb, 0x02, 0x01, 0x00, 0x0b}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(1)
+	if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve exact root plan")
+	}
+	plan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin exact root plan")
+	}
+	*plan = shared.GCFrameRootPlan{
+		Candidate: true, Exact: true, Conservative: true,
+		Locals: []shared.GCFrameLocal{{Index: 0, Offset: shared.RV64CallFrameHeaderBytes}},
+	}
+	if !plan.SetLiveMasks([]uint64{1}, 1, 0) {
+		t.Fatal("install exact root liveness")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 1 {
+		t.Fatalf("code bytes=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
 	}
 }
 
@@ -165,7 +202,7 @@ func TestRV64RootedScalarArbitraryStructDefault(t *testing.T) {
 	}
 	compiled, err := CompileModuleWith(m, CompileOptions{
 		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
-		GCStructHelpers: true, SyncHostSlots: 3, GCFrameRoots: roots, GCFrameRootsSource: true,
+		GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
 		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
 	})
 	if err != nil {
@@ -210,7 +247,7 @@ func TestRV64RootedScalarRejectsI31Instructions(t *testing.T) {
 	}
 	_, err = CompileModuleWith(m, CompileOptions{
 		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
-		GCStructHelpers: true, SyncHostSlots: 3, GCFrameRoots: roots, GCFrameRootsSource: true,
+		GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
 		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "ref.i31 outside exact i31 profile") {

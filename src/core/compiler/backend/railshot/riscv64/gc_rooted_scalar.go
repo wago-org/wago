@@ -11,7 +11,7 @@ import (
 // admitRV64GCRootedScalarModule is the first source-shape admission shared by
 // generic GC programs instead of a byte-for-byte product fixture. It keeps the
 // runtime boundary deliberately closed while admitting ordinary scalar control
-// over immutable one-field i32 structs. Instruction admission remains the
+// over one-field i32 structs. Instruction admission remains the
 // responsibility of the typed integer walker, and exact allocation roots are
 // authenticated independently by validateGCFrameRootPlans.
 func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
@@ -41,7 +41,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		switch sub.Comp.Kind {
 		case wasm.CompStruct:
-			if len(sub.Comp.Fields) != 1 || sub.Comp.Fields[0] != wasm.NewFieldType(wasm.StorageVal(wasm.I32), wasm.Const) {
+			if len(sub.Comp.Fields) != 1 || sub.Comp.Fields[0].Storage() != wasm.StorageVal(wasm.I32) {
 				return false
 			}
 			hasStruct = true
@@ -99,7 +99,7 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 		if err != nil || count == 0 {
 			return false
 		}
-		// The bounded profile has only numeric function types and immutable i32
+		// The bounded profile has only numeric function types and i32
 		// structs, so 0x4e cannot occur in a legal type payload. Rejecting it here
 		// preserves the explicit-rec-group distinction lost by public decoding.
 		if id == 1 && bytes.IndexByte(payload[probe.Offset():], 0x4e) >= 0 {

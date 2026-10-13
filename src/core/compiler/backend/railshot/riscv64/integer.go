@@ -1855,7 +1855,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrStructSet:
-				if !(state.gcStructMutation && imm.Index == 0 && imm.Index2 == 0) && !(state.gcStructNull && imm.Index == 0 && imm.Index2 == 1) && !(state.gcStructPacked && imm.Index == 0 && (imm.Index2 == 1 || imm.Index2 == 3)) && !(state.gcStructBasic && imm.Index == 0 && imm.Index2 == 1) {
+				genericSet := state.gcRootedScalar && imm.Index2 == 0 && referenceTypes.rootedStruct(imm.Index) && referenceTypes.mutableStructField(imm.Index, imm.Index2)
+				if !genericSet && !(state.gcStructMutation && imm.Index == 0 && imm.Index2 == 0) && !(state.gcStructNull && imm.Index == 0 && imm.Index2 == 1) && !(state.gcStructPacked && imm.Index == 0 && (imm.Index2 == 1 || imm.Index2 == 3)) && !(state.gcStructBasic && imm.Index == 0 && imm.Index2 == 1) {
 					return integerSummary{}, unsupported("struct.set outside exact gc struct profile")
 				}
 				if _, err = popClass(false); err != nil {

@@ -17,7 +17,7 @@ import (
 
 func rv64FreshRootedGC(c *Compiled) bool {
 	if c == nil || c.stagedGCStructProduct() != stagedGCStructGeneric || c.stagedGCArrayProduct() != 0 ||
-		!c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.syncHostSlots < 3 ||
+		!c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.syncHostSlots < 4 ||
 		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports != 0 || len(c.Imports) != 0 ||
 		len(c.importFuncSigs) != 0 || c.HasTable || c.tableCount() != 0 || c.HasMemory || c.memoryCount() != 0 ||
 		len(c.GlobalImports) != 0 || len(c.Globals) != 0 || c.HasStart || len(c.Elems) != 0 ||
@@ -49,7 +49,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 				}
 			}
 		case gc.KindStruct:
-			if typ.Kind != CompositeTypeStruct || len(typ.Fields) != 1 || typ.Fields[0].Mutable || typ.Fields[0].Storage.Packed || typ.Fields[0].Storage.Value.Kind != ValueTypeI32 ||
+			if typ.Kind != CompositeTypeStruct || len(typ.Fields) != 1 || typ.Fields[0].Storage.Packed || typ.Fields[0].Storage.Value.Kind != ValueTypeI32 ||
 				!desc.Final || desc.HasSuper || len(desc.Fields) != 1 || desc.Fields[0].Kind != gc.StorageI32 ||
 				desc.Fields[0].Offset != 0 || desc.HasRefs {
 				return false

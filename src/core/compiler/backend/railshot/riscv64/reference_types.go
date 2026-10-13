@@ -76,7 +76,7 @@ type internalReferenceTypes struct {
 	gcTypeSubtypingRefTestSingle      bool
 	gcTypeSubtypingRefTestVariant     uint8
 	gcTypeSubtypingDuplicateRecursive bool
-	// gcRootedScalar admits indexed heaps that name one of the immutable
+	// gcRootedScalar admits indexed heaps that name one of the
 	// one-field structs authenticated by the whole-module generic profile.
 	gcRootedScalar bool
 }
@@ -98,7 +98,26 @@ func (types internalReferenceTypes) rootedStruct(index uint32) bool {
 		signature = &types.decoded[index].SubTypes[0].Comp
 	}
 	return signature != nil && signature.Kind == wasm.CompStruct && len(signature.Fields) == 1 &&
-		signature.Fields[0] == wasm.NewFieldType(wasm.StorageVal(wasm.I32), wasm.Const)
+		signature.Fields[0].Storage() == wasm.StorageVal(wasm.I32)
+}
+
+func (types internalReferenceTypes) mutableStructField(typeIndex, fieldIndex uint32) bool {
+	if !types.gcRootedScalar || fieldIndex != 0 {
+		return false
+	}
+	var signature *wasm.CompType
+	if types.scalar != nil {
+		if uint64(typeIndex) >= uint64(len(types.scalar)) {
+			return false
+		}
+		signature = types.scalar[typeIndex].signature
+	} else {
+		if uint64(typeIndex) >= uint64(len(types.decoded)) || len(types.decoded[typeIndex].SubTypes) != 1 {
+			return false
+		}
+		signature = &types.decoded[typeIndex].SubTypes[0].Comp
+	}
+	return signature != nil && signature.Kind == wasm.CompStruct && len(signature.Fields) == 1 && signature.Fields[0].Mut() == wasm.Var
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
