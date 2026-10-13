@@ -674,6 +674,7 @@ type gcRefTokenEntry struct {
 const (
 	gcNativeFrameLayoutAMD64 uint8 = iota
 	gcNativeFrameLayoutARM64
+	gcNativeFrameLayoutRISCV64
 	gcNativeFrameLayoutMask      = 0x7f
 	gcNativeFrameSyncGlobalRoots = 0x80
 )
@@ -977,14 +978,28 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			return true
 		}
 		returnPCBias, callerFrameBias := uintptr(0), uintptr(abi.AMD64CallReturnAddressBytes)
-		if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutARM64 {
+		returnAddressAfterFrame := true
+		switch r.frameLayout & gcNativeFrameLayoutMask {
+		case gcNativeFrameLayoutARM64:
 			returnPCBias = uintptr(shared.ARM64SavedLROffset)
 			callerFrameBias = uintptr(shared.ARM64FrameRecordBytes)
+		case gcNativeFrameLayoutRISCV64:
+			// RV64 saves RA in word zero of the callee's allocated frame. The
+			// caller frame begins immediately after that complete allocation.
+			returnAddressAfterFrame = false
+			callerFrameBias = 0
 		}
-		if base > ^uintptr(0)-uintptr(frameBytes)-returnPCBias {
+		frameEnd := base
+		if returnAddressAfterFrame {
+			if base > ^uintptr(0)-uintptr(frameBytes) {
+				panic(gcHelperFailuref("generic GC native frame address overflows"))
+			}
+			frameEnd += uintptr(frameBytes)
+		}
+		if frameEnd > ^uintptr(0)-returnPCBias {
 			panic(gcHelperFailuref("generic GC native frame address overflows"))
 		}
-		retAddr := base + uintptr(frameBytes) + returnPCBias
+		retAddr := frameEnd + returnPCBias
 		if stackTop != 0 && (retAddr > stackTop || stackTop-retAddr < 8) {
 			panic(gcHelperFailuref("generic GC native return address exceeds stack bounds"))
 		}

@@ -5,12 +5,13 @@ import (
 	"sort"
 )
 
-// AMD64FrameHeaderBytes and ARM64FrameHeaderBytes are the stable local-slot
-// bases used by the railshot native frames. Root-map producers and consumers
-// must use the matching architecture value.
+// AMD64FrameHeaderBytes, ARM64FrameHeaderBytes and RV64FrameHeaderBytes are the
+// stable local-slot bases used by the railshot native frames. Root-map producers
+// and consumers must use the matching architecture value.
 const (
 	AMD64FrameHeaderBytes = 16
 	ARM64FrameHeaderBytes = 16
+	RV64FrameHeaderBytes  = 16
 
 	// ARM64SavedLROffset is the saved LR qword within the 16-byte FP/LR record
 	// immediately above a call-making function's reserved frame. Advancing to the
