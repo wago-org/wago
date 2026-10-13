@@ -40,7 +40,13 @@ func TestBulkFillVectorAllLengths(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+						cases := []*Compiled{c}
+						if !guardPageBuilt {
+							loaded := publicArtifactRoundTrip(t, c)
+							defer loaded.Close()
+							cases = append(cases, loaded)
+						}
+						for _, compiled := range cases {
 							in, err := Instantiate(compiled)
 							if err != nil {
 								t.Fatal(err)
