@@ -1022,30 +1022,50 @@ func TestRV64RootedIndexedReferenceTestCastExecutes(t *testing.T) {
 	}
 }
 
-func TestRV64RootedUnsupportedAbstractCastFailsClosed(t *testing.T) {
-	types := [][]byte{
-		{0x5f, 0x01, 0x7f, 0x01},
-		wasmtest.FuncType(nil, nil),
-	}
+func rootedScalarI31TestCastModule() []byte {
 	body := []byte{
 		0x00,
-		0x41, 0x01, 0xfb, 0x00, 0x00,
-		0xfb, 0x16, byte(wasm.HeapEq),
-		0xfb, 0x16, byte(wasm.HeapI31),
-		0x1a, 0x0b,
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x1a,
+		0x41, 0x07, 0xfb, 0x1c, 0xfb, 0x14, byte(wasm.HeapI31),
+		0x41, 0x07, 0xfb, 0x1c, 0xfb, 0x14, byte(wasm.HeapStruct),
+		0x41, 0x09, 0xfb, 0x1c, 0xfb, 0x16, byte(wasm.HeapI31), 0xfb, 0x1e,
+		0xd0, byte(wasm.HeapI31), 0xfb, 0x17, byte(wasm.HeapI31), 0xd1,
+		0x0b,
 	}
-	source := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(types...)),
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
-	compiled, err := Compile(rv64RootedScalarConfig(), source)
-	if compiled != nil {
-		compiled.Close()
+}
+
+func TestRV64RootedScalarI31TestCastExecutes(t *testing.T) {
+	source := rootedScalarI31TestCastModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("rooted i31 ref.test/ref.cast module was not source-admitted")
 	}
-	if err == nil || !strings.Contains(err.Error(), "ref.cast heap outside generic rooted profile") {
-		t.Fatalf("unsupported abstract ref.cast error=%v", err)
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) {
+		t.Fatalf("rooted i31 ref.test/ref.cast receipt=false validation=%v", railshotValidateCompiled(view))
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for iteration := range 16 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{1, 0, 9, 1}) {
+			t.Fatalf("iteration %d: run()=%v err=%v", iteration, got, err)
+		}
 	}
 }
 

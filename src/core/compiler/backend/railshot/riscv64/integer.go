@@ -2446,7 +2446,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				genericAbstractHeap := state.gcRootedScalar && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapAbs
 				if genericAbstractHeap {
 					switch imm.HeapType.Abs() {
-					case wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
+					case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 					default:
 						genericAbstractHeap = false
 					}
@@ -2569,7 +2569,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				genericAbstractHeap := state.gcRootedScalar && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapAbs
 				if genericAbstractHeap {
 					switch imm.HeapType.Abs() {
-					case wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
+					case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 					default:
 						genericAbstractHeap = false
 					}
