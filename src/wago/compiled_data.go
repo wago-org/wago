@@ -635,11 +635,11 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		abi, abiOK := exact.ABIType(c.Types)
 		if err != nil || !functionTable && !rootedTable || !abiOK || def.Addr64 || !def.HasValueType ||
 			uint64(def.ValueTypeIndex) >= uint64(len(c.ValueTypes)) || c.ValueTypes[def.ValueTypeIndex] != exact ||
-			functionTable && def.Type != ValFuncRef || rootedTable && (def.Type != abi || publicTables[tableIndex]) {
+			functionTable && def.Type != ValFuncRef || rootedTable && def.Type != abi {
 			return [32]byte{}, false
 		}
 		if imported, ok := c.tableImportAt(tableIndex); ok {
-			if !functionTable || tableIndex >= importCount || imported.Key == "" || !imported.HasMax || imported.Addr64 || imported.Type != ValFuncRef || !imported.HasValueType ||
+			if tableIndex >= importCount || imported.Key == "" || !imported.HasMax || imported.Addr64 || imported.Type != def.Type || !imported.HasValueType ||
 				imported.Min > imported.Max || imported.Max > 256 || imported.ValueTypeIndex != def.ValueTypeIndex || tableModuleEnds[tableIndex] == 0 ||
 				validateImportModuleEnd(imported.Key, tableModuleEnds[tableIndex]) != nil || uint64(len(imported.Key)) > remainingNames || def.HasInitFunc || def.InitFunc != 0 {
 				return [32]byte{}, false

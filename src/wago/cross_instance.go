@@ -467,14 +467,16 @@ func (t *Table) validateImportWithRetainedOwner(elementType ValType, exact Value
 			if bits != uint64(ref) {
 				return fmt.Errorf("collector-reference table slot %d contains non-compact reference %#x", i, bits)
 			}
-			if ref.IsNull() || ref.IsI31() {
-				continue
-			}
-			if !ref.IsObj() {
+			if !ref.IsNull() && !ref.IsI31() && !ref.IsObj() {
 				return fmt.Errorf("collector-reference table slot %d contains invalid reference %#x", i, bits)
 			}
-			if _, err := collector.ObjectType(ref); err != nil {
-				return fmt.Errorf("collector-reference table slot %d contains stale or foreign object: %w", i, err)
+			if ref.IsObj() {
+				if _, err := collector.ObjectType(ref); err != nil {
+					return fmt.Errorf("collector-reference table slot %d contains stale or foreign object: %w", i, err)
+				}
+			}
+			if !source.gcRefMatchesValueType(ref, actual) {
+				return fmt.Errorf("collector-reference table slot %d contains a reference with an incompatible exact structural type", i)
 			}
 		}
 	}

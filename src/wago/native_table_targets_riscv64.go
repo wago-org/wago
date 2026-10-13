@@ -303,6 +303,16 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 			if !ok {
 				return fmt.Errorf("RV64 retained imported table is missing")
 			}
+			// Compact collector-reference rows are roots in the shared GC
+			// domain, not executable target descriptors. Their importer
+			// attachment already retains storage and their rows are validated
+			// below with the compiled table stride.
+			if table == nil || table.owner == nil {
+				return fmt.Errorf("RV64 retained imported table has no owner")
+			}
+			if table.owner.elementType != ValFuncRef {
+				continue
+			}
 			if err := s.tableRoots(table, &edges); err != nil {
 				return err
 			}
@@ -323,12 +333,14 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 		table := owner.table
 		owner.lifeMu.Unlock()
 		for table != nil {
-			edges++
-			if edges > 4096 {
-				return fmt.Errorf("RV64 table attachment edge bound")
-			}
-			if err := s.tableRoots(table, &edges); err != nil {
-				return err
+			if table.owner != nil && table.owner.elementType == ValFuncRef {
+				edges++
+				if edges > 4096 {
+					return fmt.Errorf("RV64 table attachment edge bound")
+				}
+				if err := s.tableRoots(table, &edges); err != nil {
+					return err
+				}
 			}
 			owner.lifeMu.Lock()
 			table = table.next

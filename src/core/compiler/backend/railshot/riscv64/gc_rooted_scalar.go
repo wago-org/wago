@@ -69,7 +69,8 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				}
 			case wasm.ExternTable:
 				table := im.Type.TableType()
-				if !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) || table.Limits.Addr64 || !table.Limits.HasMax ||
+				elem := wasm.RefVal(table.Ref)
+				if !wasm.EqualValType(elem, wasm.FuncRef) && !rootedScalarTableReference(elem, m) || table.Limits.Addr64 || !table.Limits.HasMax ||
 					table.Limits.Min > table.Limits.Max || table.Limits.Max > 256 {
 					return false
 				}
@@ -113,11 +114,6 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		rootedTable := rootedScalarTableReference(elem, m)
 		if (!wasm.EqualValType(elem, wasm.FuncRef) && !rootedTable) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
 			table.Type.Limits.Min > table.Type.Limits.Max || table.Type.Limits.Max > 256 {
-			return false
-		}
-		if rootedTable && publicTables[importedTables+i] {
-			// Collector references remain private until the public Table API has
-			// an independently qualified ownership and type-identity contract.
 			return false
 		}
 		if table.Init != nil {

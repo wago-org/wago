@@ -1508,6 +1508,8 @@ func rv64ValidateResolvedTable(c *Compiled, imports resolvedImports, store *refe
 	var roots rv64NativeTableTargets
 	// Final-root release can reenter native execution. Unlock first.
 	defer roots.release()
+	nativeExecutionMu.Lock()
+	defer nativeExecutionMu.Unlock()
 	for tableIndex := 0; tableIndex < importCount; tableIndex++ {
 		def, imported := c.tableImportAt(tableIndex)
 		if !imported {
@@ -1521,26 +1523,36 @@ func rv64ValidateResolvedTable(c *Compiled, imports resolvedImports, store *refe
 		if err != nil {
 			return err
 		}
-		if err := table.validateImportWithCollector(ValFuncRef, exact, c.Types, store, nil, def.Addr64); err != nil {
+		elementType := c.tableElementType(tableIndex)
+		var collector *gc.Collector
+		if isGCRefValType(elementType) && table.owner != nil {
+			table.owner.mu.Lock()
+			if table.owner.instance != nil {
+				collector = table.owner.instance.gc
+			}
+			table.owner.mu.Unlock()
+		}
+		if err := table.validateImportWithCollector(elementType, exact, c.Types, store, collector, def.Addr64); err != nil {
 			return fmt.Errorf("imported table %d: %w", tableIndex, err)
 		}
-		if err := table.attachImporterWithCollector(ValFuncRef, exact, c.Types, store, nil, def.Addr64); err != nil {
+		if err := table.attachImporterWithCollector(elementType, exact, c.Types, store, collector, def.Addr64); err != nil {
 			return fmt.Errorf("imported table %d: %w", tableIndex, err)
 		}
 		tables = append(tables, table)
 	}
-	nativeExecutionMu.Lock()
-	defer nativeExecutionMu.Unlock()
 	edges := 0
 	for tableIndex, table := range tables {
 		def, _ := c.tableImportAt(tableIndex)
-		if err := roots.tableRoots(table, &edges); err != nil {
-			return fmt.Errorf("%w: imported table %d: %v", railshot.ErrUnsupported, tableIndex, err)
+		entryBytes := c.tableEntryBytes(tableIndex)
+		if entryBytes == coreruntime.TableEntryBytes {
+			if err := roots.tableRoots(table, &edges); err != nil {
+				return fmt.Errorf("%w: imported table %d: %v", railshot.ErrUnsupported, tableIndex, err)
+			}
 		}
 		table.owner.mu.Lock()
 		table.mu.Lock()
 		size, capacity := uint64(binary.LittleEndian.Uint32(table.desc)), uint64(binary.LittleEndian.Uint32(table.desc[4:]))
-		valid := size >= def.Min && size <= capacity && capacity <= railshot.MaxOwnedTableEntries && 8+capacity*coreruntime.TableEntryBytes <= uint64(len(table.desc)) && (!def.HasMax || table.owner.declaredHasMax && capacity <= def.Max)
+		valid := size >= def.Min && size <= capacity && capacity <= railshot.MaxOwnedTableEntries && 8+capacity*uint64(entryBytes) <= uint64(len(table.desc)) && (!def.HasMax || table.owner.declaredHasMax && capacity <= def.Max)
 		table.mu.Unlock()
 		table.owner.mu.Unlock()
 		if !valid {
@@ -1551,8 +1563,13 @@ func rv64ValidateResolvedTable(c *Compiled, imports resolvedImports, store *refe
 		return fmt.Errorf("%w: %v", railshot.ErrUnsupported, err)
 	}
 	for tableIndex, table := range tables {
-		if err := roots.validateTable(table.desc, coreruntime.TableEntryBytes); err != nil {
-			return fmt.Errorf("%w: imported table %d: %v", railshot.ErrUnsupported, tableIndex, err)
+		entryBytes := c.tableEntryBytes(tableIndex)
+		if entryBytes == coreruntime.TableEntryBytes {
+			if err := roots.validateTable(table.desc, entryBytes); err != nil {
+				return fmt.Errorf("%w: imported table %d: %v", railshot.ErrUnsupported, tableIndex, err)
+			}
+		} else if entryBytes != 8 {
+			return fmt.Errorf("%w: imported table %d has unsupported %d-byte entries", railshot.ErrUnsupported, tableIndex, entryBytes)
 		}
 	}
 	return nil

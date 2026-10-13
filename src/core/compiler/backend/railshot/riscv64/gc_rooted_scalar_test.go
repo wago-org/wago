@@ -247,8 +247,8 @@ func TestRV64RootedI31TableCompiles(t *testing.T) {
 	if !admitRV64GCRootedScalarModule(m) {
 		t.Fatal("private rooted i31 table was not admitted")
 	}
-	if AdmitGCRootedScalarSource(rv64RootedI31TableModule(true)) {
-		t.Fatal("public rooted i31 table was admitted")
+	if !AdmitGCRootedScalarSource(rv64RootedI31TableModule(true)) {
+		t.Fatal("public rooted i31 table was not admitted")
 	}
 	metadata, err := frontend.BuildGCTypeMetadata(m)
 	if err != nil {
@@ -2601,6 +2601,35 @@ func TestRV64RootedScalarReferenceControlCompiles(t *testing.T) {
 	}
 	if len(compiled.Code) == 0 || plan.SafepointCount() != 1 {
 		t.Fatalf("code=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
+	}
+}
+
+func rv64RootedImportedAggregateTableModule() []byte {
+	tableImport := append(append(wasmtest.Name("provider"), wasmtest.Name("objects")...), byte(wasm.ExternTable))
+	tableImport = append(tableImport, 0x63, 0x00, 0x01, 0x01, 0x02)
+	body := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0x1a, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(tableImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("objects", byte(wasm.ExternTable), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedImportedAggregateTableAdmitted(t *testing.T) {
+	source := rv64RootedImportedAggregateTableModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	if !AdmitGCRootedScalarSource(source) {
+		t.Fatal("public rooted aggregate-table import was not admitted")
 	}
 }
 

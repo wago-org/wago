@@ -2641,6 +2641,53 @@ func rootedScalarAggregateTableModule(array, exportTable bool) []byte {
 	)
 }
 
+func rootedScalarSharedAggregateTableModule(imported bool) []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	setType := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+	readType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	growType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	tableType := []byte{0x63, 0x00, 0x01, 0x01, 0x02}
+	setBody := []byte{
+		0x00,
+		0x20, 0x00,
+		0x20, 0x01, 0xfb, 0x00, 0x00,
+		0x26, 0x00,
+		0x41, 0x09, 0xfb, 0x00, 0x00, 0x1a,
+		0x20, 0x00, 0x25, 0x00,
+		0xfb, 0x02, 0x00, 0x00,
+		0x0b,
+	}
+	readBody := []byte{0x00, 0x20, 0x00, 0x25, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	growBody := []byte{0x00, 0xd0, 0x00, 0x20, 0x00, 0xfc, 0x0f, 0x00, 0x0b}
+	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(structType, setType, readType, growType))}
+	if imported {
+		entry := append(append(wasmtest.Name("provider"), wasmtest.Name("objects")...), byte(wasm.ExternTable))
+		entry = append(entry, tableType...)
+		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(entry)))
+	}
+	sections = append(sections, wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(3))))
+	if !imported {
+		sections = append(sections, wasmtest.Section(4, wasmtest.Vec(tableType)))
+	}
+	exports := [][]byte{
+		wasmtest.ExportEntry("set", byte(wasm.ExternFunc), 0),
+		wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 1),
+		wasmtest.ExportEntry("grow", byte(wasm.ExternFunc), 2),
+	}
+	if !imported {
+		exports = append(exports, wasmtest.ExportEntry("objects", byte(wasm.ExternTable), 0))
+	}
+	sections = append(sections,
+		wasmtest.Section(7, wasmtest.Vec(exports...)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(setBody))), setBody...),
+			append(wasmtest.ULEB(uint32(len(readBody))), readBody...),
+			append(wasmtest.ULEB(uint32(len(growBody))), growBody...),
+		)),
+	)
+	return wasmtest.Module(sections...)
+}
+
 func TestRV64RootedAggregateTablesExecute(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -2680,9 +2727,109 @@ func TestRV64RootedAggregateTablesExecute(t *testing.T) {
 	}
 }
 
-func TestRV64RootedAggregateTableExportFailsClosed(t *testing.T) {
-	if railshot.AdmitGCRootedScalarSource(rootedScalarAggregateTableModule(false, true)) {
-		t.Fatal("collector-reference table export unexpectedly source-admitted")
+func TestRV64RootedAggregateTableExportAdmitted(t *testing.T) {
+	if !railshot.AdmitGCRootedScalarSource(rootedScalarAggregateTableModule(false, true)) {
+		t.Fatal("collector-reference table export was not source-admitted")
+	}
+}
+
+func TestRV64RootedSharedAggregateTableExecutes(t *testing.T) {
+	providerSource := rootedScalarSharedAggregateTableModule(false)
+	consumerSource := rootedScalarSharedAggregateTableModule(true)
+	if !railshot.AdmitGCRootedScalarSource(providerSource) || !railshot.AdmitGCRootedScalarSource(consumerSource) {
+		t.Fatal("shared collector-reference table modules were not source-admitted")
+	}
+	providerBase, err := Compile(rv64RootedScalarConfig(), providerSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer providerBase.Close()
+	consumerBase, err := Compile(rv64RootedScalarConfig(), consumerSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumerBase.Close()
+	if providerView, consumerView := providerBase.executionView(), consumerBase.executionView(); !rv64FreshRootedGC(providerView) || !rv64FreshRootedGC(consumerView) ||
+		providerView.tableExports["objects"] != 0 || consumerView.tableImportCount() != 1 ||
+		providerView.tableEntryBytes(0) != 8 || consumerView.tableEntryBytes(0) != 8 {
+		t.Fatalf("shared table receipts provider=%t consumer=%t exports=%v imports=%d", rv64FreshRootedGC(providerView), rv64FreshRootedGC(consumerView), providerView.tableExports, consumerView.tableImportCount())
+	}
+	mutated := cloneCompiledMetadata(consumerBase.executionView())
+	mutated.tableImportMin++
+	if rv64FreshRootedGC(mutated) {
+		t.Fatal("mutated rooted-table import retained the generic receipt")
+	}
+
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			providerCode, consumerCode := providerBase, consumerBase
+			if artifact {
+				providerCode = publicArtifactRoundTrip(t, providerBase)
+				consumerCode = publicArtifactRoundTrip(t, consumerBase)
+				defer providerCode.Close()
+				defer consumerCode.Close()
+			}
+			rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
+			defer rt.Close()
+			gcConfig := GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}
+			providerModule, err := rt.Module(providerCode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			provider, err := rt.Instantiate(context.Background(), providerModule, WithGC(gcConfig))
+			providerModule.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			table, err := provider.ExportedTable("objects")
+			if err != nil {
+				provider.Close()
+				t.Fatal(err)
+			}
+			consumerModule, err := rt.Module(consumerCode)
+			if err != nil {
+				provider.Close()
+				t.Fatal(err)
+			}
+			consumer, err := rt.Instantiate(context.Background(), consumerModule, WithImports(NewImports().Table("provider", "objects", table)), WithGC(gcConfig))
+			consumerModule.Close()
+			if err != nil {
+				provider.Close()
+				t.Fatal(err)
+			}
+			if provider.gc == nil || provider.gc != consumer.gc || provider.refStore == nil || provider.refStore != consumer.refStore {
+				consumer.Close()
+				provider.Close()
+				t.Fatal("shared rooted table did not unify collector ownership")
+			}
+			if got, callErr := provider.Invoke("set", 0, 55); callErr != nil || !slices.Equal(got, []uint64{55}) {
+				t.Fatalf("provider set=%v err=%v", got, callErr)
+			}
+			if got, callErr := consumer.Invoke("read", 0); callErr != nil || !slices.Equal(got, []uint64{55}) {
+				t.Fatalf("consumer read=%v err=%v", got, callErr)
+			}
+			if got, callErr := consumer.Invoke("grow", 1); callErr != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatalf("consumer grow=%v err=%v", got, callErr)
+			}
+			if got, callErr := consumer.Invoke("set", 1, 77); callErr != nil || !slices.Equal(got, []uint64{77}) {
+				t.Fatalf("consumer set grown slot=%v err=%v", got, callErr)
+			}
+			if err := consumer.CollectGC(); err != nil {
+				t.Fatal(err)
+			}
+			if err := provider.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := consumer.CollectGC(); err != nil {
+				t.Fatal(err)
+			}
+			if got, callErr := consumer.Invoke("read", 1); callErr != nil || !slices.Equal(got, []uint64{77}) {
+				t.Fatalf("consumer read after producer close=%v err=%v", got, callErr)
+			}
+			if err := consumer.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
@@ -5574,8 +5721,8 @@ func TestRV64RootedScalarI31TableExecutes(t *testing.T) {
 	if !railshot.AdmitGCRootedScalarSource(source) {
 		t.Fatal("generic rooted i31 table was not source-admitted")
 	}
-	if railshot.AdmitGCRootedScalarSource(rootedScalarI31TableModule(true)) {
-		t.Fatal("public generic rooted i31 table was source-admitted")
+	if !railshot.AdmitGCRootedScalarSource(rootedScalarI31TableModule(true)) {
+		t.Fatal("public generic rooted i31 table was not source-admitted")
 	}
 	compiled, err := Compile(rv64RootedScalarConfig(), source)
 	if err != nil {
@@ -5608,6 +5755,37 @@ func TestRV64RootedScalarI31TableExecutes(t *testing.T) {
 		if err := instance.Close(); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestRV64RootedScalarI31TableExportExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarI31TableModule(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || view.tableExports["values"] != 0 || view.tableElementType(0) != ValI31Ref || view.tableEntryBytes(0) != 8 {
+		t.Fatalf("public i31-table receipt=%t exports=%v type=%v stride=%d validation=%v", rv64FreshRootedGC(view), view.tableExports, view.tableElementType(0), view.tableEntryBytes(0), railshotValidateCompiled(view))
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	table, err := instance.ExportedTable("values")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if table.owner == nil || table.owner.elementType != ValI31Ref || !table.owner.hasValueType || table.owner.store != instance.refStore || table.Size() != 2 {
+		t.Fatalf("public i31-table handle=%+v owner=%+v", table, table.owner)
+	}
+	want := []uint64{0xfffffffe, 0xfffffffd, 2, 0xfffffffc, 0xfffffffc}
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, want) {
+		t.Fatalf("run()=%v err=%v want=%v", got, err, want)
+	}
+	if err := instance.CollectGC(); err != nil {
+		t.Fatal(err)
 	}
 }
 
