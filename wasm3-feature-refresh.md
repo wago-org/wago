@@ -466,3 +466,24 @@ remains open. Nine captures have durable local receipts; database integrity
 and all 575,121 historical observations pass. Local only, no deployment.
 
 [Raw paired phases, repeat, pilot, compiler costs and validation](docs/benchmarks/wasm3-2026-10-13/boolean-float-select.json).
+
+### Native saturating conversions
+
+`977c8882` lowers all eight scalar saturating float-to-int operations directly
+to ARM64 FCVTZS/FCVTZU and borrows pinned inputs. Software NaN/range clamps
+are redundant with native saturation. Boundary and randomized execution checks
+cover both calling conventions, artifacts and a live raw-bit float input;
+guarded/race execution, pinned Core 3/threads conformance, native AMD64 fallback,
+and Clang-verified encoder words pass.
+
+The locked seven-contract comparison improves f32 in-range **52.5%**, f32
+overflow clamp **38.9%**, i64 in-range **33.3%**, and NaN/infinity **37.7%**.
+The first three still miss parity at **1.573x, 1.517x, and 1.112x** respectively.
+NaN/infinity passes at **0.512x**; negative unsigned clamp remains a passing
+constant reduction. Both f32 rounding-state controls still pass. Selected
+images shrink 32–48 bytes. Compile corpus pairs measure Core 3 +0.56%, threads
++0.86%, unchanged aggregate code and essentially unchanged allocations. Seven
+new Wago captures have local receipts; database integrity and all 575,121
+historical observations pass. Full parity remains open; no deployment.
+
+[All phase samples, verdicts, compiler costs and validation](docs/benchmarks/wasm3-2026-10-13/saturating-float.json).
