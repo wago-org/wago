@@ -106,8 +106,15 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		if global.HasInitGlobal && !rv64InitializerGlobal(c, global.InitGlobal, global.Type, i) {
 			return false
 		}
-		if len(global.InitExpr) != 0 && rv64ValidateIntegerInitializer(c, global.InitExpr, global.Type, i) != nil {
-			return false
+		if len(global.InitExpr) != 0 {
+			if isGCRefValType(global.Type) {
+				exact, err := c.globalExactType(i)
+				if err != nil || c.validateGCConstExpr(global.InitExpr, exact, i) != nil {
+					return false
+				}
+			} else if rv64ValidateIntegerInitializer(c, global.InitExpr, global.Type, i) != nil {
+				return false
+			}
 		}
 	}
 	tableDigest, validTable := rv64RootedTableDigest(c)
@@ -175,8 +182,9 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		}
 		exact, err := c.globalExactType(i)
 		if i < len(c.GlobalImports) || global.Type != ValAnyRef || err != nil || exact.Kind != ValueTypeReference ||
-			!exact.Ref.Nullable || exact.Ref.Exact || !exact.Ref.Heap.Defined || !rootedValue(exact, len(c.Types)) ||
-			global.Bits != 0 || global.HasInitFunc || global.InitFunc != 0 || global.HasInitGlobal || global.InitGlobal != 0 || len(global.InitExpr) != 0 {
+			exact.Ref.Exact || !exact.Ref.Heap.Defined || !rootedValue(exact, len(c.Types)) ||
+			global.Bits != 0 || global.HasInitFunc || global.InitFunc != 0 || global.HasInitGlobal || global.InitGlobal != 0 ||
+			(len(global.InitExpr) == 0 && !exact.Ref.Nullable) {
 			return false
 		}
 	}

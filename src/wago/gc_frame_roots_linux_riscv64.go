@@ -89,9 +89,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			return reject("RV64 exact roots require a bounded void start")
 		}
 	}
+	aggregateParser := newRV64RootedAggregateParser(m)
 	for i := range m.Globals {
-		if !rv64RootedScalarGlobal(m, &m.Globals[i], importedGlobals+i) {
-			return reject("RV64 exact roots require literal or immutable-copy numeric scalar global %d", i)
+		if !rv64RootedScalarGlobal(m, &m.Globals[i], importedGlobals+i, aggregateParser) {
+			return reject("RV64 exact roots require a bounded scalar or aggregate constant global %d", i)
 		}
 	}
 	for i := range m.Memories {
@@ -116,7 +117,6 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	}
 	remainingElements := 256
 	retainedElementSegments := len(m.Elements)
-	aggregateParser := newRV64RootedAggregateParser(m)
 	for i := range m.Tables {
 		table := &m.Tables[i]
 		elem := wasm.RefVal(table.Type.Ref)
@@ -130,7 +130,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		}
 		if table.Init != nil {
 			if rootedTable {
-				if !rv64RootedAggregateElement(*table.Init, table.Type.Ref, aggregateParser) {
+				if !rv64RootedAggregateElement(*table.Init, table.Type.Ref, aggregateParser, importedGlobals+len(m.Globals)) {
 					return reject("RV64 exact roots reject aggregate-reference table initializer")
 				}
 				if !rv64RootedAggregateNullElement(*table.Init, table.Type.Ref) {
@@ -202,7 +202,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			values = len(elem.Kind.Exprs)
 			for j, expr := range elem.Kind.Exprs {
 				if aggregate {
-					if !rv64RootedAggregateElement(expr, elem.Kind.Ref, aggregateParser) {
+					if !rv64RootedAggregateElement(expr, elem.Kind.Ref, aggregateParser, importedGlobals+len(m.Globals)) {
 						return reject("RV64 exact roots reject aggregate element %d:%d", i, j)
 					}
 					continue
@@ -503,8 +503,9 @@ func (p *rv64RootedAggregateParser) valueMatches(value rv64RootedAggregateStackV
 	return p.m.ReferenceTypeSubtype(value.typ.Ref(), want.Ref())
 }
 
-func (p *rv64RootedAggregateParser) validateExpression(expr wasm.Expr, required wasm.RefType) bool {
-	if p == nil || !p.valid || len(expr.Instrs) != 0 || len(expr.BodyBytes) < 4 || len(expr.BodyBytes) > 4096 {
+func (p *rv64RootedAggregateParser) validateExpression(expr wasm.Expr, required wasm.RefType, globalLimit int) bool {
+	if p == nil || !p.valid || globalLimit < 0 || globalLimit > p.m.ImportedGlobalCount()+len(p.m.Globals) ||
+		len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 4096 {
 		return false
 	}
 	var stack [512]rv64RootedAggregateStackValue
@@ -545,7 +546,7 @@ func (p *rv64RootedAggregateParser) validateExpression(expr wasm.Expr, required 
 		case 0x23:
 			index, indexErr := r.U32()
 			global, ok := p.m.GlobalTypeByIndex(index)
-			if indexErr != nil || !ok || global.Mutable {
+			if indexErr != nil || int(index) >= globalLimit || !ok || global.Mutable {
 				return false
 			}
 			value.typ = global.Type
@@ -646,7 +647,13 @@ func (p *rv64RootedAggregateParser) validateExpression(expr wasm.Expr, required 
 				constructed: true, typeIndex: typeIndex, depth: constructorDepth,
 			}
 		case 0x0b:
-			return !r.HasNext() && stackLen == 1 && stack[0].constructed && p.constructedSubtype(stack[0].typeIndex, required)
+			if r.HasNext() || stackLen != 1 || stack[0].typ.Kind() != wasm.ValRef {
+				return false
+			}
+			if stack[0].constructed {
+				return p.constructedSubtype(stack[0].typeIndex, required)
+			}
+			return p.m.ReferenceTypeSubtype(stack[0].typ.Ref(), required)
 		default:
 			return false
 		}
@@ -669,50 +676,24 @@ func rv64RootedAggregateDefaultableStorage(storage wasm.StorageType) bool {
 	return rv64RootedAggregateSupportedStorage(storage) && (storage.Packed() || storage.Val().Kind() != wasm.ValRef || storage.Val().Ref().IsDefaultable())
 }
 
-func rv64RootedAggregateElement(expr wasm.Expr, ref wasm.RefType, p *rv64RootedAggregateParser) bool {
-	if rv64RootedAggregateNullElement(expr, ref) {
-		return true
-	}
-	return p.validateExpression(expr, ref)
+func rv64RootedAggregateElement(expr wasm.Expr, ref wasm.RefType, p *rv64RootedAggregateParser, globalLimit int) bool {
+	return p.validateExpression(expr, ref, globalLimit)
 }
 
 const rv64RootedAggregateParseWork = 8192
 
-func rv64RootedScalarGlobal(m *wasm.Module, global *wasm.Global, limit int) bool {
+func rv64RootedScalarGlobal(m *wasm.Module, global *wasm.Global, limit int, p *rv64RootedAggregateParser) bool {
 	if global == nil || len(global.Init.Instrs) != 0 {
 		return false
 	}
 	if global.Type.Type.Kind() == wasm.ValRef {
 		ref := global.Type.Type.Ref()
 		heap := ref.Heap()
-		if !ref.Nullable() || ref.Exact() || heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec {
+		if ref.Exact() || heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec || !p.validateExpression(global.Init, ref, limit) {
 			return false
 		}
-		flat := uint32(0)
-		aggregate := false
-		for group := range m.Types {
-			for member := range m.Types[group].SubTypes {
-				if flat == heap.Type().Index {
-					kind := m.Types[group].SubTypes[member].Comp.Kind
-					aggregate = kind == wasm.CompStruct || kind == wasm.CompArray
-				}
-				flat++
-			}
-		}
-		if !aggregate {
-			return false
-		}
-		r := wasm.ReaderFrom(global.Init.BodyBytes)
-		op, err := r.Byte()
-		if err != nil || op != 0xd0 {
-			return false
-		}
-		index, err := r.S33()
-		if err != nil || index < 0 || uint64(index) != uint64(heap.Type().Index) {
-			return false
-		}
-		end, err := r.Byte()
-		return err == nil && end == 0x0b && !r.HasNext()
+		comp := rv64RootedAggregateType(m, heap.Type().Index)
+		return comp != nil && (comp.Kind == wasm.CompStruct || comp.Kind == wasm.CompArray)
 	}
 	if wasm.EqualValType(global.Type.Type, wasm.I32) || wasm.EqualValType(global.Type.Type, wasm.I64) {
 		return railshot.ValidateIntegerInitializer(global.Init.BodyBytes, global.Type.Type, func(index uint32) (wasm.ValType, bool) {

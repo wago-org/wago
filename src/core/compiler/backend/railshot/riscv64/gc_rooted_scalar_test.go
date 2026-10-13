@@ -263,6 +263,45 @@ func rv64RootedAggregateSubtypeTableInitializerModule(nested bool, unrelated boo
 	)
 }
 
+func rv64RootedAggregateGlobalInitializerModule() []byte {
+	body := []byte{0x00, 0x41, 0x01, 0xfb, 0x00, 0x00, 0x1a, 0x41, 0x07, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec([]byte{
+			0x64, 0x00, 0x00, // immutable (ref 0)
+			0x41, 0x21, 0xfb, 0x00, 0x00, 0x0b, // struct.new 0 (33)
+		})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedAggregateGlobalInitializerCompiles(t *testing.T) {
+	source := rv64RootedAggregateGlobalInitializerModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("aggregate global initializer was not admitted")
+	}
+	m.Globals[0].Init.BodyBytes = []byte{0x23, 0x00, 0x0b}
+	if admitRV64GCRootedScalarModule(m) {
+		t.Fatal("self-referential aggregate global initializer was admitted")
+	}
+	m.Globals[0].Init.BodyBytes = []byte{0x41, 0x21, 0xfb, 0x00, 0x01, 0x0b}
+	if admitRV64GCRootedScalarModule(m) {
+		t.Fatal("aggregate global initializer with a function constructor was admitted")
+	}
+}
+
 func TestRV64RootedAggregateSubtypeTableInitializerCompiles(t *testing.T) {
 	for _, nested := range []bool{false, true} {
 		t.Run(fmt.Sprintf("nested=%t", nested), func(t *testing.T) {

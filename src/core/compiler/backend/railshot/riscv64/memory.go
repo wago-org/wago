@@ -392,9 +392,13 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	}
 	importedGlobals := len(s.globals)
 	stateOnlyExternrefs := admitStateOnlyExternrefGlobals(m, production, publicExports)
+	var aggregateParser *rootedScalarAggregateParser
+	if gcRootedScalar {
+		aggregateParser = newRootedScalarAggregateParser(m)
+	}
 	for i, g := range m.Globals {
 		if gcRootedScalar && g.Type.Type.Kind() == wasm.ValRef {
-			if !rootedScalarNullGlobal(g, m) {
+			if !rootedScalarAggregateGlobal(g, aggregateParser, importedGlobals+i) {
 				return s, unsupported("generic rooted reference global initializer")
 			}
 			s.globals = append(s.globals, globalSpec{wide: true, reference: true, mutable: g.Type.Mutable, typ: g.Type.Type})

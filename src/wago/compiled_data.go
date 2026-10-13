@@ -219,8 +219,8 @@ func rv64RootedMemoryExportDigest(c *Compiled) ([32]byte, bool) {
 	return digest, true
 }
 
-// rv64RootedGlobalDigest authenticates numeric imported cells, literal local
-// scalar cells, nullable local collector-reference cells, and their exact public
+// rv64RootedGlobalDigest authenticates numeric imported cells, local scalar
+// cells, bounded collector-reference initializers, and their exact public
 // namespace. Generic rooted code addresses globals by index, so ownership,
 // exact type, width, mutability, and initial bits must remain compiler-owned
 // facts.
@@ -242,12 +242,13 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 		if global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && !collectorRef ||
 			!global.HasValueType || global.HasInitFunc || global.InitFunc != 0 ||
 			global.V128 != (V128{}) || (global.Type == ValI32 || global.Type == ValF32) && global.Bits>>32 != 0 ||
-			collectorRef && (i < len(c.GlobalImports) || global.Bits != 0 || global.HasInitGlobal || global.InitGlobal != 0 || len(global.InitExpr) != 0) {
+			collectorRef && (i < len(c.GlobalImports) || global.Bits != 0 || global.HasInitGlobal || global.InitGlobal != 0) {
 			return [32]byte{}, false
 		}
 		if len(global.InitExpr) != 0 {
 			if i < len(c.GlobalImports) || global.HasInitGlobal || global.InitGlobal != 0 ||
-				(global.Type != ValI32 && global.Type != ValI64) || len(global.InitExpr) > 128 || uint64(len(global.InitExpr)) > remaining {
+				(!collectorRef && global.Type != ValI32 && global.Type != ValI64) ||
+				(!collectorRef && len(global.InitExpr) > 128) || (collectorRef && len(global.InitExpr) > 4096) || uint64(len(global.InitExpr)) > remaining {
 				return [32]byte{}, false
 			}
 			remaining -= uint64(len(global.InitExpr))

@@ -120,7 +120,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		if table.Init != nil {
 			if rootedTable {
-				if !rootedScalarAggregateElementExpressionWithParser(*table.Init, table.Type.Ref, aggregateParser) {
+				if !rootedScalarAggregateElementExpressionWithParser(*table.Init, table.Type.Ref, aggregateParser, importedGlobals+len(m.Globals)) {
 					return false
 				}
 				if !rootedScalarAggregateNullExpression(*table.Init, table.Type.Ref) {
@@ -181,7 +181,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			values = len(elem.Kind.Exprs)
 			for _, expr := range elem.Kind.Exprs {
 				if aggregate {
-					if !rootedScalarAggregateElementExpressionWithParser(expr, elem.Kind.Ref, aggregateParser) {
+					if !rootedScalarAggregateElementExpressionWithParser(expr, elem.Kind.Ref, aggregateParser, importedGlobals+len(m.Globals)) {
 						return false
 					}
 					continue
@@ -236,7 +236,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			return false
 		}
 		if global.Type.Type.Kind() == wasm.ValRef {
-			if !rootedScalarNullGlobal(*global, m) {
+			if !rootedScalarAggregateGlobal(*global, aggregateParser, importedGlobals+i) {
 				return false
 			}
 			continue
@@ -588,8 +588,9 @@ func (p *rootedScalarAggregateParser) valueMatches(value rootedScalarAggregateSt
 	return p.m.ReferenceTypeSubtype(value.typ.Ref(), want.Ref())
 }
 
-func (p *rootedScalarAggregateParser) validateExpression(expr wasm.Expr, required wasm.RefType) bool {
-	if p == nil || !p.valid || len(expr.Instrs) != 0 || len(expr.BodyBytes) < 4 || len(expr.BodyBytes) > 4096 {
+func (p *rootedScalarAggregateParser) validateExpression(expr wasm.Expr, required wasm.RefType, globalLimit int) bool {
+	if p == nil || !p.valid || globalLimit < 0 || globalLimit > p.m.ImportedGlobalCount()+len(p.m.Globals) ||
+		len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 4096 {
 		return false
 	}
 	var stack [512]rootedScalarAggregateStackValue
@@ -630,7 +631,7 @@ func (p *rootedScalarAggregateParser) validateExpression(expr wasm.Expr, require
 		case 0x23:
 			index, indexErr := r.U32()
 			global, ok := p.m.GlobalTypeByIndex(index)
-			if indexErr != nil || !ok || global.Mutable {
+			if indexErr != nil || int(index) >= globalLimit || !ok || global.Mutable {
 				return false
 			}
 			value.typ = global.Type
@@ -731,7 +732,13 @@ func (p *rootedScalarAggregateParser) validateExpression(expr wasm.Expr, require
 				constructed: true, typeIndex: typeIndex, depth: constructorDepth,
 			}
 		case 0x0b:
-			return !r.HasNext() && stackLen == 1 && stack[0].constructed && p.constructedSubtype(stack[0].typeIndex, required)
+			if r.HasNext() || stackLen != 1 || stack[0].typ.Kind() != wasm.ValRef {
+				return false
+			}
+			if stack[0].constructed {
+				return p.constructedSubtype(stack[0].typeIndex, required)
+			}
+			return p.m.ReferenceTypeSubtype(stack[0].typ.Ref(), required)
 		default:
 			return false
 		}
@@ -761,14 +768,21 @@ func rootedScalarAggregateDefaultableStorage(storage wasm.StorageType) bool {
 // constant-expression evaluator supports more; this narrower source witness
 // keeps instantiation ownership independently reviewable.
 func rootedScalarAggregateElementExpression(expr wasm.Expr, ref wasm.RefType, m *wasm.Module) bool {
-	return rootedScalarAggregateElementExpressionWithParser(expr, ref, newRootedScalarAggregateParser(m))
+	return rootedScalarAggregateElementExpressionWithParser(expr, ref, newRootedScalarAggregateParser(m), m.ImportedGlobalCount()+len(m.Globals))
 }
 
-func rootedScalarAggregateElementExpressionWithParser(expr wasm.Expr, ref wasm.RefType, p *rootedScalarAggregateParser) bool {
-	if rootedScalarAggregateNullExpression(expr, ref) {
-		return true
+func rootedScalarAggregateElementExpressionWithParser(expr wasm.Expr, ref wasm.RefType, p *rootedScalarAggregateParser, globalLimit int) bool {
+	return p.validateExpression(expr, ref, globalLimit)
+}
+
+func rootedScalarAggregateGlobal(global wasm.Global, p *rootedScalarAggregateParser, globalLimit int) bool {
+	if global.Type.Type.Kind() != wasm.ValRef {
+		return false
 	}
-	return p.validateExpression(expr, ref)
+	ref := global.Type.Type.Ref()
+	heap := ref.Heap()
+	return !ref.Exact() && heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec &&
+		rootedScalarAggregateAt(p.m, heap.Type().Index) && p.validateExpression(global.Init, ref, globalLimit)
 }
 func admitRV64GCRootedScalarWire(data []byte) bool {
 	if len(data) < 8 || len(data) > MaxModuleBytes || !bytes.Equal(data[:8], []byte{0, 'a', 's', 'm', 1, 0, 0, 0}) {
