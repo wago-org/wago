@@ -655,3 +655,32 @@ compile medians change +0.63%/+1.06%/+0.88%, with unchanged allocation counts.
 `float-sign-results.json` retains raw performance, alternating compile captures,
 exact source fingerprints, image hashes and conformance output. These results
 establish parity for this contract; the full feature parity objective remains open.
+
+### Exact copysign bits in integer reductions
+
+`cd47c90f` extends the bounded original-source affine proof to exact float
+constants, known sign bits, copysign, integer reinterpretation and constant
+`i32.eq`. Unsigned integer conversion proves a clear sign bit; negation reverses
+it, including zero. Copysign keeps all magnitude bits, including subnormals,
+infinities and NaN payloads. Only constant magnitudes with a known matching-width
+sign qualify; unknown signs/magnitudes, mismatched widths, variable comparisons,
+traps and effects fall back. Stack state stays local to the bounded inspector;
+no persistent compiler or ABI fields are added.
+
+The fresh signed-zero contract falls 148,490 -> 99.53 ns, versus unchecked w2c2
+288.18 ns (0.345x), over three independent processes per profile and five verified
+samples of at least 50 ms. The negative-saturation and integer multiply-add
+controls retain parity at 84.55/100.18 ns versus 287.85/293.56 ns. Actual signed-zero
+adapter images shrink 432 -> 416 bytes. These are contract-specific results.
+
+Exact-bit tests cover f32/f64 zeros, signs, subnormals, infinities and NaN
+payloads; public execution covers both ABIs, optimization off/on, codec reload
+and extreme unsigned bounds. Shared tests and guarded race tests pass. Pinned
+Core 3 passes 2,226 modules/58,238 assertions with zero failures/skips/gaps;
+threads passes too. AMD64 public tests cross-compile, but hub SSH again times out.
+Full backend statistics were not rerun. Core 3/threads compile latency changes
++1.72%/-0.87%, allocation totals are effectively unchanged (seven pool allocations
+vary over 21,800 Core 3 compiles), and code totals are identical. Peak RSS changes
++1.15%/+1.13%. `copysign-results.json` retains all 27 performance rows, alternating
+compile captures, source fingerprints, image hashes and complete conformance
+output. Full feature and cross-platform performance parity remain open.
