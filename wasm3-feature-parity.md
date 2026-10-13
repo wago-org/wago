@@ -813,3 +813,38 @@ median changes +2.87%, with unchanged allocations/code. `leaf-alias-results.json
 retains all 45 primary performance rows, six opaque-confirmation rows, both
 compile cohorts, native image hashes and full conformance output. The remaining
 3.58x alias-call gap, opaque callback gap and full feature parity remain open.
+
+### Defined global assignment reductions and Remote AMD64 validation
+
+`32c26ea3` extends the bounded integer reduction proof to same-iteration
+assignments and forwarding among at most four defined mutable integer globals.
+Every global read must follow a proven assignment in the current iteration;
+imported cells, unknown prior values, trapping expressions, memory accesses and
+fenced writes reject the proof. Final values use canonical global setters, so
+borrowed prefix values and dirty pinned globals keep their normal semantics.
+The existing untouched-counter and interruptibility restrictions remain in force.
+No persistent ABI or function fields are added.
+
+On Apple M4 Max, matched core/mutable-global swap contracts improve
+98,662 -> 171 ns and 101,822 -> 166 ns (578x/613x), versus unchecked w2c2
+292/290 ns. All 18 process rows have qualified durations and verified exact
+outputs. The inspected core contract native image changes 464 -> 496 bytes;
+the reduction preserves final assignments while removing the repeated loop.
+Alternating three-process compile captures change Core 3 latency -0.73% and
+threads +0.34%, with effectively unchanged allocations and identical corpus code
+totals. Small scalar compilation changes -0.33%/-1.35%; the imported-worker
+control changes +1.52%, with effectively unchanged allocation totals.
+
+Hub is unavailable for maintenance. Native Linux AMD64 validation now runs on
+`root@remote`, in `/root/.cache/wago-wasm3-parity`, using the persistent
+`wago-wasm3-parity` tmux session and SSH connection reuse configured for 24 hours.
+The complete `TestInteger.*Sum` set passes there and on ARM64, including both
+widths/ABIs, optimization rollback, artifact reload, preserved stack prefixes,
+final global publication, and unsigned extrema. ARM64 guard-page race tests and
+pinned Core 3/threads conformance pass. AMD64 performance is not measured, and
+full backend statistics were not rerun.
+
+`global-write-sum-results.json` retains the primary and earlier baseline rows,
+exact plan/runtime configurations, alternating compile captures, image hashes,
+remote binary hash and validation output. Global recurrences that read prior
+values, opaque callbacks, other feature gaps and full parity remain open.

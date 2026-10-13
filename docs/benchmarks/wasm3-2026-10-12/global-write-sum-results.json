@@ -1,0 +1,3447 @@
+{
+  "schema": 1,
+  "recordedAtUTC": "2026-10-13T05:12:10.988966+00:00",
+  "platform": "Apple M4 Max Darwin/arm64",
+  "baselineRevision": "3c8b9b525aa866a0de05361c020fbf6daa14c06d",
+  "currentRevision": "32c26ea3719067d2a49d8250fa428617f3138832",
+  "phase": "execution; adapter prepare/compile excluded; independent exact-u64 oracle verified outside timing",
+  "proof": "Bounded same-iteration affine assignments and forwarding to at most four defined mutable integer globals; unknown prior values, imported aliased cells, effects, traps, memory and fenced writes excluded. Canonical setters preserve old stack values and publish final cells. Both integer widths, ABIs, optimization rollback, artifact reload, zero and unsigned extrema exercised on native ARM64 and Linux AMD64.",
+  "summary": [
+    {
+      "workload": "features/core-glb/global-swap/performance-4096x64",
+      "profiles": {
+        "before": {
+          "medianNs": 98662.02936630603,
+          "processMediansNs": [
+            98867.2600619195,
+            97862.00313479624,
+            98662.02936630603
+          ],
+          "version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2",
+          "cv": [
+            0.010873434593139804,
+            0.011391912850355665,
+            0.011785677463459985
+          ]
+        },
+        "current": {
+          "medianNs": 170.74190173937916,
+          "processMediansNs": [
+            170.74190173937916,
+            171.53602529183925,
+            167.48570550671974
+          ],
+          "version": "32c26ea3719067d2a49d8250fa428617f3138832/source-4fd975be886b5574cdc629264013a155906307d787cee9a733883e9c7d2eb1ce",
+          "cv": [
+            0.005130072577074428,
+            0.014729399704676332,
+            0.005694140722824147
+          ]
+        },
+        "w2c2-unchecked": {
+          "medianNs": 292.1384374585246,
+          "processMediansNs": [
+            290.9827331167485,
+            293.6429199974064,
+            292.1384374585246
+          ],
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "cv": [
+            0.005473493921134536,
+            0.003651101496880753,
+            0.0036574221021253065
+          ]
+        }
+      },
+      "speedup": 577.8430974542148,
+      "currentVsPeer": 0.5844554493573605
+    },
+    {
+      "workload": "features/mutable-globals/global-swap/performance-4096x64",
+      "profiles": {
+        "before": {
+          "medianNs": 101822.48310139166,
+          "processMediansNs": [
+            101728.77795031056,
+            101822.48310139166,
+            179544.20970266042
+          ],
+          "version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2",
+          "cv": [
+            0.012894535207387793,
+            0.0043279208125462185,
+            0.2701011114771501
+          ]
+        },
+        "current": {
+          "medianNs": 166.00132441435633,
+          "processMediansNs": [
+            165.87165249705626,
+            168.67302823628432,
+            166.00132441435633
+          ],
+          "version": "32c26ea3719067d2a49d8250fa428617f3138832/source-4fd975be886b5574cdc629264013a155906307d787cee9a733883e9c7d2eb1ce",
+          "cv": [
+            0.01117326602278602,
+            0.00792765567870028,
+            0.008209807370854366
+          ]
+        },
+        "w2c2-unchecked": {
+          "medianNs": 290.070168127538,
+          "processMediansNs": [
+            290.070168127538,
+            297.007101434887,
+            289.72477462254415
+          ],
+          "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+          "cv": [
+            0.008399989463726484,
+            0.011886605258861064,
+            0.007685232129075176
+          ]
+        }
+      },
+      "speedup": 613.3835585987995,
+      "currentVsPeer": 0.5722798917445688
+    }
+  ],
+  "performanceRaw": {
+    "launches": 3,
+    "samples": 5,
+    "targetNs": 50000000,
+    "cpu": null,
+    "affinity": "taskpolicy-priority",
+    "rows": [
+      {
+        "engine": "before",
+        "version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 98867.2600619195,
+        "sampleSdNs": 1067.3392583213624,
+        "cv": 0.010873434593139804,
+        "wallNs": 802395709,
+        "timedRuntimeNs": 795795167,
+        "requestedOperations": 646,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 125985791,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 62556833,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 63894084,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 62766708,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 63868250,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 63971792,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 0
+      },
+      {
+        "engine": "before",
+        "version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 97862.00313479624,
+        "sampleSdNs": 1116.6025288795379,
+        "cv": 0.011391912850355665,
+        "wallNs": 782947667,
+        "timedRuntimeNs": 777446414,
+        "requestedOperations": 638,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 124184750,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 62435958,
+            "operations": 638,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 61913541,
+            "operations": 638,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 63268292,
+            "operations": 638,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 63268750,
+            "operations": 638,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 61788083,
+            "operations": 638,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 1
+      },
+      {
+        "engine": "before",
+        "version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 98662.02936630603,
+        "sampleSdNs": 1158.5302694264599,
+        "cv": 0.011785677463459985,
+        "wallNs": 791024959,
+        "timedRuntimeNs": 785848419,
+        "requestedOperations": 647,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 126397501,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 62640000,
+            "operations": 647,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 63834333,
+            "operations": 647,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 64140333,
+            "operations": 647,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 62999208,
+            "operations": 647,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 64386125,
+            "operations": 647,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 2
+      },
+      {
+        "engine": "before",
+        "version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 101728.77795031056,
+        "sampleSdNs": 1304.1489179458702,
+        "cv": 0.012894535207387793,
+        "wallNs": 811019292,
+        "timedRuntimeNs": 805984877,
+        "requestedOperations": 644,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 127683875,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 63982417,
+            "operations": 644,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 65645083,
+            "operations": 644,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 65991166,
+            "operations": 644,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 65513333,
+            "operations": 644,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 64537709,
+            "operations": 644,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 0
+      },
+      {
+        "engine": "before",
+        "version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 101822.48310139166,
+        "sampleSdNs": 441.5305267981413,
+        "cv": 0.0043279208125462185,
+        "wallNs": 363437209,
+        "timedRuntimeNs": 357894043,
+        "requestedOperations": 503,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 100806250,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 51688417,
+            "operations": 503,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 51165459,
+            "operations": 503,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 51158000,
+            "operations": 503,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 51216709,
+            "operations": 503,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 51349417,
+            "operations": 503,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 1
+      },
+      {
+        "engine": "before",
+        "version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 179544.20970266042,
+        "sampleSdNs": 50519.04902282541,
+        "cv": 0.2701011114771501,
+        "wallNs": 1116105666,
+        "timedRuntimeNs": 1109992292,
+        "requestedOperations": 639,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 150067250,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 114728750,
+            "operations": 639,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 86203542,
+            "operations": 639,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 124733250,
+            "operations": 639,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 100832959,
+            "operations": 639,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 171086458,
+            "operations": 639,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 2
+      },
+      {
+        "engine": "current",
+        "version": "32c26ea3719067d2a49d8250fa428617f3138832/source-4fd975be886b5574cdc629264013a155906307d787cee9a733883e9c7d2eb1ce",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 170.74190173937916,
+        "sampleSdNs": 0.8735691314163276,
+        "cv": 0.005130072577074428,
+        "wallNs": 1234635042,
+        "timedRuntimeNs": 732073126,
+        "requestedOperations": 367085,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 126407126,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 62676791,
+            "operations": 367085,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 62772625,
+            "operations": 367085,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 61983750,
+            "operations": 367085,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 62425667,
+            "operations": 367085,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 62684625,
+            "operations": 367085,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 0
+      },
+      {
+        "engine": "current",
+        "version": "32c26ea3719067d2a49d8250fa428617f3138832/source-4fd975be886b5574cdc629264013a155906307d787cee9a733883e9c7d2eb1ce",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 171.53602529183925,
+        "sampleSdNs": 2.523299661487464,
+        "cv": 0.014729399704676332,
+        "wallNs": 818430875,
+        "timedRuntimeNs": 733548458,
+        "requestedOperations": 372294,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 128068833,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 64841958,
+            "operations": 372294,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 64527459,
+            "operations": 372294,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 63861833,
+            "operations": 372294,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 62947209,
+            "operations": 372294,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 62710750,
+            "operations": 372294,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 1
+      },
+      {
+        "engine": "current",
+        "version": "32c26ea3719067d2a49d8250fa428617f3138832/source-4fd975be886b5574cdc629264013a155906307d787cee9a733883e9c7d2eb1ce",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 167.48570550671974,
+        "sampleSdNs": 0.9567085471969758,
+        "cv": 0.005694140722824147,
+        "wallNs": 867677458,
+        "timedRuntimeNs": 797942083,
+        "requestedOperations": 374270,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 127016459,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 63470000,
+            "operations": 374270,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 62983417,
+            "operations": 374270,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 62625750,
+            "operations": 374270,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 62684875,
+            "operations": 374270,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 62653291,
+            "operations": 374270,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 2
+      },
+      {
+        "engine": "current",
+        "version": "32c26ea3719067d2a49d8250fa428617f3138832/source-4fd975be886b5574cdc629264013a155906307d787cee9a733883e9c7d2eb1ce",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 165.87165249705626,
+        "sampleSdNs": 1.8560594832838981,
+        "cv": 0.01117326602278602,
+        "wallNs": 773286625,
+        "timedRuntimeNs": 716713126,
+        "requestedOperations": 370276,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 124594083,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 62473084,
+            "operations": 370276,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 61824125,
+            "operations": 370276,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 61183417,
+            "operations": 370276,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 61418292,
+            "operations": 370276,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 60645125,
+            "operations": 370276,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 0
+      },
+      {
+        "engine": "current",
+        "version": "32c26ea3719067d2a49d8250fa428617f3138832/source-4fd975be886b5574cdc629264013a155906307d787cee9a733883e9c7d2eb1ce",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 168.67302823628432,
+        "sampleSdNs": 1.3382809737937638,
+        "cv": 0.00792765567870028,
+        "wallNs": 398161542,
+        "timedRuntimeNs": 354458499,
+        "requestedOperations": 299402,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 101736499,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 50099542,
+            "operations": 299402,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 50563166,
+            "operations": 299402,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 51184500,
+            "operations": 299402,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 50501042,
+            "operations": 299402,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 50364542,
+            "operations": 299402,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 1
+      },
+      {
+        "engine": "current",
+        "version": "32c26ea3719067d2a49d8250fa428617f3138832/source-4fd975be886b5574cdc629264013a155906307d787cee9a733883e9c7d2eb1ce",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 166.00132441435633,
+        "sampleSdNs": 1.3663984207954125,
+        "cv": 0.008209807370854366,
+        "wallNs": 784672125,
+        "timedRuntimeNs": 719778876,
+        "requestedOperations": 372240,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 124994750,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 61792333,
+            "operations": 372240,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 61369084,
+            "operations": 372240,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 61683916,
+            "operations": 372240,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 62263917,
+            "operations": 372240,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 62659375,
+            "operations": 372240,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 2
+      },
+      {
+        "engine": "w2c2-unchecked",
+        "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 290.9827331167485,
+        "sampleSdNs": 1.59302390695872,
+        "cv": 0.005473493921134536,
+        "wallNs": 2355740292,
+        "timedRuntimeNs": 761949416,
+        "requestedOperations": 217005,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 135114916,
+        "durationQualified": true,
+        "samples": [
+          {
+            "elapsed_ns": 62906959,
+            "index": 2,
+            "observations": [],
+            "operations": 217005,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63144708,
+            "index": 3,
+            "observations": [],
+            "operations": 217005,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63630541,
+            "index": 4,
+            "observations": [],
+            "operations": 217005,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 62762250,
+            "index": 5,
+            "observations": [],
+            "operations": 217005,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63344833,
+            "index": 6,
+            "observations": [],
+            "operations": 217005,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          }
+        ],
+        "launch": 0
+      },
+      {
+        "engine": "w2c2-unchecked",
+        "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 293.6429199974064,
+        "sampleSdNs": 1.0722273357137957,
+        "cv": 0.003651101496880753,
+        "wallNs": 2281016667,
+        "timedRuntimeNs": 756023916,
+        "requestedOperations": 215918,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 130954249,
+        "durationQualified": true,
+        "samples": [
+          {
+            "elapsed_ns": 63221500,
+            "index": 2,
+            "observations": [],
+            "operations": 215918,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63187000,
+            "index": 3,
+            "observations": [],
+            "operations": 215918,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63470166,
+            "index": 4,
+            "observations": [],
+            "operations": 215918,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63764209,
+            "index": 5,
+            "observations": [],
+            "operations": 215918,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63402792,
+            "index": 6,
+            "observations": [],
+            "operations": 215918,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          }
+        ],
+        "launch": 1
+      },
+      {
+        "engine": "w2c2-unchecked",
+        "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 292.1384374585246,
+        "sampleSdNs": 1.0674705241334992,
+        "cv": 0.0036574221021253065,
+        "wallNs": 2340500333,
+        "timedRuntimeNs": 807441794,
+        "requestedOperations": 218503,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 130212000,
+        "durationQualified": true,
+        "samples": [
+          {
+            "elapsed_ns": 63429959,
+            "index": 2,
+            "observations": [],
+            "operations": 218503,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63655875,
+            "index": 3,
+            "observations": [],
+            "operations": 218503,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 64006584,
+            "index": 4,
+            "observations": [],
+            "operations": 218503,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63940458,
+            "index": 5,
+            "observations": [],
+            "operations": 218503,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63833125,
+            "index": 6,
+            "observations": [],
+            "operations": 218503,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          }
+        ],
+        "launch": 2
+      },
+      {
+        "engine": "w2c2-unchecked",
+        "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 290.070168127538,
+        "sampleSdNs": 2.4493911406848388,
+        "cv": 0.008399989463726484,
+        "wallNs": 2383828209,
+        "timedRuntimeNs": 814519291,
+        "requestedOperations": 215967,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 139559959,
+        "durationQualified": true,
+        "samples": [
+          {
+            "elapsed_ns": 62612958,
+            "index": 2,
+            "observations": [],
+            "operations": 215967,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63713625,
+            "index": 3,
+            "observations": [],
+            "operations": 215967,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 62542875,
+            "index": 4,
+            "observations": [],
+            "operations": 215967,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 62645584,
+            "index": 5,
+            "observations": [],
+            "operations": 215967,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63358958,
+            "index": 6,
+            "observations": [],
+            "operations": 215967,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          }
+        ],
+        "launch": 0
+      },
+      {
+        "engine": "w2c2-unchecked",
+        "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 297.007101434887,
+        "sampleSdNs": 3.532663971448339,
+        "cv": 0.011886605258861064,
+        "wallNs": 1522363334,
+        "timedRuntimeNs": 365734251,
+        "requestedOperations": 171233,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 111282958,
+        "durationQualified": true,
+        "samples": [
+          {
+            "elapsed_ns": 50857417,
+            "index": 2,
+            "observations": [],
+            "operations": 171233,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 50823958,
+            "index": 3,
+            "observations": [],
+            "operations": 171233,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 50951250,
+            "index": 4,
+            "observations": [],
+            "operations": 171233,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 51761125,
+            "index": 5,
+            "observations": [],
+            "operations": 171233,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 50055959,
+            "index": 6,
+            "observations": [],
+            "operations": 171233,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          }
+        ],
+        "launch": 1
+      },
+      {
+        "engine": "w2c2-unchecked",
+        "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 289.72477462254415,
+        "sampleSdNs": 2.232886694322776,
+        "cv": 0.007685232129075176,
+        "wallNs": 2258594833,
+        "timedRuntimeNs": 736478290,
+        "requestedOperations": 218966,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 139211542,
+        "durationQualified": true,
+        "samples": [
+          {
+            "elapsed_ns": 63173375,
+            "index": 2,
+            "observations": [],
+            "operations": 218966,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 64342416,
+            "index": 3,
+            "observations": [],
+            "operations": 218966,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63883583,
+            "index": 4,
+            "observations": [],
+            "operations": 218966,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63439875,
+            "index": 5,
+            "observations": [],
+            "operations": 218966,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63255416,
+            "index": 6,
+            "observations": [],
+            "operations": 218966,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          }
+        ],
+        "launch": 2
+      }
+    ]
+  },
+  "earlierBaselineRaw": {
+    "launches": 3,
+    "samples": 5,
+    "targetNs": 50000000,
+    "cpu": null,
+    "affinity": "taskpolicy-priority",
+    "rows": [
+      {
+        "engine": "before",
+        "version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 98248.90247678019,
+        "sampleSdNs": 986.6329047332258,
+        "cv": 0.01000478150158602,
+        "wallNs": 824793750,
+        "timedRuntimeNs": 796855291,
+        "requestedOperations": 646,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 125481375,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 63468791,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 63177625,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 63253958,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 63900333,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 64729416,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 0
+      },
+      {
+        "engine": "before",
+        "version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 98208.33281733746,
+        "sampleSdNs": 1034.5649099873426,
+        "cv": 0.010575112139309242,
+        "wallNs": 793659750,
+        "timedRuntimeNs": 788222082,
+        "requestedOperations": 646,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 126876708,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 62023791,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 63446792,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 63702583,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 63375667,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 63442583,
+            "operations": 646,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 1
+      },
+      {
+        "engine": "before",
+        "version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 98583.26893353941,
+        "sampleSdNs": 1929.8409295380552,
+        "cv": 0.019549814776672062,
+        "wallNs": 777874375,
+        "timedRuntimeNs": 772330167,
+        "requestedOperations": 647,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 126848458,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 64916875,
+            "operations": 647,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 61901375,
+            "operations": 647,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 64985125,
+            "operations": 647,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 63753125,
+            "operations": 647,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 63783375,
+            "operations": 647,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 2
+      },
+      {
+        "engine": "before",
+        "version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 100124.36778115502,
+        "sampleSdNs": 1587.004258980879,
+        "cv": 0.015929785337173243,
+        "wallNs": 810503416,
+        "timedRuntimeNs": 805222044,
+        "requestedOperations": 658,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 130831375,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 65267625,
+            "operations": 658,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 65881834,
+            "operations": 658,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 63937458,
+            "operations": 658,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 65936625,
+            "operations": 658,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 66742583,
+            "operations": 658,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 0
+      },
+      {
+        "engine": "before",
+        "version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 101151.16975308642,
+        "sampleSdNs": 1370.269812109372,
+        "cv": 0.013665434505705476,
+        "wallNs": 810832958,
+        "timedRuntimeNs": 805918082,
+        "requestedOperations": 648,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 127395583,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 64250166,
+            "operations": 648,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 65545958,
+            "operations": 648,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 63793500,
+            "operations": 648,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 65688209,
+            "operations": 648,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 65605667,
+            "operations": 648,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 1
+      },
+      {
+        "engine": "before",
+        "version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 99213.87866927593,
+        "sampleSdNs": 1500.7406038686756,
+        "cv": 0.015019956902791605,
+        "wallNs": 362949000,
+        "timedRuntimeNs": 358532083,
+        "requestedOperations": 511,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 102742125,
+        "durationQualified": true,
+        "samples": [
+          {
+            "index": 2,
+            "warmup": false,
+            "elapsed_ns": 50567667,
+            "operations": 511,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 3,
+            "warmup": false,
+            "elapsed_ns": 51007625,
+            "operations": 511,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 4,
+            "warmup": false,
+            "elapsed_ns": 52394667,
+            "operations": 511,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 5,
+            "warmup": false,
+            "elapsed_ns": 50698292,
+            "operations": 511,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          },
+          {
+            "index": 6,
+            "warmup": false,
+            "elapsed_ns": 50618250,
+            "operations": 511,
+            "sample_type": "batch_average",
+            "verified": true,
+            "result": [
+              "786432"
+            ]
+          }
+        ],
+        "launch": 2
+      },
+      {
+        "engine": "w2c2-unchecked",
+        "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 284.6333459458256,
+        "sampleSdNs": 3.0311641798020417,
+        "cv": 0.010689142537827425,
+        "wallNs": 2168332792,
+        "timedRuntimeNs": 506390578,
+        "requestedOperations": 224645,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 132001416,
+        "durationQualified": true,
+        "samples": [
+          {
+            "elapsed_ns": 64577333,
+            "index": 2,
+            "observations": [],
+            "operations": 224645,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63941458,
+            "index": 3,
+            "observations": [],
+            "operations": 224645,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63120416,
+            "index": 4,
+            "observations": [],
+            "operations": 224645,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63965833,
+            "index": 5,
+            "observations": [],
+            "operations": 224645,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 62912500,
+            "index": 6,
+            "observations": [],
+            "operations": 224645,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          }
+        ],
+        "launch": 0
+      },
+      {
+        "engine": "w2c2-unchecked",
+        "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 282.0809220704593,
+        "sampleSdNs": 2.18991360607912,
+        "cv": 0.007777534523949134,
+        "wallNs": 2234103959,
+        "timedRuntimeNs": 729611876,
+        "requestedOperations": 226230,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 144331208,
+        "durationQualified": true,
+        "samples": [
+          {
+            "elapsed_ns": 62928875,
+            "index": 2,
+            "observations": [],
+            "operations": 226230,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63552125,
+            "index": 3,
+            "observations": [],
+            "operations": 226230,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63815167,
+            "index": 4,
+            "observations": [],
+            "operations": 226230,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 64225709,
+            "index": 5,
+            "observations": [],
+            "operations": 226230,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63975042,
+            "index": 6,
+            "observations": [],
+            "operations": 226230,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          }
+        ],
+        "launch": 1
+      },
+      {
+        "engine": "w2c2-unchecked",
+        "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifactSha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 283.4150765468418,
+        "sampleSdNs": 2.115892596141428,
+        "cv": 0.007466446224571204,
+        "wallNs": 2258007125,
+        "timedRuntimeNs": 752914000,
+        "requestedOperations": 221629,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 129157333,
+        "durationQualified": true,
+        "samples": [
+          {
+            "elapsed_ns": 62813000,
+            "index": 2,
+            "observations": [],
+            "operations": 221629,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 62434250,
+            "index": 3,
+            "observations": [],
+            "operations": 221629,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 62253416,
+            "index": 4,
+            "observations": [],
+            "operations": 221629,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63189459,
+            "index": 5,
+            "observations": [],
+            "operations": 221629,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 63343584,
+            "index": 6,
+            "observations": [],
+            "operations": 221629,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          }
+        ],
+        "launch": 2
+      },
+      {
+        "engine": "w2c2-unchecked",
+        "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 297.843582972335,
+        "sampleSdNs": 7.868497706321077,
+        "cv": 0.026353694479970307,
+        "wallNs": 2301932334,
+        "timedRuntimeNs": 778196627,
+        "requestedOperations": 221146,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 134998584,
+        "durationQualified": true,
+        "samples": [
+          {
+            "elapsed_ns": 63824959,
+            "index": 2,
+            "observations": [],
+            "operations": 221146,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 64946917,
+            "index": 3,
+            "observations": [],
+            "operations": 221146,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 65866917,
+            "index": 4,
+            "observations": [],
+            "operations": 221146,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 67500583,
+            "index": 5,
+            "observations": [],
+            "operations": 221146,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 68001583,
+            "index": 6,
+            "observations": [],
+            "operations": 221146,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          }
+        ],
+        "launch": 0
+      },
+      {
+        "engine": "w2c2-unchecked",
+        "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 284.6552776783173,
+        "sampleSdNs": 1.3553541238670463,
+        "cv": 0.004758999566016691,
+        "wallNs": 2349390458,
+        "timedRuntimeNs": 752540168,
+        "requestedOperations": 217842,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 130401375,
+        "durationQualified": true,
+        "samples": [
+          {
+            "elapsed_ns": 62085542,
+            "index": 2,
+            "observations": [],
+            "operations": 217842,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 62009875,
+            "index": 3,
+            "observations": [],
+            "operations": 217842,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 61651292,
+            "index": 4,
+            "observations": [],
+            "operations": 217842,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 61981042,
+            "index": 5,
+            "observations": [],
+            "operations": 217842,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 62477208,
+            "index": 6,
+            "observations": [],
+            "operations": 217842,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          }
+        ],
+        "launch": 1
+      },
+      {
+        "engine": "w2c2-unchecked",
+        "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifactSha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "reset": "stateless",
+        "unitsPerInvocation": 262144,
+        "status": "ok",
+        "medianNs": 316.2540546802595,
+        "sampleSdNs": 12.12631444509869,
+        "cv": 0.039071786971075106,
+        "wallNs": 2337877416,
+        "timedRuntimeNs": 794451334,
+        "requestedOperations": 215800,
+        "warmupBatches": 2,
+        "warmupElapsedNs": 138822292,
+        "durationQualified": true,
+        "samples": [
+          {
+            "elapsed_ns": 62386084,
+            "index": 2,
+            "observations": [],
+            "operations": 215800,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 68247625,
+            "index": 3,
+            "observations": [],
+            "operations": 215800,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 68350208,
+            "index": 4,
+            "observations": [],
+            "operations": 215800,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 68630042,
+            "index": 5,
+            "observations": [],
+            "operations": 215800,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          },
+          {
+            "elapsed_ns": 67264333,
+            "index": 6,
+            "observations": [],
+            "operations": 215800,
+            "result": [
+              "786432"
+            ],
+            "sample_type": "batch_average",
+            "verified": true,
+            "warmup": false
+          }
+        ],
+        "launch": 2
+      }
+    ]
+  },
+  "performancePlan": {
+    "output": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-write-current.json",
+    "lockRoot": "/Users/work/Code/Wago/wago/.validation/wasm3-parity",
+    "launches": 3,
+    "samples": 5,
+    "targetNs": 50000000,
+    "maxOperations": 1000000,
+    "workloads": [
+      {
+        "schema": 1,
+        "id": "features/core-glb/global-swap/performance-4096x64",
+        "family": "features",
+        "artifact": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/feature-refresh-oct13-corpus/artifacts/core-glb-global-swap.wasm",
+        "sha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "abi": "core",
+        "features": [
+          "core-glb"
+        ],
+        "export": "performance",
+        "args": [
+          4096
+        ],
+        "work_unit": "feature_operation",
+        "units_per_invocation": 262144,
+        "reset": "stateless",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            786432
+          ]
+        },
+        "license": "MIT",
+        "source": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/feature-refresh-oct13-corpus/sources/core-glb-global-swap.wat",
+        "generator": "wasm-fyi-feature-corpus-v1",
+        "dimension": "operations",
+        "size": 4096,
+        "provenance": {
+          "feature": "core-glb",
+          "baseline": false,
+          "scope": "execution",
+          "recipe": {
+            "source": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/feature-refresh-oct13-corpus/sources/core-glb-global-swap.wat",
+            "sourceSha256": "88ef0f2a43854829897aba5c31f2f44c34995cb8559cde2e75cea743393c4746",
+            "artifact": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/feature-refresh-oct13-corpus/artifacts/core-glb-global-swap.wasm",
+            "sha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+            "compiler": "wasm-tools 1.260.0",
+            "originalArtifactSha256": "5134bb4eb96804349b4fa5c2ccb46422670a913b922674b0e22c82993b909e3b",
+            "repeats": 64,
+            "retainedGcRoots": false
+          },
+          "oraclePolicy": "independent deterministic arithmetic or exact stream digest; never inferred from measured runtime output",
+          "performance": true,
+          "performancePolicy": {
+            "repeats": 64,
+            "minimumBatchNs": 50000000,
+            "independentLaunches": 1,
+            "warmupBatches": 0,
+            "retainedGcRoots": false,
+            "originalSize": 4096,
+            "scope": "execution"
+          }
+        }
+      },
+      {
+        "schema": 1,
+        "id": "features/mutable-globals/global-swap/performance-4096x64",
+        "family": "features",
+        "artifact": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/feature-refresh-oct13-corpus/artifacts/mutable-globals-global-swap.wasm",
+        "sha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "abi": "core",
+        "features": [
+          "mutable-globals"
+        ],
+        "export": "performance",
+        "args": [
+          4096
+        ],
+        "work_unit": "feature_operation",
+        "units_per_invocation": 262144,
+        "reset": "stateless",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            786432
+          ]
+        },
+        "license": "MIT",
+        "source": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/feature-refresh-oct13-corpus/sources/mutable-globals-global-swap.wat",
+        "generator": "wasm-fyi-feature-corpus-v1",
+        "dimension": "operations",
+        "size": 4096,
+        "provenance": {
+          "feature": "mutable-globals",
+          "baseline": false,
+          "scope": "execution",
+          "recipe": {
+            "source": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/feature-refresh-oct13-corpus/sources/mutable-globals-global-swap.wat",
+            "sourceSha256": "6f35916401913db5fa279a485c5066ed9055c5119af3947d904ad85110b9d868",
+            "artifact": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/feature-refresh-oct13-corpus/artifacts/mutable-globals-global-swap.wasm",
+            "sha256": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+            "compiler": "wasm-tools 1.260.0",
+            "originalArtifactSha256": "b6b0896859e2ddd84cf5b822859d4734af4b5561b12f4a63ccae580677d5ddc2",
+            "repeats": 64,
+            "retainedGcRoots": false
+          },
+          "oraclePolicy": "independent deterministic arithmetic or exact stream digest; never inferred from measured runtime output",
+          "performance": true,
+          "performancePolicy": {
+            "repeats": 64,
+            "minimumBatchNs": 50000000,
+            "independentLaunches": 1,
+            "warmupBatches": 0,
+            "retainedGcRoots": false,
+            "originalSize": 4096,
+            "scope": "execution"
+          }
+        }
+      }
+    ],
+    "configurations": [
+      {
+        "id": "before",
+        "command": [
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/adapter-leaf-alias"
+        ],
+        "cwd": "/Users/work/Code/Tools/wasm-bench"
+      },
+      {
+        "id": "current",
+        "command": [
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/adapter-global-write"
+        ],
+        "cwd": "/Users/work/Code/Tools/wasm-bench"
+      },
+      {
+        "id": "w2c2-unchecked",
+        "command": [
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/aot-adapter/target/release/adapter-native",
+          "--runtime=w2c2-clang",
+          "--translator=/Users/work/Code/Wago/wago/.validation/wasm3-parity/w2c2-peer-sdk/bin/w2c2",
+          "--sdk=/Users/work/Code/Wago/wago/.validation/wasm3-parity/w2c2-peer-sdk",
+          "--cc=/Library/Developer/CommandLineTools/usr/bin/clang",
+          "--cflags=[\"-O3\",\"-march=native\",\"-fno-strict-aliasing\",\"-DWASM_THREADS_PTHREADS\",\"-pthread\",\"-DW2C2_RUNTIME_CHECKS=0\",\"/Users/work/Code/Wago/wago/.validation/wasm3-parity/w2c2-peer-sdk/futex/futex.c\",\"/Users/work/Code/Wago/wago/.validation/wasm3-parity/w2c2-peer-sdk/futex/list.c\",\"/Users/work/Code/Wago/wago/.validation/wasm3-parity/w2c2-peer-sdk/futex/map.c\"]"
+        ],
+        "cwd": "/Users/work/Code/Wago/wago/.validation/wasm3-parity",
+        "env": {
+          "SDKROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+        }
+      }
+    ]
+  },
+  "compileSummary": {
+    "core3": {
+      "before": {
+        "Modules": 218,
+        "Passes": 100,
+        "Compiles": 21800,
+        "CodeBytes": 17744400,
+        "ElapsedNS": 407262834,
+        "AllocBytes": 776871664,
+        "Allocations": 2646738,
+        "maximum resident set size": 14434304,
+        "peak memory footprint": 9568784,
+        "instructions retired": 6242757806,
+        "cycles elapsed": 1712746110
+      },
+      "current": {
+        "Modules": 218,
+        "Passes": 100,
+        "Compiles": 21800,
+        "CodeBytes": 17744400,
+        "ElapsedNS": 404299709,
+        "AllocBytes": 776871744,
+        "Allocations": 2646738,
+        "maximum resident set size": 14024704,
+        "peak memory footprint": 9372200,
+        "instructions retired": 6275936192,
+        "cycles elapsed": 1697854561
+      },
+      "latencyPercent": -0.727570687189194
+    },
+    "threads": {
+      "before": {
+        "Modules": 27,
+        "Passes": 100,
+        "Compiles": 2700,
+        "CodeBytes": 1611200,
+        "ElapsedNS": 46803167,
+        "AllocBytes": 85165512,
+        "Allocations": 370151,
+        "maximum resident set size": 12976128,
+        "peak memory footprint": 8815120,
+        "instructions retired": 859162431,
+        "cycles elapsed": 207627300
+      },
+      "current": {
+        "Modules": 27,
+        "Passes": 100,
+        "Compiles": 2700,
+        "CodeBytes": 1611200,
+        "ElapsedNS": 46962667,
+        "AllocBytes": 85165512,
+        "Allocations": 370151,
+        "maximum resident set size": 12943360,
+        "peak memory footprint": 8798736,
+        "instructions retired": 863221429,
+        "cycles elapsed": 207344429
+      },
+      "latencyPercent": 0.3407889043064216
+    }
+  },
+  "nativeCompileSummary": {
+    "before": {
+      "BenchmarkCompileSmallScalar": {
+        "nsPerOp": 8974.0,
+        "bytesPerOp": 19184,
+        "allocationsPerOp": 74
+      },
+      "BenchmarkCompileSmallScalarCore3": {
+        "nsPerOp": 8937.0,
+        "bytesPerOp": 19040,
+        "allocationsPerOp": 73
+      },
+      "BenchmarkCompileImportedWorkers/p1": {
+        "nsPerOp": 25007856.0,
+        "bytesPerOp": 3418633,
+        "allocationsPerOp": 93
+      }
+    },
+    "current": {
+      "BenchmarkCompileSmallScalar": {
+        "nsPerOp": 8944.0,
+        "bytesPerOp": 19184,
+        "allocationsPerOp": 74
+      },
+      "BenchmarkCompileSmallScalarCore3": {
+        "nsPerOp": 8816.0,
+        "bytesPerOp": 19040,
+        "allocationsPerOp": 73
+      },
+      "BenchmarkCompileImportedWorkers/p1": {
+        "nsPerOp": 25388003.0,
+        "bytesPerOp": 3418624,
+        "allocationsPerOp": 93
+      }
+    }
+  },
+  "compileRaw": {
+    "gomaxprocs": 1,
+    "rows": [
+      {
+        "kind": "native",
+        "label": "before",
+        "revision": "3c8b9b52",
+        "command": [
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/leaf-alias-current-native.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkCompileSmallScalar(Core3)?$|^BenchmarkCompileImportedWorkers$/^p1$",
+          "-test.benchtime=300ms",
+          "-test.benchmem",
+          "-test.count=1"
+        ],
+        "stdout": "goos: darwin\ngoarch: arm64\npkg: github.com/wago-org/wago/src/wago\ncpu: Apple M4 Max\nBenchmarkCompileSmallScalar      \t   38170\t      9071 ns/op\t   19184 B/op\t      74 allocs/op\nBenchmarkCompileSmallScalarCore3 \t   40414\t      8937 ns/op\t   19040 B/op\t      73 allocs/op\nBenchmarkCompileImportedWorkers/p1         \t      12\t  25146913 ns/op\t   1587220 code-B\t 3418636 B/op\t      93 allocs/op\nPASS\n",
+        "stderr": "",
+        "exit_code": 0
+      },
+      {
+        "kind": "native",
+        "label": "current",
+        "revision": "32c26ea3719067d2a49d8250fa428617f3138832",
+        "command": [
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-write-current-native.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkCompileSmallScalar(Core3)?$|^BenchmarkCompileImportedWorkers$/^p1$",
+          "-test.benchtime=300ms",
+          "-test.benchmem",
+          "-test.count=1"
+        ],
+        "stdout": "goos: darwin\ngoarch: arm64\npkg: github.com/wago-org/wago/src/wago\ncpu: Apple M4 Max\nBenchmarkCompileSmallScalar      \t   34528\t      8972 ns/op\t   19184 B/op\t      74 allocs/op\nBenchmarkCompileSmallScalarCore3 \t   40992\t      9025 ns/op\t   19040 B/op\t      73 allocs/op\nBenchmarkCompileImportedWorkers/p1         \t      13\t  25496029 ns/op\t   1587220 code-B\t 3418609 B/op\t      92 allocs/op\nPASS\n",
+        "stderr": "",
+        "exit_code": 0
+      },
+      {
+        "kind": "native",
+        "label": "current",
+        "revision": "32c26ea3719067d2a49d8250fa428617f3138832",
+        "command": [
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-write-current-native.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkCompileSmallScalar(Core3)?$|^BenchmarkCompileImportedWorkers$/^p1$",
+          "-test.benchtime=300ms",
+          "-test.benchmem",
+          "-test.count=1"
+        ],
+        "stdout": "goos: darwin\ngoarch: arm64\npkg: github.com/wago-org/wago/src/wago\ncpu: Apple M4 Max\nBenchmarkCompileSmallScalar      \t   39858\t      8944 ns/op\t   19184 B/op\t      74 allocs/op\nBenchmarkCompileSmallScalarCore3 \t   40768\t      8760 ns/op\t   19040 B/op\t      73 allocs/op\nBenchmarkCompileImportedWorkers/p1         \t      13\t  25388003 ns/op\t   1587220 code-B\t 3418624 B/op\t      93 allocs/op\nPASS\n",
+        "stderr": "",
+        "exit_code": 0
+      },
+      {
+        "kind": "native",
+        "label": "before",
+        "revision": "3c8b9b52",
+        "command": [
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/leaf-alias-current-native.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkCompileSmallScalar(Core3)?$|^BenchmarkCompileImportedWorkers$/^p1$",
+          "-test.benchtime=300ms",
+          "-test.benchmem",
+          "-test.count=1"
+        ],
+        "stdout": "goos: darwin\ngoarch: arm64\npkg: github.com/wago-org/wago/src/wago\ncpu: Apple M4 Max\nBenchmarkCompileSmallScalar      \t   39952\t      8888 ns/op\t   19184 B/op\t      74 allocs/op\nBenchmarkCompileSmallScalarCore3 \t   40242\t      8967 ns/op\t   19040 B/op\t      73 allocs/op\nBenchmarkCompileImportedWorkers/p1         \t      13\t  24807606 ns/op\t   1587220 code-B\t 3418622 B/op\t      93 allocs/op\nPASS\n",
+        "stderr": "",
+        "exit_code": 0
+      },
+      {
+        "kind": "native",
+        "label": "before",
+        "revision": "3c8b9b52",
+        "command": [
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/leaf-alias-current-native.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkCompileSmallScalar(Core3)?$|^BenchmarkCompileImportedWorkers$/^p1$",
+          "-test.benchtime=300ms",
+          "-test.benchmem",
+          "-test.count=1"
+        ],
+        "stdout": "goos: darwin\ngoarch: arm64\npkg: github.com/wago-org/wago/src/wago\ncpu: Apple M4 Max\nBenchmarkCompileSmallScalar      \t   39613\t      8974 ns/op\t   19184 B/op\t      74 allocs/op\nBenchmarkCompileSmallScalarCore3 \t   40314\t      8907 ns/op\t   19040 B/op\t      73 allocs/op\nBenchmarkCompileImportedWorkers/p1         \t      13\t  25007856 ns/op\t   1587220 code-B\t 3418633 B/op\t      93 allocs/op\nPASS\n",
+        "stderr": "",
+        "exit_code": 0
+      },
+      {
+        "kind": "native",
+        "label": "current",
+        "revision": "32c26ea3719067d2a49d8250fa428617f3138832",
+        "command": [
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-write-current-native.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkCompileSmallScalar(Core3)?$|^BenchmarkCompileImportedWorkers$/^p1$",
+          "-test.benchtime=300ms",
+          "-test.benchmem",
+          "-test.count=1"
+        ],
+        "stdout": "goos: darwin\ngoarch: arm64\npkg: github.com/wago-org/wago/src/wago\ncpu: Apple M4 Max\nBenchmarkCompileSmallScalar      \t   39369\t      8869 ns/op\t   19184 B/op\t      74 allocs/op\nBenchmarkCompileSmallScalarCore3 \t   41002\t      8816 ns/op\t   19040 B/op\t      73 allocs/op\nBenchmarkCompileImportedWorkers/p1         \t      13\t  25162804 ns/op\t   1587220 code-B\t 3418636 B/op\t      93 allocs/op\nPASS\n",
+        "stderr": "",
+        "exit_code": 0
+      },
+      {
+        "kind": "core3",
+        "label": "before",
+        "revision": "3c8b9b52",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/leaf-alias-current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/core3-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":218,\"Passes\":100,\"Compiles\":21800,\"CodeBytes\":17744400,\"ElapsedNS\":406676167,\"AllocBytes\":776871664,\"Allocations\":2646738}\n",
+        "stderr": "        0.43 real         0.40 user         0.01 sys\n            13975552  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 754  page reclaims\n                 308  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   2  signals received\n                 220  voluntary context switches\n                 851  involuntary context switches\n          6311331897  instructions retired\n          1720579880  cycles elapsed\n             9224720  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "core3",
+        "label": "current",
+        "revision": "32c26ea3719067d2a49d8250fa428617f3138832",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-write-current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/core3-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":218,\"Passes\":100,\"Compiles\":21800,\"CodeBytes\":17744400,\"ElapsedNS\":421378750,\"AllocBytes\":776871744,\"Allocations\":2646738}\n",
+        "stderr": "        0.65 real         0.42 user         0.01 sys\n            13991936  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1061  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   3  signals received\n                   0  voluntary context switches\n                 832  involuntary context switches\n          6275936192  instructions retired\n          1729688464  cycles elapsed\n             9372200  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "core3",
+        "label": "current",
+        "revision": "32c26ea3719067d2a49d8250fa428617f3138832",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-write-current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/core3-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":218,\"Passes\":100,\"Compiles\":21800,\"CodeBytes\":17744400,\"ElapsedNS\":403600625,\"AllocBytes\":776872016,\"Allocations\":2646742}\n",
+        "stderr": "        0.41 real         0.40 user         0.00 sys\n            14024704  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1063  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 101  involuntary context switches\n          6282283232  instructions retired\n          1697854561  cycles elapsed\n             9257512  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "core3",
+        "label": "before",
+        "revision": "3c8b9b52",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/leaf-alias-current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/core3-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":218,\"Passes\":100,\"Compiles\":21800,\"CodeBytes\":17744400,\"ElapsedNS\":407262834,\"AllocBytes\":776871320,\"Allocations\":2646736}\n",
+        "stderr": "        0.41 real         0.40 user         0.00 sys\n            14434304  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1080  page reclaims\n                   8  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 663  involuntary context switches\n          6238557680  instructions retired\n          1692029228  cycles elapsed\n             9634344  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "core3",
+        "label": "before",
+        "revision": "3c8b9b52",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/leaf-alias-current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/core3-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":218,\"Passes\":100,\"Compiles\":21800,\"CodeBytes\":17744400,\"ElapsedNS\":408362958,\"AllocBytes\":776871728,\"Allocations\":2646739}\n",
+        "stderr": "        0.41 real         0.40 user         0.00 sys\n            14450688  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1086  page reclaims\n                   3  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 663  involuntary context switches\n          6242757806  instructions retired\n          1712746110  cycles elapsed\n             9568784  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "core3",
+        "label": "current",
+        "revision": "32c26ea3719067d2a49d8250fa428617f3138832",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-write-current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/core3-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":218,\"Passes\":100,\"Compiles\":21800,\"CodeBytes\":17744400,\"ElapsedNS\":404299709,\"AllocBytes\":776871120,\"Allocations\":2646731}\n",
+        "stderr": "        0.41 real         0.40 user         0.00 sys\n            14352384  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1083  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   1  signals received\n                   0  voluntary context switches\n                 807  involuntary context switches\n          6229014012  instructions retired\n          1694637268  cycles elapsed\n             9568784  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "threads",
+        "label": "before",
+        "revision": "3c8b9b52",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/leaf-alias-threads-current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/threads-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":27,\"Passes\":100,\"Compiles\":2700,\"CodeBytes\":1611200,\"ElapsedNS\":46019000,\"AllocBytes\":85165528,\"Allocations\":370151}\n",
+        "stderr": "        0.06 real         0.04 user         0.00 sys\n            13205504  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 748  page reclaims\n                 272  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   7  signals received\n                  35  voluntary context switches\n                 231  involuntary context switches\n           888410814  instructions retired\n           220194428  cycles elapsed\n             9060904  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "threads",
+        "label": "current",
+        "revision": "32c26ea3719067d2a49d8250fa428617f3138832",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-write-threads-current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/threads-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":27,\"Passes\":100,\"Compiles\":2700,\"CodeBytes\":1611200,\"ElapsedNS\":62783334,\"AllocBytes\":85165512,\"Allocations\":370151}\n",
+        "stderr": "        0.29 real         0.06 user         0.00 sys\n            13139968  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                1009  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   1  signals received\n                   0  voluntary context switches\n                 123  involuntary context switches\n           871012790  instructions retired\n           218357099  cycles elapsed\n             8995344  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "threads",
+        "label": "current",
+        "revision": "32c26ea3719067d2a49d8250fa428617f3138832",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-write-threads-current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/threads-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":27,\"Passes\":100,\"Compiles\":2700,\"CodeBytes\":1611200,\"ElapsedNS\":46962667,\"AllocBytes\":85165512,\"Allocations\":370151}\n",
+        "stderr": "        0.05 real         0.04 user         0.00 sys\n            12943360  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 997  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   1  signals received\n                   0  voluntary context switches\n                  77  involuntary context switches\n           863221429  instructions retired\n           207344429  cycles elapsed\n             8798736  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "threads",
+        "label": "before",
+        "revision": "3c8b9b52",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/leaf-alias-threads-current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/threads-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":27,\"Passes\":100,\"Compiles\":2700,\"CodeBytes\":1611200,\"ElapsedNS\":46803167,\"AllocBytes\":85165512,\"Allocations\":370151}\n",
+        "stderr": "        0.05 real         0.04 user         0.00 sys\n            12943360  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 997  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                 114  involuntary context switches\n           859162431  instructions retired\n           206959782  cycles elapsed\n             8782352  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "threads",
+        "label": "before",
+        "revision": "3c8b9b52",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/leaf-alias-threads-current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/threads-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":27,\"Passes\":100,\"Compiles\":2700,\"CodeBytes\":1611200,\"ElapsedNS\":47086500,\"AllocBytes\":85165512,\"Allocations\":370151}\n",
+        "stderr": "        0.05 real         0.04 user         0.00 sys\n            12976128  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 999  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  77  involuntary context switches\n           853957005  instructions retired\n           207627300  cycles elapsed\n             8815120  peak memory footprint\n",
+        "exit_code": 0
+      },
+      {
+        "kind": "threads",
+        "label": "current",
+        "revision": "32c26ea3719067d2a49d8250fa428617f3138832",
+        "command": [
+          "/usr/bin/time",
+          "-l",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/global-write-threads-current-corpus",
+          "/Users/work/Code/Wago/wago/.validation/wasm3-parity/threads-compile-files.json"
+        ],
+        "stdout": "{\"Modules\":27,\"Passes\":100,\"Compiles\":2700,\"CodeBytes\":1611200,\"ElapsedNS\":45931334,\"AllocBytes\":85165512,\"Allocations\":370151}\n",
+        "stderr": "        0.04 real         0.04 user         0.00 sys\n            12926976  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                 996  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                   0  voluntary context switches\n                  73  involuntary context switches\n           853818466  instructions retired\n           202803688  cycles elapsed\n             8782352  peak memory footprint\n",
+        "exit_code": 0
+      }
+    ]
+  },
+  "compileProcessOrder": [
+    "before",
+    "current",
+    "current",
+    "before",
+    "before",
+    "current"
+  ],
+  "compileGOMAXPROCS": 1,
+  "compileManifests": {
+    "core3-compile-files.json": [
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/alias-region-imported-memories/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/alias-region-imported-memories/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/call_indirect/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/instance/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/instance/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/instance/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/instance/commands.3.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/instance/commands.4.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/table_fill/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/table_get/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/table_grow/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/table_grow/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/table_grow/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/table_grow/commands.3.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/table_grow/commands.4.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/table_grow/commands.5.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/function-references/table_set/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/active-space-end-readonly/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/alias-region-array-copy/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/alias-region-table-copy/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/alloc-v128-struct/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/anyref_that_is_i31_barriers/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/anyref_that_is_i31_barriers/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-alloc-too-large/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-gc-refs/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-inline/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-inline/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-inline/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-inline/commands.3.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-inline/commands.4.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-inline/commands.5.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-inline/commands.6.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-inline/commands.7.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-inline/commands.8.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-non-gc-refs/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-non-gc-refs/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-non-gc-refs/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-non-gc-refs/commands.3.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-non-gc-refs/commands.4.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-non-gc-refs/commands.5.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-non-gc-refs/commands.6.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-non-gc-refs/commands.7.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-non-gc-refs/commands.8.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-copy-overwrite-i31/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-fill-gc-refs/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-fill-null-funcref/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-gc-refs/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-get-s/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-get-s/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-init-data/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-init-data/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-init-data/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-init-data/commands.3.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-len/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-len/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-new-data-missing-stack-map/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-new-data/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-new-data/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-new-data/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-new-data/commands.3.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-new-elem-missing-stack-map/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-new-elem/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-new-elem/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-set/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-set/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-set/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-set/commands.3.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-set/commands.4.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-set/commands.5.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-set/commands.6.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-set/commands.7.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-set/commands.8.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/array-types/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/arrays-of-different-types/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/big-array-overflow/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/binary-tree/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/br-on-cast/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/br-on-null/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/br-on-null/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/bump-ptr-can-move/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/const-expr-gc-simd/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/const-expr-gc-simd/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/const-expr-gc-simd/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/const-expr-gc/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/const-expr-gc/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/const-expr-gc/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/const-expr-gc/commands.3.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/const-expr-gc/commands.4.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/const-expr-gc/commands.5.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/const-expr-gc/commands.6.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/const-expr-gc/commands.7.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/const-expr-gc/commands.8.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/const-expr-gc/commands.9.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/deeply-nested-struct-survives-gc/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/empty-struct/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/eval-const-expr-once/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/extern-any-conversion/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/extern-any-conversion/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/extern-any-conversion/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/extern-any-conversion/commands.3.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/extern-any-conversion/commands.4.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/externrefs-can-be-i31refs/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/func-refs-in-gc-heap/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/funcref-field/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/fuzz-segfault/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/gc-pressure/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/gc-ref-array-pressure/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/heap-data-ptr-readonly/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/i31-as-externref-in-passive-element-segment/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/i31ref-in-struct/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/i31ref-of-global-initializers/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/i31ref-of-global-initializers/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/i31ref-of-global-initializers/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/i31ref-tables/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-10171/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-10182/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-10353/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-10397/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-10459/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-10467/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-11753/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-13034/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-13066/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-13095/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-13095/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-13134/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-13152/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-13152/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-13247/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-13417/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-13417/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-13417/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/issue-13480/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/kotlin-benchmark-bug/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/kotlin-benchmark-bug/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/linked-list/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/more-rec-groups-than-types/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/null-i31ref/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/packed-struct-fields/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/rec-group-funcs/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/rec-group-funcs/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-as-non-null/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-as-non-null/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-as-non-null/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-as-non-null/commands.3.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-eq/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test-readonly/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test-readonly/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test-readonly/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.10.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.11.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.12.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.13.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.14.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.15.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.16.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.17.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.18.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.19.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.20.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.21.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.22.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.3.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.4.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.5.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.6.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.7.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.8.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/ref-test/commands.9.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/semispace-capacity/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/struct-instructions/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/struct-instructions/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/struct-mixed-fields/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/struct-refs-survive-gc/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/struct-set-gc-ref/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/struct-types/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/struct-with-v128/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/gc/v128-with-gc-ref/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/issue11561/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/many-results-with-exceptions/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory-copy/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory-copy/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory-copy/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/bounds/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/bounds/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/codegen/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/linking-errors/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/linking-errors/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/linking/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/linking/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/linking/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/linking/commands.3.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/linking/commands.4.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/linking/commands.5.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/multi-memory/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/multi-memory/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/multi-memory/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/offsets/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/simd/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/tables-without-bulk-memory/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory64/tables-without-bulk-memory/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/memory_init/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/multi-memory/simple/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/multi-memory/simple/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/multi-memory/simple/commands.2.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/multi-memory/simple/commands.3.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/multi-memory/simple/commands.4.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/multi-memory/simple/commands.5.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/multi-memory/simple/commands.6.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/stack-args-exceptions/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/tail-call/loop-across-modules/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/tail-call/loop-across-modules/commands.1.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/traps-skip-catch-all/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/wast-syntax/commands.0.wasm",
+      "/Users/work/Code/Wago/wago/tests/corpus/regressions/wasmtime-core3/core/winch/table64/commands.0.wasm"
+    ],
+    "threads-compile-files.json": [
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-atomic-compare-exchange.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-atomic-fence.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-atomic-load-store.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-atomic-rmw-add.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-bulk-copy-overlap.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-bulk-fill.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-host-identity.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-host-opaque-identity.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-memory-size-zero-growth.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-memory64-atomic-load-store.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-memory64-passive-data-init.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-memory64-wait-mismatch-notify.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-non-atomic-scalar-baseline.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-ordinary-load-store.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-passive-data-init.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-private-secondary-atomic-load-store.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-private-secondary-atomic-rmw-add.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-private-secondary-copy.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-private-secondary-load-store.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-shared-secondary-atomic-load-store.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-shared-secondary-copy.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-shared-secondary-wait-size.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-simd-load-store.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-table-indirect-call.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-unshared-atomic-load-store.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-unshared-atomic-rmw-add.wasm",
+      "/Users/work/Code/Wago/wago/.validation/wasm3-parity/thread-shared-secondary-performance/artifacts/threads-wait-mismatch-notify.wasm"
+    ]
+  },
+  "peerRuntime": {
+    "schema": 1,
+    "repository": "JairusSW/w2c2",
+    "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+    "translatorSha256": "b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+    "sdkPackagingHelper": "../../Web/wasm.fyi/scripts/lib/c-transpiler-sdk.mjs:packageW2c2Runtime",
+    "runtimeFiles": [
+      {
+        "source": "w2c2/w2c2_base.h",
+        "installed": "w2c2_base.h",
+        "sha256": "418c75aa23e61d2e660c48bfa4c0e01cd308fb1ec12862625f4cf854f8abc990"
+      },
+      {
+        "source": "w2c2/w2c2_simd.h",
+        "installed": "w2c2_simd.h",
+        "sha256": "8cbc59a1f44002a7afe9d689cf6ffda9975e6dce0559a73d0d619fd2a961bcaf"
+      },
+      {
+        "source": "w2c2/simde/check.h",
+        "installed": "simde/check.h",
+        "sha256": "5fb278f5294101ce081f32ed0a931f994bf7dbd83ed69357703a2240a93151c6"
+      },
+      {
+        "source": "w2c2/simde/COPYING",
+        "installed": "simde/COPYING",
+        "sha256": "75ce0a8c5a7bff42fbd6f8f3b469b518132132c4f4948fb8d02b1ccb5d0df9d8"
+      },
+      {
+        "source": "w2c2/simde/debug-trap.h",
+        "installed": "simde/debug-trap.h",
+        "sha256": "be42d16f4786bae73f033eced87468782ee4d33539f847c6da2de5eed8a130a7"
+      },
+      {
+        "source": "w2c2/simde/hedley.h",
+        "installed": "simde/hedley.h",
+        "sha256": "8b325e7b78db665c5400c8d596d64e7f29b322b700469aeacbc1f5849f8344d0"
+      },
+      {
+        "source": "w2c2/simde/README.w2c2.md",
+        "installed": "simde/README.w2c2.md",
+        "sha256": "afb3b51cdcaa998f8be4dbf008f5dc6ce061f9aaba231e96b83438912e3654a4"
+      },
+      {
+        "source": "w2c2/simde/simde-align.h",
+        "installed": "simde/simde-align.h",
+        "sha256": "70d10319e003e0e8ea57a1fce40bce7d6d39e0d7ca7f3a295d95503c6ba69115"
+      },
+      {
+        "source": "w2c2/simde/simde-arch.h",
+        "installed": "simde/simde-arch.h",
+        "sha256": "d16418026c2e1f8c453225a70bebebb1e418d5326b036cc211845d1614fac698"
+      },
+      {
+        "source": "w2c2/simde/simde-common.h",
+        "installed": "simde/simde-common.h",
+        "sha256": "c9b2c8d5043dcefadaf17693a80eddfb0d5baff319660c9bf9efd9906d562b82"
+      },
+      {
+        "source": "w2c2/simde/simde-constify.h",
+        "installed": "simde/simde-constify.h",
+        "sha256": "08e029bce27502966e7ba0a0886e17aea3ee997f9ec25f962529364d7c7d711d"
+      },
+      {
+        "source": "w2c2/simde/simde-detect-clang.h",
+        "installed": "simde/simde-detect-clang.h",
+        "sha256": "20a8bf9a9324fd22d088e0d1514a800605d730f572865cb66b6f9520f1879026"
+      },
+      {
+        "source": "w2c2/simde/simde-diagnostic.h",
+        "installed": "simde/simde-diagnostic.h",
+        "sha256": "4f92f558ddf6ae57ad38ad0e279d88d0b582df2bd77fd616e9b0f51cbc78ee2b"
+      },
+      {
+        "source": "w2c2/simde/simde-features.h",
+        "installed": "simde/simde-features.h",
+        "sha256": "8777b1dd5b2b0247b3fb2eb6acb7e4e5261622365e125ed9929533de28aad860"
+      },
+      {
+        "source": "w2c2/simde/simde-math.h",
+        "installed": "simde/simde-math.h",
+        "sha256": "07140b20863f1f4905a2cdbe5b1d2ef1d6a5a2e8d623e046c2cc6b91e9235239"
+      },
+      {
+        "source": "w2c2/simde/WABT-LICENSE",
+        "installed": "simde/WABT-LICENSE",
+        "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+      },
+      {
+        "source": "w2c2/simde/wasm/simd128.h",
+        "installed": "simde/wasm/simd128.h",
+        "sha256": "5e217505fe1f1369cf65776f181e411f466629fa515281d25fcf6ee316809011"
+      },
+      {
+        "source": "w2c2/w2c2_base.h",
+        "installed": "w2c2/w2c2_base.h",
+        "sha256": "418c75aa23e61d2e660c48bfa4c0e01cd308fb1ec12862625f4cf854f8abc990"
+      },
+      {
+        "source": "futex/futex.h",
+        "installed": "futex/futex.h",
+        "sha256": "296c1f63dd241652decde607d11d09e059b655ff3206a7643f94a50ea5782fa6"
+      },
+      {
+        "source": "futex/futex.c",
+        "installed": "futex/futex.c",
+        "sha256": "a805121cb1087d6cdeabf48ee8a6518d47d4633bd925bc5b1fa34174585b8011"
+      },
+      {
+        "source": "futex/list.h",
+        "installed": "futex/list.h",
+        "sha256": "b7ecbd01483c6026a1f7c61fa8b121923e4b6cb630b3bd869533a0fbe0e7201d"
+      },
+      {
+        "source": "futex/list.c",
+        "installed": "futex/list.c",
+        "sha256": "c7b0d87f353617052855b38ad2099d55473fc2f418db24b54971c781b15a3fba"
+      },
+      {
+        "source": "futex/map.h",
+        "installed": "futex/map.h",
+        "sha256": "50712df7b04b71fb1862ee3efe3ce2048587be7f9bb79a8b97cb84d18b9a733b"
+      },
+      {
+        "source": "futex/map.c",
+        "installed": "futex/map.c",
+        "sha256": "e9acdcb2b69e9cc18c895c7b32f3fec85f841a9bba7f1b9a6e3e04ca48763792"
+      }
+    ],
+    "nativeSources": [
+      "futex/futex.c",
+      "futex/list.c",
+      "futex/map.c"
+    ],
+    "commonCompilerFlags": [
+      "-O3",
+      "-march=native",
+      "-fno-strict-aliasing",
+      "-DWASM_THREADS_PTHREADS",
+      "-pthread"
+    ],
+    "boundsProfiles": {
+      "checked": [
+        "-DW2C2_RUNTIME_CHECKS=1"
+      ],
+      "unchecked": [
+        "-DW2C2_RUNTIME_CHECKS=0"
+      ]
+    },
+    "linkPolicy": "Append all three installed nativeSources to the native compiler argument list for every prepared module. Compile guest, bridge, and runtime with the same bounds and threads flags. Keep their paths in captured compiler_flags metadata."
+  },
+  "nativeImages": {
+    "before": {
+      "metadata": {
+        "version": 1,
+        "module_sha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "sha256": "05dfd207d2fe511b4249505b06f56c987f21af3dc6ffcf94601fa14b58f1f8b8",
+        "architecture": "arm64",
+        "backend": "railshot",
+        "format": "raw-native-image",
+        "section_kind": "mixed_code_and_embedded_data",
+        "event": "compiled_snapshot",
+        "function_attribution": "unavailable",
+        "runtime_version": "3c8b9b525aa866a0de05361c020fbf6daa14c06d/source-b9b329d454fd46fd731c9e683f148a2449a59f6d1c72de194d3b7080131300e2"
+      },
+      "bytes": 464,
+      "sha256": "05dfd207d2fe511b4249505b06f56c987f21af3dc6ffcf94601fa14b58f1f8b8"
+    },
+    "current": {
+      "metadata": {
+        "version": 1,
+        "module_sha256": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "sha256": "7c5d87323bf9b14cc21ccb692d025613e7d5a5d20823ab49459ec56ae60f0cf7",
+        "architecture": "arm64",
+        "backend": "railshot",
+        "format": "raw-native-image",
+        "section_kind": "mixed_code_and_embedded_data",
+        "event": "compiled_snapshot",
+        "function_attribution": "unavailable",
+        "runtime_version": "32c26ea3719067d2a49d8250fa428617f3138832/source-4fd975be886b5574cdc629264013a155906307d787cee9a733883e9c7d2eb1ce"
+      },
+      "bytes": 496,
+      "sha256": "7c5d87323bf9b14cc21ccb692d025613e7d5a5d20823ab49459ec56ae60f0cf7"
+    }
+  },
+  "validation": {
+    "global-write-arm64.txt": "ok  \tgithub.com/wago-org/wago/src/wago\t0.330s\n",
+    "global-write-native-amd64.txt": "PASS\n",
+    "global-write-guard-race.txt": "ok  \tgithub.com/wago-org/wago/src/wago\t1.515s\n",
+    "global-write-conformance.txt": "ok  \tgithub.com/wago-org/wago/src/wago\t4.320s\n"
+  },
+  "remote": {
+    "host": "root@remote",
+    "architecture": "x86_64",
+    "tmuxSession": "wago-wasm3-parity",
+    "sshControlPersist": "24h",
+    "binarySha256": "43bf874da786670d98f7ab7bf3b99f5ee5ca98f67261f82759c5318f5a128b05",
+    "testRegex": "^TestInteger.*Sum",
+    "nativePerformance": "not measured"
+  },
+  "limitations": [
+    "Full feature parity remains open.",
+    "Full backend statistics were not rerun.",
+    "AMD64 execution performance was not measured."
+  ]
+}
