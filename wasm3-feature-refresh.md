@@ -209,3 +209,36 @@ The [raw report](docs/benchmarks/wasm3-2026-10-13/shared-backing-host-return.jso
 retains phase samples, hashes, compile rows, pilot evidence, validation logs,
 and local publication receipts. Database integrity and all 575,121 historical
 observations pass the post-publication audit. Full parity remains open.
+
+### Pure parity-selected affine reduction — 2026-10-13
+
+Wago `b1cd6134` reduces a proven pure i32 unit-stride sum whose affine branches
+are selected by counter parity (optionally inverted). The declared counter
+must start at zero; unsigned do-while semantics, final counter and modulo-2^32
+coefficients/accumulation are preserved. Both backends use arithmetic
+progressions. Memory, globals, calls, traps, nested control, mismatched counters
+and interruptible entries reject this proof. Independent scalar execution tests
+cover negative/overflowing coefficients, both ABIs, disabled optimization and
+artifact roundtrips. ARM64 and native AMD64 diagnostics check unsigned extrema
+and disabled/interruptible admission. Guarded race and pinned ARM64 Core 3/threads
+conformance pass.
+
+A fresh locked five-contract capture retains all four phases and 15 successful
+timing samples per row. For `core-ctl/branch-mixed/performance-4096x64`, steady
+execution drops from **164,513.5 ns** at `283ec369` to **127.7 ns**, versus
+**18,184.4 ns** at Clang w2c2 `f303ed27` (current/peer **0.00702**, about
+142x faster). The same-contract parity assertion fails on the old source at
+9.047x and passes on the new source. First-call drops from 181,208 ns to 208 ns.
+The four controls change +0.8% to +1.7%; global swap/accumulate remain faster
+than the peer, while division and rotate/popcount remain slower.
+
+The selected branch module's cold compile median rises 5.25% (23,792 to
+25,041 ns), and its native image grows 96 bytes (400 to 496). Alternating
+compile corpus pairs show Core 3 +2.59%, threads +1.52%, unchanged aggregate
+code sizes and effectively unchanged allocations. Median RSS changes -2.05%
+and +1.01%, respectively. This records the measured cost, not compile-cost
+neutrality. The [raw report](docs/benchmarks/wasm3-2026-10-13/parity-affine-sum.json)
+retains samples, hashes, parity checks, compile rows and validation output.
+Five new Wago captures are published locally; database integrity and all
+575,121 historical observations remain intact. Native AMD64 timing, callbacks,
+sign/bit operations, division and full feature parity remain open.

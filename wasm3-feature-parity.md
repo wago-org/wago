@@ -1011,3 +1011,17 @@ and [raw evidence](docs/benchmarks/wasm3-2026-10-13/shared-backing-host-return.j
 record compile latency (Core 3 -0.73%, threads +3.73%), unchanged code sizes,
 cache allocation cost, all phase captures and local receipts. This remains
 partial progress toward parity; no production deployment occurred.
+
+### Branch-mixed parity checkpoint — 2026-10-13
+
+Production `b1cd6134` implements a bounded pure parity-selected affine reduction
+on both backends. The matched local branch-mixed contract now takes 127.7 ns
+versus Clang w2c2's 18,184.4 ns (0.00702x), with verified results and a passing
+parity assertion. ARM64/native AMD64 execution and diagnostics, guarded race,
+and pinned ARM64 official suites pass. The
+[checkpoint](wasm3-feature-refresh.md#pure-parity-selected-affine-reduction--2026-10-13)
+and [raw report](docs/benchmarks/wasm3-2026-10-13/parity-affine-sum.json) retain
+proof boundaries, controls and compile/code costs: selected cold compile +5.25%,
+96 additional native bytes, corpus compile +2.59%/+1.52%. Five captures are
+added only to the local server. One more measured gap is resolved; full parity
+remains open and production is untouched.
