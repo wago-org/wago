@@ -278,8 +278,11 @@ type CompileOptions struct {
 	gcArrayInitData                   bool
 	gcArrayFill                       bool
 	gcArrayCopy                       bool
-	tailPlans                         *[]tailImportPlan
-	tailSiteBase                      uint32
+	// gcRootedScalar is selected only after the backend independently matches
+	// the bounded generic source shape and authenticates the frontend root plan.
+	gcRootedScalar bool
+	tailPlans      *[]tailImportPlan
+	tailSiteBase   uint32
 }
 
 // CodegenStats reports finalized local-function CodeBytes and FrameBytes.

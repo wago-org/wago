@@ -76,6 +76,29 @@ type internalReferenceTypes struct {
 	gcTypeSubtypingRefTestSingle      bool
 	gcTypeSubtypingRefTestVariant     uint8
 	gcTypeSubtypingDuplicateRecursive bool
+	// gcRootedScalar admits indexed heaps that name one of the immutable
+	// one-field structs authenticated by the whole-module generic profile.
+	gcRootedScalar bool
+}
+
+func (types internalReferenceTypes) rootedStruct(index uint32) bool {
+	if !types.gcRootedScalar {
+		return false
+	}
+	var signature *wasm.CompType
+	if types.scalar != nil {
+		if uint64(index) >= uint64(len(types.scalar)) {
+			return false
+		}
+		signature = types.scalar[index].signature
+	} else {
+		if uint64(index) >= uint64(len(types.decoded)) || len(types.decoded[index].SubTypes) != 1 {
+			return false
+		}
+		signature = &types.decoded[index].SubTypes[0].Comp
+	}
+	return signature != nil && signature.Kind == wasm.CompStruct && len(signature.Fields) == 1 &&
+		signature.Fields[0] == wasm.NewFieldType(wasm.StorageVal(wasm.I32), wasm.Const)
 }
 
 func (types internalReferenceTypes) function(index uint32) bool {
@@ -139,6 +162,9 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 		return false
 	}
 	heap := ref.Heap()
+	if types.gcRootedScalar && heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && types.rootedStruct(heap.Type().Index) {
+		return true
+	}
 	if types.gcStructBasic && heap == wasm.AbsHeap(wasm.HeapAny) {
 		return true
 	}
@@ -269,7 +295,7 @@ func internalExplicitReferenceTypeMode(r *wasm.Reader, typed bool, types interna
 			(types.gcTypeSubtypingRefTestVariant == 7 && heap >= 0 && heap < 8) ||
 			(types.gcTypeSubtypingRefTestVariant == 8 && heap == 0) ||
 			(types.gcTypeSubtypingRefTestVariant == 9 && heap == 2))
-	if heap != -16 && !declarationExtern && !gcAbstract && !runtimeSubtype && !refTestSubtype && !(typed && heap >= 0 && types.function(uint32(heap))) {
+	if heap != -16 && !declarationExtern && !gcAbstract && !runtimeSubtype && !refTestSubtype && !(typed && heap >= 0 && (types.function(uint32(heap)) || types.rootedStruct(uint32(heap)))) {
 		return false, unsupported("explicit reference type requires abstract func or an admitted function-type index")
 	}
 	return requiresTyped, nil

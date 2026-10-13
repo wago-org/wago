@@ -25,7 +25,7 @@ func AdmitProductionSource(data []byte) error {
 	if len(data) > MaxModuleBytes {
 		return unsupported("bounded source size")
 	}
-	if admitCore3RefDeclarationsWire(data) || isCore3RefIsNullExecutionWire(data) || admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) || admitPublicHostReferenceBoundaryWire(data) || admitPublicDynamicHostReferenceBoundaryWire(data) || admitMutableFunctionGlobalLocalCallWire(data) || admitRV64I31CoreWire(data) || admitRV64GCRefEqWire(data) || admitRV64GCRefTestTableWire(data) || admitRV64GCRefTestConcreteWire(data) || admitRV64GCRefTestAbstractWire(data) || admitRV64GCExternWire(data) || admitRV64GCRefCastAbstractWire(data) || admitRV64GCRefCastConcreteWire(data) || admitRV64GCBrOnCastAbstractWire(data) || admitRV64GCBrOnCastFailAbstractWire(data) || admitRV64GCBrOnCastConcreteWire(data) || admitRV64GCBrOnCastFailConcreteWire(data) || admitRV64GCBrOnCastNullabilityWire(data) || admitRV64GCBrOnCastFailNullabilityWire(data) || admitRV64GCTypeSubtypingDeclarationsWire(data) || admitRV64GCTypeSubtypingRecursiveFunctionsWire(data) || admitRV64GCTypeSubtypingRefFuncGlobalsWire(data) || admitRV64GCTypeSubtypingRuntimeCallCastWire(data) || admitRV64GCTypeSubtypingRuntimeFinalityCallCastWire(data) || admitRV64GCTypeSubtypingRuntimeTypedTableCallWire(data) || admitRV64GCTypeSubtypingRefTestSingleWire(data) || admitRV64GCTypeSubtypingLinkWire(data) || admitRV64GCTypeSubtypingFinalityLinkWire(data) || admitRV64GCTypeSubtypingStructLinkWire(data) || admitRV64GCTypeSubtypingStructProjectionLinkWire(data) || admitRV64GCTypeSubtypingStructMismatchLinkWire(data) || admitRV64GCTypeSubtypingIndependentStructLinkWire(data) || admitRV64GCTypeSubtypingExtendedProjectionLinkWire(data) || admitRV64GCTypeSubtypingDuplicateRecursiveLinkWire(data) || admitRV64GCTypeSubtypingExtendedRecursiveLinkWire(data) || admitRV64GCTypeSubtypingCrossGroupMismatchLinkWire(data) || admitRV64GCTypeSubtypingTransitiveMismatchLinkWire(data) || admitRV64GCTypeSubtypingNonFlatExportWire(data) || admitRV64GCStructGetWire(data) || admitRV64GCStructMutationWire(data) || admitRV64GCStructNullWire(data) || admitRV64GCStructPackedWire(data) || admitRV64GCStructBasicWire(data) || admitRV64GCStructNumericGlobalsWire(data) || admitRV64GCArrayLocalWire(data) || admitRV64GCArrayUniformWire(data) || admitRV64GCArrayFixedLocalWire(data) || admitRV64GCArrayFixedOfficialWire(data) || admitRV64GCArrayDefaultOfficialWire(data) || admitRV64GCArrayPackedDataWire(data) || admitRV64GCArrayReferenceWire(data) || admitRV64GCArrayInitElemWire(data) || admitRV64GCArrayInitDataWire(data) || admitRV64GCArrayFillWire(data) || admitRV64GCArrayCopyWire(data) {
+	if admitRV64GCRootedScalarWire(data) || admitCore3RefDeclarationsWire(data) || isCore3RefIsNullExecutionWire(data) || admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) || admitPublicHostReferenceBoundaryWire(data) || admitPublicDynamicHostReferenceBoundaryWire(data) || admitMutableFunctionGlobalLocalCallWire(data) || admitRV64I31CoreWire(data) || admitRV64GCRefEqWire(data) || admitRV64GCRefTestTableWire(data) || admitRV64GCRefTestConcreteWire(data) || admitRV64GCRefTestAbstractWire(data) || admitRV64GCExternWire(data) || admitRV64GCRefCastAbstractWire(data) || admitRV64GCRefCastConcreteWire(data) || admitRV64GCBrOnCastAbstractWire(data) || admitRV64GCBrOnCastFailAbstractWire(data) || admitRV64GCBrOnCastConcreteWire(data) || admitRV64GCBrOnCastFailConcreteWire(data) || admitRV64GCBrOnCastNullabilityWire(data) || admitRV64GCBrOnCastFailNullabilityWire(data) || admitRV64GCTypeSubtypingDeclarationsWire(data) || admitRV64GCTypeSubtypingRecursiveFunctionsWire(data) || admitRV64GCTypeSubtypingRefFuncGlobalsWire(data) || admitRV64GCTypeSubtypingRuntimeCallCastWire(data) || admitRV64GCTypeSubtypingRuntimeFinalityCallCastWire(data) || admitRV64GCTypeSubtypingRuntimeTypedTableCallWire(data) || admitRV64GCTypeSubtypingRefTestSingleWire(data) || admitRV64GCTypeSubtypingLinkWire(data) || admitRV64GCTypeSubtypingFinalityLinkWire(data) || admitRV64GCTypeSubtypingStructLinkWire(data) || admitRV64GCTypeSubtypingStructProjectionLinkWire(data) || admitRV64GCTypeSubtypingStructMismatchLinkWire(data) || admitRV64GCTypeSubtypingIndependentStructLinkWire(data) || admitRV64GCTypeSubtypingExtendedProjectionLinkWire(data) || admitRV64GCTypeSubtypingDuplicateRecursiveLinkWire(data) || admitRV64GCTypeSubtypingExtendedRecursiveLinkWire(data) || admitRV64GCTypeSubtypingCrossGroupMismatchLinkWire(data) || admitRV64GCTypeSubtypingTransitiveMismatchLinkWire(data) || admitRV64GCTypeSubtypingNonFlatExportWire(data) || admitRV64GCStructGetWire(data) || admitRV64GCStructMutationWire(data) || admitRV64GCStructNullWire(data) || admitRV64GCStructPackedWire(data) || admitRV64GCStructBasicWire(data) || admitRV64GCStructNumericGlobalsWire(data) || admitRV64GCArrayLocalWire(data) || admitRV64GCArrayUniformWire(data) || admitRV64GCArrayFixedLocalWire(data) || admitRV64GCArrayFixedOfficialWire(data) || admitRV64GCArrayDefaultOfficialWire(data) || admitRV64GCArrayPackedDataWire(data) || admitRV64GCArrayReferenceWire(data) || admitRV64GCArrayInitElemWire(data) || admitRV64GCArrayInitDataWire(data) || admitRV64GCArrayFillWire(data) || admitRV64GCArrayCopyWire(data) {
 		return nil
 	}
 	if err := admitWireStartProfile(data, true, true, true); err != nil {
@@ -68,6 +68,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if m == nil {
 		return nil, fmt.Errorf("rv64: nil module")
 	}
+	opts.gcRootedScalar = opts.GCFrameRootsSource && opts.GCFrameRoots != nil && admitRV64GCRootedScalarModule(m)
 	decodedGCTypeSubtypingDeclarations := admitRV64GCTypeSubtypingDeclarations(m)
 	if opts.GCTypeSubtypingDeclarationsSource != decodedGCTypeSubtypingDeclarations {
 		return nil, unsupported("gc type-subtyping declarations source provenance")
@@ -378,7 +379,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	}
 	var referenceTails, indirectTails, referenceCalls, referenceControl bool
 	if !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRecursiveFunctions && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcTypeSubtypingRefTestSingle && opts.gcTypeSubtypingFinalityLink == 0 && opts.gcTypeSubtypingStructLink == 0 && opts.gcTypeSubtypingStructProjection == 0 && opts.gcTypeSubtypingStructMismatch == 0 && opts.gcTypeSubtypingIndependentStruct == 0 && opts.gcTypeSubtypingExtendedProjection == 0 && opts.gcTypeSubtypingDuplicateRecursive == 0 && opts.gcTypeSubtypingExtendedRecursive == 0 && opts.gcTypeSubtypingCrossGroupMismatch == 0 && opts.gcTypeSubtypingTransitiveMismatch == 0 && !opts.gcTypeSubtypingNonFlatExport && !opts.i31Core && !opts.gcRefEq && !opts.gcRefTestTable && !opts.gcRefTestConcrete && !opts.gcRefTestAbstract && !opts.gcStructGet && !opts.gcStructMutation && !opts.gcStructNull && !opts.gcStructPacked && !opts.gcStructBasic && !opts.gcStructGlobals && !opts.gcArrayLocal && !opts.gcArrayUniform && !opts.gcArrayFixedLocal && !opts.gcArrayFixedOfficial && !opts.gcArrayPackedData && !opts.gcArrayReference && !opts.gcArrayInitElem && !opts.gcArrayInitData && !opts.gcArrayFill && !opts.gcArrayCopy {
-		referenceTails, indirectTails, referenceCalls, referenceControl, err = admitProductionDynamicTails(m, opts.NativeReferenceCalls, opts.dynamicTailCalls, usesSWAR, opts.referenceFunctions)
+		referenceTails, indirectTails, referenceCalls, referenceControl, err = admitProductionDynamicTails(m, opts.NativeReferenceCalls || opts.gcRootedScalar, opts.dynamicTailCalls, usesSWAR, opts.referenceFunctions || opts.gcRootedScalar)
 		if err != nil {
 			return nil, err
 		}
@@ -926,6 +927,11 @@ func stageGCTypeSubtypingTransitiveMismatchLink(c *Compiled, opts CompileOptions
 // admitProductionOptions keeps semantic option admission identical across the
 // scalar compiler and the private SWAR production staging prerequisite.
 func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool) error {
+	opts.gcRootedScalar = opts.GCFrameRootsSource && opts.GCFrameRoots != nil && admitRV64GCRootedScalarModule(m)
+	// The generic profile uses the same three-slot allocation/get helper family
+	// as the exact struct.get checkpoint. gcRootedScalar keeps its broader
+	// indexed-type rules distinct in the typed walker.
+	opts.gcStructGet = opts.gcStructGet || opts.gcRootedScalar
 	if opts.localTailCalls && (!opts.Interruptible || opts.Profile || opts.SourceMaps || opts.UnwindMaps) {
 		return unsupported("local tails require cooperative production without profiling metadata")
 	}
@@ -949,6 +955,9 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 	}
 	if opts.gcRefEq && (!opts.GCStructHelpers || !opts.GCArrayHelpers || opts.SyncHostSlots < 2) {
 		return unsupported("gc ref.eq helper contract")
+	}
+	if opts.gcRootedScalar && (!opts.GCStructHelpers || opts.GCArrayHelpers || opts.SyncHostSlots < 3) {
+		return unsupported("generic rooted scalar GC helper contract")
 	}
 	if opts.gcRefTestTable && (!opts.GCStructHelpers || opts.GCArrayHelpers || opts.SyncHostSlots < 4) {
 		return unsupported("gc ref.test table helper contract")
@@ -1161,14 +1170,18 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 		executionExtern:          !vector && referenceFunctions && isCore3RefIsNullExecution(m),
 		declarationNonNullExtern: !vector && referenceFunctions && (admitCore3RefDeclarations(m) || admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m)),
 		publicReferenceCarriers:  publicReferenceBoundary && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp),
+		gcRootedScalar:           admitRV64GCRootedScalarModule(m),
 	}
-	for _, group := range m.Types {
+	for typeIndex, group := range m.Types {
 		if len(group.SubTypes) != 1 {
 			return false, false, false, false, unsupported("control declaration group")
 		}
 		sub := &group.SubTypes[0]
 		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 			return false, false, false, false, unsupported("control declaration metadata")
+		}
+		if types.rootedStruct(uint32(typeIndex)) {
+			continue
 		}
 		_, witness, err := admitDeclaredControlSignature(&sub.Comp, types, true, referenceCalls, vector)
 		if err != nil {

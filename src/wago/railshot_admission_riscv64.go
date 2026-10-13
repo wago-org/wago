@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 
@@ -13,6 +14,53 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 	rv64runtime "github.com/wago-org/wago/src/core/runtime/riscv64"
 )
+
+func rv64FreshRootedGC(c *Compiled) bool {
+	if c == nil || c.stagedGCStructProduct() != stagedGCStructGeneric || c.stagedGCArrayProduct() != 0 ||
+		!c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.syncHostSlots < 3 ||
+		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports != 0 || len(c.Imports) != 0 ||
+		len(c.importFuncSigs) != 0 || c.HasTable || c.tableCount() != 0 || c.HasMemory || c.memoryCount() != 0 ||
+		len(c.GlobalImports) != 0 || len(c.Globals) != 0 || c.HasStart || len(c.Elems) != 0 ||
+		len(c.passiveElems) != 0 || len(c.Data) != 0 || len(c.PassiveData) != 0 {
+		return false
+	}
+	memo := c.loadValidateMemo()
+	roots := c.genericGCFrameRoots()
+	if memo == nil || !memo.rv64FreshRootedGC || sha256.Sum256(c.code) != memo.rv64FreshRootedGCDigest ||
+		roots == nil || len(roots.safepoints) == 0 || len(roots.callsites) != 0 || len(c.Types) != len(c.GCTypeDescs) {
+		return false
+	}
+	hasStruct := false
+	for i, desc := range c.GCTypeDescs {
+		typ := &c.Types[i]
+		if typ.RecGroup != uint32(i) || !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.HasDescriptor {
+			return false
+		}
+		switch desc.Kind {
+		case gc.KindFunc:
+			if typ.Kind != CompositeTypeFunction || !desc.Final || desc.HasSuper || len(desc.Fields) != 0 || desc.Elem != 0 || desc.HasRefs {
+				return false
+			}
+			for _, values := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
+				for _, value := range values {
+					if value.Kind > ValueTypeF64 {
+						return false
+					}
+				}
+			}
+		case gc.KindStruct:
+			if typ.Kind != CompositeTypeStruct || len(typ.Fields) != 1 || typ.Fields[0].Mutable || typ.Fields[0].Storage.Packed || typ.Fields[0].Storage.Value.Kind != ValueTypeI32 ||
+				!desc.Final || desc.HasSuper || len(desc.Fields) != 1 || desc.Fields[0].Kind != gc.StorageI32 ||
+				desc.Fields[0].Offset != 0 || desc.HasRefs {
+				return false
+			}
+			hasStruct = true
+		default:
+			return false
+		}
+	}
+	return hasStruct
+}
 
 // rv64StateOnlyExternrefGlobals is the persisted-artifact witness for a
 // bounded directory containing at least one immutable null externref global
@@ -123,6 +171,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	mutableFuncrefGlobalLocalExport := rv64MutableFuncrefGlobalLocalExport(c)
 	mutableFuncrefGlobalLocalObserve := rv64MutableFuncrefGlobalLocalObserve(c)
 	mutableFuncrefGlobalLocalCall := rv64MutableFuncrefGlobalLocalCall(c)
+	freshRootedGC := rv64FreshRootedGC(c)
 	if rv64MutableFuncrefGlobalGetExecutionCode(c) && !mutableFuncrefGlobalGet {
 		return reject("mutable funcref global.get image requires its exact retained metadata")
 	}
@@ -447,13 +496,15 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c.NumImports+len(c.GlobalImports)+c.memoryImportCount()+c.tableImportCount() > railshot.MaxProductionImports {
 		return reject("aggregate import bound")
 	}
-	if err := railshotValidateReferenceCalls(c); err != nil {
-		return reject(err.Error())
+	if !freshRootedGC {
+		if err := railshotValidateReferenceCalls(c); err != nil {
+			return reject(err.Error())
+		}
 	}
 	if err := rv64ValidateNativeTail(c); err != nil {
 		return reject(err.Error())
 	}
-	if !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink {
+	if !freshRootedGC && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink {
 		if err := rv64ValidateReferenceFunctions(c); err != nil {
 			return reject(err.Error())
 		}
@@ -494,7 +545,7 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 
-	if c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil || c.usesDynamicFuncRefTest() || c.memoryCount() > railshot.MaxProductionMemories {
+	if c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil && !freshRootedGC || c.usesDynamicFuncRefTest() || c.memoryCount() > railshot.MaxProductionMemories {
 		return reject("resource/host/reference lowering is pending")
 	}
 	if len(c.GlobalImports) > len(c.Globals) {
@@ -514,11 +565,14 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	for _, desc := range c.GCTypeDescs {
-		if !exactGCTypeSubtypingDeclarations && !exactGCTypeSubtypingRecursiveFunctions && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRuntimeCallCast && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink && !exactGCTypeSubtypingNonFlatExport && !exactGCRefEq && !exactGCRefTestTable && !exactGCRefTestConcrete && !exactGCRefCastConcrete && !exactGCRefTestAbstract && !exactGCExtern && !exactGCRefCastAbstract && !exactGCBrOnCastAbstract && !exactGCBrOnCastFailAbstract && !exactGCBrOnCastConcrete && !exactGCBrOnCastFailConcrete && !exactGCBrOnCastNullability && !exactGCBrOnCastFailNullability && !exactGCStructGet && !exactGCStructMutation && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
+		if !freshRootedGC && !exactGCTypeSubtypingDeclarations && !exactGCTypeSubtypingRecursiveFunctions && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRuntimeCallCast && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink && !exactGCTypeSubtypingNonFlatExport && !exactGCRefEq && !exactGCRefTestTable && !exactGCRefTestConcrete && !exactGCRefCastConcrete && !exactGCRefTestAbstract && !exactGCExtern && !exactGCRefCastAbstract && !exactGCBrOnCastAbstract && !exactGCBrOnCastFailAbstract && !exactGCBrOnCastConcrete && !exactGCBrOnCastFailConcrete && !exactGCBrOnCastNullability && !exactGCBrOnCastFailNullability && !exactGCStructGet && !exactGCStructMutation && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
 			return reject("GC descriptor lowering is pending")
 		}
 	}
 	qualifiedFeatures := platformCoreFeatures() | CoreFeatureTailCall
+	if freshRootedGC {
+		qualifiedFeatures |= CoreFeatureGC | CoreFeatureTypedFunctionReferences
+	}
 	if rv64I31Core(c) {
 		qualifiedFeatures |= CoreFeatureGC
 		if typedI31 {
@@ -630,7 +684,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			}
 		}
 	}
-	if !exactGCTypeSubtypingDeclarations && !exactGCTypeSubtypingRecursiveFunctions && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRuntimeCallCast && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink && !exactGCTypeSubtypingNonFlatExport && !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCRefTestTable && !exactGCRefTestConcrete && !exactGCRefCastConcrete && !exactGCRefTestAbstract && !exactGCExtern && !exactGCRefCastAbstract && !exactGCBrOnCastAbstract && !exactGCBrOnCastFailAbstract && !exactGCBrOnCastConcrete && !exactGCBrOnCastFailConcrete && !exactGCBrOnCastNullability && !exactGCBrOnCastFailNullability && !exactGCStructGet && !exactGCStructMutation && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy {
+	if !freshRootedGC && !exactGCTypeSubtypingDeclarations && !exactGCTypeSubtypingRecursiveFunctions && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRuntimeCallCast && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink && !exactGCTypeSubtypingNonFlatExport && !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCRefTestTable && !exactGCRefTestConcrete && !exactGCRefCastConcrete && !exactGCRefTestAbstract && !exactGCExtern && !exactGCRefCastAbstract && !exactGCBrOnCastAbstract && !exactGCBrOnCastFailAbstract && !exactGCBrOnCastConcrete && !exactGCBrOnCastFailConcrete && !exactGCBrOnCastNullability && !exactGCBrOnCastFailNullability && !exactGCStructGet && !exactGCStructMutation && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return reject(err.Error())
 		}

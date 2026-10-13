@@ -3,6 +3,7 @@ package wago
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -1703,6 +1704,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if err := compiled.installCodeProfile(cfg, wasmBytes, gcCodeStats); err != nil {
 			return nil, joinPrimary(err, compiled.Close())
 		}
+	}
+	if compiledArchitecture == 4 && genericGCExecution && validGCFrameRoots {
+		compiled.validateMemo.rv64FreshRootedGC = true
+		compiled.validateMemo.rv64FreshRootedGCDigest = sha256.Sum256(compiled.code)
 	}
 	return publishCompilerCompiled(compiled)
 }

@@ -164,10 +164,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.gcTypeSubtypingRefTestSingle = state.gcTypeSubtypingRefTestSingle
 		referenceTypes.gcTypeSubtypingRefTestVariant = state.gcTypeSubtypingRefTestVariant
 		referenceTypes.gcTypeSubtypingDuplicateRecursive = state.gcTypeSubtypingDuplicateRecursive
+		referenceTypes.gcRootedScalar = state.gcRootedScalar
 	}
 	var locals [256]bool
 	var localRefs [256]bool
-	privateRefs := floating && (state.ownedTable || state.importReferences || state.i31Core || state.gcTypeSubtypingRefFuncGlobals || state.gcTypeSubtypingRefTestSingle || state.gcTypeSubtypingDuplicateRecursive)
+	privateRefs := floating && (state.ownedTable || state.importReferences || state.gcRootedScalar || state.i31Core || state.gcTypeSubtypingRefFuncGlobals || state.gcTypeSubtypingRefTestSingle || state.gcTypeSubtypingDuplicateRecursive)
 	functionRefs := state != nil && state.referenceFunctions
 	i31Refs := state != nil && state.i31Core
 	if functionRefs {
@@ -854,6 +855,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				heap, e := r.S33()
 				if e != nil {
 					return integerSummary{}, e
+				}
+				if state.gcRootedScalar && (heap < 0 || !referenceTypes.rootedStruct(uint32(heap))) {
+					return integerSummary{}, unsupported("generic rooted scalar ref.null heap")
 				}
 				abstractNull := state.gcRefTestAbstract && (heap == -13 || heap == -14 || heap == -15 || heap == -16 || heap == -17 || heap == -18 || heap == -21 || heap == -22)
 				if heap != -16 && !abstractNull && !(state.i31Core && heap == -20) && !(state.i31RefTest && heap == -18) && !(state.i31RefEq && heap == -19) && !(state.core3RefIsNullExecution && heap == -17) && !(state.gcRefTestConcrete && (heap == -21 || heap >= 0 && heap < 8)) && !(state.gcTypeSubtypingRuntimeCallCast && heap >= 0 && heap < 3) && !(state.gcTypeSubtypingLink == rv64GCTypeSubtypingLinkProviderVariant && heap >= 0 && heap < 3) && !(state.gcArrayInitElem && heap == 2) && !(state.gcArrayInitData && heap == 1) && !(state.gcArrayFill && heap == 1) && !(state.gcArrayCopy && (heap == 0 || heap == 1)) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
@@ -1775,7 +1779,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			case wasm.InstrStructNew:
 				fields := 3
-				if state.gcRefTestAbstract && imm.Index == 1 {
+				if state.gcRootedScalar {
+					fields = 1
+				} else if state.gcRefTestAbstract && imm.Index == 1 {
 					fields = 1
 				} else if !state.gcStructBasic || imm.Index != 0 {
 					return integerSummary{}, unsupported("struct.new outside exact gc struct basic profile")
@@ -1797,7 +1803,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			case wasm.InstrStructNewDefault:
 				refTestTableNew := state.gcRefTestTable && (imm.Index == 1 || imm.Index == 2) || state.gcRefTestConcrete && imm.Index < 8 || state.gcRefTestAbstract && imm.Index == 1
-				if !refTestTableNew && ((!state.gcRefEq && !state.gcStructGet && !state.gcStructMutation && !state.gcStructBasic) || imm.Index != 0) {
+				if !state.gcRootedScalar && !refTestTableNew && ((!state.gcRefEq && !state.gcStructGet && !state.gcStructMutation && !state.gcStructBasic) || imm.Index != 0) {
 					return integerSummary{}, unsupported("struct.new_default outside exact GC profile")
 				}
 				callCount++
@@ -1811,7 +1817,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU:
-				regularGet := (state.gcStructGet || state.gcStructMutation) && imm.Index == 0 && imm.Index2 == 0
+				regularGet := (state.gcRootedScalar || (state.gcStructGet || state.gcStructMutation) && imm.Index == 0) && imm.Index2 == 0 && imm.Kind == wasm.InstrStructGet
 				basicGet := state.gcStructBasic && imm.Index == 0 && imm.Index2 < 2 && imm.Kind == wasm.InstrStructGet
 				nullGet := state.gcStructNull && imm.Index == 0 && imm.Index2 == 1
 				packedGet := state.gcStructPacked && imm.Index == 0 && imm.Index2 < 4 && imm.Kind != wasm.InstrStructGet
@@ -1828,7 +1834,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				if live && emit != nil {
 					if regularGet {
-						emit.gcStructGetField0(h)
+						if state.gcRootedScalar {
+							emit.gcStructGetI32(h, imm.Index, imm.Index2, gcStructGet)
+						} else {
+							emit.gcStructGetField0(h)
+						}
 					} else if basicGet {
 						emit.gcStructGetI32(h, imm.Index, imm.Index2, gcStructGet)
 					} else if nullGet {
@@ -2134,6 +2144,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrRefI31:
+				if state.gcRootedScalar {
+					return integerSummary{}, unsupported("ref.i31 outside exact i31 profile")
+				}
 				if _, err = popClass(false); err != nil {
 					return integerSummary{}, err
 				}
@@ -2146,6 +2159,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrI31GetS, wasm.InstrI31GetU:
+				if state.gcRootedScalar {
+					return integerSummary{}, unsupported("i31.get outside exact i31 profile")
+				}
 				if _, err = popClass(true); err != nil {
 					return integerSummary{}, err
 				}
@@ -2781,10 +2797,11 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		referenceTypes.gcTypeSubtypingRuntimeCallCast = state.gcTypeSubtypingRuntimeCallCast
 		referenceTypes.gcTypeSubtypingFinalityCallCast = state.gcTypeSubtypingFinalityCallCast
 		referenceTypes.gcTypeSubtypingDuplicateRecursive = state.gcTypeSubtypingDuplicateRecursive
+		referenceTypes.gcRootedScalar = state.gcRootedScalar
 	}
 	n := len(ft.Params)
 	for i, t := range ft.Params {
-		widths[i] = scalarWide(t) || (functionRefs || state.i31Core) && t.Kind() == wasm.ValRef
+		widths[i] = scalarWide(t) || (functionRefs || state.gcRootedScalar || state.i31Core) && t.Kind() == wasm.ValRef
 	}
 	for _, run := range fn.Locals.Runs {
 		for i := uint32(0); i < run.Count; i++ {
@@ -2884,7 +2901,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	if err := f.finishProfileBody(); err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
-	info := FunctionInfo{Params: len(ft.Params), Results: len(ft.Results), SpillSlots: summary.maxStack, Result64: len(ft.Results) == 1 && (scalarWide(ft.Results[0]) || (functionRefs || state.i31Core) && ft.Results[0].Kind() == wasm.ValRef), Fallback: true, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls), mode: mode}
+	info := FunctionInfo{Params: len(ft.Params), Results: len(ft.Results), SpillSlots: summary.maxStack, Result64: len(ft.Results) == 1 && (scalarWide(ft.Results[0]) || (functionRefs || state.gcRootedScalar || state.i31Core) && ft.Results[0].Kind() == wasm.ValRef), Fallback: true, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls), mode: mode}
 	contextOffset := -1
 	if summary.context {
 		contextOffset = -8

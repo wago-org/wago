@@ -1346,9 +1346,14 @@ type validateMemo struct {
 	hostThunks     [2]compiledHostThunkCache
 	compileIndexes *compiledCacheIndexes
 
-	once                     sync.Once
-	err                      error
-	gcFrameRoots             *compiledGCFrameRoots // immutable compiled/codec native safepoint and callsite map
+	once         sync.Once
+	err          error
+	gcFrameRoots *compiledGCFrameRoots // immutable compiled/codec native safepoint and callsite map
+	// rv64FreshRootedGC is a process-local compiler receipt. It is never encoded;
+	// loaded artifacts therefore remain fail-closed until generic RV64 images
+	// gain a persisted machine-code authenticator.
+	rv64FreshRootedGC        bool
+	rv64FreshRootedGCDigest  [32]byte
 	structuralCallIdentities atomic.Pointer[structuralCallIdentityCache]
 	// importModuleEnds stores one plus the module-name byte length for each
 	// non-global import, grouped as functions, tables, memories, then tags. A

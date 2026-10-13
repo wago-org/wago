@@ -67,6 +67,7 @@ type moduleState struct {
 	gcArrayInitDataWide               bool
 	gcArrayFill                       bool
 	gcArrayCopy                       bool
+	gcRootedScalar                    bool
 	gcTypeSubtypingRecursiveFunctions bool
 	gcTypeSubtypingRefFuncGlobals     bool
 	gcTypeSubtypingRuntimeCallCast    bool
@@ -229,6 +230,7 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 }
 func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
 	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
+	gcRootedScalar := admitRV64GCRootedScalarModule(m)
 	gcTypeSubtypingDeclarations := admitRV64GCTypeSubtypingDeclarations(m) != 0
 	gcTypeSubtypingRefTestSingle := admitRV64GCTypeSubtypingRefTestSingle(m)
 	gcTypeSubtypingReferenceFunctions := admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0 || admitRV64GCTypeSubtypingRuntimeCallCast(m) || admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m) || admitRV64GCTypeSubtypingRuntimeTypedTableCall(m) || gcTypeSubtypingRefTestSingle || admitRV64GCTypeSubtypingLink(m) != 0 || admitRV64GCTypeSubtypingDuplicateRecursiveLink(m) != 0
@@ -268,7 +270,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	gcArrayFill := admitRV64GCArrayFill(m)
 	gcArrayCopy := admitRV64GCArrayCopy(m)
 	i31Core := admitRV64I31Core(m) || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy
-	i31RefEq := i31Core && (admitRV64I31RefEqPilot(m) || gcRefEq)
+	i31RefEq := gcRootedScalar || i31Core && (admitRV64I31RefEqPilot(m) || gcRefEq)
 	s.mutableFuncrefGlobalClear = admitMutableFunctionGlobalClear(m)
 	s.mutableFuncrefGlobalSetSelf = admitMutableFunctionGlobalSetSelf(m)
 	s.mutableFuncrefGlobalCopy = admitMutableFunctionGlobalCopy(m)
@@ -496,7 +498,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		for subtypeIndex := range rec.SubTypes {
 			ft := &rec.SubTypes[subtypeIndex].Comp
 			fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
-			if (s.ownedTable || s.importReferences || gcTypeSubtypingRefTestSingle) && !((gcTypeSubtypingDeclarations || gcTypeSubtypingRefFuncGlobals || gcTypeSubtypingStructLink || gcTypeSubtypingStructProjectionLink || gcTypeSubtypingStructMismatchLink || gcTypeSubtypingCrossGroupMismatchLink || gcTypeSubtypingTransitiveMismatchLink || gcTypeSubtypingIndependentStructLink || gcTypeSubtypingExtendedProjectionLink || gcTypeSubtypingDuplicateRecursiveLink || gcTypeSubtypingRefTestSingle || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
+			if (s.ownedTable || s.importReferences || gcTypeSubtypingRefTestSingle || gcRootedScalar) && !((gcTypeSubtypingDeclarations || gcTypeSubtypingRefFuncGlobals || gcTypeSubtypingStructLink || gcTypeSubtypingStructProjectionLink || gcTypeSubtypingStructMismatchLink || gcTypeSubtypingCrossGroupMismatchLink || gcTypeSubtypingTransitiveMismatchLink || gcTypeSubtypingIndependentStructLink || gcTypeSubtypingExtendedProjectionLink || gcTypeSubtypingDuplicateRecursiveLink || gcTypeSubtypingRefTestSingle || gcRootedScalar || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
 				var ok bool
 				fn.key, ok = m.StructuralTypeKeyChecked(flatTypeIndex)
 				if !ok {
@@ -513,10 +515,10 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				}
 			}
 			for k, t := range ft.Params {
-				fn.params[k] = scalarWide(t) || (gcTypeSubtypingReferenceFunctions || gcTypeSubtypingRefFuncGlobals) && t.Kind() == wasm.ValRef || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcBrOnCastNullability || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
+				fn.params[k] = scalarWide(t) || (gcRootedScalar || gcTypeSubtypingReferenceFunctions || gcTypeSubtypingRefFuncGlobals) && t.Kind() == wasm.ValRef || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcBrOnCastNullability || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
 			}
 			for k, t := range ft.Results {
-				fn.results[k] = scalarWide(t) || (gcTypeSubtypingReferenceFunctions || gcTypeSubtypingRefFuncGlobals) && t.Kind() == wasm.ValRef || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcBrOnCastNullability || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
+				fn.results[k] = scalarWide(t) || (gcRootedScalar || gcTypeSubtypingReferenceFunctions || gcTypeSubtypingRefFuncGlobals) && t.Kind() == wasm.ValRef || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcBrOnCastNullability || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
 			}
 			s.types = append(s.types, fn)
 			flatTypeIndex++
