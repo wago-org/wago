@@ -1733,6 +1733,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		compiled.validateMemo.rv64FreshRootedGCDataDigest = rootedDataDigest
 		compiled.validateMemo.rv64FreshRootedGCExportDigest = rootedExportDigest
 		compiled.validateMemo.rv64FreshRootedGCGlobalDigest = rootedGlobalDigest
+		compiled.validateMemo.rv64FreshRootedGCHasStart = compiled.HasStart
+		if compiled.HasStart {
+			compiled.validateMemo.rv64FreshRootedGCStartLocal = uint32(compiled.StartLocalFunc)
+		}
 		if directory := compiled.memoryDir; directory != nil {
 			compiled.validateMemo.rv64FreshRootedGCMemories = uint8(len(directory.defs))
 			if len(directory.defs) == 1 {

@@ -35,8 +35,20 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		c.usesGCStructHelpers() != structHelpers || c.usesGCArrayHelpers() != arrayHelpers || c.syncHostSlots < 4 ||
 		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports != 0 || len(c.Imports) != 0 ||
 		len(c.importFuncSigs) != 0 || c.HasTable || c.tableCount() != 0 || c.memoryCount() > 1 ||
-		len(c.GlobalImports) != 0 || len(c.Globals) > 256 || c.HasStart || len(c.Elems) != 0 ||
+		len(c.GlobalImports) != 0 || len(c.Globals) > 256 || len(c.Elems) != 0 ||
 		len(c.passiveElems) != 0 || len(c.PassiveData) != 0 {
+		return false
+	}
+	if c.HasStart != memo.rv64FreshRootedGCHasStart {
+		return false
+	}
+	if c.HasStart {
+		if c.StartIsImport || c.StartImportIdx != 0 || c.StartLocalFunc < 0 || uint64(c.StartLocalFunc) >= uint64(len(c.Funcs)) ||
+			uint32(c.StartLocalFunc) != memo.rv64FreshRootedGCStartLocal || c.StartLocalFunc >= len(c.Entry) ||
+			len(c.Funcs[c.StartLocalFunc].Params) != 0 || len(c.Funcs[c.StartLocalFunc].Results) != 0 {
+			return false
+		}
+	} else if c.StartIsImport || c.StartImportIdx != 0 || c.StartLocalFunc != 0 || memo.rv64FreshRootedGCStartLocal != 0 {
 		return false
 	}
 	directory := c.memoryDir

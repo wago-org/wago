@@ -34,8 +34,15 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	if m == nil || len(m.Code) == 0 {
 		return reject("generic GC module has no local function bodies")
 	}
-	if len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) > 256 || m.Start != nil || len(m.Elements) != 0 || m.DataCount != nil || len(m.Data) > 256 || len(m.StringRefs) != 0 {
+	if len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) > 1 || len(m.Tags) != 0 || len(m.Globals) > 256 || len(m.Elements) != 0 || m.DataCount != nil || len(m.Data) > 256 || len(m.StringRefs) != 0 {
 		return reject("RV64 exact roots require a closed scalar allocation module")
+	}
+	if m.Start != nil {
+		index := int(*m.Start)
+		sig, ok := m.LocalFuncType(index)
+		if !ok || index >= len(m.Code) || len(sig.Params) != 0 || len(sig.Results) != 0 {
+			return reject("RV64 exact roots require a bounded local void start")
+		}
 	}
 	for i := range m.Globals {
 		if !rv64RootedScalarGlobal(&m.Globals[i]) {

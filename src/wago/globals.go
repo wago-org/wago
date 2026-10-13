@@ -1361,6 +1361,8 @@ type validateMemo struct {
 	rv64FreshRootedGCDataDigest   [32]byte
 	rv64FreshRootedGCExportDigest [32]byte
 	rv64FreshRootedGCGlobalDigest [32]byte
+	rv64FreshRootedGCHasStart     bool
+	rv64FreshRootedGCStartLocal   uint32
 	structuralCallIdentities      atomic.Pointer[structuralCallIdentityCache]
 	// importModuleEnds stores one plus the module-name byte length for each
 	// non-global import, grouped as functions, tables, memories, then tags. A

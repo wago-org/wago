@@ -1431,6 +1431,96 @@ func TestRV64RootedScalarGlobalExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarStartModule(trap bool) []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x00},
+		wasmtest.FuncType(nil, nil),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	start := []byte{
+		0x00,
+		0x41, 0x29, 0x24, 0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+	}
+	if trap {
+		start = append(start, 0x00)
+	}
+	start = append(start, 0x0b)
+	get := []byte{0x00, 0x23, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("get", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("counter", byte(wasm.ExternGlobal), 0),
+		)),
+		wasmtest.Section(8, wasmtest.ULEB(0)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(start))), start...),
+			append(wasmtest.ULEB(uint32(len(get))), get...),
+		)),
+	)
+}
+
+func TestRV64RootedScalarStartExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarStartModule(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || !view.HasStart || view.StartIsImport || view.StartLocalFunc != 0 {
+		t.Fatal("local-start generic rooted receipt is missing")
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"missing":  func(candidate *Compiled) { candidate.HasStart = false },
+		"imported": func(candidate *Compiled) { candidate.StartIsImport = true },
+		"index":    func(candidate *Compiled) { candidate.StartLocalFunc = 1 },
+		"signature": func(candidate *Compiled) {
+			candidate.Funcs[0].Results = []ValType{ValI32}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			mutate(candidate)
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated start metadata retained the generic receipt")
+			}
+			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatalf("mutated start validation=%v", err)
+			}
+		})
+	}
+	for range 2 {
+		instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := instance.Invoke("get"); err != nil || !slices.Equal(got, []uint64{41}) {
+			_ = instance.Close()
+			t.Fatalf("get()=%v err=%v want=[41]", got, err)
+		}
+		if err := instance.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestRV64RootedScalarStartTrapAbortsInstantiation(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarStartModule(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}}); err == nil || instance != nil {
+		if instance != nil {
+			_ = instance.Close()
+		}
+		t.Fatalf("trapping start instantiated=%v err=%v", instance, err)
+	}
+}
+
 func TestRV64RootedScalarPassiveDataFailsClosed(t *testing.T) {
 	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarMemoryModule(false, false, true, false))
 	if err == nil || compiled != nil {
