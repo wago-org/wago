@@ -2317,6 +2317,74 @@ func rootedScalarAggregateTableBulkModule() []byte {
 	)
 }
 
+func rootedScalarAggregateActiveElementModule() []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x01, 0xfb, 0x00, 0x00, 0x1a,
+		0x41, 0x00, 0x25, 0x00, 0xfb, 0x02, 0x00, 0x00,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x04}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x00, 0x01,
+			0x41, 0x37, 0xfb, 0x00, 0x00, 0x0b}),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedAggregateActiveElementExecutes(t *testing.T) {
+	source := rootedScalarAggregateActiveElementModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("aggregate active element module was not source-admitted")
+	}
+	decoded, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootDiagnostic string
+	if plan := newGCFrameRootPlan(decoded, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
+		t.Fatalf("aggregate active element exact-root plan=%+v diagnostic=%q", plan, rootDiagnostic)
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Elems) != 1 || len(view.Elems[0].Values) != 1 || len(view.Elems[0].Values[0].Expr) == 0 {
+		t.Fatalf("aggregate active element receipt=%t elems=%#v validation=%v", rv64FreshRootedGC(view), view.Elems, railshotValidateCompiled(view))
+	}
+	mutated := cloneCompiledMetadata(view)
+	mutated.Elems = slices.Clone(view.Elems)
+	mutated.Elems[0].Values = slices.Clone(view.Elems[0].Values)
+	mutated.Elems[0].Values[0].Expr = slices.Clone(view.Elems[0].Values[0].Expr)
+	mutated.Elems[0].Values[0].Expr[1] = 0x38
+	if rv64FreshRootedGC(mutated) {
+		t.Fatal("mutated aggregate active element retained the rooted receipt")
+	}
+	for iteration := range 8 {
+		instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatalf("iteration %d: %v", iteration, err)
+		}
+		if err := instance.CollectGC(); err != nil {
+			instance.Close()
+			t.Fatalf("iteration %d: collect active root: %v", iteration, err)
+		}
+		got, err := instance.Invoke("read")
+		instance.Close()
+		if err != nil || !slices.Equal(got, []uint64{55}) {
+			t.Fatalf("iteration %d: read()=%v err=%v", iteration, got, err)
+		}
+	}
+}
+
 func TestRV64RootedAggregateTableBulkMutationExecutes(t *testing.T) {
 	source := rootedScalarAggregateTableBulkModule()
 	if !railshot.AdmitGCRootedScalarSource(source) {

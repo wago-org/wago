@@ -141,9 +141,12 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				return false
 			}
 			table, ok := m.TableType(uint32(elem.Mode.Table))
-			if !ok || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
-				// Generic aggregate-table element expressions remain closed until
-				// their persistent initialization barriers are qualified.
+			if !ok || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) && !rootedScalarTableReference(wasm.RefVal(table.Ref), m) {
+				return false
+			}
+			typed := elem.Kind.Kind == wasm.ElemTypedExprs
+			if (typed && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.RefVal(table.Ref))) ||
+				(!typed && !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef)) {
 				return false
 			}
 			allowImported = publicTables[elem.Mode.Table]
@@ -163,7 +166,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			aggregate := elem.Kind.Kind == wasm.ElemTypedExprs && rootedScalarTableReference(wasm.RefVal(elem.Kind.Ref), m)
 			if len(elem.Kind.Funcs) != 0 || elem.Kind.Kind == wasm.ElemFuncExprs && elem.Kind.Ref != (wasm.RefType{}) ||
 				elem.Kind.Kind == wasm.ElemTypedExprs && !aggregate && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) ||
-				aggregate && elem.Mode.Kind != wasm.ElemPassive {
+				aggregate && elem.Mode.Kind == wasm.ElemDeclarative {
 				return false
 			}
 			values = len(elem.Kind.Exprs)

@@ -160,8 +160,13 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				return reject("RV64 exact roots reject active element table index %d", elem.Mode.Table)
 			}
 			table, ok := m.TableType(uint32(elem.Mode.Table))
-			if !ok || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
+			if !ok || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) && !rv64RootedAggregateTableReference(m, wasm.RefVal(table.Ref)) {
 				return reject("RV64 exact roots reject aggregate-reference table elements")
+			}
+			typed := elem.Kind.Kind == wasm.ElemTypedExprs
+			if (typed && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.RefVal(table.Ref))) ||
+				(!typed && !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef)) {
+				return reject("RV64 exact roots reject active element/table type mismatch")
 			}
 			allowImported = publicTables[elem.Mode.Table]
 		}
@@ -180,7 +185,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			aggregate := elem.Kind.Kind == wasm.ElemTypedExprs && rv64RootedAggregateTableReference(m, wasm.RefVal(elem.Kind.Ref))
 			if len(elem.Kind.Funcs) != 0 || elem.Kind.Kind == wasm.ElemFuncExprs && elem.Kind.Ref != (wasm.RefType{}) ||
 				elem.Kind.Kind == wasm.ElemTypedExprs && !aggregate && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) ||
-				aggregate && elem.Mode.Kind != wasm.ElemPassive {
+				aggregate && elem.Mode.Kind == wasm.ElemDeclarative {
 				return reject("RV64 exact roots require exact nullable funcref expression elements")
 			}
 			values = len(elem.Kind.Exprs)

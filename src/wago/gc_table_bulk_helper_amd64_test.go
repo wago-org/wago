@@ -36,6 +36,93 @@ func genericGCTableHelperModule() []byte {
 	)
 }
 
+func genericGCActiveTableElementModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 0x01, 0x7f, 0x01})),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x01, 0x04}),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x00, 0x01,
+			0x41, 0x37, 0xfb, 0x00, 0x00, 0x0b}),
+	)
+}
+
+func TestGenericGCActiveTableElementRoots(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCActiveTableElementModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if len(compiled.Elems) != 1 || len(compiled.Elems[0].Values) != 1 || len(compiled.Elems[0].Values[0].Expr) == 0 {
+		t.Fatalf("active aggregate element metadata = %#v", compiled.Elems)
+	}
+	for iteration := range 8 {
+		instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatalf("iteration %d: %v", iteration, err)
+		}
+		descriptor := instance.tableDescriptor(0)
+		ref := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+		if ref.IsNull() {
+			instance.Close()
+			t.Fatalf("iteration %d: active aggregate element is null", iteration)
+		}
+		if err := instance.CollectGC(); err != nil {
+			instance.Close()
+			t.Fatalf("iteration %d: collect active root: %v", iteration, err)
+		}
+		value, err := instance.gc.StructGet(ref, 0)
+		instance.Close()
+		if err != nil || value.Bits != 55 {
+			t.Fatalf("iteration %d: active aggregate root = %+v, %v", iteration, value, err)
+		}
+	}
+}
+
+func TestSharedGCConstructionPublishesRootsBeforeCollection(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCActiveTableElementModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	rt := NewRuntime()
+	defer rt.Close()
+	gcConfig := GCConfig{VerifyAfterCollect: true}
+	first, err := instantiateCore(compiled, InstantiateOptions{store: rt.refStore, GC: gcConfig})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	domain := first.gcInvocationDomain()
+	if domain == nil || domain.private {
+		t.Fatal("first instance has no shared GC domain")
+	}
+	collectionDone := make(chan error, 1)
+	second, err := instantiateCore(compiled, InstantiateOptions{
+		store: rt.refStore,
+		GC:    gcConfig,
+		beforeStoreRegister: func(candidate *Instance) {
+			if candidate.gc != first.gc {
+				t.Fatal("candidate did not reuse the shared collector")
+			}
+			go func() { collectionDone <- first.CollectGC() }()
+			awaitGCLifecycle(t, func() bool {
+				return domain.invocationMu.state.Load()&invocationGateWaiters != 0
+			})
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	if err := <-collectionDone; err != nil {
+		t.Fatal(err)
+	}
+	descriptor := second.tableDescriptor(0)
+	ref := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
+	if value, err := second.gc.StructGet(ref, 0); err != nil || value.Bits != 55 {
+		t.Fatalf("published active aggregate root = %+v, %v", value, err)
+	}
+}
+
 func TestGenericGCTableBulkHelpers(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCTableHelperModule())
 	if err != nil {

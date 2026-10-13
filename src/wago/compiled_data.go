@@ -543,14 +543,14 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 			return [32]byte{}, false
 		}
 		exact, err := c.tableExactType(int(elem.TableIndex))
-		if err != nil || exact != plain {
+		if err != nil || exact != plain && !rootedAggregate(exact) {
 			return [32]byte{}, false
 		}
 		remaining -= len(elem.Values)
 		binary.LittleEndian.PutUint32(word[:4], elem.TableIndex)
 		_, _ = h.Write(word[:4])
 		elemType, ok := writeElemType(elem)
-		if !ok || elemType != plain {
+		if !ok || elemType != exact {
 			return [32]byte{}, false
 		}
 		binary.LittleEndian.PutUint32(word[:4], elem.Offset.Base)

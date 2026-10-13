@@ -38,6 +38,7 @@ type InstantiateOptions struct {
 	pluginGCImports          map[uint32]struct{}
 	forceSyncHost            bool
 	afterCreate              func(*Instance) error
+	beforeStoreRegister      func(*Instance)
 	moduleIdentity           ModuleIdentity
 	operationReservation     *pluginOperationReservation
 	runtimeReservation       *runtimeInstanceReservation
@@ -539,6 +540,28 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	if err != nil {
 		return nil, err
 	}
+	// A shared Runtime collector cannot discover this instance's table, passive
+	// element, or global roots until store registration publishes the instance.
+	// Serialize every collector-backed construction mutation through that
+	// publication point so another instance cannot collect an unregistered ref.
+	var finishGCDomainConstruction func()
+	if b.gcDomain != nil {
+		if err := b.gcDomain.invocationMu.lockContext(opts.startContext); err != nil {
+			return nil, err
+		}
+		b.constructionGCDomainLocked = true
+		finishGCDomainConstruction = func() {
+			if b.constructionGCDomainLocked {
+				b.constructionGCDomainLocked = false
+				b.gcDomain.invocationMu.Unlock()
+			}
+		}
+		defer func() {
+			if finishGCDomainConstruction != nil {
+				finishGCDomainConstruction()
+			}
+		}()
+	}
 	stackBytes := opts.nativeStackBytes
 	if stackBytes == 0 {
 		stackBytes = c.nativeStackBytes()
@@ -717,11 +740,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	var finishMemoryContext func(bool)
 	if (c.memoryImport != "" || c.nativeTableContextABI && c.tableImportCount() != 0) && !threadedControl {
 		// Shared collector activations acquire domain then native execution.
-		// Keep construction in that order and avoid relocking in view creation.
-		if b.gcDomain != nil {
-			b.gcDomain.invocationMu.Lock()
-			b.constructionGCDomainLocked = true
-		}
+		// Construction already owns the domain through store registration.
 		nativeExecutionMu.Lock()
 		var previous, empty [runtime.InstanceContextBytes]byte
 		previousOrigin := railshotNativeContextIdentity(jm)
@@ -733,10 +752,6 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				railshotSetNativeContextIdentity(jm, previousOrigin)
 			}
 			nativeExecutionMu.Unlock()
-			if b.constructionGCDomainLocked {
-				b.constructionGCDomainLocked = false
-				b.gcDomain.invocationMu.Unlock()
-			}
 		}
 		// Restore and unlock before failure cleanup frees new arena pointers or
 		// detaches the final resource root. Success releases before callbacks.
@@ -1962,6 +1977,9 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	railshotInstallGlobalDependencies(in, &b.globalAttachments)
 	railshotInstallTableDependencies(in, &b.tableAttachments)
 	railshotInstallFrozenGlobalDependencies(in, globalRefs)
+	if opts.beforeStoreRegister != nil {
+		opts.beforeStoreRegister(in)
+	}
 	if opts.store != nil {
 		if err := opts.store.registerInstance(in); err != nil {
 			return nil, err
@@ -1972,6 +1990,10 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			return nil, err
 		}
 		in.refStore = conversionStore
+	}
+	if finishGCDomainConstruction != nil {
+		finishGCDomainConstruction()
+		finishGCDomainConstruction = nil
 	}
 	if opts.runtime == nil {
 		// Active segments and start calls may leave local funcrefs in imported

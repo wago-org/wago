@@ -127,11 +127,16 @@ func TestRV64RootedAggregateTableBulkCompilesToHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	active, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active.Elements[0].Mode.Kind = wasm.ElemActive
+	active.Elements[0].Mode.Offset = wasm.Expr{BodyBytes: []byte{0x41, 0x00, 0x0b}}
+	if !admitRV64GCRootedScalarModule(active) {
+		t.Fatal("active aggregate element shape was not admitted")
+	}
 	for name, mutate := range map[string]func(*wasm.Module){
-		"active": func(candidate *wasm.Module) {
-			candidate.Elements[0].Mode.Kind = wasm.ElemActive
-			candidate.Elements[0].Mode.Offset = wasm.Expr{BodyBytes: []byte{0x41, 0x00, 0x0b}}
-		},
 		"declarative": func(candidate *wasm.Module) { candidate.Elements[0].Mode.Kind = wasm.ElemDeclarative },
 		"wrong-null-heap": func(candidate *wasm.Module) {
 			candidate.Elements[0].Kind.Exprs[0].BodyBytes = []byte{0xd0, 0x01, 0x0b}
