@@ -266,25 +266,11 @@ func moduleHasGCHeapType(m *wasm.Module) bool {
 	return false
 }
 
-func moduleHasGCStructType(m *wasm.Module) bool {
-	if m == nil {
-		return false
-	}
-	for i := range m.Types {
-		for j := range m.Types[i].SubTypes {
-			if m.Types[i].SubTypes[j].Comp.Kind == wasm.CompStruct {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func moduleUsesGenericGCStructHelpers(m *wasm.Module) bool {
 	if m == nil {
 		return false
 	}
-	hasStructType := moduleHasGCStructType(m)
+	hasHeapType := moduleHasGCHeapType(m)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		r := wasm.NewReader(m.Code[i].BodyBytes)
@@ -304,7 +290,7 @@ func moduleUsesGenericGCStructHelpers(m *wasm.Module) bool {
 			case wasm.InstrRefTest, wasm.InstrRefCast,
 				wasm.InstrBrOnCast, wasm.InstrBrOnCastFail,
 				wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
-				if hasStructType {
+				if hasHeapType {
 					return true
 				}
 			}

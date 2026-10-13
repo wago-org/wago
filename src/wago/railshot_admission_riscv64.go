@@ -139,7 +139,11 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			return false
 		}
 	}
-	return (!structHelpers || hasStruct) && (!arrayHelpers || hasArray) && int(c.syncHostSlots) >= requiredSlots
+	// The struct-dispatch helper family also owns dynamic ref.test/ref.cast for
+	// both defined aggregate kinds. An array-only rooted module can therefore
+	// require it without declaring a struct descriptor. The fresh compiler
+	// receipt and code digest authenticate the actual helper callsites.
+	return (!structHelpers || hasStruct || hasArray) && (!arrayHelpers || hasArray) && int(c.syncHostSlots) >= requiredSlots
 }
 
 // rv64StateOnlyExternrefGlobals is the persisted-artifact witness for a

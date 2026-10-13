@@ -635,6 +635,110 @@ func TestRV64RootedReferenceArrayStressGC(t *testing.T) {
 	}
 }
 
+func rootedIndexedReferenceTestCastModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x01}, // mutable i32 leaf
+		{0x5e, 0x63, 0x00, 0x01}, // mutable array of (ref null 0)
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+	}
+	body := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00, 0x21, 0x00,
+		0x20, 0x00, 0xfb, 0x14, 0x00,
+		0x20, 0x00, 0xfb, 0x14, 0x01,
+		0x20, 0x00, 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x00,
+		0xd0, 0x00, 0xfb, 0x15, 0x00,
+		0xd0, 0x00, 0xfb, 0x17, 0x00, 0xd1,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedIndexedReferenceTestCastExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedIndexedReferenceTestCastModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	want := []uint64{1, 0, 42, 1, 1}
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, want) {
+		t.Fatalf("run()=%v err=%v want=%v", got, err, want)
+	}
+}
+
+func rootedArrayOnlyReferenceTestModule() []byte {
+	types := [][]byte{
+		{0x5e, 0x7f, 0x01},
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	body := []byte{0x00, 0x41, 0x00, 0xfb, 0x07, 0x00, 0xfb, 0x14, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedArrayOnlyReferenceTestExecutes(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedArrayOnlyReferenceTestModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{1}) {
+		t.Fatalf("run()=%v err=%v want=[1]", got, err)
+	}
+}
+
+func rootedIndexedReferenceCastFailureModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x01}, // mutable i32 leaf
+		{0x5e, 0x63, 0x00, 0x01}, // mutable array of (ref null 0)
+		wasmtest.FuncType(nil, nil),
+	}
+	body := []byte{0x00, 0x41, 0x01, 0xfb, 0x00, 0x00, 0xfb, 0x16, 0x01, 0x1a, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedIndexedReferenceCastTraps(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedIndexedReferenceCastFailureModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err == nil {
+		t.Fatal("mismatched rooted ref.cast did not trap")
+	} else if trap, ok := err.(*TrapError); !ok || trap.Code != TrapCastFailure {
+		t.Fatalf("mismatched rooted ref.cast trap=%v, want %v", err, TrapCastFailure)
+	}
+}
+
 func rootedScalarBoundaryStructModule(fieldCount int) []byte {
 	fields := []byte{0x5f}
 	fields = append(fields, wasmtest.ULEB(uint32(fieldCount))...)

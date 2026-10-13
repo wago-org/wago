@@ -2350,7 +2350,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 					break
 				}
-				concreteHeap := state.gcRefTestConcrete && imm.HasHeapType && (imm.HeapType == wasm.AbsHeap(wasm.HeapStruct) || imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index < 8)
+				genericHeap := state.gcRootedScalar && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec &&
+					(referenceTypes.rootedStruct(imm.HeapType.Type().Index) || referenceTypes.rootedArray(imm.HeapType.Type().Index))
+				concreteHeap := (state.gcRefTestConcrete && imm.HasHeapType && (imm.HeapType == wasm.AbsHeap(wasm.HeapStruct) || imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index < 8)) || genericHeap
 				tableHeap := state.gcRefTestTable && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index <= 2
 				abstractHeap := state.gcRefTestAbstract && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapAbs
 				if abstractHeap {
@@ -2448,7 +2450,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 					break
 				}
-				if state.gcRefTestConcrete && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index < 8 {
+				genericHeap := state.gcRootedScalar && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec &&
+					(referenceTypes.rootedStruct(imm.HeapType.Type().Index) || referenceTypes.rootedArray(imm.HeapType.Type().Index))
+				if (state.gcRefTestConcrete && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index < 8) || genericHeap {
 					heap := int64(imm.HeapType.Type().Index)
 					if _, err = popClass(true); err != nil {
 						return integerSummary{}, err
