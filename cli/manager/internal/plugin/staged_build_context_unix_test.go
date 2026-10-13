@@ -41,7 +41,12 @@ func testConfigureCancellationAtGoPhase(t *testing.T, phase string) {
 	ready := filepath.Join(goDir, "fetch-started")
 	release := filepath.Join(goDir, "release-fetch")
 	childExited := filepath.Join(goDir, "child-exited")
+	// The fixture already requires Wago v0.0.0 through its local WAGO_SRC
+	// replacement. Build cancellation must not depend on an unrelated fetch.
 	shim := []byte("#!/bin/sh\n" +
+		"if [ \"$WAGO_TEST_GO_BLOCK\" = \"build\" ] && [ \"$1\" = \"get\" ] && [ \"$#\" -eq 2 ] && [ \"$2\" = \"github.com/wago-org/wago@v0.0.0\" ]; then\n" +
+		"  exit 0\n" +
+		"fi\n" +
 		"if [ \"$1\" = \"$WAGO_TEST_GO_BLOCK\" ]; then\n" +
 		"  (while [ ! -e \"$WAGO_TEST_GO_RELEASE\" ]; do sleep 0.02; done; : > \"$WAGO_TEST_GO_CHILD_EXIT\") &\n" +
 		"  : > \"$WAGO_TEST_GO_READY\"\n" +
