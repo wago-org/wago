@@ -557,6 +557,16 @@ func (f *fn) tryShiftedRegisterALU(node, left, right *elem, dest Reg) Reg {
 		return regNone
 	}
 	shiftArg, kind, count, ok := constShiftOperand(f.s, right, node.st.typ)
+	wrapped := false
+	if !ok && node.st.typ == mtI32 && right.isDeferred() && right.deferredOp() == opWrap {
+		// Only the final low word is observable. Shift at the original i64
+		// width, combine in X registers, then canonicalize the i32 result.
+		shiftArg, kind, count, ok = constShiftOperand(f.s, f.s.arg0(right), mtI64)
+		wrapped = ok
+		if wrapped && left.isDeferred() && left.deferredOp() == opWrap {
+			left = f.s.arg0(left)
+		}
+	}
 	if !ok || shiftArg == nil || ((op == opAdd || op == opSub) && kind == a64.RegShiftROR) {
 		return regNone
 	}
@@ -564,6 +574,7 @@ func (f *fn) tryShiftedRegisterALU(node, left, right *elem, dest Reg) Reg {
 	// This matches condenseBinary's normal realization order: its deferred RHS
 	// (the whole shift) is condensed before the LHS. Pin each realized source
 	// while obtaining the other so allocator pressure cannot silently reuse it.
+	savedPins := f.pinned
 	rm, ownRM := f.materializeRead(shiftArg)
 	f.pinned = f.pinned.add(rm)
 	rn, ownRN := f.materializeRead(left)
@@ -579,7 +590,7 @@ func (f *fn) tryShiftedRegisterALU(node, left, right *elem, dest Reg) Reg {
 			rd = f.allocReg(maskOf(rn, rm))
 		}
 	}
-	w32 := !node.st.typ.is64()
+	w32 := !node.st.typ.is64() && !wrapped
 	switch op {
 	case opAdd:
 		f.a.AddShiftedReg(rd, rn, rm, kind, count, w32)
@@ -592,8 +603,11 @@ func (f *fn) tryShiftedRegisterALU(node, left, right *elem, dest Reg) Reg {
 	case opXor:
 		f.a.EorShiftedReg(rd, rn, rm, kind, count, w32)
 	}
-	f.pinned = f.pinned.remove(rn)
-	f.pinned = f.pinned.remove(rm)
+	if wrapped {
+		f.a.MovReg32(rd, rd)
+		f.stats.peep("wrapped-shifted-register-alu")
+	}
+	f.pinned = savedPins
 	if ownRN && rn != rd {
 		f.release(rn)
 	}
