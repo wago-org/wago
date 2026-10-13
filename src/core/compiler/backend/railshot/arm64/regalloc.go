@@ -2,18 +2,21 @@
 
 package arm64
 
-import "github.com/wago-org/wago/src/core/runtime"
+import (
+	"github.com/wago-org/wago/src/core/runtime"
+)
 
 type intConstReg struct {
-	typ  machineType
-	bits int64
-	reg  Reg
+	typ     machineType
+	bits    int64
+	reg     Reg
+	address bool
 }
 
 func (f *fn) cachedIntConst(st storage) (Reg, bool) {
 	for i := 0; i < int(f.iconstN); i++ {
 		c := f.iconsts[i]
-		if c.typ == st.typ && c.bits == st.cval {
+		if !c.address && c.typ == st.typ && c.bits == st.cval {
 			return c.reg, true
 		}
 	}
@@ -24,30 +27,84 @@ func (f *fn) preloadLoopIntConsts(h *funcHintView) {
 	if !f.opt(optLoopIntConst) || f.makesCalls || h.loopIntConstCount == 0 {
 		return
 	}
-	for i := 0; i < int(h.loopIntConstCount) && i < len(f.iconsts); i++ {
+	f.reserveLoopIntConsts(h)
+}
+
+func (f *fn) reserveLoopIntConsts(h *funcHintView) {
+	for i := 0; i < int(h.loopIntConstCount) && int(f.iconstN) < len(f.iconsts); i++ {
+		if h.loopIntConstTypes>>(2*i)&3 != 3 {
+			typ := mtI32
+			if h.loopIntConstTypes>>(2*i)&3 == 2 {
+				typ = mtI64
+			}
+			if _, ok := f.cachedIntConst(storage{typ: typ, cval: h.loopIntConst[i]}); ok {
+				continue
+			}
+		}
+		address := h.loopIntConstTypes>>(2*i)&3 == 3
+		if address && (!f.opt(optLoopMemoryBase) || f.memoryAddr64(0) || f.threadedMemory0 ||
+			h.flags.has(hintUsesBulkMem|hintMutatesTable|hintModuleEH) || f.moduleEH ||
+			len(f.customInstructions) != 0 || f.m != nil && len(f.m.Tables) != 0) {
+			continue
+		}
 		reg := regNone
-		for _, candidate := range [...]Reg{X25, X24, X23, X27} {
+		candidates := [...]Reg{X25, X24, X23, X27, X14, X13}
+		for _, candidate := range candidates {
+			if candidate == X14 || candidate == X13 {
+				// Fixed-register bulk/table/EH lowering cannot preserve scratch
+				// constants. Keep an ordinary temporary-register floor too.
+				if h.flags.has(hintUsesBulkMem|hintMutatesTable|hintModuleEH) || f.moduleEH ||
+					(f.m != nil && len(f.m.Tables) != 0) || len(f.customInstructions) != 0 {
+					continue
+				}
+				free := 0
+				for _, r := range gpAlloc {
+					if !f.reserved.has(r) && !f.pinnedLocalMask.has(r) && f.regUser[r] == nil {
+						free++
+					}
+				}
+				floor := 7
+				if address {
+					floor = 4
+				}
+				if free <= floor {
+					continue
+				}
+			}
 			if !f.reserved.has(candidate) && !f.pinnedLocalMask.has(candidate) {
 				reg = candidate
 				break
 			}
 		}
 		if reg == regNone {
+			if f.opt(optLoopMemoryBase) {
+				continue
+			}
 			break
 		}
 		typ := mtI32
-		if h.loopIntConstTypes>>(2*i)&3 == 2 {
+		if address || h.loopIntConstTypes>>(2*i)&3 == 2 {
 			typ = mtI64
 		}
 		bits := h.loopIntConst[i]
-		f.loadConst(reg, storage{kind: stConst, typ: typ, cval: bits})
-		f.iconsts[f.iconstN] = intConstReg{typ: typ, bits: bits, reg: reg}
+		if address {
+			f.a.AddImm64LSL12(reg, linMemReg, uint32(bits))
+			f.stats.peep("loop-memory-base")
+		} else {
+			f.loadConst(reg, storage{kind: stConst, typ: typ, cval: bits})
+		}
+		f.iconsts[f.iconstN] = intConstReg{typ: typ, bits: bits, reg: reg, address: address}
 		if regallocCheckEnabled {
 			f.checkImmutable(reg, false, 8)
 		}
 		f.iconstN++
 		f.reserved = f.reserved.add(reg)
-		f.stats.peep("loop-int-const")
+		if !address {
+			f.stats.peep("loop-int-const")
+		}
+	}
+	if f.intervalControl {
+		f.intervalRegLimit = f.currentIntervalRegLimit()
 	}
 }
 
@@ -365,7 +422,7 @@ func (f *fn) loadMemRef(dst Reg, e *elem) {
 		defer f.switchProfileOrigin(previous)
 	}
 	st := e.st
-	f.a.LoadIdx(dst, linMemReg, st.reg, st.memDisp(), st.memSize(), st.memSigned(), st.typ.is64())
+	f.loadLinearIdx(dst, st.reg, st.memDisp(), st.memSize(), st.memSigned(), st.typ.is64())
 }
 
 // materializeByType realizes e with the register class required by its machine
@@ -404,6 +461,10 @@ func (f *fn) materializePendingEffects(loads bool) {
 			f.materializeByType(e)
 		}
 	}
+	if loads && f.s.pendingDeferred != 0 && f.opt(optCrowdedProducts) {
+		f.finishCrowdedProducts()
+	}
+
 }
 
 // materializePendingLoadsBeforeStore preserves deferred loads that are proven

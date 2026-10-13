@@ -3533,6 +3533,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.a.Pop(R12)
 	f.a.Pop(RBX)
 	f.copyInstanceContext(RBX, R9)
+	f.refreshCachedMemoryBoundAfterExternalCall()
 	f.deriveModuleGlobals() // cross-instance callee may have written shared global cells
 	f.a.PatchRel32(jdone, f.a.Len())
 

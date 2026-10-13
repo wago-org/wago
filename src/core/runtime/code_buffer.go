@@ -150,6 +150,19 @@ func (b *CodeBuffer) CommitTail(code []byte) bool {
 	return true
 }
 
+// AdoptHeapImage transfers exclusive ownership of code to an empty heap staging
+// image. It avoids a second allocation and copy when a first function outgrows
+// its reserved tail. The caller must stop using code after a successful transfer.
+// Mapped, nonempty, closed and sealed images are left unchanged and return false.
+func (b *CodeBuffer) AdoptHeapImage(code []byte) bool {
+	if b == nil || !b.heap || b.closed || b.sealed || b.n != 0 || len(code) == 0 {
+		return false
+	}
+	b.mem = code[:cap(code)]
+	b.n = len(code)
+	return true
+}
+
 // Bytes returns the exact logical image. It is writable until Seal succeeds
 // and read-only afterward. Callers must not retain it after Close.
 func (b *CodeBuffer) Bytes() []byte {

@@ -8,6 +8,14 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Improve ARM64 execution with guarded scalar and vector loop lowering, bounded
+  register reuse, borrowed operands, indexed address reuse, exact integer dot
+  and absolute-difference reductions, min-plus updates, independent floating-point
+  maps, vector unrolling, scoped constants, static table-address bounds and
+  arithmetic/branch simplification. Each optional lowering has strict admission
+  checks and a per-compilation rollback option. Reduce compilation overhead with
+  linear option resolution, cheaper loop/local-state scans and sufficient native
+  image capacity to avoid reallocating dense large modules.
 - Admit exact typed i64 synchronous host callbacks to the private prepared
   integer route when the bounded-work and detached-context proofs hold. Other
   callback shapes retain their existing route; each synchronous host binding
@@ -43,6 +51,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   candidate text, and file-completion fallback for empty results.
 - Keep ARM64 i64x2 multiply lowering within five transient vector registers under pinned-local pressure.
 
+- Keep indexed memory sizes and bounds coherent across aliased imports and native
+  calls on AMD64 and ARM64. Recompile native artifacts to receive the fix.
 - Report batched Wago and wazero execution benchmark allocations per operation,
   matching their timing units instead of reporting allocations per batch.
 - Check encoded ARM64 register aliases in NEON shuffle and byte-movemask helpers
