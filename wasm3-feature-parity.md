@@ -991,3 +991,10 @@ contains all phase samples, contract/artifact hashes, raw compile measurements,
 red/green regression output, correctness checks, and six local publication
 receipts. The new Wago results are available at http://localhost:8788/benchmarks/.
 No production deployment occurred. Full parity and native AMD64 timing remain open.
+
+A [follow-up CPU and peer assembly diagnostic](docs/benchmarks/wasm3-2026-10-13/host-control-followup-diagnosis.json) retains the unchanged workload's
+post-change CPU profile and exact peer C translation compiled with capture flags.
+The fixed host loop remains 71.43% cumulative, native resume 26.27%, and memory
+directory refresh 12.21% (overlapping samples). Reconstructed compiler assembly
+retains the inner-loop memory store/load and callback branch; this is not the
+original temporary capture library. Bounded execution remains unadmitted.
