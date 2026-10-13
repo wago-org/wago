@@ -504,7 +504,12 @@ func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
 	}
 	if referenceVectorCarrierArgument {
 		if referenceVectorLocalTransfer {
-			wantBodies[0], wantBodies[1], wantBodies[5] = mutableReferenceVectorLocalTransferBodies(false)
+			branchIdentity, branchTransform, branchCall := mutableReferenceVectorBranchTransferBodies(false)
+			if bytes.Equal(m.Code[1].BodyBytes, branchTransform) {
+				wantBodies[0], wantBodies[1], wantBodies[5] = branchIdentity, branchTransform, branchCall
+			} else {
+				wantBodies[0], wantBodies[1], wantBodies[5] = mutableReferenceVectorLocalTransferBodies(false)
+			}
 		} else {
 			wantBodies[0] = []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x0b}
 			wantBodies[1] = []byte{0x20, 0, 0x41, 1, 0x6a, 0x20, 1, 0x20, 2, 0x20, 3, 0xfd, 77, 0x20, 4, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x0b}
@@ -574,6 +579,27 @@ func mutableReferenceVectorLocalTransferBodies(tail bool) (identity, transform, 
 		call[len(call)-3] = 0x15
 	}
 	return append(identity, 0x0b), append(transform, 0x0b), call
+}
+
+func mutableReferenceVectorBranchTransferBodies(tail bool) (identity, transform, call []byte) {
+	identity, _, call = mutableReferenceVectorLocalTransferBodies(tail)
+	stage := func(body []byte, parameter, local byte) []byte {
+		return append(body, 0x20, parameter, 0x21, local)
+	}
+	transform = []byte{0x20, 0, 0x04, 0x40}
+	transform = append(transform, 0x20, 0, 0x41, 1, 0x6a, 0x21, 5)
+	transform = stage(transform, 1, 6)
+	transform = stage(transform, 2, 7)
+	transform = append(transform, 0x20, 3, 0xfd, 77, 0x21, 8)
+	transform = append(transform, 0x20, 4, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x21, 9, 0x05)
+	for i := byte(0); i < 5; i++ {
+		transform = stage(transform, i, i+5)
+	}
+	transform = append(transform, 0x0b)
+	for i := byte(0); i < 5; i++ {
+		transform = append(transform, 0x20, i+5)
+	}
+	return identity, append(transform, 0x0b), call
 }
 
 // privateIndexedFunctionGlobal admits the table-free typed cells used to hold

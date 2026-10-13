@@ -140,7 +140,7 @@ func rv64MutableReferenceCarrierTailPlan(c *Compiled, p encoder.NativeTailPlan) 
 	if variant == 24 {
 		return p.SourcePC == 13 && p.FrameBytes == 224 && p.SourceBase == 128 && p.SourceStride == 16 && p.ReferenceBase == 208
 	}
-	return variant == 26 && p.SourcePC == 43 && p.FrameBytes == 304 && p.SourceBase == 208 && p.SourceStride == 16 && p.ReferenceBase == 288
+	return (variant == 26 || variant == 28) && p.SourcePC == 43 && p.FrameBytes == 304 && p.SourceBase == 208 && p.SourceStride == 16 && p.ReferenceBase == 288
 }
 
 func rv64PublicDynamicHostReferencePlan(c *Compiled, p encoder.NativeTailPlan) bool {

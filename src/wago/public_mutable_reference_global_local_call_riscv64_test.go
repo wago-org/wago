@@ -341,6 +341,60 @@ func rv64MutableFuncrefLocalCallReferenceVectorLocalTransferModule() []byte {
 	)
 }
 
+func rv64MutableReferenceVectorBranchTransferBodies(tail bool) (identity, transform, call []byte) {
+	identity, _, call = rv64MutableReferenceVectorLocalTransferBodies(tail)
+	stage := func(body []byte, parameter, local byte) []byte {
+		return append(body, 0x20, parameter, 0x21, local)
+	}
+	transform = []byte{0x20, 0, 0x04, 0x40}
+	transform = append(transform, 0x20, 0, 0x41, 1, 0x6a, 0x21, 5)
+	transform = stage(transform, 1, 6)
+	transform = stage(transform, 2, 7)
+	transform = append(transform, 0x20, 3, 0xfd, 77, 0x21, 8)
+	transform = append(transform, 0x20, 4, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x21, 9, 0x05)
+	for i := byte(0); i < 5; i++ {
+		transform = stage(transform, i, i+5)
+	}
+	transform = append(transform, 0x0b)
+	for i := byte(0); i < 5; i++ {
+		transform = append(transform, 0x20, i+5)
+	}
+	return identity, append(transform, 0x0b), call
+}
+
+func rv64MutableFuncrefLocalCallReferenceVectorBranchTransferModule() []byte {
+	types := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.V128, wasm.F64}
+	identity, transform, call := rv64MutableReferenceVectorBranchTransferBodies(false)
+	codeWithLocals := func(body []byte) []byte {
+		fn := []byte{byte(len(types))}
+		for _, typ := range types {
+			fn = append(fn, 1, wasm.MustEncodeValType(typ))
+		}
+		fn = append(fn, body...)
+		return append(wasmtest.ULEB(uint32(len(fn))), fn...)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{6, 0, 0, 1, 1, 1, 0}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0), wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2), wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("call", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			codeWithLocals(identity), codeWithLocals(transform),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}), codeWithLocals(call),
+		)),
+	)
+}
+
+func rv64MutableFuncrefLocalTailCallReferenceVectorBranchTransferModule() []byte {
+	return rv64MutableFuncrefLocalTailCallModule(rv64MutableFuncrefLocalCallReferenceVectorBranchTransferModule())
+}
+
 func rv64MutableFuncrefLocalTailCallReferenceVectorLocalTransferModule() []byte {
 	return rv64MutableFuncrefLocalTailCallModule(rv64MutableFuncrefLocalCallReferenceVectorLocalTransferModule())
 }
@@ -1922,6 +1976,110 @@ func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorLocalTransfers(t *tes
 	}
 }
 
+func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorBranchTransfers(t *testing.T) {
+	for _, tail := range []bool{false, true} {
+		for _, artifact := range []bool{false, true} {
+			t.Run(fmt.Sprintf("tail%t-artifact%t", tail, artifact), func(t *testing.T) {
+				rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+				defer rv64HostCertificateCloseRuntime(t, rt)
+				source := rv64MutableFuncrefLocalCallReferenceVectorBranchTransferModule()
+				variant := 27
+				if tail {
+					source = rv64MutableFuncrefLocalTailCallReferenceVectorBranchTransferModule()
+					variant = 28
+				}
+				compiled := rv64NativeTailCompile(t, fmt.Sprintf("mutable-funcref-local-reference-vector-branches-tail%t", tail), source, artifact)
+				view := compiled.executionView()
+				if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) {
+					t.Fatal("reference-vector branch-transfer witness missing")
+				}
+				if m := rv64NativeTailModule(view); tail && (m == nil || len(m.Plans) != 1 || !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0])) {
+					t.Fatal("reference-vector branch-transfer tail plan missing", m)
+				} else if !tail && m != nil {
+					t.Fatal("ordinary reference-vector branch-transfer retained tail plan")
+				}
+				consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+				ref, err := rt.NewExternRef("mutable-reference-vector-branch-transfer")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err = consumer.Invoke("set_0"); err != nil {
+					t.Fatal("install branch-transfer identity", err)
+				}
+				cell, err := consumer.GlobalValue("cell")
+				if err != nil || cell.FuncRef().IsNull() {
+					t.Fatal("branch-transfer funcref argument", cell, err)
+				}
+				argumentRoot, err := rt.NewFuncRefGlobal(cell.FuncRef(), false)
+				if err != nil {
+					t.Fatal("retain branch-transfer funcref argument", err)
+				}
+				defer argumentRoot.Close()
+				base := []uint64{0, cell.Bits(), ValueExternRef(ref).Bits(), 0x0123456789abcdef, 0xfedcba9876543210, math.Float64bits(2.5)}
+				assertCall := func(i32 uint64, transform bool) {
+					t.Helper()
+					input := slices.Clone(base)
+					input[0] = i32
+					want := []uint64{uint64(uint32(i32)), input[1], input[2], input[3], input[4], input[5]}
+					if transform {
+						want[0] = uint64(uint32(i32) + 1)
+						want[3], want[4], want[5] = ^input[3], ^input[4], math.Float64bits(3.5)
+					}
+					got, err := consumer.Invoke("call", input...)
+					if err != nil || !slices.Equal(got, want) {
+						t.Fatal("mutable reference-vector branch-transfer call_ref", got, err, "want", want)
+					}
+					rv64AssertPublicReferenceArgumentScopesClear(t, consumer)
+				}
+				assertCall(0xdeadbeef80000001, false)
+				if _, err = consumer.Invoke("set_1"); err != nil {
+					t.Fatal("install branch-transfer conditional target", err)
+				}
+				assertCall(0xdeadbeef80000001, true)
+				assertCall(0xdeadbeef00000000, false)
+
+				producer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+				descriptor, ok := producer.localFuncrefDescriptor(1)
+				if !ok {
+					t.Fatal("foreign branch-transfer target descriptor")
+				}
+				token, err := rt.refStore.issue(producer, descriptor)
+				if err != nil {
+					t.Fatal("foreign branch-transfer target token", err)
+				}
+				before := producer.referenceLifetime().snapshot()
+				if err = consumer.SetGlobalValue("cell", ValueOf(ValFuncRef, token)); err != nil {
+					t.Fatal("install foreign branch-transfer target", err)
+				}
+				installed := producer.referenceLifetime().snapshot()
+				if installed.ResourceRoots != before.ResourceRoots+1 {
+					t.Fatal("foreign branch-transfer cell root", before, installed)
+				}
+				if err = producer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				assertCall(0xfeedface00000000, false)
+				if _, err = consumer.Invoke("clear"); err != nil {
+					t.Fatal("clear foreign branch-transfer target", err)
+				}
+				cleared := producer.referenceLifetime().snapshot()
+				if !cleared.LogicallyClosed || !cleared.PhysicalResources || cleared.ResourceRoots+1 != installed.ResourceRoots {
+					t.Fatal("foreign branch-transfer root not retired", installed, cleared)
+				}
+				if !rt.ReleaseExternRef(ref) {
+					t.Fatal("branch-transfer externref remained pinned")
+				}
+				if err = consumer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err = compiled.Close(); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
+
 func TestRV64PublicMutableFuncrefGlobalLocalTailCallMixedVector(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
@@ -2477,6 +2635,57 @@ func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorLocalTransferAdmissio
 					mutate(bad)
 					if err := railshotValidateCompiled(bad); !errors.Is(err, railshot.ErrUnsupported) {
 						t.Fatal("hostile reference-vector local-transfer artifact admitted", err)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorBranchTransferAdmission(t *testing.T) {
+	for _, tail := range []bool{false, true} {
+		t.Run(fmt.Sprintf("tail%t", tail), func(t *testing.T) {
+			source := rv64MutableFuncrefLocalCallReferenceVectorBranchTransferModule()
+			variant := 27
+			if tail {
+				source = rv64MutableFuncrefLocalTailCallReferenceVectorBranchTransferModule()
+				variant = 28
+			}
+			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-reference-vector-branch-admission", source, false)
+			defer compiled.Close()
+			view := compiled.executionView()
+			if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) {
+				t.Fatal("base reference-vector branch-transfer witness rejected")
+			}
+			for name, mutate := range map[string]func(*Compiled){
+				"code":             func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
+				"entry":            func(v *Compiled) { v.Entry[2] -= 16 },
+				"missing-simd":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureSIMD },
+				"missing-call-abi": func(v *Compiled) { v.nativeReferenceCallABI = false },
+				"plan-source": func(v *Compiled) {
+					if m := rv64NativeTailModule(v); m != nil {
+						m.Plans[0].SourcePC++
+					}
+				},
+				"plan-reference-base": func(v *Compiled) {
+					if m := rv64NativeTailModule(v); m != nil {
+						m.Plans[0].ReferenceBase -= 16
+					}
+				},
+			} {
+				t.Run(name, func(t *testing.T) {
+					if !tail && (name == "plan-source" || name == "plan-reference-base") {
+						return
+					}
+					bad := cloneCompiledMetadata(view)
+					bad.validateMemo, bad.codeCache = &validateMemo{}, nil
+					bad.Entry = slices.Clone(bad.Entry)
+					if m := rv64NativeTailModule(view); m != nil {
+						rv64StoreNativeTailModule(bad, &encoder.NativeTailModule{Plans: slices.Clone(m.Plans)})
+					}
+					mutate(bad)
+					if err := railshotValidateCompiled(bad); !errors.Is(err, railshot.ErrUnsupported) {
+						t.Fatal("hostile reference-vector branch-transfer artifact admitted", err)
 					}
 				})
 			}
