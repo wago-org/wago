@@ -268,6 +268,65 @@ func TestRV64RootedAggregateArrayActiveElementCompiles(t *testing.T) {
 	}
 }
 
+func TestRV64RootedAggregateNullableReferenceElements(t *testing.T) {
+	tests := map[string]struct {
+		container []byte
+		entries   []byte
+		wrong     []byte
+		count     byte
+	}{
+		"struct": {
+			container: []byte{0x5f, 0x01, 0x63, 0x00, 0x01}, // mutable (ref null 0) field
+			entries: []byte{
+				0xd0, 0x00, 0xfb, 0x00, 0x01, 0x0b, // ref.null 0; struct.new 1
+				0xfb, 0x01, 0x01, 0x0b, // struct.new_default 1
+			},
+			wrong: []byte{0xd0, 0x70, 0xfb, 0x00, 0x01, 0x0b}, // funcref null is not a struct ref
+			count: 2,
+		},
+		"array": {
+			container: []byte{0x5e, 0x63, 0x00, 0x01}, // mutable (ref null 0) elements
+			entries: []byte{
+				0xd0, 0x00, 0xd0, 0x00, 0xfb, 0x08, 0x01, 0x02, 0x0b, // array.new_fixed 1
+				0xd0, 0x00, 0x41, 0x02, 0xfb, 0x06, 0x01, 0x0b, // array.new 1
+				0x41, 0x02, 0xfb, 0x07, 0x01, 0x0b, // array.new_default 1
+			},
+			wrong: []byte{0xd0, 0x70, 0xd0, 0x00, 0xfb, 0x08, 0x01, 0x02, 0x0b},
+			count: 3,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			elements := []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x01, test.count}
+			elements = append(elements, test.entries...)
+			body := []byte{0x00, 0x0b}
+			source := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(
+					[]byte{0x5f, 0x01, 0x7f, 0x01}, // mutable i32 leaf
+					test.container,
+					wasmtest.FuncType(nil, nil),
+				)),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+				wasmtest.Section(4, []byte{0x01, 0x63, 0x01, 0x01, test.count, 0x04}),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+				wasmtest.Section(9, elements),
+				wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+			)
+			if err := AdmitProductionSource(source); err != nil {
+				t.Fatal(err)
+			}
+			candidate, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			candidate.Elements[0].Kind.Exprs[0].BodyBytes = test.wrong
+			if admitRV64GCRootedScalarModule(candidate) {
+				t.Fatal("aggregate constructor admitted an incompatible funcref null")
+			}
+		})
+	}
+}
+
 func rv64RootedTypedSelectModule(typeIndex uint32, nullable, same bool) []byte {
 	types := make([][]byte, typeIndex+1)
 	for i := range types {

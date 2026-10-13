@@ -57,6 +57,33 @@ func genericGCActiveArrayElementModule() []byte {
 	)
 }
 
+func genericGCActiveNullableStructElementModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},       // mutable i32 leaf
+			[]byte{0x5f, 0x01, 0x63, 0x00, 0x01}, // mutable (ref null 0) holder
+		)),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x01, 0x01, 0x02, 0x04}),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x01, 0x02,
+			0xd0, 0x00, 0xfb, 0x00, 0x01, 0x0b,
+			0xfb, 0x01, 0x01, 0x0b}),
+	)
+}
+
+func genericGCActiveNullableArrayElementModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01}, // mutable i32 leaf
+			[]byte{0x5e, 0x63, 0x00, 0x01}, // mutable (ref null 0) elements
+		)),
+		wasmtest.Section(4, []byte{0x01, 0x63, 0x01, 0x01, 0x03, 0x04}),
+		wasmtest.Section(9, []byte{0x01, 0x06, 0x00, 0x41, 0x00, 0x0b, 0x63, 0x01, 0x03,
+			0xd0, 0x00, 0xd0, 0x00, 0xfb, 0x08, 0x01, 0x02, 0x0b,
+			0xd0, 0x00, 0x41, 0x02, 0xfb, 0x06, 0x01, 0x0b,
+			0x41, 0x02, 0xfb, 0x07, 0x01, 0x0b}),
+	)
+}
+
 func TestGenericGCActiveTableElementRoots(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit), genericGCActiveTableElementModule())
 	if err != nil {
@@ -117,6 +144,50 @@ func TestGenericGCActiveArrayElementRoots(t *testing.T) {
 				t.Fatalf("active array root[%d][%d] = %+v, %v; want %d", slot, index, value, err, want)
 			}
 		}
+	}
+}
+
+func TestGenericGCActiveNullableReferenceElements(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit)
+	for name, source := range map[string][]byte{
+		"struct": genericGCActiveNullableStructElementModule(),
+		"array":  genericGCActiveNullableArrayElementModule(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			compiled, err := Compile(config, source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if err := instance.CollectGC(); err != nil {
+				t.Fatal(err)
+			}
+			descriptor := instance.tableDescriptor(0)
+			for slot := range len(compiled.Elems[0].Values) {
+				ref := gc.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8+slot*8:])))
+				if ref.IsNull() {
+					t.Fatalf("aggregate table slot %d is null", slot)
+				}
+				if name == "struct" {
+					value, err := instance.gc.StructGet(ref, 0)
+					if err != nil || value.Bits != 0 {
+						t.Fatalf("nullable struct field[%d] = %+v, %v", slot, value, err)
+					}
+					continue
+				}
+				for index := range 2 {
+					value, err := instance.gc.ArrayGet(ref, uint32(index))
+					if err != nil || value.Bits != 0 {
+						t.Fatalf("nullable array element[%d][%d] = %+v, %v", slot, index, value, err)
+					}
+				}
+			}
+		})
 	}
 }
 
