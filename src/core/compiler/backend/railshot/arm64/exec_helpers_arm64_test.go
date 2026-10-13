@@ -60,8 +60,12 @@ func runArm64WrapperWithOptions(t *testing.T, m *wasm.Module, opts CompileOption
 // runArm64WrapperMem is the memory-initializing variant used by load and bounds
 // tests. It keeps the same serialized wrapper ABI as runArm64Wrapper.
 func runArm64WrapperMem(t *testing.T, m *wasm.Module, arg uint32, init func([]byte)) (uint32, error) {
+	return runArm64WrapperMemWithOptions(t, m, CompileOptions{}, arg, init)
+}
+
+func runArm64WrapperMemWithOptions(t *testing.T, m *wasm.Module, opts CompileOptions, arg uint32, init func([]byte)) (uint32, error) {
 	t.Helper()
-	cm, err := CompileModule(m)
+	cm, err := CompileModuleWith(m, opts)
 	if err != nil {
 		t.Fatalf("arm64 compile: %v", err)
 	}

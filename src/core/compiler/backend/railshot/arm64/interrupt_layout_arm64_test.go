@@ -32,3 +32,18 @@ func TestPollFreeLoopHeaderLimitsPaddingForLargeFunctions(t *testing.T) {
 		t.Fatalf("large-function aligned length = %d, want %d", got, want)
 	}
 }
+
+func TestScopedFloatConstantLoopHeaderUsesFullFetchBoundary(t *testing.T) {
+	for _, prefix := range []int{0, 4, 12, 16, 20, 28} {
+		f := fn{
+			a:       &a64.Asm{},
+			nLocals: 4,
+			fconsts: []floatConstReg{{loopDepth: 1}},
+		}
+		f.a.B = make([]byte, prefix)
+		f.alignLoopHeader()
+		if got := f.a.Len() % 32; got != 0 {
+			t.Fatalf("prefix %d: scoped float loop phase = %d, want 0", prefix, got)
+		}
+	}
+}

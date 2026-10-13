@@ -25,47 +25,87 @@ func isFusableCompare(e *elem) bool {
 	return e != nil && e.elemKind() == ekDeferred && (isCompare(e.deferredOp()) || e.deferredOp() == opEqz)
 }
 
-func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
-	if !swarMaskTestEnabled || node == nil || node.deferredOp() != opEqz {
-		return 0, false
-	}
-	inner := f.s.arg0(node)
-	if inner == nil || inner.elemKind() != ekDeferred || inner.deferredOp() != opAnd {
-		return 0, false
-	}
-	innerRight := f.s.arg1(inner)
-	if innerRight == nil || innerRight.elemKind() != ekValue || innerRight.st.kind != stConst ||
-		innerRight.st.cval == 0 {
-		return 0, false
-	}
+// isFusableCondition also accepts an i32 bitmask consumed for its truth value.
+// local.tee must still use isFusableCompare: its stored value must stay intact.
+func isFusableCondition(e *elem) bool {
+	return isFusableCompare(e) || swarMaskTestEnabled && e != nil && e.isDeferred() && e.deferredOp() == opAnd && e.st.typ == mtI32
+}
 
-	x, owned := f.materializeRead(f.s.arg0(inner))
-	f.pinned = f.pinned.add(x)
+func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
+	if !swarMaskTestEnabled || node == nil {
+		return 0, false
+	}
+	inner, cc := node, condNE
+	if node.deferredOp() == opEqz {
+		inner, cc = f.s.arg0(node), condE
+	} else if node.deferredOp() != opAnd || node.st.typ != mtI32 {
+		return 0, false
+	}
+	if inner == nil || !inner.isDeferred() || inner.deferredOp() != opAnd {
+		return 0, false
+	}
+	left, right := f.s.arg0(inner), f.s.arg1(inner)
+	if left.elemKind() == ekValue && left.st.kind == stConst {
+		left, right = right, left
+	}
+	savedPinned := f.pinned
 	wide := inner.st.typ.is64()
-	c := uint64(innerRight.st.cval)
-	testOff := f.a.Len()
-	emitted := false
-	if wide {
-		emitted = f.a.TstImm64(x, c)
-	} else {
-		emitted = f.a.TstImm32(x, uint32(c))
-	}
-	if !emitted {
-		t, tempOwned := f.intConstReadReg(storage{kind: stConst, typ: inner.st.typ, cval: int64(c)}, maskOf(x))
-		f.a.TstReg(x, t, !wide)
-		if tempOwned {
-			f.release(t)
+	if right.elemKind() == ekValue && right.st.kind == stConst {
+		x, owned := f.materializeRead(left)
+		f.pinned = f.pinned.add(x)
+		c := uint64(right.st.cval)
+		if !wide {
+			c = uint64(uint32(c))
 		}
-	} else if c&(c-1) == 0 {
-		f.recordSingleBitTest(testOff, x, uint8(bits.TrailingZeros64(c)))
+		testOff := f.a.Len()
+		emitted := false
+		if wide {
+			emitted = f.a.TstImm64(x, c)
+		} else {
+			emitted = f.a.TstImm32(x, uint32(c))
+		}
+		if !emitted {
+			t, tempOwned := f.intConstReadReg(right.st, maskOf(x))
+			f.a.TstReg(x, t, !wide)
+			if tempOwned {
+				f.release(t)
+			}
+		} else if c&(c-1) == 0 {
+			f.recordSingleBitTest(testOff, x, uint8(bits.TrailingZeros64(c)))
+		}
+		if owned {
+			f.release(x)
+		}
+	} else {
+		// Match the ordinary deferred RHS-first realization order.
+		inverted := invertedOperand(f.s, right, inner.st.typ)
+		source := right
+		if inverted != nil {
+			source = inverted
+		}
+		y, ownY := f.materializeRead(source)
+		f.pinned = f.pinned.add(y)
+		x, ownX := f.materializeRead(left)
+		if inverted != nil {
+			f.a.TstNotReg(x, y, !wide)
+		} else {
+			f.a.TstReg(x, y, !wide)
+		}
+		if ownX {
+			f.release(x)
+		}
+		if ownY && y != x {
+			f.release(y)
+		}
 	}
-	f.pinned = f.pinned.remove(x)
-	if owned {
-		f.release(x)
+	f.pinned = savedPinned
+	if node.deferredOp() == opEqz && right.elemKind() == ekValue && right.st.kind == stConst && right.st.cval != 0 {
+		f.stats.peep("swar-mask-test")
+	} else {
+		f.stats.peep("mask-condition-test")
 	}
-	f.stats.peep("swar-mask-test")
 	f.consumeBlockBelow(node)
-	return condE, true
+	return cc, true
 }
 
 // flushBelow materializes every operand strictly below node's valent block into
@@ -168,11 +208,12 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 			invert = !invert
 		}
 	}
-	if !invert {
-		if cc, ok := f.tryMaskedEqzToFlags(node); ok {
-			f.erase(node)
-			return cc
+	if cc, ok := f.tryMaskedEqzToFlags(node); ok {
+		f.erase(node)
+		if invert {
+			cc = invertCond(cc)
 		}
+		return cc
 	}
 	applyInvert := func(cc Cond) Cond {
 		if invert {
@@ -234,22 +275,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	}
 	switch right.st.kind {
 	case stConst:
-		// AArch64 CMP takes a 12-bit unsigned immediate; anything outside [0,4095]
-		// (including every negative comparand) falls back to materializing the
-		// constant and comparing register-register.
-		if v := right.st.cval; uint64(v) <= 0xFFF {
-			if w {
-				f.a.CmpImm64(L, uint32(v))
-			} else {
-				f.a.CmpImm32(L, uint32(v))
-			}
-		} else {
-			t, owned := f.intConstReadReg(right.st, maskOf(L))
-			f.cmpRR(L, t, w)
-			if owned {
-				f.release(t)
-			}
-		}
+		f.cmpConst(L, right.st, w)
 	case stReg:
 		f.cmpRR(L, right.st.reg, w)
 		f.release(right.st.reg)

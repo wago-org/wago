@@ -108,6 +108,8 @@ var (
 	// logicalMoveImmediateEnabled lets constant materialization use the one-word
 	// ORR-from-zero-register alias when the value is a logical immediate.
 	logicalMoveImmediateEnabled = os.Getenv("WAGO_ARM64_NO_LOGICAL_MOVE_IMMEDIATE") != "1"
+	// singleNegativeMove32Enabled permits one W-MOVN without the full compact-i32 policy.
+	singleNegativeMove32Enabled = os.Getenv("WAGO_ARM64_NO_SINGLE_NEGATIVE_MOVE32") != "1"
 	// compactMoveImmediate32Enabled selects true W-register MOVZ/MOVN/MOVK
 	// sequences instead of constructing every i32 as a zero-extended i64.
 	compactMoveImmediate32Enabled = os.Getenv("WAGO_ARM64_NO_COMPACT_MOVE_IMMEDIATE32") != "1"
@@ -123,7 +125,8 @@ var (
 
 	// mulAddFuseEnabled gates MADD/MSUB fusion of add(c, a*b)/sub(c, a*b) into a
 	// single multiply-add/-subtract. WAGO_NO_MULADD=1 is the A/B oracle.
-	mulAddFuseEnabled = os.Getenv("WAGO_NO_MULADD") != "1"
+	invertedLogicalEnabled = os.Getenv("WAGO_ARM64_NO_INVERTED_LOGICAL") != "1"
+	mulAddFuseEnabled      = os.Getenv("WAGO_NO_MULADD") != "1"
 )
 
 const (

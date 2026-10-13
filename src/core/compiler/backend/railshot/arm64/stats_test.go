@@ -210,8 +210,8 @@ func TestCodegenStatsSelectLocalTeeArm64(t *testing.T) {
 }
 
 func TestCodegenStatsStoreAndBoundsArm64(t *testing.T) {
-	body := []byte{0x00, 0x41, 0x10, 0x41, 0x2a, 0x36, 0x02, 0x00, 0x0b}
-	m := modMem(t, 1, nil, nil, body)
+	body := []byte{0x00, 0x20, 0x00, 0x41, 0x2a, 0x36, 0x02, 0x00, 0x0b}
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, nil, body)
 
 	explicit := compileWithStats(t, m, false).Funcs[0]
 	if explicit.Peephole["store-imm"] != 1 {

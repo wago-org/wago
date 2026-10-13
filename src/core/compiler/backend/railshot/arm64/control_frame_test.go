@@ -379,3 +379,66 @@ func TestReserveLocalScratchArm64(t *testing.T) {
 		t.Fatalf("local scratch capacities = %d/%d/%d, want 7/7/7", cap(sc.fnState.localType), cap(sc.fnState.localSlot), cap(sc.fnState.locals))
 	}
 }
+
+func TestInnermostLoopTracksControlNesting(t *testing.T) {
+	f := fn{}
+	check := func() {
+		t.Helper()
+		want := false
+		for i := len(f.ctrl) - 1; i >= 0; i-- {
+			if f.ctrl[i].kind == cfLoop {
+				want = f.ctrl[i].has(ctrlLoopCallFree)
+				break
+			}
+		}
+		if got := f.inCallFreeLoop(); got != want {
+			t.Fatalf("depth %d: call-free = %v, want %v", len(f.ctrl), got, want)
+		}
+	}
+	kinds := []ctrlKind{cfFunc, cfLoop, cfBlock, cfTry, cfLoop, cfIf, cfLoop, cfBlock}
+	for i, kind := range kinds {
+		fr := ctrlFrame{kind: kind}
+		fr.set(ctrlLoopCallFree, i == 1 || i == 6)
+		f.pushCtrl(&fr)
+		check()
+	}
+	for len(f.ctrl) != 0 {
+		f.popCtrl()
+		check()
+	}
+}
+
+func TestLoopSetScanKeepsImmediatesNestingAndWideLocals(t *testing.T) {
+	classifier := wasm.NewModuleInstructionClassifier(nil, true)
+	// Float immediate bytes must not be mistaken for local writes or calls.
+	body := []byte{0x43, 0x21, 0x22, 0x10, 0x0b, 0x03, 0x40,
+		0x21, 63, 0x22, 64, 0x21, 63, 0x21, 0xff, 0xff, 3, 0x0b,
+		0x21, 1, 0x20, 0x80, 0x80, 4}
+	for op := byte(0x45); op <= 0xc4; op++ {
+		kind, ok := wasm.ImmediateFreeInstructionKind(op)
+		if !ok || loopInstructionMayCall(kind) || usesBulkScratch(kind) {
+			t.Fatalf("numeric fast path includes effectful/invalid opcode %x", op)
+		}
+		body = append(body, op)
+	}
+	body = append(body, 0x0b, 0x10, 0) // call after the matching end is outside
+	r := wasm.ReaderFrom(append([]byte{0}, body...))
+	_ = r.JumpTo(1)
+	got, calls := scanLoopSetLocals(&r, classifier, []uint16{900, 901}, nil)
+	want := []uint16{900, 901, 1, 63, 64, 65535}
+	if calls || r.Offset() != 1 || len(got) != len(want) {
+		t.Fatalf("scan = %v, calls=%v, offset=%d", got, calls, r.Offset())
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("scan = %v, want %v", got, want)
+		}
+	}
+	for _, body := range [][]byte{{0x21}, {0x21, 0x80, 0x80, 4, 0x0b}, {0x10, 0, 0x0b}, {0x40, 0, 0x0b}, {0x26, 0, 0x0b}} {
+		r := wasm.ReaderFrom(body)
+		_, calls := scanLoopSetLocals(&r, classifier, nil, nil)
+		if !calls || r.Offset() != 0 {
+			t.Fatalf("effectful/malformed loop %x admitted: calls=%v offset=%d", body, calls, r.Offset())
+		}
+	}
+}

@@ -4,6 +4,7 @@ package arm64
 
 import (
 	"fmt"
+	"math/bits"
 	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -56,6 +57,7 @@ const (
 	ctrlHasResultGCRoots
 	ctrlLoopCallFree
 	ctrlCallFreeRegion
+	ctrlLoopConstScope
 )
 
 // ctrlFrame is one open control construct (or the implicit function frame).
@@ -378,6 +380,11 @@ func (f *fn) tryUnrolledLinearSumLatch(counter int) bool {
 // and branches from the decrement flags directly to the loop body. Interruptible
 // loops retain their header poll and are deliberately excluded.
 func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
+	// The fused latch consumes the branch before the main reader sees it.
+	// Retain ordinary backedge reconciliation while regional homes are live.
+	if f.intervalControl && f.intervalActive != 0 {
+		return false, nil
+	}
 	if !f.opt(optCountedLoopLatch) || f.interruptible || f.usesCalls || len(f.ctrl) < 2 || f.depth() != 0 {
 		return false, nil
 	}
@@ -564,6 +571,9 @@ func (f *fn) pushCtrl(fr *ctrlFrame) {
 	}
 	fr.ehDepth = uint16(f.ehTryDepth)
 	f.ctrl = append(f.ctrl, *fr)
+	if fr.kind == cfLoop {
+		f.innermostLoop = uint32(depth + 1)
+	}
 }
 
 func (f *fn) frameBranchState(fr *ctrlFrame) packedLocStates {
@@ -1380,13 +1390,27 @@ func (f *fn) convergeBranchLocals(fr *ctrlFrame) {
 	f.convergeFrameBranchState(fr)
 }
 
+// Blocks inherit the nearest loop. Only leaving a loop requires searching for
+// its parent, rather than searching the entire control stack at every block.
 func (f *fn) inCallFreeLoop() bool {
-	for i := len(f.ctrl) - 1; i >= 0; i-- {
+	return f.innermostLoop != 0 && f.ctrl[f.innermostLoop-1].has(ctrlLoopCallFree)
+}
+
+func (f *fn) popCtrl() {
+	last := len(f.ctrl) - 1
+	fr := f.ctrl[last]
+	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
+	f.ctrl = f.ctrl[:last]
+	if uint32(last+1) != f.innermostLoop {
+		return
+	}
+	f.innermostLoop = 0
+	for i := last - 1; i >= 0; i-- {
 		if f.ctrl[i].kind == cfLoop {
-			return f.ctrl[i].has(ctrlLoopCallFree)
+			f.innermostLoop = uint32(i + 1)
+			return
 		}
 	}
-	return false
 }
 
 // callFreeLoopExit reports whether a branch to frame fi exits a surrounding
@@ -1506,8 +1530,16 @@ func (f *fn) alignLoopHeader() {
 	if loopAlign == 0 {
 		loopAlign = 4
 	}
+	scopedFloat := f.nLocals <= pollFreeLoopPhaseMaxLocals && len(f.fconsts) != 0 &&
+		f.fconsts[0].loopDepth != 0
+	if scopedFloat && loopAlign < 5 {
+		// A cached FP constant removes one instruction from the loop body.
+		// Put the shortened body on a full fetch boundary instead of preserving
+		// the phase chosen for the uncached four-instruction poll.
+		loopAlign = 5
+	}
 	f.alignCode(loopAlign)
-	if loopAlign >= 4 && !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals {
+	if loopAlign >= 4 && !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals && !scopedFloat {
 		f.a.Nop4()
 	}
 }
@@ -1518,7 +1550,7 @@ func (f *fn) alignLoopHeader() {
 // (the body start, just past the blocktype) to the matching `end`, recording the
 // locals it sets. The module-aware classifier keeps mixed memory-width
 // immediates synchronized. Any unexpected decode failure returns no proof.
-func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, dst []uint16) (setLocals []uint16, hasCall bool) {
+func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, dst []uint16, uses *scopedLoopConstUses) (setLocals []uint16, hasCall bool) {
 	start := r.Offset()
 	defer func() { _ = r.JumpTo(start) }()
 	base := len(dst)
@@ -1527,34 +1559,66 @@ func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifi
 		setLocals = []uint16{}
 	}
 	depth := 0
+	var lowLocals uint64
 	var imm wasm.InstructionImmediate
 	for {
 		op, err := r.Byte()
 		if err != nil {
 			return nil, true
 		}
-		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+		// Numeric scalar instructions have neither immediates nor effects on
+		// locals/call admission. Local operations need only their index, so do
+		// not construct a complete classification for these common cases.
+		if op >= 0x45 && op <= 0xc4 {
+			continue
+		}
+		if op >= 0x20 && op <= 0x22 {
+			index, err := r.U32()
+			if err != nil || op != 0x20 && index > uint32(^uint16(0)) {
+				return nil, true
+			}
+			if op != 0x20 {
+				if index < 64 {
+					lowLocals |= uint64(1) << index
+				} else {
+					setLocals = append(setLocals, uint16(index))
+				}
+			}
+			continue
+		}
+		if uses != nil && (op == 0x41 || op == 0x42) {
+			imm = wasm.InstructionImmediate{}
+			imm.Kind, err = uses.consume(op, r)
+			if err != nil {
+				return nil, true
+			}
+		} else if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return nil, true
+		}
+		if uses != nil && usesBulkScratch(imm.Kind) {
+			uses.blocked = true
+			uses.mask = 0
 		}
 		if loopInstructionMayCall(imm.Kind) {
 			hasCall = true
-		}
-		switch imm.Kind {
-		case wasm.InstrLocalSet, wasm.InstrLocalTee:
-			if imm.Index > uint32(^uint16(0)) {
-				return nil, true
-			}
-			setLocals = append(setLocals, uint16(imm.Index))
 		}
 		switch op {
 		case 0x02, 0x03, 0x04, 0x1f:
 			depth++
 		case 0x0b:
 			if depth == 0 {
-				modified := setLocals[base:]
-				slices.Sort(modified)
-				modified = slices.Compact(modified)
-				setLocals = setLocals[:base+len(modified)]
+				wide := len(setLocals) != base
+				for lowLocals != 0 {
+					index := bits.TrailingZeros64(lowLocals)
+					setLocals = append(setLocals, uint16(index))
+					lowLocals &= lowLocals - 1
+				}
+				if wide {
+					modified := setLocals[base:]
+					slices.Sort(modified)
+					modified = slices.Compact(modified)
+					setLocals = setLocals[:base+len(modified)]
+				}
 				return
 			}
 			depth--
@@ -1611,7 +1675,15 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	fr.set(ctrlCallFreeRegion, callFreeLoopRegionEnabled && kind != cfLoop && f.inCallFreeLoop())
 	if kind == cfLoop && !f.unreachable && ((diagnosticsEnabled && f.stats != nil) || f.usesCalls && (f.pinnedLocalMask != 0 || f.fpinnedLocalMask != 0)) {
 		base := len(f.loopSetLocals)
-		setLocals, hasCall := scanLoopSetLocals(r, f.classifier, f.loopSetLocals)
+		uses, collectConsts := f.scopedLoopConstUses()
+		var collect *scopedLoopConstUses
+		if collectConsts {
+			collect = &uses
+		}
+		setLocals, hasCall := scanLoopSetLocals(r, f.classifier, f.loopSetLocals, collect)
+		if collectConsts && !hasCall {
+			fr.flags |= ctrlFlags(uses.mask) << 12
+		}
 		if setLocals != nil {
 			f.loopSetLocals = setLocals
 			cold := f.ensureCtrlMerge(&fr)
@@ -1632,7 +1704,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if !fr.has(ctrlCallFreeRegion) {
 			f.convergeFrameEntryState(&fr) // header snapshot: else entry / cond-false edge state
 		}
-		if isFusableCompare(f.s.back()) {
+		if isFusableCondition(f.s.back()) {
 			cond := f.s.back()
 			f.flushBelow(cond)
 			if f.opt(optZeroBranch) {
@@ -1694,6 +1766,17 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 		f.flush()
 		if kind == cfLoop {
+			if pN == 0 && rN == 0 {
+				f.emitPureReduce(r)
+				if f.loopMemory {
+					f.emitDotLoop(r)
+					f.emitMinPlusLoop(r)
+					f.emitFloatMapLoop(r)
+					f.emitAbsReduceLoop(r)
+				}
+			}
+			f.preloadScopedLoopConsts(&fr)
+			f.preloadScopedFloatConsts(r)
 			f.alignLoopHeader()
 			fr.controlSite = f.a.Len()
 			f.emitInterruptCheck(true)
@@ -1821,7 +1904,7 @@ func (f *fn) tryAffineIfSelect(r *wasm.Reader) (bool, error) {
 	}
 	f.pinned = f.pinned.add(dest)
 	var cc Cond
-	if isFusableCompare(cond) {
+	if isFusableCondition(cond) {
 		cc = f.condenseToFlags(cond)
 	} else {
 		creg, owned := f.materializeRead(f.popValue())
@@ -2492,6 +2575,12 @@ func (f *fn) opElse() error {
 func (f *fn) opEnd(r *wasm.Reader) error {
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
+	if fr.kind == cfLoop {
+		defer f.releaseScopedFloatConsts(last + 1)
+	}
+	if fr.has(ctrlLoopConstScope) {
+		defer f.releaseScopedLoopConsts(uint8(fr.flags >> 12))
+	}
 	if fr.kind == cfLoop && f.linearSumLoopDepth == uint16(last+1) {
 		f.linearSumLoop = 0
 		f.linearSumLoopDepth = 0
@@ -2505,8 +2594,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	coldEdges := f.frameColdEdges(&fr)
 	// ctrl backing is reused across functions. Clear the popped slot so its
 	// variable-sized type and loop-analysis slices do not stay live in scratch.
-	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
-	f.ctrl = f.ctrl[:len(f.ctrl)-1]
+	f.popCtrl()
 
 	if fr.kind == cfFunc {
 		if !f.unreachable {
@@ -2688,6 +2776,8 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		}
 		f.ehTryDepth--
 	}
+	f.finishDotLoop(last + 1)
+	f.finishPureReduce(last + 1)
 	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(ends)
 	f.releaseFrameBaseTypes(&fr)
@@ -2749,7 +2839,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	}
 	// Fuse `<compare> br_if L` into CMP + conditional jump. (Local convergence is
 	// per-target and happens after the label frame is resolved.)
-	if conditional && isFusableCompare(f.s.back()) {
+	if conditional && isFusableCondition(f.s.back()) {
 		top := f.s.back()
 		idx, err := r.U32()
 		if err != nil {
@@ -2995,6 +3085,11 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		}
 		return nil
 	}
+	var indexBound uint32
+	var indexBounded bool
+	if f.opt(optBoundedBranchIndex) {
+		indexBound, indexBounded = f.branchIndexUpperBound(f.s.back())
+	}
 	f.reconcileLocals() // eager: one state (all lsStackReg) satisfies every target
 	ireg := f.materialize(f.popValue())
 	n, err := r.U32()
@@ -3037,6 +3132,10 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		}
 		f.restoreBranchHandlers(fi)
 		f.branchJump(fr)
+	}
+	if f.canBranchVector(labels, def) {
+		f.emitBranchVector(labels, def, ireg, indexBounded && indexBound < n, emitCase)
+		return nil
 	}
 	if brTableUseJump(labels, def, f.policy) {
 		compactIDs, uniqueN, compactStubAt := f.brTableCompactPlan(labels, def)

@@ -463,16 +463,27 @@ func sortTrapSitesByFunction(sites []trapSite) {
 // bounds check (unless guard permits elision), and returns the register
 // holding the effective offset plus the displacement to fold into the access.
 // aliasPinned lets a pinned-local address be used in place (no copy) — only
-// valid when the access is emitted immediately (stores), not deferred (loads);
+// valid for immediate stores and loads that publish a tracked borrowed memRef;
 // eaOwned reports whether the caller must release ea. Passing guard=false
 // requires a full-access bounds proof even in a guard-page function.
 func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, guard bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
+	if !guard && f.boundsFacts && f.staticallyInBounds(off, size) {
+		guard = true
+		f.stats.peep("static-bounds-elide")
+	}
 	f.materializePendingTraps()
 	if f.memoryAddr64(0) {
 		return f.memAddr64(off, size)
 	}
 	off32 := uint32(off)
-	e := f.popValue()
+	addressPins := f.pinned
+	var e *elem
+	addressLoan := false
+	if f.opt(optRegionalMemoryRead) && len(f.intervalLast) != 0 && aliasPinned && int64(off32)+int64(size) <= 0x7fffffff {
+		e, addressLoan = f.popRegionalMemoryAddress()
+	} else {
+		e = f.popValue()
+	}
 	// Do not infer this from the Wasm i32 type alone: serialized parameters and
 	// other external carriers may have non-canonical upper bits. Constants are
 	// materialized with a W-register move; the fact is set only by producers
@@ -530,6 +541,9 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	}
 
 	if guard {
+		if addressLoan {
+			f.pinned = addressPins
+		}
 		return ea, eaOwned, borrow, disp
 	}
 	// P6.1 straight-line bounds-check elision: skip the check when a prior
@@ -540,6 +554,9 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	// on every path. WAGO_NO_BOUNDS_FACTS=1 forces every check (A/B + kill switch).
 	if f.boundsFacts && f.boundsCertCovers(bcKind, bcIdx, leaDisp) {
 		f.stats.addBoundsElidable()
+		if addressLoan {
+			f.pinned = addressPins
+		}
 		return ea, eaOwned, borrow, disp
 	}
 	if rangeExtent > leaDisp {
@@ -563,6 +580,9 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 		// this function's cold tail instead of shifting the rest of the module.
 		f.phasePadWords++
 		f.pinned = f.pinned.remove(ea)
+		if addressLoan {
+			f.pinned = addressPins
+		}
 		return ea, eaOwned, borrow, disp
 	}
 	t := f.allocReg(0)
@@ -578,6 +598,9 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	f.trapIf(condA, trapMemOOB) // out of bounds when ea+off+size > memBytes
 	f.release(t)
 	f.pinned = f.pinned.remove(ea)
+	if addressLoan {
+		f.pinned = addressPins
+	}
 	return ea, eaOwned, borrow, disp
 }
 
@@ -672,9 +695,9 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	f.ld64(dir, linMemReg, -int32(offMemoryDirPtr))
 	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
 	mb := f.allocReg(maskOf(ea, dir))
-	f.ld64(mb, dir, entry+abi.MemoryDirCurrentBytesOffset)
 	base = f.allocReg(maskOf(ea, dir, mb))
 	f.ld64(base, dir, entry+abi.MemoryDirBaseOffset)
+	f.ld64(mb, base, -int32(bdCurBytes))
 	end := f.allocReg(maskOf(ea, dir, mb, base))
 	f.a.MovImm64(end, uint64(size))
 	f.a.Adds64(end, ea, end)
@@ -1773,7 +1796,8 @@ func (f *fn) memorySize(r *wasm.Reader) error {
 	} else {
 		dir := f.allocReg(maskOf(out))
 		f.ld64(dir, linMemReg, -int32(offMemoryDirPtr))
-		f.ld32(out, dir, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirCurrentPagesOffset)
+		f.ld64(dir, dir, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+		f.ld32(out, dir, -int32(bdCurPages))
 		f.release(dir)
 	}
 	if f.memoryAddr64(memoryIndex) {
@@ -1859,6 +1883,12 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 		// The successful path already has the new byte size in nw. Forward it to
 		// the regional bounds cache instead of reloading the value just stored.
 		f.a.MovReg64(f.memSizeReg, nw)
+	} else if f.memSizeReg != regNone {
+		// A nonzero import can alias memory zero; distinct memories must keep
+		// their own primary bound rather than forwarding the grown size.
+		f.ld64(f.memSizeReg, linMemReg, -int32(bdCurBytes))
+	}
+	if f.memSizeReg != regNone {
 		if f.memLimitReg != regNone {
 			f.a.SubImm64(f.memLimitReg, f.memSizeReg, uint32(f.memLimitExtent))
 		}
@@ -1951,7 +1981,8 @@ func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
 	}
 	f.ld64(X13, linMemReg, -int32(offMemoryDirPtr))
 	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
-	f.ld64(X16, X13, entry+abi.MemoryDirCurrentBytesOffset)
+	f.ld64(X16, X13, entry+abi.MemoryDirBaseOffset)
+	f.ld64(X16, X16, -int32(bdCurBytes))
 	f.cmpRR(X12, X16, true)
 	f.trapIf(condA, trapMemOOB)
 	f.ld64(X12, X13, entry)
@@ -1990,7 +2021,8 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 			f.ld64(mb, linMemReg, -int32(bdCurBytes))
 		} else {
 			f.ld64(mb, linMemReg, -int32(offMemoryDirPtr))
-			f.ld64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirCurrentBytesOffset)
+			f.ld64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+			f.ld64(mb, mb, -int32(bdCurBytes))
 		}
 		f.cmpRR(t, mb, true)
 		f.release(mb)

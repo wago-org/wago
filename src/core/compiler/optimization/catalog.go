@@ -217,25 +217,28 @@ func (b *Bindings) ResolveSnapshot(overrides map[string]bool, _ Snapshot, _ map[
 		return Selection{}, fmt.Errorf("%s optimization catalog has %d entries, maximum is 128", b.arch, len(b.entries))
 	}
 	var bits [2]uint64
+	matched := 0
 	for index, entry := range b.entries {
 		on := *entry.value
 		if entry.inverted {
 			on = !on
 		}
+		if override, ok := overrides[entry.definition.Name]; ok {
+			on = override
+			matched++
+		}
 		if on {
 			bits[index/64] |= uint64(1) << uint(index%64)
 		}
 	}
-	for name, on := range overrides {
-		index, ok := b.indexOf(name)
-		if !ok {
-			return Selection{}, fmt.Errorf("unknown %s optimization %q", b.arch, name)
-		}
-		mask := uint64(1) << uint(index%64)
-		if on {
-			bits[index/64] |= mask
-		} else {
-			bits[index/64] &^= mask
+	// Full RuntimeConfig maps are common. Resolve them in catalog order rather
+	// than linearly searching the catalog once per override. Only invalid maps
+	// need the name search to report the unknown entry.
+	if matched != len(overrides) {
+		for name := range overrides {
+			if _, ok := b.indexOf(name); !ok {
+				return Selection{}, fmt.Errorf("unknown %s optimization %q", b.arch, name)
+			}
 		}
 	}
 	return Selection{bindings: b, bits: bits}, nil
@@ -407,8 +410,19 @@ var catalog = []Definition{
 	arm64("memcopy-tail4", "Four-byte memory-copy tails", "finish small dynamic memory copies with one four-byte tail chunk"),
 	arm64("memcopy-qpairs", "Paired vector memory-copy", "copy 32-byte groups with paired 128-bit loads and stores"),
 	arm64("uxtw-add", "Extended adds", "fold zero-extension into ADD UXTW"),
+	{Name: "select-group-guard", Label: "Select group guard", Description: "skip pure update groups when their unchanged mask has no selected bits", Default: true, Architectures: []string{"arm64"}},
+	{Name: "dot-loop-vector", Label: "Scalar loop vectorization", Description: "vectorize proven integer reductions, min-plus updates and independent floating-point maps with guarded scalar fallback", Default: true, Architectures: []string{"arm64"}},
+	{Name: "pure-reduce-vector", Label: "Pure integer reduction vectorization", Description: "vectorize independent i32 expressions accumulated into i64 sums with exact scalar tails", Default: true, Architectures: []string{"arm64"}},
+	{Name: "select-sink-pure-guard", Label: "Pure integer select update guard", Description: "skip bounded costly pure work when an integer select keeps its pinned local", Default: true, Architectures: []string{"arm64"}},
+	{Name: "streaming-i32-reduction", Label: "Streaming i32 product reductions", Description: "reassociate proven wrapping product sums into a concrete streaming accumulator", Default: true, Architectures: []string{"arm64"}},
+	{Name: "single-negative-move32", Label: "Single-word negative i32 constants", Description: "use one zero-extending W-MOVN for negative constants representable by its 16-bit immediate", Default: true, Architectures: []string{"arm64"}},
+	{Name: "select-source-read", Label: "Read-only select sink sources", Description: "borrow protected integer select sources and share large constants with their comparison", Default: true, Architectures: []string{"arm64"}},
+	{Name: "crowded-products", Label: "Crowded integer product scheduling", Description: "finish bounded pure products after pending effects to reduce live operand factors", Default: true, Architectures: []string{"arm64"}},
+	{Name: "guarded-test-ccmp", Label: "Guarded bit test conditional compare", Description: "combine adjacent short-circuit bit tests when both continuations overwrite flags", Default: true, Architectures: []string{"arm64"}},
+	arm64("inverted-logical", "Inverted logical operands", "fold integer bitwise complements into logical register operations"),
 	arm64("shifted-register-alu", "Shifted-register ALU", "fold constant shifts into integer ALU operands"),
 	arm64("fp-immediate-const", "Float immediates", "materialize exact AArch64 floating-point immediates directly"),
+	arm64("scoped-loop-float-const", "Scoped loop float constants", "cache scalar float constants inside bounded call-free loops"),
 	arm64("fp-literal-pool", "Float literal pool", "load non-immediate scalar float constants from a deduplicated PC-relative pool"),
 	both("value-facts", "Value facts", "propagate bounded upper-zero and boolean provenance"),
 	arm64("load-pair", "Adjacent load pairs", "combine adjacent full-width scalar loads from one local address into LDP"),
@@ -444,7 +458,24 @@ var catalog = []Definition{
 	both("interval-next-use", "Regional next-use eviction", "use a compact local-event tape to evict the farthest local version and elide dead stores"),
 	amd64("memsize-regional-lease", "Regional memory-size leasing", "lend the memory-size register to proved straight-line local regions"),
 	amd64("module-global-regional-lease", "Regional module-global leasing", "lend an unreferenced module-global register to proved straight-line local regions"),
+	{Name: "loop-memory-base", Label: "Loop memory page bases", Description: "hoist repeated linear-memory page bases into idle loop-constant registers", Default: true, Architectures: []string{"arm64"}},
 	arm64("loop-int-const", "Loop integer constants", "keep costly loop-invariant integer constants in otherwise-idle registers"),
+	{Name: "interval-call-regions", Label: "Local regions around calls", Description: "cache local integer values in bounded regions that canonicalize before calls and fixed-scratch helpers", Default: true, Architectures: []string{"arm64"}},
+	{Name: "scoped-loop-int-const", Label: "Scoped loop integer constants", Description: "lease invariant integer constants only inside proven call-free loops, including functions that call elsewhere", Default: true, Architectures: []string{"arm64"}},
+	{Name: "wide-reuse-pins", Label: "Wide repeated local pins", Description: "retain bounded integer locals whose loop-weighted reads exceed definitions", Default: true, Architectures: []string{"arm64"}},
+	{Name: "regional-memory-read", Label: "Regional memory address reads", Description: "borrow immediate regional memory addresses while pinning their leases against eviction", Default: true, Architectures: []string{"arm64"}},
+	{Name: "br-table-branch-vector", Label: "Branch table vectors", Description: "dispatch small unique zero-argument tables directly through executable branches", Default: true, Architectures: []string{"arm64"}},
+	{Name: "bounded-branch-index", Label: "Bounded branch indices", Description: "omit branch-vector bounds tests for direct i32 masks and constants proved in range", Default: true, Architectures: []string{"arm64"}},
+	{Name: "borrowed-div-rem", Label: "Read-only division operands", Description: "read concrete pinned integer division and remainder operands without copying", Default: true, Architectures: []string{"arm64"}},
+	{Name: "bounded-signed-quotient", Label: "Bounded signed quotient", Description: "skip exact i32 division when a subsequent signed clamp saturates", Default: true, Architectures: []string{"arm64"}},
+	{Name: "taken-zero-branch", Label: "Known zero branch targets", Description: "thread direct zero branches through tests implied by their taken edge", Default: true, Architectures: []string{"arm64"}},
+	{Name: "common-exit-compare", Label: "Common-exit compares", Description: "combine consecutive integer comparison branches sharing an exit", Default: true, Architectures: []string{"arm64"}},
+	{Name: "guarded-boolean-xor", Label: "Guarded boolean XOR", Description: "if-convert pure bounded integer boolean XOR regions after exact clobber proofs", Default: true, Architectures: []string{"arm64"}},
+	{Name: "cset-lineage", Label: "Boolean comparison flags", Description: "reuse unchanged flags through exact CSET boolean copies for bounded integer selects", Default: true, Architectures: []string{"arm64"}},
+	{Name: "integer-select-local-read", Label: "Integer select local reads", Description: "borrow protected integer operands for materialized local select sinks", Default: true, Architectures: []string{"arm64"}},
+	{Name: "dominated-indexed-base", Label: "Dominated indexed addresses", Description: "reuse indexed addresses through proven bounded direct branch regions", Default: true, Architectures: []string{"arm64"}},
+	{Name: "dominated-indexed-key", Label: "Equivalent indexed addresses", Description: "merge bounded address facts by their exact register inputs", Default: true, Architectures: []string{"arm64"}},
+	{Name: "ordinary-shifted-immediate", Label: "Shifted integer displacements", Description: "use exact shifted immediates for read-only ordinary displacement arithmetic", Default: true, Architectures: []string{"arm64"}},
 	arm64("indexed-base-reuse", "Adjacent indexed base reuse", "reuse an unchanged base-plus-index address across adjacent memory accesses"),
 	arm64("convert-read", "Direct conversion reads", "read pinned integer conversion inputs without a temporary copy"),
 	arm64("cold-call-local-pins", "Cold-call local pins", "pin hot locals when every direct local call is outside loops"),

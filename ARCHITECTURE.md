@@ -555,7 +555,8 @@ WARP. Current offsets are defined in `src/core/runtime/abi`:
 
 | offset | field |
 |-------:|-------|
-| 8 | actual linear-memory byte size (bounds checks) |
+| 8 | legacy u32 linear-memory byte size |
+| 288 | authoritative u64 linear-memory byte size (bounds checks) |
 | 12 | declared/engine maximum pages |
 | 16 / 24 | trap handler and stack-reentry pointers |
 | 40 | host-call log or synchronous control-frame pointer |
@@ -571,7 +572,12 @@ WARP. Current offsets are defined in `src/core/runtime/abi`:
 | 144 | exception tag-directory pointer |
 | 280 | versioned per-instance native GC metadata view |
 
-Memory-size/growth fields belong to the memory backing. The ten per-instance pointer
+Memory-size/growth fields belong to the memory backing. Indexed size and bounds
+reads follow the directory base pointer to those fields; directory size snapshots
+are not authoritative for aliased imports. Successful indexed growth refreshes
+the primary bounds register from its own backing, and cross-instance returns
+refresh it after restoring caller context. Existing native artifacts must be
+recompiled to receive these generated-code changes. The ten per-instance pointer
 fields form the 80-byte Go `InstanceContext`. Each instance owns a 120-byte native
 context buffer: nine legacy pointer words at bytes 0–64, an immutable numeric GC-domain
 identity at byte 72, three process-serialized descriptor-tail scratch words at bytes

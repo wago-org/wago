@@ -85,8 +85,8 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkArm64(t *testing.T) {
 func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
 	names := []string{
 		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
-		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "indexed-base-reuse",
-		"v128-direct-results", "cold-call-local-pins", "convert-read",
+		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "dominated-indexed-key", "ordinary-shifted-immediate", "common-exit-compare", "borrowed-div-rem", "bounded-signed-quotient", "br-table-branch-vector", "regional-memory-read", "wide-reuse-pins",
+		"v128-direct-results", "cold-call-local-pins", "convert-read", "guarded-boolean-xor", "taken-zero-branch", "cset-lineage", "integer-select-local-read", "bounded-branch-index",
 		"weighted-scalar-merge", "counted-loop-latch", "linear-sum-loop",
 	}
 	overrides := make(map[string]bool, len(names))
@@ -147,6 +147,7 @@ func TestFunctionStartPaddingPolicyArm64(t *testing.T) {
 	ordinary := shared.DefaultCodegenPolicy(selection)
 	compact := shared.CompactCodegenPolicy(selection)
 	hot := funcHints{flags: hintHasLoop}
+	scopedFloat := funcHints{flags: hintHasLoop | hintHasCall | hintHasFloatConst, localCount: 16}
 	for _, test := range []struct {
 		name      string
 		off       int
@@ -160,6 +161,7 @@ func TestFunctionStartPaddingPolicyArm64(t *testing.T) {
 		{name: "ordinary adapter", off: 4, bodyBytes: 12, adapter: true, policy: ordinary, want: 12},
 		{name: "ordinary hot within budget", off: 12, bodyBytes: 64, hints: hot, policy: ordinary, want: 4},
 		{name: "ordinary hot over budget", off: 4, bodyBytes: 64, hints: hot, policy: ordinary, want: 0},
+		{name: "ordinary scoped float", off: 16, bodyBytes: 64, hints: scopedFloat, policy: ordinary, want: 16},
 		{name: "compact", off: 4, bodyBytes: 512, adapter: true, hints: hot, policy: compact, want: 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {

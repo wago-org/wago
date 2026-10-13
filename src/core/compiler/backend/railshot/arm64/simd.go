@@ -1082,13 +1082,13 @@ func (f *fn) i64x2MulInto(dst Reg) {
 	bLo := f.allocFReg(maskOf(xa, xb, t, aLo))
 	f.a.NeonXtnSfromD(aLo, xa) // last use of xa
 	f.a.NeonXtnSfromD(bLo, xb) // last use of xb
-	lo := f.allocFReg(maskOf(xa, xb, t, aLo, bLo))
-	f.a.NeonUmullDfromS(lo, aLo, bLo) // lo = aLo·bLo widened per 64-bit lane
+	// UMULL reads both low halves before writing its destination. Reuse aLo
+	// after that last input read so pinned vector kernels need one less scratch.
+	f.a.NeonUmullDfromS(aLo, aLo, bLo) // aLo = widened low product
 	f.releaseF(bLo)
-	f.releaseF(aLo)
 	f.fpinned = f.fpinned.remove(t)
-	f.a.NeonAddD(dst, t, lo) // dst written last; reads only t and lo
-	f.releaseF(lo)
+	f.a.NeonAddD(dst, t, aLo) // dst written last; reads only t and aLo
+	f.releaseF(aLo)
 	f.releaseF(t)
 
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
