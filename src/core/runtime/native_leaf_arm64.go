@@ -213,8 +213,8 @@ func unregisterNativeScalarLeaf(ctrl []byte) {
 	}
 }
 
-// BindNativeScalarLeafImport replaces only an instance-owned single-import
-// dispatch cell. Shared compiled host thunks and reference descriptors retain
+// BindNativeScalarLeafImport replaces only an instance-owned import dispatch
+// cell proven to select the same native leaf as the control frame. Shared compiled host thunks and reference descriptors retain
 // their normal staged route. The caller proves this cell belongs to the frame.
 func BindNativeScalarLeafImport(access runtimebridge.HostScalarCallAccess, ctrl, dispatch []byte) bool {
 	if !access.Granted() || len(dispatch) != ImportDispatchEntryBytes {

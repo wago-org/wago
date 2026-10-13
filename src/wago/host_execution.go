@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"reflect"
 	goruntime "runtime"
 	"sync"
 	"sync/atomic"
@@ -192,8 +193,11 @@ func registerHostControl(in *Instance) error {
 		hostControlInstances.Delete(ptr)
 		return fmt.Errorf("register runtime synchronous host control frame: %w", err)
 	}
-	if !codeProfileEnabled && in.c.nativeScalarLeafAllowed() && in.hasSingleDirectTypedScalarHost() {
-		binding := &in.syncHosts[0]
+	if !codeProfileEnabled && in.c.nativeScalarLeafAllowed() {
+		binding := in.nativeScalarLeafAliases()
+		if binding == nil {
+			return nil
+		}
 		params := uint32(1)
 		var fn any = binding.typedI32
 		if binding.scalarKind == syncHostTypedI32x2 {
@@ -208,8 +212,11 @@ func registerHostControl(in *Instance) error {
 		}
 		if admitted {
 			if dispatch := in.jm.CaptureInstanceContext().ImportDispatch; dispatch != 0 {
-				cell := unsafe.Slice((*byte)(offHeapPtr(dispatch)), coreruntime.ImportDispatchEntryBytes)
-				coreruntime.BindNativeScalarLeafImport(runtimebridge.GrantHostScalarCall(), in.ctrl, cell)
+				cells := unsafe.Slice((*byte)(offHeapPtr(dispatch)), len(in.syncHosts)*coreruntime.ImportDispatchEntryBytes)
+				for i := range in.syncHosts {
+					cell := cells[i*coreruntime.ImportDispatchEntryBytes : (i+1)*coreruntime.ImportDispatchEntryBytes]
+					coreruntime.BindNativeScalarLeafImport(runtimebridge.GrantHostScalarCall(), in.ctrl, cell)
+				}
 			}
 			for {
 				flags := in.executionFlags.Load()
@@ -929,6 +936,43 @@ func (in *Instance) hasDirectTypedScalarHost() bool {
 		}
 	}
 	return false
+}
+
+// The runtime owns one native leaf per control frame. Multiple import cells
+// can share it only when their typed callback code and shape match. The runtime
+// independently proves the copied body reads no closure/receiver/Go state, so
+// equal PCs are sufficient here even for distinct Go function values. Unknown
+// or mixed callbacks retain their normal dispatch and scheduling contract.
+func (in *Instance) nativeScalarLeafAliases() *syncHostBinding {
+	if len(in.syncHosts) == 0 || in.c == nil || len(in.syncHosts) != in.c.NumImports || in.gc != nil ||
+		in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) != 0 {
+		return nil
+	}
+	first := &in.syncHosts[0]
+	if first.gate != nil || (first.scalarKind != syncHostTypedI32 && first.scalarKind != syncHostTypedI32x2) {
+		return nil
+	}
+	// Preserve the common single-import path without reflection.
+	if len(in.syncHosts) == 1 {
+		return first
+	}
+	pc := func(b *syncHostBinding) uintptr {
+		if b.scalarKind == syncHostTypedI32 {
+			return reflect.ValueOf(b.typedI32).Pointer()
+		}
+		return reflect.ValueOf(b.typedI32x2).Pointer()
+	}
+	code := pc(first)
+	if code == 0 {
+		return nil
+	}
+	for i := 1; i < len(in.syncHosts); i++ {
+		b := &in.syncHosts[i]
+		if b.gate != nil || b.scalarKind != first.scalarKind || pc(b) != code {
+			return nil
+		}
+	}
+	return first
 }
 
 func (in *Instance) hasSingleDirectTypedScalarHost() bool {
