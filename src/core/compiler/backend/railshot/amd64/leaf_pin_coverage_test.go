@@ -37,7 +37,14 @@ func measureLeafPinCoverage(m *wasm.Module) (leafPinCoverage, error) {
 }
 
 func TestLeafPinCoverageControl(t *testing.T) {
-	// 180 NOPs keep an otherwise pure integer leaf out of the inliner.
+	// Fix only this synthetic control's limits. The corpus scan retains the
+	// process configuration, and large environment limits cannot grow this body.
+	maxBytes, compactMaxBytes := inlineMaxBytes, compactInlineMaxBytesOverride
+	inlineMaxBytes, compactInlineMaxBytesOverride = inlineMaxBodyBytes, inlineMaxBodyBytes
+	defer func() {
+		inlineMaxBytes, compactInlineMaxBytesOverride = maxBytes, compactMaxBytes
+	}()
+	// 180 NOPs keep an otherwise pure integer leaf above the fixed 160-byte limit.
 	leaf := append([]byte{0, 0x20, 0}, make([]byte, 180)...)
 	for i := 3; i < len(leaf); i++ {
 		leaf[i] = 0x01
