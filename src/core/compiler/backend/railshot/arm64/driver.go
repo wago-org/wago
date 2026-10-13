@@ -1051,6 +1051,9 @@ func (f *fn) tryFminmaxLocalSet(r *wasm.Reader, f64, isMax bool) (bool, error) {
 // stack holds a, then b, then cond on top. Lowered to compare + CSEL (if cond == 0,
 // move b into a). Materialized eagerly (select is a sink for its operands).
 func (f *fn) emitSelect() {
+	if top := f.s.back(); isFusableCondition(top) && f.tryScalarFloatSelect(top) {
+		return
+	}
 	// Flags-select: when the condition is a deferred relational/eqz compare and both
 	// branches are integers, emit the compare's CMP and a CSEL on its flags directly
 	// — skipping the Cset + TEST that materializing the boolean costs. The compare is
@@ -1075,7 +1078,7 @@ func (f *fn) emitSelect() {
 		f.fpinned = f.fpinned.add(aX)
 		bX := f.materializeV128(b)
 		f.pinned = f.pinned.remove(condReg)
-		skip := f.a.Cbnz64(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
+		skip := f.a.Cbnz32(condReg) // i32 condition != 0 → keep a
 		f.a.NeonMov16b(aX, bX)      // cond == 0 → a = b (all 128 bits)
 		f.patchBranch19(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)
@@ -1097,7 +1100,7 @@ func (f *fn) emitSelect() {
 		f.fpinned = f.fpinned.add(aX)
 		bX := f.materializeF(b)
 		f.pinned = f.pinned.remove(condReg)
-		skip := f.a.Cbnz64(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
+		skip := f.a.Cbnz32(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
 		f.a.FmovReg(aX, bX, f64)    // cond == 0 → a = b
 		f.patchBranch19(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)

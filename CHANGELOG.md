@@ -8,6 +8,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Read borrowed ARM64 scalar float-select operands directly and reuse an owned result register.
+
+- Use ARM64 scalar floating-point conditional selection for suitable integer
+  comparison conditions while preserving selected result bits.
 - Reuse exception payload summaries across functions on AMD64 and ARM64 to
   reduce compilation work for modules with many tags and `catch_all_ref` handlers.
 - Improve ARM64 execution with guarded scalar and vector loop lowering, bounded
