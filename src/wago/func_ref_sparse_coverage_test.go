@@ -46,6 +46,7 @@ func bodyRefFuncTargets(m *wasm.Module) (sites, unique int, err error) {
 // deliberately a report, not a production policy: dynamic ref.func targets and
 // late host requests need separate proof before sparse writes are safe.
 func TestSparseFuncRefCoverage(t *testing.T) {
+	features := CoreFeaturesV3 & SupportedFeatures()
 	for _, rel := range []string{
 		"corpus/workloads/applications/sqlite3/sqlite3.wasm",
 		"corpus/workloads/applications/quickjs/qjs.wasm",
@@ -57,6 +58,12 @@ func TestSparseFuncRefCoverage(t *testing.T) {
 		"examples/22-language-guests/tinygo/answer.wasm",
 	} {
 		t.Run(filepath.Base(rel), func(t *testing.T) {
+			switch filepath.Base(rel) {
+			case "gc_constexpr_element_roots.wasm", "gc_array_init_elem_generic.wasm":
+				if !features.IsEnabled(CoreFeatureGC) {
+					t.Skip("fixture requires native GC support")
+				}
+			}
 			data, err := os.ReadFile(filepath.Join("../..", rel))
 			if err != nil {
 				t.Fatal(err)
@@ -69,7 +76,7 @@ func TestSparseFuncRefCoverage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(data)
+			c, err := NewRuntimeConfig().WithCoreFeatures(features).Compile(data)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -137,11 +144,15 @@ func simpleElemFuncRefTargets(c *Compiled) (refs int, referenced []bool) {
 }
 
 func TestSparseFuncRefPassiveElementCoverage(t *testing.T) {
+	features := CoreFeaturesV3 & SupportedFeatures()
+	if !features.IsEnabled(CoreFeatureGC) {
+		t.Skip("fixture requires native GC support")
+	}
 	data, err := os.ReadFile("testdata/gc_array_init_elem_generic.wasm")
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(data)
+	c, err := NewRuntimeConfig().WithCoreFeatures(features).Compile(data)
 	if err != nil {
 		t.Fatal(err)
 	}
