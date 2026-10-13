@@ -10,6 +10,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
 // The unchanged 311-byte wasm.fyi artifact is kept here for a permanent oracle.
@@ -39,6 +40,29 @@ func integerReductionFixture(t *testing.T, signed bool, result uint32) *wasm.Mod
 	return mod1(t, []wasm.ValType{wasm.I32, wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64}, body)
 }
 
+// Compile each scalar/vector configuration once; runtime inputs cannot change
+// lowering admission or statistics.
+func compileIntegerReductionPair(t *testing.T, m *wasm.Module, features shared.AMD64Features) [2]*encoderamd64.CompiledModule {
+	t.Helper()
+	var pair [2]*encoderamd64.CompiledModule
+	for i, on := range []bool{false, true} {
+		integerReductionLoopEnabled = on
+		var stats ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: features, Stats: optionalTestStats(&stats)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cm.CodeImage != nil {
+			t.Cleanup(func() { cm.CodeImage.Close() })
+		}
+		if on && features.Has(shared.AMD64SSE41) && diagnosticsEnabled && stats.Funcs[0].Peephole["integer-reduction-loop"] != 1 {
+			t.Fatal("no vector path", stats.Funcs[0].Peephole)
+		}
+		pair[i] = cm
+	}
+	return pair
+}
+
 func TestIntegerReductionMapsTailsOverflowAndExitLocals(t *testing.T) {
 	saved := integerReductionLoopEnabled
 	defer func() { integerReductionLoopEnabled = saved }()
@@ -46,28 +70,13 @@ func TestIntegerReductionMapsTailsOverflowAndExitLocals(t *testing.T) {
 		for result := uint32(0); result < 5; result++ {
 			m := integerReductionFixture(t, signed, result)
 			for _, features := range []shared.AMD64Features{0, shared.AMD64SSE41, shared.AMD64ModernBaseline} {
+				pair := compileIntegerReductionPair(t, m, features)
 				for _, start := range []uint64{0, 0x7ffffff0, 0xfffffff0, 0xdeadbeef80000000} {
 					for _, count := range []uint64{0, 1, 2, 3, 4, 7, 15, 16, 17, 31} {
-						var want uint64
-						for _, on := range []bool{false, true} {
-							integerReductionLoopEnabled = on
-							var stats ModuleStats
-							cm, err := CompileModuleWith(m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: features, Stats: optionalTestStats(&stats)})
-							if err != nil {
-								t.Fatal(err)
-							}
-							got := runCompiledAmd64u(t, cm, count, start, ^uint64(0)-17)
-							if cm.CodeImage != nil {
-								cm.CodeImage.Close()
-							}
-							if !on {
-								want = got
-							} else if got != want {
-								t.Fatal("mismatch", signed, result, features, start, count, got, want)
-							}
-							if on && features.Has(shared.AMD64SSE41) && diagnosticsEnabled && stats.Funcs[0].Peephole["integer-reduction-loop"] != 1 {
-								t.Fatal("no vector path", stats.Funcs[0].Peephole)
-							}
+						want := runCompiledAmd64u(t, pair[0], count, start, ^uint64(0)-17)
+						got := runCompiledAmd64u(t, pair[1], count, start, ^uint64(0)-17)
+						if got != want {
+							t.Fatal("mismatch", signed, result, features, start, count, got, want)
 						}
 					}
 				}
@@ -88,26 +97,15 @@ func TestIntegerReductionOriginalArtifact(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, features := range []shared.AMD64Features{0, shared.AMD64SSE41, shared.AMD64ModernBaseline} {
+		pair := compileIntegerReductionPair(t, m, features)
 		for _, count := range []uint64{2, 3, 4, 7, 15, 16, 17, 31, 4096} {
-			var want uint64
-			for _, on := range []bool{false, true} {
-				integerReductionLoopEnabled = on
-				var stats ModuleStats
-				got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: features, Stats: optionalTestStats(&stats)}, nil, count)
-				if err != nil {
-					t.Fatal(features, count, on, err)
-				}
-				if !on {
-					want = got
-				} else if got != want {
-					t.Fatal("original artifact mismatch", features, count, got, want)
-				}
-				if count == 4096 && got != 4156416353 {
-					t.Fatal("original oracle", got)
-				}
-				if on && features.Has(shared.AMD64SSE41) && diagnosticsEnabled && stats.Funcs[0].Peephole["integer-reduction-loop"] != 1 {
-					t.Fatal("original loop not admitted", stats.Funcs[0].Peephole)
-				}
+			want := runCompiledAmd64u(t, pair[0], count)
+			got := runCompiledAmd64u(t, pair[1], count)
+			if got != want {
+				t.Fatal("original artifact mismatch", features, count, got, want)
+			}
+			if count == 4096 && got != 4156416353 {
+				t.Fatal("original oracle", got)
 			}
 		}
 	}
