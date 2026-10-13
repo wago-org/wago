@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"errors"
+	"fmt"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -540,6 +542,62 @@ func mutableFuncrefLocalCallHostReferenceCarrierSource() []byte {
 	)
 }
 
+func mutableFuncrefLocalCallReferenceVectorCarrierSource() []byte {
+	types := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.V128, wasm.F64}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{6, 0, 0, 1, 1, 1, 0}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0), wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2), wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("call", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x41, 1, 0x6a, 0x20, 1, 0x20, 2, 0x20, 3, 0xfd, 77, 0x20, 4, 0x44, 0, 0, 0, 0, 0, 0, 0xf0, 0x3f, 0xa0, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x23, 0, 0x14, 0, 0x0b}),
+		)),
+	)
+}
+
+func TestMutableFuncrefLocalCallReferenceVectorCarrierProduction(t *testing.T) {
+	for _, tail := range []bool{false, true} {
+		t.Run(fmt.Sprintf("tail%t", tail), func(t *testing.T) {
+			source := mutableFuncrefLocalCallReferenceVectorCarrierSource()
+			if tail {
+				source = mutableFuncrefLocalTailCallSource(source)
+			}
+			if err := AdmitProductionSource(source); err != nil {
+				t.Fatal(err)
+			}
+			m, err := wasm.DecodeModule(source)
+			if err != nil || !admitMutableFunctionGlobalReferenceCarrierCall(m) {
+				t.Fatal("reference-vector-carrier local-call admission", err)
+			}
+			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceFunctions: true, NativeReferenceCalls: true, NativeTailCalls: tail, SyncHostSlots: 64})
+			if err != nil || image == nil {
+				t.Fatal("reference-vector-carrier local-call compilation", err)
+			}
+			wantCode := 7996
+			wantDigest := [sha256.Size]byte{0x18, 0x43, 0x53, 0x5b, 0x56, 0x9b, 0x61, 0x68, 0x4b, 0x16, 0x8d, 0x67, 0x0d, 0x0f, 0xd6, 0x38, 0x0e, 0x3a, 0x6b, 0x9f, 0x21, 0x0d, 0x9b, 0xb8, 0x7f, 0xd1, 0x2f, 0x46, 0x43, 0x29, 0xf7, 0xcf}
+			var wantTail *enc.NativeTailModule
+			if tail {
+				wantCode = 5612
+				wantDigest = [sha256.Size]byte{0x7a, 0x99, 0x20, 0x03, 0x13, 0x5c, 0x1f, 0x46, 0xb6, 0xe1, 0x5c, 0xf5, 0x64, 0x35, 0xe8, 0x80, 0x2e, 0x30, 0xd8, 0x26, 0xd0, 0x2a, 0x24, 0x57, 0x45, 0xcb, 0x72, 0x73, 0xfe, 0x66, 0xa3, 0xe3}
+				wantTail = &enc.NativeTailModule{Plans: []enc.NativeTailPlan{{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 13, FrameBytes: 224, SourceBase: 128, SourceStride: 16, ReferenceBase: 208}}}
+			}
+			wantEntry := []int{0, 880, 1904, 2624, 3344, 3984}
+			if len(image.Code) != wantCode || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || !reflect.DeepEqual(image.NativeTail, wantTail) {
+				t.Fatalf("reference-vector-carrier compilation drifted: tail=%t code=%d digest=%x entries=%v/%v refs=%t/%t/%t tail-plan=%+v", tail, len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, image.NativeTail)
+			}
+		})
+	}
+}
+
 func TestMutableFuncrefLocalCallHostReferenceCarrierProduction(t *testing.T) {
 	source := mutableFuncrefLocalCallHostReferenceCarrierSource()
 	if err := AdmitProductionSource(source); err != nil {
@@ -851,6 +909,10 @@ func TestMutableFuncrefLocalCallProductionRejectsBroaderSources(t *testing.T) {
 		"host-reference-carrier": mutableFuncrefLocalCallHostReferenceCarrierSource,
 		"host-reference-carrier-tail": func() []byte {
 			return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallHostReferenceCarrierSource())
+		},
+		"reference-vector-carrier": mutableFuncrefLocalCallReferenceVectorCarrierSource,
+		"reference-vector-carrier-tail": func() []byte {
+			return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallReferenceVectorCarrierSource())
 		},
 		"reference-carrier-tail": func() []byte {
 			return mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallReferenceCarrierSource())

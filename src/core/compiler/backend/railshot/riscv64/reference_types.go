@@ -112,7 +112,7 @@ func (types internalReferenceTypes) function(index uint32) bool {
 	if signature == nil || signature.Kind != wasm.CompFunc || len(signature.Params) > limit || len(signature.Results) > limit {
 		return false
 	}
-	if types.publicReferenceCarriers && publicReferenceCarrierTarget(signature) {
+	if types.publicReferenceCarriers && publicReferenceVectorCarrierTarget(signature) {
 		return true
 	}
 	if types.gcRefTestAbstract && (index == 5 || index == 6) {

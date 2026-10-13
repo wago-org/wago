@@ -326,13 +326,23 @@ func admitPublicDynamicHostReferenceBoundary(m *wasm.Module) bool {
 }
 
 func publicReferenceCarrierTarget(target *wasm.CompType) bool {
+	return publicReferenceCarrierTargetMode(target, false)
+}
+
+// The vector form is kept separate so the exact mutable reference-cell
+// profile cannot accidentally widen scalar host/reference wrappers to v128.
+func publicReferenceVectorCarrierTarget(target *wasm.CompType) bool {
+	return publicReferenceCarrierTargetMode(target, true)
+}
+
+func publicReferenceCarrierTargetMode(target *wasm.CompType, vector bool) bool {
 	if target == nil || target.Kind != wasm.CompFunc || len(target.Params) > 256 || len(target.Results) > 256 {
 		return false
 	}
 	reference := false
 	for _, values := range [][]wasm.ValType{target.Params, target.Results} {
 		for _, typ := range values {
-			if scalarType(typ, true) {
+			if scalarType(typ, true) || vector && wasm.EqualValType(typ, wasm.V128) {
 				continue
 			}
 			if !wasm.EqualValType(typ, wasm.FuncRef) && !wasm.EqualValType(typ, wasm.ExternRef) {
@@ -372,7 +382,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	// profile is also admitted by the baseline SWAR pipeline for v128 carriers.
 	publicMutableLocalCall := admitMutableFunctionGlobalLocalCall(m)
 	publicReferenceCarrierBoundary := !vector && admitPublicReferenceCarrierBoundary(m)
-	publicMutableReferenceCarrier := publicMutableLocalCall && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
+	publicMutableReferenceCarrier := publicMutableLocalCall && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp)
 	counts, err := countClosedReferenceImports(m)
 	if err != nil {
 		return err
@@ -403,7 +413,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		decodedSWAR:              vector,
 		declarationExtern:        !vector && (admitCore3RefDeclarations(m) || admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m)),
 		declarationNonNullExtern: !vector && (admitCore3RefDeclarations(m) || admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m)),
-		publicReferenceCarriers:  publicReferenceCarrierBoundary && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp),
+		publicReferenceCarriers:  publicReferenceCarrierBoundary && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp) || publicMutableLocalCall && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp),
 	}
 	limit := 256
 	if vector {
@@ -669,7 +679,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 				}
 				sig := &m.Types[imm.Index].SubTypes[0].Comp
 				if vector {
-					if err := swarCallSignature(sig); err != nil {
+					if err := swarCallSignature(sig); err != nil && ((!publicMutableReferenceCarrier || imm.Index != 0) || (op != 0x14 && op != 0x15) || !publicReferenceVectorCarrierTarget(sig)) {
 						return err
 					}
 				} else if err := integerNumericSignature(sig, true); err != nil {

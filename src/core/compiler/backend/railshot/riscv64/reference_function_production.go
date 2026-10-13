@@ -146,7 +146,10 @@ func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wa
 		}
 		if vector {
 			if err := swarImportSignature(target); err != nil {
-				return err
+				publicReferenceTail := p.kind == enc.NativeTailReference && admitMutableFunctionGlobalReferenceCarrierCall(m) && p.typeIndex == 0
+				if !publicReferenceTail || !publicReferenceVectorCarrierTarget(target) {
+					return err
+				}
 			}
 		} else if err := integerNumericSignature(target, true); err != nil {
 			publicReferenceTail := p.kind == enc.NativeTailReference && ((admitPublicReferenceCallBoundary(m) && p.typeIndex == 0) || (admitPublicDynamicHostReferenceBoundary(m) && p.typeIndex == 2) || (admitMutableFunctionGlobalReferenceCarrierCall(m) && p.typeIndex == 0))

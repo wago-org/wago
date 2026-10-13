@@ -132,13 +132,14 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 	if referenceFunctions && !privateRefs {
 		return swarSummary{}, unsupported("private reference functions require same-image direct calls")
 	}
+	publicReferenceCarriers := parkedMutableReferenceGlobals && len(types) != 0 && publicReferenceVectorCarrierTarget(types[0])
+	referenceTypes := internalReferenceTypes{swar: types, publicReferenceCarriers: publicReferenceCarriers}
 	functionClass := func(typ wasm.ValType) swarClass {
 		if referenceFunctions {
-			return swarControlClass(typ, internalReferenceTypes{swar: types}, true, referenceCalls)
+			return swarControlClass(typ, referenceTypes, true, referenceCalls)
 		}
 		return swarClassOf(typ)
 	}
-	referenceTypes := internalReferenceTypes{swar: types}
 	globalReference := func(global wasm.GlobalType) bool {
 		return foreignTableCalls && (!global.Mutable || localMutableReferences) && internalFunctionReferenceWithTypes(global.Type, referenceCalls, referenceTypes)
 	}
@@ -160,7 +161,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 	}
 	for i, typ := range functions {
 		if referenceFunctions {
-			if err := admitSWARControlSignature(typ, internalReferenceTypes{swar: types}, true, referenceCalls); err != nil {
+			if err := admitSWARControlSignature(typ, referenceTypes, true, referenceCalls); err != nil {
 				return swarSummary{}, err
 			}
 		} else if err := swarCallSignature(typ); err != nil {
@@ -176,7 +177,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 		return swarSummary{}, unsupported("SWAR control type bound")
 	}
 	for _, typ := range types {
-		if err := admitSWARControlSignature(typ, internalReferenceTypes{swar: types}, privateRefs, privateRefs && referenceCalls); err != nil {
+		if err := admitSWARControlSignature(typ, referenceTypes, privateRefs, privateRefs && referenceCalls); err != nil {
 			return swarSummary{}, err
 		}
 	}
@@ -481,9 +482,10 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				return swarSummary{}, unsupported("SWAR typed call requires its retained reference profile")
 			}
 			sig := types[typeIndex]
+			referenceCarrierCall := publicReferenceCarriers && typeIndex == 0 && publicReferenceVectorCarrierTarget(sig)
 			if tail {
 				if referenceFunctions {
-					if err := swarCallSignature(sig); err != nil {
+					if err := swarCallSignature(sig); err != nil && !referenceCarrierCall {
 						return swarSummary{}, err
 					}
 					if err := admitReferenceTailResults(ft, sig); err != nil {
@@ -494,7 +496,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				importTails++
 			} else {
-				if err := swarCallSignature(sig); err != nil {
+				if err := swarCallSignature(sig); err != nil && !referenceCarrierCall {
 					return swarSummary{}, err
 				}
 				if err := reserve(nativeTableCallCodeBound(swarSignatureSlots(sig.Params), swarSignatureSlots(sig.Results))); err != nil {
@@ -515,7 +517,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			}
 			var operands [maxSWARLocals + 1]swarClass
 			for n, typ := range sig.Params {
-				operands[n] = swarClassOf(typ)
+				operands[n] = functionClass(typ)
 			}
 			operands[len(sig.Params)] = swarFuncRef
 			if err := flow.prepareDead(operands[:len(sig.Params)+1]...); err != nil {
@@ -546,7 +548,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			} else {
 				h = base
 				for _, typ := range sig.Results {
-					if err := push(swarClassOf(typ)); err != nil {
+					if err := push(functionClass(typ)); err != nil {
 						return swarSummary{}, err
 					}
 				}

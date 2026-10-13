@@ -362,15 +362,40 @@ func rv64PublicReferenceCarrierTarget(c *Compiled, function int) bool {
 
 func rv64MutableReferenceCarrierTarget(c *Compiled, function int) bool {
 	variant := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
-	if c == nil || variant < 19 || variant > 22 || function < 0 || function > 1 || len(c.Funcs) != 6 || len(c.Types) != 2 || !c.nativeReferenceFunctionABI || !c.nativeReferenceCallABI || !c.nativeReferenceControlABI {
+	if c == nil || variant < 19 || variant > 24 || function < 0 || function > 1 || len(c.Funcs) != 6 || len(c.Types) != 2 || !c.nativeReferenceFunctionABI || !c.nativeReferenceCallABI || !c.nativeReferenceControlABI {
 		return false
 	}
 	sig := c.Funcs[function]
-	if !rv64PublicReferenceCarrierSignature(sig) || !sig.HasTypeIndex || sig.TypeIndex != 0 {
+	carrierSignature := rv64PublicReferenceCarrierSignature(sig)
+	if variant >= 23 {
+		carrierSignature = rv64ReferenceVectorCarrierSignature(sig)
+	}
+	if !carrierSignature || !sig.HasTypeIndex || sig.TypeIndex != 0 {
 		return false
 	}
 	typ := c.Types[0]
 	return typ.Kind == CompositeTypeFunction && rv64PublicReferenceScalarDescriptors(typ.Params, sig.Params) && rv64PublicReferenceScalarDescriptors(typ.Results, sig.Results)
+}
+
+func rv64ReferenceVectorCarrierSignature(sig FuncSig) bool {
+	if len(sig.Params) > 128 || len(sig.Results) > 128 {
+		return false
+	}
+	reference, vector := false, false
+	for _, values := range [][]ValType{sig.Params, sig.Results} {
+		for _, typ := range values {
+			switch typ {
+			case ValI32, ValI64, ValF32, ValF64:
+			case ValV128:
+				vector = true
+			case ValFuncRef, ValExternRef:
+				reference = true
+			default:
+				return false
+			}
+		}
+	}
+	return reference && vector
 }
 
 func rv64PublicReferenceU32Bytes(value uint32) uint32 {

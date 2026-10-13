@@ -128,13 +128,16 @@ func rv64PublicReferenceTailPlan(c *Compiled, p encoder.NativeTailPlan) bool {
 
 func rv64MutableReferenceCarrierTailPlan(c *Compiled, p encoder.NativeTailPlan) bool {
 	variant := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
-	if p.Kind != encoder.NativeTailReference || p.TypeIndex != 0 || p.FunctionIndex != 5 || p.ImportIndex != 0 || p.SourceStride != 8 {
+	if p.Kind != encoder.NativeTailReference || p.TypeIndex != 0 || p.FunctionIndex != 5 || p.ImportIndex != 0 {
 		return false
 	}
 	if variant == 20 {
-		return p.SourcePC == 11 && p.FrameBytes == 128 && p.SourceBase == 80 && p.ReferenceBase == 112
+		return p.SourcePC == 11 && p.FrameBytes == 128 && p.SourceBase == 80 && p.SourceStride == 8 && p.ReferenceBase == 112
 	}
-	return variant == 22 && p.SourcePC == 15 && p.FrameBytes == 160 && p.SourceBase == 96 && p.ReferenceBase == 144
+	if variant == 22 {
+		return p.SourcePC == 15 && p.FrameBytes == 160 && p.SourceBase == 96 && p.SourceStride == 8 && p.ReferenceBase == 144
+	}
+	return variant == 24 && p.SourcePC == 13 && p.FrameBytes == 224 && p.SourceBase == 128 && p.SourceStride == 16 && p.ReferenceBase == 208
 }
 
 func rv64PublicDynamicHostReferencePlan(c *Compiled, p encoder.NativeTailPlan) bool {

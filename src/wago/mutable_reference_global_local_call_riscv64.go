@@ -55,6 +55,10 @@ var rv64MutableFuncrefLocalCallHostReferenceCarrierCodeDigest = [sha256.Size]byt
 
 var rv64MutableFuncrefLocalTailCallHostReferenceCarrierCodeDigest = [sha256.Size]byte{0x64, 0xf7, 0x5a, 0xb9, 0x5f, 0xf3, 0x71, 0x3a, 0xf2, 0x83, 0x9c, 0xfe, 0x37, 0xe4, 0xcf, 0x53, 0x2d, 0x73, 0x7f, 0x19, 0x64, 0x5f, 0x49, 0xbf, 0x0d, 0x8b, 0x3a, 0x84, 0xc4, 0x71, 0xc0, 0x34}
 
+var rv64MutableFuncrefLocalCallReferenceVectorCarrierCodeDigest = [sha256.Size]byte{0x18, 0x43, 0x53, 0x5b, 0x56, 0x9b, 0x61, 0x68, 0x4b, 0x16, 0x8d, 0x67, 0x0d, 0x0f, 0xd6, 0x38, 0x0e, 0x3a, 0x6b, 0x9f, 0x21, 0x0d, 0x9b, 0xb8, 0x7f, 0xd1, 0x2f, 0x46, 0x43, 0x29, 0xf7, 0xcf}
+
+var rv64MutableFuncrefLocalTailCallReferenceVectorCarrierCodeDigest = [sha256.Size]byte{0x7a, 0x99, 0x20, 0x03, 0x13, 0x5c, 0x1f, 0x46, 0xb6, 0xe1, 0x5c, 0xf5, 0x64, 0x35, 0xe8, 0x80, 0x2e, 0x30, 0xd8, 0x26, 0xd0, 0x2a, 0x24, 0x57, 0x45, 0xcb, 0x72, 0x73, 0xfe, 0x66, 0xa3, 0xe3}
+
 func rv64MutableFuncrefGlobalLocalCallExecutionCode(c *Compiled) bool {
 	return rv64MutableFuncrefGlobalLocalCallCodeVariant(c) != 0
 }
@@ -129,6 +133,12 @@ func rv64MutableFuncrefGlobalLocalCallCodeVariant(c *Compiled) int {
 	}
 	if len(c.code) == 5196 && digest == rv64MutableFuncrefLocalTailCallHostReferenceCarrierCodeDigest {
 		return 22
+	}
+	if len(c.code) == 7996 && digest == rv64MutableFuncrefLocalCallReferenceVectorCarrierCodeDigest {
+		return 23
+	}
+	if len(c.code) == 5612 && digest == rv64MutableFuncrefLocalTailCallReferenceVectorCarrierCodeDigest {
+		return 24
 	}
 	return 0
 }
@@ -246,8 +256,23 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 			}
 		}
 		copy(valueResults, valueParams)
+	case 23, 24:
+		wasmParams = []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.V128, wasm.F64}
+		wasmResults = slices.Clone(wasmParams)
+		abiParams = []ValType{ValI32, ValFuncRef, ValExternRef, ValV128, ValF64}
+		abiResults = slices.Clone(abiParams)
+		valueParams = make([]ValueTypeDescriptor, len(abiParams))
+		valueResults = make([]ValueTypeDescriptor, len(abiResults))
+		for i, typ := range abiParams {
+			var ok bool
+			valueParams[i], ok = valueTypeDescriptorFromValType(typ)
+			if !ok {
+				return false
+			}
+		}
+		copy(valueResults, valueParams)
 	}
-	if variant >= 10 && variant <= 18 || variant == 20 || variant == 22 {
+	if variant >= 10 && variant <= 18 || variant == 20 || variant == 22 || variant == 24 {
 		wantPlan := encoder.NativeTailPlan{Kind: encoder.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 5, FrameBytes: 80, SourceBase: 56, SourceStride: 8, ReferenceBase: 64}
 		if variant == 13 {
 			wantPlan.SourcePC, wantPlan.FrameBytes, wantPlan.SourceBase, wantPlan.ReferenceBase = 3, 64, 48, 48
@@ -263,9 +288,11 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 			wantPlan.SourcePC, wantPlan.FrameBytes, wantPlan.SourceBase, wantPlan.ReferenceBase = 11, 128, 80, 112
 		} else if variant == 22 {
 			wantPlan.SourcePC, wantPlan.FrameBytes, wantPlan.SourceBase, wantPlan.ReferenceBase = 15, 160, 96, 144
+		} else if variant == 24 {
+			wantPlan.SourcePC, wantPlan.FrameBytes, wantPlan.SourceBase, wantPlan.SourceStride, wantPlan.ReferenceBase = 13, 224, 128, 16, 208
 		}
 		m := rv64NativeTailModule(c)
-		if c.nativeReferenceCallABI != (variant == 20 || variant == 22) || m == nil || !slices.Equal(m.Plans, []encoder.NativeTailPlan{wantPlan}) {
+		if c.nativeReferenceCallABI != (variant == 20 || variant == 22 || variant == 24) || m == nil || !slices.Equal(m.Plans, []encoder.NativeTailPlan{wantPlan}) {
 			return false
 		}
 	} else if !c.nativeReferenceCallABI || rv64HasReferenceTail(c) {
@@ -311,13 +338,13 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 		return false
 	}
 	required := CoreFeatureReferenceTypes | CoreFeatureMutableGlobal | CoreFeatureTypedFunctionReferences
-	if variant == 6 || variant == 7 || variant == 9 || variant == 12 || variant == 17 || variant == 18 || variant >= 19 && variant <= 22 {
+	if variant == 6 || variant == 7 || variant == 9 || variant == 12 || variant == 17 || variant == 18 || variant >= 19 && variant <= 24 {
 		required |= CoreFeatureMultiValue
 	}
-	if variant == 8 || variant == 9 || variant == 11 || variant == 12 {
+	if variant == 8 || variant == 9 || variant == 11 || variant == 12 || variant == 23 || variant == 24 {
 		required |= CoreFeatureSIMD
 	}
-	if variant >= 10 && variant <= 18 || variant == 20 || variant == 22 {
+	if variant >= 10 && variant <= 18 || variant == 20 || variant == 22 || variant == 24 {
 		required |= CoreFeatureTailCall
 	}
 	wantEntry := []int{0, 608, 1216, 1936, 2656, 3312}
@@ -337,6 +364,8 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 		wantEntry = []int{0, 672, 1408, 2128, 2848, 3504}
 	} else if variant == 21 || variant == 22 {
 		wantEntry = []int{0, 720, 1600, 2320, 3040, 3696}
+	} else if variant == 23 || variant == 24 {
+		wantEntry = []int{0, 880, 1904, 2624, 3344, 3984}
 	}
 	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && slices.Equal(c.Entry, wantEntry) && slices.Equal(c.InternalEntry, wantEntry) && rv64MutableFuncrefGlobalLocalCallExecutionCode(c)
 }

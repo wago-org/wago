@@ -77,19 +77,20 @@ func tailRASignature(sig *wasm.CompType) error {
 	if sig == nil || sig.Kind != wasm.CompFunc || len(sig.Params) > 256 || len(sig.Results) > 256 {
 		return unsupported("private tail exact signature")
 	}
-	vector := false
 	for _, list := range [][]wasm.ValType{sig.Params, sig.Results} {
+		cells := 0
 		for _, typ := range list {
 			if swarClassOf(typ) == swarInvalid && !wasm.EqualValType(typ, wasm.FuncRef) && !wasm.EqualValType(typ, wasm.ExternRef) {
 				return unsupported("private tail carrier type")
 			}
+			cells++
 			if wasm.EqualValType(typ, wasm.V128) {
-				vector = true
+				cells++
+			}
+			if cells > 256 {
+				return unsupported("private tail physical signature bound")
 			}
 		}
-	}
-	if vector {
-		return swarCallSignature(sig)
 	}
 	return nil
 }

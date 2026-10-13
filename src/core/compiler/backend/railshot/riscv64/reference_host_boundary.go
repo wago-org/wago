@@ -127,5 +127,5 @@ func admitPublicReferenceCarrierBoundary(m *wasm.Module) bool {
 }
 
 func admitMutableFunctionGlobalReferenceCarrierCall(m *wasm.Module) bool {
-	return admitMutableFunctionGlobalLocalCall(m) && len(m.Types) == 2 && len(m.Types[0].SubTypes) == 1 && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
+	return admitMutableFunctionGlobalLocalCall(m) && len(m.Types) == 2 && len(m.Types[0].SubTypes) == 1 && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp)
 }

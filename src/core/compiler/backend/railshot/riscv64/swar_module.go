@@ -211,6 +211,8 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			return nil, unsupported("SWAR custom section " + custom.Name)
 		}
 	}
+	publicReferenceCarriers := mode.referenceFunctions && admitMutableFunctionGlobalLocalCall(m) && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp)
+	referenceTypes := internalReferenceTypes{decoded: m.Types, decodedSWAR: true, publicReferenceCarriers: publicReferenceCarriers}
 	types := make([]*wasm.CompType, len(m.Types))
 	for i := range m.Types {
 		rec := &m.Types[i]
@@ -221,7 +223,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 			return nil, unsupported("SWAR type metadata")
 		}
-		if err := admitSWARControlSignature(&sub.Comp, internalReferenceTypes{decoded: m.Types, decodedSWAR: true}, state.publicStarts, mode.referenceCalls); err != nil {
+		if err := admitSWARControlSignature(&sub.Comp, referenceTypes, state.publicStarts, mode.referenceCalls); err != nil {
 			return nil, err
 		}
 		types[i] = &sub.Comp
@@ -314,7 +316,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			return nil, unsupported("SWAR module function binding")
 		}
 		if mode.referenceFunctions {
-			if err := admitSWARControlSignature(ft, internalReferenceTypes{swar: types}, true, mode.referenceCalls); err != nil {
+			if err := admitSWARControlSignature(ft, internalReferenceTypes{swar: types, publicReferenceCarriers: publicReferenceCarriers}, true, mode.referenceCalls); err != nil {
 				return nil, err
 			}
 		} else if err := swarCallSignature(ft); err != nil {
@@ -510,8 +512,10 @@ func admitSWARDecodedBudgetReferences(m *wasm.Module, publicStarts, referencesAl
 	if err := chargeDeclaredTypeBytes(m, &remaining); err != nil {
 		return err
 	}
+	publicReferenceCarriers := referencesAllowed && admitMutableFunctionGlobalLocalCall(m) && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp)
+	declaredTypes := internalReferenceTypes{decoded: m.Types, decodedSWAR: true, publicReferenceCarriers: publicReferenceCarriers}
 	for _, group := range m.Types {
-		if len(group.SubTypes) != 1 || admitSWARControlSignature(&group.SubTypes[0].Comp, internalReferenceTypes{decoded: m.Types, decodedSWAR: true}, referencesAllowed, typed) != nil {
+		if len(group.SubTypes) != 1 || admitSWARControlSignature(&group.SubTypes[0].Comp, declaredTypes, referencesAllowed, typed) != nil {
 			return unsupported("SWAR decoded numeric function types")
 		}
 		sub := &group.SubTypes[0]
