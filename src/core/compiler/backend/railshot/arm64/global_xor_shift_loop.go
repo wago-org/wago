@@ -46,7 +46,7 @@ func (f *fn) tryGlobalXorShiftLoop(r *wasm.Reader) (bool, error) {
 			vectors++
 		}
 	}
-	if available < 11 || vectors < 6 {
+	if available < 11 || vectors < 8 {
 		return false, nil
 	}
 	if err := r.JumpTo(p.End); err != nil {
@@ -91,32 +91,29 @@ func (f *fn) tryGlobalXorShiftLoop(r *wasm.Reader) (bool, error) {
 	f.a.MovImm32(n, 1)
 	f.a.PatchBranch19(nonzero, f.a.Len())
 	step, tail, term, sum := alloc(), alloc(), alloc(), alloc()
-	var v [6]Reg
+	var v [8]Reg
 	for i := range v {
 		v[i] = f.allocFReg(calleeFP)
 		f.fpinned = f.fpinned.add(v[i])
 	}
-	g0, g1, acc0, acc1, stride, tmp := v[0], v[1], v[2], v[3], v[4], v[5]
+	globals := v[:4]
+	acc0, acc1, stride, tmp := v[4], v[5], v[6], v[7]
 	f.a.MovImm64(step, p.Step)
 	f.a.MovReg64(tail, global)
-	for lane := byte(0); lane < 4; lane++ {
+	for lane := byte(0); lane < 8; lane++ {
 		f.a.Add64(tail, tail, step)
-		reg := g0
-		if lane >= 2 {
-			reg = g1
-		}
-		f.a.NeonInsD(reg, tail, lane&1)
+		f.a.NeonInsD(globals[lane/2], tail, lane&1)
 	}
 	// Preserve the final global independently of vector batching and scalar tail.
 	f.a.Madd64(global, n, step, global)
-	f.a.MovImm64(step, p.Step*4)
+	f.a.MovImm64(step, p.Step*8)
 	f.a.NeonDupGprD(stride, step)
 	f.a.NeonEor16b(acc0, acc0, acc0)
 	f.a.NeonEor16b(acc1, acc1, acc1)
-	f.a.CmpImm32(n, 4)
+	f.a.CmpImm32(n, 8)
 	small := f.a.Bcond(a64.CondCC)
 	loop := f.a.Len()
-	for i, g := range []Reg{g0, g1} {
+	for i, g := range globals {
 		if p.Shift == 0 {
 			f.a.NeonEor16b(tmp, g, g)
 		} else {
@@ -124,25 +121,25 @@ func (f *fn) tryGlobalXorShiftLoop(r *wasm.Reader) (bool, error) {
 			f.a.NeonEor16b(tmp, tmp, g)
 		}
 		acc := acc0
-		if i == 1 {
+		if i&1 == 1 {
 			acc = acc1
 		}
 		f.a.NeonAddD(acc, acc, tmp)
 		f.a.NeonAddD(g, g, stride)
 	}
-	f.a.SubImm32(n, n, 4)
-	f.a.CmpImm32(n, 4)
+	f.a.SubImm32(n, n, 8)
+	f.a.CmpImm32(n, 8)
 	again := f.a.Bcond(a64.CondCS)
 	f.a.PatchBranch19(again, loop)
 	f.a.PatchBranch19(small, f.a.Len())
-	// Independent accumulators remove the dependency between the two pairs.
+	// Independent accumulators remove the dependency between adjacent pairs.
 	// Combining modulo 2^64 preserves the observed wrapping i32 reduction.
 	f.a.NeonAddD(acc0, acc0, acc1)
 	f.a.NeonUmovD(sum, acc0, 0)
 	f.a.NeonUmovD(term, acc0, 1)
 	f.a.Add32(sum, sum, term)
 	noTail := f.a.Cbz32(n)
-	f.a.NeonUmovD(tail, g0, 0)
+	f.a.NeonUmovD(tail, globals[0], 0)
 	f.a.MovImm64(step, p.Step)
 	tailLoop := f.a.Len()
 	f.a.LsrImm(term, tail, p.Shift, false)

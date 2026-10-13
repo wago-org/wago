@@ -43,7 +43,7 @@ func TestGlobalXorShiftPublicExecution(t *testing.T) {
 							}
 							defer in.Close()
 							global := ^uint64(15)
-							for _, bound := range []uint32{0, 1, 2, 3, 4, 5, 7, 8, 15, 16, 17, 31, 63, 64, 65, 257, 4096} {
+							for _, bound := range []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 31, 63, 64, 65, 257, 4096} {
 								initial := uint32(0xfedcba98 ^ bound)
 								want, count := initial, bound
 								if count == 0 {
