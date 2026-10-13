@@ -213,8 +213,19 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 	for i := range c.Globals {
 		global := &c.Globals[i]
 		if global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 ||
-			!global.HasValueType || global.HasInitGlobal || global.InitGlobal != 0 || global.HasInitFunc || global.InitFunc != 0 ||
+			!global.HasValueType || global.HasInitFunc || global.InitFunc != 0 ||
 			len(global.InitExpr) != 0 || global.V128 != (V128{}) || (global.Type == ValI32 || global.Type == ValF32) && global.Bits>>32 != 0 {
+			return [32]byte{}, false
+		}
+		if global.HasInitGlobal {
+			if i < len(c.GlobalImports) || global.InitGlobal < 0 || global.InitGlobal >= i || global.Bits != 0 {
+				return [32]byte{}, false
+			}
+			parent := &c.Globals[global.InitGlobal]
+			if parent.Mutable || parent.Type != global.Type {
+				return [32]byte{}, false
+			}
+		} else if global.InitGlobal != 0 {
 			return [32]byte{}, false
 		}
 		exact, err := c.globalExactType(i)
@@ -225,6 +236,9 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 		flags := byte(1)
 		if global.Mutable {
 			flags |= 2
+		}
+		if global.HasInitGlobal {
+			flags |= 8
 		}
 		if i < len(c.GlobalImports) {
 			imp := &c.GlobalImports[i]
@@ -243,6 +257,8 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 		}
 		_, _ = h.Write([]byte{byte(global.Type), flags})
 		binary.LittleEndian.PutUint32(word[:4], global.ValueTypeIndex)
+		_, _ = h.Write(word[:4])
+		binary.LittleEndian.PutUint32(word[:4], uint32(global.InitGlobal))
 		_, _ = h.Write(word[:4])
 		binary.LittleEndian.PutUint64(word[:], global.Bits)
 		_, _ = h.Write(word[:])

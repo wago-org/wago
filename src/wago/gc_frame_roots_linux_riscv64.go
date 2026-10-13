@@ -83,8 +83,8 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		}
 	}
 	for i := range m.Globals {
-		if !rv64RootedScalarGlobal(&m.Globals[i]) {
-			return reject("RV64 exact roots require literal numeric scalar global %d", i)
+		if !rv64RootedScalarGlobal(m, &m.Globals[i], importedGlobals+i) {
+			return reject("RV64 exact roots require literal or immutable-copy numeric scalar global %d", i)
 		}
 	}
 	if len(m.Memories) == 1 {
@@ -314,7 +314,7 @@ func rv64RootedI32Const(body []byte) bool {
 	return err == nil && end == 0x0b && !r.HasNext()
 }
 
-func rv64RootedScalarGlobal(global *wasm.Global) bool {
+func rv64RootedScalarGlobal(m *wasm.Module, global *wasm.Global, limit int) bool {
 	if global == nil || len(global.Init.Instrs) != 0 {
 		return false
 	}
@@ -322,6 +322,18 @@ func rv64RootedScalarGlobal(global *wasm.Global) bool {
 	op, err := r.Byte()
 	if err != nil {
 		return false
+	}
+	if op == 0x23 {
+		index, err := r.U32()
+		if err != nil || uint64(index) >= uint64(limit) {
+			return false
+		}
+		end, err := r.Byte()
+		if err != nil || end != 0x0b || r.HasNext() {
+			return false
+		}
+		typ, ok := m.GlobalTypeByIndex(index)
+		return ok && !typ.Mutable && wasm.EqualValType(typ.Type, global.Type.Type)
 	}
 	switch {
 	case wasm.EqualValType(global.Type.Type, wasm.I32) && op == 0x41:

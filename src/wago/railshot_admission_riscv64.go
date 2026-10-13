@@ -96,6 +96,12 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	if !validGlobals || globalDigest != memo.rv64FreshRootedGCGlobalDigest {
 		return false
 	}
+	for i := range c.Globals {
+		global := &c.Globals[i]
+		if global.HasInitGlobal && !rv64InitializerGlobal(c, global.InitGlobal, global.Type, i) {
+			return false
+		}
+	}
 	tableDigest, validTable := rv64RootedTableDigest(c)
 	if !validTable || tableDigest != memo.rv64FreshRootedGCTableDigest {
 		return false
