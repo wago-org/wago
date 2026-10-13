@@ -1,6 +1,6 @@
 # WebAssembly feature execution comparison
 
-The full implementation and performance objective remains open. This fresh
+The full implementation and performance objective remains open. This full
 115-contract capture uses Wago production revision `b4ef4c22` on Apple M4 Max
 Darwin/ARM64 and the pinned SIMD-capable w2c2 fork. The full Wago adapter identity
 is `b4ef4c22296574efcb09a9e39d0914b468ddbecd/source-367d9e2e3727e1fe995cfb3973c373f35fcc91ffb727d4f798f69663dc36eabf`. wasm.fyi source revision is `9a11c7fc6c96e4714431c36c0a924272d9422a47`.
@@ -39,9 +39,28 @@ each capture, so unrelated small timing differences are descriptive.
 | `features/simd/i32x4-add-multiply/performance-4096x64` | 369.611 | 103.88 | 289.54 | 0.359 |
 | `features/simd/arithmetic-scalar-baseline/performance-4096x64` | 270.402 | 103.35 | 289.19 | 0.357 |
 
-## Largest remaining paired gaps
+## Later targeted checkpoints
 
-Twenty-nine paired contracts exceed 1.1x the peer median. This is a triage
+Later captures close four of the large global-state gaps from the full snapshot:
+
+| Contract | Production revision | Wago ns | Peer ns | Wago/peer |
+| --- | --- | ---: | ---: | ---: |
+| `core-glb/global-swap` | `32c26ea3` | 170.74 | 292.14 | 0.584 |
+| `mutable-globals/global-swap` | `32c26ea3` | 166.00 | 290.07 | 0.572 |
+| `core-glb/i64-global-split` | `81fba84c` | 129.88 | 294.19 | 0.441 |
+| `mutable-globals/i64-global-split` | `81fba84c` | 131.44 | 294.89 | 0.446 |
+
+These are matched targeted captures, separate from the full cohort below. Their
+[global assignment report](docs/benchmarks/wasm3-2026-10-12/global-write-sum-results.json)
+and [mixed-width report](docs/benchmarks/wasm3-2026-10-12/mixed-width-sum-results.json)
+retain raw rows, compile costs and validation. The aliased ordinary host control
+also improves to 3.585x the peer in its later targeted checkpoint. Mutable
+accumulation and other prior-value recurrences remain substantive gaps.
+
+## Paired gaps in the full capture
+
+Twenty-nine paired contracts exceeded 1.1x the peer median in this full snapshot;
+four global-state contracts are closed by the later checkpoints above. This is a triage
 threshold, not a universal completion rule. Global-state loops, opaque Go
 callbacks, branch/bit operations and conversions remain substantive gaps.
 
@@ -78,6 +97,7 @@ timing variation, retained in the report. Small differences and near-parity
 results need targeted confirmation. The large global/callback gaps remain clear.
 
 The latest production change passes pinned ARM64 Core 3/threads conformance and
-guarded race tests, with retained alternating compile-cost evidence. Native AMD64
-validation of recent changes remains pending hub access. This report does not
+guarded race tests, with retained alternating compile-cost evidence. Targeted integer-sum execution and
+diagnostic tests now pass on native AMD64 at `root@remote`; Hub is unavailable
+for maintenance. Full AMD64 conformance and timed parity captures remain open. This report does not
 establish all feature combinations or complete feature-by-feature parity.

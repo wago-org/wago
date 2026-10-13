@@ -848,3 +848,47 @@ full backend statistics were not rerun.
 exact plan/runtime configurations, alternating compile captures, image hashes,
 remote binary hash and validation output. Global recurrences that read prior
 values, opaque callbacks, other feature gaps and full parity remain open.
+
+### Mixed-width integer affine reductions
+
+`81fba84c` adds a bounded typed-integer fallback when the existing single-width
+expression proof cannot handle unsigned widening, low-word wrapping or constant
+shifts. Widening requires a nonwrapping unsigned affine expression across the
+counter's entire unsigned domain. Right shifts additionally require that the
+discarded remainder cannot carry anywhere in that domain. This proves arithmetic
+from its operands rather than treating small workload bounds as assumptions.
+Same-iteration defined-global writes retain their own width; canonical setters
+now widen or truncate the final counter appropriately. The existing pure
+single-width, floating-sign and uniform-vector proofs retain their common path.
+No persistent ABI or function fields are added.
+
+The core/mutable-global split-i64 contracts improve 104,701 -> 130 ns and
+104,606 -> 131 ns (806x/796x), versus unchecked w2c2 294/295 ns. All 54 primary
+process rows have qualified durations and verified outputs. The inspected core
+native image changes 416 -> 432 bytes. The four prior-value recurrence controls
+have byte-identical before/current native images; their medians change between
+-0.40% and +2.08%, retaining the variation and their remaining gaps rather than
+claiming those recurrences are solved.
+
+Alternating three-process compile captures change Core 3 latency +1.39% and
+threads +1.49%, with effectively unchanged allocations and identical corpus code
+totals. Small scalar/Core 3 compile controls change +0.79%/+1.53%; the imported
+worker control changes -0.56%. Native ARM64 and Remote Linux AMD64 integer-sum
+execution tests pass, including both ABIs, artifact reload, optimization rollback,
+unsigned extrema, old borrowed global values and final stores in both width
+conversion directions. Deterministic differential shift tests cover wrap/carry
+boundaries and a spread across the counter domain. ARM64 guarded race and pinned
+Core 3/threads conformance pass.
+
+Remote diagnostic validation exposed an inherited AMD64 test assumption: reg ABI
+alone does not guarantee a mutable-global value pin when locals compete for the
+finite GP pool. The same failure is reproduced on `32c26ea3`. `f039e489` tests both
+colder and hotter global sources, asserts their actual pin states, and checks
+reduction admission against those states. The targeted AMD64 diagnostic suite
+now passes; production pin allocation is unchanged. Full backend statistics
+were not rerun, and native AMD64 performance remains unmeasured.
+
+`mixed-width-sum-results.json` retains all primary and earlier baseline captures,
+compile cohorts, source plans, image hashes, original red test, inherited failure
+and corrected diagnostic output. Mutable accumulation, carry/float recurrences,
+callbacks and full feature parity remain open.
