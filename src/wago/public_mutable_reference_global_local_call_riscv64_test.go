@@ -211,6 +211,29 @@ func rv64MutableFuncrefLocalCallMixedVectorModule() []byte {
 	)
 }
 
+func rv64MutableFuncrefLocalCallReferenceCarrierModule() []byte {
+	params := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64}
+	results := []wasm.ValType{wasm.ExternRef, wasm.FuncRef, wasm.I32, wasm.I64}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, results), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{6, 0, 0, 1, 1, 1, 0}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0), wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2), wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("call", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 2, 0x20, 1, 0x20, 0, 0x20, 3, 0x0b}),
+			wasmtest.Code([]byte{0x20, 2, 0x20, 1, 0x20, 0, 0x41, 1, 0x6a, 0x20, 3, 0x42, 1, 0x7c, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x23, 0, 0x14, 0, 0x0b}),
+		)),
+	)
+}
+
 func rv64MutableFuncrefLocalTailCallMixedVectorModule() []byte {
 	types := []wasm.ValType{wasm.I32, wasm.V128, wasm.F64}
 	return wasmtest.Module(
@@ -1057,6 +1080,118 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallMixedVector(t *testing.T) {
 	}
 }
 
+func TestRV64PublicMutableFuncrefGlobalLocalCallReferenceCarriers(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+			defer rv64HostCertificateCloseRuntime(t, rt)
+			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-reference-carriers", rv64MutableFuncrefLocalCallReferenceCarrierModule(), artifact)
+			view := compiled.executionView()
+			profile, target0, target1 := rv64MutableFuncrefGlobalLocalCall(view), rv64MutableReferenceCarrierTarget(view, 0), rv64MutableReferenceCarrierTarget(view, 1)
+			if !profile || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 19 || !target0 || !target1 {
+				t.Fatal("reference-carrier local-call witness missing")
+			}
+			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+			defer consumer.Close()
+			ref, err := rt.NewExternRef(struct{ Name string }{"mutable-carrier"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			extern := ValueExternRef(ref).Bits()
+			if _, err := consumer.Invoke("set_0"); err != nil {
+				t.Fatal("install reference-carrier identity", err)
+			}
+			cell, err := consumer.GlobalValue("cell")
+			if err != nil || cell.FuncRef().IsNull() {
+				t.Fatal("reference-carrier argument token", cell, err)
+			}
+			argument := cell.Bits()
+			input := []uint64{0xdeadbeef80000001, argument, extern, ^uint64(0)}
+			assertCall := func(wantI32, wantI64 uint64, wantTarget int) {
+				t.Helper()
+				got, err := consumer.Invoke("call", input...)
+				if err != nil || len(got) != 4 || got[0] != extern || got[2] != wantI32 || got[3] != wantI64 || !consumer.FuncRefMatchesFunction(ValueOf(ValFuncRef, got[1]).FuncRef(), uint32(wantTarget)) {
+					t.Fatal("mutable reference-carrier call_ref", got, err, "want", wantI32, wantI64, wantTarget)
+				}
+				rv64AssertPublicReferenceArgumentScopesClear(t, consumer)
+			}
+			assertCall(0x80000001, ^uint64(0), 0)
+			typed, err := consumer.InvokeValues(context.Background(), "call", ValueI32(-2147483647), ValueFuncRef(cell.FuncRef()), ValueExternRef(ref), ValueI64(-1))
+			if err != nil || len(typed) != 4 || typed[0].Type() != ValExternRef || typed[0].ExternRef() != ref || typed[1].Type() != ValFuncRef || !consumer.FuncRefMatchesFunction(typed[1].FuncRef(), 0) || typed[2].Type() != ValI32 || typed[2].Bits() != 0x80000001 || typed[3].Type() != ValI64 || typed[3].Bits() != ^uint64(0) {
+				t.Fatal("typed mutable reference-carrier call_ref", typed, err)
+			}
+			rv64AssertPublicReferenceArgumentScopesClear(t, consumer)
+			if _, err := consumer.Invoke("set_1"); err != nil {
+				t.Fatal("install reference-carrier transform", err)
+			}
+			assertCall(0x80000002, 0, 0)
+
+			producer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
+			descriptor, ok := producer.localFuncrefDescriptor(0)
+			if !ok {
+				t.Fatal("foreign reference-carrier target descriptor")
+			}
+			token, err := rt.refStore.issue(producer, descriptor)
+			if err != nil {
+				t.Fatal("foreign reference-carrier target token", err)
+			}
+			tokenHeld := producer.referenceLifetime().snapshot()
+			if err := consumer.SetGlobalValue("cell", ValueOf(ValFuncRef, token)); err != nil {
+				t.Fatal("install foreign reference-carrier target", err)
+			}
+			installed := producer.referenceLifetime().snapshot()
+			if installed.ResourceRoots != tokenHeld.ResourceRoots+1 || !installed.PhysicalResources || installed.LogicallyClosed {
+				t.Fatal("reference-carrier cell did not retain foreign target", tokenHeld, installed)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			parked := producer.referenceLifetime().snapshot()
+			if !parked.LogicallyClosed || !parked.PhysicalResources || parked.ResourceRoots != installed.ResourceRoots {
+				t.Fatal("reference-carrier cell did not park closed foreign target", installed, parked)
+			}
+			assertCall(0x80000001, ^uint64(0), 0)
+			if producer.usesIndependentExecution() || consumer.usesIndependentExecution() || !producer.nativeControlIsShared() || !consumer.nativeControlIsShared() {
+				t.Fatal("foreign mutable reference-carrier owners did not reconcile shared execution")
+			}
+			if _, err := consumer.Invoke("clear"); err != nil {
+				t.Fatal("clear reference-carrier target", err)
+			}
+			cleared := producer.referenceLifetime().snapshot()
+			if !cleared.LogicallyClosed || !cleared.PhysicalResources || cleared.ResourceRoots+1 != parked.ResourceRoots {
+				t.Fatal("reference-carrier clear did not retire exactly one cell root", parked, cleared)
+			}
+			if got, invokeErr := consumer.Invoke("call", input...); got != nil {
+				t.Fatal("cleared reference-carrier call_ref returned values", got, invokeErr)
+			} else {
+				var trap *coreruntime.TrapError
+				if !errors.As(invokeErr, &trap) || trap.Code != coreruntime.TrapNullReference {
+					t.Fatal("cleared reference-carrier call_ref trap", invokeErr)
+				}
+			}
+			rv64AssertPublicReferenceArgumentScopesClear(t, consumer)
+			if !rt.ReleaseExternRef(ref) {
+				t.Fatal("mutable reference-carrier externref remained pinned")
+			}
+			if err := consumer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := compiled.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := rt.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := rt.WaitClosed(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if final := producer.referenceLifetime().snapshot(); final.PhysicalResources || final.ResourceRoots != 0 {
+				t.Fatal("runtime token release did not retire foreign reference-carrier target", final)
+			}
+		})
+	}
+}
+
 func TestRV64PublicMutableFuncrefGlobalLocalTailCallMixedVector(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
@@ -1324,6 +1459,54 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallAdmission(t *testing.T) {
 			mutate(&bad)
 			if err := railshotValidateCompiled(&bad); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile local-call artifact admitted", err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicMutableFuncrefGlobalLocalCallReferenceCarrierAdmission(t *testing.T) {
+	compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-reference-carrier-admission", rv64MutableFuncrefLocalCallReferenceCarrierModule(), false)
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 19 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) {
+		t.Fatal("base reference-carrier local-call witness rejected")
+	}
+	for name, mutate := range map[string]func(*Compiled){
+		"code":   func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
+		"escape": func(v *Compiled) { v.dynamicFuncrefEscape = false },
+		"function-parameter": func(v *Compiled) {
+			v.Funcs[5].Params = slices.Clone(v.Funcs[5].Params)
+			v.Funcs[5].Params[1] = ValExternRef
+		},
+		"type-parameter": func(v *Compiled) {
+			v.Types[0].Params = slices.Clone(v.Types[0].Params)
+			v.Types[0].Params[1] = ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapExtern}}}
+		},
+		"type-result-order": func(v *Compiled) {
+			v.Types[0].Results = slices.Clone(v.Types[0].Results)
+			v.Types[0].Results[0], v.Types[0].Results[1] = v.Types[0].Results[1], v.Types[0].Results[0]
+		},
+		"function-type-id": func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
+		"entry":            func(v *Compiled) { v.Entry[1] += 4 },
+		"missing-multivalue": func(v *Compiled) {
+			v.requiredFeatures &^= CoreFeatureMultiValue
+		},
+		"missing-reference-types": func(v *Compiled) {
+			v.requiredFeatures &^= CoreFeatureReferenceTypes
+		},
+		"global-heap-type": func(v *Compiled) { v.ValueTypes[0].Ref.Heap.TypeIndex++ },
+		"missing-call-abi": func(v *Compiled) { v.nativeReferenceCallABI = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *view
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Types = slices.Clone(bad.Types)
+			bad.ValueTypes = slices.Clone(bad.ValueTypes)
+			bad.Entry = slices.Clone(bad.Entry)
+			mutate(&bad)
+			if err := railshotValidateCompiled(&bad); !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatal("hostile reference-carrier local-call artifact admitted", err)
 			}
 		})
 	}

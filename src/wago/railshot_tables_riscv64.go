@@ -2327,7 +2327,7 @@ func rv64ValidateReferenceFunctionKeys(c *Compiled) error {
 		if railshotNonCallableFunction(c, i) {
 			continue // Source-attested internal signature has no callable row.
 		}
-		publicReferenceCarrier := i == 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierSignature(c.Funcs[0])
+		publicReferenceCarrier := i == 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierSignature(c.Funcs[0]) || rv64MutableReferenceCarrierTarget(c, i)
 		publicDynamicHostReferenceCarrier := i <= 1 && rv64PublicDynamicHostReferenceBoundary(c)
 		if publicReferenceCarrier || publicDynamicHostReferenceCarrier {
 			sig := c.Funcs[0]

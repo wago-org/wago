@@ -47,6 +47,8 @@ var rv64MutableFuncrefLocalTailCallMixedCodeDigest = [sha256.Size]byte{0x40, 0xf
 
 var rv64MutableFuncrefLocalTailCallWideI32CodeDigest = [sha256.Size]byte{0x55, 0x99, 0xe1, 0x83, 0x21, 0x2a, 0x61, 0xcd, 0x65, 0xab, 0x8c, 0xf6, 0x44, 0xa3, 0x85, 0xe4, 0xed, 0x07, 0x76, 0xdf, 0x74, 0xe9, 0x88, 0x53, 0xf2, 0x95, 0x9d, 0xa6, 0x40, 0x84, 0x51, 0x79}
 
+var rv64MutableFuncrefLocalCallReferenceCarrierCodeDigest = [sha256.Size]byte{0xbb, 0x56, 0xa3, 0xe1, 0x1c, 0x41, 0x3e, 0xf9, 0x40, 0x6b, 0x41, 0x02, 0x27, 0x22, 0x06, 0x34, 0x8d, 0xfb, 0xd3, 0x45, 0x56, 0x5f, 0xe8, 0x7d, 0x35, 0x77, 0x5b, 0xc1, 0xfe, 0x5c, 0xe6, 0x3b}
+
 func rv64MutableFuncrefGlobalLocalCallExecutionCode(c *Compiled) bool {
 	return rv64MutableFuncrefGlobalLocalCallCodeVariant(c) != 0
 }
@@ -110,6 +112,9 @@ func rv64MutableFuncrefGlobalLocalCallCodeVariant(c *Compiled) int {
 	if len(c.code) == 5628 && digest == rv64MutableFuncrefLocalTailCallWideI32CodeDigest {
 		return 18
 	}
+	if len(c.code) == 7228 && digest == rv64MutableFuncrefLocalCallReferenceCarrierCodeDigest {
+		return 19
+	}
 	return 0
 }
 
@@ -118,7 +123,8 @@ func rv64MutableFuncrefGlobalLocalCallCodeVariant(c *Compiled) int {
 // must match type zero; guest writers can install only the two local targets
 // or null.
 func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
-	if c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || !c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI {
+	variant := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
+	if c == nil || variant == 0 || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || !c.NeedsFuncRefDescs || c.dynamicFuncrefEscape != (variant == 19) || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI {
 		return false
 	}
 	if c.NumImports != 0 || c.dynamicImports || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 6 || len(c.FuncTypeID) != 6 || len(c.Exports) != 6 || len(c.Types) != 2 || len(c.GCTypeDescs) != 2 {
@@ -137,10 +143,6 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 		return false
 	}
 	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
-		return false
-	}
-	variant := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
-	if variant == 0 {
 		return false
 	}
 	wasmParams := []wasm.ValType(nil)
@@ -193,8 +195,29 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 		wasmParams, wasmResults = []wasm.ValType{wasm.I32, wasm.V128, wasm.F64}, []wasm.ValType{wasm.I32, wasm.V128, wasm.F64}
 		abiParams, abiResults = []ValType{ValI32, ValV128, ValF64}, []ValType{ValI32, ValV128, ValF64}
 		valueParams, valueResults = []ValueTypeDescriptor{{Kind: ValueTypeI32}, {Kind: ValueTypeV128}, {Kind: ValueTypeF64}}, []ValueTypeDescriptor{{Kind: ValueTypeI32}, {Kind: ValueTypeV128}, {Kind: ValueTypeF64}}
+	case 19:
+		wasmParams = []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64}
+		wasmResults = []wasm.ValType{wasm.ExternRef, wasm.FuncRef, wasm.I32, wasm.I64}
+		abiParams = []ValType{ValI32, ValFuncRef, ValExternRef, ValI64}
+		abiResults = []ValType{ValExternRef, ValFuncRef, ValI32, ValI64}
+		valueParams = make([]ValueTypeDescriptor, len(abiParams))
+		valueResults = make([]ValueTypeDescriptor, len(abiResults))
+		for i, typ := range abiParams {
+			var ok bool
+			valueParams[i], ok = valueTypeDescriptorFromValType(typ)
+			if !ok {
+				return false
+			}
+		}
+		for i, typ := range abiResults {
+			var ok bool
+			valueResults[i], ok = valueTypeDescriptorFromValType(typ)
+			if !ok {
+				return false
+			}
+		}
 	}
-	if variant >= 10 {
+	if variant >= 10 && variant <= 18 {
 		wantPlan := encoder.NativeTailPlan{Kind: encoder.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 5, FrameBytes: 80, SourceBase: 56, SourceStride: 8, ReferenceBase: 64}
 		if variant == 13 {
 			wantPlan.SourcePC, wantPlan.FrameBytes, wantPlan.SourceBase, wantPlan.ReferenceBase = 3, 64, 48, 48
@@ -254,13 +277,13 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 		return false
 	}
 	required := CoreFeatureReferenceTypes | CoreFeatureMutableGlobal | CoreFeatureTypedFunctionReferences
-	if variant == 6 || variant == 7 || variant == 9 || variant == 12 || variant == 17 || variant == 18 {
+	if variant == 6 || variant == 7 || variant == 9 || variant == 12 || variant == 17 || variant == 18 || variant == 19 {
 		required |= CoreFeatureMultiValue
 	}
 	if variant == 8 || variant == 9 || variant == 11 || variant == 12 {
 		required |= CoreFeatureSIMD
 	}
-	if variant >= 10 {
+	if variant >= 10 && variant <= 18 {
 		required |= CoreFeatureTailCall
 	}
 	wantEntry := []int{0, 608, 1216, 1936, 2656, 3312}
@@ -276,6 +299,8 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 		wantEntry = []int{0, 624, 1280, 2000, 2720, 3360}
 	} else if variant == 9 || variant == 12 {
 		wantEntry = []int{0, 768, 1680, 2400, 3120, 3760}
+	} else if variant == 19 {
+		wantEntry = []int{0, 672, 1408, 2128, 2848, 3504}
 	}
 	return c.requiredFeatures == required && c.requiredAMD64Features == 0 && compiledStructuralRequiredFeatures(c) == required && slices.Equal(c.Entry, wantEntry) && slices.Equal(c.InternalEntry, wantEntry) && rv64MutableFuncrefGlobalLocalCallExecutionCode(c)
 }

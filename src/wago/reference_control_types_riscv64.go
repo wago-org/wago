@@ -42,13 +42,15 @@ func rv64DeclaredControlSignatureProfile(c *Compiled, typ *DefinedTypeDescriptor
 				}
 			}
 			if !heap.Defined {
+				mutableCarrier := rv64MutableFuncrefGlobalLocalCallCodeVariant(c) == 19 && len(c.Funcs) == 6 && rv64PublicReferenceCarrierSignature(c.Funcs[0])
 				executionExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && (rv64Core3RefIsNullExecution(c) || rv64Core3RefIsNullExecutionCodecPrefix(c))
 				declarationExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && (rv64Core3RefDeclarationMetadata(c) || rv64Core3ReferenceDeclarationMetadata(c))
 				declarationNonNullExtern := heap.Abstract == AbstractHeapExtern && !v.Ref.Nullable && (rv64Core3RefDeclarationMetadata(c) || rv64Core3RefAsNonNullDeclarationMetadata(c) || rv64Core3RefIsNullDeclarationMetadata(c))
 				publicCallExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64PublicReferenceCallBoundaryWithPlan(c, false) && rv64PublicReferenceCarrierSignature(c.Funcs[0])
 				publicHostExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64PublicHostReferenceBoundaryWithPlan(c, false)
 				publicDynamicHostExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64PublicDynamicHostReferenceBoundaryWithPlan(c, false)
-				if heap.TypeIndex != 0 || heap.Abstract != AbstractHeapFunc && !executionExtern && !declarationExtern && !declarationNonNullExtern && !publicCallExtern && !publicHostExtern && !publicDynamicHostExtern {
+				mutableExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && mutableCarrier
+				if heap.TypeIndex != 0 || heap.Abstract != AbstractHeapFunc && !executionExtern && !declarationExtern && !declarationNonNullExtern && !publicCallExtern && !publicHostExtern && !publicDynamicHostExtern && !mutableExtern {
 					return false, false, fmt.Errorf("RV64 internal abstract function reference required")
 				}
 				continue
@@ -60,7 +62,7 @@ func rv64DeclaredControlSignatureProfile(c *Compiled, typ *DefinedTypeDescriptor
 			if target.Kind != CompositeTypeFunction || !target.Final || len(target.Supers) != 0 || target.HasDescribes || target.HasDescriptor || len(target.Fields) != 0 || target.Array != (FieldTypeDescriptor{}) || len(target.Params) > limit || len(target.Results) > limit {
 				return false, false, fmt.Errorf("RV64 indexed heap requires plain bounded numeric callable")
 			}
-			if heap.TypeIndex == 0 && rv64PublicReferenceCallBoundaryWithPlan(c, false) && rv64PublicReferenceCarrierSignature(c.Funcs[0]) {
+			if heap.TypeIndex == 0 && (rv64PublicReferenceCallBoundaryWithPlan(c, false) && rv64PublicReferenceCarrierSignature(c.Funcs[0]) || rv64MutableFuncrefGlobalLocalCallCodeVariant(c) == 19 && len(c.Funcs) == 6 && rv64PublicReferenceCarrierSignature(c.Funcs[0])) {
 				continue
 			}
 			// Do not recurse through another reference-bearing control declaration.

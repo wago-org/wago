@@ -495,6 +495,52 @@ func mutableFuncrefLocalCallMixedVectorSource() []byte {
 	)
 }
 
+func mutableFuncrefLocalCallReferenceCarrierSource() []byte {
+	params := []wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64}
+	results := []wasm.ValType{wasm.ExternRef, wasm.FuncRef, wasm.I32, wasm.I64}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, results), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, []byte{6, 0, 0, 1, 1, 1, 0}),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target_0", 0, 0), wasmtest.ExportEntry("target_1", 0, 1),
+			wasmtest.ExportEntry("set_0", 0, 2), wasmtest.ExportEntry("set_1", 0, 3),
+			wasmtest.ExportEntry("clear", 0, 4), wasmtest.ExportEntry("call", 0, 5),
+			wasmtest.ExportEntry("cell", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 2, 0x20, 1, 0x20, 0, 0x20, 3, 0x0b}),
+			wasmtest.Code([]byte{0x20, 2, 0x20, 1, 0x20, 0, 0x41, 1, 0x6a, 0x20, 3, 0x42, 1, 0x7c, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0xd2, 1, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x23, 0, 0x14, 0, 0x0b}),
+		)),
+	)
+}
+
+func TestMutableFuncrefLocalCallReferenceCarrierProduction(t *testing.T) {
+	source := mutableFuncrefLocalCallReferenceCarrierSource()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	if err := AdmitProductionSource(mutableFuncrefLocalTailCallSource(source)); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("reference-carrier return_call_ref admitted before its runtime profile", err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil || !admitMutableFunctionGlobalReferenceCarrierCall(m) {
+		t.Fatal("reference-carrier local-call admission", err)
+	}
+	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceFunctions: true, NativeReferenceCalls: true, SyncHostSlots: 64})
+	if err != nil || image == nil {
+		t.Fatal("reference-carrier local-call compilation", err)
+	}
+	wantDigest := [sha256.Size]byte{0xbb, 0x56, 0xa3, 0xe1, 0x1c, 0x41, 0x3e, 0xf9, 0x40, 0x6b, 0x41, 0x02, 0x27, 0x22, 0x06, 0x34, 0x8d, 0xfb, 0xd3, 0x45, 0x56, 0x5f, 0xe8, 0x7d, 0x35, 0x77, 0x5b, 0xc1, 0xfe, 0x5c, 0xe6, 0x3b}
+	wantEntry := []int{0, 672, 1408, 2128, 2848, 3504}
+	if len(image.Code) != 7228 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || image.NativeTail != nil {
+		t.Fatalf("reference-carrier local-call compilation drifted: code=%d digest=%x entries=%v/%v refs=%t/%t/%t tail=%+v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, image.NativeTail)
+	}
+}
+
 func mutableFuncrefLocalTailCallMixedVectorSource() []byte {
 	types := []wasm.ValType{wasm.I32, wasm.V128, wasm.F64}
 	return wasmtest.Module(
@@ -720,6 +766,7 @@ func TestMutableFuncrefLocalCallProductionRejectsBroaderSources(t *testing.T) {
 		"vector-tail":       mutableFuncrefLocalTailCallVectorSource,
 		"mixed-vector":      mutableFuncrefLocalCallMixedVectorSource,
 		"mixed-vector-tail": mutableFuncrefLocalTailCallMixedVectorSource,
+		"reference-carrier": mutableFuncrefLocalCallReferenceCarrierSource,
 	} {
 		for name, mutate := range map[string]func(*wasm.Module){
 			"abstract-global":       func(m *wasm.Module) { m.Globals[0].Type.Type = wasm.FuncRef },

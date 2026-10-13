@@ -54,6 +54,7 @@ func railshotNonCallableFunction(c *Compiled, function int) bool {
 		return false
 	}
 	if (function == 0 && len(c.Funcs) != 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierSignature(c.Funcs[0])) ||
+		rv64MutableReferenceCarrierTarget(c, function) ||
 		(function == 1 && len(c.Funcs) == 1 && rv64PublicHostReferenceBoundary(c)) ||
 		(function <= 1 && rv64PublicDynamicHostReferenceBoundary(c)) {
 		return false
@@ -357,6 +358,18 @@ func rv64PublicReferenceCarrierTarget(c *Compiled, function int) bool {
 	}
 	typ := c.Types[0]
 	return typ.Kind == CompositeTypeFunction && rv64PublicReferenceScalarDescriptors(typ.Params, c.Funcs[0].Params) && rv64PublicReferenceScalarDescriptors(typ.Results, c.Funcs[0].Results)
+}
+
+func rv64MutableReferenceCarrierTarget(c *Compiled, function int) bool {
+	if c == nil || rv64MutableFuncrefGlobalLocalCallCodeVariant(c) != 19 || function < 0 || function > 1 || len(c.Funcs) != 6 || len(c.Types) != 2 || !c.nativeReferenceFunctionABI || !c.nativeReferenceCallABI || !c.nativeReferenceControlABI {
+		return false
+	}
+	sig := c.Funcs[function]
+	if !rv64PublicReferenceCarrierSignature(sig) || !sig.HasTypeIndex || sig.TypeIndex != 0 {
+		return false
+	}
+	typ := c.Types[0]
+	return typ.Kind == CompositeTypeFunction && rv64PublicReferenceScalarDescriptors(typ.Params, sig.Params) && rv64PublicReferenceScalarDescriptors(typ.Results, sig.Results)
 }
 
 func rv64PublicReferenceU32Bytes(value uint32) uint32 {

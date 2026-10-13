@@ -616,7 +616,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if vectorProfile {
 		maxArity = 128
 	}
-	declarationExtern := exactGCRefTestAbstract || exactGCExtern || exactGCRefCastAbstract || exactGCBrOnCastAbstract || exactGCBrOnCastFailAbstract || exactCore3RefIsNull || rv64Core3RefDeclarations(c) || rv64Core3ReferenceDeclarations(c) || rv64Core3RefAsNonNullDeclarations(c) || rv64Core3RefIsNullDeclarations(c) || rv64PublicReferenceCallBoundary(c) || rv64PublicHostReferenceBoundary(c) || rv64PublicDynamicHostReferenceBoundary(c)
+	declarationExtern := exactGCRefTestAbstract || exactGCExtern || exactGCRefCastAbstract || exactGCBrOnCastAbstract || exactGCBrOnCastFailAbstract || exactCore3RefIsNull || rv64Core3RefDeclarations(c) || rv64Core3ReferenceDeclarations(c) || rv64Core3RefAsNonNullDeclarations(c) || rv64Core3RefIsNullDeclarations(c) || rv64PublicReferenceCallBoundary(c) || rv64PublicHostReferenceBoundary(c) || rv64PublicDynamicHostReferenceBoundary(c) || rv64MutableFuncrefGlobalLocalCallCodeVariant(c) == 19
 	for _, sig := range c.Funcs {
 		if len(sig.Params) > maxArity || len(sig.Results) > maxArity {
 			return reject("signature arity")

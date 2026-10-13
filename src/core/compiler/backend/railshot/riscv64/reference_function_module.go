@@ -371,7 +371,8 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	// Unlike the older scalar-only reference boundaries, this exact local-call
 	// profile is also admitted by the baseline SWAR pipeline for v128 carriers.
 	publicMutableLocalCall := admitMutableFunctionGlobalLocalCall(m)
-	publicReferenceCarrierBoundary := publicReferenceCallBoundary || publicHostReferenceBoundary || publicDynamicHostReferenceBoundary
+	publicReferenceCarrierBoundary := !vector && admitPublicReferenceCarrierBoundary(m)
+	publicMutableReferenceCarrier := publicMutableLocalCall && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
 	counts, err := countClosedReferenceImports(m)
 	if err != nil {
 		return err
@@ -504,6 +505,8 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	descriptorTarget := numericTarget
 	if (publicReferenceCallBoundary || publicDynamicHostReferenceBoundary) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp) {
 		descriptorTarget = func(index uint32) bool { return index == 0 || numericTarget(index) }
+	} else if publicMutableReferenceCarrier {
+		descriptorTarget = func(index uint32) bool { return index <= 1 || numericTarget(index) }
 	}
 	if len(m.Tables) != 0 && m.Tables[0].Init != nil {
 		value, err := tableElementExpression(*m.Tables[0].Init)
@@ -566,9 +569,11 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 		if len(m.Tables) != 0 {
 			return unsupported("public reference wrapper requires table-free ephemeral transport")
 		}
-		for _, global := range m.Globals {
-			if global.Type.Type.Kind() == wasm.ValRef {
-				return unsupported("public reference wrapper requires reference-global-free ephemeral transport")
+		if !publicMutableReferenceCarrier {
+			for _, global := range m.Globals {
+				if global.Type.Type.Kind() == wasm.ValRef {
+					return unsupported("public reference wrapper requires reference-global-free ephemeral transport")
+				}
 			}
 		}
 	}
@@ -632,7 +637,7 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			if op == 0xd2 && !descriptorTarget(imm.Index) {
 				return unsupported("closed reference module ref.func escape")
 			}
-			if referenceExports && (op == 0x14 || op == 0x15) && !publicReferenceCallBoundary && !publicDynamicHostReferenceBoundary {
+			if referenceExports && (op == 0x14 || op == 0x15) && !publicReferenceCallBoundary && !publicDynamicHostReferenceBoundary && !publicMutableReferenceCarrier {
 				return unsupported("public reference wrapper dynamic reference call requires owner scoping")
 			}
 			if (op == 0x11 || op == 0x13) && (len(m.Tables) != 1 || imm.Index2 != 0) {
@@ -670,7 +675,8 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 				} else if err := integerNumericSignature(sig, true); err != nil {
 					publicCall := publicReferenceCallBoundary && imm.Index == 0
 					publicDynamic := publicDynamicHostReferenceBoundary && imm.Index == 2
-					if (!publicCall && !publicDynamic) || (op != 0x14 && op != 0x15) || !publicReferenceCarrierTarget(sig) {
+					publicMutable := publicMutableReferenceCarrier && imm.Index == 0
+					if (!publicCall && !publicDynamic && !publicMutable) || (op != 0x14 && op != 0x15) || !publicReferenceCarrierTarget(sig) {
 						return err
 					}
 				}
