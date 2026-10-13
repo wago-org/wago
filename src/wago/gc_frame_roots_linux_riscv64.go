@@ -177,12 +177,20 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				}
 			}
 		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
+			aggregate := elem.Kind.Kind == wasm.ElemTypedExprs && rv64RootedAggregateTableReference(m, wasm.RefVal(elem.Kind.Ref))
 			if len(elem.Kind.Funcs) != 0 || elem.Kind.Kind == wasm.ElemFuncExprs && elem.Kind.Ref != (wasm.RefType{}) ||
-				elem.Kind.Kind == wasm.ElemTypedExprs && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) {
+				elem.Kind.Kind == wasm.ElemTypedExprs && !aggregate && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) ||
+				aggregate && elem.Mode.Kind != wasm.ElemPassive {
 				return reject("RV64 exact roots require exact nullable funcref expression elements")
 			}
 			values = len(elem.Kind.Exprs)
 			for j, expr := range elem.Kind.Exprs {
+				if aggregate {
+					if !rv64RootedAggregateNullElement(expr, elem.Kind.Ref) {
+						return reject("RV64 exact roots reject aggregate null element %d:%d", i, j)
+					}
+					continue
+				}
 				if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 7 || expr.BodyBytes[0] != 0xd0 && expr.BodyBytes[0] != 0xd2 {
 					return reject("RV64 exact roots reject element expression %d:%d", i, j)
 				}
@@ -378,6 +386,17 @@ func rv64RootedAggregateTableReference(m *wasm.Module, typ wasm.ValType) bool {
 		}
 	}
 	return false
+}
+
+func rv64RootedAggregateNullElement(expr wasm.Expr, ref wasm.RefType) bool {
+	if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 7 || ref.Heap().Kind() != wasm.HeapTypeIndex {
+		return false
+	}
+	r := wasm.ReaderFrom(expr.BodyBytes)
+	op, err := r.Byte()
+	heap, heapErr := r.S33()
+	end, endErr := r.Byte()
+	return err == nil && op == 0xd0 && heapErr == nil && heap >= 0 && uint64(heap) == uint64(ref.Heap().Type().Index) && endErr == nil && end == 0x0b && !r.HasNext()
 }
 
 func rv64RootedScalarGlobal(m *wasm.Module, global *wasm.Global, limit int) bool {

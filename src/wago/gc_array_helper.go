@@ -37,6 +37,8 @@ const (
 	gcTableFill                uint32 = 40
 	gcTableCopy                uint32 = 41
 	gcTableGrow                uint32 = 42
+	gcTableInit                uint32 = 43
+	gcTableElemDrop            uint32 = 44
 )
 
 func gcArrayElementStorage(kind gc.StorageKind) bool {
@@ -89,6 +91,38 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 	}
 
 	switch helper {
+	case gcTableInit:
+		if len(args) != 5 {
+			panic(gcHelperFailuref("gc table init helper arity = %d, want 5", len(args)))
+		}
+		descriptor, tableLength, _, exact := in.gcRootedTableDescriptor(args[3])
+		destination, source, count := args[0], args[1], args[2]
+		if destination+count < destination || destination+count > uint64(tableLength) {
+			panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
+		}
+		entries, segmentLength := in.gcRootedTableElementSegment(uint32(args[4]), exact)
+		if source+count < source || source+count > uint64(segmentLength) {
+			panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
+		}
+		// Authenticate every retained source root before publishing the first
+		// destination write. This keeps trapping/corrupt metadata atomic.
+		for i := uint64(0); i < count; i++ {
+			word := in.gcRootedTableElementBits(entries, source+i)
+			_ = in.gcRootedTableReference(word, exact)
+		}
+		for i := uint64(0); i < count; i++ {
+			ref := in.gcRootedTableReference(in.gcRootedTableElementBits(entries, source+i), exact)
+			binary.LittleEndian.PutUint64(descriptor[8+(destination+i)*8:], uint64(ref))
+			in.gc.WriteBarrierRoot(ref)
+		}
+	case gcTableElemDrop:
+		if len(args) != 1 {
+			panic(gcHelperFailuref("gc table elem-drop helper arity = %d, want 1", len(args)))
+		}
+		desc, _ := in.gcRootedTableElementDescriptor(uint32(args[0]))
+		// Removing the descriptor length under the collector-domain lock makes
+		// the passive roots unreachable atomically from the scanner's view.
+		binary.LittleEndian.PutUint32(desc[8:], 0)
 	case gcTableFill:
 		if len(args) != 4 {
 			panic(gcHelperFailuref("gc table fill helper arity = %d, want 4", len(args)))
@@ -734,6 +768,44 @@ func (in *Instance) gcRootedTableReference(word uint64, exact ValueTypeDescripto
 		panic(gcHelperFailuref("generic GC table mutation contains an incompatible reference"))
 	}
 	return ref
+}
+
+func (in *Instance) gcRootedTableElementDescriptor(elemIndex uint32) ([]byte, ElemInit) {
+	if int(elemIndex) >= len(in.c.passiveElems) || in.jm.PassiveElemPtr() == 0 {
+		panic(gcHelperFailuref("generic GC table element segment %d is unavailable", elemIndex))
+	}
+	elem := in.c.passiveElems[elemIndex]
+	if elem.Mode != ElemModePassive || elemEntryBytes(elem.RefType) != 8 || !isGCRefValType(normalizedElemRefType(elem.RefType)) {
+		panic(gcHelperFailuref("generic GC table element segment %d is not passive aggregate reference data", elemIndex))
+	}
+	descOff := int(elemIndex) * coreruntime.PassiveElemDescBytes
+	desc := unsafe.Slice((*byte)(offHeapPtr(in.jm.PassiveElemPtr()+uintptr(descOff))), coreruntime.PassiveElemDescBytes)
+	return desc, elem
+}
+
+func (in *Instance) gcRootedTableElementSegment(elemIndex uint32, tableType ValueTypeDescriptor) (uintptr, uint32) {
+	desc, elem := in.gcRootedTableElementDescriptor(elemIndex)
+	exact, err := in.c.elemExactType(elem)
+	if err != nil || !valueTypeSubtype(exact, in.c.Types, tableType, in.c.Types) {
+		panic(gcHelperFailuref("generic GC table element segment %d type does not match destination", elemIndex))
+	}
+	length := binary.LittleEndian.Uint32(desc[8:])
+	if uint64(length) > uint64(len(elem.Values)) {
+		panic(gcHelperFailuref("generic GC table element segment %d length %d exceeds retained entries %d", elemIndex, length, len(elem.Values)))
+	}
+	entries := uintptr(binary.LittleEndian.Uint64(desc))
+	if length != 0 && entries == 0 {
+		panic(gcHelperFailuref("generic GC table element segment %d has no entries", elemIndex))
+	}
+	return entries, length
+}
+
+func (in *Instance) gcRootedTableElementBits(entries uintptr, index uint64) uint64 {
+	if index > uint64(^uintptr(0))/8 || uint64(entries) > uint64(^uintptr(0))-index*8 {
+		panic(gcHelperFailuref("generic GC table element entry %d address overflows", index))
+	}
+	entry := unsafe.Slice((*byte)(offHeapPtr(entries+uintptr(index*8))), 8)
+	return binary.LittleEndian.Uint64(entry)
 }
 
 //go:noinline

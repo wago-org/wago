@@ -160,12 +160,20 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				}
 			}
 		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
+			aggregate := elem.Kind.Kind == wasm.ElemTypedExprs && rootedScalarTableReference(wasm.RefVal(elem.Kind.Ref), m)
 			if len(elem.Kind.Funcs) != 0 || elem.Kind.Kind == wasm.ElemFuncExprs && elem.Kind.Ref != (wasm.RefType{}) ||
-				elem.Kind.Kind == wasm.ElemTypedExprs && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) {
+				elem.Kind.Kind == wasm.ElemTypedExprs && !aggregate && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) ||
+				aggregate && elem.Mode.Kind != wasm.ElemPassive {
 				return false
 			}
 			values = len(elem.Kind.Exprs)
 			for _, expr := range elem.Kind.Exprs {
+				if aggregate {
+					if !rootedScalarAggregateNullExpression(expr, elem.Kind.Ref) {
+						return false
+					}
+					continue
+				}
 				value, err := tableElementExpression(expr)
 				if err != nil || !value.Null && ((!allowImported && uint64(value.FuncIndex) < uint64(importedFunctions)) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
 					return false
@@ -452,6 +460,17 @@ func rootedScalarTableReference(typ wasm.ValType, m *wasm.Module) bool {
 	return ref.Nullable() && !ref.Exact() && heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && rootedScalarAggregateAt(m, heap.Type().Index)
 }
 
+func rootedScalarAggregateNullExpression(expr wasm.Expr, ref wasm.RefType) bool {
+	if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 7 || ref.Heap().Kind() != wasm.HeapTypeIndex {
+		return false
+	}
+	r := wasm.ReaderFrom(expr.BodyBytes)
+	op, err := r.Byte()
+	heap, heapErr := r.S33()
+	end, endErr := r.Byte()
+	return err == nil && op == 0xd0 && heapErr == nil && heap >= 0 && uint64(heap) == uint64(ref.Heap().Type().Index) && endErr == nil && end == 0x0b && !r.HasNext()
+}
+
 func admitRV64GCRootedScalarWire(data []byte) bool {
 	if len(data) < 8 || len(data) > MaxModuleBytes || !bytes.Equal(data[:8], []byte{0, 'a', 's', 'm', 1, 0, 0, 0}) {
 		return false
@@ -632,6 +651,8 @@ func rootedScalarHelperSlots(m *wasm.Module) int {
 				slots = max(slots, int(imm.Index2)+2)
 			}
 			switch imm.Kind {
+			case wasm.InstrTableInit:
+				slots = max(slots, 5)
 			case wasm.InstrTableFill:
 				slots = max(slots, 4)
 			case wasm.InstrTableCopy:

@@ -132,7 +132,11 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 		if remaining < 0 {
 			return unsupported("element payload bound")
 		}
+		aggregate := rootedScalar && e.Kind.Kind == wasm.ElemTypedExprs && rootedScalarTableReference(wasm.RefVal(e.Kind.Ref), m)
 		for _, expr := range e.Kind.Exprs {
+			if aggregate && rootedScalarAggregateNullExpression(expr, e.Kind.Ref) {
+				continue
+			}
 			if _, err := elementInitializerExpression(expr, m, e.Mode.Kind, public); err != nil {
 				return err
 			}
@@ -2564,10 +2568,14 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 			}
 		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
 			// Flag4 has an implicit funcref type; its decoder leaves Ref unset.
-			if !importedTables && !rootedScalar || len(e.Kind.Funcs) != 0 || e.Kind.Kind == wasm.ElemTypedExprs && !wasm.EqualValType(wasm.RefVal(e.Kind.Ref), wasm.FuncRef) {
+			aggregate := rootedScalar && e.Kind.Kind == wasm.ElemTypedExprs && rootedScalarTableReference(wasm.RefVal(e.Kind.Ref), m)
+			if !importedTables && !rootedScalar || len(e.Kind.Funcs) != 0 || e.Kind.Kind == wasm.ElemTypedExprs && !aggregate && !wasm.EqualValType(wasm.RefVal(e.Kind.Ref), wasm.FuncRef) {
 				return false, unsupported("public nullable funcref element expressions required")
 			}
 			for _, expr := range e.Kind.Exprs {
+				if aggregate && rootedScalarAggregateNullExpression(expr, e.Kind.Ref) {
+					continue
+				}
 				value, err := elementInitializerExpression(expr, m, e.Mode.Kind, production && importedTables)
 				if err != nil {
 					return false, err

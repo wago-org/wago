@@ -105,6 +105,8 @@ func TestRV64RootedAggregateTableBulkCompilesToHelpers(t *testing.T) {
 		0x41, 0x00, 0x41, 0x07, 0xfb, 0x00, 0x00, 0x41, 0x01, 0xfc, 0x11, 0x00,
 		0x41, 0x01, 0x41, 0x00, 0x41, 0x01, 0xfc, 0x0e, 0x00, 0x00,
 		0xd0, 0x00, 0x41, 0x01, 0xfc, 0x0f, 0x00, 0x1a,
+		0x41, 0x00, 0x41, 0x00, 0x41, 0x01, 0xfc, 0x0c, 0x00, 0x00,
+		0xfc, 0x0d, 0x00,
 		0x0b,
 	}
 	source := wasmtest.Module(
@@ -115,6 +117,7 @@ func TestRV64RootedAggregateTableBulkCompilesToHelpers(t *testing.T) {
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
 		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x02, 0x04}),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(9, []byte{0x01, 0x05, 0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b}),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
 	if err := AdmitProductionSource(source); err != nil {
@@ -123,6 +126,27 @@ func TestRV64RootedAggregateTableBulkCompilesToHelpers(t *testing.T) {
 	m, err := wasm.DecodeModule(source)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for name, mutate := range map[string]func(*wasm.Module){
+		"active": func(candidate *wasm.Module) {
+			candidate.Elements[0].Mode.Kind = wasm.ElemActive
+			candidate.Elements[0].Mode.Offset = wasm.Expr{BodyBytes: []byte{0x41, 0x00, 0x0b}}
+		},
+		"declarative": func(candidate *wasm.Module) { candidate.Elements[0].Mode.Kind = wasm.ElemDeclarative },
+		"wrong-null-heap": func(candidate *wasm.Module) {
+			candidate.Elements[0].Kind.Exprs[0].BodyBytes = []byte{0xd0, 0x01, 0x0b}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(candidate)
+			if admitRV64GCRootedScalarModule(candidate) {
+				t.Fatal("unsupported aggregate element shape was admitted")
+			}
+		})
 	}
 	if got := rootedScalarHelperSlots(m); got != 5 {
 		t.Fatalf("aggregate table helper slots = %d, want 5", got)
@@ -152,7 +176,7 @@ func TestRV64RootedAggregateTableBulkCompilesToHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(compiled.code) == 0 || len(compiled.functions) != 1 || compiled.functions[0].DirectCalls != 6 || plan.SafepointCount() != 2 {
+	if len(compiled.code) == 0 || len(compiled.functions) != 1 || compiled.functions[0].DirectCalls != 8 || plan.SafepointCount() != 2 {
 		t.Fatalf("aggregate bulk code/functions/calls/safepoints = %d/%d/%d/%d", len(compiled.code), len(compiled.functions), compiled.functions[0].DirectCalls, plan.SafepointCount())
 	}
 }

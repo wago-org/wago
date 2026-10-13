@@ -1551,7 +1551,15 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("private element index/shape")
 				}
 				if imm.Kind == wasm.InstrElemDrop {
-					if live && emit != nil {
+					if state.gcRootedScalar && state.gcElementReference(imm.Index) {
+						callCount++
+						if callCount > maxDirectCalls {
+							return integerSummary{}, unsupported("GC helper call count/slot budget")
+						}
+						if live && emit != nil {
+							emit.gcObjectElementDrop(imm.Index)
+						}
+					} else if live && emit != nil {
 						emit.privateElementDrop(imm.Index)
 					}
 				} else {
@@ -1580,9 +1588,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						return integerSummary{}, unsupported("private table.init reference layout")
 					}
 					if state.gcRootedScalar && compactReference {
-						return integerSummary{}, unsupported("generic rooted collector table.init")
+						callCount++
+						if callCount > maxDirectCalls {
+							return integerSummary{}, unsupported("GC helper call count/slot budget")
+						}
 					}
-					if live && emit != nil {
+					if live && emit != nil && state.gcRootedScalar && compactReference {
+						emit.gcObjectTableInit(h, imm.Index, imm.Index2)
+					} else if live && emit != nil {
 						emit.privateTableInitAt(imm.Index, imm.Index2, compactReference)
 					}
 				}

@@ -105,6 +105,7 @@ type moduleState struct {
 	// eight-byte row. Funcref tables retain their 32-byte callable descriptor
 	// rows. Keep physical layout independent from the table index width.
 	tableCompactRef   []bool
+	elementGCRef      []bool
 	elementCount      int
 	memory            *memorySpec
 	memoryCount       int
@@ -153,6 +154,10 @@ func (s *moduleState) tableCompactReference(index uint32) (compact bool, ok bool
 		return false, false
 	}
 	return s.tableCompactRef[index], true
+}
+
+func (s *moduleState) gcElementReference(index uint32) bool {
+	return s != nil && uint64(index) < uint64(len(s.elementGCRef)) && s.elementGCRef[index]
 }
 
 func plainConst(expr wasm.Expr, wide bool) (uint64, error) {
@@ -295,6 +300,13 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	var tableErr error
 	s.ownedTable, tableErr = admitTableProfile(m, production, importedTables)
 	s.elementCount = len(m.Elements)
+	if gcRootedScalar {
+		s.elementGCRef = make([]bool, len(m.Elements))
+		for index := range m.Elements {
+			elem := &m.Elements[index]
+			s.elementGCRef[index] = elem.Kind.Kind == wasm.ElemTypedExprs && rootedScalarTableReference(wasm.RefVal(elem.Kind.Ref), m)
+		}
+	}
 	if s.ownedTable {
 		s.tableAddr64 = make([]bool, m.TableCount())
 		s.tableCompactRef = make([]bool, m.TableCount())

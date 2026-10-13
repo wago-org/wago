@@ -51,6 +51,8 @@ const (
 	gcTableFill          uint32 = 40
 	gcTableCopy          uint32 = 41
 	gcTableGrow          uint32 = 42
+	gcTableInit          uint32 = 43
+	gcTableElemDrop      uint32 = 44
 	// guestGlobalClear is an internal relocation key, not a GC helper ID.
 	guestGlobalClear        uint32 = ^uint32(0)
 	guestGlobalStore        uint32 = ^uint32(0) - 1
@@ -611,6 +613,30 @@ func (f *integerEmitter) gcObjectTableGrow(base int, tableIndex uint32) {
 	}
 	f.a.Lwu(enc.X5, result, 0)
 	f.Store(f.SpillOffset(base), 5, false)
+}
+
+func (f *integerEmitter) gcObjectTableInit(base int, elementIndex, tableIndex uint32) {
+	f.restoreCallTransport()
+	f.Load(5, f.SpillOffset(base), false)
+	f.a.Sd(enc.X5, enc.X10, 0) // zero-normalized destination index
+	f.Load(5, f.SpillOffset(base+1), false)
+	f.a.Sd(enc.X5, enc.X10, 8) // zero-normalized source element index
+	f.Load(5, f.SpillOffset(base+2), false)
+	f.a.Sd(enc.X5, enc.X10, 16) // zero-normalized element count
+	f.a.Constant32(enc.X5, tableIndex)
+	f.a.Sd(enc.X5, enc.X10, 24)
+	f.a.Constant32(enc.X5, elementIndex)
+	f.a.Sd(enc.X5, enc.X10, 32)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcTableInit})
+	f.restoreCallTransport()
+}
+
+func (f *integerEmitter) gcObjectElementDrop(elementIndex uint32) {
+	f.restoreCallTransport()
+	f.a.Constant32(enc.X5, elementIndex)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcTableElemDrop})
+	f.restoreCallTransport()
 }
 
 func (f *integerEmitter) gcObjectRefTest(base int, heap int64, nullable bool) {

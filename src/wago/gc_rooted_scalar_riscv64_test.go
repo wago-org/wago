@@ -2281,6 +2281,8 @@ func rootedScalarAggregateTableBulkModule() []byte {
 	read = append(read, 0x0b)
 	fillNull := []byte{0x00, 0x20, 0x00, 0xd0, 0x00, 0x20, 0x01, 0xfc, 0x11, 0x00, 0x0b}
 	copyRange := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0e, 0x00, 0x00, 0x0b}
+	initRange := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0c, 0x00, 0x00, 0x0b}
+	dropElem := []byte{0x00, 0xfc, 0x0d, 0x00, 0x0b}
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x5f, 0x01, 0x7f, 0x01},
@@ -2289,8 +2291,9 @@ func rootedScalarAggregateTableBulkModule() []byte {
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}),
 			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil),
 			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil),
+			wasmtest.FuncType(nil, nil),
 		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(3), wasmtest.ULEB(4), wasmtest.ULEB(5))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(3), wasmtest.ULEB(4), wasmtest.ULEB(5), wasmtest.ULEB(5), wasmtest.ULEB(6))),
 		wasmtest.Section(4, []byte{0x01, 0x63, 0x00, 0x01, 0x02, 0x04}),
 		wasmtest.Section(7, wasmtest.Vec(
 			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0),
@@ -2298,13 +2301,18 @@ func rootedScalarAggregateTableBulkModule() []byte {
 			wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 2),
 			wasmtest.ExportEntry("fill-null", byte(wasm.ExternFunc), 3),
 			wasmtest.ExportEntry("copy", byte(wasm.ExternFunc), 4),
+			wasmtest.ExportEntry("init", byte(wasm.ExternFunc), 5),
+			wasmtest.ExportEntry("drop", byte(wasm.ExternFunc), 6),
 		)),
+		wasmtest.Section(9, []byte{0x01, 0x05, 0x63, 0x00, 0x02, 0xd0, 0x00, 0x0b, 0xd0, 0x00, 0x0b}),
 		wasmtest.Section(10, wasmtest.Vec(
 			append(wasmtest.ULEB(uint32(len(run))), run...),
 			append(wasmtest.ULEB(uint32(len(grow))), grow...),
 			append(wasmtest.ULEB(uint32(len(read))), read...),
 			append(wasmtest.ULEB(uint32(len(fillNull))), fillNull...),
 			append(wasmtest.ULEB(uint32(len(copyRange))), copyRange...),
+			append(wasmtest.ULEB(uint32(len(initRange))), initRange...),
+			append(wasmtest.ULEB(uint32(len(dropElem))), dropElem...),
 		)),
 	)
 }
@@ -2314,19 +2322,34 @@ func TestRV64RootedAggregateTableBulkMutationExecutes(t *testing.T) {
 	if !railshot.AdmitGCRootedScalarSource(source) {
 		t.Fatal("aggregate table bulk module was not source-admitted")
 	}
+	decoded, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootDiagnostic string
+	if plan := newGCFrameRootPlan(decoded, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
+		t.Fatalf("aggregate table bulk exact-root plan=%+v diagnostic=%q", plan, rootDiagnostic)
+	}
 	compiled, err := Compile(rv64RootedScalarConfig(), source)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
 	view := compiled.executionView()
-	if !rv64FreshRootedGC(view) || view.syncHostSlots < 5 {
+	if !rv64FreshRootedGC(view) || view.syncHostSlots < 5 || len(view.passiveElems) != 1 || len(view.passiveElems[0].Values) != 2 || !view.passiveElems[0].Values[0].Null {
 		t.Fatalf("aggregate-table bulk receipt=%t slots=%d validation=%v", rv64FreshRootedGC(view), view.syncHostSlots, railshotValidateCompiled(view))
 	}
 	mutated := cloneCompiledMetadata(view)
 	mutated.syncHostSlots = 4
 	if rv64FreshRootedGC(mutated) {
 		t.Fatal("shortened bulk helper arena retained the rooted receipt")
+	}
+	mutated = cloneCompiledMetadata(view)
+	mutated.passiveElems = slices.Clone(view.passiveElems)
+	mutated.passiveElems[0].Values = slices.Clone(view.passiveElems[0].Values)
+	mutated.passiveElems[0].Values[0].Null = false
+	if rv64FreshRootedGC(mutated) {
+		t.Fatal("non-null aggregate passive element retained the rooted receipt")
 	}
 	for iteration := range 8 {
 		instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
@@ -2372,6 +2395,24 @@ func TestRV64RootedAggregateTableBulkMutationExecutes(t *testing.T) {
 		if got, err := instance.Invoke("read"); err != nil || !slices.Equal(got, []uint64{9, 42, 7}) {
 			instance.Close()
 			t.Fatalf("iteration %d: read()=%v err=%v", iteration, got, err)
+		}
+		if got, err := instance.Invoke("init", 0xfeedface00000000, 0xdeadbeef00000000, 0xbaadf00d00000001); err != nil || len(got) != 0 || binary.LittleEndian.Uint64(descriptor[8:]) != 0 {
+			instance.Close()
+			t.Fatalf("iteration %d: dirty-upper init()=%v err=%v descriptor=%x", iteration, got, err, descriptor)
+		}
+		if got, err := instance.Invoke("drop"); err != nil || len(got) != 0 {
+			instance.Close()
+			t.Fatalf("iteration %d: drop()=%v err=%v", iteration, got, err)
+		}
+		if got, err := instance.Invoke("init", 0xfeedface00000004, 0xdeadbeef00000000, 0xbaadf00d00000000); err != nil || len(got) != 0 {
+			instance.Close()
+			t.Fatalf("iteration %d: zero init after drop()=%v err=%v", iteration, got, err)
+		}
+		got, err = instance.Invoke("init", 0xfeedface00000000, 0xdeadbeef00000000, 0xbaadf00d00000001)
+		var elemTrap *TrapError
+		if got != nil || !errors.As(err, &elemTrap) || elemTrap.Code != TrapTableOutOfBounds {
+			instance.Close()
+			t.Fatalf("iteration %d: nonzero init after drop()=%v err=%v trap=%+v", iteration, got, err, elemTrap)
 		}
 		instance.Close()
 	}

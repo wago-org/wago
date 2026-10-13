@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -28,6 +29,7 @@ func genericGCTableHelperModule() []byte {
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
 		wasmtest.Section(4, []byte{0x02, 0x63, 0x00, 0x01, 0x02, 0x04, 0x63, 0x00, 0x01, 0x02, 0x04}),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(9, []byte{0x01, 0x05, 0x63, 0x00, 0x02, 0xd0, 0x00, 0x0b, 0xd0, 0x00, 0x0b}),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
 }
@@ -56,6 +58,25 @@ func TestGenericGCTableBulkHelpers(t *testing.T) {
 	descriptor := instance.tableDescriptor(0)
 	secondDescriptor := instance.tableDescriptor(1)
 	instance.dispatchGCHelper(gcTableFill, []uint64{0, uint64(first), 1, 0}, nil)
+	elemDesc := unsafe.Slice((*byte)(offHeapPtr(instance.jm.PassiveElemPtr())), coreruntime.PassiveElemDescBytes)
+	elemEntries := unsafe.Slice((*byte)(offHeapPtr(uintptr(binary.LittleEndian.Uint64(elemDesc)))), 16)
+	binary.LittleEndian.PutUint64(elemEntries, uint64(first))
+	instance.gc.WriteBarrierRoot(first)
+	binary.LittleEndian.PutUint64(elemEntries[8:], uint64(1)<<63)
+	beforeInit := bytes.Clone(descriptor)
+	var invalidSource any
+	func() {
+		defer func() { invalidSource = recover() }()
+		instance.dispatchGCHelper(gcTableInit, []uint64{0, 0, 2, 0, 0}, nil)
+	}()
+	if _, ok := invalidSource.(gcStructHelperError); !ok || !bytes.Equal(descriptor, beforeInit) {
+		t.Fatalf("invalid table.init source panic/descriptor = %#v/%x, before %x", invalidSource, descriptor, beforeInit)
+	}
+	binary.LittleEndian.PutUint64(elemEntries[8:], uint64(second))
+	instance.gc.WriteBarrierRoot(second)
+	instance.dispatchGCHelper(gcTableInit, []uint64{0, 0, 2, 0, 0}, nil)
+	instance.dispatchGCHelper(gcTableElemDrop, []uint64{0}, nil)
+	instance.dispatchGCHelper(gcTableElemDrop, []uint64{0}, nil)
 	instance.dispatchGCHelper(gcTableCopy, []uint64{1, 0, 1, 0, 0}, nil)
 	instance.dispatchGCHelper(gcTableCopy, []uint64{0, 0, 1, 1, 0}, nil)
 	instance.dispatchGCHelper(gcTableFill, []uint64{0, 0, 1, 0}, nil)
@@ -95,6 +116,15 @@ func TestGenericGCTableBulkHelpers(t *testing.T) {
 	}
 	expectBoundsTrap(func() { instance.dispatchGCHelper(gcTableFill, []uint64{3, uint64(second), 1, 0}, nil) })
 	expectBoundsTrap(func() { instance.dispatchGCHelper(gcTableCopy, []uint64{0, 3, 1, 0, 0}, nil) })
+	expectBoundsTrap(func() { instance.dispatchGCHelper(gcTableInit, []uint64{3, 0, 1, 0, 0}, nil) })
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		instance.dispatchGCHelper(gcTableInit, []uint64{0, 0, 1, 0, 0}, nil)
+	}()
+	if trap, ok := recovered.(gcStructHelperTrap); !ok || trap.code != coreruntime.TrapTableOutOfBounds {
+		t.Fatalf("dropped table.init panic = %#v, want table out-of-bounds trap", recovered)
+	}
 	if !bytes.Equal(descriptor, beforeFailure) {
 		t.Fatalf("out-of-bounds mutation changed descriptor %x -> %x", beforeFailure, descriptor)
 	}

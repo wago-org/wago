@@ -390,26 +390,31 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		kind := c.Types[exact.Ref.Heap.TypeIndex].Kind
 		return kind == CompositeTypeStruct || kind == CompositeTypeArray
 	}
-	writeElemType := func(elem *ElemInit) bool {
-		if elem.RefType != 0 && elem.RefType != ValFuncRef {
-			return false
+	writeElemType := func(elem *ElemInit) (ValueTypeDescriptor, bool) {
+		normalized := normalizedElemRefType(elem.RefType)
+		if elem.RefType != 0 && elem.RefType != ValFuncRef && normalized != ValAnyRef {
+			return ValueTypeDescriptor{}, false
 		}
 		if !elem.HasValueType {
-			if elem.ValueTypeIndex != 0 {
-				return false
+			if elem.ValueTypeIndex != 0 || normalized != ValFuncRef {
+				return ValueTypeDescriptor{}, false
 			}
 			_, _ = h.Write([]byte{0})
-			return true
+			return plain, true
 		}
-		if uint64(elem.ValueTypeIndex) >= uint64(len(c.ValueTypes)) || c.ValueTypes[elem.ValueTypeIndex] != plain {
-			return false
+		if uint64(elem.ValueTypeIndex) >= uint64(len(c.ValueTypes)) {
+			return ValueTypeDescriptor{}, false
+		}
+		exact := c.ValueTypes[elem.ValueTypeIndex]
+		if exact == plain && normalized != ValFuncRef || exact != plain && (!rootedAggregate(exact) || normalized != ValAnyRef) {
+			return ValueTypeDescriptor{}, false
 		}
 		_, _ = h.Write([]byte{1})
 		binary.LittleEndian.PutUint32(word[:4], elem.ValueTypeIndex)
 		_, _ = h.Write(word[:4])
-		return true
+		return exact, true
 	}
-	writeValues := func(values []RefInit, allowImported bool) bool {
+	writeValues := func(values []RefInit, allowImported bool, exact ValueTypeDescriptor) bool {
 		for _, value := range values {
 			if value.HasGlobal || value.GlobalIndex != 0 || value.I31Wrap || value.RepeatPrevious || len(value.Expr) != 0 {
 				return false
@@ -420,6 +425,9 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 				}
 				_, _ = h.Write([]byte{0})
 				continue
+			}
+			if exact != plain {
+				return false
 			}
 			if (!allowImported && uint64(value.FuncIndex) < uint64(c.NumImports)) || uint64(value.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) {
 				return false
@@ -529,14 +537,15 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		remaining -= len(elem.Values)
 		binary.LittleEndian.PutUint32(word[:4], elem.TableIndex)
 		_, _ = h.Write(word[:4])
-		if !writeElemType(elem) {
+		elemType, ok := writeElemType(elem)
+		if !ok || elemType != plain {
 			return [32]byte{}, false
 		}
 		binary.LittleEndian.PutUint32(word[:4], elem.Offset.Base)
 		_, _ = h.Write(word[:4])
 		binary.LittleEndian.PutUint32(word[:4], uint32(len(elem.Values)))
 		_, _ = h.Write(word[:4])
-		if !writeValues(elem.Values, publicTables[elem.TableIndex]) {
+		if !writeValues(elem.Values, publicTables[elem.TableIndex], elemType) {
 			return [32]byte{}, false
 		}
 	}
@@ -555,7 +564,8 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		remaining -= len(elem.Values)
 		binary.LittleEndian.PutUint32(word[:4], elem.TableIndex)
 		_, _ = h.Write(word[:4])
-		if !writeElemType(elem) {
+		elemType, ok := writeElemType(elem)
+		if !ok || elemType != plain && elem.Mode != ElemModePassive {
 			return [32]byte{}, false
 		}
 		_, _ = h.Write([]byte{byte(elem.Mode)})
@@ -565,7 +575,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		if elem.Mode == ElemModeActive {
 			allowImported = publicTables[elem.TableIndex]
 		}
-		if !writeValues(elem.Values, allowImported) {
+		if !writeValues(elem.Values, allowImported, elemType) {
 			return [32]byte{}, false
 		}
 	}
