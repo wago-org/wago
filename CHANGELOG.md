@@ -8,6 +8,12 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Reduce proven scalar host-import overhead with register arguments and cached
+  dispatch metadata on ARM64, and smaller rooted callback resume state on both
+  native backends. Fixed shared integer guests use the existing integer context
+  bridge only when the whole-module proof and binding guards hold; ARM64 direct
+  Go dispatch preserves the original callback and honors its rollback policy.
+
 - Cache stable shared-memory backing addresses on amd64 and arm64 while
   continuing to read live atomic extents. `shared-memory-base` selects the
   lowering independently; helper/context returns reestablish the backing cache.

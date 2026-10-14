@@ -1,7 +1,7 @@
 {
   "source": "191b7ceb01ef891361b4dd396a8c68c25d084b81",
   "main": "c4efb91b",
-  "status": "retained; local publication queued",
+  "status": "retained; published and browser verified locally",
   "sourceInputs": 3109,
   "fullFunctionalChanges": [],
   "defaultImagesMatchPrototype": 255,
@@ -45,7 +45,7 @@
     "Tailored proof applies only to a fixed shared memory32 import-only loop, one numeric i32 import, no GC roots/foreign guest calls/custom effects.",
     "Original Caller self-reentry timeout and cross-instance resolver deadline failure both baseline-reproduced; local repro logs retained.",
     "Native435 has no production-code changes: delta is ARM64 backend and test files. Existing native data remains435.",
-    "Peer numeric thread cohort contains three matched supported cases; collapsed available-per-engine feature averages are different cohorts.",
-    "Current local site remains435 until scheduled next refresh. No production publication."
-  ]
+    "Peer numeric thread cohort contains three matched supported cases; collapsed available-per-engine feature averages are different cohorts."
+  ],
+  "localPublication": "Apple191, Hub435; 373 ARM64 compatibility contracts per engine added locally; no production publication."
 }
