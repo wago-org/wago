@@ -408,8 +408,26 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	if err := chargeDeclaredTypeBytes(m, &remaining); err != nil {
 		return err
 	}
+	hasAggregateTypes := false
+	for i := range m.Types {
+		for j := range m.Types[i].SubTypes {
+			kind := m.Types[i].SubTypes[j].Comp.Kind
+			hasAggregateTypes = hasAggregateTypes || kind == wasm.CompStruct || kind == wasm.CompArray
+		}
+	}
+	rootedScalar := hasAggregateTypes && admitRV64GCRootedScalarModule(m)
+	var rootedDirectory internalReferenceTypeDirectory
+	if rootedScalar {
+		var ok bool
+		rootedDirectory, ok = newInternalReferenceTypeDirectory(m.Types)
+		if !ok {
+			return unsupported("closed reference rooted type directory")
+		}
+	}
 	types := internalReferenceTypes{
 		decoded:                  m.Types,
+		rootedDirectory:          rootedDirectory,
+		gcRootedScalar:           rootedScalar,
 		decodedSWAR:              vector,
 		declarationExtern:        !vector && (admitCore3RefDeclarations(m) || admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m)),
 		declarationNonNullExtern: !vector && (admitCore3RefDeclarations(m) || admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m)),
@@ -424,6 +442,9 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			return unsupported("closed reference module recursive group")
 		}
 		sub := &group.SubTypes[0]
+		if rootedScalar && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
+			continue
+		}
 		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() || len(sub.Comp.Fields) != 0 || sub.Comp.Array != (wasm.FieldType{}) {
 			return unsupported("closed reference module plain function type")
 		}

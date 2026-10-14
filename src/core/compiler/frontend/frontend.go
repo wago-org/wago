@@ -2314,7 +2314,7 @@ func (p supportPass) supportedGCReference(rt wasm.RefType) bool {
 
 func (p supportPass) supportedStructuralTypeRef(rt wasm.RefType) bool {
 	heap := rt.Heap()
-	if (!p.feat.StructuralTypeProducts && !p.feat.GCTypeSubtypingProducts && !p.feat.GCStructProducts && !p.feat.GCArrayProducts) || rt.Exact() || heap.Kind() != wasm.HeapTypeIndex {
+	if (!p.feat.StructuralTypeProducts && !p.feat.GCTypeSubtypingProducts && !p.feat.GCStructProducts && !p.feat.GCArrayProducts) || heap.Kind() != wasm.HeapTypeIndex {
 		return false
 	}
 	index := heap.Type().Index

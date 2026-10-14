@@ -1119,8 +1119,19 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 }
 
 // AdmitGCRootedScalarSource reports the bounded generic struct source witness.
-// The decoded backend and root-plan authenticator independently recheck it.
-func AdmitGCRootedScalarSource(data []byte) bool { return admitRV64GCRootedScalarWire(data) }
+// The public query also typechecks the source: unlike the compiler's private
+// preclassification pass, callers have not necessarily run validation first.
+func AdmitGCRootedScalarSource(data []byte) bool {
+	if !admitRV64GCRootedScalarWire(data) {
+		return false
+	}
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		return false
+	}
+	features := wasm.ValidationFeatures{MultiMemory: true, ExtendedConstGlobals: true, GCConstExpr: true}
+	return wasm.ValidateModuleWithFeatures(m, features) == nil
+}
 
 func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 	r := wasm.ReaderFrom(payload)

@@ -357,10 +357,11 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 	for i := range c.Globals {
 		global := &c.Globals[i]
 		collectorRef := isGCRefValType(global.Type)
+		validI31Bits := global.Type != ValI31Ref || (global.Bits>>32 == 0 && (global.Bits == 0 || global.Bits&1 != 0))
 		if global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && !collectorRef ||
 			!global.HasValueType || global.HasInitFunc || global.InitFunc != 0 ||
 			global.V128 != (V128{}) || (global.Type == ValI32 || global.Type == ValF32) && global.Bits>>32 != 0 ||
-			collectorRef && global.Bits != 0 {
+			collectorRef && global.Type != ValI31Ref && global.Bits != 0 || !validI31Bits {
 			return [32]byte{}, false
 		}
 		if len(global.InitExpr) != 0 {

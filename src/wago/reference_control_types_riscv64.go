@@ -82,7 +82,13 @@ func rv64DeclaredControlSignatureProfile(c *Compiled, typ *DefinedTypeDescriptor
 
 func rv64ValidateDeclaredControlTypes(c *Compiled) error {
 	for i := range c.Types {
-		if i > 0 && c.Types[i-1].RecGroup == c.Types[i].RecGroup {
+		// GC aggregate declarations share the module type index space with
+		// callable declarations. They are validated by the rooted-GC receipt;
+		// only function declarations participate in the call/control ABI.
+		if c.Types[i].Kind != CompositeTypeFunction {
+			continue
+		}
+		if i > 0 && c.Types[i-1].RecGroup == c.Types[i].RecGroup || i+1 < len(c.Types) && c.Types[i+1].RecGroup == c.Types[i].RecGroup {
 			return fmt.Errorf("RV64 recursive control type group is unsupported")
 		}
 		if _, err := rv64DeclaredControlSignature(c, &c.Types[i]); err != nil {
@@ -95,7 +101,10 @@ func rv64ValidateDeclaredControlTypes(c *Compiled) error {
 func rv64ValidateDeclarativeControlTypes(c *Compiled) (bool, error) {
 	typed := false
 	for i := range c.Types {
-		if i > 0 && c.Types[i-1].RecGroup == c.Types[i].RecGroup {
+		if c.Types[i].Kind != CompositeTypeFunction {
+			continue
+		}
+		if i > 0 && c.Types[i-1].RecGroup == c.Types[i].RecGroup || i+1 < len(c.Types) && c.Types[i+1].RecGroup == c.Types[i].RecGroup {
 			return false, fmt.Errorf("RV64 recursive control type group is unsupported")
 		}
 		_, witness, err := rv64DeclaredControlSignatureProfile(c, &c.Types[i], true)

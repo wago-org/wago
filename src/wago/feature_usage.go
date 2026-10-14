@@ -288,7 +288,7 @@ func analyzeConstExprBytes(body []byte, importedGlobals int) (CoreFeatures, bool
 	r := wasm.NewReader(body)
 	var out CoreFeatures
 	usesRefFunc := false
-	usesArithmetic, usesPriorLocal := false, false
+	usesArithmetic, usesPriorLocal, usesGCConst := false, false, false
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -302,6 +302,9 @@ func analyzeConstExprBytes(body []byte, importedGlobals int) (CoreFeatures, bool
 		switch imm.Kind {
 		case wasm.InstrRefFunc:
 			usesRefFunc = true
+		case wasm.InstrStructNew, wasm.InstrArrayNew, wasm.InstrArrayNewDefault,
+			wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
+			usesGCConst = true
 		case wasm.InstrGlobalGet:
 			if int(imm.Index) >= importedGlobals {
 				usesPriorLocal = true
@@ -311,7 +314,7 @@ func analyzeConstExprBytes(body []byte, importedGlobals int) (CoreFeatures, bool
 			usesArithmetic = true
 		}
 	}
-	if usesPriorLocal {
+	if usesPriorLocal || usesGCConst {
 		out |= CoreFeatureExtendedConstExpressions
 	} else if usesArithmetic {
 		out |= CoreFeatureExtendedConst

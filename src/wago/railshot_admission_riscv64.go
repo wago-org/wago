@@ -1068,7 +1068,8 @@ func railshotValidateCompiled(c *Compiled) error {
 			}
 			for _, values := range [][]ValType{sig.Params, sig.Results} {
 				for _, typ := range values {
-					if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!publicHostReferenceBoundary || typ != ValFuncRef && typ != ValExternRef) {
+					if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) &&
+						(!publicHostReferenceBoundary || typ != ValFuncRef && typ != ValExternRef) && (!freshRootedGC || !isGCRefValType(typ)) {
 						return reject("unsupported function import signature")
 					}
 				}

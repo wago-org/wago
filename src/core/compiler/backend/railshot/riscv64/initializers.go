@@ -66,8 +66,12 @@ func admitGlobalExpression(expr wasm.Expr, m *wasm.Module, expected wasm.ValType
 		return unsupported("initializer global expression")
 	}
 	typ, ok := m.GlobalTypeByIndex(index)
-	if !ok || typ.Mutable || !wasm.EqualValType(typ.Type, expected) {
-		return unsupported("initializer requires exact immutable global")
+	compatible := ok && wasm.EqualValType(typ.Type, expected)
+	if ok && !compatible && typ.Type.Kind() == wasm.ValRef && expected.Kind() == wasm.ValRef {
+		compatible = m.ReferenceTypeSubtype(typ.Type.Ref(), expected.Ref())
+	}
+	if !ok || typ.Mutable || !compatible {
+		return unsupported("initializer requires a compatible immutable global")
 	}
 	return nil
 }

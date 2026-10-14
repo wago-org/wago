@@ -1226,7 +1226,7 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 			return false, false, false, false, unsupported("function signature binding")
 		}
 		var err error
-		if referenceFunctions {
+		if referenceFunctions || types.gcRootedScalar {
 			_, _, err = admitDeclaredControlSignature(sig, types, true, referenceCalls, vector)
 		} else if vector {
 			err = swarCallSignature(sig)
