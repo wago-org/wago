@@ -48,7 +48,7 @@ func TestIntegerSumInvariantGlobalSelection(t *testing.T) {
 						if mutable && regABI && !fenced && pinned != hotGlobal {
 							t.Fatalf("hot=%t: pinned=%t", hotGlobal, pinned)
 						}
-						if enabled && !fenced && (!mutable || pinned) {
+						if enabled && !fenced {
 							want = 1
 						}
 						if got := stats.Funcs[0].Peephole["integer-sum-invariant-global"]; got != want {
@@ -58,5 +58,56 @@ func TestIntegerSumInvariantGlobalSelection(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestIntegerSumUnpinnedGlobalProofStaysBounded(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, tc := range []struct {
+		name                          string
+		imported, call, interruptible bool
+	}{{"imported", true, false, false}, {"call", false, true, false}, {"interruptible", false, false, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{1, 1, 0x7f}
+			if tc.call {
+				body = append(body, 0x10, 1)
+			}
+			body = append(body, 0x03, 0x40, 0x20, 1, 0x23, 0, 0x6a, 0x21, 1, 0x20, 2, 0x41, 1, 0x6a, 0x21, 2, 0x20, 2, 0x20, 0, 0x49, 0x0d, 0, 0x0b, 0x20, 1, 0x0b)
+			sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}), wasmtest.FuncType(nil, nil)))}
+			if tc.imported {
+				entry := append(wasmtest.Name("env"), wasmtest.Name("g")...)
+				entry = append(entry, 3, 0x7f, 1)
+				sections = append(sections, wasmtest.Section(2, wasmtest.Vec(entry)))
+			}
+			funcs := [][]byte{wasmtest.ULEB(0)}
+			if tc.call {
+				funcs = append(funcs, wasmtest.ULEB(1))
+			}
+			sections = append(sections, wasmtest.Section(3, wasmtest.Vec(funcs...)))
+			if !tc.imported {
+				sections = append(sections, wasmtest.Section(6, wasmtest.Vec([]byte{0x7f, 1, 0x41, 41, 0x0b})))
+			}
+			codes := [][]byte{append(wasmtest.ULEB(uint32(len(body))), body...)}
+			if tc.call {
+				codes = append(codes, wasmtest.Code([]byte{0x0b}))
+			}
+			sections = append(sections, wasmtest.Section(10, wasmtest.Vec(codes...)))
+			m, err := wasm.DecodeModule(wasmtest.Module(sections...))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var stats ModuleStats
+			c, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Interruptible: tc.interruptible, Optimizations: map[string]bool{"inline": false, "reg-abi": false}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.CodeImage.Close()
+			if stats.Funcs[0].PinnedGlobalsValue != 0 {
+				t.Fatal("guard fixture unexpectedly allocated a global value pin")
+			}
+			if got := stats.Funcs[0].Peephole["integer-sum-invariant-global"]; got != 0 {
+				t.Fatalf("unsafe unpinned reduction=%d", got)
+			}
+		})
 	}
 }

@@ -35,9 +35,13 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 			return false, nil
 		}
 		if gt.Mutable {
-			// Reuse the existing native value pin: the original call-free loop
-			// already reads this stable register, not the global cell each time.
-			if _, pinned := f.pinnedGlobalValueReg(p.Global); !pinned {
+			// An existing value pin independently proves stability. A defined
+			// global is also stable in a call-free native function: this loop's
+			// byte-backed proof has only integer locals and a bare getter, with
+			// no global writes or fences. Read the live cell when reducing it;
+			// pin allocation need not determine whether the loop can collapse.
+			if _, pinned := f.pinnedGlobalValueReg(p.Global); !pinned &&
+				(f.makesCalls || p.Global < uint32(f.m.ImportedGlobalCount()) || p.GlobalWriteCount != 0 || p.GlobalRecurrence) {
 				return false, nil
 			}
 		}
