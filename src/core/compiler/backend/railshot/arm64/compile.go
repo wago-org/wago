@@ -172,9 +172,11 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
-	cacheImportDispatch bool
-	requiresLSE         bool // selected optional instructions in this function
-	scalarSummary       shared.ScalarSummary
+	cacheImportDispatch     bool
+	cacheNativeImportTarget bool
+	nativeImportRouter      int
+	requiresLSE             bool // selected optional instructions in this function
+	scalarSummary           shared.ScalarSummary
 	// Physical frame access emitted by the shared lowerer, not logical state.
 	scalarFrameUsed bool
 
@@ -635,7 +637,8 @@ func asmCapForBody(bodyLen int) int {
 // the next function runs — so reset-and-reuse replaces per-function allocation.
 // Compile is sequential, so a single scratch is shared safely.
 type scratch struct {
-	scalar shared.ScalarState
+	nativeImportFast bool // isolated guarded variant compilation only
+	scalar           shared.ScalarState
 
 	stack                 *stack   // the valent-block operand stack
 	stackCap              int      // deferred initial reservation for function-level fallback
@@ -2999,6 +3002,54 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		gcFrameRoots.AdapterReturnOffset = 0
 	}
 	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, immutableTable, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, true, inlineTargets, calleeHints, policy, sc)
+	if err == nil && sc.fnState.nativeImportRouter > 0 {
+		router := sc.fnState.nativeImportRouter
+		asm := &a64.Asm{B: code}
+		// The emitted self-edge keeps finalization from deleting the unresolved
+		// router. Disable it before every optional specialization failure path.
+		if !asm.PatchBranch19(router, router+4) {
+			return nil, nil, 0, fmt.Errorf("native import router range")
+		}
+		if len(relocs) == 0 {
+			fastScratch := newScratchWithStackCap(32)
+			fastScratch.nativeImportFast = true
+			fastScratch.classifier = sc.classifier
+			fastScratch.moduleTypes = sc.moduleTypes
+			var variantStats *CodegenStats
+			if diagnosticsEnabled && stats != nil {
+				variantStats = &CodegenStats{}
+				stats.FunctionAttempts++
+			}
+			fastCode, fastRelocs, fastInternal, fastErr := compileFuncAttempt(m, gcTypeLayouts, funcIdx, false, guardMode, boundsFacts, interruptible, modGlobals, hints, immutableTable, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, nil, customInstructions, variantStats, true, inlineTargets, calleeHints, policy, fastScratch)
+			if fastErr == nil && len(fastRelocs) == 0 {
+				oldLen := len(code)
+				padding := alignmentPadding(oldLen, 4)
+				combined := append(code, make([]byte, padding)...)
+				combined = append(combined, fastCode...)
+				combinedAsm := &a64.Asm{B: combined}
+				if combinedAsm.PatchBranch19(router, oldLen+padding+fastInternal) {
+					code = combined
+					sc.asm.B = combined
+					if diagnosticsEnabled && stats != nil {
+						extra := len(combined) - oldLen
+						stats.CodeBytes += extra
+						stats.NativeSize.TotalBytes += extra
+						stats.NativeSize.InternalFunctionBytes += extra
+						stats.NativeSize.FrameAdjustmentBytes += variantStats.NativeSize.FrameAdjustmentBytes
+						stats.NativeSize.DeadFrameReservationBytes += variantStats.NativeSize.DeadFrameReservationBytes
+						stats.NativeSize.BranchFoldHoleBytes += variantStats.NativeSize.BranchFoldHoleBytes
+						stats.NativeSize.StoreLoadNopBytes += variantStats.NativeSize.StoreLoadNopBytes
+						stats.NativeSize.SharedTrapBodyBytes = 0
+						stats.NativeSize.LiteralPoolBytes = 0
+						stats.GCCodeBytes.Add(variantStats.GCCodeBytes)
+						stats.GCCodeBytes.Total += padding
+						stats.peep("native-import-guarded-variant")
+					}
+				}
+			}
+		}
+	}
+
 	if len(sc.stack.chunks) > 1 {
 		sc.finishStackFunction()
 	}
@@ -3348,6 +3399,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			gpPool = withoutReg(gpPool, X25)
 			f.reserved = f.reserved.add(X25)
 			f.stats.peep("import-dispatch-cache")
+			if used < remainingPins && !f.reserved.has(X24) && len(m.Memories) == 0 && regABI && os.Getenv("WAGO_ARM64_NATIVE_IMPORT_VARIANT") != "0" && os.Getenv("WAGO_ARM64_NATIVE_IMPORT_TARGET_CACHE") != "0" && nativeI32ImportAliases(m) && f.nativeImportVariantEligible(c.BodyBytes) {
+				f.cacheNativeImportTarget = true
+				gpPool = withoutReg(gpPool, X24)
+				f.reserved = f.reserved.add(X24)
+				f.stats.peep("native-import-target-cache")
+			}
 		}
 	}
 	for _, mg := range modGlobals {
@@ -4109,6 +4166,10 @@ func (f *fn) prologue(localScores []uint32) {
 	if f.cacheImportDispatch {
 		f.ld64(X25, linMemReg, -int32(offImportDispatchPtr))
 	}
+	if f.cacheNativeImportTarget {
+		f.ld64(X24, X25, coreruntime.ImportDispatchCodePtrOffset)
+		f.a.AddImm64(X24, X24, coreruntime.NativeScalarLeafRegisterEntryOffset)
+	}
 	// Copy v128 params through V0 before loading any pinned scalar float params.
 	// V0 is only a prologue scratch here; keeping these copies first prevents a
 	// future pin-pool change from letting a later v128 copy clobber an already-live
@@ -4463,6 +4524,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 		}
 	}
 	internalOff := a.Len()
+	f.beginNativeImportVariant()
 	if f.makesCalls {
 		a.StpPre(FP, LR, SP, -16) // save FP/LR frame record (BL clobbers LR)
 		a.AddImm64(FP, SP, 0)     // MOV X29, SP
@@ -4482,6 +4544,10 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	f.entryTrapEnd = a.Len()
 	if f.cacheImportDispatch {
 		f.ld64(X25, linMemReg, -int32(offImportDispatchPtr))
+	}
+	if f.cacheNativeImportTarget {
+		f.ld64(X24, X25, coreruntime.ImportDispatchCodePtrOffset)
+		f.a.AddImm64(X24, X24, coreruntime.NativeScalarLeafRegisterEntryOffset)
 	}
 	gp, fp = 0, 0
 	moves := f.tmpMoves[:0]

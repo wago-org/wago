@@ -1759,6 +1759,24 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	types := append([]machineType(nil), f.logicalTypes(roots)...)
 	rootFlags := gcRootFlags(roots)
 	f.flush()
+	if f.cacheNativeImportTarget && f.sc != nil && f.sc.nativeImportFast {
+		f.spillLocalsForClobbers((1<<18)-1, 0)
+		p := len(ft.Params)
+		argSlot := slotsOfTypes(types[:len(types)-p])
+		f.ld32(X0, SP, f.spillOff(argSlot))
+		if p == 2 {
+			f.ld32(X1, SP, f.spillOff(argSlot+1))
+		}
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
+		f.stats.call(callKindImportDispatch)
+		f.a.Blr(X24)
+		f.st64(SP, f.spillOff(argSlot), X0)
+		f.setDepthTypesWithGCRoots(append(types[:len(types)-p], mtI32), nil)
+		return nil
+	}
+
 	locals := append([]localDef(nil), f.locals...)
 	if b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
 		return fmt.Errorf("import dispatch index overflows displacement")
@@ -1808,19 +1826,26 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 		f.setDepthTypesWithGCRoots(types, rootFlags)
 		// This branch is an already-verified native leaf. Load its target
 		// before local stores and large SP-address calculations use X16.
-		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)
+		target := X17
+		if f.cacheNativeImportTarget {
+			target = X24
+		} else {
+			f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)
+		}
 		f.spillLocalsForClobbers((1<<18)-1, 0)
 		argSlot := slotsOfTypes(types[:len(types)-len(ft.Params)])
 		f.ld32(X0, SP, f.spillOff(argSlot))
 		if len(ft.Params) == 2 {
 			f.ld32(X1, SP, f.spillOff(argSlot+1))
 		}
-		f.a.AddImm64(X17, X17, runtime.NativeScalarLeafRegisterEntryOffset)
+		if !f.cacheNativeImportTarget {
+			f.a.AddImm64(X17, X17, runtime.NativeScalarLeafRegisterEntryOffset)
+		}
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
 		f.stats.call(callKindImportDispatch)
-		f.a.Blr(X17)
+		f.a.Blr(target)
 		f.st64(SP, f.spillOff(argSlot), X0)
 		for i := range f.locals {
 			if f.locals[i].state != fastLocals[i].state {
@@ -3509,4 +3534,83 @@ func (f *fn) loadImportDispatchBase(dst Reg) {
 	} else {
 		f.ld64(dst, linMemReg, -int32(offImportDispatchPtr))
 	}
+}
+
+// nativeI32ImportAliases admits only identical scalar import declarations. A
+// runtime native-leaf tag still guards entry to the specialized body.
+func nativeI32ImportAliases(m *wasm.Module) bool {
+	if len(m.Imports) < 2 {
+		return false
+	}
+	first := m.Imports[0]
+	if first.Type.Kind != wasm.ExternFunc {
+		return false
+	}
+	ft, ok := m.ImportFuncType(0)
+	if !ok || len(ft.Params) < 1 || len(ft.Params) > 2 || len(ft.Results) != 1 || ft.Results[0] != wasm.I32 {
+		return false
+	}
+	for _, param := range ft.Params {
+		if param != wasm.I32 {
+			return false
+		}
+	}
+	for _, imp := range m.Imports[1:] {
+		if imp.Module != first.Module || imp.Name != first.Name || imp.Type != first.Type {
+			return false
+		}
+	}
+	return true
+}
+
+// beginNativeImportVariant selects the unchecked body only while every alias
+// names the same immutable, runtime-admitted scalar native leaf. Such a body
+// cannot enter Go or mutate its bindings; the ordinary body remains complete.
+func (f *fn) beginNativeImportVariant() {
+	if f.sc == nil || f.sc.nativeImportFast || !f.cacheNativeImportTarget {
+		return
+	}
+	f.ld64(X16, linMemReg, -int32(offImportDispatchPtr))
+	f.ld64(X17, X16, runtime.ImportDispatchCallerContextOffset)
+	f.a.AndImm64(X17, X17, runtime.ImportDispatchCallerNativeLeafTag)
+	f.nativeImportRouter = f.a.Cbnz64(X17)
+	f.patchBranch19(f.nativeImportRouter, f.nativeImportRouter)
+}
+
+func (f *fn) nativeImportVariantEligible(body []byte) bool {
+	if profileEnabled || len(body) > 384 || len(f.m.Tables) != 0 || len(f.m.Tags) != 0 || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate || len(f.ft.Params) != 1 || f.ft.Params[0] != wasm.I32 || len(f.ft.Results) != 1 || f.ft.Results[0] != wasm.I32 || len(f.importBindings) != f.m.ImportedFuncCount() {
+		return false
+	}
+	for i, binding := range f.importBindings {
+		if !binding.Dynamic || binding.ImportIndex != uint32(i) {
+			return false
+		}
+	}
+	return nativeImportIntegerBody(f, body)
+}
+
+func nativeImportIntegerBody(f *fn, body []byte) bool {
+	for _, typ := range f.localType {
+		if typ != mtI32 && typ != mtI64 {
+			return false
+		}
+	}
+	r := wasm.ReaderFrom(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		var imm wasm.InstructionImmediate
+		if wasm.ClassifyInstructionImmediateInto(&r, op, &imm) != nil {
+			return false
+		}
+		switch {
+		case op == 0 || op == 1 || op >= 2 && op <= 5 || op >= 0x0b && op <= 0x10 || op == 0x1a || op == 0x1b || op >= 0x20 && op <= 0x22:
+		case op == 0x41 || op == 0x42 || op >= 0x45 && op <= 0x5a || op >= 0x67 && op <= 0x8a || op == 0xa7 || op == 0xac || op == 0xad || op >= 0xc0 && op <= 0xc4:
+		default:
+			return false
+		}
+	}
+	return true
 }
