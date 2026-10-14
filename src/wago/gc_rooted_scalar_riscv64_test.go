@@ -418,6 +418,266 @@ func TestRV64RootedAbstractReferenceBoundaryExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarExactReferenceBoundaryModule() []byte {
+	exact := []byte{0x63, 0x62, 0x00}
+	exactEcho := append([]byte{0x60, 0x01}, exact...)
+	exactEcho = append(exactEcho, 0x01)
+	exactEcho = append(exactEcho, exact...)
+	exactMake := append([]byte{0x60, 0x00, 0x01}, exact...)
+	exactRead := append([]byte{0x60, 0x01}, exact...)
+	exactRead = append(exactRead, 0x01, 0x7f)
+	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
+	functionImport = append(functionImport, wasmtest.ULEB(2)...)
+	bodies := [][]byte{
+		{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0xfb, 0x16, 0x62, 0x00, 0x0b},
+		{0x00, 0x41, 0x2b, 0xfb, 0x00, 0x01, 0x0b},
+		{0x00, 0x20, 0x00, 0x0b},
+		{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b},
+		{0x00, 0x20, 0x00, 0xd4, 0xfb, 0x02, 0x00, 0x00, 0x0b},
+	}
+	codes := make([][]byte, len(bodies))
+	for i, body := range bodies {
+		codes[i] = append(wasmtest.ULEB(uint32(len(body))), body...)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x50, 0x00, 0x5f, 0x01, 0x7f, 0x01},
+			[]byte{0x4f, 0x01, 0x00, 0x5f, 0x01, 0x7f, 0x01},
+			exactEcho,
+			exactMake,
+			exactRead,
+			[]byte{0x60, 0x00, 0x01, 0x64, 0x01},
+		)),
+		wasmtest.Section(2, wasmtest.Vec(functionImport)),
+		wasmtest.Section(3, wasmtest.Vec(
+			wasmtest.ULEB(3), wasmtest.ULEB(5), wasmtest.ULEB(2), wasmtest.ULEB(2), wasmtest.ULEB(4),
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("make_base", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("make_sub", byte(wasm.ExternFunc), 2),
+			wasmtest.ExportEntry("echo_local", byte(wasm.ExternFunc), 3),
+			wasmtest.ExportEntry("echo_host", byte(wasm.ExternFunc), 4),
+			wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 5),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
+	)
+}
+
+func TestRV64RootedExactReferenceBoundaryExecutes(t *testing.T) {
+	source := rootedScalarExactReferenceBoundaryModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("exact indexed collector-reference public boundary was not source-admitted")
+	}
+	decoded, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootDiagnostic string
+	if plan := newGCFrameRootPlan(decoded, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
+		t.Fatalf("exact indexed collector-reference root plan=%v diagnostic=%q", plan, rootDiagnostic)
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	imports, validImports := rv64RootedImportDigest(view)
+	if !rv64FreshRootedGC(view) || !validImports || imports != view.validateMemo.rv64FreshRootedGCImportDigest || !view.Types[2].Params[0].Ref.Exact {
+		t.Fatalf("exact boundary receipt=%t import-digest=%t/%t parameter=%+v validation=%v", rv64FreshRootedGC(view), validImports, imports == view.validateMemo.rv64FreshRootedGCImportDigest, view.Types[2].Params[0], railshotValidateCompiled(view))
+	}
+	for name, mutate := range map[string]func(*ValueTypeDescriptor){
+		"inexact":  func(value *ValueTypeDescriptor) { value.Ref.Exact = false },
+		"retarget": func(value *ValueTypeDescriptor) { value.Ref.Heap.TypeIndex = 1 },
+	} {
+		t.Run("receipt-"+name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			candidate.Types = slices.Clone(candidate.Types)
+			candidate.Types[2].Params = slices.Clone(candidate.Types[2].Params)
+			mutate(&candidate.Types[2].Params[0])
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutated exact host parameter retained the rooted receipt")
+			}
+		})
+	}
+	requireRV64FreshRootedArtifactRejected(t, compiled)
+
+	rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
+	defer rt.Close()
+	var calls int
+	host, err := rt.NewGCHostFuncRef(slotHostFunc(func(module HostModule, params, results []uint64) {
+		calls++
+		if len(params) != 1 || len(results) != 1 || params[0] == 0 || params[0] == uint64(uint32(params[0])) {
+			panic("exact collector-reference host argument is not an opaque token")
+		}
+		gcHost, ok := module.(GCHostModule)
+		if !ok {
+			panic("exact collector-reference host call has no GC surface")
+		}
+		if err := gcHost.CollectGC(); err != nil {
+			panic(err)
+		}
+		results[0] = params[0]
+	}), FuncSig{Params: []ValType{ValAnyRef}, Results: []ValType{ValAnyRef}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer host.Close()
+	module, err := rt.Module(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := rt.Instantiate(context.Background(), module, WithImports(testImports("env.echo", host)), WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}))
+	module.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	base, err := instance.InvokeValues(context.Background(), "make_base")
+	if err != nil || len(base) != 1 || base[0].Type() != ValAnyRef || base[0].Bits()>>32 == 0 {
+		t.Fatalf("make_base()=%v err=%v", base, err)
+	}
+	tokens := []GCRef{base[0].GCRef()}
+	for _, name := range []string{"echo_local", "echo_host"} {
+		got, callErr := instance.InvokeValues(context.Background(), name, base[0])
+		if callErr != nil || len(got) != 1 || got[0].Type() != ValAnyRef || got[0].Bits()>>32 == 0 {
+			t.Fatalf("%s(base)=%v err=%v", name, got, callErr)
+		}
+		tokens = append(tokens, got[0].GCRef())
+		if read, readErr := instance.Invoke("read", got[0].Bits()); readErr != nil || !slices.Equal(read, []uint64{42}) {
+			t.Fatalf("read(%s(base))=%v err=%v", name, read, readErr)
+		}
+	}
+	sub, err := instance.InvokeValues(context.Background(), "make_sub")
+	if err != nil || len(sub) != 1 || sub[0].Type() != ValAnyRef || sub[0].Bits()>>32 == 0 {
+		t.Fatalf("make_sub()=%v err=%v", sub, err)
+	}
+	if _, err := instance.InvokeValues(context.Background(), "read", sub[0]); err == nil || !strings.Contains(err.Error(), "structural argument type") {
+		t.Fatalf("proper subtype entered exact base boundary: %v", err)
+	}
+	if err := instance.ReleaseGCRef(sub[0].GCRef()); err != nil {
+		t.Fatal(err)
+	}
+	for i := len(tokens) - 1; i >= 0; i-- {
+		if err := instance.ReleaseGCRef(tokens[i]); err != nil {
+			t.Fatalf("release exact token %d: %v", i, err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("exact collector-reference host calls=%d want=1", calls)
+	}
+}
+
+func rootedScalarExactArrayBoundaryModule() []byte {
+	exact := []byte{0x63, 0x62, 0x00}
+	exactEcho := append([]byte{0x60, 0x01}, exact...)
+	exactEcho = append(exactEcho, 0x01)
+	exactEcho = append(exactEcho, exact...)
+	exactMake := append([]byte{0x60, 0x00, 0x01}, exact...)
+	exactRead := append([]byte{0x60, 0x01}, exact...)
+	exactRead = append(exactRead, 0x01, 0x7f)
+	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
+	functionImport = append(functionImport, wasmtest.ULEB(1)...)
+	bodies := [][]byte{
+		{0x00, 0x41, 0x2a, 0x41, 0x01, 0xfb, 0x06, 0x00, 0xfb, 0x16, 0x62, 0x00, 0x0b},
+		{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b},
+		{0x00, 0x20, 0x00, 0xd4, 0x41, 0x00, 0xfb, 0x0b, 0x00, 0x0b},
+	}
+	codes := make([][]byte, len(bodies))
+	for i, body := range bodies {
+		codes[i] = append(wasmtest.ULEB(uint32(len(body))), body...)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5e, 0x7f, 0x01},
+			exactEcho,
+			exactMake,
+			exactRead,
+		)),
+		wasmtest.Section(2, wasmtest.Vec(functionImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(1), wasmtest.ULEB(3))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("make", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("echo_host", byte(wasm.ExternFunc), 2),
+			wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 3),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
+	)
+}
+
+func TestRV64RootedExactArrayBoundaryExecutes(t *testing.T) {
+	source := rootedScalarExactArrayBoundaryModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("exact indexed array public boundary was not source-admitted")
+	}
+	decoded, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootDiagnostic string
+	if plan := newGCFrameRootPlan(decoded, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
+		t.Fatalf("exact indexed array root plan=%v diagnostic=%q", plan, rootDiagnostic)
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || !view.Types[1].Params[0].Ref.Exact || !view.Types[1].Results[0].Ref.Exact {
+		t.Fatalf("exact indexed array receipt=%t signature=%+v", rv64FreshRootedGC(view), view.Types[1])
+	}
+
+	rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
+	defer rt.Close()
+	var calls int
+	host, err := rt.NewGCHostFuncRef(slotHostFunc(func(module HostModule, params, results []uint64) {
+		calls++
+		gcHost, ok := module.(GCHostModule)
+		if !ok || len(params) != 1 || len(results) != 1 || params[0] == 0 || params[0] == uint64(uint32(params[0])) {
+			panic("exact array host argument is not an opaque GC token")
+		}
+		if err := gcHost.CollectGC(); err != nil {
+			panic(err)
+		}
+		results[0] = params[0]
+	}), FuncSig{Params: []ValType{ValAnyRef}, Results: []ValType{ValAnyRef}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer host.Close()
+	module, err := rt.Module(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := rt.Instantiate(context.Background(), module, WithImports(testImports("env.echo", host)), WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}))
+	module.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	made, err := instance.InvokeValues(context.Background(), "make")
+	if err != nil || len(made) != 1 || made[0].Type() != ValAnyRef || made[0].Bits()>>32 == 0 {
+		t.Fatalf("make()=%v err=%v", made, err)
+	}
+	echoed, err := instance.InvokeValues(context.Background(), "echo_host", made[0])
+	if err != nil || len(echoed) != 1 || echoed[0].Type() != ValAnyRef || echoed[0].Bits()>>32 == 0 {
+		t.Fatalf("echo_host(make())=%v err=%v", echoed, err)
+	}
+	if got, err := instance.Invoke("read", echoed[0].Bits()); err != nil || !slices.Equal(got, []uint64{42}) {
+		t.Fatalf("read(echo_host(make()))=%v err=%v", got, err)
+	}
+	if err := instance.ReleaseGCRef(echoed[0].GCRef()); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.ReleaseGCRef(made[0].GCRef()); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("exact array host calls=%d want=1", calls)
+	}
+}
+
 func rootedScalarFunctionBeforeStructModule() []byte {
 	body := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x01, 0xfb, 0x02, 0x01, 0x00, 0x0b}
 	return wasmtest.Module(

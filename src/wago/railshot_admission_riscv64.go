@@ -175,10 +175,13 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		if value.Kind <= ValueTypeF64 {
 			return value.Ref == (ReferenceTypeDescriptor{})
 		}
-		if value.Kind != ValueTypeReference || value.Ref.Exact {
+		if value.Kind != ValueTypeReference {
 			return false
 		}
 		if !value.Ref.Heap.Defined {
+			if value.Ref.Exact {
+				return false
+			}
 			_, ok := rootedAbstract(value.Ref.Heap.Abstract)
 			return ok && value.Ref.Heap.TypeIndex == 0
 		}
@@ -200,11 +203,11 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		if value.Kind <= ValueTypeF64 {
 			return value.Ref == (ReferenceTypeDescriptor{})
 		}
-		if value.Kind != ValueTypeReference || value.Ref.Exact {
+		if value.Kind != ValueTypeReference {
 			return false
 		}
 		if !value.Ref.Heap.Defined {
-			return rootedAbstractGlobal(value.Ref.Heap.Abstract) && value.Ref.Heap.TypeIndex == 0
+			return !value.Ref.Exact && rootedAbstractGlobal(value.Ref.Heap.Abstract) && value.Ref.Heap.TypeIndex == 0
 		}
 		return rootedValue(value, len(c.Types))
 	}

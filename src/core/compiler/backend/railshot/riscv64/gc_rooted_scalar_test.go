@@ -114,6 +114,128 @@ func TestRV64RootedAbstractReferenceExportAdmitted(t *testing.T) {
 	}
 }
 
+func rv64RootedExactReferenceBoundaryModule() []byte {
+	exact := []byte{0x63, 0x62, 0x00}
+	exactEcho := append([]byte{0x60, 0x01}, exact...)
+	exactEcho = append(exactEcho, 0x01)
+	exactEcho = append(exactEcho, exact...)
+	exactMake := append([]byte{0x60, 0x00, 0x01}, exact...)
+	exactRead := append([]byte{0x60, 0x01}, exact...)
+	exactRead = append(exactRead, 0x01, 0x7f)
+	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
+	functionImport = append(functionImport, wasmtest.ULEB(2)...)
+	bodies := [][]byte{
+		{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0xfb, 0x16, 0x62, 0x00, 0x0b},
+		{0x00, 0x41, 0x2b, 0xfb, 0x00, 0x01, 0x0b},
+		{0x00, 0x20, 0x00, 0x0b},
+		{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b},
+		{0x00, 0x20, 0x00, 0xd4, 0xfb, 0x02, 0x00, 0x00, 0x0b},
+	}
+	codes := make([][]byte, len(bodies))
+	for i, body := range bodies {
+		codes[i] = append(wasmtest.ULEB(uint32(len(body))), body...)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x50, 0x00, 0x5f, 0x01, 0x7f, 0x01},
+			[]byte{0x4f, 0x01, 0x00, 0x5f, 0x01, 0x7f, 0x01},
+			exactEcho,
+			exactMake,
+			exactRead,
+			[]byte{0x60, 0x00, 0x01, 0x64, 0x01},
+		)),
+		wasmtest.Section(2, wasmtest.Vec(functionImport)),
+		wasmtest.Section(3, wasmtest.Vec(
+			wasmtest.ULEB(3), wasmtest.ULEB(5), wasmtest.ULEB(2), wasmtest.ULEB(2), wasmtest.ULEB(4),
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("make_base", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("make_sub", byte(wasm.ExternFunc), 2),
+			wasmtest.ExportEntry("echo_local", byte(wasm.ExternFunc), 3),
+			wasmtest.ExportEntry("echo_host", byte(wasm.ExternFunc), 4),
+			wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 5),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
+	)
+}
+
+func TestRV64RootedExactReferenceBoundaryAdmitted(t *testing.T) {
+	source := rv64RootedExactReferenceBoundaryModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("exact indexed collector-reference boundary was not admitted")
+	}
+	ref := m.Types[2].SubTypes[0].Comp.Params[0].Ref()
+	if !ref.Nullable() || !ref.Exact() || ref.Heap().Kind() != wasm.HeapTypeIndex || ref.Heap().Type().Index != 0 {
+		t.Fatalf("exact boundary parameter=%v", m.Types[2].SubTypes[0].Comp.Params[0])
+	}
+	m.Types[2].SubTypes[0].Comp.Params[0] = wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), true))
+	if admitRV64GCRootedScalarModule(m) {
+		t.Fatal("exact abstract collector-reference boundary was admitted")
+	}
+	exactAbstract := wasmtest.Vec([]byte{0x60, 0x01, 0x63, 0x62, byte(wasm.HeapAny), 0x00})
+	if admitRV64GCRootedScalarTypeWire(exactAbstract) {
+		t.Fatal("exact abstract collector-reference wire type was admitted")
+	}
+}
+
+func rv64RootedExactArrayBoundaryModule() []byte {
+	exact := []byte{0x63, 0x62, 0x00}
+	exactEcho := append([]byte{0x60, 0x01}, exact...)
+	exactEcho = append(exactEcho, 0x01)
+	exactEcho = append(exactEcho, exact...)
+	exactMake := append([]byte{0x60, 0x00, 0x01}, exact...)
+	exactRead := append([]byte{0x60, 0x01}, exact...)
+	exactRead = append(exactRead, 0x01, 0x7f)
+	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
+	functionImport = append(functionImport, wasmtest.ULEB(1)...)
+	bodies := [][]byte{
+		{0x00, 0x41, 0x2a, 0x41, 0x01, 0xfb, 0x06, 0x00, 0xfb, 0x16, 0x62, 0x00, 0x0b},
+		{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b},
+		{0x00, 0x20, 0x00, 0xd4, 0x41, 0x00, 0xfb, 0x0b, 0x00, 0x0b},
+	}
+	codes := make([][]byte, len(bodies))
+	for i, body := range bodies {
+		codes[i] = append(wasmtest.ULEB(uint32(len(body))), body...)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5e, 0x7f, 0x01},
+			exactEcho,
+			exactMake,
+			exactRead,
+		)),
+		wasmtest.Section(2, wasmtest.Vec(functionImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(1), wasmtest.ULEB(3))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("make", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("echo_host", byte(wasm.ExternFunc), 2),
+			wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 3),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
+	)
+}
+
+func TestRV64RootedExactArrayBoundaryAdmitted(t *testing.T) {
+	source := rv64RootedExactArrayBoundaryModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("exact indexed array boundary was not admitted")
+	}
+}
+
 func rv64RootedReferenceHostImportModule() []byte {
 	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
 	functionImport = append(functionImport, wasmtest.ULEB(1)...)

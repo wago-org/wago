@@ -48,11 +48,14 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		if wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64) || wasm.EqualValType(typ, wasm.F32) || wasm.EqualValType(typ, wasm.F64) {
 			return true
 		}
-		if typ.Kind() != wasm.ValRef || typ.Ref().Exact() {
+		if typ.Kind() != wasm.ValRef {
 			return false
 		}
 		heap := typ.Ref().Heap()
 		if heap.Kind() == wasm.HeapAbs {
+			if typ.Ref().Exact() {
+				return false
+			}
 			switch heap.Abs() {
 			case wasm.HeapNone, wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray:
 				return true

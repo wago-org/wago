@@ -144,11 +144,11 @@ func rv64RootedImportDigest(c *Compiled) ([32]byte, bool) {
 			want, ok := exact.ABIType(c.Types)
 			return ok && want == abi
 		}
-		if exact.Kind != ValueTypeReference || exact.Ref.Exact {
+		if exact.Kind != ValueTypeReference {
 			return false
 		}
 		if !exact.Ref.Heap.Defined {
-			if exact.Ref.Heap.TypeIndex != 0 {
+			if exact.Ref.Exact || exact.Ref.Heap.TypeIndex != 0 {
 				return false
 			}
 			switch exact.Ref.Heap.Abstract {

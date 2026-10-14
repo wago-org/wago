@@ -513,7 +513,7 @@ func (in *Instance) gcRefMatchesValueType(ref gc.Ref, required ValueTypeDescript
 		if !ok {
 			return false
 		}
-		target.Kind, target.Type = gc.RefTestDefined, domain
+		target.Kind, target.Type, target.Exact = gc.RefTestDefined, domain, required.Ref.Exact
 	} else {
 		switch required.Ref.Heap.Abstract {
 		case AbstractHeapAny:

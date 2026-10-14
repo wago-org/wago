@@ -38,10 +38,10 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		return false
 	}
 	if len(m.Imports) != 0 {
-		// Reference imports are provisionally restricted to non-exact carriers
-		// here, then matched against the fully flattened rooted type directory
-		// below. Imported functions must not become reachable through private
-		// tables.
+		// Reference imports are provisionally restricted to GC carriers here,
+		// then matched against the fully flattened rooted type directory below;
+		// exact references are limited there to prior indexed aggregates. Imported
+		// functions must not become reachable through private tables.
 		for i := range m.Imports {
 			im := &m.Imports[i]
 			switch im.Type.Kind {
@@ -52,7 +52,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				}
 				for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
 					for _, typ := range values {
-						if !scalarType(typ, true) && (typ.Kind() != wasm.ValRef || typ.Ref().Exact()) {
+						if !scalarType(typ, true) && typ.Kind() != wasm.ValRef {
 							return false
 						}
 					}
@@ -307,12 +307,12 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		if scalarType(typ, true) {
 			return true
 		}
-		if typ.Kind() != wasm.ValRef || typ.Ref().Exact() {
+		if typ.Kind() != wasm.ValRef {
 			return false
 		}
 		heap := typ.Ref().Heap()
 		if heap.Kind() == wasm.HeapAbs {
-			return rootedAbstractObjectHeap(heap.Abs()) || heap.Abs() == wasm.HeapI31
+			return !typ.Ref().Exact() && (rootedAbstractObjectHeap(heap.Abs()) || heap.Abs() == wasm.HeapI31)
 		}
 		return heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && int(heap.Type().Index) < flatTypes && admittedAggregates[heap.Type().Index]
 	}
@@ -431,12 +431,12 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		if scalarType(typ, true) {
 			return true
 		}
-		if typ.Kind() != wasm.ValRef || typ.Ref().Exact() {
+		if typ.Kind() != wasm.ValRef {
 			return false
 		}
 		heap := typ.Ref().Heap()
 		if heap.Kind() == wasm.HeapAbs {
-			return rootedAbstractObjectHeap(heap.Abs()) || heap.Abs() == wasm.HeapI31
+			return !typ.Ref().Exact() && (rootedAbstractObjectHeap(heap.Abs()) || heap.Abs() == wasm.HeapI31)
 		}
 		return heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && int(heap.Type().Index) < flatTypes && admittedAggregates[heap.Type().Index]
 	}
@@ -1016,17 +1016,25 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 			if typ != 0x63 && typ != 0x64 {
 				return false
 			}
+			exact := false
+			if marker, ok := r.Peek(); ok && marker == 0x62 {
+				_, _ = r.Byte()
+				exact = true
+			}
 			heap, err := r.S33()
 			if err != nil {
 				return false
 			}
 			if heap < 0 {
-				if !rootedAbstractObjectHeapS33(heap) && heap != -20 {
+				if exact || !rootedAbstractObjectHeapS33(heap) && heap != -20 {
 					return false
 				}
 				continue
 			}
 			if uint64(heap) >= uint64(groupBase) && uint64(heap) < uint64(groupLimit) {
+				if exact {
+					return false
+				}
 				continue
 			}
 			if uint64(heap) >= uint64(owner) || kinds[heap] != 0x5f && kinds[heap] != 0x5e {
