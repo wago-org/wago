@@ -1,0 +1,2599 @@
+{
+  "native": {
+    "source": "7be64a44af3016874ad537b7731bb019d4ee84b7",
+    "baseline": "36ed0ba650cecfae00a1afdbeb9108317de981dd",
+    "peer": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+    "versions": {
+      "baseline": [
+        "36ed0ba650cecfae00a1afdbeb9108317de981dd/source-18e97394f9a37e3f1ef02422fd3664ac16d2e2d80aa196920b32382f54c4e1d5"
+      ],
+      "candidate": [
+        "7be64a44af3016874ad537b7731bb019d4ee84b7/source-38821fe6630fad9d6113e4ffbd60ce6cffd23907cec682ca634a52dafce4a2f6"
+      ],
+      "peer": [
+        "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501"
+      ]
+    },
+    "captures": 798,
+    "phaseRows": 3192,
+    "cohorts": {
+      "main": {
+        "compile": {
+          "count": 148,
+          "geometricMeanRatio": 0.9944726710923583,
+          "rssGeometricMeanRatio": 0.9998228777379181,
+          "peerGeometricMeanRatio": 0.0005210656392633543
+        },
+        "instantiate": {
+          "count": 148,
+          "geometricMeanRatio": 0.9520096100536596,
+          "rssGeometricMeanRatio": 1.0000306140129576,
+          "peerGeometricMeanRatio": 0.306533345809873
+        },
+        "first-call": {
+          "count": 148,
+          "geometricMeanRatio": 0.998923736743202,
+          "rssGeometricMeanRatio": 1.0002265506218626,
+          "peerGeometricMeanRatio": 1.1969220038484594
+        },
+        "steady": {
+          "count": 148,
+          "geometricMeanRatio": 0.9956677797661002,
+          "rssGeometricMeanRatio": 1.0002586257171167,
+          "peerGeometricMeanRatio": 1.2373986196958404
+        }
+      },
+      "features": {
+        "compile": {
+          "count": 107,
+          "geometricMeanRatio": 1.0072576819543255,
+          "rssGeometricMeanRatio": 1.0000878853839412,
+          "peerGeometricMeanRatio": 0.0002871746692574721
+        },
+        "instantiate": {
+          "count": 110,
+          "geometricMeanRatio": 0.9859054963414943,
+          "rssGeometricMeanRatio": 0.9993947765821647,
+          "peerGeometricMeanRatio": 9.333413324356048
+        },
+        "first-call": {
+          "count": 110,
+          "geometricMeanRatio": 0.8300408948650437,
+          "rssGeometricMeanRatio": 1.0003377712710064,
+          "peerGeometricMeanRatio": 0.9563852062815862
+        },
+        "steady": {
+          "count": 107,
+          "geometricMeanRatio": 0.8236659012076981,
+          "rssGeometricMeanRatio": 1.0020087334464471,
+          "peerGeometricMeanRatio": 0.9947058986131581
+        }
+      },
+      "all": {
+        "compile": {
+          "count": 255,
+          "geometricMeanRatio": 0.9998174818716498,
+          "rssGeometricMeanRatio": 0.99993406847267,
+          "peerGeometricMeanRatio": 0.0004443473872018761
+        },
+        "instantiate": {
+          "count": 258,
+          "geometricMeanRatio": 0.9663164558046626,
+          "rssGeometricMeanRatio": 0.9997594710798773,
+          "peerGeometricMeanRatio": 0.7639654432710719
+        },
+        "first-call": {
+          "count": 258,
+          "geometricMeanRatio": 0.9230798279318463,
+          "rssGeometricMeanRatio": 1.0002739687661946,
+          "peerGeometricMeanRatio": 1.1272478225971998
+        },
+        "steady": {
+          "count": 255,
+          "geometricMeanRatio": 0.9195050926458016,
+          "rssGeometricMeanRatio": 1.000992612124299,
+          "peerGeometricMeanRatio": 1.167247791091752
+        }
+      }
+    },
+    "focusedSteady": [
+      {
+        "order": "capture",
+        "workload": "features/core-num/integer-rotate-popcount/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 152.86017536,
+        "currentNs": 153.39222272,
+        "peerNs": 6455.657942670885,
+        "ratio": 1.0034806146123212,
+        "peerRatio": 0.02376089688799983,
+        "beforeCode": 287,
+        "code": 287,
+        "beforeRSS": 37212160,
+        "rss": 37154816
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/exported-read/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 160.8790935895204,
+        "currentNs": 160.59310044590532,
+        "peerNs": 73.48602265118188,
+        "ratio": 0.9982223100762564,
+        "peerRatio": 2.185355726873354,
+        "beforeCode": 287,
+        "code": 287,
+        "beforeRSS": 34717696,
+        "rss": 41467904
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/mutable-accumulate/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 218.12745486305099,
+        "currentNs": 218.71883552682758,
+        "peerNs": 73.93291765366588,
+        "ratio": 1.0027111702382805,
+        "peerRatio": 2.9583417301533026,
+        "beforeCode": 393,
+        "code": 393,
+        "beforeRSS": 29085696,
+        "rss": 28897280
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/i64-global-split/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 172.39220040147111,
+        "currentNs": 172.21748559283228,
+        "peerNs": 74.25895499283601,
+        "ratio": 0.9989865271849193,
+        "peerRatio": 2.319147712345893,
+        "beforeCode": 361,
+        "code": 361,
+        "beforeRSS": 34983936,
+        "rss": 34402304
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/f64-global-scale/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 295415.6478873239,
+        "currentNs": 295372.9579439252,
+        "peerNs": 167973.09308510637,
+        "ratio": 0.9998554919358402,
+        "peerRatio": 1.7584540030722038,
+        "beforeCode": 431,
+        "code": 431,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 188.79723846930213,
+        "currentNs": 187.71492758733902,
+        "peerNs": 73.52917797665762,
+        "ratio": 0.9942673373258101,
+        "peerRatio": 2.552931132276911,
+        "beforeCode": 393,
+        "code": 393,
+        "beforeRSS": 31420416,
+        "rss": 38461440
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/dependent-read-write/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 135955.99356223177,
+        "currentNs": 135920.91276595744,
+        "peerNs": 112631.00538599641,
+        "ratio": 0.9997419694758932,
+        "peerRatio": 1.20678060450712,
+        "beforeCode": 329,
+        "code": 329,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 114681.35855855855,
+        "currentNs": 114664.98214285714,
+        "peerNs": 19506.25865209472,
+        "ratio": 0.9998572007176472,
+        "peerRatio": 5.878368793727834,
+        "beforeCode": 377,
+        "code": 377,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/f32-rounding-state/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 696990.2527472527,
+        "currentNs": 697843.7252747252,
+        "peerNs": 165790.692513369,
+        "ratio": 1.0012245114248133,
+        "peerRatio": 4.209185176172979,
+        "beforeCode": 335,
+        "code": 335,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "capture",
+        "workload": "features/sign-extension/i32-extend8/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 60201.44086021505,
+        "currentNs": 553.5447038354671,
+        "peerNs": 6512.951016260163,
+        "ratio": 0.009194874672863266,
+        "peerRatio": 0.08499138139585165,
+        "beforeCode": 287,
+        "code": 527,
+        "beforeRSS": 18239488,
+        "rss": 22409216
+      },
+      {
+        "order": "capture",
+        "workload": "features/sign-extension/i32-extend16/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 68869.4502617801,
+        "currentNs": 1883.0681963218658,
+        "peerNs": 6748.2210750399145,
+        "ratio": 0.027342576268056785,
+        "peerRatio": 0.27904660730320363,
+        "beforeCode": 287,
+        "code": 527,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "capture",
+        "workload": "features/sign-extension/i64-extend8/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 69632.71413043479,
+        "currentNs": 1445.3655456570157,
+        "peerNs": 6756.238894792774,
+        "ratio": 0.020756989925016883,
+        "peerRatio": 0.21393049715441534,
+        "beforeCode": 287,
+        "code": 527,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "capture",
+        "workload": "features/sign-extension/i64-extend16/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 69860.00460299195,
+        "currentNs": 1146.3315482332846,
+        "peerNs": 6743.07945176143,
+        "ratio": 0.01640898185947428,
+        "peerRatio": 0.17000119254620963,
+        "beforeCode": 287,
+        "code": 527,
+        "beforeRSS": 18370560,
+        "rss": 18485248
+      },
+      {
+        "order": "capture",
+        "workload": "features/sign-extension/i64-extend32-high-word/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 115295.29009009009,
+        "currentNs": 1527.9375456623695,
+        "peerNs": 6704.4663744253185,
+        "ratio": 0.013252384763232402,
+        "peerRatio": 0.22789845758505106,
+        "beforeCode": 287,
+        "code": 751,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "capture",
+        "workload": "features/threads/host-identity/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 440599.1438848921,
+        "currentNs": 466368.9716312057,
+        "peerNs": 626683.1089108911,
+        "ratio": 1.0584881475689976,
+        "peerRatio": 0.7441862801148503,
+        "beforeCode": 783,
+        "code": 783,
+        "beforeRSS": 18108416,
+        "rss": 18239488
+      },
+      {
+        "order": "capture",
+        "workload": "features/threads/host-opaque-identity/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 6530452.6,
+        "currentNs": 6449398.6,
+        "peerNs": 627405.0396039604,
+        "ratio": 0.9875883028383056,
+        "peerRatio": 10.279481663186962,
+        "beforeCode": 783,
+        "code": 783,
+        "beforeRSS": 18235392,
+        "rss": 18239488
+      },
+      {
+        "order": "capture",
+        "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 757291.3536585366,
+        "currentNs": 757437.626506024,
+        "peerNs": 1127356.267857143,
+        "ratio": 1.00019315267074,
+        "peerRatio": 0.6718706837420143,
+        "beforeCode": 1199,
+        "code": 1199,
+        "beforeRSS": 18370560,
+        "rss": 18239488
+      },
+      {
+        "order": "capture",
+        "workload": "applications/audio-autocorrelation",
+        "phase": "steady",
+        "beforeNs": 99267,
+        "currentNs": 112332,
+        "peerNs": 10179,
+        "ratio": 1.13161473601499,
+        "peerRatio": 11.035661656351312,
+        "beforeCode": 911,
+        "code": 911,
+        "beforeRSS": 18501632,
+        "rss": 18501632
+      },
+      {
+        "order": "capture",
+        "workload": "mechanisms/wasm-host-wasm-loop",
+        "phase": "steady",
+        "beforeNs": 1.78459,
+        "currentNs": 1.566138,
+        "peerNs": 2.154388,
+        "ratio": 0.8775898105447191,
+        "peerRatio": 0.726952619491011,
+        "beforeCode": 597,
+        "code": 597,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "repeat",
+        "workload": "features/core-num/integer-rotate-popcount/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 152.516416,
+        "currentNs": 152.14764288,
+        "peerNs": 6467.440754568677,
+        "ratio": 0.9975820758861788,
+        "peerRatio": 0.023525169948023273,
+        "beforeCode": 287,
+        "code": 287,
+        "beforeRSS": 37605376,
+        "rss": 37060608
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/exported-read/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 160.58889216,
+        "currentNs": 160.49889568282705,
+        "peerNs": 73.9084391132487,
+        "ratio": 0.9994395846688868,
+        "peerRatio": 2.1715909253190584,
+        "beforeCode": 287,
+        "code": 287,
+        "beforeRSS": 37605376,
+        "rss": 33222656
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/mutable-accumulate/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 218.38310933405012,
+        "currentNs": 219.20431833461814,
+        "peerNs": 73.74753533219717,
+        "ratio": 1.0037604052944948,
+        "peerRatio": 2.9723612775289117,
+        "beforeCode": 393,
+        "code": 393,
+        "beforeRSS": 29741056,
+        "rss": 28422144
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/i64-global-split/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 171.88974520697073,
+        "currentNs": 172.86805309556107,
+        "peerNs": 73.62519997984002,
+        "ratio": 1.0056914848958114,
+        "peerRatio": 2.3479468054809445,
+        "beforeCode": 361,
+        "code": 361,
+        "beforeRSS": 34852864,
+        "rss": 77852672
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/f64-global-scale/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 295536.5117370892,
+        "currentNs": 295615.676056338,
+        "peerNs": 168079.56451612903,
+        "ratio": 1.000267866460166,
+        "peerRatio": 1.75878416217559,
+        "beforeCode": 431,
+        "code": 431,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 188.51619708890158,
+        "currentNs": 188.5302692218831,
+        "peerNs": 73.90204263836588,
+        "ratio": 1.0000746468112491,
+        "peerRatio": 2.5510833326277846,
+        "beforeCode": 393,
+        "code": 393,
+        "beforeRSS": 30670848,
+        "rss": 32051200
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/dependent-read-write/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 135931.50211864407,
+        "currentNs": 136015.4525862069,
+        "peerNs": 112735.06283662477,
+        "ratio": 1.0006175939076252,
+        "peerRatio": 1.2065053157713672,
+        "beforeCode": 329,
+        "code": 329,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 114658.03243243243,
+        "currentNs": 114671.96648044692,
+        "peerNs": 19474.84610724023,
+        "ratio": 1.0001215270113997,
+        "peerRatio": 5.888209121088506,
+        "beforeCode": 377,
+        "code": 377,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/f32-rounding-state/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 695960.7142857143,
+        "currentNs": 696144.1428571428,
+        "peerNs": 164816.45212765958,
+        "ratio": 1.0002635616747662,
+        "peerRatio": 4.2237539630930785,
+        "beforeCode": 335,
+        "code": 335,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "repeat",
+        "workload": "features/sign-extension/i32-extend8/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 60470.17281728173,
+        "currentNs": 553.905043842565,
+        "peerNs": 6515.961750869298,
+        "ratio": 0.009159971239312628,
+        "peerRatio": 0.08500741180205182,
+        "beforeCode": 287,
+        "code": 527,
+        "beforeRSS": 18239488,
+        "rss": 22540288
+      },
+      {
+        "order": "repeat",
+        "workload": "features/sign-extension/i32-extend16/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 69503.82194616977,
+        "currentNs": 1894.6414229848829,
+        "peerNs": 6733.350255427842,
+        "ratio": 0.02725952861199877,
+        "peerRatio": 0.28138168238873174,
+        "beforeCode": 287,
+        "code": 527,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "repeat",
+        "workload": "features/sign-extension/i64-extend8/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 69820.78486486487,
+        "currentNs": 1453.2790040376851,
+        "peerNs": 6716.088008565311,
+        "ratio": 0.020814418039706146,
+        "peerRatio": 0.2163877248458116,
+        "beforeCode": 287,
+        "code": 527,
+        "beforeRSS": 18235392,
+        "rss": 18239488
+      },
+      {
+        "order": "repeat",
+        "workload": "features/sign-extension/i64-extend16/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 70090.96195652174,
+        "currentNs": 1135.5632625714084,
+        "peerNs": 6722.786614005124,
+        "ratio": 0.016201279464188433,
+        "peerRatio": 0.1689125845829714,
+        "beforeCode": 287,
+        "code": 527,
+        "beforeRSS": 18235392,
+        "rss": 18239488
+      },
+      {
+        "order": "repeat",
+        "workload": "features/sign-extension/i64-extend32-high-word/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 115081.08050089446,
+        "currentNs": 1529.7971335128896,
+        "peerNs": 6730.963384779137,
+        "ratio": 0.01329321141976069,
+        "peerRatio": 0.227277589560545,
+        "beforeCode": 287,
+        "code": 751,
+        "beforeRSS": 18239488,
+        "rss": 18739200
+      },
+      {
+        "order": "repeat",
+        "workload": "features/threads/host-identity/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 440406.823943662,
+        "currentNs": 440310.5944055944,
+        "peerNs": 627458.6831683168,
+        "ratio": 0.9997814985308222,
+        "peerRatio": 0.7017363951077562,
+        "beforeCode": 783,
+        "code": 783,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "repeat",
+        "workload": "features/threads/host-opaque-identity/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 6838283.2,
+        "currentNs": 6442132.4,
+        "peerNs": 627494.6831683168,
+        "ratio": 0.9420686759507123,
+        "peerRatio": 10.266433442069479,
+        "beforeCode": 783,
+        "code": 783,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      },
+      {
+        "order": "repeat",
+        "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 757430.3536585366,
+        "currentNs": 758374.6626506024,
+        "peerNs": 1127954.517857143,
+        "ratio": 1.0012467271578234,
+        "peerRatio": 0.6723450730011187,
+        "beforeCode": 1199,
+        "code": 1199,
+        "beforeRSS": 18239488,
+        "rss": 18370560
+      },
+      {
+        "order": "repeat",
+        "workload": "applications/audio-autocorrelation",
+        "phase": "steady",
+        "beforeNs": 110890,
+        "currentNs": 99247,
+        "peerNs": 10279,
+        "ratio": 0.8950040580755704,
+        "peerRatio": 9.655316665045238,
+        "beforeCode": 911,
+        "code": 911,
+        "beforeRSS": 18501632,
+        "rss": 18501632
+      },
+      {
+        "order": "repeat",
+        "workload": "mechanisms/wasm-host-wasm-loop",
+        "phase": "steady",
+        "beforeNs": 1.578791,
+        "currentNs": 1.585784,
+        "peerNs": 2.143216,
+        "ratio": 1.0044293386521712,
+        "peerRatio": 0.739908623302551,
+        "beforeCode": 597,
+        "code": 597,
+        "beforeRSS": 18239488,
+        "rss": 18239488
+      }
+    ],
+    "rechecksSteady": [
+      {
+        "order": "capture",
+        "workload": "applications/audio-autocorrelation",
+        "phase": "steady",
+        "originalNs": 99317,
+        "beforeNs": 101581,
+        "currentNs": 110809,
+        "ratio": 1.090843760151997,
+        "originalRatio": 1.115710301358277,
+        "beforeRSS": 18501632,
+        "rss": 18501632,
+        "originalCode": 911,
+        "beforeCode": 911,
+        "code": 911
+      },
+      {
+        "order": "capture",
+        "workload": "applications/map-point-segment",
+        "phase": "steady",
+        "originalNs": 45486,
+        "beforeNs": 42350,
+        "currentNs": 42841,
+        "ratio": 1.0115938606847699,
+        "originalRatio": 0.9418502396341731,
+        "beforeRSS": 18501632,
+        "rss": 18501632,
+        "originalCode": 408,
+        "beforeCode": 408,
+        "code": 408
+      },
+      {
+        "order": "capture",
+        "workload": "applications/ml-max-pooling",
+        "phase": "steady",
+        "originalNs": 35888,
+        "beforeNs": 35798,
+        "currentNs": 35688,
+        "ratio": 0.9969272026370188,
+        "originalRatio": 0.9944271065537227,
+        "beforeRSS": 18501632,
+        "rss": 18501632,
+        "originalCode": 757,
+        "beforeCode": 757,
+        "code": 757
+      },
+      {
+        "order": "capture",
+        "workload": "applications/ray-box",
+        "phase": "steady",
+        "originalNs": 42220,
+        "beforeNs": 43331,
+        "currentNs": 39104,
+        "ratio": 0.9024485933857977,
+        "originalRatio": 0.9261961155850308,
+        "beforeRSS": 18501632,
+        "rss": 18501632,
+        "originalCode": 897,
+        "beforeCode": 897,
+        "code": 897
+      },
+      {
+        "order": "capture",
+        "workload": "applications/stats-quickselect",
+        "phase": "steady",
+        "originalNs": 20047,
+        "beforeNs": 19928,
+        "currentNs": 20879,
+        "ratio": 1.0477217984745082,
+        "originalRatio": 1.0415024691973862,
+        "beforeRSS": 18501632,
+        "rss": 18501632,
+        "originalCode": 882,
+        "beforeCode": 882,
+        "code": 882
+      },
+      {
+        "order": "capture",
+        "workload": "applications/stencil-wave-equation",
+        "phase": "steady",
+        "originalNs": 119446,
+        "beforeNs": 115979,
+        "currentNs": 127752,
+        "ratio": 1.101509756076531,
+        "originalRatio": 1.0695376990439194,
+        "beforeRSS": 18370560,
+        "rss": 18501632,
+        "originalCode": 2204,
+        "beforeCode": 2204,
+        "code": 2204
+      },
+      {
+        "order": "capture",
+        "workload": "applications/vision-dilation",
+        "phase": "steady",
+        "originalNs": 75242,
+        "beforeNs": 79700,
+        "currentNs": 75252,
+        "ratio": 0.9441907151819322,
+        "originalRatio": 1.00013290449483,
+        "beforeRSS": 18497536,
+        "rss": 18501632,
+        "originalCode": 1314,
+        "beforeCode": 1314,
+        "code": 1314
+      },
+      {
+        "order": "capture",
+        "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 757629.2409638554,
+        "beforeNs": 815566.756097561,
+        "currentNs": 757411.843373494,
+        "ratio": 0.9286938655980354,
+        "originalRatio": 0.9997130554384558,
+        "beforeRSS": 18370560,
+        "rss": 18239488,
+        "originalCode": 1199,
+        "beforeCode": 1199,
+        "code": 1199
+      },
+      {
+        "order": "capture",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 188.10916011041257,
+        "beforeNs": 188.238545301993,
+        "currentNs": 187.8965344,
+        "ratio": 0.9981830984645343,
+        "originalRatio": 0.9988696684930826,
+        "beforeRSS": 38105088,
+        "rss": 31911936,
+        "originalCode": 393,
+        "beforeCode": 393,
+        "code": 393
+      },
+      {
+        "order": "capture",
+        "workload": "features/core-glb/immutable-constant/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 160.58341674645314,
+        "beforeNs": 161.07668224,
+        "currentNs": 160.78502263034207,
+        "ratio": 0.9981893120369628,
+        "originalRatio": 1.0012554589257947,
+        "beforeRSS": 37343232,
+        "rss": 32817152,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 287
+      },
+      {
+        "order": "capture",
+        "workload": "features/core-num/integer-multiply-add/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 158.13597517190357,
+        "beforeNs": 159.61469952,
+        "currentNs": 159.61362498912004,
+        "ratio": 0.9999932679704113,
+        "originalRatio": 1.0093441724162397,
+        "beforeRSS": 36294656,
+        "rss": 34299904,
+        "originalCode": 303,
+        "beforeCode": 303,
+        "code": 303
+      },
+      {
+        "order": "capture",
+        "workload": "features/core-num/integer-rotate-popcount/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 60564.141711229946,
+        "beforeNs": 152.41862912,
+        "currentNs": 153.0740736,
+        "ratio": 1.0043002911375352,
+        "originalRatio": 0.002527470369015675,
+        "beforeRSS": 37081088,
+        "rss": 37281792,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 287
+      },
+      {
+        "order": "capture",
+        "workload": "features/core-num/signed-zero-bits/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 147.4533692373046,
+        "beforeNs": 147.03192957445634,
+        "currentNs": 146.9434197937706,
+        "ratio": 0.9993980234025228,
+        "originalRatio": 0.9965416223028901,
+        "beforeRSS": 39010304,
+        "rss": 38793216,
+        "originalCode": 271,
+        "beforeCode": 271,
+        "code": 271
+      },
+      {
+        "order": "capture",
+        "workload": "features/gc/array-allocation-access/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 38162578.5,
+        "beforeNs": 36245274.5,
+        "currentNs": 36527427,
+        "ratio": 1.0077845320222365,
+        "originalRatio": 0.9571530131277686,
+        "beforeRSS": 70545408,
+        "rss": 70750208,
+        "originalCode": 3316,
+        "beforeCode": 3316,
+        "code": 3316
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/exported-read/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 160.6921239881626,
+        "beforeNs": 161.21763580019527,
+        "currentNs": 160.75332927147707,
+        "ratio": 0.9971200016275289,
+        "originalRatio": 1.0003808853962188,
+        "beforeRSS": 37081088,
+        "rss": 41086976,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 287
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 188.91576480173157,
+        "beforeNs": 188.23537762807496,
+        "currentNs": 188.29939686515803,
+        "ratio": 1.0003401020461178,
+        "originalRatio": 0.9967373398550384,
+        "beforeRSS": 30650368,
+        "rss": 30846976,
+        "originalCode": 393,
+        "beforeCode": 393,
+        "code": 393
+      },
+      {
+        "order": "capture",
+        "workload": "features/saturating-float-to-int/f32-overflow-clamp/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 148.48018432,
+        "beforeNs": 147.23065901547278,
+        "currentNs": 147.866682506654,
+        "ratio": 1.004319912003616,
+        "originalRatio": 0.9958681233044283,
+        "beforeRSS": 38195200,
+        "rss": 37613568,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 287
+      },
+      {
+        "order": "capture",
+        "workload": "features/sign-extension/i32-extend16/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 69016.21988950277,
+        "beforeNs": 69127.77225672879,
+        "currentNs": 1883.2261124325578,
+        "ratio": 0.027242684827721287,
+        "originalRatio": 0.027286717751967067,
+        "beforeRSS": 18239488,
+        "rss": 18239488,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 527
+      },
+      {
+        "order": "capture",
+        "workload": "features/sign-extension/i32-extend8/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 60271.83243727599,
+        "beforeNs": 60393.35356454721,
+        "currentNs": 550.31140772287,
+        "ratio": 0.009112118722380736,
+        "originalRatio": 0.009130490736208675,
+        "beforeRSS": 18239488,
+        "rss": 22343680,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 527
+      },
+      {
+        "order": "capture",
+        "workload": "features/sign-extension/i64-extend16/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 69325.30054054054,
+        "beforeNs": 69171.83351351351,
+        "currentNs": 1136.1607482897243,
+        "ratio": 0.016425193472249976,
+        "originalRatio": 0.01638883264018902,
+        "beforeRSS": 18239488,
+        "rss": 18411520,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 527
+      },
+      {
+        "order": "capture",
+        "workload": "features/sign-extension/i64-extend32-high-word/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 114462.60035842293,
+        "beforeNs": 114469.65280289331,
+        "currentNs": 1522.1959652141122,
+        "ratio": 0.013297812371591621,
+        "originalRatio": 0.013298631696707724,
+        "beforeRSS": 18239488,
+        "rss": 18239488,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 751
+      },
+      {
+        "order": "capture",
+        "workload": "features/sign-extension/i64-extend8/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 69672.07710011507,
+        "beforeNs": 69358.83459459459,
+        "currentNs": 1443.3057873485868,
+        "ratio": 0.020809256611429128,
+        "originalRatio": 0.02071569913546044,
+        "beforeRSS": 18239488,
+        "rss": 18239488,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 527
+      },
+      {
+        "order": "capture",
+        "workload": "features/threads/host-identity/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 440044.15972222225,
+        "beforeNs": 440405.5734265734,
+        "currentNs": 440321.7762237762,
+        "ratio": 0.9998097271972622,
+        "originalRatio": 1.0006308832770994,
+        "beforeRSS": 18239488,
+        "rss": 18235392,
+        "originalCode": 783,
+        "beforeCode": 783,
+        "code": 783
+      },
+      {
+        "order": "capture",
+        "workload": "features/threads/host-opaque-identity/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 6406443.7,
+        "beforeNs": 6413410.9,
+        "currentNs": 6453463.4,
+        "ratio": 1.0062451167755366,
+        "originalRatio": 1.0073394385718242,
+        "beforeRSS": 18239488,
+        "rss": 18239488,
+        "originalCode": 783,
+        "beforeCode": 783,
+        "code": 783
+      },
+      {
+        "order": "capture",
+        "workload": "features/wide-arithmetic/mul-wide-u/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 423073.1589403974,
+        "beforeNs": 423116.74834437086,
+        "currentNs": 422672.5298013245,
+        "ratio": 0.9989501277253038,
+        "originalRatio": 0.9990530499734932,
+        "beforeRSS": 18239488,
+        "rss": 18239488,
+        "originalCode": 367,
+        "beforeCode": 367,
+        "code": 367
+      },
+      {
+        "order": "capture",
+        "workload": "wago/many_funcs/run",
+        "phase": "steady",
+        "originalNs": 40,
+        "beforeNs": 40,
+        "currentNs": 41,
+        "ratio": 1.025,
+        "originalRatio": 1.025,
+        "beforeRSS": 19288064,
+        "rss": 19288064,
+        "originalCode": 8363,
+        "beforeCode": 8363,
+        "code": 8363
+      },
+      {
+        "order": "capture",
+        "workload": "wago/tiny/add",
+        "phase": "steady",
+        "originalNs": 50,
+        "beforeNs": 40,
+        "currentNs": 40,
+        "ratio": 1.0,
+        "originalRatio": 0.8,
+        "beforeRSS": 18501632,
+        "rss": 18501632,
+        "originalCode": 96,
+        "beforeCode": 96,
+        "code": 96
+      },
+      {
+        "order": "repeat",
+        "workload": "applications/audio-autocorrelation",
+        "phase": "steady",
+        "originalNs": 103685,
+        "beforeNs": 112632,
+        "currentNs": 99157,
+        "ratio": 0.8803625967753391,
+        "originalRatio": 0.9563292665284274,
+        "beforeRSS": 18632704,
+        "rss": 18501632,
+        "originalCode": 911,
+        "beforeCode": 911,
+        "code": 911
+      },
+      {
+        "order": "repeat",
+        "workload": "applications/map-point-segment",
+        "phase": "steady",
+        "originalNs": 40236,
+        "beforeNs": 40116,
+        "currentNs": 43131,
+        "ratio": 1.0751570445707448,
+        "originalRatio": 1.0719504920966298,
+        "beforeRSS": 18501632,
+        "rss": 18501632,
+        "originalCode": 408,
+        "beforeCode": 408,
+        "code": 408
+      },
+      {
+        "order": "repeat",
+        "workload": "applications/ml-max-pooling",
+        "phase": "steady",
+        "originalNs": 40296,
+        "beforeNs": 35707,
+        "currentNs": 42089,
+        "ratio": 1.1787324614221302,
+        "originalRatio": 1.0444957315862617,
+        "beforeRSS": 18370560,
+        "rss": 18497536,
+        "originalCode": 757,
+        "beforeCode": 757,
+        "code": 757
+      },
+      {
+        "order": "repeat",
+        "workload": "applications/ray-box",
+        "phase": "steady",
+        "originalNs": 43532,
+        "beforeNs": 39485,
+        "currentNs": 40156,
+        "ratio": 1.0169937951120678,
+        "originalRatio": 0.9224478544518975,
+        "beforeRSS": 18501632,
+        "rss": 18501632,
+        "originalCode": 897,
+        "beforeCode": 897,
+        "code": 897
+      },
+      {
+        "order": "repeat",
+        "workload": "applications/stats-quickselect",
+        "phase": "steady",
+        "originalNs": 19927,
+        "beforeNs": 19868,
+        "currentNs": 20789,
+        "ratio": 1.04635594926515,
+        "originalRatio": 1.0432578913032569,
+        "beforeRSS": 18501632,
+        "rss": 18501632,
+        "originalCode": 882,
+        "beforeCode": 882,
+        "code": 882
+      },
+      {
+        "order": "repeat",
+        "workload": "applications/stencil-wave-equation",
+        "phase": "steady",
+        "originalNs": 128262,
+        "beforeNs": 118694,
+        "currentNs": 128032,
+        "ratio": 1.0786728899523144,
+        "originalRatio": 0.9982067954655315,
+        "beforeRSS": 18501632,
+        "rss": 18501632,
+        "originalCode": 2204,
+        "beforeCode": 2204,
+        "code": 2204
+      },
+      {
+        "order": "repeat",
+        "workload": "applications/vision-dilation",
+        "phase": "steady",
+        "originalNs": 79790,
+        "beforeNs": 75563,
+        "currentNs": 75563,
+        "ratio": 1.0,
+        "originalRatio": 0.9470234365208673,
+        "beforeRSS": 18501632,
+        "rss": 18497536,
+        "originalCode": 1314,
+        "beforeCode": 1314,
+        "code": 1314
+      },
+      {
+        "order": "repeat",
+        "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 757273.0120481928,
+        "beforeNs": 757356.3012048192,
+        "currentNs": 757245.2530120482,
+        "ratio": 0.9998533739105433,
+        "originalRatio": 0.9999633434234378,
+        "beforeRSS": 18239488,
+        "rss": 18239488,
+        "originalCode": 1199,
+        "beforeCode": 1199,
+        "code": 1199
+      },
+      {
+        "order": "repeat",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 188.70566168512957,
+        "beforeNs": 187.87365784257693,
+        "currentNs": 187.79114936099322,
+        "ratio": 0.9995608299613091,
+        "originalRatio": 0.9951537631888211,
+        "beforeRSS": 30756864,
+        "rss": 30908416,
+        "originalCode": 393,
+        "beforeCode": 393,
+        "code": 393
+      },
+      {
+        "order": "repeat",
+        "workload": "features/core-glb/immutable-constant/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 161.00965053529464,
+        "beforeNs": 161.0554606580207,
+        "currentNs": 160.95348992,
+        "ratio": 0.9993668594805536,
+        "originalRatio": 0.9996511972101801,
+        "beforeRSS": 41406464,
+        "rss": 37351424,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 287
+      },
+      {
+        "order": "repeat",
+        "workload": "features/core-num/integer-multiply-add/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 160.8195475019584,
+        "beforeNs": 160.9307326573244,
+        "currentNs": 160.0662372704326,
+        "ratio": 0.9946281522949839,
+        "originalRatio": 0.9953158043084493,
+        "beforeRSS": 32841728,
+        "rss": 41545728,
+        "originalCode": 303,
+        "beforeCode": 303,
+        "code": 303
+      },
+      {
+        "order": "repeat",
+        "workload": "features/core-num/integer-rotate-popcount/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 61213.24594594594,
+        "beforeNs": 152.96462592,
+        "currentNs": 152.8722688,
+        "ratio": 0.9993962190967715,
+        "originalRatio": 0.002497372365043231,
+        "beforeRSS": 37265408,
+        "rss": 37351424,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 287
+      },
+      {
+        "order": "repeat",
+        "workload": "features/core-num/signed-zero-bits/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 147.2566029947176,
+        "beforeNs": 147.75778917054032,
+        "currentNs": 147.10201671838664,
+        "ratio": 0.9955618417422529,
+        "originalRatio": 0.9989502251635092,
+        "beforeRSS": 38916096,
+        "rss": 36106240,
+        "originalCode": 271,
+        "beforeCode": 271,
+        "code": 271
+      },
+      {
+        "order": "repeat",
+        "workload": "features/gc/array-allocation-access/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 37217042.5,
+        "beforeNs": 36543842.5,
+        "currentNs": 36352406,
+        "ratio": 0.9947614567351531,
+        "originalRatio": 0.9767677267746355,
+        "beforeRSS": 70766592,
+        "rss": 70778880,
+        "originalCode": 3316,
+        "beforeCode": 3316,
+        "code": 3316
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/exported-read/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 161.11574114370268,
+        "beforeNs": 161.0977256510192,
+        "currentNs": 160.86477056,
+        "ratio": 0.9985539517080221,
+        "originalRatio": 0.9984422963149279,
+        "beforeRSS": 37093376,
+        "rss": 41398272,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 287
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 188.36116042657198,
+        "beforeNs": 188.6377984,
+        "currentNs": 188.3191568272189,
+        "ratio": 0.9983108286065477,
+        "originalRatio": 0.9997770049873448,
+        "beforeRSS": 31838208,
+        "rss": 30658560,
+        "originalCode": 393,
+        "beforeCode": 393,
+        "code": 393
+      },
+      {
+        "order": "repeat",
+        "workload": "features/saturating-float-to-int/f32-overflow-clamp/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 148.708796232963,
+        "beforeNs": 148.78800096959924,
+        "currentNs": 147.9863776108979,
+        "ratio": 0.9946123117894089,
+        "originalRatio": 0.9951420585710788,
+        "beforeRSS": 39387136,
+        "rss": 36237312,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 287
+      },
+      {
+        "order": "repeat",
+        "workload": "features/sign-extension/i32-extend16/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 64337.830227743274,
+        "beforeNs": 64879.85966850829,
+        "currentNs": 1891.6798967696004,
+        "ratio": 0.029156658267061472,
+        "originalRatio": 0.02940229550908735,
+        "beforeRSS": 18239488,
+        "rss": 18239488,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 527
+      },
+      {
+        "order": "repeat",
+        "workload": "features/sign-extension/i32-extend8/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 60399.9396939694,
+        "beforeNs": 60407.82443438914,
+        "currentNs": 551.0371774563522,
+        "ratio": 0.009121950386656471,
+        "originalRatio": 0.009123141186039466,
+        "beforeRSS": 18239488,
+        "rss": 21884928,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 527
+      },
+      {
+        "order": "repeat",
+        "workload": "features/sign-extension/i64-extend16/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 70146.34677419355,
+        "beforeNs": 69726.41297297298,
+        "currentNs": 1138.7584356910913,
+        "ratio": 0.01633180866671704,
+        "originalRatio": 0.01623403766637829,
+        "beforeRSS": 18239488,
+        "rss": 18239488,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 527
+      },
+      {
+        "order": "repeat",
+        "workload": "features/sign-extension/i64-extend32-high-word/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 115228.843575419,
+        "beforeNs": 115248.55992844365,
+        "currentNs": 1536.8298178218756,
+        "ratio": 0.013334915583987111,
+        "originalRatio": 0.013337197268807072,
+        "beforeRSS": 18239488,
+        "rss": 18239488,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 751
+      },
+      {
+        "order": "repeat",
+        "workload": "features/sign-extension/i64-extend8/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 70037.85326086957,
+        "beforeNs": 69578.69195402299,
+        "currentNs": 1462.1458375992538,
+        "ratio": 0.021014276016649285,
+        "originalRatio": 0.02087650848110961,
+        "beforeRSS": 18239488,
+        "rss": 18239488,
+        "originalCode": 287,
+        "beforeCode": 287,
+        "code": 527
+      },
+      {
+        "order": "repeat",
+        "workload": "features/threads/host-identity/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 440532.37762237765,
+        "beforeNs": 466540.1971830986,
+        "currentNs": 442676.0699300699,
+        "ratio": 0.9488487221527389,
+        "originalRatio": 1.0048661401898813,
+        "beforeRSS": 18239488,
+        "rss": 18239488,
+        "originalCode": 783,
+        "beforeCode": 783,
+        "code": 783
+      },
+      {
+        "order": "repeat",
+        "workload": "features/threads/host-opaque-identity/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 6403660.3,
+        "beforeNs": 6424252.2,
+        "currentNs": 6452899.2,
+        "ratio": 1.0044591960446385,
+        "originalRatio": 1.007689180514463,
+        "beforeRSS": 18239488,
+        "rss": 18370560,
+        "originalCode": 783,
+        "beforeCode": 783,
+        "code": 783
+      },
+      {
+        "order": "repeat",
+        "workload": "features/wide-arithmetic/mul-wide-u/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 422726.72,
+        "beforeNs": 422531.39735099336,
+        "currentNs": 422878.2733333333,
+        "ratio": 1.000820947234962,
+        "originalRatio": 1.0003585137304152,
+        "beforeRSS": 18370560,
+        "rss": 18239488,
+        "originalCode": 367,
+        "beforeCode": 367,
+        "code": 367
+      },
+      {
+        "order": "repeat",
+        "workload": "wago/many_funcs/run",
+        "phase": "steady",
+        "originalNs": 50,
+        "beforeNs": 41,
+        "currentNs": 50,
+        "ratio": 1.2195121951219512,
+        "originalRatio": 1.0,
+        "beforeRSS": 19288064,
+        "rss": 19288064,
+        "originalCode": 8363,
+        "beforeCode": 8363,
+        "code": 8363
+      },
+      {
+        "order": "repeat",
+        "workload": "wago/tiny/add",
+        "phase": "steady",
+        "originalNs": 50,
+        "beforeNs": 40,
+        "currentNs": 40,
+        "ratio": 1.0,
+        "originalRatio": 0.8,
+        "beforeRSS": 18501632,
+        "rss": 18501632,
+        "originalCode": 96,
+        "beforeCode": 96,
+        "code": 96
+      }
+    ],
+    "recheckCaptures": 162,
+    "recheckPhaseRows": 648,
+    "unchangedImages": 250,
+    "changedImages": [
+      {
+        "workload": "features/sign-extension/i32-extend16/performance-4096x64",
+        "artifact": "e8e7833f0a482e81186963d216528afcf87a4c019742f39497cf53d0da52b47c",
+        "identical": false,
+        "baseline": {
+          "sha256": "f51cec4dc104031755e3747dc8fc4bc085a38bfbd67b08202dd455cb6e8ecee9",
+          "bytes": 287,
+          "version": "36ed0ba650cecfae00a1afdbeb9108317de981dd/source-18e97394f9a37e3f1ef02422fd3664ac16d2e2d80aa196920b32382f54c4e1d5",
+          "file": "baseline-770cdad307d2b990.code"
+        },
+        "candidate": {
+          "sha256": "2bc5b2a41073fb3a7a401e7c4f44d76ac9aa12f804b9109df7785c879e926639",
+          "bytes": 527,
+          "version": "7be64a44af3016874ad537b7731bb019d4ee84b7/source-38821fe6630fad9d6113e4ffbd60ce6cffd23907cec682ca634a52dafce4a2f6",
+          "file": "candidate-770cdad307d2b990.code"
+        }
+      },
+      {
+        "workload": "features/sign-extension/i32-extend8/performance-4096x64",
+        "artifact": "fd14eaec52e8cae6b48d3869e6303c213b9cb2e75eac75a58e74595063c780cc",
+        "identical": false,
+        "baseline": {
+          "sha256": "c6f246d35cbece5cbab29835de276e31e9d23785254d73543c3823343605f589",
+          "bytes": 287,
+          "version": "36ed0ba650cecfae00a1afdbeb9108317de981dd/source-18e97394f9a37e3f1ef02422fd3664ac16d2e2d80aa196920b32382f54c4e1d5",
+          "file": "baseline-3e524db845afb907.code"
+        },
+        "candidate": {
+          "sha256": "d23a56d67cecd809293c5055c3a12fa97c1c97a6b9f40189b5b744edf680ad24",
+          "bytes": 527,
+          "version": "7be64a44af3016874ad537b7731bb019d4ee84b7/source-38821fe6630fad9d6113e4ffbd60ce6cffd23907cec682ca634a52dafce4a2f6",
+          "file": "candidate-3e524db845afb907.code"
+        }
+      },
+      {
+        "workload": "features/sign-extension/i64-extend16/performance-4096x64",
+        "artifact": "cca06e3bbd8eb14fcc68c4f147068e61b53ee09184a63ac28e9f55a679ce8728",
+        "identical": false,
+        "baseline": {
+          "sha256": "f16f15a420c597b91bafea61a6c2c9826412238d9ce5a6fa331848e0d894f435",
+          "bytes": 287,
+          "version": "36ed0ba650cecfae00a1afdbeb9108317de981dd/source-18e97394f9a37e3f1ef02422fd3664ac16d2e2d80aa196920b32382f54c4e1d5",
+          "file": "baseline-e5d40b73b0a80a24.code"
+        },
+        "candidate": {
+          "sha256": "fcc7d69e05e2076cc076283dc866adab220d696e207a2b75626aec5323fa953a",
+          "bytes": 527,
+          "version": "7be64a44af3016874ad537b7731bb019d4ee84b7/source-38821fe6630fad9d6113e4ffbd60ce6cffd23907cec682ca634a52dafce4a2f6",
+          "file": "candidate-e5d40b73b0a80a24.code"
+        }
+      },
+      {
+        "workload": "features/sign-extension/i64-extend32-high-word/performance-4096x64",
+        "artifact": "2f451c1157ef03bfbfbacce65075d4712379446adee80f19991af5d682c1abd4",
+        "identical": false,
+        "baseline": {
+          "sha256": "514257e44174218374f63be39771aecfd313858219365c35fdef2c6ceb496ac2",
+          "bytes": 287,
+          "version": "36ed0ba650cecfae00a1afdbeb9108317de981dd/source-18e97394f9a37e3f1ef02422fd3664ac16d2e2d80aa196920b32382f54c4e1d5",
+          "file": "baseline-0eb491e57b9574db.code"
+        },
+        "candidate": {
+          "sha256": "5352673e964d01ba82c49f7c89507b53e8cc564d6ded8b0448c2143532755212",
+          "bytes": 751,
+          "version": "7be64a44af3016874ad537b7731bb019d4ee84b7/source-38821fe6630fad9d6113e4ffbd60ce6cffd23907cec682ca634a52dafce4a2f6",
+          "file": "candidate-0eb491e57b9574db.code"
+        }
+      },
+      {
+        "workload": "features/sign-extension/i64-extend8/performance-4096x64",
+        "artifact": "e72f7966a8848d7173331d9d4ea392d931df04d7f410f4fc106976da6dd22b44",
+        "identical": false,
+        "baseline": {
+          "sha256": "155b0b78de149cb40b6b59e3203b9713d344b9adcced7cceb6ea5a235af7f1fe",
+          "bytes": 287,
+          "version": "36ed0ba650cecfae00a1afdbeb9108317de981dd/source-18e97394f9a37e3f1ef02422fd3664ac16d2e2d80aa196920b32382f54c4e1d5",
+          "file": "baseline-4fb7a8873e4befeb.code"
+        },
+        "candidate": {
+          "sha256": "f274ca59f2f7654eb496d206461d35f91cc8fe32b33e265dcae8f9bce496624f",
+          "bytes": 527,
+          "version": "7be64a44af3016874ad537b7731bb019d4ee84b7/source-38821fe6630fad9d6113e4ffbd60ce6cffd23907cec682ca634a52dafce4a2f6",
+          "file": "candidate-4fb7a8873e4befeb.code"
+        }
+      }
+    ],
+    "limitations": [
+      "Main outliers remain: quickselect +4.6-4.8% and stencil +7.9-10.2% against immediate baseline in repeats; stencil comparison with prior source reverses.",
+      "Max pooling and GC vary across repeats and same-binary controls; preserve measurements rather than asserting they are fixed.",
+      "Earlier native-leaf audio regression remains unresolved against its original baseline.",
+      "54 successful peer feature pairs differ from 107 Wago before/current feature pairs; unsupported cases remain nonnumeric."
+    ]
+  },
+  "arm": {
+    "source": {
+      "repository": "wago-org/wago",
+      "revision": "1dda2768f6ff1ec7a68354fd9e7262d8823c7ba2",
+      "ref": "jairus/wasm3-feature-parity@1dda2768",
+      "asOf": "2026-10-14T09:36:17.170797+00:00",
+      "kind": "snapshot"
+    },
+    "baseline": "334732e1b475ca59303ad2941c7160f50f981268",
+    "captures": 798,
+    "phaseRows": 3192,
+    "cohorts": {
+      "main": {
+        "compile": {
+          "peer": {
+            "count": 148,
+            "geometricMeanRatio": 0.00024307833801484184,
+            "slower": 0
+          },
+          "before": {
+            "count": 148,
+            "geometricMeanRatio": 0.9727828680766872,
+            "slower": 55
+          }
+        },
+        "instantiate": {
+          "peer": {
+            "count": 148,
+            "geometricMeanRatio": 0.6891430074063553,
+            "slower": 27
+          },
+          "before": {
+            "count": 148,
+            "geometricMeanRatio": 0.951255202793948,
+            "slower": 54
+          }
+        },
+        "first-call": {
+          "peer": {
+            "count": 148,
+            "geometricMeanRatio": 1.1941381730653762,
+            "slower": 115
+          },
+          "before": {
+            "count": 148,
+            "geometricMeanRatio": 0.9931154051572014,
+            "slower": 48
+          }
+        },
+        "steady": {
+          "peer": {
+            "count": 148,
+            "geometricMeanRatio": 1.1172664688041138,
+            "slower": 107
+          },
+          "before": {
+            "count": 148,
+            "geometricMeanRatio": 0.990165104572696,
+            "slower": 53
+          }
+        }
+      },
+      "features": {
+        "compile": {
+          "peer": {
+            "count": 54,
+            "geometricMeanRatio": 9.14086927694265e-05,
+            "slower": 0
+          },
+          "before": {
+            "count": 107,
+            "geometricMeanRatio": 0.9904323423373887,
+            "slower": 47
+          }
+        },
+        "instantiate": {
+          "peer": {
+            "count": 54,
+            "geometricMeanRatio": 1.5344750719315272,
+            "slower": 48
+          },
+          "before": {
+            "count": 110,
+            "geometricMeanRatio": 0.9624662447954797,
+            "slower": 37
+          }
+        },
+        "first-call": {
+          "peer": {
+            "count": 54,
+            "geometricMeanRatio": 0.3779387425887124,
+            "slower": 12
+          },
+          "before": {
+            "count": 110,
+            "geometricMeanRatio": 0.991539048628831,
+            "slower": 34
+          }
+        },
+        "steady": {
+          "peer": {
+            "count": 54,
+            "geometricMeanRatio": 0.3360379052586434,
+            "slower": 14
+          },
+          "before": {
+            "count": 107,
+            "geometricMeanRatio": 0.9904256955541654,
+            "slower": 31
+          }
+        }
+      },
+      "all": {
+        "compile": {
+          "peer": {
+            "count": 202,
+            "geometricMeanRatio": 0.0001871530403719326,
+            "slower": 0
+          },
+          "before": {
+            "count": 255,
+            "geometricMeanRatio": 0.9801501016313086,
+            "slower": 102
+          }
+        },
+        "instantiate": {
+          "peer": {
+            "count": 202,
+            "geometricMeanRatio": 0.8535827340233321,
+            "slower": 75
+          },
+          "before": {
+            "count": 258,
+            "geometricMeanRatio": 0.9560190458458775,
+            "slower": 91
+          }
+        },
+        "first-call": {
+          "peer": {
+            "count": 202,
+            "geometricMeanRatio": 0.8779894135350913,
+            "slower": 127
+          },
+          "before": {
+            "count": 258,
+            "geometricMeanRatio": 0.9924430089286648,
+            "slower": 82
+          }
+        },
+        "steady": {
+          "peer": {
+            "count": 202,
+            "geometricMeanRatio": 0.8103527265342396,
+            "slower": 121
+          },
+          "before": {
+            "count": 255,
+            "geometricMeanRatio": 0.990274442242379,
+            "slower": 84
+          }
+        }
+      }
+    },
+    "rssBefore": {
+      "compile": {
+        "count": 255,
+        "ratio": 1.0009935481646657
+      },
+      "steady": {
+        "count": 255,
+        "ratio": 0.9996344503436142
+      }
+    },
+    "focusedSteady": [
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/exported-read/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 121.488334,
+        "currentNs": 110.8375,
+        "peerNs": 266.28859700992194,
+        "ratio": 0.9123303970898144,
+        "peerRatio": 0.41623074079987804,
+        "beforeCode": 432,
+        "code": 384,
+        "beforeRSS": 43532288,
+        "rss": 43515904
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/mutable-accumulate/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 139.6406096035399,
+        "currentNs": 140.23809650285386,
+        "peerNs": 265.407668,
+        "ratio": 1.0042787474289199,
+        "peerRatio": 0.5283875087695427,
+        "beforeCode": 464,
+        "code": 464,
+        "beforeRSS": 35667968,
+        "rss": 35520512
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/i64-global-split/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 127.490334,
+        "currentNs": 128.184418,
+        "peerNs": 273.37,
+        "ratio": 1.005444208813509,
+        "peerRatio": 0.46890448110619304,
+        "beforeCode": 432,
+        "code": 432,
+        "beforeRSS": 43401216,
+        "rss": 43384832
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/f64-global-scale/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 133394.78867102397,
+        "currentNs": 131654.26552462525,
+        "peerNs": 98185.11175616836,
+        "ratio": 0.9869520903796987,
+        "peerRatio": 1.34087809414093,
+        "beforeCode": 496,
+        "code": 496,
+        "beforeRSS": 9846784,
+        "rss": 9912320
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 164.4652901539679,
+        "currentNs": 161.0468065666774,
+        "peerNs": 277.327164,
+        "ratio": 0.9792145589863355,
+        "peerRatio": 0.580710537849359,
+        "beforeCode": 496,
+        "code": 464,
+        "beforeRSS": 35471360,
+        "rss": 35373056
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/dependent-read-write/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 129924.77628635347,
+        "currentNs": 130144.1096196868,
+        "peerNs": 121348.16247582206,
+        "ratio": 1.0016881563286275,
+        "peerRatio": 1.072485210854489,
+        "beforeCode": 400,
+        "code": 400,
+        "beforeRSS": 9781248,
+        "rss": 9781248
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 32123.89114658926,
+        "currentNs": 33737.65490575157,
+        "peerNs": 32702.745762711864,
+        "ratio": 1.0502356253107168,
+        "peerRatio": 1.0316459403913334,
+        "beforeCode": 656,
+        "code": 656,
+        "beforeRSS": 10534912,
+        "rss": 10436608
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/f32-rounding-state/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 154081.79100529102,
+        "currentNs": 151897.20580474933,
+        "peerNs": 157151.45098039217,
+        "ratio": 0.9858219119450223,
+        "peerRatio": 0.9665657227924774,
+        "beforeCode": 432,
+        "code": 432,
+        "beforeRSS": 9814016,
+        "rss": 9814016
+      },
+      {
+        "order": "capture",
+        "workload": "features/threads/host-identity/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 336234.8125,
+        "currentNs": 338349.5159574468,
+        "peerNs": 186280.7917888563,
+        "ratio": 1.0062893649878888,
+        "peerRatio": 1.8163414096980857,
+        "beforeCode": 864,
+        "code": 864,
+        "beforeRSS": 10027008,
+        "rss": 10043392
+      },
+      {
+        "order": "capture",
+        "workload": "features/threads/host-opaque-identity/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 4068216.125,
+        "currentNs": 4060783.8125,
+        "peerNs": 188879.4642857143,
+        "ratio": 0.9981730782555216,
+        "peerRatio": 21.499339951310596,
+        "beforeCode": 864,
+        "code": 864,
+        "beforeRSS": 9977856,
+        "rss": 9994240
+      },
+      {
+        "order": "capture",
+        "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 454459.8676470588,
+        "currentNs": 457703.4338235294,
+        "peerNs": 291937.20930232556,
+        "ratio": 1.007137189458035,
+        "peerRatio": 1.5678146506824313,
+        "beforeCode": 1328,
+        "code": 1328,
+        "beforeRSS": 9863168,
+        "rss": 9814016
+      },
+      {
+        "order": "capture",
+        "workload": "mechanisms/wasm-host-wasm-loop",
+        "phase": "steady",
+        "beforeNs": 2.607292,
+        "currentNs": 2.569875,
+        "peerNs": 1.437792,
+        "ratio": 0.9856490949230082,
+        "peerRatio": 1.7873760599586033,
+        "beforeCode": 560,
+        "code": 560,
+        "beforeRSS": 9469952,
+        "rss": 9437184
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/exported-read/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 127.582166,
+        "currentNs": 114.079,
+        "peerNs": 277.84962076944925,
+        "ratio": 0.8941610224739404,
+        "peerRatio": 0.41057821019903107,
+        "beforeCode": 432,
+        "code": 384,
+        "beforeRSS": 43565056,
+        "rss": 43646976
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/mutable-accumulate/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 145.56126180920938,
+        "currentNs": 146.16748958186702,
+        "peerNs": 282.645168,
+        "ratio": 1.0041647603567234,
+        "peerRatio": 0.5171412998713178,
+        "beforeCode": 464,
+        "code": 464,
+        "beforeRSS": 35684352,
+        "rss": 35684352
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/i64-global-split/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 129.214084,
+        "currentNs": 128.319084,
+        "peerNs": 280.5305037317776,
+        "ratio": 0.9930735104696481,
+        "peerRatio": 0.45741579718792064,
+        "beforeCode": 432,
+        "code": 432,
+        "beforeRSS": 43515904,
+        "rss": 43352064
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/f64-global-scale/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 135603.2312633833,
+        "currentNs": 134904.80085653104,
+        "peerNs": 100854.81001472754,
+        "ratio": 0.9948494560170497,
+        "peerRatio": 1.3376139505575517,
+        "beforeCode": 496,
+        "code": 496,
+        "beforeRSS": 9879552,
+        "rss": 9764864
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 163.93719107480072,
+        "currentNs": 164.1482309757853,
+        "peerNs": 287.09914003827225,
+        "ratio": 1.0012873216846097,
+        "peerRatio": 0.5717475536635298,
+        "beforeCode": 496,
+        "code": 464,
+        "beforeRSS": 35684352,
+        "rss": 35602432
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/dependent-read-write/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 130066.83445190157,
+        "currentNs": 132398.95749440716,
+        "peerNs": 121411.82170542635,
+        "ratio": 1.017930189908389,
+        "peerRatio": 1.090494777482527,
+        "beforeCode": 400,
+        "code": 400,
+        "beforeRSS": 9945088,
+        "rss": 9797632
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 34928.24324324324,
+        "currentNs": 33364.0043499275,
+        "peerNs": 33100.73928215354,
+        "ratio": 0.9552156436147604,
+        "peerRatio": 1.007953449786419,
+        "beforeCode": 656,
+        "code": 656,
+        "beforeRSS": 10469376,
+        "rss": 10551296
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/f32-rounding-state/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 152072.12137203166,
+        "currentNs": 151910.7308707124,
+        "peerNs": 159820.94962216626,
+        "ratio": 0.9989387239431978,
+        "peerRatio": 0.9505057455223833,
+        "beforeCode": 432,
+        "code": 432,
+        "beforeRSS": 9863168,
+        "rss": 9748480
+      },
+      {
+        "order": "repeat",
+        "workload": "features/threads/host-identity/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 338260.91978609626,
+        "currentNs": 338088.4598930481,
+        "peerNs": 190336.1875,
+        "ratio": 0.9994901572042162,
+        "peerRatio": 1.776270000643194,
+        "beforeCode": 864,
+        "code": 864,
+        "beforeRSS": 10174464,
+        "rss": 9977856
+      },
+      {
+        "order": "repeat",
+        "workload": "features/threads/host-opaque-identity/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 4107518.25,
+        "currentNs": 4108841.125,
+        "peerNs": 194095.27462686566,
+        "ratio": 1.0003220618678932,
+        "peerRatio": 21.169197101263563,
+        "beforeCode": 864,
+        "code": 864,
+        "beforeRSS": 10027008,
+        "rss": 9977856
+      },
+      {
+        "order": "repeat",
+        "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+        "phase": "steady",
+        "beforeNs": 457858.7573529412,
+        "currentNs": 461197.46376811597,
+        "peerNs": 294458.5308056872,
+        "ratio": 1.0072920007787491,
+        "peerRatio": 1.56625607859349,
+        "beforeCode": 1328,
+        "code": 1328,
+        "beforeRSS": 9863168,
+        "rss": 9830400
+      },
+      {
+        "order": "repeat",
+        "workload": "mechanisms/wasm-host-wasm-loop",
+        "phase": "steady",
+        "beforeNs": 2.68625,
+        "currentNs": 2.691333,
+        "peerNs": 1.396917,
+        "ratio": 1.001892228943695,
+        "peerRatio": 1.9266234142758663,
+        "beforeCode": 560,
+        "code": 560,
+        "beforeRSS": 9486336,
+        "rss": 9388032
+      }
+    ],
+    "rechecksSteady": [
+      {
+        "order": "capture",
+        "workload": "applications/db-sort-merge-join",
+        "phase": "steady",
+        "originalNs": 75666,
+        "beforeNs": 67917,
+        "currentNs": 57084,
+        "ratio": 0.8404964883607933,
+        "originalRatio": 0.7544207437950995,
+        "beforeCode": 1392,
+        "code": 1392
+      },
+      {
+        "order": "capture",
+        "workload": "applications/geo-polygon-clipping",
+        "phase": "steady",
+        "originalNs": 45375,
+        "beforeNs": 39417,
+        "currentNs": 42167,
+        "ratio": 1.0697668518659462,
+        "originalRatio": 0.9293002754820937,
+        "beforeCode": 2956,
+        "code": 2956
+      },
+      {
+        "order": "capture",
+        "workload": "applications/numeric-euclidean-gcd",
+        "phase": "steady",
+        "originalNs": 197417,
+        "beforeNs": 189709,
+        "currentNs": 170250,
+        "ratio": 0.8974271120505617,
+        "originalRatio": 0.862387737631511,
+        "beforeCode": 408,
+        "code": 408
+      },
+      {
+        "order": "capture",
+        "workload": "applications/numeric-simpson",
+        "phase": "steady",
+        "originalNs": 500,
+        "beforeNs": 500,
+        "currentNs": 500,
+        "ratio": 1.0,
+        "originalRatio": 1.0,
+        "beforeCode": 420,
+        "code": 420
+      },
+      {
+        "order": "capture",
+        "workload": "applications/stats-gini",
+        "phase": "steady",
+        "originalNs": 5250,
+        "beforeNs": 5292,
+        "currentNs": 5250,
+        "ratio": 0.9920634920634921,
+        "originalRatio": 1.0,
+        "beforeCode": 2520,
+        "code": 2520
+      },
+      {
+        "order": "capture",
+        "workload": "features/bulk-memory/fill/performance-65536x64",
+        "phase": "steady",
+        "originalNs": 61021.554653679654,
+        "beforeNs": 61465.66125541126,
+        "currentNs": 44526.389115646256,
+        "ratio": 0.7244108044428836,
+        "originalRatio": 0.7296829680651421,
+        "beforeCode": 720,
+        "code": 720
+      },
+      {
+        "order": "capture",
+        "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 455442.2814814815,
+        "beforeNs": 457219.0588235294,
+        "currentNs": 456460.76642335765,
+        "ratio": 0.9983415118299686,
+        "originalRatio": 1.0022362546985386,
+        "beforeCode": 1328,
+        "code": 1328
+      },
+      {
+        "order": "capture",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 160.468575617452,
+        "beforeNs": 162.86903829145274,
+        "currentNs": 163.20856185940767,
+        "ratio": 1.0020846415716371,
+        "originalRatio": 1.0170749084760848,
+        "beforeCode": 496,
+        "code": 464
+      },
+      {
+        "order": "capture",
+        "workload": "features/core-glb/immutable-constant/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 123.874332,
+        "beforeNs": 123.79575,
+        "currentNs": 111.3305,
+        "ratio": 0.8993079326228889,
+        "originalRatio": 0.898737439811179,
+        "beforeCode": 416,
+        "code": 384
+      },
+      {
+        "order": "capture",
+        "workload": "features/core-num/signed-zero-bits/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 96.72525573927675,
+        "beforeNs": 97.29502279509119,
+        "currentNs": 83.33787066093149,
+        "ratio": 0.8565481385049444,
+        "originalRatio": 0.8615936967441988,
+        "beforeCode": 416,
+        "code": 384
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/exported-read/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 126.019418,
+        "beforeNs": 124.842,
+        "currentNs": 112.675416,
+        "ratio": 0.9025441437977604,
+        "originalRatio": 0.8941115408103217,
+        "beforeCode": 432,
+        "code": 384
+      },
+      {
+        "order": "capture",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 161.787940197659,
+        "beforeNs": 163.03275,
+        "currentNs": 163.39060893954164,
+        "ratio": 1.0021950125943508,
+        "originalRatio": 1.0099059839684257,
+        "beforeCode": 496,
+        "code": 464
+      },
+      {
+        "order": "capture",
+        "workload": "features/saturating-float-to-int/f32-overflow-clamp/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 102.75962433583484,
+        "beforeNs": 100.73464867140407,
+        "currentNs": 89.08102117758924,
+        "ratio": 0.8843136135628078,
+        "originalRatio": 0.8668873767624748,
+        "beforeCode": 432,
+        "code": 400
+      },
+      {
+        "order": "capture",
+        "workload": "features/threads/host-identity/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 333518.51851851854,
+        "beforeNs": 332543.89304812835,
+        "currentNs": 333318.1818181818,
+        "ratio": 1.0023283806626435,
+        "originalRatio": 0.9993993236080965,
+        "beforeCode": 864,
+        "code": 864
+      },
+      {
+        "order": "capture",
+        "workload": "features/threads/host-opaque-identity/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 4077144.6470588236,
+        "beforeNs": 4136065.0625,
+        "currentNs": 4159018.25,
+        "ratio": 1.0055495228322464,
+        "originalRatio": 1.0200811131388823,
+        "beforeCode": 864,
+        "code": 864
+      },
+      {
+        "order": "capture",
+        "workload": "wago/sha256/hashN",
+        "phase": "steady",
+        "originalNs": 26875,
+        "beforeNs": 26875,
+        "currentNs": 26959,
+        "ratio": 1.0031255813953488,
+        "originalRatio": 1.0031255813953488,
+        "beforeCode": 4360,
+        "code": 4360
+      },
+      {
+        "order": "capture",
+        "workload": "wago/utf8proc/normalize-casefold",
+        "phase": "steady",
+        "originalNs": 1416,
+        "beforeNs": 1208,
+        "currentNs": 1334,
+        "ratio": 1.1043046357615893,
+        "originalRatio": 0.942090395480226,
+        "beforeCode": 35120,
+        "code": 35120
+      },
+      {
+        "order": "repeat",
+        "workload": "applications/db-sort-merge-join",
+        "phase": "steady",
+        "originalNs": 58083,
+        "beforeNs": 74667,
+        "currentNs": 65625,
+        "ratio": 0.8789023263289003,
+        "originalRatio": 1.129848664841692,
+        "beforeCode": 1392,
+        "code": 1392
+      },
+      {
+        "order": "repeat",
+        "workload": "applications/geo-polygon-clipping",
+        "phase": "steady",
+        "originalNs": 43041,
+        "beforeNs": 45667,
+        "currentNs": 40334,
+        "ratio": 0.883219830512186,
+        "originalRatio": 0.9371064798680329,
+        "beforeCode": 2956,
+        "code": 2956
+      },
+      {
+        "order": "repeat",
+        "workload": "applications/numeric-euclidean-gcd",
+        "phase": "steady",
+        "originalNs": 168250,
+        "beforeNs": 153500,
+        "currentNs": 164625,
+        "ratio": 1.0724755700325732,
+        "originalRatio": 0.9784546805349182,
+        "beforeCode": 408,
+        "code": 408
+      },
+      {
+        "order": "repeat",
+        "workload": "applications/numeric-simpson",
+        "phase": "steady",
+        "originalNs": 500,
+        "beforeNs": 500,
+        "currentNs": 500,
+        "ratio": 1.0,
+        "originalRatio": 1.0,
+        "beforeCode": 420,
+        "code": 420
+      },
+      {
+        "order": "repeat",
+        "workload": "applications/stats-gini",
+        "phase": "steady",
+        "originalNs": 5250,
+        "beforeNs": 5250,
+        "currentNs": 5292,
+        "ratio": 1.008,
+        "originalRatio": 1.008,
+        "beforeCode": 2520,
+        "code": 2520
+      },
+      {
+        "order": "repeat",
+        "workload": "features/bulk-memory/fill/performance-65536x64",
+        "phase": "steady",
+        "originalNs": 46185.56491037479,
+        "beforeNs": 61684.588299024916,
+        "currentNs": 65484.696641386785,
+        "ratio": 1.0616054746761103,
+        "originalRatio": 1.4178606837106538,
+        "beforeCode": 720,
+        "code": 720
+      },
+      {
+        "order": "repeat",
+        "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 461882.4074074074,
+        "beforeNs": 459694.95620437956,
+        "currentNs": 459357.4074074074,
+        "ratio": 0.9992657113322295,
+        "originalRatio": 0.994533240583522,
+        "beforeCode": 1328,
+        "code": 1328
+      },
+      {
+        "order": "repeat",
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 165.923668,
+        "beforeNs": 163.30329582185723,
+        "currentNs": 164.38528101735162,
+        "ratio": 1.0066256176279178,
+        "originalRatio": 0.9907283451409212,
+        "beforeCode": 496,
+        "code": 464
+      },
+      {
+        "order": "repeat",
+        "workload": "features/core-glb/immutable-constant/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 127.321584,
+        "beforeNs": 126.26625,
+        "currentNs": 113.5925,
+        "ratio": 0.8996267807113936,
+        "originalRatio": 0.8921700188712701,
+        "beforeCode": 416,
+        "code": 384
+      },
+      {
+        "order": "repeat",
+        "workload": "features/core-num/signed-zero-bits/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 99.8847855216311,
+        "beforeNs": 100.57927286779909,
+        "currentNs": 84.94425063046721,
+        "ratio": 0.8445502558177919,
+        "originalRatio": 0.850422315939915,
+        "beforeCode": 416,
+        "code": 384
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/exported-read/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 129.383332,
+        "beforeNs": 127.777416,
+        "currentNs": 114.389582,
+        "ratio": 0.8952253503076005,
+        "originalRatio": 0.8841137434920907,
+        "beforeCode": 432,
+        "code": 384
+      },
+      {
+        "order": "repeat",
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 164.98188081496494,
+        "beforeNs": 165.8248266300494,
+        "currentNs": 166.21260162493658,
+        "ratio": 1.0023384616330842,
+        "originalRatio": 1.0074597331773176,
+        "beforeCode": 496,
+        "code": 464
+      },
+      {
+        "order": "repeat",
+        "workload": "features/saturating-float-to-int/f32-overflow-clamp/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 103.12891942104585,
+        "beforeNs": 102.86381775613435,
+        "currentNs": 90.95587858376948,
+        "ratio": 0.8842358816528104,
+        "originalRatio": 0.8819628780596708,
+        "beforeCode": 432,
+        "code": 400
+      },
+      {
+        "order": "repeat",
+        "workload": "features/threads/host-identity/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 332353.1604278075,
+        "beforeNs": 332927.80748663103,
+        "currentNs": 332350.0427807487,
+        "ratio": 0.9982645946271533,
+        "originalRatio": 0.999990619475215,
+        "beforeCode": 864,
+        "code": 864
+      },
+      {
+        "order": "repeat",
+        "workload": "features/threads/host-opaque-identity/performance-4096x64",
+        "phase": "steady",
+        "originalNs": 4103841.125,
+        "beforeNs": 4118117.1875,
+        "currentNs": 4104210.9375,
+        "ratio": 0.9966231534055877,
+        "originalRatio": 1.0000901137467888,
+        "beforeCode": 864,
+        "code": 864
+      },
+      {
+        "order": "repeat",
+        "workload": "wago/sha256/hashN",
+        "phase": "steady",
+        "originalNs": 27042,
+        "beforeNs": 24042,
+        "currentNs": 26875,
+        "ratio": 1.1178354546210798,
+        "originalRatio": 0.9938244212706161,
+        "beforeCode": 4360,
+        "code": 4360
+      },
+      {
+        "order": "repeat",
+        "workload": "wago/utf8proc/normalize-casefold",
+        "phase": "steady",
+        "originalNs": 1291,
+        "beforeNs": 1292,
+        "currentNs": 1208,
+        "ratio": 0.934984520123839,
+        "originalRatio": 0.935708752904725,
+        "beforeCode": 35120,
+        "code": 35120
+      }
+    ],
+    "recheckCaptures": 102,
+    "recheckPhaseRows": 408,
+    "unchangedImages": 249,
+    "changedImages": [
+      {
+        "workload": "features/core-glb/global-swap/performance-4096x64",
+        "artifact": "aa103391befdb9b6ca73465de0d532962276f1a4b8aea450db25c77dc5021ab7",
+        "identical": false,
+        "baseline": {
+          "sha256": "7c5d87323bf9b14cc21ccb692d025613e7d5a5d20823ab49459ec56ae60f0cf7",
+          "bytes": 496,
+          "version": "a781e41e37d9b339029fbbbab9d562e1178b799c/source-7f07ff6f807fd75f2e6b686405584635c2d0ae8402fa9a878001f46b628d947f",
+          "file": "baseline-75e18429f5069aca.code"
+        },
+        "candidate": {
+          "sha256": "6558246845a0d1cde17a4ea048ded82a9cabd177abffcf3a7815902302441c18",
+          "bytes": 464,
+          "version": "1dda2768f6ff1ec7a68354fd9e7262d8823c7ba2/source-2e6e82bccd07779f4c3ab6d0bc5c748f53173189e9335b4dea84274d5a8fa4ba",
+          "file": "candidate-75e18429f5069aca.code"
+        }
+      },
+      {
+        "workload": "features/core-glb/immutable-constant/performance-4096x64",
+        "artifact": "7695c675aaa213e23d1774fc619bddf9fd3794d6fe4b62b237ac8af4f28351ac",
+        "identical": false,
+        "baseline": {
+          "sha256": "dc8532dee97ac31dc55a742033878944e127a801fad199bc4076da9038d604ee",
+          "bytes": 416,
+          "version": "a781e41e37d9b339029fbbbab9d562e1178b799c/source-7f07ff6f807fd75f2e6b686405584635c2d0ae8402fa9a878001f46b628d947f",
+          "file": "baseline-cbc4e8b45320248b.code"
+        },
+        "candidate": {
+          "sha256": "0edd3cc3f04446c148841dadc84ef16e05f02874956b9f15255ed609a09f8f4c",
+          "bytes": 384,
+          "version": "1dda2768f6ff1ec7a68354fd9e7262d8823c7ba2/source-2e6e82bccd07779f4c3ab6d0bc5c748f53173189e9335b4dea84274d5a8fa4ba",
+          "file": "candidate-cbc4e8b45320248b.code"
+        }
+      },
+      {
+        "workload": "features/core-num/signed-zero-bits/performance-4096x64",
+        "artifact": "f3b0947b5c5adebec70484388d112a5dc1d3ce3a46a5c4a7d6dc90c0337b98a9",
+        "identical": false,
+        "baseline": {
+          "sha256": "7ffefe7b379a3666cf58628061cd73300193c0661e45f829da82ff94b7a0bbec",
+          "bytes": 416,
+          "version": "a781e41e37d9b339029fbbbab9d562e1178b799c/source-7f07ff6f807fd75f2e6b686405584635c2d0ae8402fa9a878001f46b628d947f",
+          "file": "baseline-2c04a7519cb58613.code"
+        },
+        "candidate": {
+          "sha256": "d6c21bba1a26fadd67eafa2af81fa4cfe2d13e51484db542cd9b9b2ad1a7a094",
+          "bytes": 384,
+          "version": "1dda2768f6ff1ec7a68354fd9e7262d8823c7ba2/source-2e6e82bccd07779f4c3ab6d0bc5c748f53173189e9335b4dea84274d5a8fa4ba",
+          "file": "candidate-2c04a7519cb58613.code"
+        }
+      },
+      {
+        "workload": "features/mutable-globals/exported-read/performance-4096x64",
+        "artifact": "fb9484115db7fac7de294562580bea2984948d2bb020aa8d07ed6d730c0b6b5a",
+        "identical": false,
+        "baseline": {
+          "sha256": "f5cef3532fa3c9e76bc2d6b075bada24250d57126c9d807523ca9ba4bd407ade",
+          "bytes": 432,
+          "version": "a781e41e37d9b339029fbbbab9d562e1178b799c/source-7f07ff6f807fd75f2e6b686405584635c2d0ae8402fa9a878001f46b628d947f",
+          "file": "baseline-5343732adb795f92.code"
+        },
+        "candidate": {
+          "sha256": "b12d3e44b4e3720092fad117f963db26f53be2f98ea5807c6ffd7eff50d05c1e",
+          "bytes": 384,
+          "version": "1dda2768f6ff1ec7a68354fd9e7262d8823c7ba2/source-2e6e82bccd07779f4c3ab6d0bc5c748f53173189e9335b4dea84274d5a8fa4ba",
+          "file": "candidate-5343732adb795f92.code"
+        }
+      },
+      {
+        "workload": "features/mutable-globals/global-swap/performance-4096x64",
+        "artifact": "a449dcc0420b0b7afd1276f1401aeef4e2dc77bff7a1cc5ccdd755049b483458",
+        "identical": false,
+        "baseline": {
+          "sha256": "7c5d87323bf9b14cc21ccb692d025613e7d5a5d20823ab49459ec56ae60f0cf7",
+          "bytes": 496,
+          "version": "a781e41e37d9b339029fbbbab9d562e1178b799c/source-7f07ff6f807fd75f2e6b686405584635c2d0ae8402fa9a878001f46b628d947f",
+          "file": "baseline-7c9c7288676c7497.code"
+        },
+        "candidate": {
+          "sha256": "6558246845a0d1cde17a4ea048ded82a9cabd177abffcf3a7815902302441c18",
+          "bytes": 464,
+          "version": "1dda2768f6ff1ec7a68354fd9e7262d8823c7ba2/source-2e6e82bccd07779f4c3ab6d0bc5c748f53173189e9335b4dea84274d5a8fa4ba",
+          "file": "candidate-7c9c7288676c7497.code"
+        }
+      },
+      {
+        "workload": "features/saturating-float-to-int/f32-overflow-clamp/performance-4096x64",
+        "artifact": "c7afdf95b4dfd2e414874a0ff1ed73e417e081c44fa50161660574c146850c34",
+        "identical": false,
+        "baseline": {
+          "sha256": "a4f1d2a4cc7f92c94b51782bae79fba724415700c70694838190886cca6cdec8",
+          "bytes": 432,
+          "version": "a781e41e37d9b339029fbbbab9d562e1178b799c/source-7f07ff6f807fd75f2e6b686405584635c2d0ae8402fa9a878001f46b628d947f",
+          "file": "baseline-35aaeebffaed4a5a.code"
+        },
+        "candidate": {
+          "sha256": "620a14bea323c8ffedac8e032e71aa4543ef8fe70aee7f6e8a5a6446290a8a3f",
+          "bytes": 400,
+          "version": "1dda2768f6ff1ec7a68354fd9e7262d8823c7ba2/source-2e6e82bccd07779f4c3ab6d0bc5c748f53173189e9335b4dea84274d5a8fa4ba",
+          "file": "candidate-35aaeebffaed4a5a.code"
+        }
+      }
+    ],
+    "limitations": [
+      "Peer full-pass timings predate this snapshot; focused comparisons remeasure the pinned peer in both orders.",
+      "Bulk-fill outlier reverses against original source at 0.730/1.418; no steady gain is claimed for unchanged controls.",
+      "Ordinary threads remain about 1.8x peer, opaque callbacks about21x, and compact imports about1.57x in focused runs."
+    ]
+  },
+  "rejectedArmWrapper": {
+    "tests": 61,
+    "initialSameBinaryRatios": {
+      "threads": 1.1217757417960628,
+      "compact": 0.991626700012104,
+      "opaque": 0.9965991591481526
+    },
+    "preservedStagedSameBinaryRatios": {
+      "threads": 1.036273447522447,
+      "compact": 1.0016117177298476,
+      "opaque": 0.9971799812131427
+    },
+    "status": "Prototype source and tests removed; validation artifacts preserved"
+  },
+  "auditDigests": {
+    "signed-full-report.json": "04f21ce74f283b6bb15ef760954b608922e62aba8cc925df9b6c6758efe4fc79",
+    "signed-sdk-report.json": "3b4428e9069588887e609bbf6e14b7793d45fa291316e882e10d6d129b03442c",
+    "signed-rechecks-report.json": "f2f5190120e62cee04dc0d3d5eb7620599a736a710aa5ec3d4bcebaf37a81ec5",
+    "signed-image-report.json": "3bd5bcb7325a74b9ebc9c63cf01e30cbfd333ec74040bb71a303fd298b6822e5",
+    "arm-zero-sdk-report.json": "969714caa8d61c564a4aa7384231ea407ced88a9289904c95ec806d6fd374735",
+    "arm-zero-rechecks-report.json": "ae677c44d6892807b93ce6465864371a72bd473a7e6571715e7687d3b4706357"
+  },
+  "publication": "Retained measurement sources; local only, no production deployment or push. Next local refresh11:03:28Z; full candidate passes only."
+}
