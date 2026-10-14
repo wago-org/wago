@@ -71,3 +71,24 @@ func TestIntegerPopcountSumUnsignedExtrema(t *testing.T) {
 		}
 	}
 }
+
+func TestIntegerPopcountSumZeroAccumulatorKeepsI32Result(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	// The accumulator is a known-zero local, allowing the final add to fold
+	// away. A 64-bit intermediate must still return its canonical i32 value.
+	body := []byte{1, 2, 0x7f, 0x03, 0x40, 0x20, 1, 0x20, 2, 0x69, 0x6a, 0x21, 1, 0x20, 2, 0x41, 1, 0x6a, 0x21, 2, 0x20, 2, 0x20, 0, 0x49, 0x0d, 0, 0x0b, 0x20, 1, 0x0b}
+	m := modFuncs(t, funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: body})
+	var stats ModuleStats
+	compiled, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.CodeImage.Close()
+	if stats.Funcs[0].Peephole["integer-popcount-sum-loop"] != 1 {
+		t.Fatal("popcount reduction not selected")
+	}
+	// All 2^32 values have 32*2^31 set bits in total. Omit UINT32_MAX.
+	if got := runCompiledAmd64u(t, compiled, 1<<32-1); got != 0xffffffe0 {
+		t.Fatalf("noncanonical i32 sum: %x; want ffffffe0", got)
+	}
+}
