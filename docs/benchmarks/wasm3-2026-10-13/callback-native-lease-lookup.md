@@ -1,0 +1,9 @@
+# Inline callback native lease lookup
+
+Provisionally retain 334732e1 pending complete snapshot and per-case review. Read execution flags once, fold the private shared-memory marker into the local-ownership predicate, and keep prepared migration authority separate. A missing entry mutex still returns nil. This preserves the previous private-threaded or independent ownership rule while reducing Go1.27.1 inlining cost from107 to79, enabling the caller to inline the lookup. No lock, publication, resource refresh, FP or root contract is removed.
+
+Three longer alternating ordinary public Invoke pairs reduce opaque owned Go callback cost3.35%, with zero per-call allocations. Fresh and reversed wasm.fyi adapter captures improve it3.04% and4.90%. It remains20.97–21.28 times the fresh SIMD w2c2 Clang peer. Compact controls change-0.17%/+2.34%; native thread identity timings are mixed and no native-thread improvement is claimed. Runtime-only Go changes do not change its generated native loop.
+
+The fresh CPU profile of the retained baseline attributes about47% of total cost to the Go portal including lease parking/resumption. The original localNativeMu does not inline. An earlier prepared-pointer-only prototype failed to help ordinary Invoke because that activation has no migration pointer; it was removed before this candidate.
+
+ARM64 host, shared-memory, bounded, reentry, publication, panic and runtime tests pass with codegen/regalloc checks. Native AMD64 validation onHub with Go1.27.1 passes200 tests without skips;3091 tracked Go/ASM/go.mod inputs match the frozen candidate. Existing behavioral tests cover ordinary and session callbacks, publication while parked, stack growth, GC, panic recovery, shared directory growth and cross-instance calls. The full266 capture is still running; no new publication is queued yet. The previous complete0ae6 snapshot is published locally, audited and Chrome-verified. No production deployment or push.

@@ -1,0 +1,671 @@
+{
+  "runs": {
+    "capture": {
+      "compile": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "beforeNs": 36042,
+          "currentNs": 36042,
+          "peerNs": 293430125,
+          "ratio": 1.0,
+          "peerRatio": 0.00012282992415996825,
+          "beforeCode": 1328,
+          "currentCode": 1328
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "beforeNs": 36334,
+          "currentNs": 37042,
+          "peerNs": 323116875,
+          "ratio": 1.0194858809930094,
+          "peerRatio": 0.00011463963310489433,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "beforeNs": 50292,
+          "currentNs": 46458,
+          "peerNs": 284062250,
+          "ratio": 0.923765211166786,
+          "peerRatio": 0.0001635486587886986,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "beforeNs": 31000,
+          "currentNs": 23333,
+          "peerNs": 284660167,
+          "ratio": 0.7526774193548387,
+          "peerRatio": 8.196791369127525e-05,
+          "beforeCode": 560,
+          "currentCode": 560
+        }
+      ],
+      "instantiate": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "beforeNs": 7916,
+          "currentNs": 8042,
+          "peerNs": 1000,
+          "ratio": 1.0159171298635674,
+          "peerRatio": 8.042,
+          "beforeCode": 1328,
+          "currentCode": 1328
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "beforeNs": 10750,
+          "currentNs": 12292,
+          "peerNs": 1500,
+          "ratio": 1.1434418604651162,
+          "peerRatio": 8.194666666666667,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "beforeNs": 9250,
+          "currentNs": 9334,
+          "peerNs": 875,
+          "ratio": 1.009081081081081,
+          "peerRatio": 10.667428571428571,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "beforeNs": 5500,
+          "currentNs": 5791,
+          "peerNs": 625,
+          "ratio": 1.052909090909091,
+          "peerRatio": 9.2656,
+          "beforeCode": 560,
+          "currentCode": 560
+        }
+      ],
+      "first-call": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "beforeNs": 472709,
+          "currentNs": 472917,
+          "peerNs": 291417,
+          "ratio": 1.0004400170083498,
+          "peerRatio": 1.6228188472189338,
+          "beforeCode": 1328,
+          "currentCode": 1328
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "beforeNs": 347708,
+          "currentNs": 345625,
+          "peerNs": 224125,
+          "ratio": 0.9940093411713277,
+          "peerRatio": 1.5421081985499163,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "beforeNs": 4450333,
+          "currentNs": 4261709,
+          "peerNs": 185458,
+          "ratio": 0.9576157559445552,
+          "peerRatio": 22.97937538418402,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "beforeNs": 2878750,
+          "currentNs": 2843625,
+          "peerNs": 1147458,
+          "ratio": 0.987798523664785,
+          "peerRatio": 2.4781952803501306,
+          "beforeCode": 560,
+          "currentCode": 560
+        }
+      ],
+      "steady": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "beforeNs": 464302.8582089552,
+          "currentNs": 463529.4117647059,
+          "peerNs": 309528,
+          "ratio": 0.9983341768619886,
+          "peerRatio": 1.4975362867485522,
+          "beforeCode": 1328,
+          "currentCode": 1328
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "beforeNs": 380344.69518716575,
+          "currentNs": 344815.9572192513,
+          "peerNs": 196320.68690095848,
+          "ratio": 0.9065880544214481,
+          "peerRatio": 1.7563913546879906,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "beforeNs": 4277761.133333334,
+          "currentNs": 4147890.625,
+          "peerNs": 197826.3036809816,
+          "ratio": 0.9696405422637202,
+          "peerRatio": 20.96733623294588,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "beforeNs": 2.925167,
+          "currentNs": 2.887375,
+          "peerNs": 0.757625,
+          "ratio": 0.9870803957517639,
+          "peerRatio": 3.811087279326844,
+          "beforeCode": 560,
+          "currentCode": 560
+        }
+      ]
+    },
+    "repeat": {
+      "compile": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "beforeNs": 39833,
+          "currentNs": 33583,
+          "peerNs": 286270833,
+          "ratio": 0.8430949212964125,
+          "peerRatio": 0.00011731198616381572,
+          "beforeCode": 1328,
+          "currentCode": 1328
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "beforeNs": 39042,
+          "currentNs": 36334,
+          "peerNs": 293978459,
+          "ratio": 0.9306387992418421,
+          "peerRatio": 0.00012359408959280245,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "beforeNs": 41375,
+          "currentNs": 39375,
+          "peerNs": 295494583,
+          "ratio": 0.9516616314199395,
+          "peerRatio": 0.00013325117367718377,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "beforeNs": 22250,
+          "currentNs": 21542,
+          "peerNs": 277860416,
+          "ratio": 0.9681797752808988,
+          "peerRatio": 7.752813556573672e-05,
+          "beforeCode": 560,
+          "currentCode": 560
+        }
+      ],
+      "instantiate": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "beforeNs": 7000,
+          "currentNs": 6916,
+          "peerNs": 541,
+          "ratio": 0.988,
+          "peerRatio": 12.783733826247689,
+          "beforeCode": 1328,
+          "currentCode": 1328
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "beforeNs": 9583,
+          "currentNs": 10792,
+          "peerNs": 1291,
+          "ratio": 1.1261609099446936,
+          "peerRatio": 8.359411309062741,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "beforeNs": 8541,
+          "currentNs": 8291,
+          "peerNs": 1542,
+          "ratio": 0.9707294227842173,
+          "peerRatio": 5.376783398184177,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "beforeNs": 5958,
+          "currentNs": 5667,
+          "peerNs": 625,
+          "ratio": 0.9511581067472307,
+          "peerRatio": 9.0672,
+          "beforeCode": 560,
+          "currentCode": 560
+        }
+      ],
+      "first-call": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "beforeNs": 471666,
+          "currentNs": 466166,
+          "peerNs": 558500,
+          "ratio": 0.9883392061331535,
+          "peerRatio": 0.8346750223813787,
+          "beforeCode": 1328,
+          "currentCode": 1328
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "beforeNs": 345042,
+          "currentNs": 343458,
+          "peerNs": 186125,
+          "ratio": 0.995409254525536,
+          "peerRatio": 1.8453082605775688,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "beforeNs": 4278250,
+          "currentNs": 4071709,
+          "peerNs": 280125,
+          "ratio": 0.9517230175889675,
+          "peerRatio": 14.535328871039715,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "beforeNs": 2883916,
+          "currentNs": 2838708,
+          "peerNs": 1147500,
+          "ratio": 0.9843240926573451,
+          "peerRatio": 2.4738196078431374,
+          "beforeCode": 560,
+          "currentCode": 560
+        }
+      ],
+      "steady": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "beforeNs": 467883.7089552239,
+          "currentNs": 478816.6666666667,
+          "peerNs": 294806.1408450704,
+          "ratio": 1.0233668270602023,
+          "peerRatio": 1.6241746704940565,
+          "beforeCode": 1328,
+          "currentCode": 1328
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "beforeNs": 335573.5294117647,
+          "currentNs": 347571.5904255319,
+          "peerNs": 198158.23052959502,
+          "ratio": 1.035753895829623,
+          "peerRatio": 1.7540103658405546,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "beforeNs": 4393313.866666666,
+          "currentNs": 4177950.5,
+          "peerNs": 196340.35714285713,
+          "ratio": 0.9509792896199177,
+          "peerRatio": 21.279122442260434,
+          "beforeCode": 864,
+          "currentCode": 864
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "beforeNs": 2.85675,
+          "currentNs": 2.849459,
+          "peerNs": 1.448292,
+          "ratio": 0.9974477990723725,
+          "peerRatio": 1.9674616720937492,
+          "beforeCode": 560,
+          "currentCode": 560
+        }
+      ]
+    }
+  },
+  "captureManifest": [
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/capture/captures/w2c2-f303ed27-22cdff9afcb3dc21.json",
+      "sha256": "243408d57c42dbbc433ab9b738c856bc111fa0c078b56ed026ab019ed40dc855",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-13T05:56:24.446Z",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/capture/captures/w2c2-f303ed27-837d0b781a84ac42.json",
+      "sha256": "d9abd178c5c7dc5ba25aee3719b93d0f3a5431bb5b306b66a3e8e4fc50c03321",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-13T05:56:24.446Z",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/capture/captures/w2c2-f303ed27-deec12e2b6e3c13e.json",
+      "sha256": "43f6623b109817832366d3e84be4a9541d7a36e0339e22f79554c8f8577258ec",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-13T05:56:24.446Z",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/capture/captures/w2c2-f303ed27-e6dede99195186b1.json",
+      "sha256": "e15deaaf10be8ded77c2fd3f360df6c63976d8e8006fe46263f7ecebfd896041",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-13T05:56:24.446Z",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/capture/captures/wago-0ae6f232-22cdff9afcb3dc21.json",
+      "sha256": "afcdd15c29425e074060eb811c0b822c51409afc2fbe11c0c4899eb29fbcd6fb",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "0ae6f232649c5ac7b924db77f2ea7b800acae9de",
+        "ref": "jairus/wasm3-feature-parity@0ae6f232",
+        "asOf": "2026-10-14T04:39:01.922941+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/capture/captures/wago-0ae6f232-837d0b781a84ac42.json",
+      "sha256": "5ee3c5b15ce6cd2a355db7facb9981570dcb94dcf71a91c8c27e71a6b9d0bb05",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "0ae6f232649c5ac7b924db77f2ea7b800acae9de",
+        "ref": "jairus/wasm3-feature-parity@0ae6f232",
+        "asOf": "2026-10-14T04:39:01.922941+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/capture/captures/wago-0ae6f232-deec12e2b6e3c13e.json",
+      "sha256": "c738612bc0186bc73bedc1373225c44c3ca7c7340355b474b029ce3819bc9c5f",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "0ae6f232649c5ac7b924db77f2ea7b800acae9de",
+        "ref": "jairus/wasm3-feature-parity@0ae6f232",
+        "asOf": "2026-10-14T04:39:01.922941+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/capture/captures/wago-0ae6f232-e6dede99195186b1.json",
+      "sha256": "fcf87ee1ddd647e556d12379fd42e5428e81fbd436a7543a8f7d1f6ebb9af112",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "0ae6f232649c5ac7b924db77f2ea7b800acae9de",
+        "ref": "jairus/wasm3-feature-parity@0ae6f232",
+        "asOf": "2026-10-14T04:39:01.922941+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/capture/captures/wago-334732e1-22cdff9afcb3dc21.json",
+      "sha256": "dcd814cdeeb5803f98a23f0d860cd788f212195f53ee0b704a6d3a0a52be3ce7",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:02:24.093757+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/capture/captures/wago-334732e1-837d0b781a84ac42.json",
+      "sha256": "353ed1c1eaf33b02985741c816bc4689c8846169f0bb1229c9ede3a99a3956fc",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:02:24.093757+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/capture/captures/wago-334732e1-deec12e2b6e3c13e.json",
+      "sha256": "0eeebe35397e3c3ebc0e40d0b201f0a6d8e2897c30816473a2e6ad224f650c06",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:02:24.093757+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/capture/captures/wago-334732e1-e6dede99195186b1.json",
+      "sha256": "5b0796713fdb3623d5dd2e68c4952ef29aecc84c5d7a7bf32a8ae72c028f3f5c",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:02:24.093757+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/repeat/captures/w2c2-f303ed27-22cdff9afcb3dc21.json",
+      "sha256": "cdd485c655a4ff96e1e3e5255a072d320f7deac2d7cc0aceb4811e6b5d208485",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-13T05:56:24.446Z",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/repeat/captures/w2c2-f303ed27-837d0b781a84ac42.json",
+      "sha256": "19d380096bb7375bf31fa6eb302c92ba8af191cdb3e76e6222cf19bc58be6dea",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-13T05:56:24.446Z",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/repeat/captures/w2c2-f303ed27-deec12e2b6e3c13e.json",
+      "sha256": "4c745f6cad815f7d30763dda0fc135b7b9d4578014ee290f989c97a31c567438",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-13T05:56:24.446Z",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/repeat/captures/w2c2-f303ed27-e6dede99195186b1.json",
+      "sha256": "e38a1b75597abf283b6ec288654d074eb077cd4c867fbe246e2f600db521f44a",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-13T05:56:24.446Z",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/repeat/captures/wago-0ae6f232-22cdff9afcb3dc21.json",
+      "sha256": "593d9c327e38e53d93d447110f2c664e12a87de2b55bf0be3299aedd95222561",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "0ae6f232649c5ac7b924db77f2ea7b800acae9de",
+        "ref": "jairus/wasm3-feature-parity@0ae6f232",
+        "asOf": "2026-10-14T04:39:01.922941+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/repeat/captures/wago-0ae6f232-837d0b781a84ac42.json",
+      "sha256": "f01f6995e0cbf45bcc95a8d1ed02f888215d61daa1fd03a09bcd56219b5e7401",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "0ae6f232649c5ac7b924db77f2ea7b800acae9de",
+        "ref": "jairus/wasm3-feature-parity@0ae6f232",
+        "asOf": "2026-10-14T04:39:01.922941+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/repeat/captures/wago-0ae6f232-deec12e2b6e3c13e.json",
+      "sha256": "08f5cd03a1d0e0c67dff7c5994a2ad26926a9cc3f78e40d3e67ae8e3a12fdc28",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "0ae6f232649c5ac7b924db77f2ea7b800acae9de",
+        "ref": "jairus/wasm3-feature-parity@0ae6f232",
+        "asOf": "2026-10-14T04:39:01.922941+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/repeat/captures/wago-0ae6f232-e6dede99195186b1.json",
+      "sha256": "dfbe89be8694cea7d679e6ebbbb6392aef399f89a2b459e7e74b77e55158b806",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "0ae6f232649c5ac7b924db77f2ea7b800acae9de",
+        "ref": "jairus/wasm3-feature-parity@0ae6f232",
+        "asOf": "2026-10-14T04:39:01.922941+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/repeat/captures/wago-334732e1-22cdff9afcb3dc21.json",
+      "sha256": "b73288661d024e6d3ea0253c4c045aa415375ee4ee0026f391c8a7afa5219f1a",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:02:24.137783+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/repeat/captures/wago-334732e1-837d0b781a84ac42.json",
+      "sha256": "06e67f419700f18205c49c9064875dc0c387245b4c4b493f9be08236c9a484b6",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:02:24.137783+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/repeat/captures/wago-334732e1-deec12e2b6e3c13e.json",
+      "sha256": "158d29cb24bc80401aeb7aeb1ad256a6116bec3067c6aaab7c3131ca68ad681e",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:02:24.137783+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/local-lease-flags/repeat/captures/wago-334732e1-e6dede99195186b1.json",
+      "sha256": "b16fff8e1a4fced64a67c79a5238fcb70760ed2cdea8301672e213852b985f48",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:02:24.137783+00:00",
+        "kind": "snapshot"
+      }
+    }
+  ],
+  "source": "334732e1b475ca59303ad2941c7160f50f981268",
+  "baseline": "0ae6f232649c5ac7b924db77f2ea7b800acae9de",
+  "decision": "Provisional retention: two-order SDK opaque improvement; complete266/per-case review pending",
+  "longPublicCost": {
+    "compact": {
+      "values": {
+        "before": [
+          461318.333,
+          460736.5,
+          455887.875
+        ],
+        "current": [
+          468746.833,
+          457761.417,
+          459840.625
+        ]
+      },
+      "ratio": 1.006100519964434
+    },
+    "threads": {
+      "values": {
+        "before": [
+          335306.625,
+          354770.042,
+          345085.833
+        ],
+        "current": [
+          332810.458,
+          331474.25,
+          336291.417
+        ]
+      },
+      "ratio": 0.9665884583338364
+    },
+    "opaque": {
+      "values": {
+        "before": [
+          4202184.458,
+          4203904.458,
+          4328787.167
+        ],
+        "current": [
+          4104140.75,
+          4051716.292,
+          4152445.208
+        ]
+      },
+      "ratio": 0.9665034955801853
+    }
+  },
+  "validation": {
+    "ARM64": "Host/shared/bounded/reentry/publication/panic/runtime tests pass, wago_codegenstats+wago_regalloccheck",
+    "AMD64": "Go1.27.1 onHub;200 passed/no skips;3091 tracked Go/ASM/go.mod candidate inputs verified",
+    "inlining": "Go1.27.1 localNativeMu cost79, inlined; previous helpercost107, notinlined"
+  },
+  "limitations": [
+    "No native-thread improvement claimed: its compiled code is unchanged, paired timing deltas mixed.",
+    "Compact controls are -0.17/+2.34%; opaque remains20.97-21.28 times the fresh SIMD Clang peer.",
+    "Ordinary Invoke has no preparedMigration pointer; earlier prepared-pointer-only prototype did not affect its hot path and was removed.",
+    "Seven outlier review for previous0ae6 source is recorded separately."
+  ]
+}
