@@ -61,6 +61,26 @@ func dispatchSingleTypedI32FixedPortalContext(pointer unsafe.Pointer, a0, a1 uin
 	return I32(a.root.syncHosts[0].typedI32(AsI32(a0)))
 }
 
+// Fixed context dispatch always resumes the same entry activation. Its mutex
+// and control frame are immutable for this entry; only the context version
+// needs a snapshot while arbitrary Go code runs with the native lease parked.
+func dispatchSingleTypedI32FixedResumeContext(pointer unsafe.Pointer, a0, a1 uint64) uint64 {
+	a := (*hostLoopActivation)(pointer)
+	mu := a.localNativeMu()
+	if mu == nil {
+		return a.dispatchSingleTypedScalarFixedPortal(a0, a1)
+	}
+	version := a.state.nativeContextVersion.Load()
+	mu.Unlock()
+	defer a.resumeFixedHostCallback(version)
+	return I32(a.root.syncHosts[0].typedI32(AsI32(a0)))
+}
+
+func (a *hostLoopActivation) resumeFixedHostCallback(version uint64) {
+	lease := parkedIndependentHostLease{mu: a.entryNativeMu, version: version, ctrl: a.ctrl}
+	lease.resume(a)
+}
+
 func (a *hostLoopActivation) dispatchSingleTypedI32x2FixedPortal(a0, a1 uint64) uint64 {
 	mu := a.localNativeMu()
 	if mu == nil {

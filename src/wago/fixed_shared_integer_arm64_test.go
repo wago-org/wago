@@ -149,3 +149,68 @@ func TestFixedSharedIntegerRegisterProofRejectsFP(t *testing.T) {
 		})
 	}
 }
+
+// Exercise the actual context portal, including unwinding through the assembly
+// bridge. A callback must run without the native mutex and reacquire it before
+// panic cleanup restores the host trampoline.
+func TestFixedSharedResumePayloadPanicAndVersion(t *testing.T) {
+	if codeProfileEnabled {
+		t.Skip("profiling retains ordinary portal")
+	}
+	t.Setenv("WAGO_FIXED_HOST_RESUME_PAYLOAD", "1")
+	cfg := goHostSegmentConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit)
+	c, err := cfg.Compile(fixedSharedHostLoopModule(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	var in *Instance
+	calls, seen := 0, false
+	imports := NewImports()
+	imports.HostFunc("env", "step", func(v int32) int32 {
+		calls++
+		a := in.independentNativeExecutionMu()
+		if !a.TryLock() {
+			panic("native lease remained locked in callback")
+		}
+		a.Unlock()
+		in.ensurePluginState().nativeContextVersion.Add(1)
+		var pcs [64]uintptr
+		frames := runtime.CallersFrames(pcs[:runtime.Callers(0, pcs[:])])
+		for {
+			f, more := frames.Next()
+			seen = seen || strings.Contains(f.Function, "dispatchSingleTypedI32FixedResumeContext")
+			if !more {
+				break
+			}
+		}
+		_ = fixedIntegerGrow(128)
+		if calls == 1 {
+			panic("resume payload sentinel")
+		}
+		return v + 1
+	})
+	in, err = Instantiate(c, InstantiateOptions{Imports: imports})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recovered any
+	func() { defer func() { recovered = recover() }(); _, err = fn.Invoke(1) }()
+	if recovered != "resume payload sentinel" {
+		t.Fatalf("panic=%v err=%v", recovered, err)
+	}
+	for i := 0; i < 3; i++ {
+		got, err := fn.Invoke(1)
+		if err != nil || len(got) != 1 || got[0] != 1 {
+			t.Fatalf("after panic=%v %v", got, err)
+		}
+	}
+	if calls != 4 || !seen {
+		t.Fatalf("calls=%d compact dispatcher=%v", calls, seen)
+	}
+}

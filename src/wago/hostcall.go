@@ -2732,10 +2732,14 @@ func (in *Instance) callPreparedHostSync(prepared *runtime.PreparedHostScalarCal
 		return prepared.Call(activation.dispatch, profileScalarFallback)
 	}
 	if preparedHostFixedEnabled && fixed != nil && in.boundedFixedSharedHostPortal() && in.syncHosts[0].scalarKind == syncHostTypedI32 {
-		if in.c.fixedSharedHostInteger && integerNumericHostEnabled && armIntegerNumericEnabled && os.Getenv("WAGO_FIXED_SHARED_INTEGER_CONTEXT") != "0" {
-			return prepared.CallFixedIntegerContext(runtimebridge.GrantHostScalarCall(), unsafe.Pointer(activation), dispatchSingleTypedI32FixedPortalContext, fixed)
+		portal := dispatchSingleTypedI32FixedPortalContext
+		if os.Getenv("WAGO_FIXED_HOST_RESUME_PAYLOAD") != "0" {
+			portal = dispatchSingleTypedI32FixedResumeContext
 		}
-		return prepared.CallFixedContext(runtimebridge.GrantHostScalarCall(), unsafe.Pointer(activation), dispatchSingleTypedI32FixedPortalContext, fixed)
+		if in.c.fixedSharedHostInteger && integerNumericHostEnabled && armIntegerNumericEnabled && os.Getenv("WAGO_FIXED_SHARED_INTEGER_CONTEXT") != "0" {
+			return prepared.CallFixedIntegerContext(runtimebridge.GrantHostScalarCall(), unsafe.Pointer(activation), portal, fixed)
+		}
+		return prepared.CallFixedContext(runtimebridge.GrantHostScalarCall(), unsafe.Pointer(activation), portal, fixed)
 	}
 	if preparedHostFixedEnabled {
 		if fixed == nil {
