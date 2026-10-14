@@ -41,8 +41,12 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 			case wasm.InstrCallIndirect:
 				calls++
 			case wasm.InstrCallRef,
-				wasm.InstrReturnCall, wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
+				wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
 				return false
+			case wasm.InstrReturnCall:
+				if uint64(imm.Index) < uint64(m.ImportedFuncCount()) || uint64(imm.Index) >= uint64(m.FuncCount()) {
+					return false
+				}
 			}
 			if op == 0xfb {
 				switch imm.Subopcode {

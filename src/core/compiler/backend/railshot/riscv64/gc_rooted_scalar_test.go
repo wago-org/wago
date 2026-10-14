@@ -98,6 +98,272 @@ func TestRV64RootedReferenceExportAdmitted(t *testing.T) {
 	}
 }
 
+func rv64RootedLocalTailModule() []byte {
+	callee := []byte{
+		0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00,
+		0x0b,
+	}
+	caller := []byte{
+		0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00,
+		0x12, 0x00,
+		0x0b,
+	}
+	wrapper := []byte{0x00, 0x12, 0x01, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			[]byte{0x60, 0x01, 0x64, 0x00, 0x01, 0x7f},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 2))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(callee))), callee...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+			append(wasmtest.ULEB(uint32(len(wrapper))), wrapper...),
+		)),
+	)
+}
+
+func TestRV64RootedLocalTailCompiles(t *testing.T) {
+	source := rv64RootedLocalTailModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	if !AdmitGCRootedScalarSource(source) {
+		t.Fatal("rooted local tail source was not admitted")
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(3)
+	if !roots.MarkFunction(0) || !roots.MarkFunction(1) || !roots.ReserveFunctions(2) {
+		t.Fatal("reserve exact root plans")
+	}
+	callee, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin callee root plan")
+	}
+	*callee = shared.GCFrameRootPlan{
+		Candidate: true, Exact: true, Conservative: true,
+		Locals: []shared.GCFrameLocal{{Index: 0, Offset: shared.RV64CallFrameHeaderBytes}},
+	}
+	if !callee.SetLiveMasks([]uint64{1}, 1, 0) {
+		t.Fatal("install callee root masks")
+	}
+	caller, ok := roots.BeginFunction(1)
+	if !ok {
+		t.Fatal("begin caller root plan")
+	}
+	*caller = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true, SafepointBase: 1}
+	if !caller.SetLiveMasks([]uint64{0}, 1, 0) {
+		t.Fatal("install caller root masks")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		NativeTailCalls: true, GCStructHelpers: true, SyncHostSlots: 4,
+		GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || callee.SafepointCount() != 1 || caller.SafepointCount() != 1 || callee.CallsiteCount() != 0 || caller.CallsiteCount() != 0 {
+		t.Fatalf("code=%d callee=%d/%d caller=%d/%d", len(compiled.Code), callee.SafepointCount(), callee.CallsiteCount(), caller.SafepointCount(), caller.CallsiteCount())
+	}
+	if roots.Function(2) != nil {
+		t.Fatal("tail-only wrapper acquired a root plan")
+	}
+}
+
+func TestRV64RootedLocalTailExactReferenceResultCompiles(t *testing.T) {
+	callee := []byte{0x00, 0x20, 0x00, 0x0b}
+	caller := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0x12, 0x00, 0x0b}
+	wrapper := []byte{0x00, 0x12, 0x01, 0x0b}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			[]byte{0x60, 0x01, 0x64, 0x00, 0x01, 0x64, 0x00},
+			[]byte{0x60, 0x00, 0x01, 0x64, 0x00},
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("make", byte(wasm.ExternFunc), 2))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(callee))), callee...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+			append(wasmtest.ULEB(uint32(len(wrapper))), wrapper...),
+		)),
+	)
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	if !AdmitGCRootedScalarSource(source) {
+		t.Fatal("rooted exact-reference result tail source was not admitted")
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(3)
+	if !roots.MarkFunction(1) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve exact root plan")
+	}
+	plan, ok := roots.BeginFunction(1)
+	if !ok {
+		t.Fatal("begin exact root plan")
+	}
+	*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true}
+	if !plan.SetLiveMasks([]uint64{0}, 1, 0) {
+		t.Fatal("install exact root masks")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		NativeTailCalls: true, GCStructHelpers: true, SyncHostSlots: 4,
+		GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 1 || plan.CallsiteCount() != 0 || roots.Function(0) != nil || roots.Function(2) != nil {
+		t.Fatalf("code=%d plan=%d/%d callee=%v wrapper=%v", len(compiled.Code), plan.SafepointCount(), plan.CallsiteCount(), roots.Function(0), roots.Function(2))
+	}
+}
+
+func rv64RootedLocalTailSWARModule() []byte {
+	callee := []byte{
+		0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x20, 0x00, 0xfb, 0x02, 0x00, 0x00,
+		0x20, 0x01,
+		0x0b,
+	}
+	caller := []byte{
+		0x00,
+		0x41, 0x2a, 0xfb, 0x00, 0x00,
+		0x20, 0x00,
+		0x12, 0x00,
+		0x0b,
+	}
+	wrapper := []byte{0x00, 0x20, 0x00, 0x12, 0x01, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			[]byte{0x60, 0x02, 0x64, 0x00, 0x7b, 0x02, 0x7f, 0x7b},
+			wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.I32, wasm.V128}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 2))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(callee))), callee...),
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+			append(wasmtest.ULEB(uint32(len(wrapper))), wrapper...),
+		)),
+	)
+}
+
+func TestRV64RootedLocalTailSWARCompiles(t *testing.T) {
+	source := rv64RootedLocalTailSWARModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	if !AdmitGCRootedScalarSource(source) {
+		t.Fatal("rooted local SWAR tail source was not admitted")
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(3)
+	if !roots.MarkFunction(0) || !roots.MarkFunction(1) || !roots.ReserveFunctions(2) {
+		t.Fatal("reserve exact root plans")
+	}
+	callee, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin callee root plan")
+	}
+	*callee = shared.GCFrameRootPlan{
+		Candidate: true, Exact: true, Conservative: true,
+		Locals: []shared.GCFrameLocal{{Index: 0, Offset: shared.RV64CallFrameHeaderBytes}},
+	}
+	if !callee.SetLiveMasks([]uint64{1}, 1, 0) {
+		t.Fatal("install callee root masks")
+	}
+	caller, ok := roots.BeginFunction(1)
+	if !ok {
+		t.Fatal("begin caller root plan")
+	}
+	*caller = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true, SafepointBase: 1}
+	if !caller.SetLiveMasks([]uint64{0}, 1, 0) {
+		t.Fatal("install caller root masks")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		NativeTailCalls: true, GCStructHelpers: true, SyncHostSlots: 6,
+		GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || callee.SafepointCount() != 1 || caller.SafepointCount() != 1 || callee.CallsiteCount() != 0 || caller.CallsiteCount() != 0 {
+		t.Fatalf("code=%d callee=%d/%d caller=%d/%d", len(compiled.Code), callee.SafepointCount(), callee.CallsiteCount(), caller.SafepointCount(), caller.CallsiteCount())
+	}
+	if roots.Function(2) != nil {
+		t.Fatal("tail-only SWAR wrapper acquired a root plan")
+	}
+}
+
+func TestRV64RootedLocalTailRejectsExternalAndDynamicTargets(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		edit func(*wasm.Module)
+	}{
+		{
+			name: "import",
+			edit: func(m *wasm.Module) {
+				m.Imports = append(m.Imports, wasm.Import{Module: "env", Name: "tail", Type: wasm.NewFuncExternType(wasm.TypeIdx{Index: 2})})
+				m.Code[1].BodyBytes = []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0x12, 0x00, 0x0b}
+			},
+		},
+		{
+			name: "indirect",
+			edit: func(m *wasm.Module) { m.Code[2].BodyBytes = []byte{0x00, 0x41, 0x00, 0x13, 0x02, 0x00, 0x0b} },
+		},
+		{
+			name: "reference",
+			edit: func(m *wasm.Module) { m.Code[2].BodyBytes = []byte{0x00, 0xd2, 0x01, 0x15, 0x02, 0x0b} },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, err := wasm.DecodeModule(rv64RootedLocalTailModule())
+			if err != nil {
+				t.Fatal(err)
+			}
+			tc.edit(m)
+			if admitRV64GCRootedScalarModule(m) {
+				t.Fatal("unsupported rooted tail target was admitted")
+			}
+		})
+	}
+}
+
 func TestRV64RootedAbstractReferenceExportAdmitted(t *testing.T) {
 	body := []byte{0x00, 0x20, 0x00, 0x0b}
 	source := wasmtest.Module(

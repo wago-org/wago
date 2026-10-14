@@ -29,16 +29,11 @@ func gcFrameFixedOffsets(rootMap *nativeabi.FunctionRootMap) []uint32 {
 
 //go:noinline
 func gcFramePrepareModuleRootPlan(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, analysis *wasm.ValidatedModuleAnalysis) (*shared.GCModuleFrameRootPlan, error) {
+	_ = analysis
 	module := shared.NewGCModuleFrameRootPlan(len(m.Code))
 	collectingFunctions := 0
 	for function := range m.Code {
-		mayCollect := false
-		if analysis.ValidFor(m) {
-			mayCollect = analysis.Func(function).Flags&wasm.ValidatedFuncMayCollect != 0
-		} else {
-			mayCollect = gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, classifier)
-		}
-		if mayCollect {
+		if gcFrameBodyNeedsRootPlanWithClassifier(m, m.Code[function].BodyBytes, classifier) {
 			if !module.MarkFunction(function) {
 				return nil, fmt.Errorf("function %d root plan ownership is invalid", function)
 			}
@@ -49,6 +44,42 @@ func gcFramePrepareModuleRootPlan(m *wasm.Module, classifier *wasm.ModuleInstruc
 		return nil, fmt.Errorf("root plan capacity %d is invalid", collectingFunctions)
 	}
 	return module, nil
+}
+
+// A defined same-module proper tail releases its caller frame before entering
+// the callee, so it has no returning continuation whose roots belong in the
+// caller's plan. Imported and dynamic tails retain plans for their resolving
+// helpers and ownership bridges. Allocations and ordinary calls likewise need
+// exact safepoint or callsite metadata even when validation proves no collection.
+func gcFrameBodyNeedsRootPlanWithClassifier(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
+	if m == nil {
+		return true
+	}
+	importedFunctions, functions := uint64(m.ImportedFuncCount()), uint64(m.FuncCount())
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return true
+		}
+		var imm wasm.InstructionImmediate
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+			return true
+		}
+		switch imm.Kind {
+		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrCallRef,
+			wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
+			return true
+		case wasm.InstrReturnCall:
+			if uint64(imm.Index) < importedFunctions || uint64(imm.Index) >= functions {
+				return true
+			}
+		}
+		if gcFrameInstructionMayAllocate(op, imm) {
+			return true
+		}
+	}
+	return false
 }
 
 // collectorFrameRefType classifies reference types represented by the Wasm GC

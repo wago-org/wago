@@ -209,17 +209,27 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		remainingElements -= values
 	}
-	if importedFunctions != 0 && hasPrivateTable {
-		classifier := wasm.NewModuleInstructionClassifier(m, true)
-		for i := range m.Code {
-			r := wasm.NewReader(m.Code[i].BodyBytes)
-			for r.HasNext() {
-				op, err := r.Byte()
-				if err != nil {
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	for i := range m.Code {
+		r := wasm.NewReader(m.Code[i].BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return false
+			}
+			var imm wasm.InstructionImmediate
+			if err = classifier.ClassifyInto(r, op, &imm); err != nil {
+				return false
+			}
+			switch imm.Kind {
+			case wasm.InstrReturnCall:
+				if uint64(imm.Index) < uint64(importedFunctions) || uint64(imm.Index) >= uint64(importedFunctions+len(m.Code)) {
 					return false
 				}
-				var imm wasm.InstructionImmediate
-				if err = classifier.ClassifyInto(r, op, &imm); err != nil || imm.Kind == wasm.InstrRefFunc && uint64(imm.Index) < uint64(importedFunctions) {
+			case wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
+				return false
+			case wasm.InstrRefFunc:
+				if importedFunctions != 0 && hasPrivateTable && uint64(imm.Index) < uint64(importedFunctions) {
 					return false
 				}
 			}

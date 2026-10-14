@@ -1123,7 +1123,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if callCount > maxDirectCalls {
 				return integerSummary{}, unsupported("local tail count/slot budget")
 			}
-			if functionRefs {
+			if functionRefs || i31Refs {
 				// The private directory already admits both signatures. Carrier
 				// classes alone cannot establish exact heap/nullability results.
 				if err = admitReferenceTailResults(ft, sig.signature); err != nil {

@@ -440,7 +440,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 					return swarSummary{}, err
 				}
 			}
-			if referenceFunctions {
+			if referenceFunctions || gcRootedScalar {
 				if err := admitReferenceTailResults(ft, sig); err != nil {
 					return swarSummary{}, err
 				}
