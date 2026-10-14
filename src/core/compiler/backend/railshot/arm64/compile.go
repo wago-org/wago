@@ -2985,8 +2985,9 @@ func (e regExhausted) Error() string {
 // and ordinary append growth crosses too few size classes to repay a reserve.
 const minPreallocatedCallRelocs = 8
 
-// compileFunc compiles one function exactly once. Its target-derived transient
-// register floor prevents optional whole-function pins from forcing a retry.
+// compileFunc emits the ordinary body and an optional guarded native-import
+// variant. Its target-derived transient register floor prevents optional
+// whole-function pins from forcing a register-pressure retry.
 func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTable immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, inlineTargets inlineTargetTable, calleeHints []funcHints, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	var compileStart time.Time
 	if diagnosticsEnabled && stats != nil {

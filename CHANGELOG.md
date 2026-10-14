@@ -8,6 +8,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Select a guarded native body once at entry for bounded integer loops over
+  identical scalar import aliases on ARM64. Keep every original callback call,
+  the complete Go/foreign fallback, artifact admission, and optimization policies.
+
 - Reduce proven scalar host-import overhead with register arguments and cached
   dispatch metadata on ARM64, and smaller rooted callback resume state on both
   native backends. Fixed shared integer guests use the existing integer context
