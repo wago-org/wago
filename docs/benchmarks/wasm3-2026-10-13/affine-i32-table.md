@@ -54,8 +54,9 @@ trap precedence even when the target discards its argument. Core 3 and official
 atomic conformance passed (3.482 s). Native x86_64 Remote passed the portable
 execution and ABI fallback tests, exercising existing scalar dispatch.
 
-The bare inspector lacks configured GC helpers for four GC modules; those are
-inspector limitations, not runtime failures. They do not establish missing
-selected-workload coverage; official conformance is independently passing.
+The bare inspector lacks configured GC helpers for four GC modules. An independent
+section audit of their exact artifact hashes verifies that all four have zero
+defined tables; the new entry proof requires exactly one, so none can select this
+lowering. Official conformance is independently passing.
 Private paired captures will only reach the local site through a complete
 newer source snapshot. No production publication or push occurred.

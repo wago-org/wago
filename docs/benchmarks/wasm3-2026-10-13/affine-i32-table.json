@@ -5876,6 +5876,36 @@
       "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/affine-table/selection.txt",
       "sha256": "a9ae6325c0d4a5c8b73a912d7e6e4c94436e39dd4a931f63590e5c12489c295e",
       "output": "features/core-tab/indirect-call/performance-4096x64 fn2 proofs=1\nskip compile features/gc/struct-allocation-access/performance-4096x64: arm64: function 0: arm64: unsupported array opcode 15 without GC array helpers\nskip compile features/gc/array-allocation-access/performance-4096x64: arm64: function 0: arm64: unsupported array opcode 15 without GC array helpers\nskip compile features/gc/array-fill/performance-4096x64: arm64: function 0: arm64: unsupported array opcode 15 without GC array helpers\nskip compile features/gc/cast-subtype/performance-4096x64: arm64: function 0: arm64: unsupported 0xfb opcode 0 without GC struct helpers\nfeatures/threads/table-indirect-call/performance-4096x64 fn2 proofs=1\n"
+    },
+    "gc-selection-audit.json": {
+      "file": ".validation/wasm3-parity/affine-table/gc-selection-audit.json",
+      "sha256": "777e53cda8b90f09740be8bc9ac53fedad11a8660a0b419060f59cc84717a428",
+      "rows": [
+        {
+          "workload": "features/gc/struct-allocation-access/performance-4096x64",
+          "artifactSha256": "27468789ca552b5a12cceaa65fafe966cd395fa7e3a14cc45ebce0d2a182eace",
+          "definedTables": 0,
+          "affineEntryProof": "rejected: requires exactly one defined table"
+        },
+        {
+          "workload": "features/gc/array-allocation-access/performance-4096x64",
+          "artifactSha256": "e4c1d1006bc52f9b5433bc23bd0e7b40288786cd69d52eff66e11b28051c805f",
+          "definedTables": 0,
+          "affineEntryProof": "rejected: requires exactly one defined table"
+        },
+        {
+          "workload": "features/gc/array-fill/performance-4096x64",
+          "artifactSha256": "76983fc232082690da73f7d0d419abcee39c83b707a337f0894e7bad1a7e37bd",
+          "definedTables": 0,
+          "affineEntryProof": "rejected: requires exactly one defined table"
+        },
+        {
+          "workload": "features/gc/cast-subtype/performance-4096x64",
+          "artifactSha256": "ab5f84e9ae69990794b333406eaf49b1b7522fb49ab2e4cbb3bcf4dadbfb995a",
+          "definedTables": 0,
+          "affineEntryProof": "rejected: requires exactly one defined table"
+        }
+      ]
     }
   },
   "compilerCost": {
@@ -6109,7 +6139,7 @@
   },
   "limitations": [
     "All two selected contracts in the 266-workload inventory were tested plus two unchanged controls.",
-    "The bare inspector lacks configured GC helpers for four GC modules; this is not a runtime failure, and official conformance is separately passing.",
+    "The four GC modules that the bare inspector cannot compile have independently verified zero defined tables, so the affine entry proof rejects them. Official conformance is separately passing.",
     "The peer thread-table host profile is unsupported, so no numeric peer ratio is inferred there.",
     "Ordinary indirect calls now beat the pinned SIMD Clang peer, but other feature gaps and main-workload gaps remain; full goal not complete.",
     "AMD64 validation exercises the unchanged scalar dispatch, not the new ARM64 lowering."
