@@ -570,11 +570,19 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		}
 	}
 	for _, function := range c.Exports {
-		local := function - c.NumImports
-		if local < 0 || local >= len(c.Funcs) {
+		if function < 0 || function >= c.NumImports+len(c.Funcs) {
 			return false
 		}
-		typ := &c.Types[c.Funcs[local].TypeIndex]
+		var sig *FuncSig
+		if function < c.NumImports {
+			sig = &c.importFuncSigs[function]
+		} else {
+			sig = &c.Funcs[function-c.NumImports]
+		}
+		if !sig.HasTypeIndex || int(sig.TypeIndex) >= len(c.Types) {
+			return false
+		}
+		typ := &c.Types[sig.TypeIndex]
 		for _, values := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
 			for _, value := range values {
 				if !rootedExportValue(value) {

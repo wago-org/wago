@@ -278,7 +278,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		export := &m.Exports[i]
 		switch export.Index.Kind {
 		case wasm.ExternFunc:
-			if uint64(export.Index.Index) < uint64(importedFunctions) || uint64(export.Index.Index) >= uint64(importedFunctions+len(m.FuncTypes)) {
+			if uint64(export.Index.Index) >= uint64(importedFunctions+len(m.FuncTypes)) {
 				return false
 			}
 		case wasm.ExternMem:
@@ -464,12 +464,8 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		if m.Exports[i].Index.Kind == wasm.ExternMem || m.Exports[i].Index.Kind == wasm.ExternTable {
 			continue
 		}
-		index := m.Exports[i].Index.Index
-		if uint64(index) < uint64(importedFunctions) || uint64(index) >= uint64(importedFunctions+len(m.FuncTypes)) {
-			return false
-		}
-		ft, ok := m.TypeFunc(m.FuncTypes[index-uint32(importedFunctions)].Index)
-		if !ok {
+		ft, ok := m.FuncSignature(m.Exports[i].Index.Index)
+		if !ok || ft == nil {
 			return false
 		}
 		for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {

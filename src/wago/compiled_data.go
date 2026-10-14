@@ -322,8 +322,7 @@ func rv64RootedMemoryExportDigest(c *Compiled) ([32]byte, bool) {
 	_, _ = h.Write(word[:4])
 	for _, name := range sortedKeys(c.Exports) {
 		index := c.Exports[name]
-		local := index - c.NumImports
-		if local < 0 || local >= len(c.Funcs) || uint64(len(name)) > remaining {
+		if index < 0 || index >= c.NumImports+len(c.Funcs) || uint64(len(name)) > remaining {
 			return [32]byte{}, false
 		}
 		remaining -= uint64(len(name))

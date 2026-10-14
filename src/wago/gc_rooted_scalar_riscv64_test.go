@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"runtime"
 	"slices"
@@ -215,6 +216,108 @@ func rootedScalarReferenceHostImportModule() []byte {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
+}
+
+func rootedScalarReferenceFunctionReexportModule() []byte {
+	functionImport := append(append(wasmtest.Name("provider"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
+	functionImport = append(functionImport, wasmtest.ULEB(1)...)
+	body := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0x10, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			[]byte{0x60, 0x01, 0x64, 0x00, 0x01, 0x64, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(functionImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("echo", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func rootedScalarReferenceFunctionProviderModule() []byte {
+	echo := []byte{0x00, 0x20, 0x00, 0x0b}
+	keepAlive := []byte{0x00, 0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			[]byte{0x60, 0x01, 0x64, 0x00, 0x01, 0x64, 0x00},
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("echo", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(echo))), echo...),
+			append(wasmtest.ULEB(uint32(len(keepAlive))), keepAlive...),
+		)),
+	)
+}
+
+func TestRV64RootedReferenceFunctionReexportExecutes(t *testing.T) {
+	providerSource := rootedScalarReferenceFunctionProviderModule()
+	relaySource := rootedScalarReferenceFunctionReexportModule()
+	if !railshot.AdmitGCRootedScalarSource(providerSource) || !railshot.AdmitGCRootedScalarSource(relaySource) {
+		t.Fatal("rooted provider/re-export source was not admitted")
+	}
+	providerCode, err := Compile(rv64RootedScalarConfig(), providerSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer providerCode.Close()
+	relayCode, err := Compile(rv64RootedScalarConfig(), relaySource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer relayCode.Close()
+	view := relayCode.executionView()
+	exportDigest, validExports := rv64RootedMemoryExportDigest(view)
+	if !rv64FreshRootedGC(view) || view.Exports["echo"] != 0 || view.Exports["run"] != 1 ||
+		!validExports || exportDigest != view.validateMemo.rv64FreshRootedGCExportDigest {
+		t.Fatalf("rooted function re-export receipt=%t exports=%v digest=%t/%t validation=%v", rv64FreshRootedGC(view), view.Exports,
+			validExports, exportDigest == view.validateMemo.rv64FreshRootedGCExportDigest, railshotValidateCompiled(view))
+	}
+	mutated := cloneCompiledMetadata(view)
+	mutated.Exports = maps.Clone(mutated.Exports)
+	mutated.Exports["echo"] = 1
+	if rv64FreshRootedGC(mutated) {
+		t.Fatal("retargeted imported function re-export retained the rooted receipt")
+	}
+
+	rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
+	defer rt.Close()
+	providerModule, err := rt.Module(providerCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := rt.Instantiate(context.Background(), providerModule, WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}))
+	providerModule.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provider.Close()
+	echo, err := provider.ExportedFunc("echo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	relayModule, err := rt.Module(relayCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relay, err := rt.Instantiate(context.Background(), relayModule, WithImports(testImports("provider.echo", echo)), WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}))
+	relayModule.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer relay.Close()
+	if got, err := relay.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
+		t.Fatalf("run()=%v err=%v want=[42]", got, err)
+	}
+	if got, err := relay.Invoke("echo", 0); err != nil || !slices.Equal(got, []uint64{0}) {
+		t.Fatalf("re-exported echo(null)=%v err=%v want=[0]", got, err)
+	}
 }
 
 func TestRV64RootedReferenceHostImportExecutes(t *testing.T) {

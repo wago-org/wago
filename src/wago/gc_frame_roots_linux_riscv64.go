@@ -315,8 +315,8 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		if export.Index.Kind != wasm.ExternFunc {
 			return reject("RV64 exact roots reject non-function export %d", i)
 		}
-		if uint64(export.Index.Index) < uint64(importedFunctions) || uint64(export.Index.Index) >= uint64(importedFunctions+len(m.Code)) {
-			return reject("RV64 exact roots reject imported or unavailable function export %d", i)
+		if uint64(export.Index.Index) >= uint64(importedFunctions+len(m.Code)) {
+			return reject("RV64 exact roots reject unavailable function export %d", i)
 		}
 	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
