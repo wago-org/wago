@@ -1811,15 +1811,17 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)
 		f.spillLocalsForClobbers((1<<18)-1, 0)
 		argSlot := slotsOfTypes(types[:len(types)-len(ft.Params)])
-		f.a.LeaSP(X0, f.spillOff(argSlot))
-		// The verified wrapper loads both i32 arguments before storing its
-		// sole result. Reuse the first argument's canonical stack slot.
-		f.a.MovReg64(X3, X0)
+		f.ld32(X0, SP, f.spillOff(argSlot))
+		if len(ft.Params) == 2 {
+			f.ld32(X1, SP, f.spillOff(argSlot+1))
+		}
+		f.a.AddImm64(X17, X17, runtime.NativeScalarLeafRegisterEntryOffset)
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
 		f.stats.call(callKindImportDispatch)
 		f.a.Blr(X17)
+		f.st64(SP, f.spillOff(argSlot), X0)
 		for i := range f.locals {
 			if f.locals[i].state != fastLocals[i].state {
 				return fmt.Errorf("native import local-state join differs at local %d", i)
@@ -1921,11 +1923,6 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	}
 	f.storeModuleGlobals(X9) // cross-instance boundary: shared globals must be cell-coherent
 
-	// Args/results buffers as absolute pointers (survive the STP pushes below —
-	// they hold absolute addresses, unaffected by the SP adjustment).
-	f.a.LeaSP(X0, argOff)                 // args = &first arg slot
-	f.a.LeaSP(X3, f.spillOff(resultSlot)) // results = &slot-width top
-
 	// Only a runtime-verified native leaf may bypass context publication. Its
 	// wrapper ABI and caller-clobbered register set stay unchanged. Operands
 	// are homed above; proven preserved local pins can remain in registers.
@@ -1941,6 +1938,10 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		f.a.AndImm64(X12, X12, runtime.ImportDispatchCallerNativeLeafTag)
 		nativeLeaf = f.a.Cbnz64(X12)
 	}
+	// Only wrapper calls need buffer pointers. The native register branch
+	// skips this setup and loads its canonical i32 arguments directly.
+	f.a.LeaSP(X0, argOff)
+	f.a.LeaSP(X3, f.spillOff(resultSlot))
 	if preserveNativeLocals {
 		f.spillLocalsForCall()
 	}
@@ -2046,10 +2047,16 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		// instance's basedata and cached memory bound intact.
 		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
 		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)
+		f.ld32(X0, SP, argOff)
+		if p == 2 {
+			f.ld32(X1, SP, argOff+8)
+		}
+		f.a.AddImm64(X17, X17, runtime.NativeScalarLeafRegisterEntryOffset)
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
 		f.a.Blr(X17)
+		f.st64(SP, f.spillOff(resultSlot), X0)
 		f.patchBranch26(done, f.a.Len())
 	}
 

@@ -2,7 +2,11 @@
 
 package runtime
 
-import "testing"
+import (
+	"encoding/binary"
+	"github.com/wago-org/wago/internal/runtimebridge"
+	"testing"
+)
 
 func TestScalarLeafRejectsUnsafeInstructions(t *testing.T) {
 	for _, tc := range []struct {
@@ -54,5 +58,29 @@ func TestScalarGoABIRejectsUnverifiedVersions(t *testing.T) {
 		if scalarGoABI(tc.version) != tc.want {
 			t.Errorf("version %s: want %t", tc.version, tc.want)
 		}
+	}
+}
+
+func TestNativeScalarLeafRegisterEntry(t *testing.T) {
+	ctrl := make([]byte, ctrlFrameSize)
+	t.Cleanup(func() { unregisterNativeScalarLeaf(ctrl) })
+	ok, err := RegisterNativeScalarLeaf(runtimebridge.GrantHostScalarCall(), ctrl, nativeLeafIncTest, 1)
+	if err != nil || !ok {
+		t.Fatalf("register: %v %v", ok, err)
+	}
+	value, _ := nativeLeafHosts.Load(slicePtr(ctrl))
+	leaf := value.(nativeScalarLeaf)
+	start := int(leaf.direct-slicePtr(leaf.code)) + NativeScalarLeafRegisterEntryOffset
+	body := scalarLeafBody(nativeLeafIncTest, 1)
+	if len(leaf.code) < start+len(body)+8 {
+		t.Fatal("register entry absent")
+	}
+	for off := 0; off < len(body); off += 4 {
+		if binary.LittleEndian.Uint32(leaf.code[start+off:]) != binary.LittleEndian.Uint32(body[off:]) {
+			t.Fatal("register body differs")
+		}
+	}
+	if binary.LittleEndian.Uint32(leaf.code[start+len(body):]) != 0x2a0003e0 || binary.LittleEndian.Uint32(leaf.code[start+len(body)+4:]) != 0xd65f03c0 {
+		t.Fatal("register result must be canonical i32 and return")
 	}
 }

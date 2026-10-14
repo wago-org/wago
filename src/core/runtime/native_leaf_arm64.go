@@ -12,6 +12,10 @@ import (
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
+// NativeScalarLeafRegisterEntryOffset is measured from the dispatch wrapper.
+// The verified copied body is shorter than 128 bytes; 192 reserves the wrapper.
+const NativeScalarLeafRegisterEntryOffset = 192
+
 // scalarLeafInstruction admits only straight-line register arithmetic. Every
 // source must be an argument or a previously defined scratch register. Memory,
 // stack, closure/g, PC-relative, branch, call and flag-dependent instructions
@@ -177,6 +181,18 @@ func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []
 		mustEncode(a.Store64(a64.X0, a64.Reg(reg), 0))
 		a.Ret()
 		break
+	}
+	if directOff >= 0 {
+		if a.Len() > directOff+NativeScalarLeafRegisterEntryOffset {
+			return false, fmt.Errorf("jit: native scalar wrapper exceeds register-entry reservation")
+		}
+		for a.Len() < directOff+NativeScalarLeafRegisterEntryOffset {
+			a.Nop()
+		}
+		// X0/X1 hold canonical i32 arguments; X0 returns a canonical result.
+		a.B = append(a.B, body...)
+		a.MovReg32(a64.X0, a64.X0)
+		a.Ret()
 	}
 	mem, err := mmapExec(a.B)
 	if err != nil {
