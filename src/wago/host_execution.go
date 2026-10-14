@@ -582,9 +582,11 @@ func (l parkedIndependentHostLease) resume(a *hostLoopActivation) {
 	}
 	// Shared memory zero has instance-private basedata and control, so another
 	// tenant cannot overwrite this invocation's trap, stack or import context.
-	// The memory directory still needs live sizes after every callback: a
-	// different goroutine may have grown the shared backing while we parked.
-	if a.root.threadedMemoryZero {
+	// A growable or mixed directory still needs live sizes after every
+	// callback: another goroutine may have grown a backing while we parked.
+	// All-shared memory32 entries captured at their physical growth ceilings
+	// cannot change, so retain them without refreshing their owner metadata.
+	if a.root.threadedMemoryZero && (a.root.memoryDir == nil || !a.root.memoryDir.sharedEntriesStable) {
 		if err := a.root.refreshMemoryDirectory(); err != nil {
 			panic(invalidHostReference{err: err})
 		}

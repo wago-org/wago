@@ -665,6 +665,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 	}
 	var nativeMemoryDir []byte
+	sharedMemoryDirStable := false
 	var nativeTagIDs []byte
 	ar, err := runtime.AcquireArena(arenaNeed)
 	if err != nil {
@@ -675,6 +676,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
 	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
 	if needsMemoryDir {
+		sharedMemoryDirStable = memoryCount != 0
 		nativeMemoryDir = ar.Alloc(memoryCount * abi.MemoryDirEntryBytes)
 		for i, memory := range memoryObjs {
 			memoryJM := memory.jobMemory()
@@ -687,6 +689,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			entry := nativeMemoryDir[i*abi.MemoryDirEntryBytes:]
 			binary.LittleEndian.PutUint64(entry[abi.MemoryDirBaseOffset:], uint64(memoryJM.LinMemBase()))
 			pages := memoryJM.CurrentPages()
+			// Use the very same size snapshot written into the entry. A grower
+			// reaching the ceiling after this read must not freeze an older size.
+			def := c.memoryDef(i)
+			if !def.Shared || def.Addr64 || pages != memoryJM.MaxPages() {
+				sharedMemoryDirStable = false
+			}
 			binary.LittleEndian.PutUint64(entry[abi.MemoryDirCurrentBytesOffset:], uint64(pages)<<16)
 			binary.LittleEndian.PutUint32(entry[abi.MemoryDirCurrentPagesOffset:], pages)
 			binary.LittleEndian.PutUint32(entry[abi.MemoryDirPolicyMaxPagesOffset:], opts.memoryLimitPages)
@@ -1803,7 +1811,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 
 	}
 	if memoryCount > 1 || threadedControl {
-		in.memoryDir = &instanceMemoryDirectory{memories: memoryObjs, owns: memoryOwns, native: nativeMemoryDir}
+		in.memoryDir = &instanceMemoryDirectory{memories: memoryObjs, owns: memoryOwns, native: nativeMemoryDir, sharedEntriesStable: sharedMemoryDirStable}
 		for i, memory := range memoryObjs {
 			if c.memoryDef(i).Shared {
 				if in.memoryDir.sharedBackings == nil {
