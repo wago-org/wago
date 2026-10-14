@@ -1324,10 +1324,10 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			switch imm.Kind {
 			case wasm.InstrStructNew:
 				fields, ok := referenceTypes.rootedStructFields(imm.Index)
-				if !ok || len(fields) > maxSWARLocals {
+				if !ok || len(fields) > 255 {
 					return swarSummary{}, unsupported("SWAR struct.new outside generic rooted profile")
 				}
-				var storage [maxSWARLocals]swarClass
+				var storage [255]swarClass
 				for i, field := range fields {
 					class := functionClass(field.Storage().Val())
 					if referenceTypes.rootedStructFieldReference(imm.Index, uint32(i)) {

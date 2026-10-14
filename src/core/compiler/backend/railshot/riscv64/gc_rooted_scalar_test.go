@@ -589,6 +589,73 @@ func TestRV64RootedSIMDStructAllocationAndGetCompile(t *testing.T) {
 	}
 }
 
+func rv64RootedSIMDLargeStructModule() []byte {
+	const fieldCount = 129
+	structure := append([]byte{0x5f}, wasmtest.ULEB(fieldCount)...)
+	for range fieldCount {
+		structure = append(structure, 0x7f, 0x00)
+	}
+	body := []byte{0x01, 0x01, 0x7b}
+	for range fieldCount {
+		body = append(body, 0x41, 0x00)
+	}
+	body = append(body,
+		0xfb, 0x00, 0x00,
+		0xfb, 0x02, 0x00, 0x80, 0x01,
+		0x0b,
+	)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			structure,
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedSIMDLargeStructCompiles(t *testing.T) {
+	source := rv64RootedSIMDLargeStructModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vector, err := functionUsesSWAR(m, 0); err != nil || !vector {
+		t.Fatalf("large SIMD/GC selector=%t err=%v", vector, err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(1)
+	if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve large SIMD/GC roots")
+	}
+	plan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin large SIMD/GC roots")
+	}
+	*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true}
+	if !plan.SetLiveMasks([]uint64{0}, 1, 0) {
+		t.Fatal("install large SIMD/GC allocation mask")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 130, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 1 || plan.CallsiteCount() != 0 {
+		t.Fatalf("large SIMD/GC code=%d safepoints=%d callsites=%d", len(compiled.Code), plan.SafepointCount(), plan.CallsiteCount())
+	}
+}
+
 func rv64RootedSIMDArrayFunctionModule() []byte {
 	body := []byte{
 		0x01, 0x02, 0x63, 0x00,
@@ -697,7 +764,7 @@ func TestRV64RootedSIMDArrayOperationsCompile(t *testing.T) {
 	}
 	compiled, err := CompileModuleWith(m, CompileOptions{
 		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
-		GCArrayHelpers: true, SyncHostSlots: 6, GCFrameRoots: roots, GCFrameRootsSource: true,
+		GCStructHelpers: true, GCArrayHelpers: true, SyncHostSlots: 6, GCFrameRoots: roots, GCFrameRootsSource: true,
 		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
 	})
 	if err != nil {
