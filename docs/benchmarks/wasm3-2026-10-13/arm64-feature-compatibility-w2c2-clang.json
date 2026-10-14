@@ -1,0 +1,119 @@
+{
+  "contractsExpected": 373,
+  "contractsRecorded": 373,
+  "outcomes": {
+    "ok": 169,
+    "unsupported": 111,
+    "failed": 93
+  },
+  "byFamily": {
+    "core-num": {
+      "ok": 18
+    },
+    "core-mem": {
+      "ok": 12
+    },
+    "core-ctl": {
+      "ok": 6
+    },
+    "core-tab": {
+      "ok": 3
+    },
+    "core-glb": {
+      "ok": 24
+    },
+    "mutable-globals": {
+      "ok": 24
+    },
+    "jspi": {
+      "unsupported": 15
+    },
+    "sign-extension": {
+      "ok": 15
+    },
+    "saturating-float-to-int": {
+      "ok": 15
+    },
+    "reference-types": {
+      "failed": 12
+    },
+    "core-val": {
+      "ok": 3
+    },
+    "bulk-memory": {
+      "ok": 7
+    },
+    "multi-value": {
+      "failed": 6
+    },
+    "simd": {
+      "ok": 18
+    },
+    "relaxed-simd": {
+      "failed": 9
+    },
+    "gc": {
+      "failed": 15,
+      "ok": 3
+    },
+    "memory64": {
+      "failed": 9,
+      "ok": 3
+    },
+    "exceptions": {
+      "failed": 9,
+      "ok": 3
+    },
+    "tail-call": {
+      "failed": 6,
+      "ok": 3
+    },
+    "multi-memory": {
+      "failed": 6
+    },
+    "extended-const": {
+      "failed": 3
+    },
+    "js-string-builtins": {
+      "unsupported": 9
+    },
+    "threads": {
+      "unsupported": 75,
+      "ok": 9
+    },
+    "component-model": {
+      "unsupported": 3
+    },
+    "cm-abi": {
+      "unsupported": 3
+    },
+    "cm-res": {
+      "unsupported": 3
+    },
+    "cm-async": {
+      "unsupported": 3
+    },
+    "wide-arithmetic": {
+      "failed": 12
+    },
+    "compact-imports": {
+      "failed": 6,
+      "ok": 3
+    }
+  },
+  "verifiedProducerTrials": 169,
+  "compilerFlagsChecked": 373,
+  "compilerOptimization": "-O0",
+  "failureCategories": {
+    "translation rejection": 90,
+    "guest trap": 3
+  },
+  "matchedContracts": 373,
+  "source": {
+    "repository": "JairusSW/w2c2",
+    "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+    "ref": "main@f303ed27",
+    "asOf": "2026-10-13T05:56:24.446Z",
+    "kind": "snapshot"
+  }
+}
