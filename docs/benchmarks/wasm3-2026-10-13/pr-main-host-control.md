@@ -16,3 +16,12 @@ not negate their separately measured deltas. It is a retained contrary control
 and prevents a branch-wide regression-free or default-main speedup claim.
 The complete default-main feature/compile/RSS comparison is still outstanding;
 features that default main cannot execute need separate admission accounting.
+
+After fixing foreign Caller parent propagation (`30b16166`), repeat the same
+matched control in both source orders. Current/main median ratios are **1.00782**
+and **1.08251** (+0.8% / +8.3%). Main median/range: 115.1 ns [109.7,116.3]
+and 111.5 ns [109.3,119.4]; exact ranges in the companion JSON are authoritative.
+Current medians are 116.0 ns and 120.7 ns. Both sources retain 64 B/op and one
+allocation/op. The two-order spread is retained; it does not establish that the
+legacy-control regression has been eliminated. The initial control remains
+unchanged above. See `pr-main-host-control-parent-fix.json` for every sample.

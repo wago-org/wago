@@ -1,0 +1,75 @@
+{
+  "baseline": "8097344a63a79e96230e09c883b2138232151370",
+  "benchmark": "BenchmarkInvokeHostFuncDirect",
+  "results": [
+    {
+      "order": "forward",
+      "label": "main",
+      "samplesNs": [
+        115.2,
+        115.1,
+        109.7,
+        116.3,
+        114.4
+      ],
+      "medianNs": 115.1,
+      "rangeNs": [
+        109.7,
+        116.3
+      ]
+    },
+    {
+      "order": "forward",
+      "label": "current",
+      "samplesNs": [
+        116.7,
+        116.5,
+        116.0,
+        113.3,
+        115.0
+      ],
+      "medianNs": 116.0,
+      "rangeNs": [
+        113.3,
+        116.7
+      ],
+      "ratioToMain": 1.0078192875760208
+    },
+    {
+      "order": "reverse",
+      "label": "current",
+      "samplesNs": [
+        120.9,
+        121.3,
+        116.3,
+        116.3,
+        120.7
+      ],
+      "medianNs": 120.7,
+      "rangeNs": [
+        116.3,
+        121.3
+      ],
+      "ratioToMain": 1.0825112107623318
+    },
+    {
+      "order": "reverse",
+      "label": "main",
+      "samplesNs": [
+        109.3,
+        113.3,
+        111.5,
+        111.2,
+        119.4
+      ],
+      "medianNs": 111.5,
+      "rangeNs": [
+        109.3,
+        119.4
+      ]
+    }
+  ],
+  "scope": "Common legacy host-import control only; not the shared-thread or compact import performance corpus.",
+  "current": "30b16166",
+  "allocations": "Both sources retain 64 B/op and 1 alloc/op"
+}
