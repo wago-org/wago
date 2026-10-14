@@ -1860,7 +1860,12 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	// wrapper ABI and caller-clobbered register set stay unchanged; locals and
 	// operands above were already homed for both alternatives.
 	nativeLeaf := -1
-	if b.Dynamic && !recordRoots && p >= 1 && p <= 2 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && ft.Params[0] == wasm.I32 && (p == 1 || ft.Params[1] == wasm.I32) {
+	// A single-import resource-free module retains its lean existing wrapper
+	// route: the extra dispatch branch regresses short dependent callback loops.
+	// Stateful modules and import aliases amortize this branch against context
+	// publication, while keeping the same native-leaf contract.
+	contextShortcut := len(f.m.Imports) > 1 || len(f.m.Memories) > 0 || len(f.m.Globals) > 0 || len(f.m.Tables) > 0
+	if contextShortcut && b.Dynamic && !recordRoots && p >= 1 && p <= 2 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && ft.Params[0] == wasm.I32 && (p == 1 || ft.Params[1] == wasm.I32) {
 		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
 		f.ld64(X16, linMemReg, -int32(offImportDispatchPtr))
 		f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
