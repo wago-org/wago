@@ -120,3 +120,38 @@ func TestAffineI32TableArgumentTrapOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestAffineI32IdentityTableResultCanonicalization(t *testing.T) {
+	for _, inline := range []bool{false, true} {
+		for _, abi := range []bool{false, true} {
+			t.Run(fmt.Sprintf("inline%t/abi%t", inline, abi), func(t *testing.T) {
+				c, err := NewRuntimeConfig().WithOptimization("inline", inline).WithOptimization("reg-abi", abi).Compile(wasmtest.AffineI32Table(1, []uint32{0, 0}, 2, false, false))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer c.Close()
+				loaded := publicArtifactRoundTrip(t, c)
+				defer loaded.Close()
+				for _, compiled := range []*Compiled{c, loaded} {
+					in, err := Instantiate(compiled)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer in.Close()
+					for _, value := range []uint64{0xabcdef0100000000, 0xabcdef0100000007, 0xabcdef01ffffffff} {
+						for _, name := range []string{"call", "prefix"} {
+							got, err := in.Invoke(name, value, 0x9876543200000001)
+							want := uint64(uint32(value))
+							if name == "prefix" {
+								want += 0x1122334455667788
+							}
+							if err != nil || len(got) != 1 || got[0] != want {
+								t.Fatalf("%s value%x =>%v %v want%x", name, value, got, err, want)
+							}
+						}
+					}
+				}
+			})
+		}
+	}
+}
