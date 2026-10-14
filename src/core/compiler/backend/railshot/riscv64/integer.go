@@ -1220,7 +1220,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 			if live && emit != nil {
-				emit.referenceCall(sig.signature, sig.key, h, referenceSlot, emit.SpillOffset, 8)
+				emit.referenceCall(sig.signature, sig.key, h, referenceSlot, emit.SpillOffset, 8, stackRefs[:h])
 			}
 			for i, wide := range callResults {
 				if len(callResultRefs) != 0 && callResultRefs[i] {

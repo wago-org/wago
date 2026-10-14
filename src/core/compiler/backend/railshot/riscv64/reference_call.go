@@ -11,7 +11,7 @@ import (
 // References are full-width canonical carriers supplied by a retained owner.
 // Resolve null, identity and the exact declared signature before marshalling
 // into shared root arenas. The native bridge retains normal-return semantics.
-func (f *integerEmitter) referenceCall(sig *wasm.CompType, key uint64, base, referenceSlot int, spill func(int) int32, stride int) {
+func (f *integerEmitter) referenceCall(sig *wasm.CompType, key uint64, base, referenceSlot int, spill func(int) int32, stride int, hiddenRefs []bool) {
 	if !f.mode.referenceCalls || !f.mode.foreignTableCalls || !f.mode.invocationContext || !f.mode.production || !f.mode.interruptible || (stride != 8 && stride != 16) {
 		f.err = unsupported("call_ref native owner contract")
 		return
@@ -55,7 +55,12 @@ func (f *integerEmitter) referenceCall(sig *wasm.CompType, key uint64, base, ref
 
 	// Argument transport uses X5/X6 and reserved address scratch; X14 survives.
 	f.swarCallArguments(sig, base, spill)
-	f.nativeTableCall(key, swarSignatureSlots(sig.Params), swarSignatureSlots(sig.Results))
+	returnOffset, stackAdjust := f.nativeTableCall(key, swarSignatureSlots(sig.Params), swarSignatureSlots(sig.Results))
+	if f.mode.gcRootedScalar && returnOffset != 0 {
+		f.recordGCFrameCallsiteAdjusted(returnOffset, stackAdjust, hiddenRefs)
+	} else {
+		f.recordGCFrameCallsite(f.a.Len(), hiddenRefs)
+	}
 	if stride == 16 {
 		f.swarCallResults(sig, base, spill)
 		return

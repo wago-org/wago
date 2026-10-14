@@ -550,7 +550,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				if tail {
 					emit.dynamicReferenceTailCall(typeIndex, sig, base, h-1, spill, 16)
 				} else {
-					emit.referenceCall(sig, wasm.StructuralFuncTypeKey(sig), base, h-1, spill, 16)
+					emit.referenceCall(sig, wasm.StructuralFuncTypeKey(sig), base, h-1, spill, 16, hiddenRefs(base))
 				}
 			}
 			if tail {

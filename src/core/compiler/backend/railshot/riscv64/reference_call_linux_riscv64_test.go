@@ -53,7 +53,7 @@ func TestReferenceCallRV64PreflightBeforeArgumentWrites(t *testing.T) {
 				e.mode.referenceCalls, e.mode.foreignTableCalls = true, true
 				e.a.Constant64(enc.X5, int64(tailRAPointer(d)))
 				e.Store(int32(48+16*slot), 5, true)
-				e.referenceCall(sig, key, 0, slot, func(i int) int32 { return int32(48 + 16*i) }, 16)
+				e.referenceCall(sig, key, 0, slot, func(i int) int32 { return int32(48 + 16*i) }, 16, nil)
 				tailRANativeSerialize(e, sig.Results, 0)
 			})
 			for _, code := range []*coreruntime.CodeBuffer{target.code, root.code} {
@@ -65,7 +65,7 @@ func TestReferenceCallRV64PreflightBeforeArgumentWrites(t *testing.T) {
 				e.mode.referenceCalls, e.mode.foreignTableCalls = true, true
 				e.a.Constant64(enc.X5, 0)
 				e.Store(int32(48+16*slot), 5, true)
-				e.referenceCall(sig, key, 0, slot, func(i int) int32 { return int32(48 + 16*i) }, 16)
+				e.referenceCall(sig, key, 0, slot, func(i int) int32 { return int32(48 + 16*i) }, 16, nil)
 				tailRANativeSerialize(e, sig.Results, 0)
 			})
 			if err := nullRoot.code.Seal(); err != nil {
