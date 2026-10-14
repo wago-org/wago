@@ -706,7 +706,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 		f.ld64(X11, X16, disp+runtime.ImportDispatchTargetContextOffset)
 		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)
 		f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
-		f.a.AndImm64(X12, X12, ^runtime.ImportDispatchCallerGoHostTag)
+		f.a.AndImm64(X12, X12, ^runtime.ImportDispatchCallerTagMask)
 	} else {
 		f.a.MovImm64(X10, b.CalleeLinMem)
 		f.a.MovImm64(X17, b.CalleeEntry)
@@ -1856,6 +1856,18 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.LeaSP(X0, argOff)                 // args = &first arg slot
 	f.a.LeaSP(X3, f.spillOff(resultSlot)) // results = &slot-width top
 
+	// Only a runtime-verified native leaf may bypass context publication. Its
+	// wrapper ABI and caller-clobbered register set stay unchanged; locals and
+	// operands above were already homed for both alternatives.
+	nativeLeaf := -1
+	if b.Dynamic && !recordRoots && p >= 1 && p <= 2 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && ft.Params[0] == wasm.I32 && (p == 1 || ft.Params[1] == wasm.I32) {
+		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
+		f.ld64(X16, linMemReg, -int32(offImportDispatchPtr))
+		f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
+		f.a.AndImm64(X12, X12, runtime.ImportDispatchCallerNativeLeafTag)
+		nativeLeaf = f.a.Cbnz64(X12)
+	}
+
 	// Preserve the caller's module-invariant registers (linMemReg=linMem, X27=memSize,
 	// X23-X25=module globals), and X22=the active EH record (3 STP pairs =
 	// 48 bytes, so SP stays 16-aligned). An exception-enabled callee inherits X22;
@@ -1875,7 +1887,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		f.ld64(X10, X16, disp+runtime.ImportDispatchTargetContextOffset) // target context
 		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)       // wrapper entry
 		f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
-		f.a.AndImm64(X12, X12, ^runtime.ImportDispatchCallerGoHostTag)
+		f.a.AndImm64(X12, X12, ^runtime.ImportDispatchCallerTagMask)
 		// Ordinary host imports target this exact instance context. Its basedata
 		// is already installed, so publish neither a context image nor identical
 		// trap words. Equal linear memory alone is insufficient for aliased
@@ -1944,6 +1956,19 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	// this caller and grows its memory. Reload from the restored caller context
 	// before its continuation resumes.
 	f.refreshCachedMemoryBoundAfterExternalCall()
+	if nativeLeaf >= 0 {
+		done := f.a.Branch()
+		f.patchBranch19(nativeLeaf, f.a.Len())
+		// Reload the cell target after the tag test. Native leaves keep this
+		// instance's basedata and cached memory bound intact.
+		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
+		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
+		f.a.Blr(X17)
+		f.patchBranch26(done, f.a.Len())
+	}
 
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.deriveModuleGlobals() // cross-instance callee may have written shared global cells

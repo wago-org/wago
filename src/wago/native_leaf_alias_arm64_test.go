@@ -3,10 +3,14 @@
 package wago
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	wruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
+	"unsafe"
 )
 
 func nativeLeafAliasModule() []byte {
@@ -138,5 +142,95 @@ func TestNativeLeafOwnedAliasesLifetime(t *testing.T) {
 	got, err = in.Invoke("run", 7)
 	if err != nil || got[0] != 9 {
 		t.Fatalf("retained aliases got=%v err=%v", got, err)
+	}
+}
+
+func TestNativeLeafAliasesPreserveInstanceContext(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		c, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithOptimization("native-leaf-host", enabled).Compile(nativeLeafAliasModule())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		for index, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+			in, err := Instantiate(code, InstantiateOptions{Imports: testImports("env.a", nativeLeafIncrement, "env.b", nativeLeafIncrement)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			ptr := in.jm.CaptureInstanceContext().ImportDispatch
+			cells := unsafe.Slice((*byte)(offHeapPtr(ptr)), 2*wruntime.ImportDispatchEntryBytes)
+			for cell := 0; cell < 2; cell++ {
+				word := binary.LittleEndian.Uint64(cells[cell*wruntime.ImportDispatchEntryBytes+wruntime.ImportDispatchCallerContextOffset:])
+				if tagged := word&wruntime.ImportDispatchCallerNativeLeafTag != 0; tagged != (enabled && index == 0) {
+					t.Fatalf("native context contract=%t enabled=%t artifact=%d", tagged, enabled, index)
+				}
+			}
+		}
+	}
+}
+
+func TestNativeLeafImportPreservesLocalsGlobalsAndSharedMemory(t *testing.T) {
+	module := watToWasm(t, `(module
+  (import "env" "step" (func $step (param i32) (result i32)))
+  (memory 1 1)
+  (global $g (mut i32) (i32.const 7))
+  (func (export "run") (param $n i32) (result i32)
+   (local $i i32) (local $a i32) (local $b i32) (local $c i32) (local $d i32)
+   (local $e i32) (local $f i32) (local $h i32) (local $j i32)
+   (local.set $a (i32.add (local.get $n) (i32.const 1)))
+   (local.set $b (i32.add (local.get $n) (i32.const 2)))
+   (local.set $c (i32.add (local.get $n) (i32.const 3)))
+   (local.set $d (i32.add (local.get $n) (i32.const 4)))
+   (local.set $e (i32.add (local.get $n) (i32.const 5)))
+   (local.set $f (i32.add (local.get $n) (i32.const 6)))
+   (local.set $h (i32.add (local.get $n) (i32.const 7)))
+   (local.set $j (i32.add (local.get $n) (i32.const 8)))
+   (loop $loop
+    (i32.store (i32.const 0) (local.get $i))
+    (global.set $g (i32.add (global.get $g) (call $step (local.get $i))))
+    (local.set $i (i32.add (local.get $i) (i32.const 1)))
+    (br_if $loop (i32.lt_u (local.get $i) (local.get $n))))
+   (i32.add (global.get $g) (i32.add (i32.load (i32.const 0))
+    (i32.add (local.get $a) (i32.add (local.get $b) (i32.add (local.get $c)
+    (i32.add (local.get $d) (i32.add (local.get $e) (i32.add (local.get $f)
+    (i32.add (local.get $h) (local.get $j))))))))))))`)
+	// The standard WAT helper leaves the optional threads parser disabled.
+	// Change only the single memory section's flags from max-present to shared.
+	memorySection := []byte{5, 4, 1, 1, 1, 1}
+	if bytes.Count(module, memorySection) != 1 {
+		t.Fatal("unexpected memory section")
+	}
+	module = bytes.Replace(module, memorySection, []byte{5, 4, 1, 3, 1, 1}, 1)
+	for _, regabi := range []bool{false, true} {
+		for _, cache := range []bool{false, true} {
+			cfg := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", regabi).WithOptimization("shared-memory-base", cache)
+			c, err := Compile(cfg, module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			for _, native := range []bool{false, true} {
+				calls := 0
+				var callback any = nativeLeafIncrement
+				if !native {
+					callback = func(v int32) int32 { calls++; return v + 1 }
+				}
+				in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.step", callback)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, want := range []uint64{88, 98} {
+					got, err := in.Invoke("run", 4)
+					if err != nil || len(got) != 1 || got[0] != want {
+						t.Fatalf("regabi=%t cache=%t native=%t: got %v,%v want %d", regabi, cache, native, got, err, want)
+					}
+				}
+				in.Close()
+				if !native && calls != 8 {
+					t.Fatalf("calls=%d", calls)
+				}
+			}
+		}
 	}
 }

@@ -225,8 +225,9 @@ func BindNativeScalarLeafImport(access runtimebridge.HostScalarCallAccess, ctrl,
 		return false
 	}
 	binary.LittleEndian.PutUint64(dispatch[ImportDispatchCodePtrOffset:], uint64(value.(nativeScalarLeaf).direct))
-	// The native leaf benefits from its direct wrapper ABI, not control-frame staging.
+	// Preserve the wrapper ABI for tail calls and fallback paths. The native
+	// leaf tag additionally allows verified callers to omit context publication.
 	caller := binary.LittleEndian.Uint64(dispatch[ImportDispatchCallerContextOffset:])
-	binary.LittleEndian.PutUint64(dispatch[ImportDispatchCallerContextOffset:], caller&^ImportDispatchCallerGoHostTag)
+	binary.LittleEndian.PutUint64(dispatch[ImportDispatchCallerContextOffset:], (caller&^ImportDispatchCallerGoHostTag)|ImportDispatchCallerNativeLeafTag)
 	return true
 }

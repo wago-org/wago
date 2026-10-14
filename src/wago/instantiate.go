@@ -828,7 +828,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchTargetContextOffset:], uint64(nativeContextPtr))
 			callerContext := uint64(nativeContextPtr)
 			if (goruntime.GOARCH == "arm64" || goruntime.GOARCH == "amd64") && c.supportsGoHostDispatchTag() && syncMode && ordinaryGoThunk {
-				if callerContext&runtime.ImportDispatchCallerGoHostTag != 0 {
+				if callerContext&runtime.ImportDispatchCallerTagMask != 0 {
 					return nil, fmt.Errorf("unaligned native caller context")
 				}
 				callerContext |= runtime.ImportDispatchCallerGoHostTag
