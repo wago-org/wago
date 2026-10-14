@@ -1,4 +1,4 @@
-//go:build (linux || darwin) && arm64 && !tinygo
+//go:build (linux || darwin) && (amd64 || arm64) && !tinygo
 
 package wago
 
@@ -103,7 +103,7 @@ func TestFixedSharedIntegerGoOwner(t *testing.T) {
 					t.Fatalf("callbacks=%d", calls)
 				}
 				minor, parseErr := strconv.Atoi(strings.Split(strings.TrimPrefix(runtime.Version(), "go1."), ".")[0])
-				want := bridgeEnabled && artifact == 0 && integerNumericHostEnabled && armIntegerNumericEnabled && parseErr == nil && minor >= 22 && minor <= 27 && os.Getenv("WAGO_ARM64_NO_INLINE_HOST") != "1"
+				want := bridgeEnabled && artifact == 0 && integerNumericHostEnabled && (runtime.GOARCH == "amd64" || armIntegerNumericEnabled) && parseErr == nil && minor >= 22 && minor <= 27 && os.Getenv("WAGO_"+strings.ToUpper(runtime.GOARCH)+"_NO_INLINE_HOST") != "1"
 				if integerOwner != want {
 					t.Fatalf("integer owner=%v want=%v artifact=%d owned=%v", integerOwner, want, artifact, owned)
 				}

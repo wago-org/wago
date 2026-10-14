@@ -2736,7 +2736,7 @@ func (in *Instance) callPreparedHostSync(prepared *runtime.PreparedHostScalarCal
 		if os.Getenv("WAGO_FIXED_HOST_RESUME_PAYLOAD") != "0" {
 			portal = dispatchSingleTypedI32FixedResumeContext
 		}
-		if in.c.fixedSharedHostInteger && integerNumericHostEnabled && armIntegerNumericEnabled && os.Getenv("WAGO_FIXED_SHARED_INTEGER_CONTEXT") != "0" {
+		if in.c.fixedSharedHostInteger && integerNumericHostEnabled && (goruntime.GOARCH == "amd64" || armIntegerNumericEnabled) && os.Getenv("WAGO_FIXED_SHARED_INTEGER_CONTEXT") != "0" {
 			return prepared.CallFixedIntegerContext(runtimebridge.GrantHostScalarCall(), unsafe.Pointer(activation), portal, fixed)
 		}
 		return prepared.CallFixedContext(runtimebridge.GrantHostScalarCall(), unsafe.Pointer(activation), portal, fixed)
