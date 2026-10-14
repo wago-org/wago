@@ -1,6 +1,6 @@
 # Preserve context for verified native scalar imports
 
-Retained `d4dea937` against `2cd322f0` in two reversed wasm.fyi runs on Apple M4
+Initial candidate `d4dea937` against `2cd322f0` in two reversed wasm.fyi runs on Apple M4
 Max, using the pinned SIMD w2c2-clang `f303ed27` peer. Exact artifacts, contracts,
 bindings and all four phases were checked; each successful phase has 15 samples.
 All 24 captures / 96 phase rows completed without collector or resource failures.
@@ -51,3 +51,10 @@ The JSON retains complete paired captures and compiler/validation evidence.
 A complete 266-case source snapshot is collecting privately. Local publication
 is deferred until complete and the requested two-hour interval has elapsed;
 no production deployment or push occurred.
+
+Follow-up complete-snapshot audit found a regression in the minimal dependent
+callback loop. Fresh reversed captures confirm 2.72–2.76 ns before versus
+3.81–3.84 ns at d4dea937, a 39–40% regression. This revision was superseded
+before any local publication. The replacement `dde95c0e` narrows context shortcut emission
+to modules with resources or multiple imports, preserving the lean existing
+single-import resource-free route. It requires fresh paired and full validation.

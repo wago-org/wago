@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "decision": "Retain verified native import context preservation at d4dea937",
+  "decision": "Superseded d4dea937 before publication after full audit and fresh reversed minimal callback loop regression",
   "platform": "Apple M4 Max / darwin-arm64",
   "publication": "Private paired captures; complete newer snapshot required for local publication; no production",
   "runs": {
@@ -6215,5 +6215,1264 @@
     "Opaque owned callback regresses 2.87 and 2.59 percent versus 2cd322f0 in the two reversed runs, remaining roughly twice as fast as 49145ddf; full-snapshot comparison separately measures the combined change.",
     "The first Remote broad run lacked two dynamic funcref fixtures; after copying the checked-in artifacts into the owned cache, the same selector passed.",
     "No production publication."
-  ]
+  ],
+  "followupLoopRegression": {
+    "decision": "Superseded d4dea937 before local publication; dde95c0e preserves lean single-import resource-free route",
+    "runs": [
+      {
+        "run": "loop-check",
+        "ratio": 1.4003337920490984,
+        "captures": [
+          {
+            "sha256": "3a754478848fed17bc465819cbf5be5e824b7bf6cdb9d8ee661627734950f3bc",
+            "capture": {
+              "capturedAt": "2026-10-14T01:12:11.638Z",
+              "source": {
+                "repository": "wago-org/wago",
+                "revision": "2cd322f0b09c90490148fa68ad55365ed3a4271f",
+                "ref": "jairus/wasm3-feature-parity@2cd322f0",
+                "asOf": "2026-10-14T00:52:11.928657+00:00",
+                "kind": "snapshot"
+              },
+              "platform": {
+                "os": "darwin",
+                "arch": "arm64",
+                "cpu": "Apple M4 Max",
+                "cores": 16,
+                "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+                "memoryBytes": 68719476736
+              },
+              "results": [
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    161000,
+                    37500,
+                    35292,
+                    44334,
+                    35459,
+                    161375,
+                    49500,
+                    29250,
+                    21083,
+                    71250,
+                    123625,
+                    30583,
+                    25333,
+                    20958,
+                    20500
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "2cd322f0b09c90490148fa68ad55365ed3a4271f/source-e35b2d40433ca6594c6e13eb41829dddcabfda200f6a879759d389a82d1222d8",
+                  "backend": "railshot",
+                  "phase": "compile",
+                  "latencyStatus": "ok",
+                  "latencyNs": 37500,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9551872,
+                  "codeStatus": "ok",
+                  "codeBytes": 560,
+                  "codeKind": "native-image"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    10208,
+                    7292,
+                    5875,
+                    4875,
+                    5125,
+                    9084,
+                    6500,
+                    5459,
+                    4916,
+                    12667,
+                    9709,
+                    6542,
+                    5959,
+                    5458,
+                    15125
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "2cd322f0b09c90490148fa68ad55365ed3a4271f/source-e35b2d40433ca6594c6e13eb41829dddcabfda200f6a879759d389a82d1222d8",
+                  "backend": "railshot",
+                  "phase": "instantiate",
+                  "latencyStatus": "ok",
+                  "latencyNs": 6500,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9453568,
+                  "codeStatus": "ok",
+                  "codeBytes": 560,
+                  "codeKind": "native-image"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    2712125,
+                    2753959,
+                    2795375,
+                    2812458,
+                    2859667,
+                    2651667,
+                    2691208,
+                    2835500,
+                    2788291,
+                    2778709,
+                    2648291,
+                    2681291,
+                    2783625,
+                    2752416,
+                    2770041
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "2cd322f0b09c90490148fa68ad55365ed3a4271f/source-e35b2d40433ca6594c6e13eb41829dddcabfda200f6a879759d389a82d1222d8",
+                  "backend": "railshot",
+                  "phase": "first-call",
+                  "latencyStatus": "ok",
+                  "latencyNs": 2778709,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9502720,
+                  "codeStatus": "ok",
+                  "codeBytes": 560,
+                  "codeKind": "native-image"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    2.653625,
+                    2.638584,
+                    2.688125,
+                    2.734,
+                    2.763542,
+                    2.649917,
+                    2.725834,
+                    2.753417,
+                    2.743292,
+                    2.771208,
+                    2.592083,
+                    2.705125,
+                    2.718459,
+                    2.7545,
+                    2.736708
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "2cd322f0b09c90490148fa68ad55365ed3a4271f/source-e35b2d40433ca6594c6e13eb41829dddcabfda200f6a879759d389a82d1222d8",
+                  "backend": "railshot",
+                  "phase": "steady",
+                  "latencyStatus": "ok",
+                  "latencyNs": 2.718459,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9453568,
+                  "codeStatus": "ok",
+                  "codeBytes": 560,
+                  "codeKind": "native-image"
+                }
+              ]
+            }
+          },
+          {
+            "sha256": "532b389cb3788c60af7bddea60f2d5beb375a9b50d99243131350048cb909a74",
+            "capture": {
+              "capturedAt": "2026-10-14T01:12:12.140Z",
+              "source": {
+                "repository": "wago-org/wago",
+                "revision": "d4dea937975a50924be6741884ee07ebf9552eea",
+                "ref": "jairus/wasm3-feature-parity@d4dea937",
+                "asOf": "2026-10-14T01:01:22.797310+00:00",
+                "kind": "snapshot"
+              },
+              "platform": {
+                "os": "darwin",
+                "arch": "arm64",
+                "cpu": "Apple M4 Max",
+                "cores": 16,
+                "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+                "memoryBytes": 68719476736
+              },
+              "results": [
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    159791,
+                    25208,
+                    20750,
+                    19917,
+                    50083,
+                    136375,
+                    24459,
+                    20083,
+                    19458,
+                    49125,
+                    117042,
+                    25875,
+                    21042,
+                    19250,
+                    49875
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "d4dea937975a50924be6741884ee07ebf9552eea/source-dd4a0830c7ee6f4e8f99a628b12a42ea9476db8561761763f57a345ce76a4d15",
+                  "backend": "railshot",
+                  "phase": "compile",
+                  "latencyStatus": "ok",
+                  "latencyNs": 25208,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9502720,
+                  "codeStatus": "ok",
+                  "codeBytes": 588,
+                  "codeKind": "native-image"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    10833,
+                    7041,
+                    5292,
+                    4791,
+                    10041,
+                    10125,
+                    7833,
+                    5500,
+                    12708,
+                    4541,
+                    9750,
+                    7750,
+                    5333,
+                    4917,
+                    11334
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "d4dea937975a50924be6741884ee07ebf9552eea/source-dd4a0830c7ee6f4e8f99a628b12a42ea9476db8561761763f57a345ce76a4d15",
+                  "backend": "railshot",
+                  "phase": "instantiate",
+                  "latencyStatus": "ok",
+                  "latencyNs": 7750,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9388032,
+                  "codeStatus": "ok",
+                  "codeBytes": 588,
+                  "codeKind": "native-image"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    3829333,
+                    3829291,
+                    3772791,
+                    3792208,
+                    3755458,
+                    3845583,
+                    3888917,
+                    3761500,
+                    3762000,
+                    3758167,
+                    3777125,
+                    3814959,
+                    3846208,
+                    3911875,
+                    3913666
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "d4dea937975a50924be6741884ee07ebf9552eea/source-dd4a0830c7ee6f4e8f99a628b12a42ea9476db8561761763f57a345ce76a4d15",
+                  "backend": "railshot",
+                  "phase": "first-call",
+                  "latencyStatus": "ok",
+                  "latencyNs": 3792208,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9355264,
+                  "codeStatus": "ok",
+                  "codeBytes": 588,
+                  "codeKind": "native-image"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    3.848417,
+                    3.930166,
+                    3.853917,
+                    3.777416,
+                    3.813333,
+                    3.864167,
+                    3.878916,
+                    3.80675,
+                    3.791166,
+                    3.799125,
+                    3.810666,
+                    3.792625,
+                    3.794083,
+                    3.7415,
+                    3.733583
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "d4dea937975a50924be6741884ee07ebf9552eea/source-dd4a0830c7ee6f4e8f99a628b12a42ea9476db8561761763f57a345ce76a4d15",
+                  "backend": "railshot",
+                  "phase": "steady",
+                  "latencyStatus": "ok",
+                  "latencyNs": 3.80675,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9322496,
+                  "codeStatus": "ok",
+                  "codeBytes": 588,
+                  "codeKind": "native-image"
+                }
+              ]
+            }
+          },
+          {
+            "sha256": "c36ee930a7444554e3c00caa867cb7532af1f2ba0dfacd6cf2599e37e58bee99",
+            "capture": {
+              "capturedAt": "2026-10-14T01:12:20.795Z",
+              "source": {
+                "repository": "JairusSW/w2c2",
+                "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+                "ref": "main@f303ed27",
+                "asOf": "2026-10-13T05:56:24.446Z",
+                "kind": "snapshot"
+              },
+              "platform": {
+                "os": "darwin",
+                "arch": "arm64",
+                "cpu": "Apple M4 Max",
+                "cores": 16,
+                "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+                "memoryBytes": 68719476736
+              },
+              "results": [
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    356103166,
+                    312392959,
+                    273495750,
+                    272660792,
+                    262977250,
+                    269991375,
+                    264456250,
+                    271341750,
+                    301998375,
+                    282522166,
+                    266913667,
+                    268905542,
+                    259293541,
+                    271364667,
+                    275126375
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "w2c2-clang",
+                  "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                  "backend": "c-aot",
+                  "phase": "compile",
+                  "latencyStatus": "ok",
+                  "latencyNs": 271341750,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 56950784,
+                  "codeStatus": "ok",
+                  "codeBytes": 2268,
+                  "codeKind": "engine-reported"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    1250,
+                    875,
+                    667,
+                    625,
+                    709,
+                    1333,
+                    958,
+                    750,
+                    708,
+                    708,
+                    1000,
+                    1125,
+                    833,
+                    792,
+                    875
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "w2c2-clang",
+                  "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                  "backend": "c-aot",
+                  "phase": "instantiate",
+                  "latencyStatus": "ok",
+                  "latencyNs": 750,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 56885248,
+                  "codeStatus": "ok",
+                  "codeBytes": 2268,
+                  "codeKind": "engine-reported"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    860583,
+                    891917,
+                    681875,
+                    679750,
+                    679708,
+                    1306916,
+                    1891917,
+                    1158916,
+                    1158333,
+                    1160750,
+                    1146250,
+                    1670084,
+                    1670042,
+                    1667500,
+                    1669958
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "w2c2-clang",
+                  "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                  "backend": "c-aot",
+                  "phase": "first-call",
+                  "latencyStatus": "ok",
+                  "latencyNs": 1160750,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 56950784,
+                  "codeStatus": "ok",
+                  "codeBytes": 2268,
+                  "codeKind": "engine-reported"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    1.646625,
+                    1.670125,
+                    1.463208,
+                    1.437667,
+                    1.419208,
+                    1.668,
+                    1.596416,
+                    1.44025,
+                    1.437583,
+                    1.44,
+                    1.276375,
+                    1.278625,
+                    1.280083,
+                    1.282875,
+                    1.278542
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "w2c2-clang",
+                  "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                  "backend": "c-aot",
+                  "phase": "steady",
+                  "latencyStatus": "ok",
+                  "latencyNs": 1.44025,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 56967168,
+                  "codeStatus": "ok",
+                  "codeBytes": 2268,
+                  "codeKind": "engine-reported"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "run": "loop-repeat",
+        "ratio": 1.3891752577319587,
+        "captures": [
+          {
+            "sha256": "42c217129e9e32cf60489cb1b371a5851519f7f7fc0b3351a1a1118863139c4f",
+            "capture": {
+              "capturedAt": "2026-10-14T01:12:48.013Z",
+              "source": {
+                "repository": "wago-org/wago",
+                "revision": "2cd322f0b09c90490148fa68ad55365ed3a4271f",
+                "ref": "jairus/wasm3-feature-parity@2cd322f0",
+                "asOf": "2026-10-14T00:52:11.928657+00:00",
+                "kind": "snapshot"
+              },
+              "platform": {
+                "os": "darwin",
+                "arch": "arm64",
+                "cpu": "Apple M4 Max",
+                "cores": 16,
+                "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+                "memoryBytes": 68719476736
+              },
+              "results": [
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    154459,
+                    29958,
+                    21083,
+                    17375,
+                    19875,
+                    113209,
+                    27875,
+                    19667,
+                    19083,
+                    49792,
+                    108292,
+                    34958,
+                    27667,
+                    20875,
+                    19416
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "2cd322f0b09c90490148fa68ad55365ed3a4271f/source-e35b2d40433ca6594c6e13eb41829dddcabfda200f6a879759d389a82d1222d8",
+                  "backend": "railshot",
+                  "phase": "compile",
+                  "latencyStatus": "ok",
+                  "latencyNs": 27667,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9469952,
+                  "codeStatus": "ok",
+                  "codeBytes": 560,
+                  "codeKind": "native-image"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    9417,
+                    6917,
+                    5583,
+                    4625,
+                    4875,
+                    8750,
+                    6916,
+                    6042,
+                    4708,
+                    5041,
+                    9875,
+                    8750,
+                    5667,
+                    5500,
+                    5000
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "2cd322f0b09c90490148fa68ad55365ed3a4271f/source-e35b2d40433ca6594c6e13eb41829dddcabfda200f6a879759d389a82d1222d8",
+                  "backend": "railshot",
+                  "phase": "instantiate",
+                  "latencyStatus": "ok",
+                  "latencyNs": 5667,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9404416,
+                  "codeStatus": "ok",
+                  "codeBytes": 560,
+                  "codeKind": "native-image"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    2585666,
+                    2654583,
+                    2699083,
+                    2726917,
+                    2737000,
+                    2676167,
+                    2689375,
+                    2715417,
+                    2737917,
+                    2744458,
+                    2728583,
+                    2746791,
+                    2798125,
+                    2843958,
+                    2807833
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "2cd322f0b09c90490148fa68ad55365ed3a4271f/source-e35b2d40433ca6594c6e13eb41829dddcabfda200f6a879759d389a82d1222d8",
+                  "backend": "railshot",
+                  "phase": "first-call",
+                  "latencyStatus": "ok",
+                  "latencyNs": 2715417,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9437184,
+                  "codeStatus": "ok",
+                  "codeBytes": 560,
+                  "codeKind": "native-image"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    2.6695,
+                    2.666792,
+                    2.689375,
+                    2.742458,
+                    2.797875,
+                    2.6465,
+                    2.672584,
+                    2.7645,
+                    2.839209,
+                    2.852666,
+                    2.614834,
+                    2.686083,
+                    2.821458,
+                    2.839125,
+                    2.806375
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "2cd322f0b09c90490148fa68ad55365ed3a4271f/source-e35b2d40433ca6594c6e13eb41829dddcabfda200f6a879759d389a82d1222d8",
+                  "backend": "railshot",
+                  "phase": "steady",
+                  "latencyStatus": "ok",
+                  "latencyNs": 2.7645,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9453568,
+                  "codeStatus": "ok",
+                  "codeBytes": 560,
+                  "codeKind": "native-image"
+                }
+              ]
+            }
+          },
+          {
+            "sha256": "c98be468be411724860b9a58ea14e443dfaf77bf5cf7f9777f021815ae8bbe4a",
+            "capture": {
+              "capturedAt": "2026-10-14T01:12:47.586Z",
+              "source": {
+                "repository": "wago-org/wago",
+                "revision": "d4dea937975a50924be6741884ee07ebf9552eea",
+                "ref": "jairus/wasm3-feature-parity@d4dea937",
+                "asOf": "2026-10-14T01:01:22.797310+00:00",
+                "kind": "snapshot"
+              },
+              "platform": {
+                "os": "darwin",
+                "arch": "arm64",
+                "cpu": "Apple M4 Max",
+                "cores": 16,
+                "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+                "memoryBytes": 68719476736
+              },
+              "results": [
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    163417,
+                    30584,
+                    23584,
+                    19250,
+                    61459,
+                    136917,
+                    52792,
+                    51542,
+                    22000,
+                    49500,
+                    125917,
+                    25375,
+                    20042,
+                    18792,
+                    48041
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "d4dea937975a50924be6741884ee07ebf9552eea/source-dd4a0830c7ee6f4e8f99a628b12a42ea9476db8561761763f57a345ce76a4d15",
+                  "backend": "railshot",
+                  "phase": "compile",
+                  "latencyStatus": "ok",
+                  "latencyNs": 30584,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9502720,
+                  "codeStatus": "ok",
+                  "codeBytes": 588,
+                  "codeKind": "native-image"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    9458,
+                    6834,
+                    5125,
+                    4667,
+                    11250,
+                    9292,
+                    6958,
+                    5500,
+                    4834,
+                    10750,
+                    10208,
+                    6791,
+                    5209,
+                    4750,
+                    4625
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "d4dea937975a50924be6741884ee07ebf9552eea/source-dd4a0830c7ee6f4e8f99a628b12a42ea9476db8561761763f57a345ce76a4d15",
+                  "backend": "railshot",
+                  "phase": "instantiate",
+                  "latencyStatus": "ok",
+                  "latencyNs": 6834,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9371648,
+                  "codeStatus": "ok",
+                  "codeBytes": 588,
+                  "codeKind": "native-image"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    4146917,
+                    3985417,
+                    3873583,
+                    3842042,
+                    3871542,
+                    3936916,
+                    3934541,
+                    3989709,
+                    3979791,
+                    3969666,
+                    3869834,
+                    3843541,
+                    3957791,
+                    3928084,
+                    3911917
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "d4dea937975a50924be6741884ee07ebf9552eea/source-dd4a0830c7ee6f4e8f99a628b12a42ea9476db8561761763f57a345ce76a4d15",
+                  "backend": "railshot",
+                  "phase": "first-call",
+                  "latencyStatus": "ok",
+                  "latencyNs": 3911917,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9355264,
+                  "codeStatus": "ok",
+                  "codeBytes": 588,
+                  "codeKind": "native-image"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    3.977958,
+                    3.944792,
+                    3.840375,
+                    3.794625,
+                    3.781792,
+                    3.875334,
+                    3.806458,
+                    3.824917,
+                    3.816458,
+                    3.777,
+                    3.827458,
+                    3.871541,
+                    3.872292,
+                    3.927292,
+                    3.91775
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "wago",
+                  "version": "d4dea937975a50924be6741884ee07ebf9552eea/source-dd4a0830c7ee6f4e8f99a628b12a42ea9476db8561761763f57a345ce76a4d15",
+                  "backend": "railshot",
+                  "phase": "steady",
+                  "latencyStatus": "ok",
+                  "latencyNs": 3.840375,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 9404416,
+                  "codeStatus": "ok",
+                  "codeBytes": 588,
+                  "codeKind": "native-image"
+                }
+              ]
+            }
+          },
+          {
+            "sha256": "f43f79b561d4b8d57249f88904a6e79f7200689bd15c06079ecbc6328679bb41",
+            "capture": {
+              "capturedAt": "2026-10-14T01:12:47.082Z",
+              "source": {
+                "repository": "JairusSW/w2c2",
+                "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+                "ref": "main@f303ed27",
+                "asOf": "2026-10-13T05:56:24.446Z",
+                "kind": "snapshot"
+              },
+              "platform": {
+                "os": "darwin",
+                "arch": "arm64",
+                "cpu": "Apple M4 Max",
+                "cores": 16,
+                "kernel": "Darwin 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:26 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6041",
+                "memoryBytes": 68719476736
+              },
+              "results": [
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    296350250,
+                    313489917,
+                    317183000,
+                    287723875,
+                    289658958,
+                    286216000,
+                    279284041,
+                    286461833,
+                    274325375,
+                    274741334,
+                    280685250,
+                    265822583,
+                    267414583,
+                    267912083,
+                    511533583
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "w2c2-clang",
+                  "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                  "backend": "c-aot",
+                  "phase": "compile",
+                  "latencyStatus": "ok",
+                  "latencyNs": 279284041,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 57016320,
+                  "codeStatus": "ok",
+                  "codeBytes": 2268,
+                  "codeKind": "engine-reported"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    1083,
+                    958,
+                    708,
+                    667,
+                    875,
+                    1292,
+                    875,
+                    625,
+                    625,
+                    584,
+                    958,
+                    833,
+                    625,
+                    708,
+                    625
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "w2c2-clang",
+                  "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                  "backend": "c-aot",
+                  "phase": "instantiate",
+                  "latencyStatus": "ok",
+                  "latencyNs": 708,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 56770560,
+                  "codeStatus": "ok",
+                  "codeBytes": 2268,
+                  "codeKind": "engine-reported"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    956708,
+                    1276250,
+                    1278542,
+                    1276208,
+                    1276250,
+                    1229291,
+                    1158917,
+                    1158667,
+                    1159167,
+                    1224292,
+                    701500,
+                    1437584,
+                    1437542,
+                    1418458,
+                    1278500
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "w2c2-clang",
+                  "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                  "backend": "c-aot",
+                  "phase": "first-call",
+                  "latencyStatus": "ok",
+                  "latencyNs": 1276250,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 56918016,
+                  "codeStatus": "ok",
+                  "codeBytes": 2268,
+                  "codeKind": "engine-reported"
+                },
+                {
+                  "display": {
+                    "group": "mechanisms",
+                    "purpose": "",
+                    "tags": [
+                      "mvp"
+                    ],
+                    "abi": "core",
+                    "bytes": 99,
+                    "source": "corpus/calls.go",
+                    "reset": "stateless"
+                  },
+                  "timingSamples": 15,
+                  "samplesNs": [
+                    1.615208,
+                    1.66775,
+                    1.667667,
+                    1.670584,
+                    1.446833,
+                    0.883083,
+                    1.66775,
+                    1.667542,
+                    1.667708,
+                    1.574666,
+                    1.287875,
+                    1.437708,
+                    1.445292,
+                    1.440208,
+                    1.437667
+                  ],
+                  "workload": "mechanisms/wasm-host-wasm-loop",
+                  "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+                  "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+                  "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+                  "engine": "w2c2-clang",
+                  "version": "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15",
+                  "backend": "c-aot",
+                  "phase": "steady",
+                  "latencyStatus": "ok",
+                  "latencyNs": 1.667542,
+                  "memoryStatus": "ok",
+                  "peakRssBytes": 56868864,
+                  "codeStatus": "ok",
+                  "codeBytes": 2268,
+                  "codeKind": "engine-reported"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
 }
