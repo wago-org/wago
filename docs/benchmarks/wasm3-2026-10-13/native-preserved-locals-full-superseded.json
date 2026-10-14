@@ -1,0 +1,109 @@
+{
+  "decision": "Superseded before publication by narrowed e6888634",
+  "source": {
+    "repository": "wago-org/wago",
+    "revision": "d9d12e8a5f9ad70d54de204c22ce8d6cc6110134",
+    "ref": "jairus/wasm3-feature-parity@d9d12e8a",
+    "asOf": "2026-10-14T03:37:20.801043+00:00",
+    "kind": "snapshot"
+  },
+  "reportSha256": "36ba661287c46ac9adb6f52dc0f06df3fe1a2844f7f3af4cab0c19cb0aab32f0",
+  "outcomes": [
+    {
+      "corpus": "features",
+      "phase": "compile",
+      "status": "ok",
+      "count": 107
+    },
+    {
+      "corpus": "features",
+      "phase": "compile",
+      "status": "unsupported",
+      "count": 11
+    },
+    {
+      "corpus": "features",
+      "phase": "first-call",
+      "status": "ok",
+      "count": 110
+    },
+    {
+      "corpus": "features",
+      "phase": "first-call",
+      "status": "unsupported",
+      "count": 8
+    },
+    {
+      "corpus": "features",
+      "phase": "instantiate",
+      "status": "ok",
+      "count": 110
+    },
+    {
+      "corpus": "features",
+      "phase": "instantiate",
+      "status": "unsupported",
+      "count": 8
+    },
+    {
+      "corpus": "features",
+      "phase": "steady",
+      "status": "ok",
+      "count": 107
+    },
+    {
+      "corpus": "features",
+      "phase": "steady",
+      "status": "unsupported",
+      "count": 11
+    },
+    {
+      "corpus": "main",
+      "phase": "compile",
+      "status": "ok",
+      "count": 148
+    },
+    {
+      "corpus": "main",
+      "phase": "first-call",
+      "status": "ok",
+      "count": 148
+    },
+    {
+      "corpus": "main",
+      "phase": "instantiate",
+      "status": "ok",
+      "count": 148
+    },
+    {
+      "corpus": "main",
+      "phase": "steady",
+      "status": "ok",
+      "count": 148
+    }
+  ],
+  "cohorts": {
+    "main": {
+      "before": 0.9926377510129875,
+      "peer": 1.117413909010764
+    },
+    "features": {
+      "before": 1.0027646643328054,
+      "peer": 0.3418430931223772
+    },
+    "all": {
+      "before": 0.9968745699214177,
+      "peer": 0.8141503360469853
+    }
+  },
+  "nativeThread": {
+    "workload": "features/threads/host-identity/performance-4096x64",
+    "beforeNs": 333218.5828877005,
+    "currentNs": 465731.60638297873,
+    "ratio": 1.3976759709704936
+  },
+  "limitations": [
+    "Full native identity capture worsened substantially while paired orders disagree; no local publication of this broad optimization.",
+    "Narrowing restores the single-import thread guest code exactly to bf51902c and retains compact code exactly as d9d12e8a."
+  ]
+}
