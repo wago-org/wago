@@ -58,6 +58,8 @@ func (f *fn) gcResolvedRegister() Reg {
 	return regNone
 }
 
+// Only borrowed local reads identify the current local value. An owned
+// register is a snapshot that can survive assignment to its source local.
 func gcLocalProvenance(e *elem) (int, bool) {
 	if e == nil || !e.isValue() {
 		return 0, false
@@ -65,10 +67,6 @@ func gcLocalProvenance(e *elem) (int, bool) {
 	switch e.st.kind {
 	case stLocalRef, stLocalReg:
 		return e.st.index(), true
-	case stReg:
-		if e.st.slot > 0 {
-			return e.st.slotIndex() - 1, true
-		}
 	}
 	return 0, false
 }
