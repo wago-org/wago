@@ -101,10 +101,10 @@ func (f *fn) tryShiftedI32DotLoop(r *wasm.Reader) (bool, error) {
 	f.a.MovImm32(cond, 1)
 	skip := f.a.Branch()
 	for _, site := range bad[:count] {
-		f.a.PatchBranch19(site, f.a.Len())
+		f.patchBranch19(site, f.a.Len())
 	}
 	f.a.MovImm32(cond, 0)
-	f.a.PatchBranch26(skip, f.a.Len())
+	f.patchBranch26(skip, f.a.Len())
 	for _, reg := range []Reg{left, right, n, limit, tmp, size} {
 		f.release(reg)
 	}

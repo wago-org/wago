@@ -96,10 +96,10 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 	f.a.MovImm32(cond, 1)
 	skip := f.a.Branch()
 	for _, site := range bad {
-		f.a.PatchBranch19(site, f.a.Len())
+		f.patchBranch19(site, f.a.Len())
 	}
 	f.a.MovImm32(cond, 0)
-	f.a.PatchBranch26(skip, f.a.Len())
+	f.patchBranch26(skip, f.a.Len())
 	for _, reg := range []Reg{ptr, n, tmp} {
 		f.release(reg)
 	}
@@ -182,7 +182,7 @@ func (f *fn) tryWeightedI32WindowLoop(r *wasm.Reader) (bool, error) {
 		f.a.SubImm32(tmp, tmp, 1)
 		f.a.NeonDupGprS(counter, tmp)
 		again := f.a.Cbnz32(tmp)
-		f.a.PatchBranch19(again, loop)
+		f.patchBranch19(again, loop)
 		f.pushReg(hash, mtI32)
 		f.setLocal(nil, int(p.Hash), false)
 		for _, reg := range []Reg{ptr, hash, sum, tmp} {

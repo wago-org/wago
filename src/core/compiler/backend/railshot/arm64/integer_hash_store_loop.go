@@ -92,10 +92,10 @@ func (f *fn) tryIntegerHashStoreLoop(r *wasm.Reader) (bool, error) {
 	f.a.MovImm32(cond, 1)
 	skip := f.a.Branch()
 	for _, site := range bad[:badN] {
-		f.a.PatchBranch19(site, f.a.Len())
+		f.patchBranch19(site, f.a.Len())
 	}
 	f.a.MovImm32(cond, 0)
-	f.a.PatchBranch26(skip, f.a.Len())
+	f.patchBranch26(skip, f.a.Len())
 	for _, reg := range []Reg{dst, seed, count, tmp, limit} {
 		f.release(reg)
 	}
@@ -149,8 +149,8 @@ func (f *fn) tryIntegerHashStoreLoop(r *wasm.Reader) (bool, error) {
 		f.a.SubImm32(n, n, 4)
 		f.a.CmpImm32(n, 4)
 		again := f.a.Bcond(a64.CondCS)
-		f.a.PatchBranch19(again, loop)
-		f.a.PatchBranch19(small, f.a.Len())
+		f.patchBranch19(again, loop)
+		f.patchBranch19(small, f.a.Len())
 		noTail := f.a.Cbz32(n)
 		f.a.MovImm32(seed, int32(p.Bound))
 		f.a.Sub32(seed, seed, n)
@@ -168,7 +168,7 @@ func (f *fn) tryIntegerHashStoreLoop(r *wasm.Reader) (bool, error) {
 			f.a.AddImm64(dst, dst, 4)
 			f.a.AddImm32(seed, seed, 1)
 		}
-		f.a.PatchBranch19(noTail, f.a.Len())
+		f.patchBranch19(noTail, f.a.Len())
 		// The last tee stores the multiplied intermediate for Bound-1.
 		f.a.MovImm32(tmp, int32(p.Bound-1))
 		f.a.MovImm32(constant, int32(p.Xor))

@@ -48,8 +48,8 @@ func (f *fn) emitIntegerPopcountSum(p shared.IntegerSumLoop, typ machineType, ge
 	f.a.Add64(sum, sum, n)
 	exit := f.a.Cbz64(n)
 	back := f.a.Branch()
-	f.a.PatchBranch26(back, loop)
-	f.a.PatchBranch19(exit, f.a.Len())
+	f.patchBranch26(back, loop)
+	f.patchBranch19(exit, f.a.Len())
 	for _, reg := range regs {
 		f.release(reg)
 	}

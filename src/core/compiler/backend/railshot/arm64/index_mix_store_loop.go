@@ -103,10 +103,10 @@ func (f *fn) tryIndexMixStoreLoop(r *wasm.Reader) (bool, error) {
 	f.a.MovImm32(cond, 1)
 	skip := f.a.Branch()
 	for _, site := range bad {
-		f.a.PatchBranch19(site, f.a.Len())
+		f.patchBranch19(site, f.a.Len())
 	}
 	f.a.MovImm32(cond, 0)
-	f.a.PatchBranch26(skip, f.a.Len())
+	f.patchBranch26(skip, f.a.Len())
 	for _, reg := range []Reg{dst, n, tmp} {
 		f.release(reg)
 	}
@@ -184,8 +184,8 @@ func (f *fn) tryIndexMixStoreLoop(r *wasm.Reader) (bool, error) {
 		f.a.AddImm64(dst, dst, 16)
 		f.a.SubImm32(n, n, 4)
 		f.a.CmpImm32(n, 4)
-		f.a.PatchBranch19(f.a.Bcond(a64.CondCS), loop)
-		f.a.PatchBranch19(small, f.a.Len())
+		f.patchBranch19(f.a.Bcond(a64.CondCS), loop)
+		f.patchBranch19(small, f.a.Len())
 		noTail := f.a.Cbz32(n)
 		mix()
 		// The final pair writes exactly eight bytes. Keep its high-first order.
@@ -193,7 +193,7 @@ func (f *fn) tryIndexMixStoreLoop(r *wasm.Reader) (bool, error) {
 		f.st32(dst, 4, n)
 		f.a.NeonUmovS(n, work, 0)
 		f.st32(dst, 0, n)
-		f.a.PatchBranch19(noTail, f.a.Len())
+		f.patchBranch19(noTail, f.a.Len())
 		// The last scalar tee is the product for the low word, Bound-2.
 		get(p.Seed)
 		src, owned = f.materializeRead(f.popValue())

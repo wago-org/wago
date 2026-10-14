@@ -89,7 +89,7 @@ func (f *fn) tryGlobalXorShiftLoop(r *wasm.Reader) (bool, error) {
 	n := copyRead(false)
 	nonzero := f.a.Cbnz32(n)
 	f.a.MovImm32(n, 1)
-	f.a.PatchBranch19(nonzero, f.a.Len())
+	f.patchBranch19(nonzero, f.a.Len())
 	step, tail, term, sum := alloc(), alloc(), alloc(), alloc()
 	var v [8]Reg
 	for i := range v {
@@ -130,8 +130,8 @@ func (f *fn) tryGlobalXorShiftLoop(r *wasm.Reader) (bool, error) {
 	f.a.SubImm32(n, n, 8)
 	f.a.CmpImm32(n, 8)
 	again := f.a.Bcond(a64.CondCS)
-	f.a.PatchBranch19(again, loop)
-	f.a.PatchBranch19(small, f.a.Len())
+	f.patchBranch19(again, loop)
+	f.patchBranch19(small, f.a.Len())
 	// Independent accumulators remove the dependency between adjacent pairs.
 	// Combining modulo 2^64 preserves the observed wrapping i32 reduction.
 	f.a.NeonAddD(acc0, acc0, acc1)
@@ -148,8 +148,8 @@ func (f *fn) tryGlobalXorShiftLoop(r *wasm.Reader) (bool, error) {
 	f.a.Add64(tail, tail, step)
 	f.a.SubImm32(n, n, 1)
 	again = f.a.Cbnz32(n)
-	f.a.PatchBranch19(again, tailLoop)
-	f.a.PatchBranch19(noTail, f.a.Len())
+	f.patchBranch19(again, tailLoop)
+	f.patchBranch19(noTail, f.a.Len())
 	get(p.Accumulator)
 	initial, owned := f.materializeRead(f.popValue())
 	f.a.Add32(sum, sum, initial)

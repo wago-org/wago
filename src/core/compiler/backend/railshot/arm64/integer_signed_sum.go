@@ -102,9 +102,9 @@ func (f *fn) emitIntegerFloorSum(counter uint32, modulus, coefficient, offset ui
 	f.a.MovReg64(m, a)
 	f.a.MovReg64(a, t)
 	back := f.a.Branch()
-	f.a.PatchBranch26(back, loop)
-	f.a.PatchBranch19(exit, f.a.Len())
-	f.a.PatchBranch19(zero, f.a.Len())
+	f.patchBranch26(back, loop)
+	f.patchBranch19(exit, f.a.Len())
+	f.patchBranch19(zero, f.a.Len())
 	for _, reg := range regs {
 		f.release(reg)
 	}
