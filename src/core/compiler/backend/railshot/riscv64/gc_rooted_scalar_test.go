@@ -2709,6 +2709,63 @@ func TestRV64RootedImportedAggregateGlobalAdmitted(t *testing.T) {
 	}
 }
 
+func rv64RootedImportedAbstractGlobalModule(mutable bool) []byte {
+	mut := byte(0)
+	if mutable {
+		mut = 1
+	}
+	globalImport := append(append(wasmtest.Name("provider"), wasmtest.Name("root")...), byte(wasm.ExternGlobal), byte(wasm.HeapAny), mut)
+	readObject := []byte{0x00, 0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a, 0x23, 0x00, 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	readI31 := []byte{0x00, 0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a, 0x23, 0x00, 0xfb, 0x16, byte(wasm.HeapI31), 0xfb, 0x1d, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(globalImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("read_object", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("read_i31", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("root", byte(wasm.ExternGlobal), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(readObject))), readObject...),
+			append(wasmtest.ULEB(uint32(len(readI31))), readI31...),
+		)),
+	)
+}
+
+func TestRV64RootedImportedAbstractGlobalsAdmitted(t *testing.T) {
+	for _, mutable := range []bool{false, true} {
+		source := rv64RootedImportedAbstractGlobalModule(mutable)
+		if err := AdmitProductionSource(source); err != nil {
+			t.Fatalf("mutable=%t: %v", mutable, err)
+		}
+		if !AdmitGCRootedScalarSource(source) {
+			t.Fatalf("mutable=%t: abstract collector-reference global import was not admitted", mutable)
+		}
+		for _, heap := range []wasm.AbsHeapType{wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray} {
+			m, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.Imports[0].Type = wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(heap), false)), Mutable: mutable})
+			if !admitRV64GCRootedScalarModule(m) {
+				t.Fatalf("mutable=%t heap=%v: abstract collector-reference global import was not admitted", mutable, heap)
+			}
+		}
+	}
+	m, err := wasm.DecodeModule(rv64RootedImportedAbstractGlobalModule(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Imports[0].Type = wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.RefVal(wasm.Ref(false, wasm.AbsHeap(wasm.HeapAny), false))})
+	if admitRV64GCRootedScalarModule(m) {
+		t.Fatal("non-null abstract collector-reference global import was admitted")
+	}
+}
+
 func rv64RootedImportedAggregateGlobalCopyModule() []byte {
 	globalImport := append(append(wasmtest.Name("provider"), wasmtest.Name("object")...), byte(wasm.ExternGlobal))
 	globalImport = append(globalImport, 0x63, 0x00, 0x00) // immutable (ref null 0)

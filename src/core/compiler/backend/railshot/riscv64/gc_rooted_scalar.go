@@ -59,7 +59,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				}
 			case wasm.ExternGlobal:
 				typ := im.Type.GlobalType().Type
-				if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !rootedScalarTableReference(typ, m) {
+				if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !rootedScalarGlobalReference(typ, m) {
 					return false
 				}
 			case wasm.ExternMem:
@@ -529,6 +529,25 @@ func rootedScalarTableReference(typ wasm.ValType, m *wasm.Module) bool {
 		return heap.Abs() == wasm.HeapI31
 	case wasm.HeapTypeIndex:
 		return !heap.Type().Rec && rootedScalarAggregateAt(m, heap.Type().Index)
+	default:
+		return false
+	}
+}
+
+func rootedScalarGlobalReference(typ wasm.ValType, m *wasm.Module) bool {
+	if rootedScalarTableReference(typ, m) {
+		return true
+	}
+	if typ.Kind() != wasm.ValRef {
+		return false
+	}
+	ref := typ.Ref()
+	if !ref.Nullable() || ref.Exact() || ref.Heap().Kind() != wasm.HeapAbs {
+		return false
+	}
+	switch ref.Heap().Abs() {
+	case wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray:
+		return true
 	default:
 		return false
 	}

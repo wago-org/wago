@@ -84,7 +84,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				}
 			case wasm.ExternGlobal:
 				typ := im.Type.GlobalType().Type
-				if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !rv64RootedAggregateTableReference(m, typ) {
+				if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !rv64RootedGlobalReference(m, typ) {
 					return reject("RV64 exact roots reject non-scalar global import %d", i)
 				}
 			case wasm.ExternMem:
@@ -420,6 +420,25 @@ func rv64RootedAggregateTableReference(m *wasm.Module, typ wasm.ValType) bool {
 		}
 		comp := rv64RootedAggregateType(m, heap.Type().Index)
 		return comp != nil && (comp.Kind == wasm.CompStruct || comp.Kind == wasm.CompArray)
+	default:
+		return false
+	}
+}
+
+func rv64RootedGlobalReference(m *wasm.Module, typ wasm.ValType) bool {
+	if rv64RootedAggregateTableReference(m, typ) {
+		return true
+	}
+	if typ.Kind() != wasm.ValRef {
+		return false
+	}
+	ref := typ.Ref()
+	if !ref.Nullable() || ref.Exact() || ref.Heap().Kind() != wasm.HeapAbs {
+		return false
+	}
+	switch ref.Heap().Abs() {
+	case wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray:
+		return true
 	default:
 		return false
 	}

@@ -5784,6 +5784,55 @@ func rootedScalarSharedGlobalProviderModule(mutable bool) []byte {
 	)
 }
 
+func rootedScalarSharedAbstractGlobalProviderModule(mutable bool) []byte {
+	mut := byte(0)
+	if mutable {
+		mut = 1
+	}
+	global := []byte{byte(wasm.HeapAny), mut, 0x41, 0x28, 0xfb, 0x00, 0x00, 0x0b}
+	body := []byte{0x00, 0x23, 0x00, 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec(global)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("root", byte(wasm.ExternGlobal), 0),
+			wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func rootedScalarSharedAbstractGlobalConsumerModule(mutable bool) []byte {
+	mut := byte(0)
+	if mutable {
+		mut = 1
+	}
+	globalImport := append(append(wasmtest.Name("provider"), wasmtest.Name("root")...), byte(wasm.ExternGlobal), byte(wasm.HeapAny), mut)
+	readObject := []byte{0x00, 0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a, 0x23, 0x00, 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	readI31 := []byte{0x00, 0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a, 0x23, 0x00, 0xfb, 0x16, byte(wasm.HeapI31), 0xfb, 0x1d, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(globalImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("read_object", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("read_i31", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("root", byte(wasm.ExternGlobal), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(readObject))), readObject...),
+			append(wasmtest.ULEB(uint32(len(readI31))), readI31...),
+		)),
+	)
+}
+
 func rootedScalarSharedGlobalConsumerModule(mutable bool) []byte {
 	mut := byte(0)
 	if mutable {
@@ -5933,6 +5982,204 @@ func TestRV64RootedSharedReferenceGlobalImports(t *testing.T) {
 					}
 				})
 			}
+		})
+	}
+}
+
+func TestRV64RootedSharedAbstractGlobalImports(t *testing.T) {
+	for _, mutable := range []bool{false, true} {
+		t.Run(map[bool]string{false: "immutable", true: "mutable"}[mutable], func(t *testing.T) {
+			providerSource := rootedScalarSharedAbstractGlobalProviderModule(mutable)
+			consumerSource := rootedScalarSharedAbstractGlobalConsumerModule(mutable)
+			if !railshot.AdmitGCRootedScalarSource(providerSource) || !railshot.AdmitGCRootedScalarSource(consumerSource) {
+				t.Fatal("shared abstract collector-reference globals were not source-admitted")
+			}
+			consumerModule, err := wasm.DecodeModule(consumerSource)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var rootDiagnostic string
+			if plan := newGCFrameRootPlan(consumerModule, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
+				t.Fatalf("shared abstract global root plan=%v diagnostic=%q", plan, rootDiagnostic)
+			}
+			for _, heap := range []wasm.AbsHeapType{wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray} {
+				variant, decodeErr := wasm.DecodeModule(consumerSource)
+				if decodeErr != nil {
+					t.Fatal(decodeErr)
+				}
+				variant.Imports[0].Type = wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(heap), false)), Mutable: mutable})
+				variantDiagnostic := ""
+				if plan := newGCFrameRootPlan(variant, true, true, &variantDiagnostic, nil); plan == nil || variantDiagnostic != "" {
+					t.Fatalf("shared abstract heap=%v root plan=%v diagnostic=%q", heap, plan, variantDiagnostic)
+				}
+			}
+			providerCode, err := Compile(rv64RootedScalarConfig(), providerSource)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer providerCode.Close()
+			consumerCode, err := Compile(rv64RootedScalarConfig(), consumerSource)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer consumerCode.Close()
+			providerView, consumerView := providerCode.executionView(), consumerCode.executionView()
+			if !rv64FreshRootedGC(providerView) || !rv64FreshRootedGC(consumerView) || len(consumerView.GlobalImports) != 1 || consumerView.GlobalExports["root"] != 0 {
+				t.Fatalf("shared abstract receipts provider=%t consumer=%t imports=%+v exports=%v validation=%v", rv64FreshRootedGC(providerView), rv64FreshRootedGC(consumerView), consumerView.GlobalImports, consumerView.GlobalExports, railshotValidateCompiled(consumerView))
+			}
+			index := consumerView.GlobalImports[0].ValueTypeIndex
+			for _, heap := range []AbstractHeapType{AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray} {
+				candidate := cloneCompiledMetadata(consumerView)
+				candidate.ValueTypes = slices.Clone(candidate.ValueTypes)
+				candidate.ValueTypes[index].Ref.Heap.Abstract = heap
+				if !rv64FreshRootedGC(candidate) {
+					t.Fatalf("abstract heap=%v global import lost the rooted receipt", heap)
+				}
+			}
+			candidate := cloneCompiledMetadata(consumerView)
+			candidate.ValueTypes = slices.Clone(candidate.ValueTypes)
+			candidate.ValueTypes[index].Ref.Heap.Abstract = AbstractHeapExtern
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("non-collector abstract global import retained the rooted receipt")
+			}
+			candidate = cloneCompiledMetadata(consumerView)
+			candidate.ValueTypes = slices.Clone(candidate.ValueTypes)
+			candidate.ValueTypes[index].Ref.Nullable = false
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("non-null abstract global import retained the rooted receipt")
+			}
+			candidate = cloneCompiledMetadata(consumerView)
+			candidate.ValueTypes = slices.Clone(candidate.ValueTypes)
+			candidate.ValueTypes[index].Ref.Exact = true
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("exact abstract global import retained the rooted receipt")
+			}
+			requireRV64FreshRootedArtifactRejected(t, providerCode)
+			requireRV64FreshRootedArtifactRejected(t, consumerCode)
+
+			store := newReferenceStore(false)
+			defer store.closeRuntime()
+			gcConfig := GCConfig{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}
+			provider, err := instantiateCore(providerCode, InstantiateOptions{GC: gcConfig, store: store})
+			if err != nil {
+				t.Fatal(err)
+			}
+			providerOpen := true
+			defer func() {
+				if providerOpen {
+					_ = provider.Close()
+				}
+			}()
+			global, err := provider.ExportedGlobalObject("root")
+			if err != nil {
+				t.Fatal(err)
+			}
+			consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.root", global)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			consumerOpen := true
+			defer func() {
+				if consumerOpen {
+					_ = consumer.Close()
+				}
+			}()
+			if provider.gc == nil || provider.gc != consumer.gc || !store.ownsGCCollector(provider.gc) {
+				t.Fatal("shared abstract global did not select one Runtime collector domain")
+			}
+			object, err := provider.GlobalValue("root")
+			if err != nil || object.Type() != ValAnyRef || object.Bits()>>32 == 0 {
+				t.Fatalf("provider abstract global=%v err=%v", object, err)
+			}
+			reexported, err := consumer.ExportedGlobalObject("root")
+			if err != nil || reexported != global {
+				t.Fatalf("consumer re-exported global=%p provider global=%p err=%v", reexported, global, err)
+			}
+			directObject, err := reexported.GetValue()
+			if err != nil || directObject.Type() != ValAnyRef || directObject.Bits()>>32 == 0 {
+				t.Fatalf("direct abstract global=%v err=%v", directObject, err)
+			}
+			if err := consumer.ReleaseGCRef(directObject.GCRef()); err == nil || !strings.Contains(err.Error(), "different producer") {
+				t.Fatalf("consumer released provider-owned direct token: %v", err)
+			}
+			if err := reexported.ReleaseGCRef(directObject.GCRef()); err != nil {
+				t.Fatal(err)
+			}
+			if got, callErr := consumer.Invoke("read_object"); callErr != nil || !slices.Equal(got, []uint64{40}) {
+				t.Fatalf("consumer object read=%v err=%v", got, callErr)
+			}
+			if mutable {
+				immediate := uint64(NewI31Ref(-3).bits)
+				if err := global.SetValue(ValueOf(ValAnyRef, 2)); err == nil {
+					t.Fatal("direct abstract global accepted a raw compact object reference")
+				}
+				if err := global.SetValue(ValueOf(ValAnyRef, immediate|uint64(0xdeadbeef)<<32)); err == nil {
+					t.Fatal("direct abstract global accepted dirty i31 upper bits")
+				}
+				if err := consumer.SetGlobalValue("root", ValueOf(ValAnyRef, immediate)); err != nil {
+					t.Fatal(err)
+				}
+				if value, err := global.GetValue(); err != nil || value.Type() != ValAnyRef || value.Bits() != immediate {
+					t.Fatalf("direct global observed shared i31=%v err=%v", value, err)
+				}
+				if got, callErr := consumer.Invoke("read_i31"); callErr != nil || !slices.Equal(got, []uint64{0xfffffffd}) {
+					t.Fatalf("consumer i31 read=%v err=%v", got, callErr)
+				}
+				if err := global.SetValue(object); err != nil {
+					t.Fatal(err)
+				}
+				if got, callErr := consumer.Invoke("read_object"); callErr != nil || !slices.Equal(got, []uint64{40}) {
+					t.Fatalf("consumer direct-restored object read=%v err=%v", got, callErr)
+				}
+				if err := global.SetValue(ValueOf(ValAnyRef, immediate)); err != nil {
+					t.Fatal(err)
+				}
+				if value, err := provider.GlobalValue("root"); err != nil || value.Type() != ValAnyRef || value.Bits() != immediate {
+					t.Fatalf("provider observed direct shared i31=%v err=%v", value, err)
+				}
+				if err := provider.SetGlobalValue("root", object); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := global.SetValue(object); err == nil || !strings.Contains(err.Error(), "immutable") {
+				t.Fatalf("direct immutable abstract global SetValue error=%v", err)
+			}
+			if err := provider.ReleaseGCRef(object.GCRef()); err != nil {
+				t.Fatal(err)
+			}
+			lateRelease, err := global.GetValue()
+			if err != nil || lateRelease.Type() != ValAnyRef || lateRelease.Bits()>>32 == 0 {
+				t.Fatalf("late direct abstract global=%v err=%v", lateRelease, err)
+			}
+			if err := provider.Close(); err != nil {
+				t.Fatal(err)
+			}
+			providerOpen = false
+			if _, err := global.GetValue(); err == nil {
+				t.Fatal("direct abstract global remained readable after logical provider close")
+			}
+			if err := global.SetValue(ValueOf(ValAnyRef, uint64(NewI31Ref(-1).bits))); err == nil {
+				t.Fatal("direct abstract global remained writable after logical provider close")
+			}
+			if err := global.ReleaseGCRef(lateRelease.GCRef()); err != nil {
+				t.Fatalf("release direct token after logical provider close: %v", err)
+			}
+			if err := consumer.CollectGC(); err != nil {
+				t.Fatal(err)
+			}
+			if got, callErr := consumer.Invoke("read_object"); callErr != nil || !slices.Equal(got, []uint64{40}) {
+				t.Fatalf("retained abstract global after provider close=%v err=%v", got, callErr)
+			}
+			retained, err := consumer.GlobalValue("root")
+			if err != nil || retained.Type() != ValAnyRef || retained.Bits()>>32 == 0 {
+				t.Fatalf("retained abstract global token=%v err=%v", retained, err)
+			}
+			if err := consumer.ReleaseGCRef(retained.GCRef()); err != nil {
+				t.Fatal(err)
+			}
+			if err := consumer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			consumerOpen = false
 		})
 	}
 }

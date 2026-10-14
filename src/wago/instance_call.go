@@ -204,13 +204,6 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 	if value, handled, err := railshotImportedGlobalValue(in, cell); handled {
 		return value, err
 	}
-	if isReferenceValType(g.Type) && cell.owner != nil {
-		value, err := cell.getValueNoLease()
-		if err != nil {
-			return Value{}, fmt.Errorf("global %q: %w", name, err)
-		}
-		return value, nil
-	}
 	bits := readGlobalObject(cell, g.Type)
 	if in.c.usesGenericGCExecution() && (g.Type == ValAnyRef || g.Type == ValI31Ref) {
 		exact, err := in.c.globalExactType(idx)
@@ -241,6 +234,13 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 			return Value{}, fmt.Errorf("global %q collector reference: %w", name, err)
 		}
 		return Value{typ: g.Type, bits: token}, nil
+	}
+	if isReferenceValType(g.Type) && cell.owner != nil {
+		value, err := cell.getValueNoLease()
+		if err != nil {
+			return Value{}, fmt.Errorf("global %q: %w", name, err)
+		}
+		return value, nil
 	}
 	if (g.Type == ValAnyRef || g.Type == ValExnRef) && bits != 0 {
 		return Value{}, fmt.Errorf("global %q contains a non-null %s value; public GC/exception reference egress is unsupported", name, g.Type)
@@ -515,4 +515,18 @@ func (in *Instance) setGlobalValueNoLease(name string, v Value, roots *globalVal
 	}
 	writeGlobalObject(cell, g.Type, bits)
 	return nil
+}
+
+// exportedGlobalNameForCell resolves a public name without crossing another
+// invocation or native-state boundary. Callers already own both leases.
+func (in *Instance) exportedGlobalNameForCell(cell *Global) (string, bool) {
+	if in == nil || in.c == nil || cell == nil {
+		return "", false
+	}
+	for name, index := range in.c.GlobalExports {
+		if index >= 0 && index < len(in.globalCells) && in.globalCells[index] == cell {
+			return name, true
+		}
+	}
+	return "", false
 }

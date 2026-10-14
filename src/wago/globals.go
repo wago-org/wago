@@ -622,6 +622,27 @@ func (g *Global) GetValue() (Value, error) {
 	return g.getValueNoLease()
 }
 
+// ReleaseGCRef releases a non-null collector-reference token returned by this
+// global's GetValue method. A re-exported Global retains its original producer,
+// so release remains unambiguous and valid after that producer is logically
+// closed while the token keeps its physical collector resources alive.
+func (g *Global) ReleaseGCRef(ref GCRef) error {
+	if ref.token == 0 {
+		return nil
+	}
+	if g == nil || g.owner == nil {
+		return fmt.Errorf("global has no collector-reference owner")
+	}
+	o := g.owner
+	o.mu.Lock()
+	typ, owner := o.typ, o.instance
+	o.mu.Unlock()
+	if !isGCRefValType(typ) || owner == nil {
+		return fmt.Errorf("global has no collector-reference owner")
+	}
+	return owner.ReleaseGCRef(ref)
+}
+
 func (g *Global) getValueNoLease() (Value, error) {
 	if g == nil || g.owner == nil {
 		return Value{}, fmt.Errorf("global has no compatible reference owner")
@@ -648,6 +669,34 @@ func (g *Global) getValueNoLease() (Value, error) {
 	}
 	if value, handled, err := railshotImportedGlobalValue(source, g); handled {
 		return value, err
+	}
+	if isGCRefValType(typ) {
+		if source == nil || source.gc == nil || source.c == nil || !hasExact {
+			return Value{}, fmt.Errorf("global has no compatible collector-reference owner")
+		}
+		if bits != uint64(uint32(bits)) {
+			return Value{}, fmt.Errorf("global contains a non-compact collector reference")
+		}
+		ref := gc.Ref(uint32(bits))
+		if !source.gcRefMatchesValueType(ref, exact) {
+			return Value{}, fmt.Errorf("global contains a collector reference with an incompatible exact structural type")
+		}
+		if ref.IsNull() || ref.IsI31() {
+			return Value{typ: typ, bits: bits}, nil
+		}
+		if store == nil || source.refStore != store {
+			return Value{}, fmt.Errorf("global has no compatible collector-reference store")
+		}
+		lockedDomain := source.lockGCCollector()
+		defer unlockGCCollector(lockedDomain)
+		state := source.publicGCState()
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		token, err := store.issueGCRefLocked(source, state, ref, exact)
+		if err != nil {
+			return Value{}, fmt.Errorf("global contains an invalid collector reference: %w", err)
+		}
+		return Value{typ: typ, bits: token}, nil
 	}
 	if typ == ValExternRef {
 		public, handled, err := source.publicExternFromGlobal(bits)
@@ -768,6 +817,16 @@ func (g *Global) setValueNoLease(v Value, roots *globalValueRoots) error {
 	}
 	if !mutable {
 		return fmt.Errorf("global is immutable")
+	}
+	if isGCRefValType(typ) {
+		if containerOwner == nil || containerOwner.c == nil {
+			return fmt.Errorf("global has no compatible collector-reference owner")
+		}
+		name, ok := containerOwner.exportedGlobalNameForCell(g)
+		if !ok {
+			return fmt.Errorf("global collector-reference owner has no matching export")
+		}
+		return containerOwner.setGlobalValueNoLease(name, v, roots, nil)
 	}
 	bits := v.bits
 	var retainedOwner *Instance
