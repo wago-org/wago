@@ -290,6 +290,13 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		return 0, err
 	}
 	internalOff = mappedInternal
+	if f.nativeImportRouter > 0 {
+		mapped, err := mapFinalOffset(offsets, f.nativeImportRouter, len(code), "native import router")
+		if err != nil {
+			return 0, err
+		}
+		f.nativeImportRouter = mapped
+	}
 	for i := range f.relocs {
 		mapped, err := mapFinalOffset(offsets, int(f.relocs[i].at), len(code), "call relocation")
 		if err != nil {
