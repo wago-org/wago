@@ -294,6 +294,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			valueType = wasm.I32
 		}
 		helper := uint32(gcArrayFill)
+		if f.emitDirectGCArrayFill(typeIndex) {
+			return nil
+		}
 		if field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
 			f.stats.peep("gc-barrier-slow")
 			f.gcOpcodeBarrier = true
