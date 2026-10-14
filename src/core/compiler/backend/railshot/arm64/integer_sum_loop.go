@@ -93,6 +93,9 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	if p.PopulationCount {
 		return f.emitIntegerPopcountSum(p, typ, get)
 	}
+	if p.UnsignedByte {
+		return f.emitIntegerByteSum(p, typ, get)
+	}
 	if p.Divisor != 0 {
 		return f.emitIntegerDivisionSum(p, typ, get)
 	}

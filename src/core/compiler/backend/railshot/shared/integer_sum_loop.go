@@ -12,6 +12,8 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // after constant rotations. A Divisor term includes linear combinations of
 // unsigned counter quotients/remainders by one nonzero constant. Every proof
 // leaves Counter=max(1,Bound).
+// An UnsignedByte term projects the counter modulo 256 through pure SIMD
+// splat, optional constant swizzle, and unsigned lane extraction.
 // Fences may be coalesced because no memory access, call, trap or escape lies
 // between them. The replacement must still emit one fence when Fenced is true.
 type IntegerSumLoop struct {
@@ -30,6 +32,7 @@ type IntegerSumLoop struct {
 	SignedBits                                         uint8
 	NegativeCount                                      bool
 	PopulationCount                                    bool
+	UnsignedByte                                       bool
 	Divisor, QuotientCoefficient, RemainderCoefficient uint64
 	EvenCoefficient, EvenConstant                      uint64
 	OddCoefficient, OddConstant                        uint64
@@ -127,6 +130,10 @@ func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module, al
 	}
 	if !ok && blockType == 0 {
 		r = termStart
+		term, ok = inspectIntegerByteTerm(&r)
+	}
+	if !ok && blockType == 0 {
+		r = termStart
 		term, ok = inspectIntegerFloatTerm(&r)
 	}
 	if !ok {
@@ -134,6 +141,7 @@ func InspectIntegerSumLoopForModule(source *wasm.Reader, module *wasm.Module, al
 	}
 	p.Divisor, p.QuotientCoefficient, p.RemainderCoefficient = term.divisor, term.quotientCoefficient, term.remainderCoefficient
 	p.PopulationCount = term.populationCount
+	p.UnsignedByte = term.unsignedByte
 	p.Coefficient, p.Constant, p.Calls = term.coefficient, term.constant, term.calls
 	p.InvariantGlobal, p.Global = term.hasGlobal, term.global
 	p.GlobalRecurrence, p.GlobalCoefficient = term.recurrence, term.globalCoefficient

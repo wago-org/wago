@@ -28,6 +28,7 @@ type integerAffineTerm struct {
 	signedBits                                         uint8
 	negativeCount                                      bool
 	populationCount                                    bool
+	unsignedByte                                       bool
 	divisor, quotientCoefficient, remainderCoefficient uint64
 }
 
