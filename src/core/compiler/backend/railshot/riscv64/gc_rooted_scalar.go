@@ -526,7 +526,12 @@ func rootedScalarTableReference(typ wasm.ValType, m *wasm.Module) bool {
 	}
 	switch heap.Kind() {
 	case wasm.HeapAbs:
-		return heap.Abs() == wasm.HeapI31
+		switch heap.Abs() {
+		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray:
+			return true
+		default:
+			return false
+		}
 	case wasm.HeapTypeIndex:
 		return !heap.Type().Rec && rootedScalarAggregateAt(m, heap.Type().Index)
 	default:

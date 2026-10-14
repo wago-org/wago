@@ -527,7 +527,15 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 			return false
 		}
 		if !exact.Ref.Heap.Defined {
-			return exact.Ref.Heap.Abstract == AbstractHeapI31 && exact.Ref.Heap.TypeIndex == 0
+			if exact.Ref.Heap.TypeIndex != 0 {
+				return false
+			}
+			switch exact.Ref.Heap.Abstract {
+			case AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray:
+				return true
+			default:
+				return false
+			}
 		}
 		if exact.Ref.Heap.Abstract != 0 || uint64(exact.Ref.Heap.TypeIndex) >= uint64(len(c.Types)) {
 			return false
@@ -649,6 +657,21 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 			functionTable && def.Type != ValFuncRef || rootedTable && def.Type != abi {
 			return [32]byte{}, false
 		}
+		if rootedTable {
+			refFlags := byte(0)
+			if exact.Ref.Nullable {
+				refFlags |= 1
+			}
+			if exact.Ref.Exact {
+				refFlags |= 2
+			}
+			if exact.Ref.Heap.Defined {
+				refFlags |= 4
+			}
+			_, _ = h.Write([]byte{refFlags, byte(exact.Ref.Heap.Abstract)})
+			binary.LittleEndian.PutUint32(word[:4], exact.Ref.Heap.TypeIndex)
+			_, _ = h.Write(word[:4])
+		}
 		if imported, ok := c.tableImportAt(tableIndex); ok {
 			if tableIndex >= importCount || imported.Key == "" || !imported.HasMax || imported.Addr64 || imported.Type != def.Type || !imported.HasValueType ||
 				imported.Min > imported.Max || imported.Max > 256 || imported.ValueTypeIndex != def.ValueTypeIndex || tableModuleEnds[tableIndex] == 0 ||
@@ -683,21 +706,6 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		_, _ = h.Write(word[:])
 		binary.LittleEndian.PutUint32(word[:4], def.ValueTypeIndex)
 		_, _ = h.Write(word[:4])
-		if rootedTable {
-			refFlags := byte(0)
-			if exact.Ref.Nullable {
-				refFlags |= 1
-			}
-			if exact.Ref.Exact {
-				refFlags |= 2
-			}
-			if exact.Ref.Heap.Defined {
-				refFlags |= 4
-			}
-			_, _ = h.Write([]byte{refFlags, byte(exact.Ref.Heap.Abstract)})
-			binary.LittleEndian.PutUint32(word[:4], exact.Ref.Heap.TypeIndex)
-			_, _ = h.Write(word[:4])
-		}
 		if def.HasInitFunc {
 			_, _ = h.Write([]byte{1})
 			binary.LittleEndian.PutUint32(word[:4], def.InitFunc)

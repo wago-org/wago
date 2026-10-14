@@ -413,7 +413,12 @@ func rv64RootedAggregateTableReference(m *wasm.Module, typ wasm.ValType) bool {
 	}
 	switch heap.Kind() {
 	case wasm.HeapAbs:
-		return heap.Abs() == wasm.HeapI31
+		switch heap.Abs() {
+		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray:
+			return true
+		default:
+			return false
+		}
 	case wasm.HeapTypeIndex:
 		if heap.Type().Rec {
 			return false
@@ -537,7 +542,14 @@ func newRV64RootedAggregateParser(m *wasm.Module) *rv64RootedAggregateParser {
 }
 
 func (p *rv64RootedAggregateParser) constructedSubtype(typeIndex uint32, required wasm.RefType) bool {
-	if p == nil || !p.valid || required.Heap().Kind() != wasm.HeapTypeIndex || required.Heap().Type().Rec {
+	if p == nil || !p.valid {
+		return false
+	}
+	if required.Heap().Kind() == wasm.HeapAbs {
+		actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false)
+		return p.m.ReferenceTypeSubtype(actual, required)
+	}
+	if required.Heap().Kind() != wasm.HeapTypeIndex || required.Heap().Type().Rec {
 		return false
 	}
 	target := required.Heap().Type().Index

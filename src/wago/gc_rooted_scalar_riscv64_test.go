@@ -2825,6 +2825,86 @@ func rootedScalarSharedAggregateTableModule(imported bool) []byte {
 	return wasmtest.Module(sections...)
 }
 
+func rootedScalarSharedAbstractTableModule(imported bool) []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	setType := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+	readType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	growType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	tableType := []byte{byte(wasm.HeapAny), 0x01, 0x01, 0x02}
+	setObject := []byte{
+		0x00,
+		0x20, 0x00,
+		0x20, 0x01, 0xfb, 0x00, 0x00,
+		0x26, 0x00,
+		0x41, 0x09, 0xfb, 0x00, 0x00, 0x1a,
+		0x20, 0x00, 0x25, 0x00,
+		0xfb, 0x16, 0x00,
+		0xfb, 0x02, 0x00, 0x00,
+		0x0b,
+	}
+	setI31 := []byte{
+		0x00,
+		0x20, 0x00,
+		0x20, 0x01, 0xfb, 0x1c,
+		0x26, 0x00,
+		0x41, 0x09, 0xfb, 0x00, 0x00, 0x1a,
+		0x20, 0x00, 0x25, 0x00,
+		0xfb, 0x16, byte(wasm.HeapI31),
+		0xfb, 0x1d,
+		0x0b,
+	}
+	readObject := []byte{0x00, 0x20, 0x00, 0x25, 0x00, 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	readI31 := []byte{0x00, 0x20, 0x00, 0x25, 0x00, 0xfb, 0x16, byte(wasm.HeapI31), 0xfb, 0x1d, 0x0b}
+	grow := []byte{0x00, 0xd0, byte(wasm.HeapAny), 0x20, 0x00, 0xfc, 0x0f, 0x00, 0x0b}
+	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(structType, setType, readType, growType))}
+	if imported {
+		entry := append(append(wasmtest.Name("provider"), wasmtest.Name("objects")...), byte(wasm.ExternTable))
+		entry = append(entry, tableType...)
+		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(entry)))
+	}
+	sections = append(sections, wasmtest.Section(3, wasmtest.Vec(
+		wasmtest.ULEB(1), wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(2), wasmtest.ULEB(3),
+	)))
+	if !imported {
+		sections = append(sections, wasmtest.Section(4, wasmtest.Vec(tableType)))
+	}
+	sections = append(sections,
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("set_object", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("set_i31", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("read_object", byte(wasm.ExternFunc), 2),
+			wasmtest.ExportEntry("read_i31", byte(wasm.ExternFunc), 3),
+			wasmtest.ExportEntry("grow", byte(wasm.ExternFunc), 4),
+			wasmtest.ExportEntry("objects", byte(wasm.ExternTable), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(setObject))), setObject...),
+			append(wasmtest.ULEB(uint32(len(setI31))), setI31...),
+			append(wasmtest.ULEB(uint32(len(readObject))), readObject...),
+			append(wasmtest.ULEB(uint32(len(readI31))), readI31...),
+			append(wasmtest.ULEB(uint32(len(grow))), grow...),
+		)),
+	)
+	return wasmtest.Module(sections...)
+}
+
+func rootedScalarInertAbstractTableModule(heap wasm.AbsHeapType) []byte {
+	body := []byte{0x00, 0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a, 0x41, 0x01, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{0x01, byte(heap), 0x01, 0x01, 0x02}),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("objects", byte(wasm.ExternTable), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func TestRV64RootedAggregateTablesExecute(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -2968,6 +3048,156 @@ func TestRV64RootedSharedAggregateTableExecutes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRV64RootedSharedAbstractTableExecutes(t *testing.T) {
+	for _, heap := range []wasm.AbsHeapType{wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray} {
+		variant, err := Compile(rv64RootedScalarConfig(), rootedScalarInertAbstractTableModule(heap))
+		if err != nil {
+			t.Fatalf("compile abstract heap=%v table: %v", heap, err)
+		}
+		view := variant.executionView()
+		wantABI := ValAnyRef
+		if heap == wasm.HeapI31 {
+			wantABI = ValI31Ref
+		}
+		if !rv64FreshRootedGC(view) || view.tableElementType(0) != wantABI || view.tableEntryBytes(0) != 8 {
+			_ = variant.Close()
+			t.Fatalf("abstract heap=%v table receipt=%t type=%v stride=%d", heap, rv64FreshRootedGC(view), view.tableElementType(0), view.tableEntryBytes(0))
+		}
+		if err := variant.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	providerSource := rootedScalarSharedAbstractTableModule(false)
+	consumerSource := rootedScalarSharedAbstractTableModule(true)
+	if !railshot.AdmitGCRootedScalarSource(providerSource) || !railshot.AdmitGCRootedScalarSource(consumerSource) {
+		t.Fatal("shared abstract collector-reference table modules were not source-admitted")
+	}
+	for _, source := range [][]byte{providerSource, consumerSource} {
+		module, err := wasm.DecodeModule(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var diagnostic string
+		if plan := newGCFrameRootPlan(module, true, true, &diagnostic, nil); plan == nil || diagnostic != "" {
+			t.Fatalf("shared abstract table root plan=%v diagnostic=%q", plan, diagnostic)
+		}
+	}
+	providerCode, err := Compile(rv64RootedScalarConfig(), providerSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer providerCode.Close()
+	consumerCode, err := Compile(rv64RootedScalarConfig(), consumerSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumerCode.Close()
+	providerView, consumerView := providerCode.executionView(), consumerCode.executionView()
+	if !rv64FreshRootedGC(providerView) || !rv64FreshRootedGC(consumerView) || providerView.tableExports["objects"] != 0 || consumerView.tableExports["objects"] != 0 ||
+		consumerView.tableImportCount() != 1 || providerView.tableElementType(0) != ValAnyRef || consumerView.tableElementType(0) != ValAnyRef ||
+		providerView.tableEntryBytes(0) != 8 || consumerView.tableEntryBytes(0) != 8 {
+		t.Fatalf("shared abstract table receipts provider=%t consumer=%t exports=%v/%v imports=%d validation=%v", rv64FreshRootedGC(providerView), rv64FreshRootedGC(consumerView), providerView.tableExports, consumerView.tableExports, consumerView.tableImportCount(), railshotValidateCompiled(consumerView))
+	}
+	candidate := cloneCompiledMetadata(consumerView)
+	candidate.ValueTypes = slices.Clone(candidate.ValueTypes)
+	candidate.ValueTypes[candidate.tableDef(0).ValueTypeIndex].Ref.Heap.Abstract = AbstractHeapExtern
+	if rv64FreshRootedGC(candidate) {
+		t.Fatal("non-collector abstract table import retained the rooted receipt")
+	}
+	for _, heap := range []AbstractHeapType{AbstractHeapEq, AbstractHeapStruct, AbstractHeapArray} {
+		candidate = cloneCompiledMetadata(consumerView)
+		candidate.ValueTypes = slices.Clone(candidate.ValueTypes)
+		candidate.ValueTypes[candidate.tableDef(0).ValueTypeIndex].Ref.Heap.Abstract = heap
+		if rv64FreshRootedGC(candidate) {
+			t.Fatalf("same-carrier abstract heap=%v table import retained the exact rooted receipt", heap)
+		}
+	}
+	candidate = cloneCompiledMetadata(consumerView)
+	candidate.ValueTypes = slices.Clone(candidate.ValueTypes)
+	candidate.ValueTypes[candidate.tableDef(0).ValueTypeIndex].Ref.Nullable = false
+	if rv64FreshRootedGC(candidate) {
+		t.Fatal("non-null abstract table import retained the rooted receipt")
+	}
+	candidate = cloneCompiledMetadata(consumerView)
+	candidate.ValueTypes = slices.Clone(candidate.ValueTypes)
+	candidate.ValueTypes[candidate.tableDef(0).ValueTypeIndex].Ref.Exact = true
+	if rv64FreshRootedGC(candidate) {
+		t.Fatal("exact abstract table import retained the rooted receipt")
+	}
+	requireRV64FreshRootedArtifactRejected(t, providerCode)
+	requireRV64FreshRootedArtifactRejected(t, consumerCode)
+
+	store := newReferenceStore(false)
+	defer store.closeRuntime()
+	gcConfig := GCConfig{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}
+	provider, err := instantiateCore(providerCode, InstantiateOptions{GC: gcConfig, store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	providerOpen := true
+	defer func() {
+		if providerOpen {
+			_ = provider.Close()
+		}
+	}()
+	table, err := provider.ExportedTable("objects")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.objects", table)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumerOpen := true
+	defer func() {
+		if consumerOpen {
+			_ = consumer.Close()
+		}
+	}()
+	if provider.gc == nil || provider.gc != consumer.gc || !store.ownsGCCollector(provider.gc) {
+		t.Fatal("shared abstract table did not select one Runtime collector domain")
+	}
+	reexported, err := consumer.ExportedTable("objects")
+	if err != nil || reexported != table {
+		t.Fatalf("consumer re-exported table=%p provider table=%p err=%v", reexported, table, err)
+	}
+	if got, callErr := provider.Invoke("set_object", 0, 40); callErr != nil || !slices.Equal(got, []uint64{40}) {
+		t.Fatalf("provider object set=%v err=%v", got, callErr)
+	}
+	if got, callErr := consumer.Invoke("read_object", 0); callErr != nil || !slices.Equal(got, []uint64{40}) {
+		t.Fatalf("consumer object read=%v err=%v", got, callErr)
+	}
+	if got, callErr := consumer.Invoke("set_i31", 0, I32(-3)); callErr != nil || !slices.Equal(got, []uint64{0xfffffffd}) {
+		t.Fatalf("consumer i31 set=%v err=%v", got, callErr)
+	}
+	if got, callErr := provider.Invoke("read_i31", 0); callErr != nil || !slices.Equal(got, []uint64{0xfffffffd}) {
+		t.Fatalf("provider i31 read=%v err=%v", got, callErr)
+	}
+	if got, callErr := consumer.Invoke("grow", 1); callErr != nil || !slices.Equal(got, []uint64{1}) {
+		t.Fatalf("consumer grow=%v err=%v", got, callErr)
+	}
+	if got, callErr := provider.Invoke("set_object", 1, 77); callErr != nil || !slices.Equal(got, []uint64{77}) {
+		t.Fatalf("provider grown object set=%v err=%v", got, callErr)
+	}
+	if err := consumer.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.Close(); err != nil {
+		t.Fatal(err)
+	}
+	providerOpen = false
+	if err := consumer.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	if got, callErr := consumer.Invoke("read_object", 1); callErr != nil || !slices.Equal(got, []uint64{77}) {
+		t.Fatalf("consumer retained object after provider close=%v err=%v", got, callErr)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	consumerOpen = false
 }
 
 func rootedScalarAggregateTableBulkModule() []byte {
@@ -5833,6 +6063,28 @@ func rootedScalarSharedAbstractGlobalConsumerModule(mutable bool) []byte {
 	)
 }
 
+func rootedScalarInertAbstractGlobalImportModule(heap wasm.AbsHeapType, mutable bool) []byte {
+	mut := byte(0)
+	if mutable {
+		mut = 1
+	}
+	globalImport := append(append(wasmtest.Name("provider"), wasmtest.Name("root")...), byte(wasm.ExternGlobal), byte(heap), mut)
+	body := []byte{0x00, 0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a, 0x41, 0x01, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(globalImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("root", byte(wasm.ExternGlobal), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func rootedScalarSharedGlobalConsumerModule(mutable bool) []byte {
 	mut := byte(0)
 	if mutable {
@@ -5989,6 +6241,19 @@ func TestRV64RootedSharedReferenceGlobalImports(t *testing.T) {
 func TestRV64RootedSharedAbstractGlobalImports(t *testing.T) {
 	for _, mutable := range []bool{false, true} {
 		t.Run(map[bool]string{false: "immutable", true: "mutable"}[mutable], func(t *testing.T) {
+			for _, heap := range []wasm.AbsHeapType{wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray} {
+				variant, err := Compile(rv64RootedScalarConfig(), rootedScalarInertAbstractGlobalImportModule(heap, mutable))
+				if err != nil {
+					t.Fatalf("compile abstract heap=%v global import: %v", heap, err)
+				}
+				if !rv64FreshRootedGC(variant.executionView()) {
+					_ = variant.Close()
+					t.Fatalf("abstract heap=%v global import lost the rooted receipt", heap)
+				}
+				if err := variant.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
 			providerSource := rootedScalarSharedAbstractGlobalProviderModule(mutable)
 			consumerSource := rootedScalarSharedAbstractGlobalConsumerModule(mutable)
 			if !railshot.AdmitGCRootedScalarSource(providerSource) || !railshot.AdmitGCRootedScalarSource(consumerSource) {
@@ -6028,12 +6293,12 @@ func TestRV64RootedSharedAbstractGlobalImports(t *testing.T) {
 				t.Fatalf("shared abstract receipts provider=%t consumer=%t imports=%+v exports=%v validation=%v", rv64FreshRootedGC(providerView), rv64FreshRootedGC(consumerView), consumerView.GlobalImports, consumerView.GlobalExports, railshotValidateCompiled(consumerView))
 			}
 			index := consumerView.GlobalImports[0].ValueTypeIndex
-			for _, heap := range []AbstractHeapType{AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray} {
+			for _, heap := range []AbstractHeapType{AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray} {
 				candidate := cloneCompiledMetadata(consumerView)
 				candidate.ValueTypes = slices.Clone(candidate.ValueTypes)
 				candidate.ValueTypes[index].Ref.Heap.Abstract = heap
-				if !rv64FreshRootedGC(candidate) {
-					t.Fatalf("abstract heap=%v global import lost the rooted receipt", heap)
+				if rv64FreshRootedGC(candidate) {
+					t.Fatalf("retargeted abstract heap=%v global import retained the exact rooted receipt", heap)
 				}
 			}
 			candidate := cloneCompiledMetadata(consumerView)
