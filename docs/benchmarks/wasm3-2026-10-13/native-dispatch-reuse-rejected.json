@@ -1,0 +1,308 @@
+{
+  "decision": "Reject caller dispatch load reuse candidates",
+  "beforeSource": "d9d12e8a",
+  "platform": "Apple M4 Max / darwin-arm64",
+  "tagOnly": [
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "compact",
+      "nsPerCall": 624995.792
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "compact",
+      "nsPerCall": 628767.125
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "compact",
+      "nsPerCall": 622941.166
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "compact",
+      "nsPerCall": 605620.834
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "compact",
+      "nsPerCall": 600627.459
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "compact",
+      "nsPerCall": 603236.375
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "threads",
+      "nsPerCall": 345403.042
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "threads",
+      "nsPerCall": 339382.125
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "threads",
+      "nsPerCall": 335378.041
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "threads",
+      "nsPerCall": 380067.083
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "threads",
+      "nsPerCall": 360751.666
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "threads",
+      "nsPerCall": 383871.792
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 4458263.125
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 4374112.915
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 4341538.54
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 4367590.625
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 4388210.835
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 4348928.75
+    }
+  ],
+  "tagAndSmallFramePointer": [
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "compact",
+      "nsPerCall": 589717.667
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "compact",
+      "nsPerCall": 589279.416
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "compact",
+      "nsPerCall": 572634.375
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "compact",
+      "nsPerCall": 590540.5
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "compact",
+      "nsPerCall": 589456.708
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "compact",
+      "nsPerCall": 574536.209
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "threads",
+      "nsPerCall": 331087.917
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "threads",
+      "nsPerCall": 356604.375
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "threads",
+      "nsPerCall": 380039.833
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "threads",
+      "nsPerCall": 415716.583
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "threads",
+      "nsPerCall": 348656.542
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 1000,
+      "case": "threads",
+      "nsPerCall": 383911.209
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 4309836.67
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 4222871.25
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 4176549.165
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 4281988.96
+    },
+    {
+      "label": "before",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 4271692.5
+    },
+    {
+      "label": "current",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 4246862.29
+    }
+  ],
+  "sourcePatches": {
+    "tag-only.patch": "c586cb73ad6abc6c3be599fbc8413a059c7127f06bbe794baa62b26bbeab35ef",
+    "combined.patch": "93af24c07a9cb9854851acf8119413c84c0862301522822427aa29b348fe1bd2"
+  },
+  "limitations": [
+    "Tag-only mean ratios: compact1.01294, native thread0.97460, opaque0.98869. Native thread pairs disagree.",
+    "Tag and pointer mean ratios: compact0.98120, native thread1.02291, opaque0.98311. Native thread pairs disagree.",
+    "No consistently material native thread or compact improvement; reduced instruction count is insufficient evidence.",
+    "Both candidates passed focused tests; combined candidate also passed large-frame, FP-local and artifact fallback tests.",
+    "All load-reuse runtime/compiler changes removed; no prototype publication."
+  ]
+}
