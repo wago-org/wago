@@ -1057,7 +1057,11 @@ type Compiled struct {
 	extraTables         []tableDef // table indexes 1..N; imported positions carry indexed import metadata
 	FuncTypeID          []uint64   // collision-resistant native signature key; legacy field name
 	NeedsFuncRefDescs   bool       // true when instantiation requires the canonical per-function descriptor arena
-	Elems               []ElemInit // active element segments
+	// Source-only shared host certificates occupy existing flag padding.
+	// Codecs discard both; resource-free private bridges do not consume them.
+	fixedSharedHostSegments bool
+	fixedSharedHostInteger  bool
+	Elems                   []ElemInit // active element segments
 
 	passiveElems []ElemInit // element-state descriptors keyed by original index; active/declarative slots start dropped
 
@@ -1141,10 +1145,6 @@ type Compiled struct {
 	// local, unexported, immutable, and limited to local function descriptors.
 	// Like direct-prepared entry selection, codecs conservatively discard it.
 	preparedIsolatedTables bool
-	// Fresh compiler scheduler certificate; codecs drop it. Resource-free
-	// private host bridges deliberately do not consume this certificate.
-	fixedSharedHostSegments bool
-	fixedSharedHostInteger  bool
 }
 
 // The sign bit of a fresh compilation's internal-entry offset carries the
