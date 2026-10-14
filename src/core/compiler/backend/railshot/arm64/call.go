@@ -1928,7 +1928,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	// are homed above; proven preserved local pins can remain in registers.
 	nativeLeaf := -1
 	goDirect := -1
-	directSharedGo := f.cacheImportDispatch && f.threadedMemory0 && f.m.ImportedFuncCount() == 1 && !recordRoots && len(ft.Params) == 1 && ft.Params[0] == wasm.I32 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && os.Getenv("WAGO_ARM64_FIXED_SHARED_GOCALL") != "0"
+	directSharedGo := f.opt(optDirectGoHostImport) && f.cacheImportDispatch && f.threadedMemory0 && f.m.ImportedFuncCount() == 1 && !recordRoots && len(ft.Params) == 1 && ft.Params[0] == wasm.I32 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && os.Getenv("WAGO_ARM64_FIXED_SHARED_GOCALL") != "0"
 	// A single-import resource-free module retains its lean existing wrapper
 	// route: the extra dispatch branch regresses short dependent callback loops.
 	// Stateful modules and import aliases amortize this branch against context

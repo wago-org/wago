@@ -90,3 +90,22 @@ func TestFixedSharedDirectGoCallerScope(t *testing.T) {
 		in.Close()
 	}
 }
+
+func TestFixedSharedDirectGoImportPolicy(t *testing.T) {
+	t.Setenv("WAGO_ARM64_FIXED_SHARED_GOCALL", "1")
+	cfg := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("direct-go-host-import", false)
+	c, err := cfg.Compile(fixedSharedHostLoopModule(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	var code bytes.Buffer
+	if _, err = c.WriteCodeTo(&code); err != nil {
+		t.Fatal(err)
+	}
+	for b := code.Bytes(); len(b) >= 4; b = b[4:] {
+		if binary.LittleEndian.Uint32(b) == 0xd63f0200 {
+			t.Fatal("disabled direct-go-host-import still emits direct Go transition")
+		}
+	}
+}
