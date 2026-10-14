@@ -1,0 +1,865 @@
+{
+  "source": "d4a5d2ffc95757101eb53cfc1d82d6fddeb16942",
+  "baseline": "334732e1b475ca59303ad2941c7160f50f981268",
+  "peer": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+  "platform": "Hub Ryzen 7 7800X3D / Linux amd64 / CPU7",
+  "toolchains": [
+    "Go1.27.1",
+    "Clang18.1.3"
+  ],
+  "sourceInputs": 3093,
+  "checks": [
+    "16 exact-source captures and64 phases;15 samples each",
+    "Exact artifact and contract hashes match baseline",
+    "All latency,memory,code statuses ok",
+    "Fresh and reversed source order"
+  ],
+  "rows": [
+    {
+      "order": "capture",
+      "workload": "mechanisms/wasm-host-wasm-loop",
+      "phase": "compile",
+      "beforeNs": 58029,
+      "wagoNs": 55615,
+      "peerNs": 213652281,
+      "peerRatio": 0.000260306137335365,
+      "changePercent": -4.159988971031725,
+      "beforeRSS": 18239488,
+      "rss": 18239488,
+      "rssChangePercent": 0.0,
+      "beforeCode": 562,
+      "code": 597
+    },
+    {
+      "order": "capture",
+      "workload": "mechanisms/wasm-host-wasm-loop",
+      "phase": "instantiate",
+      "beforeNs": 4198,
+      "wagoNs": 11902,
+      "peerNs": 180,
+      "peerRatio": 66.12222222222222,
+      "changePercent": 183.5159599809433,
+      "beforeRSS": 18370560,
+      "rss": 18370560,
+      "rssChangePercent": 0.0,
+      "beforeCode": 562,
+      "code": 597
+    },
+    {
+      "order": "capture",
+      "workload": "mechanisms/wasm-host-wasm-loop",
+      "phase": "first-call",
+      "beforeNs": 9067238,
+      "wagoNs": 1565685,
+      "peerNs": 2151350,
+      "peerRatio": 0.7277686104074186,
+      "changePercent": -82.73250354738676,
+      "beforeRSS": 18370560,
+      "rss": 18370560,
+      "rssChangePercent": 0.0,
+      "beforeCode": 562,
+      "code": 597
+    },
+    {
+      "order": "capture",
+      "workload": "mechanisms/wasm-host-wasm-loop",
+      "phase": "steady",
+      "beforeNs": 6.446059,
+      "wagoNs": 1.771863,
+      "peerNs": 2.139778,
+      "peerRatio": 0.8280592659612351,
+      "changePercent": -72.51246071436826,
+      "beforeRSS": 18239488,
+      "rss": 18239488,
+      "rssChangePercent": 0.0,
+      "beforeCode": 562,
+      "code": 597
+    },
+    {
+      "order": "capture",
+      "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+      "phase": "compile",
+      "beforeNs": 97694,
+      "wagoNs": 91873,
+      "peerNs": 218412815,
+      "peerRatio": 0.0004206392376747674,
+      "changePercent": -5.9584007206174405,
+      "beforeRSS": 18239488,
+      "rss": 18235392,
+      "rssChangePercent": -0.02245677071637253,
+      "beforeCode": 1119,
+      "code": 1199
+    },
+    {
+      "order": "capture",
+      "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+      "phase": "instantiate",
+      "beforeNs": 7434,
+      "wagoNs": 13846,
+      "peerNs": 220,
+      "peerRatio": 62.93636363636364,
+      "changePercent": 86.25235404896421,
+      "beforeRSS": 18370560,
+      "rss": 18366464,
+      "rssChangePercent": -0.022296544035671495,
+      "beforeCode": 1119,
+      "code": 1199
+    },
+    {
+      "order": "capture",
+      "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+      "phase": "first-call",
+      "beforeNs": 30634434,
+      "wagoNs": 761026,
+      "peerNs": 1122518,
+      "peerRatio": 0.6779632932389503,
+      "changePercent": -97.5157824035528,
+      "beforeRSS": 18501632,
+      "rss": 18497536,
+      "rssChangePercent": -0.02213858755811815,
+      "beforeCode": 1119,
+      "code": 1199
+    },
+    {
+      "order": "capture",
+      "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+      "phase": "steady",
+      "beforeNs": 30350111,
+      "wagoNs": 757536.686746988,
+      "peerNs": 1121775.875,
+      "peerRatio": 0.675301282216457,
+      "changePercent": -97.50400686591561,
+      "beforeRSS": 18370560,
+      "rss": 18370560,
+      "rssChangePercent": 0.0,
+      "beforeCode": 1119,
+      "code": 1199
+    },
+    {
+      "order": "capture",
+      "workload": "features/threads/host-identity/performance-4096x64",
+      "phase": "compile",
+      "beforeNs": 108164,
+      "wagoNs": 91032,
+      "peerNs": 228777044,
+      "peerRatio": 0.00039790705574463143,
+      "changePercent": -15.838911282866764,
+      "beforeRSS": 18239488,
+      "rss": 18239488,
+      "rssChangePercent": 0.0,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "capture",
+      "workload": "features/threads/host-identity/performance-4096x64",
+      "phase": "instantiate",
+      "beforeNs": 21861,
+      "wagoNs": 21551,
+      "peerNs": 11832,
+      "peerRatio": 1.821416497633536,
+      "changePercent": -1.4180504094048807,
+      "beforeRSS": 18370560,
+      "rss": 18370560,
+      "rssChangePercent": 0.0,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "capture",
+      "workload": "features/threads/host-identity/performance-4096x64",
+      "phase": "first-call",
+      "beforeNs": 7404018,
+      "wagoNs": 440712,
+      "peerNs": 633696,
+      "peerRatio": 0.6954628086653537,
+      "changePercent": -94.04766438979483,
+      "beforeRSS": 18501632,
+      "rss": 18370560,
+      "rssChangePercent": -0.7084348018596365,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "capture",
+      "workload": "features/threads/host-identity/performance-4096x64",
+      "phase": "steady",
+      "beforeNs": 6336002.636363637,
+      "wagoNs": 437857.0625,
+      "peerNs": 625033.5841584158,
+      "peerRatio": 0.7005336570666968,
+      "changePercent": -93.08938004559772,
+      "beforeRSS": 18239488,
+      "rss": 18239488,
+      "rssChangePercent": 0.0,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "capture",
+      "workload": "features/threads/host-opaque-identity/performance-4096x64",
+      "phase": "compile",
+      "beforeNs": 92695,
+      "wagoNs": 95039,
+      "peerNs": 222771691,
+      "peerRatio": 0.0004266206337680491,
+      "changePercent": 2.52872323210529,
+      "beforeRSS": 18239488,
+      "rss": 18239488,
+      "rssChangePercent": 0.0,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "capture",
+      "workload": "features/threads/host-opaque-identity/performance-4096x64",
+      "phase": "instantiate",
+      "beforeNs": 17183,
+      "wagoNs": 19136,
+      "peerNs": 11652,
+      "peerRatio": 1.6422931685547546,
+      "changePercent": 11.365884886224764,
+      "beforeRSS": 18370560,
+      "rss": 18370560,
+      "rssChangePercent": 0.0,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "capture",
+      "workload": "features/threads/host-opaque-identity/performance-4096x64",
+      "phase": "first-call",
+      "beforeNs": 6853879,
+      "wagoNs": 6340255,
+      "peerNs": 622465,
+      "peerRatio": 10.185721285534127,
+      "changePercent": -7.493916948344137,
+      "beforeRSS": 18370560,
+      "rss": 18501632,
+      "rssChangePercent": 0.7134894091415767,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "capture",
+      "workload": "features/threads/host-opaque-identity/performance-4096x64",
+      "phase": "steady",
+      "beforeNs": 6408988.4,
+      "wagoNs": 6375260,
+      "peerNs": 624733.8627450981,
+      "peerRatio": 10.204761387492153,
+      "changePercent": -0.5262671406926045,
+      "beforeRSS": 18239488,
+      "rss": 18239488,
+      "rssChangePercent": 0.0,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "repeat",
+      "workload": "mechanisms/wasm-host-wasm-loop",
+      "phase": "compile",
+      "beforeNs": 60644,
+      "wagoNs": 59914,
+      "peerNs": 214257391,
+      "peerRatio": 0.00027963562759895645,
+      "changePercent": -1.2037464547193455,
+      "beforeRSS": 18239488,
+      "rss": 18239488,
+      "rssChangePercent": 0.0,
+      "beforeCode": 562,
+      "code": 597
+    },
+    {
+      "order": "repeat",
+      "workload": "mechanisms/wasm-host-wasm-loop",
+      "phase": "instantiate",
+      "beforeNs": 3938,
+      "wagoNs": 10510,
+      "peerNs": 171,
+      "peerRatio": 61.461988304093566,
+      "changePercent": 166.88674454037584,
+      "beforeRSS": 18370560,
+      "rss": 18370560,
+      "rssChangePercent": 0.0,
+      "beforeCode": 562,
+      "code": 597
+    },
+    {
+      "order": "repeat",
+      "workload": "mechanisms/wasm-host-wasm-loop",
+      "phase": "first-call",
+      "beforeNs": 9106082,
+      "wagoNs": 1558241,
+      "peerNs": 2141181,
+      "peerRatio": 0.7277483781146946,
+      "changePercent": -82.88790942141746,
+      "beforeRSS": 18370560,
+      "rss": 18370560,
+      "rssChangePercent": 0.0,
+      "beforeCode": 562,
+      "code": 597
+    },
+    {
+      "order": "repeat",
+      "workload": "mechanisms/wasm-host-wasm-loop",
+      "phase": "steady",
+      "beforeNs": 6.441786,
+      "wagoNs": 1.595421,
+      "peerNs": 2.139768,
+      "peerRatio": 0.7456046636831656,
+      "changePercent": -75.2332505302101,
+      "beforeRSS": 18239488,
+      "rss": 18239488,
+      "rssChangePercent": 0.0,
+      "beforeCode": 562,
+      "code": 597
+    },
+    {
+      "order": "repeat",
+      "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+      "phase": "compile",
+      "beforeNs": 99437,
+      "wagoNs": 90310,
+      "peerNs": 216987253,
+      "peerRatio": 0.00041619956357528525,
+      "changePercent": -9.178675945573577,
+      "beforeRSS": 18239488,
+      "rss": 18239488,
+      "rssChangePercent": 0.0,
+      "beforeCode": 1119,
+      "code": 1199
+    },
+    {
+      "order": "repeat",
+      "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+      "phase": "instantiate",
+      "beforeNs": 7154,
+      "wagoNs": 12474,
+      "peerNs": 210,
+      "peerRatio": 59.4,
+      "changePercent": 74.36399217221134,
+      "beforeRSS": 18370560,
+      "rss": 18370560,
+      "rssChangePercent": 0.0,
+      "beforeCode": 1119,
+      "code": 1199
+    },
+    {
+      "order": "repeat",
+      "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+      "phase": "first-call",
+      "beforeNs": 30678787,
+      "wagoNs": 760364,
+      "peerNs": 1128219,
+      "peerRatio": 0.6739507134696366,
+      "changePercent": -97.5215317346152,
+      "beforeRSS": 18501632,
+      "rss": 18370560,
+      "rssChangePercent": -0.7084348018596365,
+      "beforeCode": 1119,
+      "code": 1199
+    },
+    {
+      "order": "repeat",
+      "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+      "phase": "steady",
+      "beforeNs": 30494437.666666668,
+      "wagoNs": 757389.5357142857,
+      "peerNs": 1121719.6964285714,
+      "peerRatio": 0.6752039195939309,
+      "changePercent": -97.51630266478996,
+      "beforeRSS": 18370560,
+      "rss": 18239488,
+      "rssChangePercent": -0.7134894091415878,
+      "beforeCode": 1119,
+      "code": 1199
+    },
+    {
+      "order": "repeat",
+      "workload": "features/threads/host-identity/performance-4096x64",
+      "phase": "compile",
+      "beforeNs": 91834,
+      "wagoNs": 91994,
+      "peerNs": 222387286,
+      "peerRatio": 0.0004136657344700902,
+      "changePercent": 0.17422741032733224,
+      "beforeRSS": 18239488,
+      "rss": 18239488,
+      "rssChangePercent": 0.0,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "repeat",
+      "workload": "features/threads/host-identity/performance-4096x64",
+      "phase": "instantiate",
+      "beforeNs": 16251,
+      "wagoNs": 20077,
+      "peerNs": 11452,
+      "peerRatio": 1.7531435557107928,
+      "changePercent": 23.543166574364662,
+      "beforeRSS": 18370560,
+      "rss": 18370560,
+      "rssChangePercent": 0.0,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "repeat",
+      "workload": "features/threads/host-identity/performance-4096x64",
+      "phase": "first-call",
+      "beforeNs": 6307768,
+      "wagoNs": 444349,
+      "peerNs": 622154,
+      "peerRatio": 0.7142106295225941,
+      "changePercent": -92.95552721660023,
+      "beforeRSS": 18370560,
+      "rss": 18370560,
+      "rssChangePercent": 0.0,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "repeat",
+      "workload": "features/threads/host-identity/performance-4096x64",
+      "phase": "steady",
+      "beforeNs": 6354737,
+      "wagoNs": 466399.8,
+      "peerNs": 623957.2871287129,
+      "peerRatio": 0.7474867424759939,
+      "changePercent": -92.66059633939217,
+      "beforeRSS": 18239488,
+      "rss": 18239488,
+      "rssChangePercent": 0.0,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "repeat",
+      "workload": "features/threads/host-opaque-identity/performance-4096x64",
+      "phase": "compile",
+      "beforeNs": 90852,
+      "wagoNs": 94428,
+      "peerNs": 221779428,
+      "peerRatio": 0.00042577438697334906,
+      "changePercent": 3.936071853123768,
+      "beforeRSS": 18235392,
+      "rss": 18239488,
+      "rssChangePercent": 0.02246181491465382,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "repeat",
+      "workload": "features/threads/host-opaque-identity/performance-4096x64",
+      "phase": "instantiate",
+      "beforeNs": 17463,
+      "wagoNs": 19086,
+      "peerNs": 11732,
+      "peerRatio": 1.6268325946130242,
+      "changePercent": 9.293935749871164,
+      "beforeRSS": 18366464,
+      "rss": 18370560,
+      "rssChangePercent": 0.022301516503131502,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "repeat",
+      "workload": "features/threads/host-opaque-identity/performance-4096x64",
+      "phase": "first-call",
+      "beforeNs": 6373703,
+      "wagoNs": 6317372,
+      "peerNs": 621633,
+      "peerRatio": 10.162542850846078,
+      "changePercent": -0.8838033400677792,
+      "beforeRSS": 18366464,
+      "rss": 18370560,
+      "rssChangePercent": 0.022301516503131502,
+      "beforeCode": 751,
+      "code": 783
+    },
+    {
+      "order": "repeat",
+      "workload": "features/threads/host-opaque-identity/performance-4096x64",
+      "phase": "steady",
+      "beforeNs": 6457030.1,
+      "wagoNs": 6394836,
+      "peerNs": 624425.9009900991,
+      "peerRatio": 10.241144689642521,
+      "changePercent": -0.963199784371449,
+      "beforeRSS": 18239488,
+      "rss": 18235392,
+      "rssChangePercent": -0.02245677071637253,
+      "beforeCode": 751,
+      "code": 783
+    }
+  ],
+  "captureManifest": [
+    {
+      "file": "native-leaf-sdk-campaign/capture/captures/wago-d4a5d2ff-837d0b781a84ac42.json",
+      "sha256": "ab31d2197c9f9fd6c7a0b6702c686f3c4e4ed62d97c6ea896d47f8482effdef6",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "d4a5d2ffc95757101eb53cfc1d82d6fddeb16942",
+        "ref": "jairus/wasm3-feature-parity@d4a5d2ff",
+        "asOf": "2026-10-14T06:41:04.908905+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/capture/captures/w2c2-f303ed27-deec12e2b6e3c13e.json",
+      "sha256": "3421bf6b0f54d281bc72298422ffc3343b8b8fcdb621ab5490337f4525c65f82",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.238163+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/capture/captures/w2c2-f303ed27-e6dede99195186b1.json",
+      "sha256": "ac1f2cd4c8b9c02de08601edf22f01364d0a2c66a8532f6793f3bdee6b310b5f",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.238163+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/capture/captures/wago-d4a5d2ff-22cdff9afcb3dc21.json",
+      "sha256": "0f5f5f5140a65c026dcd758f29f6a4ce5a6b9db5c708aa855248551cde0714bf",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "d4a5d2ffc95757101eb53cfc1d82d6fddeb16942",
+        "ref": "jairus/wasm3-feature-parity@d4a5d2ff",
+        "asOf": "2026-10-14T06:41:04.908905+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/capture/captures/wago-d4a5d2ff-e6dede99195186b1.json",
+      "sha256": "3a1da0ef8910ae741633aa8e36ccfdfd01816fa12299759503f012aeffee853e",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "d4a5d2ffc95757101eb53cfc1d82d6fddeb16942",
+        "ref": "jairus/wasm3-feature-parity@d4a5d2ff",
+        "asOf": "2026-10-14T06:41:04.908905+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/capture/captures/w2c2-f303ed27-22cdff9afcb3dc21.json",
+      "sha256": "06b9f6546941c2c7f788d3d68b67d335454e4b11335fe8ccd028af91e20a5296",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.238163+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/capture/captures/wago-d4a5d2ff-deec12e2b6e3c13e.json",
+      "sha256": "4864d748727cd54b6006f474ace14570798373d329f1f8674ce54f0679d2153b",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "d4a5d2ffc95757101eb53cfc1d82d6fddeb16942",
+        "ref": "jairus/wasm3-feature-parity@d4a5d2ff",
+        "asOf": "2026-10-14T06:41:04.908905+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/capture/captures/w2c2-f303ed27-837d0b781a84ac42.json",
+      "sha256": "9e6cf57121a8b7a437d63400f26d2e8974d6a455bee256b5d11f6e615823a62e",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.238163+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/repeat/captures/wago-d4a5d2ff-837d0b781a84ac42.json",
+      "sha256": "a9682d71294f8816b61343b2113c82ca69f9f1396a4957af9e3769bcac394227",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "d4a5d2ffc95757101eb53cfc1d82d6fddeb16942",
+        "ref": "jairus/wasm3-feature-parity@d4a5d2ff",
+        "asOf": "2026-10-14T06:41:48.829250+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/repeat/captures/w2c2-f303ed27-deec12e2b6e3c13e.json",
+      "sha256": "5be688f41a352c937ec0e1f45d6424f6e33a5ec5d1f3eea535763fbfdb79a968",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.263185+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/repeat/captures/w2c2-f303ed27-e6dede99195186b1.json",
+      "sha256": "e7d7c40976cd5d6864399ece8c1fa2361fd626b164a1b020201f49f20b4e2880",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.263185+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/repeat/captures/wago-d4a5d2ff-22cdff9afcb3dc21.json",
+      "sha256": "c1f5e2b88f4bffc5254b51a06271acd7e4480dcf0a78ed7b4d7cb2b8de46237e",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "d4a5d2ffc95757101eb53cfc1d82d6fddeb16942",
+        "ref": "jairus/wasm3-feature-parity@d4a5d2ff",
+        "asOf": "2026-10-14T06:41:48.829250+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/repeat/captures/wago-d4a5d2ff-e6dede99195186b1.json",
+      "sha256": "6147b1bf462fc7b8ed7ab0389d2dbe84dbbbcf9254581c8c1e09312ffddd6480",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "d4a5d2ffc95757101eb53cfc1d82d6fddeb16942",
+        "ref": "jairus/wasm3-feature-parity@d4a5d2ff",
+        "asOf": "2026-10-14T06:41:48.829250+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/repeat/captures/w2c2-f303ed27-22cdff9afcb3dc21.json",
+      "sha256": "9de7cbf6835f9219df7aec2b311dedfd0d151b1e99142bb5ece1cd96acade6d6",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.263185+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/repeat/captures/wago-d4a5d2ff-deec12e2b6e3c13e.json",
+      "sha256": "43c5f76f0bba169beccb3baa2abe5f679816bda5c1d828f72cdbad854566595a",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "d4a5d2ffc95757101eb53cfc1d82d6fddeb16942",
+        "ref": "jairus/wasm3-feature-parity@d4a5d2ff",
+        "asOf": "2026-10-14T06:41:48.829250+00:00",
+        "kind": "snapshot"
+      }
+    },
+    {
+      "file": "native-leaf-sdk-campaign/repeat/captures/w2c2-f303ed27-837d0b781a84ac42.json",
+      "sha256": "5fb321084d2f12bc786824479f0fdeeb1d48b1cdbe98adf93b7eecc689c4891d",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.263185+00:00",
+        "kind": "snapshot"
+      }
+    }
+  ],
+  "publicApiPairs": [
+    {
+      "pair": 0,
+      "variant": "baseline",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 100,
+      "case": "compact",
+      "nsPerCall": 30409519.56
+    },
+    {
+      "pair": 0,
+      "variant": "candidate",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 100,
+      "case": "compact",
+      "nsPerCall": 761807.27
+    },
+    {
+      "pair": 0,
+      "variant": "baseline",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "threads",
+      "nsPerCall": 6164308.11
+    },
+    {
+      "pair": 0,
+      "variant": "candidate",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "threads",
+      "nsPerCall": 444532.165
+    },
+    {
+      "pair": 0,
+      "variant": "baseline",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 6273821.585
+    },
+    {
+      "pair": 0,
+      "variant": "candidate",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 6240039.025
+    },
+    {
+      "pair": 1,
+      "variant": "candidate",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 100,
+      "case": "compact",
+      "nsPerCall": 816750.16
+    },
+    {
+      "pair": 1,
+      "variant": "baseline",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 100,
+      "case": "compact",
+      "nsPerCall": 30416466.83
+    },
+    {
+      "pair": 1,
+      "variant": "candidate",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "threads",
+      "nsPerCall": 444438.035
+    },
+    {
+      "pair": 1,
+      "variant": "baseline",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "threads",
+      "nsPerCall": 6135633.54
+    },
+    {
+      "pair": 1,
+      "variant": "candidate",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 6246477.52
+    },
+    {
+      "pair": 1,
+      "variant": "baseline",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 6280994.555
+    },
+    {
+      "pair": 2,
+      "variant": "baseline",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 100,
+      "case": "compact",
+      "nsPerCall": 30360527.61
+    },
+    {
+      "pair": 2,
+      "variant": "candidate",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 100,
+      "case": "compact",
+      "nsPerCall": 818623.99
+    },
+    {
+      "pair": 2,
+      "variant": "baseline",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "threads",
+      "nsPerCall": 6170184.185
+    },
+    {
+      "pair": 2,
+      "variant": "candidate",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "threads",
+      "nsPerCall": 442945.215
+    },
+    {
+      "pair": 2,
+      "variant": "baseline",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 6466654.975
+    },
+    {
+      "pair": 2,
+      "variant": "candidate",
+      "allocBytes": 0,
+      "allocations": 0,
+      "calls": 200,
+      "case": "opaque",
+      "nsPerCall": 6248389.815
+    }
+  ],
+  "validation": {
+    "targetedAMD64": {
+      "passed": 60,
+      "failed": 0,
+      "skipped": 0
+    },
+    "broadAMD64": {
+      "passed": 2428,
+      "failed": 0,
+      "skipped": 19
+    },
+    "baselineReproducedFailures": [
+      "Two preexisting Compiled layout size checks",
+      "Three table64 fixtures rejected by installed wat2wasm"
+    ],
+    "arm64": "Native scalar, alias, optimization binding, scheduler controls pass"
+  },
+  "limitations": [
+    "Private four-case native SDK corpus; full native266-case before/current/peer audit pending.",
+    "Opaque owned Go callback remains about10.2x slower than peer; it retains actual Go execution.",
+    "Existing local m2 website shows ARM64 captures; native AMD64 captures have not been ingested.",
+    "Go-host-path tests explicitly disable native leaf lowering. No global callback substitution or benchmark contract change.",
+    "Desktop applications remain running on Hub; small deltas require care."
+  ]
+}
