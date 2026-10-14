@@ -104,3 +104,5 @@ control reports had an incorrect hardcoded baseline label; see the
 [source-attribution correction](main-control-source-attribution.json) and
 [fresh pinned controls](pr-main-host-control.md). No branch-wide regression-free
 or default-main speedup claim is made. Publication is local only.
+
+The [local publication audit](local-publication-pure-callee.json) records 639 captures and 1,437 observations, preserving all 606,800 existing observations. Browser verification at the requested Apple M4 Max feature-performance URL showed approximately 344 µs for Compact Import Section and 275 µs for Threads, with no browser errors. These values belong to `9ed26450`; the subsequent main integration is measured separately.

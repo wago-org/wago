@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "sourceRevision": "9ed2645085982cb74fab5b629dc260d8cc31385f",
+  "localOnly": true,
+  "publication": {
+    "status": "published-and-audited",
+    "receipts": 639,
+    "verifiedRows": 1437,
+    "preservedHistoricalObservations": 606800,
+    "quickCheck": "ok",
+    "foreignKeyViolations": 0,
+    "server": "http://localhost:8788/benchmarks/",
+    "completedAt": "2026-10-14T23:29:16.401783+00:00",
+    "scope": "Validated Apple ARM64 pure-callee lowering: complete 266 worked performance corpora and 373 frozen canonical compatibility contracts; preserve all existing native/peer/history data. No production deployment."
+  },
+  "browser": [
+    {
+      "machine": "m1",
+      "url": "http://localhost:8788/features/?avg=mean&m=m1&rt=G%2Cengine%3Aw2c2-clang&view=perf",
+      "errors": [],
+      "currentRows": 472,
+      "wagoNumericRows": 22,
+      "selectedRows": [
+        [
+          "\u25b8\nCompact Import Section\n3 corpora \u00b7 3 contracts \u00b7 passed per engine",
+          "~783 \u00b5s\nlowest",
+          "\u2715"
+        ],
+        [
+          "\u25b8\nThreads\n27 corpora \u00b7 27 contracts \u00b7 passed per engine",
+          "~797 \u00b5s\nlowest",
+          "\u2298"
+        ]
+      ]
+    },
+    {
+      "machine": "m2",
+      "url": "http://localhost:8788/features/?avg=mean&m=m2&rt=G%2Cengine%3Aw2c2-clang&view=perf",
+      "errors": [],
+      "currentRows": 845,
+      "wagoNumericRows": 22,
+      "selectedRows": [
+        [
+          "\u25b8\nCompact Import Section\n5 corpora \u00b7 5 contracts \u00b7 passed per engine",
+          "~344 \u00b5s\nlowest",
+          "\u2715"
+        ],
+        [
+          "\u25b8\nThreads\n28 corpora \u00b7 30 contracts \u00b7 passed per engine",
+          "~275 \u00b5s\nlowest",
+          "\u2298"
+        ]
+      ]
+    }
+  ],
+  "compatibilityBrowser": {
+    "url": "http://localhost:8788/features/?m=m2&rt=G%2Cengine%3Aw2c2-clang&view=support",
+    "errors": [],
+    "sourceFeatureObservationCount": 845,
+    "canonicalContractCount": 373
+  },
+  "evidenceSha256": {
+    "audit.json": "445548c1028322086acd41ed864abc4b28722f4a29b2a94085d36bfa58d68c13",
+    "browser.json": "eef49cc5261b81d98cfb3e4b50f993e408a303e65cf8c6d430b8011b355a6cce",
+    "browser-compat.json": "d9aae1c0b5e109d12fa3081a348fabc70382f88627c2ff2141b2f0f4520f3bbb",
+    "publication-receipts.json": "d2df3d898c06cf910a94871bef63fd0dfbd1325f9d2c1ce96fc72853f875293b"
+  },
+  "qualification": "Observed page values belong to source 9ed26450, before main integration 4d081212. Peer feature status markers require complete compatibility; focused peer performance does not override failed or unsupported contracts."
+}
