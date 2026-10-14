@@ -1766,6 +1766,12 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
 	f.ld64(X16, linMemReg, -int32(offImportDispatchPtr))
 	f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
+	nativeEarly := f.nativeLeafContextShortcut(b, ft, false) && f.m.ImportedFuncCount() > 1 && f.m.GlobalCount() == 0 && f.usesCalls && len(locals) <= len(localStateSnapshot{}) && !f.pinnedLocalMask.has(X16) && !f.pinnedLocalMask.has(X17)
+	nativeBranch := -1
+	if nativeEarly {
+		f.a.AndImm64(X17, X12, runtime.ImportDispatchCallerNativeLeafTag)
+		nativeBranch = f.a.Cbnz64(X17)
+	}
 	f.a.AndImm64(X12, X12, runtime.ImportDispatchCallerGoHostTag)
 	slow := f.a.Cbz64(X12)
 	if err := f.callHostSync(int(b.ImportIndex), ft); err != nil {
@@ -1794,6 +1800,32 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 		if f.locals[i].state != fastLocals[i].state {
 			return fmt.Errorf("direct Go import local-state join differs at local %d", i)
 		}
+	}
+	if nativeBranch >= 0 {
+		crossDone := f.a.Branch()
+		f.patchBranch19(nativeBranch, f.a.Len())
+		copy(f.locals, locals)
+		f.setDepthTypesWithGCRoots(types, rootFlags)
+		// This branch is an already-verified native leaf. Load its target
+		// before local stores and large SP-address calculations use X16.
+		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)
+		f.spillLocalsForClobbers((1<<18)-1, 0)
+		argSlot := slotsOfTypes(types[:len(types)-len(ft.Params)])
+		f.a.LeaSP(X0, f.spillOff(argSlot))
+		// The verified wrapper loads both i32 arguments before storing its
+		// sole result. Reuse the first argument's canonical stack slot.
+		f.a.MovReg64(X3, X0)
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
+		f.stats.call(callKindImportDispatch)
+		f.a.Blr(X17)
+		for i := range f.locals {
+			if f.locals[i].state != fastLocals[i].state {
+				return fmt.Errorf("native import local-state join differs at local %d", i)
+			}
+		}
+		f.patchBranch26(crossDone, f.a.Len())
 	}
 	f.patchBranch26(done, f.a.Len())
 	f.setDepthTypesWithGCRoots(resultTypes, resultFlags)

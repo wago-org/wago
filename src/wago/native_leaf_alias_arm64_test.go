@@ -279,3 +279,55 @@ func TestNativeLeafImportPreservesFloatLocalsAcrossBindings(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeLeafAliasPairArgumentResultOverlap(t *testing.T) {
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+	imp := func(name string) []byte {
+		return append(append(wasmtest.Name("env"), wasmtest.Name(name)...), 0, 0)
+	}
+	body := []byte{1, 1, 0x7f, 0x20, 0, 0x20, 1, 0x10, 0, 0x21, 2,
+		0x20, 2, 0x20, 0, 0x41, 1, 0x6a, 0x20, 1, 0x10, 1, 0x6a, 0x0b}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(2, wasmtest.Vec(imp("a"), imp("b"))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))))
+	c, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).Compile(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	for index, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+		for _, native := range []bool{false, true} {
+			calls := 0
+			var callback any = nativeLeafPolynomial
+			if !native {
+				callback = func(a, b int32) int32 { calls++; return nativeLeafPolynomial(a, b) }
+			}
+			in, err := Instantiate(code, InstantiateOptions{Imports: testImports("env.a", callback, "env.b", callback)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !codeProfileEnabled && (in.executionFlags.Load()&executionFlagNativeScalarLeaf != 0) != (native && index == 0) {
+				t.Fatal("unexpected native pair admission")
+			}
+			state := uint32(0x9e3779b9)
+			for i := 0; i < 1024; i++ {
+				state = state*1664525 + 1013904223
+				a := int32(state)
+				state = state*1664525 + 1013904223
+				b := int32(state)
+				want := I32(nativeLeafPolynomial(a, b) + nativeLeafPolynomial(a+1, b))
+				got, err := in.Invoke("run", I32(a), I32(b))
+				if err != nil || len(got) != 1 || got[0] != want {
+					t.Fatalf("native=%t run(%d,%d)=%v,%v want %d", native, a, b, got, err, want)
+				}
+			}
+			in.Close()
+			if !native && calls != 2048 {
+				t.Fatalf("Go callback calls=%d", calls)
+			}
+		}
+	}
+}
