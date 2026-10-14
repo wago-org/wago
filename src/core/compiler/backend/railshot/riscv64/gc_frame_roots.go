@@ -15,12 +15,12 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 	if m == nil || plans == nil || plans.FunctionCount() != len(m.Code) {
 		return false
 	}
-	usesSWAR, err := moduleUsesSWAR(m)
-	if err != nil {
-		return false
-	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for function := range m.Code {
+		usesSWAR, err := functionUsesSWAR(m, function)
+		if err != nil {
+			return false
+		}
 		if plans.FunctionPending(function) {
 			return false
 		}
@@ -87,7 +87,7 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 }
 
 func rv64GCFrameLocals(m *wasm.Module, function int) ([]shared.GCFrameLocal, bool) {
-	usesSWAR, err := moduleUsesSWAR(m)
+	usesSWAR, err := functionUsesSWAR(m, function)
 	if err != nil {
 		return nil, false
 	}

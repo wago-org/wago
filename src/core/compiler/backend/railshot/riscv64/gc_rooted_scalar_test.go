@@ -341,6 +341,79 @@ func TestRV64RootedSIMDReferenceBoundaryAdmitted(t *testing.T) {
 	}
 }
 
+func rv64RootedHybridSIMDGCModule() []byte {
+	vector := []byte{0x00, 0x10, 0x01, 0x1a, 0x20, 0x00, 0x0b}
+	collect := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("vector", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("collect", byte(wasm.ExternFunc), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(vector))), vector...),
+			append(wasmtest.ULEB(uint32(len(collect))), collect...),
+		)),
+	)
+}
+
+func TestRV64RootedHybridSIMDGCFunctionsCompile(t *testing.T) {
+	source := rv64RootedHybridSIMDGCModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vector, err := functionUsesSWAR(m, 0); err != nil || !vector {
+		t.Fatalf("vector selector=%t err=%v", vector, err)
+	}
+	if vector, err := functionUsesSWAR(m, 1); err != nil || vector {
+		t.Fatalf("GC selector=%t err=%v", vector, err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(2)
+	if !roots.MarkFunction(0) || !roots.MarkFunction(1) || !roots.ReserveFunctions(2) {
+		t.Fatal("reserve hybrid roots")
+	}
+	vectorPlan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin hybrid vector roots")
+	}
+	*vectorPlan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true}
+	if !vectorPlan.SetLiveMasks([]uint64{0}, 0, 1) {
+		t.Fatal("install hybrid vector call mask")
+	}
+	plan, ok := roots.BeginFunction(1)
+	if !ok {
+		t.Fatal("begin hybrid GC roots")
+	}
+	*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true}
+	if !plan.SetLiveMasks([]uint64{0}, 1, 0) {
+		t.Fatal("install hybrid allocation mask")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || vectorPlan.CallsiteCount() != 1 || plan.SafepointCount() != 1 || plan.CallsiteCount() != 0 {
+		t.Fatalf("hybrid code=%d vector-callsites=%d safepoints=%d GC-callsites=%d", len(compiled.Code), vectorPlan.CallsiteCount(), plan.SafepointCount(), plan.CallsiteCount())
+	}
+}
+
 func rv64RootedReferenceHostImportModule() []byte {
 	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
 	functionImport = append(functionImport, wasmtest.ULEB(1)...)

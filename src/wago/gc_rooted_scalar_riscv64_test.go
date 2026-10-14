@@ -762,6 +762,58 @@ func TestRV64RootedSIMDReferenceBoundaryExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarHybridSIMDGCModule() []byte {
+	vector := []byte{0x00, 0x10, 0x01, 0x1a, 0x20, 0x00, 0x0b}
+	collect := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("vector", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("collect", byte(wasm.ExternFunc), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(vector))), vector...),
+			append(wasmtest.ULEB(uint32(len(collect))), collect...),
+		)),
+	)
+}
+
+func TestRV64RootedHybridSIMDGCFunctionsExecute(t *testing.T) {
+	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarHybridSIMDGCModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || !view.requiredFeatures.IsEnabled(CoreFeatureSIMD) {
+		t.Fatalf("hybrid rooted receipt=%t features=%v", rv64FreshRootedGC(view), view.requiredFeatures)
+	}
+	rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
+	defer rt.Close()
+	module, err := rt.Module(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := rt.Instantiate(context.Background(), module, WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}))
+	module.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	const lo, hi = uint64(0x0123456789abcdef), uint64(0xfedcba9876543210)
+	if got, err := instance.Invoke("vector", lo, hi); err != nil || len(got) != 2 || got[0] != lo || got[1] != hi {
+		t.Fatalf("vector=%x err=%v", got, err)
+	}
+	if got, err := instance.Invoke("collect"); err != nil || len(got) != 1 || got[0] != 42 {
+		t.Fatalf("collect=%x err=%v", got, err)
+	}
+}
+
 func rootedScalarFunctionBeforeStructModule() []byte {
 	body := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x01, 0xfb, 0x02, 0x01, 0x00, 0x0b}
 	return wasmtest.Module(

@@ -23,13 +23,49 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	if err := admitProductionOptions(m, &opts, true); err != nil {
 		return nil, err
 	}
+	integerFunctions := make([]bool, len(m.Code))
+	var integerState *moduleState
+	if opts.gcRootedScalar {
+		for i := range m.Code {
+			usesSWAR, err := functionUsesSWAR(m, i)
+			if err != nil {
+				return nil, err
+			}
+			integerFunctions[i] = !usesSWAR
+		}
+		for _, integer := range integerFunctions {
+			if !integer {
+				continue
+			}
+			state, err := admitStatePolicy(m, true, opts.hostImports, true, opts.Interruptible && opts.ForeignTableCalls)
+			if err != nil {
+				return nil, err
+			}
+			state.localTailCalls = opts.localTailCalls
+			state.foreignTableCalls = opts.ForeignTableCalls
+			state.importTailCalls = opts.importTailCalls
+			state.dynamicTailCalls = opts.dynamicTailCalls
+			state.referenceCalls = true
+			state.gcRootedScalar = true
+			state.i31Core = true
+			state.i31RefEq = true
+			state.capacity = max(state.capacity, rootedScalarHelperSlots(m))
+			var ok bool
+			state.recTypeDir, ok = newInternalReferenceTypeDirectory(m.Types)
+			if !ok {
+				return nil, unsupported("hybrid integer rooted type directory")
+			}
+			integerState = &state
+			break
+		}
+	}
 	policy := swarModulePlain
 	if len(m.Tables)+m.ImportedTableCount() != 0 || len(m.Elements) != 0 {
 		policy = swarModuleTables
 	} else if len(m.Imports) != 0 {
 		policy = swarModuleHosts
 	}
-	image, err := compileSWARDecodedModuleProfile(m, emissionMode{profileMode: newProfileModule(opts.Profile, opts.SourceMaps, len(m.Code)).baseProfileMode(), production: true, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls || opts.gcRootedScalar, gcRootedScalar: opts.gcRootedScalar, referenceFunctions: opts.referenceFunctions, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase}, policy, swarStateProfile{publicInitializers: true, publicStarts: true, exports: true, importedMemory: true, indexedMemories: true, importedGlobals: true, importedTable: opts.Interruptible && opts.ForeignTableCalls, functionTableImports: opts.Interruptible && opts.ForeignTableCalls, gcFrameRoots: opts.GCFrameRoots})
+	image, err := compileSWARDecodedModuleProfile(m, emissionMode{profileMode: newProfileModule(opts.Profile, opts.SourceMaps, len(m.Code)).baseProfileMode(), production: true, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls || opts.gcRootedScalar, gcRootedScalar: opts.gcRootedScalar, referenceFunctions: opts.referenceFunctions, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase}, policy, swarStateProfile{publicInitializers: true, publicStarts: true, exports: true, importedMemory: true, indexedMemories: true, importedGlobals: true, importedTable: opts.Interruptible && opts.ForeignTableCalls, functionTableImports: opts.Interruptible && opts.ForeignTableCalls, gcFrameRoots: opts.GCFrameRoots, integerState: integerState, integerFunctions: integerFunctions})
 	if err != nil {
 		return nil, err
 	}
@@ -127,6 +163,55 @@ func moduleUsesSWAR(m *wasm.Module) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// functionUsesSWAR identifies functions whose own physical frame requires the
+// padded vector layout. References and GC instructions alone remain eligible
+// for the integer/GC lowering even when another function in the module uses
+// SIMD. Unsupported cross-function vector flows still fail in the selected
+// lowerer's typed instruction walk before any image is published.
+func functionUsesSWAR(m *wasm.Module, function int) (bool, error) {
+	if m == nil || function < 0 || function >= len(m.Code) {
+		return false, unsupported("SWAR function selector index")
+	}
+	ft, ok := m.LocalFuncType(function)
+	if !ok {
+		return false, unsupported("SWAR function selector signature")
+	}
+	for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
+		for _, typ := range values {
+			if wasm.EqualValType(typ, wasm.V128) {
+				return true, nil
+			}
+		}
+	}
+	for _, run := range m.Code[function].Locals.Runs {
+		if wasm.EqualValType(run.Type, wasm.V128) {
+			return true, nil
+		}
+	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	r := wasm.ReaderFrom(m.Code[function].BodyBytes)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return false, err
+		}
+		if op == 0xfd {
+			return true, nil
+		}
+		var imm wasm.InstructionImmediate
+		if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
+			return false, err
+		}
+	}
+	return false, nil
+}
+
+// FunctionUsesSWAR shares the exact physical-frame selector with the public
+// root-plan producer.
+func FunctionUsesSWAR(m *wasm.Module, function int) (bool, error) {
+	return functionUsesSWAR(m, function)
 }
 
 // UsesSWAR shares the bounded compiler selector with public import admission.

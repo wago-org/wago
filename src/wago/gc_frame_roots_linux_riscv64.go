@@ -327,10 +327,6 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	if err != nil {
 		return reject("%v", err)
 	}
-	usesSWAR, err := railshot.UsesSWAR(m)
-	if err != nil {
-		return reject("RV64 exact roots reject SWAR layout: %v", err)
-	}
 	var safepointBase uint32
 	for function := range m.Code {
 		if !modulePlan.FunctionPending(function) {
@@ -345,6 +341,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			return reject("function %d root plan ownership is invalid", function)
 		}
 		*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase}
+		usesSWAR, err := railshot.FunctionUsesSWAR(m, function)
+		if err != nil {
+			return reject("function %d SWAR root layout: %v", function, err)
+		}
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
 			if collectorFrameRefType(m, t) {

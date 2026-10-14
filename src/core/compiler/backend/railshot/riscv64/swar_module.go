@@ -96,6 +96,8 @@ type swarStateProfile struct {
 	importedTable        bool
 	functionTableImports bool // public retained controls only; private pilots stay separate
 	gcFrameRoots         *shared.GCModuleFrameRootPlan
+	integerState         *moduleState
+	integerFunctions     []bool
 }
 
 // Production integrates qualified state with current public lifecycles.
@@ -112,6 +114,9 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	}
 	if m == nil || !mode.production || policy > swarModuleHosts {
 		return nil, unsupported("SWAR decoded module production/policy")
+	}
+	if len(state.integerFunctions) != 0 && len(state.integerFunctions) != len(m.Code) {
+		return nil, unsupported("hybrid integer function directory")
 	}
 	if mode.referenceFunctions {
 		if !mode.interruptible || !mode.foreignTableCalls || !mode.invocationContext || !state.publicStarts || !state.exports || mode.dynamicTailCalls && (!mode.localTailCalls || !mode.importTailCalls) || mode.profileMode != (profileMode{}) {
@@ -358,9 +363,20 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		}
 	}
 	summaries := make([]swarSummary, len(m.Code))
+	integerSummaries := make([]integerSummary, len(m.Code))
 	bound := 0
 	importTailCount := 0
 	for i := range m.Code {
+		if len(state.integerFunctions) != 0 && state.integerFunctions[i] {
+			if state.integerState == nil {
+				return nil, unsupported("hybrid integer module state")
+			}
+			integerSummaries[i], err = walkInteger(&m.Code[i], functions[imported+i], state.integerState, nil)
+			if err != nil {
+				return nil, fmt.Errorf("rv64: hybrid integer function %d: %w", i, err)
+			}
+			continue
+		}
 		summaries[i], err = walkSWARPairsWithParkedReferenceMode(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, nil)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
@@ -400,7 +416,14 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		if state.gcFrameRoots != nil {
 			functionMode.gcFrameRoots = state.gcFrameRoots.Function(i)
 		}
-		code, info, relocations, err := compileSWARPairsWithMemories(&m.Code[i], functions[imported+i], memories, state.indexedMemories, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, functionMode)
+		var code []byte
+		var info FunctionInfo
+		var relocations []directCall
+		if len(state.integerFunctions) != 0 && state.integerFunctions[i] {
+			code, info, relocations, err = compileIntegerMode(&m.Code[i], functions[imported+i], state.integerState, integerSummaries[i], functionMode)
+		} else {
+			code, info, relocations, err = compileSWARPairsWithMemories(&m.Code[i], functions[imported+i], memories, state.indexedMemories, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, functionMode)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
@@ -426,27 +449,61 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	// mutable-reference profiles additionally use the same parked host bridge as
 	// scalar lowering. Keep those thunks in the guest image so every transfer is
 	// still image-relative and becomes callable only with the rest of the image.
-	helperEntries := make(map[uint32]int, 3)
-	for _, helper := range []struct {
-		key   uint32
-		slots int
-	}{{guestGlobalClear, 0}, {guestGlobalStore, 1}, {guestGlobalStoreIndexed, 2}} {
+	type swarHelperBridge struct {
+		helper    uint32
+		slots     int
+		safepoint uint32
+	}
+	helperEntries := make(map[swarHelperBridge]int, 12)
+	bridges := []swarHelperBridge{{helper: gcStructAllocDefault, slots: 1}, {helper: gcStructAllocOne, slots: 2}, {helper: gcStructAllocOne, slots: 4}, {helper: gcStructGet, slots: 3}, {helper: gcStructSet, slots: 4}, {helper: gcStructGetS, slots: 3}, {helper: gcStructGetU, slots: 3}, {helper: gcStructRefTest, slots: 4}, {helper: gcStructRefCast, slots: 4}, {helper: gcStructTableSet, slots: 3}, {helper: gcAnyConvertExtern, slots: 1}, {helper: gcExternConvertAny, slots: 1}, {helper: gcArrayAllocDefault, slots: 2}, {helper: gcArrayAllocFixed, slots: 4}, {helper: gcArrayAllocFixed, slots: 5}, {helper: gcArrayAllocUniform, slots: 3}, {helper: gcArrayAllocData, slots: 4}, {helper: gcArrayAllocElem, slots: 4}, {helper: gcArrayDropElem, slots: 1}, {helper: gcArrayFill, slots: 5}, {helper: gcArrayCopy, slots: 7}, {helper: gcArrayGet, slots: 3}, {helper: gcArrayGetS, slots: 3}, {helper: gcArrayGetU, slots: 3}, {helper: gcArraySet, slots: 4}, {helper: gcArrayLen, slots: 1}, {helper: gcArrayInitData, slots: 6}, {helper: gcArrayInitElem, slots: 6}, {helper: gcTableFill, slots: 4}, {helper: gcTableCopy, slots: 5}, {helper: gcTableGrow, slots: 3}, {helper: gcTableInit, slots: 5}, {helper: gcTableElemDrop, slots: 1}, {helper: guestGlobalClear}, {helper: guestGlobalStore, slots: 1}, {helper: guestGlobalStoreIndexed, slots: 2}}
+	for _, call := range calls {
+		if call.helper == 0 || call.safepoint == 0 {
+			continue
+		}
+		slots, ok := gcAllocHelperSlots(call.helper, call.helperSlots)
+		if !ok {
+			return nil, unsupported("missing canonical SWAR GC helper bridge shape")
+		}
+		key := swarHelperBridge{helper: call.helper, slots: slots, safepoint: call.safepoint}
+		if !slices.Contains(bridges, key) {
+			bridges = append(bridges, key)
+		}
+	}
+	for _, helper := range bridges {
 		used := false
 		for _, call := range calls {
-			used = used || call.helper == helper.key
+			used = used || call.helper == helper.helper && call.safepoint == helper.safepoint && (call.helper != gcArrayAllocFixed && call.helper != gcStructAllocOne || call.helperSlots == helper.slots)
 		}
 		if !used {
 			continue
 		}
 		padding := (-len(image.code)) & 15
-		stub := HostIndirectOwnedSyncThunk(guestGlobalStoreDispatch, helper.slots, 0)
+		paramSlots, resultSlots := helper.slots, 1
+		if helper.helper == gcStructSet || helper.helper == gcStructTableSet || helper.helper == gcArraySet || helper.helper == gcArrayDropElem || helper.helper == gcArrayFill || helper.helper == gcArrayCopy || helper.helper == gcArrayInitData || helper.helper == gcArrayInitElem || helper.helper == gcTableFill || helper.helper == gcTableCopy || helper.helper == gcTableInit || helper.helper == gcTableElemDrop {
+			resultSlots = 0
+		}
+		dispatch := guestGlobalStoreDispatch
+		if helper.helper != guestGlobalClear && helper.helper != guestGlobalStore && helper.helper != guestGlobalStoreIndexed {
+			payload, ok := shared.EncodeGCDispatch(helper.helper, helper.safepoint)
+			if !ok {
+				return nil, unsupported("SWAR GC helper dispatch encoding")
+			}
+			dispatch = gcStructDispatchBit | payload
+		} else {
+			resultSlots = 0
+		}
+		stub := HostIndirectOwnedSyncThunk(dispatch, paramSlots, resultSlots)
 		if len(stub) == 0 || padding > MaxCodeBytes-len(image.hostCode)-len(image.code) || len(stub) > MaxCodeBytes-len(image.hostCode)-len(image.code)-padding {
 			return nil, unsupported("SWAR mutable funcref helper image bound")
 		}
 		for ; padding > 0; padding -= 4 {
 			image.code = append(image.code, 0x13, 0, 0, 0)
 		}
-		helperEntries[helper.key] = len(image.code)
+		key := helper
+		if key.helper != gcArrayAllocFixed && key.helper != gcStructAllocOne {
+			key.slots = 0
+		}
+		helperEntries[key] = len(image.code)
 		image.code = append(image.code, stub...)
 	}
 	a := enc.Asm{B: image.code}
@@ -454,7 +511,11 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		target := 0
 		if call.helper != 0 {
 			var ok bool
-			target, ok = helperEntries[call.helper]
+			keySlots := 0
+			if call.helper == gcArrayAllocFixed || call.helper == gcStructAllocOne {
+				keySlots = call.helperSlots
+			}
+			target, ok = helperEntries[swarHelperBridge{helper: call.helper, slots: keySlots, safepoint: call.safepoint}]
 			if !ok {
 				return nil, unsupported("SWAR internal helper bridge")
 			}
