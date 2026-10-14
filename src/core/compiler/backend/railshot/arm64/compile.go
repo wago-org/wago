@@ -172,8 +172,9 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
-	requiresLSE   bool // selected optional instructions in this function
-	scalarSummary shared.ScalarSummary
+	cacheImportDispatch bool
+	requiresLSE         bool // selected optional instructions in this function
+	scalarSummary       shared.ScalarSummary
 	// Physical frame access emitted by the shared lowerer, not logical state.
 	scalarFrameUsed bool
 
@@ -3316,6 +3317,39 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		// X9/X10/X11 for other modules and reintroduces the bug.
 		gpPool = withoutReg(withoutReg(withoutReg(gpPool, X9), X10), X11)
 	}
+	// Cache immutable instance dispatch metadata in an otherwise
+	// unused callee-saved register. Admit only import-only scalar call graphs.
+	if f.opt(optNativeLeafHost) && syncHostCalls && hints.flags.has(hintCallsImport) && hints.flags.has(hintHasLoopCall) && !hints.flags.has(hintHasNonDirectCall|hintModuleEH) && len(modGlobals) == 0 && m.GlobalCount() == 0 && len(customInstructions) == 0 && len(gcTypeLayouts) == 0 && len(inlinedCallees) == 0 {
+		proof := shared.BoundedHostSegments(c.BodyBytes, uint32(m.ImportedFuncCount()))
+		if !proof && !guardMode && len(m.Memories) == 1 && mt0.Shared && !mt0.Limits.Addr64 && mt0.Limits.HasMax && mt0.Limits.Min == mt0.Limits.Max {
+			proof, _ = shared.BoundedFixedSharedHostSegments(c.BodyBytes, uint32(m.ImportedFuncCount()), 0)
+		}
+		used := 0
+		for _, score := range hints.localScore {
+			if score > 0 {
+				used++
+			}
+		}
+		remainingPins := 0
+		for _, reg := range gpPool {
+			if reg >= X19 && reg <= X24 {
+				remainingPins++
+			}
+		}
+		dynamic := false
+		for _, binding := range importBindings {
+			if binding.Dynamic {
+				dynamic = true
+				break
+			}
+		}
+		if proof && dynamic && used <= remainingPins && !f.reserved.has(X25) {
+			f.cacheImportDispatch = true
+			gpPool = withoutReg(gpPool, X25)
+			f.reserved = f.reserved.add(X25)
+			f.stats.peep("import-dispatch-cache")
+		}
+	}
 	for _, mg := range modGlobals {
 		gpPool = withoutReg(gpPool, mg.reg) // module-pinned global registers
 		f.reserved = f.reserved.add(mg.reg)
@@ -4072,6 +4106,9 @@ func (f *fn) prologue(localScores []uint32) {
 	f.emitStackFenceCheck(linMemReg, X16)
 	f.emitInterruptCheck(false)
 	f.entryTrapEnd = a.Len()
+	if f.cacheImportDispatch {
+		f.ld64(X25, linMemReg, -int32(offImportDispatchPtr))
+	}
 	// Copy v128 params through V0 before loading any pinned scalar float params.
 	// V0 is only a prologue scratch here; keeping these copies first prevents a
 	// future pin-pool change from letting a later v128 copy clobber an already-live
@@ -4443,6 +4480,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	}
 	f.emitInterruptCheck(false)
 	f.entryTrapEnd = a.Len()
+	if f.cacheImportDispatch {
+		f.ld64(X25, linMemReg, -int32(offImportDispatchPtr))
+	}
 	gp, fp = 0, 0
 	moves := f.tmpMoves[:0]
 	for i := 0; i < np; i++ {

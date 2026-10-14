@@ -1764,7 +1764,7 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 		return fmt.Errorf("import dispatch index overflows displacement")
 	}
 	disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
-	f.ld64(X16, linMemReg, -int32(offImportDispatchPtr))
+	f.loadImportDispatchBase(X16)
 	f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
 	nativeEarly := f.nativeLeafContextShortcut(b, ft, false) && f.m.ImportedFuncCount() > 1 && f.m.GlobalCount() == 0 && f.usesCalls && len(locals) <= len(localStateSnapshot{}) && !f.pinnedLocalMask.has(X16) && !f.pinnedLocalMask.has(X17)
 	nativeBranch := -1
@@ -1933,7 +1933,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	// publication, while keeping the same native-leaf contract.
 	if nativeCandidate {
 		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
-		f.ld64(X16, linMemReg, -int32(offImportDispatchPtr))
+		f.loadImportDispatchBase(X16)
 		f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
 		f.a.AndImm64(X12, X12, runtime.ImportDispatchCallerNativeLeafTag)
 		nativeLeaf = f.a.Cbnz64(X12)
@@ -1960,7 +1960,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 			return fmt.Errorf("import dispatch index %d overflows displacement", b.ImportIndex)
 		}
 		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
-		f.ld64(X16, linMemReg, -int32(offImportDispatchPtr))
+		f.loadImportDispatchBase(X16)
 		f.ld64(X1, X16, disp+runtime.ImportDispatchHomeLinMemOffset)     // wrapper-ABI arg 1
 		f.ld64(X10, X16, disp+runtime.ImportDispatchTargetContextOffset) // target context
 		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)       // wrapper entry
@@ -3462,4 +3462,14 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
 	}
 	f.tmpGCRoots = gcRoots
 	f.setDepthTypesWithGCRoots(types, gcRoots)
+}
+
+// loadImportDispatchBase uses the function-local cache only for the import-only
+// call graph whose entry establishes it.
+func (f *fn) loadImportDispatchBase(dst Reg) {
+	if f.cacheImportDispatch {
+		f.a.MovReg64(dst, X25)
+	} else {
+		f.ld64(dst, linMemReg, -int32(offImportDispatchPtr))
+	}
 }
