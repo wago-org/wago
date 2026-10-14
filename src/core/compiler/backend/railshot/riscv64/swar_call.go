@@ -7,6 +7,18 @@ import (
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
 
+// swarCompactGCArguments copies the low scalar/reference cell from each
+// padded SWAR operand home into the contiguous scalar slots consumed by the
+// shared GC helper emitters. Destinations never exceed their sources, so the
+// forward copy is overlap-safe. Operands are consumed by the helper; only its
+// result remains in the first logical home.
+func (f *integerEmitter) swarCompactGCArguments(base, count int, spill func(int) int32) {
+	for i := 0; i < count; i++ {
+		f.Load(5, spill(base+i), true)
+		f.Store(f.SpillOffset(base*2+i), 5, true)
+	}
+}
+
 func swarCallSignature(sig *wasm.CompType) error {
 	if sig == nil || sig.Kind != wasm.CompFunc || len(sig.Params) > maxSWARLocals || len(sig.Results) > maxSWARLocals {
 		return unsupported("SWAR direct call signature shape/bound")

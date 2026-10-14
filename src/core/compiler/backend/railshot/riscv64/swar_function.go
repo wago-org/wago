@@ -15,7 +15,7 @@ const maxSWARLocals = 128
 
 type swarSummary struct {
 	locals, peak, codeBound, calls int
-	importTails                    int
+	allocations, importTails       int
 	usesFP, usesTraps              bool
 	usesLoops                      bool
 }
@@ -224,7 +224,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 	r := wasm.ReaderFrom(fn.BodyBytes)
 	h, peak, budget := 0, 0, 0
 	usesFP, usesTraps := false, false
-	calls := 0
+	calls, allocations := 0, 0
 	header := 16
 	if len(functions) != 0 {
 		header = callFrameHeader
@@ -369,7 +369,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 					}
 				}
 			}
-			return swarSummary{locals: nlocals, peak: peak, codeBound: codeBound, calls: calls, importTails: importTails, usesFP: usesFP, usesTraps: usesTraps, usesLoops: flow.usesLoops}, nil
+			return swarSummary{locals: nlocals, peak: peak, codeBound: codeBound, calls: calls, allocations: allocations, importTails: importTails, usesFP: usesFP, usesTraps: usesTraps, usesLoops: flow.usesLoops}, nil
 		case 0x10:
 			index, err := r.U32()
 			if err != nil {
@@ -1289,6 +1289,109 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				emit.Store(spill(h-1)+8, uint8(enc.Zero), true)
 			}
 			stackClasses[h-1] = conversion.output
+		case 0xfb:
+			var imm wasm.InstructionImmediate
+			if err := profile.classifier.ClassifyInto(&r, op, &imm); err != nil {
+				return swarSummary{}, err
+			}
+			if !gcRootedScalar {
+				return swarSummary{}, unsupported("SWAR GC instruction outside generic rooted profile")
+			}
+			switch imm.Kind {
+			case wasm.InstrStructNew:
+				fields, ok := referenceTypes.rootedStructFields(imm.Index)
+				if !ok || len(fields) > maxSWARLocals {
+					return swarSummary{}, unsupported("SWAR struct.new outside generic rooted profile")
+				}
+				var storage [maxSWARLocals]swarClass
+				for i, field := range fields {
+					class := functionClass(field.Storage().Val())
+					if referenceTypes.rootedStructFieldReference(imm.Index, uint32(i)) {
+						class = swarFuncRef
+					}
+					if class == swarInvalid || class == swarV128 {
+						return swarSummary{}, unsupported("SWAR struct.new field carrier")
+					}
+					storage[i] = class
+				}
+				if err := flow.prepareDead(storage[:len(fields)]...); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - len(fields)
+				if base < flow.floor() {
+					return swarSummary{}, unsupported("SWAR struct.new operand underflow")
+				}
+				for i, class := range storage[:len(fields)] {
+					if stackClasses[base+i] != class {
+						return swarSummary{}, unsupported("SWAR struct.new field carrier")
+					}
+				}
+				calls++
+				allocations++
+				budget += len(fields)
+				if calls > maxDirectCalls || budget > integerBudget {
+					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
+				}
+				if err := reserve(128*len(fields) + 1024); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.swarCompactGCArguments(base, len(fields), spill)
+					emit.gcStructAllocation(base*2, imm.Index, len(fields), fields, hiddenRefs(base))
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+				h = base
+				if err := push(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+			case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU:
+				field, ok := referenceTypes.rootedStructFieldStorage(imm.Index, imm.Index2)
+				packed := ok && field.Packed()
+				valid := ok && (packed && imm.Kind != wasm.InstrStructGet || !packed && imm.Kind == wasm.InstrStructGet)
+				if !valid {
+					return swarSummary{}, unsupported("SWAR struct.get outside generic rooted profile")
+				}
+				if err := flow.prepareDead(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 1
+				if base < flow.floor() || stackClasses[base] != swarFuncRef {
+					return swarSummary{}, unsupported("SWAR struct.get reference carrier")
+				}
+				reference := referenceTypes.rootedStructFieldReference(imm.Index, imm.Index2)
+				class := functionClass(field.Val())
+				if reference {
+					class = swarFuncRef
+				}
+				if class == swarInvalid || class == swarV128 {
+					return swarSummary{}, unsupported("SWAR struct.get result carrier")
+				}
+				wide := !packed && (scalarWide(field.Val()) || reference)
+				helper := uint32(gcStructGet)
+				if packed && imm.Kind == wasm.InstrStructGetS {
+					helper = gcStructGetS
+				} else if packed {
+					helper = gcStructGetU
+				}
+				calls++
+				if calls > maxDirectCalls {
+					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
+				}
+				if err := reserve(1024); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.swarCompactGCArguments(base, 1, spill)
+					emit.gcStructGetScalar(base*2, imm.Index, imm.Index2, helper, wide)
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+				h = base
+				if err := push(class); err != nil {
+					return swarSummary{}, err
+				}
+			default:
+				return swarSummary{}, unsupported("SWAR GC opcode lowering is pending")
+			}
 		case 0xfd:
 			immediateReader := r
 			kind, err := r.U32()
@@ -2115,11 +2218,14 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		return nil, FunctionInfo{}, nil, err
 	}
 	f.frameBytes = frame
+	if summary.allocations != 0 && f.gcFrameRoots == nil {
+		return nil, FunctionInfo{}, nil, unsupported("SWAR allocating GC requires exact frame roots")
+	}
 	if f.gcFrameRoots != nil {
 		f.gcFrameRoots.ResetSafepoints()
 		f.gcFrameRoots.ResetCallsites()
 		f.gcFrameRoots.FrameBytes = uint32(frame)
-		if !f.gcFrameRoots.Candidate || !f.gcFrameRoots.Exact || !f.gcFrameRoots.ValidLiveMasks() || f.gcFrameRoots.AllocationMaskCount() != 0 {
+		if !f.gcFrameRoots.Candidate || !f.gcFrameRoots.Exact || !f.gcFrameRoots.ValidLiveMasks() || f.gcFrameRoots.AllocationMaskCount() != summary.allocations {
 			return nil, FunctionInfo{}, nil, unsupported("invalid SWAR GC frame-root plan")
 		}
 		previous := uint32(0)
@@ -2139,7 +2245,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 	if actual != summary {
 		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: SWAR admission changed")
 	}
-	if f.gcFrameRoots != nil && (!f.gcFrameRoots.Exact || f.gcFrameRoots.SafepointCount() != 0 || f.gcFrameRoots.CallsiteCount() != f.gcFrameRoots.CallMaskCount()) {
+	if f.gcFrameRoots != nil && (!f.gcFrameRoots.Exact || f.gcFrameRoots.SafepointCount() != summary.allocations || f.gcFrameRoots.CallsiteCount() != f.gcFrameRoots.CallMaskCount()) {
 		return nil, FunctionInfo{}, nil, unsupported("incomplete SWAR GC frame-root callsites")
 	}
 	f.profileUnknown()

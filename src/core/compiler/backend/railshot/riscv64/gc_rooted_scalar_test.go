@@ -487,6 +487,100 @@ func TestRV64RootedHybridVectorCallFlowUsesSWARFrame(t *testing.T) {
 	}
 }
 
+func rv64RootedSIMDStructFunctionModule() []byte {
+	body := []byte{
+		0x03, 0x01, 0x63, 0x01, 0x03, 0x7f, 0x01, 0x7e,
+		0x20, 0x00,
+		0x41, 0x2a,
+		0xfb, 0x00, 0x00,
+		0x20, 0x01,
+		0x20, 0x02,
+		0x41, 0x09,
+		0xfb, 0x00, 0x01,
+		0x22, 0x03,
+		0xfb, 0x02, 0x01, 0x00,
+		0x21, 0x04,
+		0x20, 0x03,
+		0xfb, 0x02, 0x01, 0x01,
+		0x21, 0x07,
+		0x20, 0x03,
+		0xfb, 0x02, 0x01, 0x02,
+		0x21, 0x05,
+		0xfb, 0x02, 0x00, 0x00,
+		0x21, 0x06,
+		0x20, 0x04,
+		0x20, 0x07,
+		0x20, 0x05,
+		0x20, 0x06,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			[]byte{0x5f, 0x03, 0x7f, 0x00, 0x7e, 0x00, 0x7f, 0x00},
+			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.I32, wasm.I64}, []wasm.ValType{wasm.V128, wasm.I32, wasm.I64, wasm.I32, wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedSIMDStructAllocationAndGetCompile(t *testing.T) {
+	source := rv64RootedSIMDStructFunctionModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vector, err := functionUsesSWAR(m, 0); err != nil || !vector {
+		t.Fatalf("SIMD/GC selector=%t err=%v", vector, err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(1)
+	if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve SIMD/GC roots")
+	}
+	plan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin SIMD/GC roots")
+	}
+	*plan = shared.GCFrameRootPlan{
+		Candidate: true, Exact: true, Conservative: true,
+		Locals: []shared.GCFrameLocal{{Index: 3, Offset: shared.RV64CallFrameHeaderBytes + 48}},
+	}
+	if !plan.SetLiveMasks([]uint64{1, 1}, 2, 0) {
+		t.Fatal("install SIMD/GC allocation mask")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSafepoints := [][]uint32{
+		{shared.RV64CallFrameHeaderBytes + 48},
+		{shared.RV64CallFrameHeaderBytes + 48, shared.RV64CallFrameHeaderBytes + 16*8 + 16},
+	}
+	var safepoints [][]uint32
+	if !plan.VisitSafepoints(func(_ int, offsets []uint32) bool {
+		safepoints = append(safepoints, append([]uint32(nil), offsets...))
+		return true
+	}) {
+		t.Fatal("visit SIMD/GC safepoints")
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 2 || plan.CallsiteCount() != 0 || fmt.Sprint(safepoints) != fmt.Sprint(wantSafepoints) {
+		t.Fatalf("SIMD/GC code=%d safepoints=%v want=%v callsites=%d", len(compiled.Code), safepoints, wantSafepoints, plan.CallsiteCount())
+	}
+}
+
 func rv64RootedReferenceHostImportModule() []byte {
 	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
 	functionImport = append(functionImport, wasmtest.ULEB(1)...)
