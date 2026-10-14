@@ -2088,7 +2088,8 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	} else if f.memSizeReg != regNone {
 		// A nonzero import can alias memory zero; distinct memories must keep
 		// their own primary bound rather than forwarding the grown size.
-		f.ld64(f.memSizeReg, linMemReg, -int32(bdCurBytes))
+		// Shared primary memory caches its backing address instead of a size.
+		f.loadMemoryCache()
 	}
 	if f.memSizeReg != regNone {
 		if f.memLimitReg != regNone {

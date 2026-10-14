@@ -1918,7 +1918,8 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	} else if f.memSizeReg != regNone {
 		// A nonzero import can alias memory zero. Reload its authoritative bound;
 		// forwarding mx would use the wrong size when the memories are distinct.
-		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes)
+		// Shared primary memory caches its backing address instead of a size.
+		f.loadMemoryCache()
 	}
 	done := f.a.JmpPlaceholder()
 	if failDelta >= 0 {
