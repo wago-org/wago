@@ -1403,6 +1403,10 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				if emit != nil {
 					emit.swarCompactGCArguments(base, 1, spill)
 					emit.gcStructGetScalar(base*2, imm.Index, imm.Index2, helper, wide)
+					if !wide {
+						emit.Load(5, spill(base), false)
+						emit.Store(spill(base), 5, true)
+					}
 					emit.Store(spill(base)+8, uint8(enc.Zero), true)
 				}
 				h = base
@@ -1442,6 +1446,181 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 					emit.gcStructSetScalar(base*2, imm.Index, imm.Index2, wide)
 				}
 				h = base
+			case wasm.InstrArrayNew:
+				storage, _, ok := referenceTypes.rootedArrayStorage(imm.Index)
+				if !ok {
+					return swarSummary{}, unsupported("SWAR array.new outside generic rooted profile")
+				}
+				reference := referenceTypes.rootedArrayElementReference(imm.Index)
+				class := functionClass(storage.Val())
+				if reference {
+					class = swarFuncRef
+				}
+				if class == swarInvalid || class == swarV128 {
+					return swarSummary{}, unsupported("SWAR array.new element carrier")
+				}
+				if err := flow.prepareDead(class, swarI32); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 2
+				if base < flow.floor() || stackClasses[base] != class || stackClasses[base+1] != swarI32 {
+					return swarSummary{}, unsupported("SWAR array.new operand carrier")
+				}
+				wide := !storage.Packed() && (scalarWide(storage.Val()) || reference)
+				calls++
+				allocations++
+				budget += 2
+				if calls > maxDirectCalls || budget > integerBudget {
+					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
+				}
+				if err := reserve(128*2 + 1024); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.swarCompactGCArguments(base, 2, spill)
+					emit.gcUniformArrayAllocation(base*2, imm.Index, wide, hiddenRefs(base))
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+				h = base
+				if err := push(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+			case wasm.InstrArrayNewDefault:
+				if !referenceTypes.rootedArrayDefaultable(imm.Index) {
+					return swarSummary{}, unsupported("SWAR array.new_default outside generic rooted profile")
+				}
+				if err := flow.prepareDead(swarI32); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 1
+				if base < flow.floor() || stackClasses[base] != swarI32 {
+					return swarSummary{}, unsupported("SWAR array.new_default length carrier")
+				}
+				calls++
+				allocations++
+				budget++
+				if calls > maxDirectCalls || budget > integerBudget {
+					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
+				}
+				if err := reserve(1024); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.swarCompactGCArguments(base, 1, spill)
+					emit.gcDefaultAllocation(gcArrayAllocDefault, base*2, true, imm.Index, hiddenRefs(base))
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+				h = base
+				if err := push(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+			case wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU:
+				storage, _, ok := referenceTypes.rootedArrayStorage(imm.Index)
+				packed := ok && storage.Packed()
+				if !ok || packed && imm.Kind == wasm.InstrArrayGet || !packed && imm.Kind != wasm.InstrArrayGet {
+					return swarSummary{}, unsupported("SWAR array.get outside generic rooted profile")
+				}
+				if err := flow.prepareDead(swarFuncRef, swarI32); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 2
+				if base < flow.floor() || stackClasses[base] != swarFuncRef || stackClasses[base+1] != swarI32 {
+					return swarSummary{}, unsupported("SWAR array.get operand carrier")
+				}
+				reference := referenceTypes.rootedArrayElementReference(imm.Index)
+				class := functionClass(storage.Val())
+				if reference {
+					class = swarFuncRef
+				}
+				if class == swarInvalid || class == swarV128 {
+					return swarSummary{}, unsupported("SWAR array.get result carrier")
+				}
+				wide := !packed && (scalarWide(storage.Val()) || reference)
+				helper := uint32(gcArrayGet)
+				if packed && imm.Kind == wasm.InstrArrayGetS {
+					helper = gcArrayGetS
+				} else if packed {
+					helper = gcArrayGetU
+				}
+				calls++
+				if calls > maxDirectCalls {
+					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
+				}
+				if err := reserve(1024); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.swarCompactGCArguments(base, 2, spill)
+					emit.gcArrayGetScalar(base*2, imm.Index, helper, wide)
+					if !wide {
+						emit.Load(5, spill(base), false)
+						emit.Store(spill(base), 5, true)
+					}
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+				h = base
+				if err := push(class); err != nil {
+					return swarSummary{}, err
+				}
+			case wasm.InstrArraySet:
+				storage, mutable, ok := referenceTypes.rootedArrayStorage(imm.Index)
+				if !ok || !mutable {
+					return swarSummary{}, unsupported("SWAR array.set outside generic rooted profile")
+				}
+				reference := referenceTypes.rootedArrayElementReference(imm.Index)
+				class := functionClass(storage.Val())
+				if reference {
+					class = swarFuncRef
+				}
+				if class == swarInvalid || class == swarV128 {
+					return swarSummary{}, unsupported("SWAR array.set element carrier")
+				}
+				if err := flow.prepareDead(swarFuncRef, swarI32, class); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 3
+				if base < flow.floor() || stackClasses[base] != swarFuncRef || stackClasses[base+1] != swarI32 || stackClasses[base+2] != class {
+					return swarSummary{}, unsupported("SWAR array.set operand carrier")
+				}
+				wide := !storage.Packed() && (scalarWide(storage.Val()) || reference)
+				calls++
+				if calls > maxDirectCalls {
+					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
+				}
+				if err := reserve(1024); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.swarCompactGCArguments(base, 3, spill)
+					emit.gcArraySetScalar(base*2, imm.Index, wide)
+				}
+				h = base
+			case wasm.InstrArrayLen:
+				if err := flow.prepareDead(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 1
+				if base < flow.floor() || stackClasses[base] != swarFuncRef {
+					return swarSummary{}, unsupported("SWAR array.len reference carrier")
+				}
+				calls++
+				if calls > maxDirectCalls {
+					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
+				}
+				if err := reserve(1024); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.swarCompactGCArguments(base, 1, spill)
+					emit.gcArrayLength(base * 2)
+					emit.Load(5, spill(base), false)
+					emit.Store(spill(base), 5, true)
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+				h = base
+				if err := push(swarI32); err != nil {
+					return swarSummary{}, err
+				}
 			case wasm.InstrRefI31:
 				if err := flow.prepareDead(swarI32); err != nil {
 					return swarSummary{}, err

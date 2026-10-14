@@ -589,6 +589,96 @@ func TestRV64RootedSIMDStructAllocationAndGetCompile(t *testing.T) {
 	}
 }
 
+func rv64RootedSIMDArrayFunctionModule() []byte {
+	body := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x20, 0x00,
+		0x20, 0x01,
+		0x41, 0x03,
+		0xfb, 0x06, 0x00,
+		0x22, 0x02,
+		0x41, 0x01,
+		0xfb, 0x0b, 0x00,
+		0x20, 0x02,
+		0x41, 0x01,
+		0x41, 0x0b,
+		0xfb, 0x0e, 0x00,
+		0x20, 0x02,
+		0x41, 0x01,
+		0xfb, 0x0b, 0x00,
+		0x20, 0x02,
+		0xfb, 0x0f,
+		0x41, 0x02,
+		0xfb, 0x07, 0x00,
+		0xfb, 0x0f,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5e, 0x7f, 0x01},
+			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.I32}, []wasm.ValType{wasm.V128, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestRV64RootedSIMDArrayOperationsCompile(t *testing.T) {
+	source := rv64RootedSIMDArrayFunctionModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vector, err := functionUsesSWAR(m, 0); err != nil || !vector {
+		t.Fatalf("SIMD/array selector=%t err=%v", vector, err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(1)
+	if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve SIMD/array roots")
+	}
+	plan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin SIMD/array roots")
+	}
+	*plan = shared.GCFrameRootPlan{
+		Candidate: true, Exact: true, Conservative: true,
+		Locals: []shared.GCFrameLocal{{Index: 2, Offset: shared.RV64CallFrameHeaderBytes + 32}},
+	}
+	if !plan.SetLiveMasks([]uint64{1, 1}, 2, 0) {
+		t.Fatal("install SIMD/array allocation masks")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCArrayHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSafepoints := [][]uint32{
+		{shared.RV64CallFrameHeaderBytes + 32},
+		{shared.RV64CallFrameHeaderBytes + 32},
+	}
+	var safepoints [][]uint32
+	if !plan.VisitSafepoints(func(_ int, offsets []uint32) bool {
+		safepoints = append(safepoints, append([]uint32(nil), offsets...))
+		return true
+	}) {
+		t.Fatal("visit SIMD/array safepoints")
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 2 || plan.CallsiteCount() != 0 || fmt.Sprint(safepoints) != fmt.Sprint(wantSafepoints) {
+		t.Fatalf("SIMD/array code=%d safepoints=%v want=%v callsites=%d", len(compiled.Code), safepoints, wantSafepoints, plan.CallsiteCount())
+	}
+}
+
 func rv64RootedReferenceHostImportModule() []byte {
 	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
 	functionImport = append(functionImport, wasmtest.ULEB(1)...)
