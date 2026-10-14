@@ -136,7 +136,7 @@ func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []
 		return false, fmt.Errorf("jit: native scalar control frame already registered")
 	}
 	body := scalarLeafBody(fn, params)
-	if body == nil && os.Getenv("WAGO_ARM64_NATIVE_SCALAR_CALL") == "1" {
+	if body == nil && os.Getenv("WAGO_ARM64_NATIVE_SCALAR_CALL") != "0" {
 		body = scalarSingleCallBody(fn, params)
 	}
 	if body == nil {

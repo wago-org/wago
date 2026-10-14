@@ -20,7 +20,7 @@ func nativeSingleCallLeaf(v int32) int32 { return v + 1 }
 func nativeSingleCallForward(v int32) int32 { return nativeSingleCallLeaf(v) }
 func TestNativeSingleCallSourceArtifactAndPolicy(t *testing.T) {
 	requireNativeSingleCallABI(t)
-	for _, mode := range []string{"0", "1"} {
+	for _, mode := range []string{"", "0", "1"} {
 		t.Setenv("WAGO_ARM64_NATIVE_SCALAR_CALL", mode)
 		for _, enabled := range []bool{false, true} {
 			cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithOptimization("native-leaf-host", enabled)
@@ -43,7 +43,7 @@ func TestNativeSingleCallSourceArtifactAndPolicy(t *testing.T) {
 					t.Fatal(err)
 				}
 				ref.Close()
-				wantNative := mode == "1" && enabled && artifact == 0 && !codeProfileEnabled
+				wantNative := mode != "0" && enabled && artifact == 0 && !codeProfileEnabled
 				if actual := in.executionFlags.Load()&executionFlagNativeScalarLeaf != 0; actual != wantNative {
 					t.Fatalf("mode=%s enabled=%t artifact=%d admission=%t want=%t", mode, enabled, artifact, actual, wantNative)
 				}

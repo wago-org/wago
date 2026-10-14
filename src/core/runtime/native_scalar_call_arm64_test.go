@@ -22,7 +22,7 @@ func TestNativeScalarSinglePureCallProof(t *testing.T) {
 	if !scalarGoABI(v) || (v != "go1.27" && !strings.HasPrefix(v, "go1.27.")) {
 		t.Skip("single-call proof is restricted to Go1.27")
 	}
-	t.Setenv("WAGO_ARM64_NATIVE_SCALAR_CALL", "1")
+	t.Setenv("WAGO_ARM64_NATIVE_SCALAR_CALL", "")
 	ctrl := make([]byte, ctrlFrameSize)
 	t.Cleanup(func() { unregisterNativeScalarLeaf(ctrl) })
 	ok, err := RegisterNativeScalarLeaf(runtimebridge.GrantHostScalarCall(), ctrl, nativeCallForwardTest, 1)
@@ -80,8 +80,8 @@ func TestNativeScalarSingleCallRejectsEffectsAndOtherBodies(t *testing.T) {
 		}
 	}
 }
-func TestNativeScalarSingleCallDisabledByDefault(t *testing.T) {
-	for _, mode := range []string{"", "0"} {
+func TestNativeScalarSingleCallKillSwitch(t *testing.T) {
+	for _, mode := range []string{"0"} {
 		t.Setenv("WAGO_ARM64_NATIVE_SCALAR_CALL", mode)
 		ctrl := make([]byte, ctrlFrameSize)
 		ok, err := RegisterNativeScalarLeaf(runtimebridge.GrantHostScalarCall(), ctrl, nativeCallForwardTest, 1)
