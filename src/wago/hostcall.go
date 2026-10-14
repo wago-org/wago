@@ -2730,6 +2730,9 @@ func (in *Instance) callPreparedHostSync(prepared *runtime.PreparedHostScalarCal
 		defer finishProfileBoundary(span, &err)
 		return prepared.Call(activation.dispatch, profileScalarFallback)
 	}
+	if preparedHostFixedEnabled && fixed != nil && in.boundedFixedSharedHostPortal() && in.syncHosts[0].scalarKind == syncHostTypedI32 {
+		return prepared.CallFixedContext(runtimebridge.GrantHostScalarCall(), unsafe.Pointer(activation), dispatchSingleTypedI32FixedPortalContext, fixed)
+	}
 	if preparedHostFixedEnabled {
 		if fixed == nil {
 			fixed = activation.dispatchSingleTypedScalarFixedPortal

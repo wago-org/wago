@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/internal/runtimebridge"
 )
@@ -133,4 +134,25 @@ func TestPrepareHostScalarCallRejectsInvalidState(t *testing.T) {
 	if err := fixed.CallFixed(host, scalar, nil); err == nil {
 		t.Fatal("fixed prepared host call accepted a nil fixed portal")
 	}
+	context := unsafe.Pointer(new(byte))
+	contextPortal := FixedScalarHostContextCall(func(unsafe.Pointer, uint64, uint64) uint64 { t.Fatal("invalid context call executed"); return 0 })
+	if err := fixed.CallFixedContext(access, context, contextPortal, fixedPortal); err == nil {
+		t.Fatal("context call accepted missing bounded admission")
+	}
+	if err := fixed.EnableBoundedSegments(access); err != nil {
+		t.Fatal(err)
+	}
+	for name, call := range map[string]func() error{
+		"access": func() error {
+			return fixed.CallFixedContext(runtimebridge.HostScalarCallAccess{}, context, contextPortal, fixedPortal)
+		},
+		"context":  func() error { return fixed.CallFixedContext(access, nil, contextPortal, fixedPortal) },
+		"target":   func() error { return fixed.CallFixedContext(access, context, nil, fixedPortal) },
+		"fallback": func() error { return fixed.CallFixedContext(access, context, contextPortal, nil) },
+	} {
+		if err := call(); err == nil {
+			t.Fatalf("invalid context %s accepted", name)
+		}
+	}
+
 }

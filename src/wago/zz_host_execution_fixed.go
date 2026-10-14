@@ -1,5 +1,7 @@
 package wago
 
+import "unsafe"
+
 func (a *hostLoopActivation) dispatchSingleHostCallFixedView(args, results []uint64) {
 	active := a.root
 	binding := &active.syncHosts[0]
@@ -46,6 +48,10 @@ func (a *hostLoopActivation) dispatchSingleTypedI32VoidFixedPortal(a0, a1 uint64
 }
 
 func (a *hostLoopActivation) dispatchSingleTypedI32FixedPortal(a0, a1 uint64) uint64 {
+	return dispatchSingleTypedI32FixedPortalContext(unsafe.Pointer(a), a0, a1)
+}
+func dispatchSingleTypedI32FixedPortalContext(pointer unsafe.Pointer, a0, a1 uint64) uint64 {
+	a := (*hostLoopActivation)(pointer)
 	mu := a.localNativeMu()
 	if mu == nil {
 		return a.dispatchSingleTypedScalarFixedPortal(a0, a1)
