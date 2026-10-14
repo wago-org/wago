@@ -5,6 +5,7 @@ package runtime
 import (
 	"encoding/binary"
 	"fmt"
+	"os"
 	"reflect"
 	goruntime "runtime"
 
@@ -13,7 +14,8 @@ import (
 )
 
 // NativeScalarLeafRegisterEntryOffset is measured from the dispatch wrapper.
-// The verified copied body is shorter than 128 bytes; 192 reserves the wrapper.
+// The copied leaf is shorter than 128 bytes. A proven single-call adapter adds
+// 20 bytes; 192 still reserves the complete argument-buffer wrapper.
 const NativeScalarLeafRegisterEntryOffset = 192
 
 // scalarLeafInstruction admits only straight-line register arithmetic. Every
@@ -88,7 +90,12 @@ func scalarLeafBody(fn any, params uint32) []byte {
 			return nil
 		}
 	}
-	pc := value.Pointer()
+	return scalarLeafBodyAtPC(value.Pointer(), params)
+}
+
+// The caller proves the initial register inputs. Every copied instruction is
+// still checked independently; no stack, memory, call or branch is accepted.
+func scalarLeafBodyAtPC(pc uintptr, params uint32) []byte {
 	f := goruntime.FuncForPC(pc)
 	if f == nil || f.Entry() != pc {
 		return nil
@@ -116,7 +123,8 @@ func scalarLeafBody(fn any, params uint32) []byte {
 }
 
 // RegisterNativeScalarLeaf lowers a proven ordinary Go i32 leaf into a native
-// host trampoline. It copies arithmetic, never calls Go code on a foreign
+// host trampoline. It copies proven arithmetic (optionally through one checked
+// call adapter), never calling Go code on a foreign
 // stack. The caller retains the ordinary Go binding as fallback and must use
 // syscall scheduling for this frame: a native leaf is not a Go safe point.
 // UnregisterHostCtrlFrame releases the mapping only after instance quiescence.
@@ -128,6 +136,9 @@ func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []
 		return false, fmt.Errorf("jit: native scalar control frame already registered")
 	}
 	body := scalarLeafBody(fn, params)
+	if body == nil && os.Getenv("WAGO_ARM64_NATIVE_SCALAR_CALL") == "1" {
+		body = scalarSingleCallBody(fn, params)
+	}
 	if body == nil {
 		return false, nil
 	}
@@ -163,7 +174,13 @@ func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []
 	// This avoids the shared Go host thunk's control-frame staging entirely.
 	written := uint32(0)
 	for off := 0; off < len(body); off += 4 {
-		written |= 1 << (binary.LittleEndian.Uint32(body[off:]) & 31)
+		word := binary.LittleEndian.Uint32(body[off:])
+		// A generated private BL/B has an immediate here, not a GP result.
+		// The adapter restores LR; its explicit MOVs account for its scratch.
+		if word&0x7c000000 == 0x14000000 || word == 0xd65f03c0 {
+			continue
+		}
+		written |= 1 << (word & 31)
 	}
 	directOff := -1
 	for reg := uint32(2); reg < 18; reg++ {
