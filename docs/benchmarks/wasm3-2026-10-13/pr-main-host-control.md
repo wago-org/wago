@@ -25,3 +25,16 @@ Current medians are 116.0 ns and 120.7 ns. Both sources retain 64 B/op and one
 allocation/op. The two-order spread is retained; it does not establish that the
 legacy-control regression has been eliminated. The initial control remains
 unchanged above. See `pr-main-host-control-parent-fix.json` for every sample.
+
+
+## Guarded import retention control
+
+The common legacy host-import benchmark was repeated at `75171913` against
+default main `8097344a`, with five 200 ms samples per source in both orders,
+Go 1.27.1, and `GOMAXPROCS=1` under the Apple device lock. The current/main
+median ratios are **1.099x / 1.069x**. Both retain 64 B/op and one allocation.
+This control remains slower than default main, and its test binary includes
+the branch's additional tests. The targeted compact-import improvement does
+not resolve or supersede this contrary result. The
+[raw control](pr-main-host-control-guarded-imports.json) is separate from the
+[matched feature SDK audit](guarded-native-imports.md).

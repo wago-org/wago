@@ -21,3 +21,13 @@ The complete ARM64 compatibility sweep remains **346 passed, 27 unsupported, zer
 Argument forwarding and target caching alone did not produce repeatable gains. A subsequent fixed-shared/single-import extension is also rejected: its same-process ratios are **1.054x / 0.974x** across construction orders. It is not part of the retained code. Threads and opaque Go callback parity remain open.
 
 The measured source snapshot and its full compatibility/performance results are kept local. No production deployment.
+
+The [local publication audit](guarded-native-import-local-publication.json)
+verifies 639 captures / 1,437 observations, preserves 575,121 historical
+observations, and records clean SQLite and browser checks. The rebuilt local
+page visibly shows approximately 342 microseconds for Apple compact imports.
+The current frontend gates feature performance on complete compatibility, so
+w2c2's compact-import failures and unsupported thread contracts remain marked
+as such. The focused ordinary-baseline comparison above does not override
+that policy. The [fresh default-main host control](pr-main-host-control.md)
+also remains slower and is retained as contrary evidence.

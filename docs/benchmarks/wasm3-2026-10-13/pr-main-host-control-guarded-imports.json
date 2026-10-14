@@ -1,0 +1,77 @@
+{
+  "baseline": "8097344a63a79e96230e09c883b2138232151370",
+  "currentSource": "75171913f4d6e926f5ef469f826f4bc60f5ab322",
+  "benchmark": "BenchmarkInvokeHostFuncDirect",
+  "results": [
+    {
+      "order": "forward",
+      "label": "main",
+      "samplesNs": [
+        108.4,
+        110.7,
+        111.3,
+        108.4,
+        108.5
+      ],
+      "medianNs": 108.5,
+      "rangeNs": [
+        108.4,
+        111.3
+      ]
+    },
+    {
+      "order": "forward",
+      "label": "current",
+      "samplesNs": [
+        119.2,
+        117.9,
+        119.5,
+        121.9,
+        117.9
+      ],
+      "medianNs": 119.2,
+      "rangeNs": [
+        117.9,
+        121.9
+      ],
+      "ratioToMain": 1.0986175115207373
+    },
+    {
+      "order": "reverse",
+      "label": "current",
+      "samplesNs": [
+        118.7,
+        116.5,
+        118.5,
+        116.9,
+        129.2
+      ],
+      "medianNs": 118.5,
+      "rangeNs": [
+        116.5,
+        129.2
+      ],
+      "ratioToMain": 1.0694945848375452
+    },
+    {
+      "order": "reverse",
+      "label": "main",
+      "samplesNs": [
+        110.8,
+        110.8,
+        110.5,
+        111.6,
+        111.8
+      ],
+      "medianNs": 110.8,
+      "rangeNs": [
+        110.5,
+        111.8
+      ]
+    }
+  ],
+  "scope": "Common legacy host-import control only; not the shared-thread or compact import performance corpus.",
+  "platform": "Apple M4 Max / darwin-arm64",
+  "go": "1.27.1",
+  "GOMAXPROCS": 1
+}
