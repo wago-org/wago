@@ -575,10 +575,20 @@ type rv64RootedAggregateStackValue struct {
 	i32         uint32
 }
 
-func (p *rv64RootedAggregateParser) valueMatches(value rv64RootedAggregateStackValue, storage wasm.StorageType) bool {
+func (p *rv64RootedAggregateParser) valueMatches(value rv64RootedAggregateStackValue, storage wasm.StorageType, owner uint32) bool {
 	want := storage.Val()
 	if storage.Packed() {
 		want = wasm.I32
+	}
+	if want.Kind() == wasm.ValRef {
+		ref := want.Ref()
+		heap := ref.Heap()
+		if heap.Kind() == wasm.HeapTypeIndex && heap.Type().Rec {
+			if heap.Type().Index != 0 {
+				return false
+			}
+			want = wasm.RefVal(wasm.Ref(ref.Nullable(), wasm.IndexedHeap(wasm.TypeIdx{Index: owner}), ref.Exact()))
+		}
 	}
 	if want.Kind() != wasm.ValRef {
 		return wasm.EqualValType(value.typ, want)
@@ -695,7 +705,7 @@ func (p *rv64RootedAggregateParser) validateExpression(expr wasm.Expr, required 
 				}
 				base = stackLen - len(comp.Fields)
 				for i := range comp.Fields {
-					if !p.valueMatches(stack[base+i], comp.Fields[i].Storage()) {
+					if !p.valueMatches(stack[base+i], comp.Fields[i].Storage(), typeIndex) {
 						return false
 					}
 					constructorDepth = max(constructorDepth, stack[base+i].depth+1)
@@ -710,7 +720,7 @@ func (p *rv64RootedAggregateParser) validateExpression(expr wasm.Expr, required 
 					}
 				}
 			case 6:
-				if comp.Kind != wasm.CompArray || stackLen < 2 || !p.valueMatches(stack[stackLen-2], comp.Array.Storage()) ||
+				if comp.Kind != wasm.CompArray || stackLen < 2 || !p.valueMatches(stack[stackLen-2], comp.Array.Storage(), typeIndex) ||
 					!wasm.EqualValType(stack[stackLen-1].typ, wasm.I32) || !stack[stackLen-1].knownI32 || stack[stackLen-1].i32 > 256 {
 					return false
 				}
@@ -729,7 +739,7 @@ func (p *rv64RootedAggregateParser) validateExpression(expr wasm.Expr, required 
 				}
 				base = stackLen - int(count)
 				for i := base; i < stackLen; i++ {
-					if !p.valueMatches(stack[i], comp.Array.Storage()) {
+					if !p.valueMatches(stack[i], comp.Array.Storage(), typeIndex) {
 						return false
 					}
 					constructorDepth = max(constructorDepth, stack[i].depth+1)
@@ -794,7 +804,12 @@ func rv64RootedScalarGlobal(m *wasm.Module, global *wasm.Global, limit int, p *r
 		}
 		switch heap.Kind() {
 		case wasm.HeapAbs:
-			return heap.Abs() == wasm.HeapI31
+			switch heap.Abs() {
+			case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray:
+				return ref.Nullable()
+			default:
+				return false
+			}
 		case wasm.HeapTypeIndex:
 			if heap.Type().Rec {
 				return false

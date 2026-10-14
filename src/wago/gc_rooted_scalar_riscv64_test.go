@@ -5917,6 +5917,25 @@ func rootedScalarMutableAbstractStructGlobalModule() []byte {
 	)
 }
 
+func rootedScalarRecursiveAbstractStructGlobalModule() []byte {
+	body := []byte{
+		0x00,
+		0xd0, 0x00, 0xfb, 0x00, 0x00, 0x1a,
+		0x41, 0x01,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x63, 0x00, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, []byte{0x01, byte(wasm.HeapAny), 0x01, 0xd0, 0x00, 0xfb, 0x00, 0x00, 0x0b}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func rootedScalarMutableArrayGlobalModule() []byte {
 	types := [][]byte{
 		{0x5e, 0x7f, 0x01},
@@ -6684,6 +6703,32 @@ func TestRV64RootedScalarMutableAbstractStructGlobalExecutes(t *testing.T) {
 	if !railshot.AdmitGCRootedScalarSource(source) {
 		t.Fatal("generic rooted mutable abstract struct global was not source-admitted")
 	}
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootDiagnostic string
+	if plan := newGCFrameRootPlan(module, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
+		t.Fatalf("generic rooted mutable abstract struct global root plan=%v diagnostic=%q", plan, rootDiagnostic)
+	}
+	for name, ref := range map[string]wasm.RefType{
+		"non-null": wasm.Ref(false, wasm.AbsHeap(wasm.HeapAny), false),
+		"exact":    wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), true),
+		"bottom":   wasm.Ref(true, wasm.AbsHeap(wasm.HeapNone), false),
+		"extern":   wasm.Ref(true, wasm.AbsHeap(wasm.HeapExtern), false),
+	} {
+		t.Run("root-plan-rejects-"+name, func(t *testing.T) {
+			candidate, decodeErr := wasm.DecodeModule(source)
+			if decodeErr != nil {
+				t.Fatal(decodeErr)
+			}
+			candidate.Globals[0].Type.Type = wasm.RefVal(ref)
+			diagnostic := ""
+			if plan := newGCFrameRootPlan(candidate, true, true, &diagnostic, nil); plan != nil || diagnostic == "" {
+				t.Fatalf("hostile abstract global root plan=%v diagnostic=%q", plan, diagnostic)
+			}
+		})
+	}
 	compiled, err := Compile(rv64RootedScalarConfig(), source)
 	if err != nil {
 		t.Fatal(err)
@@ -6749,6 +6794,41 @@ func TestRV64RootedScalarMutableAbstractStructGlobalExecutes(t *testing.T) {
 	}
 	if err := instance.SetGlobalValue("root", ValueOf(ValAnyRef, uint64(uint32(2)))); err == nil {
 		t.Fatal("raw compact object handle was accepted as a public abstract global value")
+	}
+}
+
+func TestRV64RootedRecursiveAbstractStructGlobalExecutes(t *testing.T) {
+	source := rootedScalarRecursiveAbstractStructGlobalModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("recursive abstract struct global was not source-admitted")
+	}
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	field := module.Types[0].SubTypes[0].Comp.Fields[0].Storage().Val().Ref().Heap().Type()
+	if !field.Rec || field.Index != 0 {
+		t.Fatalf("recursive abstract-global field=%+v", field)
+	}
+	var diagnostic string
+	if plan := newGCFrameRootPlan(module, true, true, &diagnostic, nil); plan == nil || diagnostic != "" {
+		t.Fatalf("recursive abstract struct global root plan=%v diagnostic=%q", plan, diagnostic)
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if !rv64FreshRootedGC(compiled.executionView()) {
+		t.Fatalf("recursive abstract struct global receipt=false validation=%v", railshotValidateCompiled(compiled.executionView()))
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{1}) {
+		t.Fatalf("run()=%v err=%v want=[1]", got, err)
 	}
 }
 
