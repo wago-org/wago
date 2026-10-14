@@ -78,7 +78,7 @@ func nativeGCArrayLayout(enabled bool, m *wasm.Module, typeIndex uint32) (native
 
 func nativeGCStructAllocLayout(m *wasm.Module, typeIndex uint32) (fields []nativeGCStructAllocField, objectSize, objectAlign uint32, pointerFree bool, ok bool) {
 	st, found := nativeGCFlatType(m, typeIndex)
-	if !found || !st.Final || st.Comp.Kind != wasm.CompStruct {
+	if !found || st.Comp.Kind != wasm.CompStruct {
 		return nil, 0, 0, false, false
 	}
 	fields = make([]nativeGCStructAllocField, 0, len(st.Comp.Fields))
@@ -1277,6 +1277,10 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 	a.Load32(RDX, R10, int32(typeIndex*4))
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 
+	// A constructor may consume a batch prepared for a smaller type.
+	// Respect this collector's large-object threshold before publication.
+	a.CmpImm32Mem(R8, gc.NativeViewNurseryObjectMaxBytesOffset, int32(objectSize))
+	addFallback(a.JccPlaceholder(condBE))
 	a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
 	a.TestSelf(R10, true)
 	addFallback(a.JccPlaceholder(condE))

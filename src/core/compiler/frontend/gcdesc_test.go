@@ -518,3 +518,15 @@ func TestBuildGCTypeDescsFromDecodedRecursiveTypeIndexes(t *testing.T) {
 		t.Fatalf("type 3 fields = %+v, want i32 prefix plus nullable ref at offset 4", descs[3].Fields)
 	}
 }
+
+func TestGCTypeMetadataOpenStructNativeAllocation(t *testing.T) {
+	open := st(field(val(wasm.I32)), field(ref(true, wasm.HeapAny)))
+	open.Final = false
+	metadata, err := LowerGCTypeMetadata([]wasm.RecType{{SubTypes: []wasm.SubType{open}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !metadata.Layouts[0].NativeAlloc {
+		t.Fatal("open exact constructor should use native allocation")
+	}
+}

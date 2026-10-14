@@ -16,7 +16,7 @@ func (in *Instance) prepareNativeStructHandles(typeID uint32) {
 	}
 	t := in.c.Types[typeID]
 	d := in.c.GCTypeDescs[typeID]
-	if !t.Final || t.Kind != CompositeTypeStruct || d.Kind != gc.KindStruct || len(t.Fields) != len(d.Fields) {
+	if t.Kind != CompositeTypeStruct || d.Kind != gc.KindStruct || len(t.Fields) != len(d.Fields) {
 		return
 	}
 	slots := 1 // trailing local type index

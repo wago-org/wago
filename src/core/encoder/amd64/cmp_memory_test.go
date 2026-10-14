@@ -27,3 +27,23 @@ func TestCmpImmIdx(t *testing.T) {
 		}
 	}
 }
+
+func TestCmpImm32Mem(t *testing.T) {
+	for _, tc := range []struct {
+		base      Reg
+		disp, imm int32
+		want      string
+	}{
+		{R8, 160, 24, "4183b8a000000018"},
+		{R8, 160, 520, "4181b8a000000008020000"},
+		{RSP, 0, 127, "833c247f"},
+		{RBP, 0, -1, "837d00ff"},
+		{R12, -128, 256, "41817c248000010000"},
+	} {
+		var a Asm
+		a.CmpImm32Mem(tc.base, tc.disp, tc.imm)
+		if got := hex.EncodeToString(a.B); got != tc.want {
+			t.Errorf("base=%d disp=%d imm=%d: %s, want%s", tc.base, tc.disp, tc.imm, got, tc.want)
+		}
+	}
+}

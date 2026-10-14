@@ -658,6 +658,25 @@ func (a *Asm) StoreImm32Mem(base Reg, disp int32, v int32) {
 	a.imm32(v)
 }
 
+// CmpImm32Mem compares a dword at [base+disp] with an immediate.
+func (a *Asm) CmpImm32Mem(base Reg, disp, imm int32) {
+	if regallocCheckEnabled {
+		a.regallocRead(base, disp, 4)
+	}
+	if base >= 8 {
+		a.emit(a.rex(false, false, false, true))
+	}
+	if imm >= -128 && imm <= 127 {
+		a.emit(0x83)
+		a.baseAddr(7, base, disp)
+		a.emit(byte(imm))
+	} else {
+		a.emit(0x81)
+		a.baseAddr(7, base, disp)
+		a.imm32(imm)
+	}
+}
+
 // StoreImmIdx stores an immediate directly to [base+index+disp].
 // size selects 1, 2, 4, or 8 bytes. The 8-byte form sign-extends imm32;
 // callers must establish that this is the intended complete i64 value.
