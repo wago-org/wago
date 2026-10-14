@@ -950,7 +950,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				emit.swarStore(spill(h-3), left)
 			}
 			h -= 2
-		case 0xd0, 0xd1, 0xd2, 0xd4, 0x25, 0x26:
+		case 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0x25, 0x26:
 			if !privateRefs {
 				return swarSummary{}, unsupported("SWAR reference instruction without public reference profile")
 			}
@@ -963,7 +963,8 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				if err != nil {
 					return swarSummary{}, err
 				}
-				if heap != -16 && (!(dynamicTailCalls && !referenceFunctions || referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
+				genericRootedNull := gcRootedScalar && (heap >= 0 && (referenceTypes.rootedStruct(uint32(heap)) || referenceTypes.rootedArray(uint32(heap))) || rootedAbstractObjectHeapS33(heap) || heap == -20)
+				if heap != -16 && !genericRootedNull && (!(dynamicTailCalls && !referenceFunctions || referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return swarSummary{}, unsupported("SWAR private nullable abstract funcref only")
 				}
 				if err := push(swarFuncRef); err != nil {
@@ -1017,6 +1018,29 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 					emit.functionReference(index)
 					emit.Store(spill(h-1), 5, true)
 					emit.Store(spill(h-1)+8, uint8(enc.Zero), true)
+				}
+			case 0xd3:
+				if !gcRootedScalar {
+					return swarSummary{}, unsupported("SWAR ref.eq outside generic rooted profile")
+				}
+				if err := flow.prepareDead(swarFuncRef, swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 2
+				if base < flow.floor() || stackClasses[base] != swarFuncRef || stackClasses[base+1] != swarFuncRef {
+					return swarSummary{}, unsupported("SWAR ref.eq operand carrier")
+				}
+				if emit != nil {
+					emit.Load(5, spill(base), true)
+					emit.Load(6, spill(base+1), true)
+					emit.a.Xor(enc.X5, enc.X5, enc.X6)
+					emit.a.Sltiu(enc.X5, enc.X5, 1)
+					emit.Store(spill(base), 5, true)
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+				h = base
+				if err := push(swarI32); err != nil {
+					return swarSummary{}, err
 				}
 			case 0x25, 0x26:
 				index, err := r.U32()
@@ -1727,6 +1751,45 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				h = base
 				if err := push(swarI32); err != nil {
 					return swarSummary{}, err
+				}
+			case wasm.InstrRefTest, wasm.InstrRefCast:
+				if !imm.HasHeapType {
+					return swarSummary{}, unsupported("SWAR reference test/cast heap")
+				}
+				heap, ok := referenceTypes.rootedObjectHeap(imm.HeapType)
+				if !ok && imm.HeapType == wasm.AbsHeap(wasm.HeapI31) {
+					heap, ok = -20, true
+				}
+				if !ok {
+					return swarSummary{}, unsupported("SWAR reference test/cast outside generic rooted profile")
+				}
+				if err := flow.prepareDead(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 1
+				if base < flow.floor() || stackClasses[base] != swarFuncRef {
+					return swarSummary{}, unsupported("SWAR reference test/cast operand carrier")
+				}
+				calls++
+				if calls > maxDirectCalls {
+					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
+				}
+				if err := reserve(1024); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.swarCompactGCArguments(base, 1, spill)
+					if imm.Kind == wasm.InstrRefTest {
+						emit.gcObjectRefTest(base*2, heap, imm.Subopcode == 21)
+						emit.Load(5, spill(base), false)
+						emit.Store(spill(base), 5, true)
+					} else {
+						emit.gcObjectRefCast(base*2, heap, imm.Subopcode == 23, imm.Cast.SourceNullable)
+					}
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+				if imm.Kind == wasm.InstrRefTest {
+					stackClasses[base] = swarI32
 				}
 			case wasm.InstrRefI31:
 				if err := flow.prepareDead(swarI32); err != nil {
