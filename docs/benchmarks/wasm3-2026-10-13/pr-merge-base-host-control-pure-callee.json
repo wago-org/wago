@@ -1,0 +1,103 @@
+{
+  "baseline": "8097344a63a79e96230e09c883b2138232151370",
+  "currentSource": "9ed2645085982cb74fab5b629dc260d8cc31385f",
+  "workloadFunctionSha256": {
+    "BenchmarkInvokeHostFuncDirect": "8a2cadae8b697e56bf47d3de039599e974a8f3c44317a266badca9a737a2ac6a",
+    "benchReturningImportModule": "5af9c1799ba83403f51a74442a047ab81ade0eeb5c45e190717c68641a84649d"
+  },
+  "benchmark": "BenchmarkInvokeHostFuncDirect",
+  "results": [
+    {
+      "order": "forward",
+      "label": "main",
+      "samplesNs": [
+        113.0,
+        114.0,
+        114.5,
+        111.3,
+        111.9
+      ],
+      "medianNs": 113.0,
+      "rangeNs": [
+        111.3,
+        114.5
+      ]
+    },
+    {
+      "order": "forward",
+      "label": "current",
+      "samplesNs": [
+        116.4,
+        119.0,
+        119.5,
+        115.8,
+        118.8
+      ],
+      "medianNs": 118.8,
+      "rangeNs": [
+        115.8,
+        119.5
+      ],
+      "ratioToMain": 1.0513274336283185
+    },
+    {
+      "order": "reverse",
+      "label": "current",
+      "samplesNs": [
+        116.7,
+        115.1,
+        115.6,
+        117.0,
+        117.0
+      ],
+      "medianNs": 116.7,
+      "rangeNs": [
+        115.1,
+        117.0
+      ],
+      "ratioToMain": 1.0236842105263158
+    },
+    {
+      "order": "reverse",
+      "label": "main",
+      "samplesNs": [
+        113.4,
+        111.8,
+        114.0,
+        114.3,
+        114.7
+      ],
+      "medianNs": 114.0,
+      "rangeNs": [
+        111.8,
+        114.7
+      ]
+    }
+  ],
+  "scope": "Common legacy host-import control only; not the shared-thread or compact import performance corpus.",
+  "platform": "Apple M4 Max / darwin-arm64",
+  "go": "1.27.1",
+  "GOMAXPROCS": 1,
+  "rawOutputs": [
+    {
+      "file": "main-benchmark-forward-current.txt",
+      "sha256": "e18f42da7aa7996e43ef6876c3192433bc9a5248e92a9d7aa62a3d50ae0b146f",
+      "text": "goos: darwin\ngoarch: arm64\npkg: github.com/wago-org/wago/src/wago\ncpu: Apple M4 Max\nBenchmarkInvokeHostFuncDirect \t 1943457\t       116.4 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2042961\t       119.0 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2025933\t       119.5 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2044490\t       115.8 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2028991\t       118.8 ns/op\t      64 B/op\t       1 allocs/op\nPASS\nok  \tgithub.com/wago-org/wago/src/wago\t2.087s\n"
+    },
+    {
+      "file": "main-benchmark-forward-main.txt",
+      "sha256": "18c10fb03a79836e451fca9fccb284d63a87b3392557fa543142af84b55b58d8",
+      "text": "goos: darwin\ngoarch: arm64\npkg: github.com/wago-org/wago/src/wago\ncpu: Apple M4 Max\nBenchmarkInvokeHostFuncDirect \t 2002292\t       113.0 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2103415\t       114.0 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2131544\t       114.5 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2131578\t       111.3 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2119153\t       111.9 ns/op\t      64 B/op\t       1 allocs/op\nPASS\nok  \tgithub.com/wago-org/wago/src/wago\t2.093s\n"
+    },
+    {
+      "file": "main-benchmark-reverse-current.txt",
+      "sha256": "63213dbe994a9717a525e612a5727f511a66759b3775f0041147e3266d6aabc9",
+      "text": "goos: darwin\ngoarch: arm64\npkg: github.com/wago-org/wago/src/wago\ncpu: Apple M4 Max\nBenchmarkInvokeHostFuncDirect \t 1897986\t       116.7 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2021473\t       115.1 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2105528\t       115.6 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2038354\t       117.0 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 1911912\t       117.0 ns/op\t      64 B/op\t       1 allocs/op\nPASS\nok  \tgithub.com/wago-org/wago/src/wago\t2.073s\n"
+    },
+    {
+      "file": "main-benchmark-reverse-main.txt",
+      "sha256": "a9bf4fa031331642a2553a2ee90d5633921e5c0dd1ec2c1bcbe319b859e4200b",
+      "text": "goos: darwin\ngoarch: arm64\npkg: github.com/wago-org/wago/src/wago\ncpu: Apple M4 Max\nBenchmarkInvokeHostFuncDirect \t 2125684\t       113.4 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2144852\t       111.8 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2143244\t       114.0 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2138445\t       114.3 ns/op\t      64 B/op\t       1 allocs/op\nBenchmarkInvokeHostFuncDirect \t 2048919\t       114.7 ns/op\t      64 B/op\t       1 allocs/op\nPASS\nok  \tgithub.com/wago-org/wago/src/wago\t2.069s\n"
+    }
+  ]
+}

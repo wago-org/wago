@@ -8,6 +8,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Lower verified pure single-callee i32 Go wrappers into native ARM64 host
+  callbacks on Go 1.27, preserving imported calls, ownership and policy
+  fallbacks. Effectful callbacks continue through Go.
+
 - Select a guarded native body once at entry for bounded integer loops over
   identical scalar import aliases on ARM64. Keep every original callback call,
   the complete Go/foreign fallback, artifact admission, and optimization policies.

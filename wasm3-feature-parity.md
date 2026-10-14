@@ -1533,3 +1533,23 @@ target compile cost. The fresh ordinary baseline is within 3-4% of pinned
 w2c2 Clang in these focused rounds. Broader parity remains open, and the shared
 memory extension was rejected. See the [guarded import audit](docs/benchmarks/wasm3-2026-10-13/guarded-native-imports.md)
 and [native PR validation](docs/benchmarks/wasm3-2026-10-13/native-pr-validation.md).
+
+
+## ARM64 pure-helper callback checkpoint (2026-10-14)
+
+The generic Go1.27 single-callee proof at `9ed26450` fuses a verified pure i32
+helper into the native callback. All imported calls and actual shared-memory
+operations remain. Independent nine-launch reversed-order rechecks improve the
+shared-memory helper loop by 86.1% / 87.0%; a two-callback short public-API probe
+improves 16.8% / 17.1%. This is not faster arbitrary Go transitions. The focused
+loop remains 1.64x / 1.68x slower than pinned w2c2 Clang.
+
+The full 266×2 pass has no outcome changes, all 255 guest images and rollback
+images match, and all 373 compatibility contracts retain 346 passed / 27 unsupported
+/ 0 failed. The 255-pair steady geometric mean is 0.99381; compile 1.01118 and
+instantiate 1.03915 retain startup costs. All 58 selected outliers were rechecked
+in both orders with nine launches; no execution regression above 5% repeats,
+while three compile and seven instantiation cases remain slower. Current-main
+legacy custom-slot host-call controls still regress 5–6%, so the PR remains draft.
+Historical baseline labels were corrected using checkout reflog evidence and
+fresh immutable controls. See [the complete audit](docs/benchmarks/wasm3-2026-10-13/native-pure-callee.md).

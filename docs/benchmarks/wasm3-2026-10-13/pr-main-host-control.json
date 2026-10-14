@@ -1,5 +1,5 @@
 {
-  "baseline": "8097344a63a79e96230e09c883b2138232151370",
+  "baseline": "069a26ea07bdd312b672d4fc56b989aa55e89e98",
   "benchmark": "BenchmarkInvokeHostFuncDirect",
   "results": [
     {
@@ -69,5 +69,8 @@
       ]
     }
   ],
-  "scope": "Common legacy host-import control only; not the shared-thread or compact import performance corpus."
+  "scope": "Common legacy host-import control only; not the shared-thread or compact import performance corpus.",
+  "reportedBaseline": "8097344a63a79e96230e09c883b2138232151370",
+  "baselineQualification": "HEAD reconstructed from branch creation reflog and output timestamps; no historical clean-tree receipt. Prefer fresh pinned source controls.",
+  "attributionCorrection": "main-control-source-attribution.json"
 }

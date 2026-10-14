@@ -1,0 +1,90 @@
+{
+  "reportedBaseline": "8097344a63a79e96230e09c883b2138232151370",
+  "correctedBaseline": "069a26ea07bdd312b672d4fc56b989aa55e89e98",
+  "baselinePath": "pr-main-baseline-source",
+  "reflog": "069a26ea refs/heads/jairus/pr-main-baseline@{2026-10-14 12:50:58 -0400}: branch: Created from origin/main\n",
+  "runs": [
+    {
+      "run": "pr-validation-current",
+      "script": "pr-validation-current/main-benchmark.py",
+      "sourcePathConfirmed": true,
+      "outputs": [
+        {
+          "file": "pr-validation-current/main-benchmark-forward-current.txt",
+          "sha256": "bd7c550a2b437191286e973f073e0cae3093e2329d9e505b6d92f85041f506ce",
+          "modifiedAt": "2026-10-14T16:59:21.395985+00:00"
+        },
+        {
+          "file": "pr-validation-current/main-benchmark-forward-main.txt",
+          "sha256": "761740fb56aefc08676ee2b70225daa5f06410204af19f8f127448f50b61906c",
+          "modifiedAt": "2026-10-14T16:59:17.990106+00:00"
+        },
+        {
+          "file": "pr-validation-current/main-benchmark-reverse-current.txt",
+          "sha256": "21e9c75181d34be00a138ebe101c2d2aada038b399b8a3a2bdda5844ef035bac",
+          "modifiedAt": "2026-10-14T16:59:24.026250+00:00"
+        },
+        {
+          "file": "pr-validation-current/main-benchmark-reverse-main.txt",
+          "sha256": "938c9e646955496ff3613ceac079d5d57af1fdba4d6429655cc043d79e70b29c",
+          "modifiedAt": "2026-10-14T16:59:27.080444+00:00"
+        }
+      ]
+    },
+    {
+      "run": "pr-main-control-parent-fix",
+      "script": "pr-main-control-parent-fix/main-benchmark.py",
+      "sourcePathConfirmed": true,
+      "outputs": [
+        {
+          "file": "pr-main-control-parent-fix/main-benchmark-forward-current.txt",
+          "sha256": "806cf14f1a2548e8bcbca521113411a61992adad5a333cce02ad503a49c4d4cc",
+          "modifiedAt": "2026-10-14T17:09:09.507306+00:00"
+        },
+        {
+          "file": "pr-main-control-parent-fix/main-benchmark-forward-main.txt",
+          "sha256": "9aa2b0fe781e56bbb909b2b6340b4f9a1ddbb1cdc575a6d6da39440739f8ec68",
+          "modifiedAt": "2026-10-14T17:09:06.346320+00:00"
+        },
+        {
+          "file": "pr-main-control-parent-fix/main-benchmark-reverse-current.txt",
+          "sha256": "a0c65aef9fb00e49e5a8eca195915717504a8eebf0f0dba88721881d90d383c6",
+          "modifiedAt": "2026-10-14T17:09:12.486907+00:00"
+        },
+        {
+          "file": "pr-main-control-parent-fix/main-benchmark-reverse-main.txt",
+          "sha256": "85bf69f813ad581577f795ed66fb0722e07306bf5b5e12c08e076405fba4ef8c",
+          "modifiedAt": "2026-10-14T17:09:15.795183+00:00"
+        }
+      ]
+    },
+    {
+      "run": "pr-main-control-guarded-imports",
+      "script": "pr-main-control-guarded-imports/main-benchmark.py",
+      "sourcePathConfirmed": true,
+      "outputs": [
+        {
+          "file": "pr-main-control-guarded-imports/main-benchmark-forward-current.txt",
+          "sha256": "5c21d3c2afa4fae70c8132daa302cc815271281536fec41108004d39ca32c81c",
+          "modifiedAt": "2026-10-14T18:58:03.800650+00:00"
+        },
+        {
+          "file": "pr-main-control-guarded-imports/main-benchmark-forward-main.txt",
+          "sha256": "7df9374fc13ef53d912bdeb6fde498a068d2cff767e13d5be4ee3343127756c4",
+          "modifiedAt": "2026-10-14T18:57:39.649427+00:00"
+        },
+        {
+          "file": "pr-main-control-guarded-imports/main-benchmark-reverse-current.txt",
+          "sha256": "c1558735dfc2e334ace232805139d86cf3eece87f0ea3ef7339ac46637425be0",
+          "modifiedAt": "2026-10-14T18:58:06.774898+00:00"
+        },
+        {
+          "file": "pr-main-control-guarded-imports/main-benchmark-reverse-main.txt",
+          "sha256": "689660d7a437c9284598f0704788ccba774e55bb3511710fd5b627e476b33f13",
+          "modifiedAt": "2026-10-14T18:58:09.717288+00:00"
+        }
+      ]
+    }
+  ],
+  "note": "Baseline branch created at069a before every recorded run and never moved in reflog. Historical labels809 were hardcoded incorrectly. Raw outputs preserved; no historical clean-tree receipt exists. Fresh controls use separate exact-revision checkouts."
+}
