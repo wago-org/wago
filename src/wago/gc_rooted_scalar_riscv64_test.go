@@ -841,13 +841,19 @@ func rootedScalarSIMDStructFunctionModule() []byte {
 		0x20, 0x07,
 		0x20, 0x05,
 		0x20, 0x06,
+		0x41, 0x7f,
+		0xfb, 0x1c,
+		0xfb, 0x1d,
+		0x41, 0x7f,
+		0xfb, 0x1c,
+		0xfb, 0x1e,
 		0x0b,
 	}
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x5f, 0x01, 0x7f, 0x00},
 			[]byte{0x5f, 0x03, 0x7f, 0x00, 0x7e, 0x00, 0x7f, 0x01},
-			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.I32, wasm.I64}, []wasm.ValType{wasm.V128, wasm.I32, wasm.I64, wasm.I32, wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.I32, wasm.I64}, []wasm.ValType{wasm.V128, wasm.I32, wasm.I64, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
 		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
@@ -882,7 +888,7 @@ func TestRV64RootedSIMDStructFunctionExecutes(t *testing.T) {
 	const wide = uint64(0x80000000fedcba98)
 	for iteration := range 32 {
 		got, err := instance.Invoke("run", lo, hi, dirtyI32, wide)
-		if err != nil || !slices.Equal(got, []uint64{lo, hi, 42, wide, 11, 0}) {
+		if err != nil || !slices.Equal(got, []uint64{lo, hi, 42, wide, 11, 0, 0xffffffff, 0x7fffffff}) {
 			t.Fatalf("iteration %d: run=%x err=%v", iteration, got, err)
 		}
 	}

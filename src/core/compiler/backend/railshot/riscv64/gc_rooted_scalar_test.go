@@ -514,13 +514,19 @@ func rv64RootedSIMDStructFunctionModule() []byte {
 		0x20, 0x07,
 		0x20, 0x05,
 		0x20, 0x06,
+		0x41, 0x7f,
+		0xfb, 0x1c,
+		0xfb, 0x1d,
+		0x41, 0x7f,
+		0xfb, 0x1c,
+		0xfb, 0x1e,
 		0x0b,
 	}
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x5f, 0x01, 0x7f, 0x00},
 			[]byte{0x5f, 0x03, 0x7f, 0x00, 0x7e, 0x00, 0x7f, 0x01},
-			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.I32, wasm.I64}, []wasm.ValType{wasm.V128, wasm.I32, wasm.I64, wasm.I32, wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.I32, wasm.I64}, []wasm.ValType{wasm.V128, wasm.I32, wasm.I64, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
 		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),

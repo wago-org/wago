@@ -1442,6 +1442,37 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 					emit.gcStructSetScalar(base*2, imm.Index, imm.Index2, wide)
 				}
 				h = base
+			case wasm.InstrRefI31:
+				if err := flow.prepareDead(swarI32); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 1
+				if base < flow.floor() || stackClasses[base] != swarI32 {
+					return swarSummary{}, unsupported("SWAR ref.i31 operand carrier")
+				}
+				if emit != nil {
+					emit.Load(5, spill(base), false)
+					emit.i31Wrap()
+					emit.Store(spill(base), 5, true)
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+				stackClasses[base] = swarFuncRef
+			case wasm.InstrI31GetS, wasm.InstrI31GetU:
+				if err := flow.prepareDead(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 1
+				if base < flow.floor() || stackClasses[base] != swarFuncRef {
+					return swarSummary{}, unsupported("SWAR i31.get operand carrier")
+				}
+				usesTraps = true
+				if emit != nil {
+					emit.Load(5, spill(base), true)
+					emit.i31Get(imm.Kind == wasm.InstrI31GetS)
+					emit.Store(spill(base), 5, true)
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+				stackClasses[base] = swarI32
 			default:
 				return swarSummary{}, unsupported("SWAR GC opcode lowering is pending")
 			}
