@@ -1,0 +1,3920 @@
+{
+  "platform": "Linux amd64 / Hub Ryzen7 7800X3D / CPU7",
+  "source": "334732e1b475ca59303ad2941c7160f50f981268",
+  "peer": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+  "toolchains": {
+    "wago": "Go1.27.1",
+    "peer": "Ubuntu Clang18.1.3, -O3 -march=native -fno-strict-aliasing, pthreads, runtime checks0"
+  },
+  "runs": {
+    "capture": {
+      "compile": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "wagoNs": 97694,
+          "peerNs": 215739782,
+          "ratio": 0.00045283257030453473,
+          "wagoCode": 1119,
+          "peerCode": 3258
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "wagoNs": 108164,
+          "peerNs": 219744132,
+          "ratio": 0.0004922270233819031,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "wagoNs": 92695,
+          "peerNs": 241640441,
+          "ratio": 0.0003836071462888946,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "wagoNs": 58029,
+          "peerNs": 213060214,
+          "ratio": 0.00027235962505885777,
+          "wagoCode": 562,
+          "peerCode": 2874
+        }
+      ],
+      "instantiate": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "wagoNs": 7434,
+          "peerNs": 190,
+          "ratio": 39.126315789473686,
+          "wagoCode": 1119,
+          "peerCode": 3258
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "wagoNs": 21861,
+          "peerNs": 11271,
+          "ratio": 1.9395794516901783,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "wagoNs": 17183,
+          "peerNs": 11642,
+          "ratio": 1.4759491496306476,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "wagoNs": 4198,
+          "peerNs": 131,
+          "ratio": 32.045801526717554,
+          "wagoCode": 562,
+          "peerCode": 2874
+        }
+      ],
+      "first-call": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "wagoNs": 30634434,
+          "peerNs": 1129522,
+          "ratio": 27.12159125718667,
+          "wagoCode": 1119,
+          "peerCode": 3258
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "wagoNs": 7404018,
+          "peerNs": 621273,
+          "ratio": 11.917495207420892,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "wagoNs": 6853879,
+          "peerNs": 626242,
+          "ratio": 10.944457573909128,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "wagoNs": 9067238,
+          "peerNs": 2145631,
+          "ratio": 4.225907437019693,
+          "wagoCode": 562,
+          "peerCode": 2874
+        }
+      ],
+      "steady": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "wagoNs": 30350111,
+          "peerNs": 1122028.4285714286,
+          "ratio": 27.049324444160376,
+          "wagoCode": 1119,
+          "peerCode": 3258
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "wagoNs": 6336002.636363637,
+          "peerNs": 623619.0099009901,
+          "ratio": 10.160053711912315,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "wagoNs": 6408988.4,
+          "peerNs": 623904.0891089109,
+          "ratio": 10.27239364491683,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "wagoNs": 6.446059,
+          "peerNs": 2.15081,
+          "ratio": 2.9970378601550114,
+          "wagoCode": 562,
+          "peerCode": 2874
+        }
+      ]
+    },
+    "repeat": {
+      "compile": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "wagoNs": 99437,
+          "peerNs": 216901585,
+          "ratio": 0.00045844293853362114,
+          "wagoCode": 1119,
+          "peerCode": 3258
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "wagoNs": 91834,
+          "peerNs": 221889592,
+          "ratio": 0.0004138724992562968,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "wagoNs": 90852,
+          "peerNs": 221274521,
+          "ratio": 0.0004105850035937938,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "wagoNs": 60644,
+          "peerNs": 212328666,
+          "ratio": 0.00028561381344523683,
+          "wagoCode": 562,
+          "peerCode": 2874
+        }
+      ],
+      "instantiate": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "wagoNs": 7154,
+          "peerNs": 180,
+          "ratio": 39.74444444444445,
+          "wagoCode": 1119,
+          "peerCode": 3258
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "wagoNs": 16251,
+          "peerNs": 11803,
+          "ratio": 1.3768533423705838,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "wagoNs": 17463,
+          "peerNs": 11402,
+          "ratio": 1.5315734081740047,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "wagoNs": 3938,
+          "peerNs": 150,
+          "ratio": 26.253333333333334,
+          "wagoCode": 562,
+          "peerCode": 2874
+        }
+      ],
+      "first-call": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "wagoNs": 30678787,
+          "peerNs": 1124012,
+          "ratio": 27.294003088934993,
+          "wagoCode": 1119,
+          "peerCode": 3258
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "wagoNs": 6307768,
+          "peerNs": 621944,
+          "ratio": 10.142019217164247,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "wagoNs": 6373703,
+          "peerNs": 623226,
+          "ratio": 10.226952983347935,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "wagoNs": 9106082,
+          "peerNs": 2151209,
+          "ratio": 4.233006648819338,
+          "wagoCode": 562,
+          "peerCode": 2874
+        }
+      ],
+      "steady": [
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "wagoNs": 30494437.666666668,
+          "peerNs": 1124015.5892857143,
+          "ratio": 27.1299063441328,
+          "wagoCode": 1119,
+          "peerCode": 3258
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "wagoNs": 6354737,
+          "peerNs": 624360.3069306931,
+          "ratio": 10.177996470082146,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "wagoNs": 6457030.1,
+          "peerNs": 625078,
+          "ratio": 10.329958981119155,
+          "wagoCode": 751,
+          "peerCode": 3530
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "wagoNs": 6.441786,
+          "peerNs": 2.139096,
+          "ratio": 3.0114525014305107,
+          "wagoCode": 562,
+          "peerCode": 2874
+        }
+      ]
+    }
+  },
+  "captureManifest": [
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/capture/captures/w2c2-f303ed27-22cdff9afcb3dc21.json",
+      "sha256": "522f4fcc18aff2516e110243a5106a5362e62c6be50f22eda9a28f485d9e8e1e",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.238163+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/capture/captures/w2c2-f303ed27-837d0b781a84ac42.json",
+      "sha256": "f72d54d9be9354976a28e319b77bfe3bf87f9c16899842fce2e1b06adc9538a3",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.238163+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/capture/captures/w2c2-f303ed27-deec12e2b6e3c13e.json",
+      "sha256": "3db7861f2ae158faaf3f61762441dcc01a4c2bb69d316a3b328861c7d49efb15",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.238163+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/capture/captures/w2c2-f303ed27-e6dede99195186b1.json",
+      "sha256": "e8b27fb52cbcf0d043c58a486d7975cc88ba63e795fbd34c0bf7e0552ae8710b",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.238163+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/capture/captures/wago-334732e1-22cdff9afcb3dc21.json",
+      "sha256": "24a4c1b6c11c0ab53a7de1362ecbecddf83f52cb51040e110b41656ba9f8340a",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:34:19.238043+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/capture/captures/wago-334732e1-837d0b781a84ac42.json",
+      "sha256": "efa26213ddaa5292090d247e8c9fc45d4e0da2801cd805c14f90e7bf611c555d",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:34:19.238043+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/capture/captures/wago-334732e1-deec12e2b6e3c13e.json",
+      "sha256": "de756a498366cbc2649c6a8afae172a8bc84f240c30e7b5a8ff301b467dd17fc",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:34:19.238043+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/capture/captures/wago-334732e1-e6dede99195186b1.json",
+      "sha256": "812dc8fe6ea8cee1f5582e04f72fb8d7e4bd1b961a6400debd9a3cc84a389485",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:34:19.238043+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/repeat/captures/w2c2-f303ed27-22cdff9afcb3dc21.json",
+      "sha256": "7f41302350ba89550991c598608e32f76cdc72c7fff10146f67b4d91c6256218",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.263185+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/repeat/captures/w2c2-f303ed27-837d0b781a84ac42.json",
+      "sha256": "4aaf24141a1ae9b7fa8660cab1afedb7d613dcd938696303685ca37e9c286945",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.263185+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/repeat/captures/w2c2-f303ed27-deec12e2b6e3c13e.json",
+      "sha256": "4738c3ca1c198bf09f6400369c3b72ba72c8de4d3df6f9951d8900a4ef3c89e5",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.263185+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/repeat/captures/w2c2-f303ed27-e6dede99195186b1.json",
+      "sha256": "40b7ad265cda328d23ac40d4e003178b4ec988a568513712cf9a6000be177803",
+      "source": {
+        "repository": "JairusSW/w2c2",
+        "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+        "ref": "main@f303ed27",
+        "asOf": "2026-10-14T05:34:19.263185+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/repeat/captures/wago-334732e1-22cdff9afcb3dc21.json",
+      "sha256": "e7bc96111671b4a9d1544f7add3bb6d73d5e4c66d63d87f46b22413b5577bf85",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:34:19.263179+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/repeat/captures/wago-334732e1-837d0b781a84ac42.json",
+      "sha256": "6b62e29a7b51d70f7374abe18bce17af580395d84bf164f451181aca02edd5a4",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:34:19.263179+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/repeat/captures/wago-334732e1-deec12e2b6e3c13e.json",
+      "sha256": "78fd352a4faf3e291f6e00fa4d99737e89e7e4e04c424b602bb9976cc384c09f",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:34:19.263179+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    },
+    {
+      "file": "/Users/work/Code/Wago/wago/.validation/wasm3-parity/hub-native-campaign-334732e1/repeat/captures/wago-334732e1-e6dede99195186b1.json",
+      "sha256": "8b3f4e0318205840f8ab4723524b98edb40f0d76f08cd86c073cba32b0ca2641",
+      "source": {
+        "repository": "wago-org/wago",
+        "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+        "ref": "jairus/wasm3-feature-parity@334732e1",
+        "asOf": "2026-10-14T05:34:19.263179+00:00",
+        "kind": "snapshot"
+      },
+      "platform": {
+        "os": "linux",
+        "arch": "amd64",
+        "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+        "cores": 8,
+        "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+        "memoryBytes": 32710213632
+      }
+    }
+  ],
+  "rawCaptures": [
+    {
+      "order": "capture",
+      "capture": {
+        "capturedAt": "2026-10-14T05:42:23.350Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-14T05:34:19.238163+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              214924443,
+              214209544,
+              214583108,
+              221654368,
+              216246138,
+              216620184,
+              215277850,
+              216219638,
+              216980615,
+              216424074,
+              215739782,
+              222024007,
+              217631554,
+              215184204,
+              213716522
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 215739782,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103731200,
+            "codeStatus": "ok",
+            "codeBytes": 3258,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              1443,
+              231,
+              180,
+              140,
+              100,
+              1533,
+              230,
+              201,
+              140,
+              100,
+              1533,
+              220,
+              190,
+              141,
+              131
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 190,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103682048,
+            "codeStatus": "ok",
+            "codeBytes": 3258,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              1134882,
+              1134281,
+              1133439,
+              1133019,
+              1168606,
+              1129522,
+              1122910,
+              1131306,
+              1120926,
+              1129973,
+              1122439,
+              1123080,
+              1121387,
+              1146334,
+              1120856
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 1129522,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103698432,
+            "codeStatus": "ok",
+            "codeBytes": 3258,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              1121857.392857143,
+              1122436.1607142857,
+              1121740.0357142857,
+              1122028.4285714286,
+              1125206.5714285714,
+              1121715.892857143,
+              1124365.892857143,
+              1121793.5357142857,
+              1123724.857142857,
+              1121938.4464285714,
+              1127959.4642857143,
+              1124186.4464285714,
+              1123730.5892857143,
+              1122932.2857142857,
+              1123543.982142857
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 1122028.4285714286,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103702528,
+            "codeStatus": "ok",
+            "codeBytes": 3258,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "order": "capture",
+      "capture": {
+        "capturedAt": "2026-10-14T05:42:30.162Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-14T05:34:19.238163+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              211541095,
+              209560126,
+              211188470,
+              217389917,
+              212403974,
+              211206002,
+              213060214,
+              214720808,
+              213190990,
+              211020232,
+              214409360,
+              212054174,
+              214517474,
+              219359035,
+              212075113
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 213060214,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103739392,
+            "codeStatus": "ok",
+            "codeBytes": 2874,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              1543,
+              220,
+              110,
+              141,
+              100,
+              1613,
+              211,
+              111,
+              131,
+              121,
+              1694,
+              190,
+              130,
+              120,
+              100
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 131,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103702528,
+            "codeStatus": "ok",
+            "codeBytes": 2874,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              2139609,
+              2142895,
+              2142816,
+              2137886,
+              2138578,
+              2145631,
+              2146392,
+              2139700,
+              2138617,
+              2163264,
+              2166831,
+              2148557,
+              2149258,
+              2151753,
+              2151582
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 2145631,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103698432,
+            "codeStatus": "ok",
+            "codeBytes": 2874,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              2.14023,
+              2.138758,
+              2.17188,
+              2.138307,
+              2.138397,
+              2.15081,
+              2.155009,
+              2.149007,
+              2.160569,
+              2.138788,
+              2.190215,
+              2.160178,
+              2.159056,
+              2.149217,
+              2.151702
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 2.15081,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103718912,
+            "codeStatus": "ok",
+            "codeBytes": 2874,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "order": "capture",
+      "capture": {
+        "capturedAt": "2026-10-14T05:42:07.866Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-14T05:34:19.238163+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              237889279,
+              239390292,
+              243329519,
+              241640441,
+              241858302,
+              243393299,
+              238857957,
+              240129858,
+              240798711,
+              240189340,
+              242124654,
+              246660558,
+              236932322,
+              244411672,
+              243834652
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 241640441,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103763968,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              7645,
+              42811,
+              12072,
+              44463,
+              1122,
+              7584,
+              37441,
+              11642,
+              44234,
+              1102,
+              7615,
+              35617,
+              11261,
+              44224,
+              1082
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 11642,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103768064,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              623718,
+              636101,
+              626543,
+              622956,
+              626242,
+              624679,
+              622365,
+              622005,
+              621293,
+              618568,
+              627545,
+              632344,
+              626462,
+              628647,
+              629238
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 626242,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103776256,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              625421.7128712871,
+              623791.0099009901,
+              623904.0891089109,
+              623607,
+              624421.3168316832,
+              624331.7326732674,
+              624015.8910891089,
+              624631.7128712871,
+              624422,
+              624301.4851485149,
+              623962.3267326732,
+              625556.4257425743,
+              623550.8514851485,
+              623725.7425742574,
+              623407.6138613861
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 623904.0891089109,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103796736,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "order": "capture",
+      "capture": {
+        "capturedAt": "2026-10-14T05:41:54.892Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-14T05:34:19.238163+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              233579512,
+              227404925,
+              217507630,
+              217078059,
+              219744132,
+              219395284,
+              222349231,
+              217862370,
+              217623328,
+              220011086,
+              222447536,
+              218300928,
+              223083948,
+              220094625,
+              221553238
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 219744132,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103809024,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              6091,
+              36338,
+              11291,
+              43152,
+              1072,
+              7454,
+              35908,
+              11141,
+              43452,
+              1102,
+              5681,
+              35316,
+              11271,
+              43322,
+              1082
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 11271,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103735296,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              621574,
+              613538,
+              618107,
+              620101,
+              615121,
+              624329,
+              634899,
+              622656,
+              622345,
+              621984,
+              625360,
+              618528,
+              619689,
+              621634,
+              621273
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 621273,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103665664,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              623720.1881188119,
+              622511.5643564357,
+              623619.0099009901,
+              623462.5643564357,
+              623631.801980198,
+              623646.9801980198,
+              622259.1188118812,
+              621365.7326732674,
+              622609.4752475248,
+              622760.2574257426,
+              631008.0099009901,
+              629475.603960396,
+              628645.2277227723,
+              628228.3069306931,
+              628160.9405940594
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 623619.0099009901,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103735296,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "order": "capture",
+      "capture": {
+        "capturedAt": "2026-10-14T05:42:14.044Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+          "ref": "jairus/wasm3-feature-parity@334732e1",
+          "asOf": "2026-10-14T05:34:19.238043+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              199196,
+              97114,
+              102884,
+              91663,
+              86173,
+              168268,
+              122481,
+              97694,
+              87044,
+              94729,
+              200789,
+              98035,
+              98125,
+              92775,
+              87505
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 97694,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18239488,
+            "codeStatus": "ok",
+            "codeBytes": 1119,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              17203,
+              18685,
+              5791,
+              6852,
+              5811,
+              17974,
+              25268,
+              6292,
+              7434,
+              5461,
+              17483,
+              21380,
+              10640,
+              6913,
+              5460
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 7434,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18370560,
+            "codeStatus": "ok",
+            "codeBytes": 1119,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              30689077,
+              30447822,
+              30400452,
+              30630647,
+              31132976,
+              30705058,
+              30602814,
+              30603216,
+              30856082,
+              31241120,
+              30980217,
+              30216716,
+              30474373,
+              30983223,
+              30634434
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 30634434,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18501632,
+            "codeStatus": "ok",
+            "codeBytes": 1119,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              30525305,
+              30350111,
+              30751962.666666668,
+              30266917,
+              30170558.666666668,
+              30421522.333333332,
+              30338843,
+              30286494,
+              30125600.333333332,
+              29881920.333333332,
+              30351911,
+              30489400.666666668,
+              30699243.333333332,
+              30350418,
+              30277607.333333332
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 30350111,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18370560,
+            "codeStatus": "ok",
+            "codeBytes": 1119,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "order": "capture",
+      "capture": {
+        "capturedAt": "2026-10-14T05:42:24.191Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+          "ref": "jairus/wasm3-feature-parity@334732e1",
+          "asOf": "2026-10-14T05:34:19.238043+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              167857,
+              63440,
+              49563,
+              43312,
+              72758,
+              141107,
+              55996,
+              47520,
+              44744,
+              65503,
+              123342,
+              58029,
+              53822,
+              44885,
+              68269
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 58029,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18239488,
+            "codeStatus": "ok",
+            "codeBytes": 562,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              14748,
+              7565,
+              4188,
+              3136,
+              3577,
+              15249,
+              7284,
+              4349,
+              3437,
+              3096,
+              15128,
+              7705,
+              4198,
+              3266,
+              3156
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 4198,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18370560,
+            "codeStatus": "ok",
+            "codeBytes": 562,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              9124085,
+              9066758,
+              9067399,
+              8998888,
+              9064843,
+              7547980,
+              8883060,
+              9084250,
+              9122923,
+              9192474,
+              9274189,
+              8903709,
+              9080283,
+              9045657,
+              9067238
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 9067238,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18370560,
+            "codeStatus": "ok",
+            "codeBytes": 562,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              9.177526,
+              6.48895,
+              6.396696,
+              6.411615,
+              6.41975,
+              7.515208,
+              6.470325,
+              6.420501,
+              6.397277,
+              6.446059,
+              7.521529,
+              6.464765,
+              6.402077,
+              6.479793,
+              6.447291
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 6.446059,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18239488,
+            "codeStatus": "ok",
+            "codeBytes": 562,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "order": "capture",
+      "capture": {
+        "capturedAt": "2026-10-14T05:41:58.127Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+          "ref": "jairus/wasm3-feature-parity@334732e1",
+          "asOf": "2026-10-14T05:34:19.238043+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              220737,
+              86733,
+              92695,
+              76645,
+              93486,
+              189137,
+              84800,
+              90391,
+              70784,
+              94960,
+              161695,
+              94598,
+              92726,
+              69081,
+              92134
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 92695,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18239488,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              20178,
+              24196,
+              16942,
+              17183,
+              15329,
+              18845,
+              36148,
+              16311,
+              17152,
+              14107,
+              19767,
+              22773,
+              15720,
+              17283,
+              15349
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 17183,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18370560,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              6379454,
+              6206828,
+              6225103,
+              6520500,
+              6362912,
+              7092430,
+              6894887,
+              6853879,
+              6849621,
+              6313109,
+              7105885,
+              6892212,
+              6899325,
+              6850843,
+              6855142
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 6853879,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18370560,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              6172580.1,
+              6169435.2,
+              6176789.1,
+              6176681.9,
+              6181000,
+              6408988.4,
+              6416982.6,
+              6406496.8,
+              6416415.4,
+              6404259.5,
+              6402696.6,
+              6421275.7,
+              6414677.2,
+              6428726.8,
+              6414625
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 6408988.4,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18239488,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "order": "capture",
+      "capture": {
+        "capturedAt": "2026-10-14T05:41:45.500Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+          "ref": "jairus/wasm3-feature-parity@334732e1",
+          "asOf": "2026-10-14T05:34:19.238043+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              273056,
+              103105,
+              108785,
+              91062,
+              117873,
+              193155,
+              106801,
+              108164,
+              93537,
+              110549,
+              219404,
+              98266,
+              105870,
+              100821,
+              101000
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 108164,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18239488,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              23123,
+              29786,
+              22132,
+              18675,
+              21150,
+              25268,
+              28344,
+              21861,
+              18315,
+              17764,
+              23114,
+              28804,
+              20890,
+              18154,
+              16801
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 21861,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18370560,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              8433973,
+              8163652,
+              8154925,
+              8134687,
+              8105973,
+              7761543,
+              7515358,
+              7404018,
+              7356408,
+              7255167,
+              7452890,
+              7166630,
+              6958487,
+              6865140,
+              6808043
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 7404018,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18501632,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              6313302.454545454,
+              6312583.818181818,
+              6332264.636363637,
+              6337912.545454546,
+              6337452.636363637,
+              6862846.2727272725,
+              6843755.7272727275,
+              6829298.454545454,
+              6855570.7272727275,
+              6838212.454545454,
+              6339593,
+              6336002.636363637,
+              6307741.909090909,
+              6344727.2727272725,
+              6313725.090909091
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 6336002.636363637,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18239488,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "order": "repeat",
+      "capture": {
+        "capturedAt": "2026-10-14T05:43:04.936Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-14T05:34:19.263185+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              215546055,
+              223401486,
+              216901585,
+              217118885,
+              215330458,
+              218234851,
+              217781606,
+              218372522,
+              216648737,
+              220423814,
+              215691380,
+              216468767,
+              216517109,
+              215678706,
+              218807763
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 216901585,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103735296,
+            "codeStatus": "ok",
+            "codeBytes": 3258,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              1473,
+              200,
+              170,
+              131,
+              130,
+              1493,
+              220,
+              171,
+              190,
+              120,
+              1593,
+              210,
+              180,
+              141,
+              111
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 180,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103686144,
+            "codeStatus": "ok",
+            "codeBytes": 3258,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              1122549,
+              1123201,
+              1121527,
+              1121016,
+              1122289,
+              1134331,
+              1121137,
+              1124012,
+              1128440,
+              1121237,
+              1131075,
+              1127208,
+              1127098,
+              1128080,
+              1133791
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 1124012,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103710720,
+            "codeStatus": "ok",
+            "codeBytes": 3258,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              1124015.5892857143,
+              1128749.3392857143,
+              1122727.4285714286,
+              1124186.0892857143,
+              1121465.5892857143,
+              1138280.5357142857,
+              1126061.2142857143,
+              1121562.375,
+              1123571,
+              1122773.232142857,
+              1136712.5,
+              1121808.642857143,
+              1124400.3214285714,
+              1121869.8392857143,
+              1125106.3035714286
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 1124015.5892857143,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103702528,
+            "codeStatus": "ok",
+            "codeBytes": 3258,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "order": "repeat",
+      "capture": {
+        "capturedAt": "2026-10-14T05:43:17.125Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-14T05:34:19.263185+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              213182630,
+              211048552,
+              212200141,
+              213934647,
+              210653421,
+              223186613,
+              212841489,
+              212328666,
+              211090395,
+              210929822,
+              213691742,
+              212492765,
+              219040553,
+              211675408,
+              214101004
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 212328666,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103739392,
+            "codeStatus": "ok",
+            "codeBytes": 2874,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              1352,
+              200,
+              120,
+              150,
+              110,
+              1613,
+              220,
+              100,
+              130,
+              100,
+              1402,
+              210,
+              150,
+              120,
+              110
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 150,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103710720,
+            "codeStatus": "ok",
+            "codeBytes": 2874,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              2151009,
+              2168783,
+              2198598,
+              2183721,
+              2195853,
+              2143575,
+              2139267,
+              2143545,
+              2164975,
+              2137063,
+              2151209,
+              2157611,
+              2142893,
+              2154997,
+              2138526
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 2151209,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103723008,
+            "codeStatus": "ok",
+            "codeBytes": 2874,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              2.150478,
+              2.150969,
+              2.143816,
+              2.137704,
+              2.138385,
+              2.148515,
+              2.137053,
+              2.166308,
+              2.137163,
+              2.138455,
+              2.163362,
+              2.138636,
+              2.164805,
+              2.138936,
+              2.139096
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 2.139096,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103706624,
+            "codeStatus": "ok",
+            "codeBytes": 2874,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "order": "repeat",
+      "capture": {
+        "capturedAt": "2026-10-14T05:42:52.274Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-14T05:34:19.263185+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              220165747,
+              228973996,
+              218741378,
+              221482172,
+              221884632,
+              221274521,
+              220624673,
+              220279141,
+              225387576,
+              222693018,
+              222775354,
+              219649112,
+              220491001,
+              224066902,
+              220818810
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 221274521,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103829504,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              7293,
+              35637,
+              11402,
+              45455,
+              1092,
+              5931,
+              37310,
+              11702,
+              43492,
+              1162,
+              5821,
+              36409,
+              11401,
+              43833,
+              1102
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 11402,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103682048,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              628016,
+              622986,
+              619891,
+              623968,
+              625070,
+              623277,
+              626583,
+              622295,
+              618427,
+              621884,
+              628427,
+              618538,
+              623226,
+              623657,
+              620150
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 623226,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103768064,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              625653.9306930694,
+              623996.1485148515,
+              624494.5148514851,
+              625362.396039604,
+              625078,
+              625170.7425742574,
+              626521.5148514851,
+              624852.9108910891,
+              625375.8811881188,
+              624988.9108910891,
+              624735.8613861386,
+              625019.6732673268,
+              625845.3762376237,
+              625649.1683168317,
+              625006.5742574257
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 625078,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103710720,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "order": "repeat",
+      "capture": {
+        "capturedAt": "2026-10-14T05:42:39.630Z",
+        "source": {
+          "repository": "JairusSW/w2c2",
+          "revision": "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b",
+          "ref": "main@f303ed27",
+          "asOf": "2026-10-14T05:34:19.263185+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              223347424,
+              221386482,
+              220354504,
+              222833283,
+              221832845,
+              227039755,
+              221094120,
+              223076512,
+              231347627,
+              221648186,
+              221889592,
+              225502693,
+              222665707,
+              221194460,
+              220950940
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 221889592,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103780352,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              6071,
+              36569,
+              11622,
+              44143,
+              1032,
+              7654,
+              36599,
+              11922,
+              44634,
+              1092,
+              7765,
+              37411,
+              11803,
+              45145,
+              1533
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 11803,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103723008,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              623708,
+              623306,
+              621663,
+              618438,
+              621714,
+              628767,
+              633907,
+              630420,
+              630391,
+              629478,
+              627935,
+              618467,
+              621944,
+              624399,
+              618338
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 621944,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103731200,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              624607.9009900991,
+              626996.0792079208,
+              626124.4257425743,
+              624615.2475247525,
+              624848.6534653465,
+              624650.5544554455,
+              624326.9702970297,
+              624360.3069306931,
+              624469.0198019802,
+              624188.6930693069,
+              623424.1881188119,
+              623766.1089108911,
+              623797.0693069306,
+              624916.6930693069,
+              624435.2970297029
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "w2c2-clang",
+            "version": "w2c2-clang:8c1f4477ce24b2115b1b3136ced2590d9b9229c28720272837524ee5214c0501",
+            "backend": "c-aot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 624360.3069306931,
+            "memoryStatus": "ok",
+            "peakRssBytes": 103788544,
+            "codeStatus": "ok",
+            "codeBytes": 3530,
+            "codeKind": "engine-reported"
+          }
+        ]
+      }
+    },
+    {
+      "order": "repeat",
+      "capture": {
+        "capturedAt": "2026-10-14T05:43:11.137Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+          "ref": "jairus/wasm3-feature-parity@334732e1",
+          "asOf": "2026-10-14T05:34:19.263179+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              214915,
+              99437,
+              103866,
+              90179,
+              86473,
+              177785,
+              110789,
+              91512,
+              99117,
+              94178,
+              180189,
+              136226,
+              94869,
+              92955,
+              102833
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 99437,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18239488,
+            "codeStatus": "ok",
+            "codeBytes": 1119,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              19797,
+              19346,
+              9949,
+              6813,
+              5400,
+              18044,
+              21851,
+              6202,
+              6893,
+              5781,
+              23484,
+              24276,
+              6061,
+              7154,
+              5700
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 7154,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18370560,
+            "codeStatus": "ok",
+            "codeBytes": 1119,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              31187825,
+              30994132,
+              30630306,
+              30200547,
+              30403649,
+              30616320,
+              30680020,
+              30769108,
+              30722530,
+              31400125,
+              30924099,
+              30477669,
+              30310605,
+              30678787,
+              31179841
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 30678787,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18501632,
+            "codeStatus": "ok",
+            "codeBytes": 1119,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "compact-imports"
+              ],
+              "abi": "core",
+              "bytes": 393,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/compact-imports-ordinary-baseline.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              30560639,
+              30351869.333333332,
+              30457114.333333332,
+              30494437.666666668,
+              30641621.333333332,
+              30031780.333333332,
+              30660738,
+              30504443.666666668,
+              30047663.666666668,
+              30314696.666666668,
+              30471308.333333332,
+              30224417,
+              30658978,
+              30550787.666666668,
+              30530994
+            ],
+            "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+            "wasm": "compact-imports-ordinary-baseline.wasm",
+            "artifactSha256": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+            "contractSha256": "c786d2b1b8da991c3800fc000d6725cf4747233132a4536ad8342a2747ddb99a",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 30494437.666666668,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18370560,
+            "codeStatus": "ok",
+            "codeBytes": 1119,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "order": "repeat",
+      "capture": {
+        "capturedAt": "2026-10-14T05:43:17.941Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+          "ref": "jairus/wasm3-feature-parity@334732e1",
+          "asOf": "2026-10-14T05:34:19.263179+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              180270,
+              63149,
+              49273,
+              43121,
+              65323,
+              124684,
+              58370,
+              49153,
+              45185,
+              73449,
+              136727,
+              66094,
+              53130,
+              43521,
+              60644
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 60644,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18239488,
+            "codeStatus": "ok",
+            "codeBytes": 562,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              18204,
+              7735,
+              3977,
+              3146,
+              3096,
+              15288,
+              7584,
+              3798,
+              3026,
+              3106,
+              25038,
+              6963,
+              3938,
+              3006,
+              3026
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 3938,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18370560,
+            "codeStatus": "ok",
+            "codeBytes": 562,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              8678307,
+              9108796,
+              9063351,
+              9137371,
+              9123004,
+              8421362,
+              9106082,
+              8962501,
+              9114647,
+              9175342,
+              9015111,
+              9018006,
+              9143261,
+              8975115,
+              9139584
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 9106082,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18370560,
+            "codeStatus": "ok",
+            "codeBytes": 562,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "mechanisms",
+              "purpose": "",
+              "tags": [
+                "mvp"
+              ],
+              "abi": "core",
+              "bytes": 99,
+              "source": "corpus/calls.go",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              7.64458,
+              6.589845,
+              6.471011,
+              6.444742,
+              6.440614,
+              8.681472,
+              6.455252,
+              6.441786,
+              6.410938,
+              6.396411,
+              7.507532,
+              6.487983,
+              6.424042,
+              6.427649,
+              6.394948
+            ],
+            "workload": "mechanisms/wasm-host-wasm-loop",
+            "wasm": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3.wasm",
+            "artifactSha256": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+            "contractSha256": "c937379bdc2748a708a529245fcf4bc5926e95216e39ed4d5d2990f6616d0d74",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 6.441786,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18239488,
+            "codeStatus": "ok",
+            "codeBytes": 562,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "order": "repeat",
+      "capture": {
+        "capturedAt": "2026-10-14T05:42:55.608Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+          "ref": "jairus/wasm3-feature-parity@334732e1",
+          "asOf": "2026-10-14T05:34:19.263179+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              224925,
+              79319,
+              90852,
+              71685,
+              93917,
+              162717,
+              88738,
+              90902,
+              72897,
+              88507,
+              165092,
+              100580,
+              91963,
+              69421,
+              96041
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 90852,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18235392,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              20900,
+              24056,
+              16451,
+              17463,
+              15580,
+              19948,
+              29446,
+              16461,
+              16962,
+              14998,
+              19768,
+              34204,
+              18545,
+              18895,
+              17172
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 17463,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18366464,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              6643573,
+              6400303,
+              6373703,
+              6307187,
+              6369525,
+              6563822,
+              6928380,
+              6887803,
+              6893554,
+              6924012,
+              6605811,
+              6413157,
+              6368954,
+              6358714,
+              6308089
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 6373703,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18366464,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-opaque-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              6440922.7,
+              6457674.3,
+              6457030.1,
+              6449391.7,
+              6458569,
+              7007345.1,
+              6980375.1,
+              6979752.9,
+              6980078.6,
+              6981827.9,
+              6405546.9,
+              6392469.2,
+              6421139.3,
+              6404482.9,
+              6406735.2
+            ],
+            "workload": "features/threads/host-opaque-identity/performance-4096x64",
+            "wasm": "threads-host-opaque-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "9f8900e0bf841c56775c13edb0255af7f1e4a08a68b69d4b534aa8fe0d3efd10",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 6457030.1,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18239488,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    },
+    {
+      "order": "repeat",
+      "capture": {
+        "capturedAt": "2026-10-14T05:42:42.865Z",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "334732e1b475ca59303ad2941c7160f50f981268",
+          "ref": "jairus/wasm3-feature-parity@334732e1",
+          "asOf": "2026-10-14T05:34:19.263179+00:00",
+          "kind": "snapshot"
+        },
+        "platform": {
+          "os": "linux",
+          "arch": "amd64",
+          "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+          "cores": 8,
+          "kernel": "Linux 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+          "memoryBytes": 32710213632
+        },
+        "results": [
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              209034,
+              91834,
+              92064,
+              75653,
+              86012,
+              167546,
+              90300,
+              93606,
+              77566,
+              96983,
+              170322,
+              89940,
+              95460,
+              70423,
+              88927
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "compile",
+            "latencyStatus": "ok",
+            "latencyNs": 91834,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18239488,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              19166,
+              29386,
+              15820,
+              16251,
+              14377,
+              20098,
+              29956,
+              15359,
+              16241,
+              14307,
+              19777,
+              29486,
+              16901,
+              17012,
+              15119
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "instantiate",
+            "latencyStatus": "ok",
+            "latencyNs": 16251,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18370560,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              6497106,
+              6739834,
+              6784368,
+              6273133,
+              6184646,
+              6434358,
+              6307768,
+              6263134,
+              6212308,
+              7258273,
+              8077410,
+              6291708,
+              6251072,
+              6248737,
+              6226885
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "first-call",
+            "latencyStatus": "ok",
+            "latencyNs": 6307768,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18370560,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          },
+          {
+            "display": {
+              "group": "features",
+              "purpose": "",
+              "tags": [
+                "threads"
+              ],
+              "abi": "core",
+              "bytes": 278,
+              "source": "/Users/work/Code/Web/wasm.fyi/.wasmfyi/local/wago-w2c2-20261013/features/sources/threads-host-identity.wat",
+              "reset": "stateless"
+            },
+            "timingSamples": 15,
+            "samplesNs": [
+              6365397.1,
+              6336480.5,
+              6364882.1,
+              6374146.7,
+              6382542.5,
+              6359374.8,
+              6355265,
+              6352646.1,
+              6354737,
+              6346937.3,
+              6350149.3,
+              6362891.4,
+              6366702.6,
+              6350495,
+              6350086.2
+            ],
+            "workload": "features/threads/host-identity/performance-4096x64",
+            "wasm": "threads-host-identity.wasm",
+            "artifactSha256": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+            "contractSha256": "4f3fb1f8d8a04c80bcd1ea5d5108917422a9d0dd2a7916d8e4813eee94b7901c",
+            "engine": "wago",
+            "version": "334732e1b475ca59303ad2941c7160f50f981268/source-ea01296550a1386c2d947417133f83399eee488c6e8787e46082db96d2512692",
+            "backend": "railshot",
+            "phase": "steady",
+            "latencyStatus": "ok",
+            "latencyNs": 6354737,
+            "memoryStatus": "ok",
+            "peakRssBytes": 18239488,
+            "codeStatus": "ok",
+            "codeBytes": 751,
+            "codeKind": "native-image"
+          }
+        ]
+      }
+    }
+  ],
+  "decision": "Native AMD64 baseline audited; parity incomplete; no publication",
+  "checks": [
+    "16 exact-source captures,64 phases,15 samples each,all resource statusesok",
+    "Artifact and contract hashes match original ARM64 fixtures, with native platforms kept separate",
+    "Fresh and reversed source order on CPU7; same contracts and typed callbacks as local campaign"
+  ],
+  "limitations": [
+    "Current AMD64 RegisterNativeScalarLeaf is a stub that returnsfalse; ordinary callbacks retain Go bridge. ARM64 has a native scalar-leaf path.",
+    "No before/current optimization ratio is inferred from this capture; the separately recorded public API pairs compare0ae6/3347.",
+    "Compile phases compare different JIT versus translation/C-compiler work.",
+    "Private four-case corpus only; no complete AMD64 feature/source snapshot or local database ingestion.",
+    "Host desktop applications remained running; results describe this host and measurement setup."
+  ]
+}
