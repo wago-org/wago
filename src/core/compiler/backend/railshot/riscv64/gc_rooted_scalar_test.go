@@ -899,6 +899,91 @@ func TestRV64RootedSIMDArrayOperationsCompile(t *testing.T) {
 	}
 }
 
+func rv64RootedScalarSegmentArrayModule() []byte {
+	body := []byte{
+		0x02, 0x01, 0x63, 0x00, 0x01, 0x63, 0x01,
+		0x41, 0x00, 0x41, 0x03, 0xfb, 0x09, 0x00, 0x00, 0x22, 0x00,
+		0x1a,
+		0x20, 0x00, 0x41, 0x01, 0x41, 0x0c, 0x41, 0x01, 0xfb, 0x12, 0x00, 0x00,
+		0x41, 0x00, 0x41, 0x02, 0xfb, 0x0a, 0x01, 0x00, 0x22, 0x01,
+		0x1a,
+		0x20, 0x01, 0x41, 0x00, 0xfb, 0x0b, 0x01, 0xfb, 0x1d,
+		0x20, 0x01, 0x41, 0x00, 0x41, 0x01, 0x41, 0x01, 0xfb, 0x13, 0x01, 0x00,
+		0x20, 0x00, 0x41, 0x00, 0xfb, 0x0b, 0x00,
+		0x20, 0x00, 0x41, 0x01, 0xfb, 0x0b, 0x00,
+		0x20, 0x01, 0x41, 0x00, 0xfb, 0x0b, 0x01, 0xfb, 0x1d,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5e, 0x7f, 0x01},
+			[]byte{0x5e, byte(wasm.HeapI31), 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(9, []byte{0x01, 0x05, byte(wasm.HeapI31), 0x02,
+			0x41, 0x7e, 0xfb, 0x1c, 0x0b,
+			0x41, 0x7d, 0xfb, 0x1c, 0x0b,
+		}),
+		wasmtest.Section(12, wasmtest.ULEB(1)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		wasmtest.Section(11, wasmtest.Vec([]byte{0x01, 0x10,
+			0x01, 0x00, 0x00, 0x00,
+			0x02, 0x00, 0x00, 0x00,
+			0x03, 0x00, 0x00, 0x00,
+			0x04, 0x00, 0x00, 0x00,
+		})),
+	)
+}
+
+func TestRV64RootedScalarSegmentArraysCompile(t *testing.T) {
+	source := rv64RootedScalarSegmentArrayModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vector, err := functionUsesSWAR(m, 0); err != nil || vector {
+		t.Fatalf("scalar segment-array selector=%t err=%v", vector, err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(1)
+	if !roots.MarkFunction(0) || !roots.ReserveFunctions(1) {
+		t.Fatal("reserve scalar segment-array roots")
+	}
+	plan, ok := roots.BeginFunction(0)
+	if !ok {
+		t.Fatal("begin scalar segment-array roots")
+	}
+	*plan = shared.GCFrameRootPlan{
+		Candidate: true, Exact: true, Conservative: true,
+		Locals: []shared.GCFrameLocal{
+			{Index: 0, Offset: shared.RV64CallFrameHeaderBytes},
+			{Index: 1, Offset: shared.RV64CallFrameHeaderBytes + 8},
+		},
+	}
+	if !plan.SetLiveMasks([]uint64{3, 3}, 2, 0) {
+		t.Fatal("install scalar segment-array allocation masks")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCArrayHelpers: true, SyncHostSlots: 6, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 2 || plan.CallsiteCount() != 0 {
+		t.Fatalf("scalar segment-array code=%d safepoints=%d callsites=%d", len(compiled.Code), plan.SafepointCount(), plan.CallsiteCount())
+	}
+}
+
 func rv64RootedReferenceHostImportModule() []byte {
 	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
 	functionImport = append(functionImport, wasmtest.ULEB(1)...)

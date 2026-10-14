@@ -1233,6 +1233,77 @@ func TestRV64RootedSIMDArrayFunctionExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarSegmentArrayModule() []byte {
+	body := []byte{
+		0x02, 0x01, 0x63, 0x00, 0x01, 0x63, 0x01,
+		0x41, 0x00, 0x41, 0x03, 0xfb, 0x09, 0x00, 0x00, 0x22, 0x00,
+		0x1a,
+		0x20, 0x00, 0x41, 0x01, 0x41, 0x0c, 0x41, 0x01, 0xfb, 0x12, 0x00, 0x00,
+		0x41, 0x00, 0x41, 0x02, 0xfb, 0x0a, 0x01, 0x00, 0x22, 0x01,
+		0x1a,
+		0x20, 0x01, 0x41, 0x00, 0xfb, 0x0b, 0x01, 0xfb, 0x1d,
+		0x20, 0x01, 0x41, 0x00, 0x41, 0x01, 0x41, 0x01, 0xfb, 0x13, 0x01, 0x00,
+		0x20, 0x00, 0x41, 0x00, 0xfb, 0x0b, 0x00,
+		0x20, 0x00, 0x41, 0x01, 0xfb, 0x0b, 0x00,
+		0x20, 0x01, 0x41, 0x00, 0xfb, 0x0b, 0x01, 0xfb, 0x1d,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5e, 0x7f, 0x01},
+			[]byte{0x5e, byte(wasm.HeapI31), 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(9, []byte{0x01, 0x05, byte(wasm.HeapI31), 0x02,
+			0x41, 0x7e, 0xfb, 0x1c, 0x0b,
+			0x41, 0x7d, 0xfb, 0x1c, 0x0b,
+		}),
+		wasmtest.Section(12, wasmtest.ULEB(1)),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		wasmtest.Section(11, wasmtest.Vec([]byte{0x01, 0x10,
+			0x01, 0x00, 0x00, 0x00,
+			0x02, 0x00, 0x00, 0x00,
+			0x03, 0x00, 0x00, 0x00,
+			0x04, 0x00, 0x00, 0x00,
+		})),
+	)
+}
+
+func TestRV64RootedScalarSegmentArraysExecute(t *testing.T) {
+	source := rootedScalarSegmentArrayModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("pure scalar rooted segment arrays were not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	roots := view.genericGCFrameRoots()
+	if !rv64FreshRootedGC(view) || view.requiredFeatures.IsEnabled(CoreFeatureSIMD) || roots == nil || len(roots.safepoints) != 2 ||
+		len(roots.safepoints[0].offsets) != 0 || len(roots.safepoints[1].offsets) != 1 ||
+		len(view.PassiveData) != 1 || len(view.passiveElems) != 1 {
+		t.Fatalf("scalar segment receipt=%t features=%v roots=%+v data=%d elements=%d validation=%v", rv64FreshRootedGC(view), view.requiredFeatures,
+			roots, len(view.PassiveData), len(view.passiveElems), railshotValidateCompiled(view))
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	want := []uint64{0xfffffffe, 1, 4, 0xfffffffd}
+	for iteration := range 32 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, want) {
+			t.Fatalf("iteration %d: run()=%v err=%v want=%v", iteration, got, err, want)
+		}
+	}
+}
+
 func rootedScalarFunctionBeforeStructModule() []byte {
 	body := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x01, 0xfb, 0x02, 0x01, 0x00, 0x0b}
 	return wasmtest.Module(

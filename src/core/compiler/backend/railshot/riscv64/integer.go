@@ -2097,7 +2097,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrArrayNewData:
-				if !(state.gcArrayPackedData || state.gcArrayCopy) || imm.Index > 1 || imm.Index2 != 0 {
+				_, _, genericArray := referenceTypes.rootedArrayStorage(imm.Index)
+				genericData := state.gcRootedScalar && genericArray && !referenceTypes.rootedArrayElementReference(imm.Index) && uint64(imm.Index2) < uint64(len(state.passiveData))
+				if !genericData && (!(state.gcArrayPackedData || state.gcArrayCopy) || imm.Index > 1 || imm.Index2 != 0) {
 					return integerSummary{}, unsupported("array.new_data outside exact packed data profile")
 				}
 				if _, err = popClass(false); err != nil { // length
@@ -2117,7 +2119,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrArrayNewElem:
-				if !state.gcArrayReference || imm.Index < 1 || imm.Index > 4 || imm.Index2 != 0 {
+				_, _, genericArray := referenceTypes.rootedArrayStorage(imm.Index)
+				genericElem := state.gcRootedScalar && genericArray && referenceTypes.rootedArrayElementReference(imm.Index) && uint64(imm.Index2) < uint64(state.elementCount)
+				if !genericElem && (!state.gcArrayReference || imm.Index < 1 || imm.Index > 4 || imm.Index2 != 0) {
 					return integerSummary{}, unsupported("array.new_elem outside exact reference array profile")
 				}
 				if _, err = popClass(false); err != nil { // length
@@ -2137,7 +2141,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrArrayInitElem:
-				if !state.gcArrayInitElem || imm.Index != 2 || imm.Index2 != 0 {
+				_, genericMutable, genericArray := referenceTypes.rootedArrayStorage(imm.Index)
+				genericElem := state.gcRootedScalar && genericArray && genericMutable && referenceTypes.rootedArrayElementReference(imm.Index) && uint64(imm.Index2) < uint64(state.elementCount)
+				if !genericElem && (!state.gcArrayInitElem || imm.Index != 2 || imm.Index2 != 0) {
 					return integerSummary{}, unsupported("array.init_elem outside exact funcref array profile")
 				}
 				for i := 0; i < 3; i++ {
@@ -2156,9 +2162,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.gcArrayInitializeElements(h, imm.Index, imm.Index2)
 				}
 			case wasm.InstrArrayInitData:
+				_, genericMutable, genericArray := referenceTypes.rootedArrayStorage(imm.Index)
+				genericData := state.gcRootedScalar && genericArray && genericMutable && !referenceTypes.rootedArrayElementReference(imm.Index) && uint64(imm.Index2) < uint64(len(state.passiveData))
 				packed := state.gcArrayInitData && !state.gcArrayInitDataWide && (imm.Index == 1 || imm.Index == 2) && imm.Index2 == 0
 				wide := state.gcArrayInitDataWide && imm.Index <= 1 && imm.Index2 <= 6
-				if !packed && !wide {
+				if !genericData && !packed && !wide {
 					return integerSummary{}, unsupported("array.init_data outside exact data-initialization profile")
 				}
 				for i := 0; i < 3; i++ {
