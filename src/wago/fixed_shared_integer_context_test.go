@@ -25,10 +25,15 @@ func fixedIntegerGrow(n int) int {
 	return value
 }
 func TestFixedSharedIntegerGoOwner(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run("native-leaf="+strconv.FormatBool(enabled), func(t *testing.T) { testFixedSharedIntegerGoOwner(t, enabled) })
+	}
+}
+func testFixedSharedIntegerGoOwner(t *testing.T, nativeLeaf bool) {
 	if codeProfileEnabled {
 		t.Skip("profiling retains ordinary portal")
 	}
-	cfg := goHostSegmentConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit)
+	cfg := NewRuntimeConfig().WithOptimization("native-leaf-host", nativeLeaf).WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit)
 	c, err := cfg.Compile(fixedSharedHostLoopModule(false))
 	if err != nil {
 		t.Fatal(err)
@@ -158,7 +163,7 @@ func TestFixedSharedResumePayloadPanicAndVersion(t *testing.T) {
 		t.Skip("profiling retains ordinary portal")
 	}
 	t.Setenv("WAGO_FIXED_HOST_RESUME_PAYLOAD", "1")
-	cfg := goHostSegmentConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit)
+	cfg := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit)
 	c, err := cfg.Compile(fixedSharedHostLoopModule(false))
 	if err != nil {
 		t.Fatal(err)

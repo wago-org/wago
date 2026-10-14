@@ -1927,6 +1927,8 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	// wrapper ABI and caller-clobbered register set stay unchanged. Operands
 	// are homed above; proven preserved local pins can remain in registers.
 	nativeLeaf := -1
+	goDirect := -1
+	directSharedGo := f.cacheImportDispatch && f.threadedMemory0 && f.m.ImportedFuncCount() == 1 && !recordRoots && len(ft.Params) == 1 && ft.Params[0] == wasm.I32 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && os.Getenv("WAGO_ARM64_FIXED_SHARED_GOCALL") != "0"
 	// A single-import resource-free module retains its lean existing wrapper
 	// route: the extra dispatch branch regresses short dependent callback loops.
 	// Stateful modules and import aliases amortize this branch against context
@@ -1935,8 +1937,15 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
 		f.loadImportDispatchBase(X16)
 		f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
-		f.a.AndImm64(X12, X12, runtime.ImportDispatchCallerNativeLeafTag)
-		nativeLeaf = f.a.Cbnz64(X12)
+		if directSharedGo {
+			f.a.AndImm64(X17, X12, runtime.ImportDispatchCallerNativeLeafTag)
+			nativeLeaf = f.a.Cbnz64(X17)
+			f.a.AndImm64(X12, X12, runtime.ImportDispatchCallerGoHostTag)
+			goDirect = f.a.Cbnz64(X12)
+		} else {
+			f.a.AndImm64(X12, X12, runtime.ImportDispatchCallerNativeLeafTag)
+			nativeLeaf = f.a.Cbnz64(X12)
+		}
 	}
 	// Only wrapper calls need buffer pointers. The native register branch
 	// skips this setup and loads its canonical i32 arguments directly.
@@ -2042,6 +2051,31 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	}
 	if nativeLeaf >= 0 {
 		done := f.a.Branch()
+		goDone := -1
+		if goDirect >= 0 {
+			f.patchBranch19(goDirect, f.a.Len())
+			// The fixed shared import-only proof excludes helper/foreign guest
+			// calls and GC roots. The runtime Go-host tag selects ordinary
+			// rooted Go dispatch, with unchanged parked ownership and traps.
+			f.ld64(X11, linMemReg, -int32(offCustomCtx))
+			f.ld32(X9, SP, argOff)
+			f.syncHostStore64(X11, hcArgs, X9)
+			f.a.MovImm64(X16, uint64(b.ImportIndex))
+			f.st32(X11, hcImportIdx, X16)
+			f.a.MovImm64(X16, 0x10001)
+			f.st32(X11, hcNArgs, X16)
+			f.ld64(X16, X11, hcTrampoline)
+			if regallocCheckEnabled {
+				f.checkCallClobber()
+			}
+			f.a.Blr(X16)
+			f.ld64(X11, linMemReg, -int32(offCustomCtx))
+			f.syncHostLoad64(X9, X11, hcResults)
+			f.st64(SP, f.spillOff(resultSlot), X9)
+			f.refreshCachedMemoryBoundAfterExternalCall()
+			f.stats.peep("fixed-shared-direct-go")
+			goDone = f.a.Branch()
+		}
 		f.patchBranch19(nativeLeaf, f.a.Len())
 		// Reload the cell target after the tag test. Native leaves keep this
 		// instance's basedata and cached memory bound intact.
@@ -2058,6 +2092,9 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		f.a.Blr(X17)
 		f.st64(SP, f.spillOff(resultSlot), X0)
 		f.patchBranch26(done, f.a.Len())
+		if goDone >= 0 {
+			f.patchBranch26(goDone, f.a.Len())
+		}
 	}
 
 	f.reloadLocalsForCall() // non-STACK_REG model only
