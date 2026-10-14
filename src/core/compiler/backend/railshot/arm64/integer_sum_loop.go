@@ -102,20 +102,24 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 		f.emitIntegerParitySum(p, typ, get)
 	} else {
 		get(p.Accumulator)
-		get(p.Bound)
-		one()
-		f.pushBinOp(opShrU, typ)
-		get(p.Bound)
-		one()
-		f.pushBinOp(opSub, typ)
-		get(p.Bound)
-		one()
-		f.pushBinOp(opAnd, typ)
-		f.pushBinOp(opAdd, typ)
-		f.pushBinOp(opMul, typ)
-		if p.Coefficient != 1 {
-			f.pushValue(storage{kind: stConst, typ: typ, cval: int64(p.Coefficient)})
+		if p.Coefficient == 0 {
+			f.pushValue(zeroStorage(typ))
+		} else {
+			get(p.Bound)
+			one()
+			f.pushBinOp(opShrU, typ)
+			get(p.Bound)
+			one()
+			f.pushBinOp(opSub, typ)
+			get(p.Bound)
+			one()
+			f.pushBinOp(opAnd, typ)
+			f.pushBinOp(opAdd, typ)
 			f.pushBinOp(opMul, typ)
+			if p.Coefficient != 1 {
+				f.pushValue(storage{kind: stConst, typ: typ, cval: int64(p.Coefficient)})
+				f.pushBinOp(opMul, typ)
+			}
 		}
 		if p.Constant != 0 || p.InvariantGlobal {
 			if p.InvariantGlobal {
