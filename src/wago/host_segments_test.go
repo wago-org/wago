@@ -36,11 +36,7 @@ func hostYieldLoopModule() []byte {
 }
 
 func goHostSegmentConfig() *RuntimeConfig {
-	cfg := NewRuntimeConfig()
-	if runtime.GOARCH == "arm64" {
-		cfg = cfg.WithOptimization("native-leaf-host", false)
-	}
-	return cfg
+	return NewRuntimeConfig().WithOptimization("native-leaf-host", false)
 }
 
 func TestBoundedHostYieldAdmissionAndRollback(t *testing.T) {

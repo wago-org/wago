@@ -34,6 +34,8 @@ import (
 var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 
 // Binding-time Go classification permits direct control-frame calls in bounded numeric functions.
+var nativeLeafHostEnabled = os.Getenv("WAGO_AMD64_NO_NATIVE_LEAF_HOST") != "1"
+
 var directGoImportEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_GO_IMPORT") != "1"
 
 // Lend R11 to guarded call-making local pins. The second lease below can
@@ -3705,9 +3707,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// generated code is constrained to caller-saved GPRs. Reserve every Go
 	// callee-saved allocatable register up front; RBX remains the explicit linMem
 	// input. The body/local bounds keep any spill tradeoff away from larger code.
-	directPrepared := f.opt(optPreparedDirectEntry) && regABI && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && (!hasCall || hints.hasNonDirectCall()) && !touchesMemory && len(modGlobals) == 0 && !moduleEH && !hints.hasUnsupportedDynamicCall() &&
+	// Register preservation is independent of scheduler admission. Keep this
+	// allocation constraint when bounded entry is disabled; the finalizer drops
+	// the direct-entry proof without changing the guest body.
+	nativeHostDirect := f.opt(optNativeLeafHost) && m.ImportedFuncCount() == 1 && shared.BoundedNativeHostBody(c.BodyBytes, 1)
+	directPrepared := f.opt(optPreparedDirectEntry) && regABI && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && (!hasCall || hints.hasNonDirectCall() || nativeHostDirect) && !touchesMemory && len(modGlobals) == 0 && !moduleEH && (!hints.hasUnsupportedDynamicCall() || nativeHostDirect) &&
 		(!hasCall || len(gcTypeLayouts) == 0 && !gcTypeSubtypingRefTest && !gcStructHelpers && !gcArrayHelpers && gcFrameRoots == nil) &&
-		m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall) && len(c.BodyBytes) <= 96 && nLocals <= 8
+		((m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall)) || nativeHostDirect) && len(c.BodyBytes) <= 96 && nLocals <= 8
 	if directPrepared {
 		for _, r := range [...]Reg{RBP, R12, R13, R14, R15} {
 			gpPool = withoutReg(gpPool, r)

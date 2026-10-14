@@ -447,7 +447,7 @@ var catalog = []Definition{
 	both("prepared-direct-entry", "Direct prepared entry", "enter compiler-proved integer functions through the register ABI"),
 	arm64("prepared-light-entry", "Light prepared entry", "use caller-clobber proofs to select a smaller native entry thunk"),
 	both("prepared-bounded-entry", "Bounded prepared entry", "keep compiler-bounded native leaves on the Go scheduler"),
-	arm64("native-leaf-host", "Native scalar host leaves", "lower proven pure Go scalar callbacks into native import trampolines"),
+	both("native-leaf-host", "Native scalar host leaves", "lower proven pure Go scalar callbacks into native import trampolines"),
 	both("direct-go-host-import", "Direct Go host imports", "bypass cross-instance marshaling for bound Go imports in bounded numeric functions"),
 	amd64("wide-loop-int-const", "Wide loop integer constants", "keep repeatedly materialized non-imm32 i64 loop constants in otherwise-idle registers"),
 	amd64("compact-loop-align32", "Compact loop alignment", "place small loop functions at 32-byte fetch-block boundaries"),

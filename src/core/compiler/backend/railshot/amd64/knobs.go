@@ -26,6 +26,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("prepared-direct-entry", &preparedDirectEntryEnabled),
 	optimization.Bind("prepared-bounded-entry", &preparedBoundedEntryEnabled),
 	optimization.Bind("direct-go-host-import", &directGoImportEnabled),
+	optimization.Bind("native-leaf-host", &nativeLeafHostEnabled),
 	optimization.Bind("wide-loop-int-const", &wideLoopIntConstEnabled),
 	optimization.Bind("compact-loop-align32", &compactLoopAlign32Enabled),
 	optimization.Bind("counted-loop-latch", &countedLoopLatchEnabled),
@@ -104,6 +105,7 @@ var (
 	optPreparedDirectEntry     = optimizationBindings.Option("prepared-direct-entry")
 	optPreparedBoundedEntry    = optimizationBindings.Option("prepared-bounded-entry")
 	optDirectGoHostImport      = optimizationBindings.Option("direct-go-host-import")
+	optNativeLeafHost          = optimizationBindings.Option("native-leaf-host")
 	optWideLoopIntConst        = optimizationBindings.Option("wide-loop-int-const")
 	optCompactLoopAlign32      = optimizationBindings.Option("compact-loop-align32")
 	optCountedLoopLatch        = optimizationBindings.Option("counted-loop-latch")

@@ -718,9 +718,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 	}
 	f.a.Load64(R9, R8, disp+runtime.ImportDispatchCodePtrOffset)
 	f.a.Load64(R8, R8, disp+runtime.ImportDispatchCallerContextOffset)
-	if f.opt(optDirectGoHostImport) {
-		f.a.AluRI(4, R8, -2, true) // strip the Go binding tag before using the context
-	}
+	f.a.AluRI(4, R8, -int32(runtime.ImportDispatchCallerTagMask)-1, true) // strip binding tags before using the context
 
 	f.emitTailFrameRelease()
 
@@ -1788,6 +1786,21 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.LeaRsp(RDI, argOff)                 // args = &first arg slot
 	f.a.LeaRsp(RCX, f.spillOff(resultSlot)) // results = &slot-width top
 
+	// Only a runtime-verified register leaf can retain this instance context.
+	// Locals and operands already follow the ordinary wrapper call contract;
+	// the leaf wrapper preserves RBX and never touches RBP/R12-R15 or FP state.
+	nativeLeaf := -1
+	if f.opt(optNativeLeafHost) && b.Dynamic && !recordRoots && p >= 1 && p <= 2 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && ft.Params[0] == wasm.I32 && (p == 1 || ft.Params[1] == wasm.I32) {
+		if b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
+			return fmt.Errorf("import dispatch index %d overflows displacement", b.ImportIndex)
+		}
+		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
+		f.a.Load64(RAX, RBX, -offImportDispatchPtr)
+		f.a.Load64(R9, RAX, disp+runtime.ImportDispatchCallerContextOffset)
+		f.a.TestImm(R9, uint32(runtime.ImportDispatchCallerNativeLeafTag), true)
+		nativeLeaf = f.a.JccPlaceholder(condNE)
+	}
+
 	// Preserve the caller's module-invariant registers (RBX=linMem, R15=memSize,
 	// R12-R14=module globals) plus one sixth word (6 pushes = 16-aligned → the
 	// callee's offset-0 entry sees RSP ≡ 8 mod 16 after the CALL, as it expects).
@@ -1810,13 +1823,11 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		}
 		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
 		f.a.Load64(RAX, RBX, -offImportDispatchPtr)
-		f.a.Load64(RSI, RAX, disp+runtime.ImportDispatchHomeLinMemOffset)    // wrapper-ABI arg 1
-		f.a.Load64(R10, RAX, disp+runtime.ImportDispatchTargetContextOffset) // target context
-		f.a.Load64(R9, RAX, disp+runtime.ImportDispatchCallerContextOffset)  // caller context
-		if f.opt(optDirectGoHostImport) {
-			f.a.AluRI(4, R9, -2, true) // strip the Go binding tag
-		}
-		f.a.Load64(R11, RAX, disp+runtime.ImportDispatchCodePtrOffset) // wrapper entry
+		f.a.Load64(RSI, RAX, disp+runtime.ImportDispatchHomeLinMemOffset)     // wrapper-ABI arg 1
+		f.a.Load64(R10, RAX, disp+runtime.ImportDispatchTargetContextOffset)  // target context
+		f.a.Load64(R9, RAX, disp+runtime.ImportDispatchCallerContextOffset)   // caller context
+		f.a.AluRI(4, R9, -int32(runtime.ImportDispatchCallerTagMask)-1, true) // strip binding tags
+		f.a.Load64(R11, RAX, disp+runtime.ImportDispatchCodePtrOffset)        // wrapper entry
 		f.a.Push(R9)
 		f.a.Push(R10) // alignment pad + preserves the caller-context pair
 		f.copyInstanceContext(RSI, R10)
@@ -1870,6 +1881,17 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	// this caller and grows its memory. R15 was saved before that call, so reload
 	// from the restored caller context instead of reviving the stale bound.
 	f.refreshCachedMemoryBoundAfterExternalCall()
+	if nativeLeaf >= 0 {
+		done := f.a.JmpPlaceholder()
+		f.a.PatchRel32(nativeLeaf, f.a.Len())
+		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
+		f.a.Load64(R11, RAX, disp+runtime.ImportDispatchCodePtrOffset)
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
+		f.a.CallReg(R11)
+		f.a.PatchRel32(done, f.a.Len())
+	}
 
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.deriveModuleGlobals() // cross-instance callee may have written shared global cells
