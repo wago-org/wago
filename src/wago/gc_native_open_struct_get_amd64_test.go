@@ -68,10 +68,10 @@ func gcOpenScalarReadModule(storage byte, valueType wasm.ValType, staticType uin
 	repeat = append(repeat, xor, 0x0b)
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(types...)),
-		wasmtest.Section(3, wasmtest.Vec([]byte{8}, []byte{9}, []byte{9}, []byte{9}, []byte{9})),
+		wasmtest.Section(3, wasmtest.Vec([]byte{8}, []byte{9}, []byte{9}, []byte{9}, []byte{9}, []byte{8})),
 		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, byte(staticType), 1, 0xd0, byte(staticType), 0x0b})),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("init", 0, 0), wasmtest.ExportEntry("read", 0, 1), wasmtest.ExportEntry("signed", 0, 2), wasmtest.ExportEntry("null", 0, 3), wasmtest.ExportEntry("repeat", 0, 4))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(init), wasmtest.Code(read), wasmtest.Code(signed), wasmtest.Code(null), append(wasmtest.ULEB(uint32(len(repeat))), repeat...))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("init", 0, 0), wasmtest.ExportEntry("read", 0, 1), wasmtest.ExportEntry("signed", 0, 2), wasmtest.ExportEntry("null", 0, 3), wasmtest.ExportEntry("repeat", 0, 4), wasmtest.ExportEntry("set", 0, 5))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(init), wasmtest.Code(read), wasmtest.Code(signed), wasmtest.Code(null), append(wasmtest.ULEB(uint32(len(repeat))), repeat...), wasmtest.Code([]byte{0x23, 0, 0x20, 0, 0xfb, 5, byte(staticType), 1, 0x0b}))),
 	)
 }
 
@@ -102,6 +102,11 @@ func TestGCNativeOpenStructScalarReads(t *testing.T) {
 					if localTypes[staticType] == staticType {
 						t.Fatalf("test did not remap local type %d", staticType)
 					}
+					_, nullSetErr := in.Invoke("set", tc.value)
+					var nullSetTrap *TrapError
+					if !errors.As(nullSetErr, &nullSetTrap) || nullSetTrap.Code != TrapNullReference {
+						t.Fatalf("null store: %v", nullSetErr)
+					}
 					for _, value := range []uint64{tc.value, 0, tc.value ^ 1} {
 						if _, err := in.Invoke("init", value); err != nil {
 							t.Fatal(err)
@@ -125,6 +130,12 @@ func TestGCNativeOpenStructScalarReads(t *testing.T) {
 							}
 							if err := in.CollectGC(); err != nil {
 								t.Fatal(err)
+							}
+							if round == 0 {
+								value ^= 2
+								if _, err := in.Invoke("set", value); err != nil {
+									t.Fatal(err)
+								}
 							}
 						}
 					}
@@ -162,17 +173,23 @@ func TestGCNativeOpenStructReadPreflight(t *testing.T) {
 	check := func(name string, entryCheck bool, mutate func(), restore func()) {
 		t.Helper()
 		mutate()
-		_, err := in.Invoke("read")
+		_, readErr := in.Invoke("read")
+		_, setErr := in.Invoke("set", 43)
 		restore()
-		if entryCheck && nativeGCEntryValidationEnabled {
-			if err == nil {
-				t.Fatalf("%s: expected entry rejection", name)
+		for _, err := range []error{readErr, setErr} {
+			if entryCheck && nativeGCEntryValidationEnabled {
+				if err == nil {
+					t.Fatalf("%s: expected entry rejection", name)
+				}
+				continue
 			}
-			return
+			var trap *TrapError
+			if !errors.As(err, &trap) || trap.Code != TrapCastFailure {
+				t.Fatalf("%s: %v", name, err)
+			}
 		}
-		var trap *TrapError
-		if !errors.As(err, &trap) || trap.Code != TrapCastFailure {
-			t.Fatalf("%s: %v", name, err)
+		if got, err := in.Invoke("read"); err != nil || len(got) != 1 || got[0] != 42 {
+			t.Fatalf("%s: failed store changed payload: %v, %v", name, got, err)
 		}
 	}
 	savedHeader := append([]byte(nil), header...)

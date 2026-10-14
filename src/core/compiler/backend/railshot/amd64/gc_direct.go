@@ -2299,7 +2299,7 @@ func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) 
 
 func (f *fn) emitDirectGCStructSet(typeIndex, fieldIndex uint32) bool {
 	off, scalar, final, ok := f.directGCStructLayout(typeIndex, fieldIndex)
-	if !ok || !final {
+	if !ok || (!final && !gcSharedStubsEnabled) {
 		return false
 	}
 	valueRoot := f.s.back()
@@ -2310,7 +2310,7 @@ func (f *fn) emitDirectGCStructSet(typeIndex, fieldIndex uint32) bool {
 	value := f.popValue()
 	object := f.popValue()
 	required := gc.PayloadOffset + off + uint32(scalar.size)
-	obj, done := f.emitDirectGCObject(object, typeIndex, required, local, hasLocal)
+	obj, done := f.emitDirectGCObjectWithSubtype(object, typeIndex, required, local, hasLocal, !final)
 	disp := int32(gc.PayloadOffset + off)
 	if scalar.typ.isFloat() {
 		x := f.materializeF(value)
