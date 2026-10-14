@@ -1,0 +1,213 @@
+{
+  "source": "bf51902c666e8a812c905df9887987388bc6aba9",
+  "decision": "Retain rooted prepared shared callback context dispatch; full snapshot in progress",
+  "pairedSteady": {
+    "capture": [
+      {
+        "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+        "beforeNs": 669010.7422680412,
+        "currentNs": 661646.4947368421,
+        "peerNs": 296876.9763033175,
+        "ratio": 0.9889923329089855,
+        "peerRatio": 2.2286891458394593,
+        "beforeCode": 1248,
+        "currentCode": 1248
+      },
+      {
+        "workload": "features/threads/host-identity/performance-4096x64",
+        "beforeNs": 324694.743315508,
+        "currentNs": 327240.4171122995,
+        "peerNs": 184156.98583569404,
+        "ratio": 1.0078402063759861,
+        "peerRatio": 1.7769644503427382,
+        "beforeCode": 864,
+        "currentCode": 864
+      },
+      {
+        "workload": "features/threads/host-opaque-identity/performance-4096x64",
+        "beforeNs": 4249558.333333333,
+        "currentNs": 4173950.5,
+        "peerNs": 182855.00867052024,
+        "ratio": 0.9822080726036236,
+        "peerRatio": 22.82655821323926,
+        "beforeCode": 864,
+        "currentCode": 864
+      },
+      {
+        "workload": "mechanisms/wasm-host-wasm-loop",
+        "beforeNs": 2.702583,
+        "currentNs": 2.671834,
+        "peerNs": 1.394,
+        "ratio": 0.9886223660845939,
+        "peerRatio": 1.9166671449067434,
+        "beforeCode": 560,
+        "currentCode": 560
+      }
+    ],
+    "repeat": [
+      {
+        "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+        "beforeNs": 669220.7446808511,
+        "currentNs": 669153.6458333334,
+        "peerNs": 291748.25581395347,
+        "ratio": 0.9998997358524059,
+        "peerRatio": 2.2935994731706284,
+        "beforeCode": 1248,
+        "currentCode": 1248
+      },
+      {
+        "workload": "features/threads/host-identity/performance-4096x64",
+        "beforeNs": 341244.4331550802,
+        "currentNs": 333896.16577540105,
+        "peerNs": 190292.7705882353,
+        "ratio": 0.9784662644552514,
+        "peerRatio": 1.7546445129957235,
+        "beforeCode": 864,
+        "currentCode": 864
+      },
+      {
+        "workload": "features/threads/host-opaque-identity/performance-4096x64",
+        "beforeNs": 4312858.333333333,
+        "currentNs": 4217652.733333333,
+        "peerNs": 188773.06547619047,
+        "ratio": 0.9779251733672372,
+        "peerRatio": 22.342449770013914,
+        "beforeCode": 864,
+        "currentCode": 864
+      },
+      {
+        "workload": "mechanisms/wasm-host-wasm-loop",
+        "beforeNs": 2.720084,
+        "currentNs": 2.767208,
+        "peerNs": 1.35525,
+        "ratio": 1.0173244649797581,
+        "peerRatio": 2.041843202361188,
+        "beforeCode": 560,
+        "currentCode": 560
+      }
+    ]
+  },
+  "entryCost": {
+    "short": {
+      "before": {
+        "ns": 145.75104166666668,
+        "bytesPerCall": 0.0,
+        "allocsPerCall": 0.0
+      },
+      "current": {
+        "ns": 138.878014,
+        "bytesPerCall": 0.0,
+        "allocsPerCall": 0.0
+      },
+      "ratio": 0.9528440580041595
+    },
+    "long": {
+      "before": {
+        "ns": 4283170.763333334,
+        "bytesPerCall": 0.0,
+        "allocsPerCall": 0.0
+      },
+      "current": {
+        "ns": 4203606.528333333,
+        "bytesPerCall": 0.0,
+        "allocsPerCall": 0.0
+      },
+      "ratio": 0.9814239871823182
+    }
+  },
+  "compilerCost": {
+    "core3": {
+      "means": {
+        "before": {
+          "Modules": 218,
+          "Passes": 100,
+          "Compiles": 21800,
+          "CodeBytes": 17748000,
+          "ElapsedNS": 393087806,
+          "AllocBytes": 777905512,
+          "Allocations": 2646642.3333333335,
+          "RSS": 14396074.666666666
+        },
+        "current": {
+          "Modules": 218,
+          "Passes": 100,
+          "Compiles": 21800,
+          "CodeBytes": 17748000,
+          "ElapsedNS": 397783694.3333333,
+          "AllocBytes": 777904949.3333334,
+          "Allocations": 2646635,
+          "RSS": 14319616
+        }
+      },
+      "ratios": {
+        "Modules": 1.0,
+        "Passes": 1.0,
+        "Compiles": 1.0,
+        "CodeBytes": 1.0,
+        "ElapsedNS": 1.0119461562064669,
+        "AllocBytes": 0.9999992766902176,
+        "Allocations": 0.9999972291936688,
+        "RSS": 0.9946889226100152
+      }
+    },
+    "threads": {
+      "means": {
+        "before": {
+          "Modules": 27,
+          "Passes": 100,
+          "Compiles": 2700,
+          "CodeBytes": 1576000,
+          "ElapsedNS": 57302722.333333336,
+          "AllocBytes": 86025501.33333333,
+          "Allocations": 371551,
+          "RSS": 13063509.333333334
+        },
+        "current": {
+          "Modules": 27,
+          "Passes": 100,
+          "Compiles": 2700,
+          "CodeBytes": 1576000,
+          "ElapsedNS": 51898500,
+          "AllocBytes": 86025496,
+          "Allocations": 371551,
+          "RSS": 13107200
+        }
+      },
+      "ratios": {
+        "Modules": 1.0,
+        "Passes": 1.0,
+        "Compiles": 1.0,
+        "CodeBytes": 1.0,
+        "ElapsedNS": 0.9056899548001114,
+        "AllocBytes": 0.99999993800288,
+        "Allocations": 1.0,
+        "RSS": 1.0033444816053512
+      }
+    }
+  },
+  "validation": {
+    "validation.txt": {
+      "sha256": "96101427d6291fef15f072c5afee25514f77e191c8337be1a2ec8d87bbd9af6d",
+      "output": "ok  \tgithub.com/wago-org/wago/src/wago\t4.596s\nok  \tgithub.com/wago-org/wago/src/core/runtime\t0.240s\n"
+    },
+    "fp-contract.txt": {
+      "sha256": "0b5b7190a1e563c2fae8ecd112b32968fc9496cbba29dbba841a2ef7ab95159c",
+      "output": "ok  \tgithub.com/wago-org/wago/src/core/runtime\t0.274s\n"
+    },
+    "disabled-fallback.txt": {
+      "sha256": "be6a4359c901b64cf7ff9ab61a78eba8e0497de979a34b87d187f420e2e6ae8d",
+      "output": "ok  \tgithub.com/wago-org/wago/src/core/runtime\t0.244s\n"
+    },
+    "amd64-native.txt": {
+      "sha256": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431",
+      "output": "PASS\n"
+    }
+  },
+  "limitations": [
+    "Apple M4 Max performance; native AMD64 correctness only.",
+    "Opaque Go callback remains a real Go callback with full ownership, trap, GC, migration and FP preservation.",
+    "Compact imports and native callback controls do not use this route; small changes there are timing variation.",
+    "Full per-feature parity remains incomplete.",
+    "Local website e57e1232 complete snapshot published and Chrome verified; bf51902c full snapshot not yet published."
+  ]
+}
