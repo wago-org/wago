@@ -89,6 +89,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   
 ### Fixed
 
+- Preserve the invocation parent for Caller context resolution through foreign
+  native imports without publishing identity under a shared producer control
+  frame. Independent relays retain separate callback scopes and cancellation.
+
 - Read Bash completion output synchronously while preserving nested arguments,
   candidate text, and file-completion fallback for empty results.
 

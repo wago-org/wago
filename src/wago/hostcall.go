@@ -542,8 +542,8 @@ type hostCallWaiter struct {
 	wake       chan struct{}
 }
 
-// hostCallState is allocated only after a plugin asks to watch a caller or
-// resolve an invocation context. The context list is bounded by the already-
+// hostCallState is allocated when a plugin watches/resolves a caller or a
+// cancelable foreign callback must retain its root parent independently. The context list is bounded by the already-
 // bounded synchronous re-entry depth, and its lock does not protect waiter so
 // the two optional facilities cannot replace or block each other.
 type hostCallState struct {
@@ -2291,6 +2291,11 @@ func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, binding *syncHos
 	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
 	caller.exact = binding.exact
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
+	// Foreign roots use their own scope, not the producer's ambient control
+	// context. Preserve a cancelable parent before lazy resolver access.
+	if invocation.scope != nil && invocationMayCancel(invocation.parent) {
+		scope.invocationContext(caller.generation, invocation.parent)
+	}
 	binding.callBoundUnchecked(caller, args, results)
 }
 
@@ -2320,6 +2325,9 @@ func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr,
 	caller.ephemeralGCResults = &gcResultTemps
 	defer gcResultTemps.release(in)
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
+	if invocation.scope != nil && invocationMayCancel(invocation.parent) {
+		scope.invocationContext(caller.generation, invocation.parent)
+	}
 	binding.callUnchecked(caller, args, results)
 	if err := in.translateHostReferenceResults(invocation.gcActivation, results, sig.Results, exactResults, exactTypes); err != nil {
 		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
