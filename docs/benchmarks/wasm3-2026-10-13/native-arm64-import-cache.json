@@ -1,0 +1,4837 @@
+{
+  "measuredSource": "dfbf37042d5cbf7e98dbd00fa0bb955b7a94954b",
+  "mainEquivalent": "e59ad4afc94504a40abe43567cebbbd8f51570a2",
+  "localOnly": true,
+  "evidence": {
+    "full": {
+      "sha256": "6c672ce400d67249272fa594aaf4c26db9b001f64a13a287471301e630fa800e",
+      "functionalChanges": [],
+      "sourceVersions": {
+        "current": [
+          "dfbf37042d5cbf7e98dbd00fa0bb955b7a94954b/source-1a6fd6f2c648f63bc6adf975c562134b79dca7947b26385068323f9e50b2af9b"
+        ],
+        "peer": [
+          "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15"
+        ],
+        "before": [
+          "fffbf96449bcdd6e10cc3d19c38211ac919493ae/source-c1543568a9530f58b0a0d0def39e01af82e0cf8fd9da53abdac45f3b1cfeca83"
+        ]
+      },
+      "captures": 798,
+      "cohorts": {
+        "main": {
+          "compile": {
+            "peer": {
+              "count": 148,
+              "geometricMeanRatio": 0.00024430433719435966,
+              "slower": 0
+            },
+            "before": {
+              "count": 148,
+              "geometricMeanRatio": 1.0065291903192841,
+              "slower": 74
+            },
+            "rssBefore": {
+              "count": 148,
+              "geometricMeanRatio": 1.0009292212629273
+            }
+          },
+          "instantiate": {
+            "peer": {
+              "count": 148,
+              "geometricMeanRatio": 0.7128987354973884,
+              "slower": 29
+            },
+            "before": {
+              "count": 148,
+              "geometricMeanRatio": 0.9599610125876015,
+              "slower": 47
+            },
+            "rssBefore": {
+              "count": 148,
+              "geometricMeanRatio": 0.9999708493978632
+            }
+          },
+          "first-call": {
+            "peer": {
+              "count": 148,
+              "geometricMeanRatio": 1.191371066018001,
+              "slower": 115
+            },
+            "before": {
+              "count": 148,
+              "geometricMeanRatio": 1.0064114571873894,
+              "slower": 74
+            },
+            "rssBefore": {
+              "count": 148,
+              "geometricMeanRatio": 0.9997232159764772
+            }
+          },
+          "steady": {
+            "peer": {
+              "count": 148,
+              "geometricMeanRatio": 1.122279166655357,
+              "slower": 108
+            },
+            "before": {
+              "count": 148,
+              "geometricMeanRatio": 1.0051391116226844,
+              "slower": 74
+            },
+            "rssBefore": {
+              "count": 148,
+              "geometricMeanRatio": 0.9994789866664163
+            }
+          }
+        },
+        "features": {
+          "compile": {
+            "peer": {
+              "count": 54,
+              "geometricMeanRatio": 9.22164018107545e-05,
+              "slower": 0
+            },
+            "before": {
+              "count": 107,
+              "geometricMeanRatio": 0.999065317071101,
+              "slower": 50
+            },
+            "rssBefore": {
+              "count": 107,
+              "geometricMeanRatio": 1.0000118029132627
+            }
+          },
+          "instantiate": {
+            "peer": {
+              "count": 54,
+              "geometricMeanRatio": 1.6046452793129078,
+              "slower": 48
+            },
+            "before": {
+              "count": 110,
+              "geometricMeanRatio": 0.9922434285904331,
+              "slower": 48
+            },
+            "rssBefore": {
+              "count": 110,
+              "geometricMeanRatio": 1.0013343781568924
+            }
+          },
+          "first-call": {
+            "peer": {
+              "count": 54,
+              "geometricMeanRatio": 0.3449295852432729,
+              "slower": 12
+            },
+            "before": {
+              "count": 110,
+              "geometricMeanRatio": 1.016377109824652,
+              "slower": 45
+            },
+            "rssBefore": {
+              "count": 110,
+              "geometricMeanRatio": 1.0004570053886528
+            }
+          },
+          "steady": {
+            "peer": {
+              "count": 54,
+              "geometricMeanRatio": 0.2985432048201891,
+              "slower": 13
+            },
+            "before": {
+              "count": 107,
+              "geometricMeanRatio": 1.0018677703961392,
+              "slower": 67
+            },
+            "rssBefore": {
+              "count": 107,
+              "geometricMeanRatio": 1.0063522460198249
+            }
+          }
+        },
+        "all": {
+          "compile": {
+            "peer": {
+              "count": 202,
+              "geometricMeanRatio": 0.0001882864584963171,
+              "slower": 0
+            },
+            "before": {
+              "count": 255,
+              "geometricMeanRatio": 1.0033905244605812,
+              "slower": 124
+            },
+            "rssBefore": {
+              "count": 255,
+              "geometricMeanRatio": 1.000544162886363
+            }
+          },
+          "instantiate": {
+            "peer": {
+              "count": 202,
+              "geometricMeanRatio": 0.8855656022095852,
+              "slower": 77
+            },
+            "before": {
+              "count": 258,
+              "geometricMeanRatio": 0.9735943668979439,
+              "slower": 95
+            },
+            "rssBefore": {
+              "count": 258,
+              "geometricMeanRatio": 1.0005519716648645
+            }
+          },
+          "first-call": {
+            "peer": {
+              "count": 202,
+              "geometricMeanRatio": 0.8553436391533891,
+              "slower": 127
+            },
+            "before": {
+              "count": 258,
+              "geometricMeanRatio": 1.010648373538788,
+              "slower": 119
+            },
+            "rssBefore": {
+              "count": 258,
+              "geometricMeanRatio": 1.000036006088752
+            }
+          },
+          "steady": {
+            "peer": {
+              "count": 202,
+              "geometricMeanRatio": 0.7877038686359404,
+              "slower": 121
+            },
+            "before": {
+              "count": 255,
+              "geometricMeanRatio": 1.003765132494367,
+              "slower": 141
+            },
+            "rssBefore": {
+              "count": 255,
+              "geometricMeanRatio": 1.0023573254062879
+            }
+          }
+        }
+      }
+    },
+    "focused": {
+      "sha256": "541e9f16df5da9763dde75cc0c92941f382de6e040a0bd5ed81792012d2380c0",
+      "sources": {
+        "fffbf96449bcdd6e10cc3d19c38211ac919493ae": "baseline",
+        "dfbf37042d5cbf7e98dbd00fa0bb955b7a94954b": "candidate",
+        "f303ed27a8673d8cb7a6b7c39dd72a57a3b9999b": "peer"
+      },
+      "captures": 48,
+      "rows": [
+        {
+          "order": "capture",
+          "workload": "features/core-num/integer-rotate-popcount/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 22833,
+          "currentNs": 23125,
+          "peerNs": 271759875,
+          "ratio": 1.0127885078614287,
+          "peerRatio": 8.509350396190754e-05,
+          "beforeCode": 400,
+          "code": 400,
+          "beforeRSS": 9568256,
+          "rss": 9535488
+        },
+        {
+          "order": "capture",
+          "workload": "features/core-num/integer-rotate-popcount/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 583,
+          "currentNs": 542,
+          "peerNs": 334,
+          "ratio": 0.9296740994854202,
+          "peerRatio": 1.622754491017964,
+          "beforeCode": 400,
+          "code": 400,
+          "beforeRSS": 9535488,
+          "rss": 9535488
+        },
+        {
+          "order": "capture",
+          "workload": "features/core-num/integer-rotate-popcount/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 167,
+          "currentNs": 166,
+          "peerNs": 11250,
+          "ratio": 0.9940119760479041,
+          "peerRatio": 0.014755555555555555,
+          "beforeCode": 400,
+          "code": 400,
+          "beforeRSS": 9469952,
+          "rss": 9437184
+        },
+        {
+          "order": "capture",
+          "workload": "features/core-num/integer-rotate-popcount/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 91.20864048827842,
+          "currentNs": 94.11950125695041,
+          "peerNs": 11456.8092164246,
+          "ratio": 1.031914309358071,
+          "peerRatio": 0.008215158293988148,
+          "beforeCode": 400,
+          "code": 400,
+          "beforeRSS": 59752448,
+          "rss": 59768832
+        },
+        {
+          "order": "capture",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 25000,
+          "currentNs": 24917,
+          "peerNs": 258341917,
+          "ratio": 0.99668,
+          "peerRatio": 9.644969848234114e-05,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 9732096,
+          "rss": 9666560
+        },
+        {
+          "order": "capture",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 667,
+          "currentNs": 708,
+          "peerNs": 375,
+          "ratio": 1.0614692653673163,
+          "peerRatio": 1.888,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 9584640,
+          "rss": 9568256
+        },
+        {
+          "order": "capture",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 209,
+          "currentNs": 209,
+          "peerNs": 292,
+          "ratio": 1.0,
+          "peerRatio": 0.7157534246575342,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 9420800,
+          "rss": 9469952
+        },
+        {
+          "order": "capture",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 113.69175,
+          "currentNs": 112.952584,
+          "peerNs": 279.203168,
+          "ratio": 0.9934985080271875,
+          "peerRatio": 0.4045533752682921,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 43368448,
+          "rss": 43466752
+        },
+        {
+          "order": "capture",
+          "workload": "features/simd/swizzle-lanes/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 28209,
+          "currentNs": 26250,
+          "peerNs": 332023917,
+          "ratio": 0.9305540784855897,
+          "peerRatio": 7.906056960348431e-05,
+          "beforeCode": 432,
+          "code": 432,
+          "beforeRSS": 9535488,
+          "rss": 9584640
+        },
+        {
+          "order": "capture",
+          "workload": "features/simd/swizzle-lanes/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 542,
+          "currentNs": 542,
+          "peerNs": 333,
+          "ratio": 1.0,
+          "peerRatio": 1.6276276276276276,
+          "beforeCode": 432,
+          "code": 432,
+          "beforeRSS": 9437184,
+          "rss": 9420800
+        },
+        {
+          "order": "capture",
+          "workload": "features/simd/swizzle-lanes/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 167,
+          "currentNs": 166,
+          "peerNs": 68125,
+          "ratio": 0.9940119760479041,
+          "peerRatio": 0.002436697247706422,
+          "beforeCode": 432,
+          "code": 432,
+          "beforeRSS": 9437184,
+          "rss": 9420800
+        },
+        {
+          "order": "capture",
+          "workload": "features/simd/swizzle-lanes/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 103.3083094182969,
+          "currentNs": 105.35575083033095,
+          "peerNs": 74253.46020761246,
+          "ratio": 1.019818748594016,
+          "peerRatio": 0.0014188665489225226,
+          "beforeCode": 432,
+          "code": 432,
+          "beforeRSS": 59604992,
+          "rss": 59932672
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 39250,
+          "currentNs": 38708,
+          "peerNs": 266747084,
+          "ratio": 0.9861910828025477,
+          "peerRatio": 0.00014511123952905142,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 10108928,
+          "rss": 10125312
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 9833,
+          "currentNs": 10166,
+          "peerNs": 1708,
+          "ratio": 1.0338655547645683,
+          "peerRatio": 5.951990632318501,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9830400,
+          "rss": 9846784
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 328833,
+          "currentNs": 312541,
+          "peerNs": 176584,
+          "ratio": 0.9504550942271609,
+          "peerRatio": 1.769928192814751,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9764864,
+          "rss": 9764864
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 329007.3266331658,
+          "currentNs": 302968.6975609756,
+          "peerNs": 190991.73964497042,
+          "ratio": 0.920856993251027,
+          "peerRatio": 1.5862921512949002,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9961472,
+          "rss": 9994240
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 34542,
+          "currentNs": 36042,
+          "peerNs": 264273375,
+          "ratio": 1.0434253951710961,
+          "peerRatio": 0.00013638150267691554,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9961472,
+          "rss": 10076160
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 7666,
+          "currentNs": 7208,
+          "peerNs": 1334,
+          "ratio": 0.9402556744064702,
+          "peerRatio": 5.4032983508245875,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9863168,
+          "rss": 9814016
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 4164000,
+          "currentNs": 4092625,
+          "peerNs": 176666,
+          "ratio": 0.9828590297790586,
+          "peerRatio": 23.16588930524266,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9732096,
+          "rss": 9863168
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 4091190.125,
+          "currentNs": 4083677.0625,
+          "peerNs": 190853.79464285713,
+          "ratio": 0.998163599766706,
+          "peerRatio": 21.396886921435048,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9879552,
+          "rss": 9846784
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 35042,
+          "currentNs": 35416,
+          "peerNs": 263616500,
+          "ratio": 1.0106729067975573,
+          "peerRatio": 0.0001343466740511311,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9879552,
+          "rss": 9879552
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 7333,
+          "currentNs": 7667,
+          "peerNs": 583,
+          "ratio": 1.0455475248874948,
+          "peerRatio": 13.150943396226415,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9732096,
+          "rss": 9666560
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 466000,
+          "currentNs": 472875,
+          "peerNs": 558375,
+          "ratio": 1.0147532188841202,
+          "peerRatio": 0.8468770987239759,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9781248,
+          "rss": 9732096
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 458148.2867647059,
+          "currentNs": 453645.2089552239,
+          "peerNs": 292058.53023255814,
+          "ratio": 0.9901711346750169,
+          "peerRatio": 1.5532681363355447,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9748480,
+          "rss": 9650176
+        },
+        {
+          "order": "capture",
+          "workload": "applications/audio-autocorrelation",
+          "phase": "compile",
+          "beforeNs": 47458,
+          "currentNs": 90333,
+          "peerNs": 277516291,
+          "ratio": 1.903430401618273,
+          "peerRatio": 0.00032550521511546144,
+          "beforeCode": 2232,
+          "code": 2232,
+          "beforeRSS": 9748480,
+          "rss": 9732096
+        },
+        {
+          "order": "capture",
+          "workload": "applications/audio-autocorrelation",
+          "phase": "instantiate",
+          "beforeNs": 500,
+          "currentNs": 667,
+          "peerNs": 833,
+          "ratio": 1.334,
+          "peerRatio": 0.8007202881152461,
+          "beforeCode": 2232,
+          "code": 2232,
+          "beforeRSS": 9863168,
+          "rss": 9977856
+        },
+        {
+          "order": "capture",
+          "workload": "applications/audio-autocorrelation",
+          "phase": "first-call",
+          "beforeNs": 7375,
+          "currentNs": 8375,
+          "peerNs": 10959,
+          "ratio": 1.1355932203389831,
+          "peerRatio": 0.7642120631444475,
+          "beforeCode": 2232,
+          "code": 2232,
+          "beforeRSS": 9568256,
+          "rss": 9551872
+        },
+        {
+          "order": "capture",
+          "workload": "applications/audio-autocorrelation",
+          "phase": "steady",
+          "beforeNs": 7333,
+          "currentNs": 7417,
+          "peerNs": 10959,
+          "ratio": 1.01145506613937,
+          "peerRatio": 0.6767953280408796,
+          "beforeCode": 2232,
+          "code": 2232,
+          "beforeRSS": 9633792,
+          "rss": 9617408
+        },
+        {
+          "order": "capture",
+          "workload": "applications/ml-max-pooling",
+          "phase": "compile",
+          "beforeNs": 38208,
+          "currentNs": 37042,
+          "peerNs": 267373208,
+          "ratio": 0.9694828308207705,
+          "peerRatio": 0.00013854043296664188,
+          "beforeCode": 1208,
+          "code": 1208,
+          "beforeRSS": 9732096,
+          "rss": 9699328
+        },
+        {
+          "order": "capture",
+          "workload": "applications/ml-max-pooling",
+          "phase": "instantiate",
+          "beforeNs": 666,
+          "currentNs": 708,
+          "peerNs": 2708,
+          "ratio": 1.063063063063063,
+          "peerRatio": 0.2614475627769572,
+          "beforeCode": 1208,
+          "code": 1208,
+          "beforeRSS": 9945088,
+          "rss": 9895936
+        },
+        {
+          "order": "capture",
+          "workload": "applications/ml-max-pooling",
+          "phase": "first-call",
+          "beforeNs": 14333,
+          "currentNs": 14292,
+          "peerNs": 18416,
+          "ratio": 0.9971394683597293,
+          "peerRatio": 0.7760642919200695,
+          "beforeCode": 1208,
+          "code": 1208,
+          "beforeRSS": 9584640,
+          "rss": 9535488
+        },
+        {
+          "order": "capture",
+          "workload": "applications/ml-max-pooling",
+          "phase": "steady",
+          "beforeNs": 14291,
+          "currentNs": 14292,
+          "peerNs": 22417,
+          "ratio": 1.0000699741095795,
+          "peerRatio": 0.6375518579649373,
+          "beforeCode": 1208,
+          "code": 1208,
+          "beforeRSS": 9486336,
+          "rss": 9617408
+        },
+        {
+          "order": "repeat",
+          "workload": "features/core-num/integer-rotate-popcount/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 24583,
+          "currentNs": 24333,
+          "peerNs": 276133792,
+          "ratio": 0.989830370581296,
+          "peerRatio": 8.812032683055321e-05,
+          "beforeCode": 400,
+          "code": 400,
+          "beforeRSS": 9551872,
+          "rss": 9601024
+        },
+        {
+          "order": "repeat",
+          "workload": "features/core-num/integer-rotate-popcount/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 541,
+          "currentNs": 583,
+          "peerNs": 333,
+          "ratio": 1.077634011090573,
+          "peerRatio": 1.7507507507507507,
+          "beforeCode": 400,
+          "code": 400,
+          "beforeRSS": 9437184,
+          "rss": 9420800
+        },
+        {
+          "order": "repeat",
+          "workload": "features/core-num/integer-rotate-popcount/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 167,
+          "currentNs": 167,
+          "peerNs": 11209,
+          "ratio": 1.0,
+          "peerRatio": 0.01489874208225533,
+          "beforeCode": 400,
+          "code": 400,
+          "beforeRSS": 9371648,
+          "rss": 9289728
+        },
+        {
+          "order": "repeat",
+          "workload": "features/core-num/integer-rotate-popcount/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 92.12722755118438,
+          "currentNs": 92.7922227106305,
+          "peerNs": 12116.879599857091,
+          "ratio": 1.007218226111023,
+          "peerRatio": 0.007658095629812556,
+          "beforeCode": 400,
+          "code": 400,
+          "beforeRSS": 59654144,
+          "rss": 59834368
+        },
+        {
+          "order": "repeat",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 23708,
+          "currentNs": 27167,
+          "peerNs": 258373458,
+          "ratio": 1.1459001181035937,
+          "peerRatio": 0.00010514624919406389,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 9666560,
+          "rss": 9682944
+        },
+        {
+          "order": "repeat",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 666,
+          "currentNs": 708,
+          "peerNs": 334,
+          "ratio": 1.063063063063063,
+          "peerRatio": 2.1197604790419162,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 9551872,
+          "rss": 9568256
+        },
+        {
+          "order": "repeat",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 209,
+          "currentNs": 209,
+          "peerNs": 333,
+          "ratio": 1.0,
+          "peerRatio": 0.6276276276276276,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 9469952,
+          "rss": 9437184
+        },
+        {
+          "order": "repeat",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 114.458,
+          "currentNs": 113.9025,
+          "peerNs": 284.764332,
+          "ratio": 0.9951466913627707,
+          "peerRatio": 0.3999886474546257,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 43302912,
+          "rss": 43352064
+        },
+        {
+          "order": "repeat",
+          "workload": "features/simd/swizzle-lanes/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 25167,
+          "currentNs": 22500,
+          "peerNs": 335066250,
+          "ratio": 0.8940278936702825,
+          "peerRatio": 6.715089926245929e-05,
+          "beforeCode": 432,
+          "code": 432,
+          "beforeRSS": 9650176,
+          "rss": 9551872
+        },
+        {
+          "order": "repeat",
+          "workload": "features/simd/swizzle-lanes/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 542,
+          "currentNs": 541,
+          "peerNs": 333,
+          "ratio": 0.9981549815498155,
+          "peerRatio": 1.6246246246246245,
+          "beforeCode": 432,
+          "code": 432,
+          "beforeRSS": 9469952,
+          "rss": 9486336
+        },
+        {
+          "order": "repeat",
+          "workload": "features/simd/swizzle-lanes/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 167,
+          "currentNs": 167,
+          "peerNs": 69042,
+          "ratio": 1.0,
+          "peerRatio": 0.002418817531357724,
+          "beforeCode": 432,
+          "code": 432,
+          "beforeRSS": 9502720,
+          "rss": 9338880
+        },
+        {
+          "order": "repeat",
+          "workload": "features/simd/swizzle-lanes/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 105.11167536284235,
+          "currentNs": 104.75848358527675,
+          "peerNs": 75057.92763938315,
+          "ratio": 0.9966398425641453,
+          "peerRatio": 0.0013957017850078452,
+          "beforeCode": 432,
+          "code": 432,
+          "beforeRSS": 59686912,
+          "rss": 59604992
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 33875,
+          "currentNs": 38583,
+          "peerNs": 266650125,
+          "ratio": 1.1389815498154983,
+          "peerRatio": 0.0001446952256257146,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9994240,
+          "rss": 10125312
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 10084,
+          "currentNs": 9667,
+          "peerNs": 958,
+          "ratio": 0.9586473621578738,
+          "peerRatio": 10.090814196242171,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9830400,
+          "rss": 9781248
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 334000,
+          "currentNs": 313500,
+          "peerNs": 176458,
+          "ratio": 0.938622754491018,
+          "peerRatio": 1.7766267327069332,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9863168,
+          "rss": 9781248
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 325276.5544041451,
+          "currentNs": 304441.6634146341,
+          "peerNs": 191861.6126126126,
+          "ratio": 0.9359471480270775,
+          "peerRatio": 1.5867773613960583,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9928704,
+          "rss": 9928704
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 36000,
+          "currentNs": 37541,
+          "peerNs": 264422875,
+          "ratio": 1.0428055555555555,
+          "peerRatio": 0.0001419733447796451,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9977856,
+          "rss": 10076160
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 7291,
+          "currentNs": 6917,
+          "peerNs": 1500,
+          "ratio": 0.948703881497737,
+          "peerRatio": 4.6113333333333335,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9846784,
+          "rss": 9814016
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 4126625,
+          "currentNs": 4045333,
+          "peerNs": 335458,
+          "ratio": 0.9803006088510586,
+          "peerRatio": 12.059134079378044,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9879552,
+          "rss": 9846784
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 4107970.588235294,
+          "currentNs": 4043000,
+          "peerNs": 192454.37430167597,
+          "ratio": 0.984184261586156,
+          "peerRatio": 21.007576547273064,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9830400,
+          "rss": 9895936
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 33834,
+          "currentNs": 34375,
+          "peerNs": 266023375,
+          "ratio": 1.015989832712656,
+          "peerRatio": 0.00012921796815787334,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9814016,
+          "rss": 9912320
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 7292,
+          "currentNs": 8000,
+          "peerNs": 458,
+          "ratio": 1.0970927043335161,
+          "peerRatio": 17.467248908296945,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9732096,
+          "rss": 9764864
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 469000,
+          "currentNs": 466709,
+          "peerNs": 291667,
+          "ratio": 0.9951151385927506,
+          "peerRatio": 1.6001433141219268,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9584640,
+          "rss": 9666560
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 460285.23529411765,
+          "currentNs": 455993.4964539007,
+          "peerNs": 292051.16279069765,
+          "ratio": 0.9906759146043984,
+          "peerRatio": 1.561347991552749,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9682944,
+          "rss": 9666560
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/audio-autocorrelation",
+          "phase": "compile",
+          "beforeNs": 47459,
+          "currentNs": 46834,
+          "peerNs": 282647417,
+          "ratio": 0.9868307381107904,
+          "peerRatio": 0.00016569760480068354,
+          "beforeCode": 2232,
+          "code": 2232,
+          "beforeRSS": 9715712,
+          "rss": 9732096
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/audio-autocorrelation",
+          "phase": "instantiate",
+          "beforeNs": 500,
+          "currentNs": 542,
+          "peerNs": 875,
+          "ratio": 1.084,
+          "peerRatio": 0.6194285714285714,
+          "beforeCode": 2232,
+          "code": 2232,
+          "beforeRSS": 9928704,
+          "rss": 9961472
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/audio-autocorrelation",
+          "phase": "first-call",
+          "beforeNs": 7417,
+          "currentNs": 7375,
+          "peerNs": 10959,
+          "ratio": 0.9943373331535661,
+          "peerRatio": 0.6729628615749612,
+          "beforeCode": 2232,
+          "code": 2232,
+          "beforeRSS": 9617408,
+          "rss": 9617408
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/audio-autocorrelation",
+          "phase": "steady",
+          "beforeNs": 7250,
+          "currentNs": 7334,
+          "peerNs": 10917,
+          "ratio": 1.0115862068965518,
+          "peerRatio": 0.6717962810295869,
+          "beforeCode": 2232,
+          "code": 2232,
+          "beforeRSS": 9568256,
+          "rss": 9535488
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/ml-max-pooling",
+          "phase": "compile",
+          "beforeNs": 37833,
+          "currentNs": 37916,
+          "peerNs": 270776541,
+          "ratio": 1.0021938519282108,
+          "peerRatio": 0.0001400269013703074,
+          "beforeCode": 1208,
+          "code": 1208,
+          "beforeRSS": 9699328,
+          "rss": 9633792
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/ml-max-pooling",
+          "phase": "instantiate",
+          "beforeNs": 709,
+          "currentNs": 708,
+          "peerNs": 2583,
+          "ratio": 0.998589562764457,
+          "peerRatio": 0.27409988385598144,
+          "beforeCode": 1208,
+          "code": 1208,
+          "beforeRSS": 9830400,
+          "rss": 9928704
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/ml-max-pooling",
+          "phase": "first-call",
+          "beforeNs": 14333,
+          "currentNs": 12792,
+          "peerNs": 18417,
+          "ratio": 0.8924858717644596,
+          "peerRatio": 0.6945756637888907,
+          "beforeCode": 1208,
+          "code": 1208,
+          "beforeRSS": 9551872,
+          "rss": 9535488
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/ml-max-pooling",
+          "phase": "steady",
+          "beforeNs": 14292,
+          "currentNs": 14292,
+          "peerNs": 19458,
+          "ratio": 1.0,
+          "peerRatio": 0.7345050878815911,
+          "beforeCode": 1208,
+          "code": 1208,
+          "beforeRSS": 9584640,
+          "rss": 9519104
+        }
+      ]
+    },
+    "rechecks": {
+      "sha256": "6469a79fc690f0eee7e5bd8aef9ac5a50cd64f0a5b8393a44088e9fb0ec4fc42",
+      "sources": {
+        "baseline": "fffbf96449bcdd6e10cc3d19c38211ac919493ae",
+        "candidate": "dfbf37042d5cbf7e98dbd00fa0bb955b7a94954b"
+      },
+      "captures": 56,
+      "rows": [
+        {
+          "order": "capture",
+          "workload": "applications/db-sort-merge-join",
+          "phase": "compile",
+          "beforeNs": 47709,
+          "currentNs": 49042,
+          "ratio": 1.0279402209226771,
+          "beforeCode": 1392,
+          "code": 1392,
+          "beforeRSS": 9453568,
+          "rss": 9469952
+        },
+        {
+          "order": "capture",
+          "workload": "applications/db-sort-merge-join",
+          "phase": "instantiate",
+          "beforeNs": 792,
+          "currentNs": 750,
+          "ratio": 0.946969696969697,
+          "beforeCode": 1392,
+          "code": 1392,
+          "beforeRSS": 9273344,
+          "rss": 9256960
+        },
+        {
+          "order": "capture",
+          "workload": "applications/db-sort-merge-join",
+          "phase": "first-call",
+          "beforeNs": 65375,
+          "currentNs": 66250,
+          "ratio": 1.0133843212237095,
+          "beforeCode": 1392,
+          "code": 1392,
+          "beforeRSS": 9289728,
+          "rss": 9289728
+        },
+        {
+          "order": "capture",
+          "workload": "applications/db-sort-merge-join",
+          "phase": "steady",
+          "beforeNs": 74708,
+          "currentNs": 74583,
+          "ratio": 0.9983268190822937,
+          "beforeCode": 1392,
+          "code": 1392,
+          "beforeRSS": 9289728,
+          "rss": 9256960
+        },
+        {
+          "order": "capture",
+          "workload": "applications/language-brainfuck",
+          "phase": "compile",
+          "beforeNs": 53042,
+          "currentNs": 34958,
+          "ratio": 0.659062629614268,
+          "beforeCode": 892,
+          "code": 892,
+          "beforeRSS": 9420800,
+          "rss": 9404416
+        },
+        {
+          "order": "capture",
+          "workload": "applications/language-brainfuck",
+          "phase": "instantiate",
+          "beforeNs": 500,
+          "currentNs": 500,
+          "ratio": 1.0,
+          "beforeCode": 892,
+          "code": 892,
+          "beforeRSS": 9371648,
+          "rss": 9388032
+        },
+        {
+          "order": "capture",
+          "workload": "applications/language-brainfuck",
+          "phase": "first-call",
+          "beforeNs": 29792,
+          "currentNs": 30834,
+          "ratio": 1.0349758324382385,
+          "beforeCode": 892,
+          "code": 892,
+          "beforeRSS": 9256960,
+          "rss": 9338880
+        },
+        {
+          "order": "capture",
+          "workload": "applications/language-brainfuck",
+          "phase": "steady",
+          "beforeNs": 29875,
+          "currentNs": 30083,
+          "ratio": 1.0069623430962342,
+          "beforeCode": 892,
+          "code": 892,
+          "beforeRSS": 9240576,
+          "rss": 9355264
+        },
+        {
+          "order": "capture",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "compile",
+          "beforeNs": 22667,
+          "currentNs": 22958,
+          "ratio": 1.012838046499316,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9338880,
+          "rss": 9355264
+        },
+        {
+          "order": "capture",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "instantiate",
+          "beforeNs": 750,
+          "currentNs": 833,
+          "ratio": 1.1106666666666667,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9420800,
+          "rss": 9338880
+        },
+        {
+          "order": "capture",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "first-call",
+          "beforeNs": 168041,
+          "currentNs": 159083,
+          "ratio": 0.9466915812212495,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9306112,
+          "rss": 9175040
+        },
+        {
+          "order": "capture",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "steady",
+          "beforeNs": 160542,
+          "currentNs": 162875,
+          "ratio": 1.014532022772857,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9240576,
+          "rss": 9191424
+        },
+        {
+          "order": "capture",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "compile",
+          "beforeNs": 25708,
+          "currentNs": 26208,
+          "ratio": 1.0194491986930139,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 9699328,
+          "rss": 9715712
+        },
+        {
+          "order": "capture",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "instantiate",
+          "beforeNs": 583,
+          "currentNs": 625,
+          "ratio": 1.072041166380789,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 9764864,
+          "rss": 9650176
+        },
+        {
+          "order": "capture",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "first-call",
+          "beforeNs": 34458,
+          "currentNs": 34084,
+          "ratio": 0.9891462069766092,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 9404416,
+          "rss": 9404416
+        },
+        {
+          "order": "capture",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "steady",
+          "beforeNs": 44625.02253985706,
+          "currentNs": 46008.938244853736,
+          "ratio": 1.0310121009745288,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 10354688,
+          "rss": 10272768
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 33625,
+          "currentNs": 36125,
+          "ratio": 1.0743494423791822,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9879552,
+          "rss": 9879552
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 7041,
+          "currentNs": 7458,
+          "ratio": 1.0592245419684705,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9666560,
+          "rss": 9699328
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 465541,
+          "currentNs": 466000,
+          "ratio": 1.0009859496800497,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9584640,
+          "rss": 9699328
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 460468.37226277374,
+          "currentNs": 460289.49253731343,
+          "ratio": 0.9996115265754708,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9732096,
+          "rss": 9650176
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 36375,
+          "currentNs": 35333,
+          "ratio": 0.9713539518900344,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9846784,
+          "rss": 9945088
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 7875,
+          "currentNs": 7167,
+          "ratio": 0.9100952380952381,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9666560,
+          "rss": 9781248
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 466916,
+          "currentNs": 463417,
+          "ratio": 0.9925061467158975,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9699328,
+          "rss": 9666560
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 463814.5111111111,
+          "currentNs": 460056.98529411765,
+          "ratio": 0.9918986454132452,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9781248,
+          "rss": 9715712
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 34000,
+          "currentNs": 38917,
+          "ratio": 1.1446176470588236,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9814016,
+          "rss": 9928704
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 7125,
+          "currentNs": 7209,
+          "ratio": 1.0117894736842106,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9732096,
+          "rss": 9699328
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 460458,
+          "currentNs": 468334,
+          "ratio": 1.0171047087899439,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9699328,
+          "rss": 9748480
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 460135.2611940298,
+          "currentNs": 468680.3503649635,
+          "ratio": 1.018570820129628,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9732096,
+          "rss": 9764864
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 36000,
+          "currentNs": 37500,
+          "ratio": 1.0416666666666667,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 10043392,
+          "rss": 10158080
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 9959,
+          "currentNs": 10375,
+          "ratio": 1.0417712621749171,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9764864,
+          "rss": 9863168
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 335334,
+          "currentNs": 310000,
+          "ratio": 0.9244514424424604,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9748480,
+          "rss": 9830400
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 322746.7616580311,
+          "currentNs": 302807.28846153844,
+          "ratio": 0.9382194476745217,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9994240,
+          "rss": 9994240
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 35334,
+          "currentNs": 35958,
+          "ratio": 1.0176600441501105,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 10125312,
+          "rss": 10108928
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 9334,
+          "currentNs": 6958,
+          "ratio": 0.7454467538032997,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9846784,
+          "rss": 9797632
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 4115958,
+          "currentNs": 4155625,
+          "ratio": 1.0096373675338768,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9748480,
+          "rss": 9781248
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 4125338.5,
+          "currentNs": 4136559.875,
+          "ratio": 1.0027201101194483,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9928704,
+          "rss": 9814016
+        },
+        {
+          "order": "capture",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "compile",
+          "beforeNs": 21000,
+          "currentNs": 26459,
+          "ratio": 1.259952380952381,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9437184,
+          "rss": 9519104
+        },
+        {
+          "order": "capture",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "instantiate",
+          "beforeNs": 5750,
+          "currentNs": 6042,
+          "ratio": 1.0507826086956522,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9404416,
+          "rss": 9453568
+        },
+        {
+          "order": "capture",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "first-call",
+          "beforeNs": 2848459,
+          "currentNs": 2870541,
+          "ratio": 1.0077522618370143,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9338880,
+          "rss": 9420800
+        },
+        {
+          "order": "capture",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "steady",
+          "beforeNs": 2.846792,
+          "currentNs": 2.792042,
+          "ratio": 0.9807678256788693,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9306112,
+          "rss": 9371648
+        },
+        {
+          "order": "capture",
+          "workload": "wago/blake3/hash",
+          "phase": "compile",
+          "beforeNs": 771375,
+          "currentNs": 769458,
+          "ratio": 0.9975148274185708,
+          "beforeCode": 29216,
+          "code": 29216,
+          "beforeRSS": 11370496,
+          "rss": 11337728
+        },
+        {
+          "order": "capture",
+          "workload": "wago/blake3/hash",
+          "phase": "instantiate",
+          "beforeNs": 834,
+          "currentNs": 792,
+          "ratio": 0.9496402877697842,
+          "beforeCode": 29216,
+          "code": 29216,
+          "beforeRSS": 10338304,
+          "rss": 10338304
+        },
+        {
+          "order": "capture",
+          "workload": "wago/blake3/hash",
+          "phase": "first-call",
+          "beforeNs": 215958,
+          "currentNs": 230747,
+          "ratio": 1.0684809083247668,
+          "beforeCode": 29216,
+          "code": 29216,
+          "beforeRSS": 10420224,
+          "rss": 10371072
+        },
+        {
+          "order": "capture",
+          "workload": "wago/blake3/hash",
+          "phase": "steady",
+          "beforeNs": 214501,
+          "currentNs": 215083,
+          "ratio": 1.0027132740639904,
+          "beforeCode": 29216,
+          "code": 29216,
+          "beforeRSS": 10403840,
+          "rss": 10436608
+        },
+        {
+          "order": "capture",
+          "workload": "wago/polybench-trisolv/polybench_run",
+          "phase": "compile",
+          "beforeNs": 110792,
+          "currentNs": 109625,
+          "ratio": 0.9894667485016969,
+          "beforeCode": 4060,
+          "code": 4060,
+          "beforeRSS": 9994240,
+          "rss": 9912320
+        },
+        {
+          "order": "capture",
+          "workload": "wago/polybench-trisolv/polybench_run",
+          "phase": "instantiate",
+          "beforeNs": 750,
+          "currentNs": 709,
+          "ratio": 0.9453333333333334,
+          "beforeCode": 4060,
+          "code": 4060,
+          "beforeRSS": 9715712,
+          "rss": 9748480
+        },
+        {
+          "order": "capture",
+          "workload": "wago/polybench-trisolv/polybench_run",
+          "phase": "first-call",
+          "beforeNs": 7916,
+          "currentNs": 7708,
+          "ratio": 0.9737241030823648,
+          "beforeCode": 4060,
+          "code": 4060,
+          "beforeRSS": 9633792,
+          "rss": 9666560
+        },
+        {
+          "order": "capture",
+          "workload": "wago/polybench-trisolv/polybench_run",
+          "phase": "steady",
+          "beforeNs": 7667,
+          "currentNs": 7666,
+          "ratio": 0.9998695708882223,
+          "beforeCode": 4060,
+          "code": 4060,
+          "beforeRSS": 9650176,
+          "rss": 9617408
+        },
+        {
+          "order": "capture",
+          "workload": "wago/sha256/hashN",
+          "phase": "compile",
+          "beforeNs": 98541,
+          "currentNs": 92916,
+          "ratio": 0.9429171613846014,
+          "beforeCode": 4360,
+          "code": 4360,
+          "beforeRSS": 9977856,
+          "rss": 9961472
+        },
+        {
+          "order": "capture",
+          "workload": "wago/sha256/hashN",
+          "phase": "instantiate",
+          "beforeNs": 708,
+          "currentNs": 709,
+          "ratio": 1.0014124293785311,
+          "beforeCode": 4360,
+          "code": 4360,
+          "beforeRSS": 9814016,
+          "rss": 9715712
+        },
+        {
+          "order": "capture",
+          "workload": "wago/sha256/hashN",
+          "phase": "first-call",
+          "beforeNs": 24250,
+          "currentNs": 26709,
+          "ratio": 1.1014020618556701,
+          "beforeCode": 4360,
+          "code": 4360,
+          "beforeRSS": 9699328,
+          "rss": 9584640
+        },
+        {
+          "order": "capture",
+          "workload": "wago/sha256/hashN",
+          "phase": "steady",
+          "beforeNs": 26750,
+          "currentNs": 26709,
+          "ratio": 0.9984672897196262,
+          "beforeCode": 4360,
+          "code": 4360,
+          "beforeRSS": 9650176,
+          "rss": 9699328
+        },
+        {
+          "order": "capture",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "compile",
+          "beforeNs": 6925333,
+          "currentNs": 6822958,
+          "ratio": 0.9852173173477723,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 16039936,
+          "rss": 15925248
+        },
+        {
+          "order": "capture",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "instantiate",
+          "beforeNs": 1917,
+          "currentNs": 1791,
+          "ratio": 0.9342723004694836,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 13238272,
+          "rss": 13189120
+        },
+        {
+          "order": "capture",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "first-call",
+          "beforeNs": 1375,
+          "currentNs": 1125,
+          "ratio": 0.8181818181818182,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 13090816,
+          "rss": 13058048
+        },
+        {
+          "order": "capture",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "steady",
+          "beforeNs": 1125,
+          "currentNs": 1125,
+          "ratio": 1.0,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 13090816,
+          "rss": 13025280
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/db-sort-merge-join",
+          "phase": "compile",
+          "beforeNs": 52750,
+          "currentNs": 46625,
+          "ratio": 0.8838862559241706,
+          "beforeCode": 1392,
+          "code": 1392,
+          "beforeRSS": 9486336,
+          "rss": 9453568
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/db-sort-merge-join",
+          "phase": "instantiate",
+          "beforeNs": 708,
+          "currentNs": 750,
+          "ratio": 1.0593220338983051,
+          "beforeCode": 1392,
+          "code": 1392,
+          "beforeRSS": 9207808,
+          "rss": 9289728
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/db-sort-merge-join",
+          "phase": "first-call",
+          "beforeNs": 63875,
+          "currentNs": 65500,
+          "ratio": 1.025440313111546,
+          "beforeCode": 1392,
+          "code": 1392,
+          "beforeRSS": 9256960,
+          "rss": 9388032
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/db-sort-merge-join",
+          "phase": "steady",
+          "beforeNs": 68083,
+          "currentNs": 66083,
+          "ratio": 0.970624091182821,
+          "beforeCode": 1392,
+          "code": 1392,
+          "beforeRSS": 9306112,
+          "rss": 9175040
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/language-brainfuck",
+          "phase": "compile",
+          "beforeNs": 35709,
+          "currentNs": 36959,
+          "ratio": 1.0350051807667535,
+          "beforeCode": 892,
+          "code": 892,
+          "beforeRSS": 9338880,
+          "rss": 9469952
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/language-brainfuck",
+          "phase": "instantiate",
+          "beforeNs": 458,
+          "currentNs": 500,
+          "ratio": 1.091703056768559,
+          "beforeCode": 892,
+          "code": 892,
+          "beforeRSS": 9371648,
+          "rss": 9420800
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/language-brainfuck",
+          "phase": "first-call",
+          "beforeNs": 30209,
+          "currentNs": 31000,
+          "ratio": 1.0261842497269025,
+          "beforeCode": 892,
+          "code": 892,
+          "beforeRSS": 9256960,
+          "rss": 9338880
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/language-brainfuck",
+          "phase": "steady",
+          "beforeNs": 30334,
+          "currentNs": 29667,
+          "ratio": 0.9780114722753346,
+          "beforeCode": 892,
+          "code": 892,
+          "beforeRSS": 9322496,
+          "rss": 9322496
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "compile",
+          "beforeNs": 22708,
+          "currentNs": 22250,
+          "ratio": 0.9798308966003171,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9322496,
+          "rss": 9420800
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "instantiate",
+          "beforeNs": 791,
+          "currentNs": 708,
+          "ratio": 0.8950695322376738,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9306112,
+          "rss": 9338880
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "first-call",
+          "beforeNs": 180458,
+          "currentNs": 182833,
+          "ratio": 1.0131609571202163,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9256960,
+          "rss": 9322496
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "steady",
+          "beforeNs": 171792,
+          "currentNs": 161625,
+          "ratio": 0.940817965912266,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9240576,
+          "rss": 9256960
+        },
+        {
+          "order": "repeat",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "compile",
+          "beforeNs": 25625,
+          "currentNs": 39292,
+          "ratio": 1.5333463414634145,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 9715712,
+          "rss": 9601024
+        },
+        {
+          "order": "repeat",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "instantiate",
+          "beforeNs": 2666,
+          "currentNs": 1292,
+          "ratio": 0.4846211552888222,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 9551872,
+          "rss": 9666560
+        },
+        {
+          "order": "repeat",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "first-call",
+          "beforeNs": 34125,
+          "currentNs": 34541,
+          "ratio": 1.012190476190476,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 9551872,
+          "rss": 9535488
+        },
+        {
+          "order": "repeat",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "steady",
+          "beforeNs": 54384.68309859155,
+          "currentNs": 66622.42268041238,
+          "ratio": 1.2250218054895268,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 10338304,
+          "rss": 10305536
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 35583,
+          "currentNs": 36667,
+          "ratio": 1.0304639856111064,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9928704,
+          "rss": 9912320
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 6916,
+          "currentNs": 7291,
+          "ratio": 1.0542220936957778,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9748480,
+          "rss": 9814016
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 477500,
+          "currentNs": 456833,
+          "ratio": 0.9567183246073299,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9666560,
+          "rss": 9650176
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 464779.3185185185,
+          "currentNs": 461573.29197080294,
+          "ratio": 0.9931020455945958,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9633792,
+          "rss": 9666560
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 33458,
+          "currentNs": 38042,
+          "ratio": 1.1370075916073883,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9912320,
+          "rss": 9879552
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 7291,
+          "currentNs": 6833,
+          "ratio": 0.9371828281442874,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9617408,
+          "rss": 9699328
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 469083,
+          "currentNs": 469375,
+          "ratio": 1.0006224911156447,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9633792,
+          "rss": 9682944
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 460017.9037037037,
+          "currentNs": 460852.4666666667,
+          "ratio": 1.001814196700267,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9764864,
+          "rss": 9748480
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 39417,
+          "currentNs": 39208,
+          "ratio": 0.9946977192581881,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9863168,
+          "rss": 9863168
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 7500,
+          "currentNs": 7458,
+          "ratio": 0.9944,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9732096,
+          "rss": 9732096
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 465917,
+          "currentNs": 466375,
+          "ratio": 1.0009830077030888,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9601024,
+          "rss": 9584640
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 460304.8455882353,
+          "currentNs": 463458.0294117647,
+          "ratio": 1.00685020775634,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9666560,
+          "rss": 9814016
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 35167,
+          "currentNs": 37417,
+          "ratio": 1.063980436204396,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 10092544,
+          "rss": 10158080
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 10416,
+          "currentNs": 10083,
+          "ratio": 0.9680299539170507,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9814016,
+          "rss": 9912320
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 334417,
+          "currentNs": 309916,
+          "ratio": 0.9267351839170855,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9814016,
+          "rss": 9781248
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 322807.20725388604,
+          "currentNs": 308165.0390243902,
+          "ratio": 0.9546411359459523,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9879552,
+          "rss": 9912320
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 36625,
+          "currentNs": 35250,
+          "ratio": 0.962457337883959,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 10059776,
+          "rss": 10125312
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 8000,
+          "currentNs": 6958,
+          "ratio": 0.86975,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9781248,
+          "rss": 9830400
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 4138750,
+          "currentNs": 4225125,
+          "ratio": 1.020869827846572,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9846784,
+          "rss": 9797632
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 4211398.4375,
+          "currentNs": 4156460.9375,
+          "ratio": 0.9869550457371086,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9895936,
+          "rss": 9945088
+        },
+        {
+          "order": "repeat",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "compile",
+          "beforeNs": 21250,
+          "currentNs": 23625,
+          "ratio": 1.111764705882353,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9502720,
+          "rss": 9568256
+        },
+        {
+          "order": "repeat",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "instantiate",
+          "beforeNs": 5416,
+          "currentNs": 5875,
+          "ratio": 1.0847488921713442,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9469952,
+          "rss": 9388032
+        },
+        {
+          "order": "repeat",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "first-call",
+          "beforeNs": 2798417,
+          "currentNs": 2786875,
+          "ratio": 0.9958755253416485,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9322496,
+          "rss": 9453568
+        },
+        {
+          "order": "repeat",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "steady",
+          "beforeNs": 2.807666,
+          "currentNs": 2.769709,
+          "ratio": 0.9864809418214274,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9306112,
+          "rss": 9289728
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/blake3/hash",
+          "phase": "compile",
+          "beforeNs": 784209,
+          "currentNs": 759666,
+          "ratio": 0.9687034961343214,
+          "beforeCode": 29216,
+          "code": 29216,
+          "beforeRSS": 11386880,
+          "rss": 11386880
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/blake3/hash",
+          "phase": "instantiate",
+          "beforeNs": 792,
+          "currentNs": 833,
+          "ratio": 1.0517676767676767,
+          "beforeCode": 29216,
+          "code": 29216,
+          "beforeRSS": 10354688,
+          "rss": 10289152
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/blake3/hash",
+          "phase": "first-call",
+          "beforeNs": 216000,
+          "currentNs": 213797,
+          "ratio": 0.989800925925926,
+          "beforeCode": 29216,
+          "code": 29216,
+          "beforeRSS": 10420224,
+          "rss": 10436608
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/blake3/hash",
+          "phase": "steady",
+          "beforeNs": 223669,
+          "currentNs": 213871,
+          "ratio": 0.9561941976760302,
+          "beforeCode": 29216,
+          "code": 29216,
+          "beforeRSS": 10321920,
+          "rss": 10403840
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/polybench-trisolv/polybench_run",
+          "phase": "compile",
+          "beforeNs": 102041,
+          "currentNs": 99333,
+          "ratio": 0.973461647769034,
+          "beforeCode": 4060,
+          "code": 4060,
+          "beforeRSS": 9994240,
+          "rss": 9994240
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/polybench-trisolv/polybench_run",
+          "phase": "instantiate",
+          "beforeNs": 750,
+          "currentNs": 709,
+          "ratio": 0.9453333333333334,
+          "beforeCode": 4060,
+          "code": 4060,
+          "beforeRSS": 9846784,
+          "rss": 9846784
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/polybench-trisolv/polybench_run",
+          "phase": "first-call",
+          "beforeNs": 7708,
+          "currentNs": 7625,
+          "ratio": 0.9892319667877529,
+          "beforeCode": 4060,
+          "code": 4060,
+          "beforeRSS": 9682944,
+          "rss": 9650176
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/polybench-trisolv/polybench_run",
+          "phase": "steady",
+          "beforeNs": 7708,
+          "currentNs": 7583,
+          "ratio": 0.9837830825116762,
+          "beforeCode": 4060,
+          "code": 4060,
+          "beforeRSS": 9568256,
+          "rss": 9633792
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/sha256/hashN",
+          "phase": "compile",
+          "beforeNs": 101750,
+          "currentNs": 91250,
+          "ratio": 0.8968058968058968,
+          "beforeCode": 4360,
+          "code": 4360,
+          "beforeRSS": 9977856,
+          "rss": 9846784
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/sha256/hashN",
+          "phase": "instantiate",
+          "beforeNs": 709,
+          "currentNs": 750,
+          "ratio": 1.0578279266572637,
+          "beforeCode": 4360,
+          "code": 4360,
+          "beforeRSS": 9732096,
+          "rss": 9715712
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/sha256/hashN",
+          "phase": "first-call",
+          "beforeNs": 26709,
+          "currentNs": 26667,
+          "ratio": 0.9984274963495451,
+          "beforeCode": 4360,
+          "code": 4360,
+          "beforeRSS": 9732096,
+          "rss": 9682944
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/sha256/hashN",
+          "phase": "steady",
+          "beforeNs": 26834,
+          "currentNs": 26750,
+          "ratio": 0.9968696429902363,
+          "beforeCode": 4360,
+          "code": 4360,
+          "beforeRSS": 9732096,
+          "rss": 9682944
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "compile",
+          "beforeNs": 6789917,
+          "currentNs": 6842000,
+          "ratio": 1.0076706386838012,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 15433728,
+          "rss": 15876096
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "instantiate",
+          "beforeNs": 2000,
+          "currentNs": 1708,
+          "ratio": 0.854,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 13271040,
+          "rss": 13172736
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "first-call",
+          "beforeNs": 1292,
+          "currentNs": 1250,
+          "ratio": 0.9674922600619195,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 13156352,
+          "rss": 13074432
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "steady",
+          "beforeNs": 1125,
+          "currentNs": 1166,
+          "ratio": 1.0364444444444445,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 13123584,
+          "rss": 13041664
+        }
+      ]
+    },
+    "images": {
+      "sha256": "233c1e9d065c28961c3690f9c58446eec5058cb51b95a27d787ad54a949c66b3",
+      "count": 255,
+      "changed": [
+        {
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "artifact": "d514ab6e5c67942ee2770909481b55e3b7ba98da38da51c58da9494f15d75452",
+          "identical": false,
+          "baseline": {
+            "sha256": "64d17eb191071bad0e9afe8b31da30d7b94e1524e91f7554c722297c30e064fc",
+            "bytes": 1360,
+            "version": "fffbf96449bcdd6e10cc3d19c38211ac919493ae/source-c1543568a9530f58b0a0d0def39e01af82e0cf8fd9da53abdac45f3b1cfeca83",
+            "file": "baseline-2213e7be855812b3.code"
+          },
+          "candidate": {
+            "sha256": "81cb5320cdcc5bf734f5c0760c6dba36842313b111034c78ddfafe5e335ed005",
+            "bytes": 1360,
+            "version": "dfbf37042d5cbf7e98dbd00fa0bb955b7a94954b/source-1a6fd6f2c648f63bc6adf975c562134b79dca7947b26385068323f9e50b2af9b",
+            "file": "candidate-2213e7be855812b3.code"
+          }
+        },
+        {
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "artifact": "49a2f1f709744d033bf5e1a9352a5044d1d75eccee7d29c26c748bfd2e14e531",
+          "identical": false,
+          "baseline": {
+            "sha256": "64d17eb191071bad0e9afe8b31da30d7b94e1524e91f7554c722297c30e064fc",
+            "bytes": 1360,
+            "version": "fffbf96449bcdd6e10cc3d19c38211ac919493ae/source-c1543568a9530f58b0a0d0def39e01af82e0cf8fd9da53abdac45f3b1cfeca83",
+            "file": "baseline-22cdff9afcb3dc21.code"
+          },
+          "candidate": {
+            "sha256": "81cb5320cdcc5bf734f5c0760c6dba36842313b111034c78ddfafe5e335ed005",
+            "bytes": 1360,
+            "version": "dfbf37042d5cbf7e98dbd00fa0bb955b7a94954b/source-1a6fd6f2c648f63bc6adf975c562134b79dca7947b26385068323f9e50b2af9b",
+            "file": "candidate-22cdff9afcb3dc21.code"
+          }
+        },
+        {
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "artifact": "f8fc53c30758dbae0327ba6571010436139fa8db42217ab0ffd6c56d58db6404",
+          "identical": false,
+          "baseline": {
+            "sha256": "64d17eb191071bad0e9afe8b31da30d7b94e1524e91f7554c722297c30e064fc",
+            "bytes": 1360,
+            "version": "fffbf96449bcdd6e10cc3d19c38211ac919493ae/source-c1543568a9530f58b0a0d0def39e01af82e0cf8fd9da53abdac45f3b1cfeca83",
+            "file": "baseline-0879ef854fb5356f.code"
+          },
+          "candidate": {
+            "sha256": "81cb5320cdcc5bf734f5c0760c6dba36842313b111034c78ddfafe5e335ed005",
+            "bytes": 1360,
+            "version": "dfbf37042d5cbf7e98dbd00fa0bb955b7a94954b/source-1a6fd6f2c648f63bc6adf975c562134b79dca7947b26385068323f9e50b2af9b",
+            "file": "candidate-0879ef854fb5356f.code"
+          }
+        },
+        {
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "artifact": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+          "identical": false,
+          "baseline": {
+            "sha256": "432553b3056bafe948dd3e03ffc25a288309f493026f8c05717abac488e558bb",
+            "bytes": 880,
+            "version": "fffbf96449bcdd6e10cc3d19c38211ac919493ae/source-c1543568a9530f58b0a0d0def39e01af82e0cf8fd9da53abdac45f3b1cfeca83",
+            "file": "baseline-e6dede99195186b1.code"
+          },
+          "candidate": {
+            "sha256": "52a272e1d2b2c946215962ee807ef162152e1ae80163c727b875ca6fe7a0edaa",
+            "bytes": 880,
+            "version": "dfbf37042d5cbf7e98dbd00fa0bb955b7a94954b/source-1a6fd6f2c648f63bc6adf975c562134b79dca7947b26385068323f9e50b2af9b",
+            "file": "candidate-e6dede99195186b1.code"
+          }
+        },
+        {
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "artifact": "c9310c605dd85f4832d474a2c4e14aee30e2864c048b4c40327bbcfe8321eb53",
+          "identical": false,
+          "baseline": {
+            "sha256": "432553b3056bafe948dd3e03ffc25a288309f493026f8c05717abac488e558bb",
+            "bytes": 880,
+            "version": "fffbf96449bcdd6e10cc3d19c38211ac919493ae/source-c1543568a9530f58b0a0d0def39e01af82e0cf8fd9da53abdac45f3b1cfeca83",
+            "file": "baseline-deec12e2b6e3c13e.code"
+          },
+          "candidate": {
+            "sha256": "52a272e1d2b2c946215962ee807ef162152e1ae80163c727b875ca6fe7a0edaa",
+            "bytes": 880,
+            "version": "dfbf37042d5cbf7e98dbd00fa0bb955b7a94954b/source-1a6fd6f2c648f63bc6adf975c562134b79dca7947b26385068323f9e50b2af9b",
+            "file": "candidate-deec12e2b6e3c13e.code"
+          }
+        },
+        {
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "artifact": "46b9832f52f6eef98439d30280f035860a0bfcbbd6f11e508016a4d87f9ba1f3",
+          "identical": false,
+          "baseline": {
+            "sha256": "a1bffb2a9ae90a262dba0ef960289a8c8d4d3793ec5cd20dc5dec246695e9d93",
+            "bytes": 560,
+            "version": "fffbf96449bcdd6e10cc3d19c38211ac919493ae/source-c1543568a9530f58b0a0d0def39e01af82e0cf8fd9da53abdac45f3b1cfeca83",
+            "file": "baseline-837d0b781a84ac42.code"
+          },
+          "candidate": {
+            "sha256": "0c586cf458d95def5663e8630e9df000a2161a4db8833bd2fb96854871e9b6a9",
+            "bytes": 560,
+            "version": "dfbf37042d5cbf7e98dbd00fa0bb955b7a94954b/source-1a6fd6f2c648f63bc6adf975c562134b79dca7947b26385068323f9e50b2af9b",
+            "file": "candidate-837d0b781a84ac42.code"
+          }
+        }
+      ]
+    },
+    "proof-full": {
+      "sha256": "c6d446c894e852000f69d449cc38b268ff3d0ff4af0cdaace08bfd9439d660bf",
+      "functionalChanges": [],
+      "sourceVersions": {
+        "current": [
+          "ddda33df8eca65c8eb2cfba87205d6295270a15f/source-96f4bb5d3d969babfd03231d6d084cf0db66d2c6cda4fbdee9b86abf35af7cd2"
+        ],
+        "peer": [
+          "w2c2-clang:b33c05478a568a1def0b74cbf04244a657a9a112aa741998b54dfb63dd87fe15"
+        ],
+        "before": [
+          "dfbf37042d5cbf7e98dbd00fa0bb955b7a94954b/source-1a6fd6f2c648f63bc6adf975c562134b79dca7947b26385068323f9e50b2af9b"
+        ],
+        "original": [
+          "fffbf96449bcdd6e10cc3d19c38211ac919493ae/source-c1543568a9530f58b0a0d0def39e01af82e0cf8fd9da53abdac45f3b1cfeca83"
+        ]
+      },
+      "captures": 1064,
+      "cohorts": {
+        "main": {
+          "compile": {
+            "peer": {
+              "count": 148,
+              "geometricMeanRatio": 0.0002425278169831936,
+              "slower": 0
+            },
+            "before": {
+              "count": 148,
+              "geometricMeanRatio": 0.9927282493975829,
+              "slower": 73
+            },
+            "rssBefore": {
+              "count": 148,
+              "geometricMeanRatio": 1.001582382998811
+            },
+            "original": {
+              "count": 148,
+              "geometricMeanRatio": 0.9992099610732295
+            },
+            "rssOriginal": {
+              "count": 148,
+              "geometricMeanRatio": 1.002513074645667
+            }
+          },
+          "instantiate": {
+            "peer": {
+              "count": 148,
+              "geometricMeanRatio": 0.7332097081469597,
+              "slower": 30
+            },
+            "before": {
+              "count": 148,
+              "geometricMeanRatio": 1.0284906840736652,
+              "slower": 62
+            },
+            "rssBefore": {
+              "count": 148,
+              "geometricMeanRatio": 1.0025736242653482
+            },
+            "original": {
+              "count": 148,
+              "geometricMeanRatio": 0.9873109585202705
+            },
+            "rssOriginal": {
+              "count": 148,
+              "geometricMeanRatio": 1.0025443986405145
+            }
+          },
+          "first-call": {
+            "peer": {
+              "count": 148,
+              "geometricMeanRatio": 1.189886876848973,
+              "slower": 115
+            },
+            "before": {
+              "count": 148,
+              "geometricMeanRatio": 0.9987542175470244,
+              "slower": 52
+            },
+            "rssBefore": {
+              "count": 148,
+              "geometricMeanRatio": 1.0014218586535943
+            },
+            "original": {
+              "count": 148,
+              "geometricMeanRatio": 1.005157687453552
+            },
+            "rssOriginal": {
+              "count": 148,
+              "geometricMeanRatio": 1.0011446810823126
+            }
+          },
+          "steady": {
+            "peer": {
+              "count": 148,
+              "geometricMeanRatio": 1.1191464150826238,
+              "slower": 108
+            },
+            "before": {
+              "count": 148,
+              "geometricMeanRatio": 0.9972085808363799,
+              "slower": 61
+            },
+            "rssBefore": {
+              "count": 148,
+              "geometricMeanRatio": 1.0018020529616927
+            },
+            "original": {
+              "count": 148,
+              "geometricMeanRatio": 1.0023333470443967
+            },
+            "rssOriginal": {
+              "count": 148,
+              "geometricMeanRatio": 1.001280100734488
+            }
+          }
+        },
+        "features": {
+          "compile": {
+            "peer": {
+              "count": 54,
+              "geometricMeanRatio": 9.385568432692775e-05,
+              "slower": 0
+            },
+            "before": {
+              "count": 107,
+              "geometricMeanRatio": 1.0109030723819006,
+              "slower": 49
+            },
+            "rssBefore": {
+              "count": 107,
+              "geometricMeanRatio": 1.0005935098893703
+            },
+            "original": {
+              "count": 107,
+              "geometricMeanRatio": 1.0099581985373736
+            },
+            "rssOriginal": {
+              "count": 107,
+              "geometricMeanRatio": 1.0006053198077787
+            }
+          },
+          "instantiate": {
+            "peer": {
+              "count": 54,
+              "geometricMeanRatio": 1.667171818246358,
+              "slower": 49
+            },
+            "before": {
+              "count": 110,
+              "geometricMeanRatio": 1.0198842001744728,
+              "slower": 42
+            },
+            "rssBefore": {
+              "count": 110,
+              "geometricMeanRatio": 1.0021438767236084
+            },
+            "original": {
+              "count": 110,
+              "geometricMeanRatio": 1.0119733955463306
+            },
+            "rssOriginal": {
+              "count": 110,
+              "geometricMeanRatio": 1.0034811156227719
+            }
+          },
+          "first-call": {
+            "peer": {
+              "count": 54,
+              "geometricMeanRatio": 0.3385290798756466,
+              "slower": 12
+            },
+            "before": {
+              "count": 110,
+              "geometricMeanRatio": 0.9831218424054375,
+              "slower": 49
+            },
+            "rssBefore": {
+              "count": 110,
+              "geometricMeanRatio": 1.0017255430570853
+            },
+            "original": {
+              "count": 110,
+              "geometricMeanRatio": 0.9992225367895254
+            },
+            "rssOriginal": {
+              "count": 110,
+              "geometricMeanRatio": 1.0021833370282136
+            }
+          },
+          "steady": {
+            "peer": {
+              "count": 54,
+              "geometricMeanRatio": 0.2974091415018538,
+              "slower": 12
+            },
+            "before": {
+              "count": 107,
+              "geometricMeanRatio": 1.0020020309020563,
+              "slower": 68
+            },
+            "rssBefore": {
+              "count": 107,
+              "geometricMeanRatio": 0.9929242864957004
+            },
+            "original": {
+              "count": 107,
+              "geometricMeanRatio": 1.0038735406322463
+            },
+            "rssOriginal": {
+              "count": 107,
+              "geometricMeanRatio": 0.9992315858425802
+            }
+          }
+        },
+        "all": {
+          "compile": {
+            "peer": {
+              "count": 202,
+              "geometricMeanRatio": 0.00018816657699810658,
+              "slower": 0
+            },
+            "before": {
+              "count": 255,
+              "geometricMeanRatio": 1.0003144161577329,
+              "slower": 122
+            },
+            "rssBefore": {
+              "count": 255,
+              "geometricMeanRatio": 1.0011673251386557
+            },
+            "original": {
+              "count": 255,
+              "geometricMeanRatio": 1.0037060066539878
+            },
+            "rssOriginal": {
+              "count": 255,
+              "geometricMeanRatio": 1.0017121232400354
+            }
+          },
+          "instantiate": {
+            "peer": {
+              "count": 202,
+              "geometricMeanRatio": 0.913266640742599,
+              "slower": 79
+            },
+            "before": {
+              "count": 258,
+              "geometricMeanRatio": 1.024812406920427,
+              "slower": 104
+            },
+            "rssBefore": {
+              "count": 258,
+              "geometricMeanRatio": 1.0023903760375978
+            },
+            "original": {
+              "count": 258,
+              "geometricMeanRatio": 0.9977515865048511
+            },
+            "rssOriginal": {
+              "count": 258,
+              "geometricMeanRatio": 1.0029436671223033
+            }
+          },
+          "first-call": {
+            "peer": {
+              "count": 202,
+              "geometricMeanRatio": 0.8502945979372831,
+              "slower": 127
+            },
+            "before": {
+              "count": 258,
+              "geometricMeanRatio": 0.9920590822295214,
+              "slower": 101
+            },
+            "rssBefore": {
+              "count": 258,
+              "geometricMeanRatio": 1.001551325239903
+            },
+            "original": {
+              "count": 258,
+              "geometricMeanRatio": 1.0026228979096485
+            },
+            "rssOriginal": {
+              "count": 258,
+              "geometricMeanRatio": 1.0015873871858094
+            }
+          },
+          "steady": {
+            "peer": {
+              "count": 202,
+              "geometricMeanRatio": 0.7852928799722674,
+              "slower": 120
+            },
+            "before": {
+              "count": 255,
+              "geometricMeanRatio": 0.9992171514345988,
+              "slower": 129
+            },
+            "rssBefore": {
+              "count": 255,
+              "geometricMeanRatio": 0.9980672476503581
+            },
+            "original": {
+              "count": 255,
+              "geometricMeanRatio": 1.002979336400394
+            },
+            "rssOriginal": {
+              "count": 255,
+              "geometricMeanRatio": 1.0004200169304283
+            }
+          }
+        }
+      }
+    },
+    "proof-rechecks": {
+      "sha256": "37be1ec01bbcaee9c9551a79d2e67901046764e69fa54bec7ea90e48451e9184",
+      "sources": {
+        "baseline": "dfbf37042d5cbf7e98dbd00fa0bb955b7a94954b",
+        "candidate": "ddda33df8eca65c8eb2cfba87205d6295270a15f"
+      },
+      "captures": 80,
+      "rows": [
+        {
+          "order": "capture",
+          "workload": "applications/columnar-query",
+          "phase": "compile",
+          "beforeNs": 32959,
+          "currentNs": 35167,
+          "ratio": 1.0669923237962318,
+          "beforeCode": 932,
+          "code": 932,
+          "beforeRSS": 9682944,
+          "rss": 9666560
+        },
+        {
+          "order": "capture",
+          "workload": "applications/columnar-query",
+          "phase": "instantiate",
+          "beforeNs": 708,
+          "currentNs": 666,
+          "ratio": 0.940677966101695,
+          "beforeCode": 932,
+          "code": 932,
+          "beforeRSS": 9912320,
+          "rss": 9895936
+        },
+        {
+          "order": "capture",
+          "workload": "applications/columnar-query",
+          "phase": "first-call",
+          "beforeNs": 26083,
+          "currentNs": 25875,
+          "ratio": 0.9920254571943411,
+          "beforeCode": 932,
+          "code": 932,
+          "beforeRSS": 9601024,
+          "rss": 9584640
+        },
+        {
+          "order": "capture",
+          "workload": "applications/columnar-query",
+          "phase": "steady",
+          "beforeNs": 26041,
+          "currentNs": 27084,
+          "ratio": 1.0400522253369686,
+          "beforeCode": 932,
+          "code": 932,
+          "beforeRSS": 9551872,
+          "rss": 9519104
+        },
+        {
+          "order": "capture",
+          "workload": "applications/db-hash-join",
+          "phase": "compile",
+          "beforeNs": 34500,
+          "currentNs": 35000,
+          "ratio": 1.0144927536231885,
+          "beforeCode": 976,
+          "code": 976,
+          "beforeRSS": 9355264,
+          "rss": 9404416
+        },
+        {
+          "order": "capture",
+          "workload": "applications/db-hash-join",
+          "phase": "instantiate",
+          "beforeNs": 708,
+          "currentNs": 667,
+          "ratio": 0.942090395480226,
+          "beforeCode": 976,
+          "code": 976,
+          "beforeRSS": 9207808,
+          "rss": 9289728
+        },
+        {
+          "order": "capture",
+          "workload": "applications/db-hash-join",
+          "phase": "first-call",
+          "beforeNs": 3916,
+          "currentNs": 3834,
+          "ratio": 0.9790602655771196,
+          "beforeCode": 976,
+          "code": 976,
+          "beforeRSS": 9240576,
+          "rss": 9224192
+        },
+        {
+          "order": "capture",
+          "workload": "applications/db-hash-join",
+          "phase": "steady",
+          "beforeNs": 3833,
+          "currentNs": 3875,
+          "ratio": 1.0109574745630054,
+          "beforeCode": 976,
+          "code": 976,
+          "beforeRSS": 9256960,
+          "rss": 9289728
+        },
+        {
+          "order": "capture",
+          "workload": "applications/document-page-packing",
+          "phase": "compile",
+          "beforeNs": 55667,
+          "currentNs": 59834,
+          "ratio": 1.0748558391865917,
+          "beforeCode": 1676,
+          "code": 1676,
+          "beforeRSS": 9453568,
+          "rss": 9486336
+        },
+        {
+          "order": "capture",
+          "workload": "applications/document-page-packing",
+          "phase": "instantiate",
+          "beforeNs": 1250,
+          "currentNs": 709,
+          "ratio": 0.5672,
+          "beforeCode": 1676,
+          "code": 1676,
+          "beforeRSS": 9404416,
+          "rss": 9306112
+        },
+        {
+          "order": "capture",
+          "workload": "applications/document-page-packing",
+          "phase": "first-call",
+          "beforeNs": 49166,
+          "currentNs": 50334,
+          "ratio": 1.0237562543220926,
+          "beforeCode": 1676,
+          "code": 1676,
+          "beforeRSS": 9322496,
+          "rss": 9338880
+        },
+        {
+          "order": "capture",
+          "workload": "applications/document-page-packing",
+          "phase": "steady",
+          "beforeNs": 48791,
+          "currentNs": 41333,
+          "ratio": 0.8471439404808264,
+          "beforeCode": 1676,
+          "code": 1676,
+          "beforeRSS": 9256960,
+          "rss": 9273344
+        },
+        {
+          "order": "capture",
+          "workload": "applications/graph-dijkstra",
+          "phase": "compile",
+          "beforeNs": 55250,
+          "currentNs": 56291,
+          "ratio": 1.018841628959276,
+          "beforeCode": 1980,
+          "code": 1980,
+          "beforeRSS": 9502720,
+          "rss": 9502720
+        },
+        {
+          "order": "capture",
+          "workload": "applications/graph-dijkstra",
+          "phase": "instantiate",
+          "beforeNs": 583,
+          "currentNs": 583,
+          "ratio": 1.0,
+          "beforeCode": 1980,
+          "code": 1980,
+          "beforeRSS": 9289728,
+          "rss": 9355264
+        },
+        {
+          "order": "capture",
+          "workload": "applications/graph-dijkstra",
+          "phase": "first-call",
+          "beforeNs": 7584,
+          "currentNs": 7750,
+          "ratio": 1.0218881856540085,
+          "beforeCode": 1980,
+          "code": 1980,
+          "beforeRSS": 9289728,
+          "rss": 9240576
+        },
+        {
+          "order": "capture",
+          "workload": "applications/graph-dijkstra",
+          "phase": "steady",
+          "beforeNs": 7292,
+          "currentNs": 7500,
+          "ratio": 1.0285244103126714,
+          "beforeCode": 1980,
+          "code": 1980,
+          "beforeRSS": 9273344,
+          "rss": 9306112
+        },
+        {
+          "order": "capture",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "compile",
+          "beforeNs": 29834,
+          "currentNs": 23000,
+          "ratio": 0.7709324931286452,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9322496,
+          "rss": 9404416
+        },
+        {
+          "order": "capture",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "instantiate",
+          "beforeNs": 750,
+          "currentNs": 833,
+          "ratio": 1.1106666666666667,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9338880,
+          "rss": 9453568
+        },
+        {
+          "order": "capture",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "first-call",
+          "beforeNs": 196000,
+          "currentNs": 185792,
+          "ratio": 0.9479183673469388,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9256960,
+          "rss": 9256960
+        },
+        {
+          "order": "capture",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "steady",
+          "beforeNs": 161958,
+          "currentNs": 192833,
+          "ratio": 1.190635843860754,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9240576,
+          "rss": 9191424
+        },
+        {
+          "order": "capture",
+          "workload": "applications/search-bk-tree",
+          "phase": "compile",
+          "beforeNs": 56625,
+          "currentNs": 60917,
+          "ratio": 1.0757969094922737,
+          "beforeCode": 1780,
+          "code": 1780,
+          "beforeRSS": 9437184,
+          "rss": 9502720
+        },
+        {
+          "order": "capture",
+          "workload": "applications/search-bk-tree",
+          "phase": "instantiate",
+          "beforeNs": 750,
+          "currentNs": 833,
+          "ratio": 1.1106666666666667,
+          "beforeCode": 1780,
+          "code": 1780,
+          "beforeRSS": 9388032,
+          "rss": 9355264
+        },
+        {
+          "order": "capture",
+          "workload": "applications/search-bk-tree",
+          "phase": "first-call",
+          "beforeNs": 204875,
+          "currentNs": 208334,
+          "ratio": 1.0168834655277608,
+          "beforeCode": 1780,
+          "code": 1780,
+          "beforeRSS": 9289728,
+          "rss": 9371648
+        },
+        {
+          "order": "capture",
+          "workload": "applications/search-bk-tree",
+          "phase": "steady",
+          "beforeNs": 217042,
+          "currentNs": 217959,
+          "ratio": 1.0042249887118622,
+          "beforeCode": 1780,
+          "code": 1780,
+          "beforeRSS": 9240576,
+          "rss": 9256960
+        },
+        {
+          "order": "capture",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "compile",
+          "beforeNs": 25250,
+          "currentNs": 27709,
+          "ratio": 1.0973861386138615,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 9699328,
+          "rss": 9699328
+        },
+        {
+          "order": "capture",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "instantiate",
+          "beforeNs": 583,
+          "currentNs": 583,
+          "ratio": 1.0,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 9551872,
+          "rss": 9633792
+        },
+        {
+          "order": "capture",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "first-call",
+          "beforeNs": 32084,
+          "currentNs": 34542,
+          "ratio": 1.0766113950878944,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 9420800,
+          "rss": 9617408
+        },
+        {
+          "order": "capture",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "steady",
+          "beforeNs": 57763.80778588808,
+          "currentNs": 61975.53250270856,
+          "ratio": 1.0729128649626423,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 10436608,
+          "rss": 10387456
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 33375,
+          "currentNs": 35041,
+          "ratio": 1.0499176029962547,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9863168,
+          "rss": 9879552
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 6791,
+          "currentNs": 8250,
+          "ratio": 1.2148431747901633,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9732096,
+          "rss": 9699328
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 470916,
+          "currentNs": 470083,
+          "ratio": 0.9982311070339509,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9650176,
+          "rss": 9650176
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 460623.77205882355,
+          "currentNs": 460535.8,
+          "ratio": 0.9998090153740212,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9715712,
+          "rss": 9699328
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 36375,
+          "currentNs": 38208,
+          "ratio": 1.0503917525773196,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9912320,
+          "rss": 9945088
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 6958,
+          "currentNs": 6166,
+          "ratio": 0.8861741879850532,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9797632,
+          "rss": 9699328
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 466417,
+          "currentNs": 463500,
+          "ratio": 0.9937459397920745,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9650176,
+          "rss": 9699328
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 465712.34814814816,
+          "currentNs": 463600.9781021898,
+          "ratio": 0.99546636447508,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9732096,
+          "rss": 9732096
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 35500,
+          "currentNs": 36959,
+          "ratio": 1.0410985915492958,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9912320,
+          "rss": 9945088
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 7417,
+          "currentNs": 7917,
+          "ratio": 1.0674127005527843,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9781248,
+          "rss": 9682944
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 470667,
+          "currentNs": 462833,
+          "ratio": 0.9833555358671843,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9666560,
+          "rss": 9699328
+        },
+        {
+          "order": "capture",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 460679.22794117645,
+          "currentNs": 466994.44444444444,
+          "ratio": 1.0137084898129471,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9732096,
+          "rss": 9814016
+        },
+        {
+          "order": "capture",
+          "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 26375,
+          "currentNs": 25208,
+          "ratio": 0.9557535545023697,
+          "beforeCode": 656,
+          "code": 656,
+          "beforeRSS": 9699328,
+          "rss": 9666560
+        },
+        {
+          "order": "capture",
+          "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 667,
+          "currentNs": 625,
+          "ratio": 0.9370314842578711,
+          "beforeCode": 656,
+          "code": 656,
+          "beforeRSS": 9519104,
+          "rss": 9601024
+        },
+        {
+          "order": "capture",
+          "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 33959,
+          "currentNs": 33958,
+          "ratio": 0.9999705527253453,
+          "beforeCode": 656,
+          "code": 656,
+          "beforeRSS": 9469952,
+          "rss": 9453568
+        },
+        {
+          "order": "capture",
+          "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 34790.25712904785,
+          "currentNs": 34327.748108108106,
+          "ratio": 0.9867057889447567,
+          "beforeCode": 656,
+          "code": 656,
+          "beforeRSS": 10452992,
+          "rss": 10403840
+        },
+        {
+          "order": "capture",
+          "workload": "features/gc/cast-subtype/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 73334,
+          "currentNs": 72375,
+          "ratio": 0.9869228461559441,
+          "beforeCode": 752,
+          "code": 752,
+          "beforeRSS": 11878400,
+          "rss": 11862016
+        },
+        {
+          "order": "capture",
+          "workload": "features/gc/cast-subtype/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 6958,
+          "currentNs": 10625,
+          "ratio": 1.5270192584075883,
+          "beforeCode": 752,
+          "code": 752,
+          "beforeRSS": 11796480,
+          "rss": 11796480
+        },
+        {
+          "order": "capture",
+          "workload": "features/gc/cast-subtype/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 57713666,
+          "currentNs": 56435541,
+          "ratio": 0.977854032006908,
+          "beforeCode": 752,
+          "code": 752,
+          "beforeRSS": 11698176,
+          "rss": 11698176
+        },
+        {
+          "order": "capture",
+          "workload": "features/gc/cast-subtype/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 57138833,
+          "currentNs": 56347500,
+          "ratio": 0.9861506971974734,
+          "beforeCode": 752,
+          "code": 752,
+          "beforeRSS": 10321920,
+          "rss": 10289152
+        },
+        {
+          "order": "capture",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 25125,
+          "currentNs": 25250,
+          "ratio": 1.0049751243781095,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 9699328,
+          "rss": 9601024
+        },
+        {
+          "order": "capture",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 625,
+          "currentNs": 625,
+          "ratio": 1.0,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 9486336,
+          "rss": 9486336
+        },
+        {
+          "order": "capture",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 209,
+          "currentNs": 208,
+          "ratio": 0.9952153110047847,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 9388032,
+          "rss": 9453568
+        },
+        {
+          "order": "capture",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 116.897084,
+          "currentNs": 117.159416,
+          "ratio": 1.0022441278347027,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 43352064,
+          "rss": 43483136
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 37875,
+          "currentNs": 37542,
+          "ratio": 0.9912079207920792,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 10043392,
+          "rss": 10076160
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 10125,
+          "currentNs": 10208,
+          "ratio": 1.0081975308641975,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9830400,
+          "rss": 9912320
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 310208,
+          "currentNs": 315792,
+          "ratio": 1.0180008252527337,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9879552,
+          "rss": 9895936
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 304097.96585365856,
+          "currentNs": 303735.5707317073,
+          "ratio": 0.9988082948173167,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9977856,
+          "rss": 9961472
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 41083,
+          "currentNs": 36875,
+          "ratio": 0.8975732054621133,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 10125312,
+          "rss": 10223616
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 7375,
+          "currentNs": 7292,
+          "ratio": 0.9887457627118644,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9830400,
+          "rss": 9928704
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 4324583,
+          "currentNs": 4131750,
+          "ratio": 0.9554100360659051,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9879552,
+          "rss": 9895936
+        },
+        {
+          "order": "capture",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 4131179.6875,
+          "currentNs": 4146825.5,
+          "ratio": 1.003787250539438,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9863168,
+          "rss": 9863168
+        },
+        {
+          "order": "capture",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "compile",
+          "beforeNs": 23000,
+          "currentNs": 22250,
+          "ratio": 0.967391304347826,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9568256,
+          "rss": 9584640
+        },
+        {
+          "order": "capture",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "instantiate",
+          "beforeNs": 6000,
+          "currentNs": 7583,
+          "ratio": 1.2638333333333334,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9453568,
+          "rss": 9420800
+        },
+        {
+          "order": "capture",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "first-call",
+          "beforeNs": 2784833,
+          "currentNs": 2795000,
+          "ratio": 1.0036508472859953,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9486336,
+          "rss": 9420800
+        },
+        {
+          "order": "capture",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "steady",
+          "beforeNs": 2.816541,
+          "currentNs": 2.798208,
+          "ratio": 0.9934909521998792,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9404416,
+          "rss": 9388032
+        },
+        {
+          "order": "capture",
+          "workload": "wago/utf8proc/normalize-casefold",
+          "phase": "compile",
+          "beforeNs": 820208,
+          "currentNs": 860209,
+          "ratio": 1.0487693365585316,
+          "beforeCode": 35120,
+          "code": 35120,
+          "beforeRSS": 13434880,
+          "rss": 13451264
+        },
+        {
+          "order": "capture",
+          "workload": "wago/utf8proc/normalize-casefold",
+          "phase": "instantiate",
+          "beforeNs": 9500,
+          "currentNs": 9791,
+          "ratio": 1.0306315789473683,
+          "beforeCode": 35120,
+          "code": 35120,
+          "beforeRSS": 11206656,
+          "rss": 11304960
+        },
+        {
+          "order": "capture",
+          "workload": "wago/utf8proc/normalize-casefold",
+          "phase": "first-call",
+          "beforeNs": 1333,
+          "currentNs": 1250,
+          "ratio": 0.9377344336084021,
+          "beforeCode": 35120,
+          "code": 35120,
+          "beforeRSS": 10797056,
+          "rss": 10928128
+        },
+        {
+          "order": "capture",
+          "workload": "wago/utf8proc/normalize-casefold",
+          "phase": "steady",
+          "beforeNs": 1333,
+          "currentNs": 1250,
+          "ratio": 0.9377344336084021,
+          "beforeCode": 35120,
+          "code": 35120,
+          "beforeRSS": 10862592,
+          "rss": 10846208
+        },
+        {
+          "order": "capture",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "compile",
+          "beforeNs": 6931625,
+          "currentNs": 7021333,
+          "ratio": 1.0129418426415162,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 15515648,
+          "rss": 15876096
+        },
+        {
+          "order": "capture",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "instantiate",
+          "beforeNs": 1834,
+          "currentNs": 1917,
+          "ratio": 1.0452562704471102,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 13189120,
+          "rss": 13205504
+        },
+        {
+          "order": "capture",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "first-call",
+          "beforeNs": 1167,
+          "currentNs": 1167,
+          "ratio": 1.0,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 13008896,
+          "rss": 13058048
+        },
+        {
+          "order": "capture",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "steady",
+          "beforeNs": 1208,
+          "currentNs": 1250,
+          "ratio": 1.0347682119205297,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 13008896,
+          "rss": 13074432
+        },
+        {
+          "order": "capture",
+          "workload": "wago/zlib/inflate",
+          "phase": "compile",
+          "beforeNs": 869500,
+          "currentNs": 871334,
+          "ratio": 1.0021092581943645,
+          "beforeCode": 40596,
+          "code": 40596,
+          "beforeRSS": 11911168,
+          "rss": 11993088
+        },
+        {
+          "order": "capture",
+          "workload": "wago/zlib/inflate",
+          "phase": "instantiate",
+          "beforeNs": 1292,
+          "currentNs": 1292,
+          "ratio": 1.0,
+          "beforeCode": 40596,
+          "code": 40596,
+          "beforeRSS": 10551296,
+          "rss": 10633216
+        },
+        {
+          "order": "capture",
+          "workload": "wago/zlib/inflate",
+          "phase": "first-call",
+          "beforeNs": 7583,
+          "currentNs": 7667,
+          "ratio": 1.0110774099960438,
+          "beforeCode": 40596,
+          "code": 40596,
+          "beforeRSS": 10469376,
+          "rss": 10534912
+        },
+        {
+          "order": "capture",
+          "workload": "wago/zlib/inflate",
+          "phase": "steady",
+          "beforeNs": 7667,
+          "currentNs": 7458,
+          "ratio": 0.9727403156384505,
+          "beforeCode": 40596,
+          "code": 40596,
+          "beforeRSS": 10584064,
+          "rss": 10518528
+        },
+        {
+          "order": "capture",
+          "workload": "wago/zstd/decompress",
+          "phase": "compile",
+          "beforeNs": 3429416,
+          "currentNs": 3397041,
+          "ratio": 0.9905596171476426,
+          "beforeCode": 182692,
+          "code": 182692,
+          "beforeRSS": 14401536,
+          "rss": 14581760
+        },
+        {
+          "order": "capture",
+          "workload": "wago/zstd/decompress",
+          "phase": "instantiate",
+          "beforeNs": 1792,
+          "currentNs": 1583,
+          "ratio": 0.8833705357142857,
+          "beforeCode": 182692,
+          "code": 182692,
+          "beforeRSS": 11321344,
+          "rss": 11403264
+        },
+        {
+          "order": "capture",
+          "workload": "wago/zstd/decompress",
+          "phase": "first-call",
+          "beforeNs": 6209,
+          "currentNs": 6125,
+          "ratio": 0.9864712514092446,
+          "beforeCode": 182692,
+          "code": 182692,
+          "beforeRSS": 11337728,
+          "rss": 11304960
+        },
+        {
+          "order": "capture",
+          "workload": "wago/zstd/decompress",
+          "phase": "steady",
+          "beforeNs": 5750,
+          "currentNs": 5709,
+          "ratio": 0.9928695652173913,
+          "beforeCode": 182692,
+          "code": 182692,
+          "beforeRSS": 11288576,
+          "rss": 11370496
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/columnar-query",
+          "phase": "compile",
+          "beforeNs": 33458,
+          "currentNs": 33042,
+          "ratio": 0.9875665012851934,
+          "beforeCode": 932,
+          "code": 932,
+          "beforeRSS": 9699328,
+          "rss": 9715712
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/columnar-query",
+          "phase": "instantiate",
+          "beforeNs": 667,
+          "currentNs": 708,
+          "ratio": 1.0614692653673163,
+          "beforeCode": 932,
+          "code": 932,
+          "beforeRSS": 9846784,
+          "rss": 9830400
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/columnar-query",
+          "phase": "first-call",
+          "beforeNs": 27667,
+          "currentNs": 26375,
+          "ratio": 0.953301767448585,
+          "beforeCode": 932,
+          "code": 932,
+          "beforeRSS": 9551872,
+          "rss": 9617408
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/columnar-query",
+          "phase": "steady",
+          "beforeNs": 30000,
+          "currentNs": 36958,
+          "ratio": 1.2319333333333333,
+          "beforeCode": 932,
+          "code": 932,
+          "beforeRSS": 9617408,
+          "rss": 9584640
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/db-hash-join",
+          "phase": "compile",
+          "beforeNs": 34208,
+          "currentNs": 33917,
+          "ratio": 0.991493217960711,
+          "beforeCode": 976,
+          "code": 976,
+          "beforeRSS": 9437184,
+          "rss": 9306112
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/db-hash-join",
+          "phase": "instantiate",
+          "beforeNs": 709,
+          "currentNs": 667,
+          "ratio": 0.9407616361071932,
+          "beforeCode": 976,
+          "code": 976,
+          "beforeRSS": 9289728,
+          "rss": 9420800
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/db-hash-join",
+          "phase": "first-call",
+          "beforeNs": 3833,
+          "currentNs": 3875,
+          "ratio": 1.0109574745630054,
+          "beforeCode": 976,
+          "code": 976,
+          "beforeRSS": 9240576,
+          "rss": 9289728
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/db-hash-join",
+          "phase": "steady",
+          "beforeNs": 3792,
+          "currentNs": 3792,
+          "ratio": 1.0,
+          "beforeCode": 976,
+          "code": 976,
+          "beforeRSS": 9240576,
+          "rss": 9256960
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/document-page-packing",
+          "phase": "compile",
+          "beforeNs": 51417,
+          "currentNs": 54166,
+          "ratio": 1.0534648073594337,
+          "beforeCode": 1676,
+          "code": 1676,
+          "beforeRSS": 9371648,
+          "rss": 9486336
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/document-page-packing",
+          "phase": "instantiate",
+          "beforeNs": 2334,
+          "currentNs": 750,
+          "ratio": 0.3213367609254499,
+          "beforeCode": 1676,
+          "code": 1676,
+          "beforeRSS": 9322496,
+          "rss": 9256960
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/document-page-packing",
+          "phase": "first-call",
+          "beforeNs": 48875,
+          "currentNs": 42791,
+          "ratio": 0.8755191815856778,
+          "beforeCode": 1676,
+          "code": 1676,
+          "beforeRSS": 9256960,
+          "rss": 9338880
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/document-page-packing",
+          "phase": "steady",
+          "beforeNs": 38458,
+          "currentNs": 48916,
+          "ratio": 1.2719330178376411,
+          "beforeCode": 1676,
+          "code": 1676,
+          "beforeRSS": 9224192,
+          "rss": 9338880
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/graph-dijkstra",
+          "phase": "compile",
+          "beforeNs": 56875,
+          "currentNs": 56500,
+          "ratio": 0.9934065934065934,
+          "beforeCode": 1980,
+          "code": 1980,
+          "beforeRSS": 9371648,
+          "rss": 9388032
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/graph-dijkstra",
+          "phase": "instantiate",
+          "beforeNs": 584,
+          "currentNs": 541,
+          "ratio": 0.9263698630136986,
+          "beforeCode": 1980,
+          "code": 1980,
+          "beforeRSS": 9306112,
+          "rss": 9240576
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/graph-dijkstra",
+          "phase": "first-call",
+          "beforeNs": 7333,
+          "currentNs": 7584,
+          "ratio": 1.0342288285831174,
+          "beforeCode": 1980,
+          "code": 1980,
+          "beforeRSS": 9224192,
+          "rss": 9322496
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/graph-dijkstra",
+          "phase": "steady",
+          "beforeNs": 7625,
+          "currentNs": 7334,
+          "ratio": 0.9618360655737704,
+          "beforeCode": 1980,
+          "code": 1980,
+          "beforeRSS": 9207808,
+          "rss": 9338880
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "compile",
+          "beforeNs": 24459,
+          "currentNs": 23292,
+          "ratio": 0.952287501533178,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9388032,
+          "rss": 9322496
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "instantiate",
+          "beforeNs": 708,
+          "currentNs": 750,
+          "ratio": 1.0593220338983051,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9371648,
+          "rss": 9453568
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "first-call",
+          "beforeNs": 173166,
+          "currentNs": 171000,
+          "ratio": 0.9874917709019092,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9191424,
+          "rss": 9322496
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/numeric-euclidean-gcd",
+          "phase": "steady",
+          "beforeNs": 161583,
+          "currentNs": 193792,
+          "ratio": 1.199334088363256,
+          "beforeCode": 408,
+          "code": 408,
+          "beforeRSS": 9338880,
+          "rss": 9191424
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/search-bk-tree",
+          "phase": "compile",
+          "beforeNs": 59042,
+          "currentNs": 59084,
+          "ratio": 1.0007113580163274,
+          "beforeCode": 1780,
+          "code": 1780,
+          "beforeRSS": 9420800,
+          "rss": 9437184
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/search-bk-tree",
+          "phase": "instantiate",
+          "beforeNs": 792,
+          "currentNs": 750,
+          "ratio": 0.946969696969697,
+          "beforeCode": 1780,
+          "code": 1780,
+          "beforeRSS": 9338880,
+          "rss": 9306112
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/search-bk-tree",
+          "phase": "first-call",
+          "beforeNs": 222875,
+          "currentNs": 205584,
+          "ratio": 0.922418395961862,
+          "beforeCode": 1780,
+          "code": 1780,
+          "beforeRSS": 9273344,
+          "rss": 9355264
+        },
+        {
+          "order": "repeat",
+          "workload": "applications/search-bk-tree",
+          "phase": "steady",
+          "beforeNs": 218459,
+          "currentNs": 220834,
+          "ratio": 1.0108716051982294,
+          "beforeCode": 1780,
+          "code": 1780,
+          "beforeRSS": 9207808,
+          "rss": 9240576
+        },
+        {
+          "order": "repeat",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "compile",
+          "beforeNs": 38083,
+          "currentNs": 26250,
+          "ratio": 0.6892839324633039,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 9650176,
+          "rss": 9617408
+        },
+        {
+          "order": "repeat",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "instantiate",
+          "beforeNs": 625,
+          "currentNs": 583,
+          "ratio": 0.9328,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 9666560,
+          "rss": 9617408
+        },
+        {
+          "order": "repeat",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "first-call",
+          "beforeNs": 34458,
+          "currentNs": 34458,
+          "ratio": 1.0,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 9486336,
+          "rss": 9388032
+        },
+        {
+          "order": "repeat",
+          "workload": "features/bulk-memory/fill/performance-65536x64",
+          "phase": "steady",
+          "beforeNs": 54483.426356589145,
+          "currentNs": 59998.01569264069,
+          "ratio": 1.1012159055482131,
+          "beforeCode": 720,
+          "code": 720,
+          "beforeRSS": 10452992,
+          "rss": 10354688
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 39875,
+          "currentNs": 35500,
+          "ratio": 0.890282131661442,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9945088,
+          "rss": 9961472
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 6834,
+          "currentNs": 7292,
+          "ratio": 1.0670178519168863,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9715712,
+          "rss": 9781248
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 466583,
+          "currentNs": 473917,
+          "ratio": 1.015718532394022,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9699328,
+          "rss": 9781248
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/module-group/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 460275.4338235294,
+          "currentNs": 460401.0367647059,
+          "ratio": 1.0002728864761108,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9797632,
+          "rss": 9715712
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 35541,
+          "currentNs": 37875,
+          "ratio": 1.0656706339157593,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9863168,
+          "rss": 9879552
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 6916,
+          "currentNs": 7958,
+          "ratio": 1.1506651243493349,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9814016,
+          "rss": 9846784
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 464625,
+          "currentNs": 467917,
+          "ratio": 1.0070852838310465,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9601024,
+          "rss": 9748480
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/ordinary-baseline/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 466713.5851851852,
+          "currentNs": 462323.8382352941,
+          "ratio": 0.9905943450346548,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9781248,
+          "rss": 9781248
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 38792,
+          "currentNs": 34333,
+          "ratio": 0.885053619302949,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9961472,
+          "rss": 9846784
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 7584,
+          "currentNs": 7292,
+          "ratio": 0.9614978902953587,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9699328,
+          "rss": 9797632
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 467833,
+          "currentNs": 470167,
+          "ratio": 1.004988959735632,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9682944,
+          "rss": 9633792
+        },
+        {
+          "order": "repeat",
+          "workload": "features/compact-imports/type-group/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 460718.13970588235,
+          "currentNs": 460735.4962962963,
+          "ratio": 1.0000376729043599,
+          "beforeCode": 1360,
+          "code": 1360,
+          "beforeRSS": 9748480,
+          "rss": 9781248
+        },
+        {
+          "order": "repeat",
+          "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 27458,
+          "currentNs": 26584,
+          "ratio": 0.9681695680675941,
+          "beforeCode": 656,
+          "code": 656,
+          "beforeRSS": 9633792,
+          "rss": 9682944
+        },
+        {
+          "order": "repeat",
+          "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 666,
+          "currentNs": 1167,
+          "ratio": 1.7522522522522523,
+          "beforeCode": 656,
+          "code": 656,
+          "beforeRSS": 9502720,
+          "rss": 9551872
+        },
+        {
+          "order": "repeat",
+          "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 33958,
+          "currentNs": 33958,
+          "ratio": 1.0,
+          "beforeCode": 656,
+          "code": 656,
+          "beforeRSS": 9469952,
+          "rss": 9388032
+        },
+        {
+          "order": "repeat",
+          "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 34926.79058441558,
+          "currentNs": 33996.8507751938,
+          "ratio": 0.9733745988777818,
+          "beforeCode": 656,
+          "code": 656,
+          "beforeRSS": 10305536,
+          "rss": 10469376
+        },
+        {
+          "order": "repeat",
+          "workload": "features/gc/cast-subtype/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 69958,
+          "currentNs": 53916,
+          "ratio": 0.7706909860201835,
+          "beforeCode": 752,
+          "code": 752,
+          "beforeRSS": 11878400,
+          "rss": 11894784
+        },
+        {
+          "order": "repeat",
+          "workload": "features/gc/cast-subtype/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 5959,
+          "currentNs": 6791,
+          "ratio": 1.1396207417351905,
+          "beforeCode": 752,
+          "code": 752,
+          "beforeRSS": 11780096,
+          "rss": 11796480
+        },
+        {
+          "order": "repeat",
+          "workload": "features/gc/cast-subtype/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 56470166,
+          "currentNs": 56418500,
+          "ratio": 0.9990850744090252,
+          "beforeCode": 752,
+          "code": 752,
+          "beforeRSS": 11681792,
+          "rss": 11747328
+        },
+        {
+          "order": "repeat",
+          "workload": "features/gc/cast-subtype/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 56264834,
+          "currentNs": 57095291,
+          "ratio": 1.0147597876144094,
+          "beforeCode": 752,
+          "code": 752,
+          "beforeRSS": 10321920,
+          "rss": 10321920
+        },
+        {
+          "order": "repeat",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 25542,
+          "currentNs": 24709,
+          "ratio": 0.9673870487823977,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 9682944,
+          "rss": 9601024
+        },
+        {
+          "order": "repeat",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 667,
+          "currentNs": 667,
+          "ratio": 1.0,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 9568256,
+          "rss": 9568256
+        },
+        {
+          "order": "repeat",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 209,
+          "currentNs": 250,
+          "ratio": 1.1961722488038278,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 9437184,
+          "rss": 9519104
+        },
+        {
+          "order": "repeat",
+          "workload": "features/mutable-globals/exported-read/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 115.956666,
+          "currentNs": 114.355084,
+          "ratio": 0.9861880989230926,
+          "beforeCode": 384,
+          "code": 384,
+          "beforeRSS": 43352064,
+          "rss": 43237376
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 38958,
+          "currentNs": 38375,
+          "ratio": 0.9850351660762873,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 10125312,
+          "rss": 10108928
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 9958,
+          "currentNs": 9750,
+          "ratio": 0.97911227154047,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9879552,
+          "rss": 9830400
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 309459,
+          "currentNs": 320416,
+          "ratio": 1.0354069521325926,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9715712,
+          "rss": 9879552
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-identity/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 309736.7902439024,
+          "currentNs": 304741.05853658536,
+          "ratio": 0.9838710419147071,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9928704,
+          "rss": 9928704
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "compile",
+          "beforeNs": 38958,
+          "currentNs": 39750,
+          "ratio": 1.0203295857076853,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 10059776,
+          "rss": 10174464
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "instantiate",
+          "beforeNs": 6875,
+          "currentNs": 7167,
+          "ratio": 1.0424727272727272,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9814016,
+          "rss": 9863168
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "first-call",
+          "beforeNs": 4143166,
+          "currentNs": 4195250,
+          "ratio": 1.0125710628055935,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9797632,
+          "rss": 9912320
+        },
+        {
+          "order": "repeat",
+          "workload": "features/threads/host-opaque-identity/performance-4096x64",
+          "phase": "steady",
+          "beforeNs": 4155536.4375,
+          "currentNs": 4135683.3333333335,
+          "ratio": 0.9952224930607009,
+          "beforeCode": 880,
+          "code": 880,
+          "beforeRSS": 9879552,
+          "rss": 9846784
+        },
+        {
+          "order": "repeat",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "compile",
+          "beforeNs": 22708,
+          "currentNs": 27208,
+          "ratio": 1.198168046503435,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9568256,
+          "rss": 9568256
+        },
+        {
+          "order": "repeat",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "instantiate",
+          "beforeNs": 5583,
+          "currentNs": 5917,
+          "ratio": 1.0598244671323662,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9453568,
+          "rss": 9469952
+        },
+        {
+          "order": "repeat",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "first-call",
+          "beforeNs": 2800750,
+          "currentNs": 2798583,
+          "ratio": 0.9992262786753549,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9437184,
+          "rss": 9388032
+        },
+        {
+          "order": "repeat",
+          "workload": "mechanisms/wasm-host-wasm-loop",
+          "phase": "steady",
+          "beforeNs": 2.793375,
+          "currentNs": 2.80775,
+          "ratio": 1.0051461046225443,
+          "beforeCode": 560,
+          "code": 560,
+          "beforeRSS": 9388032,
+          "rss": 9404416
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/utf8proc/normalize-casefold",
+          "phase": "compile",
+          "beforeNs": 846000,
+          "currentNs": 838333,
+          "ratio": 0.9909373522458629,
+          "beforeCode": 35120,
+          "code": 35120,
+          "beforeRSS": 13418496,
+          "rss": 13402112
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/utf8proc/normalize-casefold",
+          "phase": "instantiate",
+          "beforeNs": 9791,
+          "currentNs": 9750,
+          "ratio": 0.9958124808497599,
+          "beforeCode": 35120,
+          "code": 35120,
+          "beforeRSS": 11239424,
+          "rss": 11206656
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/utf8proc/normalize-casefold",
+          "phase": "first-call",
+          "beforeNs": 1375,
+          "currentNs": 1333,
+          "ratio": 0.9694545454545455,
+          "beforeCode": 35120,
+          "code": 35120,
+          "beforeRSS": 10911744,
+          "rss": 10813440
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/utf8proc/normalize-casefold",
+          "phase": "steady",
+          "beforeNs": 1291,
+          "currentNs": 1291,
+          "ratio": 1.0,
+          "beforeCode": 35120,
+          "code": 35120,
+          "beforeRSS": 10928128,
+          "rss": 10780672
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "compile",
+          "beforeNs": 6870667,
+          "currentNs": 6889041,
+          "ratio": 1.0026742672872955,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 15826944,
+          "rss": 15532032
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "instantiate",
+          "beforeNs": 2041,
+          "currentNs": 2166,
+          "ratio": 1.0612444879960803,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 13172736,
+          "rss": 13205504
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "first-call",
+          "beforeNs": 1125,
+          "currentNs": 1208,
+          "ratio": 1.0737777777777777,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 13025280,
+          "rss": 13058048
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/yyjson/parse-edit-write",
+          "phase": "steady",
+          "beforeNs": 1208,
+          "currentNs": 1166,
+          "ratio": 0.9652317880794702,
+          "beforeCode": 334440,
+          "code": 334440,
+          "beforeRSS": 13041664,
+          "rss": 13041664
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/zlib/inflate",
+          "phase": "compile",
+          "beforeNs": 860125,
+          "currentNs": 877083,
+          "ratio": 1.0197157389914258,
+          "beforeCode": 40596,
+          "code": 40596,
+          "beforeRSS": 11927552,
+          "rss": 11960320
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/zlib/inflate",
+          "phase": "instantiate",
+          "beforeNs": 1209,
+          "currentNs": 1375,
+          "ratio": 1.1373035566583953,
+          "beforeCode": 40596,
+          "code": 40596,
+          "beforeRSS": 10600448,
+          "rss": 10649600
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/zlib/inflate",
+          "phase": "first-call",
+          "beforeNs": 7625,
+          "currentNs": 7584,
+          "ratio": 0.9946229508196721,
+          "beforeCode": 40596,
+          "code": 40596,
+          "beforeRSS": 10502144,
+          "rss": 10518528
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/zlib/inflate",
+          "phase": "steady",
+          "beforeNs": 6917,
+          "currentNs": 7666,
+          "ratio": 1.108283938123464,
+          "beforeCode": 40596,
+          "code": 40596,
+          "beforeRSS": 10502144,
+          "rss": 10534912
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/zstd/decompress",
+          "phase": "compile",
+          "beforeNs": 3386500,
+          "currentNs": 3430708,
+          "ratio": 1.013054185737487,
+          "beforeCode": 182692,
+          "code": 182692,
+          "beforeRSS": 14499840,
+          "rss": 14598144
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/zstd/decompress",
+          "phase": "instantiate",
+          "beforeNs": 1458,
+          "currentNs": 1625,
+          "ratio": 1.1145404663923182,
+          "beforeCode": 182692,
+          "code": 182692,
+          "beforeRSS": 11419648,
+          "rss": 11386880
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/zstd/decompress",
+          "phase": "first-call",
+          "beforeNs": 6166,
+          "currentNs": 5916,
+          "ratio": 0.9594550762244567,
+          "beforeCode": 182692,
+          "code": 182692,
+          "beforeRSS": 11321344,
+          "rss": 11321344
+        },
+        {
+          "order": "repeat",
+          "workload": "wago/zstd/decompress",
+          "phase": "steady",
+          "beforeNs": 6208,
+          "currentNs": 6167,
+          "ratio": 0.993395618556701,
+          "beforeCode": 182692,
+          "code": 182692,
+          "beforeRSS": 11337728,
+          "rss": 11370496
+        }
+      ]
+    }
+  }
+}
