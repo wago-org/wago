@@ -60,18 +60,31 @@ func inlineHostContextEnter(fn FixedScalarHostContextCall, context unsafe.Pointe
 
 // The prepared handle already validated and bound these immutable buffers.
 // Avoid repeating control-frame initialization and trap binding on short calls.
-func (e *Engine) tryInlinePreparedHostContext(p *PreparedHostScalarCall, context unsafe.Pointer, fixed FixedScalarHostContextCall) (bool, error) {
+func (e *Engine) tryInlinePreparedHostContext(p *PreparedHostScalarCall, context unsafe.Pointer, fixed FixedScalarHostContextCall, integer bool) (bool, error) {
 	if !inlineHostEnabled {
 		return false, nil
 	}
+	bridge := inlineHostBridgeAddr()
+	if integer {
+		bridge = integerHostContextBridge(false)
+		if bridge == 0 {
+			return false, nil
+		}
+	}
 	old := binary.LittleEndian.Uint64(p.ctrl[hcTrampoline:])
-	binary.LittleEndian.PutUint64(p.ctrl[hcTrampoline:], uint64(inlineHostBridgeAddr()))
+	binary.LittleEndian.PutUint64(p.ctrl[hcTrampoline:], uint64(bridge))
 	defer func() {
 		binary.LittleEndian.PutUint64(p.ctrl[hcTrampoline:], old)
 		goruntime.KeepAlive(p)
 		goruntime.KeepAlive(context)
 	}()
-	if outcome := inlineHostContextEnter(fixed, context, p.code, slicePtr(p.serArgs), p.linMemBase, slicePtr(p.trap), slicePtr(p.results), e.stackTop, slicePtr(p.ctrl), p.fixedSlots); outcome == 1 {
+	var outcome uint64
+	if integer {
+		outcome = inlineHostIntegerContextEnter(fixed, context, p.code, slicePtr(p.serArgs), p.linMemBase, slicePtr(p.trap), slicePtr(p.results), e.stackTop, slicePtr(p.ctrl), p.fixedSlots)
+	} else {
+		outcome = inlineHostContextEnter(fixed, context, p.code, slicePtr(p.serArgs), p.linMemBase, slicePtr(p.trap), slicePtr(p.results), e.stackTop, slicePtr(p.ctrl), p.fixedSlots)
+	}
+	if outcome == 1 {
 		return true, fmt.Errorf("jit: inline host escaped admitted import")
 	}
 	if tc := loadTrap(p.trap); tc != 0 {

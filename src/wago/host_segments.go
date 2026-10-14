@@ -85,9 +85,11 @@ func (in *Instance) isolatedNativeScalarLeaf() bool {
 // ARM64 integer popcount lowers through the SIMD allocator. A register-free
 // guest certificate must exclude it even though it does not affect FP control.
 func boundedIntegerModuleHostSegmentsFor(m *wasm.Module, noSIMD bool) bool {
-	if !boundedModuleHostSegments(m) {
-		return false
-	}
+	return boundedModuleHostSegments(m) && integerHostModuleRegistersFor(m, noSIMD)
+}
+
+// The selected CFG proof separately excludes helpers and unsupported memory operations.
+func integerHostModuleRegistersFor(m *wasm.Module, noSIMD bool) bool {
 	integer := func(t wasm.ValType) bool { return t == wasm.I32 || t == wasm.I64 }
 	for i := 0; i < m.FuncCount(); i++ {
 		ft, ok := m.FuncSignature(uint32(i))
@@ -125,7 +127,9 @@ func boundedIntegerModuleHostSegmentsFor(m *wasm.Module, noSIMD bool) bool {
 				return false
 			}
 			switch {
-			case op < 0x41: // control, locals, imported calls; established by the CFG proof
+			case op == 0x2a || op == 0x2b || op == 0x38 || op == 0x39: // FP memory accesses
+				return false
+			case op < 0x41: // control, locals, integer memory, imported calls; CFG proved separately
 			case op == 0x41 || op == 0x42:
 			case op >= 0x45 && op <= 0x5a: // integer comparisons
 			case op >= 0x67 && op <= 0x8a: // integer ALU

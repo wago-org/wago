@@ -23,6 +23,6 @@ func (e *Engine) CallWithHostBaseFixedViewBoundedContextLive(access runtimebridg
 	return e.CallWithHostBaseFixedViewBounded(access, code, serArgs, linMemBase, trap, results, ctrl, rawSlots, fallback)
 }
 
-func (e *Engine) tryInlinePreparedHostContext(p *PreparedHostScalarCall, context unsafe.Pointer, fixed FixedScalarHostContextCall) (bool, error) {
+func (e *Engine) tryInlinePreparedHostContext(p *PreparedHostScalarCall, context unsafe.Pointer, fixed FixedScalarHostContextCall, integer bool) (bool, error) {
 	return false, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	goruntime "runtime"
 	"sync"
 	"sync/atomic"
@@ -2731,6 +2732,9 @@ func (in *Instance) callPreparedHostSync(prepared *runtime.PreparedHostScalarCal
 		return prepared.Call(activation.dispatch, profileScalarFallback)
 	}
 	if preparedHostFixedEnabled && fixed != nil && in.boundedFixedSharedHostPortal() && in.syncHosts[0].scalarKind == syncHostTypedI32 {
+		if in.c.fixedSharedHostInteger && integerNumericHostEnabled && armIntegerNumericEnabled && os.Getenv("WAGO_FIXED_SHARED_INTEGER_CONTEXT") != "0" {
+			return prepared.CallFixedIntegerContext(runtimebridge.GrantHostScalarCall(), unsafe.Pointer(activation), dispatchSingleTypedI32FixedPortalContext, fixed)
+		}
 		return prepared.CallFixedContext(runtimebridge.GrantHostScalarCall(), unsafe.Pointer(activation), dispatchSingleTypedI32FixedPortalContext, fixed)
 	}
 	if preparedHostFixedEnabled {

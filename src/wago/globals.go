@@ -1144,6 +1144,7 @@ type Compiled struct {
 	// Fresh compiler scheduler certificate; codecs drop it. Resource-free
 	// private host bridges deliberately do not consume this certificate.
 	fixedSharedHostSegments bool
+	fixedSharedHostInteger  bool
 }
 
 // The sign bit of a fresh compilation's internal-entry offset carries the
