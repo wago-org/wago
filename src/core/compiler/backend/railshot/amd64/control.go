@@ -1604,6 +1604,23 @@ func (f *fn) popBranchCondition() (Reg, bool) {
 	return reg, owned
 }
 
+// keepBlockOperands admits only a small, flat operand prefix. Keeping deferred
+// trees here can multiply the work in later local-reference scans.
+func (f *fn) keepBlockOperands() bool {
+	const limit = 32
+	if f.depth() > limit {
+		return false
+	}
+	n := 0
+	for e := f.s.head.next; e != f.s.head; e = e.next {
+		if n == limit || e.isDeferred() || e.st.typ == mtCustom {
+			return false
+		}
+		n++
+	}
+	return true
+}
+
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	paramTypes, resultTypes, frameTypes, res0, err := f.blockType(r)
 	if err != nil {
@@ -1745,6 +1762,8 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 				f.setLocalsState(state)
 				f.stats.peep("callfree-loop-reg-state")
 			}
+		} else if pN != 0 && f.keepBlockOperands() {
+			f.materializePendingLoads()
 		} else {
 			f.flush()
 		}

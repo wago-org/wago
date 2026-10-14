@@ -559,3 +559,93 @@ func TestCtrlFrameFloatConstantsAndHandlerDepth(t *testing.T) {
 		}
 	}
 }
+
+func TestBlockEntryPreservesFlatOperandOwnershipAMD64(t *testing.T) {
+	f := fn{a: &x86.Asm{}, s: newStack(), globalCellReg: regNone}
+	base := f.pushReg(R8, mtI64)
+	f.markGCReference(base)
+	pure := f.pushValue(storage{kind: stConst, typ: mtI32, cval: 8})
+	fp := f.pushFReg(2, mtF64)
+	gp := f.pushReg(R9, mtI32)
+	f.m = &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.F64, wasm.I32}}}}}}}
+	before := [4]storage{base.st, pure.st, fp.st, gp.st}
+	if err := f.opBlock(wasm.NewReader([]byte{0, 0x0b}), 0x02); err != nil {
+		t.Fatal(err)
+	}
+	if f.a.Len() != 0 {
+		t.Fatalf("block entry emitted %d bytes", f.a.Len())
+	}
+	roots := f.rootsBottomToTop()
+	for i, node := range []*elem{base, pure, fp, gp} {
+		if roots[i] != node || node.st != before[i] {
+			t.Fatalf("operand %d changed at entry", i)
+		}
+	}
+	if f.regUser[R8] != base || f.regUser[R9] != gp || f.fregUser[2] != fp {
+		t.Fatal("block entry lost register ownership")
+	}
+	fr := &f.ctrl[len(f.ctrl)-1]
+	if fr.height != 2 || !base.st.hasGCRoot() || !fr.has(ctrlHasBaseGCRoots) {
+		t.Fatal("block entry changed frame or root shape")
+	}
+}
+
+func TestBlockEntryFlushesDeferredOrLargePrefixesAMD64(t *testing.T) {
+	for _, deferred := range []bool{false, true} {
+		t.Run(strconv.FormatBool(deferred), func(t *testing.T) {
+			f := fn{a: &x86.Asm{}, s: newStack(), globalCellReg: regNone}
+			f.m = &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}}}}}}}
+			depth := 33
+			if deferred {
+				f.pushValue(storage{kind: stSlot, typ: mtI32, slot: 8})
+				f.pushValue(storage{kind: stConst, typ: mtI32, cval: 5})
+				f.pushBinOp(opAdd, mtI32)
+				if !f.s.back().isDeferred() {
+					t.Fatal("test requires a deferred expression")
+				}
+				depth = 1
+			} else {
+				for i := range depth {
+					f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(i)})
+				}
+			}
+			if err := f.opBlock(wasm.NewReader([]byte{0, 0x0b}), 0x02); err != nil {
+				t.Fatal(err)
+			}
+			if !f.s.canonicalSlots || f.depth() != depth || f.a.Len() == 0 {
+				t.Fatal("block entry did not canonicalize the rejected prefix")
+			}
+		})
+	}
+}
+
+func TestBlockEntryFlushesWithoutParametersAMD64(t *testing.T) {
+	f := fn{a: &x86.Asm{}, s: newStack(), globalCellReg: regNone}
+	f.pushReg(R8, mtI32)
+	if err := f.opBlock(wasm.NewReader([]byte{0x40, 0x0b}), 0x02); err != nil {
+		t.Fatal(err)
+	}
+	if !f.s.canonicalSlots || f.a.Len() == 0 {
+		t.Fatal("parameter-free block did not flush its operand")
+	}
+}
+
+func TestBlockEntryRejectsCustomOperandsAMD64(t *testing.T) {
+	f := fn{s: newStack()}
+	f.pushValue(storage{kind: stConst, typ: mtCustom})
+	if f.keepBlockOperands() {
+		t.Fatal("custom operand admitted across a control boundary")
+	}
+}
+
+func TestBlockOperandLimitAMD64(t *testing.T) {
+	for _, n := range []int{31, 32, 33} {
+		f := fn{s: newStack()}
+		for range n {
+			f.pushValue(storage{kind: stConst, typ: mtI32})
+		}
+		if got := f.keepBlockOperands(); got != (n <= 32) {
+			t.Fatalf("depth %d: admission = %v", n, got)
+		}
+	}
+}
