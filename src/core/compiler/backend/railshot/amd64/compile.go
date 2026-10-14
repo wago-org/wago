@@ -2110,7 +2110,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 			if diagnosticsEnabled && ms != nil {
 				ms.GCSharedStubBytes = len(stubCode)
-				ms.GCSharedStubs = 1
+				ms.GCSharedStubs = countGCSharedStubBodies(stubOffsets)
 				ms.GCSharedStubCallSites = countGCSharedStubRelocs(relocs)
 			}
 		}
@@ -2423,7 +2423,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		code = append(code, stubCode...)
 		if diagnosticsEnabled && ms != nil {
 			ms.GCSharedStubBytes = len(stubCode)
-			ms.GCSharedStubs = 1
+			ms.GCSharedStubs = countGCSharedStubBodies(stubOffsets)
 			ms.GCSharedStubCallSites = countGCSharedStubRelocs(relocs)
 		}
 	}

@@ -170,3 +170,60 @@ func TestModuleSharedGCResolverStubReducesDenseSites(t *testing.T) {
 		t.Fatalf("distinct one-function attempts = %d, want 1", distinctShared.Compile.FunctionAttempts)
 	}
 }
+
+func TestModuleGCResolverFamilyCounts(t *testing.T) {
+	for _, kinds := range [][]gcSharedStubKind{nil, {gcSharedStubResolveObject}, {gcSharedStubResolveSubtypeObject}, {gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject}} {
+		relocs := make([]callReloc, len(kinds))
+		for i, kind := range kinds {
+			relocs[i].gcStub = kind
+		}
+		code, offsets := buildModuleGCSharedStubs([][]callReloc{relocs})
+		if got := countGCSharedStubBodies(offsets); got != len(kinds) {
+			t.Fatalf("families %v: got %d bodies", kinds, got)
+		}
+		for _, kind := range kinds {
+			if offsets[kind] < 0 || offsets[kind] >= len(code) {
+				t.Fatalf("family %d: invalid offset %d", kind, offsets[kind])
+			}
+		}
+		if len(kinds) == 2 && offsets[kinds[0]] == offsets[kinds[1]] {
+			t.Fatal("resolver families share a body offset")
+		}
+	}
+}
+
+func TestModuleMixedGCResolverDiagnostics(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	savedShared, savedReuse := gcSharedStubsEnabled, gcResolveReuseEnabled
+	gcSharedStubsEnabled, gcResolveReuseEnabled = true, false
+	defer func() { gcSharedStubsEnabled, gcResolveReuseEnabled = savedShared, savedReuse }()
+	// Distinct final-type functions select the old exact resolver island. An
+	// open-type function adds the subtype resolver without changing that crossover.
+	body := wasmtest.Code([]byte{0x20, 0, 0xfb, 2, 0, 0, 0x0b})
+	open := wasmtest.Code([]byte{0x20, 0, 0xfb, 2, 1, 0, 0x0b})
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 0}, []byte{0x50, 0, 0x5f, 1, 0x7f, 0}, []byte{0x60, 1, 0x63, 0, 1, 0x7f}, []byte{0x60, 1, 0x63, 1, 1, 0x7f})),
+		wasmtest.Section(3, wasmtest.Vec([]byte{2}, []byte{2}, []byte{3})),
+		wasmtest.Section(10, wasmtest.Vec(body, body, open)),
+	)
+	for _, deferMapping := range []bool{false, true} {
+		m, err := wasm.DecodeModule(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatal(err)
+		}
+		var stats ModuleStats
+		c, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, DeferCodeMapping: deferMapping, Stats: &stats})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.CodeImage != nil {
+			c.CodeImage.Close()
+		}
+		if stats.GCSharedStubs != 2 || stats.GCSharedStubCallSites != 3 || stats.GCSharedStubBytes == 0 {
+			t.Fatalf("defer=%v: bodies=%d calls=%d bytes=%d", deferMapping, stats.GCSharedStubs, stats.GCSharedStubCallSites, stats.GCSharedStubBytes)
+		}
+	}
+}

@@ -20,6 +20,7 @@ type gcSharedStubKind uint8
 const (
 	gcSharedStubNone gcSharedStubKind = iota
 	gcSharedStubResolveObject
+	gcSharedStubResolveSubtypeObject
 	gcSharedStubMax
 )
 
@@ -362,13 +363,27 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 	for i := range offsets {
 		offsets[i] = -1
 	}
-	if !used[gcSharedStubResolveObject] {
+	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] {
 		return nil, offsets
 	}
 	a := &x64.Asm{}
-	offsets[gcSharedStubResolveObject] = a.Len()
-	emitModuleGCResolveObjectStub(a)
+	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject} {
+		if used[kind] {
+			offsets[kind] = a.Len()
+			emitModuleGCResolveObjectStub(a, kind == gcSharedStubResolveSubtypeObject)
+		}
+	}
 	return a.B, offsets
+}
+
+func countGCSharedStubBodies(offsets [gcSharedStubMax]int) int {
+	n := 0
+	for _, offset := range offsets[1:] {
+		if offset >= 0 {
+			n++
+		}
+	}
+	return n
 }
 
 // emitModuleGCResolveObjectStub implements the AMD64 noncollecting GC leaf ABI:
@@ -380,7 +395,7 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 //
 // The compact reference remains in the caller's canonical local/stack root. A
 // returned raw address is valid only until the caller's next invalidating edge.
-func emitModuleGCResolveObjectStub(a *x64.Asm) {
+func emitModuleGCResolveObjectStub(a *x64.Asm, subtype bool) {
 	a.Push(R9)
 	a.Push(R10)
 	a.Push(R11)
@@ -400,8 +415,8 @@ func emitModuleGCResolveObjectStub(a *x64.Asm) {
 	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 
-	// Dynamic semantic validation remains exact: handle range/liveness, space,
-	// backing extent, object extent, and canonical runtime type.
+	// Validate handle range/liveness, space, backing extent, object extent,
+	// and the canonical runtime type relation.
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
 	castFailures = append(castFailures, a.JccPlaceholder(condAE))
@@ -434,7 +449,35 @@ func emitModuleGCResolveObjectStub(a *x64.Asm) {
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0)
 	a.Cmp32(RCX, RDX)
-	castFailures = append(castFailures, a.JccPlaceholder(condNE))
+	if subtype {
+		exact := a.JccPlaceholder(condE)
+		// A validated struct subtype preserves the declared fields and their layout.
+		// The existing packed intervals store pre in the high dword, post in the low.
+		a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+		a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+		a.AluRM(cmpRMcode, RCX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+		castFailures = append(castFailures, a.JccPlaceholder(condAE))
+		a.AluRM(cmpRMcode, RDX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+		castFailures = append(castFailures, a.JccPlaceholder(condAE))
+		a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
+		a.TestSelf(R10, true)
+		castFailures = append(castFailures, a.JccPlaceholder(condE))
+		a.ImulRI(RCX, 8, true)
+		a.LoadIdx(R9, R10, RCX, 0, 8, false, true)
+		a.ImulRI(RDX, 8, true)
+		a.LoadIdx(R10, R10, RDX, 0, 8, false, true)
+		a.MovReg64(RAX, R9)
+		a.ShiftImm(5, RAX, 32, true)
+		a.MovReg64(RCX, R10)
+		a.ShiftImm(5, RCX, 32, true)
+		a.Cmp32(RAX, RCX)
+		castFailures = append(castFailures, a.JccPlaceholder(condB))
+		a.Cmp32(R9, R10)
+		castFailures = append(castFailures, a.JccPlaceholder(condA))
+		a.PatchRel32(exact, a.Len())
+	} else {
+		castFailures = append(castFailures, a.JccPlaceholder(condNE))
+	}
 	a.Load32(RCX, R11, 4)
 	a.Cmp32(RCX, RDI)
 	castFailures = append(castFailures, a.JccPlaceholder(condB))
@@ -464,6 +507,10 @@ func emitModuleGCResolveObjectStub(a *x64.Asm) {
 }
 
 func (f *fn) emitDirectGCObject(object *elem, localType, requiredBytes uint32, local int, hasLocal bool) (obj Reg, done func()) {
+	return f.emitDirectGCObjectWithSubtype(object, localType, requiredBytes, local, hasLocal, false)
+}
+
+func (f *fn) emitDirectGCObjectWithSubtype(object *elem, localType, requiredBytes uint32, local int, hasLocal, subtype bool) (obj Reg, done func()) {
 	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid &&
 		f.gcResolved.local == local && f.gcResolved.typeIndex == localType &&
 		requiredBytes <= f.gcResolved.requiredBytes {
@@ -476,16 +523,20 @@ func (f *fn) emitDirectGCObject(object *elem, localType, requiredBytes uint32, l
 		return f.gcResolved.reg, func() {}
 	}
 	f.invalidateGCResolvedObject()
-	if f.gcDeferResolver && f.gcHandleResolutions != 0 {
+	if !subtype && f.gcDeferResolver && f.gcHandleResolutions != 0 {
 		f.gcSharedResolver = true
 		f.gcDeferResolver = false
 	}
-	if f.gcSharedResolver {
-		obj, done = f.emitSharedCheckedGCObject(object, localType, requiredBytes)
+	if subtype {
+		obj, done = f.emitSharedCheckedGCObject(object, localType, requiredBytes, gcSharedStubResolveSubtypeObject)
+	} else if f.gcSharedResolver {
+		obj, done = f.emitSharedCheckedGCObject(object, localType, requiredBytes, gcSharedStubResolveObject)
 	} else {
 		obj, done = f.emitCheckedGCObject(object, localType, requiredBytes)
 	}
-	f.gcHandleResolutions++
+	if !subtype {
+		f.gcHandleResolutions++
+	}
 	f.stats.addGCHandleResolution()
 	if !gcResolveReuseEnabled || !hasLocal {
 		return obj, done
@@ -501,7 +552,7 @@ func (f *fn) emitDirectGCObject(object *elem, localType, requiredBytes uint32, l
 	return cacheReg, func() {}
 }
 
-func (f *fn) emitSharedCheckedGCObject(object *elem, localType, requiredBytes uint32) (obj Reg, done func()) {
+func (f *fn) emitSharedCheckedGCObject(object *elem, localType, requiredBytes uint32, kind gcSharedStubKind) (obj Reg, done func()) {
 	ref := f.materialize(object)
 	if ref != RAX {
 		f.a.MovReg64(RAX, ref)
@@ -513,7 +564,7 @@ func (f *fn) emitSharedCheckedGCObject(object *elem, localType, requiredBytes ui
 		f.checkCallClobber()
 	}
 	site := f.a.CallRel32()
-	f.relocs = append(f.relocs, f.newGCStubCallReloc(site, gcSharedStubResolveObject))
+	f.relocs = append(f.relocs, f.newGCStubCallReloc(site, kind))
 	f.stats.call("gcnative-leaf")
 	f.stats.peep("gc-shared-resolve-call")
 
@@ -2218,7 +2269,7 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 
 func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) bool {
 	off, scalar, final, ok := f.directGCStructLayout(typeIndex, fieldIndex)
-	if !ok || !final {
+	if !ok || (!final && !gcSharedStubsEnabled) {
 		return false
 	}
 	local, hasLocal := gcLocalProvenance(f.s.back())
@@ -2227,7 +2278,7 @@ func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) 
 	f.spillFloor = f.curSpillSlot()
 	object := f.popValue()
 	required := gc.PayloadOffset + off + uint32(scalar.size)
-	obj, done := f.emitDirectGCObject(object, typeIndex, required, local, hasLocal)
+	obj, done := f.emitDirectGCObjectWithSubtype(object, typeIndex, required, local, hasLocal, !final)
 	disp := int32(gc.PayloadOffset + off)
 	if scalar.typ.isFloat() {
 		x := f.allocFReg(0)
