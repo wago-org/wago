@@ -17,8 +17,23 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	if p.SignedBits != 0 || p.PopulationCount {
+	if p.SignedBits != 0 {
 		return false, nil
+	}
+	if p.PopulationCount {
+		blocked := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
+		available := 0
+		for _, reg := range gpAlloc {
+			if !blocked.has(reg) {
+				available++
+			}
+		}
+		// CL plus three arithmetic registers, leaving two more homes for
+		// counter materialization and regional local recovery. Pressure falls
+		// back before advancing the reader or changing compiler state.
+		if blocked.has(RCX) || available < 6 {
+			return false, nil
+		}
 	}
 	typ := mtI32
 	if p.Wide {
@@ -79,6 +94,9 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	one := func() { f.pushValue(storage{kind: stConst, typ: typ, cval: 1}) }
 	if p.GlobalRecurrence {
 		return f.emitIntegerGlobalRecurrence(p, typ, get)
+	}
+	if p.PopulationCount {
+		return f.emitIntegerPopcountSum(p, typ, get)
 	}
 	if p.Divisor != 0 {
 		return f.emitIntegerDivisionSum(p, typ, get)
