@@ -25,7 +25,7 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 			return false
 		}
 		allocations, calls := 0, 0
-		importedTail := false
+		tailBridge := false
 		r := wasm.NewReader(m.Code[function].BodyBytes)
 		for r.HasNext() {
 			op, err := r.Byte()
@@ -41,9 +41,13 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 				calls++
 			case wasm.InstrCallIndirect:
 				calls++
-			case wasm.InstrCallRef,
-				wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
+			case wasm.InstrCallRef, wasm.InstrReturnCallRef:
 				return false
+			case wasm.InstrReturnCallIndirect:
+				if !rootedScalarNumericIndirectTail(m, imm) {
+					return false
+				}
+				tailBridge = true
 			case wasm.InstrReturnCall:
 				if uint64(imm.Index) >= uint64(m.FuncCount()) {
 					return false
@@ -53,7 +57,7 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 					if !ok || !rootedScalarNumericTailSignature(sig) {
 						return false
 					}
-					importedTail = true
+					tailBridge = true
 				}
 			}
 			if op == 0xfb {
@@ -65,7 +69,7 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 		}
 		plan := plans.Function(function)
 		if allocations == 0 && calls == 0 {
-			if !importedTail {
+			if !tailBridge {
 				if plan != nil {
 					return false
 				}

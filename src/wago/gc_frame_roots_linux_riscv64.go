@@ -380,7 +380,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
-		if liveMasks.allocationN == 0 && liveMasks.callN == 0 && !rv64RootedBodyHasImportedNumericTail(m, m.Code[function].BodyBytes, &classifier) {
+		if liveMasks.allocationN == 0 && liveMasks.callN == 0 && !rv64RootedBodyHasNumericTailBridge(m, m.Code[function].BodyBytes, &classifier) {
 			return reject("function %d is collecting without an RV64 root boundary", function)
 		}
 		if uint64(safepointBase)+uint64(liveMasks.allocationN) > uint64(shared.GCSafepointIDMax) {
@@ -394,7 +394,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	return modulePlan
 }
 
-func rv64RootedBodyHasImportedNumericTail(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
+func rv64RootedBodyHasNumericTailBridge(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
 	if m == nil || classifier == nil {
 		return false
 	}
@@ -409,12 +409,23 @@ func rv64RootedBodyHasImportedNumericTail(m *wasm.Module, body []byte, classifie
 		if err = classifier.ClassifyInto(r, op, &imm); err != nil {
 			return false
 		}
-		if imm.Kind != wasm.InstrReturnCall || uint64(imm.Index) >= imports {
-			continue
-		}
-		sig, ok := m.FuncSignature(imm.Index)
-		if ok && rv64RootedNumericTailSignature(sig) {
-			return true
+		switch imm.Kind {
+		case wasm.InstrReturnCall:
+			if uint64(imm.Index) < imports {
+				sig, ok := m.FuncSignature(imm.Index)
+				if ok && rv64RootedNumericTailSignature(sig) {
+					return true
+				}
+			}
+		case wasm.InstrReturnCallIndirect:
+			table, ok := m.TableType(imm.Index2)
+			if !ok || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
+				continue
+			}
+			sig, ok := m.ResolvedTypeFunc(imm.Index)
+			if ok && rv64RootedNumericTailSignature(sig) {
+				return true
+			}
 		}
 	}
 	return false

@@ -346,6 +346,15 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if table != nil {
 		typeKeys = make([]uint64, len(types))
 		for i := range typeKeys {
+			if mode.gcRootedScalar {
+				sub, _, _, ok := rootedDirectory.lookup(uint32(i))
+				if !ok {
+					return nil, unsupported("SWAR rooted table type directory")
+				}
+				if sub.Comp.Kind != wasm.CompFunc {
+					continue
+				}
+			}
 			key, ok := m.StructuralTypeKeyChecked(uint32(i))
 			if !ok {
 				return nil, unsupported("SWAR checked table type identity")
