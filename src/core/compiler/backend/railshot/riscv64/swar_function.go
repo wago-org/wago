@@ -107,10 +107,10 @@ func walkSWARPairsWithTypedCallMode(fn *wasm.Func, ft *wasm.CompType, profile me
 }
 
 func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions bool, emit *integerEmitter) (swarSummary, error) {
-	return walkSWARPairsWithParkedReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, false, emit)
+	return walkSWARPairsWithParkedReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, false, false, internalReferenceTypeDirectory{}, emit)
 }
 
-func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals bool, emit *integerEmitter) (swarSummary, error) {
+func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals, gcRootedScalar bool, rootedDirectory internalReferenceTypeDirectory, emit *integerEmitter) (swarSummary, error) {
 	if dynamicTailCalls && (!importTailCalls || !foreignTableCalls || !localTailCalls) {
 		return swarSummary{}, unsupported("private dynamic tail walker contract")
 	}
@@ -128,14 +128,14 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 	if err := swarOwnedTableType(table); err != nil {
 		return swarSummary{}, err
 	}
-	privateRefs := table != nil || foreignTableCalls
+	privateRefs := table != nil || foreignTableCalls || gcRootedScalar
 	if referenceFunctions && !privateRefs {
 		return swarSummary{}, unsupported("private reference functions require same-image direct calls")
 	}
 	publicReferenceCarriers := parkedMutableReferenceGlobals && len(types) != 0 && publicReferenceVectorCarrierTarget(types[0])
-	referenceTypes := internalReferenceTypes{swar: types, publicReferenceCarriers: publicReferenceCarriers}
+	referenceTypes := internalReferenceTypes{swar: types, rootedDirectory: rootedDirectory, gcRootedScalar: gcRootedScalar, publicReferenceCarriers: publicReferenceCarriers}
 	functionClass := func(typ wasm.ValType) swarClass {
-		if referenceFunctions {
+		if referenceFunctions || gcRootedScalar {
 			return swarControlClass(typ, referenceTypes, true, referenceCalls)
 		}
 		return swarClassOf(typ)
@@ -160,7 +160,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 		return swarSummary{}, unsupported("SWAR function directory bound")
 	}
 	for i, typ := range functions {
-		if referenceFunctions {
+		if referenceFunctions || gcRootedScalar {
 			if err := admitSWARControlSignature(typ, referenceTypes, true, referenceCalls); err != nil {
 				return swarSummary{}, err
 			}
@@ -177,6 +177,9 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 		return swarSummary{}, unsupported("SWAR control type bound")
 	}
 	for _, typ := range types {
+		if typ == nil && gcRootedScalar {
+			continue
+		}
 		if err := admitSWARControlSignature(typ, referenceTypes, privateRefs, privateRefs && referenceCalls); err != nil {
 			return swarSummary{}, err
 		}
@@ -242,6 +245,16 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 	local := func(i int) int32 { return int32(header + 16*i) }
 	spill := func(i int) int32 { return int32(header + 16*nlocals + 16*i) }
 	var stackClasses [256]swarClass
+	hiddenRefs := func(base int) []bool {
+		if !gcRootedScalar || base == 0 {
+			return nil
+		}
+		roots := make([]bool, base*2)
+		for i := 0; i < base; i++ {
+			roots[i*2] = stackClasses[i] == swarFuncRef
+		}
+		return roots
+	}
 	var flow swarFlow
 	push := func(class swarClass) error {
 		if h >= 256 {
@@ -400,9 +413,9 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			}
 			if emit != nil {
 				if index < uint32(importedFunctions) {
-					emit.swarImportCall(index, sig, base, spill)
+					emit.swarImportCall(index, sig, base, spill, hiddenRefs(base))
 				} else {
-					emit.swarDirectCall(index-uint32(importedFunctions), sig, base, spill)
+					emit.swarDirectCall(index-uint32(importedFunctions), sig, base, spill, hiddenRefs(base))
 				}
 			}
 			h = base
@@ -630,7 +643,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 						emit.localIndirectTailCall(sig, typeKeys[typeIndex], base, h-1, spill)
 					}
 				} else {
-					emit.swarIndirectCall(sig, typeKeys[typeIndex], base, h-1, spill)
+					emit.swarIndirectCall(sig, typeKeys[typeIndex], base, h-1, spill, hiddenRefs(base))
 				}
 			}
 			if tail {
@@ -2075,7 +2088,11 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		}
 	}
 	profile := makeMemoryProfile(memories, indexedMemories)
-	summary, err := walkSWARPairsWithParkedReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, nil)
+	rootedDirectory := internalReferenceTypeDirectory{}
+	if mode.gcRootedDirectory != nil {
+		rootedDirectory = *mode.gcRootedDirectory
+	}
+	summary, err := walkSWARPairsWithParkedReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, nil)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -2089,7 +2106,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 	if summary.usesTraps && !mode.production {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR traps require production trap bridge")
 	}
-	f := integerEmitter{target: target{mode: mode}}
+	f := integerEmitter{target: target{nlocals: summary.locals * 2, mode: mode}, gcFrameRoots: mode.gcFrameRoots}
 	if len(functions) != 0 {
 		f.header = callFrameHeader
 	}
@@ -2098,12 +2115,32 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		return nil, FunctionInfo{}, nil, err
 	}
 	f.frameBytes = frame
-	actual, err := walkSWARPairsWithParkedReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, &f)
+	if f.gcFrameRoots != nil {
+		f.gcFrameRoots.ResetSafepoints()
+		f.gcFrameRoots.ResetCallsites()
+		f.gcFrameRoots.FrameBytes = uint32(frame)
+		if !f.gcFrameRoots.Candidate || !f.gcFrameRoots.Exact || !f.gcFrameRoots.ValidLiveMasks() || f.gcFrameRoots.AllocationMaskCount() != 0 {
+			return nil, FunctionInfo{}, nil, unsupported("invalid SWAR GC frame-root plan")
+		}
+		previous := uint32(0)
+		for i, root := range f.gcFrameRoots.Locals {
+			offset := uint32(f.LocalOffset(int(root.Index) * 2))
+			if uint64(root.Index) >= uint64(summary.locals) || i != 0 && root.Index <= previous || root.Offset != offset || uint64(root.Offset) > uint64(frame-8) {
+				f.gcFrameRoots.Exact = false
+				return nil, FunctionInfo{}, nil, unsupported("invalid SWAR GC frame-root local home")
+			}
+			previous = root.Index
+		}
+	}
+	actual, err := walkSWARPairsWithParkedReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
 	if actual != summary {
 		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: SWAR admission changed")
+	}
+	if f.gcFrameRoots != nil && (!f.gcFrameRoots.Exact || f.gcFrameRoots.SafepointCount() != 0 || f.gcFrameRoots.CallsiteCount() != f.gcFrameRoots.CallMaskCount()) {
+		return nil, FunctionInfo{}, nil, unsupported("incomplete SWAR GC frame-root callsites")
 	}
 	f.profileUnknown()
 	if len(f.traps) != 0 {

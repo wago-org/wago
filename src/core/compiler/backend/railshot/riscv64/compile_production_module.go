@@ -960,7 +960,10 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 	if opts.gcRefEq && (!opts.GCStructHelpers || !opts.GCArrayHelpers || opts.SyncHostSlots < 2) {
 		return unsupported("gc ref.eq helper contract")
 	}
-	if opts.gcRootedScalar && (!rootedHelperProfile || !rootedStructHelpers && !rootedArrayHelpers || opts.GCStructHelpers != rootedStructHelpers || opts.GCArrayHelpers != rootedArrayHelpers || opts.SyncHostSlots < rootedScalarHelperSlots(m)) {
+	// A rooted module may only transport collector references across native
+	// calls. Such a module still needs exact frame maps, but legitimately has no
+	// allocation/mutation helper family to provision.
+	if opts.gcRootedScalar && (!rootedHelperProfile || opts.GCStructHelpers != rootedStructHelpers || opts.GCArrayHelpers != rootedArrayHelpers || opts.SyncHostSlots < rootedScalarHelperSlots(m)) {
 		return unsupported(fmt.Sprintf("generic rooted scalar GC helper contract struct=%t/%t array=%t/%t slots=%d/%d profile=%t", opts.GCStructHelpers, rootedStructHelpers, opts.GCArrayHelpers, rootedArrayHelpers, opts.SyncHostSlots, rootedScalarHelperSlots(m), rootedHelperProfile))
 	}
 	if opts.gcRefTestTable && (!opts.GCStructHelpers || opts.GCArrayHelpers || opts.SyncHostSlots < 4) {

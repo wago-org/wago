@@ -17,7 +17,7 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	if m == nil {
 		return nil, fmt.Errorf("rv64: nil module")
 	}
-	if err := admitSWARDecodedBudgetReferences(m, true, true, opts.NativeReferenceCalls); err != nil {
+	if err := admitSWARDecodedBudgetReferences(m, true, true, opts.NativeReferenceCalls || opts.gcRootedScalar, opts.gcRootedScalar); err != nil {
 		return nil, err
 	}
 	if err := admitProductionOptions(m, &opts, true); err != nil {
@@ -29,7 +29,7 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	} else if len(m.Imports) != 0 {
 		policy = swarModuleHosts
 	}
-	image, err := compileSWARDecodedModuleProfile(m, emissionMode{profileMode: newProfileModule(opts.Profile, opts.SourceMaps, len(m.Code)).baseProfileMode(), production: true, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls, referenceFunctions: opts.referenceFunctions, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase}, policy, swarStateProfile{publicInitializers: true, publicStarts: true, exports: true, importedMemory: true, indexedMemories: true, importedGlobals: true, importedTable: opts.Interruptible && opts.ForeignTableCalls, functionTableImports: opts.Interruptible && opts.ForeignTableCalls})
+	image, err := compileSWARDecodedModuleProfile(m, emissionMode{profileMode: newProfileModule(opts.Profile, opts.SourceMaps, len(m.Code)).baseProfileMode(), production: true, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls || opts.gcRootedScalar, gcRootedScalar: opts.gcRootedScalar, referenceFunctions: opts.referenceFunctions, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase}, policy, swarStateProfile{publicInitializers: true, publicStarts: true, exports: true, importedMemory: true, indexedMemories: true, importedGlobals: true, importedTable: opts.Interruptible && opts.ForeignTableCalls, functionTableImports: opts.Interruptible && opts.ForeignTableCalls, gcFrameRoots: opts.GCFrameRoots})
 	if err != nil {
 		return nil, err
 	}

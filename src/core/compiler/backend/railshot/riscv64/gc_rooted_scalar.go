@@ -52,7 +52,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				}
 				for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
 					for _, typ := range values {
-						if !scalarType(typ, true) && typ.Kind() != wasm.ValRef {
+						if !scalarType(typ, true) && !wasm.EqualValType(typ, wasm.V128) && typ.Kind() != wasm.ValRef {
 							return false
 						}
 					}
@@ -304,7 +304,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	flatTypes := 0
 	admittedAggregates := make([]bool, 0, len(m.Types))
 	rootedValue := func(typ wasm.ValType) bool {
-		if scalarType(typ, true) {
+		if scalarType(typ, true) || wasm.EqualValType(typ, wasm.V128) {
 			return true
 		}
 		if typ.Kind() != wasm.ValRef {
@@ -428,7 +428,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	// GC tokens and keeps i31 values immediate. Tokens always occupy more than
 	// 32 bits, so abstract object carriers can safely distinguish the two forms.
 	publicRootedValue := func(typ wasm.ValType) bool {
-		if scalarType(typ, true) {
+		if scalarType(typ, true) || wasm.EqualValType(typ, wasm.V128) {
 			return true
 		}
 		if typ.Kind() != wasm.ValRef {
@@ -1007,7 +1007,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 			if err != nil {
 				return false
 			}
-			if typ >= 0x7c && typ <= 0x7f {
+			if typ >= 0x7b && typ <= 0x7f {
 				continue
 			}
 			if rootedAbstractObjectHeap(wasm.AbsHeapType(typ)) || wasm.AbsHeapType(typ) == wasm.HeapI31 {

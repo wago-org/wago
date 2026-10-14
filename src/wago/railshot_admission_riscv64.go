@@ -38,7 +38,9 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	}
 	structProduct, arrayProduct := c.stagedGCStructProduct(), c.stagedGCArrayProduct()
 	structHelpers, arrayHelpers := structProduct == stagedGCStructGeneric, arrayProduct == stagedGCArrayProductGeneric
-	if structProduct != 0 && !structHelpers || arrayProduct != 0 && !arrayHelpers || !structHelpers && !arrayHelpers ||
+	// Reference-transport-only modules publish exact callsite roots without
+	// staging either allocation/mutation helper family.
+	if structProduct != 0 && !structHelpers || arrayProduct != 0 && !arrayHelpers ||
 		c.usesGCStructHelpers() != structHelpers || c.usesGCArrayHelpers() != arrayHelpers || c.syncHostSlots < 4 ||
 		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports ||
 		len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports != 0) || c.tableCount() > 2 || c.memoryCount() > rv64RootedMaxMemories ||
@@ -172,7 +174,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		}
 	}
 	rootedValue := func(value ValueTypeDescriptor, owner int) bool {
-		if value.Kind <= ValueTypeF64 {
+		if value.Kind <= ValueTypeV128 {
 			return value.Ref == (ReferenceTypeDescriptor{})
 		}
 		if value.Kind != ValueTypeReference {
@@ -200,7 +202,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		}
 	}
 	rootedExportValue := func(value ValueTypeDescriptor) bool {
-		if value.Kind <= ValueTypeF64 {
+		if value.Kind <= ValueTypeV128 {
 			return value.Ref == (ReferenceTypeDescriptor{})
 		}
 		if value.Kind != ValueTypeReference {

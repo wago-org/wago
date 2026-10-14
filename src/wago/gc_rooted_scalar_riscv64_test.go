@@ -678,6 +678,90 @@ func TestRV64RootedExactArrayBoundaryExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarSIMDReferenceBoundaryModule(importVector bool) []byte {
+	ref0 := []byte{0x63, 0x00}
+	vectorIdentity := wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128})
+	run := []byte{0x60, 0x02, 0x7b}
+	run = append(run, ref0...)
+	run = append(run, 0x02, 0x7b)
+	run = append(run, ref0...)
+	functionTypes := [][]byte{wasmtest.ULEB(2)}
+	bodies := [][]byte{{0x00, 0x20, 0x01, 0x20, 0x00, 0x10, 0x00, 0x1a, 0x1a, 0x20, 0x00, 0x20, 0x01, 0x0b}}
+	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(
+		[]byte{0x5f, 0x01, 0x7f, 0x01},
+		vectorIdentity,
+		run,
+	))}
+	if importVector {
+		entry := append(append(wasmtest.Name("env"), wasmtest.Name("vector")...), byte(wasm.ExternFunc))
+		entry = append(entry, wasmtest.ULEB(1)...)
+		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(entry)))
+	} else {
+		functionTypes = append([][]byte{wasmtest.ULEB(1)}, functionTypes...)
+		bodies = append([][]byte{{0x00, 0x20, 0x00, 0x0b}}, bodies...)
+	}
+	codes := make([][]byte, len(bodies))
+	for i, body := range bodies {
+		codes[i] = append(wasmtest.ULEB(uint32(len(body))), body...)
+	}
+	sections = append(sections,
+		wasmtest.Section(3, wasmtest.Vec(functionTypes...)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
+	)
+	return wasmtest.Module(sections...)
+}
+
+func TestRV64RootedSIMDReferenceBoundaryExecutes(t *testing.T) {
+	for _, imported := range []bool{false, true} {
+		t.Run(fmt.Sprintf("imported=%t", imported), func(t *testing.T) {
+			source := rootedScalarSIMDReferenceBoundaryModule(imported)
+			if !railshot.AdmitGCRootedScalarSource(source) {
+				t.Fatal("mixed SIMD/collector-reference boundary was not source-admitted")
+			}
+			decoded, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var rootDiagnostic string
+			if plan := newGCFrameRootPlan(decoded, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
+				t.Fatalf("mixed SIMD/collector-reference root plan=%v diagnostic=%q", plan, rootDiagnostic)
+			}
+			compiled, err := Compile(rv64RootedScalarConfig(), source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			view := compiled.executionView()
+			imports, validImports := rv64RootedImportDigest(view)
+			if !rv64FreshRootedGC(view) || !view.requiredFeatures.IsEnabled(CoreFeatureSIMD) || !validImports || imports != view.validateMemo.rv64FreshRootedGCImportDigest || view.Types[2].Params[0].Kind != ValueTypeV128 || view.Types[2].Results[0].Kind != ValueTypeV128 {
+				t.Fatalf("mixed SIMD/collector-reference receipt=%t features=%v imports=%t/%t type=%+v", rv64FreshRootedGC(view), view.requiredFeatures, validImports, imports == view.validateMemo.rv64FreshRootedGCImportDigest, view.Types[2])
+			}
+			if imported {
+				return
+			}
+
+			rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
+			defer rt.Close()
+			module, err := rt.Module(compiled)
+			if err != nil {
+				t.Fatal(err)
+			}
+			instance, err := rt.Instantiate(context.Background(), module, WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}))
+			module.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			const lo, hi = uint64(0x7ff0000000000042), uint64(0x80000000ff800123)
+			got, err := instance.Invoke("run", lo, hi, 0)
+			if err != nil || len(got) != 3 || got[0] != lo || got[1] != hi || got[2] != 0 {
+				t.Fatalf("run(v128, ref)=%x err=%v", got, err)
+			}
+		})
+	}
+}
+
 func rootedScalarFunctionBeforeStructModule() []byte {
 	body := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x01, 0xfb, 0x02, 0x01, 0x00, 0x0b}
 	return wasmtest.Module(

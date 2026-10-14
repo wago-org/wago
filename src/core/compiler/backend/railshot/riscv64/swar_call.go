@@ -25,9 +25,10 @@ func swarCallSignature(sig *wasm.CompType) error {
 // overwritten by the callee. Narrow carriers always fill a zero-normalized
 // complete cell, and vector halves remain raw. Only same-image framed entries
 // are relocation targets; the production trap bridge unwinds nested frames.
-func (f *integerEmitter) swarDirectCall(index uint32, sig *wasm.CompType, base int, spill func(int) int32) {
+func (f *integerEmitter) swarDirectCall(index uint32, sig *wasm.CompType, base int, spill func(int) int32, hiddenRefs []bool) {
 	f.swarCallArguments(sig, base, spill)
 	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), callee: index})
+	f.recordGCFrameCallsite(f.a.Len(), hiddenRefs)
 	f.swarCallResults(sig, base, spill)
 }
 
@@ -36,7 +37,7 @@ func (f *integerEmitter) swarCallArguments(sig *wasm.CompType, base int, spill f
 	offset := int32(0)
 	for i, typ := range sig.Params {
 		class := swarClassOf(typ)
-		if f.mode.referenceFunctions && typ.Kind() == wasm.ValRef {
+		if (f.mode.referenceFunctions || f.mode.gcRootedScalar) && typ.Kind() == wasm.ValRef {
 			class = swarFuncRef
 		}
 		f.Load(5, spill(base+i), !class.narrow())
@@ -55,7 +56,7 @@ func (f *integerEmitter) swarCallResults(sig *wasm.CompType, base int, spill fun
 	offset := int32(0)
 	for i, typ := range sig.Results {
 		class := swarClassOf(typ)
-		if f.mode.referenceFunctions && typ.Kind() == wasm.ValRef {
+		if (f.mode.referenceFunctions || f.mode.gcRootedScalar) && typ.Kind() == wasm.ValRef {
 			class = swarFuncRef
 		}
 		if class.narrow() {
@@ -75,10 +76,11 @@ func (f *integerEmitter) swarCallResults(sig *wasm.CompType, base int, spill fun
 	}
 }
 
-func (f *integerEmitter) swarIndirectCall(sig *wasm.CompType, key uint64, base, indexSlot int, spill func(int) int32) {
+func (f *integerEmitter) swarIndirectCall(sig *wasm.CompType, key uint64, base, indexSlot int, spill func(int) int32, hiddenRefs []bool) {
 	f.Load(5, spill(indexSlot), false)
 	f.ownedIndirectTarget(key)
 	f.swarCallArguments(sig, base, spill)
+	returnOffset, stackAdjust := 0, uint32(0)
 	if f.mode.foreignTableCalls {
 		params, results := len(sig.Params), len(sig.Results)
 		for _, typ := range sig.Params {
@@ -91,9 +93,14 @@ func (f *integerEmitter) swarIndirectCall(sig *wasm.CompType, key uint64, base, 
 				results++
 			}
 		}
-		f.nativeTableCall(key, params, results)
+		returnOffset, stackAdjust = f.nativeTableCall(key, params, results)
 	} else {
 		f.a.Jalr(enc.RA, enc.X28, 0)
+	}
+	if f.mode.gcRootedScalar && returnOffset != 0 {
+		f.recordGCFrameCallsiteAdjusted(returnOffset, stackAdjust, hiddenRefs)
+	} else {
+		f.recordGCFrameCallsite(f.a.Len(), hiddenRefs)
 	}
 	f.swarCallResults(sig, base, spill)
 }
@@ -101,9 +108,10 @@ func (f *integerEmitter) swarIndirectCall(sig *wasm.CompType, key uint64, base, 
 // The qualified scalar import guards establish code, home and exact current
 // context identity before compact argument writes. X28 survives escaped stack
 // homes; raw vector values stay in caller homes across the parked host bridge.
-func (f *integerEmitter) swarImportCall(index uint32, sig *wasm.CompType, base int, spill func(int) int32) {
+func (f *integerEmitter) swarImportCall(index uint32, sig *wasm.CompType, base int, spill func(int) int32, hiddenRefs []bool) {
 	f.importCallTarget(index)
 	f.swarCallArguments(sig, base, spill)
 	f.a.Jalr(enc.RA, enc.X28, 0)
+	f.recordGCFrameCallsite(f.a.Len(), hiddenRefs)
 	f.swarCallResults(sig, base, spill)
 }

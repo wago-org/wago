@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
@@ -94,6 +95,7 @@ type swarStateProfile struct {
 	importedGlobals      bool
 	importedTable        bool
 	functionTableImports bool // public retained controls only; private pilots stay separate
+	gcFrameRoots         *shared.GCModuleFrameRootPlan
 }
 
 // Production integrates qualified state with current public lifecycles.
@@ -119,7 +121,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			return nil, err
 		}
 	}
-	if err := admitSWARDecodedBudgetReferences(m, state.publicStarts, state.publicStarts, mode.referenceCalls); err != nil {
+	if err := admitSWARDecodedBudgetReferences(m, state.publicStarts, state.publicStarts, mode.referenceCalls, mode.gcRootedScalar); err != nil {
 		return nil, err
 	}
 	if state.publicStarts {
@@ -212,7 +214,16 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		}
 	}
 	publicReferenceCarriers := mode.referenceFunctions && admitMutableFunctionGlobalLocalCall(m) && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp)
-	referenceTypes := internalReferenceTypes{decoded: m.Types, decodedSWAR: true, publicReferenceCarriers: publicReferenceCarriers}
+	var rootedDirectory internalReferenceTypeDirectory
+	if mode.gcRootedScalar {
+		var ok bool
+		rootedDirectory, ok = newInternalReferenceTypeDirectory(m.Types)
+		if !ok {
+			return nil, unsupported("SWAR rooted type directory")
+		}
+		mode.gcRootedDirectory = &rootedDirectory
+	}
+	referenceTypes := internalReferenceTypes{decoded: m.Types, rootedDirectory: rootedDirectory, decodedSWAR: true, publicReferenceCarriers: publicReferenceCarriers, gcRootedScalar: mode.gcRootedScalar}
 	types := make([]*wasm.CompType, len(m.Types))
 	for i := range m.Types {
 		rec := &m.Types[i]
@@ -220,6 +231,9 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			return nil, unsupported("SWAR recursive type group")
 		}
 		sub := &rec.SubTypes[0]
+		if mode.gcRootedScalar && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
+			continue
+		}
 		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 			return nil, unsupported("SWAR type metadata")
 		}
@@ -315,8 +329,8 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		if !ok {
 			return nil, unsupported("SWAR module function binding")
 		}
-		if mode.referenceFunctions {
-			if err := admitSWARControlSignature(ft, internalReferenceTypes{swar: types, publicReferenceCarriers: publicReferenceCarriers}, true, mode.referenceCalls); err != nil {
+		if mode.referenceFunctions || mode.gcRootedScalar {
+			if err := admitSWARControlSignature(ft, internalReferenceTypes{swar: types, rootedDirectory: rootedDirectory, gcRootedScalar: mode.gcRootedScalar, publicReferenceCarriers: publicReferenceCarriers}, true, mode.referenceCalls); err != nil {
 				return nil, err
 			}
 		} else if err := swarCallSignature(ft); err != nil {
@@ -347,7 +361,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	bound := 0
 	importTailCount := 0
 	for i := range m.Code {
-		summaries[i], err = walkSWARPairsWithParkedReferenceMode(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, nil)
+		summaries[i], err = walkSWARPairsWithParkedReferenceMode(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, nil)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
@@ -383,6 +397,9 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		functionMode.profileMode = mode.newFunctionProfile(&m.Code[i], uint32(imported+i))
 		functionMode.functionIndex = uint32(imported + i)
 		functionMode.entryPC = uint32(m.Code[i].LocalDeclBytes)
+		if state.gcFrameRoots != nil {
+			functionMode.gcFrameRoots = state.gcFrameRoots.Function(i)
+		}
 		code, info, relocations, err := compileSWARPairsWithMemories(&m.Code[i], functions[imported+i], memories, state.indexedMemories, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, functionMode)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
@@ -463,9 +480,9 @@ func admitSWARDecodedBudget(m *wasm.Module) error {
 }
 
 func admitSWARDecodedBudgetProfile(m *wasm.Module, publicStarts bool) error {
-	return admitSWARDecodedBudgetReferences(m, publicStarts, false, false)
+	return admitSWARDecodedBudgetReferences(m, publicStarts, false, false, false)
 }
-func admitSWARDecodedBudgetReferences(m *wasm.Module, publicStarts, referencesAllowed, typed bool) error {
+func admitSWARDecodedBudgetReferences(m *wasm.Module, publicStarts, referencesAllowed, typed, rootedScalar bool) error {
 	maxMemories := 1
 	if publicStarts {
 		maxMemories = MaxProductionMemories
@@ -513,12 +530,26 @@ func admitSWARDecodedBudgetReferences(m *wasm.Module, publicStarts, referencesAl
 		return err
 	}
 	publicReferenceCarriers := referencesAllowed && admitMutableFunctionGlobalLocalCall(m) && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp)
-	declaredTypes := internalReferenceTypes{decoded: m.Types, decodedSWAR: true, publicReferenceCarriers: publicReferenceCarriers}
+	var rootedDirectory internalReferenceTypeDirectory
+	if rootedScalar {
+		var ok bool
+		rootedDirectory, ok = newInternalReferenceTypeDirectory(m.Types)
+		if !ok {
+			return unsupported("SWAR rooted type directory")
+		}
+	}
+	declaredTypes := internalReferenceTypes{decoded: m.Types, rootedDirectory: rootedDirectory, decodedSWAR: true, publicReferenceCarriers: publicReferenceCarriers, gcRootedScalar: rootedScalar}
 	for _, group := range m.Types {
-		if len(group.SubTypes) != 1 || admitSWARControlSignature(&group.SubTypes[0].Comp, declaredTypes, referencesAllowed, typed) != nil {
+		if len(group.SubTypes) != 1 {
 			return unsupported("SWAR decoded numeric function types")
 		}
 		sub := &group.SubTypes[0]
+		if rootedScalar && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
+			continue
+		}
+		if admitSWARControlSignature(&sub.Comp, declaredTypes, referencesAllowed, typed) != nil {
+			return unsupported("SWAR decoded numeric function types")
+		}
 		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || len(sub.Comp.Fields) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 			return unsupported("SWAR decoded type metadata")
 		}
@@ -529,14 +560,14 @@ func admitSWARDecodedBudgetReferences(m *wasm.Module, publicStarts, referencesAl
 			return unsupported("SWAR decoded byte-backed function bound")
 		}
 	}
-	rootedScalar := admitRV64GCRootedScalarModule(m)
+	rootedModule := admitRV64GCRootedScalarModule(m)
 	for _, table := range m.Tables {
 		// Bound expressions before normal validation scans declared functions.
 		if table.Init != nil {
 			if !publicStarts || !consume(len(table.Init.BodyBytes)) {
 				return unsupported("SWAR decoded table initializer")
 			}
-			if rootedScalar && rootedScalarTableReference(wasm.RefVal(table.Type.Ref), m) && rootedScalarAggregateElementExpression(*table.Init, table.Type.Ref, m) {
+			if rootedModule && rootedScalarTableReference(wasm.RefVal(table.Type.Ref), m) && rootedScalarAggregateElementExpression(*table.Init, table.Type.Ref, m) {
 				continue
 			}
 			if _, err := admitTableInitializer(*table.Init, m); err != nil {

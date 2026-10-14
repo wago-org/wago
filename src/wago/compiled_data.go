@@ -140,7 +140,7 @@ func rv64RootedImportDigest(c *Compiled) ([32]byte, bool) {
 	h := sha256.New()
 	var word [8]byte
 	rootedImportValue := func(exact ValueTypeDescriptor, abi ValType) bool {
-		if exact.Kind <= ValueTypeF64 {
+		if exact.Kind <= ValueTypeV128 {
 			want, ok := exact.ABIType(c.Types)
 			return ok && want == abi
 		}

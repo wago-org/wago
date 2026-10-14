@@ -52,6 +52,8 @@ type emissionMode struct {
 	functionIndex                 uint32
 	entryPC                       uint32
 	gcFrameRoots                  *shared.GCFrameRootPlan
+	// Compile-only immutable lookup for mixed SWAR/rooted-reference functions.
+	gcRootedDirectory *internalReferenceTypeDirectory
 }
 
 var _ shared.ScalarTarget = (*target)(nil)

@@ -15,6 +15,10 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 	if m == nil || plans == nil || plans.FunctionCount() != len(m.Code) {
 		return false
 	}
+	usesSWAR, err := moduleUsesSWAR(m)
+	if err != nil {
+		return false
+	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for function := range m.Code {
 		if plans.FunctionPending(function) {
@@ -57,7 +61,7 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 		if plan == nil || !plan.Candidate || !plan.Exact || !plan.Conservative || plan.AllocationMaskCount() != allocations || plan.CallMaskCount() != calls || plan.HasFixedOffsets() || !plan.ValidLiveMasks() {
 			return false
 		}
-		locals, ok := rv64GCFrameLocals(m, function)
+		locals, ok := rv64GCFrameLocalsLayout(m, function, usesSWAR)
 		if !ok || len(locals) != len(plan.Locals) {
 			return false
 		}
@@ -83,6 +87,14 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 }
 
 func rv64GCFrameLocals(m *wasm.Module, function int) ([]shared.GCFrameLocal, bool) {
+	usesSWAR, err := moduleUsesSWAR(m)
+	if err != nil {
+		return nil, false
+	}
+	return rv64GCFrameLocalsLayout(m, function, usesSWAR)
+}
+
+func rv64GCFrameLocalsLayout(m *wasm.Module, function int, usesSWAR bool) ([]shared.GCFrameLocal, bool) {
 	ft, ok := m.LocalFuncType(function)
 	if !ok {
 		return nil, false
@@ -96,7 +108,9 @@ func rv64GCFrameLocals(m *wasm.Module, function int) ([]shared.GCFrameLocal, boo
 			}
 			locals = append(locals, shared.GCFrameLocal{Index: index, Offset: uint32(shared.RV64CallFrameHeaderBytes + slot*8)})
 		}
-		if wasm.EqualValType(t, wasm.V128) {
+		// SWAR uses two physical qwords for every logical local so scalar and
+		// reference homes cannot overlap either half of a vector carrier.
+		if usesSWAR || wasm.EqualValType(t, wasm.V128) {
 			slot += 2
 		} else {
 			slot++

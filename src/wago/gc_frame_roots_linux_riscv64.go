@@ -45,7 +45,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		return reject("RV64 exact roots require a bounded scalar allocation module")
 	}
 	rootedImportValue := func(typ wasm.ValType) bool {
-		if wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64) || wasm.EqualValType(typ, wasm.F32) || wasm.EqualValType(typ, wasm.F64) {
+		if wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64) || wasm.EqualValType(typ, wasm.F32) || wasm.EqualValType(typ, wasm.F64) || wasm.EqualValType(typ, wasm.V128) {
 			return true
 		}
 		if typ.Kind() != wasm.ValRef {
@@ -327,6 +327,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	if err != nil {
 		return reject("%v", err)
 	}
+	usesSWAR, err := railshot.UsesSWAR(m)
+	if err != nil {
+		return reject("RV64 exact roots reject SWAR layout: %v", err)
+	}
 	var safepointBase uint32
 	for function := range m.Code {
 		if !modulePlan.FunctionPending(function) {
@@ -349,7 +353,8 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				}
 				plan.Locals = append(plan.Locals, shared.GCFrameLocal{Index: local, Offset: uint32(shared.RV64CallFrameHeaderBytes + slot*8)})
 			}
-			if wasm.EqualValType(t, wasm.V128) {
+			// SWAR keeps every logical local in one padded 16-byte home.
+			if usesSWAR || wasm.EqualValType(t, wasm.V128) {
 				slot += 2
 			} else {
 				slot++

@@ -236,6 +236,111 @@ func TestRV64RootedExactArrayBoundaryAdmitted(t *testing.T) {
 	}
 }
 
+func rv64RootedSIMDReferenceBoundaryModule(importVector bool) []byte {
+	ref0 := []byte{0x63, 0x00}
+	vectorIdentity := wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128})
+	run := []byte{0x60, 0x02, 0x7b}
+	run = append(run, ref0...)
+	run = append(run, 0x02, 0x7b)
+	run = append(run, ref0...)
+	callIndex := uint32(0)
+	functionTypes := [][]byte{wasmtest.ULEB(2)}
+	// Keep the reference below the vector call operands, then discard both call
+	// results and rebuild the public result tuple from canonical local homes.
+	bodies := [][]byte{{0x00, 0x20, 0x01, 0x20, 0x00, 0x10, byte(callIndex), 0x1a, 0x1a, 0x20, 0x00, 0x20, 0x01, 0x0b}}
+	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(
+		[]byte{0x5f, 0x01, 0x7f, 0x01},
+		vectorIdentity,
+		run,
+	))}
+	if importVector {
+		entry := append(append(wasmtest.Name("env"), wasmtest.Name("vector")...), byte(wasm.ExternFunc))
+		entry = append(entry, wasmtest.ULEB(1)...)
+		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(entry)))
+	} else {
+		functionTypes = append([][]byte{wasmtest.ULEB(1)}, functionTypes...)
+		bodies = append([][]byte{{0x00, 0x20, 0x00, 0x0b}}, bodies...)
+	}
+	codes := make([][]byte, len(bodies))
+	for i, body := range bodies {
+		codes[i] = append(wasmtest.ULEB(uint32(len(body))), body...)
+	}
+	sections = append(sections,
+		wasmtest.Section(3, wasmtest.Vec(functionTypes...)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
+	)
+	return wasmtest.Module(sections...)
+}
+
+func TestRV64RootedSIMDReferenceBoundaryAdmitted(t *testing.T) {
+	for _, imported := range []bool{false, true} {
+		t.Run(fmt.Sprintf("imported=%t", imported), func(t *testing.T) {
+			source := rv64RootedSIMDReferenceBoundaryModule(imported)
+			if err := AdmitProductionSource(source); err != nil {
+				t.Fatal(err)
+			}
+			m, err := wasm.DecodeModule(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !admitRV64GCRootedScalarModule(m) {
+				t.Fatal("mixed SIMD/collector-reference boundary was not admitted")
+			}
+			metadata, err := frontend.BuildGCTypeMetadata(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			runIndex := 0
+			if !imported {
+				runIndex = 1
+			}
+			roots := shared.NewGCModuleFrameRootPlan(len(m.Code))
+			if !roots.MarkFunction(runIndex) {
+				t.Fatal("mark mixed SIMD/collector-reference root functions")
+			}
+			if !roots.ReserveFunctions(len(m.Code)) {
+				t.Fatal("reserve mixed SIMD/collector-reference root plans")
+			}
+			plans := make([]*shared.GCFrameRootPlan, len(m.Code))
+			for _, i := range []int{runIndex} {
+				plan, ok := roots.BeginFunction(i)
+				if !ok {
+					t.Fatalf("begin function %d root plan", i)
+				}
+				*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true}
+				plans[i] = plan
+			}
+			plans[runIndex].Locals = []shared.GCFrameLocal{{Index: 1, Offset: shared.RV64CallFrameHeaderBytes + 16}}
+			if !plans[runIndex].SetLiveMasks([]uint64{1}, 0, 1) {
+				t.Fatal("install mixed SIMD call root mask")
+			}
+			if want, ok := rv64GCFrameLocals(m, runIndex); !ok || fmt.Sprint(want) != fmt.Sprint(plans[runIndex].Locals) {
+				t.Fatalf("mixed SIMD run root locals=%v want=%v ok=%t", plans[runIndex].Locals, want, ok)
+			}
+			opts := CompileOptions{
+				DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+				SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+				Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+			}
+			if imported {
+				opts.ImportBindings = hostImportBindings(1)
+			}
+			compiled, err := CompileModuleWith(m, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(compiled.Code) == 0 || plans[runIndex].CallsiteCount() != 1 {
+				t.Fatalf("mixed SIMD code=%d run-callsites=%d", len(compiled.Code), plans[runIndex].CallsiteCount())
+			}
+			site, ok := plans[runIndex].Callsite(0)
+			if !ok || site.StackAdjust() != 0 || fmt.Sprint(site.Offsets()) != fmt.Sprint([]uint32{shared.RV64CallFrameHeaderBytes + 16, shared.RV64CallFrameHeaderBytes + 32}) {
+				t.Fatalf("mixed SIMD callsite=%+v ok=%t offsets=%v", site, ok, site.Offsets())
+			}
+		})
+	}
+}
+
 func rv64RootedReferenceHostImportModule() []byte {
 	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
 	functionImport = append(functionImport, wasmtest.ULEB(1)...)
