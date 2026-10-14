@@ -896,7 +896,7 @@ func TestRV64RootedSIMDStructFunctionExecutes(t *testing.T) {
 
 func rootedScalarSIMDArrayFunctionModule() []byte {
 	body := []byte{
-		0x01, 0x01, 0x63, 0x00,
+		0x01, 0x02, 0x63, 0x00,
 		0x20, 0x00,
 		0x20, 0x01,
 		0x41, 0x03,
@@ -916,12 +916,37 @@ func rootedScalarSIMDArrayFunctionModule() []byte {
 		0x41, 0x02,
 		0xfb, 0x07, 0x00,
 		0xfb, 0x0f,
+		0x41, 0x04,
+		0x41, 0x05,
+		0x41, 0x06,
+		0x41, 0x07,
+		0xfb, 0x08, 0x00, 0x04,
+		0x22, 0x03,
+		0x41, 0x03,
+		0xfb, 0x0b, 0x00,
+		0x20, 0x02,
+		0x41, 0x00,
+		0x20, 0x03,
+		0x41, 0x01,
+		0x41, 0x02,
+		0xfb, 0x11, 0x00, 0x00,
+		0x20, 0x02,
+		0x41, 0x01,
+		0xfb, 0x0b, 0x00,
+		0x20, 0x02,
+		0x41, 0x00,
+		0x41, 0x07,
+		0x41, 0x03,
+		0xfb, 0x10, 0x00,
+		0x20, 0x02,
+		0x41, 0x02,
+		0xfb, 0x0b, 0x00,
 		0x0b,
 	}
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x5e, 0x7f, 0x01},
-			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.I32}, []wasm.ValType{wasm.V128, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.I32}, []wasm.ValType{wasm.V128, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
 		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
@@ -955,7 +980,7 @@ func TestRV64RootedSIMDArrayFunctionExecutes(t *testing.T) {
 	const dirtyI32 = uint64(0xffffffff0000002a)
 	for iteration := range 32 {
 		got, err := instance.Invoke("run", lo, hi, dirtyI32)
-		if err != nil || !slices.Equal(got, []uint64{lo, hi, 42, 11, 3, 2}) {
+		if err != nil || !slices.Equal(got, []uint64{lo, hi, 42, 11, 3, 2, 7, 6, 7}) {
 			t.Fatalf("iteration %d: run=%x err=%v", iteration, got, err)
 		}
 	}
