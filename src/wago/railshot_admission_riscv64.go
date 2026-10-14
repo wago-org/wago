@@ -188,6 +188,14 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		target := c.Types[value.Ref.Heap.TypeIndex]
 		return target.Kind == CompositeTypeStruct || target.Kind == CompositeTypeArray
 	}
+	rootedAbstractGlobal := func(heap AbstractHeapType) bool {
+		switch heap {
+		case AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray:
+			return true
+		default:
+			return false
+		}
+	}
 	rootedExportValue := func(value ValueTypeDescriptor) bool {
 		if value.Kind <= ValueTypeF64 {
 			return value.Ref == (ReferenceTypeDescriptor{})
@@ -207,9 +215,10 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		}
 		exact, err := c.globalExactType(i)
 		abiType, abiOK := exact.ABIType(c.Types)
-		rootedGlobalType := exact.Ref.Heap.Defined || exact.Ref.Heap.Abstract == AbstractHeapI31
+		rootedGlobalType := exact.Ref.Heap.Defined || rootedAbstractGlobal(exact.Ref.Heap.Abstract)
 		if err != nil || !abiOK || global.Type != abiType || exact.Kind != ValueTypeReference ||
 			exact.Ref.Exact || !rootedGlobalType || !rootedValue(exact, len(c.Types)) ||
+			!exact.Ref.Heap.Defined && (!exact.Ref.Nullable || i < len(c.GlobalImports) && exact.Ref.Heap.Abstract != AbstractHeapI31) ||
 			global.Bits != 0 || global.HasInitFunc || global.InitFunc != 0 ||
 			(global.HasInitGlobal && (len(global.InitExpr) != 0 || !rv64InitializerReferenceGlobal(c, global.InitGlobal, exact, i))) ||
 			(!global.HasInitGlobal && (global.InitGlobal != 0 || len(global.InitExpr) == 0 && !exact.Ref.Nullable)) {

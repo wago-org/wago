@@ -5394,6 +5394,29 @@ func rootedScalarMutableStructGlobalModule(exportGlobal bool) []byte {
 	)
 }
 
+func rootedScalarMutableAbstractStructGlobalModule() []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x7e, 0xfb, 0x1c, 0x24, 0x00,
+		0x23, 0x00, 0xfb, 0x14, byte(wasm.HeapI31), 0x1a,
+		0x41, 0x29, 0xfb, 0x00, 0x00, 0x24, 0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x23, 0x00, 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x00,
+		0x41, 0x01, 0x6a,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, []byte{0x01, byte(wasm.HeapAny), 0x01, 0x41, 0x28, 0xfb, 0x00, 0x00, 0x0b}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func rootedScalarMutableArrayGlobalModule() []byte {
 	types := [][]byte{
 		{0x5e, 0x7f, 0x01},
@@ -5644,6 +5667,22 @@ func TestRV64RootedSharedReferenceGlobalImports(t *testing.T) {
 	}
 }
 
+func requireRV64FreshRootedArtifactRejected(t testing.TB, compiled *Compiled) {
+	t.Helper()
+	blob, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadTrustedArtifact(blob)
+	if err == nil {
+		_ = loaded.Close()
+		t.Fatal("generic rooted RV64 artifact unexpectedly retained a process-local compiler receipt")
+	}
+	if !errors.Is(err, railshot.ErrUnsupported) {
+		t.Fatalf("generic rooted RV64 artifact rejection=%v", err)
+	}
+}
+
 func TestRV64RootedImportedReferenceGlobalInitializer(t *testing.T) {
 	providerSource := rootedScalarSharedGlobalProviderModule(false)
 	consumerSource := rootedScalarImportedGlobalCopyModule()
@@ -5675,49 +5714,39 @@ func TestRV64RootedImportedReferenceGlobalInitializer(t *testing.T) {
 	if compiledStructuralRequiredFeatures(view).IsEnabled(CoreFeatureExtendedConstExpressions) {
 		t.Fatal("imported global initializer unexpectedly requires Extended Const Expressions")
 	}
-
-	for _, artifact := range []bool{false, true} {
-		t.Run(map[bool]string{false: "compiled", true: "artifact"}[artifact], func(t *testing.T) {
-			providerCode, consumerCode := providerBase, consumerBase
-			if artifact {
-				providerCode = publicArtifactRoundTrip(t, providerBase)
-				consumerCode = publicArtifactRoundTrip(t, consumerBase)
-				defer providerCode.Close()
-				defer consumerCode.Close()
-			}
-			store := newReferenceStore(false)
-			defer store.closeRuntime()
-			gcConfig := GCConfig{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}
-			provider, err := instantiateCore(providerCode, InstantiateOptions{GC: gcConfig, store: store})
-			if err != nil {
-				t.Fatal(err)
-			}
-			global, err := provider.ExportedGlobalObject("g")
-			if err != nil {
-				_ = provider.Close()
-				t.Fatal(err)
-			}
-			consumer, err := instantiateCore(consumerCode, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.g", global)})
-			if err != nil {
-				_ = provider.Close()
-				t.Fatal(err)
-			}
-			if got, callErr := consumer.Invoke("read"); callErr != nil || !slices.Equal(got, []uint64{42}) {
-				t.Fatalf("copied imported global read=%v err=%v", got, callErr)
-			}
-			if err := provider.Close(); err != nil {
-				t.Fatal(err)
-			}
-			if err := consumer.CollectGC(); err != nil {
-				t.Fatal(err)
-			}
-			if got, callErr := consumer.Invoke("read"); callErr != nil || !slices.Equal(got, []uint64{42}) {
-				t.Fatalf("copied global after provider close=%v err=%v", got, callErr)
-			}
-			if err := consumer.Close(); err != nil {
-				t.Fatal(err)
-			}
-		})
+	requireRV64FreshRootedArtifactRejected(t, providerBase)
+	requireRV64FreshRootedArtifactRejected(t, consumerBase)
+	store := newReferenceStore(false)
+	defer store.closeRuntime()
+	gcConfig := GCConfig{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}
+	provider, err := instantiateCore(providerBase, InstantiateOptions{GC: gcConfig, store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	global, err := provider.ExportedGlobalObject("g")
+	if err != nil {
+		_ = provider.Close()
+		t.Fatal(err)
+	}
+	consumer, err := instantiateCore(consumerBase, InstantiateOptions{GC: gcConfig, store: store, Imports: testImports("provider.g", global)})
+	if err != nil {
+		_ = provider.Close()
+		t.Fatal(err)
+	}
+	if got, callErr := consumer.Invoke("read"); callErr != nil || !slices.Equal(got, []uint64{42}) {
+		t.Fatalf("copied imported global read=%v err=%v", got, callErr)
+	}
+	if err := provider.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := consumer.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	if got, callErr := consumer.Invoke("read"); callErr != nil || !slices.Equal(got, []uint64{42}) {
+		t.Fatalf("copied global after provider close=%v err=%v", got, callErr)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -5864,6 +5893,55 @@ func TestRV64RootedScalarMutableStructGlobalExecutes(t *testing.T) {
 		}
 		if got, err := instance.Invoke("get"); err != nil || !slices.Equal(got, []uint64{55}) {
 			t.Fatalf("%s get() after trapped store and foreign collection=%v err=%v want=[55]", name, got, err)
+		}
+	}
+}
+
+func TestRV64RootedScalarMutableAbstractStructGlobalExecutes(t *testing.T) {
+	source := rootedScalarMutableAbstractStructGlobalModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("generic rooted mutable abstract struct global was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if !rv64FreshRootedGC(view) || len(view.Globals) != 1 || view.Globals[0].Type != ValAnyRef || !view.Globals[0].Mutable ||
+		view.Globals[0].HasInitGlobal || len(view.Globals[0].InitExpr) == 0 {
+		t.Fatalf("rooted abstract-global receipt=%t globals=%+v validation=%v", rv64FreshRootedGC(view), view.Globals, railshotValidateCompiled(view))
+	}
+	if !compiledStructuralRequiredFeatures(view).IsEnabled(CoreFeatureExtendedConstExpressions) {
+		t.Fatal("constructed abstract global initializer omitted Extended Const Expressions")
+	}
+	for name, mutate := range map[string]func(*ValueTypeDescriptor){
+		"bottom":   func(value *ValueTypeDescriptor) { value.Ref.Heap.Abstract = AbstractHeapNone },
+		"non-null": func(value *ValueTypeDescriptor) { value.Ref.Nullable = false },
+	} {
+		t.Run("receipt-"+name, func(t *testing.T) {
+			candidate := cloneCompiledMetadata(view)
+			candidate.ValueTypes = slices.Clone(candidate.ValueTypes)
+			mutate(&candidate.ValueTypes[candidate.Globals[0].ValueTypeIndex])
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("hostile abstract global retained the generic rooted receipt")
+			}
+		})
+	}
+	requireRV64FreshRootedArtifactRejected(t, compiled)
+	instance, err := Instantiate(compiled, InstantiateOptions{
+		GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if roots := instance.publicGCState().globalRoots; len(roots) != 1 || roots[0].GlobalIndex != 0 {
+		t.Fatalf("generic rooted abstract-global roots=%+v", roots)
+	}
+	for range 16 {
+		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
+			t.Fatalf("run()=%v err=%v want=[42]", got, err)
 		}
 	}
 }

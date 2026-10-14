@@ -59,7 +59,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				}
 			case wasm.ExternGlobal:
 				typ := im.Type.GlobalType().Type
-				if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !rootedScalarGlobalReference(typ, m) {
+				if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !rootedScalarTableReference(typ, m) {
 					return false
 				}
 			case wasm.ExternMem:
@@ -535,13 +535,6 @@ func rootedScalarTableReference(typ wasm.ValType, m *wasm.Module) bool {
 	}
 }
 
-// Public rooted globals and compact rooted tables intentionally share the
-// same first-stage reference envelope. Both are nullable, non-exact carriers
-// for either one admitted nominal aggregate or the collector-free i31 value.
-func rootedScalarGlobalReference(typ wasm.ValType, m *wasm.Module) bool {
-	return rootedScalarTableReference(typ, m)
-}
-
 func rootedScalarAggregateNullExpression(expr wasm.Expr, ref wasm.RefType) bool {
 	if len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 7 {
 		return false
@@ -636,7 +629,14 @@ func newRootedScalarAggregateParser(m *wasm.Module) *rootedScalarAggregateParser
 }
 
 func (p *rootedScalarAggregateParser) constructedSubtype(typeIndex uint32, required wasm.RefType) bool {
-	if p == nil || !p.valid || required.Heap().Kind() != wasm.HeapTypeIndex || required.Heap().Type().Rec {
+	if p == nil || !p.valid {
+		return false
+	}
+	if required.Heap().Kind() == wasm.HeapAbs {
+		actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false)
+		return p.m.ReferenceTypeSubtype(actual, required)
+	}
+	if required.Heap().Kind() != wasm.HeapTypeIndex || required.Heap().Type().Rec {
 		return false
 	}
 	target := required.Heap().Type().Index
@@ -898,7 +898,15 @@ func rootedScalarAggregateGlobal(global wasm.Global, p *rootedScalarAggregatePar
 	}
 	switch heap.Kind() {
 	case wasm.HeapAbs:
-		return heap.Abs() == wasm.HeapI31 && p.validateExpression(global.Init, ref, globalLimit)
+		if !ref.Nullable() {
+			return false
+		}
+		switch heap.Abs() {
+		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray:
+			return p.validateExpression(global.Init, ref, globalLimit)
+		default:
+			return false
+		}
 	case wasm.HeapTypeIndex:
 		return !heap.Type().Rec && rootedScalarAggregateAt(p.m, heap.Type().Index) && p.validateExpression(global.Init, ref, globalLimit)
 	default:

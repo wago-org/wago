@@ -374,7 +374,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			}
 			g := im.Type.GlobalType()
 			reference := publicExports && (importedTables || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy || s.mutableFuncrefGlobalLocalCopy || s.mutableFuncrefGlobalLocalPublish || s.mutableFuncrefGlobalLocalTransfer) && admitImportedFunctionGlobal(m, g)
-			collectorReference := gcRootedScalar && rootedScalarGlobalReference(g.Type, m)
+			collectorReference := gcRootedScalar && rootedScalarTableReference(g.Type, m)
 			if !scalarType(g.Type, true) && !reference && !collectorReference {
 				return s, unsupported("nonscalar global import")
 			}
