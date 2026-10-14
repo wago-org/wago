@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "source": "2fe874835616ceb488ba128b806138b129feeaf6",
+  "platform": "linux/amd64 on Hub; CPU 7; shared measurement lock",
+  "go": "1.27.1",
+  "wabt": "1.0.41",
+  "specInterpreterRevision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "status": {
+    "pid": 630035,
+    "source": "2fe874835616ceb488ba128b806138b129feeaf6",
+    "status": "completed",
+    "updatedAt": "2026-10-14T18:30:48.006436+00:00",
+    "tag": "wago_regalloccheck"
+  },
+  "commands": [
+    "go test -timeout=3m ./src/core/runtime ./src/wago ./src/core/compiler/backend/railshot/amd64",
+    "go test -timeout=3m -tags=wago_regalloccheck ./src/core/runtime ./src/wago ./src/core/compiler/backend/railshot/amd64"
+  ],
+  "environment": {
+    "GOMAXPROCS": "1",
+    "GOTOOLCHAIN": "go1.27.1",
+    "GOWORK": "off",
+    "WAGO_SPEC_INTERPRETER_REVISION": "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
+  },
+  "logs": {
+    "ordinary.log": {
+      "sha256": "42c9240c270de8483a5ff3c7306024132543b505d7fddd2bf34e5b3a1830c465",
+      "text": "ok  \tgithub.com/wago-org/wago/src/core/runtime\t(cached)\nok  \tgithub.com/wago-org/wago/src/wago\t29.204s\nok  \tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/amd64\t(cached)\n"
+    },
+    "checker.log": {
+      "sha256": "f364962362bfd7d7703b195c1483c371ef91cb08da15fc82fb36f93c30c9fb9f",
+      "text": "ok  \tgithub.com/wago-org/wago/src/core/runtime\t1.097s\nok  \tgithub.com/wago-org/wago/src/wago\t30.910s\nok  \tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/amd64\t3.656s\n"
+    }
+  },
+  "scope": "Functional validation only; this does not replace the source-pinned performance or ARM64 compatibility comparisons."
+}
