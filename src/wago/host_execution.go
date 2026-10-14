@@ -622,7 +622,7 @@ func reacquireRootNative(root *Instance, localMu *sync.Mutex) bool {
 
 // localNativeMu reports ownership separately from pending prepared revocation.
 func (a *hostLoopActivation) localNativeMu() *sync.Mutex {
-	if a == nil || a.entryNativeMu == nil {
+	if a == nil {
 		return nil
 	}
 	if a.preparedMigration != nil {
@@ -631,7 +631,17 @@ func (a *hostLoopActivation) localNativeMu() *sync.Mutex {
 		}
 		return a.entryNativeMu
 	}
-	if a.root.usesPrivateThreadedExecution() || a.root.usesIndependentExecution() {
+	root := a.root
+	if root == nil {
+		return nil
+	}
+	// Decide both local-execution modes from one publication snapshot. Fold
+	// the instance-private shared-memory marker into that same predicate.
+	flags := root.executionFlags.Load()
+	if root.threadedMemoryZero {
+		flags |= executionFlagThreadedMemory
+	}
+	if flags&executionFlagNativeControlShared == 0 && (flags&executionFlagIndependent != 0 || flags&(executionFlagThreadedMemory|executionFlagForeignNativeCalls) == executionFlagThreadedMemory) {
 		return a.entryNativeMu
 	}
 	return nil
