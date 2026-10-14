@@ -3704,6 +3704,40 @@ func rootedScalarAggregateReferenceGlobalTableInitializerModule() []byte {
 	)
 }
 
+func rootedScalarDirectReferenceGlobalTableInitializerModule(imported bool) []byte {
+	body := []byte{
+		0x00,
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x41, 0x00, 0x25, 0x00, 0xd4, 0xfb, 0x02, 0x00, 0x00,
+		0x0b,
+	}
+	sections := [][]byte{
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+	}
+	if imported {
+		globalImport := append(append(wasmtest.Name("provider"), wasmtest.Name("g")...), byte(wasm.ExternGlobal), 0x63, 0x00, 0x00)
+		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(globalImport)))
+	}
+	sections = append(sections,
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, []byte{
+			0x01, 0x40, 0x00, 0x63, 0x00, 0x01, 0x02, 0x02,
+			0x23, 0x00, 0x0b,
+		}),
+	)
+	if !imported {
+		sections = append(sections, wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0x00, 0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0x0b})))
+	}
+	sections = append(sections,
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	return wasmtest.Module(sections...)
+}
+
 func TestRV64RootedAggregateGlobalTableInitializerExecutes(t *testing.T) {
 	source := rootedScalarAggregateGlobalTableInitializerModule()
 	if !railshot.AdmitGCRootedScalarSource(source) {
@@ -3845,6 +3879,102 @@ func TestRV64RootedAggregateReferenceGlobalTableInitializerExecutes(t *testing.T
 	value, err := instance.gc.StructGet(want, 0)
 	if err != nil || value.Bits != 0 {
 		t.Fatalf("aggregate reference-global table initializer field = %+v, %v", value, err)
+	}
+}
+
+func TestRV64RootedDirectReferenceGlobalTableInitializers(t *testing.T) {
+	for _, imported := range []bool{false, true} {
+		t.Run(map[bool]string{false: "local", true: "imported"}[imported], func(t *testing.T) {
+			source := rootedScalarDirectReferenceGlobalTableInitializerModule(imported)
+			if !railshot.AdmitGCRootedScalarSource(source) {
+				t.Fatal("direct collector-reference global table initializer was not source-admitted")
+			}
+			compiled, err := Compile(rv64RootedScalarConfig(), source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			view := compiled.executionView()
+			if !rv64FreshRootedGC(view) || len(view.Globals) != 1 || len(view.Elems) != 1 || len(view.Elems[0].Values) != 2 {
+				t.Fatalf("direct global table initializer receipt=%t globals=%#v elems=%#v validation=%v", rv64FreshRootedGC(view), view.Globals, view.Elems, railshotValidateCompiled(view))
+			}
+			for index, value := range view.Elems[0].Values {
+				if !value.HasGlobal || value.GlobalIndex != 0 || value.FuncIndex != 0 || value.Null || value.I31Wrap || value.RepeatPrevious || len(value.Expr) != 0 {
+					t.Fatalf("direct global table initializer value %d=%+v", index, value)
+				}
+			}
+			receiptExtended := view.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions)
+			structuralExtended := compiledStructuralRequiredFeatures(view).IsEnabled(CoreFeatureExtendedConstExpressions)
+			if receiptExtended == imported || structuralExtended == imported {
+				t.Fatalf("direct global table initializer imported=%t receipt-extended=%t structural-extended=%t", imported, receiptExtended, structuralExtended)
+			}
+			candidate := cloneCompiledMetadata(view)
+			candidate.Elems = slices.Clone(candidate.Elems)
+			candidate.Elems[0].Values = slices.Clone(candidate.Elems[0].Values)
+			candidate.Elems[0].Values[0].GlobalIndex = 1
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("out-of-range direct table initializer global retained the rooted receipt")
+			}
+			candidate = cloneCompiledMetadata(view)
+			candidate.Globals = slices.Clone(candidate.Globals)
+			candidate.Globals[0].Mutable = true
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("mutable direct table initializer global retained the rooted receipt")
+			}
+			if !imported {
+				candidate = cloneCompiledMetadata(view)
+				candidate.requiredFeatures &^= CoreFeatureExtendedConstExpressions
+				if rv64FreshRootedGC(candidate) {
+					t.Fatal("local direct table initializer retained the rooted receipt without Extended Const Expressions")
+				}
+			}
+			requireRV64FreshRootedArtifactRejected(t, compiled)
+
+			store := newReferenceStore(false)
+			defer store.closeRuntime()
+			gcConfig := GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}
+			var provider *Instance
+			options := InstantiateOptions{GC: gcConfig, store: store}
+			if imported {
+				providerCode, err := Compile(rv64RootedScalarConfig(), rootedScalarSharedGlobalProviderModule(false))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer providerCode.Close()
+				provider, err = instantiateCore(providerCode, InstantiateOptions{GC: gcConfig, store: store})
+				if err != nil {
+					t.Fatal(err)
+				}
+				global, err := provider.ExportedGlobalObject("g")
+				if err != nil {
+					_ = provider.Close()
+					t.Fatal(err)
+				}
+				options.Imports = testImports("provider.g", global)
+			}
+			instance, err := instantiateCore(compiled, options)
+			if err != nil {
+				if provider != nil {
+					_ = provider.Close()
+				}
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if provider != nil {
+				if provider.gc != instance.gc {
+					t.Fatal("imported direct table initializer did not share its provider collector")
+				}
+				if err := provider.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := instance.CollectGC(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := instance.Invoke("read"); err != nil || !slices.Equal(got, []uint64{42}) {
+				t.Fatalf("direct global table initializer read=%v err=%v", got, err)
+			}
+		})
 	}
 }
 
