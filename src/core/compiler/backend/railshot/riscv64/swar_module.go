@@ -141,7 +141,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	hosts = hosts || tables && state.functionTableImports && state.publicStarts && state.exports && mode.interruptible && mode.foreignTableCalls
 	mode.borrowedTable = state.importedTable && mode.foreignTableCalls && mode.interruptible && m.ImportedTableCount() != 0
 	var err error
-	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{CompactImports: state.publicStarts, ExtendedConstGlobals: state.publicInitializers, MultiMemory: state.indexedMemories}, 1, wasm.ValidationLimits{MaxFunctionLocals: maxSWARLocals}); err != nil {
+	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{CompactImports: state.publicStarts, ExtendedConstGlobals: state.publicInitializers, MultiMemory: state.indexedMemories, GCConstExpr: mode.gcRootedScalar}, 1, wasm.ValidationLimits{MaxFunctionLocals: maxSWARLocals}); err != nil {
 		return nil, err
 	}
 	if len(m.Code) == 0 && (!state.publicStarts || !state.exports) || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxProductionImports || len(m.Tables) > 1 || len(m.Globals) > 256 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !state.publicStarts || len(m.Elements) > MaxOwnedElementSegments || len(m.Data) > 256 || !state.publicStarts && m.BranchHints != nil || len(m.Memories) > MaxProductionMemories {
@@ -186,7 +186,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if imported+len(m.Code) == 0 && !state.publicStarts || imported > MaxHostFunctionImports || imported+len(m.Code) > MaxFunctions || imported != 0 && !mode.interruptible {
 		return nil, unsupported("SWAR module aggregate functions/host bridge")
 	}
-	if !tables && (len(m.Tables) != 0 || len(m.Elements) != 0) {
+	if !tables && (len(m.Tables) != 0 || len(m.Elements) != 0 && !mode.gcRootedScalar) {
 		return nil, unsupported("SWAR default table/element policy")
 	}
 	var table *wasm.TableType
@@ -664,9 +664,12 @@ func admitSWARDecodedBudgetReferences(m *wasm.Module, publicStarts, referencesAl
 			if !publicStarts || len(element.Kind.Funcs) != 0 {
 				return unsupported("SWAR public element expressions required")
 			}
+			aggregate := rootedModule && element.Kind.Kind == wasm.ElemTypedExprs && rootedScalarTableReference(wasm.RefVal(element.Kind.Ref), m)
 			for _, expr := range element.Kind.Exprs {
-				if _, err := elementInitializerExpression(expr, m, element.Mode.Kind, publicStarts); err != nil {
-					return err
+				if !aggregate || !rootedScalarAggregateElementExpression(expr, element.Kind.Ref, m) {
+					if _, err := elementInitializerExpression(expr, m, element.Mode.Kind, publicStarts); err != nil {
+						return err
+					}
 				}
 				if !consume(len(expr.BodyBytes)) {
 					return unsupported("SWAR element expression byte budget")

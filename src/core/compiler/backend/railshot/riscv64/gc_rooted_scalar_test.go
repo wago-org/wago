@@ -658,7 +658,7 @@ func TestRV64RootedSIMDLargeStructCompiles(t *testing.T) {
 
 func rv64RootedSIMDArrayFunctionModule() []byte {
 	body := []byte{
-		0x01, 0x02, 0x63, 0x00,
+		0x02, 0x03, 0x63, 0x00, 0x01, 0x63, 0x01,
 		0x20, 0x00,
 		0x20, 0x01,
 		0x41, 0x03,
@@ -715,18 +715,52 @@ func rv64RootedSIMDArrayFunctionModule() []byte {
 		0xfb, 0x0f,
 		0xd0, 0x00,
 		0xfb, 0x15, 0x00,
-		0x02, 0x01,
+		0x41, 0x00,
+		0x41, 0x03,
+		0xfb, 0x09, 0x00, 0x00,
+		0x21, 0x04,
+		0x20, 0x04,
+		0x41, 0x00,
+		0xfb, 0x0b, 0x00,
+		0x20, 0x04,
+		0x41, 0x01,
+		0x41, 0x0c,
+		0x41, 0x01,
+		0xfb, 0x12, 0x00, 0x00,
+		0x20, 0x04,
+		0x41, 0x01,
+		0xfb, 0x0b, 0x00,
+		0x41, 0x08,
+		0x74,
+		0x72,
+		0x41, 0x00,
+		0x41, 0x02,
+		0xfb, 0x0a, 0x01, 0x00,
+		0x22, 0x05,
+		0x41, 0x00,
+		0xfb, 0x0b, 0x01,
+		0xfb, 0x1e,
+		0x20, 0x05,
+		0x41, 0x00,
+		0x41, 0x01,
+		0x41, 0x01,
+		0xfb, 0x13, 0x01, 0x00,
+		0x20, 0x05,
+		0x41, 0x00,
+		0xfb, 0x0b, 0x01,
+		0xfb, 0x1e,
+		0x02, 0x02,
 		0x20, 0x02,
 		0xfb, 0x18, 0x01, 0x00, 0x00, 0x00,
 		0xfb, 0x16, 0x00,
 		0x0b,
 		0xfb, 0x0f,
-		0x02, 0x02,
+		0x02, 0x03,
 		0xd0, 0x00,
 		0xfb, 0x19, 0x01, 0x00, 0x00, 0x00,
 		0x0b,
 		0xd1,
-		0x02, 0x03,
+		0x02, 0x04,
 		0x41, 0x0b,
 		0x20, 0x02,
 		0xfb, 0x18, 0x01, 0x00, 0x6e, 0x00,
@@ -737,7 +771,7 @@ func rv64RootedSIMDArrayFunctionModule() []byte {
 		0xfb, 0x16, 0x00,
 		0x0b,
 		0x1a,
-		0x02, 0x04,
+		0x02, 0x05,
 		0x41, 0x15,
 		0x20, 0x02,
 		0xfb, 0x18, 0x03, 0x00, 0x6e, 0x6b,
@@ -747,7 +781,7 @@ func rv64RootedSIMDArrayFunctionModule() []byte {
 		0xd0, 0x6b,
 		0x0b,
 		0x1a,
-		0x02, 0x05,
+		0x02, 0x06,
 		0x41, 0x1f,
 		0x20, 0x02,
 		0xfb, 0x19, 0x03, 0x00, 0x6e, 0x6b,
@@ -758,7 +792,7 @@ func rv64RootedSIMDArrayFunctionModule() []byte {
 		0xfb, 0x16, 0x00,
 		0x0b,
 		0x1a,
-		0x02, 0x06,
+		0x02, 0x07,
 		0x41, 0x29,
 		0x20, 0x02,
 		0xfb, 0x19, 0x01, 0x00, 0x6e, 0x00,
@@ -768,7 +802,7 @@ func rv64RootedSIMDArrayFunctionModule() []byte {
 		0xd0, 0x6e,
 		0x0b,
 		0x1a,
-		0x02, 0x03,
+		0x02, 0x04,
 		0x41, 0x00,
 		0x20, 0x02,
 		0xfb, 0x16, 0x00,
@@ -784,27 +818,31 @@ func rv64RootedSIMDArrayFunctionModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x5e, 0x7f, 0x01},
+			[]byte{0x5e, byte(wasm.HeapI31), 0x01},
 			[]byte{0x60, 0x00, 0x01, 0x64, 0x00},
 			[]byte{0x60, 0x00, 0x01, 0x63, 0x00},
 			[]byte{0x60, 0x00, 0x02, 0x7f, 0x64, 0x00},
 			[]byte{0x60, 0x00, 0x02, 0x7f, 0x6b},
 			[]byte{0x60, 0x00, 0x02, 0x7f, 0x64, 0x6e},
 			[]byte{0x60, 0x00, 0x02, 0x7f, 0x6e},
-			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.I32}, []wasm.ValType{wasm.V128, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.I32}, []wasm.ValType{wasm.V128, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
 		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(7))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(8))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(9, []byte{0x01, 0x05, byte(wasm.HeapI31), 0x02, 0x41, 0x7e, 0xfb, 0x1c, 0x0b, 0x41, 0x7d, 0xfb, 0x1c, 0x0b}),
+		wasmtest.Section(12, wasmtest.ULEB(1)),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		wasmtest.Section(11, wasmtest.Vec([]byte{0x01, 0x10, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00})),
 	)
 }
 
 func TestRV64RootedSIMDArrayOperationsCompile(t *testing.T) {
 	source := rv64RootedSIMDArrayFunctionModule()
-	if err := AdmitProductionSource(source); err != nil {
-		t.Fatal(err)
-	}
 	m, err := wasm.DecodeModule(source)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := AdmitProductionSource(source); err != nil {
 		t.Fatal(err)
 	}
 	if vector, err := functionUsesSWAR(m, 0); err != nil || !vector {
@@ -823,9 +861,11 @@ func TestRV64RootedSIMDArrayOperationsCompile(t *testing.T) {
 		Locals: []shared.GCFrameLocal{
 			{Index: 2, Offset: shared.RV64CallFrameHeaderBytes + 32},
 			{Index: 3, Offset: shared.RV64CallFrameHeaderBytes + 48},
+			{Index: 4, Offset: shared.RV64CallFrameHeaderBytes + 64},
+			{Index: 5, Offset: shared.RV64CallFrameHeaderBytes + 80},
 		},
 	}
-	if !plan.SetLiveMasks([]uint64{3, 3, 3}, 3, 0) {
+	if !plan.SetLiveMasks([]uint64{15, 15, 15, 15, 15}, 5, 0) {
 		t.Fatal("install SIMD/array allocation masks")
 	}
 	metadata, err := frontend.BuildGCTypeMetadata(m)
@@ -841,9 +881,11 @@ func TestRV64RootedSIMDArrayOperationsCompile(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantSafepoints := [][]uint32{
-		{shared.RV64CallFrameHeaderBytes + 32, shared.RV64CallFrameHeaderBytes + 48},
-		{shared.RV64CallFrameHeaderBytes + 32, shared.RV64CallFrameHeaderBytes + 48},
-		{shared.RV64CallFrameHeaderBytes + 32, shared.RV64CallFrameHeaderBytes + 48},
+		{shared.RV64CallFrameHeaderBytes + 32, shared.RV64CallFrameHeaderBytes + 48, shared.RV64CallFrameHeaderBytes + 64, shared.RV64CallFrameHeaderBytes + 80},
+		{shared.RV64CallFrameHeaderBytes + 32, shared.RV64CallFrameHeaderBytes + 48, shared.RV64CallFrameHeaderBytes + 64, shared.RV64CallFrameHeaderBytes + 80},
+		{shared.RV64CallFrameHeaderBytes + 32, shared.RV64CallFrameHeaderBytes + 48, shared.RV64CallFrameHeaderBytes + 64, shared.RV64CallFrameHeaderBytes + 80},
+		{shared.RV64CallFrameHeaderBytes + 32, shared.RV64CallFrameHeaderBytes + 48, shared.RV64CallFrameHeaderBytes + 64, shared.RV64CallFrameHeaderBytes + 80},
+		{shared.RV64CallFrameHeaderBytes + 32, shared.RV64CallFrameHeaderBytes + 48, shared.RV64CallFrameHeaderBytes + 64, shared.RV64CallFrameHeaderBytes + 80},
 	}
 	var safepoints [][]uint32
 	if !plan.VisitSafepoints(func(_ int, offsets []uint32) bool {
@@ -852,7 +894,7 @@ func TestRV64RootedSIMDArrayOperationsCompile(t *testing.T) {
 	}) {
 		t.Fatal("visit SIMD/array safepoints")
 	}
-	if len(compiled.Code) == 0 || plan.SafepointCount() != 3 || plan.CallsiteCount() != 0 || fmt.Sprint(safepoints) != fmt.Sprint(wantSafepoints) {
+	if len(compiled.Code) == 0 || plan.SafepointCount() != 5 || plan.CallsiteCount() != 0 || fmt.Sprint(safepoints) != fmt.Sprint(wantSafepoints) {
 		t.Fatalf("SIMD/array code=%d safepoints=%v want=%v callsites=%d", len(compiled.Code), safepoints, wantSafepoints, plan.CallsiteCount())
 	}
 }

@@ -1655,6 +1655,42 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				if err := push(swarFuncRef); err != nil {
 					return swarSummary{}, err
 				}
+			case wasm.InstrArrayNewData, wasm.InstrArrayNewElem:
+				_, _, array := referenceTypes.rootedArrayStorage(imm.Index)
+				reference := array && referenceTypes.rootedArrayElementReference(imm.Index)
+				data := imm.Kind == wasm.InstrArrayNewData
+				if !array || data == reference || data && uint64(imm.Index2) >= uint64(dataCount) || !data && uint64(imm.Index2) >= uint64(elementCount) {
+					return swarSummary{}, unsupported("SWAR segment array allocation outside generic rooted profile")
+				}
+				if err := flow.prepareDead(swarI32, swarI32); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 2
+				if base < flow.floor() || stackClasses[base] != swarI32 || stackClasses[base+1] != swarI32 {
+					return swarSummary{}, unsupported("SWAR segment array allocation operand carrier")
+				}
+				calls++
+				allocations++
+				budget += 2
+				if calls > maxDirectCalls || budget > integerBudget {
+					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
+				}
+				if err := reserve(128*2 + 1024); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.swarCompactGCArguments(base, 2, spill)
+					if data {
+						emit.gcDataArrayAllocation(base*2, imm.Index, imm.Index2, hiddenRefs(base))
+					} else {
+						emit.gcElementArrayAllocation(base*2, imm.Index, imm.Index2, hiddenRefs(base))
+					}
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+				h = base
+				if err := push(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
 			case wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU:
 				storage, _, ok := referenceTypes.rootedArrayStorage(imm.Index)
 				packed := ok && storage.Packed()
@@ -1792,6 +1828,36 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				if emit != nil {
 					emit.swarCompactGCArguments(base, 5, spill)
 					emit.gcArrayCopyScalar(base*2, imm.Index, imm.Index2)
+				}
+				h = base
+			case wasm.InstrArrayInitData, wasm.InstrArrayInitElem:
+				_, mutable, array := referenceTypes.rootedArrayStorage(imm.Index)
+				reference := array && referenceTypes.rootedArrayElementReference(imm.Index)
+				data := imm.Kind == wasm.InstrArrayInitData
+				if !array || !mutable || data == reference || data && uint64(imm.Index2) >= uint64(dataCount) || !data && uint64(imm.Index2) >= uint64(elementCount) {
+					return swarSummary{}, unsupported("SWAR segment array initialization outside generic rooted profile")
+				}
+				if err := flow.prepareDead(swarFuncRef, swarI32, swarI32, swarI32); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 4
+				if base < flow.floor() || stackClasses[base] != swarFuncRef || stackClasses[base+1] != swarI32 || stackClasses[base+2] != swarI32 || stackClasses[base+3] != swarI32 {
+					return swarSummary{}, unsupported("SWAR segment array initialization operand carrier")
+				}
+				calls++
+				if calls > maxDirectCalls {
+					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
+				}
+				if err := reserve(1024); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.swarCompactGCArguments(base, 4, spill)
+					if data {
+						emit.gcArrayInitializeData(base*2, imm.Index, imm.Index2)
+					} else {
+						emit.gcArrayInitializeElements(base*2, imm.Index, imm.Index2)
+					}
 				}
 				h = base
 			case wasm.InstrArrayLen:

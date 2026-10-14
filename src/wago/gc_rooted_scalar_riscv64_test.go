@@ -896,7 +896,7 @@ func TestRV64RootedSIMDStructFunctionExecutes(t *testing.T) {
 
 func rootedScalarSIMDArrayFunctionModule() []byte {
 	body := []byte{
-		0x01, 0x02, 0x63, 0x00,
+		0x02, 0x03, 0x63, 0x00, 0x01, 0x63, 0x01,
 		0x20, 0x00,
 		0x20, 0x01,
 		0x41, 0x03,
@@ -953,18 +953,52 @@ func rootedScalarSIMDArrayFunctionModule() []byte {
 		0xfb, 0x0f,
 		0xd0, 0x00,
 		0xfb, 0x15, 0x00,
-		0x02, 0x01,
+		0x41, 0x00,
+		0x41, 0x03,
+		0xfb, 0x09, 0x00, 0x00,
+		0x21, 0x04,
+		0x20, 0x04,
+		0x41, 0x00,
+		0xfb, 0x0b, 0x00,
+		0x20, 0x04,
+		0x41, 0x01,
+		0x41, 0x0c,
+		0x41, 0x01,
+		0xfb, 0x12, 0x00, 0x00,
+		0x20, 0x04,
+		0x41, 0x01,
+		0xfb, 0x0b, 0x00,
+		0x41, 0x08,
+		0x74,
+		0x72,
+		0x41, 0x00,
+		0x41, 0x02,
+		0xfb, 0x0a, 0x01, 0x00,
+		0x22, 0x05,
+		0x41, 0x00,
+		0xfb, 0x0b, 0x01,
+		0xfb, 0x1e,
+		0x20, 0x05,
+		0x41, 0x00,
+		0x41, 0x01,
+		0x41, 0x01,
+		0xfb, 0x13, 0x01, 0x00,
+		0x20, 0x05,
+		0x41, 0x00,
+		0xfb, 0x0b, 0x01,
+		0xfb, 0x1e,
+		0x02, 0x02,
 		0x20, 0x02,
 		0xfb, 0x18, 0x01, 0x00, 0x00, 0x00,
 		0xfb, 0x16, 0x00,
 		0x0b,
 		0xfb, 0x0f,
-		0x02, 0x02,
+		0x02, 0x03,
 		0xd0, 0x00,
 		0xfb, 0x19, 0x01, 0x00, 0x00, 0x00,
 		0x0b,
 		0xd1,
-		0x02, 0x03,
+		0x02, 0x04,
 		0x41, 0x0b,
 		0x20, 0x02,
 		0xfb, 0x18, 0x01, 0x00, 0x6e, 0x00,
@@ -975,7 +1009,7 @@ func rootedScalarSIMDArrayFunctionModule() []byte {
 		0xfb, 0x16, 0x00,
 		0x0b,
 		0x1a,
-		0x02, 0x04,
+		0x02, 0x05,
 		0x41, 0x15,
 		0x20, 0x02,
 		0xfb, 0x18, 0x03, 0x00, 0x6e, 0x6b,
@@ -985,7 +1019,7 @@ func rootedScalarSIMDArrayFunctionModule() []byte {
 		0xd0, 0x6b,
 		0x0b,
 		0x1a,
-		0x02, 0x05,
+		0x02, 0x06,
 		0x41, 0x1f,
 		0x20, 0x02,
 		0xfb, 0x19, 0x03, 0x00, 0x6e, 0x6b,
@@ -996,7 +1030,7 @@ func rootedScalarSIMDArrayFunctionModule() []byte {
 		0xfb, 0x16, 0x00,
 		0x0b,
 		0x1a,
-		0x02, 0x06,
+		0x02, 0x07,
 		0x41, 0x29,
 		0x20, 0x02,
 		0xfb, 0x19, 0x01, 0x00, 0x6e, 0x00,
@@ -1006,7 +1040,7 @@ func rootedScalarSIMDArrayFunctionModule() []byte {
 		0xd0, 0x6e,
 		0x0b,
 		0x1a,
-		0x02, 0x03,
+		0x02, 0x04,
 		0x41, 0x00,
 		0x20, 0x02,
 		0xfb, 0x16, 0x00,
@@ -1022,29 +1056,57 @@ func rootedScalarSIMDArrayFunctionModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x5e, 0x7f, 0x01},
+			[]byte{0x5e, byte(wasm.HeapI31), 0x01},
 			[]byte{0x60, 0x00, 0x01, 0x64, 0x00},
 			[]byte{0x60, 0x00, 0x01, 0x63, 0x00},
 			[]byte{0x60, 0x00, 0x02, 0x7f, 0x64, 0x00},
 			[]byte{0x60, 0x00, 0x02, 0x7f, 0x6b},
 			[]byte{0x60, 0x00, 0x02, 0x7f, 0x64, 0x6e},
 			[]byte{0x60, 0x00, 0x02, 0x7f, 0x6e},
-			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.I32}, []wasm.ValType{wasm.V128, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.I32}, []wasm.ValType{wasm.V128, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}),
 		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(7))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(8))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(9, []byte{0x01, 0x05, byte(wasm.HeapI31), 0x02, 0x41, 0x7e, 0xfb, 0x1c, 0x0b, 0x41, 0x7d, 0xfb, 0x1c, 0x0b}),
+		wasmtest.Section(12, wasmtest.ULEB(1)),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		wasmtest.Section(11, wasmtest.Vec([]byte{0x01, 0x10, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00})),
 	)
 }
 
 func TestRV64RootedSIMDArrayFunctionExecutes(t *testing.T) {
-	compiled, err := Compile(rv64RootedScalarConfig(), rootedScalarSIMDArrayFunctionModule())
+	source := rootedScalarSIMDArrayFunctionModule()
+	decoded, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootDiagnostic string
+	if plan := newGCFrameRootPlan(decoded, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
+		t.Fatalf("tableless rooted segment root plan=%v diagnostic=%q", plan, rootDiagnostic)
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
 	view := compiled.executionView()
-	if !rv64FreshRootedGC(view) || !view.requiredFeatures.IsEnabled(CoreFeatureSIMD) {
-		t.Fatalf("SIMD/array rooted receipt=%t features=%v", rv64FreshRootedGC(view), view.requiredFeatures)
+	tableDigest, validTable := rv64RootedTableDigest(view)
+	if !rv64FreshRootedGC(view) || !view.requiredFeatures.IsEnabled(CoreFeatureSIMD) || view.tableCount() != 0 || len(view.passiveElems) != 1 ||
+		!validTable || tableDigest != view.validateMemo.rv64FreshRootedGCTableDigest {
+		t.Fatalf("SIMD/array rooted receipt=%t features=%v tables=%d passive=%d table-digest=%t/%t", rv64FreshRootedGC(view), view.requiredFeatures,
+			view.tableCount(), len(view.passiveElems), validTable, tableDigest == view.validateMemo.rv64FreshRootedGCTableDigest)
+	}
+	mutated := cloneCompiledMetadata(view)
+	mutated.passiveElems = slices.Clone(mutated.passiveElems)
+	mutated.passiveElems[0].Values = slices.Clone(mutated.passiveElems[0].Values)
+	mutated.passiveElems[0].Values[0].FuncIndex &^= 1
+	if rv64FreshRootedGC(mutated) {
+		t.Fatal("mutated tableless i31 segment retained the rooted receipt")
+	}
+	legacyTableImport := cloneCompiledMetadata(view)
+	legacyTableImport.tableImport = "env.table"
+	if _, valid := rv64RootedTableDigest(legacyTableImport); valid || rv64FreshRootedGC(legacyTableImport) {
+		t.Fatal("tableless module with stale table-import metadata retained the rooted receipt")
 	}
 	rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
 	defer rt.Close()
@@ -1062,7 +1124,7 @@ func TestRV64RootedSIMDArrayFunctionExecutes(t *testing.T) {
 	const dirtyI32 = uint64(0xffffffff0000002a)
 	for iteration := range 32 {
 		got, err := instance.Invoke("run", lo, hi, dirtyI32)
-		if err != nil || !slices.Equal(got, []uint64{lo, hi, 42, 11, 3, 2, 7, 6, 7, 1, 1, 1, 3, 1, 3, 1, 11, 22, 31, 42}) {
+		if err != nil || !slices.Equal(got, []uint64{lo, hi, 42, 11, 3, 2, 7, 6, 7, 1, 1, 1, 3, 1, 3, 1, 0x401, 0x7ffffffe, 0x7ffffffd, 11, 22, 31, 42}) {
 			t.Fatalf("iteration %d: run=%x err=%v", iteration, got, err)
 		}
 	}

@@ -139,9 +139,6 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	}
 	for i := range m.Elements {
 		elem := &m.Elements[i]
-		if tableCount == 0 {
-			return false
-		}
 		values := 0
 		allowImported := !hasPrivateTable
 		if elem.Mode.Kind == wasm.ElemActive {
@@ -948,8 +945,13 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 	for r.HasNext() {
 		id, err := r.Byte()
 		rank := id
-		if id == 12 {
-			rank = 9 // data-count is ordered after start and before code
+		switch id {
+		case 12:
+			rank = 10 // data-count is ordered after element and before code
+		case 10:
+			rank = 11
+		case 11:
+			rank = 12
 		}
 		if err != nil || id > 12 || allowed&(1<<id) == 0 || seen&(1<<id) != 0 || rank <= previousRank {
 			return false

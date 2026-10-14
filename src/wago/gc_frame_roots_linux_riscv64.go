@@ -185,9 +185,6 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	}
 	for i := range m.Elements {
 		elem := &m.Elements[i]
-		if tableCount == 0 {
-			return reject("RV64 exact roots require bounded local function elements")
-		}
 		values := 0
 		allowImported := !hasPrivateTable
 		if elem.Mode.Kind == wasm.ElemActive {

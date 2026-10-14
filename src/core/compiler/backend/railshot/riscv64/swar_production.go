@@ -60,7 +60,7 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 		}
 	}
 	policy := swarModulePlain
-	if len(m.Tables)+m.ImportedTableCount() != 0 || len(m.Elements) != 0 {
+	if len(m.Tables)+m.ImportedTableCount() != 0 || len(m.Elements) != 0 && !opts.gcRootedScalar {
 		policy = swarModuleTables
 	} else if len(m.Imports) != 0 {
 		policy = swarModuleHosts

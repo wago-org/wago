@@ -488,17 +488,14 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	var word [8]byte
 	remainingNames := uint64(1 << 20)
 	remainingElementExprBytes := uint64(1 << 20)
-	if c.tableCount() == 0 {
+	tableCount := c.tableCount()
+	if tableCount == 0 {
 		if c.HasTable || len(c.extraTables) != 0 || c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.TableAddr64 || c.TableType != 0 || c.TableHasValueType || c.TableValueTypeIndex != 0 ||
-			c.HasTableInitFunc || c.TableInitFunc != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+			c.HasTableInitFunc || c.TableInitFunc != 0 || c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax ||
+			len(c.Elems) != 0 || len(c.tableExports) != 0 {
 			return [32]byte{}, false
 		}
-		_, _ = h.Write([]byte{0})
-		var digest [32]byte
-		copy(digest[:], h.Sum(nil))
-		return digest, true
-	}
-	if c.tableCount() < 1 || c.tableCount() > 2 || !c.HasTable || !c.hasTableExportMetadata || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
+	} else if tableCount > 2 || !c.HasTable || !c.hasTableExportMetadata || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return [32]byte{}, false
 	}
 	importCount := c.tableImportCount()
@@ -506,7 +503,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	if !exactImportNames || len(tableModuleEnds) != importCount {
 		return [32]byte{}, false
 	}
-	publicTables := make([]bool, c.tableCount())
+	publicTables := make([]bool, tableCount)
 	for i := 0; i < importCount; i++ {
 		publicTables[i] = true
 	}
@@ -645,8 +642,8 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		}
 		return true
 	}
-	_, _ = h.Write([]byte{byte(c.tableCount())})
-	for tableIndex := 0; tableIndex < c.tableCount(); tableIndex++ {
+	_, _ = h.Write([]byte{byte(tableCount)})
+	for tableIndex := 0; tableIndex < tableCount; tableIndex++ {
 		def := c.tableDef(tableIndex)
 		exact, err := c.tableExactType(tableIndex)
 		functionTable := exact == plain
@@ -718,7 +715,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	_, _ = h.Write(word[:4])
 	for _, name := range sortedKeys(c.tableExports) {
 		index := c.tableExports[name]
-		if index < 0 || index >= c.tableCount() || uint64(len(name)) > remainingNames {
+		if index < 0 || index >= tableCount || uint64(len(name)) > remainingNames {
 			return [32]byte{}, false
 		}
 		remainingNames -= uint64(len(name))
@@ -733,7 +730,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	remaining := 256
 	for i := range c.Elems {
 		elem := &c.Elems[i]
-		if elem.Mode != ElemModeActive || uint64(elem.TableIndex) >= uint64(c.tableCount()) ||
+		if elem.Mode != ElemModeActive || uint64(elem.TableIndex) >= uint64(tableCount) ||
 			elem.Offset.HasGlobal || elem.Offset.Global != 0 || len(elem.Offset.Expr) != 0 || len(elem.Values) > remaining {
 			return [32]byte{}, false
 		}
@@ -760,7 +757,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	_, _ = h.Write(word[:4])
 	for i := range c.passiveElems {
 		elem := &c.passiveElems[i]
-		if elem.Mode == ElemModeActive && uint64(elem.TableIndex) >= uint64(c.tableCount()) || elem.Mode != ElemModeActive && elem.TableIndex != 0 ||
+		if elem.Mode == ElemModeActive && uint64(elem.TableIndex) >= uint64(tableCount) || elem.Mode != ElemModeActive && elem.TableIndex != 0 ||
 			elem.Offset.Base != 0 || elem.Offset.HasGlobal || elem.Offset.Global != 0 || len(elem.Offset.Expr) != 0 ||
 			elem.Mode != ElemModeActive && elem.Mode != ElemModePassive && elem.Mode != ElemModeDeclarative || len(elem.Values) > remaining {
 			return [32]byte{}, false
