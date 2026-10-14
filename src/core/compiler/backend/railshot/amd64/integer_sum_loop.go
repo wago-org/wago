@@ -17,10 +17,7 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	if p.SignedBits != 0 {
-		return false, nil
-	}
-	if p.PopulationCount {
+	if p.PopulationCount || p.SignedBits != 0 {
 		blocked := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
 		available := 0
 		for _, reg := range gpAlloc {
@@ -28,10 +25,11 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 				available++
 			}
 		}
-		// CL plus three arithmetic registers, leaving two more homes for
-		// counter materialization and regional local recovery. Pressure falls
-		// back before advancing the reader or changing compiler state.
-		if blocked.has(RCX) || available < 6 {
+		// Four arithmetic registers (including each operation's fixed x86
+		// roles), plus room for counter materialization and regional recovery.
+		// Pressure falls back before advancing the reader or changing state.
+		if available < 6 || p.PopulationCount && blocked.has(RCX) ||
+			p.SignedBits != 0 && (blocked.has(RAX) || blocked.has(RDX)) {
 			return false, nil
 		}
 	}
@@ -97,6 +95,9 @@ func (f *fn) tryIntegerSumLoop(r *wasm.Reader) (bool, error) {
 	}
 	if p.PopulationCount {
 		return f.emitIntegerPopcountSum(p, typ, get)
+	}
+	if p.SignedBits != 0 {
+		return f.emitIntegerSignedSum(p, typ, get)
 	}
 	if p.Divisor != 0 {
 		return f.emitIntegerDivisionSum(p, typ, get)
