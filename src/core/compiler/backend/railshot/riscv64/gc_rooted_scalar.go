@@ -241,7 +241,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 					return false
 				}
 			case wasm.InstrCallRef:
-				if !rootedScalarNumericReferenceCall(m, imm) {
+				if !rootedScalarReferenceCall(m, imm) {
 					return false
 				}
 			case wasm.InstrRefFunc:
@@ -574,6 +574,73 @@ func rootedScalarNumericReferenceCall(m *wasm.Module, imm wasm.InstructionImmedi
 	}
 	sig, ok := m.ResolvedTypeFunc(imm.Index)
 	return ok && rootedScalarNumericTailSignature(sig)
+}
+
+// rootedScalarReferenceCall admits collector carriers only when the module has
+// a closed callable-reference universe. In that profile every non-null target
+// is owned by this instance: function imports are absent and no funcref table
+// can be populated by another instance after publication. The native lowering
+// independently checks the target context before copying collector pointers.
+func rootedScalarReferenceCall(m *wasm.Module, imm wasm.InstructionImmediate) bool {
+	if rootedScalarNumericReferenceCall(m, imm) {
+		return true
+	}
+	if m == nil || imm.Kind != wasm.InstrCallRef || !rootedScalarClosedFunctionReferenceWorld(m) {
+		return false
+	}
+	sig, ok := m.ResolvedTypeFunc(imm.Index)
+	if !ok || sig == nil || sig.Kind != wasm.CompFunc || len(sig.Params) > 256 || len(sig.Results) > 256 {
+		return false
+	}
+	reference := false
+	for _, values := range [][]wasm.ValType{sig.Params, sig.Results} {
+		for _, typ := range values {
+			if scalarType(typ, true) {
+				continue
+			}
+			if !rv64CollectorFrameRefType(m, typ) {
+				return false
+			}
+			reference = true
+		}
+	}
+	return reference
+}
+
+func rootedScalarClosedFunctionReferenceWorld(m *wasm.Module) bool {
+	if m == nil || m.ImportedFuncCount() != 0 || m.ImportedTableCount() != 0 {
+		return false
+	}
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind == wasm.ExternGlobal && m.Imports[i].Type.GlobalType().Type.Kind() == wasm.ValRef {
+			return false
+		}
+	}
+	for i := range m.Exports {
+		export := m.Exports[i]
+		switch export.Index.Kind {
+		case wasm.ExternTable:
+			// An externally populated aggregate can itself contain a funcref, so
+			// closing only callable tables would not close the descriptor graph.
+			return false
+		case wasm.ExternGlobal:
+			global, ok := m.GlobalTypeByIndex(export.Index.Index)
+			if !ok || global.Mutable && global.Type.Kind() == wasm.ValRef {
+				return false
+			}
+		case wasm.ExternFunc:
+			sig, ok := m.FuncSignature(export.Index.Index)
+			if !ok || sig == nil {
+				return false
+			}
+			for _, typ := range sig.Params {
+				if typ.Kind() == wasm.ValRef {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 func rootedScalarTableReference(typ wasm.ValType, m *wasm.Module) bool {

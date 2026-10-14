@@ -644,6 +644,45 @@ func rv64RootedReferenceNumericCallModule(reference bool) []byte {
 	)
 }
 
+func rv64RootedReferenceCollectorCallModule(publicTable bool) []byte {
+	target := []byte{
+		0x41, 0x09, 0xfb, 0x00, 0x00, 0x1a,
+		0x20, 0x00, 0x0b,
+	}
+	caller := []byte{
+		0x01, 0x01, 0x63, 0x00,
+		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01,
+		0x20, 0x01,
+		0x20, 0x01, 0xd2, 0x00, 0x14, 0x01,
+		0x1a, 0xfb, 0x02, 0x00, 0x00,
+		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x6a, 0x0b,
+	}
+	sections := [][]byte{
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			[]byte{0x60, 0x01, 0x63, 0x00, 0x01, 0x63, 0x00},
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+	}
+	if publicTable {
+		sections = append(sections, wasmtest.Section(4, []byte{0x01, 0x70, 0x01, 0x01, 0x01}))
+	}
+	exports := wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1))
+	if publicTable {
+		exports = wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("functions", byte(wasm.ExternTable), 0),
+		)
+	}
+	sections = append(sections,
+		wasmtest.Section(7, exports),
+		wasmtest.Section(9, []byte{0x01, 0x03, 0x00, 0x01, 0x00}),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(target), append(wasmtest.ULEB(uint32(len(caller))), caller...))),
+	)
+	return wasmtest.Module(sections...)
+}
+
 func TestRV64RootedReferenceNumericCallCompiles(t *testing.T) {
 	source := rv64RootedReferenceNumericCallModule(false)
 	if err := AdmitProductionSource(source); err != nil {
@@ -698,9 +737,67 @@ func TestRV64RootedReferenceNumericCallCompiles(t *testing.T) {
 	}
 }
 
-func TestRV64RootedReferenceCollectorCallRejected(t *testing.T) {
-	if AdmitGCRootedScalarSource(rv64RootedReferenceNumericCallModule(true)) {
-		t.Fatal("rooted reference collector call was admitted")
+func TestRV64RootedReferenceCollectorCallCompiles(t *testing.T) {
+	source := rv64RootedReferenceCollectorCallModule(false)
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	if !AdmitGCRootedScalarSource(source) {
+		t.Fatal("closed rooted reference collector call was not admitted")
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := shared.NewGCModuleFrameRootPlan(2)
+	if !roots.MarkFunction(0) || !roots.MarkFunction(1) || !roots.ReserveFunctions(2) {
+		t.Fatal("reserve exact root plans")
+	}
+	target, _ := roots.BeginFunction(0)
+	*target = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true, Locals: []shared.GCFrameLocal{{Index: 0, Offset: shared.RV64CallFrameHeaderBytes}}}
+	if !target.SetLiveMasks([]uint64{1}, 1, 0) {
+		t.Fatal("install target root masks")
+	}
+	caller, _ := roots.BeginFunction(1)
+	*caller = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true, SafepointBase: 1, Locals: []shared.GCFrameLocal{{Index: 1, Offset: shared.RV64CallFrameHeaderBytes + 8}}}
+	if !caller.SetLiveMasks([]uint64{1, 1}, 1, 1) {
+		t.Fatal("install caller root masks")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		NativeReferenceCalls: true, GCStructHelpers: true, SyncHostSlots: 4,
+		GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		targetLocals, _ := rv64GCFrameLocals(m, 0)
+		callerLocals, _ := rv64GCFrameLocals(m, 1)
+		t.Fatalf("%v: target locals=%+v caller locals=%+v", err, targetLocals, callerLocals)
+	}
+	if len(compiled.Code) == 0 || !compiled.NativeReferenceCalls || target.SafepointCount() != 1 || caller.SafepointCount() != 1 || caller.CallsiteCount() != 1 {
+		t.Fatalf("code=%d refcalls=%t target=%d caller=%d/%d", len(compiled.Code), compiled.NativeReferenceCalls, target.SafepointCount(), caller.SafepointCount(), caller.CallsiteCount())
+	}
+	site, ok := caller.Callsite(0)
+	if !ok || site.ReturnOffset() == 0 || site.StackAdjust() == 0 || len(site.Offsets()) != 2 {
+		t.Fatalf("collector reference callsite = %+v ok=%t", site, ok)
+	}
+}
+
+func TestRV64RootedReferenceCollectorCallRejectsPublicCallableTable(t *testing.T) {
+	if AdmitGCRootedScalarSource(rv64RootedReferenceCollectorCallModule(true)) {
+		t.Fatal("collector call_ref with externally mutable callable table was admitted")
+	}
+	m, err := wasm.DecodeModule(rv64RootedReferenceCollectorCallModule(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Exports = append(m.Exports, wasm.Export{Name: "target", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 0}})
+	if admitRV64GCRootedScalarModule(m) {
+		t.Fatal("collector call_ref with externally supplied reference parameter was admitted")
 	}
 }
 

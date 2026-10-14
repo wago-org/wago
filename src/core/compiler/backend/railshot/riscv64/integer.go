@@ -1180,7 +1180,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			callResultRefs := []bool(nil)
 			referenceCarriers := false
 			if err = integerCallable(sig, floating); err != nil {
-				if !state.publicReferenceCarrierType(typeIndex) || sig.signature == nil || !publicReferenceCarrierTarget(sig.signature) {
+				rootedReferenceCall := state.gcRootedScalar && sig.signature != nil
+				if !rootedReferenceCall && (!state.publicReferenceCarrierType(typeIndex) || sig.signature == nil || !publicReferenceCarrierTarget(sig.signature)) {
 					return integerSummary{}, err
 				}
 				callParams, callResults, callParamRefs, callResultRefs, err = integerControlSignature(sig, referenceTypes, true, true, floating, &budget)
@@ -1198,7 +1199,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if callCount > maxDirectCalls || budget > integerBudget {
 				return integerSummary{}, unsupported("call_ref count/slot budget")
 			}
-			if functionRefs {
+			if functionRefs || i31Refs {
 				if err = match(inlineResults[1][:], inlineReference[:], false, true); err != nil {
 					return integerSummary{}, err
 				}
@@ -1207,7 +1208,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, err
 			}
 			referenceSlot := h
-			if functionRefs {
+			if functionRefs || i31Refs {
 				if err = match(callParams, callParamRefs, false, true); err != nil {
 					return integerSummary{}, err
 				}

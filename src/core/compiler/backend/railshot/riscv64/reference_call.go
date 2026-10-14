@@ -40,6 +40,13 @@ func (f *integerEmitter) referenceCall(sig *wasm.CompType, key uint64, base, ref
 	f.a.Addi(enc.X5, enc.Zero, 7)
 	f.a.And(enc.X5, enc.X7, enc.X5)
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X5, enc.Zero))
+	if f.mode.gcRootedScalar && referenceCallCarriesCollector(sig) {
+		// Raw collector objects are instance-local. Numeric calls may enter any
+		// retained wrapper, but reference-bearing calls must prove the callable
+		// descriptor names this exact native/collector context before arena writes.
+		f.a.Ld(enc.X5, enc.X25, -abi.RV64NativeContextOffset)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+	}
 	f.a.Ld(enc.X5, enc.X7, 16)
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X5, enc.Zero))
 	f.a.Addi(enc.X6, enc.Zero, 7)
@@ -75,6 +82,20 @@ func (f *integerEmitter) referenceCall(sig *wasm.CompType, key uint64, base, ref
 		}
 		f.Store(spill(base+j), 5, wide)
 	}
+}
+
+func referenceCallCarriesCollector(sig *wasm.CompType) bool {
+	if sig == nil {
+		return false
+	}
+	for _, values := range [][]wasm.ValType{sig.Params, sig.Results} {
+		for _, typ := range values {
+			if typ.Kind() == wasm.ValRef {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // functionReferenceCast checks the canonical descriptor's exact structural key
