@@ -414,6 +414,79 @@ func TestRV64RootedHybridSIMDGCFunctionsCompile(t *testing.T) {
 	}
 }
 
+func rv64RootedHybridVectorCallFlowModule() []byte {
+	producer := append([]byte{0x00, 0xfd, 0x0c}, make([]byte, 16)...)
+	producer = append(producer, 0x0b)
+	collect := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	// This function has a scalar signature, no vector locals, and no 0xfd
+	// instruction. Its first direct call nevertheless puts a V128 on the
+	// operand stack, so it must use the padded SWAR frame before calling the
+	// integer/GC function through the opposite hybrid boundary.
+	facade := []byte{0x00, 0x10, 0x00, 0x1a, 0x10, 0x01, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 2))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(producer))), producer...),
+			append(wasmtest.ULEB(uint32(len(collect))), collect...),
+			append(wasmtest.ULEB(uint32(len(facade))), facade...),
+		)),
+	)
+}
+
+func TestRV64RootedHybridVectorCallFlowUsesSWARFrame(t *testing.T) {
+	source := rv64RootedHybridVectorCallFlowModule()
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatal(err)
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for function, want := range []bool{true, false, true} {
+		got, err := functionUsesSWAR(m, function)
+		if err != nil || got != want {
+			t.Fatalf("function %d selector=%t want=%t err=%v", function, got, want, err)
+		}
+	}
+	roots := shared.NewGCModuleFrameRootPlan(3)
+	if !roots.MarkFunction(1) || !roots.MarkFunction(2) || !roots.ReserveFunctions(2) {
+		t.Fatal("reserve vector call-flow roots")
+	}
+	plans := make([]*shared.GCFrameRootPlan, 3)
+	for function := 1; function < len(plans); function++ {
+		plan, ok := roots.BeginFunction(function)
+		if !ok {
+			t.Fatalf("begin vector call-flow roots %d", function)
+		}
+		*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, Conservative: true}
+		plans[function] = plan
+	}
+	if !plans[1].SetLiveMasks([]uint64{0}, 1, 0) || !plans[2].SetLiveMasks([]uint64{0, 0}, 0, 2) {
+		t.Fatal("install vector call-flow masks")
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompileModuleWith(m, CompileOptions{
+		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
+		GCStructHelpers: true, SyncHostSlots: 4, GCFrameRoots: roots, GCFrameRootsSource: true,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compiled.Code) == 0 || plans[1].SafepointCount() != 1 || plans[2].CallsiteCount() != 2 {
+		t.Fatalf("vector call-flow code=%d collector-safepoints=%d facade-calls=%d", len(compiled.Code), plans[1].SafepointCount(), plans[2].CallsiteCount())
+	}
+}
+
 func rv64RootedReferenceHostImportModule() []byte {
 	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
 	functionImport = append(functionImport, wasmtest.ULEB(1)...)

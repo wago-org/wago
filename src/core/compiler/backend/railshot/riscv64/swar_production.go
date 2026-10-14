@@ -200,12 +200,97 @@ func functionUsesSWAR(m *wasm.Module, function int) (bool, error) {
 		if op == 0xfd {
 			return true, nil
 		}
+		if op == 0x02 || op == 0x03 || op == 0x04 {
+			// A vector block signature changes the operand stack layout even when
+			// all vector-producing instructions are calls or global accesses.
+			look := r
+			lead, ok := look.Peek()
+			if !ok {
+				return false, unsupported("SWAR function selector block type")
+			}
+			if lead == 0x7b {
+				return true, nil
+			}
+			if lead != 0x40 && !swarBlockValTypeLead(lead) {
+				typeIndex, err := look.S33()
+				if err != nil || typeIndex < 0 {
+					return false, unsupported("SWAR function selector block type")
+				}
+				sig, ok := m.ResolvedTypeFunc(uint32(typeIndex))
+				if !ok {
+					return false, unsupported("SWAR function selector block signature")
+				}
+				if swarSignatureUsesVector(sig) {
+					return true, nil
+				}
+			}
+		}
+		if op == 0x1c {
+			look := r
+			count, err := look.U32()
+			if err != nil || count != 1 {
+				return false, unsupported("typed select valtype count")
+			}
+			if typ, err := look.Byte(); err == nil && typ == 0x7b {
+				return true, nil
+			}
+		}
 		var imm wasm.InstructionImmediate
 		if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
 			return false, err
 		}
+		switch imm.Kind {
+		case wasm.InstrCall, wasm.InstrReturnCall:
+			sig, ok := m.FuncSignature(imm.Index)
+			if !ok {
+				return false, unsupported("SWAR function selector call signature")
+			}
+			if swarSignatureUsesVector(sig) {
+				return true, nil
+			}
+		case wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef:
+			sig, ok := m.ResolvedTypeFunc(imm.Index)
+			if !ok {
+				return false, unsupported("SWAR function selector typed call signature")
+			}
+			if swarSignatureUsesVector(sig) {
+				return true, nil
+			}
+		case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
+			global, ok := m.GlobalTypeByIndex(imm.Index)
+			if !ok {
+				return false, unsupported("SWAR function selector global type")
+			}
+			if wasm.EqualValType(global.Type, wasm.V128) {
+				return true, nil
+			}
+		}
 	}
 	return false, nil
+}
+
+func swarSignatureUsesVector(sig *wasm.CompType) bool {
+	if sig == nil || sig.Kind != wasm.CompFunc {
+		return false
+	}
+	for _, values := range [][]wasm.ValType{sig.Params, sig.Results} {
+		for _, typ := range values {
+			if wasm.EqualValType(typ, wasm.V128) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func swarBlockValTypeLead(lead byte) bool {
+	switch lead {
+	case 0x7f, 0x7e, 0x7d, 0x7c, 0x7b, 0x63, 0x64,
+		0x6f, 0x70, 0x6e, 0x6d, 0x6c, 0x6b, 0x6a, 0x69,
+		0x71, 0x72, 0x73, 0x74:
+		return true
+	}
+	return false
 }
 
 // FunctionUsesSWAR shares the exact physical-frame selector with the public
