@@ -238,6 +238,7 @@ func TestNativeLeafImportPreservesLocalsGlobalsAndSharedMemory(t *testing.T) {
 func TestNativeLeafImportPreservesFloatLocalsAcrossBindings(t *testing.T) {
 	module := watToWasm(t, `(module
   (import "env" "step" (func $step (param i32) (result i32)))
+  (import "env" "alias" (func (param i32) (result i32)))
   (memory 1)
   (func (export "run") (param $x f64) (param $n i32) (result f64)
    (local $a f64) (local $b f64) (local $c f64) (local $d f64)
@@ -261,7 +262,7 @@ func TestNativeLeafImportPreservesFloatLocalsAcrossBindings(t *testing.T) {
 			if !native {
 				callback = func(v int32) int32 { calls++; return v + 1 }
 			}
-			in, err := Instantiate(code, InstantiateOptions{Imports: testImports("env.step", callback)})
+			in, err := Instantiate(code, InstantiateOptions{Imports: testImports("env.step", callback, "env.alias", callback)})
 			if err != nil {
 				t.Fatal(err)
 			}

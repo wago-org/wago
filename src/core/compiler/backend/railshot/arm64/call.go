@@ -1771,7 +1771,7 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	if err := f.callHostSync(int(b.ImportIndex), ft); err != nil {
 		return err
 	}
-	if f.nativeLeafContextShortcut(b, ft, false) && f.usesCalls && len(locals) <= len(localStateSnapshot{}) {
+	if f.nativeLeafContextShortcut(b, ft, false) && f.m.ImportedFuncCount() > 1 && f.usesCalls && len(locals) <= len(localStateSnapshot{}) {
 		var saved localStateSnapshot
 		for x := range locals {
 			saved[x] = locals[x].state
@@ -1876,7 +1876,9 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	}
 	nativeCandidate := f.nativeLeafContextShortcut(b, ft, recordRoots)
 	var nativeLocals localStateSnapshot
-	preserveNativeLocals := nativeCandidate && f.usesCalls && len(f.locals) <= len(nativeLocals)
+	// Keep the existing single-import layout. The repeated import-alias calls
+	// amortize restoring the ordinary branch's local state at the join.
+	preserveNativeLocals := nativeCandidate && f.m.ImportedFuncCount() > 1 && f.usesCalls && len(f.locals) <= len(nativeLocals)
 	if preserveNativeLocals {
 		// Native leaf validation excludes every FP instruction and GP registers
 		// X18 and above. Home only the local pins its wrapper can overwrite.
