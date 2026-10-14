@@ -25,6 +25,7 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 			return false
 		}
 		allocations, calls := 0, 0
+		importedTail := false
 		r := wasm.NewReader(m.Code[function].BodyBytes)
 		for r.HasNext() {
 			op, err := r.Byte()
@@ -44,8 +45,15 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 				wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
 				return false
 			case wasm.InstrReturnCall:
-				if uint64(imm.Index) < uint64(m.ImportedFuncCount()) || uint64(imm.Index) >= uint64(m.FuncCount()) {
+				if uint64(imm.Index) >= uint64(m.FuncCount()) {
 					return false
+				}
+				if uint64(imm.Index) < uint64(m.ImportedFuncCount()) {
+					sig, ok := m.FuncSignature(imm.Index)
+					if !ok || !rootedScalarNumericTailSignature(sig) {
+						return false
+					}
+					importedTail = true
 				}
 			}
 			if op == 0xfb {
@@ -57,7 +65,13 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 		}
 		plan := plans.Function(function)
 		if allocations == 0 && calls == 0 {
-			if plan != nil {
+			if !importedTail {
+				if plan != nil {
+					return false
+				}
+				continue
+			}
+			if plan == nil || !plan.Candidate || !plan.Exact || !plan.Conservative || plan.AllocationMaskCount() != 0 || plan.CallMaskCount() != 0 || plan.HasFixedOffsets() || len(plan.Locals) != 0 || !plan.ValidLiveMasks() {
 				return false
 			}
 			continue

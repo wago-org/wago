@@ -223,8 +223,14 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			}
 			switch imm.Kind {
 			case wasm.InstrReturnCall:
-				if uint64(imm.Index) < uint64(importedFunctions) || uint64(imm.Index) >= uint64(importedFunctions+len(m.Code)) {
+				if uint64(imm.Index) >= uint64(importedFunctions+len(m.Code)) {
 					return false
+				}
+				if uint64(imm.Index) < uint64(importedFunctions) {
+					sig, ok := m.FuncSignature(imm.Index)
+					if !ok || !rootedScalarNumericTailSignature(sig) {
+						return false
+					}
 				}
 			case wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
 				return false
@@ -516,6 +522,20 @@ func rootedScalarAggregateAt(m *wasm.Module, index uint32) bool {
 		return false
 	}
 	return comp.Kind == wasm.CompStruct || comp.Kind == wasm.CompArray
+}
+
+func rootedScalarNumericTailSignature(sig *wasm.CompType) bool {
+	if sig == nil || sig.Kind != wasm.CompFunc || len(sig.Params) > 256 || len(sig.Results) > 256 {
+		return false
+	}
+	for _, values := range [][]wasm.ValType{sig.Params, sig.Results} {
+		for _, typ := range values {
+			if !swarCarrierType(typ) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func rootedScalarTableReference(typ wasm.ValType, m *wasm.Module) bool {
