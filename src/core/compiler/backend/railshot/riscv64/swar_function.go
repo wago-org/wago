@@ -267,7 +267,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 		}
 		return nil
 	}
-	flow = swarFlow{depth: 1, live: true, h: &h, peak: &peak, budget: &budget, classes: &stackClasses, spill: spill, reserve: reserve, emit: emit, types: types, privateRefs: privateRefs, typedRefs: referenceCalls}
+	flow = swarFlow{depth: 1, live: true, h: &h, peak: &peak, budget: &budget, classes: &stackClasses, spill: spill, reserve: reserve, emit: emit, types: types, referenceTypes: referenceTypes, privateRefs: privateRefs, typedRefs: referenceCalls}
 	flow.frames[0] = swarControl{kind: 0xff, entry: true}
 	for _, typ := range ft.Results {
 		flow.frames[0].results = append(flow.frames[0].results, functionClass(typ))
@@ -1322,6 +1322,74 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				return swarSummary{}, unsupported("SWAR GC instruction outside generic rooted profile")
 			}
 			switch imm.Kind {
+			case wasm.InstrBrOnCast, wasm.InstrBrOnCastFail:
+				if !imm.HasHeapType || !imm.HasHeapType2 || uint64(imm.Index) >= uint64(flow.depth) {
+					return swarSummary{}, unsupported("SWAR branch cast outside generic rooted profile")
+				}
+				if _, ok := referenceTypes.rootedObjectHeap(imm.HeapType); !ok {
+					return swarSummary{}, unsupported("SWAR branch cast source heap outside generic rooted profile")
+				}
+				heap, ok := referenceTypes.rootedObjectHeap(imm.HeapType2)
+				if !ok {
+					return swarSummary{}, unsupported("SWAR branch cast target heap outside generic rooted profile")
+				}
+				fr := &flow.frames[flow.depth-1-int(imm.Index)]
+				values := fr.results
+				if fr.kind == 0x03 {
+					values = fr.params
+				}
+				if len(values) == 0 || values[len(values)-1] != swarFuncRef {
+					return swarSummary{}, unsupported("SWAR branch cast label must end in a reference")
+				}
+				if err := flow.prepareDead(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+				if h == flow.floor() || stackClasses[h-1] != swarFuncRef {
+					return swarSummary{}, unsupported("SWAR branch cast reference carrier")
+				}
+				h--
+				prefix := values[:len(values)-1]
+				if err := flow.prepareDead(prefix...); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - len(prefix)
+				if base < flow.floor() {
+					return swarSummary{}, unsupported("SWAR branch cast payload underflow")
+				}
+				for i, class := range prefix {
+					if stackClasses[base+i] != class {
+						return swarSummary{}, unsupported("SWAR branch cast payload carrier")
+					}
+				}
+				calls++
+				if calls > maxDirectCalls {
+					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
+				}
+				if err := reserve(128*len(values) + 1024); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.gcObjectRefTestBranch(h*2, heap, imm.Cast.TargetNullable)
+				}
+				if err := push(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+				skip := -1
+				if emit != nil {
+					condition := enc.EQ
+					if imm.Kind == wasm.InstrBrOnCastFail {
+						condition = enc.NE
+					}
+					skip = emit.a.BranchLong(condition, enc.X5, enc.Zero)
+				}
+				if err := flow.branch(imm.Index, true); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					if err := emit.Patch(skip, emit.Position()); err != nil {
+						return swarSummary{}, err
+					}
+				}
 			case wasm.InstrStructNew:
 				fields, ok := referenceTypes.rootedStructFields(imm.Index)
 				if !ok || len(fields) > 255 {

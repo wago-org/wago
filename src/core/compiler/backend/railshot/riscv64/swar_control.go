@@ -33,6 +33,7 @@ type swarFlow struct {
 	reserve         func(int) error
 	emit            *integerEmitter
 	types           []*wasm.CompType
+	referenceTypes  internalReferenceTypes
 	usesLoops       bool
 	privateRefs     bool
 	typedRefs       bool
@@ -269,7 +270,7 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 		flow.frames[flow.depth-1].unreachable = true
 		*flow.h = flow.floor()
 	case 0x02, 0x03, 0x04:
-		bt, e := internalReferenceBlockType(r, flow.privateRefs && flow.typedRefs, internalReferenceTypes{swar: flow.types})
+		bt, e := internalReferenceBlockType(r, flow.privateRefs && flow.typedRefs, flow.referenceTypes)
 		if e != nil {
 			return false, false, e
 		}
@@ -282,7 +283,7 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 				if bt >= int64(len(flow.types)) || flow.types[bt] == nil {
 					return false, false, unsupported("SWAR indexed control signature")
 				}
-				params, results, e = swarControlSignature(flow.types[bt], internalReferenceTypes{swar: flow.types}, flow.privateRefs, flow.privateRefs && flow.typedRefs, flow.budget)
+				params, results, e = swarControlSignature(flow.types[bt], flow.referenceTypes, flow.privateRefs, flow.privateRefs && flow.typedRefs, flow.budget)
 				if e != nil {
 					return false, false, e
 				}
