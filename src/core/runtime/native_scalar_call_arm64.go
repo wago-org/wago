@@ -3,19 +3,19 @@
 package runtime
 
 import (
-	"encoding/binary"
-	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"reflect"
 	goruntime "runtime"
 	"strings"
 )
 
 // scalarSingleCallBody recognizes only a Go 1.27 one-i32-argument wrapper whose
-// complete observable body is one direct call and return. Its exact standard
+// complete body is one direct call and return. Its exact standard
 // stack-growth path and frame setup/teardown are checked, not copied. The
 // callee must independently pass the existing bounded register-only proof.
-// Generated code calls a private native copy of that callee; it never branches
-// into Go code or touches a Go stack, closure, g, memory, or callee-saved GP/FP.
+// Generated code copies that pure callee into the native callback body. The
+// import call remains; the checked Go wrapper and helper frames are fused.
+// It never branches into Go code or touches a Go stack, closure, g, memory,
+// or callee-saved GP/FP.
 func scalarSingleCallBody(fn any, params uint32) []byte {
 	version := goruntime.Version()
 	if !scalarGoABI(version) || (version != "go1.27" && !strings.HasPrefix(version, "go1.27.")) || params != 1 {
@@ -66,40 +66,7 @@ func scalarSingleCallBody(fn any, params uint32) []byte {
 	if sf == nil || sf.Entry() != slow || (sf.Name() != "runtime.morestack_noctxt" && sf.Name() != "runtime.morestack_noctxt.abi0") {
 		return nil
 	}
-	leaf := scalarLeafBodyAtPC(target, 1)
-	if leaf == nil {
-		return nil
-	}
-	written := uint32(0)
-	for off := 0; off < len(leaf); off += 4 {
-		written |= 1 << (binary.LittleEndian.Uint32(leaf[off:]) & 31)
-	}
-	// One untouched caller-saved register carries LR across the private helper.
-	// Leave another for the existing argument-buffer wrapper's result pointer.
-	scratch, free := a64.ZR, 0
-	for r := a64.X17; r >= a64.X2; r-- {
-		if written&(1<<r) == 0 {
-			free++
-			if scratch == a64.ZR {
-				scratch = r
-			}
-		}
-	}
-	if free < 2 {
-		return nil
-	}
-	var a a64.Asm
-	a.MovReg64(scratch, a64.LR)
-	call := a.Bl()
-	a.MovReg64(a64.LR, scratch)
-	done := a.Branch()
-	callee := a.Len()
-	a.B = append(a.B, leaf...)
-	a.Ret()
-	if !a.PatchBranch26(call, callee) || !a.PatchBranch26(done, a.Len()) {
-		return nil
-	}
-	return a.B
+	return scalarLeafBodyAtPC(target, 1)
 }
 
 func scalarRelativeTarget(pc uintptr, word, opcode uint32) (uintptr, bool) {

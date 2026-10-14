@@ -3,11 +3,13 @@
 package runtime
 
 import (
+	"bytes"
 	"encoding/binary"
-	"github.com/wago-org/wago/internal/runtimebridge"
 	goruntime "runtime"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/internal/runtimebridge"
 )
 
 //go:noinline
@@ -33,17 +35,20 @@ func TestNativeScalarSinglePureCallProof(t *testing.T) {
 	leaf := value.(nativeScalarLeaf)
 	direct := int(leaf.direct - slicePtr(leaf.code))
 	if binary.LittleEndian.Uint32(leaf.code[direct:]) != 0xaa0303e2 {
-		t.Fatal("private branch immediates consumed the argument-wrapper result register")
+		t.Fatal("callee writes consumed the argument-wrapper result register")
 	}
-	calls := 0
-	for off := 0; off+4 <= len(leaf.code); off += 4 {
-		if binary.LittleEndian.Uint32(leaf.code[off:])&0xfc000000 == 0x94000000 {
-			calls++
-		}
+	calleeCtrl := make([]byte, ctrlFrameSize)
+	t.Cleanup(func() { unregisterNativeScalarLeaf(calleeCtrl) })
+	ok, err = RegisterNativeScalarLeaf(runtimebridge.GrantHostScalarCall(), calleeCtrl, nativeCallPureLeafTest, 1)
+	if err != nil || !ok {
+		t.Fatalf("callee registration: %v,%v", ok, err)
 	}
-	if calls != 3 {
-		t.Fatalf("three ABI entries must each retain one helper call, got %d", calls)
+	calleeValue, _ := nativeLeafHosts.Load(slicePtr(calleeCtrl))
+	callee := calleeValue.(nativeScalarLeaf)
+	if !bytes.Equal(leaf.code, callee.code) {
+		t.Fatal("pure wrapper must lower to exactly the independently proven callee body")
 	}
+
 }
 
 var nativeCallEffectState int32

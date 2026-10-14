@@ -4,11 +4,12 @@ package wago
 
 import (
 	"context"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/support/wasmtest"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 //go:noinline

@@ -14,8 +14,8 @@ import (
 )
 
 // NativeScalarLeafRegisterEntryOffset is measured from the dispatch wrapper.
-// The copied leaf is shorter than 128 bytes. A proven single-call adapter adds
-// 20 bytes; 192 still reserves the complete argument-buffer wrapper.
+// The copied leaf is shorter than 128 bytes; 192 reserves the complete
+// argument-buffer wrapper.
 const NativeScalarLeafRegisterEntryOffset = 192
 
 // scalarLeafInstruction admits only straight-line register arithmetic. Every
@@ -123,9 +123,9 @@ func scalarLeafBodyAtPC(pc uintptr, params uint32) []byte {
 }
 
 // RegisterNativeScalarLeaf lowers a proven ordinary Go i32 leaf into a native
-// host trampoline. It copies proven arithmetic (optionally through one checked
-// call adapter), never calling Go code on a foreign
-// stack. The caller retains the ordinary Go binding as fallback and must use
+// host trampoline. It copies proven arithmetic, including a checked pure
+// single-callee body, without calling Go code on a foreign stack. The caller
+// retains the ordinary Go binding as fallback and must use
 // syscall scheduling for this frame: a native leaf is not a Go safe point.
 // UnregisterHostCtrlFrame releases the mapping only after instance quiescence.
 func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []byte, fn any, params uint32) (bool, error) {
@@ -174,13 +174,7 @@ func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []
 	// This avoids the shared Go host thunk's control-frame staging entirely.
 	written := uint32(0)
 	for off := 0; off < len(body); off += 4 {
-		word := binary.LittleEndian.Uint32(body[off:])
-		// A generated private BL/B has an immediate here, not a GP result.
-		// The adapter restores LR; its explicit MOVs account for its scratch.
-		if word&0x7c000000 == 0x14000000 || word == 0xd65f03c0 {
-			continue
-		}
-		written |= 1 << (word & 31)
+		written |= 1 << (binary.LittleEndian.Uint32(body[off:]) & 31)
 	}
 	directOff := -1
 	for reg := uint32(2); reg < 18; reg++ {
