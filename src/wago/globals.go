@@ -1141,6 +1141,9 @@ type Compiled struct {
 	// local, unexported, immutable, and limited to local function descriptors.
 	// Like direct-prepared entry selection, codecs conservatively discard it.
 	preparedIsolatedTables bool
+	// Fresh compiler scheduler certificate; codecs drop it. Resource-free
+	// private host bridges deliberately do not consume this certificate.
+	fixedSharedHostSegments bool
 }
 
 // The sign bit of a fresh compilation's internal-entry offset carries the

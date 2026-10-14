@@ -588,7 +588,7 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 		if err != nil {
 			return err
 		}
-		if in.boundedHostSegments() && preparedHostFixedEnabled {
+		if (in.boundedHostSegments() || in.boundedFixedSharedHostPortal()) && preparedHostFixedEnabled {
 			if err := fn.hostPrepared.EnableBoundedSegments(runtimebridge.GrantHostScalarCall()); err != nil {
 				return err
 			}

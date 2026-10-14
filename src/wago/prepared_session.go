@@ -99,7 +99,7 @@ func (fn *WasmFunc) OpenSession() (*PreparedSession, error) {
 				return nil, fmt.Errorf("wago: open prepared session host entry: %w", prepareErr)
 			}
 			state.host = true
-			if in.boundedHostSegments() && preparedHostFixedEnabled {
+			if (in.boundedHostSegments() || in.boundedFixedSharedHostPortal()) && preparedHostFixedEnabled {
 				if err := prepared.EnableBoundedSegments(runtimebridge.GrantHostScalarCall()); err != nil {
 					entry.unlockExecution()
 					pluginState.nativeShareMu.Unlock()

@@ -2902,7 +2902,7 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		defer finishProfileBoundary(span, &err)
 		err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch)
 	} else if in.hasSingleDirectTypedScalarHost() {
-		if in.boundedHostSegments() {
+		if in.boundedHostSegments() || in.boundedFixedSharedHostPortal() {
 			rawSlots, _ := in.syncHosts[0].typedScalarSlots()
 			fixed := runtime.FixedScalarHostCall(activation.dispatchSingleTypedI32FixedPortal)
 			if in.syncHosts[0].scalarKind == syncHostTypedI32x2 {

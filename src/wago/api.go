@@ -1421,6 +1421,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
 	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, preparedIsolatedTables: cm.PreparedIsolatedTables, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscapeWithValidation(m, &validationAnalysis), customInstructions: customInstructions, requiresNotifyPending: atomicWaitHelpers && cfg.optimizations["atomic-notify-empty"], requiresARM64LSE: cm.RequiresARM64LSE, requiredAMD64Features: shared.AMD64Features(cm.RequiredAMD64Features), syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: compilerTelemetryEnabled && cfg.gcCodeTelemetry})
+	if cfg.optimizations["prepared-bounded-entry"] && len(customInstructions) == 0 && boundsMode == BoundsChecksExplicit {
+		c.fixedSharedHostSegments = boundedFixedSharedHostSegments(m)
+	}
 	c.codeCache.setNativeStackBytes(cfg.nativeStackBytes)
 	if c.validateMemo != nil {
 		c.validateMemo.memoryLimitPages = cfg.maxMemoryPages
