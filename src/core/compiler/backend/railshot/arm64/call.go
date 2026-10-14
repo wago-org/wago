@@ -1771,6 +1771,13 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	if err := f.callHostSync(int(b.ImportIndex), ft); err != nil {
 		return err
 	}
+	if f.nativeLeafContextShortcut(b, ft, false) && f.usesCalls && len(locals) <= len(localStateSnapshot{}) {
+		var saved localStateSnapshot
+		for x := range locals {
+			saved[x] = locals[x].state
+		}
+		f.restoreNativeLeafPreservedLocals(saved)
+	}
 	f.flush()
 	resultTypes := append([]machineType(nil), f.logicalTypes(f.rootsBottomToTop())...)
 	resultFlags := gcRootFlags(f.rootsBottomToTop())
@@ -1791,6 +1798,25 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	f.patchBranch26(done, f.a.Len())
 	f.setDepthTypesWithGCRoots(resultTypes, resultFlags)
 	return nil
+}
+
+func (f *fn) nativeLeafContextShortcut(b ImportBinding, ft *wasm.CompType, recordRoots bool) bool {
+	p := len(ft.Params)
+	contextShortcut := len(f.m.Imports) > 1 || len(f.m.Memories) > 0 || len(f.m.Globals) > 0 || len(f.m.Tables) > 0
+	return contextShortcut && b.Dynamic && !recordRoots && p >= 1 && p <= 2 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && ft.Params[0] == wasm.I32 && (p == 1 || ft.Params[1] == wasm.I32)
+}
+
+func (f *fn) restoreNativeLeafPreservedLocals(saved localStateSnapshot) {
+	for x := 0; x < f.nLocals; x++ {
+		reg, fp, ok := f.pinReg(x)
+		if !ok || !fp && reg < 18 {
+			continue
+		}
+		if saved[x] == lsReg || saved[x] == lsStackReg {
+			f.loadLocalReg(x, reg, fp)
+		}
+		f.locals[x].state = saved[x]
+	}
 }
 
 // emitCrossInstanceCall lowers a call to an imported function that is bound to
@@ -1848,7 +1874,17 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	if p > 0 {
 		argOff = f.spillOff(int(slotOf[d-p]))
 	}
-	f.spillLocalsForCall()
+	nativeCandidate := f.nativeLeafContextShortcut(b, ft, recordRoots)
+	var nativeLocals localStateSnapshot
+	preserveNativeLocals := nativeCandidate && f.usesCalls && len(f.locals) <= len(nativeLocals)
+	if preserveNativeLocals {
+		// Native leaf validation excludes every FP instruction and GP registers
+		// X18 and above. Home only the local pins its wrapper can overwrite.
+		f.spillLocalsForClobbers((1<<18)-1, 0)
+		nativeLocals, _ = f.snapshotLocalStates()
+	} else {
+		f.spillLocalsForCall()
+	}
 	f.storeModuleGlobals(X9) // cross-instance boundary: shared globals must be cell-coherent
 
 	// Args/results buffers as absolute pointers (survive the STP pushes below —
@@ -1857,20 +1893,22 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.LeaSP(X3, f.spillOff(resultSlot)) // results = &slot-width top
 
 	// Only a runtime-verified native leaf may bypass context publication. Its
-	// wrapper ABI and caller-clobbered register set stay unchanged; locals and
-	// operands above were already homed for both alternatives.
+	// wrapper ABI and caller-clobbered register set stay unchanged. Operands
+	// are homed above; proven preserved local pins can remain in registers.
 	nativeLeaf := -1
 	// A single-import resource-free module retains its lean existing wrapper
 	// route: the extra dispatch branch regresses short dependent callback loops.
 	// Stateful modules and import aliases amortize this branch against context
 	// publication, while keeping the same native-leaf contract.
-	contextShortcut := len(f.m.Imports) > 1 || len(f.m.Memories) > 0 || len(f.m.Globals) > 0 || len(f.m.Tables) > 0
-	if contextShortcut && b.Dynamic && !recordRoots && p >= 1 && p <= 2 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && ft.Params[0] == wasm.I32 && (p == 1 || ft.Params[1] == wasm.I32) {
+	if nativeCandidate {
 		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
 		f.ld64(X16, linMemReg, -int32(offImportDispatchPtr))
 		f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
 		f.a.AndImm64(X12, X12, runtime.ImportDispatchCallerNativeLeafTag)
 		nativeLeaf = f.a.Cbnz64(X12)
+	}
+	if preserveNativeLocals {
+		f.spillLocalsForCall()
 	}
 
 	// Preserve the caller's module-invariant registers (linMemReg=linMem, X27=memSize,
@@ -1961,6 +1999,12 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	// this caller and grows its memory. Reload from the restored caller context
 	// before its continuation resumes.
 	f.refreshCachedMemoryBoundAfterExternalCall()
+	if preserveNativeLocals {
+		// The ordinary branch may clobber every pin. Restore its original
+		// register state before joining the native branch, where those values
+		// never left their registers. Dirty slots remain conservatively dirty.
+		f.restoreNativeLeafPreservedLocals(nativeLocals)
+	}
 	if nativeLeaf >= 0 {
 		done := f.a.Branch()
 		f.patchBranch19(nativeLeaf, f.a.Len())

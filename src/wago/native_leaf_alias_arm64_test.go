@@ -234,3 +234,47 @@ func TestNativeLeafImportPreservesLocalsGlobalsAndSharedMemory(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeLeafImportPreservesFloatLocalsAcrossBindings(t *testing.T) {
+	module := watToWasm(t, `(module
+  (import "env" "step" (func $step (param i32) (result i32)))
+  (memory 1)
+  (func (export "run") (param $x f64) (param $n i32) (result f64)
+   (local $a f64) (local $b f64) (local $c f64) (local $d f64)
+   (local.set $a (f64.add (local.get $x) (f64.const 1)))
+   (local.set $b (f64.add (local.get $x) (f64.const 2)))
+   (local.set $c (f64.add (local.get $x) (f64.const 3)))
+   (local.set $d (f64.add (local.get $x) (f64.const 4)))
+   (local.set $n (call $step (local.get $n)))
+   (f64.add (f64.add (local.get $a) (local.get $b))
+    (f64.add (f64.add (local.get $c) (local.get $d))
+     (f64.convert_i32_s (local.get $n))))))`)
+	c, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).Compile(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	for _, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+		for _, native := range []bool{false, true} {
+			calls := 0
+			var callback any = nativeLeafIncrement
+			if !native {
+				callback = func(v int32) int32 { calls++; return v + 1 }
+			}
+			in, err := Instantiate(code, InstantiateOptions{Imports: testImports("env.step", callback)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, x := range []float64{1.5, -3, 123.25} {
+				got, err := in.Invoke("run", F64(x), I32(7))
+				if err != nil || len(got) != 1 || got[0] != F64(4*x+18) {
+					t.Fatalf("native=%t x=%v: got %v,%v", native, x, got, err)
+				}
+			}
+			in.Close()
+			if !native && calls != 3 {
+				t.Fatalf("Go callback calls=%d", calls)
+			}
+		}
+	}
+}
