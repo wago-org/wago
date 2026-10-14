@@ -1,0 +1,51 @@
+{
+  "source": "191b7ceb01ef891361b4dd396a8c68c25d084b81",
+  "main": "c4efb91b",
+  "status": "retained; local publication queued",
+  "sourceInputs": 3109,
+  "fullFunctionalChanges": [],
+  "defaultImagesMatchPrototype": 255,
+  "changedFrom435": [
+    "features/threads/host-identity/performance-4096x64",
+    "features/threads/host-opaque-identity/performance-4096x64"
+  ],
+  "allFullRatios": {
+    "steady": 0.9971196481659471,
+    "compile": 1.0073944513292556,
+    "compileRSS": 1.0041395966374689
+  },
+  "opaqueRechecks": [
+    {
+      "order": "capture",
+      "workload": "features/threads/host-opaque-identity/performance-4096x64",
+      "phase": "steady",
+      "beforeNs": 3874115.2352941176,
+      "currentNs": 2623933.32,
+      "ratio": 0.6772987277444251,
+      "beforeCode": 880,
+      "code": 944,
+      "beforeRSS": 9912320,
+      "rss": 9961472
+    },
+    {
+      "order": "repeat",
+      "workload": "features/threads/host-opaque-identity/performance-4096x64",
+      "phase": "steady",
+      "beforeNs": 3891808.8235294116,
+      "currentNs": 2617133.32,
+      "ratio": 0.6724722201607448,
+      "beforeCode": 880,
+      "code": 944,
+      "beforeRSS": 9961472,
+      "rss": 10027008
+    }
+  ],
+  "limitations": [
+    "Native fast path instruction sequence preserved; its layout changes and repeats vary by order.",
+    "Tailored proof applies only to a fixed shared memory32 import-only loop, one numeric i32 import, no GC roots/foreign guest calls/custom effects.",
+    "Original Caller self-reentry timeout and cross-instance resolver deadline failure both baseline-reproduced; local repro logs retained.",
+    "Native435 has no production-code changes: delta is ARM64 backend and test files. Existing native data remains435.",
+    "Peer numeric thread cohort contains three matched supported cases; collapsed available-per-engine feature averages are different cohorts.",
+    "Current local site remains435 until scheduled next refresh. No production publication."
+  ]
+}
