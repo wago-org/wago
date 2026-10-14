@@ -2558,6 +2558,9 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	if !f.usesCalls {
 		f.convergeBranchLocals(fr)
 	}
+	// Prefix evaluation can use fixed registers. Keep the reference tracked
+	// until that work is complete, then read its current home.
+	f.flushBelow(f.s.back())
 	value := f.popValue()
 	gcRoot := value.st.hasGCRoot()
 	ref := f.materialize(value)
@@ -2565,7 +2568,6 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 		f.convergeBranchLocals(fr)
 	}
 	d := f.depth()
-	f.flush()
 	refSlot := f.allocSpillSlot()
 	f.a.Store64(RSP, f.spillOff(refSlot), ref)
 	f.a.TestSelf(ref, true)
