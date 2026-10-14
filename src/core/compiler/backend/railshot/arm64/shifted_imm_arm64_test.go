@@ -18,7 +18,7 @@ func TestCompactShiftedAddImmediateArm64(t *testing.T) {
 	compile := func(compact, enabled bool) *ModuleStats {
 		shiftedAddSubImmediateEnabled = enabled
 		stats := &ModuleStats{}
-		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: compact, Stats: stats, Workers: 1})
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: compact, Stats: stats, Workers: 1, Optimizations: map[string]bool{"ordinary-shifted-immediate": false}})
 		if err != nil {
 			t.Fatal(err)
 		}

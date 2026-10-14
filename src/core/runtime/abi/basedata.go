@@ -38,10 +38,13 @@ const (
 	// backing only. Shared memories always have separate instance control;
 	// the cell publishes whether a wait is registering or already queued,
 	// requiring notify to acquire the queue mutex.
-	SharedNotifyPendingOffset     = 64
-	MemoryDirPtrOffset            = 64
-	MemoryDirEntryBytes           = 24
-	MemoryDirBaseOffset           = 0
+	SharedNotifyPendingOffset = 64
+	MemoryDirPtrOffset        = 64
+	MemoryDirEntryBytes       = 24
+	MemoryDirBaseOffset       = 0
+	// Directory sizes are entry/selected-grow snapshots. Native indexed size
+	// and bounds reads use the authoritative fields below MemoryDirBaseOffset's
+	// backing pointer so aliases stay coherent across native calls.
 	MemoryDirCurrentBytesOffset   = 8  // u64: permits the full 4-GiB memory32 size
 	MemoryDirCurrentPagesOffset   = 16 // u32
 	MemoryDirPolicyMaxPagesOffset = 20 // u32: zero means no instance quota

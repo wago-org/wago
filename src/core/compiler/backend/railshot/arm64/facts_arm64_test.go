@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestValueFactsAndRootsFitCompactStorageArm64(t *testing.T) {
@@ -405,5 +406,53 @@ func TestHotI32ParameterCanonicalizesOnceAtEntryArm64(t *testing.T) {
 				t.Fatalf("non-canonical hot parameter address = %#x, %v; want address zero", got, err)
 			}
 		})
+	}
+}
+
+func TestIntegerPointerLoopKeepsCanonicalLoadedAddressArm64(t *testing.T) {
+	// Local 2 is repeatedly replaced by a loaded memory32 pointer. Parameter 0
+	// deliberately arrives with nonzero upper carrier bits.
+	body := []byte{1, 1, 0x7f}
+	for _, pair := range [][2]byte{{0, 4}, {4, 8}, {8, 12}} {
+		body = append(body, 0x41, pair[0], 0x41, pair[1], 0x36, 2, 0)
+	}
+	body = append(body,
+		0x20, 0, 0x21, 2,
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 1, 0x45, 0x0d, 1,
+		0x10, 1, 0x20, 2, 0x28, 2, 0, 0x21, 2,
+		0x20, 1, 0x41, 1, 0x6b, 0x21, 1,
+		0x0c, 0, 0x0b, 0x0b, 0x20, 2, 0x0b)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(body))), body...),
+			[]byte{3, 0, 1, 0x0b})),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, enabled := range []bool{false, true} {
+		for _, n := range []uint64{0, 1, 2, 3} {
+			got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"value-facts": enabled}}, uint64(1)<<32, n)
+			if err != nil || uint32(got) != uint32(n*4) {
+				t.Fatalf("facts=%t count=%d: got %d, %v; want %d", enabled, n, got, err, n*4)
+			}
+		}
+	}
+	requireCompilerDiagnostics(t)
+	stats := &ModuleStats{}
+	cm, err := CompileModuleWith(m, CompileOptions{Stats: stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cm.CodeImage.Close()
+	if got := stats.Funcs[0].Peephole["memory-address-load-rename"]; got != 0 {
+		t.Fatalf("integer pointer loop retains %d redundant load renames", got)
 	}
 }

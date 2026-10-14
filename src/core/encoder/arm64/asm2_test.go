@@ -17,6 +17,9 @@ func TestPortIntEncodings(t *testing.T) {
 		{"orr w9,w10,w11,lsl#17", func(a *Asm) { a.OrrShiftedReg(X9, X10, X11, RegShiftLSL, 17, true) }, 0x2a0b4549},
 		{"eor x12,x13,x14,lsr#29", func(a *Asm) { a.EorShiftedReg(X12, X13, X14, RegShiftLSR, 29, false) }, 0xca4e75ac},
 		{"add x0,x1,w2,uxtw", func(a *Asm) { a.AddExtUXTW(X0, X1, X2) }, 0x8b224020},
+		{"add x0,x1,w2,uxtw#2", func(a *Asm) { a.AddExtUXTWShift(X0, X1, X2, 2) }, 0x8b224820},
+		{"add x0,x1,w2,uxtw#4", func(a *Asm) { a.AddExtUXTWShift(X0, X1, X2, 4) }, 0x8b225020},
+		{"add x17,x16,w9,uxtw#2", func(a *Asm) { a.AddExtUXTWShift(X17, X16, X9, 2) }, 0x8b294a11},
 		{"add x25,x25,w19,uxtw", func(a *Asm) { a.AddExtUXTW(X25, X25, X19) }, 0x8b334339},
 		{"adds w0,w1,w2", func(a *Asm) { a.Adds32(X0, X1, X2) }, 0x2b020020},
 		{"sxtw x0,w1", func(a *Asm) { a.Sxtw(X0, X1) }, 0x93407c20},
@@ -55,6 +58,8 @@ func TestPortIntEncodings(t *testing.T) {
 		{"ldp q18,q19,[x10,#32]", func(a *Asm) { a.LdpQ(X18, X19, X10, 32) }, 0xad414d52},
 		{"stp q18,q19,[x9,#32]", func(a *Asm) { a.StpQ(X18, X19, X9, 32) }, 0xad014d32},
 		{"csel w0,w1,w2,eq", func(a *Asm) { a.Csel32(X0, X1, X2, CondEQ) }, 0x1a820020},
+		{"bics xzr,x1,x2", func(a *Asm) { a.TstNotReg(X1, X2, false) }, 0xea22003f},
+		{"bics wzr,w1,w2", func(a *Asm) { a.TstNotReg(X1, X2, true) }, 0x6a22003f},
 		{"tst x1,x2", func(a *Asm) { a.TstReg(X1, X2, false) }, 0xea02003f},
 		{"tst w1,w2", func(a *Asm) { a.TstReg(X1, X2, true) }, 0x6a02003f},
 		{"tst x1,#0x8080808080808080", func(a *Asm) {
@@ -456,5 +461,14 @@ func TestPortNeon16bLogical(t *testing.T) {
 				t.Errorf("%s: got %#08x, want %#08x", c.name, got, c.want)
 			}
 		})
+	}
+}
+
+func TestAddExtUXTWShiftRejectsInvalidScale(t *testing.T) {
+	for _, shift := range []uint8{5, 7, 255} {
+		a := Asm{}
+		if a.AddExtUXTWShift(X0, X1, X2, shift) || len(a.B) != 0 {
+			t.Fatalf("invalid shift %d emitted code", shift)
+		}
 	}
 }

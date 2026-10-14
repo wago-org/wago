@@ -162,7 +162,7 @@ func TestNativeLeafAliasesPreserveInstanceContext(t *testing.T) {
 			cells := unsafe.Slice((*byte)(offHeapPtr(ptr)), 2*wruntime.ImportDispatchEntryBytes)
 			for cell := 0; cell < 2; cell++ {
 				word := binary.LittleEndian.Uint64(cells[cell*wruntime.ImportDispatchEntryBytes+wruntime.ImportDispatchCallerContextOffset:])
-				if tagged := word&wruntime.ImportDispatchCallerNativeLeafTag != 0; tagged != (enabled && index == 0) {
+				if tagged := word&wruntime.ImportDispatchCallerNativeLeafTag != 0; tagged != (enabled && index == 0 && !codeProfileEnabled) {
 					t.Fatalf("native context contract=%t enabled=%t artifact=%d", tagged, enabled, index)
 				}
 			}

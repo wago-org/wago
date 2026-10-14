@@ -3308,6 +3308,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.a.LdpPost(X25, X23, SP, 16)
 	f.a.LdpPost(linMemReg, X24, SP, 16)
 	f.copyInstanceContext(linMemReg, X13)
+	f.refreshCachedMemoryBoundAfterExternalCall()
 	f.deriveModuleGlobals()           // cross-instance callee may have written shared global cells
 	f.patchBranch26(jdone, f.a.Len()) // fr.jdone is an unconditional B (imm26)
 
