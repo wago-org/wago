@@ -1344,6 +1344,26 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				if err := push(swarFuncRef); err != nil {
 					return swarSummary{}, err
 				}
+			case wasm.InstrStructNewDefault:
+				if !referenceTypes.rootedStructDefaultable(imm.Index) {
+					return swarSummary{}, unsupported("SWAR struct.new_default outside generic rooted profile")
+				}
+				calls++
+				allocations++
+				if calls > maxDirectCalls {
+					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
+				}
+				if err := reserve(1024); err != nil {
+					return swarSummary{}, err
+				}
+				base := h
+				if emit != nil {
+					emit.gcDefaultAllocation(gcStructAllocDefault, base*2, false, imm.Index, hiddenRefs(base))
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+				if err := push(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
 			case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU:
 				field, ok := referenceTypes.rootedStructFieldStorage(imm.Index, imm.Index2)
 				packed := ok && field.Packed()
@@ -1389,6 +1409,39 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				if err := push(class); err != nil {
 					return swarSummary{}, err
 				}
+			case wasm.InstrStructSet:
+				field, ok := referenceTypes.rootedStructFieldStorage(imm.Index, imm.Index2)
+				if !ok || !referenceTypes.mutableStructField(imm.Index, imm.Index2) {
+					return swarSummary{}, unsupported("SWAR struct.set outside generic rooted profile")
+				}
+				reference := referenceTypes.rootedStructFieldReference(imm.Index, imm.Index2)
+				class := functionClass(field.Val())
+				if reference {
+					class = swarFuncRef
+				}
+				if class == swarInvalid || class == swarV128 {
+					return swarSummary{}, unsupported("SWAR struct.set field carrier")
+				}
+				if err := flow.prepareDead(swarFuncRef, class); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 2
+				if base < flow.floor() || stackClasses[base] != swarFuncRef || stackClasses[base+1] != class {
+					return swarSummary{}, unsupported("SWAR struct.set operand carrier")
+				}
+				wide := !field.Packed() && (scalarWide(field.Val()) || reference)
+				calls++
+				if calls > maxDirectCalls {
+					return swarSummary{}, unsupported("SWAR GC helper call count/slot budget")
+				}
+				if err := reserve(1024); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.swarCompactGCArguments(base, 2, spill)
+					emit.gcStructSetScalar(base*2, imm.Index, imm.Index2, wide)
+				}
+				h = base
 			default:
 				return swarSummary{}, unsupported("SWAR GC opcode lowering is pending")
 			}

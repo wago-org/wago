@@ -818,8 +818,7 @@ func rootedScalarSIMDStructFunctionModule() []byte {
 	body := []byte{
 		0x03, 0x01, 0x63, 0x01, 0x03, 0x7f, 0x01, 0x7e,
 		0x20, 0x00,
-		0x41, 0x2a,
-		0xfb, 0x00, 0x00,
+		0xfb, 0x01, 0x00,
 		0x20, 0x01,
 		0x20, 0x02,
 		0x41, 0x09,
@@ -830,6 +829,9 @@ func rootedScalarSIMDStructFunctionModule() []byte {
 		0x20, 0x03,
 		0xfb, 0x02, 0x01, 0x01,
 		0x21, 0x07,
+		0x20, 0x03,
+		0x41, 0x0b,
+		0xfb, 0x05, 0x01, 0x02,
 		0x20, 0x03,
 		0xfb, 0x02, 0x01, 0x02,
 		0x21, 0x05,
@@ -844,7 +846,7 @@ func rootedScalarSIMDStructFunctionModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x5f, 0x01, 0x7f, 0x00},
-			[]byte{0x5f, 0x03, 0x7f, 0x00, 0x7e, 0x00, 0x7f, 0x00},
+			[]byte{0x5f, 0x03, 0x7f, 0x00, 0x7e, 0x00, 0x7f, 0x01},
 			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.I32, wasm.I64}, []wasm.ValType{wasm.V128, wasm.I32, wasm.I64, wasm.I32, wasm.I32}),
 		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
@@ -880,7 +882,7 @@ func TestRV64RootedSIMDStructFunctionExecutes(t *testing.T) {
 	const wide = uint64(0x80000000fedcba98)
 	for iteration := range 32 {
 		got, err := instance.Invoke("run", lo, hi, dirtyI32, wide)
-		if err != nil || !slices.Equal(got, []uint64{lo, hi, 42, wide, 9, 42}) {
+		if err != nil || !slices.Equal(got, []uint64{lo, hi, 42, wide, 11, 0}) {
 			t.Fatalf("iteration %d: run=%x err=%v", iteration, got, err)
 		}
 	}
