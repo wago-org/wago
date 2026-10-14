@@ -9,7 +9,8 @@
     "mainAppleTests": 263,
     "nativeTests": 266,
     "fullWorkloadsPerHost": 266,
-    "nativeImagesIdenticalToRetainedBaseline": 255
+    "nativeImagesIdenticalToRetainedBaseline": 255,
+    "finalAppleImagesIdenticalTo495": 255
   },
   "appleFinalVs495": {
     "main": {
