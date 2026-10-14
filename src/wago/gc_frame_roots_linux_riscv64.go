@@ -426,6 +426,11 @@ func rv64RootedBodyHasNumericTailBridge(m *wasm.Module, body []byte, classifier 
 			if ok && rv64RootedNumericTailSignature(sig) {
 				return true
 			}
+		case wasm.InstrReturnCallRef:
+			sig, ok := m.ResolvedTypeFunc(imm.Index)
+			if ok && rv64RootedNumericTailSignature(sig) {
+				return true
+			}
 		}
 	}
 	return false

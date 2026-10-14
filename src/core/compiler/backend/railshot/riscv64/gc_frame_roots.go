@@ -41,8 +41,13 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 				calls++
 			case wasm.InstrCallIndirect:
 				calls++
-			case wasm.InstrCallRef, wasm.InstrReturnCallRef:
+			case wasm.InstrCallRef:
 				return false
+			case wasm.InstrReturnCallRef:
+				if !rootedScalarNumericReferenceTail(m, imm) {
+					return false
+				}
+				tailBridge = true
 			case wasm.InstrReturnCallIndirect:
 				if !rootedScalarNumericIndirectTail(m, imm) {
 					return false

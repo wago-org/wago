@@ -251,3 +251,73 @@ func TestRV64PublicRootedIndirectTailExecution(t *testing.T) {
 		rt.Close()
 	}
 }
+
+func rv64PublicRootedReferenceTailModule() []byte {
+	target := []byte{0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}
+	withAllocation := []byte{
+		0x41, 0x07, 0xfb, 0x00, 0x00, 0x1a,
+		0x20, 0x00, 0xd2, 0x00, 0x15, 0x01, 0x0b,
+	}
+	bridge := []byte{0x20, 0x00, 0xd2, 0x00, 0x15, 0x01, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x00},
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run_gc", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("run_tail", byte(wasm.ExternFunc), 2),
+		)),
+		wasmtest.Section(9, []byte{0x01, 0x03, 0x00, 0x01, 0x00}),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(target), wasmtest.Code(withAllocation), wasmtest.Code(bridge))),
+	)
+}
+
+func TestRV64PublicRootedReferenceTailExecution(t *testing.T) {
+	cfg := rv64I31Config().WithCoreFeatures(platformCoreFeatures() | CoreFeatureGC | CoreFeatureTailCall | CoreFeatureTypedFunctionReferences)
+	cfg.railshotState.tailProducts = true
+	compiled, err := cfg.Compile(rv64PublicRootedReferenceTailModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	roots := compiled.genericGCFrameRoots()
+	tails := rv64NativeTailModule(compiled)
+	if roots == nil || len(roots.safepoints) != 1 || len(roots.callsites) != 0 || tails == nil || len(tails.Plans) != 2 {
+		t.Fatalf("rooted reference tails: roots=%+v tails=%+v", roots, tails)
+	}
+	for _, plan := range tails.Plans {
+		if plan.Kind != encoder.NativeTailReference || plan.TypeIndex != 1 || plan.ReferenceBase == 0 {
+			t.Fatalf("rooted reference tail plan: %+v", plan)
+		}
+	}
+	for _, gcConfig := range []GCConfig{
+		{},
+		{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true},
+	} {
+		rt := NewRuntime(WithRuntimeConfig(cfg))
+		mod, err := rt.Module(compiled)
+		if err != nil {
+			rt.Close()
+			t.Fatal(err)
+		}
+		in, err := rt.Instantiate(context.Background(), mod, WithGC(gcConfig))
+		mod.Close()
+		if err != nil {
+			rt.Close()
+			t.Fatal(err)
+		}
+		for range 64 {
+			for _, export := range []string{"run_gc", "run_tail"} {
+				if got, invokeErr := in.Invoke(export, 0xcafe123480000001); invokeErr != nil || !slices.Equal(got, []uint64{0x80000002}) {
+					in.Close()
+					rt.Close()
+					t.Fatalf("rooted reference tail %s = %v, %v", export, got, invokeErr)
+				}
+			}
+		}
+		in.Close()
+		rt.Close()
+	}
+}

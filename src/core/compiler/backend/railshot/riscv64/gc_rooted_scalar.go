@@ -237,7 +237,9 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 					return false
 				}
 			case wasm.InstrReturnCallRef:
-				return false
+				if !rootedScalarNumericReferenceTail(m, imm) {
+					return false
+				}
 			case wasm.InstrRefFunc:
 				if importedFunctions != 0 && hasPrivateTable && uint64(imm.Index) < uint64(importedFunctions) {
 					return false
@@ -548,6 +550,14 @@ func rootedScalarNumericIndirectTail(m *wasm.Module, imm wasm.InstructionImmedia
 	}
 	table, ok := m.TableType(imm.Index2)
 	if !ok || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
+		return false
+	}
+	sig, ok := m.ResolvedTypeFunc(imm.Index)
+	return ok && rootedScalarNumericTailSignature(sig)
+}
+
+func rootedScalarNumericReferenceTail(m *wasm.Module, imm wasm.InstructionImmediate) bool {
+	if m == nil || imm.Kind != wasm.InstrReturnCallRef {
 		return false
 	}
 	sig, ok := m.ResolvedTypeFunc(imm.Index)
