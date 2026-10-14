@@ -53,7 +53,12 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		}
 		heap := typ.Ref().Heap()
 		if heap.Kind() == wasm.HeapAbs {
-			return heap.Abs() == wasm.HeapI31
+			switch heap.Abs() {
+			case wasm.HeapNone, wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray:
+				return true
+			default:
+				return false
+			}
 		}
 		if heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec {
 			return false

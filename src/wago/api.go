@@ -5687,14 +5687,21 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 				}
 				bits = internal
 			} else if typ == ValAnyRef && bits != 0 {
-				if in.refStore == nil {
-					return fmt.Errorf("%s: invalid anyref token for argument %d", subject, i)
+				compact := gc.Ref(uint32(bits))
+				if bits == uint64(compact) && compact.IsI31() {
+					if !in.gcRefMatchesValueType(compact, required) {
+						return fmt.Errorf("%s: i31 anyref argument %d does not match its exact type", subject, i)
+					}
+				} else {
+					if in.refStore == nil {
+						return fmt.Errorf("%s: invalid anyref token for argument %d", subject, i)
+					}
+					internal, err := in.refStore.stageGCRefArgument(in, bits, required)
+					if err != nil {
+						return fmt.Errorf("%s: invalid anyref token for argument %d: %w", subject, i, err)
+					}
+					bits = uint64(internal)
 				}
-				internal, err := in.refStore.stageGCRefArgument(in, bits, required)
-				if err != nil {
-					return fmt.Errorf("%s: invalid anyref token for argument %d: %w", subject, i, err)
-				}
-				bits = uint64(internal)
 			} else if bits != 0 {
 				return fmt.Errorf("%s: non-null %s argument %d is outside the null-only product", subject, typ, i)
 			}

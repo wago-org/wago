@@ -98,7 +98,7 @@ func TestRV64RootedReferenceExportAdmitted(t *testing.T) {
 	}
 }
 
-func TestRV64RootedAbstractReferenceExportRejected(t *testing.T) {
+func TestRV64RootedAbstractReferenceExportAdmitted(t *testing.T) {
 	body := []byte{0x00, 0x20, 0x00, 0x0b}
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
@@ -109,8 +109,8 @@ func TestRV64RootedAbstractReferenceExportRejected(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("echo", byte(wasm.ExternFunc), 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
-	if err := AdmitProductionSource(source); err == nil {
-		t.Fatal("mixed-representation abstract reference export unexpectedly admitted")
+	if err := AdmitProductionSource(source); err != nil {
+		t.Fatalf("mixed-representation abstract reference export was not admitted: %v", err)
 	}
 }
 
@@ -207,8 +207,8 @@ func TestRV64RootedI31GlobalCompiles(t *testing.T) {
 		t.Fatalf("code=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
 	}
 	m.Globals[0].Type.Type = wasm.AnyRef
-	if admitRV64GCRootedScalarModule(m) {
-		t.Fatal("abstract anyref global escaped rooted i31 admission")
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("abstract anyref global did not admit its i31 initializer")
 	}
 }
 
@@ -2919,8 +2919,8 @@ func TestRV64RootedAbstractStructGlobalCompiles(t *testing.T) {
 	}
 	m.Globals[0].Type.Type = wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
 	m.Exports = append(m.Exports, wasm.Export{Name: "root", Index: wasm.ExternIdx{Kind: wasm.ExternGlobal, Index: 0}})
-	if admitRV64GCRootedScalarModule(m) {
-		t.Fatal("abstract collector-reference global escaped through the public boundary")
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("abstract collector-reference global was not admitted through the public boundary")
 	}
 }
 

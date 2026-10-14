@@ -412,6 +412,11 @@ func (in *Instance) setGlobalValueNoLease(name string, v Value, roots *globalVal
 			if !in.gcRefMatchesValueType(ref, exact) {
 				return fmt.Errorf("global %q i31ref does not match its exact type", name)
 			}
+		} else if bits == uint64(uint32(bits)) && gc.Ref(uint32(bits)).IsI31() {
+			ref = gc.Ref(uint32(bits))
+			if !in.gcRefMatchesValueType(ref, exact) {
+				return fmt.Errorf("global %q i31 anyref does not match its exact type", name)
+			}
 		} else {
 			store, storeErr := in.referenceStoreForBoundary()
 			if storeErr != nil {

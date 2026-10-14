@@ -281,6 +281,143 @@ func TestRV64RootedReferenceHostImportExecutes(t *testing.T) {
 	}
 }
 
+func rootedScalarAbstractReferenceBoundaryModule() []byte {
+	types := [][]byte{
+		{0x5f, 0x01, 0x7f, 0x01},
+		wasmtest.FuncType([]wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.AnyRef}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.AnyRef}),
+		wasmtest.FuncType([]wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.I32}),
+	}
+	functionImport := append(append(wasmtest.Name("env"), wasmtest.Name("echo")...), byte(wasm.ExternFunc))
+	functionImport = append(functionImport, wasmtest.ULEB(1)...)
+	bodies := [][]byte{
+		{0x00, 0x20, 0x00, 0x0b},
+		{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x00, 0x0b},
+		{0x00, 0x41, 0x7e, 0xfb, 0x1c, 0x0b},
+		{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b},
+		{0x00, 0x20, 0x00, 0xfb, 0x16, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b},
+	}
+	codes := make([][]byte, len(bodies))
+	for i, body := range bodies {
+		codes[i] = append(wasmtest.ULEB(uint32(len(body))), body...)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(2, wasmtest.Vec(functionImport)),
+		wasmtest.Section(3, wasmtest.Vec(
+			wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(2), wasmtest.ULEB(1), wasmtest.ULEB(3),
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("echo_local", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("make_object", byte(wasm.ExternFunc), 2),
+			wasmtest.ExportEntry("make_i31", byte(wasm.ExternFunc), 3),
+			wasmtest.ExportEntry("echo_host", byte(wasm.ExternFunc), 4),
+			wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 5),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
+	)
+}
+
+func TestRV64RootedAbstractReferenceBoundaryExecutes(t *testing.T) {
+	source := rootedScalarAbstractReferenceBoundaryModule()
+	if !railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("abstract collector-reference public boundary was not source-admitted")
+	}
+	compiled, err := Compile(rv64RootedScalarConfig(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	imports, validImports := rv64RootedImportDigest(view)
+	if !rv64FreshRootedGC(view) || view.NumImports != 1 || !validImports || imports != view.validateMemo.rv64FreshRootedGCImportDigest {
+		t.Fatalf("abstract boundary receipt=%t imports=%d digest=%t/%t validation=%v", rv64FreshRootedGC(view), view.NumImports, validImports, imports == view.validateMemo.rv64FreshRootedGCImportDigest, railshotValidateCompiled(view))
+	}
+	candidate := cloneCompiledMetadata(view)
+	candidate.Types = slices.Clone(candidate.Types)
+	candidate.Types[1].Params = slices.Clone(candidate.Types[1].Params)
+	candidate.Types[1].Params[0].Ref.Heap.Abstract = AbstractHeapFunc
+	if rv64FreshRootedGC(candidate) {
+		t.Fatal("non-collector abstract host parameter retained the rooted receipt")
+	}
+	requireRV64FreshRootedArtifactRejected(t, compiled)
+
+	rt := NewRuntime(WithRuntimeConfig(rv64RootedScalarConfig()))
+	defer rt.Close()
+	var objectCalls, immediateCalls int
+	host, err := rt.NewGCHostFuncRef(slotHostFunc(func(module HostModule, params, results []uint64) {
+		if len(params) != 1 || len(results) != 1 || params[0] == 0 {
+			panic("abstract collector-reference host slots")
+		}
+		if params[0]>>32 == 0 {
+			if uint32(params[0])&1 == 0 {
+				panic("abstract host compact value is not i31")
+			}
+			immediateCalls++
+		} else {
+			objectCalls++
+		}
+		gcHost, ok := module.(GCHostModule)
+		if !ok {
+			panic("abstract host call has no GC surface")
+		}
+		if err := gcHost.CollectGC(); err != nil {
+			panic(err)
+		}
+		results[0] = params[0]
+	}), FuncSig{Params: []ValType{ValAnyRef}, Results: []ValType{ValAnyRef}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer host.Close()
+	module, err := rt.Module(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := rt.Instantiate(context.Background(), module, WithImports(testImports("env.echo", host)), WithGC(GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}))
+	module.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+
+	created, err := instance.InvokeValues(context.Background(), "make_object")
+	if err != nil || len(created) != 1 || created[0].Type() != ValAnyRef || created[0].Bits()>>32 == 0 {
+		t.Fatalf("make_object()=%v err=%v", created, err)
+	}
+	objectTokens := []GCRef{created[0].GCRef()}
+	for _, name := range []string{"echo_local", "echo_host"} {
+		got, err := instance.InvokeValues(context.Background(), name, created[0])
+		if err != nil || len(got) != 1 || got[0].Type() != ValAnyRef || got[0].Bits()>>32 == 0 {
+			t.Fatalf("%s(object)=%v err=%v", name, got, err)
+		}
+		objectTokens = append(objectTokens, got[0].GCRef())
+		if read, err := instance.Invoke("read", got[0].Bits()); err != nil || !slices.Equal(read, []uint64{42}) {
+			t.Fatalf("read(%s(object))=%v err=%v", name, read, err)
+		}
+	}
+
+	immediate, err := instance.InvokeValues(context.Background(), "make_i31")
+	wantImmediate := uint64(NewI31Ref(-2).bits)
+	if err != nil || len(immediate) != 1 || immediate[0].Type() != ValAnyRef || immediate[0].Bits() != wantImmediate {
+		t.Fatalf("make_i31()=%v err=%v want=%#x", immediate, err, wantImmediate)
+	}
+	for _, name := range []string{"echo_local", "echo_host"} {
+		got, err := instance.InvokeValues(context.Background(), name, ValueOf(ValAnyRef, wantImmediate))
+		if err != nil || len(got) != 1 || got[0].Type() != ValAnyRef || got[0].Bits() != wantImmediate {
+			t.Fatalf("%s(i31)=%v err=%v", name, got, err)
+		}
+	}
+	if objectCalls != 1 || immediateCalls != 1 {
+		t.Fatalf("abstract host calls object/immediate=%d/%d", objectCalls, immediateCalls)
+	}
+	for i := len(objectTokens) - 1; i >= 0; i-- {
+		if err := instance.ReleaseGCRef(objectTokens[i]); err != nil {
+			t.Fatalf("release object token %d: %v", i, err)
+		}
+	}
+}
+
 func rootedScalarFunctionBeforeStructModule() []byte {
 	body := []byte{0x00, 0x41, 0x2a, 0xfb, 0x00, 0x01, 0xfb, 0x02, 0x01, 0x00, 0x0b}
 	return wasmtest.Module(
@@ -5542,7 +5679,10 @@ func rootedScalarMutableAbstractStructGlobalModule() []byte {
 		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
 		wasmtest.Section(6, []byte{0x01, byte(wasm.HeapAny), 0x01, 0x41, 0x28, 0xfb, 0x00, 0x00, 0x0b}),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("root", byte(wasm.ExternGlobal), 0),
+		)),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
 }
@@ -6038,7 +6178,7 @@ func TestRV64RootedScalarMutableAbstractStructGlobalExecutes(t *testing.T) {
 	}
 	defer compiled.Close()
 	view := compiled.executionView()
-	if !rv64FreshRootedGC(view) || len(view.Globals) != 1 || view.Globals[0].Type != ValAnyRef || !view.Globals[0].Mutable ||
+	if !rv64FreshRootedGC(view) || len(view.Globals) != 1 || view.Globals[0].Type != ValAnyRef || !view.Globals[0].Mutable || view.GlobalExports["root"] != 0 ||
 		view.Globals[0].HasInitGlobal || len(view.Globals[0].InitExpr) == 0 {
 		t.Fatalf("rooted abstract-global receipt=%t globals=%+v validation=%v", rv64FreshRootedGC(view), view.Globals, railshotValidateCompiled(view))
 	}
@@ -6069,10 +6209,34 @@ func TestRV64RootedScalarMutableAbstractStructGlobalExecutes(t *testing.T) {
 	if roots := instance.publicGCState().globalRoots; len(roots) != 1 || roots[0].GlobalIndex != 0 {
 		t.Fatalf("generic rooted abstract-global roots=%+v", roots)
 	}
+	initial, err := instance.GlobalValue("root")
+	if err != nil || initial.Type() != ValAnyRef || initial.Bits()>>32 == 0 {
+		t.Fatalf("initial abstract global=%v err=%v", initial, err)
+	}
+	if err := instance.ReleaseGCRef(initial.GCRef()); err != nil {
+		t.Fatal(err)
+	}
+	immediate := uint64(NewI31Ref(-3).bits)
+	if err := instance.SetGlobalValue("root", ValueOf(ValAnyRef, immediate)); err != nil {
+		t.Fatal(err)
+	}
+	if value, err := instance.GlobalValue("root"); err != nil || value.Type() != ValAnyRef || value.Bits() != immediate {
+		t.Fatalf("abstract i31 global=%v err=%v", value, err)
+	}
 	for range 16 {
 		if got, err := instance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{42}) {
 			t.Fatalf("run()=%v err=%v want=[42]", got, err)
 		}
+	}
+	final, err := instance.GlobalValue("root")
+	if err != nil || final.Type() != ValAnyRef || final.Bits()>>32 == 0 {
+		t.Fatalf("final abstract global=%v err=%v", final, err)
+	}
+	if err := instance.ReleaseGCRef(final.GCRef()); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.SetGlobalValue("root", ValueOf(ValAnyRef, uint64(uint32(2)))); err == nil {
+		t.Fatal("raw compact object handle was accepted as a public abstract global value")
 	}
 }
 

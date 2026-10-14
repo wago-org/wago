@@ -424,10 +424,9 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			return false
 		}
 	}
-	// The shared public host adapter translates indexed aggregate references
-	// through owned GC tokens and keeps i31 values immediate. Abstract object
-	// results can also carry i31 values under a ValAnyRef ABI slot, so keep them
-	// private until that mixed public representation has its own contract.
+	// The shared public host adapter translates collector objects through owned
+	// GC tokens and keeps i31 values immediate. Tokens always occupy more than
+	// 32 bits, so abstract object carriers can safely distinguish the two forms.
 	publicRootedValue := func(typ wasm.ValType) bool {
 		if scalarType(typ, true) {
 			return true
@@ -437,7 +436,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		heap := typ.Ref().Heap()
 		if heap.Kind() == wasm.HeapAbs {
-			return heap.Abs() == wasm.HeapI31
+			return rootedAbstractObjectHeap(heap.Abs()) || heap.Abs() == wasm.HeapI31
 		}
 		return heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && int(heap.Type().Index) < flatTypes && admittedAggregates[heap.Type().Index]
 	}

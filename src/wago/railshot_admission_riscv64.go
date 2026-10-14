@@ -204,7 +204,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			return false
 		}
 		if !value.Ref.Heap.Defined {
-			return value.Ref.Heap.Abstract == AbstractHeapI31 && value.Ref.Heap.TypeIndex == 0
+			return rootedAbstractGlobal(value.Ref.Heap.Abstract) && value.Ref.Heap.TypeIndex == 0
 		}
 		return rootedValue(value, len(c.Types))
 	}

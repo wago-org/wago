@@ -125,8 +125,9 @@ func (c *Compiled) activeDataAt(index int) DataInit {
 // rv64RootedImportDigest authenticates the bounded host boundary used by
 // freshly compiled generic rooted-GC modules. The exact module/name split is
 // part of the receipt: concatenated import keys alone cannot distinguish names
-// containing dots. Collector references are limited to indexed aggregates and
-// direct i31 values, whose public carriers have distinct ownership contracts.
+// containing dots. Collector objects use owned public tokens while i31 values
+// remain compact immediates; the high token word keeps the representations
+// disjoint even for abstract any/eq carriers.
 func rv64RootedImportDigest(c *Compiled) ([32]byte, bool) {
 	if c == nil || c.NumImports < 0 || c.NumImports > rv64RootedMaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports ||
 		c.dynamicImports != (c.NumImports != 0) || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
@@ -147,7 +148,17 @@ func rv64RootedImportDigest(c *Compiled) ([32]byte, bool) {
 			return false
 		}
 		if !exact.Ref.Heap.Defined {
-			return exact.Ref.Heap.Abstract == AbstractHeapI31 && exact.Ref.Heap.TypeIndex == 0 && abi == ValI31Ref
+			if exact.Ref.Heap.TypeIndex != 0 {
+				return false
+			}
+			switch exact.Ref.Heap.Abstract {
+			case AbstractHeapI31:
+				return abi == ValI31Ref
+			case AbstractHeapNone, AbstractHeapAny, AbstractHeapEq, AbstractHeapStruct, AbstractHeapArray:
+				return abi == ValAnyRef
+			default:
+				return false
+			}
 		}
 		if int(exact.Ref.Heap.TypeIndex) >= len(c.Types) || abi != ValAnyRef {
 			return false
