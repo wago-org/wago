@@ -1521,3 +1521,15 @@ Retained e7311446 hoists arbitrary invariant coefficient vectors, guards complet
 Two matched M4 runs reduce FIR47.750/47.375 to17.625/17.667microseconds (about63% lower), versus peer14.083 in both: FIR remains1.25x slower. Images4644->5188bytes(peer3764); audio/ML control images unchanged and timing variation preserved. Guarded/public/artifact tests, nativeAMD64 fallback and pinnedCore3/atomic conformance pass. Compilerimages/allocations unchanged; measured compile medians lower are not speed claims. The source/ABI/phase/platform scope and all raw results are in weighted-window-i32-dot.json.
 
 Bias factoring e95e0af8 only improves0.48/0.24% and adds32bytes, so it is reverted; full raw evidence in weighted-window-bias-fold.json. No new local table publication (nextnotbefore22:08UTC). The full per-feature/main goal remains active.
+
+
+### ARM64 guarded import entry, October 14
+
+The compact-only guarded native import variant is retained after matched SDK
+forward/reverse rounds, a complete paired 266-workload pass, image/rollback
+audits, outlier rechecks, and all 373 ARM64 compatibility contracts. Compact
+import execution improves about 26-28%, with a small extra native body and higher
+target compile cost. The fresh ordinary baseline is within 3-4% of pinned
+w2c2 Clang in these focused rounds. Broader parity remains open, and the shared
+memory extension was rejected. See the [guarded import audit](docs/benchmarks/wasm3-2026-10-13/guarded-native-imports.md)
+and [native PR validation](docs/benchmarks/wasm3-2026-10-13/native-pr-validation.md).
