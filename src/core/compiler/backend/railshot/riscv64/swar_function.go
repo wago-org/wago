@@ -495,7 +495,8 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				return swarSummary{}, unsupported("SWAR typed call requires its retained reference profile")
 			}
 			sig := types[typeIndex]
-			referenceCarrierCall := publicReferenceCarriers && typeIndex == 0 && publicReferenceVectorCarrierTarget(sig)
+			referenceCarrierCall := publicReferenceCarriers && typeIndex == 0 && publicReferenceVectorCarrierTarget(sig) ||
+				!tail && gcRootedScalar && referenceCallCarriesCollector(sig)
 			if tail {
 				if referenceFunctions {
 					if err := swarCallSignature(sig); err != nil && !referenceCarrierCall {

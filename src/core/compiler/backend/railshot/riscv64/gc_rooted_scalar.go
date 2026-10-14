@@ -595,7 +595,7 @@ func rootedScalarReferenceCall(m *wasm.Module, imm wasm.InstructionImmediate) bo
 	reference := false
 	for _, values := range [][]wasm.ValType{sig.Params, sig.Results} {
 		for _, typ := range values {
-			if scalarType(typ, true) {
+			if scalarType(typ, true) || wasm.EqualValType(typ, wasm.V128) {
 				continue
 			}
 			if !rv64CollectorFrameRefType(m, typ) {
