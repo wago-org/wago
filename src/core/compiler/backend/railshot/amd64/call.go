@@ -1243,8 +1243,10 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		(uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait32 || uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait64)
 	internalGC := uint32(importIdx)&gcStructDispatchBit != 0 || uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 && !atomicWait
 	nativeStructType := f.nativeStructAllocType
+	nativeStructDead := f.nativeStructAllocDead
 	nativeArray := f.nativeArrayAlloc
 	f.nativeStructAllocType = 0
+	f.nativeStructAllocDead = false
 	f.nativeArrayAlloc = gcArrayAllocStubSite{}
 	p, rN := len(ft.Params), len(ft.Results)
 	notifyIndex := uint32(0)
@@ -1358,7 +1360,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 			f.checkCallClobber()
 		}
 		site := f.a.CallRel32()
-		f.sc.gcStructAllocStubSites = append(f.sc.gcStructAllocStubSites, gcStructAllocStubSite{typeIndex: typeIndex, site: site})
+		f.sc.gcStructAllocStubSites = append(f.sc.gcStructAllocStubSites, gcStructAllocStubSite{typeIndex: typeIndex, dead: nativeStructDead, site: site})
 		f.stats.call("gcnative")
 		nativeAllocDone = f.a.JccPlaceholder(condNE) // stub returns ZF=0 on success
 	} else if nativeArray.mode != gcArrayNativeNone {

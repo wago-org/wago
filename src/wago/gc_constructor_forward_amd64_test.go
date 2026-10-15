@@ -3,10 +3,14 @@
 package wago
 
 import (
+	"encoding/binary"
 	"errors"
+	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	corergc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -28,7 +32,7 @@ func gcConstructorForwardBytes() []byte {
 }
 
 func TestGCConstructorGetForwardExecution(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcConstructorForwardBytes())
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", true), gcConstructorForwardBytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +59,313 @@ func TestGCConstructorGetForwardExecution(t *testing.T) {
 					t.Fatalf("run iteration %d = %v, %v; want [%d]", i, got, err, want)
 				}
 			}
+			if got := instance.gc.Stats().Allocations; got != 1000 {
+				t.Fatalf("allocations = %d, want 1000", got)
+			}
 		})
+	}
+}
+
+func gcConstructorScalarReplacementTrapBytes() []byte {
+	types := [][]byte{
+		{0x50, 0x00, 0x5f, 0x01, 0x7f, 0x00},                   // open base: (struct (field i32))
+		{0x50, 0x01, 0x00, 0x5f, 0x02, 0x7f, 0x00, 0x7f, 0x00}, // open child <: base
+		wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+	}
+	body := []byte{
+		0x20, 0x00, // selected field: local.get 0
+		0x41, 0x01, 0x20, 0x01, 0x6e, // unselected field: 1 / local.get 1
+		0xfb, 0x00, 0x01, // struct.new child
+		0xfb, 0x16, 0x00, // ref.cast base
+		0xfb, 0x02, 0x00, 0x00, // struct.get base field 0
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func TestGCConstructorScalarReplacementPreservesInitializerTrap(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(map[bool]string{false: "disabled", true: "enabled"}[enabled], func(t *testing.T) {
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", enabled), gcConstructorScalarReplacementTrapBytes())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+
+			if got, err := instance.Invoke("run", 37, 1); err != nil || len(got) != 1 || got[0] != 37 {
+				t.Fatalf("successful run = %v, %v; want [37]", got, err)
+			}
+			if got := instance.gc.Stats().Allocations; got != 1 {
+				t.Fatalf("allocations = %d, want 1", got)
+			}
+
+			_, err = instance.Invoke("run", 41, 0)
+			var trap *TrapError
+			if !errors.As(err, &trap) || trap.Code != TrapDivZero {
+				t.Fatalf("division by zero = %v; want %v", err, TrapDivZero)
+			}
+			if got := instance.gc.Stats().Allocations; got != 1 {
+				t.Fatalf("allocations after trap = %d, want 1", got)
+			}
+		})
+	}
+}
+
+func TestGCConstructorScalarReplacementPreservesBoundedAllocation(t *testing.T) {
+	var want string
+	for _, enabled := range []bool{false, true} {
+		compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", enabled), gcConstructorForwardBytes())
+		if err != nil {
+			t.Fatal(err)
+		}
+		instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{
+			Profile:        GCProfileTiny,
+			TinyHeapBytes:  16,
+			TinyBlockBytes: 16,
+		}})
+		if err != nil {
+			compiled.Close()
+			t.Fatal(err)
+		}
+		_, invokeErr := instance.Invoke("run", 37)
+		instance.Close()
+		compiled.Close()
+		if invokeErr == nil || !strings.Contains(invokeErr.Error(), "tiny heap exhausted") {
+			t.Fatalf("enabled=%v error = %v; want tiny heap exhaustion", enabled, invokeErr)
+		}
+		if enabled {
+			if invokeErr.Error() != want {
+				t.Fatalf("enabled error = %q; want disabled error %q", invokeErr, want)
+			}
+		} else {
+			want = invokeErr.Error()
+		}
+	}
+}
+
+func gcConstructorScalarMatrixBytes(valueType wasm.ValType, fieldIndex byte, cast []byte, accessType byte, livePrefix bool) []byte {
+	encoded := wasm.MustEncodeValType(valueType)
+	fields := []byte{0x5f, 0x03, encoded, 0x00, encoded, 0x00, encoded, 0x00}
+	base := append([]byte{0x50, 0x00}, fields...)
+	child := append([]byte{0x50, 0x01, 0x00}, fields...)
+	body := make([]byte, 0, 24)
+	if livePrefix {
+		body = append(body, 0x41, 0x07)
+	}
+	body = append(body,
+		0x20, 0x00,
+		0x20, 0x01,
+		0x20, 0x02,
+		0xfb, 0x00, 0x01, // struct.new child
+	)
+	body = append(body, cast...)
+	body = append(body,
+		0xfb, 0x02, accessType, fieldIndex, // struct.get
+	)
+	if livePrefix {
+		body = append(body, 0x6a) // i32.add
+	}
+	body = append(body, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			base,
+			child,
+			wasmtest.FuncType([]wasm.ValType{valueType, valueType, valueType}, []wasm.ValType{valueType}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func TestGCConstructorScalarReplacementValues(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		valueType  wasm.ValType
+		fieldIndex byte
+		cast       []byte
+		accessType byte
+		args       []uint64
+		want       uint64
+		livePrefix bool
+	}{
+		{name: "i32 first live prefix", valueType: wasm.I32, fieldIndex: 0, cast: []byte{0xfb, 0x16, 0x00}, args: []uint64{0xfffffff1, 2, 3}, want: uint64(uint32(0xfffffff8)), livePrefix: true},
+		{name: "i32 middle nullable cast", valueType: wasm.I32, fieldIndex: 1, cast: []byte{0xfb, 0x17, 0x00}, args: []uint64{1, 0x87654321, 3}, want: 0x87654321},
+		{name: "i32 last exact cast", valueType: wasm.I32, fieldIndex: 2, cast: []byte{0xfb, 0x16, 0x62, 0x01}, accessType: 1, args: []uint64{1, 2, 0x76543210}, want: 0x76543210},
+		{name: "i64 full bits", valueType: wasm.I64, fieldIndex: 1, cast: []byte{0xfb, 0x16, 0x00}, args: []uint64{1, 0xfedcba9876543210, 3}, want: 0xfedcba9876543210},
+		{name: "f32 negative zero", valueType: wasm.F32, fieldIndex: 2, cast: []byte{0xfb, 0x16, 0x00}, args: []uint64{1, 2, 0x80000000}, want: 0x80000000},
+		{name: "f64 nan payload", valueType: wasm.F64, fieldIndex: 0, cast: []byte{0xfb, 0x16, 0x00}, args: []uint64{0x7ff8123456789abc, 2, 3}, want: 0x7ff8123456789abc},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", true), gcConstructorScalarMatrixBytes(tc.valueType, tc.fieldIndex, tc.cast, tc.accessType, tc.livePrefix))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			got, err := instance.Invoke("run", tc.args...)
+			if err != nil || len(got) != 1 || got[0] != tc.want {
+				t.Fatalf("run = %x, %v; want [%x]", got, err, tc.want)
+			}
+			if got := instance.gc.Stats().Allocations; got != 1 {
+				t.Fatalf("allocations = %d, want 1", got)
+			}
+		})
+	}
+}
+
+func gcConstructorNativeScalarReplacementBytes(valueType wasm.ValType, fieldIndex byte, cast []byte, accessType byte) []byte {
+	encoded := wasm.MustEncodeValType(valueType)
+	fields := []byte{0x5f, 0x03, encoded, 0x00, encoded, 0x00, encoded, 0x00}
+	base := append([]byte{0x50, 0x00}, fields...)
+	child := append([]byte{0x50, 0x01, 0x00}, fields...)
+	body := []byte{
+		0x02, 0x01, 0x7f, 0x01, encoded, // one i32 counter and one result local
+		0x02, 0x40, // block
+		0x03, 0x40, // loop
+		0x20, 0x03, 0x41, 0x28, 0x4f, 0x0d, 0x01, // break when counter >= 40
+		0x20, 0x00, 0x20, 0x01, 0x20, 0x02,
+		0xfb, 0x00, 0x01, // struct.new child
+	}
+	body = append(body, cast...)
+	body = append(body,
+		0xfb, 0x02, accessType, fieldIndex, // struct.get
+		0x21, 0x04, // save the forwarded scalar
+		0x20, 0x03, 0x41, 0x01, 0x6a, 0x21, 0x03,
+		0x0c, 0x00,
+		0x0b, 0x0b,
+		0x20, 0x04,
+		0x0b,
+	)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			base,
+			child,
+			wasmtest.FuncType([]wasm.ValType{valueType, valueType, valueType}, []wasm.ValType{valueType}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestGCConstructorScalarReplacementUsesNativeReservation(t *testing.T) {
+	if !nativeStructAllocEnabled {
+		t.Skip("native allocation is disabled")
+	}
+	for _, tc := range []struct {
+		name       string
+		valueType  wasm.ValType
+		fieldIndex byte
+		cast       []byte
+		accessType byte
+		args       []uint64
+		want       uint64
+	}{
+		{name: "i32 first", valueType: wasm.I32, cast: []byte{0xfb, 0x16, 0x00}, args: []uint64{0x76543210, 2, 3}, want: 0x76543210},
+		{name: "i64 middle nullable", valueType: wasm.I64, fieldIndex: 1, cast: []byte{0xfb, 0x17, 0x00}, args: []uint64{1, 0xfedcba9876543210, 3}, want: 0xfedcba9876543210},
+		{name: "f32 last exact", valueType: wasm.F32, fieldIndex: 2, cast: []byte{0xfb, 0x16, 0x62, 0x01}, accessType: 1, args: []uint64{1, 2, 0x80000000}, want: 0x80000000},
+		{name: "f64 first", valueType: wasm.F64, cast: []byte{0xfb, 0x16, 0x00}, args: []uint64{0x7ff8123456789abc, 2, 3}, want: 0x7ff8123456789abc},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", true), gcConstructorNativeScalarReplacementBytes(tc.valueType, tc.fieldIndex, tc.cast, tc.accessType))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			if status := compiled.GCNativeRootAdmission(); !status.Required || !status.Exact {
+				t.Fatalf("root admission = %+v, want required exact maps", status)
+			}
+			instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{VerifyAfterCollect: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if got, err := instance.Invoke("run", tc.args...); err != nil || len(got) != 1 || got[0] != tc.want {
+				t.Fatalf("run = %x, %v; want [%x]", got, err, tc.want)
+			}
+			if got := instance.gc.Stats().Allocations; got != 40 {
+				t.Fatalf("allocations = %d, want 40", got)
+			}
+			view := instance.gc.NativeView()
+			state := unsafe.Slice((*byte)(offHeapPtr(view.StructAllocState)), corergc.NativeStructAllocStateSize)
+			if count := binary.LittleEndian.Uint32(state[corergc.NativeStructAllocCountOffset:]); count == 0 {
+				t.Fatal("native reservation count is zero")
+			}
+			if cursor := binary.LittleEndian.Uint32(state[corergc.NativeStructAllocCursorOffset:]); cursor == 0 {
+				t.Fatal("native reservation cursor did not advance")
+			}
+			if err := instance.gc.CollectMinor(corergc.EmptyRoots{}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func gcConstructorMixedNativeStubBytes() []byte {
+	types := [][]byte{
+		{0x50, 0x00, 0x5f, 0x01, 0x7f, 0x00},
+		{0x50, 0x01, 0x00, 0x5f, 0x02, 0x7f, 0x00, 0x7f, 0x00},
+	}
+	dead := []byte{
+		0x20, 0x00, 0x41, 0x07,
+		0xfb, 0x00, 0x01,
+		0xfb, 0x16, 0x00,
+		0xfb, 0x02, 0x00, 0x00,
+		0x1a,
+	}
+	body := []byte{0x01, 0x01, 0x63, 0x01} // one (ref null child) local
+	body = append(body, dead...)
+	body = append(body,
+		0x20, 0x00, 0x41, 0xe3, 0x00, // field 1 = 99
+		0xfb, 0x00, 0x01,
+		0x21, 0x01, // save the live child
+	)
+	body = append(body, dead...) // clear fresh-constructor facts across allocation
+	body = append(body,
+		0x20, 0x01,
+		0xfb, 0x02, 0x01, 0x01, // read child field 1
+		0x0b,
+	)
+	return gcInstructionBenchmarkModuleWithTypes(types, body)
+}
+
+func TestGCConstructorMixedNativeStubPreservesLivePayload(t *testing.T) {
+	if !nativeStructAllocEnabled {
+		t.Skip("native allocation is disabled")
+	}
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", true), gcConstructorMixedNativeStubBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if status := compiled.GCNativeRootAdmission(); !status.Required || !status.Exact {
+		t.Fatalf("root admission = %+v, want required exact maps", status)
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("run", 37); err != nil || len(got) != 1 || got[0] != 99 {
+		t.Fatalf("run = %v, %v; want [99]", got, err)
+	}
+	if got := instance.gc.Stats().Allocations; got != 3 {
+		t.Fatalf("allocations = %d, want 3", got)
 	}
 }
 

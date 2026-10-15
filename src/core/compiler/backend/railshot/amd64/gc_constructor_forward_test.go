@@ -52,13 +52,76 @@ func TestGCConstructorGetForwardSelection(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var stats ModuleStats
-			cm, err := CompileModuleWith(gcConstructorForwardModule(t, tc.computed), CompileOptions{GCStructHelpers: true, Stats: &stats})
+			cm, err := CompileModuleWith(gcConstructorForwardModule(t, tc.computed), CompileOptions{
+				GCStructHelpers: true,
+				Stats:           &stats,
+				Optimizations:   map[string]bool{"dead-gc-new": false},
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer cm.CodeImage.Close()
 			if got := stats.Funcs[0].Peephole["gc-constructor-get-forward"]; got != tc.want {
 				t.Fatalf("constructor forwarding = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGCConstructorScalarReplacementSelection(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, tc := range []struct {
+		name    string
+		enabled bool
+		want    int
+	}{
+		{name: "enabled", enabled: true, want: 1},
+		{name: "disabled"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stats ModuleStats
+			cm, err := CompileModuleWith(gcConstructorForwardModule(t, false), CompileOptions{
+				GCStructHelpers: true,
+				Stats:           &stats,
+				Optimizations: map[string]bool{
+					"dead-gc-new":     tc.enabled,
+					"gc-native-alloc": true,
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cm.CodeImage.Close()
+			if got := stats.Funcs[0].Peephole["gc-constructor-scalar-replace"]; got != tc.want {
+				t.Fatalf("constructor scalar replacements = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGCStructHasOnlyDirectScalars(t *testing.T) {
+	field := func(storage wasm.StorageType) wasm.FieldType {
+		return wasm.NewFieldType(storage, wasm.Const)
+	}
+	for _, tc := range []struct {
+		name   string
+		fields []wasm.FieldType
+		want   bool
+	}{
+		{name: "scalar widths", fields: []wasm.FieldType{
+			field(wasm.StorageVal(wasm.I32)),
+			field(wasm.StorageVal(wasm.I64)),
+			field(wasm.StorageVal(wasm.F32)),
+			field(wasm.StorageVal(wasm.F64)),
+		}, want: true},
+		{name: "packed", fields: []wasm.FieldType{field(wasm.StoragePacked(wasm.PackI8))}},
+		{name: "reference", fields: []wasm.FieldType{field(wasm.StorageVal(wasm.AnyRef))}},
+		{name: "vector", fields: []wasm.FieldType{field(wasm.StorageVal(wasm.V128))}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := wasm.SubType{Comp: wasm.CompType{Kind: wasm.CompStruct, Fields: tc.fields}}
+			if got := gcStructHasOnlyDirectScalars(st); got != tc.want {
+				t.Fatalf("gcStructHasOnlyDirectScalars = %v, want %v", got, tc.want)
 			}
 		})
 	}

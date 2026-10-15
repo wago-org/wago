@@ -556,6 +556,7 @@ type fn struct {
 	gcCallsiteIndex        int
 	compactFrameHeader     bool   // register ABI: no wrapper results-pointer header
 	nativeStructAllocType  uint32 // type index + 1 for the next gcStructAllocOne call
+	nativeStructAllocDead  bool   // next native struct allocation may omit unreachable scalar payload stores
 	nativeArrayAlloc       gcArrayAllocStubSite
 
 	// stats collects per-function codegen counters. nil
@@ -770,6 +771,7 @@ func moduleCodeCapacityAMD64(bodyBytes, functions int, policy CodegenPolicy) int
 // Compile is sequential, so a single scratch is shared safely.
 type gcStructAllocStubSite struct {
 	typeIndex uint32
+	dead      bool
 	site      int
 }
 

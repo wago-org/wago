@@ -957,15 +957,26 @@ func (f *fn) emitNativeGCStubs() {
 		}
 	}
 	if len(f.sc.gcStructAllocStubSites) != 0 {
-		stubs := make(map[uint32]int)
+		type structStub struct {
+			offset  int
+			live    bool
+			emitted bool
+		}
+		stubs := make(map[uint32]structStub)
 		for _, site := range f.sc.gcStructAllocStubSites {
-			stub, found := stubs[site.typeIndex]
-			if !found {
-				stub = f.a.Len()
-				f.emitNativeStructAllocStub(site.typeIndex)
+			stub := stubs[site.typeIndex]
+			stub.live = stub.live || !site.dead
+			stubs[site.typeIndex] = stub
+		}
+		for _, site := range f.sc.gcStructAllocStubSites {
+			stub := stubs[site.typeIndex]
+			if !stub.emitted {
+				stub.offset = f.a.Len()
+				f.emitNativeStructAllocStub(site.typeIndex, site.dead && !stub.live)
+				stub.emitted = true
 				stubs[site.typeIndex] = stub
 			}
-			f.a.PatchRel32(site.site, stub)
+			f.a.PatchRel32(site.site, stub.offset)
 		}
 	}
 	if len(f.sc.gcArrayLenStubSites) != 0 {
@@ -1320,7 +1331,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 // advances the private nursery-chunk cursor only after every constructor reference
 // has been validated. It writes the result directly to the synchronous control frame and
 // returns nonzero in RAX on success; zero selects the ordinary rooted helper.
-func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
+func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead bool) {
 	plan, ok := f.nativeGCStructAllocLayout(typeIndex)
 	if !ok {
 		panic("amd64: invalid native struct allocation layout")
@@ -1463,23 +1474,25 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 		flags = int32(gc.FlagPointerFree)
 	}
 	a.StoreImm32Mem(R11, 12, flags)
-	for _, field := range fields {
-		disp := int32(gc.PayloadOffset + field.Offset)
-		src := hcArgs + int32(field.Slot*8)
-		switch field.Size {
-		case 4:
-			a.Load32(RAX, RDI, src)
-			a.Store32(R11, disp, RAX)
-		case 8:
-			a.Load64(RAX, RDI, src)
-			a.Store64(R11, disp, RAX)
-		case 16:
-			a.Load64(RAX, RDI, src)
-			a.Store64(R11, disp, RAX)
-			a.Load64(RAX, RDI, src+8)
-			a.Store64(R11, disp+8, RAX)
-		default:
-			panic("amd64: unsupported native struct field size")
+	if !dead {
+		for _, field := range fields {
+			disp := int32(gc.PayloadOffset + field.Offset)
+			src := hcArgs + int32(field.Slot*8)
+			switch field.Size {
+			case 4:
+				a.Load32(RAX, RDI, src)
+				a.Store32(R11, disp, RAX)
+			case 8:
+				a.Load64(RAX, RDI, src)
+				a.Store64(R11, disp, RAX)
+			case 16:
+				a.Load64(RAX, RDI, src)
+				a.Store64(R11, disp, RAX)
+				a.Load64(RAX, RDI, src+8)
+				a.Store64(R11, disp+8, RAX)
+			default:
+				panic("amd64: unsupported native struct field size")
+			}
 		}
 	}
 	a.Store32(R9, gc.NativeHandleOffsetOffset, RCX)

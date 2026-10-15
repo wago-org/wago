@@ -118,12 +118,15 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			params = append(params, valueType)
 		}
 		forward, forwardReader, forwardOK := f.tryForwardGCConstructorGet(r, typeIndex, st)
+		_, native := f.nativeGCStructAllocLayout(typeIndex)
+		scalarReplacement := native && forwardOK && f.opt(optDeadGCNew) && gcStructHasOnlyDirectScalars(st)
 		freshValue, freshOK := f.gcFreshStructCandidate(st)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		params = append(params, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		if _, native := f.nativeGCStructAllocLayout(typeIndex); native {
+		if native {
 			f.nativeStructAllocType = typeIndex + 1
+			f.nativeStructAllocDead = scalarReplacement
 		}
 		if err := f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result}); err != nil {
 			return err
@@ -133,7 +136,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			f.dropValue()
 			f.pushValue(forward)
 			*r = forwardReader
-			f.stats.peep("gc-constructor-get-forward")
+			if scalarReplacement {
+				f.stats.peep("gc-constructor-scalar-replace")
+			} else {
+				f.stats.peep("gc-constructor-get-forward")
+			}
 		} else if freshOK {
 			f.setGCFreshStructFact(gcFreshStructFact{
 				objectLocal: -1,
@@ -244,6 +251,18 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	default:
 		return fmt.Errorf("amd64: unsupported staged 0xfb opcode %d", sub)
 	}
+}
+
+func gcStructHasOnlyDirectScalars(st wasm.SubType) bool {
+	for _, field := range st.Comp.Fields {
+		if field.Storage().Packed() {
+			return false
+		}
+		if _, ok := directGCScalarStorage(field.Storage()); !ok {
+			return false
+		}
+	}
+	return true
 }
 
 type gcFreshStructFact struct {
