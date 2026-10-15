@@ -2135,16 +2135,27 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		}
 		directPreparedBounded = resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTables)
 		directPrepared = retainResolvedPreparedCallers(directPrepared, directPreparedBounded, allHints)
+		if opts.DeferCodeMapping {
+			capacity := len(codeBuffer.Mapping())
+			code, err = codeBuffer.TakeHeap()
+			if err != nil {
+				return nil, fmt.Errorf("amd64: transfer heap code image: %w", err)
+			}
+			// Release unused staging space once a medium single-function image is final.
+			if n == 1 && totalBody >= 2<<10 && len(code) < capacity/2 {
+				code = append([]byte(nil), code...)
+				if diagnosticsEnabled && ms != nil {
+					// The copied image no longer owns the direct lowering arena.
+					ms.NativeSize.SetExecutableMapping(len(code), 0)
+				}
+			}
+		}
 		ms.setNodeScratchStats(sc)
 		ms.finalizeCompileResourceStats()
 		if diagnosticsEnabled && explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
 		if opts.DeferCodeMapping {
-			code, err = codeBuffer.TakeHeap()
-			if err != nil {
-				return nil, fmt.Errorf("amd64: transfer heap code image: %w", err)
-			}
 			return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: usedAMD64Features.Has(shared.AMD64AVX512)}, nil
 		}
 		keepCodeBuffer = true
