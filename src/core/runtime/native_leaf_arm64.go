@@ -5,7 +5,6 @@ package runtime
 import (
 	"encoding/binary"
 	"fmt"
-	"os"
 	"reflect"
 	goruntime "runtime"
 
@@ -123,9 +122,8 @@ func scalarLeafBodyAtPC(pc uintptr, params uint32) []byte {
 }
 
 // RegisterNativeScalarLeaf lowers a proven ordinary Go i32 leaf into a native
-// host trampoline. It copies proven arithmetic, including a checked pure
-// single-callee body, without calling Go code on a foreign stack. The caller
-// retains the ordinary Go binding as fallback and must use
+// host trampoline. It copies arithmetic without calling Go code on a foreign
+// stack. The caller retains the ordinary Go binding as fallback and must use
 // syscall scheduling for this frame: a native leaf is not a Go safe point.
 // UnregisterHostCtrlFrame releases the mapping only after instance quiescence.
 func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []byte, fn any, params uint32) (bool, error) {
@@ -136,9 +134,6 @@ func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []
 		return false, fmt.Errorf("jit: native scalar control frame already registered")
 	}
 	body := scalarLeafBody(fn, params)
-	if body == nil && os.Getenv("WAGO_ARM64_NATIVE_SCALAR_CALL") != "0" {
-		body = scalarSingleCallBody(fn, params)
-	}
 	if body == nil {
 		return false, nil
 	}

@@ -235,9 +235,6 @@ func (f *fn) preloadFloatConst(st storage) (Reg, bool) {
 }
 
 func (f *fn) preloadFloatConsts(code []byte) {
-	if f.preloadBooleanFloatConsts(code) {
-		return
-	}
 	if f.makesCalls {
 		return
 	}
@@ -761,9 +758,6 @@ func (f *fn) emitFCmpCset(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
 
 // i2f converts a signed integer to float. srcWide selects an i64 source.
 func (f *fn) i2f(f64, srcWide bool) {
-	if !srcWide && f.tryBooleanFloatConversion(f64, true) {
-		return
-	}
 	gpr, owned := f.materializeRead(f.popValue())
 	xmm := f.allocFReg(0)
 	f.a.Scvtf(xmm, gpr, f64, srcWide)
@@ -779,9 +773,6 @@ func (f *fn) i2f(f64, srcWide bool) {
 // shorter than the old branch-and-bias sequence, the native instruction handles
 // the full u64 range and IEEE rounding without relying on width-flag conventions.
 func (f *fn) i2fU(f64, srcWide bool) {
-	if !srcWide && f.tryBooleanFloatConversion(f64, false) {
-		return
-	}
 	gpr, owned := f.materializeRead(f.popValue())
 	xmm := f.allocFReg(0)
 	f.a.Ucvtf(xmm, gpr, f64, srcWide)

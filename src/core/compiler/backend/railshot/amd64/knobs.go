@@ -14,7 +14,6 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("shared-memory-base", &sharedMemoryBaseEnabled),
 	optimization.Bind("atomic-notify-empty", &atomicNotifyEmptyEnabled),
 	optimization.Bind("memory-min-bounds", &memoryMinimumBoundsEnabled),
-	optimization.Bind("integer-sum-loop", &integerSumLoopEnabled),
 	optimization.Bind("atomic-static-bounds", &atomicStaticBoundsEnabled),
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
@@ -90,7 +89,6 @@ var optimizationBindings = optimization.NewBindings("amd64",
 
 var (
 	optSharedMemoryBase        = optimizationBindings.Option("shared-memory-base")
-	optIntegerSumLoop          = optimizationBindings.Option("integer-sum-loop")
 	optMemoryMinimumBounds     = optimizationBindings.Option("memory-min-bounds")
 	optAtomicNotifyEmpty       = optimizationBindings.Option("atomic-notify-empty")
 	optAtomicStaticBounds      = optimizationBindings.Option("atomic-static-bounds")

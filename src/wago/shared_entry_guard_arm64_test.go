@@ -6,9 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"os"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 )
@@ -40,7 +38,7 @@ func testSharedEntryCalls(t *testing.T, selector string) {
 		images[mode] = append([]byte(nil), image.Bytes()...)
 		for index, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
 			for _, kind := range []string{"go", "leaf", "pure-helper", "bits"} {
-				native := kind == "bits" || kind == "leaf" || kind == "pure-helper" && strings.HasPrefix(runtime.Version(), "go1.27") && os.Getenv("WAGO_ARM64_NATIVE_SCALAR_CALL") != "0"
+				native := kind == "bits" || kind == "leaf"
 				calls := 0
 				var callback any = nativeLeafIncrement
 				if kind == "bits" {

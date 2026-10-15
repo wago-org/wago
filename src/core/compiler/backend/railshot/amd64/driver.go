@@ -96,13 +96,6 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			}
 		case 0x01: // nop
 		case 0x02, 0x03, 0x04: // block / loop / if
-			if op == 0x03 {
-				var done bool
-				done, err = f.tryIntegerSumLoop(r)
-				if done || err != nil {
-					break
-				}
-			}
 			if op == 0x03 && (regionLoopEnabled || regionAdjacentEnabled || regionZeroCounterEnabled || scalarMemoryRecurrenceEnabled) {
 				var done bool
 				done, err = f.tryRegionLoop(r)

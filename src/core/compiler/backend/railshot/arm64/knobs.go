@@ -13,7 +13,6 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
 	optimization.Bind("atomic-notify-empty", &atomicNotifyEmptyEnabled),
 	optimization.Bind("memory-min-bounds", &memoryMinimumBoundsEnabled),
-	optimization.Bind("integer-sum-loop", &integerSumLoopEnabled),
 	optimization.Bind("atomic-static-bounds", &atomicStaticBoundsEnabled),
 	optimization.Bind("shared-memory-base", &sharedMemoryBaseEnabled),
 	optimization.Bind("atomic-lse", &atomicLSEEnabled),
@@ -41,7 +40,6 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("scoped-loop-float-const", &scopedLoopFloatConstsEnabled),
 	optimization.Bind("loop-memory-base", &loopMemoryBaseEnabled),
 	optimization.Bind("indexed-base-reuse", &indexedBaseReuseEnabled),
-	optimization.Bind("boolean-float-select", &booleanFloatSelectEnabled),
 	optimization.Bind("linear-integer-tree", &linearIntegerTreeEnabled),
 	optimization.Bind("dominated-indexed-base", &dominatedIndexedBaseEnabled),
 	optimization.Bind("dominated-indexed-key", &dominatedIndexedKeyEnabled),
@@ -116,7 +114,6 @@ var optimizationBindings = optimization.NewBindings("arm64",
 )
 
 var (
-	optIntegerSumLoop       = optimizationBindings.Option("integer-sum-loop")
 	optMemoryMinimumBounds  = optimizationBindings.Option("memory-min-bounds")
 	optAtomicNotifyEmpty    = optimizationBindings.Option("atomic-notify-empty")
 	optAtomicStaticBounds   = optimizationBindings.Option("atomic-static-bounds")
@@ -160,7 +157,6 @@ var (
 	optOrdinaryShiftedImm   = optimizationBindings.Option("ordinary-shifted-immediate")
 	optIndexedBaseReuse     = optimizationBindings.Option("indexed-base-reuse")
 	optLinearIntegerTree    = optimizationBindings.Option("linear-integer-tree")
-	optBooleanFloatSelect   = optimizationBindings.Option("boolean-float-select")
 	optConvertRead          = optimizationBindings.Option("convert-read")
 	optColdCallLocalPins    = optimizationBindings.Option("cold-call-local-pins")
 	optMagicDiv             = optimizationBindings.Option("magic-div")

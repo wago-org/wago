@@ -3061,10 +3061,6 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		return fmt.Errorf("call_indirect: type %d exceeds bounded native identity", typeIdx)
 	}
 
-	if f.tryAffineI32TableCall(tableIdx, canon) {
-		return nil
-	}
-
 	f.materializePendingTraps()
 	idxReg := f.materialize(f.popValue())
 	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))

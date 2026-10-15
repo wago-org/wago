@@ -99,37 +99,6 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			}
 		case 0x01: // nop
 		case 0x02, 0x03, 0x04: // block / loop / if
-			if op == 0x03 {
-				var done bool
-				done, err = f.tryIndexMixStoreLoop(r)
-				if done || err != nil {
-					break
-				}
-				done, err = f.tryIntegerHashStoreLoop(r)
-				if done || err != nil {
-					break
-				}
-				done, err = f.tryWeightedI32WindowLoop(r)
-				if done || err != nil {
-					break
-				}
-				done, err = f.tryShiftedI32DotLoop(r)
-				if done || err != nil {
-					break
-				}
-				done, err = f.tryPairedI32DotLoop(r)
-				if done || err != nil {
-					break
-				}
-				done, err = f.tryGlobalXorShiftLoop(r)
-				if done || err != nil {
-					break
-				}
-				done, err = f.tryIntegerSumLoop(r)
-				if done || err != nil {
-					break
-				}
-			}
 			err = f.opBlock(r, op)
 		case 0x1f: // try_table
 			err = f.opTryTable(r)

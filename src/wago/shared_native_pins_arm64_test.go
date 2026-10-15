@@ -4,9 +4,6 @@ package wago
 
 import (
 	"bytes"
-	"os"
-	"runtime"
-	"strings"
 	"testing"
 )
 
@@ -26,7 +23,7 @@ func TestSharedSingleNativePinsAndGoFallback(t *testing.T) {
 		images[mode] = append([]byte(nil), image.Bytes()...)
 		for index, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
 			for _, kind := range []string{"go", "leaf", "pure-helper"} {
-				native := kind == "leaf" || kind == "pure-helper" && strings.HasPrefix(runtime.Version(), "go1.27") && os.Getenv("WAGO_ARM64_NATIVE_SCALAR_CALL") != "0"
+				native := kind == "leaf"
 				calls := 0
 				var callback any = nativeLeafIncrement
 				if kind == "pure-helper" {
