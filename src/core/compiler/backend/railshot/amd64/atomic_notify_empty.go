@@ -28,6 +28,9 @@ func (f *fn) notifyEmptyShortcut(memoryIndex uint32) int {
 	f.a.Cmp64(RAX, RCX)
 	cold(f.a.JccPlaceholder(condA))
 	if f.memoryShared(memoryIndex) {
+		// Pair with wait's SC pending publication before its value check.
+		// Earlier plain Wasm stores must become visible before testing waiters.
+		f.a.Mfence()
 		f.a.Load32(RCX, RDX, -abi.SharedNotifyPendingOffset)
 		f.a.TestSelf(RCX, false)
 		cold(f.a.JccPlaceholder(condNE))

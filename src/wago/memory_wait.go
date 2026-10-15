@@ -85,6 +85,7 @@ func (m *Memory) wait(ctx context.Context, offset, expected uint64, timeout int6
 	// Publish before comparing the value, not just after queue insertion. A
 	// concurrent native store+notify must acquire this mutex once comparison
 	// starts, or it could miss a waiter that already observed the old value.
+	// The native empty-notify check supplies the matching StoreLoad barrier.
 	m.jm.SetSharedNotifyPending(true)
 	clearPending := func() {
 		ws := s.waiterStateLocked(false)

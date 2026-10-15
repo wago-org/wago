@@ -37,6 +37,9 @@ func (f *fn) notifyEmptyShortcut(memoryIndex uint32) int {
 	cold(f.a.Bcond(condA))
 	if f.memoryShared(memoryIndex) {
 		f.a.SubImm64(X16, X10, abi.SharedNotifyPendingOffset)
+		// Acquire alone does not order an earlier plain Wasm store before
+		// this load. Pair a full barrier with wait's SC pending publication.
+		f.a.DmbIsh()
 		f.a.Ldar(X9, X16, 4)
 		cold(f.a.Cbnz32(X9))
 	}

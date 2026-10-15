@@ -3,9 +3,16 @@
 package wago
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+	"github.com/wago-org/wago/src/core/runtime/abi"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+	goruntime "runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -250,6 +257,104 @@ func TestThreadsNotifyPendingQueuesUseSlowPath(t *testing.T) {
 				if err := in.Close(); err != nil {
 					t.Fatal(err)
 				}
+			}
+		})
+	}
+}
+
+// The notifier writes with an ordinary i32.store, not an atomic store that
+// could supply its own ordering. Its empty-queue check needs StoreLoad ordering.
+func plainStoreNotifyModule() []byte {
+	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 2, 3, 1, 1)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("publish", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x41, 0, 0x41, 1, 0x36, 2, 0, // plain i32.store(0, 1)
+			0x41, 0, 0x41, 1, 0xfe, 0, 2, 0, 0x0b, // memory.atomic.notify(0, 1)
+		}))),
+	)
+}
+
+func TestThreadsNotifyPlainStoreOrdering(t *testing.T) {
+	old := goruntime.GOMAXPROCS(2)
+	defer goruntime.GOMAXPROCS(old)
+	var orderedCheck []byte
+	switch goruntime.GOARCH {
+	case "amd64":
+		a := &x64.Asm{}
+		a.Mfence()
+		a.Load32(x64.RCX, x64.RDX, -abi.SharedNotifyPendingOffset)
+		orderedCheck = a.B
+	case "arm64":
+		a := &a64.Asm{}
+		a.DmbIsh()
+		a.Ldar(a64.X9, a64.X16, 4)
+		orderedCheck = a.B
+	}
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
+			cfg := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).
+				WithBoundsChecks(BoundsChecksExplicit).WithOptimization("atomic-notify-empty", enabled)
+			c, err := cfg.Compile(plainStoreNotifyModule())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			if got := bytes.Contains(c.code, orderedCheck); got != enabled {
+				t.Fatalf("store-to-load barrier immediately before pending load = %t, optimization = %t", got, enabled)
+			}
+			memory, err := NewSharedMemory(1, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer memory.Close()
+			for artifact, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+				if code != c {
+					defer code.Close()
+				}
+				if got := bytes.Contains(code.code, orderedCheck); got != enabled {
+					t.Fatalf("artifact %d lost ordered pending check", artifact)
+				}
+				in, err := Instantiate(code, NewImports().Memory("env", "memory", memory))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer in.Close()
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				type result struct {
+					value uint32
+					err   error
+				}
+				for round := 0; round < 1024; round++ {
+					atomic.StoreUint32((*uint32)(unsafe.Pointer(&memory.jm.HostBytes()[0])), 0)
+					start := make(chan struct{})
+					waited := make(chan result, 1)
+					go func() { <-start; value, err := memory.wait32(ctx, 0, 0, -1); waited <- result{value, err} }()
+					close(start)
+					values, err := in.Invoke("publish")
+					if err != nil || len(values) != 1 {
+						cancel()
+						<-waited
+						t.Fatalf("notify=%v,%v", values, err)
+					}
+					var w result
+					select {
+					case w = <-waited:
+					case <-ctx.Done():
+						cancel()
+						<-waited
+						t.Fatalf("artifact %d round %d: plain store+notify missed registering waiter", artifact, round)
+					}
+					if w.err != nil || !((values[0] == 1 && w.value == memoryWaitNotified) || (values[0] == 0 && w.value == memoryWaitNotEqual)) {
+						t.Fatalf("artifact %d round %d notify=%d wait=%+v", artifact, round, values[0], w)
+					}
+				}
+				cancel()
 			}
 		})
 	}
