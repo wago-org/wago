@@ -125,3 +125,70 @@ func TestGCI31RoundTripMemoryTrapOrder(t *testing.T) {
 		in.Close()
 	}
 }
+
+func TestGCI31RoundTripRegisterPressure(t *testing.T) {
+	for _, get := range []byte{29, 30} {
+		var body []byte
+		for i := byte(0); i < 13; i++ {
+			body = append(body, 0x20, i)
+		}
+		body = append(body, 0xfb, 28, 0xfb, get, 0x0b)
+		c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), i31RoundTripModule(body, 13, 13))
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := Instantiate(c, InstantiateOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		args := make([]uint64, 13)
+		for i := range args {
+			args[i] = uint64(0xdeadbe00 + i)
+		}
+		got, err := in.Invoke("run", args...)
+		if err != nil || len(got) != len(args) {
+			t.Fatalf("get%d: %v,%v", get, got, err)
+		}
+		for i, value := range got {
+			want := args[i]
+			if i == 12 {
+				if get == 29 {
+					want = uint64(uint32(int32(uint32(want)<<1) >> 1))
+				} else {
+					want &= 0x7fffffff
+				}
+			}
+			if value != want {
+				t.Fatalf("get%d result%d: %x, want %x", get, i, value, want)
+			}
+		}
+		in.Close()
+		c.Close()
+	}
+}
+
+func TestGCI31RoundTripLocalIdentity(t *testing.T) {
+	for _, get := range []byte{29, 30} {
+		body := []byte{0x20, 0, 0x20, 0, 0xfb, 28, 0xfb, get, 0x20, 0, 0x0b}
+		c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), i31RoundTripModule(body, 1, 3))
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := Instantiate(c, InstantiateOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, x := range []uint64{0x40000000, 0x7fffffff, 0x80000000, 0xdeadbeef, 0xffffffff} {
+			want := uint32(x) & 0x7fffffff
+			if get == 29 {
+				want = uint32(int32(uint32(x)<<1) >> 1)
+			}
+			got, err := in.Invoke("run", x)
+			if err != nil || len(got) != 3 || got[0] != x || got[1] != uint64(want) || got[2] != x {
+				t.Fatalf("get%d x%x: %v,%v; want [%x %x %x]", get, x, got, err, x, want, x)
+			}
+		}
+		in.Close()
+		c.Close()
+	}
+}

@@ -56,6 +56,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		return f.emitGCBranchCast(sub, r)
 	}
 	if sub >= 28 && sub <= 30 {
+		if sub == 28 && f.tryFuseI31RoundTrip(r) {
+			return nil
+		}
 		return f.emitGCI31(sub)
 	}
 	if sub == 26 || sub == 27 {
@@ -697,6 +700,32 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 		return err
 	}
 	return f.brOnCastResult(depth, sub == 24)
+}
+
+func (f *fn) tryFuseI31RoundTrip(r *wasm.Reader) bool {
+	next := *r
+	op, err := next.Byte()
+	if err != nil || op != 0xfb {
+		return false
+	}
+	get, err := next.U32()
+	if err != nil || (get != 29 && get != 30) {
+		return false
+	}
+	// The tagged intermediate never escapes, so it cannot be null. Keep
+	// earlier input traps in order before extracting the low 31 integer bits.
+	f.materializePendingTraps()
+	value := f.materialize(f.popValue())
+	if get == 29 {
+		f.a.ShiftImm(4, value, 1, false)
+		f.a.ShiftImm(7, value, 1, false)
+	} else {
+		f.a.AluRI(4, value, 0x7fffffff, false)
+	}
+	f.pushReg(value, mtI32)
+	*r = next
+	f.stats.peep("i31-roundtrip")
+	return true
 }
 
 func (f *fn) emitGCI31(sub uint32) error {
