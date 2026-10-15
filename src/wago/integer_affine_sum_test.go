@@ -80,7 +80,7 @@ func testIntegerAffineSum(t *testing.T, helper bool) {
 					for _, coefficients := range [][2]uint64{{17, 3}, {0, 9}, {1, 0}, {^uint64(0), 7}, {0x8000000000000001, 0xabcdef0123456789}} {
 						a, b := coefficients[0], coefficients[1]
 						t.Run(fmt.Sprintf("wide=%t/fenced=%t/opt=%t/abi=%t/a=%x/b=%x", wide, fenced, enabled, regABI, a, b), func(t *testing.T) {
-							cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithOptimization("integer-sum-loop", enabled).WithOptimization("reg-abi", regABI)
+							cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2|CoreFeatureThreads).WithOptimization("integer-sum-loop", enabled).WithOptimization("reg-abi", regABI)
 							c, err := cfg.Compile(integerAffineSumModuleWithHelper(wide, fenced, a, b, helper))
 							if err != nil {
 								t.Fatal(err)

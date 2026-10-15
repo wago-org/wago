@@ -12,6 +12,7 @@ import (
 
 func constantFillModule(n int, shared bool, index uint32) []byte {
 	memories := [][]byte{{1, 1, 2}, {1, 1, 2}}
+	memories = memories[:index+1]
 	if shared {
 		memories[index][0] = 3
 	}
@@ -31,9 +32,16 @@ func TestBulkFillVectorAllLengths(t *testing.T) {
 			for _, index := range []uint32{0, 1} {
 				for _, enabled := range []bool{false, true} {
 					t.Run(fmt.Sprintf("n=%d/shared=%t/index=%d/vector=%t", n, shared, index, enabled), func(t *testing.T) {
-						features := CoreFeaturesV3
+						features := CoreFeaturesV2
+						if index != 0 {
+							features |= CoreFeatureMultiMemory
+						}
+
 						if shared {
 							features |= CoreFeatureThreads
+						}
+						if !platformCoreFeatures().IsEnabled(features) {
+							t.Skip("memory shape is unavailable on this platform")
 						}
 						c, err := NewRuntimeConfig().WithCoreFeatures(features).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("bulk-fill-vector", enabled).Compile(constantFillModule(n, shared, index))
 						if err != nil {

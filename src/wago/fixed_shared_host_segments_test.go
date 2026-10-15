@@ -11,31 +11,7 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/support/wasmtest"
 )
-
-func fixedSharedHostLoopModule(trap bool) []byte {
-	body := []byte{
-		0x03, 0x40,
-		0x41, 0, 0x20, 2, 0x36, 2, 0,
-		0x20, 1, 0x41, 0, 0x28, 2, 0, 0x10, 0, 0x6a, 0x21, 1,
-		0x20, 2, 0x41, 1, 0x6a, 0x22, 2, 0x20, 0, 0x49, 0x0d, 0,
-		0x0b, 0x20, 1, 0x0b,
-	}
-	if trap {
-		body = []byte{0x20, 0, 0x10, 0, 0x1a, 0x41, 0x7f, 0x28, 2, 0, 0x0b}
-	}
-	raw := append([]byte{1, 2, 0x7f}, body...)
-	code := append(wasmtest.ULEB(uint32(len(raw))), raw...)
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
-		wasmtest.Section(2, wasmtest.Vec(importEntry("env", "step", 0, 0))),
-		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{0})),
-		wasmtest.Section(5, wasmtest.Vec([]byte{3, 1, 1})),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 2), wasmtest.ExportEntry("memory", 2, 0))),
-		wasmtest.Section(10, wasmtest.Vec(code, wasmtest.Code([]byte{0x20, 0, 0x10, 1, 0x0b}))),
-	)
-}
 
 func TestFixedSharedHostSegmentsAdmission(t *testing.T) {
 	data := fixedSharedHostLoopModule(false)

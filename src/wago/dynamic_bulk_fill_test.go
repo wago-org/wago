@@ -14,6 +14,7 @@ import (
 
 func dynamicBulkFillModule(shared bool, index byte) []byte {
 	memories := [][]byte{{1, 1, 1}, {1, 1, 1}}
+	memories = memories[:index+1]
 	if shared {
 		memories[index][0] = 3
 	}
@@ -32,9 +33,16 @@ func TestDynamicBulkFillBoundaries(t *testing.T) {
 		for _, index := range []byte{0, 1} {
 			for _, abi := range []bool{false, true} {
 				t.Run(fmt.Sprintf("shared%t/index%d/abi%t", shared, index, abi), func(t *testing.T) {
-					features := CoreFeaturesV3
+					features := CoreFeaturesV2
+					if index != 0 {
+						features |= CoreFeatureMultiMemory
+					}
+
 					if shared {
 						features |= CoreFeatureThreads
+					}
+					if !platformCoreFeatures().IsEnabled(features) {
+						t.Skip("memory shape is unavailable on this platform")
 					}
 					c, err := NewRuntimeConfig().WithCoreFeatures(features).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", abi).Compile(dynamicBulkFillModule(shared, index))
 					if err != nil {

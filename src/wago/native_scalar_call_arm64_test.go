@@ -66,6 +66,9 @@ func TestNativeSingleCallSourceArtifactAndPolicy(t *testing.T) {
 	}
 }
 func TestNativeSingleCallSharedSourceAndGoEffects(t *testing.T) {
+	if !platformCoreFeatures().IsEnabled(CoreFeatureThreads) {
+		t.Skip("threads are unavailable on this platform")
+	}
 	requireNativeSingleCallABI(t)
 	t.Setenv("WAGO_ARM64_NATIVE_SCALAR_CALL", "1")
 	cfg := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit)

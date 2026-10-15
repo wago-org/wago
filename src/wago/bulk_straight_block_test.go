@@ -25,6 +25,7 @@ func bulkStraightModuleMin(wide, shared bool, index uint32, minimum byte) []byte
 		flags |= 2
 	}
 	memories := [][]byte{{1, 1, 2}, {1, 1, 2}}
+	memories = memories[:index+1]
 	memories[index] = []byte{flags, minimum, 2}
 	memarg := []byte{0, 0}
 	if index != 0 {
@@ -100,9 +101,19 @@ func TestBulkStraightBlockPublicExecutionAndTraps(t *testing.T) {
 									continue
 								}
 								t.Run(fmt.Sprintf("wide=%t/shared=%t/index=%d/enabled=%t/minimum=%t/regabi=%t/bounds=%v", wide, shared, index, enabled, minimum, regABI, mode), func(t *testing.T) {
-									features := CoreFeaturesV3
+									features := CoreFeaturesV2
+									if index != 0 {
+										features |= CoreFeatureMultiMemory
+									}
+									if wide {
+										features |= CoreFeatureMemory64
+									}
+
 									if shared {
 										features |= CoreFeatureThreads
+									}
+									if !platformCoreFeatures().IsEnabled(features) {
+										t.Skip("memory shape is unavailable on this platform")
 									}
 									c, err := NewRuntimeConfig().WithCoreFeatures(features).WithBoundsChecks(mode).WithOptimization("straight-line-block", enabled).WithOptimization("memory-min-bounds", minimum).WithOptimization("reg-abi", regABI).Compile(bulkStraightModule(wide, shared, index))
 									if err != nil {
@@ -227,9 +238,19 @@ func TestBulkMinimumZeroGrowsBeforeBoundedFill(t *testing.T) {
 			for _, index := range []uint32{0, 1} {
 				for _, enabled := range []bool{false, true} {
 					t.Run(fmt.Sprintf("wide=%t/shared=%t/index=%d/minimum=%t", wide, shared, index, enabled), func(t *testing.T) {
-						features := CoreFeaturesV3
+						features := CoreFeaturesV2
+						if index != 0 {
+							features |= CoreFeatureMultiMemory
+						}
+						if wide {
+							features |= CoreFeatureMemory64
+						}
+
 						if shared {
 							features |= CoreFeatureThreads
+						}
+						if !platformCoreFeatures().IsEnabled(features) {
+							t.Skip("memory shape is unavailable on this platform")
 						}
 						c, err := NewRuntimeConfig().WithCoreFeatures(features).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("memory-min-bounds", enabled).Compile(bulkStraightModuleMin(wide, shared, index, 0))
 						if err != nil {
