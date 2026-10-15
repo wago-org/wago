@@ -237,7 +237,8 @@ func TestArrayLenParameterAdmission(t *testing.T) {
 	}{
 		{"final-nullable", []byte{0x5e, 0x7f, 1}, []byte{0x63, 0}, true},
 		{"final-nonnull", []byte{0x5e, 0x7f, 1}, []byte{0x64, 0}, true},
-		{"open", []byte{0x50, 0, 0x5e, 0x7f, 1}, []byte{0x63, 0}, false},
+		{"open-nullable", []byte{0x50, 0, 0x5e, 0x7f, 1}, []byte{0x63, 0}, true},
+		{"open-nonnull", []byte{0x50, 0, 0x5e, 0x7f, 1}, []byte{0x64, 0}, true},
 		{"abstract", []byte{0x5e, 0x7f, 1}, []byte{0x6a}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -257,8 +258,8 @@ func TestArrayLenParameterAdmission(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.CodeImage.Close()
-			if got := stats.Funcs[0].GCHandleResolutions; (got != 0) != tc.direct {
-				t.Fatalf("resolutions=%d, want direct=%v", got, tc.direct)
+			if got, want := stats.Funcs[0].GCHandleResolutions, tc.direct && gcSharedStubsEnabled; (got != 0) != want {
+				t.Fatalf("resolutions=%d, want direct=%v", got, want)
 			}
 		})
 	}

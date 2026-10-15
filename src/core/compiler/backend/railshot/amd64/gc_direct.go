@@ -451,7 +451,8 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype bool) {
 	a.Cmp32(RCX, RDX)
 	if subtype {
 		exact := a.JccPlaceholder(condE)
-		// A validated struct subtype preserves the declared fields and their layout.
+		// Validated struct subtypes preserve declared field layouts. Array
+		// subtypes preserve the header length at offset 8.
 		// The existing packed intervals store pre in the high dword, post in the low.
 		a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
 		a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
@@ -2337,21 +2338,26 @@ func (f *fn) emitDirectGCStructSet(typeIndex, fieldIndex uint32) bool {
 }
 
 func (f *fn) emitDirectGCArrayLen(typeIndex uint32) bool {
+	var final bool
 	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompArray); ok {
-		if !layout.DirectLen {
-			return false
-		}
-	} else if target, ok := f.stagedArraySubtype(typeIndex); !ok || !target.Final {
+		final = layout.Type.Final
+	} else if target, ok := f.stagedArraySubtype(typeIndex); ok {
 		// Legacy low-level tests may omit compiler-only #365 layouts. Production
 		// compilation always takes the precomputed metadata branch above.
+		final = target.Final
+	} else {
 		return false
+	}
+	kind := gcSharedStubResolveObject
+	if !final {
+		kind = gcSharedStubResolveSubtypeObject
 	}
 	local, hasLocal := gcLocalProvenance(f.s.back())
 	f.flush()
 	oldFloor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
 	object := f.popValue()
-	obj, done := f.emitDirectGCObjectWithStub(object, typeIndex, gc.HeaderSize, local, hasLocal, gcSharedStubResolveObject)
+	obj, done := f.emitDirectGCObjectWithStub(object, typeIndex, gc.HeaderSize, local, hasLocal, kind)
 	result := f.allocReg(maskOf(obj))
 	f.a.Load32(result, obj, 8)
 	done()
