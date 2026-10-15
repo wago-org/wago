@@ -357,3 +357,40 @@ func fixedSharedHostLoopModule(trap bool) []byte {
 		wasmtest.Section(10, wasmtest.Vec(code, wasmtest.Code([]byte{0x20, 0, 0x10, 1, 0x0b}))),
 	)
 }
+
+func TestNativeLeafSharedCodeSurvivesInstanceClose(t *testing.T) {
+	if codeProfileEnabled {
+		t.Skip("profiling retains Go callbacks")
+	}
+	c, err := NewRuntimeConfig().Compile(nativeLeafAliasModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	instances := make([]*Instance, 2)
+	for i := range instances {
+		instances[i], err = Instantiate(c, InstantiateOptions{Imports: testImports("env.a", nativeLeafIncrement, "env.b", nativeLeafIncrement)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer instances[i].Close()
+		if instances[i].executionFlags.Load()&executionFlagNativeScalarLeaf == 0 {
+			t.Fatal("native callback was not admitted")
+		}
+	}
+	target := func(in *Instance) uint64 {
+		ptr := in.jm.CaptureInstanceContext().ImportDispatch
+		cell := unsafe.Slice((*byte)(offHeapPtr(ptr)), wruntime.ImportDispatchEntryBytes)
+		return binary.LittleEndian.Uint64(cell[wruntime.ImportDispatchCodePtrOffset:])
+	}
+	if target(instances[0]) != target(instances[1]) {
+		t.Fatal("instances did not share immutable callback code")
+	}
+	instances[0].Close()
+	for _, x := range []int32{0, 41, -1, 2147483647, -2147483648} {
+		got, err := instances[1].Invoke("run", I32(x))
+		if err != nil || len(got) != 1 || got[0] != I32(x+2) {
+			t.Fatalf("retained instance x=%d: %v,%v", x, got, err)
+		}
+	}
+}

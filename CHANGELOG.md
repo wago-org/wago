@@ -8,6 +8,12 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Order ordinary guest stores before the lock-free empty-notify check with
+  a full memory barrier on AMD64 and ARM64, preventing missed waiter registration.
+
+- Share validated immutable native callback wrappers across instances. Each
+  control frame retains the code; closing the last owner releases its mapping.
+
 - Hoist validated native i32 import guards for fixed shared-memory ARM64 loops,
   keeping admitted arguments/results in registers while preserving imported
   calls and the complete Go/foreign fallback.

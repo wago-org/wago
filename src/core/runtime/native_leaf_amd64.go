@@ -3,7 +3,6 @@
 package runtime
 
 import (
-	"fmt"
 	"reflect"
 	goruntime "runtime"
 
@@ -244,17 +243,18 @@ func scalarLeafBody(fn any, params uint32) []byte {
 
 // Copy only proven register arithmetic, never Go code that can allocate, trap,
 // inspect resources or reenter. The VM retains syscall scheduling for unbounded
-// native execution. Instance quiescence owns the mapping's lifetime.
+// native execution. Instance quiescence releases its retained code reference.
 func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []byte, fn any, params uint32) (bool, error) {
 	if !access.Granted() || len(ctrl) != ctrlFrameSize {
 		return false, nil
 	}
-	if _, exists := nativeLeafHosts.Load(slicePtr(ctrl)); exists {
-		return false, fmt.Errorf("jit: native scalar control frame already registered")
-	}
+	return registerSharedNativeScalarLeaf(ctrl, fn, params, buildNativeScalarLeaf)
+}
+
+func buildNativeScalarLeaf(fn any, params uint32) (nativeScalarLeaf, bool, error) {
 	body := scalarLeafBody(fn, params)
 	if body == nil {
-		return false, nil
+		return nativeScalarLeaf{}, false, nil
 	}
 	defined := uint32(1)
 	if params == 2 {
@@ -263,7 +263,7 @@ func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []
 	for off := 0; off < len(body); {
 		n, ok := scalarLeafInstruction(body[off:], &defined)
 		if !ok {
-			return false, nil
+			return nativeScalarLeaf{}, false, nil
 		}
 		off += n
 	}
@@ -275,12 +275,12 @@ func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []
 		}
 	}
 	if scratch == x64.RAX {
-		return false, nil
+		return nativeScalarLeaf{}, false, nil
 	}
 	saveBase := defined&(1<<x64.RBX) != 0
 	stub, err := hostCallStubPtr()
 	if err != nil {
-		return false, err
+		return nativeScalarLeaf{}, false, err
 	}
 	var a x64.Asm
 	a.Load64(scratch, x64.RBX, -offCustomCtx)
@@ -323,12 +323,8 @@ func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []
 	a.Ret()
 	mem, err := mmapExec(a.B)
 	if err != nil {
-		return false, err
+		return nativeScalarLeaf{}, false, err
 	}
 	leaf := nativeScalarLeaf{code: mem, direct: slicePtr(mem) + uintptr(directOff)}
-	if _, loaded := nativeLeafHosts.LoadOrStore(slicePtr(ctrl), leaf); loaded {
-		_ = munmap(mem)
-		return false, fmt.Errorf("jit: native scalar control frame already registered")
-	}
-	return true, nil
+	return leaf, true, nil
 }

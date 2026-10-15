@@ -125,21 +125,22 @@ func scalarLeafBodyAtPC(pc uintptr, params uint32) []byte {
 // host trampoline. It copies arithmetic without calling Go code on a foreign
 // stack. The caller retains the ordinary Go binding as fallback and must use
 // syscall scheduling for this frame: a native leaf is not a Go safe point.
-// UnregisterHostCtrlFrame releases the mapping only after instance quiescence.
+// UnregisterHostCtrlFrame releases this frame's code reference after quiescence.
 func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []byte, fn any, params uint32) (bool, error) {
 	if !access.Granted() || len(ctrl) != ctrlFrameSize {
 		return false, nil
 	}
-	if _, exists := nativeLeafHosts.Load(slicePtr(ctrl)); exists {
-		return false, fmt.Errorf("jit: native scalar control frame already registered")
-	}
+	return registerSharedNativeScalarLeaf(ctrl, fn, params, buildNativeScalarLeaf)
+}
+
+func buildNativeScalarLeaf(fn any, params uint32) (nativeScalarLeaf, bool, error) {
 	body := scalarLeafBody(fn, params)
 	if body == nil {
-		return false, nil
+		return nativeScalarLeaf{}, false, nil
 	}
 	stub, err := hostCallStubPtr()
 	if err != nil {
-		return false, err
+		return nativeScalarLeaf{}, false, err
 	}
 	var a a64.Asm
 	a.SubImm64(a64.X9, a64.X26, offCustomCtx)
@@ -190,7 +191,7 @@ func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []
 	}
 	if directOff >= 0 {
 		if a.Len() > directOff+NativeScalarLeafRegisterEntryOffset {
-			return false, fmt.Errorf("jit: native scalar wrapper exceeds register-entry reservation")
+			return nativeScalarLeaf{}, false, fmt.Errorf("jit: native scalar wrapper exceeds register-entry reservation")
 		}
 		for a.Len() < directOff+NativeScalarLeafRegisterEntryOffset {
 			a.Nop()
@@ -202,15 +203,11 @@ func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []
 	}
 	mem, err := mmapExec(a.B)
 	if err != nil {
-		return false, err
+		return nativeScalarLeaf{}, false, err
 	}
 	leaf := nativeScalarLeaf{code: mem}
 	if directOff >= 0 {
 		leaf.direct = slicePtr(mem) + uintptr(directOff)
 	}
-	if _, loaded := nativeLeafHosts.LoadOrStore(slicePtr(ctrl), leaf); loaded {
-		_ = munmap(mem)
-		return false, fmt.Errorf("jit: native scalar control frame already registered")
-	}
-	return true, nil
+	return leaf, true, nil
 }
