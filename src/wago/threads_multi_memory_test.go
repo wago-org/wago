@@ -415,10 +415,6 @@ func TestThreadsImportedSecondaryAddressWidthsGrowthAndCodec(t *testing.T) {
 
 // Secondary atomics deliberately mix the primary and selected address widths.
 // Every defined numeric atomic opcode is exercised through explicit memarg 1.
-func threadsSecondaryAtomicModule(primary64, secondary64, imported, constant bool) []byte {
-	return threadsSecondaryAtomicModuleWithSharing(primary64, secondary64, imported, constant, false)
-}
-
 func threadsSecondaryAtomicModuleWithSharing(primary64, secondary64, imported, constant, secondaryShared bool) []byte {
 	address := wasm.I32
 	limits0, limits1 := byte(3), byte(1)

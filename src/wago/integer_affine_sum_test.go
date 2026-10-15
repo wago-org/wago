@@ -10,10 +10,6 @@ import (
 	"testing"
 )
 
-func integerAffineSumModule(wide, fenced bool, a, b uint64) []byte {
-	return integerAffineSumModuleWithHelper(wide, fenced, a, b, false)
-}
-
 func integerAffineSumModuleWithHelper(wide, fenced bool, a, b uint64, helper bool) []byte {
 	typ, c, add, mul, lt := wasm.I32, byte(0x41), byte(0x6a), byte(0x6c), byte(0x49)
 	if wide {

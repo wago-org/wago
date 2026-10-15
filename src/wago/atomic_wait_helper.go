@@ -135,10 +135,6 @@ func (in *Instance) dispatchAtomicWaitHelperContext(helper uint32, args, results
 	results[0] = uint64(result)
 }
 
-func (in *Instance) atomicHelperAddress(address, offset, width uint64) uint64 {
-	return in.atomicHelperAddressAt(0, address, offset, width)
-}
-
 func (in *Instance) atomicHelperAddressAt(memoryIndex uint32, address, offset, width uint64) uint64 {
 	if in.c == nil || !in.c.memoryDef(int(memoryIndex)).Addr64 {
 		address = uint64(uint32(address))
