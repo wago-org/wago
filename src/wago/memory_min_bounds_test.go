@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -173,6 +174,118 @@ func TestMemoryMinimumBoundsZeroMinimumUsesLiveGrowth(t *testing.T) {
 			got, err := in.Invoke("read", 0)
 			if err != nil || got[0] != 0 {
 				t.Fatalf("grown extent read: %v,%v", got, err)
+			}
+		}
+	}
+}
+
+func memoryMinimumCopyModule(wide bool, minima [2]byte, length uint32) []byte {
+	typ, c, and, shl := wasm.I32, byte(0x41), byte(0x71), byte(0x74)
+	flags := byte(1)
+	if wide {
+		typ, c, and, shl, flags = wasm.I64, 0x42, 0x83, 0x86, 5
+	}
+	var bodies, exports, funcs [][]byte
+	for _, kind := range []struct {
+		name     string
+		dst, src byte
+		masked   bool
+	}{{"private", 1, 0, true}, {"shared", 0, 1, true}, {"overlap", 0, 0, true}, {"raw", 1, 0, false}} {
+		b := []byte{}
+		for x := byte(0); x < 2; x++ {
+			b = append(b, 0x20, x)
+			if kind.masked {
+				b = append(b, c, 0xff, 0x3f, and, c, 2, shl, c, 1)
+				if wide {
+					b = append(b, 0x7c)
+				} else {
+					b = append(b, 0x6a)
+				}
+			}
+		}
+		b = append(b, c)
+		b = append(b, wasmtest.SLEB64(int64(length))...)
+		b = append(b, 0xfc, 10, kind.dst, kind.src, 0x0b)
+		exports = append(exports, wasmtest.ExportEntry(kind.name, 0, uint32(len(bodies))))
+		bodies = append(bodies, wasmtest.Code(b))
+		funcs = append(funcs, []byte{0})
+	}
+	exports = append(exports, wasmtest.ExportEntry("memory0", 2, 0), wasmtest.ExportEntry("memory1", 2, 1))
+	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{typ, typ}, nil))), wasmtest.Section(3, wasmtest.Vec(funcs...)), wasmtest.Section(5, wasmtest.Vec([]byte{flags | 2, minima[0], 2}, []byte{flags, minima[1], 2})), wasmtest.Section(7, wasmtest.Vec(exports...)), wasmtest.Section(10, wasmtest.Vec(bodies...)))
+}
+
+func TestMemoryMinimumCopyPublicExecution(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		for _, minima := range [][2]byte{{1, 1}, {0, 1}, {1, 0}, {0, 0}} {
+			for _, length := range []uint32{0, 4, 33, 64} {
+				for _, enabled := range []bool{false, true} {
+					cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("memory-min-bounds", enabled)
+					c, err := cfg.Compile(memoryMinimumCopyModule(wide, minima, length))
+					if err != nil {
+						t.Fatal(err)
+					}
+					variants := []*Compiled{c, publicArtifactRoundTrip(t, c)}
+					for _, compiled := range variants {
+						in, err := Instantiate(compiled)
+						if err != nil {
+							t.Fatal(err)
+						}
+						mem := [2][]byte{}
+						for i := range mem {
+							m, err := in.ExportedMemory(fmt.Sprintf("memory%d", i))
+							if err != nil {
+								t.Fatal(err)
+							}
+							mem[i] = m.UnsafeBytes()
+						}
+						for _, kind := range []struct {
+							name     string
+							dst, src int
+							masked   bool
+						}{{"private", 1, 0, true}, {"shared", 0, 1, true}, {"overlap", 0, 0, true}, {"raw", 1, 0, false}} {
+							for _, args := range [][2]uint64{{0, 0}, {1, 0}, {0, 1}, {8191, 8190}, {65536, 65536}, {65537, 0}, {0, 65537}, {^uint64(0), ^uint64(0)}} {
+								for i := range mem {
+									for x := range mem[i] {
+										mem[i][x] = byte(x*37 + i*101)
+									}
+								}
+								before := [2][]byte{bytes.Clone(mem[0]), bytes.Clone(mem[1])}
+								want := [2][]byte{bytes.Clone(mem[0]), bytes.Clone(mem[1])}
+								dst, src := args[0], args[1]
+								if !wide {
+									dst, src = uint64(uint32(dst)), uint64(uint32(src))
+								}
+								if kind.masked {
+									dst = ((dst & 8191) << 2) + 1
+									src = ((src & 8191) << 2) + 1
+								}
+								valid := dst <= uint64(len(mem[kind.dst])) && src <= uint64(len(mem[kind.src])) && uint64(length) <= uint64(len(mem[kind.dst]))-dst && uint64(length) <= uint64(len(mem[kind.src]))-src
+								if valid {
+									copy(want[kind.dst][int(dst):int(dst)+int(length)], want[kind.src][int(src):int(src)+int(length)])
+								}
+								_, err := in.Invoke(kind.name, args[0], args[1])
+								if valid {
+									if err != nil {
+										t.Fatalf("wide=%t minima=%v n=%d enabled=%t kind=%s args=%v: %v", wide, minima, length, enabled, kind.name, args, err)
+									}
+								} else {
+									var trap *TrapError
+									if !errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds {
+										t.Fatalf("expected bounds trap: %v", err)
+									}
+									want = before
+								}
+								if !bytes.Equal(mem[0], want[0]) || !bytes.Equal(mem[1], want[1]) {
+									t.Fatalf("copy/trap changed wrong bytes: wide=%t minima=%v n=%d enabled=%t kind=%s args=%v", wide, minima, length, enabled, kind.name, args)
+								}
+							}
+						}
+						in.Close()
+					}
+					for _, compiled := range variants {
+						compiled.Close()
+					}
+				}
 			}
 		}
 	}
