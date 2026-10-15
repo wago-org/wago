@@ -171,6 +171,9 @@ func TestNativeLeafAliasesPreserveInstanceContext(t *testing.T) {
 }
 
 func TestNativeLeafImportPreservesLocalsGlobalsAndSharedMemory(t *testing.T) {
+	if !platformCoreFeatures().IsEnabled(CoreFeatureThreads) {
+		t.Skip("threads are unavailable on this platform")
+	}
 	module := watToWasm(t, `(module
   (import "env" "step" (func $step (param i32) (result i32)))
   (memory 1 1)

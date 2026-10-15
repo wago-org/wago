@@ -215,7 +215,7 @@ func (j *JobMemory) curBytes() int {
 // Shared growers publish one aligned size word. Guarded mappings use the
 // immutable reservation address, so reading it does not race host-view growth.
 func (j *JobMemory) currentBytesCell() *uint64 {
-	return (*uint64)(unsafe.Pointer(j.LinMemBase() - uintptr(offActualLinMemByteSize64)))
+	return (*uint64)(offHeapPointer(j.LinMemBase() - uintptr(offActualLinMemByteSize64)))
 }
 
 // CurrentPages and MaxPages expose the native size caches for exact import

@@ -10,6 +10,9 @@ import (
 )
 
 func TestPrivateSecondaryGrowPreservesSharedPrimaryBase(t *testing.T) {
+	if !platformCoreFeatures().IsEnabled(CoreFeatureThreads | CoreFeatureMultiMemory) {
+		t.Skip("threads and multi-memory are unavailable on this platform")
+	}
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),

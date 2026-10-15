@@ -21,7 +21,7 @@ func TestInstanceInvokePreparedHostCacheEviction(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(exports...)),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x0b}))),
 	)
-	c, err := Compile(goHostSegmentConfig(), module)
+	c, err := Compile(NewRuntimeConfig().WithOptimization("native-leaf-host", false), module)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestInstanceInvokeConfiguredHostCacheSlots(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(exports...)),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x0b}))),
 	)
-	c, err := Compile(goHostSegmentConfig(), module)
+	c, err := Compile(NewRuntimeConfig().WithOptimization("native-leaf-host", false), module)
 	if err != nil {
 		t.Fatal(err)
 	}
