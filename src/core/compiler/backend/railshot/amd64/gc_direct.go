@@ -507,10 +507,20 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype bool) {
 }
 
 func (f *fn) emitDirectGCObject(object *elem, localType, requiredBytes uint32, local int, hasLocal bool) (obj Reg, done func()) {
-	return f.emitDirectGCObjectWithSubtype(object, localType, requiredBytes, local, hasLocal, false)
+	return f.emitDirectGCObjectWithStub(object, localType, requiredBytes, local, hasLocal, gcSharedStubNone)
 }
 
 func (f *fn) emitDirectGCObjectWithSubtype(object *elem, localType, requiredBytes uint32, local int, hasLocal, subtype bool) (obj Reg, done func()) {
+	kind := gcSharedStubNone
+	if subtype {
+		kind = gcSharedStubResolveSubtypeObject
+	}
+	return f.emitDirectGCObjectWithStub(object, localType, requiredBytes, local, hasLocal, kind)
+}
+
+// A nonzero kind selects a shared leaf without changing the ordinary exact
+// resolver's crossover counts. Both paths can reuse the same extent proof.
+func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes uint32, local int, hasLocal bool, kind gcSharedStubKind) (obj Reg, done func()) {
 	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid &&
 		f.gcResolved.local == local && f.gcResolved.typeIndex == localType &&
 		requiredBytes <= f.gcResolved.requiredBytes {
@@ -523,18 +533,18 @@ func (f *fn) emitDirectGCObjectWithSubtype(object *elem, localType, requiredByte
 		return f.gcResolved.reg, func() {}
 	}
 	f.invalidateGCResolvedObject()
-	if !subtype && f.gcDeferResolver && f.gcHandleResolutions != 0 {
+	if kind == gcSharedStubNone && f.gcDeferResolver && f.gcHandleResolutions != 0 {
 		f.gcSharedResolver = true
 		f.gcDeferResolver = false
 	}
-	if subtype {
-		obj, done = f.emitSharedCheckedGCObject(object, localType, requiredBytes, gcSharedStubResolveSubtypeObject)
+	if kind != gcSharedStubNone {
+		obj, done = f.emitSharedCheckedGCObject(object, localType, requiredBytes, kind)
 	} else if f.gcSharedResolver {
 		obj, done = f.emitSharedCheckedGCObject(object, localType, requiredBytes, gcSharedStubResolveObject)
 	} else {
 		obj, done = f.emitCheckedGCObject(object, localType, requiredBytes)
 	}
-	if !subtype {
+	if kind == gcSharedStubNone {
 		f.gcHandleResolutions++
 	}
 	f.stats.addGCHandleResolution()
@@ -2341,7 +2351,7 @@ func (f *fn) emitDirectGCArrayLen(typeIndex uint32) bool {
 	oldFloor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
 	object := f.popValue()
-	obj, done := f.emitDirectGCObject(object, typeIndex, gc.HeaderSize, local, hasLocal)
+	obj, done := f.emitDirectGCObjectWithStub(object, typeIndex, gc.HeaderSize, local, hasLocal, gcSharedStubResolveObject)
 	result := f.allocReg(maskOf(obj))
 	f.a.Load32(result, obj, 8)
 	done()

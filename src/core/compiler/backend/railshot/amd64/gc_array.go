@@ -278,6 +278,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(gcArraySet, []wasm.ValType{object, wasm.I32, valueType, wasm.I32}, nil)
 	case 15: // array.len
+		if typeIndex, ok := f.gcArrayLenParameterType(); ok && f.emitDirectGCArrayLen(typeIndex) {
+			return nil
+		}
 		object := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapArray), false))
 		return f.callGCStructHelper(gcArrayLen, []wasm.ValType{object}, []wasm.ValType{wasm.I32})
 	case 16: // array.fill typeidx
@@ -443,4 +446,25 @@ func stagedArrayType(m *wasm.Module, typeIndex uint32) (wasm.FieldType, bool) {
 		index -= uint32(len(group.SubTypes))
 	}
 	return wasm.FieldType{}, false
+}
+
+// gcArrayLenParameterType recovers only the root function's declared parameter
+// type. Inlined locals use a separate index space and must keep the helper path.
+func (f *fn) gcArrayLenParameterType() (uint32, bool) {
+	if !gcSharedStubsEnabled || f.inlineDepth != 0 || f.localBase != 0 || f.ft == nil {
+		return 0, false
+	}
+	local, ok := gcLocalProvenance(f.s.back())
+	if !ok || local < 0 || local >= len(f.ft.Params) {
+		return 0, false
+	}
+	typ := f.ft.Params[local]
+	if typ.Kind() != wasm.ValRef {
+		return 0, false
+	}
+	heap := typ.Ref().Heap()
+	if heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec {
+		return 0, false
+	}
+	return heap.Type().Index, true
 }
