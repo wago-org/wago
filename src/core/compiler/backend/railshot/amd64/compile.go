@@ -323,6 +323,8 @@ type fn struct {
 	gcSharedResolver    bool
 	gcDeferResolver     bool
 	gcHandleResolutions int
+	gcSubtypeProofs     [4]gcSubtypeProof
+	gcSubtypeProofN     uint8
 	nLocalSlots         int // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact

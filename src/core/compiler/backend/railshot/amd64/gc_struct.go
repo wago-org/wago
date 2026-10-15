@@ -116,6 +116,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			}
 			params = append(params, valueType)
 		}
+		forward, forwardReader, forwardOK := f.tryForwardGCConstructorGet(r, typeIndex, st)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		params = append(params, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -126,6 +127,12 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return err
 		}
 		f.markTopGCReference()
+		if forwardOK {
+			f.dropValue()
+			f.pushValue(forward)
+			*r = forwardReader
+			f.stats.peep("gc-constructor-get-forward")
+		}
 		return nil
 	case 1: // struct.new_default typeidx
 		typeIndex, err := r.U32()
@@ -226,6 +233,106 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	default:
 		return fmt.Errorf("amd64: unsupported staged 0xfb opcode %d", sub)
 	}
+}
+
+// tryForwardGCConstructorGet recognizes an adjacent cast and scalar field read
+// from a freshly allocated struct. It returns only constants and direct local
+// reads, which can be read again after the allocation helper without retaining
+// a register or compiler object snapshot across the call.
+func (f *fn) tryForwardGCConstructorGet(r *wasm.Reader, sourceType uint32, source wasm.SubType) (storage, wasm.Reader, bool) {
+	next := *r
+	op, err := next.Byte()
+	if err != nil || op != 0xfb {
+		return storage{}, wasm.Reader{}, false
+	}
+	sub, err := next.U32()
+	if err != nil || (sub != 22 && sub != 23) {
+		return storage{}, wasm.Reader{}, false
+	}
+	target, exact, err := readRefHeapTypeImmediate(&next)
+	if err != nil || target < 0 {
+		return storage{}, wasm.Reader{}, false
+	}
+	if op, err = next.Byte(); err != nil || op != 0xfb {
+		return storage{}, wasm.Reader{}, false
+	}
+	get, err := next.U32()
+	if err != nil || get != 2 { // plain struct.get only; packed reads need extension
+		return storage{}, wasm.Reader{}, false
+	}
+	accessType, err := next.U32()
+	if err != nil {
+		return storage{}, wasm.Reader{}, false
+	}
+	fieldIndex, err := next.U32()
+	if err != nil || int(fieldIndex) >= len(source.Comp.Fields) {
+		return storage{}, wasm.Reader{}, false
+	}
+	field, ok := f.stagedStructField(accessType, fieldIndex)
+	if !ok || field.Storage().Packed() {
+		return storage{}, wasm.Reader{}, false
+	}
+	_, scalar := directGCScalarStorage(field.Storage())
+	if !scalar {
+		return storage{}, wasm.Reader{}, false
+	}
+	fieldN := len(source.Comp.Fields)
+	if fieldN > f.depth() {
+		return storage{}, wasm.Reader{}, false
+	}
+	value := f.s.back()
+	for i := fieldN - 1; i > int(fieldIndex); i-- {
+		value = baseOfValentBlock(value).prev
+	}
+	if !value.isValue() {
+		return storage{}, wasm.Reader{}, false
+	}
+	forward := value.st
+	switch forward.kind {
+	case stConst:
+	case stLocalRef, stLocalReg:
+		forward.kind = stLocalRef
+		forward.reg = regNone
+	default:
+		return storage{}, wasm.Reader{}, false
+	}
+	if exact {
+		if uint32(target) != sourceType {
+			return storage{}, wasm.Reader{}, false
+		}
+	} else {
+		if !f.cachedGCSubtypeProof(sourceType, uint32(target)) {
+			return storage{}, wasm.Reader{}, false
+		}
+	}
+	if !f.cachedGCSubtypeProof(sourceType, accessType) {
+		return storage{}, wasm.Reader{}, false
+	}
+	return forward, next, true
+}
+
+type gcSubtypeProof struct {
+	source uint32
+	target uint32
+	result bool
+}
+
+func (f *fn) cachedGCSubtypeProof(source, target uint32) bool {
+	for i := uint8(0); i < f.gcSubtypeProofN; i++ {
+		proof := f.gcSubtypeProofs[i]
+		if proof.source == source && proof.target == target {
+			return proof.result
+		}
+	}
+	if f.gcSubtypeProofN == uint8(len(f.gcSubtypeProofs)) {
+		return false
+	}
+	actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: source}), false)
+	required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: target}), false)
+	result := f.m.ReferenceTypeSubtype(actual, required)
+	f.gcSubtypeProofs[f.gcSubtypeProofN] = gcSubtypeProof{source: source, target: target, result: result}
+	f.gcSubtypeProofN++
+	return result
 }
 
 func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
