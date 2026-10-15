@@ -62,7 +62,12 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 	if count != 0 {
 		required := int32(gc.PayloadOffset) + int32(dstScalar.size)
 		for _, pair := range [2][2]Reg{{dst, dstIndex}, {src, srcIndex}} {
-			f.a.ImulRI(pair[1], int32(dstScalar.size), true)
+			switch dstScalar.size {
+			case 2:
+				f.a.ShiftImm(4, pair[1], 1, true)
+			case 4, 8:
+				f.a.ImulRI(pair[1], int32(dstScalar.size), true)
+			}
 			f.a.Load32(tmp, pair[0], 4)
 			f.a.AluRI(cmpDigit, tmp, required, false)
 			f.trapIf(condB, trapCastFailure)
