@@ -145,7 +145,15 @@ func (c *Collector) finishMinorEvacuation() {
 			}
 			continue
 		}
-		if c.handles[h].young() {
+		e := &c.handles[h]
+		if runtime.GOARCH == "amd64" && e.space == spaceNursery && !c.cfg.PoisonFreed && e.cardSlot == 0 {
+			// Nursery payload has no individual allocator ownership to release.
+			// The ordinary card-free case needs only identity recycling; retain
+			// the general release path for poisoning, cards and young large space.
+			c.lastCardBounds = objectCardBounds{}
+			*e = handleEntry{}
+			c.freeHandles = append(c.freeHandles, h)
+		} else if e.young() {
 			c.free(h)
 		}
 	}
