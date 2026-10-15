@@ -54,8 +54,8 @@ func testDefaultNurseryRollingGraph(t *testing.T, replaceRoot bool) {
 			t.Fatal(err)
 		}
 	}
-	if c.cfg.NurseryBytes != 1<<20 || len(c.nursery) != 2<<20 {
-		t.Fatalf("rolling graph nursery = %d/%d, want 1 MiB Eden/2 MiB backing", c.cfg.NurseryBytes, len(c.nursery))
+	if c.cfg.NurseryBytes != 2<<20 || len(c.nursery) != 4<<20 {
+		t.Fatalf("rolling graph nursery = %d/%d, want 2 MiB Eden/4 MiB backing", c.cfg.NurseryBytes, len(c.nursery))
 	}
 	if err := c.CollectMinor(roots); err != nil {
 		t.Fatal(err)

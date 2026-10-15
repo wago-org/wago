@@ -76,8 +76,8 @@ func TestGCNativeArrayAllocationAfterNurseryGrowth(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := in.gc.NativeView().NurseryAllocBytes; got != 1<<20 {
-		t.Fatalf("native Eden = %d, want 1 MiB", got)
+	if got := in.gc.NativeView().NurseryAllocBytes; got != 2<<20 {
+		t.Fatalf("native Eden = %d, want 2 MiB", got)
 	}
 	if err := in.gc.CollectMinor(gc.EmptyRoots{}); err != nil {
 		t.Fatal(err)
@@ -87,14 +87,14 @@ func TestGCNativeArrayAllocationAfterNurseryGrowth(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := in.gc.Stats()
-	for i := uint64(0); i < 20000; i++ {
+	for i := uint64(0); i < 40000; i++ {
 		got, err := fn.Invoke(i)
 		if err != nil || len(got) != 1 || got[0] != i {
 			t.Fatalf("native payload read %d = %v, %v", i, got, err)
 		}
 	}
 	after := in.gc.Stats()
-	if after.Allocations-before.Allocations != 20000 || after.MinorCollections <= before.MinorCollections {
+	if after.Allocations-before.Allocations != 40000 || after.MinorCollections <= before.MinorCollections {
 		t.Fatalf("native allocation did not cross collection: before %+v after %+v", before, after)
 	}
 	view := in.gc.NativeView()

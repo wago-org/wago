@@ -35,7 +35,7 @@ const (
 
 type Config struct {
 	// NurseryBytes fixes Eden capacity when nonzero. On AMD64 the default starts
-	// at 64 KiB and can grow to 1 MiB after sustained survival pressure.
+	// at 64 KiB and can grow to 2 MiB after sustained survival pressure.
 	NurseryBytes uint32
 	// SurvivorBytes is the capacity of each of two bounded Throughput survivor
 	// semispaces. Zero selects half the normalized Eden capacity. It is ignored
@@ -91,10 +91,11 @@ type Stats struct {
 	FullCollections        uint64
 	MinorObjectsScanned    uint64
 	MinorRememberedScanned uint64
-	YoungBytesCopied       uint64
-	PromotedBytes          uint64
-	LiveObjects            uint32
-	TenuringThreshold      uint8
+	// YoungBytesCopied includes evacuation and nursery-growth relocation copies.
+	YoungBytesCopied  uint64
+	PromotedBytes     uint64
+	LiveObjects       uint32
+	TenuringThreshold uint8
 }
 
 type spaceKind uint8
@@ -207,7 +208,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 		c.tenuringThreshold = 1
 	}
 	if autoNursery {
-		c.nurseryGrowthLimit = 1 << 20
+		c.nurseryGrowthLimit = 2 << 20
 	}
 
 	if err := c.initSubtypeIntervals(); err != nil {
