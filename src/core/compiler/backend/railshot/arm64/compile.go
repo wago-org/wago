@@ -3451,7 +3451,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			gpPool = withoutReg(gpPool, X25)
 			f.reserved = f.reserved.add(X25)
 			f.stats.peep("import-dispatch-cache")
-			if used < remainingPins && !f.reserved.has(X24) && len(m.Memories) == 0 && regABI && os.Getenv("WAGO_ARM64_NATIVE_IMPORT_VARIANT") != "0" && os.Getenv("WAGO_ARM64_NATIVE_IMPORT_TARGET_CACHE") != "0" && nativeI32ImportAliases(m) && f.nativeImportVariantEligible(c.BodyBytes) {
+			if used < remainingPins && !f.reserved.has(X24) && (len(m.Memories) == 0 || f.threadedMemory0 && os.Getenv("WAGO_ARM64_SHARED_IMPORT_VARIANT") != "0") && regABI && os.Getenv("WAGO_ARM64_NATIVE_IMPORT_VARIANT") != "0" && os.Getenv("WAGO_ARM64_NATIVE_IMPORT_TARGET_CACHE") != "0" && nativeI32ImportAliases(m) && f.nativeImportVariantEligible(c.BodyBytes) {
 				f.cacheNativeImportTarget = true
 				gpPool = withoutReg(gpPool, X24)
 				f.reserved = f.reserved.add(X24)
