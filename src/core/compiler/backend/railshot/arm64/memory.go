@@ -1106,14 +1106,26 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	if memoryIndex != 0 || f.threadedMemory0 {
 		f.materializePendingLoads()
 		f.invalidateStoreForward()
-		value := f.materialize(f.popValue())
+		stored := f.popValue()
+		typ := stored.st.typ
+		value := f.materialize(stored)
 		f.pinned = f.pinned.add(value)
+		loadEnd, forward := f.inspectFixedSharedStoredLoad(r, memoryIndex, off, size, typ)
 		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
 		f.a.StoreIdx(base, ea, value, disp, size)
 		f.release(base)
 		f.release(ea)
 		f.pinned = f.pinned.remove(value)
-		f.release(value)
+		if forward {
+			if err := r.JumpTo(loadEnd); err != nil {
+				return err
+			}
+			f.a.MovReg32(value, value)
+			f.pushReg(value, typ)
+			f.stats.peep("fixed-shared-store-load-fwd")
+		} else {
+			f.release(value)
+		}
 		return nil
 	}
 	// Do this before evaluating store operands; the alias-aware load pass below
