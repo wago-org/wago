@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"github.com/wago-org/wago/tests/support/wasmtest"
 	"math/bits"
 	"testing"
 
@@ -26,7 +27,8 @@ func shiftedRegisterALUModuleARM64(t testing.TB, typ wasm.ValType, shiftOp, aluO
 	if typ == wasm.I64 {
 		constOp = i64Const
 	}
-	body := []byte{0x00,
+	// Keep selection on the deferred-tree backend, independent of scalar admission.
+	body := []byte{0x00, 0x3f, 0, 0x1a,
 		localGet, other,
 		localGet, shifted, constOp, count, shiftOp,
 		aluOp,
@@ -34,7 +36,9 @@ func shiftedRegisterALUModuleARM64(t testing.TB, typ wasm.ValType, shiftOp, aluO
 		localGet, 0,
 		end,
 	}
-	return mod1(t, []wasm.ValType{typ, typ}, []wasm.ValType{typ}, body)
+	m := mod1(t, []wasm.ValType{typ, typ}, []wasm.ValType{typ}, body)
+	m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+	return m
 }
 
 func TestShiftedRegisterALUArm64(t *testing.T) {
@@ -164,6 +168,36 @@ func TestLeftShiftedRegisterALUArm64(t *testing.T) {
 				if got != plain {
 					t.Fatalf("wide=%v op=%x: folded %x != plain %x", wide, op, got, plain)
 				}
+			}
+		}
+	}
+}
+
+func TestLeftShiftedAddPrefersImmediateArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, wide := range []bool{false, true} {
+		typ, constant, shift, add := wasm.I32, byte(0x41), byte(0x74), byte(0x6a)
+		if wide {
+			typ, constant, shift, add = wasm.I64, 0x42, 0x86, 0x7c
+		}
+		for _, value := range []int64{-4095, -1, 1, 63, 255, 4095} {
+			and := byte(0x71)
+			if wide {
+				and = 0x83
+			}
+			body := []byte{0, 0x3f, 0, 0x1a, 0x20, 0, constant, 0xff, 0x3f, and, constant, 2, shift, constant}
+			body = append(body, wasmtest.SLEB64(value)...)
+			body = append(body, add, 0x0b)
+			m := mod1(t, []wasm.ValType{typ}, []wasm.ValType{typ}, body)
+			m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+			var stats ModuleStats
+			c, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+			if err != nil {
+				t.Fatal(err)
+			}
+			c.CodeImage.Close()
+			if stats.Funcs[0].Peephole["shifted-register-alu"] != 0 {
+				t.Fatalf("wide=%t constant=%d materialized an encodable immediate", wide, value)
 			}
 		}
 	}
