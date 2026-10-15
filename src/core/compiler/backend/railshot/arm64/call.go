@@ -1758,24 +1758,11 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	roots := f.rootsBottomToTop()
 	types := append([]machineType(nil), f.logicalTypes(roots)...)
 	rootFlags := gcRootFlags(roots)
-	f.flush()
-	if f.cacheNativeImportTarget && f.sc != nil && f.sc.nativeImportFast {
-		f.spillLocalsForClobbers((1<<18)-1, 0)
-		p := len(ft.Params)
-		argSlot := slotsOfTypes(types[:len(types)-p])
-		f.ld32(X0, SP, f.spillOff(argSlot))
-		if p == 2 {
-			f.ld32(X1, SP, f.spillOff(argSlot+1))
-		}
-		if regallocCheckEnabled {
-			f.checkCallClobber()
-		}
+	if f.emitGuardedNativeImportCall(ft, roots, types) {
 		f.stats.call(callKindImportDispatch)
-		f.a.Blr(X24)
-		f.st64(SP, f.spillOff(argSlot), X0)
-		f.setDepthTypesWithGCRoots(append(types[:len(types)-p], mtI32), nil)
 		return nil
 	}
+	f.flush()
 
 	locals := append([]localDef(nil), f.locals...)
 	if b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
@@ -1859,6 +1846,57 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	return nil
 }
 
+// emitGuardedNativeImportCall is reachable only inside the entry-guarded body.
+// Its immutable native tag excludes Go/foreign dispatch for every import alias.
+// This emitter canonicalizes older values; native leaves preserve their pins.
+func (f *fn) emitGuardedNativeImportCall(ft *wasm.CompType, roots []*elem, types []machineType) bool {
+	if !f.cacheNativeImportTarget || f.sc == nil || !f.sc.nativeImportFast {
+		return false
+	}
+	p := len(ft.Params)
+	argSlot := slotsOfTypes(types[:len(types)-p])
+	directArg := f.threadedMemory0 && p == 1 && f.pinned == 0 && len(f.intervalLast) == 0 && f.pinnedLocalMask&((1<<18)-1) == 0 && nativeSharedArgPrefixSafe(roots) && os.Getenv("WAGO_ARM64_SHARED_IMPORT_ARG_REG") != "0"
+	var arg Reg
+	var owned bool
+	savedPinned := f.pinned
+	if directArg {
+		arg, owned = f.materializeRead(f.popValue())
+		f.pinned = f.pinned.add(arg)
+	}
+	f.flush()
+	f.spillLocalsForClobbers((1<<18)-1, 0)
+	if directArg {
+		f.a.MovReg32(X0, arg)
+		f.pinned = savedPinned
+		if owned {
+			f.release(arg)
+		}
+		f.stats.peep("shared-native-register-argument")
+	} else {
+		f.ld32(X0, SP, f.spillOff(argSlot))
+		if p == 2 {
+			f.ld32(X1, SP, f.spillOff(argSlot+1))
+		}
+	}
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
+	f.a.Blr(X24)
+	if f.threadedMemory0 && os.Getenv("WAGO_ARM64_SHARED_IMPORT_RESULT_REG") != "0" {
+		// The guarded native body cannot enter Go; X0 is the live i32 result.
+		f.setDepthTypesWithGCRoots(types[:len(types)-p], nil)
+		f.pushReg(X0, mtI32)
+		f.stats.peep("shared-native-register-result")
+	} else {
+		if need := argSlot + 1; need > f.maxSpill {
+			f.maxSpill = need
+		}
+		f.st64(SP, f.spillOff(argSlot), X0)
+		f.setDepthTypesWithGCRoots(append(types[:len(types)-p], mtI32), nil)
+	}
+	return true
+}
+
 func (f *fn) nativeLeafContextShortcut(b ImportBinding, ft *wasm.CompType, recordRoots bool) bool {
 	p := len(ft.Params)
 	contextShortcut := len(f.m.Imports) > 1 || len(f.m.Memories) > 0 || len(f.m.Globals) > 0 || len(f.m.Tables) > 0
@@ -1923,6 +1961,9 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	resultSlot := slotTop
 	resultSlots := funcTypeSlots(ft.Results)
 
+	if f.emitGuardedNativeImportCall(ft, roots, types) {
+		return nil
+	}
 	f.flush()
 	f.storePinnedGlobals(false) // value-pinned globals → cells (reloaded after; callee can't touch B's cells)
 
@@ -3543,10 +3584,11 @@ func (f *fn) loadImportDispatchBase(dst Reg) {
 	}
 }
 
-// nativeI32ImportAliases admits only identical scalar import declarations. A
+// nativeI32ImportAliases admits identical scalar imports or one scalar import in a shared-memory
+// module, whose body must also pass nativeImportVariantEligible. A
 // runtime native-leaf tag still guards entry to the specialized body.
 func nativeI32ImportAliases(m *wasm.Module) bool {
-	if len(m.Imports) < 2 {
+	if len(m.Imports) < 2 && !(len(m.Imports) == 1 && len(m.Memories) == 1 && m.Memories[0].Shared) {
 		return false
 	}
 	first := m.Imports[0]
@@ -3585,6 +3627,15 @@ func (f *fn) beginNativeImportVariant() {
 }
 
 func (f *fn) nativeImportVariantEligible(body []byte) bool {
+	if len(f.m.Memories) != 0 {
+		mt := f.m.Memories[0]
+		if f.guardMode || len(f.m.Memories) != 1 || !mt.Shared || mt.Limits.Addr64 || !mt.Limits.HasMax || mt.Limits.Min != mt.Limits.Max {
+			return false
+		}
+		if bounded, _ := shared.BoundedFixedSharedHostSegments(body, uint32(f.m.ImportedFuncCount()), 0); !bounded {
+			return false
+		}
+	}
 	if profileEnabled || len(body) > 384 || len(f.m.Tables) != 0 || len(f.m.Tags) != 0 || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate || len(f.ft.Params) != 1 || f.ft.Params[0] != wasm.I32 || len(f.ft.Results) != 1 || f.ft.Results[0] != wasm.I32 || len(f.importBindings) != f.m.ImportedFuncCount() {
 		return false
 	}
@@ -3614,6 +3665,10 @@ func nativeImportIntegerBody(f *fn, body []byte) bool {
 		}
 		switch {
 		case op == 0 || op == 1 || op >= 2 && op <= 5 || op >= 0x0b && op <= 0x10 || op == 0x1a || op == 0x1b || op >= 0x20 && op <= 0x22:
+		case op == 0x28 || op == 0x29 || op >= 0x2c && op <= 0x37 || op >= 0x3a && op <= 0x3e:
+			if len(f.m.Memories) != 1 || !f.threadedMemory0 {
+				return false
+			}
 		case op == 0x41 || op == 0x42 || op >= 0x45 && op <= 0x5a || op >= 0x67 && op <= 0x8a || op == 0xa7 || op == 0xac || op == 0xad || op >= 0xc0 && op <= 0xc4:
 		default:
 			return false
@@ -3626,4 +3681,24 @@ func nativeImportIntegerBody(f *fn, body []byte) bool {
 // agree on their local-state join. Go and foreign paths still home every pin.
 func (f *fn) preserveNativeImportLocals(nativeCandidate bool) bool {
 	return nativeCandidate && f.usesCalls && len(f.locals) <= len(localStateSnapshot{}) && (f.m.ImportedFuncCount() > 1 || f.sharedNativePins)
+}
+
+// Keep source trap/load order and reject overlapping noncanonical homes.
+func nativeSharedArgPrefixSafe(roots []*elem) bool {
+	const params = 1
+	if params < 1 || params > 2 || len(roots) < params || len(roots) > len(intArgRegs) {
+		return false
+	}
+	for i, root := range roots[:len(roots)-params] {
+		plain := root.st.kind == stLocalReg || root.st.kind == stConst || root.st.kind == stSlot && root.st.slotIndex() == i
+		if root.elemKind() != ekValue || !plain || root.st.typ != mtI32 && root.st.typ != mtI64 {
+			return false
+		}
+	}
+	for i, root := range roots[len(roots)-params:] {
+		if root.elemKind() == ekValue && root.st.kind == stSlot && root.st.slotIndex() != len(roots)-params+i {
+			return false
+		}
+	}
+	return true
 }

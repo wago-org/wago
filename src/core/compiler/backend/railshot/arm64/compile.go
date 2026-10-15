@@ -457,7 +457,8 @@ type fn struct {
 	// opcode invalidates it; address identity is deliberately limited to a local.
 	storeFwd storeForward
 	// Keep the extra protected register out of large/high-pressure functions.
-	storeForwardOK bool
+	storeForwardOK     bool
+	sharedStoreForward bool
 	// threadedMemory0 routes shared memory zero through the instance-owned memory
 	// directory, leaving linMemReg's negative basedata private to the instance.
 	threadedMemory0 bool
@@ -3182,6 +3183,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.ehTryCap, f.ehRootCap = shape.TryRecords, shape.RootRecords
 	}
 	f.storeForwardOK = policy.EnabledOption(optStoreForward) && len(c.BodyBytes) <= 256 && nLocals <= 8
+	if f.storeForwardOK && !profileEnabled && !f.guardMode && m.ImportedMemCount() == 0 && len(m.Memories) == 1 {
+		mem := m.Memories[0]
+		f.sharedStoreForward = mem.Shared && !mem.Limits.Addr64 && mem.Limits.HasMax && mem.Limits.Min == mem.Limits.Max && os.Getenv("WAGO_ARM64_SHARED_STORE_FORWARD") != "0"
+	}
 	f.syncHostCalls = syncHostCalls
 	// This proof is consumed only by direct imported calls. A leaf or a body
 	// touching memory cannot use it; reject those from the existing hints before
@@ -3451,7 +3456,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			gpPool = withoutReg(gpPool, X25)
 			f.reserved = f.reserved.add(X25)
 			f.stats.peep("import-dispatch-cache")
-			if used < remainingPins && !f.reserved.has(X24) && len(m.Memories) == 0 && regABI && os.Getenv("WAGO_ARM64_NATIVE_IMPORT_VARIANT") != "0" && os.Getenv("WAGO_ARM64_NATIVE_IMPORT_TARGET_CACHE") != "0" && nativeI32ImportAliases(m) && f.nativeImportVariantEligible(c.BodyBytes) {
+			if used < remainingPins && !f.reserved.has(X24) && (len(m.Memories) == 0 || f.threadedMemory0 && os.Getenv("WAGO_ARM64_SHARED_IMPORT_VARIANT") != "0") && regABI && os.Getenv("WAGO_ARM64_NATIVE_IMPORT_VARIANT") != "0" && os.Getenv("WAGO_ARM64_NATIVE_IMPORT_TARGET_CACHE") != "0" && nativeI32ImportAliases(m) && f.nativeImportVariantEligible(c.BodyBytes) {
 				f.cacheNativeImportTarget = true
 				gpPool = withoutReg(gpPool, X24)
 				f.reserved = f.reserved.add(X24)
