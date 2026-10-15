@@ -70,7 +70,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		}
 	}
 	var copiedBytes, promotedBytes uint64
-	if survivors := c.drainNurseryMarkStack(); survivors != 0 {
+	if (runtime.GOARCH != "amd64" || len(c.markStack) != 0) && c.drainNurseryMarkStack() != 0 {
 		var err error
 		copiedBytes, promotedBytes, err = c.promoteMarkedNursery()
 		if err != nil {

@@ -1,5 +1,7 @@
 package gc
 
+import "runtime"
+
 func (c *Collector) clearMarks() {
 	if len(c.mark) < len(c.handles) {
 		c.mark = make([]bool, len(c.handles))
@@ -137,6 +139,11 @@ func (c *Collector) drainNurseryMarkStack() uint64 {
 		c.markStack = c.markStack[:n]
 		c.stats.MinorObjectsScanned++
 		scanned++
+		// The mark stack contains validated live handles. Scalar payloads carry
+		// this flag from construction, so they need no descriptor or ref walk.
+		if runtime.GOARCH == "amd64" && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
+			continue
+		}
 		c.scanObjectRefs(h, c.markNurseryRef)
 	}
 	return scanned
