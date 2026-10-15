@@ -20,6 +20,10 @@ func TestSharedEntryRegisterResultAndGoFallback(t *testing.T) {
 	t.Setenv("WAGO_ARM64_SHARED_IMPORT_VARIANT", "1")
 	testSharedEntryCalls(t, "WAGO_ARM64_SHARED_IMPORT_RESULT_REG")
 }
+func TestSharedEntryRegisterArgumentAndGoFallback(t *testing.T) {
+	t.Setenv("WAGO_ARM64_SHARED_IMPORT_VARIANT", "1")
+	testSharedEntryCalls(t, "WAGO_ARM64_SHARED_IMPORT_ARG_REG")
+}
 func testSharedEntryCalls(t *testing.T, selector string) {
 	images := map[string][]byte{}
 	for _, mode := range []string{"0", "1"} {
