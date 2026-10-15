@@ -37,7 +37,7 @@ func (c *Collector) growDefaultNursery(copiedBytes uint64) {
 		}
 	}
 	eden = min(eden*2, c.nurseryGrowthLimit)
-	survivor := eden / 2
+	survivor := min(eden/2, uint32(512<<10))
 	backing := makeAlignedBytes(eden+2*survivor, uintptr(c.objectAlign))
 	newBase := eden + uint32(c.survivorFrom&1)*survivor
 	copy(backing[newBase:newBase+c.survivorBump], c.nursery[oldBase:oldBase+c.survivorBump])
