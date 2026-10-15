@@ -67,6 +67,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if fuseFill {
 			fill.replaceInitializer(f)
 		}
+		freshValue, freshOK := f.gcFreshArray16Candidate(typeIndex, field)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocUniform)
@@ -80,6 +81,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return err
 		}
 		f.markTopGCReference()
+		if freshOK {
+			f.setGCFreshStructFact(gcFreshStructFact{objectLocal: -1, typeIndex: typeIndex, value: freshValue})
+		}
 		if fuseFill {
 			fill.finish(f, r)
 		}
@@ -242,6 +246,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		} else if field.Storage().Packed() {
 			return fmt.Errorf("amd64: plain array.get cannot access packed type %d", typeIndex)
 		}
+		if sub == 11 && f.tryForwardGCFreshArray16Get(typeIndex) {
+			return nil
+		}
 		if f.emitDirectGCArrayGet(typeIndex, helper, 0, 0, false) {
 			return nil
 		}
@@ -262,6 +269,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("amd64: array.set type %d is unavailable", typeIndex)
 		}
+		f.prepareGCFreshArraySet(field)
 		if field.Mut() != wasm.Var {
 			return fmt.Errorf("amd64: array.set type %d is immutable", typeIndex)
 		}

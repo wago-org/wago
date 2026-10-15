@@ -152,7 +152,7 @@ func gcFreshStructLocalModule(t *testing.T, overwriteSource, mutate bool) *wasm.
 		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x02, // item = struct.new 0 (param)
 	}
 	if overwriteSource {
-		body = append(body, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x21, 0x00)
+		body = append(body, 0x41, 0x07, 0x21, 0x00) // direct source-local overwrite
 	}
 	body = append(body,
 		0x20, 0x01, 0x41, 0x00, 0x20, 0x02, 0xfb, 0x0e, 0x01, // roots[0] = item
@@ -200,6 +200,74 @@ func TestGCFreshStructLocalGetForwardSelection(t *testing.T) {
 			defer cm.CodeImage.Close()
 			if got := stats.Funcs[0].Peephole["gc-fresh-struct-get-forward"]; got != tc.want {
 				t.Fatalf("fresh struct forwarding = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func gcFreshArrayLocalModule(t *testing.T, length, mask byte, overwriteSource, mutate bool) *wasm.Module {
+	t.Helper()
+	item := []byte{0x5e, 0x7f, 0x01}        // (array (mut i32))
+	roots := []byte{0x5e, 0x63, 0x00, 0x01} // (array (mut (ref null 0)))
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+	body := []byte{
+		0x02, 0x01, 0x63, 0x01, 0x01, 0x63, 0x00, // locals: roots, item
+		0x41, 0x01, 0xfb, 0x07, 0x01, 0x21, 0x02, // roots = array.new_default 1 (1)
+		0x20, 0x00, 0x41, length, 0xfb, 0x06, 0x00, 0x21, 0x03, // item = array.new 0 (value, length)
+	}
+	if overwriteSource {
+		body = append(body, 0x41, 0x07, 0x21, 0x00) // direct source-local overwrite
+	}
+	body = append(body,
+		0x20, 0x02, 0x41, 0x00, 0x20, 0x03, 0xfb, 0x0e, 0x01, // roots[0] = item
+	)
+	if mutate {
+		body = append(body, 0x20, 0x03, 0x41, 0x00, 0x41, 0x07, 0xfb, 0x0e, 0x00) // item[0] = 7
+	}
+	body = append(body,
+		0x20, 0x03, 0x20, 0x01, 0x41, mask, 0x71, 0xfb, 0x0b, 0x00, // item[index & mask]
+		0x0b,
+	)
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(item, roots, funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestGCFreshArrayLocalGetForwardSelection(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, tc := range []struct {
+		name            string
+		length          byte
+		mask            byte
+		overwriteSource bool
+		mutate          bool
+		want            int
+	}{
+		{name: "root store", length: 16, mask: 15, want: 1},
+		{name: "source overwritten", length: 16, mask: 15, overwriteSource: true},
+		{name: "array mutated", length: 16, mask: 15, mutate: true},
+		{name: "unsafe mask", length: 16, mask: 31},
+		{name: "different length", length: 15, mask: 15},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stats ModuleStats
+			cm, err := CompileModuleWith(gcFreshArrayLocalModule(t, tc.length, tc.mask, tc.overwriteSource, tc.mutate), CompileOptions{GCStructHelpers: true, GCArrayHelpers: true, Stats: &stats})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cm.CodeImage.Close()
+			if got := stats.Funcs[0].Peephole["gc-fresh-array-get-forward"]; got != tc.want {
+				t.Fatalf("fresh array forwarding = %d, want %d", got, tc.want)
 			}
 		})
 	}

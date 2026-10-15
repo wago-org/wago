@@ -332,7 +332,7 @@ func (f *fn) prepareGCFreshStructFact(op byte) {
 		return
 	}
 	switch op {
-	case 0x20, 0x23, 0x41, 0xfb:
+	case 0x20, 0x23, 0x41, 0x71, 0xfb:
 		return
 	default:
 		f.invalidateGCFreshStructFact()
@@ -344,7 +344,7 @@ func (f *fn) prepareGCFreshStructFB(sub uint32) {
 		return
 	}
 	switch sub {
-	case 2, 14: // struct.get or a root-array store.
+	case 2, 11, 14: // scalar get or a root-array store.
 		return
 	default:
 		f.invalidateGCFreshStructFact()

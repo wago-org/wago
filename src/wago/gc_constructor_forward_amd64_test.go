@@ -2,7 +2,13 @@
 
 package wago
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+)
 
 func gcConstructorForwardBytes() []byte {
 	types := [][]byte{
@@ -68,7 +74,7 @@ func gcFreshStructLocalForwardBytes(overwriteSource, mutate bool, rootLength byt
 		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x02, // item = struct.new 0 (param)
 	}
 	if overwriteSource {
-		body = append(body, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x21, 0x00)
+		body = append(body, 0x41, 0x07, 0x21, 0x00) // direct source-local overwrite
 	}
 	body = append(body,
 		0x20, 0x01, 0x41, 0x00, 0x20, 0x02, 0xfb, 0x0e, 0x01, // roots[0] = item
@@ -139,5 +145,119 @@ func TestGCFreshStructRootStoreTrap(t *testing.T) {
 	defer instance.Close()
 	if got, err := instance.Invoke("run", 1); err == nil {
 		t.Fatalf("run = %v, want out-of-bounds trap", got)
+	}
+}
+
+func gcFreshArrayLocalForwardBytes(rootLength, length, mask byte, overwriteSource, mutate, verifyPayload bool) []byte {
+	types := [][]byte{
+		{0x5e, 0x7f, 0x01},       // (array (mut i32))
+		{0x5e, 0x63, 0x00, 0x01}, // (array (mut (ref null 0)))
+		wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+	}
+	body := []byte{
+		0x02, 0x01, 0x63, 0x01, 0x01, 0x63, 0x00, // locals: roots, item
+		0x41, rootLength, 0xfb, 0x07, 0x01, 0x21, 0x02,
+		0x20, 0x00, 0x41, length, 0xfb, 0x06, 0x00, 0x21, 0x03,
+	}
+	if overwriteSource {
+		body = append(body, 0x41, 0x07, 0x21, 0x00) // direct source-local overwrite
+	}
+	body = append(body, 0x20, 0x02, 0x41, 0x00, 0x20, 0x03, 0xfb, 0x0e, 0x01)
+	if mutate {
+		body = append(body, 0x20, 0x03, 0x41, 0x00, 0x41, 0x07, 0xfb, 0x0e, 0x00)
+	}
+	body = append(body, 0x20, 0x03, 0x20, 0x01, 0x41, mask, 0x71, 0xfb, 0x0b, 0x00, 0x0b)
+	if verifyPayload {
+		body = body[:len(body)-1]
+		body = append(body, 0x20, 0x03, 0x20, 0x01, 0x41, mask, 0x71, 0xfb, 0x0b, 0x00, 0x6a, 0x0b)
+	}
+	body = append(wasmtest.ULEB(uint32(len(body))), body...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(body)),
+	)
+}
+
+func TestGCFreshArrayLocalGetForwardExecution(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		overwriteSource bool
+		mutate          bool
+	}{
+		{name: "forward"},
+		{name: "source overwritten", overwriteSource: true},
+		{name: "array mutated", mutate: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcFreshArrayLocalForwardBytes(1, 16, 15, tc.overwriteSource, tc.mutate, true))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			for _, gc := range []GCConfig{
+				{CollectEveryAlloc: true, StressNurseryBytes: 128, VerifyAfterCollect: true},
+				{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, VerifyAfterCollect: true},
+			} {
+				instance, err := Instantiate(compiled, InstantiateOptions{GC: gc})
+				if err != nil {
+					t.Fatal(err)
+				}
+				for index := uint64(0); index < 16; index++ {
+					value := uint64(uint32(0x91230000 + index))
+					want := uint64(uint32(value * 2))
+					if tc.mutate && index == 0 {
+						want = 14
+					}
+					got, err := instance.Invoke("run", value, index)
+					if err != nil || len(got) != 1 || got[0] != want {
+						t.Fatalf("profile %d index %d = %v, %v; want [%#x]", gc.Profile, index, got, err, want)
+					}
+				}
+				if got := instance.gc.Stats().Allocations; got != 32 {
+					t.Fatalf("profile %d allocations = %d, want 32", gc.Profile, got)
+				}
+				if err := instance.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestGCFreshArrayUnsafeMaskTraps(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcFreshArrayLocalForwardBytes(1, 16, 31, false, false, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	got, err := instance.Invoke("run", 9, 16)
+	var trap *TrapError
+	if !errors.As(err, &trap) || trap.Code != TrapBuiltin {
+		t.Fatalf("run = %v, %v; want bounds trap", got, err)
+	}
+}
+
+func TestGCFreshArrayRootStoreTrap(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcFreshArrayLocalForwardBytes(0, 16, 15, false, false, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	got, err := instance.Invoke("run", 9, 0)
+	var trap *TrapError
+	if !errors.As(err, &trap) || trap.Code != TrapBuiltin {
+		t.Fatalf("run = %v, %v; want root-store bounds trap", got, err)
 	}
 }
