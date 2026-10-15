@@ -36,12 +36,16 @@ func (f *fn) tryIntegerHashStoreLoop(r *wasm.Reader) (bool, error) {
 			vectors++
 		}
 	}
-	if available < 11 || vectors < 7 {
+	if vectors < 7 || !f.canBorrowVectorConstants(available, 11) {
 		return false, nil
 	}
 	f.flush()
 	f.invalidateStoreForward()
 	f.reconcileLocals()
+	var constants vectorConstantCache
+	if available < 11 {
+		constants = f.borrowVectorConstants()
+	}
 	get := func(x uint32) {
 		if reg, _, ok := f.pinReg(int(x)); ok {
 			f.recoverLocal(int(x))
@@ -197,6 +201,7 @@ func (f *fn) tryIntegerHashStoreLoop(r *wasm.Reader) (bool, error) {
 	}); err != nil {
 		return false, err
 	}
+	f.restoreVectorConstants(constants)
 	f.stats.peep("integer-hash-store-vector-loop")
 	return true, nil
 }

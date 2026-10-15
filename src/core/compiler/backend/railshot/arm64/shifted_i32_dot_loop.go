@@ -43,23 +43,15 @@ func (f *fn) tryShiftedI32DotLoop(r *wasm.Reader) (bool, error) {
 	}
 	// Literal caches are optional; preserve the vector path's full GP budget.
 	borrowConstants := gp < 9
-	if borrowConstants {
-		if len(f.intervalLast) != 0 || gp+int(f.iconstN) < 9 {
-			return false, nil
-		}
-		for i := uint8(0); i < f.iconstN; i++ {
-			c := f.iconsts[i]
-			if c.address || f.pinned.has(c.reg) || f.pinnedLocalMask.has(c.reg) || f.regUser[c.reg] != nil {
-				return false, nil
-			}
-		}
+	if !f.canBorrowVectorConstants(gp, 9) {
+		return false, nil
 	}
 	f.flush()
 	f.invalidateStoreForward()
 	f.reconcileLocals()
-	constants, constantN := f.iconsts, f.iconstN
+	var constants vectorConstantCache
 	if borrowConstants {
-		f.releaseScopedLoopConsts(0)
+		constants = f.borrowVectorConstants()
 	}
 	get := func(x uint32) {
 		if reg, _, ok := f.pinReg(int(x)); ok {
@@ -180,21 +172,7 @@ func (f *fn) tryShiftedI32DotLoop(r *wasm.Reader) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if borrowConstants {
-		// Both runtime paths join here. Evict an operand-stack occupant before
-		// restoring the literal to its original reserved register.
-		for i := uint8(0); i < constantN; i++ {
-			c := constants[i]
-			f.spillIfUsed(c.reg)
-			f.loadConst(c.reg, storage{kind: stConst, typ: c.typ, cval: c.bits})
-			f.reserved = f.reserved.add(c.reg)
-			if regallocCheckEnabled {
-				f.checkImmutable(c.reg, false, 8)
-			}
-		}
-		f.iconsts, f.iconstN = constants, constantN
-		f.stats.peep("vector-loop-borrowed-constants")
-	}
+	f.restoreVectorConstants(constants)
 	f.stats.peep("shifted-i32-dot-vector-loop")
 	return true, nil
 }

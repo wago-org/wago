@@ -37,12 +37,21 @@ func (f *fn) tryPairedI32DotLoop(r *wasm.Reader) (bool, error) {
 			vectors++
 		}
 	}
-	if available < 11 || vectors < 8 {
+	if vectors < 8 {
+		return false, nil
+	}
+	// Optional literal caches must not crowd out this checked vector path.
+	borrowConstants := available < 11
+	if !f.canBorrowVectorConstants(available, 11) {
 		return false, nil
 	}
 	f.flush()
 	f.invalidateStoreForward()
 	f.reconcileLocals()
+	var constants vectorConstantCache
+	if borrowConstants {
+		constants = f.borrowVectorConstants()
+	}
 	get := func(x uint32) {
 		if reg, _, ok := f.pinReg(int(x)); ok {
 			f.recoverLocal(int(x))
@@ -172,6 +181,7 @@ func (f *fn) tryPairedI32DotLoop(r *wasm.Reader) (bool, error) {
 	if err := f.opEnd(r); err != nil {
 		return false, err
 	}
+	f.restoreVectorConstants(constants)
 	f.stats.peep("paired-i32-dot-vector-loop")
 	return true, nil
 }

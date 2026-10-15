@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"bytes"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
@@ -86,5 +87,38 @@ func TestPairedI32DotVectorLoopPressureAndEligibilityFallback(t *testing.T) {
 				t.Fatal("fallback changed source, emission or pins")
 			}
 		})
+	}
+}
+
+func TestPairedI32DotVectorLoopLiteralPressure(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	b := pairedI32DotSelectionBody()
+	b[1] = 7 // Eleven live locals, including the four parameters.
+	prefix := []byte{}
+	for x := byte(6); x < 11; x++ {
+		prefix = append(prefix, 0x20, 0, 0x21, x)
+	}
+	b = append(append(append([]byte{}, b[:3]...), prefix...), b[3:]...)
+	literal := append([]byte{0x41}, wasmtest.SLEB32(0x1234567)...)
+	b = bytes.ReplaceAll(b, []byte{0x41, 0x80, 0x7f}, literal)
+	for x := byte(6); x < 11; x++ {
+		b = append(b[:len(b)-1], 0x20, x, 0x6a, 0x0b)
+	}
+	b = append(b[:len(b)-1], append(literal, 0x6a, 0x0b)...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})), wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(b))), b...)))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stats ModuleStats
+	c, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CodeImage.Close()
+	if stats.Funcs[0].Peephole["paired-i32-dot-vector-loop"] != 1 {
+		t.Fatalf("lost vector path under literal pressure: %v", stats.Funcs[0].Peephole)
 	}
 }
