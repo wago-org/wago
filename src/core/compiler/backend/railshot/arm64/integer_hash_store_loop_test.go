@@ -85,3 +85,32 @@ func TestIntegerHashStoreVectorLoopPressureAndEligibilityFallback(t *testing.T) 
 		})
 	}
 }
+
+func TestIntegerHashStoreVectorLoopLiteralPressure(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	b := integerHashStoreSelectionBody()
+	b[1] = 9 // Eleven live locals.
+	prefix := []byte{}
+	for x := byte(3); x < 11; x++ {
+		prefix = append(prefix, 0x20, 0, 0x21, x)
+	}
+	b = append(append(append([]byte{}, b[:3]...), prefix...), b[3:]...)
+	for x := byte(3); x < 11; x++ {
+		b = append(b[:len(b)-1], 0x20, x, 0x6a, 0x0b)
+	}
+	literal := append([]byte{0x41}, wasmtest.SLEB64(-2048144789)...)
+	b = append(b[:len(b)-1], append(literal, 0x6a, 0x0b)...)
+	m, err := wasm.DecodeModule(wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))), wasmtest.Section(3, wasmtest.Vec([]byte{0})), wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(b))), b...)))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stats ModuleStats
+	c, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CodeImage.Close()
+	if stats.Funcs[0].Peephole["integer-hash-store-vector-loop"] != 1 || stats.Funcs[0].Peephole["vector-loop-borrowed-constants"] != 1 {
+		t.Fatalf("lost vector path under literal pressure: %v", stats.Funcs[0].Peephole)
+	}
+}

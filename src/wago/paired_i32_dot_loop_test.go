@@ -14,8 +14,14 @@ import (
 	"testing"
 )
 
-func pairedI32DotModule(leftBias, rightBias int32, bound, offset uint32, nested bool) []byte {
+func pairedI32DotModule(leftBias, rightBias int32, bound, offset uint32, nested bool, pressure ...bool) []byte {
 	b := []byte{1, 3, 0x7f}
+	if len(pressure) > 0 && pressure[0] {
+		b[1] = 7
+		for x := byte(7); x < 11; x++ {
+			b = append(b, 0x20, 0, 0x21, x)
+		}
+	}
 	if nested {
 		b = append(b, 0x03, 0x40, 0x41, 0, 0x21, 2)
 	}
@@ -40,6 +46,15 @@ func pairedI32DotModule(leftBias, rightBias int32, bound, offset uint32, nested 
 	b = append(b, 0x47, 0x0d, 0, 0x0b)
 	if nested {
 		b = append(b, 0x20, 6, 0x41, 1, 0x6a, 0x22, 6, 0x41, 3, 0x49, 0x0d, 0, 0x0b)
+	}
+	if len(pressure) > 0 && pressure[0] {
+		b = append(b, 0x20, 3, 0x41)
+		b = append(b, wasmtest.SLEB64(0x1234567)...)
+		b = append(b, 0x6a)
+		for x := byte(7); x < 11; x++ {
+			b = append(b, 0x20, x, 0x6a)
+		}
+		b = append(b, 0x21, 3)
 	}
 	b = append(b, 0x20, 3, 0x20, 2, 0x20, 4, 0x20, 5, 0x0b)
 	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}))), wasmtest.Section(3, wasmtest.Vec([]byte{0})), wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(b))), b...))))
@@ -161,6 +176,63 @@ func TestPairedI32DotPublicExecution(t *testing.T) {
 								}
 							})
 						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestPairedI32DotLiteralPressureExecution(t *testing.T) {
+	if runtime.GOARCH != "arm64" {
+		t.Skip("ARM64 vector register pressure")
+	}
+	for _, nested := range []bool{false, true} {
+		for _, on := range []bool{false, true} {
+			for _, abi := range []bool{false, true} {
+				for _, bound := range []uint32{8, 24, 64, 256, 264} {
+					cfg := NewRuntimeConfig().WithOptimization("integer-sum-loop", on).WithOptimization("reg-abi", abi)
+					c, err := cfg.Compile(pairedI32DotModule(0x1234567, -0x1234567, bound, 0, nested, true))
+					if err != nil {
+						t.Fatal(err)
+					}
+					variants := []*Compiled{c}
+					if !guardPageBuilt {
+						variants = append(variants, publicArtifactRoundTrip(t, c))
+					}
+					for _, compiled := range variants {
+						in, err := Instantiate(compiled)
+						if err != nil {
+							t.Fatal(err)
+						}
+						mem := in.Memory().UnsafeBytes()
+						for i := range mem {
+							mem[i] = byte((i * 37) ^ (i >> 3))
+						}
+						before := bytes.Clone(mem)
+						for _, args := range [][3]uint32{{0, 1024, 0}, {3, 129, 0}, {64, 64, bound - 8}, {65532, 0, 0}, {^uint32(3), 512, 0}, {0, 1024, bound}, {0, 1024, 1}} {
+							seed := uint32(0xfedcba98)
+							want, traps := pairedI32DotOracle(before, args[0], args[1], args[2], seed, bound, 0, 0x1234567, -0x1234567, nested)
+							if !traps {
+								want[0] = uint64(uint32(want[0]) + uint32(0x1234567) + 4*args[0])
+							}
+							got, err := in.Invoke("run", uint64(args[0]), uint64(args[1]), uint64(args[2]), uint64(seed))
+							if traps {
+								var trap *TrapError
+								if !errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds {
+									t.Fatalf("args=%v expected OOB, got=%v err=%v", args, got, err)
+								}
+							} else if err != nil || !slices.Equal(got, want) {
+								t.Fatalf("nested=%t on=%t abi=%t bound=%d args=%v got=%v want=%v err=%v", nested, on, abi, bound, args, got, want, err)
+							}
+						}
+						if !bytes.Equal(mem, before) {
+							t.Fatal("dot loop changed memory")
+						}
+						in.Close()
+					}
+					for _, compiled := range variants {
+						compiled.Close()
 					}
 				}
 			}

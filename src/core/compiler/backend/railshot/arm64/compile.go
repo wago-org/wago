@@ -173,6 +173,7 @@ const (
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
 	cacheImportDispatch     bool
+	sharedNativePins        bool
 	cacheNativeImportTarget bool
 	nativeImportRouter      int
 	requiresLSE             bool // selected optional instructions in this function
@@ -3446,6 +3447,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 		if proof && dynamic && used <= remainingPins && !f.reserved.has(X25) {
 			f.cacheImportDispatch = true
+			f.sharedNativePins = f.threadedMemory0 && os.Getenv("WAGO_ARM64_SHARED_NATIVE_PINS") != "0"
 			gpPool = withoutReg(gpPool, X25)
 			f.reserved = f.reserved.add(X25)
 			f.stats.peep("import-dispatch-cache")

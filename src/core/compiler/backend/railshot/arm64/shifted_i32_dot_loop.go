@@ -38,12 +38,21 @@ func (f *fn) tryShiftedI32DotLoop(r *wasm.Reader) (bool, error) {
 	}
 	// Seven fast-path GP values, a borrowed/materialized source, and headroom
 	// for local convergence. Reject before changing source, pins or emission.
-	if gp < 9 || fp < 8 {
+	if fp < 8 {
+		return false, nil
+	}
+	// Literal caches are optional; preserve the vector path's full GP budget.
+	borrowConstants := gp < 9
+	if !f.canBorrowVectorConstants(gp, 9) {
 		return false, nil
 	}
 	f.flush()
 	f.invalidateStoreForward()
 	f.reconcileLocals()
+	var constants vectorConstantCache
+	if borrowConstants {
+		constants = f.borrowVectorConstants()
+	}
 	get := func(x uint32) {
 		if reg, _, ok := f.pinReg(int(x)); ok {
 			f.recoverLocal(int(x))
@@ -163,6 +172,7 @@ func (f *fn) tryShiftedI32DotLoop(r *wasm.Reader) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	f.restoreVectorConstants(constants)
 	f.stats.peep("shifted-i32-dot-vector-loop")
 	return true, nil
 }

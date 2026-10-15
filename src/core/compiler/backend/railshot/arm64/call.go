@@ -1795,7 +1795,7 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	if err := f.callHostSync(int(b.ImportIndex), ft); err != nil {
 		return err
 	}
-	if f.nativeLeafContextShortcut(b, ft, false) && f.m.ImportedFuncCount() > 1 && f.usesCalls && len(locals) <= len(localStateSnapshot{}) {
+	if f.preserveNativeImportLocals(f.nativeLeafContextShortcut(b, ft, false)) {
 		var saved localStateSnapshot
 		for x := range locals {
 			saved[x] = locals[x].state
@@ -1935,9 +1935,9 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	}
 	nativeCandidate := f.nativeLeafContextShortcut(b, ft, recordRoots)
 	var nativeLocals localStateSnapshot
-	// Keep the existing single-import layout. The repeated import-alias calls
-	// amortize restoring the ordinary branch's local state at the join.
-	preserveNativeLocals := nativeCandidate && f.m.ImportedFuncCount() > 1 && f.usesCalls && len(f.locals) <= len(nativeLocals)
+	// Import aliases and proven fixed shared loops preserve native callee-saved
+	// pins. Every dynamic alternative joins with this same saved local state.
+	preserveNativeLocals := f.preserveNativeImportLocals(nativeCandidate)
 	if preserveNativeLocals {
 		// Native leaf validation excludes every FP instruction and GP registers
 		// X18 and above. Home only the local pins its wrapper can overwrite.
@@ -2079,6 +2079,9 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		goDone := -1
 		if goDirect >= 0 {
 			f.patchBranch19(goDirect, f.a.Len())
+			if preserveNativeLocals {
+				f.spillLocalsForCall()
+			}
 			// The fixed shared import-only proof excludes helper/foreign guest
 			// calls and GC roots. The runtime Go-host tag selects ordinary
 			// rooted Go dispatch, with unchanged parked ownership and traps.
@@ -2098,6 +2101,9 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 			f.syncHostLoad64(X9, X11, hcResults)
 			f.st64(SP, f.spillOff(resultSlot), X9)
 			f.refreshCachedMemoryBoundAfterExternalCall()
+			if preserveNativeLocals {
+				f.restoreNativeLeafPreservedLocals(nativeLocals)
+			}
 			f.stats.peep("fixed-shared-direct-go")
 			goDone = f.a.Branch()
 		}
@@ -3614,4 +3620,10 @@ func nativeImportIntegerBody(f *fn, body []byte) bool {
 		}
 	}
 	return true
+}
+
+// Snapshot the choice once at function setup so all dynamic import alternatives
+// agree on their local-state join. Go and foreign paths still home every pin.
+func (f *fn) preserveNativeImportLocals(nativeCandidate bool) bool {
+	return nativeCandidate && f.usesCalls && len(f.locals) <= len(localStateSnapshot{}) && (f.m.ImportedFuncCount() > 1 || f.sharedNativePins)
 }

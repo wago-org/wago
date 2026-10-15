@@ -576,6 +576,17 @@ func (f *fn) tryShiftedRegisterALU(node, left, right *elem, dest Reg) Reg {
 	// arithmetic and memory reads retain the established evaluation order.
 	if !ok && op.commutative() && left.isDeferred() && right.elemKind() == ekValue &&
 		!right.st.typ.isXMM() && right.st.kind != stMemRef && right.st.kind != stFuncRef {
+		// Keep an encodable add immediate in the immediate form. Commuting
+		// it into Rn would materialize a constant and lengthen address chains.
+		if op == opAdd && right.st.kind == stConst {
+			value := right.st.cval
+			if node.st.typ == mtI32 {
+				value = int64(int32(value))
+			}
+			if value >= -0xfff && value <= 0xfff || f.shiftedAddSubImmediate(value) {
+				return regNone
+			}
+		}
 		shiftArg, kind, count, ok = constShiftOperand(f.s, left, node.st.typ)
 		if ok {
 			left, right = right, left

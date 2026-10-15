@@ -23,7 +23,7 @@ func TestMemoryMinimumBoundsExpressionProof(t *testing.T) {
 			m.Memories[0].Limits.Max = 2
 			for _, enabled := range []bool{false, true} {
 				var stats ModuleStats
-				cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"memory-min-bounds": enabled}})
+				cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"memory-min-bounds": enabled, "bounds-facts": false}})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -71,6 +71,55 @@ func TestMemoryMinimumBoundsConstantFill(t *testing.T) {
 			}
 			if got := stats.Funcs[0].Peephole["memory-min-bounds"]; got != want {
 				t.Fatalf("shared=%t enabled=%t: fill proofs=%d want=%d", shared, enabled, got, want)
+			}
+		}
+	}
+}
+
+func TestMemoryMinimumBoundsConstantCopy(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, wide := range []bool{false, true} {
+		typ, c, and, shl := wasm.I32, byte(0x41), byte(0x71), byte(0x74)
+		if wide {
+			typ, c, and, shl = wasm.I64, 0x42, 0x83, 0x86
+		}
+		for _, n := range []byte{0, 4, 33, 63} {
+			for _, mins := range [][2]uint64{{1, 1}, {0, 1}, {1, 0}, {0, 0}} {
+				for _, enabled := range []bool{false, true} {
+					body := []byte{0, 0x20, 0, c, 0xff, 0x3f, and, c, 2, shl, c, 1, 0x6a}
+					if wide {
+						body[len(body)-1] = 0x7c
+					}
+					body = append(body, 0x20, 1, c, 0xff, 0x3f, and, c, 2, shl, c, 1)
+					if wide {
+						body = append(body, 0x7c)
+					} else {
+						body = append(body, 0x6a)
+					}
+					body = append(body, c, n, 0xfc, 10, 1, 0, 0x41, 42, 0x0b)
+					m := modMem(t, 1, []wasm.ValType{typ, typ}, []wasm.ValType{wasm.I32}, body)
+					m.Memories = append(m.Memories, m.Memories[0])
+					for i := range m.Memories {
+						m.Memories[i].Limits.Min = mins[i]
+						m.Memories[i].Limits.HasMax = true
+						m.Memories[i].Limits.Max = 2
+						m.Memories[i].Limits.Addr64 = wide
+					}
+					m.Memories[0].Shared = true
+					var stats ModuleStats
+					cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"memory-min-bounds": enabled}})
+					if err != nil {
+						t.Fatal(err)
+					}
+					cm.CodeImage.Close()
+					want := int(mins[0] + mins[1])
+					if !enabled || n == 0 || wide {
+						want = 0
+					}
+					if got := stats.Funcs[0].Peephole["memory-min-bounds"]; got != want {
+						t.Fatalf("wide=%t n=%d minima=%v enabled=%t proofs=%d want=%d", wide, n, mins, enabled, got, want)
+					}
+				}
 			}
 		}
 	}

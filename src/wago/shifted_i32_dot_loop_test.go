@@ -14,10 +14,13 @@ import (
 	"testing"
 )
 
-func shiftedI32DotModule(lb, rb int32, offset uint32, nested bool) []byte {
+func shiftedI32DotModule(lb, rb int32, offset uint32, nested bool, pressure ...bool) []byte {
 	count := uint32(1)
 	if nested {
 		count = 4
+	}
+	if len(pressure) != 0 && pressure[0] {
+		count += 7
 	}
 	b := append([]byte{1}, wasmtest.ULEB(count)...)
 	b = append(b, 0x7f)
@@ -25,6 +28,16 @@ func shiftedI32DotModule(lb, rb int32, offset uint32, nested bool) []byte {
 	con := func(x int32) { b = append(b, 0x41); b = append(b, wasmtest.SLEB64(int64(x))...) }
 	load := func() { b = append(b, 0x28, 2); b = append(b, wasmtest.ULEB(offset)...) }
 	bias := func(x int32) { con(x); b = append(b, 0x6a) }
+	if len(pressure) != 0 && pressure[0] {
+		b = append(b, 0xfd, 0x0c)
+		b = append(b, make([]byte, 16)...)
+		b = append(b, 0x1a)
+		for x := uint32(6); x < 13; x++ {
+			idx(0x20, 0)
+			idx(0x21, x)
+		}
+	}
+
 	if nested {
 		idx(0x20, 3)
 		idx(0x21, 7)
@@ -79,11 +92,23 @@ func shiftedI32DotModule(lb, rb int32, offset uint32, nested bool) []byte {
 		con(3)
 		b = append(b, 0x49, 0x0d, 0, 0x0b)
 	}
-	for _, x := range []uint32{4, 0, 3, 5} {
-		idx(0x20, x)
+	results := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}
+	if len(pressure) != 0 && pressure[0] {
+		idx(0x20, 4)
+		con(lb) // Observe the restored function-wide literal after the join.
+		b = append(b, 0x6a)
+		for x := uint32(6); x < 13; x++ {
+			idx(0x20, x)
+			b = append(b, 0x6a)
+		}
+		results = results[:1]
+	} else {
+		for _, x := range []uint32{4, 0, 3, 5} {
+			idx(0x20, x)
+		}
 	}
 	b = append(b, 0x0b)
-	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}))), wasmtest.Section(3, wasmtest.Vec([]byte{0})), wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(b))), b...))))
+	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, results))), wasmtest.Section(3, wasmtest.Vec([]byte{0})), wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(b))), b...))))
 }
 func shiftedI32DotOracle(mem []byte, args [5]uint32, lb, rb int32, offset uint32, nested bool) ([]uint64, bool) {
 	ptr, shift, limit, counter, acc := args[0], args[1], args[2], args[3], args[4]
@@ -205,6 +230,53 @@ func TestShiftedI32DotPublicExecution(t *testing.T) {
 					}
 				}
 			}
+		}
+	}
+}
+
+func TestShiftedI32DotLiteralCachePressure(t *testing.T) {
+	if runtime.GOARCH != "arm64" {
+		t.Skip("ARM64 vector lowering")
+	}
+	const bias int32 = 0x1234567
+	for _, on := range []bool{false, true} {
+		c, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithOptimization("integer-sum-loop", on).Compile(shiftedI32DotModule(bias, bias, 0, false, true))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		restored := publicArtifactRoundTrip(t, c)
+		defer restored.Close()
+		for _, code := range []*Compiled{c, restored} {
+			in, err := Instantiate(code)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mem := in.Memory().UnsafeBytes()
+			for i := range mem {
+				mem[i] = byte(i*37 ^ (i >> 3))
+			}
+			for _, count := range []uint32{2, 4, 6, 8, 14, 16, 18, 64} {
+				for _, ptr := range []uint32{0, 4, 7, uint32(len(mem)) - 4} {
+					args := [5]uint32{ptr, 0, 0, count, 0xfedcba98}
+					want, trap := shiftedI32DotOracle(mem, args, bias, bias, 0, false)
+					got, err := in.Invoke("run", uint64(ptr), 0, 0, uint64(count), uint64(args[4]))
+					if trap {
+						var tr *TrapError
+						if !errors.As(err, &tr) || tr.Code != TrapLinMemOutOfBounds {
+							in.Close()
+							t.Fatalf("on=%t ptr=%d count=%d expected trap, got %v %v", on, ptr, count, got, err)
+						}
+						continue
+					}
+					expected := uint64(uint32(want[0]) + uint32(bias) + 7*ptr)
+					if err != nil || len(got) != 1 || got[0] != expected {
+						in.Close()
+						t.Fatalf("on=%t ptr=%d count=%d got=%v want=%d err=%v", on, ptr, count, got, expected, err)
+					}
+				}
+			}
+			in.Close()
 		}
 	}
 }

@@ -2337,8 +2337,10 @@ func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
 func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 	f.materializePendingLoads()
 	f.erase(f.s.back()) // n (const)
+	srcMinimum := f.minimumMemoryAccess(srcMemory, 0, n)
 	src, srcOwned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(src)
+	dstMinimum := f.minimumMemoryAccess(dstMemory, 0, n)
 	dst, dstOwned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(dst)
 	if !f.memoryAddr64(dstMemory) {
@@ -2347,8 +2349,18 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 	if !f.memoryAddr64(srcMemory) {
 		f.a.MovReg32(src, src)
 	}
-	f.bulkBoundsCheck(dst, n, dstMemory)
-	f.bulkBoundsCheck(src, n, srcMemory)
+	// The immutable declarations can prove either complete range independently.
+	// Zero-length and unbounded addresses retain their required checks.
+	if dstMinimum {
+		f.stats.peep("memory-min-bounds")
+	} else {
+		f.bulkBoundsCheck(dst, n, dstMemory)
+	}
+	if srcMinimum {
+		f.stats.peep("memory-min-bounds")
+	} else {
+		f.bulkBoundsCheck(src, n, srcMemory)
+	}
 	avoid := maskOf(src, dst)
 	srcBase, srcBaseOwned := f.indexedMemoryBase(srcMemory, avoid)
 	avoid = avoid.add(srcBase)
