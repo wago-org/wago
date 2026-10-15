@@ -71,6 +71,7 @@ func threadsMemory64ModuleWithSharing(imported, shared bool) []byte {
 }
 
 func TestThreadsSharedMemory64BoundsGrowthWaitsAndCodec(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMemory64)
 	for _, imported := range []bool{false, true} {
 		for _, cache := range []bool{false, true} {
 			for _, regABI := range []bool{false, true} {
@@ -174,6 +175,7 @@ func TestThreadsSharedMemory64BoundsGrowthWaitsAndCodec(t *testing.T) {
 }
 
 func TestThreadsSharedMemory64BlockingWaitGrowthAndCancellation(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMemory64)
 	for _, regABI := range []bool{false, true} {
 		t.Run(fmt.Sprintf("regabi=%t", regABI), func(t *testing.T) {
 			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", regABI)
@@ -263,6 +265,7 @@ func threadsULEB64(v uint64) []byte {
 }
 
 func TestThreadsSharedMemory64ScalarAndSIMDAccess(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMemory64)
 	for _, regABI := range []bool{false, true} {
 		cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", regABI)
 		for _, simd := range []bool{false, true} {
@@ -332,6 +335,7 @@ func TestThreadsSharedMemory64ScalarAndSIMDAccess(t *testing.T) {
 }
 
 func TestThreadsSharedMemory64BulkBoundsAndOverlap(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMemory64)
 	for _, regABI := range []bool{false, true} {
 		for _, fill := range []bool{false, true} {
 			for _, length := range []int{-1, 0, 1, 33, 64, 65} {
@@ -400,6 +404,7 @@ func TestThreadsSharedMemory64BulkBoundsAndOverlap(t *testing.T) {
 }
 
 func TestThreadsSharedMemory64DataSegmentsAndCodec(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMemory64)
 	for _, imported := range []bool{false, true} {
 		for _, regABI := range []bool{false, true} {
 			for _, count := range []int{-1, 0, 1, 33, 64} {
@@ -476,6 +481,7 @@ func TestThreadsSharedMemory64DataSegmentsAndCodec(t *testing.T) {
 }
 
 func TestThreadsUnsharedMemory64Atomics(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMemory64)
 	for _, imported := range []bool{false, true} {
 		for _, policy := range []uint32{0, 2} {
 			for _, regABI := range []bool{false, true} {

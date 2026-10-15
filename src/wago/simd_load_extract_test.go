@@ -50,6 +50,7 @@ func loadExtractModule(wide, shared bool, index uint32) []byte {
 	}
 	memories := [][]byte{{1, 1, 2}, {1, 1, 2}}
 	memories[index] = []byte{flags, 1, 2}
+	memories = memories[:index+1]
 	var types, funcs, bodies, exports [][]byte
 	exports = append(exports, wasmtest.ExportEntry("memory", 2, index))
 	for i, c := range loadExtractCases() {
@@ -75,11 +76,18 @@ func TestSIMDLoadExtractPublicExecutionAndFullSpanTraps(t *testing.T) {
 	}
 	for _, wide := range []bool{false, true} {
 		for _, shared := range []bool{false, true} {
-			features := CoreFeaturesV3
+			features := CoreFeaturesV2
+			if wide {
+				features |= CoreFeatureMemory64
+			}
 			if shared {
 				features |= CoreFeatureThreads
 			}
 			for _, index := range []uint32{0, 1} {
+				moduleFeatures := features
+				if index != 0 {
+					moduleFeatures |= CoreFeatureMultiMemory
+				}
 				for _, enabled := range []bool{false, true} {
 					for _, regABI := range []bool{false, true} {
 						for _, mode := range modes {
@@ -87,7 +95,7 @@ func TestSIMDLoadExtractPublicExecutionAndFullSpanTraps(t *testing.T) {
 								continue // Threads require explicit bounds checks.
 							}
 							t.Run(fmt.Sprintf("wide=%t/shared=%t/index=%d/enabled=%t/regabi=%t/bounds=%v", wide, shared, index, enabled, regABI, mode), func(t *testing.T) {
-								c, err := NewRuntimeConfig().WithCoreFeatures(features).WithBoundsChecks(mode).WithOptimization("simd-load-extract", enabled).WithOptimization("reg-abi", regABI).Compile(loadExtractModule(wide, shared, index))
+								c, err := NewRuntimeConfig().WithCoreFeatures(requireNativeTestFeatures(t, moduleFeatures)).WithBoundsChecks(mode).WithOptimization("simd-load-extract", enabled).WithOptimization("reg-abi", regABI).Compile(loadExtractModule(wide, shared, index))
 								if err != nil {
 									t.Fatal(err)
 								}

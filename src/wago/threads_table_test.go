@@ -54,7 +54,7 @@ func TestThreadsSharedTablesElementsAndCodec(t *testing.T) {
 		for _, cache := range []bool{false, true} {
 			for _, regABI := range []bool{false, true} {
 				t.Run(fmt.Sprintf("imported=%t/cache=%t/regabi=%t", imported, cache, regABI), func(t *testing.T) {
-					cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).
+					cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).
 						WithOptimization("shared-memory-base", cache).WithOptimization("reg-abi", regABI)
 					rt := NewRuntime(WithRuntimeConfig(cfg))
 					defer rt.Close()

@@ -46,6 +46,7 @@ func threadsExceptionModule(imported bool) []byte {
 }
 
 func TestThreadsSharedExceptionsGrowthCrossInstanceAndCodec(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureExceptionHandling)
 	for _, imported := range []bool{false, true} {
 		for _, cache := range []bool{false, true} {
 			for _, regABI := range []bool{false, true} {

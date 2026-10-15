@@ -11,6 +11,25 @@ import (
 	"testing"
 )
 
+func requireNativeTestFeatures(t *testing.T, features CoreFeatures) CoreFeatures {
+	t.Helper()
+	if !platformCoreFeatures().IsEnabled(features) {
+		t.Skipf("module features %v are unavailable on this backend", features)
+	}
+	return features
+}
+
+func nativeMemoryTestFeatures(wide bool, index uint32) CoreFeatures {
+	features := CoreFeaturesV2 | CoreFeatureThreads
+	if wide {
+		features |= CoreFeatureMemory64
+	}
+	if index != 0 {
+		features |= CoreFeatureMultiMemory
+	}
+	return features
+}
+
 func memoryMinimumBoundsModule(wide, shared bool, index uint32, minimum byte) []byte {
 	typ, constant, and, shl, add := wasm.I32, byte(0x41), byte(0x71), byte(0x74), byte(0x6a)
 	selected := byte(1)
@@ -23,6 +42,7 @@ func memoryMinimumBoundsModule(wide, shared bool, index uint32, minimum byte) []
 	}
 	memories := [][]byte{{1, 1, 2}, {1, 1, 2}}
 	memories[index] = []byte{selected, minimum, 2}
+	memories = memories[:index+1]
 	address := func(large, aligned bool) []byte {
 		mask := []byte{0xff, 0x3f}
 		shift := byte(2)
@@ -44,7 +64,10 @@ func memoryMinimumBoundsModule(wide, shared bool, index uint32, minimum byte) []
 		return []byte{align | 64, 1, 0}
 	}
 	var types, funcs, bodies [][]byte
-	exports := [][]byte{wasmtest.ExportEntry("memory0", 2, 0), wasmtest.ExportEntry("memory1", 2, 1)}
+	exports := [][]byte{wasmtest.ExportEntry("memory0", 2, 0)}
+	if index != 0 {
+		exports = append(exports, wasmtest.ExportEntry("memory1", 2, 1))
+	}
 	addFunc := func(name string, store bool, body []byte) {
 		params := []wasm.ValType{typ}
 		if store {
@@ -88,7 +111,7 @@ func TestMemoryMinimumBoundsPublicExecution(t *testing.T) {
 				for _, enabled := range []bool{false, true} {
 					for _, regABI := range []bool{false, true} {
 						t.Run(fmt.Sprintf("wide=%t/shared=%t/index=%d/enabled=%t/regabi=%t", wide, shared, index, enabled, regABI), func(t *testing.T) {
-							cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("memory-min-bounds", enabled).WithOptimization("reg-abi", regABI)
+							cfg := NewRuntimeConfig().WithCoreFeatures(requireNativeTestFeatures(t, nativeMemoryTestFeatures(wide, index))).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("memory-min-bounds", enabled).WithOptimization("reg-abi", regABI)
 							c, err := cfg.Compile(memoryMinimumBoundsModule(wide, shared, index, 1))
 							if err != nil {
 								t.Fatal(err)
@@ -149,32 +172,34 @@ func TestMemoryMinimumBoundsPublicExecution(t *testing.T) {
 func TestMemoryMinimumBoundsZeroMinimumUsesLiveGrowth(t *testing.T) {
 	for _, wide := range []bool{false, true} {
 		for _, index := range []uint32{0, 1} {
-			c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).Compile(memoryMinimumBoundsModule(wide, true, index, 0))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer c.Close()
-			in, err := Instantiate(c)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer in.Close()
-			_, err = in.Invoke("read", 0)
-			var trap *TrapError
-			if !errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds {
-				t.Fatalf("zero-minimum initial read: %v", err)
-			}
-			memory, err := in.ExportedMemory(fmt.Sprintf("memory%d", index))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if old := memory.growShared(1, 2); old != 0 {
-				t.Fatalf("grow old=%d", old)
-			}
-			got, err := in.Invoke("read", 0)
-			if err != nil || got[0] != 0 {
-				t.Fatalf("grown extent read: %v,%v", got, err)
-			}
+			t.Run(fmt.Sprintf("wide=%t/index=%d", wide, index), func(t *testing.T) {
+				c, err := NewRuntimeConfig().WithCoreFeatures(requireNativeTestFeatures(t, nativeMemoryTestFeatures(wide, index))).WithBoundsChecks(BoundsChecksExplicit).Compile(memoryMinimumBoundsModule(wide, true, index, 0))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer c.Close()
+				in, err := Instantiate(c)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer in.Close()
+				_, err = in.Invoke("read", 0)
+				var trap *TrapError
+				if !errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds {
+					t.Fatalf("zero-minimum initial read: %v", err)
+				}
+				memory, err := in.ExportedMemory(fmt.Sprintf("memory%d", index))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if old := memory.growShared(1, 2); old != 0 {
+					t.Fatalf("grow old=%d", old)
+				}
+				got, err := in.Invoke("read", 0)
+				if err != nil || got[0] != 0 {
+					t.Fatalf("grown extent read: %v,%v", got, err)
+				}
+			})
 		}
 	}
 }
@@ -215,6 +240,7 @@ func memoryMinimumCopyModule(wide bool, minima [2]byte, length uint32) []byte {
 }
 
 func TestMemoryMinimumCopyPublicExecution(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	for _, wide := range []bool{false, true} {
 		for _, minima := range [][2]byte{{1, 1}, {0, 1}, {1, 0}, {0, 0}} {
 			for _, length := range []uint32{0, 4, 33, 64} {

@@ -25,6 +25,7 @@ func secondaryGrowOnlyModule(wide bool) []byte {
 }
 
 func TestSharedSecondaryGrowOnlyInitializesHelpers(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	for _, wide := range []bool{false, true} {
 		for _, regABI := range []bool{false, true} {
 			t.Run(fmt.Sprintf("wide=%t/regabi=%t", wide, regABI), func(t *testing.T) {

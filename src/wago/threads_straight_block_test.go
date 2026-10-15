@@ -20,6 +20,7 @@ func atomicStraightModule(wide bool, index uint32) []byte {
 	}
 	memories := [][]byte{{1, 1, 2}, {1, 1, 2}}
 	memories[index] = []byte{flags, 1, 2}
+	memories = memories[:index+1]
 	memarg := []byte{2, 0}
 	ordinary := []byte{2, 0}
 	if index != 0 {
@@ -69,7 +70,7 @@ func TestThreadsStraightBlockValuesAndTraps(t *testing.T) {
 			for _, enabled := range []bool{false, true} {
 				for _, regABI := range []bool{false, true} {
 					t.Run(fmt.Sprintf("wide=%t/index=%d/block=%t/abi=%t", wide, index, enabled, regABI), func(t *testing.T) {
-						c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("straight-line-block", enabled).WithOptimization("reg-abi", regABI).Compile(atomicStraightModule(wide, index))
+						c, err := NewRuntimeConfig().WithCoreFeatures(requireNativeTestFeatures(t, nativeMemoryTestFeatures(wide, index))).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("straight-line-block", enabled).WithOptimization("reg-abi", regABI).Compile(atomicStraightModule(wide, index))
 						if err != nil {
 							t.Fatal(err)
 						}

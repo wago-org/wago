@@ -1151,7 +1151,7 @@ func TestThreadsUnsharedMemory32AtomicWrites(t *testing.T) {
 						if wide {
 							sub++
 						}
-						cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", regABI)
+						cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", regABI)
 						c, err := cfg.Compile(atomicWriteAtModuleWithAddress(sub, align, typ, tc.operands, false, constantAddress))
 						if err != nil {
 							t.Fatal(err)

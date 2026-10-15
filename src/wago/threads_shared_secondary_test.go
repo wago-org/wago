@@ -91,6 +91,7 @@ func threadsSharedSecondaryModule(primaryShared, primary64, secondary64, importe
 }
 
 func TestThreadsSharedSecondaryGrowthBulkAndWait(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	for _, primaryShared := range []bool{false, true} {
 		for _, primary64 := range []bool{false, true} {
 			for _, secondary64 := range []bool{false, true} {
@@ -218,6 +219,7 @@ func TestThreadsSharedSecondaryGrowthBulkAndWait(t *testing.T) {
 }
 
 func TestThreadsSharedSecondaryBlockingWaitAndCancellation(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	for _, primaryShared := range []bool{false, true} {
 		for _, secondary64 := range []bool{false, true} {
 			t.Run(fmt.Sprintf("shared0=%t/q64=%t", primaryShared, secondary64), func(t *testing.T) {
@@ -302,6 +304,7 @@ func TestThreadsSharedSecondaryBlockingWaitAndCancellation(t *testing.T) {
 }
 
 func TestThreadsSharedSecondaryGrowthVisibleWithinNativeActivation(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	for _, primaryShared := range []bool{false, true} {
 		for _, secondary64 := range []bool{false, true} {
 			t.Run(fmt.Sprintf("shared0=%t/q64=%t", primaryShared, secondary64), func(t *testing.T) {
@@ -354,6 +357,7 @@ func TestThreadsSharedSecondaryGrowthVisibleWithinNativeActivation(t *testing.T)
 }
 
 func TestThreadsAliasedSharedMemoriesUseOneWaitQueue(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 	c, err := cfg.Compile(threadsSharedSecondaryModule(true, false, false, true))
 	if err != nil {

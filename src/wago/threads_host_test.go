@@ -563,6 +563,7 @@ func TestThreadsSharedHostPublicationMigratesLease(t *testing.T) {
 }
 
 func TestThreadsSharedImportedWaitRetainsGCRoots(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureGC)
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 	rt := NewRuntime(WithRuntimeConfig(cfg))
 	defer rt.Close()

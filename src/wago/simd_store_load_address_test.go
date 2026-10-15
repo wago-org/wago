@@ -102,6 +102,7 @@ func simdAddressExpected(bytes []byte, tc loadExtractCase) uint64 {
 }
 
 func TestSIMDStoreLoadAddressPublicExecutionAndTraps(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	modes := []BoundsCheckMode{BoundsChecksExplicit}
 	if guardPageBuilt {
 		modes = append(modes, BoundsChecksSignalsBased)

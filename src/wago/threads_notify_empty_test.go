@@ -70,6 +70,7 @@ func TestThreadsNotifyQueuePublication(t *testing.T) {
 }
 
 func TestThreadsNotifyPublishesBeforeWaitRegistration(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	memory, err := NewSharedMemory(1, 3)
 	if err != nil {
 		t.Fatal(err)
@@ -134,6 +135,7 @@ func TestThreadsNotifyPublishesBeforeWaitRegistration(t *testing.T) {
 }
 
 func TestThreadsNotifyEmptyPolicyCodecAndTraps(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	for _, enabled := range []bool{false, true} {
 		for _, wide := range []bool{false, true} {
 			for _, shared := range []bool{false, true} {
@@ -191,6 +193,7 @@ func TestThreadsNotifyEmptyPolicyCodecAndTraps(t *testing.T) {
 }
 
 func TestThreadsNotifyPendingQueuesUseSlowPath(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	for _, regABI := range []bool{false, true} {
 		t.Run(fmt.Sprint(regABI), func(t *testing.T) {
 			memory, err := NewSharedMemory(1, 3)

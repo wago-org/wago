@@ -98,6 +98,7 @@ func threadsSecondaryModule(primary64, secondary64, imported, secondaryImported,
 }
 
 func TestThreadsPrivateSecondaryMemoryIsolationGrowthAndCodec(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	for _, imported := range []bool{false, true} {
 		for _, primary64 := range []bool{false, true} {
 			for _, secondary64 := range []bool{false, true} {
@@ -218,6 +219,7 @@ func TestThreadsPrivateSecondaryMemoryIsolationGrowthAndCodec(t *testing.T) {
 }
 
 func TestThreadsPrivateSecondaryMappingQuotaAndRollback(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	for _, startTrap := range []bool{false, true} {
 		for _, limit := range []uint32{2, 3} {
 			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithNativeMemoryMappingLimit(limit)
@@ -255,6 +257,7 @@ func TestThreadsPrivateSecondaryMappingQuotaAndRollback(t *testing.T) {
 }
 
 func TestThreadsPrivateSecondaryStartFailureReleasesNativeControl(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	if !coreruntime.ProcessNativeMemoryStats().Supported {
 		t.Skip("native interrupt registry is only tracked on Linux")
 	}
@@ -283,6 +286,7 @@ func TestThreadsPrivateSecondaryStartFailureReleasesNativeControl(t *testing.T) 
 }
 
 func TestThreadsImportedSecondaryMemoryUsesSharedLease(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	for _, regABI := range []bool{false, true} {
 		t.Run(fmt.Sprintf("regabi=%t", regABI), func(t *testing.T) {
 			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3|CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithOptimization("reg-abi", regABI)
@@ -351,6 +355,7 @@ func TestThreadsImportedSecondaryMemoryUsesSharedLease(t *testing.T) {
 }
 
 func TestThreadsImportedSecondaryAddressWidthsGrowthAndCodec(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	for _, primary64 := range []bool{false, true} {
 		for _, secondary64 := range []bool{false, true} {
 			for _, regABI := range []bool{false, true} {
@@ -517,10 +522,12 @@ func threadsSecondaryAtomicModuleWithSharing(primary64, secondary64, imported, c
 }
 
 func TestThreadsSecondaryAtomicMatrix(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	testThreadsSecondaryAtomicMatrix(t, false)
 }
 
 func TestThreadsSharedSecondaryAtomicMatrix(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureMultiMemory)
 	testThreadsSecondaryAtomicMatrix(t, true)
 }
 

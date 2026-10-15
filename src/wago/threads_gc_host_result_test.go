@@ -13,6 +13,7 @@ import (
 )
 
 func TestThreadsSharedForeignGCResultsUseOwnActivation(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureGC)
 	requireCompleteCore3Backend(t)
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 	rt := NewRuntime(WithRuntimeConfig(cfg))

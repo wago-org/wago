@@ -44,7 +44,7 @@ func TestStraightBlockPublicValueAndTrapOrder(t *testing.T) {
 		modes = append(modes, BoundsChecksSignalsBased)
 	}
 	for _, shared := range []bool{false, true} {
-		features := CoreFeaturesV3
+		features := CoreFeaturesV2
 		if shared {
 			features |= CoreFeatureThreads
 		}

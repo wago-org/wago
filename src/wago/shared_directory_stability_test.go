@@ -50,6 +50,12 @@ func TestSharedDirectoryCallbackGrowthAndPublication(t *testing.T) {
 	} {
 		for _, publish := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/publish=%t", tc.name, publish), func(t *testing.T) {
+				if tc.secondaryFlags != 0 {
+					requireNativeTestFeatures(t, CoreFeatureMultiMemory)
+				}
+				if tc.secondaryFlags&4 != 0 {
+					requireNativeTestFeatures(t, CoreFeatureMemory64)
+				}
 				cfg := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit)
 				c, err := Compile(cfg, sharedDirectoryHostFixture(tc.primaryMax, tc.secondaryFlags, tc.secondaryMax))
 				if err != nil {
