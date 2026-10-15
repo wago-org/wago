@@ -1227,7 +1227,9 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		a.MovReg64(RDI, R11)
 		a.LeaDisp(RDI, RDI, int32(gc.PayloadOffset))
 		a.MovRegReg32(RCX, R13)
-		a.XorSelf32(RDX)
+		if layout.elemSize != 4 {
+			a.XorSelf32(RDX)
+		}
 		a.TestSelf(RCX, false)
 		done := a.JccPlaceholder(condE)
 		loop := a.Len()
@@ -1239,6 +1241,9 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		} else if layout.elemSize == 8 {
 			a.Load64(RAX, R12, hcArgs)
 			a.Store64(RDI, 0, RAX)
+		} else if layout.elemSize == 4 {
+			a.Load32(RAX, R12, hcArgs)
+			a.Store32(RDI, 0, RAX)
 		} else {
 			a.Load32(RAX, R12, hcArgs)
 			a.StoreIdx(RDI, RDX, RAX, 0, int(layout.elemSize))
