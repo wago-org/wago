@@ -172,7 +172,7 @@ func TestModuleSharedGCResolverStubReducesDenseSites(t *testing.T) {
 }
 
 func TestModuleGCResolverFamilyCounts(t *testing.T) {
-	for _, kinds := range [][]gcSharedStubKind{nil, {gcSharedStubResolveObject}, {gcSharedStubResolveSubtypeObject}, {gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject}} {
+	for _, kinds := range [][]gcSharedStubKind{nil, {gcSharedStubResolveObject}, {gcSharedStubResolveSubtypeObject}, {gcSharedStubResolveBoundedObject}, {gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject}} {
 		relocs := make([]callReloc, len(kinds))
 		for i, kind := range kinds {
 			relocs[i].gcStub = kind
@@ -186,8 +186,12 @@ func TestModuleGCResolverFamilyCounts(t *testing.T) {
 				t.Fatalf("family %d: invalid offset %d", kind, offsets[kind])
 			}
 		}
-		if len(kinds) == 2 && offsets[kinds[0]] == offsets[kinds[1]] {
-			t.Fatal("resolver families share a body offset")
+		for i := range kinds {
+			for j := i + 1; j < len(kinds); j++ {
+				if offsets[kinds[i]] == offsets[kinds[j]] {
+					t.Fatal("resolver families share a body offset")
+				}
+			}
 		}
 	}
 }

@@ -362,6 +362,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if _, ok := f.stagedArrayType(srcType); !ok {
 			return fmt.Errorf("amd64: array.copy source type %d is unavailable", srcType)
 		}
+		if f.emitDirectGCArrayCopy(dstType, srcType) {
+			return nil
+		}
 		if dstField.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, dstField.Storage().Val()) {
 			f.gcOpcodeBarrier = true
 		}

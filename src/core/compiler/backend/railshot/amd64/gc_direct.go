@@ -21,6 +21,7 @@ const (
 	gcSharedStubNone gcSharedStubKind = iota
 	gcSharedStubResolveObject
 	gcSharedStubResolveSubtypeObject
+	gcSharedStubResolveBoundedObject
 	gcSharedStubMax
 )
 
@@ -363,14 +364,14 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 	for i := range offsets {
 		offsets[i] = -1
 	}
-	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] {
+	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] {
 		return nil, offsets
 	}
 	a := &x64.Asm{}
-	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject} {
+	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject} {
 		if used[kind] {
 			offsets[kind] = a.Len()
-			emitModuleGCResolveObjectStub(a, kind == gcSharedStubResolveSubtypeObject)
+			emitModuleGCResolveObjectStub(a, kind == gcSharedStubResolveSubtypeObject, kind == gcSharedStubResolveBoundedObject)
 		}
 	}
 	return a.B, offsets
@@ -395,7 +396,7 @@ func countGCSharedStubBodies(offsets [gcSharedStubMax]int) int {
 //
 // The compact reference remains in the caller's canonical local/stack root. A
 // returned raw address is valid only until the caller's next invalidating edge.
-func emitModuleGCResolveObjectStub(a *x64.Asm, subtype bool) {
+func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded bool) {
 	a.Push(R9)
 	a.Push(R10)
 	a.Push(R11)
@@ -447,6 +448,11 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype bool) {
 	castFailures = append(castFailures, a.JccPlaceholder(condB))
 
 	a.Add64(R11, RAX)
+	if bounded {
+		a.Load32(R8, R11, 4)
+		a.Cmp32(R8, RCX)
+		castFailures = append(castFailures, a.JccPlaceholder(condA))
+	}
 	a.Load32(RCX, R11, 0)
 	a.Cmp32(RCX, RDX)
 	if subtype {
