@@ -77,7 +77,7 @@ func TestWideArithmeticExecutionAndCodec(t *testing.T) {
 				name += "/pressure"
 			}
 			t.Run(name, func(t *testing.T) {
-				cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureWideArithmetic)
+				cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureWideArithmetic).WithBoundsChecks(BoundsChecksExplicit)
 				compiled, err := cfg.Compile(wideArithmeticModule(sub, pressure))
 				if err != nil {
 					t.Fatal(err)

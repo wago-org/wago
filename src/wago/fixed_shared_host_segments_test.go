@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -79,22 +80,13 @@ func TestFixedSharedHostSegmentsAdmission(t *testing.T) {
 
 func TestFixedSharedHostSegmentsEffectiveBounds(t *testing.T) {
 	c, err := Compile(NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksSignalsBased), fixedSharedHostLoopModule(false))
-	if !guardPageBuilt {
-		if err == nil {
-			c.Close()
-			t.Fatal("signal bounds unexpectedly available")
-		}
-		return
+	if err == nil {
+		c.Close()
+		t.Fatal("shared memory unexpectedly accepted signal bounds")
 	}
-	if err != nil {
-		t.Fatal(err)
+	if guardPageBuilt && !strings.Contains(err.Error(), "threads currently require explicit bounds checks") {
+		t.Fatalf("signal bounds rejection = %v", err)
 	}
-	defer c.Close()
-	// Shared memory forces explicit checks even in a signal-bounds build.
-	if !c.fixedSharedHostSegments {
-		t.Fatal("effective explicit bounds lost certificate")
-	}
-
 }
 
 func TestFixedSharedHostSegmentsCancellationAndGC(t *testing.T) {

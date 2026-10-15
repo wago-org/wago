@@ -405,7 +405,7 @@ func TestFuzzRegressionCorpus(t *testing.T) {
 	})
 	t.Run("2131_threads_fail_closed", func(t *testing.T) {
 		b := readFuzzFixture(t, "2131")
-		if _, err := Compile(nil, b); err == nil || !strings.Contains(err.Error(), "shared") {
+		if _, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), b); err == nil || !strings.Contains(err.Error(), "shared") {
 			t.Fatalf("threads module error = %v, want explicit shared-memory rejection", err)
 		}
 	})
