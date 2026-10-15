@@ -68,18 +68,16 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 			case 4, 8:
 				f.a.ImulRI(pair[1], int32(dstScalar.size), true)
 			}
+			f.a.AluRI(0, pair[1], required, true)
 			f.a.Load32(tmp, pair[0], 4)
-			f.a.AluRI(cmpDigit, tmp, required, false)
-			f.trapIf(condB, trapCastFailure)
-			f.a.AluRI(5, tmp, required, true)
 			f.a.Cmp64(pair[1], tmp)
 			f.trapIf(condA, trapCastFailure)
 		}
 		// Address registers are separate from the cached base-object certificate.
 		f.a.Add64(dstIndex, dst)
 		f.a.Add64(srcIndex, src)
-		f.a.LoadIdx(tmp, srcIndex, RSP, int32(gc.PayloadOffset), dstScalar.size, false, dstScalar.size == 8)
-		f.a.StoreIdx(dstIndex, RSP, tmp, int32(gc.PayloadOffset), dstScalar.size)
+		f.a.LoadIdx(tmp, srcIndex, RSP, -int32(dstScalar.size), dstScalar.size, false, dstScalar.size == 8)
+		f.a.StoreIdx(dstIndex, RSP, tmp, -int32(dstScalar.size), dstScalar.size)
 	}
 	f.pinned = f.pinned.remove(tmp).remove(srcIndex).remove(dstIndex).remove(dst)
 	f.release(tmp)
