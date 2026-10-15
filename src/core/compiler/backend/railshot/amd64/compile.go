@@ -1938,7 +1938,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// A one-worker join pays for a second arena and copy. It wins for large bodies,
 	// while serial heap staging is cheaper for modules made mostly of small
 	// functions.
-	serialHeap := opts.DeferCodeMapping && (len(m.Code) == 1 && totalBody < 4<<10 ||
+	serialHeap := opts.DeferCodeMapping && ((len(m.Code) == 1 || len(m.Code) == 2 && !compactNativePolicy(policy)) && totalBody < 4<<10 ||
 		len(m.Code) >= 32 && totalBody/len(m.Code) < 2<<10)
 	if workers <= 1 && (!opts.DeferCodeMapping || serialHeap) {
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
