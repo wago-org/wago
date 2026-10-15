@@ -9,6 +9,9 @@ import (
 	"github.com/wago-org/wago/internal/runtimebridge"
 )
 
+// NativeScalarLeafSupported reports whether this build can bind native callbacks.
+const NativeScalarLeafSupported = true
+
 type nativeScalarLeaf struct {
 	code   []byte
 	direct uintptr

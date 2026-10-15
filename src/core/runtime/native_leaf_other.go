@@ -9,6 +9,9 @@ import "github.com/wago-org/wago/internal/runtimebridge"
 // argument-buffer wrapper.
 const NativeScalarLeafRegisterEntryOffset = 192
 
+// NativeScalarLeafSupported reports whether this build can bind native callbacks.
+const NativeScalarLeafSupported = false
+
 func RegisterNativeScalarLeaf(runtimebridge.HostScalarCallAccess, []byte, any, uint32) (bool, error) {
 	return false, nil
 }

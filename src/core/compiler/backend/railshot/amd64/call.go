@@ -1790,7 +1790,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	// Locals and operands already follow the ordinary wrapper call contract;
 	// the leaf wrapper preserves RBX and never touches RBP/R12-R15 or FP state.
 	nativeLeaf := -1
-	if f.opt(optNativeLeafHost) && b.Dynamic && !recordRoots && p >= 1 && p <= 2 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && ft.Params[0] == wasm.I32 && (p == 1 || ft.Params[1] == wasm.I32) {
+	if runtime.NativeScalarLeafSupported && f.opt(optNativeLeafHost) && b.Dynamic && !recordRoots && p >= 1 && p <= 2 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && ft.Params[0] == wasm.I32 && (p == 1 || ft.Params[1] == wasm.I32) {
 		if b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
 			return fmt.Errorf("import dispatch index %d overflows displacement", b.ImportIndex)
 		}
