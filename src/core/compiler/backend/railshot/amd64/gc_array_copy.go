@@ -50,13 +50,14 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 	f.pinned = f.pinned.add(srcIndex)
 	tmp := f.allocReg(maskOf(dst, src, dstIndex, srcIndex))
 	f.pinned = f.pinned.add(tmp)
+	rangeTrap := condA
+	if count != 0 {
+		rangeTrap = condAE
+	}
 	for _, pair := range [2][2]Reg{{dst, dstIndex}, {src, srcIndex}} {
 		f.a.Load32(tmp, pair[0], 8)
-		f.a.AluRI(cmpDigit, tmp, int32(count), false)
-		f.trapIf(condB, trapBuiltin)
-		f.a.AluRI(5, tmp, int32(count), false)
 		f.a.Cmp32(pair[1], tmp)
-		f.trapIf(condA, trapBuiltin)
+		f.trapIf(rangeTrap, trapBuiltin)
 	}
 	if count != 0 {
 		required := int32(gc.PayloadOffset) + int32(dstScalar.size)
