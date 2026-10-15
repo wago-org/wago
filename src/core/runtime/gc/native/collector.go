@@ -2,6 +2,7 @@ package gc
 
 import (
 	"errors"
+	"runtime"
 )
 
 // Profile selects a supported allocator/runtime preset.
@@ -33,6 +34,8 @@ const (
 )
 
 type Config struct {
+	// NurseryBytes fixes Eden capacity when nonzero. On AMD64 the default starts
+	// at 64 KiB and can grow to 1 MiB after sustained survival pressure.
 	NurseryBytes uint32
 	// SurvivorBytes is the capacity of each of two bounded Throughput survivor
 	// semispaces. Zero selects half the normalized Eden capacity. It is ignored
@@ -114,44 +117,47 @@ type handleEntry struct {
 }
 
 type Collector struct {
-	cfg                 Config
-	nativeView          *NativeCollectorView
-	nativeStructAlloc   nativeStructAllocState
-	nativeAllocEpoch    uint32
-	arraySlow           uint8
-	types               []TypeDesc
-	subtypeIntervals    []uint64 // packed DFS [pre, post] interval by canonical TypeID
-	objectAlign         uint32
-	nursery             []byte // Eden followed by two survivor semispaces.
-	nurseryBump         uint32
-	survivorBytes       uint32
-	survivorBump        uint32
-	survivorFrom        uint8
-	tenuringThreshold   uint8
-	lastFullCollections uint64
-	tiny                tinyHeap
-	tinyGC              tinyGC
-	throughput          throughputHeap
-	handles             []handleEntry // index 0 is never used; Ref stores index<<1.
-	freeHandles         []uint32
-	nurseryHandles      []uint32 // dense live nursery set; minor collection never scans all old handles
-	mark                []bool
-	markStack           []uint32 // Throughput tracing stack; Tiny transient-root staging buffer.
-	promotionScratch    []plannedPromotion
-	remembered          []uint32
-	objectCards         []objectCard
-	cardBytes           uint32
-	freeObjectCardSlot  uint32 // one-based tombstone free-list head; links use objectCard.next
-	slotCards           []slotCard
-	globalCardBits      []uint64
-	tableCardBits       []uint64
-	cardFallback        bool // shared full remembered-object/persistent-root scan
-	globalSlots         []Ref
-	tableSlots          []Ref
-	stats               Stats
-	rootMarkMode        uint8
-	closed              bool
-	checkedHandles      *[]uint64
+	cfg                   Config
+	nativeView            *NativeCollectorView
+	nativeStructAlloc     nativeStructAllocState
+	nativeAllocEpoch      uint32
+	arraySlow             uint8
+	nurseryGrowthPressure uint8 // occupies existing padding before types
+	nurseryGrowthQuiet    uint8
+	types                 []TypeDesc
+	subtypeIntervals      []uint64 // packed DFS [pre, post] interval by canonical TypeID
+	objectAlign           uint32
+	nurseryGrowthLimit    uint32 // occupies existing padding before nursery
+	nursery               []byte // Eden followed by two survivor semispaces.
+	nurseryBump           uint32
+	survivorBytes         uint32
+	survivorBump          uint32
+	survivorFrom          uint8
+	tenuringThreshold     uint8
+	lastFullCollections   uint64
+	tiny                  tinyHeap
+	tinyGC                tinyGC
+	throughput            throughputHeap
+	handles               []handleEntry // index 0 is never used; Ref stores index<<1.
+	freeHandles           []uint32
+	nurseryHandles        []uint32 // dense live nursery set; minor collection never scans all old handles
+	mark                  []bool
+	markStack             []uint32 // Throughput tracing stack; Tiny transient-root staging buffer.
+	promotionScratch      []plannedPromotion
+	remembered            []uint32
+	objectCards           []objectCard
+	cardBytes             uint32
+	freeObjectCardSlot    uint32 // one-based tombstone free-list head; links use objectCard.next
+	slotCards             []slotCard
+	globalCardBits        []uint64
+	tableCardBits         []uint64
+	cardFallback          bool // shared full remembered-object/persistent-root scan
+	globalSlots           []Ref
+	tableSlots            []Ref
+	stats                 Stats
+	rootMarkMode          uint8
+	closed                bool
+	checkedHandles        *[]uint64
 	// Keep optional proof state last so existing collector field offsets stay fixed.
 	lastCardBounds objectCardBounds
 }
@@ -165,6 +171,10 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err := ValidateNativeABI(); err != nil {
 		return nil, err
 	}
+	autoNursery := runtime.GOARCH == "amd64" && config.Profile == ProfileThroughput &&
+		config.NurseryBytes == 0 && config.SurvivorBytes == 0 && config.StressNurseryBytes == 0 &&
+		config.ThroughputHeapBytes == 0 && config.LargeObjectBytes == 0 && config.MinorPauseTargetMicros == 0 &&
+		!config.DisableCollection && !config.DisableMovingNursery && !config.CollectEveryAlloc && !config.ForceMajorEveryMinor
 	var err error
 	config, err = normalizeConfig(config)
 	if err != nil {
@@ -195,6 +205,9 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	}
 	if config.DisableMovingNursery || config.SurvivorBytes == 0 {
 		c.tenuringThreshold = 1
+	}
+	if autoNursery {
+		c.nurseryGrowthLimit = 1 << 20
 	}
 
 	if err := c.initSubtypeIntervals(); err != nil {

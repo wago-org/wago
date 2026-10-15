@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/binary"
 	"errors"
+	"runtime"
 	"slices"
 	"time"
 )
@@ -84,6 +85,10 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		pauseNS = uint64(time.Since(policyStart))
 	}
 	c.adaptTenuring(copiedBytes, promotedBytes, pauseNS)
+	if runtime.GOARCH == "amd64" && c.cfg.NurseryBytes < c.nurseryGrowthLimit &&
+		(copiedBytes != 0 || c.nurseryGrowthPressure != 0) {
+		c.growDefaultNursery(copiedBytes)
+	}
 	if c.cfg.VerifyAfterCollect {
 		if err := c.verifyNurseryEvacuated(); err != nil {
 			return err
