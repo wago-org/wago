@@ -742,6 +742,17 @@ func asmCapForBody(bodyLen int) int {
 	return capHint
 }
 
+func asmTailCapacityAMD64(bodyLen int, policy CodegenPolicy) int {
+	capacity := asmCapForBody(bodyLen)
+	if compactNativePolicy(policy) {
+		capacity += amd64.Rel32ScratchSize(finalizerRel32Limit(policy))
+	}
+	if symbolicLocalSlotPackingPolicy(policy) {
+		capacity += amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
+	}
+	return capacity
+}
+
 func moduleCodeCapacityAMD64(bodyBytes, functions int, policy CodegenPolicy) int {
 	largeExpansionEighths := 37
 	if policy.CompactNative {
@@ -1947,6 +1958,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		var err error
 		if opts.DeferCodeMapping {
 			capacity := codeCap
+			if n == 1 && totalBody >= 2<<10 {
+				capacity = min(capacity, asmTailCapacityAMD64(totalBody, policy))
+			}
 			if capacity >= 256<<10 {
 				capacity -= capacity / 4
 			}
@@ -2004,13 +2018,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 			code := codeBuffer.Bytes()
 			entry[i] = len(code)
-			tailCap := asmCapForBody(len(m.Code[i].BodyBytes))
-			if compactNativePolicy(policy) {
-				tailCap += amd64.Rel32ScratchSize(finalizerRel32Limit(policy))
-			}
-			if symbolicLocalSlotPackingPolicy(policy) {
-				tailCap += amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
-			}
+			tailCap := asmTailCapacityAMD64(len(m.Code[i].BodyBytes), policy)
 			tail, err := codeBuffer.AppendTail(tailCap)
 			if err != nil {
 				return nil, fmt.Errorf("amd64: grow code image: %w", err)
