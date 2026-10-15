@@ -4,7 +4,7 @@ package amd64
 
 import gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 
-// A single numeric element can be loaded before the store without an overlap
+// Up to two numeric elements can be loaded before the stores without an overlap
 // branch, payload buffer, or loop. Larger copies retain the Go copy helper.
 func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 	if !gcSharedStubsEnabled {
@@ -18,7 +18,7 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 		return false
 	}
 	count := uint32(countRoot.st.cval)
-	if count > 1 {
+	if count > 2 {
 		return false
 	}
 	f.flush()
@@ -51,16 +51,24 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 	tmp := f.allocReg(maskOf(dst, src, dstIndex, srcIndex))
 	f.pinned = f.pinned.add(tmp)
 	rangeTrap := condA
-	if count != 0 {
+	if count == 1 {
 		rangeTrap = condAE
 	}
 	for _, pair := range [2][2]Reg{{dst, dstIndex}, {src, srcIndex}} {
 		f.a.Load32(tmp, pair[0], 8)
-		f.a.Cmp32(pair[1], tmp)
-		f.trapIf(rangeTrap, trapBuiltin)
+		if count == 2 {
+			f.a.AluRI(cmpDigit, tmp, int32(count), false)
+			f.trapIf(condB, trapBuiltin)
+			f.a.AluRI(5, tmp, int32(count), false)
+			f.a.Cmp32(pair[1], tmp)
+			f.trapIf(condA, trapBuiltin)
+		} else {
+			f.a.Cmp32(pair[1], tmp)
+			f.trapIf(rangeTrap, trapBuiltin)
+		}
 	}
 	if count != 0 {
-		required := int32(gc.PayloadOffset) + int32(dstScalar.size)
+		required := int32(gc.PayloadOffset) + int32(count)*int32(dstScalar.size)
 		for _, pair := range [2][2]Reg{{dst, dstIndex}, {src, srcIndex}} {
 			switch dstScalar.size {
 			case 2:
@@ -76,8 +84,17 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 		// Address registers are separate from the cached base-object certificate.
 		f.a.Add64(dstIndex, dst)
 		f.a.Add64(srcIndex, src)
-		f.a.LoadIdx(tmp, srcIndex, RSP, -int32(dstScalar.size), dstScalar.size, false, dstScalar.size == 8)
-		f.a.StoreIdx(dstIndex, RSP, tmp, -int32(dstScalar.size), dstScalar.size)
+		firstDisp := -int32(count) * int32(dstScalar.size)
+		f.a.LoadIdx(tmp, srcIndex, RSP, firstDisp, dstScalar.size, false, dstScalar.size == 8)
+		if count == 2 {
+			tmp2 := f.allocReg(maskOf(dst, src, dstIndex, srcIndex, tmp))
+			f.a.LoadIdx(tmp2, srcIndex, RSP, -int32(dstScalar.size), dstScalar.size, false, dstScalar.size == 8)
+			f.a.StoreIdx(dstIndex, RSP, tmp, firstDisp, dstScalar.size)
+			f.a.StoreIdx(dstIndex, RSP, tmp2, -int32(dstScalar.size), dstScalar.size)
+			f.release(tmp2)
+		} else {
+			f.a.StoreIdx(dstIndex, RSP, tmp, firstDisp, dstScalar.size)
+		}
 	}
 	f.pinned = f.pinned.remove(tmp).remove(srcIndex).remove(dstIndex).remove(dst)
 	f.release(tmp)

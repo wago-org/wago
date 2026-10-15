@@ -19,7 +19,7 @@ func TestGCArrayCopyNativeSelection(t *testing.T) {
 	}{
 		{name: "zero", want: 1},
 		{name: "one", count: 1, want: 1},
-		{name: "two", count: 2},
+		{name: "two", count: 2, want: 1},
 		{name: "dynamic", dynamic: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -79,7 +79,7 @@ func gcNumericCopyModule(storage byte) []byte {
 			wasmtest.Code(set(0)), wasmtest.Code(set(1)), wasmtest.Code(get(0)), wasmtest.Code(get(1)),
 			wasmtest.Code(copyBody(0, 1, 1, false)), wasmtest.Code(copyBody(0, 1, 0, false)),
 			wasmtest.Code(copyBody(0, 1, 2, false)), wasmtest.Code(copyBody(0, 1, 0, true)),
-			wasmtest.Code(copyBody(0, 0, 1, false)),
+			wasmtest.Code(copyBody(0, 0, 2, false)),
 			wasmtest.Code([]byte{0xd0, 0, 0x24, 0, 0x0b}), wasmtest.Code([]byte{0xd0, 0, 0x24, 1, 0x0b}),
 			wasmtest.Code([]byte{0x41, 1, 0x20, 0, 0x6e, 0x23, 0, 0x41, 0, 0x23, 1, 0x41, 0, 0x41, 1, 0xfb, 17, 0, 0, 0x1a, 0x0b}),
 		)),
@@ -163,7 +163,12 @@ func TestGCNativeNumericArrayCopy(t *testing.T) {
 				expectTrap("copy-zero", TrapBuiltin, 9, 8)
 				expectTrap("copy-one", TrapBuiltin, 8, 0)
 				expectTrap("copy-one", TrapBuiltin, 0, 8)
+				bits2 := tc.bits ^ 0x55aa55aa55aa55aa
+				want2 := gcCopyExpected(tc.storage, bits2)
 				if _, err := in.Invoke("set-dst", 4, tc.bits); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := in.Invoke("set-dst", 5, bits2); err != nil {
 					t.Fatal(err)
 				}
 				if _, err := in.Invoke("copy-overlap", 5, 4); err != nil {
@@ -172,9 +177,32 @@ func TestGCNativeNumericArrayCopy(t *testing.T) {
 				if got, err := in.Invoke("get-dst", 5); err != nil || got[0] != want {
 					t.Fatalf("overlap copy = %v, %v; want %#x", got, err, want)
 				}
-				if _, err := in.Invoke("copy-two", 0, 2); err != nil {
-					t.Fatalf("two-element helper control: %v", err)
+				if got, err := in.Invoke("get-dst", 6); err != nil || got[0] != want2 {
+					t.Fatalf("forward overlap tail = %v, %v; want %#x", got, err, want2)
 				}
+				if _, err := in.Invoke("copy-overlap", 4, 5); err != nil {
+					t.Fatal(err)
+				}
+				if got, err := in.Invoke("get-dst", 4); err != nil || got[0] != want {
+					t.Fatalf("backward overlap head = %v, %v; want %#x", got, err, want)
+				}
+				if got, err := in.Invoke("get-dst", 5); err != nil || got[0] != want2 {
+					t.Fatalf("backward overlap tail = %v, %v; want %#x", got, err, want2)
+				}
+				if _, err := in.Invoke("set-src", 2, bits2); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := in.Invoke("copy-two", 0, 2); err != nil {
+					t.Fatalf("two-element copy: %v", err)
+				}
+				if got, err := in.Invoke("get-dst", 0); err != nil || got[0] != want2 {
+					t.Fatalf("two-element head = %v, %v; want %#x", got, err, want2)
+				}
+				if got, err := in.Invoke("get-dst", 1); err != nil || got[0] != want {
+					t.Fatalf("two-element tail = %v, %v; want %#x", got, err, want)
+				}
+				expectTrap("copy-two", TrapBuiltin, 7, 0)
+				expectTrap("copy-two", TrapBuiltin, 0, 7)
 				if _, err := in.Invoke("copy-dynamic", 0, 3, 1); err != nil {
 					t.Fatalf("dynamic helper control: %v", err)
 				}
@@ -183,6 +211,7 @@ func TestGCNativeNumericArrayCopy(t *testing.T) {
 				}
 				expectTrap("copy-zero", TrapNullReference, 0, 0)
 				expectTrap("copy-one", TrapNullReference, 0, 0)
+				expectTrap("copy-two", TrapNullReference, 0, 0)
 				expectTrap("copy-one", TrapNullReference, 9, 0)
 				for _, trapCase := range []struct {
 					divisor uint64
@@ -202,7 +231,57 @@ func TestGCNativeNumericArrayCopy(t *testing.T) {
 				}
 				expectTrap("copy-zero", TrapNullReference, 0, 0)
 				expectTrap("copy-one", TrapNullReference, 0, 0)
+				expectTrap("copy-two", TrapNullReference, 0, 0)
 			})
+		}
+	}
+}
+
+func TestGCNativeArrayCopyTwoShortObjectSize(t *testing.T) {
+	for _, profile := range []GCProfile{GCProfileThroughput, GCProfileTiny} {
+		for _, target := range []int{0, 1} {
+			c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcNumericCopyModule(0x7f))
+			if err != nil {
+				t.Fatal(err)
+			}
+			in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: profile}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := in.Invoke("init", 8); err != nil {
+				t.Fatal(err)
+			}
+			for i, value := range []uint64{17, 19} {
+				if _, err := in.Invoke("set-src", uint64(i), value); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before0, err := in.Invoke("get-dst", 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before1, err := in.Invoke("get-dst", 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			view := in.gc.NativeView()
+			ref := uint32(readGlobalObject(in.globalCells[target], in.c.Globals[target].Type))
+			handle := unsafe.Slice((*byte)(offHeapPtr(view.Handles+uintptr(ref>>1)*gc.NativeHandleStride)), gc.NativeHandleStride)
+			offset := binary.LittleEndian.Uint32(handle[gc.NativeHandleOffsetOffset:])
+			space := handle[gc.NativeHandleSpaceOffset]
+			header := unsafe.Slice((*byte)(offHeapPtr(view.Spaces[space].Base+uintptr(offset))), gc.PayloadOffset)
+			size := binary.LittleEndian.Uint32(header[4:])
+			binary.LittleEndian.PutUint32(header[4:], gc.PayloadOffset+4)
+			_, copyErr := in.Invoke("copy-two", 0, 0)
+			binary.LittleEndian.PutUint32(header[4:], size)
+			after0, readErr0 := in.Invoke("get-dst", 0)
+			after1, readErr1 := in.Invoke("get-dst", 1)
+			in.Close()
+			c.Close()
+			var trap *TrapError
+			if !errors.As(copyErr, &trap) || trap.Code != TrapCastFailure || readErr0 != nil || readErr1 != nil || before0[0] != after0[0] || before1[0] != after1[0] {
+				t.Fatalf("profile%v target%d: copy=%v read=%v/%v destination=%x,%x->%x,%x", profile, target, copyErr, readErr0, readErr1, before0[0], before1[0], after0[0], after1[0])
+			}
 		}
 	}
 }
