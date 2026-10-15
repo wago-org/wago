@@ -63,6 +63,10 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 				return nil
 			}
 		}
+		fill, fuseFill := f.matchGCArrayNewFill(r, typeIndex, field)
+		if fuseFill {
+			fill.replaceInitializer(f)
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocUniform)
@@ -76,6 +80,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return err
 		}
 		f.markTopGCReference()
+		if fuseFill {
+			fill.finish(f, r)
+		}
 		return nil
 	case 10: // array.new_elem typeidx elemidx
 		typeIndex, err := r.U32()

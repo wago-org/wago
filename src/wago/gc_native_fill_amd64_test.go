@@ -225,3 +225,112 @@ func TestGCNativeNumericZeroFillEvaluatesValue(t *testing.T) {
 		}
 	}
 }
+
+func gcArrayNewFillFusionModule(start, count byte) []byte {
+	arrayType := []byte{0x5e, 0x7f, 0x01} // final (array (mut i32))
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+	body := []byte{
+		0x01, 0x01, 0x63, 0x00, // one (ref null 0) local
+		0x41, 0x00, 0x41, 0x10, 0xfb, 0x06, 0x00, 0x21, 0x02, // array.new 0 (0, 16); local.set 2
+		0x20, 0x02, 0x41, start, 0x20, 0x00, 0x41, count, 0xfb, 0x10, 0x00, // fill from parameter 0
+		0x20, 0x02, 0x20, 0x01, 0xfb, 0x0b, 0x00, // array.get at parameter 1
+		0x0b,
+	}
+	body = append(wasmtest.ULEB(uint32(len(body))), body...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(arrayType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(body)),
+	)
+}
+
+func gcArrayNewFillLocalStateModule() []byte {
+	arrayType := []byte{0x5e, 0x7f, 0x01} // final (array (mut i32))
+	funcType := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+	body := func(dirty bool) []byte {
+		code := []byte{0x02, 0x01, 0x63, 0x00, 0x01, 0x7f} // ref local 2, i32 local 3
+		if dirty {
+			code = append(code, 0x20, 0x00, 0x21, 0x03) // local 3 = parameter 0
+			for range 8 {
+				code = append(code, 0x20, 0x03, 0x1a) // make local 3 hot enough to pin
+			}
+		}
+		code = append(code,
+			0x41, 0x00, 0x41, 0x10, 0xfb, 0x06, 0x00, 0x21, 0x02,
+			0x20, 0x02, 0x41, 0x00, 0x20, 0x03, 0x41, 0x10, 0xfb, 0x10, 0x00,
+			0x20, 0x02, 0x20, 0x01, 0xfb, 0x0b, 0x00, 0x0b,
+		)
+		return append(wasmtest.ULEB(uint32(len(code))), code...)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(arrayType, funcType)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x01}, []byte{0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("dirty", 0, 0), wasmtest.ExportEntry("zero", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(body(true), body(false))),
+	)
+}
+
+func TestGCArrayNewFillFusion(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcArrayNewFillFusionModule(0, 16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	for _, gc := range []GCConfig{
+		{CollectEveryAlloc: true, StressNurseryBytes: 128, VerifyAfterCollect: true},
+		{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, VerifyAfterCollect: true},
+	} {
+		instance, err := Instantiate(compiled, InstantiateOptions{GC: gc})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for index := uint64(0); index < 16; index++ {
+			value := uint64(uint32(0x81230000 + index))
+			got, err := instance.Invoke("run", value, index)
+			if err != nil || len(got) != 1 || got[0] != value {
+				t.Fatalf("profile %d index %d = %v, %v; want [%#x]", gc.Profile, index, got, err, value)
+			}
+		}
+		if got := instance.gc.Stats().Allocations; got != 16 {
+			t.Fatalf("profile %d allocations = %d, want 16", gc.Profile, got)
+		}
+		if err := instance.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestGCArrayNewFillFusionLocalState(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcArrayNewFillLocalStateModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	for _, gc := range []GCConfig{
+		{CollectEveryAlloc: true, StressNurseryBytes: 128, VerifyAfterCollect: true},
+		{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, VerifyAfterCollect: true},
+	} {
+		instance, err := Instantiate(compiled, InstantiateOptions{GC: gc})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for index := uint64(0); index < 16; index++ {
+			value := uint64(uint32(0xc1230000 + index))
+			got, err := instance.Invoke("dirty", value, index)
+			if err != nil || len(got) != 1 || got[0] != value {
+				t.Fatalf("profile %d dirty index %d = %v, %v; want [%#x]", gc.Profile, index, got, err, value)
+			}
+			got, err = instance.Invoke("zero", value, index)
+			if err != nil || len(got) != 1 || got[0] != 0 {
+				t.Fatalf("profile %d zero index %d = %v, %v; want [0]", gc.Profile, index, got, err)
+			}
+		}
+		if got := instance.gc.Stats().Allocations; got != 32 {
+			t.Fatalf("profile %d allocations = %d, want 32", gc.Profile, got)
+		}
+		if err := instance.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
