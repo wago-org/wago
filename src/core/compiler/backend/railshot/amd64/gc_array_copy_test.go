@@ -21,7 +21,8 @@ func TestGCArrayCopyNativeSelection(t *testing.T) {
 		{name: "one", count: 1, want: 1},
 		{name: "two", count: 2, want: 1},
 		{name: "three", count: 3, want: 1},
-		{name: "four", count: 4},
+		{name: "four", count: 4, want: 1},
+		{name: "five", count: 5},
 		{name: "dynamic", dynamic: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

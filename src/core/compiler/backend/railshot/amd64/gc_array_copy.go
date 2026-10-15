@@ -4,7 +4,7 @@ package amd64
 
 import gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 
-// Up to three numeric elements can be loaded before the stores without an overlap
+// Up to four numeric elements can be loaded before the stores without an overlap
 // branch, payload buffer, or loop. Larger copies retain the Go copy helper.
 func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 	if !gcSharedStubsEnabled {
@@ -18,7 +18,7 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 		return false
 	}
 	count := uint32(countRoot.st.cval)
-	if count > 3 {
+	if count > 4 {
 		return false
 	}
 	f.flush()
@@ -89,25 +89,22 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 		f.a.Add64(dstIndex, dst)
 		f.a.Add64(srcIndex, src)
 		firstDisp := -int32(count) * int32(dstScalar.size)
-		f.a.LoadIdx(tmp, srcIndex, RSP, firstDisp, dstScalar.size, false, dstScalar.size == 8)
-		if count >= 2 {
-			tmp2 := f.allocReg(maskOf(dst, src, dstIndex, srcIndex, tmp))
-			secondDisp := firstDisp + int32(dstScalar.size)
-			f.a.LoadIdx(tmp2, srcIndex, RSP, secondDisp, dstScalar.size, false, dstScalar.size == 8)
-			if count == 3 {
-				tmp3 := f.allocReg(maskOf(dst, src, dstIndex, srcIndex, tmp, tmp2))
-				f.a.LoadIdx(tmp3, srcIndex, RSP, -int32(dstScalar.size), dstScalar.size, false, dstScalar.size == 8)
-				f.a.StoreIdx(dstIndex, RSP, tmp, firstDisp, dstScalar.size)
-				f.a.StoreIdx(dstIndex, RSP, tmp2, secondDisp, dstScalar.size)
-				f.a.StoreIdx(dstIndex, RSP, tmp3, -int32(dstScalar.size), dstScalar.size)
-				f.release(tmp3)
-			} else {
-				f.a.StoreIdx(dstIndex, RSP, tmp, firstDisp, dstScalar.size)
-				f.a.StoreIdx(dstIndex, RSP, tmp2, secondDisp, dstScalar.size)
-			}
-			f.release(tmp2)
-		} else {
-			f.a.StoreIdx(dstIndex, RSP, tmp, firstDisp, dstScalar.size)
+		values := [4]Reg{tmp}
+		used := maskOf(dst, src, dstIndex, srcIndex, tmp)
+		for i := 1; i < int(count); i++ {
+			values[i] = f.allocReg(used)
+			used = used.add(values[i])
+		}
+		for i := range int(count) {
+			disp := firstDisp + int32(i)*int32(dstScalar.size)
+			f.a.LoadIdx(values[i], srcIndex, RSP, disp, dstScalar.size, false, dstScalar.size == 8)
+		}
+		for i := range int(count) {
+			disp := firstDisp + int32(i)*int32(dstScalar.size)
+			f.a.StoreIdx(dstIndex, RSP, values[i], disp, dstScalar.size)
+		}
+		for i := 1; i < int(count); i++ {
+			f.release(values[i])
 		}
 	}
 	f.pinned = f.pinned.remove(tmp).remove(srcIndex).remove(dstIndex).remove(dst)
