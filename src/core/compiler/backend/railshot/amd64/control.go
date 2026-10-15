@@ -1188,6 +1188,7 @@ func (f *fn) setDepthTypes(types []machineType) {
 
 func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
+	f.s.pendingPrefix = nil
 	// The old list is detached; rebuild both live spill summaries from scratch.
 	f.s.spillExtent, f.s.spillExtentValid, f.s.spilledPrefix = 0, true, nil
 	f.s.logicalDepth = 0

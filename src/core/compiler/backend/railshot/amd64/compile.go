@@ -1161,6 +1161,7 @@ func (sc *scratch) finishStackWorker() {
 	sc.stack.cold = nil
 	sc.stack.chunks = nil
 	sc.stack.head = nil
+	sc.stack.pendingPrefix, sc.stack.pendingPrefixLoads = nil, false
 	sc.stack.cur = 0
 }
 
