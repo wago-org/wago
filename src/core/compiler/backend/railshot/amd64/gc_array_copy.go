@@ -55,20 +55,24 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 		rangeTrap = condAE
 	}
 	for _, pair := range [2][2]Reg{{dst, dstIndex}, {src, srcIndex}} {
-		f.a.Load32(tmp, pair[0], 8)
 		if count == 2 {
-			f.a.AluRI(cmpDigit, tmp, int32(count), false)
-			f.trapIf(condB, trapBuiltin)
-			f.a.AluRI(5, tmp, int32(count), false)
-			f.a.Cmp32(pair[1], tmp)
+			// The zero-extended i32 index plus two cannot overflow 64 bits.
+			// Keep the exclusive end for both logical and physical bounds.
+			f.a.AluRI(0, pair[1], int32(count), true)
+			f.a.Load32(tmp, pair[0], 8)
+			f.a.Cmp64(pair[1], tmp)
 			f.trapIf(condA, trapBuiltin)
 		} else {
+			f.a.Load32(tmp, pair[0], 8)
 			f.a.Cmp32(pair[1], tmp)
 			f.trapIf(rangeTrap, trapBuiltin)
 		}
 	}
 	if count != 0 {
 		required := int32(gc.PayloadOffset) + int32(count)*int32(dstScalar.size)
+		if count == 2 {
+			required = int32(gc.PayloadOffset)
+		}
 		for _, pair := range [2][2]Reg{{dst, dstIndex}, {src, srcIndex}} {
 			switch dstScalar.size {
 			case 2:
