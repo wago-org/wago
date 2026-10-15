@@ -150,7 +150,14 @@ func (c *Collector) PrepareNativeArrayAllocation(objectBytes uint32) bool {
 		c.arraySlow++
 		return false
 	}
-	return c.PrepareNativeAllocation(objectBytes)
+	if !c.PrepareNativeAllocation(objectBytes) {
+		return false
+	}
+	// A refill cancels the preceding reservation, but the current allocation
+	// sequence has already paid the cold-call delay. Collection still clears
+	// this state before the next sequence starts.
+	c.arraySlow = nativeArrayGenericRefillThreshold - 1
+	return true
 }
 
 // PrepareNativeArrayAllocationImmediate is for products without a mandatory

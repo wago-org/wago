@@ -156,6 +156,45 @@ func TestNativeAllocationRejectsOversizedChunk(t *testing.T) {
 	}
 }
 
+func TestNativeArrayAllocationKeepsPrimingAcrossRefills(t *testing.T) {
+	desc, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{desc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	for i := uint8(1); i < nativeArrayGenericRefillThreshold; i++ {
+		if c.PrepareNativeArrayAllocation(80) {
+			t.Fatalf("cold allocation %d reserved a batch", i)
+		}
+	}
+	for refill := 0; refill < 4; refill++ {
+		if !c.PrepareNativeArrayAllocation(80) {
+			t.Fatalf("primed refill %d repeated the cold delay", refill)
+		}
+		c.CancelNativeAllocationBatch()
+		if _, err := c.NewArray(0, 16, I32Value(int32(refill))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, collect := range []func(RootSet) error{c.CollectMinor, c.CollectFull} {
+		if err := collect(EmptyRoots{}); err != nil {
+			t.Fatal(err)
+		}
+		for i := uint8(1); i < nativeArrayGenericRefillThreshold; i++ {
+			if c.PrepareNativeArrayAllocation(80) {
+				t.Fatalf("post-collection allocation %d bypassed the cold delay", i)
+			}
+		}
+		if !c.PrepareNativeArrayAllocation(80) {
+			t.Fatal("post-collection priming did not reserve a batch")
+		}
+	}
+}
+
 func TestNativeAllocationChunkCanceledBeforeGoAllocation(t *testing.T) {
 	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
 	if err != nil {
