@@ -140,7 +140,7 @@ host function when Wasm must observe the callback's effects immediately.
 
 ## Performance
 
-[**View the benchmarks →**](https://wago.sh/#performance)
+[**View the benchmarks →**](https://wasm.fyi/benchmarks)
 
 ## Add host capabilities
 
