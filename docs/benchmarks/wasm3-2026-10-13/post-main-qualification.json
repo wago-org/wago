@@ -1,0 +1,1905 @@
+{
+  "source": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+  "baseline": "9ed2645085982cb74fab5b629dc260d8cc31385f",
+  "cohorts": {
+    "all": {
+      "compile": {
+        "ratio": {
+          "count": 255,
+          "geomean": 1.0730670899260855
+        },
+        "rssRatio": {
+          "count": 255,
+          "geomean": 1.0275530091407845
+        }
+      },
+      "instantiate": {
+        "ratio": {
+          "count": 258,
+          "geomean": 1.0808602755596886
+        },
+        "rssRatio": {
+          "count": 258,
+          "geomean": 1.0226592549641826
+        }
+      },
+      "first-call": {
+        "ratio": {
+          "count": 258,
+          "geomean": 0.9332342618542182
+        },
+        "rssRatio": {
+          "count": 258,
+          "geomean": 1.022976436493006
+        }
+      },
+      "steady": {
+        "ratio": {
+          "count": 255,
+          "geomean": 0.935198026004864
+        },
+        "rssRatio": {
+          "count": 255,
+          "geomean": 1.0217977865253722
+        }
+      }
+    },
+    "features": {
+      "compile": {
+        "ratio": {
+          "count": 107,
+          "geomean": 1.1287869037695248
+        },
+        "rssRatio": {
+          "count": 107,
+          "geomean": 1.0319479766180037
+        }
+      },
+      "instantiate": {
+        "ratio": {
+          "count": 110,
+          "geomean": 1.0594765116821567
+        },
+        "rssRatio": {
+          "count": 110,
+          "geomean": 1.0222570013154078
+        }
+      },
+      "first-call": {
+        "ratio": {
+          "count": 110,
+          "geomean": 0.9873080170729042
+        },
+        "rssRatio": {
+          "count": 110,
+          "geomean": 1.022523057209569
+        }
+      },
+      "steady": {
+        "ratio": {
+          "count": 107,
+          "geomean": 0.9926771268915544
+        },
+        "rssRatio": {
+          "count": 107,
+          "geomean": 1.0184122479060205
+        }
+      }
+    },
+    "nonFeature": {
+      "compile": {
+        "ratio": {
+          "count": 148,
+          "geomean": 1.0345041859602784
+        },
+        "rssRatio": {
+          "count": 148,
+          "geomean": 1.0243872290289493
+        }
+      },
+      "instantiate": {
+        "ratio": {
+          "count": 148,
+          "geomean": 1.0970327328366558
+        },
+        "rssRatio": {
+          "count": 148,
+          "geomean": 1.0229583298085603
+        }
+      },
+      "first-call": {
+        "ratio": {
+          "count": 148,
+          "geomean": 0.8949720381079155
+        },
+        "rssRatio": {
+          "count": 148,
+          "geomean": 1.0233135378065537
+        }
+      },
+      "steady": {
+        "ratio": {
+          "count": 148,
+          "geomean": 0.8957264032959428
+        },
+        "rssRatio": {
+          "count": 148,
+          "geomean": 1.0242524470454928
+        }
+      }
+    }
+  },
+  "functionalChanges": [],
+  "compatibility": {
+    "contractsExpected": 373,
+    "contractsRecorded": 373,
+    "outcomes": {
+      "ok": 346,
+      "unsupported": 27
+    },
+    "byFamily": {
+      "core-num": {
+        "ok": 18
+      },
+      "core-mem": {
+        "ok": 12
+      },
+      "core-ctl": {
+        "ok": 6
+      },
+      "core-tab": {
+        "ok": 3
+      },
+      "core-glb": {
+        "ok": 24
+      },
+      "mutable-globals": {
+        "ok": 24
+      },
+      "jspi": {
+        "unsupported": 15
+      },
+      "sign-extension": {
+        "ok": 15
+      },
+      "saturating-float-to-int": {
+        "ok": 15
+      },
+      "reference-types": {
+        "ok": 12
+      },
+      "core-val": {
+        "ok": 3
+      },
+      "bulk-memory": {
+        "ok": 7
+      },
+      "multi-value": {
+        "ok": 6
+      },
+      "simd": {
+        "ok": 18
+      },
+      "relaxed-simd": {
+        "ok": 9
+      },
+      "gc": {
+        "ok": 18
+      },
+      "memory64": {
+        "ok": 12
+      },
+      "exceptions": {
+        "ok": 12
+      },
+      "tail-call": {
+        "ok": 9
+      },
+      "multi-memory": {
+        "ok": 6
+      },
+      "extended-const": {
+        "ok": 3
+      },
+      "js-string-builtins": {
+        "unsupported": 9
+      },
+      "threads": {
+        "ok": 84
+      },
+      "component-model": {
+        "ok": 3
+      },
+      "cm-abi": {
+        "ok": 3
+      },
+      "cm-res": {
+        "ok": 3
+      },
+      "cm-async": {
+        "unsupported": 3
+      },
+      "wide-arithmetic": {
+        "ok": 12
+      },
+      "compact-imports": {
+        "ok": 9
+      }
+    },
+    "nonPassing": [
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/suspend-every-call/1",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-4cd6bbfadc7046e0278f3833271ab6331b835fba0d0f5a3a479c7b0a827d75b1.json",
+        "artifactSha256": "9e7eff5139f11eaefd02c969a69ca0cd6acd79142a31b4ebcc173cfcebff7141",
+        "contractSha256": "899f0c78bd07262e71609ac7781b0409a407ab70c9771ebb622fa138402af4bf",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:49.150Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/suspend-every-call/64",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-67641171dc2da0fc3edb2a0d6005bdf4085c94b0b461b19cfe17c5d54e14f5ef.json",
+        "artifactSha256": "9e7eff5139f11eaefd02c969a69ca0cd6acd79142a31b4ebcc173cfcebff7141",
+        "contractSha256": "2647b956ab066226220828f979d909eea8f20e461399ff3850374ab77780ed7c",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:49.252Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/suspend-every-call/4096",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-6ebf01cc4752cbe6d05dd1e22287ca8d027eb05a72e50b7bc3faaab1ef8d4af5.json",
+        "artifactSha256": "9e7eff5139f11eaefd02c969a69ca0cd6acd79142a31b4ebcc173cfcebff7141",
+        "contractSha256": "6d141e41498305ddc07736e7dfbe24caf45bda027ca2a338aebb8033d2a59d36",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:49.335Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/suspend-alternate/1",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-f390d810f9b8a8abdaec84141f4c56bf96ebeaf3b0a49984e50959f18439c609.json",
+        "artifactSha256": "c000d575583bbe0a04b8b1df95fcdeda00fdecd0810ac5dbf1da9db133db34a6",
+        "contractSha256": "67b567d2938ebc9832829a919d4f7056e9f3407fb85216a8277176d51f180e31",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:49.421Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/suspend-alternate/64",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-03a88cdf762f344d8d97d11039c48a94b14251e981917661f718cc9af7808a14.json",
+        "artifactSha256": "c000d575583bbe0a04b8b1df95fcdeda00fdecd0810ac5dbf1da9db133db34a6",
+        "contractSha256": "abc92816fd3034b39c2058a89f80e2a1c2d23be5608d930589ce52dfad4678d1",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:49.506Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/suspend-alternate/4096",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-9c66c605c008e705f5852df4e2e3af38d4506ed8d2c6697482da19f15b7909dc.json",
+        "artifactSha256": "c000d575583bbe0a04b8b1df95fcdeda00fdecd0810ac5dbf1da9db133db34a6",
+        "contractSha256": "860c9bb7a32df9003c1f009cada63d025b0562016f45a4554e8ce6325f171ce1",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:49.595Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/two-imports/1",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-e7c120a43dc14c9b4e4c1fa6ec709355f1bb5088b3d8cf1cfc7eb74a06aa456a.json",
+        "artifactSha256": "e82824a20b18df22c55f466729f0b76384e647a1090c168ecc03a23a7b8231cd",
+        "contractSha256": "5c32f2083a01bea906281a7f270986477494fed16a4090416fa5e61ffe4e2466",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:49.679Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/two-imports/64",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-842c8059ed028083c4f3e04a407d6f57cda0cc8f0c2f551411fcb39f5d6a2f5d.json",
+        "artifactSha256": "e82824a20b18df22c55f466729f0b76384e647a1090c168ecc03a23a7b8231cd",
+        "contractSha256": "a1b1d2f703a9b68bd70847bd170b031bf43e62dc02844574fa5dab5114577a06",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:49.763Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/two-imports/4096",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-4e422ef5bbc16014765afbdf1d1f7e8f2ae3d1ee5122127ac13ddeae48e64417.json",
+        "artifactSha256": "e82824a20b18df22c55f466729f0b76384e647a1090c168ecc03a23a7b8231cd",
+        "contractSha256": "4ead94a30d4ee8e2d54cb32be4515b192b5d6a7697c5a999ab27bc35adcb58fe",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:49.852Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/state-across-suspension/1",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-721df844f9e533c22bed1ab330b81be1738df6221788a34cb5c438717c1af421.json",
+        "artifactSha256": "2bc5a2f1b20c165d194e351ed397a540360b332fb6b681eee4727dabf031e940",
+        "contractSha256": "40439afa67c07b730c490e84b173f42ffeb7d0d7ccf0813b2a2e3ebef94c3d99",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:49.932Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/state-across-suspension/64",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-467b5db612bc0428bb825de0fbdc799070078652d9fc2638e056619ed6b9eb83.json",
+        "artifactSha256": "2bc5a2f1b20c165d194e351ed397a540360b332fb6b681eee4727dabf031e940",
+        "contractSha256": "00d4a2651c965848b37ac2a430ec29f535af44fe5990131f5318ced7ca7dcaa7",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:50.016Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/state-across-suspension/4096",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-d0a9705f0453a9063bca47480bbc3119bcf0b1915b9bce1ac6e900c6543fc276.json",
+        "artifactSha256": "2bc5a2f1b20c165d194e351ed397a540360b332fb6b681eee4727dabf031e940",
+        "contractSha256": "f5cbb8f8bc1037d4c248d2044015d2dfb4568ef369065c265f69fceda08e03cf",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:50.098Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/immediate-resolve/1",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-51aa1d263547261dcb521127d42e1620fa45742b8bf04e5caa4870105a92a206.json",
+        "artifactSha256": "766598905f9c3d53e244b998c380d6377959d803cd5a1fb376ed97e52c12c62a",
+        "contractSha256": "70365f3c8bd6388ff6e60cce35aae0b16d6b8bceb7607e3f55ae19922af438b6",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:50.182Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/immediate-resolve/64",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-c011234f2549ac4e011426ff5e3b893ab3b7776bf12530396b7f14042011d388.json",
+        "artifactSha256": "766598905f9c3d53e244b998c380d6377959d803cd5a1fb376ed97e52c12c62a",
+        "contractSha256": "941d63093b2021999537285902fe61e624993ad19b3f6d387c2b1530fe96536c",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:50.268Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/jspi/immediate-resolve/4096",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-474c35908a7a1c6da3505f2cbcdc949074460cc5043672ea56acc9b49aec7f9d.json",
+        "artifactSha256": "766598905f9c3d53e244b998c380d6377959d803cd5a1fb376ed97e52c12c62a",
+        "contractSha256": "9959ec78157bf9c3fe90ef6cc479b7f3ca701e5716d122f03553726617496375",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:00:50.352Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/js-string-builtins/character-index/1",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-a3bdf882ff4ff25567eecd7f00edfa460af068ac303181836a8029ee151b213a.json",
+        "artifactSha256": "5d4cf1b375200d8141d6bb2f2d804d5af9097f5cdaf1cb01dd1a68c215519184",
+        "contractSha256": "087cec8de1019fff1a4433c39f99d612e1cf8030ce2cef122424820e9cdcfeac",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:01:03.720Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/js-string-builtins/character-index/64",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-dccd7e4d726364c3be0dbd3d64c31b55f924a21ce282b715e41b1c9d153ddb84.json",
+        "artifactSha256": "5d4cf1b375200d8141d6bb2f2d804d5af9097f5cdaf1cb01dd1a68c215519184",
+        "contractSha256": "7e0cb40cfd85e242d28a8d5429facdcbc25d629d26185cc4fb2234cc368022d9",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:01:03.805Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/js-string-builtins/character-index/4096",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-84b8c46db189c67c30c5fd0741512ba70ec398f0fc13663babbf596306baa2b1.json",
+        "artifactSha256": "5d4cf1b375200d8141d6bb2f2d804d5af9097f5cdaf1cb01dd1a68c215519184",
+        "contractSha256": "6b6cd9f58c3683afddb76df08517e392f3b71a2dc0bd4acb7b1ff99c9d4b3b04",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:01:03.888Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/js-string-builtins/substring-length/1",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-9cd8bd22e56ca6ff95b0fd19b114dfd09d42f7a6f7ac1a4448dca6d422173800.json",
+        "artifactSha256": "62af09a6a8c096d0999fda2d996c6d4cadb23962fe8ddcdedd30a9686377a6ce",
+        "contractSha256": "c5a40273bb939c268390898ded5d3a60c0d7f017b4e2b8673b08f028a7e25996",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:01:03.971Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/js-string-builtins/substring-length/64",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-e6e3feda6191bc1be1780e3b4f3feffd79bfc562a2601decfde9fea5b38317a7.json",
+        "artifactSha256": "62af09a6a8c096d0999fda2d996c6d4cadb23962fe8ddcdedd30a9686377a6ce",
+        "contractSha256": "5122c03d810f63b8521c87dfef953a5694fc105b61f501147ddfbbca97492db1",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:01:04.057Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/js-string-builtins/substring-length/4096",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-255d443d971d6b9d9667a5f6356cf5acb3497b76d84a3b54482efb34a3d43430.json",
+        "artifactSha256": "62af09a6a8c096d0999fda2d996c6d4cadb23962fe8ddcdedd30a9686377a6ce",
+        "contractSha256": "f7afb0d5317f075f9cf06d51b7799f6d22ebb8304ff6ded1bc08ab62e2791864",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:01:04.146Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/js-string-builtins/concat-character/1",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-bcbf4700fed5afe60ca016e8e157bbb101bf8e3cba10361e7a8956ea40567806.json",
+        "artifactSha256": "75b63f396f6ecec95882c747c85f9441d7a6e335a796b29ddf0b1d116501ce98",
+        "contractSha256": "abc85a2c5199283331eb24df06c951c205f70ac8607204c9bda0cce51b243c8c",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:01:04.231Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/js-string-builtins/concat-character/64",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-cf48aac9522ce06da0d869f5f44e54f5f99e4095e8df69024cead364a0d32954.json",
+        "artifactSha256": "75b63f396f6ecec95882c747c85f9441d7a6e335a796b29ddf0b1d116501ce98",
+        "contractSha256": "99f90555fe4b0938cc92bc8bcee082f0758413fe15fee8bc042f57984cae3fc6",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:01:04.319Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/js-string-builtins/concat-character/4096",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-7f2ab5ce949ed500c020b17787996299bd3fbae6aec87a5a7e5ccb3e69d1b0fd.json",
+        "artifactSha256": "75b63f396f6ecec95882c747c85f9441d7a6e335a796b29ddf0b1d116501ce98",
+        "contractSha256": "59576199228b7c6bf963546f3137a59a82848ae20f852a5a61544332b14bc92b",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:01:04.403Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/cm-async/future-stream-compile/1",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-657fa814de88a16531ec24b504eac9c57225c031a4d40fff9fef163f9594f281.json",
+        "artifactSha256": "1c0b35027aa4a25aaeff99ebb705987c46c303b323eb35ecec73057183b8b81f",
+        "contractSha256": "73dc9ed7972f8d410ddc74337cdffc0c0462bf5b8d02a6d54f407831efcb3cba",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:01:12.948Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/cm-async/future-stream-scaling-32/1",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-89871cfde9d47262e6774936423e3b7fd9805aef327d9b6b9a796c72aa8c2b1f.json",
+        "artifactSha256": "ec17ba8858611ac6aad34ed3c587eafc269bc6a93c55eb16126d6f167e66f9df",
+        "contractSha256": "2bc0c003386ce61445961cf9ca69fd5d69ebc8acbe56df95d732b220b18523ec",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:01:13.034Z"
+      },
+      {
+        "compatibilityScenarioPolicy": "first-call-only-v1",
+        "status": "completed",
+        "engine": "wago",
+        "stage": "compatibility",
+        "workload": "features/cm-async/future-stream-scaling-256/1",
+        "source": {
+          "repository": "wago-org/wago",
+          "revision": "0666c2e3eaa7536b3743ef6f36cf047e89828133",
+          "ref": "jairus/arm64-bulk-copy-minimum-bounds@0666c2e3",
+          "asOf": "2026-10-15T02:38:27.167721+00:00",
+          "kind": "snapshot"
+        },
+        "capture": "feature-compat-wago-f7156ce66f0a821cd3c0c9dbfbc549c66fe8b6ca81fa5882e93679d0ce719925.json",
+        "artifactSha256": "d1fea14a9f3e564a74fa5176848ef513cc64ebed95421a8aa0f0d89848da11dd",
+        "contractSha256": "01b11a0699e22a760b20fd382b5e7c05055346fb88f23b92926cb86fca5d2303",
+        "outcomes": [
+          [
+            "first-call",
+            "unsupported"
+          ]
+        ],
+        "finished": "2026-10-15T03:01:13.123Z"
+      }
+    ],
+    "localOnly": true,
+    "status": {
+      "status": "completed",
+      "started": "2026-10-15T03:00:41.206Z",
+      "updated": "2026-10-15T03:01:15.026Z",
+      "current": null,
+      "completed": 1,
+      "total": 1,
+      "errors": [],
+      "inputIdentity": "6e92632fbefceb71d888b04f74a7b66ae4e27d5135df8b9cf3a8f401b41c720a",
+      "compatibilityWorkloads": 373,
+      "performanceWorkloads": 0
+    }
+  },
+  "imageAudit": {
+    "images": 255,
+    "changed": 160,
+    "sourceVersions": [
+      "0666c2e3eaa7536b3743ef6f36cf047e89828133/source-bf474b4218a92570a4970dd57583e3d139393045c6cd1a9ca777866a009276bf"
+    ],
+    "allSdkCodeBytesMatch": true,
+    "allPersistedCodeHashesMatch": true
+  },
+  "mainCompileControl": {
+    "forward": {
+      "compileNs": 1.0781601452756,
+      "allocatedBytes": 1.0048266044440712,
+      "peakRssBytes": 1.0293109000030936
+    },
+    "reverse": {
+      "compileNs": 1.0830183014484402,
+      "allocatedBytes": 1.0048266044440712,
+      "peakRssBytes": 1.0306323959564372
+    }
+  },
+  "repeatRegressionsOverFivePercent": [
+    {
+      "workload": "features/core-num/signed-zero-bits/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1675580110497237,
+        1.1302460830693113
+      ]
+    },
+    {
+      "workload": "features/core-num/signed-zero-bits/performance-4096x64",
+      "phase": "instantiate",
+      "ratios": [
+        1.0774907749077491,
+        1.0756457564575646
+      ]
+    },
+    {
+      "workload": "features/core-mem/load-store-unaligned/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1749306930693069,
+        1.2099333544906379
+      ]
+    },
+    {
+      "workload": "features/core-mem/load-store-unaligned/performance-4096x64",
+      "phase": "instantiate",
+      "ratios": [
+        1.1244377811094453,
+        1.11864406779661
+      ]
+    },
+    {
+      "workload": "features/core-glb/i64-carry-overflow/performance-4096x64",
+      "phase": "instantiate",
+      "ratios": [
+        1.0672,
+        1.0578279266572637
+      ]
+    },
+    {
+      "workload": "features/core-glb/f32-rounding-state/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.0813827746188998,
+        1.067621938307334
+      ]
+    },
+    {
+      "workload": "features/mutable-globals/i64-carry-overflow/performance-4096x64",
+      "phase": "instantiate",
+      "ratios": [
+        1.1859070464767616,
+        1.0614692653673163
+      ]
+    },
+    {
+      "workload": "features/sign-extension/i32-extend8/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1630434782608696,
+        1.1459196310372806
+      ]
+    },
+    {
+      "workload": "features/sign-extension/i64-extend8/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.0785576809772575,
+        1.061601052025972
+      ]
+    },
+    {
+      "workload": "features/saturating-float-to-int/f32-overflow-clamp/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1784918032786886,
+        1.1319358288770054
+      ]
+    },
+    {
+      "workload": "features/reference-types/table-get-set/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.0974398410714858,
+        1.179861984566747
+      ]
+    },
+    {
+      "workload": "features/reference-types/table-fill-copy/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.0949475824830825,
+        1.189771381728755
+      ]
+    },
+    {
+      "workload": "features/multi-value/pair-results/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1153477473639366,
+        1.0828062312502258
+      ]
+    },
+    {
+      "workload": "features/simd/swizzle-lanes/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.181035937236376,
+        1.1357883597883598
+      ]
+    },
+    {
+      "workload": "features/simd/load-store-unaligned/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.2519876077787317,
+        1.1615050311264241
+      ]
+    },
+    {
+      "workload": "features/simd/arithmetic-scalar-baseline/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.138875,
+        1.0730176839703365
+      ]
+    },
+    {
+      "workload": "features/relaxed-simd/all-bits-laneselect/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.120937078376058,
+        1.1165714285714285
+      ]
+    },
+    {
+      "workload": "features/gc/access-scalar-baseline/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1494487003498206,
+        1.2466804234703033
+      ]
+    },
+    {
+      "workload": "features/memory64/fill-copy/performance-65536x64",
+      "phase": "compile",
+      "ratios": [
+        1.084033613445378,
+        1.1428318959423158
+      ]
+    },
+    {
+      "workload": "features/memory64/fill-copy/performance-65536x64",
+      "phase": "instantiate",
+      "ratios": [
+        1.0614692653673163,
+        1.0593220338983051
+      ]
+    },
+    {
+      "workload": "features/exceptions/throw-catch-tag/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1877041570677027,
+        1.084273322590599
+      ]
+    },
+    {
+      "workload": "features/exceptions/throw-catch-tag/performance-4096x64",
+      "phase": "instantiate",
+      "ratios": [
+        1.1363140676117776,
+        1.173096976016684
+      ]
+    },
+    {
+      "workload": "features/exceptions/mixed-exception-path/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1084921210522847,
+        1.1527207164602606
+      ]
+    },
+    {
+      "workload": "features/exceptions/normal-control-scalar-baseline/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.184246142741135,
+        1.1632294668587897
+      ]
+    },
+    {
+      "workload": "features/tail-call/iterative-recursion-scalar-baseline/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.0934950576250702,
+        1.1353165723311833
+      ]
+    },
+    {
+      "workload": "features/threads/private-secondary-atomic-rmw-add/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1496923606068712,
+        1.1615404497286121
+      ]
+    },
+    {
+      "workload": "features/threads/shared-secondary-copy/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.0573308270676691,
+        1.1170914999492232
+      ]
+    },
+    {
+      "workload": "features/threads/unshared-atomic-load-store/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.2055735375384857,
+        1.2322274881516588
+      ]
+    },
+    {
+      "workload": "features/threads/unshared-atomic-rmw-add/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1719723315626553,
+        1.1825142857142856
+      ]
+    },
+    {
+      "workload": "features/threads/memory64-atomic-load-store/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.0658865696816362,
+        1.1607787610619469
+      ]
+    },
+    {
+      "workload": "features/threads/memory64-wait-mismatch-notify/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.2770035773399542,
+        1.2733812949640289
+      ]
+    },
+    {
+      "workload": "features/threads/table-indirect-call/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.0565624653586076,
+        1.0775261569700216
+      ]
+    },
+    {
+      "workload": "features/threads/host-identity/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.0687015384615384,
+        1.0686777408637873
+      ]
+    },
+    {
+      "workload": "features/threads/bulk-fill/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1792105061055218,
+        1.2810240739360512
+      ]
+    },
+    {
+      "workload": "features/threads/atomic-load-store/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1158264432574816,
+        1.1503897791251625
+      ]
+    },
+    {
+      "workload": "features/threads/atomic-rmw-add/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1095238095238096,
+        1.2556237218813906
+      ]
+    },
+    {
+      "workload": "features/threads/atomic-rmw-add/performance-4096x64",
+      "phase": "first-call",
+      "ratios": [
+        1.168087075732835,
+        1.2249031223764781
+      ]
+    },
+    {
+      "workload": "features/threads/atomic-fence/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1553507853403142,
+        1.24253416568247
+      ]
+    },
+    {
+      "workload": "features/threads/non-atomic-scalar-baseline/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1457226354941552,
+        1.1637942857142858
+      ]
+    },
+    {
+      "workload": "features/wide-arithmetic/add128/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.2719589172996684,
+        1.236217102917053
+      ]
+    },
+    {
+      "workload": "features/wide-arithmetic/add128/performance-4096x64",
+      "phase": "instantiate",
+      "ratios": [
+        1.063063063063063,
+        1.063063063063063
+      ]
+    },
+    {
+      "workload": "features/wide-arithmetic/sub128/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.2043478260869565,
+        1.3058977164437229
+      ]
+    },
+    {
+      "workload": "features/wide-arithmetic/mul-wide-s/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.3853326709213896,
+        1.2935779816513762
+      ]
+    },
+    {
+      "workload": "features/wide-arithmetic/mul-wide-u/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.4325581395348836,
+        1.3105504416203928
+      ]
+    },
+    {
+      "workload": "features/compact-imports/type-group/performance-4096x64",
+      "phase": "compile",
+      "ratios": [
+        1.1134091377061932,
+        1.124136952615152
+      ]
+    },
+    {
+      "workload": "wago/memory/sum",
+      "phase": "compile",
+      "ratios": [
+        1.284153005464481,
+        1.4094347826086957
+      ]
+    },
+    {
+      "workload": "wago/many_funcs/run",
+      "phase": "first-call",
+      "ratios": [
+        1.9761904761904763,
+        1.9761904761904763
+      ]
+    },
+    {
+      "workload": "wago/coremark/2k-performance",
+      "phase": "compile",
+      "ratios": [
+        1.083762211326122,
+        1.0869565217391304
+      ]
+    },
+    {
+      "workload": "wago/yyjson/parse-edit-write",
+      "phase": "steady",
+      "ratios": [
+        1.0695364238410596,
+        1.1782347900599828
+      ]
+    },
+    {
+      "workload": "wago/fastfloat/decimal-parse",
+      "phase": "compile",
+      "ratios": [
+        1.0744267941034389,
+        1.0844250633190178
+      ]
+    },
+    {
+      "workload": "wago/polybench-cholesky/polybench_run",
+      "phase": "compile",
+      "ratios": [
+        1.1062679685740404,
+        1.0616326735279737
+      ]
+    },
+    {
+      "workload": "wago/polybench-correlation/polybench_run",
+      "phase": "compile",
+      "ratios": [
+        1.162375174175569,
+        1.0938500914076783
+      ]
+    },
+    {
+      "workload": "wago/polybench-fdtd-2d/polybench_run",
+      "phase": "compile",
+      "ratios": [
+        1.0794827228106998,
+        1.0885762237762238
+      ]
+    },
+    {
+      "workload": "wago/polybench-gemm/polybench_run",
+      "phase": "compile",
+      "ratios": [
+        1.1385146168468476,
+        1.0976763037017023
+      ]
+    },
+    {
+      "workload": "wago/polybench-gemm/polybench_run",
+      "phase": "instantiate",
+      "ratios": [
+        1.1580278128950696,
+        1.1578282828282829
+      ]
+    },
+    {
+      "workload": "wago/polybench-gramschmidt/polybench_run",
+      "phase": "compile",
+      "ratios": [
+        1.101704918032787,
+        1.1264769162784969
+      ]
+    },
+    {
+      "workload": "wago/polybench-jacobi-2d/polybench_run",
+      "phase": "compile",
+      "ratios": [
+        1.183566037735849,
+        1.174488567990373
+      ]
+    },
+    {
+      "workload": "wago/polybench-nussinov/polybench_run",
+      "phase": "compile",
+      "ratios": [
+        1.081153605015674,
+        1.0991336787564767
+      ]
+    },
+    {
+      "workload": "wago/sha256/hashN",
+      "phase": "compile",
+      "ratios": [
+        1.1024060589580122,
+        1.1249469921851336
+      ]
+    },
+    {
+      "workload": "wago/sha256/hashN",
+      "phase": "instantiate",
+      "ratios": [
+        1.1106666666666667,
+        1.176553672316384
+      ]
+    },
+    {
+      "workload": "applications/vision-sobel",
+      "phase": "instantiate",
+      "ratios": [
+        1.0546666666666666,
+        1.1106666666666667
+      ]
+    },
+    {
+      "workload": "applications/video-motion",
+      "phase": "compile",
+      "ratios": [
+        1.1742957746478873,
+        1.0984578398830744
+      ]
+    },
+    {
+      "workload": "applications/triangle-raster",
+      "phase": "compile",
+      "ratios": [
+        1.0555096228928391,
+        1.086513274336283
+      ]
+    },
+    {
+      "workload": "applications/audio-fir",
+      "phase": "instantiate",
+      "ratios": [
+        1.1244377811094453,
+        1.1244377811094453
+      ]
+    },
+    {
+      "workload": "applications/columnar-query",
+      "phase": "instantiate",
+      "ratios": [
+        1.1244377811094453,
+        1.2
+      ]
+    },
+    {
+      "workload": "applications/map-point-segment",
+      "phase": "instantiate",
+      "ratios": [
+        1.1244377811094453,
+        1.056
+      ]
+    },
+    {
+      "workload": "applications/map-point-segment",
+      "phase": "steady",
+      "ratios": [
+        1.1028141707302743,
+        1.0653360267736003
+      ]
+    },
+    {
+      "workload": "applications/document-layout",
+      "phase": "instantiate",
+      "ratios": [
+        1.0517676767676767,
+        1.1061946902654867
+      ]
+    },
+    {
+      "workload": "applications/grid-pathfinding",
+      "phase": "compile",
+      "ratios": [
+        1.109671125975474,
+        1.1226824518087994
+      ]
+    },
+    {
+      "workload": "applications/ray-box",
+      "phase": "instantiate",
+      "ratios": [
+        1.1328,
+        1.2
+      ]
+    },
+    {
+      "workload": "applications/audio-biquad",
+      "phase": "instantiate",
+      "ratios": [
+        1.2,
+        1.1328
+      ]
+    },
+    {
+      "workload": "applications/audio-adpcm",
+      "phase": "instantiate",
+      "ratios": [
+        1.2672,
+        1.2
+      ]
+    },
+    {
+      "workload": "applications/compression-rle",
+      "phase": "instantiate",
+      "ratios": [
+        1.2,
+        1.0614692653673163
+      ]
+    },
+    {
+      "workload": "applications/vision-dilation",
+      "phase": "compile",
+      "ratios": [
+        1.0780033287760804,
+        1.2852651162790698
+      ]
+    },
+    {
+      "workload": "applications/vision-components",
+      "phase": "compile",
+      "ratios": [
+        1.2121895488283876,
+        1.1936949214136459
+      ]
+    },
+    {
+      "workload": "applications/vision-components",
+      "phase": "instantiate",
+      "ratios": [
+        1.1578282828282829,
+        1.1666666666666667
+      ]
+    },
+    {
+      "workload": "applications/db-btree",
+      "phase": "compile",
+      "ratios": [
+        1.1217249189272662,
+        1.0577385826771653
+      ]
+    },
+    {
+      "workload": "applications/db-btree",
+      "phase": "instantiate",
+      "ratios": [
+        1.1172316384180792,
+        1.1874062968515742
+      ]
+    },
+    {
+      "workload": "applications/db-hash-join",
+      "phase": "instantiate",
+      "ratios": [
+        1.1244377811094453,
+        1.1261261261261262
+      ]
+    },
+    {
+      "workload": "applications/db-sort-merge-join",
+      "phase": "instantiate",
+      "ratios": [
+        1.2358757062146892,
+        1.056
+      ]
+    },
+    {
+      "workload": "applications/db-bitmap-index",
+      "phase": "instantiate",
+      "ratios": [
+        1.1244377811094453,
+        1.1244377811094453
+      ]
+    },
+    {
+      "workload": "applications/document-optimal-wrap",
+      "phase": "compile",
+      "ratios": [
+        1.0511938685270708,
+        1.128916719458116
+      ]
+    },
+    {
+      "workload": "applications/document-optimal-wrap",
+      "phase": "instantiate",
+      "ratios": [
+        1.0593220338983051,
+        1.1261261261261262
+      ]
+    },
+    {
+      "workload": "applications/document-edit-distance",
+      "phase": "compile",
+      "ratios": [
+        1.0994897959183674,
+        1.0660536276977348
+      ]
+    },
+    {
+      "workload": "applications/files-path-normalize",
+      "phase": "instantiate",
+      "ratios": [
+        1.0645645645645645,
+        1.0614692653673163
+      ]
+    },
+    {
+      "workload": "applications/files-content-chunking",
+      "phase": "instantiate",
+      "ratios": [
+        1.062968515742129,
+        1.1344
+      ]
+    },
+    {
+      "workload": "applications/files-merkle-tree",
+      "phase": "instantiate",
+      "ratios": [
+        1.1244377811094453,
+        1.1172316384180792
+      ]
+    },
+    {
+      "workload": "applications/files-glob-match",
+      "phase": "instantiate",
+      "ratios": [
+        1.050420168067227,
+        1.10479797979798
+      ]
+    },
+    {
+      "workload": "applications/geo-point-in-polygon",
+      "phase": "compile",
+      "ratios": [
+        1.4842475570032574,
+        1.0791201835588258
+      ]
+    },
+    {
+      "workload": "applications/geo-convex-hull",
+      "phase": "instantiate",
+      "ratios": [
+        1.1244377811094453,
+        1.1244377811094453
+      ]
+    },
+    {
+      "workload": "applications/geo-convex-hull",
+      "phase": "first-call",
+      "ratios": [
+        1.2195068412965537,
+        1.1825824531148954
+      ]
+    },
+    {
+      "workload": "applications/geo-polygon-clipping",
+      "phase": "compile",
+      "ratios": [
+        1.0926190842131398,
+        1.1551041009463723
+      ]
+    },
+    {
+      "workload": "applications/geo-polyline-simplify",
+      "phase": "compile",
+      "ratios": [
+        1.0988244322740433,
+        1.1010778401608097
+      ]
+    },
+    {
+      "workload": "applications/geo-polyline-simplify",
+      "phase": "instantiate",
+      "ratios": [
+        1.1874062968515742,
+        1.1859070464767616
+      ]
+    },
+    {
+      "workload": "applications/geo-geohash",
+      "phase": "instantiate",
+      "ratios": [
+        1.937031484257871,
+        1.1244377811094453
+      ]
+    },
+    {
+      "workload": "applications/graphics-reed-solomon",
+      "phase": "compile",
+      "ratios": [
+        1.1142857142857143,
+        1.1829252217997466
+      ]
+    },
+    {
+      "workload": "applications/hardware-prime-implicants",
+      "phase": "compile",
+      "ratios": [
+        1.0627428380212303,
+        1.3748202764976958
+      ]
+    },
+    {
+      "workload": "applications/hardware-boolean-anf",
+      "phase": "compile",
+      "ratios": [
+        1.0877447425670776,
+        1.0560091697680671
+      ]
+    },
+    {
+      "workload": "applications/image-median",
+      "phase": "instantiate",
+      "ratios": [
+        1.3001200480192077,
+        1.1363140676117776
+      ]
+    },
+    {
+      "workload": "applications/image-error-diffusion",
+      "phase": "instantiate",
+      "ratios": [
+        1.056,
+        1.3531073446327684
+      ]
+    },
+    {
+      "workload": "applications/serialization-protobuf",
+      "phase": "instantiate",
+      "ratios": [
+        1.1244377811094453,
+        1.1244377811094453
+      ]
+    },
+    {
+      "workload": "applications/ml-convolution",
+      "phase": "instantiate",
+      "ratios": [
+        1.2507507507507507,
+        1.1244377811094453
+      ]
+    },
+    {
+      "workload": "applications/ml-decision-tree",
+      "phase": "instantiate",
+      "ratios": [
+        1.0517676767676767,
+        1.0517676767676767
+      ]
+    },
+    {
+      "workload": "applications/ml-kmeans",
+      "phase": "compile",
+      "ratios": [
+        1.1222430594705293,
+        1.1317907672773444
+      ]
+    },
+    {
+      "workload": "applications/ml-kmeans",
+      "phase": "instantiate",
+      "ratios": [
+        1.1244377811094453,
+        1.0593220338983051
+      ]
+    },
+    {
+      "workload": "applications/numeric-euclidean-gcd",
+      "phase": "instantiate",
+      "ratios": [
+        1.1061946902654867,
+        1.0530973451327434
+      ]
+    },
+    {
+      "workload": "applications/search-kmp",
+      "phase": "compile",
+      "ratios": [
+        1.1074751012367299,
+        1.148632944898157
+      ]
+    },
+    {
+      "workload": "applications/search-kmp",
+      "phase": "instantiate",
+      "ratios": [
+        1.1106666666666667,
+        1.112
+      ]
+    },
+    {
+      "workload": "applications/stats-welford",
+      "phase": "instantiate",
+      "ratios": [
+        1.2,
+        1.2
+      ]
+    },
+    {
+      "workload": "applications/stats-linear-regression",
+      "phase": "compile",
+      "ratios": [
+        1.0762331838565022,
+        1.0615828553330753
+      ]
+    },
+    {
+      "workload": "applications/stats-linear-regression",
+      "phase": "instantiate",
+      "ratios": [
+        1.2,
+        1.2
+      ]
+    },
+    {
+      "workload": "applications/stats-gini",
+      "phase": "compile",
+      "ratios": [
+        1.084260731319555,
+        1.081958846302267
+      ]
+    },
+    {
+      "workload": "applications/stats-bootstrap",
+      "phase": "instantiate",
+      "ratios": [
+        1.1261261261261262,
+        1.1244377811094453
+      ]
+    },
+    {
+      "workload": "applications/video-dct",
+      "phase": "compile",
+      "ratios": [
+        1.0983357070193285,
+        1.1393188854489165
+      ]
+    },
+    {
+      "workload": "applications/video-dct",
+      "phase": "instantiate",
+      "ratios": [
+        1.0517676767676767,
+        1.8333333333333333
+      ]
+    },
+    {
+      "workload": "applications/graph-kruskal",
+      "phase": "instantiate",
+      "ratios": [
+        1.1874062968515742,
+        1.1156558533145275
+      ]
+    },
+    {
+      "workload": "applications/stencil-wave-equation",
+      "phase": "compile",
+      "ratios": [
+        1.1228956228956228,
+        1.1173834885031257
+      ]
+    },
+    {
+      "workload": "applications/stencil-wave-equation",
+      "phase": "instantiate",
+      "ratios": [
+        1.1748942172073342,
+        1.056
+      ]
+    },
+    {
+      "workload": "applications/bio-global-alignment",
+      "phase": "instantiate",
+      "ratios": [
+        1.1876876876876876,
+        1.1172316384180792
+      ]
+    },
+    {
+      "workload": "applications/bio-local-alignment",
+      "phase": "compile",
+      "ratios": [
+        1.1875,
+        1.0682140885067446
+      ]
+    },
+    {
+      "workload": "applications/bio-kmer-count",
+      "phase": "compile",
+      "ratios": [
+        1.0803443805471529,
+        1.12731330472103
+      ]
+    },
+    {
+      "workload": "applications/bio-kmer-count",
+      "phase": "instantiate",
+      "ratios": [
+        1.1859070464767616,
+        1.2
+      ]
+    },
+    {
+      "workload": "applications/text-substitution",
+      "phase": "instantiate",
+      "ratios": [
+        1.2488755622188905,
+        1.0578279266572637
+      ]
+    }
+  ],
+  "outlierWorkloads": 127,
+  "outlierCaptures": 508,
+  "samplesPerOutlierPhase": 45,
+  "localOnly": true,
+  "executionComparison": "All steady ratios compare source0666 against source9ed on matched contracts, not against main069. The nonFeature cohort denotes application/core workloads, not the main Git branch."
+}

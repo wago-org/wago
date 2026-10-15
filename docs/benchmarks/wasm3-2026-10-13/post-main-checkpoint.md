@@ -1,18 +1,44 @@
-# Post-main integration checkpoint
+# Post-main integration qualification
 
-PR #963 retains main integration and the mixed-memory cache fix through `6eb3a1df`. Broad Apple ARM64 ordinary/checker checks and focused profiling checks pass. The mixed-memory regression also passes native Linux AMD64. Remote full AMD64 validation was interrupted externally; no complete result is claimed.
+Source `0666c2e3eaa7536b3743ef6f36cf047e89828133` is retained in PR #963 at merge `20457298`. The merged compiler/runtime source tree matches that measured revision exactly; capture identity remains `0666c2e3`. Main `069a26ea` is integrated. The earlier `6eb3a1df` mixed-memory cache fix also passed a targeted native AMD64 regression; externally interrupted Remote validation is not a full AMD64 pass.
 
-Two additional committed private candidates remain outside the PR and local publication:
+The retained fixes restore shifted and paired dot/hash vectorization under optional literal-register pressure, preserve validated native helper pins across fixed-shared import alternatives, prefer encodable immediate adds, and prove complete constant-copy ranges against immutable memory minima. Tests cover source/artifact execution, overlap, zero length, independent memory minima, failed growth, traps, native/Go fallback and policy rollback. Broad ordinary/checker backend/runtime/public checks and focused profiling checks pass. Full qualification uses Go 1.27.1, GOMAXPROCS=1 and the Apple M4 Max device lock.
 
-- `27e0904f` restores shifted-i32 dot vectorization under literal-register pressure, fixing the post-merge audio-autocorrelation slowdown. Its full 532-capture comparison and 373-contract compatibility run complete without outcome changes.
-- `df0b21cd`, based on that fix, preserves validated native helper pins in fixed-shared import loops. Nine-launch reversed rechecks improve ordinary thread helpers by 6.8%/7.0% and opaque helpers by 10.0%/7.0% versus `27e0904f`. Targeted loops remain approximately 1.5 times slower than pinned w2c2 Clang. Compact import remains approximately 1.03–1.04 times peer cost.
+## Matched SDK comparison with published source9ed
 
-For `df0b21cd`, all 532 full performance captures complete without functional changes or resource failures against the last published `9ed26450`. Across 255 numeric pairs, steady geometric mean improves 5.9%; compile time increases 8.6% and compile RSS increases 3.1%. Feature steady geometric mean increases 0.36%. All 373 compatibility contracts complete: 346 pass, 27 unsupported, zero fail.
+All 266 workload contracts per source complete: 532 captures, 15 timing samples per successful phase, no outcome changes or collection/resource failures. Every ratio below compares **0666c2e3 / 9ed26450**, not the main branch. Numeric pairs exclude unsupported outcomes.
 
-A separate five-launch, reversed-order public Compile control over 145 core applications compares `df0b21cd` with current main `069a26ea`: compile time increases 8.1%/8.6%, allocations increase 0.42%, and process peak RSS increases 2.9%/2.9%. This standalone control does not replace SDK resource measurements or establish an execution delta against main.
+| Cohort | Steady time | Compile time | Compile peak RSS |
+| --- | --- | --- | --- |
+| All, 255 numeric pairs | -6.48% | +7.31% | +2.76% |
+| Features, 107 numeric pairs | -0.73% | +12.88% | +3.19% |
+| Application/core, 148 numeric pairs | -10.43% | +3.45% | +2.44% |
 
-The 255-image audit against `27e0904f` changes exactly the two targeted thread helper images (944 to 960 bytes). The environment rollback reproduces all 255 original images. Effectful Go callbacks retain their fallback and verified callback counts.
+All-cohort instantiation time increases 8.09%; first-call time decreases 6.68%. The generated-image audit verifies all 255 persisted SHA256 hashes and byte counts against actual SDK captures; 160 images change, including integrated main improvements. The prior unchanged-image result belongs to source9ed, not this checkpoint.
 
-Full-corpus reversed outlier qualification is still running. These candidates are not retained in the PR or published while that review is pending. The empty-entry normalization candidate `321857f4` is held because both focused orders regressed.
+## Reversed outlier checks and remaining costs
 
-The local server remains healthy at http://localhost:8788 and serves qualified source `9ed26450`; browser verification and publication receipts are recorded in `local-publication-pure-callee.json`. No production deployment. Detailed captures and durable job state remain under `.validation/wasm3-parity`; the active controller is `native-leaf-amd64/finish-pure-shared-pins.py` and does not automatically retain or publish candidates.
+The selected 127 workload contracts receive 508 additional captures: two sources, both orders, nine independent launches and 45 samples per successful phase/order. Two steady regressions over 5% repeat:
+
+| Workload | Forward | Reverse |
+| --- | --- | --- |
+| yyjson parse/edit/write | +6.95% | +17.82% |
+| Point-to-segment distance | +10.28% | +6.53% |
+
+Seventy compile, 48 instantiation and three first-call cases exceed 5% in both orders among this selected set. Complete rows, including improvements, are retained in the evidence. This is not a regression-free result, and these selected counts are not a whole-corpus failure rate.
+
+Ordinary shared host loops improve 7.30%/24.54%, opaque host loops 6.44%/20.29%, and private-secondary copy 11.82%/10.70%, versus source9ed. The varying host-loop gain magnitude remains visible. Separate source0666/pinned-w2c2-Clang exact-contract nine-launch comparisons put ordinary helpers at 1.513x/1.502x, opaque helpers at 1.501x/1.492x, and compact imports at 1.028x/1.028x peer cost. Parity remains incomplete. These use owned typed callbacks and WasmFunc.Invoke; they do not establish legacy Instance.Invoke cost.
+
+## Fresh pinned-main compile control
+
+Five independent fresh-process launches per artifact/source/order cover all 145 core application artifacts against main `069a26ea`. Source0666 compile time increases **7.82%/8.30%**, allocations **0.48%/0.48%**, and process peak RSS **2.93%/3.06%**. Input/config creation is outside the Compile timer; process RSS includes startup/input/config/compile/close. This standalone control supplements SDK resource captures and is not an execution comparison against main.
+
+## Compatibility and delivery
+
+All 373 canonical ARM64 compatibility contracts complete: **346 pass, 27 unsupported, zero fail**, unchanged from source9ed. Existing w2c2 Clang -O0 compatibility is separate from optimized peer performance; its failed/unsupported feature markers remain correctly gated on complete compatibility. No production deployment is authorized.
+
+The exact-source local refresh has 639 captures/1,437 observations. Its receipt, preserved-history, database-health and browser audit will be recorded in `local-publication-post-main.json`; capture timestamps/revisions are retained unchanged.
+
+Native target caching is held for insufficient gains. Native argument staging `1549bac6` is held because independent SDK runs regress in both orders despite favorable paired diagnostics. Adjacent plain shared-memory forwarding is a separate private experiment, documented in `shared-memory-forwarding-semantics.md`, and is not part of measured source0666.
+
+Readable aggregates and every repeated outlier are in `post-main-qualification.json`. `post-main-qualification-evidence.json.gz` preserves 1,413 exact captures with SHA256 hashes, the fresh-process main controls and image audit. The prior publication and controls remain historical evidence.
