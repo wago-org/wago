@@ -33,11 +33,11 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 
 	// Resolve both typed objects before range checks, matching helper trap order.
 	// The copy-only resolver also proves that ObjHeader.Size fits the handle.
-	dst, doneDst := f.emitSharedCheckedGCObject(dstValue, dstType, gc.PayloadOffset, gcSharedStubResolveBoundedObject)
+	dst := f.emitSharedCheckedGCObjectPinned(dstValue, dstType, gc.PayloadOffset, gcSharedStubResolveBoundedObject)
 	f.stats.addGCHandleResolution()
 	f.a.Store64(RSP, f.spillOff(savedDst), dst)
-	doneDst()
-	src, doneSrc := f.emitSharedCheckedGCObject(srcValue, srcType, gc.PayloadOffset, gcSharedStubResolveBoundedObject)
+	f.pinned = f.pinned.remove(dst)
+	src := f.emitSharedCheckedGCObjectPinned(srcValue, srcType, gc.PayloadOffset, gcSharedStubResolveBoundedObject)
 	f.stats.addGCHandleResolution()
 	dst = f.allocReg(maskOf(src))
 	f.a.Load64(dst, RSP, f.spillOff(savedDst))
@@ -86,7 +86,7 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 	f.release(srcIndex)
 	f.release(dstIndex)
 	f.release(dst)
-	doneSrc()
+	f.pinned = f.pinned.remove(src)
 	f.spillFloor = oldFloor
 	f.stats.peep("gc-array-native-copy")
 	return true

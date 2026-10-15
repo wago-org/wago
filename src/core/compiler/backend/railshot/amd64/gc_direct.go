@@ -570,6 +570,11 @@ func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes u
 }
 
 func (f *fn) emitSharedCheckedGCObject(object *elem, localType, requiredBytes uint32, kind gcSharedStubKind) (obj Reg, done func()) {
+	obj = f.emitSharedCheckedGCObjectPinned(object, localType, requiredBytes, kind)
+	return obj, func() { f.pinned = f.pinned.remove(RAX) }
+}
+
+func (f *fn) emitSharedCheckedGCObjectPinned(object *elem, localType, requiredBytes uint32, kind gcSharedStubKind) Reg {
 	ref := f.materialize(object)
 	if ref != RAX {
 		f.a.MovReg64(RAX, ref)
@@ -592,7 +597,7 @@ func (f *fn) emitSharedCheckedGCObject(object *elem, localType, requiredBytes ui
 	f.trapAlways(trapCastFailure)
 	f.a.PatchRel32(success, f.a.Len())
 	f.pinned = f.pinned.add(RAX)
-	return RAX, func() { f.pinned = f.pinned.remove(RAX) }
+	return RAX
 }
 
 // emitCheckedGCObject resolves one compact object handle through the stable
