@@ -1189,11 +1189,11 @@ func (c *Compiled) supportsGoHostDispatchTag() bool {
 }
 
 func (c *Compiled) boundedNativeScalarLeaf() bool {
-	return c != nil && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&nativeScalarBoundedMask != 0
+	return coreruntime.NativeScalarLeafSupported && c != nil && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&nativeScalarBoundedMask != 0
 }
 
 func (c *Compiled) nativeScalarLeafAllowed() bool {
-	return c != nil && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&nativeScalarLeafMask != 0
+	return coreruntime.NativeScalarLeafSupported && c != nil && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&nativeScalarLeafMask != 0
 }
 
 func (c *Compiled) boundedHostSegments() bool {

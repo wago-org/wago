@@ -193,7 +193,7 @@ func registerHostControl(in *Instance) error {
 		hostControlInstances.Delete(ptr)
 		return fmt.Errorf("register runtime synchronous host control frame: %w", err)
 	}
-	if !codeProfileEnabled && in.c.nativeScalarLeafAllowed() {
+	if coreruntime.NativeScalarLeafSupported && !codeProfileEnabled && in.c.nativeScalarLeafAllowed() {
 		binding := in.nativeScalarLeafAliases()
 		if binding == nil {
 			return nil

@@ -15,7 +15,7 @@ func boundedModuleHostSegments(m *wasm.Module) bool {
 }
 
 func boundedModuleNativeHostBody(m *wasm.Module) bool {
-	return boundedModuleHostCode(m, true)
+	return coreruntime.NativeScalarLeafSupported && boundedModuleHostCode(m, true)
 }
 
 func boundedModuleHostCode(m *wasm.Module, native bool) bool {
@@ -28,7 +28,7 @@ func boundedModuleHostCode(m *wasm.Module, native bool) bool {
 			return false
 		}
 		proof := shared.BoundedHostSegments
-		if native {
+		if coreruntime.NativeScalarLeafSupported && native {
 			proof = shared.BoundedNativeHostBody
 		}
 		if !proof(fn.BodyBytes, uint32(imports)) {
@@ -60,7 +60,7 @@ func (in *Instance) boundedHostSegments() bool {
 // Resource publication revokes the existing fast gate before sharing context.
 // Unknown bindings, mutable reference topology and external backing fail closed.
 func (in *Instance) isolatedNativeScalarLeaf() bool {
-	if in == nil || in.c == nil || !in.c.boundedNativeScalarLeaf() || in.executionFlags.Load()&executionFlagNativeScalarLeaf == 0 || !in.preparedFastStateValid() || !in.usesIndependentExecution() || codeProfileEnabled {
+	if !coreruntime.NativeScalarLeafSupported || in == nil || in.c == nil || !in.c.boundedNativeScalarLeaf() || in.executionFlags.Load()&executionFlagNativeScalarLeaf == 0 || !in.preparedFastStateValid() || !in.usesIndependentExecution() || codeProfileEnabled {
 		return false
 	}
 	if in.memoryDir != nil || len(in.globalCells) != 0 || in.tableDescPtr != 0 || in.gc != nil || in.c.needsFuncRefContext() || len(in.hostLog) != 0 {

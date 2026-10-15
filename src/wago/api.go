@@ -1381,13 +1381,13 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	// unbounded execution retains syscall scheduling; bounded entry separately
 	// requires the whole-module proof below and the per-instance native binding.
 	// This compile-only selection is a rollback policy.
-	if cfg.optimizations["native-leaf-host"] && importedFuncs > 0 && len(customInstructions) == 0 && len(internalEntry) != 0 {
+	if wruntime.NativeScalarLeafSupported && cfg.optimizations["native-leaf-host"] && importedFuncs > 0 && len(customInstructions) == 0 && len(internalEntry) != 0 {
 		internalEntry[0] = int(uint(internalEntry[0]) | nativeScalarLeafMask)
 	}
 	if cfg.optimizations["prepared-bounded-entry"] && len(customInstructions) == 0 && boundedModuleHostSegments(m) && len(internalEntry) != 0 {
 		internalEntry[0] = int(uint(internalEntry[0]) | directHostSegmentsMask)
 	}
-	if cfg.optimizations["prepared-bounded-entry"] && len(customInstructions) == 0 && boundedModuleNativeHostBody(m) && len(internalEntry) != 0 {
+	if wruntime.NativeScalarLeafSupported && cfg.optimizations["prepared-bounded-entry"] && len(customInstructions) == 0 && boundedModuleNativeHostBody(m) && len(internalEntry) != 0 {
 		internalEntry[0] = int(uint(internalEntry[0]) | nativeScalarBoundedMask)
 	}
 	if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && cfg.optimizations["prepared-bounded-entry"] && len(customInstructions) == 0 && boundedIntegerModuleHostSegmentsFor(m, goruntime.GOARCH == "arm64") && len(internalEntry) != 0 {
