@@ -89,22 +89,29 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 		f.a.Add64(dstIndex, dst)
 		f.a.Add64(srcIndex, src)
 		firstDisp := -int32(count) * int32(dstScalar.size)
-		values := [4]Reg{tmp}
-		used := maskOf(dst, src, dstIndex, srcIndex, tmp)
-		for i := 1; i < int(count); i++ {
-			values[i] = f.allocReg(used)
-			used = used.add(values[i])
-		}
-		for i := range int(count) {
-			disp := firstDisp + int32(i)*int32(dstScalar.size)
-			f.a.LoadIdx(values[i], srcIndex, RSP, disp, dstScalar.size, false, dstScalar.size == 8)
-		}
-		for i := range int(count) {
-			disp := firstDisp + int32(i)*int32(dstScalar.size)
-			f.a.StoreIdx(dstIndex, RSP, values[i], disp, dstScalar.size)
-		}
-		for i := 1; i < int(count); i++ {
-			f.release(values[i])
+		if int32(count)*int32(dstScalar.size) == 16 {
+			x := f.allocFReg(0)
+			f.mov128LoadIdx(x, srcIndex, RSP, firstDisp)
+			f.mov128StoreIdx(dstIndex, RSP, x, firstDisp)
+			f.releaseF(x)
+		} else {
+			values := [4]Reg{tmp}
+			used := maskOf(dst, src, dstIndex, srcIndex, tmp)
+			for i := 1; i < int(count); i++ {
+				values[i] = f.allocReg(used)
+				used = used.add(values[i])
+			}
+			for i := range int(count) {
+				disp := firstDisp + int32(i)*int32(dstScalar.size)
+				f.a.LoadIdx(values[i], srcIndex, RSP, disp, dstScalar.size, false, dstScalar.size == 8)
+			}
+			for i := range int(count) {
+				disp := firstDisp + int32(i)*int32(dstScalar.size)
+				f.a.StoreIdx(dstIndex, RSP, values[i], disp, dstScalar.size)
+			}
+			for i := 1; i < int(count); i++ {
+				f.release(values[i])
+			}
 		}
 	}
 	f.pinned = f.pinned.remove(tmp).remove(srcIndex).remove(dstIndex).remove(dst)
