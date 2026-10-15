@@ -1,3 +1,5 @@
+> Historical experiment note. The qualified retained combination and current limitations are in [native-shared-parity.md](native-shared-parity.md).
+
 # Shared forwarding experiment policy
 
 This private experiment starts from `0666c2e3`. Its contract is WebAssembly allowed-behavior refinement for an exact adjacent plain i32 store/load pair in one defined, fixed-size shared memory32. It deliberately relaxes the earlier extra promise to preserve each physical guest load: the redundant load may disappear. The store, its bounds check/trap, and the later import CALL remain. No atomic access, callback, synchronization, yield, potentially trapping address operation, profiling observation, or custom instruction may intervene. Unsupported shapes use the original load path.

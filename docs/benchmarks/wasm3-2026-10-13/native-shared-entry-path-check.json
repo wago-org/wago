@@ -1,0 +1,172 @@
+{
+  "scope": "Diagnostic only; exact artifact, owned typed host binding and WasmFunc.Invoke. Deliberate result/argument/load corruption is not benchmark or production code.",
+  "baseRevision": "d9866a7a",
+  "patchSha256": "521408d6473fda3dc5ab85afafd65b750842ae353a2f7fd2c78d8ae2fd4d1661",
+  "profiles": {
+    "ordinary": {
+      "0": {
+        "expectedOracleFailure": false,
+        "exitCode": 0,
+        "firstResult": {
+          "calls": 0,
+          "error": "<nil>",
+          "got": [
+            536739840
+          ],
+          "poison": "0"
+        },
+        "invocations": 8
+      },
+      "1": {
+        "expectedOracleFailure": true,
+        "exitCode": 2,
+        "firstResult": {
+          "calls": 0,
+          "error": "<nil>",
+          "got": [
+            0
+          ],
+          "poison": "1"
+        },
+        "invocations": 1
+      },
+      "2": {
+        "expectedOracleFailure": true,
+        "exitCode": 2,
+        "firstResult": {
+          "calls": 0,
+          "error": "<nil>",
+          "got": [
+            0
+          ],
+          "poison": "2"
+        },
+        "invocations": 1
+      },
+      "3": {
+        "expectedOracleFailure": true,
+        "exitCode": 2,
+        "firstResult": {
+          "calls": 0,
+          "error": "<nil>",
+          "got": [
+            0
+          ],
+          "poison": "3"
+        },
+        "invocations": 1
+      }
+    },
+    "opaque": {
+      "0": {
+        "expectedOracleFailure": false,
+        "exitCode": 0,
+        "firstResult": {
+          "calls": 0,
+          "error": "<nil>",
+          "got": [
+            536739840
+          ],
+          "poison": "0"
+        },
+        "invocations": 8
+      },
+      "1": {
+        "expectedOracleFailure": true,
+        "exitCode": 2,
+        "firstResult": {
+          "calls": 0,
+          "error": "<nil>",
+          "got": [
+            0
+          ],
+          "poison": "1"
+        },
+        "invocations": 1
+      },
+      "2": {
+        "expectedOracleFailure": true,
+        "exitCode": 2,
+        "firstResult": {
+          "calls": 0,
+          "error": "<nil>",
+          "got": [
+            0
+          ],
+          "poison": "2"
+        },
+        "invocations": 1
+      },
+      "3": {
+        "expectedOracleFailure": true,
+        "exitCode": 2,
+        "firstResult": {
+          "calls": 0,
+          "error": "<nil>",
+          "got": [
+            0
+          ],
+          "poison": "3"
+        },
+        "invocations": 1
+      }
+    },
+    "effect": {
+      "0": {
+        "expectedOracleFailure": false,
+        "exitCode": 0,
+        "firstResult": {
+          "calls": 262144,
+          "error": "<nil>",
+          "got": [
+            536739840
+          ],
+          "poison": "0"
+        },
+        "invocations": 8
+      },
+      "1": {
+        "expectedOracleFailure": false,
+        "exitCode": 0,
+        "firstResult": {
+          "calls": 262144,
+          "error": "<nil>",
+          "got": [
+            536739840
+          ],
+          "poison": "1"
+        },
+        "invocations": 8
+      },
+      "2": {
+        "expectedOracleFailure": false,
+        "exitCode": 0,
+        "firstResult": {
+          "calls": 262144,
+          "error": "<nil>",
+          "got": [
+            536739840
+          ],
+          "poison": "2"
+        },
+        "invocations": 8
+      },
+      "3": {
+        "expectedOracleFailure": true,
+        "exitCode": 2,
+        "firstResult": {
+          "calls": 262144,
+          "error": "<nil>",
+          "got": [
+            0
+          ],
+          "poison": "3"
+        },
+        "invocations": 1
+      }
+    }
+  },
+  "status": "passed",
+  "probeSourceSha256": "4c0bf2f4cf2ef5aa90c53c8faeb983c9b80ee0e51a98170649c5bb52fc189450",
+  "binarySha256": "99d8ebdebb088284b63fa37bf4406976cf8216cc2bbad61ccf359f47134fcdff"
+}

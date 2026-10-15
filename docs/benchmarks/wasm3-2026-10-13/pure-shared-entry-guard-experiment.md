@@ -1,3 +1,5 @@
+> Historical experiment note. The qualified retained combination and current limitations are in [native-shared-parity.md](native-shared-parity.md).
+
 # Fixed-shared native entry-guard experiment
 
 This private source starts at measured/retained `0666c2e3`. It admits one scalar import in a defined, fixed shared memory32 module through the existing bounded-integer-body proof and immutable native tag. The ordinary Go/foreign body remains complete; the native body retains an actual BLR to the validated callback and all guest memory accesses. Profiling, growable/multiple/imported memories, tables/tags/GC roots, unsupported types and unbounded/internal-call bodies retain their existing path.

@@ -1,3 +1,5 @@
+> Historical source006 checkpoint. The subsequent retained near-parity result is documented in [native-shared-parity.md](native-shared-parity.md).
+
 # Post-main integration qualification
 
 Source `0666c2e3eaa7536b3743ef6f36cf047e89828133` is retained in PR #963 at merge `20457298`. The merged compiler/runtime source tree matches that measured revision exactly; capture identity remains `0666c2e3`. Main `069a26ea` is integrated. The earlier `6eb3a1df` mixed-memory cache fix also passed a targeted native AMD64 regression; externally interrupted Remote validation is not a full AMD64 pass.

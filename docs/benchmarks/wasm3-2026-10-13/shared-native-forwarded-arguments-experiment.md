@@ -1,3 +1,5 @@
+> Historical experiment note. The qualified retained combination and current limitations are in [native-shared-parity.md](native-shared-parity.md).
+
 # Forwarding with direct guarded native arguments
 
 Private combination of direct guarded native arguments `2a920c5d` and the narrow plain-i32 forwarding implementation from held standalone `086953f1`. Source2a independently improves ordinary SDK thread helpers13.5%/15.2% and opaque helpers11.9%/7.0% versus published006, at26–32% target compile-time cost. Forwarding alone on006 was flat. This combination tests whether that load matters after argument staging is removed; none of these numbers is evidence for the combination.
