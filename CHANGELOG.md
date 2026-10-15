@@ -8,6 +8,15 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Hoist validated native i32 import guards for fixed shared-memory ARM64 loops,
+  keeping admitted arguments/results in registers while preserving imported
+  calls and the complete Go/foreign fallback.
+
+- Forward an immediately repeated plain i32 load from its identical store in
+  one defined fixed-size shared memory32 on ARM64. Preserve the store and its
+  bounds/trap; atomic, host-boundary and profiling cases keep their required
+  access paths. The `store-forward` optimization selection controls this lowering.
+
 - Lower verified pure single-callee i32 Go wrappers into native ARM64 host
   callbacks on Go 1.27, preserving imported calls, ownership and policy
   fallbacks. Effectful callbacks continue through Go.
@@ -79,8 +88,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 - Execute ordinary scalar and SIMD loads/stores against shared memory on
   amd64 and arm64, preserving exact float/vector bits and explicit bounds.
-  Shared accesses use backing-directory addresses and bypass deferred loads
-  and store forwarding.
+  Shared accesses use backing-directory addresses. ARM64 can forward an exact
+  adjacent plain i32 store/load pair under the fixed-memory proof; other shared
+  accesses keep their established load/store path.
 
 - Execute `memory.size` against shared-memory backing on amd64 and arm64,
   including defined/imported memories and codec-loaded products. Admit
