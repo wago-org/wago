@@ -4,10 +4,13 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"runtime"
 	"testing"
+	"time"
 )
 
 func TestFixedSharedStoreForwardSourceArtifactAndCallbacks(t *testing.T) {
@@ -279,5 +282,96 @@ func TestFixedSharedStoreForwardAddressLocalMutation(t *testing.T) {
 			}
 		}
 		c.Close()
+	}
+}
+
+func TestFixedSharedStoreForwardNativeBounds(t *testing.T) {
+	for _, mode := range []string{"0", "1"} {
+		t.Setenv("WAGO_ARM64_SHARED_STORE_FORWARD", mode)
+		t.Setenv("WAGO_ARM64_SHARED_IMPORT_VARIANT", "1")
+		c, err := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit).Compile(fixedSharedForwardLoopModule(65533))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+			in, err := Instantiate(code, InstantiateOptions{Imports: testImports("env.step", nativeLeafIncrement)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = in.Invoke("run", 17)
+			var trap *TrapError
+			if !errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds {
+				t.Fatalf("native bounds mode=%s: %v", mode, err)
+			}
+			tail, ok := in.Read(65533, 3)
+			if !ok || !bytes.Equal(tail, []byte{0, 0, 0}) {
+				t.Fatalf("partial store: %x", tail)
+			}
+			in.Close()
+			if code != c {
+				code.Close()
+			}
+		}
+		c.Close()
+	}
+}
+
+func TestFixedSharedStoreForwardNativeCancellationAndGC(t *testing.T) {
+	if codeProfileEnabled {
+		t.Skip("profiling retains Go callbacks")
+	}
+	t.Setenv("WAGO_ARM64_NATIVE_IMPORT_VARIANT", "1")
+	t.Setenv("WAGO_ARM64_SHARED_STORE_FORWARD", "1")
+	t.Setenv("WAGO_ARM64_SHARED_IMPORT_VARIANT", "1")
+	t.Setenv("WAGO_ARM64_SHARED_IMPORT_ARG_REG", "1")
+	t.Setenv("WAGO_ARM64_SHARED_IMPORT_RESULT_REG", "1")
+	old := runtime.GOMAXPROCS(1)
+	defer runtime.GOMAXPROCS(old)
+	c, err := NewRuntimeConfig().WithFeature(CoreFeatureThreads, true).WithBoundsChecks(BoundsChecksExplicit).Compile(fixedSharedForwardLoopModule(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.step", nativeLeafIncrement)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if in.executionFlags.Load()&executionFlagNativeScalarLeaf == 0 {
+		t.Fatal("native body not admitted")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	state := in.ensurePluginState()
+	done := make(chan error, 1)
+	go func() { _, err := in.InvokeContext(ctx, "run", uint64(0x7fffffff)); done <- err }()
+	deadline := time.Now().Add(3 * time.Second)
+	for state.invokeMu.state.Load()&invocationGateHeld == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("invocation did not enter")
+		}
+		runtime.Gosched()
+	}
+	time.Sleep(time.Millisecond)
+	collected := make(chan struct{})
+	go func() { runtime.GC(); close(collected) }()
+	select {
+	case <-collected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("native loop prevented GC progress")
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("loop exited before cancel: %v", err)
+	default:
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancel=%v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("native loop did not cancel")
 	}
 }
