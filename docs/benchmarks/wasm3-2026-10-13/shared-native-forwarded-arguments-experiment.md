@@ -1,9 +1,0 @@
-> Historical experiment note. The qualified retained combination and current limitations are in [native-shared-parity.md](native-shared-parity.md).
-
-# Forwarding with direct guarded native arguments
-
-Private combination of direct guarded native arguments `2a920c5d` and the narrow plain-i32 forwarding implementation from held standalone `086953f1`. Source2a independently improves ordinary SDK thread helpers13.5%/15.2% and opaque helpers11.9%/7.0% versus published006, at26–32% target compile-time cost. Forwarding alone on006 was flat. This combination tests whether that load matters after argument staging is removed; none of these numbers is evidence for the combination.
-
-This experiment explicitly relaxes the earlier additional promise to preserve every physical guest load. It allows removal only of an immediately repeated plain full-width i32 load following an identical plain store to one defined fixed-size shared memory32. The store, its bounds/trap and subsequent actual import CALL remain. Calls, atomics/fences, local writes, trapping/non-pure address expressions, mismatched widths/addresses, profiling and custom instructions prevent forwarding. The allowed-behavior-refinement argument and draft-spec primary sources are in root commit01d7ef0d `shared-memory-forwarding-semantics.md`; data races are defined and this is not a C undefined-behavior argument.
-
-Both source/artifact/native/Go/foreign/bounds/negative-result/cancellation/GC validation and independent exact SDK both-order results are required. The compiler-visible guest contract/fixture stays identical. Source006 remains PR/local publication; the ordinary guard fallback and real callbacks stay intact. The inherited shared-forward-refinement note describes the standalone086 precursor rather than this combined parentage.
