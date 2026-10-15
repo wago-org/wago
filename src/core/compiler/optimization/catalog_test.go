@@ -367,3 +367,36 @@ func TestResolveSnapshotFullPartialAndInvalidOverrides(t *testing.T) {
 		t.Fatal("resolution changed process defaults")
 	}
 }
+
+func TestCatalogArchitectureSlicesAreOwnedByCaller(t *testing.T) {
+	readers := map[string]func() []Definition{
+		"all":          All,
+		"architecture": func() []Definition { return ForArch("amd64") },
+		"lookup": func() []Definition {
+			d, ok := Lookup("amd64", "reg-abi")
+			if !ok {
+				t.Fatal("missing reg-abi")
+			}
+			return []Definition{d}
+		},
+	}
+	for name, read := range readers {
+		t.Run(name, func(t *testing.T) {
+			definitions := read()
+			for i := range definitions {
+				definitions[i].Architectures[0] = "changed"
+			}
+			for _, optimization := range []string{"reg-abi", "inline"} {
+				d, ok := Lookup("amd64", optimization)
+				if !ok || len(d.Architectures) != 2 || d.Architectures[0] != "amd64" || d.Architectures[1] != "arm64" {
+					t.Fatalf("catalog changed after caller mutation: %#v", d)
+				}
+			}
+			for _, d := range read() {
+				if d.Architectures[0] == "changed" {
+					t.Fatalf("caller mutation persisted for %s", d.Name)
+				}
+			}
+		})
+	}
+}
