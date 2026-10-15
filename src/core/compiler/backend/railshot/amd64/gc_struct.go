@@ -41,6 +41,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		return err
 	}
 	f.prepareGCResolvedFB(sub)
+	f.prepareGCFreshStructFB(sub)
 	f.gcOpcodeBarrier = false
 	defer func() { f.recordGCOpcodeBytes(sub, f.a.Len()-before) }()
 	if sub >= 6 && sub <= 19 {
@@ -117,6 +118,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			params = append(params, valueType)
 		}
 		forward, forwardReader, forwardOK := f.tryForwardGCConstructorGet(r, typeIndex, st)
+		freshValue, freshOK := f.gcFreshStructCandidate(st)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		params = append(params, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -132,6 +134,12 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			f.pushValue(forward)
 			*r = forwardReader
 			f.stats.peep("gc-constructor-get-forward")
+		} else if freshOK {
+			f.setGCFreshStructFact(gcFreshStructFact{
+				objectLocal: -1,
+				typeIndex:   typeIndex,
+				value:       freshValue,
+			})
 		}
 		return nil
 	case 1: // struct.new_default typeidx
@@ -184,6 +192,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		} else if field.Storage().Packed() {
 			return fmt.Errorf("amd64: plain struct.get cannot access packed type %d field %d", typeIndex, fieldIndex)
 		}
+		if sub == 2 && f.tryForwardGCFreshStructGet(typeIndex, fieldIndex) {
+			return nil
+		}
 		if f.emitDirectGCStructGet(typeIndex, fieldIndex, helper) {
 			return nil
 		}
@@ -233,6 +244,149 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	default:
 		return fmt.Errorf("amd64: unsupported staged 0xfb opcode %d", sub)
 	}
+}
+
+type gcFreshStructFact struct {
+	value       storage
+	objectLocal int
+	typeIndex   uint32
+}
+
+// The three spare bytes in each fixed subtype-cache entry hold one byte from
+// each fresh-struct index. This keeps established subtype proofs intact and
+// does not enlarge the per-function compiler state or allocate storage.
+const gcFreshStructFactMode uint8 = 1 << 7
+
+func (f *fn) setGCFreshStructFact(fact gcFreshStructFact) {
+	objectLocal := ^uint32(0)
+	if fact.objectLocal >= 0 {
+		objectLocal = uint32(fact.objectLocal)
+	}
+	indices := [...]uint32{fact.typeIndex, objectLocal, uint32(fact.value.index())}
+	for i := range f.gcSubtypeProofs {
+		for j, index := range indices {
+			f.gcSubtypeProofs[i].fresh[j] = byte(index >> (8 * i))
+		}
+	}
+	f.gcSubtypeProofN |= gcFreshStructFactMode
+}
+
+func (f *fn) getGCFreshStructFact() (gcFreshStructFact, bool) {
+	if f.gcSubtypeProofN&gcFreshStructFactMode == 0 {
+		return gcFreshStructFact{}, false
+	}
+	var indices [3]uint32
+	for i := range f.gcSubtypeProofs {
+		for j := range indices {
+			indices[j] |= uint32(f.gcSubtypeProofs[i].fresh[j]) << (8 * i)
+		}
+	}
+	objectLocal := int(indices[1])
+	if indices[1] == ^uint32(0) {
+		objectLocal = -1
+	}
+	sourceLocal := indices[2]
+	if int(sourceLocal) >= len(f.localType) {
+		f.invalidateGCFreshStructFact()
+		return gcFreshStructFact{}, false
+	}
+	value := storage{kind: stLocalRef, typ: f.localType[sourceLocal], idx: sourceLocal}
+	return gcFreshStructFact{value: value, objectLocal: objectLocal, typeIndex: indices[0]}, true
+}
+
+func (f *fn) gcFreshStructCandidate(st wasm.SubType) (storage, bool) {
+	if len(st.Comp.Fields) != 1 {
+		return storage{}, false
+	}
+	field := st.Comp.Fields[0]
+	if field.Storage().Packed() {
+		return storage{}, false
+	}
+	if _, ok := directGCScalarStorage(field.Storage()); !ok {
+		return storage{}, false
+	}
+	value := f.s.back()
+	if value == nil || !value.isValue() {
+		return storage{}, false
+	}
+	forward := value.st
+	switch forward.kind {
+	case stLocalRef, stLocalReg:
+		forward.kind = stLocalRef
+		forward.reg = regNone
+	default:
+		return storage{}, false
+	}
+	return forward, true
+}
+
+func (f *fn) prepareGCFreshStructFact(op byte) {
+	fact, ok := f.getGCFreshStructFact()
+	if !ok {
+		return
+	}
+	if fact.objectLocal < 0 {
+		if op != 0x21 && op != 0x22 {
+			f.invalidateGCFreshStructFact()
+		}
+		return
+	}
+	switch op {
+	case 0x20, 0x23, 0x41, 0xfb:
+		return
+	default:
+		f.invalidateGCFreshStructFact()
+	}
+}
+
+func (f *fn) prepareGCFreshStructFB(sub uint32) {
+	if _, ok := f.getGCFreshStructFact(); !ok {
+		return
+	}
+	switch sub {
+	case 2, 14: // struct.get or a root-array store.
+		return
+	default:
+		f.invalidateGCFreshStructFact()
+	}
+}
+
+func (f *fn) bindOrInvalidateGCFreshStructLocal(local int) {
+	fact, ok := f.getGCFreshStructFact()
+	if !ok {
+		return
+	}
+	if fact.objectLocal < 0 {
+		fact.objectLocal = local
+		f.setGCFreshStructFact(fact)
+		return
+	}
+	if fact.objectLocal == local ||
+		(fact.value.kind == stLocalRef && fact.value.index() == local) {
+		f.invalidateGCFreshStructFact()
+	}
+}
+
+func (f *fn) invalidateGCFreshStructFact() {
+	f.gcSubtypeProofN &^= gcFreshStructFactMode
+}
+
+func (f *fn) tryForwardGCFreshStructGet(typeIndex, fieldIndex uint32) bool {
+	fact, ok := f.getGCFreshStructFact()
+	if !ok || fieldIndex != 0 || typeIndex != fact.typeIndex {
+		f.invalidateGCFreshStructFact()
+		return false
+	}
+	local, ok := gcLocalProvenance(f.s.back())
+	if !ok || local != fact.objectLocal {
+		f.invalidateGCFreshStructFact()
+		return false
+	}
+	f.dropValue()
+	f.pushValue(fact.value)
+	f.invalidateGCFreshStructFact()
+	f.stats.peep("gc-fresh-struct-get-forward")
+	return true
 }
 
 // tryForwardGCConstructorGet recognizes an adjacent cast and scalar field read
@@ -315,23 +469,25 @@ type gcSubtypeProof struct {
 	source uint32
 	target uint32
 	result bool
+	fresh  [3]byte
 }
 
 func (f *fn) cachedGCSubtypeProof(source, target uint32) bool {
-	for i := uint8(0); i < f.gcSubtypeProofN; i++ {
+	proofN := f.gcSubtypeProofN &^ gcFreshStructFactMode
+	for i := uint8(0); i < proofN; i++ {
 		proof := f.gcSubtypeProofs[i]
 		if proof.source == source && proof.target == target {
 			return proof.result
 		}
 	}
-	if f.gcSubtypeProofN == uint8(len(f.gcSubtypeProofs)) {
+	if f.gcSubtypeProofN&gcFreshStructFactMode != 0 || proofN == uint8(len(f.gcSubtypeProofs)) {
 		return false
 	}
 	actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: source}), false)
 	required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: target}), false)
 	result := f.m.ReferenceTypeSubtype(actual, required)
-	f.gcSubtypeProofs[f.gcSubtypeProofN] = gcSubtypeProof{source: source, target: target, result: result}
-	f.gcSubtypeProofN++
+	f.gcSubtypeProofs[proofN] = gcSubtypeProof{source: source, target: target, result: result}
+	f.gcSubtypeProofN = proofN + 1
 	return result
 }
 

@@ -85,4 +85,5 @@ func (f *fn) invalidateGCLoadFactsForLocal(local int) {
 
 func (f *fn) invalidateGCMutableLoadFacts() {
 	f.invalidateGCResolvedObject()
+	f.invalidateGCFreshStructFact()
 }

@@ -83,6 +83,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		}
 		f.prepareStoreForward(op)
 		f.prepareGCResolvedObject(op)
+		f.prepareGCFreshStructFact(op)
 		switch op {
 		case 0x00: // unreachable
 			if !f.unreachable {
@@ -1178,6 +1179,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	f.invalidateBoundsCertFor(1, uint32(x))
 	f.clearV128LocalAliases(x)
 	e := f.s.back()
+	f.bindOrInvalidateGCFreshStructLocal(x)
 	f.invalidateGCLoadFactsForLocal(x)
 	if e != nil && e.isValue() && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")
