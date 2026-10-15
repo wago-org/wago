@@ -4,7 +4,7 @@ package amd64
 
 import gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 
-// Up to two numeric elements can be loaded before the stores without an overlap
+// Up to three numeric elements can be loaded before the stores without an overlap
 // branch, payload buffer, or loop. Larger copies retain the Go copy helper.
 func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 	if !gcSharedStubsEnabled {
@@ -18,7 +18,7 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 		return false
 	}
 	count := uint32(countRoot.st.cval)
-	if count > 2 {
+	if count > 3 {
 		return false
 	}
 	f.flush()
@@ -55,8 +55,8 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 		rangeTrap = condAE
 	}
 	for _, pair := range [2][2]Reg{{dst, dstIndex}, {src, srcIndex}} {
-		if count == 2 {
-			// The zero-extended i32 index plus two cannot overflow 64 bits.
+		if count >= 2 {
+			// The zero-extended i32 index plus the small count cannot overflow 64 bits.
 			// Keep the exclusive end for both logical and physical bounds.
 			f.a.AluRI(0, pair[1], int32(count), true)
 			f.a.Load32(tmp, pair[0], 8)
@@ -70,7 +70,7 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 	}
 	if count != 0 {
 		required := int32(gc.PayloadOffset) + int32(count)*int32(dstScalar.size)
-		if count == 2 {
+		if count >= 2 {
 			required = int32(gc.PayloadOffset)
 		}
 		for _, pair := range [2][2]Reg{{dst, dstIndex}, {src, srcIndex}} {
@@ -90,11 +90,21 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 		f.a.Add64(srcIndex, src)
 		firstDisp := -int32(count) * int32(dstScalar.size)
 		f.a.LoadIdx(tmp, srcIndex, RSP, firstDisp, dstScalar.size, false, dstScalar.size == 8)
-		if count == 2 {
+		if count >= 2 {
 			tmp2 := f.allocReg(maskOf(dst, src, dstIndex, srcIndex, tmp))
-			f.a.LoadIdx(tmp2, srcIndex, RSP, -int32(dstScalar.size), dstScalar.size, false, dstScalar.size == 8)
-			f.a.StoreIdx(dstIndex, RSP, tmp, firstDisp, dstScalar.size)
-			f.a.StoreIdx(dstIndex, RSP, tmp2, -int32(dstScalar.size), dstScalar.size)
+			secondDisp := firstDisp + int32(dstScalar.size)
+			f.a.LoadIdx(tmp2, srcIndex, RSP, secondDisp, dstScalar.size, false, dstScalar.size == 8)
+			if count == 3 {
+				tmp3 := f.allocReg(maskOf(dst, src, dstIndex, srcIndex, tmp, tmp2))
+				f.a.LoadIdx(tmp3, srcIndex, RSP, -int32(dstScalar.size), dstScalar.size, false, dstScalar.size == 8)
+				f.a.StoreIdx(dstIndex, RSP, tmp, firstDisp, dstScalar.size)
+				f.a.StoreIdx(dstIndex, RSP, tmp2, secondDisp, dstScalar.size)
+				f.a.StoreIdx(dstIndex, RSP, tmp3, -int32(dstScalar.size), dstScalar.size)
+				f.release(tmp3)
+			} else {
+				f.a.StoreIdx(dstIndex, RSP, tmp, firstDisp, dstScalar.size)
+				f.a.StoreIdx(dstIndex, RSP, tmp2, secondDisp, dstScalar.size)
+			}
 			f.release(tmp2)
 		} else {
 			f.a.StoreIdx(dstIndex, RSP, tmp, firstDisp, dstScalar.size)
