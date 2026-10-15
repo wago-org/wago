@@ -59,14 +59,39 @@ func (c *Collector) reserveNativeHandles() {
 		c.tinyGC.color = slices.Grow(c.tinyGC.color, newHandles)
 	}
 	c.nurseryHandles = slices.Grow(c.nurseryHandles, nativeStructHandleBatch)
-	for i := range s.Handles {
-		h := c.newHandle(handleEntry{})
-		s.Handles[i] = h
-		// Reserved free handles participate in this dense list before activation.
-		// Collection ignores spaceFree entries and compacts them after cancellation.
-		c.nurseryHandles = append(c.nurseryHandles, h)
-		s.Count++
+	if c.checkedHandles != nil {
+		// The checked API can retire exhausted generations while taking a batch.
+		for i := range s.Handles {
+			s.Handles[i] = c.newHandle(handleEntry{})
+		}
+	} else {
+		// Native identities have no generation bookkeeping. Extend each parallel
+		// table once, rather than running the general allocator for every handle.
+		reused := nativeStructHandleBatch - newHandles
+		free := c.freeHandles[len(c.freeHandles)-reused:]
+		for i := range reused {
+			h := free[reused-1-i]
+			c.handles[h] = handleEntry{}
+			s.Handles[i] = h
+		}
+		c.freeHandles = c.freeHandles[:len(c.freeHandles)-reused]
+		base := len(c.handles)
+		c.handles = c.handles[:base+newHandles]
+		clear(c.handles[base:])
+		marks := len(c.mark)
+		c.mark = c.mark[:marks+newHandles]
+		clear(c.mark[marks:])
+		colors := len(c.tinyGC.color)
+		c.tinyGC.color = c.tinyGC.color[:colors+newHandles]
+		clear(c.tinyGC.color[colors:])
+		for i := reused; i < nativeStructHandleBatch; i++ {
+			s.Handles[i] = uint32(base + i - reused)
+		}
 	}
+	// Reserved free handles participate in this dense list before activation.
+	// Collection ignores spaceFree entries and compacts them after cancellation.
+	c.nurseryHandles = append(c.nurseryHandles, s.Handles[:]...)
+	s.Count = nativeStructHandleBatch
 	base := s.Handles[0]
 	contiguous := base != 0
 	for i, h := range s.Handles {

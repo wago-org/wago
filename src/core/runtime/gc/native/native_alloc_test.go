@@ -1,6 +1,9 @@
 package gc
 
 import (
+	"fmt"
+	"reflect"
+	"slices"
 	"testing"
 	"unsafe"
 )
@@ -334,5 +337,83 @@ func TestNativeStructHandleBatchRejectedProfiles(t *testing.T) {
 			t.Fatalf("prepared native handles for config %+v", cfg)
 		}
 		c.Close()
+	}
+}
+
+// The native batch must preserve the general allocator's reuse order and all
+// parallel state, including checked identities that retire on exhaustion.
+func TestNativeHandleBatchMatchesGeneralAllocator(t *testing.T) {
+	for _, checked := range []bool{false, true} {
+		for _, freeCount := range []int{0, 7, 31, 32, 47} {
+			t.Run(fmt.Sprintf("checked=%t/free=%d", checked, freeCount), func(t *testing.T) {
+				makeCollector := func() *Collector {
+					c, err := NewCollector(Config{}, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(c.Close)
+					if checked {
+						if err := c.EnableCheckedHandles(); err != nil {
+							t.Fatal(err)
+						}
+					}
+					for range 64 {
+						c.newHandle(handleEntry{})
+					}
+					// Spare capacity may retain old data. Fresh identities must clear
+					// it while reused identities retain their existing side-table state.
+					entries, marks, colors := len(c.handles), len(c.mark), len(c.tinyGC.color)
+					c.handles = slices.Grow(c.handles, 32)[:entries+32]
+					for i := entries; i < len(c.handles); i++ {
+						c.handles[i] = handleEntry{space: spaceOld, size: 80}
+					}
+					c.handles = c.handles[:entries]
+					c.mark = slices.Grow(c.mark, 32)[:marks+32]
+					for i := range c.mark {
+						c.mark[i] = true
+					}
+					c.mark = c.mark[:marks]
+					c.tinyGC.color = slices.Grow(c.tinyGC.color, 32)[:colors+32]
+					for i := range c.tinyGC.color {
+						c.tinyGC.color[i] = 37
+					}
+					c.tinyGC.color = c.tinyGC.color[:colors]
+					for i := range freeCount {
+						c.freeHandles = append(c.freeHandles, uint32(1+(i*17)%64))
+					}
+					if checked && freeCount != 0 {
+						generations := *c.checkedHandles
+						generations[c.freeHandles[freeCount-1]] = ^uint64(0)
+						if freeCount > 1 {
+							generations[c.freeHandles[freeCount-2]] = ^uint64(0) - 1
+						}
+					}
+					return c
+				}
+				got, want := makeCollector(), makeCollector()
+				var expected [nativeStructHandleBatch]uint32
+				for i := range expected {
+					expected[i] = want.newHandle(handleEntry{})
+				}
+				got.reserveNativeHandles()
+				if got.nativeStructAlloc.Handles != expected {
+					t.Fatalf("batch = %v, want %v", got.nativeStructAlloc.Handles, expected)
+				}
+				for name, pair := range map[string][2]any{
+					"entries":     {got.handles, want.handles},
+					"free":        {got.freeHandles, want.freeHandles},
+					"marks":       {got.mark, want.mark},
+					"colors":      {got.tinyGC.color, want.tinyGC.color},
+					"generations": {got.checkedHandles, want.checkedHandles},
+				} {
+					if !reflect.DeepEqual(pair[0], pair[1]) {
+						t.Fatalf("%s differ: got %v want %v", name, pair[0], pair[1])
+					}
+				}
+				if !reflect.DeepEqual(got.nurseryHandles, expected[:]) {
+					t.Fatalf("dense nursery = %v, want %v", got.nurseryHandles, expected)
+				}
+			})
+		}
 	}
 }
