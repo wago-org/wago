@@ -14,6 +14,7 @@ func (c *Collector) CollectFull(roots RootSet) error {
 		return err
 	}
 	c.discardNativeStructHandles()
+	c.discardNativeLargeArrayAllocation()
 	defer c.refreshNativeView()
 	if c.cfg.Profile == ProfileTiny {
 		if err := c.tinyCollectFull(roots); err != nil {
@@ -42,6 +43,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	}
 	youngObjects := uint32(min(uint64(len(c.nurseryHandles)), uint64(^uint32(0))))
 	c.discardNativeStructHandles()
+	c.discardNativeLargeArrayAllocation()
 	defer c.refreshNativeView()
 	c.stats.MinorCollections++
 	if c.cfg.Profile == ProfileTiny {

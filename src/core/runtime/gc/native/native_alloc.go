@@ -12,6 +12,7 @@ const (
 	NativeAllocationChunkBytes        uint32 = 4096
 	NativeStructAllocHandleCapacity          = nativeStructHandleBatch
 	NativeArrayAllocMaxBytes          uint32 = 256
+	NativeLargeArrayAllocMaxBytes     uint32 = 64 << 10
 	nativeArrayGenericRefillThreshold uint8  = 9
 )
 
@@ -30,6 +31,22 @@ type nativeStructAllocState struct {
 	Handles     [nativeStructHandleBatch]uint32
 }
 
+// nativeLargeArrayAllocState holds one exact-size array reservation. It stays
+// separate from the struct and small-array batch so their refills cannot erase
+// the next large roots-array allocation.
+type nativeLargeArrayAllocState struct {
+	Epoch       uint32
+	Cursor      uint32
+	Count       uint32
+	HandleBase  uint32
+	ChunkStart  uint32
+	ChunkCursor uint32
+	ChunkEnd    uint32
+	ChunkBump   uint32 // handle metadata: allocation class and reserved space
+	Handle      uint32
+	Rewind      uint32 // prior nursery bump; unused for throughput reservations
+}
+
 const (
 	NativeStructAllocEpochOffset       = 0
 	NativeStructAllocCursorOffset      = 4
@@ -41,6 +58,7 @@ const (
 	NativeStructAllocChunkBumpOffset   = 28
 	NativeStructAllocHandlesOffset     = 32
 	NativeStructAllocStateSize         = 32 + nativeStructHandleBatch*4
+	NativeLargeArrayAllocStateSize     = 40
 )
 
 func (c *Collector) nativeAllocationAllowed(minObjectBytes uint32) bool {
@@ -167,7 +185,7 @@ func (c *Collector) PrepareNativeAllocation(minObjectBytes uint32) bool {
 // helper and one oversized native reservation regresses sustained throughput.
 func (c *Collector) PrepareNativeArrayAllocation(objectBytes uint32) bool {
 	if objectBytes > NativeArrayAllocMaxBytes {
-		return false
+		return c.prepareNativeLargeArrayAllocation(objectBytes)
 	}
 	// Generic public calls collect at the next boundary. Measurements put the
 	// refill break-even above eight constructors, so short calls stay helper-only
@@ -191,9 +209,95 @@ func (c *Collector) PrepareNativeArrayAllocation(objectBytes uint32) bool {
 // so the first rooted constructor can profitably refill for later invocations.
 func (c *Collector) PrepareNativeArrayAllocationImmediate(objectBytes uint32) bool {
 	if objectBytes > NativeArrayAllocMaxBytes {
-		return false
+		return c.prepareNativeLargeArrayAllocation(objectBytes)
 	}
 	return c.PrepareNativeAllocation(objectBytes)
+}
+
+func (c *Collector) prepareNativeLargeArrayAllocation(objectBytes uint32) bool {
+	if c == nil || c.closed || c.cfg.Profile != ProfileThroughput || c.cfg.DisableCollection || c.cfg.CollectEveryAlloc ||
+		objectBytes <= NativeArrayAllocMaxBytes || objectBytes > NativeLargeArrayAllocMaxBytes {
+		return false
+	}
+	s := &c.nativeLargeArrayAlloc
+	if s.Cursor < s.Count && s.ChunkEnd-s.ChunkCursor >= objectBytes {
+		return true
+	}
+	c.discardNativeLargeArrayAllocation()
+
+	var e handleEntry
+	rewind := uint32(0)
+	if objectBytes < c.cfg.LargeObjectBytes && objectBytes <= c.edenBytes() {
+		rewind = c.nurseryBump
+		start := Align16(rewind)
+		need := Align16(objectBytes)
+		limit := c.edenBytes()
+		if start > limit || need > limit-start {
+			return false
+		}
+		e = handleEntry{off: start, size: objectBytes, space: spaceNursery}
+		c.nurseryBump = start + need
+	} else {
+		var err error
+		e, err = c.throughput.alloc(objectBytes, spaceLarge)
+		if err != nil {
+			return false
+		}
+		e.setYoungAge(0)
+	}
+	h := c.newHandle(handleEntry{})
+	c.nurseryHandles = append(c.nurseryHandles, h)
+	s.Epoch = c.nativeLargeArrayEpoch
+	s.Cursor = 0
+	s.Count = 1
+	s.HandleBase = h
+	s.ChunkStart = e.off
+	s.ChunkCursor = e.off
+	s.ChunkEnd = e.off + Align16(e.size)
+	s.ChunkBump = uint32(e.class) | uint32(e.space)<<16
+	s.Handle = h
+	s.Rewind = rewind
+	if e.space == spaceNursery {
+		c.refreshNativeHandles()
+	} else {
+		c.refreshNativeView()
+	}
+	return true
+}
+
+func (c *Collector) discardNativeLargeArrayAllocation() {
+	if c == nil {
+		return
+	}
+	s := &c.nativeLargeArrayAlloc
+	unused := s.Count != 0 && s.Cursor == 0 && s.Handle != 0 && int(s.Handle) < len(c.handles) && c.handles[s.Handle].space == spaceFree
+	if unused {
+		c.freeHandles = append(c.freeHandles, s.Handle)
+		for i, h := range c.nurseryHandles {
+			if h == s.Handle {
+				copy(c.nurseryHandles[i:], c.nurseryHandles[i+1:])
+				c.nurseryHandles = c.nurseryHandles[:len(c.nurseryHandles)-1]
+				break
+			}
+		}
+		space := spaceKind((s.ChunkBump >> 16) & 0xff)
+		if space == spaceNursery {
+			if c.nurseryBump == s.ChunkEnd {
+				c.nurseryBump = s.Rewind
+			}
+		} else {
+			e := handleEntry{off: s.ChunkStart, size: s.ChunkEnd - s.ChunkStart, class: uint16(s.ChunkBump), space: spaceLarge}
+			if err := c.throughput.free(e); err != nil {
+				panic("gc: cannot cancel native large-array reservation: " + err.Error())
+			}
+		}
+	}
+	*s = nativeLargeArrayAllocState{}
+	c.nativeLargeArrayEpoch++
+	if c.nativeLargeArrayEpoch == 0 {
+		c.nativeLargeArrayEpoch = 1
+	}
+	s.Epoch = c.nativeLargeArrayEpoch
 }
 
 // PrepareNativeStructHandles is retained for low-level callers and tests. New

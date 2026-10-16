@@ -124,7 +124,9 @@ type Collector struct {
 	cfg                   Config
 	nativeView            *NativeCollectorView
 	nativeStructAlloc     nativeStructAllocState
+	nativeLargeArrayAlloc nativeLargeArrayAllocState
 	nativeAllocEpoch      uint32
+	nativeLargeArrayEpoch uint32
 	nurseryGrowthSurvived uint32 // occupies existing padding before types
 	types                 []TypeDesc
 	subtypeIntervals      []uint64 // packed DFS [pre, post] interval by canonical TypeID
@@ -231,6 +233,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 // counters, while unchecked root-slot reads return null after slots are released.
 func (c *Collector) Close() {
 	c.discardNativeStructHandles()
+	c.discardNativeLargeArrayAllocation()
 	c.stats.LiveObjects = 0
 	c.closed = true
 	c.nursery = nil

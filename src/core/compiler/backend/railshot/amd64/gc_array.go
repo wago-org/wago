@@ -211,9 +211,12 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocDefault)
-		if layout, native := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native && (!layout.ref || layout.nullable) {
-			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
-				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeDefault}
+		if layout, native := nativeGCDefaultArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native && (!layout.ref || layout.nullable) {
+			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeLargeArrayAllocMaxBytes) {
+				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeDefault, large: bytes > uint64(gc.NativeArrayAllocMaxBytes)}
+				helper = gcArrayAllocDefaultNative
+			} else if !static {
+				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, mode: gcArrayNativeDefault, dynamic: true}
 				helper = gcArrayAllocDefaultNative
 			}
 		}

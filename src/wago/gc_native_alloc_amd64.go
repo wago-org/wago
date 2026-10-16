@@ -49,6 +49,14 @@ func (in *Instance) prepareNativeStructHandles(typeID uint32) {
 }
 
 func (in *Instance) prepareNativeArrayAllocation(typeID, length uint32) {
+	in.prepareNativeArrayAllocationMode(typeID, length, false)
+}
+
+func (in *Instance) prepareNativeDefaultArrayAllocation(typeID, length uint32) {
+	in.prepareNativeArrayAllocationMode(typeID, length, true)
+}
+
+func (in *Instance) prepareNativeArrayAllocationMode(typeID, length uint32, typedDefault bool) {
 	if !nativeStructAllocEnabled || in == nil || in.gc == nil || in.c == nil || int(typeID) >= len(in.c.Types) || int(typeID) >= len(in.c.GCTypeDescs) {
 		return
 	}
@@ -59,7 +67,7 @@ func (in *Instance) prepareNativeArrayAllocation(typeID, length uint32) {
 	}
 	if t.Array.Storage.Value.Kind == ValueTypeReference {
 		heap := t.Array.Storage.Value.Ref.Heap
-		if heap.Defined || (heap.Abstract != AbstractHeapAny && heap.Abstract != AbstractHeapEq) || (d.Elem != gc.StorageRef && d.Elem != gc.StorageRefNull) {
+		if (d.Elem != gc.StorageRef && d.Elem != gc.StorageRefNull) || (!typedDefault && (heap.Defined || (heap.Abstract != AbstractHeapAny && heap.Abstract != AbstractHeapEq))) {
 			return
 		}
 	}

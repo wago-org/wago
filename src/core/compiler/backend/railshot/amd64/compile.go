@@ -803,6 +803,8 @@ type gcArrayAllocStubSite struct {
 	count     uint32
 	site      int
 	mode      gcArrayAllocMode
+	dynamic   bool
+	large     bool
 }
 
 type jumpTableFragmentKind uint8

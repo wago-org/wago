@@ -526,7 +526,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		}
 		results[0] = uint64(ref)
 		if helper == gcArrayAllocDefaultNative {
-			in.prepareNativeArrayAllocation(uint32(args[1]), uint32(args[0]))
+			in.prepareNativeDefaultArrayAllocation(uint32(args[1]), uint32(args[0]))
 		}
 	case gcArrayGet, gcArrayGetS, gcArrayGetU:
 		if len(args) != 3 || len(results) < 1 {

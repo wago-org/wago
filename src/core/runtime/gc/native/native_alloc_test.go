@@ -26,6 +26,109 @@ func TestNativeStructAllocStateLayout(t *testing.T) {
 	}
 }
 
+func TestNativeLargeArrayAllocStateLayout(t *testing.T) {
+	var s nativeLargeArrayAllocState
+	if unsafe.Sizeof(s) != NativeLargeArrayAllocStateSize ||
+		unsafe.Offsetof(s.Epoch) != NativeStructAllocEpochOffset ||
+		unsafe.Offsetof(s.Cursor) != NativeStructAllocCursorOffset ||
+		unsafe.Offsetof(s.Count) != NativeStructAllocCountOffset ||
+		unsafe.Offsetof(s.HandleBase) != NativeStructAllocHandleBaseOffset ||
+		unsafe.Offsetof(s.ChunkStart) != NativeStructAllocChunkStartOffset ||
+		unsafe.Offsetof(s.ChunkCursor) != NativeStructAllocChunkCursorOffset ||
+		unsafe.Offsetof(s.ChunkEnd) != NativeStructAllocChunkEndOffset ||
+		unsafe.Offsetof(s.ChunkBump) != NativeStructAllocChunkBumpOffset ||
+		unsafe.Offsetof(s.Handle) != NativeStructAllocHandlesOffset || unsafe.Offsetof(s.Rewind) != 36 {
+		t.Fatalf("native large-array state layout changed: size=%d state=%+v", unsafe.Sizeof(s), s)
+	}
+}
+
+func TestNativeLargeArrayAllocationSurvivesStructRefill(t *testing.T) {
+	array, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	strct, err := NewStructDesc(1, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{array, strct})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	const bytes = 16 << 10
+	if !c.PrepareNativeArrayAllocation(bytes) {
+		t.Fatal("large array reservation was not prepared")
+	}
+	want := c.nativeLargeArrayAlloc
+	if want.Count != 1 || want.HandleBase == 0 || want.ChunkEnd-want.ChunkStart != bytes {
+		t.Fatalf("large array state = %+v", want)
+	}
+	if !c.PrepareNativeStructAllocation(24) {
+		t.Fatal("struct batch was not prepared")
+	}
+	if c.nativeLargeArrayAlloc != want {
+		t.Fatalf("struct refill changed large array state: got %+v want %+v", c.nativeLargeArrayAlloc, want)
+	}
+	if c.nurseryBump != want.ChunkEnd {
+		t.Fatalf("nursery bump = %d, want %d", c.nurseryBump, want.ChunkEnd)
+	}
+}
+
+func TestNativeLargeArrayAllocationCanceledAtCollection(t *testing.T) {
+	array, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{array})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if !c.PrepareNativeArrayAllocation(16 << 10) {
+		t.Fatal("large array reservation was not prepared")
+	}
+	h := c.nativeLargeArrayAlloc.Handle
+	epoch := c.nativeLargeArrayEpoch
+	if err := c.CollectMinor(EmptyRoots{}); err != nil {
+		t.Fatal(err)
+	}
+	if c.nativeLargeArrayAlloc.Count != 0 || c.nativeLargeArrayEpoch == epoch || c.nurseryBump != 0 || len(c.nurseryHandles) != 0 {
+		t.Fatalf("post-collection state = %+v epoch=%d nursery bump=%d nursery=%v", c.nativeLargeArrayAlloc, c.nativeLargeArrayEpoch, c.nurseryBump, c.nurseryHandles)
+	}
+	if len(c.freeHandles) == 0 || c.freeHandles[len(c.freeHandles)-1] != h {
+		t.Fatalf("reserved handle %d was not recycled: %v", h, c.freeHandles)
+	}
+}
+
+func TestNativeThroughputArrayReservationCanceledAtCollection(t *testing.T) {
+	array, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{array})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	const bytes = 40 << 10
+	if !c.PrepareNativeArrayAllocation(bytes) {
+		t.Fatal("throughput array reservation was not prepared")
+	}
+	if space := spaceKind((c.nativeLargeArrayAlloc.ChunkBump >> 16) & 0xff); space != spaceLarge {
+		t.Fatalf("reserved space = %d, want large", space)
+	}
+	if c.throughput.bump < bytes {
+		t.Fatalf("throughput bump = %d, want at least %d", c.throughput.bump, bytes)
+	}
+	if err := c.CollectMinor(EmptyRoots{}); err != nil {
+		t.Fatal(err)
+	}
+	if c.throughput.bump != 0 || c.nativeLargeArrayAlloc.Count != 0 || len(c.nurseryHandles) != 0 {
+		t.Fatalf("canceled throughput reservation = state %+v bump %d nursery %v", c.nativeLargeArrayAlloc, c.throughput.bump, c.nurseryHandles)
+	}
+}
+
 func TestNativeStructHandleBatchReservationAndCollection(t *testing.T) {
 	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
 	if err != nil {
