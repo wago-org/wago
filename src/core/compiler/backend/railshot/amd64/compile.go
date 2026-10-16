@@ -77,6 +77,10 @@ var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
 // collection/refill path. Keep one differential kill switch for qualification.
 var nativeGCStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "1"
 
+// Keep array-register comparisons in one executable so Go code placement is
+// identical on both sides. This switch changes compilation, not generated checks.
+var nativeGCArrayScratchEnabled = os.Getenv("WAGO_AMD64_NO_GC_ARRAY_SCRATCH") != "1"
+
 // gcSharedStubsEnabled moves the common noncollecting compact-handle resolver
 // into one module-owned leaf stub. The local call edge retains exact trap/source
 // attribution. WAGO_AMD64_NO_GC_SHARED_STUBS=1 restores fully inline resolution

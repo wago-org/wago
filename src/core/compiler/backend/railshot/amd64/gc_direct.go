@@ -1040,6 +1040,16 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		panic("amd64: invalid native array allocation layout")
 	}
 	a := f.a
+	controlReg, countReg, sizeReg := R12, R13, R14
+	callee := [...]Reg{R12, R13, R14, R15}
+	savedCallee := callee[:]
+	if nativeGCArrayScratchEnabled && site.mode == gcArrayNativeUniform && layout.pointerFree && layout.elemSize == 4 && site.count == 16 {
+		// This initializer uses SSE stores and needs no scalar payload loop or
+		// reference validation. Its control frame, count, and size can stay in
+		// caller-saved scratch registers throughout the allocation attempt.
+		controlReg, countReg, sizeReg = RDI, RDX, RCX
+		savedCallee = callee[3:]
+	}
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
 		if reg := f.locals[local].reg; reg >= R9 && reg <= R11 {
@@ -1059,10 +1069,10 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 			a.Push(R9 + Reg(i))
 		}
 	}
-	for _, reg := range [...]Reg{R12, R13, R14, R15} {
+	for _, reg := range savedCallee {
 		a.Push(reg)
 	}
-	a.MovReg64(R12, R8) // synchronous control frame
+	a.MovReg64(controlReg, R8) // synchronous control frame
 	fallback := make([]int, 0, 32+int(site.count))
 	addFallback := func(branch int) { fallback = append(fallback, branch) }
 
@@ -1108,27 +1118,27 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condNE))
 
-	a.MovImm32(R13, int32(site.count))
+	a.MovImm32(countReg, int32(site.count))
 	maxLength := uint32((uint64(math.MaxUint32) - uint64(gc.PayloadOffset) - 7) / uint64(layout.elemSize))
-	a.AluRI(cmpDigit, R13, int32(maxLength), false)
+	a.AluRI(cmpDigit, countReg, int32(maxLength), false)
 	addFallback(a.JccPlaceholder(condA))
-	a.MovRegReg32(R14, R13)
+	a.MovRegReg32(sizeReg, countReg)
 	switch layout.elemSize {
 	case 2:
-		a.ShiftImm(4, R14, 1, false)
+		a.ShiftImm(4, sizeReg, 1, false)
 	case 4:
-		a.ShiftImm(4, R14, 2, false)
+		a.ShiftImm(4, sizeReg, 2, false)
 	case 8:
-		a.ShiftImm(4, R14, 3, false)
+		a.ShiftImm(4, sizeReg, 3, false)
 	case 16:
-		a.ShiftImm(4, R14, 4, false)
+		a.ShiftImm(4, sizeReg, 4, false)
 	}
-	a.AluRI(0, R14, int32(gc.PayloadOffset+7), false)
-	a.AluRI(4, R14, -8, false)
+	a.AluRI(0, sizeReg, int32(gc.PayloadOffset+7), false)
+	a.AluRI(4, sizeReg, -8, false)
 	a.Load32(RAX, R8, gc.NativeViewNurseryObjectMaxBytesOffset)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
-	a.Cmp32(R14, RAX)
+	a.Cmp32(sizeReg, RAX)
 	addFallback(a.JccPlaceholder(condAE))
 
 	a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
@@ -1145,7 +1155,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	a.Cmp32(R15, RAX)
 	addFallback(a.JccPlaceholder(condA))
 	a.Sub32(RAX, R15)
-	a.Cmp32(RAX, R14)
+	a.Cmp32(RAX, sizeReg)
 	addFallback(a.JccPlaceholder(condB))
 	a.Load64(R11, R8, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceNursery*gc.NativeViewSpaceStride+gc.NativeSpaceBaseOffset))
 	a.TestSelf(R11, true)
@@ -1156,7 +1166,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	addFallback(a.JccPlaceholder(condE))
 
 	emitValidateRef := func(slot uint32) {
-		a.Load32(RAX, R12, hcArgs+int32(slot*8))
+		a.Load32(RAX, controlReg, hcArgs+int32(slot*8))
 		a.TestSelf(RAX, false)
 		nullOK := -1
 		if layout.nullable {
@@ -1203,8 +1213,8 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	a.Load64(RAX, RAX, gc.NativeInstanceViewLocalTypesOffset)
 	a.Load32(RAX, RAX, int32(site.typeIndex*4))
 	a.Store32(R11, 0, RAX)
-	a.Store32(R11, 4, R14)
-	a.Store32(R11, 8, R13)
+	a.Store32(R11, 4, sizeReg)
+	a.Store32(R11, 8, countReg)
 	flags := int32(0)
 	if layout.pointerFree {
 		flags = int32(gc.FlagPointerFree)
@@ -1215,7 +1225,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	case gcArrayNativeDefault:
 		a.MovReg64(RDI, R11)
 		a.LeaDisp(RDI, RDI, int32(gc.PayloadOffset))
-		a.MovRegReg32(RCX, R14)
+		a.MovRegReg32(RCX, sizeReg)
 		a.AluRI(5, RCX, int32(gc.PayloadOffset), false)
 		a.TestSelf(RCX, false)
 		zeroDone := a.JccPlaceholder(condE)
@@ -1240,7 +1250,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 			// floating-point value, so XMM0 is available as scratch here.
 			// Broadcast the uniform i32 initializer and initialize the exact
 			// 64-byte payload with four SSE2 stores.
-			a.FLoadDisp(0, R12, hcArgs, false)
+			a.FLoadDisp(0, controlReg, hcArgs, false)
 			a.Pshufd(0, 0, 0)
 			for offset := int32(0); offset < 64; offset += 16 {
 				a.MovdquStoreDisp(R11, int32(gc.PayloadOffset)+offset, 0)
@@ -1249,7 +1259,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		}
 		a.MovReg64(RDI, R11)
 		a.LeaDisp(RDI, RDI, int32(gc.PayloadOffset))
-		a.MovRegReg32(RCX, R13)
+		a.MovRegReg32(RCX, countReg)
 		if layout.elemSize != 4 {
 			a.XorSelf32(RDX)
 		}
@@ -1257,18 +1267,18 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		done := a.JccPlaceholder(condE)
 		loop := a.Len()
 		if layout.elemSize == 16 {
-			a.Load64(RAX, R12, hcArgs)
+			a.Load64(RAX, controlReg, hcArgs)
 			a.Store64(RDI, 0, RAX)
-			a.Load64(RAX, R12, hcArgs+8)
+			a.Load64(RAX, controlReg, hcArgs+8)
 			a.Store64(RDI, 8, RAX)
 		} else if layout.elemSize == 8 {
-			a.Load64(RAX, R12, hcArgs)
+			a.Load64(RAX, controlReg, hcArgs)
 			a.Store64(RDI, 0, RAX)
 		} else if layout.elemSize == 4 {
-			a.Load32(RAX, R12, hcArgs)
+			a.Load32(RAX, controlReg, hcArgs)
 			a.Store32(RDI, 0, RAX)
 		} else {
-			a.Load32(RAX, R12, hcArgs)
+			a.Load32(RAX, controlReg, hcArgs)
 			a.StoreIdx(RDI, RDX, RAX, 0, int(layout.elemSize))
 		}
 		a.LeaDisp(RDI, RDI, int32(layout.elemSize))
@@ -1282,29 +1292,29 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 			dst := int32(gc.PayloadOffset + i*layout.elemSize)
 			switch layout.elemSize {
 			case 1, 2:
-				a.Load32(RAX, R12, src)
+				a.Load32(RAX, controlReg, src)
 				a.StoreIdx(R11, RDX, RAX, dst, int(layout.elemSize))
 			case 4:
-				a.Load32(RAX, R12, src)
+				a.Load32(RAX, controlReg, src)
 				a.Store32(R11, dst, RAX)
 			case 8:
-				a.Load64(RAX, R12, src)
+				a.Load64(RAX, controlReg, src)
 				a.Store64(R11, dst, RAX)
 			case 16:
-				a.Load64(RAX, R12, src)
+				a.Load64(RAX, controlReg, src)
 				a.Store64(R11, dst, RAX)
-				a.Load64(RAX, R12, src+8)
+				a.Load64(RAX, controlReg, src+8)
 				a.Store64(R11, dst+8, RAX)
 			}
 		}
 	}
 
 	a.Store32(R9, gc.NativeHandleOffsetOffset, R15)
-	a.Store32(R9, gc.NativeHandleSizeOffset, R14)
-	a.Store32(R9, 8, R14)
+	a.Store32(R9, gc.NativeHandleSizeOffset, sizeReg)
+	a.Store32(R9, 8, sizeReg)
 	a.StoreImm32Mem(R9, gc.NativeHandleCardSlotOffset, 0)
 	a.MovRegReg32(RAX, R15)
-	a.AluRR(0x01, RAX, R14, false)
+	a.AluRR(0x01, RAX, sizeReg, false)
 	a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
 	a.Store32(R10, gc.NativeStructAllocChunkCursorOffset, RAX)
 	a.StoreImm32Mem(R9, 16, int32(gc.NativeSpaceNursery)<<16)
@@ -1317,7 +1327,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	a.Store64(R10, 0, RAX)
 	a.MovRegReg32(RAX, RSI)
 	a.ShiftImm(4, RAX, 1, false)
-	a.Store64(R12, hcResults, RAX)
+	a.Store64(controlReg, hcResults, RAX)
 	done := a.JmpPlaceholder()
 
 	fallbackAt := a.Len()
@@ -1327,8 +1337,8 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	a.MovImm32(RAX, 0)
 	a.PatchRel32(done, a.Len())
 	a.TestSelf(RAX, false)
-	for i := 3; i >= 0; i-- {
-		a.Pop(R12 + Reg(i))
+	for i := len(savedCallee) - 1; i >= 0; i-- {
+		a.Pop(savedCallee[i])
 	}
 	for i := len(preserve) - 1; i >= 0; i-- {
 		if preserve[i] {
