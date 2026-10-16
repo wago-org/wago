@@ -68,7 +68,7 @@ func (c *Collector) nativeAllocationAllowed(minObjectBytes uint32) bool {
 
 func (c *Collector) reserveNativeHandles(batch int) {
 	s := &c.nativeStructAlloc
-	clear(s.Handles[:])
+	clear(s.Handles[:batch])
 	s.Cursor = 0
 	s.Count = 0
 	s.HandleBase = 0
@@ -403,7 +403,7 @@ func (c *Collector) discardNativeStructHandles() {
 			}
 		}
 	}
-	clear(s.Handles[:])
+	clear(s.Handles[:end])
 	s.Cursor = 0
 	s.Count = 0
 	s.HandleBase = 0
