@@ -71,7 +71,6 @@ func (c *Collector) reserveNativeHandles() {
 		free := c.freeHandles[len(c.freeHandles)-reused:]
 		for i := range reused {
 			h := free[reused-1-i]
-			c.handles[h] = handleEntry{}
 			s.Handles[i] = h
 		}
 		c.freeHandles = c.freeHandles[:len(c.freeHandles)-reused]
