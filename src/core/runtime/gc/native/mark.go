@@ -160,7 +160,16 @@ func (c *Collector) drainNurseryMarkStackForPromotion() uint64 {
 		c.markStack = c.markStack[:n]
 		c.stats.MinorObjectsScanned++
 		scanned++
-		c.promotionScratch = append(c.promotionScratch, plannedPromotion{handle: h})
+		plan := len(c.promotionScratch)
+		if plan == cap(c.promotionScratch) {
+			c.promotionScratch = append(c.promotionScratch, plannedPromotion{})
+		} else {
+			c.promotionScratch = c.promotionScratch[:plan+1]
+		}
+		// Successful and failed promotion both clear every used entry. Planning
+		// overwrites the complete entry before reading it, so publish only the
+		// handle into this already-zero scratch slot.
+		c.promotionScratch[plan].handle = h
 		if runtime.GOARCH == "amd64" && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
 			continue
 		}
