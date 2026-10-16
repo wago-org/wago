@@ -1356,13 +1356,24 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 // Site-local emission falls through with those flags, while shared emission
 // returns to the patched call site.
 func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead, inline bool) {
+	f.emitNativeStructAlloc(typeIndex, dead, inline, -1, -1)
+}
+
+// emitNativeStructAllocSlots reads constructor fields from canonical operand
+// slots and writes the compact result over the first argument slot. The caller
+// keeps those slots live until the fallback branch has marshaled them.
+func (f *fn) emitNativeStructAllocSlots(typeIndex uint32, dead bool, argSlot, resultSlot int) {
+	f.emitNativeStructAlloc(typeIndex, dead, true, argSlot, resultSlot)
+}
+
+func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot, resultSlot int) {
 	plan, ok := f.nativeGCStructAllocLayout(typeIndex)
 	if !ok {
 		panic("amd64: invalid native struct allocation layout")
 	}
 	fields, objectSize, objectAlign, pointerFree := plan.fields, plan.objectSize, plan.objectAlign, plan.pointerFree
 	if dead {
-		f.emitNativeDeadStructChargeStub(objectSize, objectAlign, inline)
+		f.emitNativeDeadStructChargeStub(objectSize, objectAlign, inline, resultSlot)
 		return
 	}
 	a := f.a
@@ -1385,7 +1396,30 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead, inline bool) {
 			a.Push(R9 + Reg(i))
 		}
 	}
-	a.MovReg64(RDI, R8) // retain the synchronous control frame
+	stackDelta := int32(8)
+	for _, yes := range preserve {
+		if yes {
+			stackDelta += 8
+		}
+	}
+	directSlots := argSlot >= 0
+	if !directSlots {
+		a.MovReg64(RDI, R8) // retain the synchronous control frame
+	}
+	loadArg32 := func(dst Reg, slot uint32) {
+		if directSlots {
+			a.Load32(dst, RSP, f.spillOff(argSlot+int(slot))+stackDelta)
+		} else {
+			a.Load32(dst, RDI, hcArgs+int32(slot*8))
+		}
+	}
+	loadArg64 := func(dst Reg, slot uint32) {
+		if directSlots {
+			a.Load64(dst, RSP, f.spillOff(argSlot+int(slot))+stackDelta)
+		} else {
+			a.Load64(dst, RDI, hcArgs+int32(slot*8))
+		}
+	}
 	fallback := make([]int, 0, 20+len(fields)*2)
 	addFallback := func(site int) { fallback = append(fallback, site) }
 
@@ -1444,7 +1478,7 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead, inline bool) {
 		if !field.CollectorRef {
 			continue
 		}
-		a.Load32(RAX, RDI, hcArgs+int32(field.Slot*8))
+		loadArg32(RAX, field.Slot)
 		a.TestSelf(RAX, false)
 		nullOK := -1
 		if field.Nullable {
@@ -1493,18 +1527,17 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead, inline bool) {
 	if !dead {
 		for _, field := range fields {
 			disp := int32(gc.PayloadOffset + field.Offset)
-			src := hcArgs + int32(field.Slot*8)
 			switch field.Size {
 			case 4:
-				a.Load32(RAX, RDI, src)
+				loadArg32(RAX, field.Slot)
 				a.Store32(R11, disp, RAX)
 			case 8:
-				a.Load64(RAX, RDI, src)
+				loadArg64(RAX, field.Slot)
 				a.Store64(R11, disp, RAX)
 			case 16:
-				a.Load64(RAX, RDI, src)
+				loadArg64(RAX, field.Slot)
 				a.Store64(R11, disp, RAX)
-				a.Load64(RAX, RDI, src+8)
+				loadArg64(RAX, field.Slot+1)
 				a.Store64(R11, disp+8, RAX)
 			default:
 				panic("amd64: unsupported native struct field size")
@@ -1525,7 +1558,11 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead, inline bool) {
 	a.Store32(R10, gc.NativeStructAllocCursorOffset, RDX)
 	a.MovRegReg32(RAX, RSI)
 	a.ShiftImm(4, RAX, 1, false)
-	a.Store64(RDI, hcResults, RAX)
+	if directSlots {
+		a.Store64(RSP, f.spillOff(resultSlot)+stackDelta, RAX)
+	} else {
+		a.Store64(RDI, hcResults, RAX)
+	}
 	done := a.JmpPlaceholder()
 
 	fallbackAt := a.Len()
@@ -1550,7 +1587,7 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead, inline bool) {
 // compiler-proven unreachable struct without publishing an object handle. The
 // full aligned nursery charge keeps collection and bounded-resource behavior;
 // the ordinary rooted helper remains the fallback at every boundary.
-func (f *fn) emitNativeDeadStructChargeStub(objectSize, objectAlign uint32, inline bool) {
+func (f *fn) emitNativeDeadStructChargeStub(objectSize, objectAlign uint32, inline bool, resultSlot int) {
 	a := f.a
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
@@ -1570,7 +1607,16 @@ func (f *fn) emitNativeDeadStructChargeStub(objectSize, objectAlign uint32, inli
 			a.Push(R9 + Reg(i))
 		}
 	}
-	a.MovReg64(RDI, R8)
+	stackDelta := int32(8)
+	for _, yes := range preserve {
+		if yes {
+			stackDelta += 8
+		}
+	}
+	directSlots := resultSlot >= 0
+	if !directSlots {
+		a.MovReg64(RDI, R8)
+	}
 	fallback := make([]int, 0, 12)
 	addFallback := func(site int) { fallback = append(fallback, site) }
 
@@ -1644,7 +1690,11 @@ func (f *fn) emitNativeDeadStructChargeStub(objectSize, objectAlign uint32, inli
 	a.AluRI(0, RAX, 1, false)
 	a.Store32(R10, gc.NativeAllocationDeadObjectsOffset, RAX)
 	a.XorSelf32(RDX)
-	a.Store64(RDI, hcResults, RDX)
+	if directSlots {
+		a.Store64(RSP, f.spillOff(resultSlot)+stackDelta, RDX)
+	} else {
+		a.Store64(RDI, hcResults, RDX)
+	}
 	a.MovImm32(RAX, 1)
 	done := a.JmpPlaceholder()
 

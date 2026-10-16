@@ -85,6 +85,11 @@ var nativeGCArrayScratchEnabled = os.Getenv("WAGO_AMD64_NO_GC_ARRAY_SCRATCH") !=
 // path. The switch keeps shared-stub and inline measurements in one executable.
 var nativeGCStructInlineEnabled = os.Getenv("WAGO_AMD64_NO_GC_STRUCT_INLINE") != "1"
 
+// Native struct allocation consumes canonical operand slots directly. Only a
+// failed reservation prepares the synchronous Go-helper frame. The switch keeps
+// the former eager marshaling path available for differential qualification.
+var nativeGCStructDirectSlotsEnabled = os.Getenv("WAGO_AMD64_NO_GC_STRUCT_DIRECT_SLOTS") != "1"
+
 // gcSharedStubsEnabled moves the common noncollecting compact-handle resolver
 // into one module-owned leaf stub. The local call edge retains exact trap/source
 // attribution. WAGO_AMD64_NO_GC_SHARED_STUBS=1 restores fully inline resolution
@@ -565,6 +570,7 @@ type fn struct {
 	compactFrameHeader     bool   // register ABI: no wrapper results-pointer header
 	nativeStructAllocType  uint32 // type index + 1 for the next gcStructAllocOne call
 	nativeStructAllocDead  bool   // next native struct allocation may omit unreachable scalar payload stores
+	nativeStructDirectUsed bool   // preceding struct helper retained pinned registers
 	nativeArrayAlloc       gcArrayAllocStubSite
 
 	// stats collects per-function codegen counters. nil

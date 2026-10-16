@@ -131,6 +131,12 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if err := f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result}); err != nil {
 			return err
 		}
+		if scalarReplacement && f.nativeStructDirectUsed && forward.kind == stLocalRef {
+			if reg, _, pinned := f.pinReg(int(forward.idx)); pinned {
+				forward.kind = stLocalReg
+				forward.reg = reg
+			}
+		}
 		f.markTopGCReference()
 		if forwardOK {
 			f.dropValue()
