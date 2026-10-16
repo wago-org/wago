@@ -2165,23 +2165,28 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a.MovRegReg32(RAX, R10)
 	a.ImulRI(RAX, gc.NativeViewSpaceStride, true)
 	a.LoadIdx(R11, R8, RAX, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceBaseOffset), 8, false, true)
-	a.LoadIdx(R10, R8, RAX, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceBytesOffset), 4, false, false)
+	a.LoadIdx(RCX, R8, RAX, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceBytesOffset), 4, false, false)
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
-	a.Cmp32(RAX, R10)
+	a.Cmp32(RAX, RCX)
 	addFallback(a.JccPlaceholder(condA))
-	a.Sub32(R10, RAX)
-	a.Load32(RCX, R9, gc.NativeHandleSizeOffset)
-	a.Cmp32(RCX, R10)
-	addFallback(a.JccPlaceholder(condA))
-	a.Cmp32(RCX, RSI)
-	addFallback(a.JccPlaceholder(condB))
 	a.Add64(R11, RAX)
+	a.Sub32(RCX, RAX)
+	a.Load32(RAX, R9, gc.NativeHandleSizeOffset)
+	a.Cmp32(RAX, RCX)
+	addFallback(a.JccPlaceholder(condA))
+	a.Cmp32(RAX, RSI)
+	addFallback(a.JccPlaceholder(condB))
 	a.Load32(RCX, R11, 0)
 	a.Cmp32(RCX, RDX)
 	addFallback(a.JccPlaceholder(condNE))
 	a.Load32(RCX, R11, 4)
 	a.Cmp32(RCX, RSI)
 	f.trapIf(condB, trapCastFailure)
+	// Retain the parent-space byte through object validation, then use it as the
+	// host-first generational barrier. Nursery initialization avoids resolving
+	// the trusted compact child and old-to-young stores avoid reloading space.
+	a.AluRI(cmpDigit, R10, int32(gc.NativeSpaceNursery), false)
+	parentIsYoung := a.JccPlaceholder(condE)
 
 	// Null and i31 children are valid anyref values. Object children must name a
 	// live handle in this exact collector before the direct store is admitted.
@@ -2211,11 +2216,6 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	addFallback(a.JccPlaceholder(condE)) // large children may still be young-in-place
 	childNotYoung := a.JmpPlaceholder()
 	a.PatchRel32(childIsNursery, a.Len())
-	a.Load32(RAX, R9, 16)
-	a.ShiftImm(5, RAX, 16, false)
-	a.AluRI(4, RAX, 0xff, false)
-	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
-	parentIsYoung := a.JccPlaceholder(condE)
 	a.Load32(RAX, R9, 16)
 	a.ShiftImm(5, RAX, 24, false)
 	a.TestSelf(RAX, false)
