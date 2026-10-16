@@ -5,25 +5,86 @@ import (
 	"testing"
 )
 
-func TestDefaultNurseryGrowthPressureBoundary(t *testing.T) {
+func TestDefaultNurseryGrowthCumulativeBoundary(t *testing.T) {
 	c, err := NewCollector(Config{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(c.Close)
-	threshold := uint64(defaultNursery / 4)
-	c.growDefaultNursery(threshold - 1)
-	c.growDefaultNursery(threshold - 1)
-	if c.nurseryGrowthPressure != 0 || c.cfg.NurseryBytes != defaultNursery {
-		t.Fatal("below-threshold copies counted as growth pressure")
+	chunk := uint64(defaultNursery / 8)
+	for range 8 {
+		c.growDefaultNursery(chunk)
 	}
-	c.growDefaultNursery(threshold)
-	if c.nurseryGrowthPressure != 1 || c.cfg.NurseryBytes != defaultNursery {
-		t.Fatal("one pressure event must not grow the nursery")
+	if c.nurseryGrowthSurvived != defaultNursery || c.cfg.NurseryBytes != defaultNursery {
+		t.Fatal("survival at capacity must not grow the nursery")
 	}
-	c.growDefaultNursery(threshold)
+	c.growDefaultNursery(chunk)
 	if c.cfg.NurseryBytes != 2*defaultNursery {
-		t.Fatal("two events at the threshold did not grow the nursery")
+		t.Fatal("cumulative survival above capacity did not grow the nursery")
+	}
+}
+
+func TestDefaultNurseryGrowthDecaysSparseSurvival(t *testing.T) {
+	c, err := NewCollector(Config{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	threshold := uint64(defaultNursery / 8)
+	c.growDefaultNursery(threshold)
+	for range 7 {
+		c.growDefaultNursery(threshold - 1)
+	}
+	if c.nurseryGrowthSurvived != uint32(threshold) || c.nurseryGrowthQuiet != 7 {
+		t.Fatal("seven sparse collections cleared cumulative survival")
+	}
+	c.growDefaultNursery(threshold)
+	if c.nurseryGrowthSurvived != uint32(2*threshold) || c.nurseryGrowthQuiet != 0 {
+		t.Fatal("dense survival did not reset the quiet count")
+	}
+	for range 8 {
+		c.growDefaultNursery(threshold - 1)
+	}
+	if c.nurseryGrowthSurvived != 0 || c.nurseryGrowthQuiet != 0 || c.cfg.NurseryBytes != defaultNursery {
+		t.Fatal("eight sparse collections did not clear cumulative survival")
+	}
+	for range 256 {
+		c.growDefaultNursery(threshold - 1)
+	}
+	if c.cfg.NurseryBytes != defaultNursery {
+		t.Fatal("persistent sparse survival grew the nursery")
+	}
+}
+
+func TestDefaultNurseryGrowthKeepsDensePolicyAboveOneMiB(t *testing.T) {
+	c, err := NewCollector(Config{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	for c.cfg.NurseryBytes < 1<<20 {
+		c.nurseryGrowthSurvived = c.cfg.NurseryBytes
+		c.growDefaultNursery(uint64(c.cfg.NurseryBytes / 8))
+	}
+	threshold := uint64(c.cfg.NurseryBytes / 4)
+	c.growDefaultNursery(threshold - 1)
+	if c.nurseryGrowthSurvived != 0 || c.cfg.NurseryBytes != 1<<20 {
+		t.Fatal("sparse survival counted as dense growth pressure")
+	}
+	c.growDefaultNursery(threshold)
+	if c.nurseryGrowthSurvived != 1 || c.cfg.NurseryBytes != 1<<20 {
+		t.Fatal("one dense event must not grow the nursery")
+	}
+	for range 8 {
+		c.growDefaultNursery(threshold - 1)
+	}
+	if c.nurseryGrowthSurvived != 0 || c.nurseryGrowthQuiet != 0 || c.cfg.NurseryBytes != 1<<20 {
+		t.Fatal("eight sparse events did not clear dense growth pressure")
+	}
+	c.growDefaultNursery(threshold)
+	c.growDefaultNursery(threshold)
+	if c.cfg.NurseryBytes != 2<<20 {
+		t.Fatal("two dense events did not grow the nursery")
 	}
 }
 
@@ -63,8 +124,8 @@ func TestDefaultNurseryGrowthRejectsInvalidSurvivorExtent(t *testing.T) {
 			}
 			invalidEntry := *e
 			backing := sliceData(c.nursery)
-			c.nurseryGrowthPressure = 1
-			c.growDefaultNursery(uint64(defaultNursery / 4))
+			c.nurseryGrowthSurvived = defaultNursery
+			c.growDefaultNursery(uint64(defaultNursery / 8))
 			if c.cfg.NurseryBytes != defaultNursery || sliceData(c.nursery) != backing || *e != invalidEntry {
 				t.Fatal("growth changed backing or handle with an invalid survivor extent")
 			}
@@ -126,9 +187,9 @@ func TestDefaultNurseryGrowthRelocatesLiveSurvivors(t *testing.T) {
 			c.tenuringThreshold = maxTenuringThreshold
 			cycles := 2
 			if from == 1 {
-				c.nurseryGrowthPressure = 1
 				cycles = 1
 			}
+			c.nurseryGrowthSurvived = defaultNursery - uint32(cycles)*uint32(liveBytes) + 1
 			view := c.NativeView()
 			oldBacking := view.Spaces[NativeSpaceNursery].Base
 			before := c.Stats()

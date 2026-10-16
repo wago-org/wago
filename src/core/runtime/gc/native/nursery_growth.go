@@ -1,29 +1,53 @@
 package gc
 
 // growDefaultNursery trades bounded backing for fewer premature promotions.
-// It runs only after successful evacuation and card cleanup. Live survivor bytes
-// move as one bounded span; compact references retain their handle identity.
-// Eight low-survival collections clear an isolated pressure event.
+// It runs only after successful evacuation and card cleanup. As in V8, survived
+// bytes accumulate across collections while Eden is small. Copies below one
+// eighth of Eden count as quiet, which keeps sparse survivors from permanently
+// growing a nursery that cannot shrink. Above 1 MiB, two quarter-Eden survival
+// collections are required. Eight quiet collections clear accumulated pressure.
 func (c *Collector) growDefaultNursery(copiedBytes uint64) {
 	eden := c.cfg.NurseryBytes
 	if c.nurseryGrowthLimit == 0 || eden >= c.nurseryGrowthLimit {
 		return
 	}
-	if copiedBytes < uint64(eden)/4 {
-		if c.nurseryGrowthPressure != 0 {
+	if eden < 1<<20 {
+		if copiedBytes < uint64(eden)/8 {
+			if c.nurseryGrowthSurvived != 0 {
+				c.nurseryGrowthQuiet++
+				if c.nurseryGrowthQuiet == 8 {
+					c.nurseryGrowthSurvived = 0
+					c.nurseryGrowthQuiet = 0
+				}
+			}
+			return
+		}
+		c.nurseryGrowthQuiet = 0
+		survived := uint64(c.nurseryGrowthSurvived) + copiedBytes
+		if survived <= uint64(eden) {
+			c.nurseryGrowthSurvived = uint32(survived)
+			return
+		}
+		c.nurseryGrowthSurvived = eden
+	} else if copiedBytes < uint64(eden)/4 {
+		if c.nurseryGrowthSurvived != 0 {
 			c.nurseryGrowthQuiet++
 			if c.nurseryGrowthQuiet == 8 {
-				c.nurseryGrowthPressure = 0
+				c.nurseryGrowthSurvived = 0
 				c.nurseryGrowthQuiet = 0
 			}
 		}
 		return
+	} else {
+		c.nurseryGrowthQuiet = 0
+		if c.nurseryGrowthSurvived < 2 {
+			c.nurseryGrowthSurvived++
+		}
+		if c.nurseryGrowthSurvived < 2 {
+			return
+		}
 	}
-	c.nurseryGrowthQuiet = 0
-	if c.nurseryGrowthPressure < 2 {
-		c.nurseryGrowthPressure++
-	}
-	if c.nurseryGrowthPressure < 2 || c.nurseryBump != 0 || c.survivorBump > c.survivorBytes {
+	if c.nurseryBump != 0 || c.survivorBump > c.survivorBytes {
 		return
 	}
 	oldBase := c.survivorBase(c.survivorFrom)
@@ -55,6 +79,6 @@ func (c *Collector) growDefaultNursery(copiedBytes uint64) {
 	// The larger survivor space must get a chance to retain objects before the
 	// occupancy policy can lower the threshold again.
 	c.tenuringThreshold = defaultTenuringThreshold
-	c.nurseryGrowthPressure = 0
+	c.nurseryGrowthSurvived = 0
 	c.nurseryGrowthQuiet = 0
 }

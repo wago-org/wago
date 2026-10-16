@@ -88,7 +88,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	}
 	c.adaptTenuring(copiedBytes, promotedBytes, pauseNS)
 	if runtime.GOARCH == "amd64" && c.cfg.NurseryBytes < c.nurseryGrowthLimit &&
-		(copiedBytes != 0 || c.nurseryGrowthPressure != 0) {
+		(copiedBytes != 0 || c.nurseryGrowthSurvived != 0) {
 		c.growDefaultNursery(copiedBytes)
 	}
 	if c.cfg.VerifyAfterCollect {

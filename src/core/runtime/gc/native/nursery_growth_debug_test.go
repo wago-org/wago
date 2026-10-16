@@ -28,7 +28,7 @@ func TestNurseryGrowthWaitsForSuccessfulPromotion(t *testing.T) {
 				}
 				roots[i] = Root(ref)
 			}
-			c.nurseryGrowthPressure = 1
+			c.nurseryGrowthSurvived = defaultNursery / 2
 			c.nurseryGrowthQuiet = 3
 			c.tenuringThreshold = 1
 			before := snapshotPromotionState(c)
@@ -40,7 +40,7 @@ func TestNurseryGrowthWaitsForSuccessfulPromotion(t *testing.T) {
 			if !errors.Is(err, errInjectedFailure) {
 				t.Fatalf("promotion error = %v, want injected failure", err)
 			}
-			if c.cfg.NurseryBytes != capacity || sliceData(c.nursery) != backing || c.nurseryGrowthPressure != 1 || c.nurseryGrowthQuiet != 3 {
+			if c.cfg.NurseryBytes != capacity || sliceData(c.nursery) != backing || c.nurseryGrowthSurvived != defaultNursery/2 || c.nurseryGrowthQuiet != 3 {
 				t.Fatal("failed promotion changed nursery growth state")
 			}
 			assertPromotionStateEqual(t, c, before)

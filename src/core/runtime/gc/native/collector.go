@@ -125,9 +125,7 @@ type Collector struct {
 	nativeView            *NativeCollectorView
 	nativeStructAlloc     nativeStructAllocState
 	nativeAllocEpoch      uint32
-	arraySlow             uint8
-	nurseryGrowthPressure uint8 // occupies existing padding before types
-	nurseryGrowthQuiet    uint8
+	nurseryGrowthSurvived uint32 // occupies existing padding before types
 	types                 []TypeDesc
 	subtypeIntervals      []uint64 // packed DFS [pre, post] interval by canonical TypeID
 	objectAlign           uint32
@@ -138,6 +136,8 @@ type Collector struct {
 	survivorBump          uint32
 	survivorFrom          uint8
 	tenuringThreshold     uint8
+	arraySlow             uint8 // occupies existing padding before lastFullCollections
+	nurseryGrowthQuiet    uint8
 	lastFullCollections   uint64
 	tiny                  tinyHeap
 	tinyGC                tinyGC
