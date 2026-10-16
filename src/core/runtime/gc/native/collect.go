@@ -71,16 +71,19 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		}
 	}
 	var copiedBytes, promotedBytes uint64
+	finishedEvacuation := false
 	if (runtime.GOARCH != "amd64" || len(c.markStack) != 0) && c.drainNurseryMarkStack() != 0 {
 		var err error
-		copiedBytes, promotedBytes, err = c.promoteMarkedNursery()
+		copiedBytes, promotedBytes, finishedEvacuation, err = c.promoteMarkedNursery()
 		if err != nil {
 			c.clearNurseryMarks()
 			c.restoreDeadNurseryAccounting()
 			return err
 		}
 	}
-	c.finishMinorEvacuation()
+	if !finishedEvacuation {
+		c.finishMinorEvacuation()
+	}
 	c.finishMinorCardMetadata()
 	pauseNS := uint64(0)
 	if !policyStart.IsZero() {
@@ -177,9 +180,10 @@ type plannedPromotion struct {
 // in-place large-object aging before publishing any handle location. Inactive
 // survivor bytes are written only after destination and commit failure points
 // have all passed, so rollback leaves the complete observable heap unchanged.
-func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, err error) {
+func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, finishedEvacuation bool, err error) {
 	if c.survivorBytes == 0 && c.tenuringThreshold == 1 {
-		return c.promoteMarkedNurseryImmediate()
+		copiedBytes, promotedBytes, err = c.promoteMarkedNurseryImmediate()
+		return copiedBytes, promotedBytes, false, err
 	}
 	plans := c.promotionScratch[:0]
 	needsOldAllocation := false
@@ -196,7 +200,7 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 		}
 		if err = injectFailure(c, failPromotionPlan); err != nil {
 			finish()
-			return 0, 0, err
+			return 0, 0, false, err
 		}
 		src := c.handles[h]
 		age := src.age() + 1
@@ -239,20 +243,20 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 		for range plans {
 			if err = injectFailure(c, failPromotionDestination); err != nil {
 				finish()
-				return 0, 0, err
+				return 0, 0, false, err
 			}
 		}
 		for range plans {
 			if err = injectFailure(c, failPromotionCommit); err != nil {
 				finish()
-				return 0, 0, err
+				return 0, 0, false, err
 			}
 		}
 		return c.commitPromotionPlans(plans, toSpace, toBump)
 	}
 	if err = c.throughput.sweepAllPending(); err != nil {
 		finish()
-		return 0, 0, err
+		return 0, 0, false, err
 	}
 	tx := c.throughput.beginAllocTransaction()
 	rollback := func(current *handleEntry) {
@@ -271,7 +275,7 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 		if plans[i].entry.space != spaceFree {
 			if err = injectFailure(c, failPromotionDestination); err != nil {
 				rollback(nil)
-				return 0, 0, err
+				return 0, 0, false, err
 			}
 			i++
 			continue
@@ -283,7 +287,7 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 		}
 		if run, ok, runErr := c.throughput.tryAllocRun(size, j-i, spaceOld); runErr != nil {
 			rollback(nil)
-			return 0, 0, runErr
+			return 0, 0, false, runErr
 		} else if ok {
 			for k := i; k < j; k++ {
 				allocSize, class := run.allocSize, run.class
@@ -296,7 +300,7 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 			for k := i; k < j; k++ {
 				if err = injectFailure(c, failPromotionDestination); err != nil {
 					rollback(nil)
-					return 0, 0, err
+					return 0, 0, false, err
 				}
 			}
 			i = j
@@ -305,11 +309,11 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 		e, allocErr := c.throughput.alloc(size, spaceOld)
 		if allocErr != nil {
 			rollback(nil)
-			return 0, 0, allocErr
+			return 0, 0, false, allocErr
 		}
 		if err = injectFailure(c, failPromotionDestination); err != nil {
 			rollback(&e)
-			return 0, 0, err
+			return 0, 0, false, err
 		}
 		plans[i].entry = e
 		i++
@@ -317,13 +321,23 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 	for range plans {
 		if err = injectFailure(c, failPromotionCommit); err != nil {
 			rollback(nil)
-			return 0, 0, err
+			return 0, 0, false, err
 		}
 	}
 	return c.commitPromotionPlans(plans, toSpace, toBump)
 }
 
-func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8, toBump uint32) (copiedBytes, promotedBytes uint64, err error) {
+func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8, toBump uint32) (copiedBytes, promotedBytes uint64, finishedEvacuation bool, err error) {
+	// Like V8's scavenger, merge copying and final young-list publication when
+	// every young handle survived. On the measured pure-survivor path, the last
+	// plan represents the most recent allocation run; limit this AMD64 path to
+	// its measured small-object case. Sorted promotion plans may reject the path.
+	dense := runtime.GOARCH == "amd64" && len(plans) != 0 && len(plans) == len(c.nurseryHandles) &&
+		c.handles[plans[len(plans)-1].handle].size <= throughputClassSizes[0]
+	var young []uint32
+	if dense {
+		young = c.nurseryHandles[:0]
+	}
 	hasYoung, hasTenured := false, false
 	for _, p := range plans {
 		src := c.handles[p.handle]
@@ -349,8 +363,14 @@ func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8
 		}
 		if c.handles[p.handle].young() {
 			hasYoung = true
+			if dense {
+				young = append(young, p.handle)
+			}
 		} else {
 			hasTenured = true
+		}
+		if dense {
+			c.mark[p.handle] = false
 		}
 	}
 	// A parent can be older than a child. Once all handle locations and ages are
@@ -367,11 +387,20 @@ func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8
 	}
 	c.survivorFrom = toSpace
 	c.survivorBump = toBump
+	if dense {
+		clear(c.nurseryHandles[len(young):])
+		c.nurseryHandles = young
+		c.nurseryBump = 0
+		if len(young) == 0 {
+			c.survivorBump = 0
+			c.survivorFrom ^= 1
+		}
+	}
 	c.stats.YoungBytesCopied += copiedBytes
 	c.stats.PromotedBytes += promotedBytes
 	clear(plans)
 	c.promotionScratch = plans[:0]
-	return copiedBytes, promotedBytes, nil
+	return copiedBytes, promotedBytes, dense, nil
 }
 
 func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes uint64, err error) {

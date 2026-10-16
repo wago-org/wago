@@ -1,6 +1,7 @@
 package gc
 
 import (
+	"runtime"
 	"testing"
 )
 
@@ -317,5 +318,54 @@ func TestThroughputFullCollectionHandlesActiveSurvivor(t *testing.T) {
 	}
 	if c.validObjectRef(ref) || len(c.nurseryHandles) != 0 {
 		t.Fatal("full collection retained unreachable survivor")
+	}
+}
+
+func TestDenseMinorEvacuationFinishesDuringCommit(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("dense small-object evacuation is AMD64-specific")
+	}
+	c := newTestCollector(t, Config{NurseryBytes: 4096, SurvivorBytes: 4096})
+	roots := make([]Root, 2)
+	for i := range roots {
+		ref, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		roots[i] = Root(ref)
+	}
+	slots := stressRootSlots(roots)
+
+	for collection := 0; collection < 2; collection++ {
+		c.clearNurseryMarks()
+		c.markNurseryRoots(slots)
+		if got := c.drainNurseryMarkStack(); got != uint64(len(roots)) {
+			t.Fatalf("collection %d marked %d objects, want %d", collection, got, len(roots))
+		}
+		_, _, finished, err := c.promoteMarkedNursery()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !finished {
+			t.Fatalf("collection %d did not finish dense evacuation during commit", collection)
+		}
+		for i, root := range roots {
+			ref := Ref(root)
+			if !c.validObjectRef(ref) || c.mark[handleOf(ref)] {
+				t.Fatalf("collection %d root %d is invalid or remains marked", collection, i)
+			}
+		}
+	}
+
+	if len(c.nurseryHandles) != 0 || c.nurseryBump != 0 || c.survivorBump != 0 {
+		t.Fatalf("promoted dense nursery retained young state: handles=%v nursery=%d survivor=%d", c.nurseryHandles, c.nurseryBump, c.survivorBump)
+	}
+	for i, root := range roots {
+		if got := c.entry(Ref(root)).space; got != spaceOld {
+			t.Fatalf("root %d space=%v, want old", i, got)
+		}
+	}
+	if err := c.Verify(slots); err != nil {
+		t.Fatal(err)
 	}
 }
