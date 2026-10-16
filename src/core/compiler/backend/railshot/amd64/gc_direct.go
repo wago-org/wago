@@ -2333,6 +2333,14 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	f.trapIf(condA, trapCastFailure)
 	a.MovRegReg32(RCX, RSI)
 	a.ShiftImm(5, RCX, 2, false) // restore the logical array index for card metadata
+	// Like V8's host-first write barrier, reject the generational case from the
+	// parent alone. Compact children are trusted JIT values, and a nursery parent
+	// cannot create an old-to-young edge, so avoid resolving the child handle.
+	a.Load32(RAX, R9, 16)
+	a.ShiftImm(5, RAX, 16, false)
+	a.AluRI(4, RAX, 0xff, false)
+	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
+	parentNursery := a.JccPlaceholder(condE)
 
 	a.TestSelf(RDI, false)
 	childValid := a.JccPlaceholder(condE)
@@ -2361,11 +2369,6 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	// A nursery child behind an old/large parent requires established remembered
 	// membership before the native path may update an existing card.
 	a.Load32(RAX, R9, 16)
-	a.ShiftImm(5, RAX, 16, false)
-	a.AluRI(4, RAX, 0xff, false)
-	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
-	parentNurseryYoungChild := a.JccPlaceholder(condE)
-	a.Load32(RAX, R9, 16)
 	a.ShiftImm(5, RAX, 24, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
@@ -2374,11 +2377,6 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	a.PatchRel32(childValid, cardCheck)
 	a.PatchRel32(childI31, cardCheck)
 	a.PatchRel32(childNotYoung, cardCheck)
-	a.Load32(RAX, R9, 16)
-	a.ShiftImm(5, RAX, 16, false)
-	a.AluRI(4, RAX, 0xff, false)
-	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
-	parentNursery := a.JccPlaceholder(condE)
 
 	// Old/large arrays may proceed only when the helper has already allocated a
 	// valid fixed-card range covering this payload byte. A store in another card
@@ -2408,7 +2406,6 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	addFallback(a.JccPlaceholder(condA))
 
 	store := a.Len()
-	a.PatchRel32(parentNurseryYoungChild, store)
 	a.PatchRel32(parentNursery, store)
 	a.StoreIdx(R11, RSI, RDI, int32(gc.PayloadOffset), 4)
 	a.MovImm32(RAX, 1)
