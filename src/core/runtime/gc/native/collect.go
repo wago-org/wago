@@ -236,7 +236,9 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, f
 		c.promotionScratch = plans[:0]
 	}
 	for _, h := range c.nurseryHandles {
-		if !c.isYoungHandle(h) || !c.mark[h] {
+		// CollectMinor canceled native reservations before marking, so the dense
+		// nursery list contains only valid young handles at this point.
+		if !c.mark[h] {
 			continue
 		}
 		if err = injectFailure(c, failPromotionPlan); err != nil {
@@ -454,7 +456,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 	previousKind := -1
 	var previousSize uint32
 	for _, h := range c.nurseryHandles {
-		if !c.isYoungHandle(h) || !c.mark[h] {
+		if !c.mark[h] {
 			continue
 		}
 		if err = injectFailure(c, failPromotionPlan); err != nil {
