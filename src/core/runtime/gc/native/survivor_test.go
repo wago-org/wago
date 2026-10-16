@@ -403,3 +403,35 @@ func TestMinorMarkClearRepairsLazyMarksAndFullCollectionState(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDeadNurseryEvacuationRecyclesNurseryAndLargeObjects(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("dead nursery evacuation is AMD64-specific")
+	}
+	c := newTestCollector(t, Config{NurseryBytes: 4096, SurvivorBytes: 2048, LargeObjectBytes: 64})
+	small, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	large, err := c.NewArrayDefault(2, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.entry(small).space != spaceNursery || c.entry(large).space != spaceLarge || !c.entry(large).young() {
+		t.Fatalf("initial spaces small=%+v large=%+v", *c.entry(small), *c.entry(large))
+	}
+	c.clearNurseryMarks()
+	from := c.survivorFrom
+	if !c.finishDeadNurseryEvacuation() {
+		t.Fatal("AMD64 dead nursery evacuation was not selected")
+	}
+	if c.validObjectRef(small) || c.validObjectRef(large) {
+		t.Fatal("dead nursery evacuation retained an object")
+	}
+	if len(c.nurseryHandles) != 0 || c.nurseryBump != 0 || c.survivorBump != 0 || c.survivorFrom != from^1 {
+		t.Fatalf("dead nursery state handles=%v nursery=%d survivor=%d from=%d", c.nurseryHandles, c.nurseryBump, c.survivorBump, c.survivorFrom)
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatal(err)
+	}
+}

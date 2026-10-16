@@ -77,7 +77,11 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	}
 	var copiedBytes, promotedBytes uint64
 	finishedEvacuation := false
-	if (runtime.GOARCH != "amd64" || len(c.markStack) != 0) && c.drainNurseryMarkStack() != 0 {
+	var scanned uint64
+	if runtime.GOARCH != "amd64" || len(c.markStack) != 0 {
+		scanned = c.drainNurseryMarkStack()
+	}
+	if scanned != 0 {
 		var err error
 		copiedBytes, promotedBytes, finishedEvacuation, err = c.promoteMarkedNursery()
 		if err != nil {
@@ -87,7 +91,9 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		}
 	}
 	if !finishedEvacuation {
-		c.finishMinorEvacuation()
+		if scanned != 0 || !c.finishDeadNurseryEvacuation() {
+			c.finishMinorEvacuation()
+		}
 	}
 	c.finishMinorCardMetadata()
 	pauseNS := uint64(0)
@@ -174,6 +180,36 @@ func (c *Collector) finishMinorEvacuation() {
 		c.survivorBump = 0
 		c.survivorFrom ^= 1
 	}
+}
+
+// finishDeadNurseryEvacuation specializes the AMD64 no-live-object case. The
+// completed mark-stack drain proves that every young handle is dead, so the
+// common card-free nursery case can recycle identities without repeating
+// liveness and generation tests for every object.
+func (c *Collector) finishDeadNurseryEvacuation() bool {
+	if runtime.GOARCH != "amd64" || c.cfg.PoisonFreed {
+		return false
+	}
+	for _, h := range c.nurseryHandles {
+		if h == 0 || int(h) >= len(c.handles) {
+			continue
+		}
+		c.mark[h] = false
+		e := &c.handles[h]
+		if e.space == spaceNursery && e.cardSlot == 0 {
+			*e = handleEntry{}
+			c.freeHandles = append(c.freeHandles, h)
+		} else if e.young() {
+			c.free(h)
+		}
+	}
+	clear(c.nurseryHandles)
+	c.nurseryHandles = c.nurseryHandles[:0]
+	c.lastCardBounds = objectCardBounds{}
+	c.nurseryBump = 0
+	c.survivorBump = 0
+	c.survivorFrom ^= 1
+	return true
 }
 
 type plannedPromotion struct {
