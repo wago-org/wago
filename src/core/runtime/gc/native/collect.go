@@ -40,6 +40,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
+	youngObjects := uint32(min(uint64(len(c.nurseryHandles)), uint64(^uint32(0))))
 	c.discardNativeStructHandles()
 	defer c.refreshNativeView()
 	c.stats.MinorCollections++
@@ -112,7 +113,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	c.adaptTenuring(copiedBytes, promotedBytes, pauseNS)
 	if runtime.GOARCH == "amd64" && c.cfg.NurseryBytes < c.nurseryGrowthLimit &&
 		(copiedBytes != 0 || c.nurseryGrowthSurvived != 0) {
-		c.growDefaultNursery(copiedBytes)
+		c.growDefaultNursery(copiedBytes, youngObjects)
 	}
 	if c.cfg.VerifyAfterCollect {
 		if err := c.verifyNurseryEvacuated(); err != nil {

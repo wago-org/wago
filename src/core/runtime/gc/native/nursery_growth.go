@@ -1,12 +1,19 @@
 package gc
 
+const (
+	denseNurseryChargeBytes  = 40
+	denseNurseryPregrowBytes = 3 << 19
+)
+
 // growDefaultNursery trades bounded backing for fewer premature promotions.
 // It runs only after successful evacuation and card cleanup. As in V8, survived
 // bytes accumulate across collections while Eden is small. Copies below one
 // eighth of Eden count as quiet, which keeps sparse survivors from permanently
 // growing a nursery that cannot shrink. Above 1 MiB, two quarter-Eden survival
 // collections are required. Eight quiet collections clear accumulated pressure.
-func (c *Collector) growDefaultNursery(copiedBytes uint64) {
+// Dense small-object streams pre-grow once to avoid retaining each intermediate
+// backing while still leaving wider object streams on ordinary doubling.
+func (c *Collector) growDefaultNursery(copiedBytes uint64, youngObjects uint32) {
 	eden := c.cfg.NurseryBytes
 	if c.nurseryGrowthLimit == 0 || eden >= c.nurseryGrowthLimit {
 		return
@@ -60,7 +67,11 @@ func (c *Collector) growDefaultNursery(copiedBytes uint64) {
 			return
 		}
 	}
-	eden = min(eden*2, c.nurseryGrowthLimit)
+	nextEden := eden * 2
+	if denseNurseryPregrowEnabled && uint64(youngObjects)*denseNurseryChargeBytes >= uint64(eden) {
+		nextEden = min(c.nurseryGrowthLimit, denseNurseryPregrowBytes)
+	}
+	eden = min(nextEden, c.nurseryGrowthLimit)
 	survivor := min(eden/2, uint32(512<<10))
 	backing := makeAlignedBytes(eden+2*survivor, uintptr(c.objectAlign))
 	newBase := eden + uint32(c.survivorFrom&1)*survivor

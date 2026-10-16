@@ -2,6 +2,7 @@ package gc
 
 import (
 	"errors"
+	"os"
 	"runtime"
 )
 
@@ -168,6 +169,8 @@ type Collector struct {
 
 const defaultNursery = 64 << 10
 const defaultLarge = 32 << 10
+
+var denseNurseryPregrowEnabled = runtime.GOARCH == "amd64" && os.Getenv("WAGO_AMD64_NO_DENSE_NURSERY_PREGROW") != "1"
 
 var errCollectorClosed = errors.New("gc: collector closed")
 

@@ -92,16 +92,16 @@ func TestNurseryGrowthClearsOldPressureAfterQuietPeriod(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	c.growDefaultNursery(defaultNursery)
+	c.growDefaultNursery(defaultNursery, 0)
 	for range 8 {
-		c.growDefaultNursery(0)
+		c.growDefaultNursery(0, 0)
 	}
-	c.growDefaultNursery(defaultNursery)
+	c.growDefaultNursery(defaultNursery, 0)
 	if c.cfg.NurseryBytes != defaultNursery {
 		t.Fatal("isolated pressure spikes grew the nursery")
 	}
-	c.growDefaultNursery(0)
-	c.growDefaultNursery(defaultNursery)
+	c.growDefaultNursery(0, 0)
+	c.growDefaultNursery(defaultNursery, 0)
 	if c.cfg.NurseryBytes != 2*defaultNursery {
 		t.Fatal("repeated pressure did not grow the empty nursery")
 	}

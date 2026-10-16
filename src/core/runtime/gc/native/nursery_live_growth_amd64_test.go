@@ -13,12 +13,12 @@ func TestDefaultNurseryGrowthCumulativeBoundary(t *testing.T) {
 	t.Cleanup(c.Close)
 	chunk := uint64(defaultNursery / 8)
 	for range 8 {
-		c.growDefaultNursery(chunk)
+		c.growDefaultNursery(chunk, 0)
 	}
 	if c.nurseryGrowthSurvived != defaultNursery || c.cfg.NurseryBytes != defaultNursery {
 		t.Fatal("survival at capacity must not grow the nursery")
 	}
-	c.growDefaultNursery(chunk)
+	c.growDefaultNursery(chunk, 0)
 	if c.cfg.NurseryBytes != 2*defaultNursery {
 		t.Fatal("cumulative survival above capacity did not grow the nursery")
 	}
@@ -31,25 +31,25 @@ func TestDefaultNurseryGrowthDecaysSparseSurvival(t *testing.T) {
 	}
 	t.Cleanup(c.Close)
 	threshold := uint64(defaultNursery / 8)
-	c.growDefaultNursery(threshold)
+	c.growDefaultNursery(threshold, 0)
 	for range 7 {
-		c.growDefaultNursery(threshold - 1)
+		c.growDefaultNursery(threshold-1, 0)
 	}
 	if c.nurseryGrowthSurvived != uint32(threshold) || c.nurseryGrowthQuiet != 7 {
 		t.Fatal("seven sparse collections cleared cumulative survival")
 	}
-	c.growDefaultNursery(threshold)
+	c.growDefaultNursery(threshold, 0)
 	if c.nurseryGrowthSurvived != uint32(2*threshold) || c.nurseryGrowthQuiet != 0 {
 		t.Fatal("dense survival did not reset the quiet count")
 	}
 	for range 8 {
-		c.growDefaultNursery(threshold - 1)
+		c.growDefaultNursery(threshold-1, 0)
 	}
 	if c.nurseryGrowthSurvived != 0 || c.nurseryGrowthQuiet != 0 || c.cfg.NurseryBytes != defaultNursery {
 		t.Fatal("eight sparse collections did not clear cumulative survival")
 	}
 	for range 256 {
-		c.growDefaultNursery(threshold - 1)
+		c.growDefaultNursery(threshold-1, 0)
 	}
 	if c.cfg.NurseryBytes != defaultNursery {
 		t.Fatal("persistent sparse survival grew the nursery")
@@ -64,27 +64,58 @@ func TestDefaultNurseryGrowthKeepsDensePolicyAboveOneMiB(t *testing.T) {
 	t.Cleanup(c.Close)
 	for c.cfg.NurseryBytes < 1<<20 {
 		c.nurseryGrowthSurvived = c.cfg.NurseryBytes
-		c.growDefaultNursery(uint64(c.cfg.NurseryBytes / 8))
+		c.growDefaultNursery(uint64(c.cfg.NurseryBytes/8), 0)
 	}
 	threshold := uint64(c.cfg.NurseryBytes / 4)
-	c.growDefaultNursery(threshold - 1)
+	c.growDefaultNursery(threshold-1, 0)
 	if c.nurseryGrowthSurvived != 0 || c.cfg.NurseryBytes != 1<<20 {
 		t.Fatal("sparse survival counted as dense growth pressure")
 	}
-	c.growDefaultNursery(threshold)
+	c.growDefaultNursery(threshold, 0)
 	if c.nurseryGrowthSurvived != 1 || c.cfg.NurseryBytes != 1<<20 {
 		t.Fatal("one dense event must not grow the nursery")
 	}
 	for range 8 {
-		c.growDefaultNursery(threshold - 1)
+		c.growDefaultNursery(threshold-1, 0)
 	}
 	if c.nurseryGrowthSurvived != 0 || c.nurseryGrowthQuiet != 0 || c.cfg.NurseryBytes != 1<<20 {
 		t.Fatal("eight sparse events did not clear dense growth pressure")
 	}
-	c.growDefaultNursery(threshold)
-	c.growDefaultNursery(threshold)
+	c.growDefaultNursery(threshold, 0)
+	c.growDefaultNursery(threshold, 0)
 	if c.cfg.NurseryBytes != 2<<20 {
 		t.Fatal("two dense events did not grow the nursery")
+	}
+}
+
+func TestDefaultNurseryDensePregrowAdmission(t *testing.T) {
+	newCollector := func() *Collector {
+		c, err := NewCollector(Config{}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(c.Close)
+		c.nurseryGrowthSurvived = c.cfg.NurseryBytes
+		return c
+	}
+
+	dense := newCollector()
+	dense.growDefaultNursery(uint64(defaultNursery/8), defaultNursery/32)
+	wantDense := uint32(denseNurseryPregrowBytes)
+	if !denseNurseryPregrowEnabled {
+		wantDense = 2 * defaultNursery
+	}
+	if dense.cfg.NurseryBytes != wantDense {
+		t.Fatalf("dense Eden = %d, want %d", dense.cfg.NurseryBytes, wantDense)
+	}
+	if denseNurseryPregrowEnabled && len(dense.nursery) != int(wantDense+2*(512<<10)) {
+		t.Fatalf("dense backing = %d, want %d", len(dense.nursery), wantDense+2*(512<<10))
+	}
+
+	wide := newCollector()
+	wide.growDefaultNursery(uint64(defaultNursery/8), defaultNursery/80)
+	if wide.cfg.NurseryBytes != 2*defaultNursery {
+		t.Fatalf("wide Eden = %d, want ordinary doubling to %d", wide.cfg.NurseryBytes, 2*defaultNursery)
 	}
 }
 
@@ -125,7 +156,7 @@ func TestDefaultNurseryGrowthRejectsInvalidSurvivorExtent(t *testing.T) {
 			invalidEntry := *e
 			backing := sliceData(c.nursery)
 			c.nurseryGrowthSurvived = defaultNursery
-			c.growDefaultNursery(uint64(defaultNursery / 8))
+			c.growDefaultNursery(uint64(defaultNursery/8), 0)
 			if c.cfg.NurseryBytes != defaultNursery || sliceData(c.nursery) != backing || *e != invalidEntry {
 				t.Fatal("growth changed backing or handle with an invalid survivor extent")
 			}
