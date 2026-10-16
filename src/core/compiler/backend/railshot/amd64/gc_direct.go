@@ -972,7 +972,7 @@ func (f *fn) emitNativeGCStubs() {
 			stub := stubs[site.typeIndex]
 			if !stub.emitted {
 				stub.offset = f.a.Len()
-				f.emitNativeStructAllocStub(site.typeIndex, site.dead && !stub.live)
+				f.emitNativeStructAllocStub(site.typeIndex, site.dead && !stub.live, false)
 				stub.emitted = true
 				stubs[site.typeIndex] = stub
 			}
@@ -1353,14 +1353,16 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 // advances the private nursery-chunk cursor only after every constructor reference
 // has been validated. It writes the result directly to the synchronous control frame and
 // returns nonzero in RAX on success; zero selects the ordinary rooted helper.
-func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead bool) {
+// Site-local emission falls through with those flags, while shared emission
+// returns to the patched call site.
+func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead, inline bool) {
 	plan, ok := f.nativeGCStructAllocLayout(typeIndex)
 	if !ok {
 		panic("amd64: invalid native struct allocation layout")
 	}
 	fields, objectSize, objectAlign, pointerFree := plan.fields, plan.objectSize, plan.objectAlign, plan.pointerFree
 	if dead {
-		f.emitNativeDeadStructChargeStub(objectSize, objectAlign)
+		f.emitNativeDeadStructChargeStub(objectSize, objectAlign, inline)
 		return
 	}
 	a := f.a
@@ -1539,14 +1541,16 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead bool) {
 		}
 	}
 	a.Pop(R8)
-	a.Ret()
+	if !inline {
+		a.Ret()
+	}
 }
 
 // emitNativeDeadStructChargeStub preserves the allocation side effects of a
 // compiler-proven unreachable struct without publishing an object handle. The
 // full aligned nursery charge keeps collection and bounded-resource behavior;
 // the ordinary rooted helper remains the fallback at every boundary.
-func (f *fn) emitNativeDeadStructChargeStub(objectSize, objectAlign uint32) {
+func (f *fn) emitNativeDeadStructChargeStub(objectSize, objectAlign uint32, inline bool) {
 	a := f.a
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
@@ -1657,7 +1661,9 @@ func (f *fn) emitNativeDeadStructChargeStub(objectSize, objectAlign uint32) {
 		}
 	}
 	a.Pop(R8)
-	a.Ret()
+	if !inline {
+		a.Ret()
+	}
 }
 
 // rejectForeignAnyref fails a defined struct/array test or cast whose operand

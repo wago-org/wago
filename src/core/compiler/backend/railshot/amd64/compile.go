@@ -81,6 +81,10 @@ var nativeGCStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "
 // identical on both sides. This switch changes compilation, not generated checks.
 var nativeGCArrayScratchEnabled = os.Getenv("WAGO_AMD64_NO_GC_ARRAY_SCRATCH") != "1"
 
+// Struct allocation is hot enough to spend code bytes on a site-local fast
+// path. The switch keeps shared-stub and inline measurements in one executable.
+var nativeGCStructInlineEnabled = os.Getenv("WAGO_AMD64_NO_GC_STRUCT_INLINE") != "1"
+
 // gcSharedStubsEnabled moves the common noncollecting compact-handle resolver
 // into one module-owned leaf stub. The local call edge retains exact trap/source
 // attribution. WAGO_AMD64_NO_GC_SHARED_STUBS=1 restores fully inline resolution

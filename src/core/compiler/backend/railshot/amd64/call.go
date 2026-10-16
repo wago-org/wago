@@ -1359,8 +1359,12 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		site := f.a.CallRel32()
-		f.sc.gcStructAllocStubSites = append(f.sc.gcStructAllocStubSites, gcStructAllocStubSite{typeIndex: typeIndex, dead: nativeStructDead, site: site})
+		if nativeGCStructInlineEnabled {
+			f.emitNativeStructAllocStub(typeIndex, nativeStructDead, true)
+		} else {
+			site := f.a.CallRel32()
+			f.sc.gcStructAllocStubSites = append(f.sc.gcStructAllocStubSites, gcStructAllocStubSite{typeIndex: typeIndex, dead: nativeStructDead, site: site})
+		}
 		f.stats.call("gcnative")
 		nativeAllocDone = f.a.JccPlaceholder(condNE) // stub returns ZF=0 on success
 	} else if nativeArray.mode != gcArrayNativeNone {
