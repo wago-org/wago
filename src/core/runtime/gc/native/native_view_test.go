@@ -6,8 +6,8 @@ import (
 )
 
 func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
-	if NativeABIVersion != 3 {
-		t.Fatalf("native collector ABI version = %d, want version 3", NativeABIVersion)
+	if NativeABIVersion != 4 {
+		t.Fatalf("native collector ABI version = %d, want version 4", NativeABIVersion)
 	}
 	if got := unsafe.Sizeof(handleEntry{}); got != NativeHandleStride {
 		t.Fatalf("handle entry size = %d, want %d", got, NativeHandleStride)
