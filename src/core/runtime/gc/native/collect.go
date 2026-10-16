@@ -56,10 +56,15 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	if c.cfg.MinorPauseTargetMicros != 0 {
 		policyStart = time.Now()
 	}
-	c.clearNurseryMarks()
+	// A successful minor collection clears every young mark while it compacts
+	// nurseryHandles. Only a full collection leaves live young marks set.
+	if len(c.mark) < len(c.handles) || c.stats.FullCollections != c.lastFullCollections {
+		c.clearNurseryMarks()
+	}
 	c.markNurseryRoots(roots)
 	if c.cfg.VerifyAfterCollect {
 		if err := c.verifyRememberedShadow(); err != nil {
+			c.clearNurseryMarks()
 			c.restoreDeadNurseryAccounting()
 			return err
 		}

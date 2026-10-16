@@ -369,3 +369,37 @@ func TestDenseMinorEvacuationFinishesDuringCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMinorMarkClearRepairsLazyMarksAndFullCollectionState(t *testing.T) {
+	c := newTestCollector(t, Config{NurseryBytes: 4096, SurvivorBytes: 4096})
+	ref, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := Root(ref)
+	slots := Slots{&root}
+	if len(c.mark) >= len(c.handles) {
+		t.Fatalf("initial mark length=%d, want less than %d handles", len(c.mark), len(c.handles))
+	}
+	if err := c.CollectMinor(slots); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.mark) != len(c.handles) || c.mark[handleOf(ref)] {
+		t.Fatalf("first minor marks=%v handles=%d", c.mark, len(c.handles))
+	}
+	if err := c.CollectFull(slots); err != nil {
+		t.Fatal(err)
+	}
+	if !c.mark[handleOf(ref)] || c.stats.FullCollections == c.lastFullCollections {
+		t.Fatal("full collection did not leave detectable live nursery marks")
+	}
+	if err := c.CollectMinor(slots); err != nil {
+		t.Fatal(err)
+	}
+	if c.mark[handleOf(ref)] || c.stats.FullCollections != c.lastFullCollections {
+		t.Fatal("minor collection did not clear full-collection nursery marks")
+	}
+	if err := c.Verify(slots); err != nil {
+		t.Fatal(err)
+	}
+}
