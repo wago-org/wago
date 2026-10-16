@@ -182,7 +182,11 @@ func (c *Collector) finishMinorEvacuation() {
 			c.free(h)
 		}
 	}
-	clear(c.nurseryHandles[len(out):])
+	// Discarded uint32 identities retain no Go objects, and later appends
+	// overwrite this tail. Avoid clearing it on the measured AMD64 path.
+	if runtime.GOARCH != "amd64" {
+		clear(c.nurseryHandles[len(out):])
+	}
 	c.nurseryHandles = out
 	c.nurseryBump = 0
 	if len(out) == 0 {
@@ -211,7 +215,8 @@ func (c *Collector) finishDeadNurseryEvacuation() bool {
 			c.free(h)
 		}
 	}
-	clear(c.nurseryHandles)
+	// This specialization executes only on AMD64. Its stale uint32 tail is
+	// outside the slice length and cannot retain Go memory.
 	c.nurseryHandles = c.nurseryHandles[:0]
 	c.lastCardBounds = objectCardBounds{}
 	c.nurseryBump = 0
