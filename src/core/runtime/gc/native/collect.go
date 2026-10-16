@@ -101,7 +101,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	}
 	if !finishedEvacuation {
 		if scanned != 0 || !c.finishDeadNurseryEvacuation() {
-			c.finishMinorEvacuation()
+			c.finishMinorEvacuation(scanned)
 		}
 	}
 	c.finishMinorCardMetadata()
@@ -156,7 +156,11 @@ func (c *Collector) sweepAll() {
 // survivor/large-young handles. promoteMarkedNursery has already copied or
 // tenured every marked object transactionally.
 
-func (c *Collector) finishMinorEvacuation() {
+func (c *Collector) finishMinorEvacuation(liveCount uint64) {
+	if runtime.GOARCH == "amd64" && !c.cfg.PoisonFreed && liveCount <= uint64(len(c.nurseryHandles))/8 {
+		c.finishSparseMinorEvacuation()
+		return
+	}
 	out := c.nurseryHandles[:0]
 	for _, h := range c.nurseryHandles {
 		if h == 0 || int(h) >= len(c.handles) {
@@ -189,6 +193,54 @@ func (c *Collector) finishMinorEvacuation() {
 		clear(c.nurseryHandles[len(out):])
 	}
 	c.nurseryHandles = out
+	c.nurseryBump = 0
+	if len(out) == 0 {
+		c.survivorBump = 0
+		c.survivorFrom ^= 1
+	}
+}
+
+// finishSparseMinorEvacuation transfers a mostly-dead nursery identity set to
+// the free list with one bulk copy. It then compacts the few live or invalid
+// entries out of that copy while it performs the ordinary evacuation cleanup.
+func (c *Collector) finishSparseMinorEvacuation() {
+	nursery := c.nurseryHandles
+	freeStart := len(c.freeHandles)
+	c.freeHandles = append(c.freeHandles, nursery...)
+	freeOut := freeStart
+	out := nursery[:0]
+	for i, h := range nursery {
+		if h == 0 || int(h) >= len(c.handles) {
+			continue
+		}
+		if c.mark[h] {
+			c.mark[h] = false
+			if c.handles[h].young() {
+				out = append(out, h)
+			}
+			continue
+		}
+		e := &c.handles[h]
+		if e.space == spaceNursery && e.cardSlot == 0 {
+			e.space = spaceFree
+		} else if e.young() {
+			// releaseHandle appends the recycled identity. The bulk copy already
+			// contains it, so discard that duplicate after the full release work.
+			end := len(c.freeHandles)
+			c.free(h)
+			c.freeHandles = c.freeHandles[:end]
+		} else {
+			continue
+		}
+		src := freeStart + i
+		if freeOut != src {
+			c.freeHandles[freeOut] = h
+		}
+		freeOut++
+	}
+	c.freeHandles = c.freeHandles[:freeOut]
+	c.nurseryHandles = out
+	c.lastCardBounds = objectCardBounds{}
 	c.nurseryBump = 0
 	if len(out) == 0 {
 		c.survivorBump = 0
