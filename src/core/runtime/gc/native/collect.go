@@ -60,6 +60,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	c.markNurseryRoots(roots)
 	if c.cfg.VerifyAfterCollect {
 		if err := c.verifyRememberedShadow(); err != nil {
+			c.restoreDeadNurseryAccounting()
 			return err
 		}
 	}
@@ -75,6 +76,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		copiedBytes, promotedBytes, err = c.promoteMarkedNursery()
 		if err != nil {
 			c.clearNurseryMarks()
+			c.restoreDeadNurseryAccounting()
 			return err
 		}
 	}

@@ -247,6 +247,7 @@ func (c *Collector) discardNativeStructHandles() {
 		}
 		c.nurseryBump = rewind
 	}
+	chargedBump := c.nurseryBump
 	if canceled {
 		// Reserved handles are appended as one tail batch and no Go allocation or
 		// collection can append another nursery identity before cancellation. Trim
@@ -278,6 +279,12 @@ func (c *Collector) discardNativeStructHandles() {
 			// later handle reuse must not append a duplicate identity to the dense
 			// young set.
 			c.compactNurseryHandles()
+			if c.hasPendingDeadNurseryObjects() && c.nurseryBump < chargedBump {
+				// Native dead-struct charges have no handle extent for compaction
+				// to discover. Keep their high-water mark until collection reclaims
+				// the charged bytes and clears the pending object count.
+				c.nurseryBump = chargedBump
+			}
 		}
 	}
 	clear(s.Handles[:])

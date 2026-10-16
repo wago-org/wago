@@ -1337,6 +1337,10 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead bool) {
 		panic("amd64: invalid native struct allocation layout")
 	}
 	fields, objectSize, objectAlign, pointerFree := plan.fields, plan.objectSize, plan.objectAlign, plan.pointerFree
+	if dead {
+		f.emitNativeDeadStructChargeStub(objectSize, objectAlign)
+		return
+	}
 	a := f.a
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
@@ -1524,6 +1528,124 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead bool) {
 	a.PatchRel32(done, a.Len())
 	a.TestSelf(RAX, false) // RET and POP preserve flags for the caller's JNE
 	for i := len(preserve) - 1; i >= 0; i-- {
+		if preserve[i] {
+			a.Pop(R9 + Reg(i))
+		}
+	}
+	a.Pop(R8)
+	a.Ret()
+}
+
+// emitNativeDeadStructChargeStub preserves the allocation side effects of a
+// compiler-proven unreachable struct without publishing an object handle. The
+// full aligned nursery charge keeps collection and bounded-resource behavior;
+// the ordinary rooted helper remains the fallback at every boundary.
+func (f *fn) emitNativeDeadStructChargeStub(objectSize, objectAlign uint32) {
+	a := f.a
+	var preserve [3]bool
+	for _, local := range f.pinnedLocals {
+		if reg := f.locals[local].reg; reg >= R9 && reg <= R11 {
+			preserve[reg-R9] = true
+		}
+	}
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		reg := globalRegValue(f.globalReg[global])
+		if reg >= R9 && reg <= R11 {
+			preserve[reg-R9] = true
+		}
+	}
+	a.Push(R8)
+	for i, yes := range preserve {
+		if yes {
+			a.Push(R9 + Reg(i))
+		}
+	}
+	a.MovReg64(RDI, R8)
+	fallback := make([]int, 0, 12)
+	addFallback := func(site int) { fallback = append(fallback, site) }
+
+	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+	a.CmpImm32Mem(R8, gc.NativeViewNurseryObjectMaxBytesOffset, int32(objectSize))
+	addFallback(a.JccPlaceholder(condBE))
+
+	// A nonempty, current batch proves that this collector configuration permits
+	// native nursery allocation. Dead charges leave its handle cursor untouched.
+	a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
+	a.TestSelf(R10, true)
+	addFallback(a.JccPlaceholder(condE))
+	a.Load32(RAX, R10, gc.NativeStructAllocCountOffset)
+	a.TestSelf(RAX, false)
+	addFallback(a.JccPlaceholder(condE))
+	a.AluRI(cmpDigit, RAX, gc.NativeStructAllocHandleCapacity, false)
+	addFallback(a.JccPlaceholder(condA))
+	a.Load64(RAX, R8, gc.NativeViewStructAllocEpochOffset)
+	a.TestSelf(RAX, true)
+	addFallback(a.JccPlaceholder(condE))
+	a.Load32(RDX, RAX, 0)
+	a.Load32(RAX, R10, gc.NativeStructAllocEpochOffset)
+	a.Cmp32(RAX, RDX)
+	addFallback(a.JccPlaceholder(condNE))
+
+	a.Load64(R9, R8, gc.NativeViewNurseryBumpOffset)
+	a.TestSelf(R9, true)
+	addFallback(a.JccPlaceholder(condE))
+	a.Load32(RCX, R9, 0)
+	if objectAlign > 1 {
+		a.AluRI(0, RCX, int32(objectAlign-1), false)
+		a.AluRI(4, RCX, -int32(objectAlign), false)
+	}
+	a.Load32(RDX, R8, gc.NativeViewNurseryAllocBytesOffset)
+	a.Cmp32(RCX, RDX)
+	addFallback(a.JccPlaceholder(condA))
+	a.Sub32(RDX, RCX)
+	a.AluRI(cmpDigit, RDX, int32(objectSize), false)
+	addFallback(a.JccPlaceholder(condB))
+	a.Load64(R10, R8, gc.NativeViewAllocationCountOffset)
+	a.TestSelf(R10, true)
+	addFallback(a.JccPlaceholder(condE))
+
+	a.MovRegReg32(RDX, RCX)
+	a.AluRI(0, RDX, int32(objectSize), false)
+	a.Store32(R9, 0, RDX)
+	a.Load64(RAX, R10, 0)
+	a.AluRI(0, RAX, 1, true)
+	a.Store64(R10, 0, RAX)
+	a.Load64(RAX, R10, gc.NativeAllocationMinorCollectionsOffset)
+	a.Load64(RDX, R10, gc.NativeAllocationFullCollectionsOffset)
+	a.Add64(RAX, RDX)
+	a.Load32(RDX, R8, gc.NativeViewDeadNurseryCycleLowOffset)
+	a.Cmp32(RAX, RDX)
+	staleCycle := a.JccPlaceholder(condNE)
+	a.MovReg64(RDX, RAX)
+	a.ShiftImm(5, RDX, 32, true)
+	a.Load32(RCX, R8, gc.NativeViewDeadNurseryCycleHighOffset)
+	a.Cmp32(RDX, RCX)
+	currentCycle := a.JccPlaceholder(condE)
+	a.PatchRel32(staleCycle, a.Len())
+	a.XorSelf32(RDX)
+	a.Store32(R10, gc.NativeAllocationDeadObjectsOffset, RDX)
+	a.Store32(R8, gc.NativeViewDeadNurseryCycleLowOffset, RAX)
+	a.MovReg64(RDX, RAX)
+	a.ShiftImm(5, RDX, 32, true)
+	a.Store32(R8, gc.NativeViewDeadNurseryCycleHighOffset, RDX)
+	a.PatchRel32(currentCycle, a.Len())
+	a.Load32(RAX, R10, gc.NativeAllocationDeadObjectsOffset)
+	a.AluRI(0, RAX, 1, false)
+	a.Store32(R10, gc.NativeAllocationDeadObjectsOffset, RAX)
+	a.XorSelf32(RDX)
+	a.Store64(RDI, hcResults, RDX)
+	a.MovImm32(RAX, 1)
+	done := a.JmpPlaceholder()
+
+	fallbackAt := a.Len()
+	for _, site := range fallback {
+		a.PatchRel32(site, fallbackAt)
+	}
+	a.MovImm32(RAX, 0)
+	a.PatchRel32(done, a.Len())
+	a.TestSelf(RAX, false)
+	for i := 2; i >= 0; i-- {
 		if preserve[i] {
 			a.Pop(R9 + Reg(i))
 		}

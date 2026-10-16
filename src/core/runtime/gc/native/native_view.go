@@ -11,7 +11,17 @@ import (
 // contract while reloading every mutable backing pointer/count they consume. The
 // view is refreshed in place whenever growable backing can relocate, and callers
 // must still serialize access with collector mutation.
-const NativeABIVersion uint32 = 1
+const NativeABIVersion uint32 = 2
+
+// Native allocation-stat offsets are relative to the AllocationCount pointer
+// in NativeCollectorView. Generated AMD64 dead charges use these counters to
+// invalidate pending-object accounting after a collection without adding work
+// to ordinary allocation or collection paths.
+const (
+	NativeAllocationMinorCollectionsOffset = 8
+	NativeAllocationFullCollectionsOffset  = 16
+	NativeAllocationDeadObjectsOffset      = 56
+)
 
 // Native handle-entry layout. These constants are part of NativeABIVersion and
 // are verified against handleEntry below.
@@ -66,10 +76,10 @@ type NativeCollectorView struct {
 	NurseryBump           uintptr
 	AllocationCount       uintptr
 	NurseryObjectMaxBytes uint32
-	_                     uint32
+	DeadNurseryCycleLow   uint32
 	SubtypeIntervals      uintptr
 	SubtypeIntervalCount  uint32
-	_                     uint32
+	DeadNurseryCycleHigh  uint32
 }
 
 const (
@@ -90,8 +100,10 @@ const (
 	NativeViewNurseryBumpOffset           = 144
 	NativeViewAllocationCountOffset       = 152
 	NativeViewNurseryObjectMaxBytesOffset = 160
+	NativeViewDeadNurseryCycleLowOffset   = 164
 	NativeViewSubtypeIntervalsOffset      = 168
 	NativeViewSubtypeIntervalCountOffset  = 176
+	NativeViewDeadNurseryCycleHighOffset  = 180
 	NativeCollectorViewSize               = 184
 )
 
@@ -129,6 +141,12 @@ func sliceData[T any](s []T) uintptr {
 // It belongs at collector/artifact construction boundaries, never in generated
 // hot paths. Any mismatch is fail-closed before native code can follow a field.
 func ValidateNativeABI() error {
+	var stats Stats
+	if unsafe.Offsetof(stats.MinorCollections)-unsafe.Offsetof(stats.Allocations) != NativeAllocationMinorCollectionsOffset ||
+		unsafe.Offsetof(stats.FullCollections)-unsafe.Offsetof(stats.Allocations) != NativeAllocationFullCollectionsOffset ||
+		unsafe.Offsetof(stats.LiveObjects)-unsafe.Offsetof(stats.Allocations) != NativeAllocationDeadObjectsOffset {
+		return fmt.Errorf("gc: native allocation-stat layout mismatch")
+	}
 	var entry handleEntry
 	if unsafe.Sizeof(entry) != NativeHandleStride ||
 		unsafe.Offsetof(entry.off) != NativeHandleOffsetOffset ||
@@ -181,8 +199,10 @@ func ValidateNativeABI() error {
 		unsafe.Offsetof(view.NurseryBump) != NativeViewNurseryBumpOffset ||
 		unsafe.Offsetof(view.AllocationCount) != NativeViewAllocationCountOffset ||
 		unsafe.Offsetof(view.NurseryObjectMaxBytes) != NativeViewNurseryObjectMaxBytesOffset ||
+		unsafe.Offsetof(view.DeadNurseryCycleLow) != NativeViewDeadNurseryCycleLowOffset ||
 		unsafe.Offsetof(view.SubtypeIntervals) != NativeViewSubtypeIntervalsOffset ||
-		unsafe.Offsetof(view.SubtypeIntervalCount) != NativeViewSubtypeIntervalCountOffset {
+		unsafe.Offsetof(view.SubtypeIntervalCount) != NativeViewSubtypeIntervalCountOffset ||
+		unsafe.Offsetof(view.DeadNurseryCycleHigh) != NativeViewDeadNurseryCycleHighOffset {
 		return fmt.Errorf("gc: native collector ABI layout mismatch")
 	}
 	var instance NativeInstanceView
@@ -266,6 +286,7 @@ func (c *Collector) refreshNativeView() {
 		v.NurseryBump = 0
 		v.AllocationCount = 0
 		v.NurseryObjectMaxBytes = 0
+		v.setDeadNurseryCycle(0)
 	} else {
 		v.NurseryAllocBytes = c.edenBytes()
 		v.StructAllocState = uintptr(unsafe.Pointer(&c.nativeStructAlloc))

@@ -92,8 +92,11 @@ type Stats struct {
 	MinorObjectsScanned    uint64
 	MinorRememberedScanned uint64
 	// YoungBytesCopied includes evacuation and nursery-growth relocation copies.
-	YoungBytesCopied  uint64
-	PromotedBytes     uint64
+	YoungBytesCopied uint64
+	PromotedBytes    uint64
+	// LiveObjects is computed when Stats returns a snapshot. Internally, this
+	// slot counts compiler-proven unreachable objects whose native allocation
+	// charged nursery bytes without publishing a handle.
 	LiveObjects       uint32
 	TenuringThreshold uint8
 }
@@ -226,6 +229,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 // counters, while unchecked root-slot reads return null after slots are released.
 func (c *Collector) Close() {
 	c.discardNativeStructHandles()
+	c.stats.LiveObjects = 0
 	c.closed = true
 	c.nursery = nil
 	c.tiny.Close()
@@ -313,6 +317,35 @@ func (c *Collector) errIfClosed() error {
 func (c *Collector) Stats() Stats {
 	s := c.stats
 	s.LiveObjects = c.liveCount()
+	if c.nativeView != nil && c.nativeView.deadNurseryCycle() == c.collectionCycle() {
+		s.LiveObjects += c.stats.LiveObjects
+	}
 	s.TenuringThreshold = c.tenuringThreshold
 	return s
+}
+
+func (c *Collector) collectionCycle() uint64 {
+	return c.stats.MinorCollections + c.stats.FullCollections
+}
+
+func (c *Collector) hasPendingDeadNurseryObjects() bool {
+	return c.stats.LiveObjects != 0 && c.nativeView != nil && c.nativeView.deadNurseryCycle() == c.collectionCycle()
+}
+
+// restoreDeadNurseryAccounting keeps pending charges visible when a collection
+// fails before reclaiming nursery bytes. It is called only on cold error paths.
+func (c *Collector) restoreDeadNurseryAccounting() {
+	cycle := c.collectionCycle()
+	if c.nativeView != nil && c.nativeView.deadNurseryCycle() == cycle-1 {
+		c.nativeView.setDeadNurseryCycle(cycle)
+	}
+}
+
+func (v *NativeCollectorView) deadNurseryCycle() uint64 {
+	return uint64(v.DeadNurseryCycleHigh)<<32 | uint64(v.DeadNurseryCycleLow)
+}
+
+func (v *NativeCollectorView) setDeadNurseryCycle(cycle uint64) {
+	v.DeadNurseryCycleLow = uint32(cycle)
+	v.DeadNurseryCycleHigh = uint32(cycle >> 32)
 }

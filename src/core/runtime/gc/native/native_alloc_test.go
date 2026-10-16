@@ -299,6 +299,72 @@ func TestNativeStructHandleCancellationPreservesDenseNurseryPrefix(t *testing.T)
 	}
 }
 
+func TestNativeStructHandleCancellationPreservesDeadChargesAfterPromotion(t *testing.T) {
+	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{desc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if !c.PrepareNativeStructHandles() {
+		t.Fatal("native handle batch was not prepared")
+	}
+
+	size, err := StructSize(desc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &c.nativeStructAlloc
+	h := s.Handles[0]
+	c.handles[h] = handleEntry{size: size, allocSize: size, space: spaceNursery}
+	c.writeHeader(makeObjRef(h), ObjHeader{TypeID: uint32(desc.ID), Size: size, Flags: FlagPointerFree})
+	s.Cursor = 1
+	c.nurseryBump = 4 * size
+	c.stats.Allocations = 4
+	c.stats.LiveObjects = 3
+	if err := c.ForcePromote(makeObjRef(h)); err != nil {
+		t.Fatal(err)
+	}
+
+	before := c.nurseryBump
+	c.CancelNativeAllocationBatch()
+	if c.nurseryBump != before {
+		t.Fatalf("cancel discarded dead allocation charge: bump %d -> %d", before, c.nurseryBump)
+	}
+	if got := c.Stats().LiveObjects; got != 4 {
+		t.Fatalf("live objects after cancel = %d, want 4", got)
+	}
+	if err := c.CollectMinor(EmptyRoots{}); err != nil {
+		t.Fatal(err)
+	}
+	if c.nurseryBump != 0 || c.Stats().LiveObjects != 1 {
+		t.Fatalf("minor collection state = bump %d live %d, want 0/1", c.nurseryBump, c.Stats().LiveObjects)
+	}
+}
+
+func TestDeadNurseryAccountingDoesNotAliasAfterUint32CollectionCycle(t *testing.T) {
+	c, err := NewCollector(Config{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.stats.LiveObjects = 3
+	c.nativeView.setDeadNurseryCycle(0)
+	if got := c.Stats().LiveObjects; got != 3 {
+		t.Fatalf("initial live objects = %d, want 3", got)
+	}
+	c.stats.MinorCollections = 1 << 32
+	if got := c.Stats().LiveObjects; got != 0 {
+		t.Fatalf("stale live objects after 2^32 collections = %d, want 0", got)
+	}
+	if c.hasPendingDeadNurseryObjects() {
+		t.Fatal("stale dead nursery accounting remained pending after 2^32 collections")
+	}
+}
+
 func BenchmarkNativeAllocationBatchCancelDenseNursery(b *testing.B) {
 	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
 	if err != nil {
