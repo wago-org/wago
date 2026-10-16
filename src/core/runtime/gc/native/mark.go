@@ -149,6 +149,26 @@ func (c *Collector) drainNurseryMarkStack() uint64 {
 	return scanned
 }
 
+func (c *Collector) drainNurseryMarkStackForPromotion() uint64 {
+	// Keep this hot loop separate from the general drain. A capture-mode branch
+	// per live object costs more than the duplicated control flow on AMD64.
+	c.promotionScratch = c.promotionScratch[:0]
+	var scanned uint64
+	for len(c.markStack) > 0 {
+		n := len(c.markStack) - 1
+		h := c.markStack[n]
+		c.markStack = c.markStack[:n]
+		c.stats.MinorObjectsScanned++
+		scanned++
+		c.promotionScratch = append(c.promotionScratch, plannedPromotion{handle: h})
+		if runtime.GOARCH == "amd64" && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
+			continue
+		}
+		c.scanObjectRefs(h, c.markNurseryRef)
+	}
+	return scanned
+}
+
 func (c *Collector) markNurseryRef(r Ref) {
 	if !r.IsObj() {
 		return

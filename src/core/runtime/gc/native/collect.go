@@ -78,12 +78,21 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	var copiedBytes, promotedBytes uint64
 	finishedEvacuation := false
 	var scanned uint64
+	capturedPromotion := runtime.GOARCH == "amd64" && !(c.survivorBytes == 0 && c.tenuringThreshold == 1)
 	if runtime.GOARCH != "amd64" || len(c.markStack) != 0 {
-		scanned = c.drainNurseryMarkStack()
+		if capturedPromotion {
+			scanned = c.drainNurseryMarkStackForPromotion()
+		} else {
+			scanned = c.drainNurseryMarkStack()
+		}
 	}
 	if scanned != 0 {
 		var err error
-		copiedBytes, promotedBytes, finishedEvacuation, err = c.promoteMarkedNursery()
+		if capturedPromotion && scanned < uint64(len(c.nurseryHandles)) {
+			copiedBytes, promotedBytes, finishedEvacuation, err = c.promoteCapturedNursery()
+		} else {
+			copiedBytes, promotedBytes, finishedEvacuation, err = c.promoteMarkedNursery()
+		}
 		if err != nil {
 			c.clearNurseryMarks()
 			c.restoreDeadNurseryAccounting()
@@ -221,11 +230,22 @@ type plannedPromotion struct {
 // survivor bytes are written only after destination and commit failure points
 // have all passed, so rollback leaves the complete observable heap unchanged.
 func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, finishedEvacuation bool, err error) {
+	return c.promoteNursery(false)
+}
+
+func (c *Collector) promoteCapturedNursery() (copiedBytes, promotedBytes uint64, finishedEvacuation bool, err error) {
+	return c.promoteNursery(true)
+}
+
+func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes uint64, finishedEvacuation bool, err error) {
 	if c.survivorBytes == 0 && c.tenuringThreshold == 1 {
 		copiedBytes, promotedBytes, err = c.promoteMarkedNurseryImmediate()
 		return copiedBytes, promotedBytes, false, err
 	}
 	plans := c.promotionScratch[:0]
+	if captured {
+		plans = c.promotionScratch
+	}
 	needsOldAllocation := false
 	toSpace := c.survivorFrom ^ 1
 	toBase := c.survivorBase(toSpace)
@@ -234,37 +254,70 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, f
 		clear(plans)
 		c.promotionScratch = plans[:0]
 	}
-	for _, h := range c.nurseryHandles {
-		// CollectMinor canceled native reservations before marking, so the dense
-		// nursery list contains only valid young handles at this point.
-		if !c.mark[h] {
-			continue
-		}
-		if err = injectFailure(c, failPromotionPlan); err != nil {
-			finish()
-			return 0, 0, false, err
-		}
-		src := c.handles[h]
-		age := src.age() + 1
-		plan := plannedPromotion{handle: h}
-		switch {
-		case src.space == spaceLarge:
-			plan.entry = src
-			if age >= c.tenuringThreshold {
-				plan.entry.clearYoungAge()
-			} else {
-				plan.entry.setYoungAge(age)
+	if captured {
+		// The drain already selected every live handle. Fill those scratch entries
+		// directly instead of scanning the mostly-dead nursery a second time.
+		for i := range plans {
+			h := plans[i].handle
+			if err = injectFailure(c, failPromotionPlan); err != nil {
+				finish()
+				return 0, 0, false, err
 			}
-		case age < c.tenuringThreshold && c.survivorBytes != 0:
-			off := align(toBump, max(srcAlignment(c, h), uint32(8)))
-			if off <= c.survivorBytes && src.size <= c.survivorBytes-off {
-				plan.entry = handleEntry{off: toBase + off, size: src.size, allocSize: src.size, space: spaceNursery}
-				plan.entry.setYoungAge(age)
-				toBump = off + src.size
+			src := c.handles[h]
+			age := src.age() + 1
+			plan := plannedPromotion{handle: h}
+			switch {
+			case src.space == spaceLarge:
+				plan.entry = src
+				if age >= c.tenuringThreshold {
+					plan.entry.clearYoungAge()
+				} else {
+					plan.entry.setYoungAge(age)
+				}
+			case age < c.tenuringThreshold && c.survivorBytes != 0:
+				off := align(toBump, max(srcAlignment(c, h), uint32(8)))
+				if off <= c.survivorBytes && src.size <= c.survivorBytes-off {
+					plan.entry = handleEntry{off: toBase + off, size: src.size, allocSize: src.size, space: spaceNursery}
+					plan.entry.setYoungAge(age)
+					toBump = off + src.size
+				}
 			}
+			plans[i] = plan
+			needsOldAllocation = needsOldAllocation || plan.entry.space == spaceFree
 		}
-		plans = append(plans, plan)
-		needsOldAllocation = needsOldAllocation || plan.entry.space == spaceFree
+	} else {
+		for _, h := range c.nurseryHandles {
+			// CollectMinor canceled native reservations before marking, so the dense
+			// nursery list contains only valid young handles at this point.
+			if !c.mark[h] {
+				continue
+			}
+			if err = injectFailure(c, failPromotionPlan); err != nil {
+				finish()
+				return 0, 0, false, err
+			}
+			src := c.handles[h]
+			age := src.age() + 1
+			plan := plannedPromotion{handle: h}
+			switch {
+			case src.space == spaceLarge:
+				plan.entry = src
+				if age >= c.tenuringThreshold {
+					plan.entry.clearYoungAge()
+				} else {
+					plan.entry.setYoungAge(age)
+				}
+			case age < c.tenuringThreshold && c.survivorBytes != 0:
+				off := align(toBump, max(srcAlignment(c, h), uint32(8)))
+				if off <= c.survivorBytes && src.size <= c.survivorBytes-off {
+					plan.entry = handleEntry{off: toBase + off, size: src.size, allocSize: src.size, space: spaceNursery}
+					plan.entry.setYoungAge(age)
+					toBump = off + src.size
+				}
+			}
+			plans = append(plans, plan)
+			needsOldAllocation = needsOldAllocation || plan.entry.space == spaceFree
+		}
 	}
 	if needsOldAllocation && len(plans) > 1 && !c.promotionPlansSorted(plans) {
 		slices.SortStableFunc(plans, func(a, b plannedPromotion) int {
