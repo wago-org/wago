@@ -2,11 +2,13 @@ package gc
 
 import "slices"
 
-// Native allocation keeps the retained 32-handle batch baseline. A refill also
-// reserves a bounded nursery chunk so generated code can publish several objects
-// without mutating the collector-wide nursery bump for every object.
+// Native allocation reserves bounded identity batches. AMD64 struct allocation
+// uses a larger local batch to reduce Go refills; arrays retain the measured
+// 32-handle batch. Array refills also reserve a bounded nursery chunk so
+// generated code can publish several objects without mutating the collector-wide
+// nursery bump for every object.
 const (
-	nativeStructHandleBatch                  = 32
+	nativeArrayHandleBatch                   = 32
 	NativeAllocationChunkBytes        uint32 = 4096
 	NativeStructAllocHandleCapacity          = nativeStructHandleBatch
 	NativeArrayAllocMaxBytes          uint32 = 256
@@ -46,28 +48,28 @@ func (c *Collector) nativeAllocationAllowed(minObjectBytes uint32) bool {
 		minObjectBytes < c.cfg.LargeObjectBytes && minObjectBytes <= NativeAllocationChunkBytes && minObjectBytes <= ^uint32(0)-15
 }
 
-func (c *Collector) reserveNativeHandles() {
+func (c *Collector) reserveNativeHandles(batch int) {
 	s := &c.nativeStructAlloc
 	clear(s.Handles[:])
 	s.Cursor = 0
 	s.Count = 0
 	s.HandleBase = 0
-	newHandles := nativeStructHandleBatch - min(len(c.freeHandles), nativeStructHandleBatch)
+	newHandles := batch - min(len(c.freeHandles), batch)
 	if newHandles != 0 {
 		c.handles = slices.Grow(c.handles, newHandles)
 		c.mark = slices.Grow(c.mark, newHandles)
 		c.tinyGC.color = slices.Grow(c.tinyGC.color, newHandles)
 	}
-	c.nurseryHandles = slices.Grow(c.nurseryHandles, nativeStructHandleBatch)
+	c.nurseryHandles = slices.Grow(c.nurseryHandles, batch)
 	if c.checkedHandles != nil {
 		// The checked API can retire exhausted generations while taking a batch.
-		for i := range s.Handles {
+		for i := range s.Handles[:batch] {
 			s.Handles[i] = c.newHandle(handleEntry{})
 		}
 	} else {
 		// Native identities have no generation bookkeeping. Extend each parallel
 		// table once, rather than running the general allocator for every handle.
-		reused := nativeStructHandleBatch - newHandles
+		reused := batch - newHandles
 		free := c.freeHandles[len(c.freeHandles)-reused:]
 		for i := range reused {
 			h := free[reused-1-i]
@@ -89,11 +91,11 @@ func (c *Collector) reserveNativeHandles() {
 	}
 	// Reserved free handles participate in this dense list before activation.
 	// Collection ignores spaceFree entries and compacts them after cancellation.
-	c.nurseryHandles = append(c.nurseryHandles, s.Handles[:]...)
-	s.Count = nativeStructHandleBatch
+	c.nurseryHandles = append(c.nurseryHandles, s.Handles[:batch]...)
+	s.Count = uint32(batch)
 	base := s.Handles[0]
 	contiguous := base != 0
-	for i, h := range s.Handles {
+	for i, h := range s.Handles[:batch] {
 		if h != base+uint32(i) {
 			contiguous = false
 			break
@@ -119,7 +121,7 @@ func (c *Collector) PrepareNativeStructAllocation(minObjectBytes uint32) bool {
 		return true
 	}
 	c.discardNativeStructHandles()
-	c.reserveNativeHandles()
+	c.reserveNativeHandles(nativeStructHandleBatchSize)
 	return true
 }
 
@@ -151,7 +153,7 @@ func (c *Collector) PrepareNativeAllocation(minObjectBytes uint32) bool {
 	}
 	end := start + chunkBytes
 
-	c.reserveNativeHandles()
+	c.reserveNativeHandles(nativeArrayHandleBatch)
 	s.ChunkStart = start
 	s.ChunkCursor = start
 	s.ChunkEnd = end

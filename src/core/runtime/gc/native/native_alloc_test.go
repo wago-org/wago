@@ -134,7 +134,7 @@ func TestNativeArrayAllocationPrimesBeforeReserving(t *testing.T) {
 	if !c.PrepareNativeArrayAllocation(24) {
 		t.Fatalf("array allocation %d did not reserve a native batch", nativeArrayGenericRefillThreshold)
 	}
-	if c.nativeStructAlloc.Count != nativeStructHandleBatch || c.nativeStructAlloc.ChunkEnd == 0 {
+	if c.nativeStructAlloc.Count != nativeArrayHandleBatch || c.nativeStructAlloc.ChunkEnd == 0 {
 		t.Fatal("second array allocation left no usable native batch")
 	}
 	c.discardNativeStructHandles()
@@ -466,7 +466,7 @@ func TestNativeHandleBatchMatchesGeneralAllocator(t *testing.T) {
 				for i := range expected {
 					expected[i] = want.newHandle(handleEntry{})
 				}
-				got.reserveNativeHandles()
+				got.reserveNativeHandles(nativeStructHandleBatch)
 				if got.nativeStructAlloc.Handles != expected {
 					t.Fatalf("batch = %v, want %v", got.nativeStructAlloc.Handles, expected)
 				}
