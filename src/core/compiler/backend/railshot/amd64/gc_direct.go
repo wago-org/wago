@@ -1389,13 +1389,9 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead bool) {
 	a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
 	a.TestSelf(R10, true)
 	addFallback(a.JccPlaceholder(condE))
-	a.Load64(RAX, R8, gc.NativeViewStructAllocEpochOffset)
-	a.TestSelf(RAX, true)
-	addFallback(a.JccPlaceholder(condE))
-	a.Load32(RDX, RAX, 0)
-	a.Load32(RAX, R10, gc.NativeStructAllocEpochOffset)
-	a.Cmp32(RAX, RDX)
-	addFallback(a.JccPlaceholder(condNE))
+	// Batch cancellation clears Count before any identity can return to reuse.
+	// Execution is serialized, so a bounded live cursor also proves that this
+	// state belongs to the current reservation without a separate epoch load.
 	a.Load32(RCX, R10, gc.NativeStructAllocCursorOffset)
 	a.Load32(RAX, R10, gc.NativeStructAllocCountOffset)
 	a.AluRI(cmpDigit, RAX, gc.NativeStructAllocHandleCapacity, false)
