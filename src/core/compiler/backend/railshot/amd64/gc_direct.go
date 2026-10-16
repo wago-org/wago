@@ -1235,6 +1235,18 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		a.PatchRel32(zeroJoin, a.Len())
 		a.PatchRel32(zeroDone, a.Len())
 	case gcArrayNativeUniform:
+		if layout.elemSize == 4 && site.count == 16 {
+			// The synchronous helper boundary has already homed every live
+			// floating-point value, so XMM0 is available as scratch here.
+			// Broadcast the uniform i32 initializer and initialize the exact
+			// 64-byte payload with four SSE2 stores.
+			a.FLoadDisp(0, R12, hcArgs, false)
+			a.Pshufd(0, 0, 0)
+			for offset := int32(0); offset < 64; offset += 16 {
+				a.MovdquStoreDisp(R11, int32(gc.PayloadOffset)+offset, 0)
+			}
+			break
+		}
 		a.MovReg64(RDI, R11)
 		a.LeaDisp(RDI, RDI, int32(gc.PayloadOffset))
 		a.MovRegReg32(RCX, R13)
