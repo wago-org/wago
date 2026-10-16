@@ -1403,20 +1403,15 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead bool) {
 	a.Cmp32(RCX, RAX)
 	addFallback(a.JccPlaceholder(condAE))
 	a.LeaScaled(RAX, R10, RCX, 2, gc.NativeStructAllocHandlesOffset)
+	// The current epoch and bounded cursor select an identity that
+	// reserveNativeHandles removed from reuse and published only after it was
+	// nonzero, in range, and free. No Go allocation can run before fallback
+	// cancels the batch, so use that exclusive destination directly.
 	a.Load32(RSI, RAX, 0)
-	a.TestSelf(RSI, false)
-	addFallback(a.JccPlaceholder(condE))
 	a.MovRegReg32(RAX, RSI)
-	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
-	addFallback(a.JccPlaceholder(condAE))
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
 	a.ImulRI(RAX, gc.NativeHandleStride, true)
 	a.Add64(R9, RAX)
-	a.Load32(RAX, R9, 16)
-	a.ShiftImm(5, RAX, 16, false)
-	a.AluRI(4, RAX, 0xff, false)
-	a.TestSelf(RAX, false)
-	addFallback(a.JccPlaceholder(condNE))
 
 	a.Load64(RAX, R8, gc.NativeViewNurseryBumpOffset)
 	a.TestSelf(RAX, true)
