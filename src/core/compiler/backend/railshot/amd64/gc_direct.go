@@ -1436,9 +1436,6 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead bool) {
 	a.TestSelf(R11, true)
 	addFallback(a.JccPlaceholder(condE))
 	a.Add64(R11, RCX)
-	a.Load64(RAX, R8, gc.NativeViewAllocationCountOffset)
-	a.TestSelf(RAX, true)
-	addFallback(a.JccPlaceholder(condE))
 
 	for _, field := range fields {
 		if !field.CollectorRef {
@@ -1523,10 +1520,6 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32, dead bool) {
 	a.AluRI(0, RDX, 1, false)
 	a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
 	a.Store32(R10, gc.NativeStructAllocCursorOffset, RDX)
-	a.Load64(R10, R8, gc.NativeViewAllocationCountOffset)
-	a.Load64(RAX, R10, 0)
-	a.AluRI(0, RAX, 1, true)
-	a.Store64(R10, 0, RAX)
 	a.MovRegReg32(RAX, RSI)
 	a.ShiftImm(4, RAX, 1, false)
 	a.Store64(RDI, hcResults, RAX)

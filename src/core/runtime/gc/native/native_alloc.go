@@ -222,11 +222,22 @@ func (c *Collector) discardNativeStructHandles() {
 	if end > uint32(len(s.Handles)) {
 		end = uint32(len(s.Handles))
 	}
-	canceled := false
-	if end > s.Cursor {
-		c.freeHandles = slices.Grow(c.freeHandles, int(end-s.Cursor))
+	used := s.Cursor
+	if used > end {
+		used = end
 	}
-	for i := s.Cursor; i < end; i++ {
+	// Native struct constructors advance Cursor only after publishing the
+	// complete object. Account for a struct-only batch once at its next
+	// serialized boundary rather than updating the shared statistic per object.
+	// Array chunks retain immediate accounting in generated code.
+	if s.ChunkEnd == 0 {
+		c.stats.Allocations += uint64(used)
+	}
+	canceled := false
+	if end > used {
+		c.freeHandles = slices.Grow(c.freeHandles, int(end-used))
+	}
+	for i := used; i < end; i++ {
 		h := s.Handles[i]
 		if s.HandleBase != 0 {
 			h = s.HandleBase + i

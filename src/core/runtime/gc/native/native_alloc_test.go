@@ -66,7 +66,9 @@ func TestNativeStructHandleBatchReservationAndCollection(t *testing.T) {
 	c.writeHeader(makeObjRef(h), ObjHeader{TypeID: uint32(desc.ID), Size: sz, Flags: FlagPointerFree})
 	s.ChunkCursor = sz
 	s.Cursor = 1
-	c.stats.Allocations++
+	if got := c.Stats().Allocations; got != 1 || c.stats.Allocations != 0 {
+		t.Fatalf("active batch allocations = %d stored %d, want 1 stored 0", got, c.stats.Allocations)
+	}
 	epoch := c.nativeAllocEpoch
 	if err := c.CollectMinor(EmptyRoots{}); err != nil {
 		t.Fatal(err)
@@ -76,6 +78,9 @@ func TestNativeStructHandleBatchReservationAndCollection(t *testing.T) {
 	}
 	if len(c.freeHandles) != nativeStructHandleBatch {
 		t.Fatalf("recycled handles = %d, want %d", len(c.freeHandles), nativeStructHandleBatch)
+	}
+	if got := c.Stats().Allocations; got != 1 || c.stats.Allocations != 1 {
+		t.Fatalf("committed batch allocations = %d stored %d, want 1", got, c.stats.Allocations)
 	}
 	if !c.PrepareNativeStructHandles() || len(c.handles) != startHandles {
 		t.Fatalf("reused batch grew handle table: %d -> %d", startHandles, len(c.handles))

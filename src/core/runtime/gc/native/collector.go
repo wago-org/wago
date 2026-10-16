@@ -316,6 +316,10 @@ func (c *Collector) errIfClosed() error {
 // the handle table.
 func (c *Collector) Stats() Stats {
 	s := c.stats
+	if c.nativeStructAlloc.ChunkEnd == 0 {
+		used := min(c.nativeStructAlloc.Cursor, c.nativeStructAlloc.Count, uint32(len(c.nativeStructAlloc.Handles)))
+		s.Allocations += uint64(used)
+	}
 	s.LiveObjects = c.liveCount()
 	if c.nativeView != nil && c.nativeView.deadNurseryCycle() == c.collectionCycle() {
 		s.LiveObjects += c.stats.LiveObjects
