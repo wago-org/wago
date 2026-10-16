@@ -154,8 +154,8 @@ func (c *Collector) finishMinorEvacuation() {
 			continue
 		}
 		live := c.mark[h]
-		c.mark[h] = false
 		if live {
+			c.mark[h] = false
 			if c.handles[h].young() {
 				out = append(out, h)
 			}
@@ -194,7 +194,6 @@ func (c *Collector) finishDeadNurseryEvacuation() bool {
 		if h == 0 || int(h) >= len(c.handles) {
 			continue
 		}
-		c.mark[h] = false
 		e := &c.handles[h]
 		if e.space == spaceNursery && e.cardSlot == 0 {
 			*e = handleEntry{}
