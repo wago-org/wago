@@ -103,7 +103,7 @@ func (c *Collector) reserveNativeHandles(batch int) {
 		colors := len(c.tinyGC.color)
 		c.tinyGC.color = c.tinyGC.color[:colors+newHandles]
 		clear(c.tinyGC.color[colors:])
-		for i := reused; i < nativeStructHandleBatch; i++ {
+		for i := reused; i < batch; i++ {
 			s.Handles[i] = uint32(base + i - reused)
 		}
 	}

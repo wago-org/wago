@@ -26,6 +26,23 @@ func TestNativeStructAllocStateLayout(t *testing.T) {
 	}
 }
 
+func TestReserveNativeHandlesHonorsRequestedBatch(t *testing.T) {
+	if nativeStructHandleBatch <= nativeArrayHandleBatch {
+		return
+	}
+	c, err := NewCollector(Config{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.reserveNativeHandles(nativeArrayHandleBatch)
+	for i, h := range c.nativeStructAlloc.Handles[nativeArrayHandleBatch:] {
+		if h != 0 {
+			t.Fatalf("unused handle %d = %d, want zero", nativeArrayHandleBatch+i, h)
+		}
+	}
+}
+
 func TestNativeLargeArrayAllocStateLayout(t *testing.T) {
 	var s nativeLargeArrayAllocState
 	if unsafe.Sizeof(s) != NativeLargeArrayAllocStateSize ||
