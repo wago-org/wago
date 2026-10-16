@@ -62,7 +62,7 @@ func TestNativeStructHandleBatchReservationAndCollection(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := s.Handles[0]
-	c.handles[h] = handleEntry{size: sz, allocSize: sz, space: spaceNursery}
+	c.handles[h] = handleEntry{size: sz, space: spaceNursery}
 	c.writeHeader(makeObjRef(h), ObjHeader{TypeID: uint32(desc.ID), Size: sz, Flags: FlagPointerFree})
 	s.ChunkCursor = sz
 	s.Cursor = 1
@@ -97,7 +97,7 @@ func TestNativeAllocationUnusedAlignedChunkRestoresExactBump(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	h := c.newHandle(handleEntry{off: 0, size: 24, allocSize: 24, space: spaceNursery})
+	h := c.newHandle(handleEntry{off: 0, size: 24, space: spaceNursery})
 	c.nurseryHandles = append(c.nurseryHandles, h)
 	c.nurseryBump = 24
 	if !c.PrepareNativeAllocation(24) {
@@ -218,7 +218,7 @@ func TestNativeAllocationChunkCanceledBeforeGoAllocation(t *testing.T) {
 	}
 	s := &c.nativeStructAlloc
 	first := s.HandleBase
-	c.handles[first] = handleEntry{off: 0, size: 24, allocSize: 24, space: spaceNursery}
+	c.handles[first] = handleEntry{off: 0, size: 24, space: spaceNursery}
 	c.writeHeader(makeObjRef(first), ObjHeader{TypeID: uint32(desc.ID), Size: 24, Flags: FlagPointerFree})
 	s.Cursor = 1
 	s.ChunkCursor = 24
@@ -253,7 +253,7 @@ func TestNativeStructHandleCancellationCannotDuplicateNurserySet(t *testing.T) {
 	if len(c.nurseryHandles) != 0 {
 		t.Fatalf("canceled nursery set retains %d handles", len(c.nurseryHandles))
 	}
-	h := c.newHandle(handleEntry{size: 24, allocSize: 24, space: spaceNursery})
+	h := c.newHandle(handleEntry{size: 24, space: spaceNursery})
 	c.nurseryHandles = append(c.nurseryHandles, h)
 	count := 0
 	for _, candidate := range c.nurseryHandles {
@@ -279,7 +279,7 @@ func TestNativeStructHandleCancellationPreservesDenseNurseryPrefix(t *testing.T)
 	const prefixCount = 4096
 	prefix := make([]uint32, 0, prefixCount)
 	for range prefixCount {
-		h := c.newHandle(handleEntry{size: 16, allocSize: 16, space: spaceNursery})
+		h := c.newHandle(handleEntry{size: 16, space: spaceNursery})
 		c.nurseryHandles = append(c.nurseryHandles, h)
 		prefix = append(prefix, h)
 	}
@@ -288,7 +288,7 @@ func TestNativeStructHandleCancellationPreservesDenseNurseryPrefix(t *testing.T)
 	}
 	s := &c.nativeStructAlloc
 	consumed := s.Handles[0]
-	c.handles[consumed] = handleEntry{size: 16, allocSize: 16, space: spaceNursery}
+	c.handles[consumed] = handleEntry{size: 16, space: spaceNursery}
 	s.Cursor = 1
 	c.CancelNativeAllocationBatch()
 	if len(c.nurseryHandles) != prefixCount+1 {
@@ -324,7 +324,7 @@ func TestNativeStructHandleCancellationPreservesDeadChargesAfterPromotion(t *tes
 	}
 	s := &c.nativeStructAlloc
 	h := s.Handles[0]
-	c.handles[h] = handleEntry{size: size, allocSize: size, space: spaceNursery}
+	c.handles[h] = handleEntry{size: size, space: spaceNursery}
 	c.writeHeader(makeObjRef(h), ObjHeader{TypeID: uint32(desc.ID), Size: size, Flags: FlagPointerFree})
 	s.Cursor = 1
 	c.nurseryBump = 4 * size
@@ -381,7 +381,7 @@ func BenchmarkNativeAllocationBatchCancelDenseNursery(b *testing.B) {
 	}
 	defer c.Close()
 	for range 1 << 16 {
-		h := c.newHandle(handleEntry{size: 16, allocSize: 16, space: spaceNursery})
+		h := c.newHandle(handleEntry{size: 16, space: spaceNursery})
 		c.nurseryHandles = append(c.nurseryHandles, h)
 	}
 	b.ReportAllocs()

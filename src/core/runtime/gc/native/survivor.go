@@ -7,11 +7,13 @@ import "encoding/binary"
 // handle entry. Large young objects retain their low class bits so they can age
 // in place in throughput backing.
 const (
-	handleYoungBit       = uint16(1 << 15)
-	handleAgeShift       = 13
-	handleAgeMask        = uint16(3 << handleAgeShift)
-	handleClassMask      = uint16((1 << handleAgeShift) - 1)
-	maxTenuringThreshold = 3
+	handleYoungBit        = uint16(1 << 15)
+	handleAgeShift        = 13
+	handleAgeMask         = uint16(3 << handleAgeShift)
+	handleAbsorbedTailBit = uint16(1 << 12)
+	handleClassMask       = uint16((1 << 5) - 1)
+	handleAllocationMask  = handleClassMask | handleAbsorbedTailBit
+	maxTenuringThreshold  = 3
 )
 
 func (e handleEntry) young() bool {
@@ -24,10 +26,10 @@ func (e *handleEntry) setYoungAge(age uint8) {
 	if age > maxTenuringThreshold {
 		age = maxTenuringThreshold
 	}
-	e.class = e.class&handleClassMask | handleYoungBit | uint16(age)<<handleAgeShift
+	e.class = e.class&handleAllocationMask | handleYoungBit | uint16(age)<<handleAgeShift
 }
 
-func (e *handleEntry) clearYoungAge() { e.class &= handleClassMask }
+func (e *handleEntry) clearYoungAge() { e.class &= handleAllocationMask }
 
 func (c *Collector) isYoungHandle(h uint32) bool {
 	return h != 0 && int(h) < len(c.handles) && c.handles[h].young()

@@ -6,8 +6,8 @@ import (
 )
 
 func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
-	if NativeABIVersion != 4 {
-		t.Fatalf("native collector ABI version = %d, want version 4", NativeABIVersion)
+	if NativeABIVersion != 5 {
+		t.Fatalf("native collector ABI version = %d, want version 5", NativeABIVersion)
 	}
 	if got := unsafe.Sizeof(handleEntry{}); got != NativeHandleStride {
 		t.Fatalf("handle entry size = %d, want %d", got, NativeHandleStride)
@@ -21,6 +21,9 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 	}
 	if got := unsafe.Offsetof(entry.cardSlot); got != NativeHandleCardSlotOffset {
 		t.Fatalf("handle card slot field = %d", got)
+	}
+	if got := unsafe.Offsetof(entry.class); got != NativeHandleMetadataOffset {
+		t.Fatalf("handle metadata field = %d", got)
 	}
 	if got := unsafe.Offsetof(entry.space); got != NativeHandleSpaceOffset {
 		t.Fatalf("handle space field = %d", got)

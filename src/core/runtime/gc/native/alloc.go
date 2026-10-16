@@ -139,7 +139,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		c.nurseryBump = off + size
 	}
 	if sp == spaceNursery {
-		e = handleEntry{off: off, size: size, allocSize: size, space: sp}
+		e = handleEntry{off: off, size: size, space: sp}
 	}
 	if err := injectFailure(c, failHandlePublication); err != nil {
 		if sp == spaceNursery {
@@ -306,8 +306,8 @@ func (c *Collector) zeroObjectPayload(r Ref) {
 	}
 	e := c.entry(r)
 	end := e.off + e.size
-	if e.allocSize > e.size {
-		end = e.off + e.allocSize
+	if e.space == spaceOld || e.space == spaceLarge {
+		end = e.off + c.throughput.handleAllocSize(*e)
 	}
 	start := e.off + PayloadOffset
 	if start > end {

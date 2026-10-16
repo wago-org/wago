@@ -36,7 +36,7 @@ func TestCollectorAllocatorFreeErrorsFailStopBeforeHandleRelease(t *testing.T) {
 		}
 		h := handleOf(parent)
 		original := c.handles[h]
-		c.handles[h].allocSize = 0
+		c.handles[h].off++
 		expectAllocatorInvariantPanic(t, "internal throughput free invariant", func() { c.free(h) })
 		if c.handles[h].space != spaceOld || !c.handles[h].remembered || c.handles[h].cardSlot == 0 {
 			t.Fatalf("failed free released handle/card state: %+v", c.handles[h])

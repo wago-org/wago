@@ -11,7 +11,7 @@ import (
 // contract while reloading every mutable backing pointer/count they consume. The
 // view is refreshed in place whenever growable backing can relocate, and callers
 // must still serialize access with collector mutation.
-const NativeABIVersion uint32 = 4
+const NativeABIVersion uint32 = 5
 
 // Native allocation-stat offsets are relative to the AllocationCount pointer
 // in NativeCollectorView. Generated AMD64 dead charges use these counters to
@@ -26,12 +26,13 @@ const (
 // Native handle-entry layout. These constants are part of NativeABIVersion and
 // are verified against handleEntry below.
 const (
-	NativeHandleStride                = 20
+	NativeHandleStride                = 16
 	NativeHandleOffsetOffset          = 0
 	NativeHandleSizeOffset            = 4
-	NativeHandleCardSlotOffset        = 12
-	NativeHandleSpaceOffset           = 18
-	NativeHandleRememberedOffset      = 19
+	NativeHandleCardSlotOffset        = 8
+	NativeHandleMetadataOffset        = 12
+	NativeHandleSpaceOffset           = 14
+	NativeHandleRememberedOffset      = 15
 	NativeSpaceFree              byte = byte(spaceFree)
 	NativeSpaceNursery           byte = byte(spaceNursery)
 	NativeSpaceOld               byte = byte(spaceOld)
@@ -152,6 +153,7 @@ func ValidateNativeABI() error {
 		unsafe.Offsetof(entry.off) != NativeHandleOffsetOffset ||
 		unsafe.Offsetof(entry.size) != NativeHandleSizeOffset ||
 		unsafe.Offsetof(entry.cardSlot) != NativeHandleCardSlotOffset ||
+		unsafe.Offsetof(entry.class) != NativeHandleMetadataOffset ||
 		unsafe.Offsetof(entry.space) != NativeHandleSpaceOffset ||
 		unsafe.Offsetof(entry.remembered) != NativeHandleRememberedOffset {
 		return fmt.Errorf("gc: native handle ABI layout mismatch")

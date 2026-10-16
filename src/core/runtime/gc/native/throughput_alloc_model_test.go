@@ -42,11 +42,12 @@ func (m *throughputIntervalModel) alloc(size uint32, sp spaceKind) (handleEntry,
 				m.free[i].off += allocSize
 				m.free[i].size -= allocSize
 			} else {
-				allocSize = span.size
-				class = uint16(len(throughputClassSizes))
+				if span.size != allocSize {
+					class |= handleAbsorbedTailBit
+				}
 				m.free = append(m.free[:i], m.free[i+1:]...)
 			}
-			return handleEntry{off: off, size: size, allocSize: allocSize, class: class, space: sp}, nil
+			return handleEntry{off: off, size: size, class: class, space: sp}, nil
 		}
 		if len(m.pending) == 0 {
 			break
@@ -61,22 +62,40 @@ func (m *throughputIntervalModel) alloc(size uint32, sp spaceKind) (handleEntry,
 		return handleEntry{}, errThroughputHeapExhausted
 	}
 	m.bump = uint32(end)
-	return handleEntry{off: off, size: size, allocSize: allocSize, class: class, space: sp}, nil
+	return handleEntry{off: off, size: size, class: class, space: sp}, nil
+}
+
+func (m *throughputIntervalModel) handleAllocSize(e handleEntry) uint32 {
+	var allocSize uint32
+	if e.space != spaceLarge {
+		class := int(e.class & handleClassMask)
+		if class < len(throughputClassSizes) && throughputClassSizes[class] <= m.classLimit {
+			allocSize = throughputClassSizes[class]
+		}
+	}
+	if allocSize == 0 {
+		allocSize = Align16(e.size)
+	}
+	if e.class&handleAbsorbedTailBit != 0 {
+		allocSize += 16
+	}
+	return allocSize
 }
 
 func (m *throughputIntervalModel) deferRelease(e handleEntry) error {
-	if e.allocSize == 0 || e.off%16 != 0 || e.off+e.allocSize < e.off || e.off+e.allocSize > m.bump {
+	allocSize := m.handleAllocSize(e)
+	if allocSize == 0 || e.off%16 != 0 || e.off+allocSize < e.off || e.off+allocSize > m.bump {
 		return errors.New("model: invalid deferred free")
 	}
-	m.pending = append(m.pending, throughputFreeSpan{off: e.off, size: e.allocSize})
-	m.pendingBytes += uint64(e.allocSize)
+	m.pending = append(m.pending, throughputFreeSpan{off: e.off, size: allocSize})
+	m.pendingBytes += uint64(allocSize)
 	return nil
 }
 
 func (m *throughputIntervalModel) reconcileOne() error {
 	last := len(m.pending) - 1
 	span := m.pending[last]
-	if err := m.release(handleEntry{off: span.off, allocSize: span.size}); err != nil {
+	if err := m.releaseSpan(span); err != nil {
 		return err
 	}
 	m.pending[last] = throughputFreeSpan{}
@@ -127,10 +146,14 @@ func (m *throughputIntervalModel) reconcileAll() error {
 }
 
 func (m *throughputIntervalModel) release(e handleEntry) error {
-	if e.allocSize == 0 || e.off%16 != 0 || e.off+e.allocSize < e.off || e.off+e.allocSize > m.bump {
+	allocSize := m.handleAllocSize(e)
+	return m.releaseSpan(throughputFreeSpan{off: e.off, size: allocSize})
+}
+
+func (m *throughputIntervalModel) releaseSpan(span throughputFreeSpan) error {
+	if span.size == 0 || span.off%16 != 0 || span.off+span.size < span.off || span.off+span.size > m.bump {
 		return errors.New("model: invalid free")
 	}
-	span := throughputFreeSpan{off: e.off, size: e.allocSize}
 	pos := 0
 	for pos < len(m.free) && m.free[pos].off < span.off {
 		pos++
@@ -384,7 +407,7 @@ func BenchmarkThroughputRandomFragmentation(b *testing.B) {
 					}
 				}
 				live[index] = e
-				checksum += uint64(e.off) + uint64(e.allocSize)
+				checksum += uint64(e.off) + uint64(h.handleAllocSize(e))
 			}
 			for i := 0; i < slots*4; i++ {
 				churn()

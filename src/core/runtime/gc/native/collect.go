@@ -337,7 +337,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 			case age < c.tenuringThreshold && c.survivorBytes != 0:
 				off := align(toBump, max(srcAlignment(c, h), uint32(8)))
 				if off <= c.survivorBytes && src.size <= c.survivorBytes-off {
-					plan.entry = handleEntry{off: toBase + off, size: src.size, allocSize: src.size, space: spaceNursery}
+					plan.entry = handleEntry{off: toBase + off, size: src.size, space: spaceNursery}
 					plan.entry.setYoungAge(age)
 					toBump = off + src.size
 				}
@@ -370,7 +370,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 			case age < c.tenuringThreshold && c.survivorBytes != 0:
 				off := align(toBump, max(srcAlignment(c, h), uint32(8)))
 				if off <= c.survivorBytes && src.size <= c.survivorBytes-off {
-					plan.entry = handleEntry{off: toBase + off, size: src.size, allocSize: src.size, space: spaceNursery}
+					plan.entry = handleEntry{off: toBase + off, size: src.size, space: spaceNursery}
 					plan.entry.setYoungAge(age)
 					toBump = off + src.size
 				}
@@ -445,12 +445,11 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 			return 0, 0, false, runErr
 		} else if ok {
 			for k := i; k < j; k++ {
-				allocSize, class := run.allocSize, run.class
+				class := run.class
 				if k == j-1 && run.lastAllocSize != run.allocSize {
-					allocSize = run.lastAllocSize
-					class = uint16(len(throughputClassSizes))
+					class |= handleAbsorbedTailBit
 				}
-				plans[k].entry = handleEntry{off: run.off + uint32(k-i)*run.allocSize, size: size, allocSize: allocSize, class: class, space: spaceOld}
+				plans[k].entry = handleEntry{off: run.off + uint32(k-i)*run.allocSize, size: size, class: class, space: spaceOld}
 			}
 			for k := i; k < j; k++ {
 				if err = injectFailure(c, failPromotionDestination); err != nil {
@@ -635,12 +634,11 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 			return 0, 0, runErr
 		} else if ok {
 			for k := i; k < j; k++ {
-				allocSize, class := run.allocSize, run.class
+				class := run.class
 				if k == j-1 && run.lastAllocSize != run.allocSize {
-					allocSize = run.lastAllocSize
-					class = uint16(len(throughputClassSizes))
+					class |= handleAbsorbedTailBit
 				}
-				plans[k].entry = handleEntry{off: run.off + uint32(k-i)*run.allocSize, size: size, allocSize: allocSize, class: class, space: spaceOld}
+				plans[k].entry = handleEntry{off: run.off + uint32(k-i)*run.allocSize, size: size, class: class, space: spaceOld}
 			}
 			for k := i; k < j; k++ {
 				if err = injectFailure(c, failPromotionDestination); err != nil {
@@ -809,7 +807,7 @@ func (c *Collector) releaseHandle(h uint32, lazyThroughput, poisonTiny bool) {
 				c.nursery[e.off+uint32(i)] = 0xdd
 			}
 		case spaceOld, spaceLarge:
-			end := e.off + e.allocSize
+			end := e.off + c.throughput.handleAllocSize(*e)
 			if end > uint32(len(c.throughput.mem)) {
 				end = uint32(len(c.throughput.mem))
 			}

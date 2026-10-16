@@ -114,7 +114,6 @@ const (
 
 type handleEntry struct {
 	off, size  uint32
-	allocSize  uint32
 	cardSlot   uint32 // one-based index in Collector.objectCards
 	class      uint16
 	space      spaceKind
