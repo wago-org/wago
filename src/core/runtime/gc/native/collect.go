@@ -173,10 +173,11 @@ func (c *Collector) finishMinorEvacuation() {
 		e := &c.handles[h]
 		if runtime.GOARCH == "amd64" && e.space == spaceNursery && !c.cfg.PoisonFreed && e.cardSlot == 0 {
 			// Nursery payload has no individual allocator ownership to release.
-			// The ordinary card-free case needs only identity recycling; retain
-			// the general release path for poisoning, cards and young large space.
+			// The space byte invalidates the identity. Both native and Go reuse
+			// overwrite the complete entry before publishing it again; leave the
+			// other scalar fields stale to avoid clearing 20 bytes per dead object.
 			c.lastCardBounds = objectCardBounds{}
-			*e = handleEntry{}
+			e.space = spaceFree
 			c.freeHandles = append(c.freeHandles, h)
 		} else if e.young() {
 			c.free(h)
@@ -209,7 +210,8 @@ func (c *Collector) finishDeadNurseryEvacuation() bool {
 		}
 		e := &c.handles[h]
 		if e.space == spaceNursery && e.cardSlot == 0 {
-			*e = handleEntry{}
+			// Reuse overwrites every field before it republishes this identity.
+			e.space = spaceFree
 			c.freeHandles = append(c.freeHandles, h)
 		} else if e.young() {
 			c.free(h)

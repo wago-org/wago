@@ -67,9 +67,15 @@ func TestMinorNurseryRecyclingPreservesMixedHeap(t *testing.T) {
 			if err := c.CollectMinor(EmptyRoots{}); err != nil {
 				t.Fatal(err)
 			}
-			for _, ref := range dead {
-				if c.handles[handleOf(ref)] != (handleEntry{}) {
-					t.Fatalf("dead handle %v was not cleared", ref)
+			for i, ref := range dead {
+				e := c.handles[handleOf(ref)]
+				if e.space != spaceFree {
+					t.Fatalf("dead handle %v space = %v, want free", ref, e.space)
+				}
+				// Poisoning and allocator-owned large objects use the general release
+				// path, which continues to clear the complete handle entry.
+				if (poison || i == 0) && e != (handleEntry{}) {
+					t.Fatalf("released handle %v was not cleared", ref)
 				}
 			}
 			for i, ref := range dead {
