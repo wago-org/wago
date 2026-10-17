@@ -31,7 +31,14 @@ func (in *Instance) prepareNativeStructHandles(typeID uint32) {
 			slots += 2
 		case ValueTypeReference:
 			heap := field.Storage.Value.Ref.Heap
-			if heap.Defined || (heap.Abstract != AbstractHeapAny && heap.Abstract != AbstractHeapEq) || (d.Fields[i].Kind != gc.StorageRef && d.Fields[i].Kind != gc.StorageRefNull) {
+			if d.Fields[i].Kind != gc.StorageRef && d.Fields[i].Kind != gc.StorageRefNull {
+				return
+			}
+			if heap.Defined {
+				if int(heap.TypeIndex) >= len(in.c.Types) || (in.c.Types[heap.TypeIndex].Kind != CompositeTypeStruct && in.c.Types[heap.TypeIndex].Kind != CompositeTypeArray) {
+					return
+				}
+			} else if heap.Abstract != AbstractHeapAny && heap.Abstract != AbstractHeapEq {
 				return
 			}
 			slots++

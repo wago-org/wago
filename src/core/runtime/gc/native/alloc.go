@@ -230,17 +230,35 @@ func (c *Collector) desc(id TypeID) (TypeDesc, error) {
 	return c.types[id], nil
 }
 func (c *Collector) refDesc(r Ref) (TypeDesc, error) {
-	if err := c.errIfClosed(); err != nil {
+	d, err := c.refDescPtr(r)
+	if err != nil {
 		return TypeDesc{}, err
 	}
+	return *d, nil
+}
+
+func (c *Collector) refDescPtr(r Ref) (*TypeDesc, error) {
+	d, _, err := c.refDescPtrBytes(r)
+	return d, err
+}
+
+func (c *Collector) refDescPtrBytes(r Ref) (*TypeDesc, []byte, error) {
+	if err := c.errIfClosed(); err != nil {
+		return nil, nil, err
+	}
 	if !r.IsObj() {
-		return TypeDesc{}, errors.New("gc: ref is not object")
+		return nil, nil, errors.New("gc: ref is not object")
 	}
 	h := handleOf(r)
 	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
-		return TypeDesc{}, errors.New("gc: invalid object ref")
+		return nil, nil, errors.New("gc: invalid object ref")
 	}
-	return c.desc(TypeID(c.header(r).TypeID))
+	object := c.bytes(r)
+	id := TypeID(binary.LittleEndian.Uint32(object))
+	if int(id) >= len(c.types) {
+		return nil, nil, fmt.Errorf("gc: unknown type id %d", id)
+	}
+	return &c.types[id], object, nil
 }
 func (c *Collector) validObjectRef(r Ref) bool {
 	if !r.IsObj() {

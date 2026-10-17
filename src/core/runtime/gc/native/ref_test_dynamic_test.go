@@ -2,6 +2,7 @@ package gc
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -223,7 +224,10 @@ func TestCollectorRefTestRejectsInvalidState(t *testing.T) {
 		target RefTestTarget
 	}{
 		{"stale", stale, RefTestTarget{Kind: RefTestStruct}},
+		{"stale abstract any", stale, RefTestTarget{Kind: RefTestAny}},
+		{"stale abstract eq", stale, RefTestTarget{Kind: RefTestEq}},
 		{"forged", Ref(0xfffe), RefTestTarget{Kind: RefTestAny}},
+		{"forged abstract eq", Ref(0xfffe), RefTestTarget{Kind: RefTestEq}},
 		{"unknown target kind", live, RefTestTarget{Kind: 99}},
 		{"unknown target type", live, RefTestTarget{Kind: RefTestDefined, Type: 99}},
 		{"function target type", live, RefTestTarget{Kind: RefTestDefined, Type: 5}},
@@ -292,5 +296,28 @@ func BenchmarkCollectorRefTestCanonical(b *testing.B) {
 		if err != nil || !got {
 			b.Fatalf("RefTestCanonical = %v, %v", got, err)
 		}
+	}
+}
+
+func BenchmarkCollectorRefTestAbstractObject(b *testing.B) {
+	c, err := NewCollector(Config{}, refTestTypes(b))
+	if err != nil {
+		b.Fatal(err)
+	}
+	object, err := c.NewStructDefaultWithRoots(1, EmptyRoots{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, kind := range []RefTestKind{RefTestAny, RefTestEq, RefTestI31, RefTestNone} {
+		b.Run(fmt.Sprint(kind), func(b *testing.B) {
+			target := RefTestTarget{Kind: kind}
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_, err := c.RefTest(object, target)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }

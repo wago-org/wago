@@ -101,6 +101,31 @@ func TestNativeAllocationUnusedAlignedChunkRestoresExactBump(t *testing.T) {
 	}
 }
 
+func TestCancelNativeAllocationBatchWithoutReservationKeepsEpoch(t *testing.T) {
+	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{desc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	epoch := c.nativeAllocEpoch
+	for range 3 {
+		c.CancelNativeAllocationBatch()
+		if c.nativeAllocEpoch != epoch {
+			t.Fatalf("empty cancellation changed epoch: got %d, want %d", c.nativeAllocEpoch, epoch)
+		}
+	}
+	if !c.PrepareNativeStructHandles() {
+		t.Fatal("native allocation batch was not prepared after empty cancellations")
+	}
+	if c.nativeStructAlloc.Count != nativeStructHandleBatch {
+		t.Fatal("native allocation batch was not published")
+	}
+}
+
 func TestNativeArrayAllocationPrimesBeforeReserving(t *testing.T) {
 	desc, err := NewArrayDesc(0, StorageI32)
 	if err != nil {

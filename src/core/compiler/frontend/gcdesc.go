@@ -103,7 +103,7 @@ func LowerGCTypeMetadata(types []wasm.RecType) (GCTypeMetadata, error) {
 			}
 			layout.Align = d.Align
 			layout.PointerFree = d.PointerFree()
-			layout.NativeAlloc = nativeStructAllocEligible(st, layout.FieldLayout)
+			layout.NativeAlloc = nativeStructAllocEligible(st, layout.FieldLayout, resolver)
 		case wasm.CompArray:
 			elem, err := lowerGCStorage(st.Comp.Array.Storage(), resolver)
 			if err != nil {
@@ -173,7 +173,7 @@ func gcBarrierClass(needsBarrier bool) codegen.GCBarrierClass {
 	return codegen.GCBarrierNone
 }
 
-func nativeStructAllocEligible(st *wasm.SubType, fields []codegen.GCFieldLayout) bool {
+func nativeStructAllocEligible(st *wasm.SubType, fields []codegen.GCFieldLayout, resolver gcTypeResolver) bool {
 	if !st.Final || len(fields) != len(st.Comp.Fields) {
 		return false
 	}
@@ -189,7 +189,19 @@ func nativeStructAllocEligible(st *wasm.SubType, fields []codegen.GCFieldLayout)
 		}
 		if storage.Val().Kind() == wasm.ValRef {
 			heap := storage.Val().Ref().Heap()
-			if heap.Kind() != wasm.HeapAbs || (heap.Abs() != wasm.HeapAny && heap.Abs() != wasm.HeapEq) || fields[i].Size != 4 {
+			if fields[i].Size != 4 || !fields[i].CollectorRef {
+				return false
+			}
+			switch heap.Kind() {
+			case wasm.HeapAbs:
+				if heap.Abs() != wasm.HeapAny && heap.Abs() != wasm.HeapEq {
+					return false
+				}
+			case wasm.HeapTypeIndex:
+				if _, err := resolver.resolve(heap.Type()); err != nil {
+					return false
+				}
+			default:
 				return false
 			}
 		} else if storage.Val().Kind() != wasm.ValNum && storage.Val().Kind() != wasm.ValVec {

@@ -849,3 +849,32 @@ func (c *Compiled) Close() error {
 	}
 	return err
 }
+
+// Host activation can run once per byte in legacy adapters. The validated
+// callsite directory is strictly sorted; keep large-module lookup logarithmic.
+func (r *compiledGCFrameRoots) callsiteIndexByReturnOffset(offset uint32) int {
+	if r == nil {
+		return -1
+	}
+	if len(r.callsites) <= 8 {
+		for i := range r.callsites {
+			if r.callsites[i].returnOffset == offset {
+				return i
+			}
+		}
+		return -1
+	}
+	low, high := 0, len(r.callsites)
+	for low < high {
+		middle := low + (high-low)/2
+		if r.callsites[middle].returnOffset < offset {
+			low = middle + 1
+		} else {
+			high = middle
+		}
+	}
+	if low < len(r.callsites) && r.callsites[low].returnOffset == offset {
+		return low
+	}
+	return -1
+}

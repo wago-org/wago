@@ -13,13 +13,14 @@ import (
 )
 
 // directGCScalar describes a pointer-free scalar storage location that can be
-// accessed without entering the parked Go helper. Reference and v128 storage
-// deliberately remain helper-bound until their barrier/vector paths are proven.
+// accessed without entering the parked Go helper. Reference writes and v128
+// storage use separate checked barrier/vector paths.
 type gcSharedStubKind uint8
 
 const (
 	gcSharedStubNone gcSharedStubKind = iota
 	gcSharedStubResolveObject
+	gcSharedStubResolveSubtypeObject
 	gcSharedStubMax
 )
 
@@ -94,7 +95,27 @@ func nativeGCStructAllocLayout(m *wasm.Module, typeIndex uint32) (fields []nativ
 		entry := nativeGCStructAllocField{offset: off, size: size, slot: slot}
 		if field.Storage().Val().Kind() == wasm.ValRef {
 			heap := field.Storage().Val().Ref().Heap()
-			if heap.Kind() != wasm.HeapAbs || (heap.Abs() != wasm.HeapAny && heap.Abs() != wasm.HeapEq) || size != 4 {
+			if size != 4 || !nativeGCCollectorRefStorage(m, typeIndex, field.Storage()) {
+				return nil, 0, 0, false, false
+			}
+			switch heap.Kind() {
+			case wasm.HeapAbs:
+				if heap.Abs() != wasm.HeapAny && heap.Abs() != wasm.HeapEq {
+					return nil, 0, 0, false, false
+				}
+			case wasm.HeapTypeIndex:
+				target := heap.Type().Index
+				if heap.Type().Rec {
+					base, _, found := nativeGCRecGroup(m, typeIndex)
+					if !found {
+						return nil, 0, 0, false, false
+					}
+					target += base
+				}
+				if _, found := nativeGCFlatType(m, target); !found {
+					return nil, 0, 0, false, false
+				}
+			default:
 				return nil, 0, 0, false, false
 			}
 			entry.ref = true
@@ -362,12 +383,18 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 	for i := range offsets {
 		offsets[i] = -1
 	}
-	if !used[gcSharedStubResolveObject] {
+	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] {
 		return nil, offsets
 	}
 	a := &x64.Asm{}
-	offsets[gcSharedStubResolveObject] = a.Len()
-	emitModuleGCResolveObjectStub(a)
+	if used[gcSharedStubResolveObject] {
+		offsets[gcSharedStubResolveObject] = a.Len()
+		emitModuleGCResolveObjectStub(a)
+	}
+	if used[gcSharedStubResolveSubtypeObject] {
+		offsets[gcSharedStubResolveSubtypeObject] = a.Len()
+		emitModuleGCResolveSubtypeObjectStub(a)
+	}
 	return a.B, offsets
 }
 
@@ -381,6 +408,14 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 // The compact reference remains in the caller's canonical local/stack root. A
 // returned raw address is valid only until the caller's next invalidating edge.
 func emitModuleGCResolveObjectStub(a *x64.Asm) {
+	emitModuleGCResolveObjectStubKind(a, false)
+}
+
+func emitModuleGCResolveSubtypeObjectStub(a *x64.Asm) {
+	emitModuleGCResolveObjectStubKind(a, true)
+}
+
+func emitModuleGCResolveObjectStubKind(a *x64.Asm, subtype bool) {
 	a.Push(R9)
 	a.Push(R10)
 	a.Push(R11)
@@ -400,8 +435,7 @@ func emitModuleGCResolveObjectStub(a *x64.Asm) {
 	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 
-	// Dynamic semantic validation remains exact: handle range/liveness, space,
-	// backing extent, object extent, and canonical runtime type.
+	// Validate handle range/liveness, space, and backing and object extents.
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
 	castFailures = append(castFailures, a.JccPlaceholder(condAE))
@@ -433,8 +467,37 @@ func emitModuleGCResolveObjectStub(a *x64.Asm) {
 
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0)
-	a.Cmp32(RCX, RDX)
-	castFailures = append(castFailures, a.JccPlaceholder(condNE))
+	if subtype {
+		// The declared open type may have a proper subtype at run time.
+		// Canonical DFS intervals prove required.pre <= actual.pre and
+		// actual.post <= required.post without entering the collector.
+		a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+		a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+		a.MovRegReg32(RAX, RCX)
+		a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+		castFailures = append(castFailures, a.JccPlaceholder(condAE))
+		a.MovRegReg32(RAX, RDX)
+		a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+		castFailures = append(castFailures, a.JccPlaceholder(condAE))
+		a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
+		a.TestSelf(R10, true)
+		castFailures = append(castFailures, a.JccPlaceholder(condE))
+		a.ImulRI(RCX, 8, true)
+		a.LoadIdx(RAX, R10, RCX, 0, 8, false, true)
+		a.ImulRI(RDX, 8, true)
+		a.LoadIdx(RDX, R10, RDX, 0, 8, false, true)
+		a.MovReg64(RCX, RAX)
+		a.ShiftImm(5, RCX, 32, true)
+		a.MovReg64(R10, RDX)
+		a.ShiftImm(5, R10, 32, true)
+		a.Cmp32(RCX, R10)
+		castFailures = append(castFailures, a.JccPlaceholder(condB))
+		a.Cmp32(RAX, RDX)
+		castFailures = append(castFailures, a.JccPlaceholder(condA))
+	} else {
+		a.Cmp32(RCX, RDX)
+		castFailures = append(castFailures, a.JccPlaceholder(condNE))
+	}
 	a.Load32(RCX, R11, 4)
 	a.Cmp32(RCX, RDI)
 	castFailures = append(castFailures, a.JccPlaceholder(condB))
@@ -502,6 +565,15 @@ func (f *fn) emitDirectGCObject(object *elem, localType, requiredBytes uint32, l
 }
 
 func (f *fn) emitSharedCheckedGCObject(object *elem, localType, requiredBytes uint32) (obj Reg, done func()) {
+	return f.emitSharedGCObject(object, localType, requiredBytes, gcSharedStubResolveObject)
+}
+
+func (f *fn) emitSharedSubtypeGCObject(object *elem, localType, requiredBytes uint32) (obj Reg, done func()) {
+	f.invalidateGCResolvedObject()
+	return f.emitSharedGCObject(object, localType, requiredBytes, gcSharedStubResolveSubtypeObject)
+}
+
+func (f *fn) emitSharedGCObject(object *elem, localType, requiredBytes uint32, stub gcSharedStubKind) (obj Reg, done func()) {
 	ref := f.materialize(object)
 	if ref != RAX {
 		f.a.MovReg64(RAX, ref)
@@ -513,7 +585,7 @@ func (f *fn) emitSharedCheckedGCObject(object *elem, localType, requiredBytes ui
 		f.checkCallClobber()
 	}
 	site := f.a.CallRel32()
-	f.relocs = append(f.relocs, f.newGCStubCallReloc(site, gcSharedStubResolveObject))
+	f.relocs = append(f.relocs, f.newGCStubCallReloc(site, stub))
 	f.stats.call("gcnative-leaf")
 	f.stats.peep("gc-shared-resolve-call")
 
@@ -1248,6 +1320,38 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 		panic("amd64: invalid native struct allocation layout")
 	}
 	fields, objectSize, objectAlign, pointerFree := plan.fields, plan.objectSize, plan.objectAlign, plan.pointerFree
+	st, ok := f.stagedStructType(typeIndex)
+	if !ok || len(st.Comp.Fields) != len(fields) {
+		panic("amd64: invalid native struct field types")
+	}
+	var typedTargets []uint32
+	var typedFinal []bool
+	for i, field := range st.Comp.Fields {
+		storage := field.Storage()
+		if storage.Val().Kind() != wasm.ValRef || storage.Val().Ref().Heap().Kind() != wasm.HeapTypeIndex {
+			continue
+		}
+		if typedTargets == nil {
+			typedTargets = make([]uint32, len(fields))
+			typedFinal = make([]bool, len(fields))
+		}
+		target := storage.Val().Ref().Heap().Type().Index
+		if storage.Val().Ref().Heap().Type().Rec {
+			if layout, found := f.gcTypeLayout(typeIndex, wasm.CompStruct); found {
+				target += layout.RecBase
+			} else if base, _, found := nativeGCRecGroup(f.m, typeIndex); found {
+				target += base
+			} else {
+				panic("amd64: native struct reference has no recursive group")
+			}
+		}
+		typedTargets[i] = target
+		targetType, found := f.stagedGCType(target)
+		if !found || (targetType.Comp.Kind != wasm.CompStruct && targetType.Comp.Kind != wasm.CompArray) {
+			panic("amd64: native struct reference target is not a collector type")
+		}
+		typedFinal[i] = targetType.Final
+	}
 	a := f.a
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
@@ -1261,6 +1365,9 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
+	}
+	if typedTargets != nil {
+		a.Push(R12)
 	}
 	a.Push(R8)
 	for i, yes := range preserve {
@@ -1330,11 +1437,15 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 	a.Load64(RAX, R8, gc.NativeViewAllocationCountOffset)
 	a.TestSelf(RAX, true)
 	addFallback(a.JccPlaceholder(condE))
+	if typedTargets != nil {
+		a.MovRegReg32(R12, RCX) // keep the nursery cursor while checking field types
+	}
 
-	for _, field := range fields {
+	for i, field := range fields {
 		if !field.CollectorRef {
 			continue
 		}
+		typed := typedTargets != nil && st.Comp.Fields[i].Storage().Val().Ref().Heap().Kind() == wasm.HeapTypeIndex
 		a.Load32(RAX, RDI, hcArgs+int32(field.Slot*8))
 		a.TestSelf(RAX, false)
 		nullOK := -1
@@ -1346,7 +1457,12 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 		a.MovRegReg32(RDX, RAX)
 		a.AluRI(4, RDX, 1, false)
 		a.TestSelf(RDX, false)
-		i31OK := a.JccPlaceholder(condNE)
+		i31OK := -1
+		if typed {
+			addFallback(a.JccPlaceholder(condNE))
+		} else {
+			i31OK = a.JccPlaceholder(condNE)
+		}
 		a.ShiftImm(5, RAX, 1, false)
 		a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
 		addFallback(a.JccPlaceholder(condAE))
@@ -1360,11 +1476,66 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 		addFallback(a.JccPlaceholder(condE))
 		a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceTiny), false)
 		addFallback(a.JccPlaceholder(condA))
+		if typed {
+			// Verify that a host-supplied or stale reference cannot enter the
+			// object through the native path.
+			a.ImulRI(RAX, gc.NativeViewSpaceStride, true)
+			a.Add64(RAX, R8)
+			a.Load32(RDX, RAX, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceBytesOffset))
+			a.Load32(RCX, R10, gc.NativeHandleOffsetOffset)
+			a.Cmp32(RCX, RDX)
+			addFallback(a.JccPlaceholder(condAE))
+			a.Sub32(RDX, RCX)
+			a.Load32(R10, R10, gc.NativeHandleSizeOffset)
+			a.Cmp32(R10, RDX)
+			addFallback(a.JccPlaceholder(condA))
+			a.AluRI(cmpDigit, R10, int32(gc.HeaderSize), false)
+			addFallback(a.JccPlaceholder(condB))
+			a.Load64(RAX, RAX, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceBaseOffset))
+			a.TestSelf(RAX, true)
+			addFallback(a.JccPlaceholder(condE))
+			a.Add64(RAX, RCX)
+			a.Load32(RAX, RAX, 0)
+			a.Load64(RDX, RBX, -int32(abi.GCNativeViewPtrOffset))
+			a.Load64(RDX, RDX, gc.NativeInstanceViewLocalTypesOffset)
+			a.Load32(RDX, RDX, int32(typedTargets[i]*4))
+			if typedFinal[i] {
+				a.Cmp32(RAX, RDX)
+				addFallback(a.JccPlaceholder(condNE))
+			} else {
+				a.MovRegReg32(R10, RAX)
+				a.AluRM(cmpRMcode, R10, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+				addFallback(a.JccPlaceholder(condAE))
+				a.MovRegReg32(R10, RDX)
+				a.AluRM(cmpRMcode, R10, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+				addFallback(a.JccPlaceholder(condAE))
+				a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
+				a.TestSelf(R10, true)
+				addFallback(a.JccPlaceholder(condE))
+				a.ImulRI(RAX, 8, true)
+				a.LoadIdx(RAX, R10, RAX, 0, 8, false, true)
+				a.ImulRI(RDX, 8, true)
+				a.LoadIdx(RDX, R10, RDX, 0, 8, false, true)
+				a.MovReg64(RCX, RAX)
+				a.ShiftImm(5, RCX, 32, true)
+				a.MovReg64(R10, RDX)
+				a.ShiftImm(5, R10, 32, true)
+				a.Cmp32(RCX, R10)
+				addFallback(a.JccPlaceholder(condB))
+				a.Cmp32(RAX, RDX)
+				addFallback(a.JccPlaceholder(condA))
+			}
+		}
 		valid := a.Len()
 		if nullOK >= 0 {
 			a.PatchRel32(nullOK, valid)
 		}
-		a.PatchRel32(i31OK, valid)
+		if i31OK >= 0 {
+			a.PatchRel32(i31OK, valid)
+		}
+	}
+	if typedTargets != nil {
+		a.MovRegReg32(RCX, R12)
 	}
 
 	// Complete object bytes before publishing the handle's nursery-space byte.
@@ -1434,6 +1605,9 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 		}
 	}
 	a.Pop(R8)
+	if typedTargets != nil {
+		a.Pop(R12)
+	}
 	a.Ret()
 }
 
@@ -2214,7 +2388,18 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 
 func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) bool {
 	off, scalar, final, ok := f.directGCStructLayout(typeIndex, fieldIndex)
-	if !ok || !final {
+	collectorRef := false
+	if !ok && helper == gcStructGet {
+		// A read changes no edge and needs no write barrier. Keep this separate
+		// from scalar storage so reference writes and opaque func/extern fields
+		// retain their checked helper/barrier paths.
+		field, fieldFinal, found := f.gcStructFieldLayout(typeIndex, fieldIndex)
+		if found && field.CollectorRef && field.Size == 4 && field.Offset <= math.MaxInt32-gc.PayloadOffset-4 {
+			off, scalar, final, ok = field.Offset, directGCScalar{size: 4, typ: mtI64}, fieldFinal, true
+			collectorRef = true
+		}
+	}
+	if !ok {
 		return false
 	}
 	local, hasLocal := gcLocalProvenance(f.s.back())
@@ -2223,7 +2408,15 @@ func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) 
 	f.spillFloor = f.curSpillSlot()
 	object := f.popValue()
 	required := gc.PayloadOffset + off + uint32(scalar.size)
-	obj, done := f.emitDirectGCObject(object, typeIndex, required, local, hasLocal)
+	var obj Reg
+	var done func()
+	if final {
+		obj, done = f.emitDirectGCObject(object, typeIndex, required, local, hasLocal)
+	} else {
+		obj, done = f.emitSharedSubtypeGCObject(object, typeIndex, required)
+		f.gcHandleResolutions++
+		f.stats.addGCHandleResolution()
+	}
 	disp := int32(gc.PayloadOffset + off)
 	if scalar.typ.isFloat() {
 		x := f.allocFReg(0)
@@ -2235,10 +2428,15 @@ func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) 
 	}
 	result := f.allocReg(maskOf(obj))
 	signed := helper == gcStructGetS
-	f.a.LoadIdx(result, obj, RSP, disp, scalar.size, signed, scalar.typ == mtI64)
+	f.a.LoadIdx(result, obj, RSP, disp, scalar.size, signed, scalar.typ == mtI64 && !collectorRef)
 	done()
 	f.spillFloor = oldFloor
 	f.pushReg(result, scalar.typ)
+	if collectorRef {
+		// Publish the loaded compact child as a root, without assigning it the
+		// parent's local provenance or retaining its raw address as a value.
+		f.markTopGCReference()
+	}
 	return true
 }
 

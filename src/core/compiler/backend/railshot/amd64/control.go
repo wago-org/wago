@@ -1214,6 +1214,12 @@ func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 		f.fregUser[i] = nil
 	}
 	f.pinned = 0
+	// Operand canonicalization frees operand scratch registers, but a valid
+	// noncollecting GC resolver certificate still owns its raw-address register.
+	// Keep that register unavailable until the normal effect gate invalidates it.
+	if f.gcResolved.valid {
+		f.pinned = f.pinned.add(f.gcResolved.reg)
+	}
 	f.fpinned = 0
 }
 

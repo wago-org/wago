@@ -37,7 +37,8 @@ const maxGCFrameLivenessCumulativeWork = maxGCFrameLivenessWorkWords * 8
 // Four conservative local roots and a 512 root-byte budget bound additional
 // guest retention and serialized offsets while avoiding a pointer-rich CFG and
 // backwards dataflow for common narrow-root functions. A root-free collecting
-// function has no retention cost and always uses the cheap site-counting path.
+// function has no retention cost and uses the cheap site-counting path when
+// terminating control transfers cannot leave unreachable sites.
 // Fixed EH payload roots are accounted independently and remain always live.
 const (
 	gcFrameConservativeLocalLimit    = 4
@@ -930,4 +931,26 @@ func gcLiveBranchFrame(stack []int, depth uint32) (int, bool) {
 		return 0, false
 	}
 	return stack[len(stack)-1-int(depth)], true
+}
+
+// Conservative masks scan every byte-stream site. Terminating transfers can
+// leave valid but unreachable calls or allocations after structured control.
+// Use CFG reachability for those bodies so masks match native emission.
+func gcFrameNeedsReachableMasks(body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
+	r := wasm.NewReader(body)
+	var imm wasm.InstructionImmediate
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return true
+		}
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+			return true
+		}
+		switch op {
+		case 0x00, 0x0c, 0x0e, 0x0f, 0x12, 0x13, 0x15:
+			return true
+		}
+	}
+	return false
 }

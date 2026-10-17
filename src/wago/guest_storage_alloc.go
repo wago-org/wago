@@ -33,12 +33,12 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 	if resultIndex < 0 || resultIndex >= len(results) {
 		return 0, fmt.Errorf("wago: host result index %d is out of range", resultIndex)
 	}
-	if h.ephemeralGCResults == nil {
-		return 0, fmt.Errorf("wago: GC result allocation requires the active host dispatch: %w", ErrPermissionDenied)
-	}
 	required := results[resultIndex]
 	if required.Kind != ValueTypeReference || !required.Ref.Heap.Defined {
 		return 0, fmt.Errorf("wago: host result %d is not a defined GC reference type", resultIndex)
+	}
+	if h.ephemeralGCResults == nil {
+		return 0, fmt.Errorf("wago: GC result allocation requires the active host dispatch: %w", ErrPermissionDenied)
 	}
 	localType := required.Ref.Heap.TypeIndex
 	if h.in.c == nil || int(localType) >= len(h.in.c.Types) || int(localType) >= len(h.in.c.GCTypeDescs) {
