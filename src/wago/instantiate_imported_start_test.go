@@ -13,7 +13,7 @@ import (
 
 func TestImportedStartPreservesHostTrapCauses(t *testing.T) {
 	source := wasmtest.Module(wasmtest.Section(1, []byte{1, 0x60, 0, 0}), wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("env"), wasmtest.Name("start")...), 0, 0))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(8, []byte{0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))))
-	c, err := Compile(nil, source)
+	c, err := Compile(artifactTestConfig(true), source)
 	if err != nil {
 		t.Fatal(err)
 	}

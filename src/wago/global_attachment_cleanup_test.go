@@ -11,7 +11,7 @@ import (
 
 func globalCleanupCompile(t *testing.T, module []byte, artifact bool) *Compiled {
 	t.Helper()
-	c, err := Compile(nil, module)
+	c, err := Compile(artifactTestConfig(artifact), module)
 	if err != nil {
 		t.Fatal(err)
 	}

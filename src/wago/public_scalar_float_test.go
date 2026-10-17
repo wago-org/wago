@@ -41,7 +41,7 @@ func publicScalarFloatModule() []byte {
 
 func TestPublicScalarFloatArtifactCallsStateAndTrapReuse(t *testing.T) {
 	data := publicScalarFloatModule()
-	c, err := Compile(nil, data)
+	c, err := Compile(artifactTestConfig(true), data)
 	if err != nil {
 		t.Fatal(err)
 	}

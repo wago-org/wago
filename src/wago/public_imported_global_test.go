@@ -255,7 +255,7 @@ func TestPublicImportedGlobalMixedMemoryOrderingPrivateContextAndRoots(t *testin
 		imports.Memory("env", "memory", memory)
 		var consumers []*Instance
 		for _, initial := range []byte{44, 55} {
-			c, err := Compile(nil, publicImportedGlobalModule(true, memoryOrder, true, initial))
+			c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), publicImportedGlobalModule(true, memoryOrder, true, initial))
 			if err != nil {
 				t.Fatal(err)
 			}

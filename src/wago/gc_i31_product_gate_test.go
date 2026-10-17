@@ -391,20 +391,25 @@ func TestStagedGCI31RefEqPilotPlatformBoundsAndIdentityGate(t *testing.T) {
 	_ = widened.Close()
 }
 
-// Names do not change the validated instruction or type semantics. Check both
-// native source and retained artifact execution after changing those names.
+// Names do not change the validated instruction or type semantics. Check native
+// source and, when the selected bounds mode is serializable, retained artifact
+// execution after changing those names.
 func checkGeneralI31NamedModule(t *testing.T, c *Compiled, export string, args, want []uint64, setup string) {
 	t.Helper()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
+	candidates := []*Compiled{c}
+	if c.boundsMode != BoundsChecksSignalsBased {
+		blob, err := c.MarshalBinary()
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := LoadTrustedArtifact(blob)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer loaded.Close()
+		candidates = append(candidates, loaded)
 	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	for _, candidate := range []*Compiled{c, loaded} {
+	for _, candidate := range candidates {
 		imports := NewImports()
 		for _, global := range candidate.GlobalImports {
 			imports.Global(global.Module, global.Name, GlobalImport{Type: global.Type, Bits: 42, Mutable: global.Mutable})

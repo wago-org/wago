@@ -41,7 +41,7 @@ func invocationCleanupCompile(t *testing.T, artifact bool) *Compiled {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 17, 0x0b}))),
 	)
-	c, err := Compile(nil, module)
+	c, err := Compile(artifactTestConfig(artifact || mode == "prepare"), module)
 	if err != nil {
 		t.Fatal(err)
 	}

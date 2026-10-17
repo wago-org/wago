@@ -54,7 +54,7 @@ func globalValueAccessCompile(t *testing.T, imported, artifact bool) *Compiled {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
 	module := wasmtest.Module(sections...)
-	c, err := Compile(nil, module)
+	c, err := Compile(artifactTestConfig(artifact || mode == "prepare"), module)
 	if err != nil {
 		t.Fatal(err)
 	}
