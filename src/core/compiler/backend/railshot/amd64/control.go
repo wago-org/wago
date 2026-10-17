@@ -1215,6 +1215,11 @@ func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 		f.fregUser[i] = nil
 	}
 	f.pinned = 0
+	// A straight-line GC address survives stack canonicalization. Its register
+	// remains owned by the cache until an effect or source assignment clears it.
+	if f.gcResolved.valid {
+		f.pinned = f.pinned.add(f.gcResolved.reg)
+	}
 	f.fpinned = 0
 }
 
