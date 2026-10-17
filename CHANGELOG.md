@@ -6,6 +6,13 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Changed
+
+- Accelerate AMD64 WasmGC allocation, array operations, subtype casts, and
+  i31 round trips with specialized generated paths, bounded native-handle
+  batches, and survivor-aware nursery management. Preserve the existing Go
+  fallbacks and collector safety checks.
+
 ## [v0.1.0-beta.13] - 2026-10-15
 
 ### Changed
