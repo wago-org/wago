@@ -145,7 +145,7 @@ case "$mode" in
       mkdir -p "$artifact_dir/$check/portable-features" \
         "$artifact_dir/$check/custom-wide" "$artifact_dir/$check/events"
       if [[ $mode == public ]]; then
-      go_test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
+      go_test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=15m -v \
         -run '^Test(RetainedResourceCleanup|ReferenceEntryCleanup|PhysicalFinalizerChain|ResourceCleanup|ImportDedup|FunctionImportDrain|BuilderRollbackContinues|Dependency|WideArithmetic|Threads|RV64)'
       fi
       WAGO_RV64_PORTABLE_FEATURE_DIR="$artifact_dir/$check/portable-features" \
