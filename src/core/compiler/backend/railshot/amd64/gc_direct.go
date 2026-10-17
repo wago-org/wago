@@ -2580,12 +2580,25 @@ func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) 
 		return false
 	}
 	local, hasLocal := gcLocalProvenance(f.s.back())
-	f.flush()
 	oldFloor := f.spillFloor
-	f.spillFloor = f.curSpillSlot()
-	object := f.popValue()
 	required := gc.PayloadOffset + off + uint32(scalar.size)
-	obj, done := f.emitDirectGCObjectWithSubtype(object, typeIndex, required, local, hasLocal, !final)
+	var obj Reg
+	done := func() {}
+	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid &&
+		f.gcResolved.local == local && f.gcResolved.typeIndex == typeIndex && required <= f.gcResolved.requiredBytes {
+		// The unchanged local and complete extent are already checked. No call
+		// or new trap needs a canonical operand image on this path.
+		f.dropValue()
+		obj = f.gcResolved.reg
+		f.stats.addGCHandleResolutionReuse()
+		f.stats.peep("gc-resolve-reuse")
+		f.stats.peep("gc-resolve-reuse-no-flush")
+	} else {
+		f.flush()
+		f.spillFloor = f.curSpillSlot()
+		object := f.popValue()
+		obj, done = f.emitDirectGCObjectWithSubtype(object, typeIndex, required, local, hasLocal, !final)
+	}
 	disp := int32(gc.PayloadOffset + off)
 	if scalar.typ.isFloat() {
 		x := f.allocFReg(0)

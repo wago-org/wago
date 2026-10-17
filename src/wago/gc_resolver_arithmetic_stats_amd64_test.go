@@ -29,3 +29,34 @@ func TestGCResolverArithmeticReuseAdmission(t *testing.T) {
 		}
 	}
 }
+
+func TestGCCachedReadAdmission(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		data []byte
+		want int
+	}{
+		{"f32-pressure", gcCachedReadPressureModule(wasm.F32), 24},
+		{"f64-pressure", gcCachedReadPressureModule(wasm.F64), 24},
+		{"packed-extent", gcCachedReadExtentModule(), 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, err := wasm.DecodeModule(tc.data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := wasm.ValidateModule(m); err != nil {
+				t.Fatal(err)
+			}
+			var stats backend.ModuleStats
+			c, err := backend.CompileModuleWith(m, backend.CompileOptions{Stats: &stats, GCStructHelpers: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.CodeImage.Close()
+			if got := stats.Funcs[1].Peephole["gc-resolve-reuse-no-flush"]; got != tc.want {
+				t.Fatalf("cached reads %d want%d; stats %+v", got, tc.want, stats.Funcs[1])
+			}
+		})
+	}
+}
