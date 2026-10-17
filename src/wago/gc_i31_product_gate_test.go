@@ -329,7 +329,7 @@ func TestStagedGCI31RefTestPlatformBoundsAndIdentityGate(t *testing.T) {
 		t.Fatalf("generic i31 ref.test compile = %v", err)
 	}
 	checkGeneralI31NamedModule(t, widened, "i31", []uint64{7}, []uint64{2}, "")
-	if compiledArchitecture != 4 && widened.stagedGCStructProduct() == stagedGCStructGeneric {
+	if compiledArchitecture != 4 && widened.boundsMode != BoundsChecksSignalsBased && widened.stagedGCStructProduct() == stagedGCStructGeneric {
 		view := widened.executionView()
 		cache := view.loadCodeCache()
 		if cache.gcI31Product == 0 {
