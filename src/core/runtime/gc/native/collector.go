@@ -211,6 +211,9 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 		nursery: makeAlignedBytes(nurseryBackingBytes, uintptr(objectAlign)), survivorBytes: config.SurvivorBytes,
 		tenuringThreshold: defaultTenuringThreshold, handles: []handleEntry{{}}, cardBytes: defaultThroughputCardBytes,
 	}
+	for i := range c.types {
+		c.types[i].checkScanPlan()
+	}
 	if config.DisableMovingNursery || config.SurvivorBytes == 0 {
 		c.tenuringThreshold = 1
 	}
@@ -287,6 +290,9 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 		return errors.New("gc: appended type alignment exceeds tiny block size")
 	}
 	oldTypes, oldIntervals := c.types, c.subtypeIntervals
+	for i := len(c.types); i < len(combined); i++ {
+		combined[i].checkScanPlan()
+	}
 	c.types = combined
 	if err := c.initSubtypeIntervals(); err != nil {
 		c.types, c.subtypeIntervals = oldTypes, oldIntervals

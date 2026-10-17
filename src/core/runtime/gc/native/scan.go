@@ -1,6 +1,9 @@
 package gc
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"runtime"
+)
 
 // objectScanCursor is the next descriptor entry or array element to examine.
 // It contains no heap pointer: callers may retain it across collector steps and
@@ -203,6 +206,14 @@ func (c *Collector) scanObjectRefs(h uint32, visit func(Ref)) {
 	hdr := c.header(r)
 	b := c.bytes(r)
 	if d.Kind == KindStruct {
+		if runtime.GOARCH == "amd64" && d.firstRef != 0 {
+			for index := uint32(d.firstRef); index != 0; {
+				field := d.Fields[index-1]
+				visit(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+field.Offset:])))
+				index = uint32(field.nextRef)
+			}
+			return
+		}
 		for _, f := range d.Fields {
 			if isCollectorRefKind(f.Kind) {
 				visit(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+f.Offset:])))

@@ -2323,6 +2323,7 @@ func (r *compiledReader) gcTypeDescs() ([]gc.TypeDesc, error) {
 		if out[i].HasSuper, err = r.bool(); err != nil {
 			return nil, err
 		}
+		out[i].PrepareScanPlan()
 	}
 	return out, nil
 }

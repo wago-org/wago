@@ -1,6 +1,9 @@
 package gc
 
-import "fmt"
+import (
+	"fmt"
+	"runtime"
+)
 
 type TypeID uint32
 
@@ -37,8 +40,9 @@ const (
 )
 
 type FieldDesc struct {
-	Kind   StorageKind
-	Offset uint32
+	Kind    StorageKind
+	nextRef uint16 // one-based link in existing descriptor padding
+	Offset  uint32
 }
 
 type TypeDesc struct {
@@ -53,6 +57,7 @@ type TypeDesc struct {
 	Final    bool
 	Super    TypeID
 	HasSuper bool
+	firstRef uint16 // one-based sparse scan head; occupies existing padding
 }
 
 func NewStructDesc(id TypeID, fields []StorageKind) (TypeDesc, error) {
@@ -125,6 +130,7 @@ func (b *StructDescBuilder) Finish() (TypeDesc, error) {
 	if err != nil {
 		return TypeDesc{}, err
 	}
+	b.desc.PrepareScanPlan()
 	return b.desc, nil
 }
 
@@ -229,4 +235,57 @@ func addChecked(v, n uint32) (uint32, error) {
 		return 0, fmt.Errorf("gc: struct layout overflow")
 	}
 	return v + n, nil
+}
+
+// PrepareScanPlan caches sparse reference-field links in descriptor padding.
+// Call only while constructing an exclusively owned descriptor, including its
+// Fields backing array. Do not call on a descriptor admitted to a collector.
+// Dense and very
+// large structs retain the linear scanner. This cache is not part of the ABI.
+func (d *TypeDesc) PrepareScanPlan() {
+	d.firstRef = 0
+	if runtime.GOARCH != "amd64" || d.Kind != KindStruct || !d.HasRefs || len(d.Fields) < 8 || len(d.Fields) > 65535 {
+		return
+	}
+	count, previous := 0, -1
+	for i := range d.Fields {
+		if !isCollectorRefKind(d.Fields[i].Kind) {
+			continue
+		}
+		count++
+		if previous < 0 {
+			d.firstRef = uint16(i + 1)
+		} else {
+			d.Fields[previous].nextRef = uint16(i + 1)
+		}
+		previous = i
+	}
+	if previous >= 0 {
+		d.Fields[previous].nextRef = 0
+	}
+	if count*4 > len(d.Fields) {
+		d.firstRef = 0
+	}
+}
+
+// Discard a cache if a caller changed descriptor fields before admission.
+// The descriptor itself is copied; caller-owned field data is never changed.
+func (d *TypeDesc) checkScanPlan() {
+	if d.firstRef == 0 {
+		return
+	}
+	next := uint32(d.firstRef)
+	for i, f := range d.Fields {
+		if !isCollectorRefKind(f.Kind) {
+			continue
+		}
+		if next != uint32(i+1) {
+			d.firstRef = 0
+			return
+		}
+		next = uint32(f.nextRef)
+	}
+	if next != 0 {
+		d.firstRef = 0
+	}
 }
