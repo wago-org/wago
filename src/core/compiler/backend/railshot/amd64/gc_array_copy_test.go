@@ -65,7 +65,14 @@ func TestGCArrayCopyNativeSelection(t *testing.T) {
 			if got := stats.Funcs[0].Peephole["gc-array-native-copy"]; got != want {
 				t.Fatalf("native copies=%d, want %d", got, want)
 			}
-			if got, wantResolutions := stats.Funcs[0].GCHandleResolutions, 2*want; got != wantResolutions {
+			dynamic := 0
+			if gcSharedStubsEnabled && (tc.dynamic || tc.count > 4) {
+				dynamic = 1
+			}
+			if got := stats.Funcs[0].Peephole["gc-array-native-copy-dynamic"]; got != dynamic {
+				t.Fatalf("dynamic copies=%d, want%d", got, dynamic)
+			}
+			if got, wantResolutions := stats.Funcs[0].GCHandleResolutions, 2*(want+dynamic); got != wantResolutions {
 				t.Fatalf("handle resolutions=%d, want %d", got, wantResolutions)
 			}
 			if got := stats.Funcs[0].GCHandleResolutionReuse; got != 0 {

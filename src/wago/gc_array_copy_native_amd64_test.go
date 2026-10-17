@@ -14,6 +14,10 @@ import (
 )
 
 func gcNumericCopyModule(storage byte) []byte {
+	return gcNumericCopyModuleWithCopyRun(storage, 0)
+}
+
+func gcNumericCopyModuleWithCopyRun(storage byte, direction int) []byte {
 	setValue := []byte{0x20, 1}
 	getValue := []byte{}
 	getSub := byte(11)
@@ -54,6 +58,18 @@ func gcNumericCopyModule(storage byte) []byte {
 		}
 		return append(body, 0xfb, 17, 0, 0, 0x0b)
 	}
+	run := []byte{0x03, 0x40, 0x23, 0, 0x41, 0, 0x23, 1, 0x41, 0, 0x20, 1, 0xfb, 17, 0, 0,
+		0x20, 0, 0x41, 1, 0x6b, 0x22, 0, 0x0d, 0, 0x0b, 0x23, 0, 0x41, 0, 0xfb, getSub, 0}
+	if direction != 0 {
+		run[7] = 0 // source and destination are the same array
+		if direction == 1 {
+			run[5] = 1 // destination follows source
+		} else if direction == 2 {
+			run[9] = 1 // destination precedes source
+		}
+	}
+	run = append(run, getValue...)
+	run = append(run, 0x0b)
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x4f, 0, 0x5e, storage, 1},
@@ -64,8 +80,9 @@ func gcNumericCopyModule(storage byte) []byte {
 			[]byte{0x60, 3, 0x7f, 0x7f, 0x7f, 0},
 			[]byte{0x60, 0, 0},
 			[]byte{0x60, 1, 0x7f, 0},
+			[]byte{0x60, 2, 0x7f, 0x7f, 1, 0x7e},
 		)),
-		wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2}, []byte{2}, []byte{3}, []byte{3}, []byte{4}, []byte{4}, []byte{4}, []byte{5}, []byte{4}, []byte{6}, []byte{6}, []byte{7}, []byte{4}, []byte{4}, []byte{4})),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2}, []byte{2}, []byte{3}, []byte{3}, []byte{4}, []byte{4}, []byte{4}, []byte{5}, []byte{4}, []byte{6}, []byte{6}, []byte{7}, []byte{4}, []byte{4}, []byte{4}, []byte{5}, []byte{8})),
 		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b}, []byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
 		wasmtest.Section(7, wasmtest.Vec(
 			wasmtest.ExportEntry("init", 0, 0), wasmtest.ExportEntry("set-dst", 0, 1), wasmtest.ExportEntry("set-src", 0, 2),
@@ -74,6 +91,7 @@ func gcNumericCopyModule(storage byte) []byte {
 			wasmtest.ExportEntry("copy-overlap", 0, 9), wasmtest.ExportEntry("clear-dst", 0, 10), wasmtest.ExportEntry("clear-src", 0, 11),
 			wasmtest.ExportEntry("trap-copy", 0, 12), wasmtest.ExportEntry("copy-three", 0, 13),
 			wasmtest.ExportEntry("copy-four", 0, 14), wasmtest.ExportEntry("copy-overlap-four", 0, 15),
+			wasmtest.ExportEntry("copy-overlap-dynamic", 0, 16), wasmtest.ExportEntry("run-copy", 0, 17),
 		)),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code([]byte{0x20, 0, 0xfb, 7, 0, 0x24, 0, 0x20, 0, 0xfb, 7, 0, 0x24, 1, 0x0b}),
@@ -85,6 +103,7 @@ func gcNumericCopyModule(storage byte) []byte {
 			wasmtest.Code([]byte{0x41, 1, 0x20, 0, 0x6e, 0x23, 0, 0x41, 0, 0x23, 1, 0x41, 0, 0x41, 1, 0xfb, 17, 0, 0, 0x1a, 0x0b}),
 			wasmtest.Code(copyBody(0, 1, 3, false)),
 			wasmtest.Code(copyBody(0, 1, 4, false)), wasmtest.Code(copyBody(0, 0, 4, false)),
+			wasmtest.Code(copyBody(0, 0, 0, true)), wasmtest.Code(run),
 		)),
 	)
 }
@@ -267,7 +286,7 @@ func TestGCNativeNumericArrayCopy(t *testing.T) {
 				expectTrap("copy-four", TrapBuiltin, 5, 0)
 				expectTrap("copy-four", TrapBuiltin, 0, 5)
 				if _, err := in.Invoke("copy-dynamic", 0, 3, 1); err != nil {
-					t.Fatalf("dynamic helper control: %v", err)
+					t.Fatalf("dynamic copy: %v", err)
 				}
 				if _, err := in.Invoke("clear-src"); err != nil {
 					t.Fatal(err)

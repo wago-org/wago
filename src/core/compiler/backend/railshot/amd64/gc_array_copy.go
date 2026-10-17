@@ -5,7 +5,8 @@ package amd64
 import gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 
 // Up to four numeric elements can be loaded before the stores without an overlap
-// branch, payload buffer, or loop. Larger copies retain the Go copy helper.
+// branch, payload buffer, or loop. Other copies use the bounded wide lowering
+// when eligible, or retain the Go copy helper.
 func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
 	if !gcSharedStubsEnabled {
 		return false

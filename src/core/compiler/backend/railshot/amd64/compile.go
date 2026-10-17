@@ -336,6 +336,7 @@ type fn struct {
 	gcResolved          gcResolvedObject
 	gcSharedResolver    bool
 	gcDeferResolver     bool
+	gcDynamicCopySites  uint8 // bounded native-copy expansion within this function
 	gcHandleResolutions int
 	gcSubtypeProofs     [4]gcSubtypeProof
 	gcSubtypeProofN     uint8
