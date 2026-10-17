@@ -203,49 +203,49 @@ func (c *Collector) finishMinorEvacuation(liveCount uint64) {
 	}
 }
 
-// finishSparseMinorEvacuation transfers a mostly-dead nursery identity set to
-// the free list with one bulk copy. It then compacts the few live or invalid
-// entries out of that copy while it performs the ordinary evacuation cleanup.
+// finishSparseMinorEvacuation bulk-copies the mostly-dead nursery identities.
+// Remove exceptional entries by swapping from the end of that copy, avoiding
+// writes to every dead identity after the first survivor.
 func (c *Collector) finishSparseMinorEvacuation() {
 	nursery := c.nurseryHandles
 	freeStart := len(c.freeHandles)
 	c.freeHandles = append(c.freeHandles, nursery...)
-	freeOut := freeStart
-	out := nursery[:0]
-	for i, h := range nursery {
-		if h == 0 || int(h) >= len(c.handles) {
-			continue
-		}
-		if c.mark[h] {
-			c.mark[h] = false
-			if c.handles[h].young() {
-				out = append(out, h)
+	freeEnd := len(c.freeHandles)
+	youngStart := len(nursery)
+	// Descending traversal leaves every unread free-list and nursery entry in
+	// place. Retained young identities occupy the already-read nursery suffix.
+	for i := len(nursery) - 1; i >= 0; i-- {
+		h := nursery[i]
+		if h != 0 && int(h) < len(c.handles) {
+			if c.mark[h] {
+				c.mark[h] = false
+				if c.handles[h].young() {
+					youngStart--
+					nursery[youngStart] = h
+				}
+			} else {
+				e := &c.handles[h]
+				if e.space == spaceNursery && e.cardSlot == 0 {
+					e.space = spaceFree
+					continue
+				} else if e.young() {
+					// The bulk copy already contains the recycled identity.
+					end := len(c.freeHandles)
+					c.free(h)
+					c.freeHandles = c.freeHandles[:end]
+					continue
+				}
 			}
-			continue
 		}
-		e := &c.handles[h]
-		if e.space == spaceNursery && e.cardSlot == 0 {
-			e.space = spaceFree
-		} else if e.young() {
-			// releaseHandle appends the recycled identity. The bulk copy already
-			// contains it, so discard that duplicate after the full release work.
-			end := len(c.freeHandles)
-			c.free(h)
-			c.freeHandles = c.freeHandles[:end]
-		} else {
-			continue
-		}
-		src := freeStart + i
-		if freeOut != src {
-			c.freeHandles[freeOut] = h
-		}
-		freeOut++
+		freeEnd--
+		c.freeHandles[freeStart+i] = c.freeHandles[freeEnd]
 	}
-	c.freeHandles = c.freeHandles[:freeOut]
-	c.nurseryHandles = out
+	c.freeHandles = c.freeHandles[:freeEnd]
+	n := copy(nursery, nursery[youngStart:])
+	c.nurseryHandles = nursery[:n]
 	c.lastCardBounds = objectCardBounds{}
 	c.nurseryBump = 0
-	if len(out) == 0 {
+	if n == 0 {
 		c.survivorBump = 0
 		c.survivorFrom ^= 1
 	}

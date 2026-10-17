@@ -64,6 +64,9 @@ func TestMinorNurseryRecyclingPreservesMixedHeap(t *testing.T) {
 			if !c.PrepareNativeStructHandles() {
 				t.Fatal("no native batch")
 			}
+			// Cancellation first returns the unused reservation. Collection must
+			// then recycle every dead object exactly once, in any order.
+			freeBefore := len(c.freeHandles) + int(c.nativeStructAlloc.Count)
 			if err := c.CollectMinor(EmptyRoots{}); err != nil {
 				t.Fatal(err)
 			}
@@ -78,10 +81,18 @@ func TestMinorNurseryRecyclingPreservesMixedHeap(t *testing.T) {
 					t.Fatalf("released handle %v was not cleared", ref)
 				}
 			}
-			for i, ref := range dead {
-				if got := c.freeHandles[len(c.freeHandles)-len(dead)+i]; got != handleOf(ref) {
-					t.Fatalf("free order %d = %d, want %d", i, got, handleOf(ref))
+			if got, want := len(c.freeHandles), freeBefore+len(dead); got != want {
+				t.Fatalf("free identities = %d, want %d", got, want)
+			}
+			wantDead := make(map[uint32]bool, len(dead))
+			for _, ref := range dead {
+				wantDead[handleOf(ref)] = true
+			}
+			for _, h := range c.freeHandles[freeBefore:] {
+				if !wantDead[h] {
+					t.Fatalf("unexpected or duplicate recycled identity %d", h)
 				}
+				delete(wantDead, h)
 			}
 			if poison {
 				for i, b := range deadPayload {
@@ -113,6 +124,98 @@ func TestMinorNurseryRecyclingPreservesMixedHeap(t *testing.T) {
 			}
 			if err := c.Verify(EmptyRoots{}); err != nil {
 				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestMinorSparseRecyclingSurvivorPositions(t *testing.T) {
+	for _, positions := range [][]int{{0}, {63}, {0, 63}, {31, 32}, {0, 1, 2, 3, 60, 61, 62, 63}} {
+		t.Run(fmt.Sprint(positions), func(t *testing.T) {
+			desc, err := NewStructDesc(0, []StorageKind{StorageI32})
+			if err != nil {
+				t.Fatal(err)
+			}
+			c, err := NewCollector(Config{NurseryBytes: 16384, SurvivorBytes: 4096, VerifyAfterCollect: true}, []TypeDesc{desc})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			refs := make([]Ref, 64)
+			for i := range refs {
+				refs[i], err = c.NewStructDefault(0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := c.StructSet(refs[i], 0, I32Value(int32(i+100))); err != nil {
+					t.Fatal(err)
+				}
+			}
+			roots := make(RefSliceRoots, len(positions))
+			live := make(map[uint32]bool, len(positions))
+			for i, pos := range positions {
+				roots[i] = refs[pos]
+				live[handleOf(refs[pos])] = true
+			}
+			if err := c.CollectMinor(roots); err != nil {
+				t.Fatal(err)
+			}
+			if len(c.freeHandles) != len(refs)-len(roots) || len(c.nurseryHandles) != len(roots) {
+				t.Fatalf("free/young counts = %d/%d", len(c.freeHandles), len(c.nurseryHandles))
+			}
+			dead := make(map[uint32]bool, len(c.freeHandles))
+			for _, h := range c.freeHandles {
+				if h == 0 || int(h) >= len(c.handles) || live[h] || dead[h] || c.handles[h].space != spaceFree {
+					t.Fatalf("invalid or duplicate free identity %d", h)
+				}
+				dead[h] = true
+			}
+			for i, h := range c.nurseryHandles {
+				if h != handleOf(roots[i]) {
+					t.Fatalf("survivor %d = %d, want %d", i, h, handleOf(roots[i]))
+				}
+			}
+			for range len(refs) - len(roots) {
+				r, err := c.NewStructDefault(0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !dead[handleOf(r)] {
+					t.Fatalf("allocation did not reuse a unique dead identity: %v", r)
+				}
+				delete(dead, handleOf(r))
+			}
+			if err := c.CollectMinor(roots); err != nil {
+				t.Fatal(err)
+			}
+			if got, want := len(c.freeHandles), len(refs)-len(roots); got != want {
+				t.Fatalf("second collection free identities = %d, want %d", got, want)
+			}
+			for _, h := range c.freeHandles {
+				if h == 0 || int(h) >= len(c.handles) || live[h] || dead[h] || c.handles[h].space != spaceFree {
+					t.Fatalf("second collection invalid or duplicate free identity %d", h)
+				}
+				dead[h] = true
+			}
+			for i, pos := range positions {
+				got, err := c.StructGet(roots[i], 0)
+				if err != nil || got.I32() != int32(pos+100) {
+					t.Fatalf("survivor %d payload = %v, %v", pos, got, err)
+				}
+			}
+			if !c.PrepareNativeStructHandles() {
+				t.Fatal("no native batch after sparse recycling")
+			}
+			batch := &c.nativeStructAlloc
+			reserved := make(map[uint32]bool, batch.Count)
+			for i, h := range batch.Handles[:batch.Count] {
+				if h == 0 || int(h) >= len(c.handles) || live[h] || reserved[h] || c.handles[h].space != spaceFree {
+					t.Fatalf("invalid or duplicate reserved identity %d", h)
+				}
+				if batch.HandleBase != 0 && h != batch.HandleBase+uint32(i) {
+					t.Fatalf("non-contiguous native batch at identity %d", h)
+				}
+				reserved[h] = true
 			}
 		})
 	}
