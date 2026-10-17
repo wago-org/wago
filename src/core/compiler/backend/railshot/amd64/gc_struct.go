@@ -1167,10 +1167,10 @@ func gcFrameRefType(m *wasm.Module, t wasm.ValType) bool {
 }
 
 func (f *fn) gcFrameLocal(index int) bool {
-	if index < 0 || f.gcFrameRoots == nil {
+	if index < 0 || index/64 >= len(f.gcLocalTypes) {
 		return false
 	}
-	return f.gcFrameRoots.TracksLocal(uint32(index))
+	return f.gcLocalTypes[index/64]&(uint64(1)<<uint(index%64)) != 0
 }
 
 func gcHelperMayAllocate(helper uint32) bool {

@@ -1305,8 +1305,8 @@ func TestGCSingleNativeFrameRootsCollectInsideInvocation(t *testing.T) {
 	}
 	defer compiled.Close()
 	plan := compiled.genericGCFrameRoots()
-	if plan == nil || len(plan.safepoints) != 2 || len(plan.safepoints[0].offsets) != 1 || plan.safepoints[0].offsets[0] != 24 || len(plan.safepoints[1].offsets) != 1 || plan.safepoints[1].offsets[0] != 24 || plan.safepoints[1].frameBytes == 0 {
-		t.Fatalf("native GC frame-root plan = %+v, want bounded conservative local offset 24 at both sites", plan)
+	if plan == nil || len(plan.safepoints) != 2 || len(plan.safepoints[0].offsets) != 0 || len(plan.safepoints[1].offsets) != 1 || plan.safepoints[1].offsets[0] != 24 || plan.safepoints[1].frameBytes == 0 {
+		t.Fatalf("native GC frame-root plan = %+v, want local offset 24 only at the loop allocation", plan)
 	}
 	want := []uint64{0x0706050403020100, 0x0f0e0d0c0b0a0908}
 	profiles := []struct {
@@ -1471,5 +1471,143 @@ func TestGCSingleNativeFrameRootsPersistThroughCodec(t *testing.T) {
 	}
 	if stats := in.gc.Stats(); stats.FullCollections == 0 {
 		t.Fatalf("reloaded collector stats = %+v, want in-invocation collection", stats)
+	}
+}
+
+// The first array is dead before the second allocation, even though its local
+// still contains the handle. Small functions must not retain that payload.
+func gcDeadSmallLocalModule() []byte {
+	body := []byte{1, 1, 0x63, 0, 0x41}
+	body = append(body, wasmtest.SLEB32(4096)...)
+	body = append(body, 0xfb, 7, 0, 0x21, 0, // array.new_default; local.set
+		0x41, 1, 0xfb, 7, 0, 0xfb, 0x0f, 0x0b) // new array; array.len
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 1}, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestGCDeadSmallLocalReleasedAtNextAllocation(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcDeadSmallLocalModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+		if candidate != compiled {
+			defer candidate.Close()
+		}
+		plan := candidate.genericGCFrameRoots()
+		if plan == nil || len(plan.safepoints) != 2 {
+			t.Fatalf("root plan = %+v", plan)
+		}
+		for _, site := range plan.safepoints {
+			if len(site.offsets) != 0 {
+				t.Fatalf("dead local retained at safepoint: %+v", site)
+			}
+		}
+		in, err := Instantiate(candidate, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := in.Invoke("run")
+		stats := in.gc.Stats()
+		in.Close()
+		if err != nil || !reflect.DeepEqual(got, []uint64{1}) {
+			t.Fatalf("run = %v, %v", got, err)
+		}
+		if stats.LiveObjects != 1 {
+			t.Fatalf("retained dead array: %+v", stats)
+		}
+	}
+}
+
+func BenchmarkGCDeadSmallLocalCompilation(b *testing.B) {
+	data := gcDeadSmallLocalModule()
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithFunctionWorkers(1)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		compiled, err := Compile(cfg, data)
+		if err != nil {
+			b.Fatal(err)
+		}
+		compiled.Close()
+	}
+}
+
+func BenchmarkGCDeadSmallLocalCollection(b *testing.B) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcDeadSmallLocalModule())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, ForceMajorEveryMinor: true}})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		got, err := in.Invoke("run")
+		if err != nil || len(got) != 1 || got[0] != 1 {
+			b.Fatalf("run = %v, %v", got, err)
+		}
+	}
+	stats := in.gc.Stats()
+	b.ReportMetric(float64(stats.PromotedBytes)/float64(b.N), "promoted-B/op")
+	b.ReportMetric(float64(stats.YoungBytesCopied)/float64(b.N), "copied-B/op")
+	b.ReportMetric(float64(stats.LiveObjects), "live-objects")
+}
+
+func TestGCDeadLocalPreservesHiddenOperandRoot(t *testing.T) {
+	for _, locals := range []byte{1, 5, 65} {
+		for _, call := range []bool{false, true} {
+			// The final local read remains on the operand stack across collection.
+			body := []byte{1, locals, 0x63, 0, 0x41, 0xc9, 0, 0xfb, 0, 0, 0x21, locals - 1, 0x20, locals - 1, 0x02, 0x40, 0x0b}
+			if call {
+				body = append(body, 0x10, 1)
+			} else {
+				body = append(body, 0xfb, 1, 0, 0x1a)
+			}
+			body = append(body, 0xfb, 2, 0, 0, 0x0b)
+			functions := [][]byte{{1}}
+			bodies := [][]byte{append(wasmtest.ULEB(uint32(len(body))), body...)}
+			if call {
+				functions = append(functions, []byte{2})
+				bodies = append(bodies, wasmtest.Code([]byte{0xfb, 1, 0, 0x1a, 0x0b}))
+			}
+			data := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}), wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, wasmtest.Vec(functions...)),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+				wasmtest.Section(10, wasmtest.Vec(bodies...)))
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
+				if candidate != compiled {
+					defer candidate.Close()
+				}
+				for _, cfg := range []GCConfig{
+					{CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true},
+					{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 8, TinyCollectEveryAlloc: true, VerifyAfterCollect: true},
+				} {
+					in, err := Instantiate(candidate, InstantiateOptions{GC: cfg})
+					if err != nil {
+						t.Fatal(err)
+					}
+					got, err := in.Invoke("run")
+					in.Close()
+					if err != nil || !reflect.DeepEqual(got, []uint64{73}) {
+						t.Fatalf("%d locals, call %v, profile %d: run=%v,%v", locals, call, cfg.Profile, got, err)
+					}
+				}
+			}
+		}
 	}
 }

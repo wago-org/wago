@@ -330,6 +330,7 @@ type fn struct {
 	nParams             int
 	nLocals             int           // params + declared locals
 	localType           []machineType // per-local machine type
+	gcLocalTypes        []uint64      // collector reference types, independent of local liveness
 	localSlot           []uint32      // low 24 bits: byte offset; high 8 bits: bounded local-reference count
 	gcOpcodeBarrier     bool          // current 0xfb opcode emits real barrier work
 	gcResolved          gcResolvedObject
@@ -3562,7 +3563,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if optsFeatures := sc.amd64Features; !optsFeatures.Has(shared.AMD64BMI2) {
 		bmi2Rorx = false
 	}
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, moduleGlobalRegionalLease: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), moduleHasSIMD: moduleHasSIMD, compactLoopAlign32: policy.EnabledOption(optCompactLoopAlign32) && len(c.BodyBytes) <= 64, bmi2Rorx: bmi2Rorx, gcSharedResolver: hints.flags.has(hintGCSharedResolver), gcDeferResolver: hints.flags.has(hintGCDeferredResolver), classifier: sc.classifier}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, gcLocalTypes: f.gcLocalTypes, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, moduleGlobalRegionalLease: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), moduleHasSIMD: moduleHasSIMD, compactLoopAlign32: policy.EnabledOption(optCompactLoopAlign32) && len(c.BodyBytes) <= 64, bmi2Rorx: bmi2Rorx, gcSharedResolver: hints.flags.has(hintGCSharedResolver), gcDeferResolver: hints.flags.has(hintGCDeferredResolver), classifier: sc.classifier}
 	// Transfer pointer scratch ownership to the active function. Cached slice
 	// headers must not keep detached backings alive when these buffers grow.
 	sc.transient.tmpRoots = nil
@@ -3626,17 +3627,51 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	} else {
 		f.localType = f.localType[:nLocals]
 	}
+	// A dead local can still supply a live operand-stack reference. Preserve
+	// its declared reference type independently of the compacted frame roots.
+	f.gcLocalTypes = f.gcLocalTypes[:0]
+	if gcFrameRoots != nil {
+		words := (nLocals + 63) / 64
+		if cap(f.gcLocalTypes) < words {
+			f.gcLocalTypes = make([]uint64, words)
+		} else {
+			f.gcLocalTypes = f.gcLocalTypes[:words]
+			clear(f.gcLocalTypes)
+		}
+	}
+	isGCType := func(typ wasm.ValType) bool {
+		if gcFrameRoots == nil || typ.Kind() != wasm.ValRef {
+			return false
+		}
+		heap := typ.Ref().Heap()
+		if heap.Kind() == wasm.HeapTypeIndex {
+			index := heap.Type().Index
+			if int(index) < len(gcTypeLayouts) && gcTypeLayouts[index].Type != nil {
+				kind := gcTypeLayouts[index].Type.Comp.Kind
+				return kind == wasm.CompStruct || kind == wasm.CompArray
+			}
+		}
+		return gcFrameRefType(m, typ)
+	}
 	i := 0
 	for _, p := range ft.Params {
+		if isGCType(p) {
+			f.gcLocalTypes[i/64] |= uint64(1) << uint(i%64)
+		}
 		f.localType[i] = mtOf(p)
 		i++
 	}
 	for _, run := range c.Locals.Runs {
+		gcRef := isGCType(run.Type)
 		for k := 0; k < int(run.Count); k++ {
+			if gcRef {
+				f.gcLocalTypes[i/64] |= uint64(1) << uint(i%64)
+			}
 			f.localType[i] = mtOf(run.Type)
 			i++
 		}
 	}
+
 	if cap(f.localSlot) < nLocals {
 		f.localSlot = make([]uint32, nLocals)
 	} else {
