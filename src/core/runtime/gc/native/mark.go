@@ -144,7 +144,7 @@ func (c *Collector) drainNurseryMarkStack() uint64 {
 		if runtime.GOARCH == "amd64" && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
 			continue
 		}
-		c.scanObjectRefs(h, c.markNurseryRef)
+		c.scanNurseryObject(h)
 	}
 	return scanned
 }
@@ -173,7 +173,7 @@ func (c *Collector) drainNurseryMarkStackForPromotion() uint64 {
 		if runtime.GOARCH == "amd64" && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
 			continue
 		}
-		c.scanObjectRefs(h, c.markNurseryRef)
+		c.scanNurseryObject(h)
 	}
 	return scanned
 }
@@ -212,6 +212,20 @@ func (c *Collector) markRef(r Ref) {
 	c.mark[h] = true
 	c.markStack = append(c.markStack, h)
 }
-func (c *Collector) scanObject(h uint32) { c.scanObjectRefs(h, c.markRef) }
+func (c *Collector) scanObject(h uint32) {
+	if runtime.GOARCH == "amd64" {
+		c.scanObjectMark(h)
+		return
+	}
+	c.scanObjectRefs(h, c.markRef)
+}
+
+func (c *Collector) scanNurseryObject(h uint32) {
+	if runtime.GOARCH == "amd64" {
+		c.scanObjectNursery(h)
+		return
+	}
+	c.scanObjectRefs(h, c.markNurseryRef)
+}
 
 func (c *Collector) VisitClassifiedRootRef(_ RootClass, r Ref) bool { return c.VisitRootRef(r) }
