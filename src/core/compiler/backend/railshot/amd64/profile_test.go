@@ -256,6 +256,48 @@ func TestProfileDeferredExpressionOrigins(t *testing.T) {
 	}
 }
 
+func TestProfileInlineConstantArgument(t *testing.T) {
+	withInlineEnabled(t, func() {
+		m := modFuncs(t,
+			funcDef{params: []wasm.ValType{wasm.I32, wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0, 0x20, 0, 0x41, 7, 0x10, 1, 0x0b}},
+			funcDef{params: []wasm.ValType{wasm.I32, wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0, 0x20, 0, 0x20, 1, 0x6a, 0x0b}},
+		)
+		for _, compact := range []bool{false, true} {
+			for _, workers := range []int{1, 4} {
+				plain, err := CompileModuleWith(m, CompileOptions{CompactNative: compact, Workers: workers, DeferCodeMapping: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var stats ModuleStats
+				observed, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Profile: true, SourceMaps: true, CompactNative: compact, Workers: workers, DeferCodeMapping: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(plain.Code, observed.Code) {
+					t.Fatal("profile metadata changed constant-argument code")
+				}
+				if err := jitprofile.ValidateInlineSources(stats.SourceRanges, stats.SourceFrames); err != nil {
+					t.Fatal(err)
+				}
+				seen := false
+				for _, source := range stats.SourceRanges {
+					if source.InlineParent == 0 {
+						continue
+					}
+					parents := jitprofile.InlineCallers(stats.SourceFrames, source.InlineParent)
+					if source.Function != 1 || source.WasmOffset != 5 || len(parents) != 1 || parents[0].Function != 0 || parents[0].WasmOffset != 5 {
+						t.Fatalf("wrong add provenance: %+v parents=%+v", source, parents)
+					}
+					seen = true
+				}
+				if seen == compact {
+					t.Fatalf("compact%v workers%d: inline source present=%v", compact, workers, seen)
+				}
+			}
+		}
+	})
+}
+
 func TestProfileInlineCallerLocations(t *testing.T) {
 	data := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

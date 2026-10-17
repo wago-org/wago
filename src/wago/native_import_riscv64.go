@@ -66,6 +66,10 @@ func railshotNativeImportArenaBytes(c *Compiled, imports resolvedImports) int {
 	return 0
 }
 
+func railshotRequiresPrivateOwnedHostThunk(c *Compiled) bool {
+	return c != nil
+}
+
 func railshotNativeContextIdentity(jm *coreruntime.JobMemory) uintptr { return jm.RV64NativeContext() }
 func railshotSetNativeContextIdentity(jm *coreruntime.JobMemory, identity uintptr) {
 	jm.SetRV64NativeContext(identity)

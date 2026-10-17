@@ -147,4 +147,5 @@ func (f *fn) restoreIfPrefix(fr *ctrlFrame) {
 	head.next, first.prev = first, head
 	root.next, result.prev = result, root
 	result.next, head.prev = head, result
+	f.s.pendingPrefix = nil
 }

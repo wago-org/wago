@@ -86,8 +86,8 @@ func TestGCResolvedHandleReuseAndInvalidation(t *testing.T) {
 		0x0b,
 	}
 	stats = gcResolveReuseStats(t, []byte{0x5e, 0x7f, 0x00}, refTo0TwoI32, arrayBody)
-	if stats.GCHandleResolutions != 1 || stats.GCHandleResolutionReuse != 0 {
-		t.Fatalf("array len/get resolutions = %d reused = %d, want 1/0", stats.GCHandleResolutions, stats.GCHandleResolutionReuse)
+	if stats.GCHandleResolutions != 1 || stats.GCHandleResolutionReuse != 1 {
+		t.Fatalf("array len/get resolutions = %d reused = %d, want 1/1", stats.GCHandleResolutions, stats.GCHandleResolutionReuse)
 	}
 
 	savedDead := deadGCNewEnabled
@@ -168,5 +168,113 @@ func TestModuleSharedGCResolverStubReducesDenseSites(t *testing.T) {
 	}
 	if distinctShared.Compile.FunctionAttempts != 1 {
 		t.Fatalf("distinct one-function attempts = %d, want 1", distinctShared.Compile.FunctionAttempts)
+	}
+}
+
+func TestModuleGCResolverFamilyCounts(t *testing.T) {
+	for _, kinds := range [][]gcSharedStubKind{nil, {gcSharedStubResolveObject}, {gcSharedStubResolveSubtypeObject}, {gcSharedStubResolveBoundedObject}, {gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject}} {
+		relocs := make([]callReloc, len(kinds))
+		for i, kind := range kinds {
+			relocs[i].gcStub = kind
+		}
+		code, offsets := buildModuleGCSharedStubs([][]callReloc{relocs})
+		if got := countGCSharedStubBodies(offsets); got != len(kinds) {
+			t.Fatalf("families %v: got %d bodies", kinds, got)
+		}
+		for _, kind := range kinds {
+			if offsets[kind] < 0 || offsets[kind] >= len(code) {
+				t.Fatalf("family %d: invalid offset %d", kind, offsets[kind])
+			}
+		}
+		for i := range kinds {
+			for j := i + 1; j < len(kinds); j++ {
+				if offsets[kinds[i]] == offsets[kinds[j]] {
+					t.Fatal("resolver families share a body offset")
+				}
+			}
+		}
+	}
+}
+
+func TestModuleMixedGCResolverDiagnostics(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	savedShared, savedReuse := gcSharedStubsEnabled, gcResolveReuseEnabled
+	gcSharedStubsEnabled, gcResolveReuseEnabled = true, false
+	defer func() { gcSharedStubsEnabled, gcResolveReuseEnabled = savedShared, savedReuse }()
+	// Distinct final-type functions select the old exact resolver island. An
+	// open-type function adds the subtype resolver without changing that crossover.
+	body := wasmtest.Code([]byte{0x20, 0, 0xfb, 2, 0, 0, 0x0b})
+	open := wasmtest.Code([]byte{0x20, 0, 0xfb, 2, 1, 0, 0x0b})
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 0}, []byte{0x50, 0, 0x5f, 1, 0x7f, 0}, []byte{0x60, 1, 0x63, 0, 1, 0x7f}, []byte{0x60, 1, 0x63, 1, 1, 0x7f})),
+		wasmtest.Section(3, wasmtest.Vec([]byte{2}, []byte{2}, []byte{3})),
+		wasmtest.Section(10, wasmtest.Vec(body, body, open)),
+	)
+	for _, deferMapping := range []bool{false, true} {
+		m, err := wasm.DecodeModule(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatal(err)
+		}
+		var stats ModuleStats
+		c, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, DeferCodeMapping: deferMapping, Stats: &stats})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.CodeImage != nil {
+			c.CodeImage.Close()
+		}
+		if stats.GCSharedStubs != 2 || stats.GCSharedStubCallSites != 3 || stats.GCSharedStubBytes == 0 {
+			t.Fatalf("defer=%v: bodies=%d calls=%d bytes=%d", deferMapping, stats.GCSharedStubs, stats.GCSharedStubCallSites, stats.GCSharedStubBytes)
+		}
+	}
+}
+
+func TestArrayLenParameterAdmission(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, tc := range []struct {
+		name         string
+		array, param []byte
+		direct       bool
+	}{
+		{"final-nullable", []byte{0x5e, 0x7f, 1}, []byte{0x63, 0}, true},
+		{"final-nonnull", []byte{0x5e, 0x7f, 1}, []byte{0x64, 0}, true},
+		{"open-nullable", []byte{0x50, 0, 0x5e, 0x7f, 1}, []byte{0x63, 0}, true},
+		{"open-nonnull", []byte{0x50, 0, 0x5e, 0x7f, 1}, []byte{0x64, 0}, true},
+		{"abstract", []byte{0x5e, 0x7f, 1}, []byte{0x6a}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			signature := append([]byte{0x60, 1}, tc.param...)
+			signature = append(signature, 1, 0x7f)
+			data := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(tc.array, signature)), wasmtest.Section(3, wasmtest.Vec([]byte{1})), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xfb, 0x0f, 0x0b}))))
+			m, err := wasm.DecodeModule(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := wasm.ValidateModule(m); err != nil {
+				t.Fatal(err)
+			}
+			var stats ModuleStats
+			c, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, GCArrayHelpers: true, Stats: &stats})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.CodeImage.Close()
+			if got, want := stats.Funcs[0].GCHandleResolutions, tc.direct && gcSharedStubsEnabled; (got != 0) != want {
+				t.Fatalf("resolutions=%d, want direct=%v", got, want)
+			}
+		})
+	}
+}
+
+func TestArrayLenParameterRejectsInlineAndNonParameterLocals(t *testing.T) {
+	for _, tc := range []struct{ base, local, inline int }{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}} {
+		f := fn{s: newStack(), localBase: tc.base, inlineDepth: tc.inline, ft: &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))}}}
+		f.pushValue(storage{kind: stLocalRef, typ: mtI64, idx: uint32(tc.local)})
+		if _, ok := f.gcArrayLenParameterType(); ok {
+			t.Fatalf("base%d local%d admitted", tc.base, tc.local)
+		}
 	}
 }

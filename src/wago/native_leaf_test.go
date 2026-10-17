@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && arm64 && !tinygo
+//go:build (linux || darwin || windows) && (amd64 || arm64) && !tinygo
 
 package wago
 
@@ -96,17 +96,21 @@ func TestNativeScalarLeafRandomizedPairAndFallback(t *testing.T) {
 }
 
 func TestNativeScalarLeafLoopAllowsGCAndCancellation(t *testing.T) {
+	testNativeLeafLoopScheduling(t, hostYieldLoopModule(), testImports("env.step", nativeLeafIncrement))
+}
+
+func testNativeLeafLoopScheduling(t *testing.T, module []byte, imports *Imports) {
 	if codeProfileEnabled {
 		t.Skip("profiling retains Go callbacks")
 	}
 	old := runtime.GOMAXPROCS(1)
 	defer runtime.GOMAXPROCS(old)
-	c, err := Compile(NewRuntimeConfig(), hostYieldLoopModule())
+	c, err := Compile(NewRuntimeConfig(), module)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.step", nativeLeafIncrement)})
+	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
 	if err != nil {
 		t.Fatal(err)
 	}

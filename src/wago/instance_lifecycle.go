@@ -726,7 +726,13 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 	}
 	if in.c.threadedMemory0() {
 		cleanup.run(func() { runtime.ReleaseJobMemory(in.jm) })
-		if !managedMemories && in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
+		if in.ownsMem {
+			cleanup.run(func() {
+				backing := in.memory.jobMemory()
+				in.memory.ownerClosed()
+				runtime.ReleaseJobMemory(backing)
+			})
+		} else if !managedMemories && in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
 			cleanup.run(in.memory.detachImporter)
 		}
 	} else if in.ownsMem {

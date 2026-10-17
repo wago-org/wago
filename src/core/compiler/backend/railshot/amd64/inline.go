@@ -484,12 +484,14 @@ type inlineTarget struct {
 }
 
 const (
-	inlineI32AddConstFlag = uint32(1 << 31)
-	inlineRecursiveFlag   = uint32(1 << 30)
-	inlineParamMask       = inlineRecursiveFlag - 1
+	inlineI32AddConstFlag  = uint32(1 << 31)
+	inlineRecursiveFlag    = uint32(1 << 30)
+	inlineI32AddParamsFlag = uint32(1 << 29)
+	inlineParamMask        = inlineI32AddParamsFlag - 1
 )
 
 func (t *inlineTarget) isI32AddConst() bool    { return t.params&inlineI32AddConstFlag != 0 }
+func (t *inlineTarget) isI32AddParams() bool   { return t.params&inlineI32AddParamsFlag != 0 }
 func (t *inlineTarget) i32AddImmediate() int32 { return int32(t.localDeclBytes) }
 func (t *inlineTarget) recursive() bool        { return t.params&inlineRecursiveFlag != 0 }
 func (t *inlineTarget) paramCount() int        { return int(t.params & inlineParamMask) }
@@ -625,6 +627,8 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		if addConst {
 			params |= inlineI32AddConstFlag
 			localDeclBytes = uint32(addImmediate)
+		} else if facts.declaredLocals == 0 && inlineI32AddParams(m.Code[i].BodyBytes, ft) {
+			params |= inlineI32AddParamsFlag
 		}
 		if recursiveInlineCandidate(m, allHints, i, facts, policy) {
 			params |= inlineRecursiveFlag
@@ -649,6 +653,30 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		pruneNestedSizeInlineTargets(m, &targets)
 	}
 	return targets
+}
+
+func inlineI32AddParams(body []byte, ft *wasm.CompType) bool {
+	if ft == nil || len(ft.Params) != 2 || ft.Params[0] != wasm.I32 || ft.Params[1] != wasm.I32 ||
+		len(ft.Results) != 1 || ft.Results[0] != wasm.I32 {
+		return false
+	}
+	r := wasm.ReaderFrom(body)
+	for want := uint32(0); want < 2; want++ {
+		op, err := r.Byte()
+		if err != nil || op != 0x20 {
+			return false
+		}
+		index, err := r.U32()
+		if err != nil || index != want {
+			return false
+		}
+	}
+	add, err := r.Byte()
+	if err != nil || add != 0x6a {
+		return false
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && !r.HasNext()
 }
 
 func inlineI32AddConst(body []byte, ft *wasm.CompType) (bool, int32) {
@@ -974,6 +1002,23 @@ func inlinePlanTouchesMemory(callees []*inlineTarget) bool {
 func (f *fn) inlineCall(t *inlineTarget) error {
 	f.stats.call(callKindInline)
 	start := f.a.Len()
+	if t.isI32AddParams() {
+		right := f.s.back()
+		left := baseOfValentBlock(right).prev
+		if right.isValue() && right.st.kind == stConst || left.isValue() && left.st.kind == stConst {
+			if !treeReorderSafe(left) || !treeReorderSafe(right) {
+				f.materializeTrapsBefore(f.s.head)
+			}
+			if profileEnabled && f.stats != nil && f.stats.RecordSources {
+				previous := f.enterProfileInlineAdd(t)
+				defer f.leaveProfileInlineAdd(previous)
+			}
+			f.pushBinOp(opAdd, mtI32)
+			f.stats.peep("inline-i32-add-argument")
+			f.stats.addInlineSiteBytes(f.a.Len() - start)
+			return nil
+		}
+	}
 	if t.isI32AddConst() {
 		if !treeReorderSafe(f.s.back()) {
 			f.materializeTrapsBefore(f.s.head)

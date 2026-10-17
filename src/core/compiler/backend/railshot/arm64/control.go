@@ -1662,6 +1662,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	}
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
 	fr.set(ctrlEntryUnreachable, f.unreachable)
+	if f.straightLineBlock(r, kind, pN, rN, res0) {
+		fr.controlSite = straightLineBlockSite
+	}
 	if kind == cfLoop {
 		fr.branchN = uint32(pN)
 	} else {
@@ -1698,6 +1701,13 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	if f.unreachable {
 		f.pushCtrl(&fr)
 		f.releaseCtrlMerge(&fr)
+		return nil
+	}
+	if fr.isStraightLineBlock() {
+		fr.set(ctrlRegMerge1, false)
+		fr.height = f.depth()
+		f.pushCtrl(&fr)
+		f.stats.peep("straight-line-block")
 		return nil
 	}
 	if kind == cfIf {
@@ -2468,7 +2478,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	// catch continuation observe the owner, even when caller and callee share Memory.
 	f.restoreEHInstanceContext(recordOff)
 	if f.memSizeReg != regNone {
-		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
+		f.loadMemoryCache()
 	}
 	f.deriveModuleGlobals()
 	f.derivePinnedGlobals()
@@ -2595,6 +2605,14 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	// ctrl backing is reused across functions. Clear the popped slot so its
 	// variable-sized type and loop-analysis slices do not stay live in scratch.
 	f.popCtrl()
+
+	if fr.isStraightLineBlock() {
+		f.releaseCtrlMerge(&fr)
+		if f.unreachable || f.depth() != fr.height+fr.resultN {
+			return fmt.Errorf("straight-line block stack height mismatch")
+		}
+		return nil
+	}
 
 	if fr.kind == cfFunc {
 		if !f.unreachable {

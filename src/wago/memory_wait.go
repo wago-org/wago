@@ -3,6 +3,7 @@ package wago
 import (
 	"context"
 	"errors"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +21,7 @@ var errMemoryWaitClosed = errors.New("wago: shared memory closed while waiting")
 type memoryWaiterState struct {
 	byOffset map[uint64]*memoryWaitQueue
 	active   uint32
+	backing  *coreruntime.JobMemory
 }
 
 // memoryWaiters contains entries only for memories with active parked calls.
@@ -80,6 +82,15 @@ func (m *Memory) wait(ctx context.Context, offset, expected uint64, timeout int6
 		s.mu.Unlock()
 		return 0, &TrapError{Code: TrapLinMemOutOfBounds}
 	}
+	// Publish before comparing the value, not just after queue insertion. A
+	// concurrent native store+notify must acquire this mutex once comparison
+	// starts, or it could miss a waiter that already observed the old value.
+	// The native empty-notify check supplies the matching StoreLoad barrier.
+	m.jm.SetSharedNotifyPending(true)
+	clearPending := func() {
+		ws := s.waiterStateLocked(false)
+		m.jm.SetSharedNotifyPending(ws != nil && ws.active != 0)
+	}
 	p := unsafe.Pointer(&b[offset])
 	var actual uint64
 	if size == 4 {
@@ -88,14 +99,16 @@ func (m *Memory) wait(ctx context.Context, offset, expected uint64, timeout int6
 		actual = atomic.LoadUint64((*uint64)(p))
 	}
 	if actual != expected {
+		clearPending()
 		s.mu.Unlock()
 		return memoryWaitNotEqual, nil
 	}
 	if timeout == 0 {
+		clearPending()
 		s.mu.Unlock()
 		return memoryWaitTimedOut, nil
 	}
-	w := s.addWaiterLocked(offset)
+	w := s.addWaiterLocked(offset, m.jm)
 	s.mu.Unlock()
 
 	if timeout < 0 {
@@ -118,7 +131,7 @@ func (m *Memory) wait(ctx context.Context, offset, expected uint64, timeout int6
 	}
 }
 
-func (s *memoryState) addWaiterLocked(offset uint64) *memoryWaiter {
+func (s *memoryState) addWaiterLocked(offset uint64, backing *coreruntime.JobMemory) *memoryWaiter {
 	ws := s.waiterStateLocked(true)
 	q := ws.byOffset[offset]
 	if q == nil {
@@ -132,7 +145,9 @@ func (s *memoryState) addWaiterLocked(offset uint64) *memoryWaiter {
 		q.tail.next = w
 	}
 	q.tail = w
+	ws.backing = backing
 	ws.active++
+	backing.SetSharedNotifyPending(true)
 	return w
 }
 
@@ -167,6 +182,7 @@ func (s *memoryState) removeWaiterLocked(w *memoryWaiter) bool {
 	}
 	w.queue, w.prev, w.next = nil, nil, nil
 	ws.active--
+	ws.backing.SetSharedNotifyPending(ws.active != 0 || s.has(memoryStateClosed))
 	if q.head == nil {
 		delete(ws.byOffset, w.offset)
 	}

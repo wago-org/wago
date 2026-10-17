@@ -174,7 +174,7 @@ func gcBarrierClass(needsBarrier bool) codegen.GCBarrierClass {
 }
 
 func nativeStructAllocEligible(st *wasm.SubType, fields []codegen.GCFieldLayout) bool {
-	if !st.Final || len(fields) != len(st.Comp.Fields) {
+	if len(fields) != len(st.Comp.Fields) {
 		return false
 	}
 	for i, field := range st.Comp.Fields {

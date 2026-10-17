@@ -71,30 +71,38 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *c
 	if callsite < 0 && !gcBridge {
 		panic(gcHelperFailuref("generic GC arm64 host activation return PC %#x has no callsite map", retPC))
 	}
-	state := in.publicGCState()
-	state.mu.Lock()
-	defer state.mu.Unlock()
-	if state.hostActivationCount >= gcHostActivationLimit {
-		panic(gcHelperFailuref("generic GC host activation depth exceeds %d", gcHostActivationLimit))
-	}
-	index := state.hostActivationCount
-	activation := &state.hostActivations[index]
-	activation.ctrl = ctrl
-	activation.stack = stack
-	if callsite < 0 {
-		activation.noFrame = true
-	} else {
+	var base uintptr
+	if callsite >= 0 {
 		adjust := thunkAdjust + uintptr(plan.callsites[callsite].stackAdjust)
 		if savedSP > ^uintptr(0)-adjust {
 			panic(gcHelperFailuref("generic GC arm64 host activation frame base overflows"))
 		}
-		activation.base = savedSP + adjust
+		base = savedSP + adjust
+	}
+	state := in.publicGCState()
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	index := uint8(0)
+	for index < state.hostActivationCount && state.hostActivations[index].stack != nil {
+		index++
+	}
+	if index >= gcHostActivationLimit {
+		panic(gcHelperFailuref("generic GC host activation depth exceeds %d", gcHostActivationLimit))
+	}
+	if index == state.hostActivationCount {
+		state.hostActivationCount++
+	}
+	activation := &state.hostActivations[index]
+	activation.ctrl = ctrl
+	activation.stack = stack
+	activation.noFrame = callsite < 0
+	activation.base = base
+	if callsite >= 0 {
 		activation.callsite = uint32(callsite)
 	}
 	for i := range activation.savedControl {
 		activation.savedControl[i] = binary.LittleEndian.Uint64(control[i*8:])
 	}
-	state.hostActivationCount++
 	state.hostRootPlan = plan
 	state.hostCodeBase = in.base
 	state.hostCodeBytes = uintptr(len(in.c.code))
@@ -108,8 +116,8 @@ func (in *Instance) popGCHostActivation(token gcHostActivationToken) {
 	}
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	if state.hostActivationCount == 0 || token.index != state.hostActivationCount-1 {
-		panic(gcHelperFailuref("generic GC host activation stack is not LIFO"))
+	if token.index >= state.hostActivationCount || state.hostActivations[token.index].stack == nil {
+		panic(gcHelperFailuref("generic GC host activation token is inactive"))
 	}
 	activation := &state.hostActivations[token.index]
 	control := unsafe.Slice((*byte)(offHeapPtr(activation.ctrl)), abi.ARM64SyncHostCallSavedBytes)
@@ -117,7 +125,11 @@ func (in *Instance) popGCHostActivation(token gcHostActivationToken) {
 		binary.LittleEndian.PutUint64(control[i*8:], value)
 	}
 	*activation = gcHostActivation{}
-	state.hostActivationCount--
+	// Concurrent foreign roots need not resume in suspension order. Preserve
+	// occupied slots and trim only the empty suffix; new activations reuse holes.
+	for state.hostActivationCount > 0 && state.hostActivations[state.hostActivationCount-1].stack == nil {
+		state.hostActivationCount--
+	}
 	if state.hostActivationCount == 0 {
 		state.hostRootPlan = nil
 		state.hostCodeBase = 0

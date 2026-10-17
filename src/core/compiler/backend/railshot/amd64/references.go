@@ -46,7 +46,15 @@ func (f *fn) replaceStorage(e *elem, st storage) {
 		st.cold = e.st.cold
 	}
 	e.st = st
+	if regallocCheckEnabled {
+		f.checkTrackMemRef(e)
+	}
 	if e.prev != nil && e.next != nil {
+		if st.kind == stMemRef {
+			// A replacement can introduce a guard-backed load inside the
+			// previously checked prefix. Appended values need no reset.
+			f.s.pendingPrefix = nil
+		}
 		f.s.recordStorageEffects(st)
 		f.s.noteSpill(st)
 	}
@@ -54,6 +62,9 @@ func (f *fn) replaceStorage(e *elem, st storage) {
 
 func (f *fn) pushValue(st storage) *elem {
 	e := f.s.pushValue(st)
+	if regallocCheckEnabled {
+		f.checkTrackMemRef(e)
+	}
 	if profileEnabled && f.stats != nil && f.stats.RecordSources && st.kind == stMemRef {
 		f.rememberProfileNode(e)
 	}
@@ -61,6 +72,9 @@ func (f *fn) pushValue(st storage) *elem {
 }
 
 func (f *fn) erase(e *elem) {
+	if regallocCheckEnabled {
+		f.checkConsumeMemRef(e)
+	}
 	f.s.clearElemCold(e)
 	f.s.erase(e)
 }

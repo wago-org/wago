@@ -214,7 +214,7 @@ type CodegenStats struct {
 
 	// Pins.
 	PinnedLocals       int // integer/float locals given a dedicated register
-	PinnedGlobalsValue int // hot mutable-int globals value-pinned in this function
+	PinnedGlobalsValue int // hot mutable scalar globals value-pinned in this function
 	Residency          shared.ResidencyStats
 
 	CompileNanos     uint64

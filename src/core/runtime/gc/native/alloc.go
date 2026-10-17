@@ -139,7 +139,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		c.nurseryBump = off + size
 	}
 	if sp == spaceNursery {
-		e = handleEntry{off: off, size: size, allocSize: size, space: sp}
+		e = handleEntry{off: off, size: size, space: sp}
 	}
 	if err := injectFailure(c, failHandlePublication); err != nil {
 		if sp == spaceNursery {
@@ -208,6 +208,7 @@ func (c *Collector) newHandle(e handleEntry) uint32 {
 			generations[h]++
 		}
 		c.handles[h] = e
+		c.noteMajorHandle(h)
 		return h
 	}
 	c.handles = append(c.handles, e)
@@ -220,7 +221,9 @@ func (c *Collector) newHandle(e handleEntry) uint32 {
 	// the shared Throughput handle-growth path at a zero append avoids irrelevant
 	// epoch encoding work.
 	c.tinyGC.color = append(c.tinyGC.color, 0)
-	return uint32(len(c.handles) - 1)
+	h := uint32(len(c.handles) - 1)
+	c.noteMajorHandle(h)
+	return h
 }
 
 func (c *Collector) desc(id TypeID) (TypeDesc, error) {
@@ -306,8 +309,8 @@ func (c *Collector) zeroObjectPayload(r Ref) {
 	}
 	e := c.entry(r)
 	end := e.off + e.size
-	if e.allocSize > e.size {
-		end = e.off + e.allocSize
+	if e.space == spaceOld || e.space == spaceLarge {
+		end = e.off + c.throughput.handleAllocSize(*e)
 	}
 	start := e.off + PayloadOffset
 	if start > end {

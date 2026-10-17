@@ -17,7 +17,7 @@ type boundedTypedHostActivation struct {
 }
 
 func (a *boundedTypedHostActivation) localNativeMu() *sync.Mutex {
-	if a.entryNativeMu != nil && (a.root.threadedMemoryZero || a.root.usesIndependentExecution()) {
+	if a.entryNativeMu != nil && (a.root.usesPrivateThreadedExecution() || a.root.usesIndependentExecution()) {
 		return a.entryNativeMu
 	}
 	return nil
@@ -66,7 +66,7 @@ func (l parkedIndependentHostLease) resumeBoundedTyped(a *boundedTypedHostActiva
 	migrated := false
 	if goruntime.GOARCH == "arm64" {
 		l.mu.Lock()
-		if !a.root.threadedMemoryZero && !a.root.usesIndependentExecution() {
+		if !a.root.usesPrivateThreadedExecution() && !a.root.usesIndependentExecution() {
 			l.resumeBoundedTypedMigrated(a)
 			return
 		}

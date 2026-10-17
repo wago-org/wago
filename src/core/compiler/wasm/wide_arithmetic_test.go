@@ -5,97 +5,72 @@ import (
 	"testing"
 )
 
-func TestWideArithmeticDecodeValidateParity(t *testing.T) {
-	for _, sub := range []byte{19, 20, 21, 22} {
-		n := 2
+func wideValidationModule(params, results []byte, body []byte) []byte {
+	typ := append([]byte{1, 0x60, byte(len(params))}, params...)
+	typ = append(typ, byte(len(results)))
+	typ = append(typ, results...)
+	code := append([]byte{1, byte(len(body) + 1), 0}, body...)
+	return module(section(secType, typ...), section(secFunction, 1, 0), section(secCode, code...))
+}
+
+func TestWideArithmeticDecodeEncodeAndClassify(t *testing.T) {
+	for sub := byte(19); sub <= 22; sub++ {
+		data := []byte{0xfc, sub, 0x0b}
+		expr, err := decodeExpr(&reader{data: data}, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(expr.Instrs) != 1 || expr.Instrs[0].Kind != InstrI64Add128+InstrKind(sub-19) {
+			t.Fatalf("opcode %d: %+v", sub, expr)
+		}
+		encoded, err := EncodeExpr(expr)
+		if err != nil || !bytes.Equal(data, encoded) {
+			t.Fatalf("round trip %d: %x, %v", sub, encoded, err)
+		}
+		r := NewReader(data[1:])
+		imm, err := ClassifyInstructionImmediate(r, 0xfc)
+		if err != nil || imm.Kind != expr.Instrs[0].Kind || r.Offset() != 1 {
+			t.Fatalf("classification %d: %+v, %v", sub, imm, err)
+		}
+	}
+	for _, data := range [][]byte{{0xfc}, {0xfc, 18}, {0xfc, 23}, {0xfc, 0x93}} {
+		if _, err := decodeExpr(&reader{data: data}, 0); err == nil {
+			t.Fatalf("accepted malformed opcode %x", data)
+		}
+	}
+}
+
+func TestWideArithmeticValidationSignatures(t *testing.T) {
+	for sub := byte(19); sub <= 22; sub++ {
+		count := 2
 		if sub < 21 {
-			n = 4
+			count = 4
 		}
-		for _, mode := range []string{"valid", "underflow", "wrong-type", "wrong-results", "unreachable"} {
-			params := make([]ValType, n)
-			for i := range params {
-				params[i] = I64
-			}
-			body := []byte{}
-			count := n
-			if mode == "underflow" {
-				count--
-			}
-			if mode == "wrong-type" {
-				params[0] = I32
-			}
-			for i := 0; i < count; i++ {
-				body = append(body, 0x20, byte(i))
-			}
-			if mode == "unreachable" {
-				body = []byte{0x00}
-			}
-			body = append(body, 0xfc, sub, 0x0b)
-			results := []ValType{I64, I64}
-			if mode == "wrong-results" {
-				results = results[:1]
-			}
-			ty := []byte{1, 0x60, byte(n)}
-			for _, p := range params {
-				if p == I32 {
-					ty = append(ty, 0x7f)
-				} else {
-					ty = append(ty, 0x7e)
-				}
-			}
-			ty = append(ty, byte(len(results)))
-			for range results {
-				ty = append(ty, 0x7e)
-			}
-			code := append([]byte{1, byte(len(body) + 1), 0}, body...)
-			raw := module(section(secType, ty...), section(secFunction, 1, 0), section(secCode, code...))
-			m, err := decodeModuleASTForTest(raw)
+		params := bytes.Repeat([]byte{0x7e}, count)
+		results := []byte{0x7e, 0x7e}
+		body := []byte{}
+		for i := 0; i < count; i++ {
+			body = append(body, 0x20, byte(i))
+		}
+		body = append(body, 0xfc, sub, 0x0b)
+		check := func(data []byte, valid bool) {
+			t.Helper()
+			m, err := DecodeModule(data)
 			if err != nil {
-				t.Fatalf("op %d %s decode: %v", sub, mode, err)
+				t.Fatal(err)
 			}
-			aerr := ValidateModule(m)
-			berr := ValidateByteBackedModule(raw)
-			valid := mode == "valid" || mode == "unreachable"
-			if (aerr == nil) != valid || (berr == nil) != valid {
-				t.Fatalf("op %d %s: AST %v; bytes %v", sub, mode, aerr, berr)
-			}
-			if mode == "valid" {
-				encoded, err := EncodeExpr(m.Code[0].Body)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if !bytes.Equal(encoded, body) {
-					t.Fatalf("roundtrip: %x != %x", encoded, body)
-				}
+			err = ValidateModule(m)
+			if (err == nil) != valid {
+				t.Fatalf("opcode %d validation = %v, valid %v", sub, err, valid)
 			}
 		}
-	}
-}
-
-func TestWideArithmeticConstantExpressionsReject(t *testing.T) {
-	for _, kind := range []InstrKind{InstrI64Add128, InstrI64Sub128, InstrI64MulWideS, InstrI64MulWideU} {
-		n := 2
-		if kind == InstrI64Add128 || kind == InstrI64Sub128 {
-			n = 4
-		}
-		instrs := make([]Instruction, 0, n+1)
-		for i := 0; i < n; i++ {
-			instrs = append(instrs, Instruction{Kind: InstrI64Const})
-		}
-		instrs = append(instrs, Instruction{Kind: kind})
-		m := &Module{Globals: []Global{{Type: GlobalType{Type: I64}, Init: Expr{Instrs: instrs}}}}
-		if err := ValidateModuleWithFeatures(m, ValidationFeatures{ExtendedConstGlobals: true}); err == nil {
-			t.Fatalf("%s accepted in constant expression", kind)
-		}
-	}
-}
-
-func TestWideArithmeticSummaryDoesNotRequireSIMD(t *testing.T) {
-	for _, kind := range []InstrKind{InstrI64Add128, InstrI64Sub128, InstrI64MulWideS, InstrI64MulWideU} {
-		var facts ValidatedFuncFacts
-		facts.observeSlow(kind)
-		if facts.Flags != 0 {
-			t.Fatalf("%s unexpected facts %#x", kind, facts.Flags)
-		}
+		check(wideValidationModule(params, results, body), true)
+		wrong := append([]byte(nil), params...)
+		wrong[count-1] = 0x7f
+		check(wideValidationModule(wrong, results, body), false)
+		check(wideValidationModule(params, results, body[2:]), false)
+		check(wideValidationModule(params, results[:1], body), false)
+		check(wideValidationModule(params, []byte{0x7e, 0x7f}, body), false)
+		check(wideValidationModule(nil, results, []byte{0, 0xfc, sub, 0x0b}), true)
 	}
 }

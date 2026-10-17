@@ -172,8 +172,8 @@ func (f *fn) materializeF(e *elem) Reg {
 		f.a.LdrF(x, a64.SP, f.localOff(e.st.index()), e.st.typ == mtF64)
 		f.occupyF(e, x)
 		return x
-	case stLocalReg:
-		// Borrowed pinned float local: copy into an owned V register so the caller
+	case stLocalReg, stGlobReg:
+		// Borrowed pinned float local/global: copy into an owned V register so the caller
 		// may clobber it without corrupting the local.
 		x := f.allocFReg(0)
 		f.a.FmovReg(x, e.st.reg, e.st.typ == mtF64)
@@ -191,12 +191,12 @@ func (f *fn) materializeF(e *elem) Reg {
 
 // operandRegF returns a register holding e's value for READ-ONLY use as a NEON
 // source operand (never written, so it need not be a private copy). A pinned float
-// local is used directly and must not be released (owned=false); everything else is
+// local/global is used directly and must not be released (owned=false); everything else is
 // materialized into an owned scratch register the caller releases (owned=true).
 // This avoids the fmov-to-scratch that materializeF emits for a pinned local when
 // the value is only being read — the dominant per-op float overhead.
 func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
-	if e.elemKind() == ekValue && e.st.kind == stLocalReg {
+	if e.elemKind() == ekValue && (e.st.kind == stLocalReg || e.st.kind == stGlobReg) {
 		return e.st.reg, false
 	}
 	if e.elemKind() == ekValue && e.st.kind == stConst && e.st.typ.isFloat() {
@@ -525,6 +525,10 @@ func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64, poolRHS 
 	a := f.popValue()
 	s1, o1 := f.operandRegF(a)
 	f.fpinned = f.fpinned.add(s1)
+	var read regallocReadMask
+	if regallocCheckEnabled {
+		read = checkProtectRead(f, s1, true, f64)
+	}
 	oldSuppress := f.suppressFloatLiteral
 	f.suppressFloatLiteral = !poolRHS
 	s2, o2 := f.operandRegF(b)
@@ -543,6 +547,9 @@ func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64, poolRHS 
 		dst = f.allocFReg(0)
 	}
 	f.fpinned = f.fpinned.remove(s1)
+	if regallocCheckEnabled {
+		checkRestoreRead(f, read)
+	}
 	vop(dst, s1, s2, f64)
 	if o1 && dst != s1 {
 		f.releaseF(s1)
@@ -558,8 +565,15 @@ func (f *fn) fbinInto(dst Reg, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, 
 	a := f.popValue()
 	s1, o1 := f.operandRegF(a)
 	f.fpinned = f.fpinned.add(s1)
+	var read regallocReadMask
+	if regallocCheckEnabled {
+		read = checkProtectRead(f, s1, true, f64)
+	}
 	s2, o2 := f.operandRegF(b)
 	f.fpinned = f.fpinned.remove(s1)
+	if regallocCheckEnabled {
+		checkRestoreRead(f, read)
+	}
 	vop(dst, s1, s2, f64)
 	if o1 && dst != s1 {
 		f.releaseF(s1)
@@ -819,151 +833,49 @@ func (f *fn) loadFConstBits(bits uint64, f64 bool) Reg {
 // out-of-range. srcF64 selects the source width; dstWide the i64 destination.
 func (f *fn) f2iTrunc(dstWide, srcF64, signed bool) {
 	f.materializePendingTraps()
-	x := f.materializeF(f.popValue())
+	x, owned := f.operandRegF(f.popValue())
 	f.fpinned = f.fpinned.add(x)
 
 	minBits, maxBits := truncLimitBits(signed, srcF64, dstWide)
-	f.a.Fcmp(x, x, srcF64)
-	f.trapIf(a64.CondVS, trapTruncOverflow) // NaN (unordered)
 	lo := f.loadFConstBits(minBits, srcF64)
 	f.a.Fcmp(x, lo, srcF64)
 	f.releaseF(lo)
-	f.trapIf(a64.CondLE, trapTruncOverflow) // x <= lower-exclusive limit
+	f.trapIf(a64.CondLE, trapTruncOverflow) // x <= lower-exclusive limit, or unordered (NaN)
 	hi := f.loadFConstBits(maxBits, srcF64)
 	f.a.Fcmp(x, hi, srcF64)
 	f.releaseF(hi)
 	f.trapIf(a64.CondGE, trapTruncOverflow) // x >= upper-exclusive limit
 
 	r := f.allocReg(0)
-	switch {
-	case signed:
+	if signed {
 		f.a.Fcvtzs(r, x, srcF64, dstWide)
-	case !dstWide: // u32: a 64-bit signed cvt is exact on [0, 2^32)
-		f.a.Fcvtzs(r, x, srcF64, true)
-	default: // u64
-		f.truncU64InRange(x, r, srcF64)
+	} else {
+		f.a.Fcvtzu(r, x, srcF64, dstWide)
 	}
 	f.fpinned = f.fpinned.remove(x)
-	f.releaseF(x)
+	if owned {
+		f.releaseF(x)
+	}
 	f.pushReg(r, mtOfInt(dstWide))
 }
-
-// truncU64InRange converts x, already proven in [0, 2^64), to u64: a signed cvt
-// overflows for x >= 2^63, so bias by cvt(x - 2^63) + 2^63.
-func (f *fn) truncU64InRange(x, r Reg, srcF64 bool) {
-	p63 := f.loadFConstBits(floatBits2p63(srcF64), srcF64)
-	f.a.Fcmp(x, p63, srcF64)
-	simple := f.a.Bcond(a64.CondLT) // x < 2^63 (ordered)
-	f.a.Fsub(x, x, p63, srcF64)
-	f.a.Fcvtzs(r, x, srcF64, true)
-	t := f.allocReg(maskOf(r))
-	f.a.MovImm64(t, 0x8000000000000000)
-	f.a.Add64(r, r, t)
-	f.release(t)
-	done := f.a.Branch()
-	f.patchBranch19(simple, f.a.Len())
-	f.a.Fcvtzs(r, x, srcF64, true)
-	f.patchBranch26(done, f.a.Len())
-	f.releaseF(p63)
-}
-
-// floatBits2p63 returns the bit pattern of 2^63 in the given float width.
-func floatBits2p63(f64 bool) uint64 { return floatBits(math.Ldexp(1, 63), f64) }
 
 // --- saturating float→int truncation (0xFC 0-7): NaN→0, out-of-range clamps ---
 
+// AArch64 FCVTZS/FCVTZU already provide WebAssembly's saturating semantics:
+// truncate toward zero, clamp to the destination range, and map NaN to zero.
+// Reading the operand allows a pinned float local/global to stay borrowed.
 func (f *fn) truncSat(f64src, dstWide, signed bool) {
-	x := f.materializeF(f.popValue())
-	f.fpinned = f.fpinned.add(x)
+	x, owned := f.operandRegF(f.popValue())
 	r := f.allocReg(0)
-	f.pinned = f.pinned.add(r)
-	switch {
-	case signed:
-		f.truncSatSigned(x, r, f64src, dstWide)
-	case dstWide:
-		f.truncSatU64(x, r, f64src)
-	default:
-		f.truncSatU32(x, r, f64src)
-	}
-	f.pinned = f.pinned.remove(r)
-	f.fpinned = f.fpinned.remove(x)
-	f.releaseF(x)
-	f.pushReg(r, mtOfInt(dstWide))
-}
-
-func (f *fn) truncSatSigned(x, r Reg, f64src, dstWide bool) {
-	n := 32
-	if dstWide {
-		n = 64
-	}
-	f.a.Fcvtzs(r, x, f64src, dstWide)
-	f.a.Fcmp(x, x, f64src)
-	notNaN := f.a.Bcond(a64.CondVC) // ordered
-	f.a.MovImm64(r, 0)              // NaN → 0
-	toEnd := f.a.Branch()
-	f.patchBranch19(notNaN, f.a.Len())
-	hi := f.loadFConstBits(floatBits(math.Ldexp(1, n-1), f64src), f64src) // 2^(n-1)
-	f.a.Fcmp(x, hi, f64src)
-	f.releaseF(hi)
-	below := f.a.Bcond(a64.CondLT) // x < 2^(n-1) (ordered; NaN excluded above)
-	if dstWide {
-		f.a.MovImm64(r, 0x7FFFFFFFFFFFFFFF)
+	if signed {
+		f.a.Fcvtzs(r, x, f64src, dstWide)
 	} else {
-		f.a.MovImm32(r, 0x7FFFFFFF)
+		f.a.Fcvtzu(r, x, f64src, dstWide)
 	}
-	f.patchBranch19(below, f.a.Len())
-	f.patchBranch26(toEnd, f.a.Len())
-}
-
-func (f *fn) truncSatU32(x, r Reg, f64src bool) {
-	f.a.Fcvtzs(r, x, f64src, true) // i64 trunc; low 32 is the in-range u32
-	zero := f.loadFConstBits(floatBits(0, f64src), f64src)
-	f.a.Fcmp(x, zero, f64src)
-	f.releaseF(zero)
-	pos := f.a.Bcond(a64.CondGT) // x > 0 (ordered; NaN → not taken)
-	f.a.MovImm64(r, 0)           // NaN/≤0 → 0
-	toEnd := f.a.Branch()
-	f.patchBranch19(pos, f.a.Len())
-	hi := f.loadFConstBits(floatBits(math.Ldexp(1, 32), f64src), f64src)
-	f.a.Fcmp(x, hi, f64src)
-	f.releaseF(hi)
-	below := f.a.Bcond(a64.CondLT)
-	f.a.MovImm32(r, -1) // ≥2^32 → 0xFFFFFFFF
-	f.patchBranch19(below, f.a.Len())
-	f.patchBranch26(toEnd, f.a.Len())
-}
-
-func (f *fn) truncSatU64(x, r Reg, f64src bool) {
-	zero := f.loadFConstBits(floatBits(0, f64src), f64src)
-	f.a.Fcmp(x, zero, f64src)
-	f.releaseF(zero)
-	pos := f.a.Bcond(a64.CondGT)
-	f.a.MovImm64(r, 0)
-	end0 := f.a.Branch()
-	f.patchBranch19(pos, f.a.Len())
-	hi := f.loadFConstBits(floatBits(math.Ldexp(1, 64), f64src), f64src)
-	f.a.Fcmp(x, hi, f64src)
-	f.releaseF(hi)
-	inRange := f.a.Bcond(a64.CondLT)
-	f.a.MovImm64(r, 0xFFFFFFFFFFFFFFFF) // ≥2^64 → all ones
-	endMax := f.a.Branch()
-	f.patchBranch19(inRange, f.a.Len())
-	p63 := f.loadFConstBits(floatBits2p63(f64src), f64src)
-	f.a.Fcmp(x, p63, f64src)
-	simple := f.a.Bcond(a64.CondLT)
-	f.a.Fsub(x, x, p63, f64src)
-	f.a.Fcvtzs(r, x, f64src, true)
-	t := f.allocReg(maskOf(r))
-	f.a.MovImm64(t, 0x8000000000000000)
-	f.a.Add64(r, r, t)
-	f.release(t)
-	biasEnd := f.a.Branch()
-	f.patchBranch19(simple, f.a.Len())
-	f.a.Fcvtzs(r, x, f64src, true)
-	f.patchBranch26(biasEnd, f.a.Len())
-	f.releaseF(p63)
-	f.patchBranch26(endMax, f.a.Len())
-	f.patchBranch26(end0, f.a.Len())
+	if owned {
+		f.releaseF(x)
+	}
+	f.pushReg(r, mtOfInt(dstWide))
 }
 
 func (f *fn) fpromote() { // f32 → f64
@@ -1010,7 +922,7 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if f64 {
 		size = 8
 	}
-	if memoryIndex != 0 {
+	if memoryIndex != 0 || f.threadedMemory0 {
 		f.materializePendingLoads()
 		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
 		x := f.allocFReg(0)
@@ -1048,7 +960,7 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	f.materializePendingTraps()
 	xmm := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(xmm)
-	if memoryIndex != 0 {
+	if memoryIndex != 0 || f.threadedMemory0 {
 		f.materializePendingLoads()
 		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
 		f.a.StrFIdx(base, ea, xmm, disp, f64)
@@ -1075,6 +987,9 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 // helpers
 
 func (f *fn) loadFMemRef(dst Reg, e *elem) {
+	if regallocCheckEnabled {
+		f.checkConsumeMemRef(e)
+	}
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		previous := f.enterProfileNode(e)
 		defer f.switchProfileOrigin(previous)

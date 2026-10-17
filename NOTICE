@@ -3,6 +3,7 @@ under the licensing terms detailed in LICENSE:
 
 * Jairus Tanaka <me@jairus.dev>
 * Joshua Tenner <tenner.joshua@gmail.com>
+* Paul <luantak@pm.me>
 
 Portions of this software are derived from third-party works licensed under
 the following terms:
@@ -11,3 +12,8 @@ the following terms:
 
     Copyright (c) Bavarian Motor Works Corporation
     Apache License, Version 2.0 (https://opensource.org/licenses/Apache-2.0)
+
+* wasm.fyi benchmark fixtures
+
+    Copyright (c) 2026 wasm.fyi contributors
+    MIT License (tests/fixtures/wasmfyi/LICENSE)

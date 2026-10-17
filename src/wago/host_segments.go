@@ -15,7 +15,7 @@ func boundedModuleHostSegments(m *wasm.Module) bool {
 }
 
 func boundedModuleNativeHostBody(m *wasm.Module) bool {
-	return boundedModuleHostCode(m, true)
+	return coreruntime.NativeScalarLeafSupported && boundedModuleHostCode(m, true)
 }
 
 func boundedModuleHostCode(m *wasm.Module, native bool) bool {
@@ -24,32 +24,14 @@ func boundedModuleHostCode(m *wasm.Module, native bool) bool {
 		return false
 	}
 	for i, fn := range m.Code {
-		ft, ok := m.LocalFuncType(i)
-		if !ok || len(ft.Params) > 64 || len(ft.Results) > 64 {
+		if !numericHostFunction(m, i, fn) {
 			return false
 		}
-		for _, typ := range ft.Params {
-			if typ.Kind() != wasm.ValNum {
-				return false
-			}
-		}
-		for _, typ := range ft.Results {
-			if typ.Kind() != wasm.ValNum {
-				return false
-			}
-		}
-		var locals uint64
-		for _, run := range fn.Locals.Runs {
-			if run.Type.Kind() != wasm.ValNum {
-				return false
-			}
-			locals += uint64(run.Count)
-		}
 		proof := shared.BoundedHostSegments
-		if native {
+		if coreruntime.NativeScalarLeafSupported && native {
 			proof = shared.BoundedNativeHostBody
 		}
-		if locals > 64 || !proof(fn.BodyBytes, uint32(imports)) {
+		if !proof(fn.BodyBytes, uint32(imports)) {
 			return false
 		}
 	}
@@ -78,7 +60,7 @@ func (in *Instance) boundedHostSegments() bool {
 // Resource publication revokes the existing fast gate before sharing context.
 // Unknown bindings, mutable reference topology and external backing fail closed.
 func (in *Instance) isolatedNativeScalarLeaf() bool {
-	if in == nil || in.c == nil || !in.c.boundedNativeScalarLeaf() || in.executionFlags.Load()&executionFlagNativeScalarLeaf == 0 || !in.preparedFastStateValid() || !in.usesIndependentExecution() || codeProfileEnabled {
+	if !coreruntime.NativeScalarLeafSupported || in == nil || in.c == nil || !in.c.boundedNativeScalarLeaf() || in.executionFlags.Load()&executionFlagNativeScalarLeaf == 0 || !in.preparedFastStateValid() || !in.usesIndependentExecution() || codeProfileEnabled {
 		return false
 	}
 	if in.memoryDir != nil || len(in.globalCells) != 0 || in.tableDescPtr != 0 || in.gc != nil || in.c.needsFuncRefContext() || len(in.hostLog) != 0 {
@@ -103,9 +85,11 @@ func (in *Instance) isolatedNativeScalarLeaf() bool {
 // ARM64 integer popcount lowers through the SIMD allocator. A register-free
 // guest certificate must exclude it even though it does not affect FP control.
 func boundedIntegerModuleHostSegmentsFor(m *wasm.Module, noSIMD bool) bool {
-	if !boundedModuleHostSegments(m) {
-		return false
-	}
+	return boundedModuleHostSegments(m) && integerHostModuleRegistersFor(m, noSIMD)
+}
+
+// The selected CFG proof separately excludes helpers and unsupported memory operations.
+func integerHostModuleRegistersFor(m *wasm.Module, noSIMD bool) bool {
 	integer := func(t wasm.ValType) bool { return t == wasm.I32 || t == wasm.I64 }
 	for i := 0; i < m.FuncCount(); i++ {
 		ft, ok := m.FuncSignature(uint32(i))
@@ -143,7 +127,9 @@ func boundedIntegerModuleHostSegmentsFor(m *wasm.Module, noSIMD bool) bool {
 				return false
 			}
 			switch {
-			case op < 0x41: // control, locals, imported calls; established by the CFG proof
+			case op == 0x2a || op == 0x2b || op == 0x38 || op == 0x39: // FP memory accesses
+				return false
+			case op < 0x41: // control, locals, integer memory, imported calls; CFG proved separately
 			case op == 0x41 || op == 0x42:
 			case op >= 0x45 && op <= 0x5a: // integer comparisons
 			case op >= 0x67 && op <= 0x8a: // integer ALU
@@ -155,4 +141,82 @@ func boundedIntegerModuleHostSegmentsFor(m *wasm.Module, noSIMD bool) bool {
 		}
 	}
 	return true
+}
+
+func numericHostFunction(m *wasm.Module, index int, fn wasm.Func) bool {
+	ft, ok := m.LocalFuncType(index)
+	if !ok || len(ft.Params) > 64 || len(ft.Results) > 64 {
+		return false
+	}
+	for _, t := range ft.Params {
+		if t.Kind() != wasm.ValNum {
+			return false
+		}
+	}
+	for _, t := range ft.Results {
+		if t.Kind() != wasm.ValNum {
+			return false
+		}
+	}
+	var locals uint64
+	for _, run := range fn.Locals.Runs {
+		if run.Type.Kind() != wasm.ValNum {
+			return false
+		}
+		locals += uint64(run.Count)
+	}
+	return locals <= 64
+}
+
+// This is a scheduler certificate, not the resource-free private Go bridge
+// certificate. Only known-yielding local callees cut edges in their callers.
+func boundedFixedSharedHostSegments(m *wasm.Module) bool {
+	if m == nil || m.ImportedFuncCount() != 1 || len(m.Imports) != 1 || len(m.Memories) != 1 || len(m.Tables) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.Code) == 0 || len(m.Code) > 8 {
+		return false
+	}
+	memory := m.Memories[0]
+	if !memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min != memory.Limits.Max {
+		return false
+	}
+	for i, fn := range m.Code {
+		if !numericHostFunction(m, i, fn) {
+			return false
+		}
+	}
+	var bounded [8]bool
+	var yielding uint64
+	for pass := 0; pass < len(m.Code); pass++ {
+		progress := false
+		for i, fn := range m.Code {
+			if bounded[i] {
+				continue
+			}
+			ok, yields := shared.BoundedFixedSharedHostSegments(fn.BodyBytes, 1, yielding)
+			if !ok {
+				continue
+			}
+			bounded[i] = true
+			progress = true
+			if yields {
+				yielding |= uint64(1) << uint(i)
+			}
+		}
+		if !progress {
+			break
+		}
+	}
+	for i := range m.Code {
+		if !bounded[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (in *Instance) boundedFixedSharedHostPortal() bool {
+	// Keep resource-free bridge selection unchanged. This certificate only
+	// removes syscall scheduling around the existing full portal dispatcher.
+	return in.c.fixedSharedHostSegments && in.threadedMemoryZero &&
+		in.memoryDir != nil && len(in.memoryDir.memories) == 1 && len(in.memoryDir.owns) == 1 && in.memoryDir.owns[0] &&
+		in.executionFlags.Load()&executionFlagNativeScalarLeaf == 0
 }

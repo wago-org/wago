@@ -7,7 +7,7 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
-func TestGCCollectorLayoutEqualMatchesDeepEqual(t *testing.T) {
+func TestGCCollectorLayoutEqualMatchesPublicFields(t *testing.T) {
 	base := gc.TypeDesc{ID: 7, Kind: gc.KindStruct, Fields: []gc.FieldDesc{{Kind: gc.StorageI32, Offset: 4}}, Elem: gc.StorageI64, Size: 16, ElemSize: 8, Align: 8, HasRefs: true, Final: true, Super: 3, HasSuper: true}
 	check := func(a, b gc.TypeDesc) {
 		t.Helper()
@@ -16,8 +16,11 @@ func TestGCCollectorLayoutEqualMatchesDeepEqual(t *testing.T) {
 		}
 	}
 	check(base, base)
-	// Mutate every scalar field, so additions to TypeDesc must also be handled.
+	// Mutate every public scalar field; private derived scan caches are not layout identity.
 	for i := 0; i < reflect.TypeOf(base).NumField(); i++ {
+		if reflect.TypeOf(base).Field(i).PkgPath != "" {
+			continue
+		}
 		name := reflect.TypeOf(base).Field(i).Name
 		t.Run(name, func(t *testing.T) {
 			changed := base
@@ -49,5 +52,52 @@ func TestGCCollectorLayoutEqualMatchesDeepEqual(t *testing.T) {
 			x.Fields, y.Fields = a, b
 			check(x, y)
 		}
+	}
+}
+
+func TestGCCollectorLayoutIgnoresOptionalScanCache(t *testing.T) {
+	fields := make([]gc.StorageKind, 64)
+	for i := range fields {
+		fields[i] = gc.StorageI64
+	}
+	fields[63] = gc.StorageRefNull
+	cached, err := gc.NewStructDesc(0, fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := gc.TypeDesc{ID: cached.ID, Kind: cached.Kind, Size: cached.Size, Align: cached.Align, HasRefs: cached.HasRefs, Final: cached.Final, Fields: make([]gc.FieldDesc, len(cached.Fields))}
+	for i, f := range cached.Fields {
+		raw.Fields[i] = gc.FieldDesc{Kind: f.Kind, Offset: f.Offset}
+	}
+	if !gcCollectorLayoutEqual(cached, raw) || !gcCollectorLayoutEqual(raw, cached) {
+		t.Fatal("optional scan cache changed collector layout identity")
+	}
+	input := &Compiled{GCTypeDescs: []gc.TypeDesc{cached}}
+	loaded := publicArtifactRoundTrip(t, input)
+	defer loaded.Close()
+	if !reflect.DeepEqual(loaded.GCTypeDescs, input.GCTypeDescs) {
+		t.Fatal("scan plan not rebuilt after serialization")
+	}
+	c, err := gc.NewCollector(gc.Config{}, loaded.GCTypeDescs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	parent, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(parent, 63, gc.RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.CollectFull(gc.RefSliceRoots{parent}); err != nil {
+		t.Fatal(err)
+	}
+	if c.Stats().LiveObjects != 2 {
+		t.Fatal("serialized scan plan lost child")
 	}
 }

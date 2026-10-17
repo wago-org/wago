@@ -8,6 +8,7 @@ import (
 )
 
 func checkSourceBegin(f *fn, hostAdapter bool) {
+	f.checkObserveGPWrites()
 	admit := !hostAdapter && !f.scalarSummary.Eligible && f.singleRegResult && f.skipFence && !f.interruptible &&
 		!f.moduleEH && f.gcFrameRoots == nil && len(f.customInstructions) == 0 && len(f.gcTypeLayouts) == 0 &&
 		len(f.m.Memories) == 0 && len(f.m.Globals) == 0

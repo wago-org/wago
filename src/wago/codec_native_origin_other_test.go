@@ -116,12 +116,20 @@ func TestCompiledCodecReferenceFunctionCapability(t *testing.T) {
 	if err := unmarshalCompiledMetadata(&decoded, plain); err != nil || decoded.nativeReferenceFunctionABI {
 		t.Fatal("reused decoder retained function witness", err)
 	}
-	for _, bit := range []uint{17, 18, 31} {
+	for _, bit := range []uint{17, 18} {
 		c := base
 		c.requiredAMD64Features = shared.AMD64Features(1 << bit)
-		if _, err := marshalCompiledMetadata(&c); err == nil {
-			t.Fatal("CPU bit aliases native execution metadata", bit)
+		blob, err := marshalCompiledMetadata(&c)
+		if err != nil {
+			t.Fatal(err)
 		}
+		if err := unmarshalCompiledMetadata(&decoded, blob); err == nil || decoded.nativeReferenceFunctionABI {
+			t.Fatal("unknown CPU bit became native execution metadata", bit, err)
+		}
+	}
+	base.requiredAMD64Features = shared.AMD64Features(1 << 20)
+	if _, err := marshalCompiledMetadata(&base); err == nil {
+		t.Fatal("out-of-field CPU bit encoded")
 	}
 	base.requiredAMD64Features = shared.AMD64Features(1 << 16)
 	unknown, err := marshalCompiledMetadata(&base)

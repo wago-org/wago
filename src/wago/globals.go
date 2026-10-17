@@ -1299,7 +1299,11 @@ type Compiled struct {
 	MemMinPages           uint32 // memory-0 initial size (pages); allocated at instantiate
 	MemMaxPages           uint32 // memory-0 reservation ceiling; 0 means use the engine default
 	MemHasMax             bool   // memory-0 declaration/import has an explicit maximum
-	memoryDir             *compiledMemoryDirectory
+	// Source-only shared host certificates occupy alignment padding before memoryDir.
+	// Codecs discard both; resource-free private bridges do not consume them.
+	fixedSharedHostSegments bool
+	fixedSharedHostInteger  bool
+	memoryDir               *compiledMemoryDirectory
 
 	HasStart       bool // module declares a start function to run at instantiate
 	StartLocalFunc int  // its local function index (valid when HasStart && !StartIsImport)
@@ -1334,10 +1338,12 @@ type Compiled struct {
 	needsFuncRefContextHeader bool
 	// registerABIDisabled keeps descriptor publication aligned with the actual
 	// compile policy. False preserves legacy hand-built Compiled behavior.
-	registerABIDisabled bool
-	hasGCCodeTelemetry  bool // occupies existing flag padding
-	requiredFeatures    CoreFeatures
-	importFuncSigs      []FuncSig
+	registerABIDisabled   bool
+	hasGCCodeTelemetry    bool // occupies existing flag padding
+	requiresNotifyPending bool
+	requiresARM64LSE      bool // shares flag padding without growing Compiled
+	requiredFeatures      CoreFeatures
+	importFuncSigs        []FuncSig
 
 	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state
 
@@ -1413,11 +1419,11 @@ func (c *Compiled) supportsGoHostDispatchTag() bool {
 }
 
 func (c *Compiled) boundedNativeScalarLeaf() bool {
-	return c != nil && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&nativeScalarBoundedMask != 0
+	return coreruntime.NativeScalarLeafSupported && c != nil && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&nativeScalarBoundedMask != 0
 }
 
 func (c *Compiled) nativeScalarLeafAllowed() bool {
-	return c != nil && (railshotNativeLeafAllowed(c) || len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&nativeScalarLeafMask != 0)
+	return c != nil && (railshotNativeLeafAllowed(c) || coreruntime.NativeScalarLeafSupported && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&nativeScalarLeafMask != 0)
 }
 
 func (c *Compiled) boundedHostSegments() bool {

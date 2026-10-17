@@ -2,14 +2,21 @@ package gc
 
 import "slices"
 
-// Native allocation keeps the retained 32-handle batch baseline. A refill also
-// reserves a bounded nursery chunk so generated code can publish several objects
-// without mutating the collector-wide nursery bump for every object.
+// NativeDeadBatchSupported keeps injected allocation failures on the checked
+// per-object path. Release builds may charge proven-dead batches natively.
+const NativeDeadBatchSupported = !failureInjectionEnabled
+
+// Native allocation reserves bounded identity batches. AMD64 struct allocation
+// uses a larger local batch to reduce Go refills; arrays retain the measured
+// 32-handle batch. Array refills also reserve a bounded nursery chunk so
+// generated code can publish several objects without mutating the collector-wide
+// nursery bump for every object.
 const (
-	nativeStructHandleBatch                  = 32
+	nativeArrayHandleBatch                   = 32
 	NativeAllocationChunkBytes        uint32 = 4096
 	NativeStructAllocHandleCapacity          = nativeStructHandleBatch
 	NativeArrayAllocMaxBytes          uint32 = 256
+	NativeLargeArrayAllocMaxBytes     uint32 = 64 << 10
 	nativeArrayGenericRefillThreshold uint8  = 9
 )
 
@@ -28,6 +35,22 @@ type nativeStructAllocState struct {
 	Handles     [nativeStructHandleBatch]uint32
 }
 
+// nativeLargeArrayAllocState holds one exact-size array reservation. It stays
+// separate from the struct and small-array batch so their refills cannot erase
+// the next large roots-array allocation.
+type nativeLargeArrayAllocState struct {
+	Epoch       uint32
+	Cursor      uint32
+	Count       uint32
+	HandleBase  uint32
+	ChunkStart  uint32
+	ChunkCursor uint32
+	ChunkEnd    uint32
+	ChunkBump   uint32 // handle metadata: allocation class and reserved space
+	Handle      uint32
+	Rewind      uint32 // prior nursery bump; unused for throughput reservations
+}
+
 const (
 	NativeStructAllocEpochOffset       = 0
 	NativeStructAllocCursorOffset      = 4
@@ -39,6 +62,7 @@ const (
 	NativeStructAllocChunkBumpOffset   = 28
 	NativeStructAllocHandlesOffset     = 32
 	NativeStructAllocStateSize         = 32 + nativeStructHandleBatch*4
+	NativeLargeArrayAllocStateSize     = 40
 )
 
 func (c *Collector) nativeAllocationAllowed(minObjectBytes uint32) bool {
@@ -46,30 +70,62 @@ func (c *Collector) nativeAllocationAllowed(minObjectBytes uint32) bool {
 		minObjectBytes < c.cfg.LargeObjectBytes && minObjectBytes <= NativeAllocationChunkBytes && minObjectBytes <= ^uint32(0)-15
 }
 
-func (c *Collector) reserveNativeHandles() {
+func (c *Collector) reserveNativeHandles(batch int) {
 	s := &c.nativeStructAlloc
-	clear(s.Handles[:])
+	clear(s.Handles[:batch])
 	s.Cursor = 0
 	s.Count = 0
 	s.HandleBase = 0
-	newHandles := nativeStructHandleBatch - min(len(c.freeHandles), nativeStructHandleBatch)
+	newHandles := batch - min(len(c.freeHandles), batch)
 	if newHandles != 0 {
 		c.handles = slices.Grow(c.handles, newHandles)
 		c.mark = slices.Grow(c.mark, newHandles)
 		c.tinyGC.color = slices.Grow(c.tinyGC.color, newHandles)
 	}
-	c.nurseryHandles = slices.Grow(c.nurseryHandles, nativeStructHandleBatch)
-	for i := range s.Handles {
-		h := c.newHandle(handleEntry{})
-		s.Handles[i] = h
-		// Reserved free handles participate in this dense list before activation.
-		// Collection ignores spaceFree entries and compacts them after cancellation.
-		c.nurseryHandles = append(c.nurseryHandles, h)
-		s.Count++
+	c.nurseryHandles = slices.Grow(c.nurseryHandles, batch)
+	if c.checkedHandles != nil {
+		// The checked API can retire exhausted generations while taking a batch.
+		for i := range s.Handles[:batch] {
+			s.Handles[i] = c.newHandle(handleEntry{})
+		}
+	} else {
+		// Native identities have no generation bookkeeping. Extend each parallel
+		// table once, rather than running the general allocator for every handle.
+		reused := batch - newHandles
+		free := c.freeHandles[len(c.freeHandles)-reused:]
+		for i := range reused {
+			h := free[reused-1-i]
+			s.Handles[i] = h
+		}
+		c.freeHandles = c.freeHandles[:len(c.freeHandles)-reused]
+		base := len(c.handles)
+		c.handles = c.handles[:base+newHandles]
+		clear(c.handles[base:])
+		marks := len(c.mark)
+		c.mark = c.mark[:marks+newHandles]
+		clear(c.mark[marks:])
+		colors := len(c.tinyGC.color)
+		c.tinyGC.color = c.tinyGC.color[:colors+newHandles]
+		clear(c.tinyGC.color[colors:])
+		for i := reused; i < batch; i++ {
+			s.Handles[i] = uint32(base + i - reused)
+		}
 	}
+	// Reserved free handles participate in this dense list before activation.
+	// Collection ignores spaceFree entries and compacts them after cancellation.
+	c.nurseryHandles = append(c.nurseryHandles, s.Handles[:batch]...)
+	// A published reservation cannot survive a collection. Normalize pending
+	// dead-object accounting once here so a nonempty reservation also proves
+	// that its counters belong to the current full-width collection cycle.
+	cycle := c.collectionCycle()
+	if c.nativeView.deadNurseryCycle() != cycle {
+		c.stats.LiveObjects = 0
+		c.nativeView.setDeadNurseryCycle(cycle)
+	}
+	s.Count = uint32(batch)
 	base := s.Handles[0]
 	contiguous := base != 0
-	for i, h := range s.Handles {
+	for i, h := range s.Handles[:batch] {
 		if h != base+uint32(i) {
 			contiguous = false
 			break
@@ -77,6 +133,11 @@ func (c *Collector) reserveNativeHandles() {
 	}
 	if contiguous {
 		s.HandleBase = base
+	}
+	// The nursery ledger already covers every reserved identity. Index native
+	// publications once at full collection, rather than walking each batch here.
+	if len(c.majorBlocks) != 0 {
+		c.majorYoungDirty = true
 	}
 	s.Epoch = c.nativeAllocEpoch
 
@@ -87,6 +148,16 @@ func (c *Collector) reserveNativeHandles() {
 // path. Array chunks therefore add no cursor checks or reserved-byte gaps to the
 // established native struct hot path.
 func (c *Collector) PrepareNativeStructAllocation(minObjectBytes uint32) bool {
+	return c.prepareNativeStructAllocation(minObjectBytes, nativeStructHandleBatchSize)
+}
+
+// Dead charges consume no identity. One reserved handle supplies the existing
+// cancellation/configuration proof without growing a full live-object batch.
+func (c *Collector) PrepareNativeDeadStructAllocation(minObjectBytes uint32) bool {
+	return c.prepareNativeStructAllocation(minObjectBytes, 1)
+}
+
+func (c *Collector) prepareNativeStructAllocation(minObjectBytes uint32, batch int) bool {
 	if !c.nativeAllocationAllowed(minObjectBytes) {
 		return false
 	}
@@ -95,7 +166,7 @@ func (c *Collector) PrepareNativeStructAllocation(minObjectBytes uint32) bool {
 		return true
 	}
 	c.discardNativeStructHandles()
-	c.reserveNativeHandles()
+	c.reserveNativeHandles(batch)
 	return true
 }
 
@@ -127,7 +198,7 @@ func (c *Collector) PrepareNativeAllocation(minObjectBytes uint32) bool {
 	}
 	end := start + chunkBytes
 
-	c.reserveNativeHandles()
+	c.reserveNativeHandles(nativeArrayHandleBatch)
 	s.ChunkStart = start
 	s.ChunkCursor = start
 	s.ChunkEnd = end
@@ -141,7 +212,7 @@ func (c *Collector) PrepareNativeAllocation(minObjectBytes uint32) bool {
 // helper and one oversized native reservation regresses sustained throughput.
 func (c *Collector) PrepareNativeArrayAllocation(objectBytes uint32) bool {
 	if objectBytes > NativeArrayAllocMaxBytes {
-		return false
+		return c.prepareNativeLargeArrayAllocation(objectBytes)
 	}
 	// Generic public calls collect at the next boundary. Measurements put the
 	// refill break-even above eight constructors, so short calls stay helper-only
@@ -150,7 +221,14 @@ func (c *Collector) PrepareNativeArrayAllocation(objectBytes uint32) bool {
 		c.arraySlow++
 		return false
 	}
-	return c.PrepareNativeAllocation(objectBytes)
+	if !c.PrepareNativeAllocation(objectBytes) {
+		return false
+	}
+	// A refill cancels the preceding reservation, but the current allocation
+	// sequence has already paid the cold-call delay. Collection still clears
+	// this state before the next sequence starts.
+	c.arraySlow = nativeArrayGenericRefillThreshold - 1
+	return true
 }
 
 // PrepareNativeArrayAllocationImmediate is for products without a mandatory
@@ -158,9 +236,97 @@ func (c *Collector) PrepareNativeArrayAllocation(objectBytes uint32) bool {
 // so the first rooted constructor can profitably refill for later invocations.
 func (c *Collector) PrepareNativeArrayAllocationImmediate(objectBytes uint32) bool {
 	if objectBytes > NativeArrayAllocMaxBytes {
-		return false
+		return c.prepareNativeLargeArrayAllocation(objectBytes)
 	}
 	return c.PrepareNativeAllocation(objectBytes)
+}
+
+func (c *Collector) prepareNativeLargeArrayAllocation(objectBytes uint32) bool {
+	if c == nil || c.closed || c.cfg.Profile != ProfileThroughput || c.cfg.DisableCollection || c.cfg.CollectEveryAlloc ||
+		objectBytes <= NativeArrayAllocMaxBytes || objectBytes > NativeLargeArrayAllocMaxBytes {
+		return false
+	}
+	s := &c.nativeLargeArrayAlloc
+	// Reclamation derives the physical extent from the published handle size.
+	// A single-handle reservation must not leave an unowned tail.
+	if s.Cursor < s.Count && s.ChunkCursor <= s.ChunkEnd && s.ChunkEnd-s.ChunkCursor == Align16(objectBytes) {
+		return true
+	}
+	c.discardNativeLargeArrayAllocation()
+
+	var e handleEntry
+	rewind := uint32(0)
+	if objectBytes < c.cfg.LargeObjectBytes && objectBytes <= c.edenBytes() {
+		rewind = c.nurseryBump
+		start := Align16(rewind)
+		need := Align16(objectBytes)
+		limit := c.edenBytes()
+		if start > limit || need > limit-start {
+			return false
+		}
+		e = handleEntry{off: start, size: objectBytes, space: spaceNursery}
+		c.nurseryBump = start + need
+	} else {
+		var err error
+		e, err = c.throughput.alloc(objectBytes, spaceLarge)
+		if err != nil {
+			return false
+		}
+		e.setYoungAge(0)
+	}
+	h := c.newHandle(handleEntry{})
+	c.nurseryHandles = append(c.nurseryHandles, h)
+	s.Epoch = c.nativeLargeArrayEpoch
+	s.Cursor = 0
+	s.Count = 1
+	s.HandleBase = h
+	s.ChunkStart = e.off
+	s.ChunkCursor = e.off
+	s.ChunkEnd = e.off + Align16(e.size)
+	s.ChunkBump = uint32(e.class) | uint32(e.space)<<16
+	s.Handle = h
+	s.Rewind = rewind
+	if e.space == spaceNursery {
+		c.refreshNativeHandles()
+	} else {
+		c.refreshNativeView()
+	}
+	return true
+}
+
+func (c *Collector) discardNativeLargeArrayAllocation() {
+	if c == nil {
+		return
+	}
+	s := &c.nativeLargeArrayAlloc
+	unused := s.Count != 0 && s.Cursor == 0 && s.Handle != 0 && int(s.Handle) < len(c.handles) && c.handles[s.Handle].space == spaceFree
+	if unused {
+		c.freeHandles = append(c.freeHandles, s.Handle)
+		for i, h := range c.nurseryHandles {
+			if h == s.Handle {
+				copy(c.nurseryHandles[i:], c.nurseryHandles[i+1:])
+				c.nurseryHandles = c.nurseryHandles[:len(c.nurseryHandles)-1]
+				break
+			}
+		}
+		space := spaceKind((s.ChunkBump >> 16) & 0xff)
+		if space == spaceNursery {
+			if c.nurseryBump == s.ChunkEnd {
+				c.nurseryBump = s.Rewind
+			}
+		} else {
+			e := handleEntry{off: s.ChunkStart, size: s.ChunkEnd - s.ChunkStart, class: uint16(s.ChunkBump), space: spaceLarge}
+			if err := c.throughput.free(e); err != nil {
+				panic("gc: cannot cancel native large-array reservation: " + err.Error())
+			}
+		}
+	}
+	*s = nativeLargeArrayAllocState{}
+	c.nativeLargeArrayEpoch++
+	if c.nativeLargeArrayEpoch == 0 {
+		c.nativeLargeArrayEpoch = 1
+	}
+	s.Epoch = c.nativeLargeArrayEpoch
 }
 
 // PrepareNativeStructHandles is retained for low-level callers and tests. New
@@ -191,11 +357,22 @@ func (c *Collector) discardNativeStructHandles() {
 	if end > uint32(len(s.Handles)) {
 		end = uint32(len(s.Handles))
 	}
-	canceled := false
-	if end > s.Cursor {
-		c.freeHandles = slices.Grow(c.freeHandles, int(end-s.Cursor))
+	used := s.Cursor
+	if used > end {
+		used = end
 	}
-	for i := s.Cursor; i < end; i++ {
+	// Native struct constructors advance Cursor only after publishing the
+	// complete object. Account for a struct-only batch once at its next
+	// serialized boundary rather than updating the shared statistic per object.
+	// Array chunks retain immediate accounting in generated code.
+	if s.ChunkEnd == 0 {
+		c.stats.Allocations += uint64(used)
+	}
+	canceled := false
+	if end > used {
+		c.freeHandles = slices.Grow(c.freeHandles, int(end-used))
+	}
+	for i := used; i < end; i++ {
 		h := s.Handles[i]
 		if s.HandleBase != 0 {
 			h = s.HandleBase + i
@@ -215,6 +392,7 @@ func (c *Collector) discardNativeStructHandles() {
 		}
 		c.nurseryBump = rewind
 	}
+	chargedBump := c.nurseryBump
 	if canceled {
 		// Reserved handles are appended as one tail batch and no Go allocation or
 		// collection can append another nursery identity before cancellation. Trim
@@ -246,9 +424,15 @@ func (c *Collector) discardNativeStructHandles() {
 			// later handle reuse must not append a duplicate identity to the dense
 			// young set.
 			c.compactNurseryHandles()
+			if c.hasPendingDeadNurseryObjects() && c.nurseryBump < chargedBump {
+				// Native dead-struct charges have no handle extent for compaction
+				// to discover. Keep their high-water mark until collection reclaims
+				// the charged bytes and clears the pending object count.
+				c.nurseryBump = chargedBump
+			}
 		}
 	}
-	clear(s.Handles[:])
+	clear(s.Handles[:end])
 	s.Cursor = 0
 	s.Count = 0
 	s.HandleBase = 0

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"reflect"
 	goruntime "runtime"
 	"sync"
 	"sync/atomic"
@@ -12,6 +13,7 @@ import (
 	"github.com/wago-org/wago/internal/runtimebridge"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // hostControlInstances maps stable off-heap control-frame addresses to the
@@ -21,9 +23,8 @@ import (
 var hostControlInstances sync.Map // map[uintptr]*Instance
 
 // hostInvocationContexts carries the public root's callback identity across a
-// native cross-instance transfer. The control-frame address is unique to the
-// parked activation and lets the producer's bound host dispatcher construct a
-// HostModule authorized by the invocation that actually owns the GC lease.
+// native cross-instance transfer. Nested entries can bind a private control
+// frame; foreign roots sharing a producer carry their identity explicitly.
 type hostInvocationContext struct {
 	//lint:ignore U1000 fields are used only by wago_profile builds; the ordinary placeholder is empty
 	profileInvocationState
@@ -31,6 +32,8 @@ type hostInvocationContext struct {
 	reservation   *pluginOperationReservation
 	parent        context.Context
 	callbackScope *hostCallScope
+	scope         *hostCallScope
+	gcActivation  gcHostActivationToken
 }
 
 // resolvedHostCall accepts identity derived by the runtime while its native
@@ -38,7 +41,7 @@ type hostInvocationContext struct {
 type resolvedHostCall func(uintptr, uint32, []uint64, []uint64, hostInvocationContext)
 
 func (c hostInvocationContext) empty() bool {
-	return c.id == 0 && c.reservation == nil && c.parent == nil && c.profileSession() == nil
+	return c.id == 0 && c.reservation == nil && c.parent == nil && c.callbackScope == nil && c.scope == nil && c.profileSession() == nil
 }
 
 var hostInvocationContexts sync.Map // map[uintptr]hostInvocationContext
@@ -193,29 +196,34 @@ func registerHostControl(in *Instance) error {
 		hostControlInstances.Delete(ptr)
 		return fmt.Errorf("register runtime synchronous host control frame: %w", err)
 	}
-	if !codeProfileEnabled && in.c.nativeScalarLeafAllowed() && in.hasSingleDirectTypedScalarHost() {
-		binding := &in.syncHosts[0]
-		params := uint32(1)
-		var fn any = binding.typedI32
-		if binding.scalarKind == syncHostTypedI32x2 {
-			params = 2
-			fn = binding.typedI32x2
-		}
-		admitted, err := coreruntime.RegisterNativeScalarLeaf(runtimebridge.GrantHostScalarCall(), in.ctrl, fn, params)
-		if err != nil {
-			coreruntime.UnregisterHostCtrlFrame(in.ctrl)
-			hostControlInstances.Delete(ptr)
-			return err
-		}
-		if admitted {
-			if dispatch := in.jm.CaptureInstanceContext().ImportDispatch; dispatch != 0 {
-				cell := unsafe.Slice((*byte)(offHeapPtr(dispatch)), coreruntime.ImportDispatchEntryBytes)
-				coreruntime.BindNativeScalarLeafImport(runtimebridge.GrantHostScalarCall(), in.ctrl, cell)
+	if coreruntime.NativeScalarLeafSupported && !codeProfileEnabled && in.c.nativeScalarLeafAllowed() {
+		binding := in.nativeScalarLeafAliases()
+		if binding != nil {
+			params := uint32(1)
+			var fn any = binding.typedI32
+			if binding.scalarKind == syncHostTypedI32x2 {
+				params = 2
+				fn = binding.typedI32x2
 			}
-			for {
-				flags := in.executionFlags.Load()
-				if flags&executionFlagNativeScalarLeaf != 0 || in.executionFlags.CompareAndSwap(flags, flags|executionFlagNativeScalarLeaf) {
-					break
+			admitted, err := coreruntime.RegisterNativeScalarLeaf(runtimebridge.GrantHostScalarCall(), in.ctrl, fn, params)
+			if err != nil {
+				coreruntime.UnregisterHostCtrlFrame(in.ctrl)
+				hostControlInstances.Delete(ptr)
+				return err
+			}
+			if admitted {
+				if dispatch := in.jm.CaptureInstanceContext().ImportDispatch; dispatch != 0 {
+					cells := unsafe.Slice((*byte)(offHeapPtr(dispatch)), len(in.syncHosts)*coreruntime.ImportDispatchEntryBytes)
+					for i := range in.syncHosts {
+						cell := cells[i*coreruntime.ImportDispatchEntryBytes : (i+1)*coreruntime.ImportDispatchEntryBytes]
+						coreruntime.BindNativeScalarLeafImport(runtimebridge.GrantHostScalarCall(), in.ctrl, cell)
+					}
+				}
+				for {
+					flags := in.executionFlags.Load()
+					if flags&executionFlagNativeScalarLeaf != 0 || in.executionFlags.CompareAndSwap(flags, flags|executionFlagNativeScalarLeaf) {
+						break
+					}
 				}
 			}
 		}
@@ -289,9 +297,40 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
 			panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
 		}
-		active.dispatchAtomicWaitHelper(importIdx&^shared.AtomicWaitDispatchBit, args, results)
+		helper := importIdx &^ shared.AtomicWaitDispatchBit
+		blocking := (helper == shared.AtomicHelperWait32 || helper == shared.AtomicHelperWait64) && (len(args) == 4 || len(args) == 5) && int64(args[2]) != 0
+		if blocking && root != nil && !root.usesPrivateThreadedExecution() && !root.usesIndependentExecution() {
+			a.dispatchSharedAtomicWait(active, ctrl, helper, args, results)
+		} else {
+			active.dispatchAtomicWaitHelper(helper, args, results)
+		}
 		return
 	}
+	if active != root {
+		a.dispatchForeignControl(active, ctrl, importIdx, args, results)
+		return
+	}
+	a.dispatchActive(active, ctrl, importIdx, args, results)
+}
+
+// Foreign callables can park multiple roots on the same producer control frame.
+// Save its resumable register prefix while the execution lease is held and
+// restore it after dispatch has reacquired that lease. Root-only calls avoid
+// this additional frame and copy.
+func (a *hostLoopActivation) dispatchForeignControl(active *Instance, ctrl uintptr, importIdx uint32, args, results []uint64) {
+	var saved [abi.ARM64SyncHostCallSavedBytes]byte
+	size := 56 // amd64 saved GPRs; the following trampoline is immutable
+	if goruntime.GOARCH == "arm64" {
+		size = len(saved)
+	}
+	control := unsafe.Slice((*byte)(offHeapPtr(ctrl)), size)
+	copy(saved[:size], control)
+	defer func() { copy(control, saved[:size]) }()
+	a.dispatchActive(active, ctrl, importIdx, args, results)
+}
+
+func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, importIdx uint32, args, results []uint64) {
+	root := a.root
 	if importIdx&gcStructDispatchBit != 0 {
 		if codeProfileEnabled && a.invocation.profileSession() != nil {
 			span := a.profileHelper(active, "gc-helper", int(importIdx&^gcStructDispatchBit))
@@ -344,6 +383,12 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	// owns the invocation identity and collector lease. Carry that identity into
 	// the producer's HostModule instead of reading its zero local invocation ID.
 	invocation := a.context(active)
+	invocation.gcActivation = activation
+	if root != nil && active != root {
+		// Concurrent relays own distinct scope generations even when the parked
+		// producer is the same instance. The public root retains this scope.
+		invocation.scope = &a.stateFor(root).hostScope
+	}
 	// Exact parked native roots and translated GC host arguments are now
 	// published. Release every collector lease owned by the public native root
 	// while arbitrary host code runs. A non-GC relay may have pre-acquired more
@@ -494,7 +539,7 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		markNativeActiveState(rootState, id)
 		defer unmarkNativeActiveState(rootState, id)
 	}
-	if active != root {
+	if railshotNativeContextTrapABI() && active != root {
 		restoreInvocationContext := bindHostInvocationContext(ctrl, invocation)
 		defer restoreInvocationContext()
 	}
@@ -520,6 +565,52 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	} else {
 		active.callHostDispatch(ctrl, importIdx, args, results, invocation, guestDescriptorOwner)
 	}
+}
+
+// A blocking wait must let other roots enter native code to perform stores and
+// notifications. The producer's saved registers and exact context are restored
+// before native continuation, even if another entry used its basedata meanwhile.
+func (a *hostLoopActivation) dispatchSharedAtomicWait(active *Instance, ctrl uintptr, helper uint32, args, results []uint64) {
+	var saved [abi.ARM64SyncHostCallSavedBytes]byte
+	size := 56
+	if goruntime.GOARCH == "arm64" {
+		size = len(saved)
+	}
+	control := unsafe.Slice((*byte)(offHeapPtr(ctrl)), size)
+	copy(saved[:size], control)
+	ctx := a.context(active).parent
+	if state, ok := atomicWaitInvocationContexts.Load(a.root); ok {
+		ctx = state.(*atomicWaitInvocationContext).ctx
+	}
+	physicalStack := active.eng
+	if a.root != nil {
+		physicalStack = a.root.eng
+	}
+	activation := active.pushGCHostActivation(ctrl, helper|shared.AtomicWaitDispatchBit, physicalStack)
+	defer active.popGCHostActivation(activation)
+	leaseOwner := active
+	if a.root != nil && a.root.executionFlags.Load()&executionFlagImportedGCDomain != 0 {
+		leaseOwner = a.root
+	}
+	var gcSuspension *gcInvocationSuspension
+	if leaseOwner.hostCallNeedsGCSuspension() {
+		suspension := leaseOwner.suspendGCInvocation(a.context(active).id)
+		gcSuspension = &suspension
+	}
+	nativeExecutionMu.Unlock()
+	defer func() {
+		if gcSuspension != nil {
+			gcSuspension.resume()
+		}
+		nativeExecutionMu.Lock()
+		nativeExecutionEpoch++
+		if err := active.bindNativeContext(); err != nil {
+			panic(invalidHostReference{err: err})
+		}
+		active.jm.SetCustomCtx(ctrl)
+		copy(control, saved[:size])
+	}()
+	active.dispatchAtomicWaitHelperContext(helper, args, results, ctx)
 }
 
 func (in *Instance) callHostDispatch(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext, guestDescriptorOwner *Instance) {
@@ -574,7 +665,7 @@ func (l parkedIndependentHostLease) resume(a *hostLoopActivation) {
 		// ARM64 benefits from separating publication migration from normal
 		// resumption. AMD64 retains its measured faster shared helper.
 		l.mu.Lock()
-		if !a.root.threadedMemoryZero && !a.root.usesIndependentExecution() {
+		if !a.root.usesPrivateThreadedExecution() && !a.root.usesIndependentExecution() {
 			l.resumeMigrated(a)
 			return
 		}
@@ -586,6 +677,18 @@ func (l parkedIndependentHostLease) resume(a *hostLoopActivation) {
 	}
 	if migrated || !a.parkedNativeContextReusable || l.version == ^uint64(0) || a.state.nativeContextVersion.Load() != l.version {
 		a.root.restoreTypedScalarNativeContext(l.ctrl)
+		return
+	}
+	// Shared memory zero has instance-private basedata and control, so another
+	// tenant cannot overwrite this invocation's trap, stack or import context.
+	// A growable or mixed directory still needs live sizes after every
+	// callback: another goroutine may have grown a backing while we parked.
+	// All-shared memory32 entries captured at their physical growth ceilings
+	// cannot change, so retain them without refreshing their owner metadata.
+	if a.root.threadedMemoryZero && (a.root.memoryDir == nil || !a.root.memoryDir.sharedEntriesStable) {
+		if err := a.root.refreshMemoryDirectory(); err != nil {
+			panic(invalidHostReference{err: err})
+		}
 	}
 }
 
@@ -607,7 +710,7 @@ func (l parkedIndependentHostLease) resumeMigrated(a *hostLoopActivation) {
 // can resume. The outer entry observes the revoked mode when it releases.
 func reacquireRootNative(root *Instance, localMu *sync.Mutex) bool {
 	localMu.Lock()
-	if root.threadedMemoryZero || root.usesIndependentExecution() {
+	if root.usesPrivateThreadedExecution() || root.usesIndependentExecution() {
 		return false
 	}
 	localMu.Unlock()
@@ -618,7 +721,7 @@ func reacquireRootNative(root *Instance, localMu *sync.Mutex) bool {
 
 // localNativeMu reports ownership separately from pending prepared revocation.
 func (a *hostLoopActivation) localNativeMu() *sync.Mutex {
-	if a == nil || a.entryNativeMu == nil {
+	if a == nil {
 		return nil
 	}
 	if a.preparedMigration != nil {
@@ -627,7 +730,17 @@ func (a *hostLoopActivation) localNativeMu() *sync.Mutex {
 		}
 		return a.entryNativeMu
 	}
-	if a.root.threadedMemoryZero || a.root.usesIndependentExecution() {
+	root := a.root
+	if root == nil {
+		return nil
+	}
+	// Decide both local-execution modes from one publication snapshot. Fold
+	// the instance-private shared-memory marker into that same predicate.
+	flags := root.executionFlags.Load()
+	if root.threadedMemoryZero {
+		flags |= executionFlagThreadedMemory
+	}
+	if flags&executionFlagNativeControlShared == 0 && (flags&executionFlagIndependent != 0 || flags&(executionFlagThreadedMemory|executionFlagForeignNativeCalls) == executionFlagThreadedMemory) {
 		return a.entryNativeMu
 	}
 	return nil
@@ -965,6 +1078,43 @@ func (in *Instance) hasDirectTypedScalarHost() bool {
 		}
 	}
 	return false
+}
+
+// The runtime owns one native leaf per control frame. Multiple import cells
+// can share it only when their typed callback code and shape match. The runtime
+// independently proves the copied body reads no closure/receiver/Go state, so
+// equal PCs are sufficient here even for distinct Go function values. Unknown
+// or mixed callbacks retain their normal dispatch and scheduling contract.
+func (in *Instance) nativeScalarLeafAliases() *syncHostBinding {
+	if len(in.syncHosts) == 0 || in.c == nil || len(in.syncHosts) != in.c.NumImports || in.gc != nil ||
+		in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) != 0 {
+		return nil
+	}
+	first := &in.syncHosts[0]
+	if first.gate != nil || (first.scalarKind != syncHostTypedI32 && first.scalarKind != syncHostTypedI32x2) {
+		return nil
+	}
+	// Preserve the common single-import path without reflection.
+	if len(in.syncHosts) == 1 {
+		return first
+	}
+	pc := func(b *syncHostBinding) uintptr {
+		if b.scalarKind == syncHostTypedI32 {
+			return reflect.ValueOf(b.typedI32).Pointer()
+		}
+		return reflect.ValueOf(b.typedI32x2).Pointer()
+	}
+	code := pc(first)
+	if code == 0 {
+		return nil
+	}
+	for i := 1; i < len(in.syncHosts); i++ {
+		b := &in.syncHosts[i]
+		if b.gate != nil || b.scalarKind != first.scalarKind || pc(b) != code {
+			return nil
+		}
+	}
+	return first
 }
 
 func (in *Instance) hasSingleDirectTypedScalarHost() bool {

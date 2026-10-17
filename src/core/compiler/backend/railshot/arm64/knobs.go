@@ -10,8 +10,18 @@ import (
 // The binding inventory is checked against the arm64 Optimization Definitions
 // during package initialization. Public sense is always "on = enabled".
 var optimizationBindings = optimization.NewBindings("arm64",
+	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
+	optimization.Bind("atomic-notify-empty", &atomicNotifyEmptyEnabled),
+	optimization.Bind("memory-min-bounds", &memoryMinimumBoundsEnabled),
+	optimization.Bind("atomic-static-bounds", &atomicStaticBoundsEnabled),
+	optimization.Bind("shared-memory-base", &sharedMemoryBaseEnabled),
+	optimization.Bind("atomic-lse", &atomicLSEEnabled),
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
+	optimization.Bind("simd-load-extract", &simdLoadExtractEnabled),
+	optimization.Bind("simd-store-load-address", &simdStoreLoadAddressEnabled),
+	optimization.Bind("bulk-fill-vector", &bulkFillVectorEnabled),
+	optimization.Bind("straight-line-block", &straightLineBlockEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
 	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
 	optimization.Bind("regional-memory-read", &regionalMemoryReadEnabled),
@@ -30,6 +40,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("scoped-loop-float-const", &scopedLoopFloatConstsEnabled),
 	optimization.Bind("loop-memory-base", &loopMemoryBaseEnabled),
 	optimization.Bind("indexed-base-reuse", &indexedBaseReuseEnabled),
+	optimization.Bind("linear-integer-tree", &linearIntegerTreeEnabled),
 	optimization.Bind("dominated-indexed-base", &dominatedIndexedBaseEnabled),
 	optimization.Bind("dominated-indexed-key", &dominatedIndexedKeyEnabled),
 	optimization.Bind("ordinary-shifted-immediate", &ordinaryShiftedImmediateEnabled),
@@ -103,7 +114,17 @@ var optimizationBindings = optimization.NewBindings("arm64",
 )
 
 var (
+	optMemoryMinimumBounds  = optimizationBindings.Option("memory-min-bounds")
+	optAtomicNotifyEmpty    = optimizationBindings.Option("atomic-notify-empty")
+	optAtomicStaticBounds   = optimizationBindings.Option("atomic-static-bounds")
+	optAtomicZeroWait       = optimizationBindings.Option("atomic-wait-zero-timeout")
+	optSharedMemoryBase     = optimizationBindings.Option("shared-memory-base")
+	optAtomicLSE            = optimizationBindings.Option("atomic-lse")
 	optBoundsFacts          = optimizationBindings.Option("bounds-facts")
+	optStraightLineBlock    = optimizationBindings.Option("straight-line-block")
+	optBulkFillVector       = optimizationBindings.Option("bulk-fill-vector")
+	optSIMDStoreLoadAddress = optimizationBindings.Option("simd-store-load-address")
+	optSIMDLoadExtract      = optimizationBindings.Option("simd-load-extract")
 	optSIMDSuperopt         = optimizationBindings.Option("simd-superopt")
 	optIntervalRegionPins   = optimizationBindings.Option("interval-region-pins")
 	optIntervalNextUse      = optimizationBindings.Option("interval-next-use")
@@ -135,6 +156,7 @@ var (
 	optDominatedIndexedKey  = optimizationBindings.Option("dominated-indexed-key")
 	optOrdinaryShiftedImm   = optimizationBindings.Option("ordinary-shifted-immediate")
 	optIndexedBaseReuse     = optimizationBindings.Option("indexed-base-reuse")
+	optLinearIntegerTree    = optimizationBindings.Option("linear-integer-tree")
 	optConvertRead          = optimizationBindings.Option("convert-read")
 	optColdCallLocalPins    = optimizationBindings.Option("cold-call-local-pins")
 	optMagicDiv             = optimizationBindings.Option("magic-div")

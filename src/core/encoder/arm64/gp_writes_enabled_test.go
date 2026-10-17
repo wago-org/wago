@@ -573,3 +573,23 @@ func TestGPWritesObserverScopesAndTransferIndependence(t *testing.T) {
 		t.Fatalf("observer not restored after panic: %#x", outer)
 	}
 }
+
+func TestGPWritesLSEAtomics(t *testing.T) {
+	for _, size := range []int{1, 2, 4, 8} {
+		for _, dst := range []Reg{X0, X9, X16, X17, LR, 41} {
+			for _, cas := range []bool{false, true} {
+				var a Asm
+				got := recordGPWrites(t, &a)
+				if cas {
+					a.CasAL(dst, X5, SP, size)
+				} else {
+					a.AtomicRMWAL(LSEAdd, X5, dst, SP, size)
+				}
+				want := []uint32{1 << (uint32(dst) & 31)}
+				if !reflect.DeepEqual(*got, want) {
+					t.Fatalf("size=%d dst=%d cas=%t: writes %x, want %x", size, dst, cas, *got, want)
+				}
+			}
+		}
+	}
+}

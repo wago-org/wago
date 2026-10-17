@@ -21,7 +21,7 @@ import (
 // cross-instance continuation must read from the restored caller basedata.
 func (f *fn) refreshCachedMemoryBoundAfterExternalCall() {
 	if f.memSizeReg != regNone {
-		f.ld64(f.memSizeReg, linMemReg, -int32(bdCurBytes))
+		f.loadMemoryCache()
 	}
 }
 
@@ -706,7 +706,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 		f.ld64(X11, X16, disp+runtime.ImportDispatchTargetContextOffset)
 		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)
 		f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
-		f.a.AndImm64(X12, X12, ^runtime.ImportDispatchCallerGoHostTag)
+		f.a.AndImm64(X12, X12, ^runtime.ImportDispatchCallerTagMask)
 	} else {
 		f.a.MovImm64(X10, b.CalleeLinMem)
 		f.a.MovImm64(X17, b.CalleeEntry)
@@ -1351,12 +1351,37 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 // around the call: the host may read or write the instance's globals through
 // their cells.
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
+	nativeDeadStructType := f.nativeDeadStructType
+	f.nativeDeadStructType = 0
+	nativeDeadArrayBatchBytes := f.nativeDeadArrayBatchBytes
+	f.nativeDeadArrayBatchBytes = 0
+	nativeDeadStructBatchType := f.nativeDeadStructBatchType
+	f.nativeDeadStructBatchType = 0
+	nativeArrayHelper, nativeArrayType := f.nativeArrayHelper, f.nativeArrayType
+	f.nativeArrayHelper = 0
+	nativeDeadArrayBytes := f.nativeDeadArrayBytes
+	f.nativeDeadArrayBytes = 0
 	f.stats.call(callKindHostSync)
-	internalGC := uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) != 0
+	// Blocking waits use the complete host frame and GC callsite maps. Other
+	// atomic helpers retain the compact internal transition.
+	atomicWait := uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 &&
+		(uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait32 || uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait64)
+	internalGC := uint32(importIdx)&gcStructDispatchBit != 0 || uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 && !atomicWait
 	p := len(ft.Params)
+	notifyIndex := uint32(0)
+	notifyFast := uint32(importIdx) == shared.AtomicWaitDispatchBit|shared.AtomicHelperNotify && f.opt(optAtomicNotifyEmpty) && (p == 3 || p == 4)
+	if notifyFast && p == 4 {
+		top := f.s.back()
+		if top.st.kind != stConst {
+			notifyFast = false
+		} else {
+			notifyIndex = uint32(top.st.cval)
+		}
+	}
+
 	var rootOffsets []uint32
 	recordRoots := false
-	if uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) == 0 {
+	if !internalGC {
 		rootOffsets, recordRoots = f.prepareGCFrameCallsite(p)
 	}
 	paramSlots := funcTypeSlots(ft.Params)
@@ -1387,6 +1412,16 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	f.tmpTypes = types
 	f.tmpStackSlots = slotOf
+	// Only memory32 index zero has this compact canonical-slot fast path.
+	// Other memories retain their existing width-aware helper lowering.
+	atomicFast := f.threadedMemory0 && !f.memoryAddr64(0) &&
+		(atomicWait && p == 4 || notifyFast && p == 3)
+	atomicOffset := uint32(0)
+	if atomicFast {
+		offset := roots[d-1].st
+		atomicFast = offset.kind == stConst && uint64(offset.cval) <= 0xffffffff
+		atomicOffset = uint32(offset.cval)
+	}
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
@@ -1407,6 +1442,38 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		// Internal GC helpers cannot observe or mutate numeric module-global cells,
 		// and their module-pinned registers are preserved by the parked transition.
 		f.storeModuleGlobals(X9)
+	}
+
+	atomicDone := -1
+	if atomicFast {
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
+		atomicDone = f.emitAtomicWaitFastPath(uint32(importIdx)&^shared.AtomicWaitDispatchBit, int(slotOf[d-p]), atomicOffset)
+		if notifyFast {
+			f.stats.peep("atomic-notify-empty")
+		}
+	}
+
+	gcDone := -1
+	if nativeDeadArrayBatchBytes != 0 && !wide {
+		gcDone = f.deadObjectCountShortcut(nativeDeadArrayBatchBytes, 8, int(slotOf[d-p]))
+	}
+	if nativeDeadStructBatchType != 0 && !wide {
+		gcDone = f.deadStructBatchShortcut(nativeDeadStructBatchType-1, int(slotOf[d-p]))
+	}
+	if nativeDeadStructType != 0 && !wide {
+		gcDone = f.deadStructShortcut(nativeDeadStructType - 1)
+	}
+
+	if nativeArrayHelper != 0 && !wide {
+		if nativeDeadArrayBytes != 0 {
+			gcDone = f.deadObjectShortcut(nativeDeadArrayBytes, 8)
+		} else if nativeArrayHelper == gcArrayAllocUniform || nativeArrayHelper == gcArrayAllocDefault {
+			gcDone = f.arrayAllocationShortcut(nativeArrayHelper, nativeArrayType, int(slotOf[d-p]))
+		} else {
+			gcDone = f.arrayScalarShortcut(nativeArrayHelper, nativeArrayType, int(slotOf[d-p]))
+		}
 	}
 
 	// Marshal params into the control frame as wrapper-ABI slots. A v128 occupies
@@ -1450,6 +1517,10 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.a.MovImm64(X16, uint64(uint32(paramSlots)|uint32(resultSlots)<<16))
 	f.st32(X11, hcNArgs, X16)
 
+	notifyDone := -1
+	if notifyFast && !atomicFast {
+		notifyDone = f.notifyEmptyShortcut(notifyIndex)
+	}
 	// Park at the host call. Like the wrapper path, no post-call trap check: a
 	// trap unwinds the whole native tree in one jump (it never returns here).
 	f.ld64(X16, X11, hcTrampoline)
@@ -1459,6 +1530,15 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.a.Blr(X16)
 	if recordRoots {
 		f.gcFrameRoots.RecordCallsite(uint32(f.a.Len()), 0, rootOffsets)
+	}
+	if gcDone >= 0 {
+		f.patchBranch26(gcDone, f.a.Len())
+	}
+	if notifyDone >= 0 {
+		f.patchBranch26(notifyDone, f.a.Len())
+	}
+	if atomicDone >= 0 {
+		f.patchBranch26(atomicDone, f.a.Len())
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 
@@ -1729,18 +1809,36 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	roots := f.rootsBottomToTop()
 	types := append([]machineType(nil), f.logicalTypes(roots)...)
 	rootFlags := gcRootFlags(roots)
+	if f.emitGuardedNativeImportCall(ft, roots, types) {
+		f.stats.call(callKindImportDispatch)
+		return nil
+	}
 	f.flush()
+
 	locals := append([]localDef(nil), f.locals...)
 	if b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
 		return fmt.Errorf("import dispatch index overflows displacement")
 	}
 	disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
-	f.ld64(X16, linMemReg, -int32(offImportDispatchPtr))
+	f.loadImportDispatchBase(X16)
 	f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
+	nativeEarly := f.nativeLeafContextShortcut(b, ft, false) && f.m.ImportedFuncCount() > 1 && f.m.GlobalCount() == 0 && f.usesCalls && len(locals) <= len(localStateSnapshot{}) && !f.pinnedLocalMask.has(X16) && !f.pinnedLocalMask.has(X17)
+	nativeBranch := -1
+	if nativeEarly {
+		f.a.AndImm64(X17, X12, runtime.ImportDispatchCallerNativeLeafTag)
+		nativeBranch = f.a.Cbnz64(X17)
+	}
 	f.a.AndImm64(X12, X12, runtime.ImportDispatchCallerGoHostTag)
 	slow := f.a.Cbz64(X12)
 	if err := f.callHostSync(int(b.ImportIndex), ft); err != nil {
 		return err
+	}
+	if f.preserveNativeImportLocals(f.nativeLeafContextShortcut(b, ft, false)) {
+		var saved localStateSnapshot
+		for x := range locals {
+			saved[x] = locals[x].state
+		}
+		f.restoreNativeLeafPreservedLocals(saved)
 	}
 	f.flush()
 	resultTypes := append([]machineType(nil), f.logicalTypes(f.rootsBottomToTop())...)
@@ -1759,9 +1857,114 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 			return fmt.Errorf("direct Go import local-state join differs at local %d", i)
 		}
 	}
+	if nativeBranch >= 0 {
+		crossDone := f.a.Branch()
+		f.patchBranch19(nativeBranch, f.a.Len())
+		copy(f.locals, locals)
+		f.setDepthTypesWithGCRoots(types, rootFlags)
+		// This branch is an already-verified native leaf. Load its target
+		// before local stores and large SP-address calculations use X16.
+		target := X17
+		if f.cacheNativeImportTarget {
+			target = X24
+		} else {
+			f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)
+		}
+		f.spillLocalsForClobbers((1<<18)-1, 0)
+		argSlot := slotsOfTypes(types[:len(types)-len(ft.Params)])
+		f.ld32(X0, SP, f.spillOff(argSlot))
+		if len(ft.Params) == 2 {
+			f.ld32(X1, SP, f.spillOff(argSlot+1))
+		}
+		if !f.cacheNativeImportTarget {
+			f.a.AddImm64(X17, X17, runtime.NativeScalarLeafRegisterEntryOffset)
+		}
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
+		f.stats.call(callKindImportDispatch)
+		f.a.Blr(target)
+		f.st64(SP, f.spillOff(argSlot), X0)
+		for i := range f.locals {
+			if f.locals[i].state != fastLocals[i].state {
+				return fmt.Errorf("native import local-state join differs at local %d", i)
+			}
+		}
+		f.patchBranch26(crossDone, f.a.Len())
+	}
 	f.patchBranch26(done, f.a.Len())
 	f.setDepthTypesWithGCRoots(resultTypes, resultFlags)
 	return nil
+}
+
+// emitGuardedNativeImportCall is reachable only inside the entry-guarded body.
+// Its immutable native tag excludes Go/foreign dispatch for every import alias.
+// This emitter canonicalizes older values; native leaves preserve their pins.
+func (f *fn) emitGuardedNativeImportCall(ft *wasm.CompType, roots []*elem, types []machineType) bool {
+	if !f.cacheNativeImportTarget || f.sc == nil || !f.sc.nativeImportFast {
+		return false
+	}
+	p := len(ft.Params)
+	argSlot := slotsOfTypes(types[:len(types)-p])
+	directArg := f.threadedMemory0 && p == 1 && f.pinned == 0 && len(f.intervalLast) == 0 && f.pinnedLocalMask&((1<<18)-1) == 0 && nativeSharedArgPrefixSafe(roots) && os.Getenv("WAGO_ARM64_SHARED_IMPORT_ARG_REG") != "0"
+	var arg Reg
+	var owned bool
+	savedPinned := f.pinned
+	if directArg {
+		arg, owned = f.materializeRead(f.popValue())
+		f.pinned = f.pinned.add(arg)
+	}
+	f.flush()
+	f.spillLocalsForClobbers((1<<18)-1, 0)
+	if directArg {
+		f.a.MovReg32(X0, arg)
+		f.pinned = savedPinned
+		if owned {
+			f.release(arg)
+		}
+		f.stats.peep("shared-native-register-argument")
+	} else {
+		f.ld32(X0, SP, f.spillOff(argSlot))
+		if p == 2 {
+			f.ld32(X1, SP, f.spillOff(argSlot+1))
+		}
+	}
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
+	f.a.Blr(X24)
+	if f.threadedMemory0 && os.Getenv("WAGO_ARM64_SHARED_IMPORT_RESULT_REG") != "0" {
+		// The guarded native body cannot enter Go; X0 is the live i32 result.
+		f.setDepthTypesWithGCRoots(types[:len(types)-p], nil)
+		f.pushReg(X0, mtI32)
+		f.stats.peep("shared-native-register-result")
+	} else {
+		if need := argSlot + 1; need > f.maxSpill {
+			f.maxSpill = need
+		}
+		f.st64(SP, f.spillOff(argSlot), X0)
+		f.setDepthTypesWithGCRoots(append(types[:len(types)-p], mtI32), nil)
+	}
+	return true
+}
+
+func (f *fn) nativeLeafContextShortcut(b ImportBinding, ft *wasm.CompType, recordRoots bool) bool {
+	p := len(ft.Params)
+	contextShortcut := len(f.m.Imports) > 1 || len(f.m.Memories) > 0 || len(f.m.Globals) > 0 || len(f.m.Tables) > 0
+	return contextShortcut && b.Dynamic && !recordRoots && p >= 1 && p <= 2 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && ft.Params[0] == wasm.I32 && (p == 1 || ft.Params[1] == wasm.I32)
+}
+
+func (f *fn) restoreNativeLeafPreservedLocals(saved localStateSnapshot) {
+	for x := 0; x < f.nLocals; x++ {
+		reg, fp, ok := f.pinReg(x)
+		if !ok || !fp && reg < 18 {
+			continue
+		}
+		if saved[x] == lsReg || saved[x] == lsStackReg {
+			f.loadLocalReg(x, reg, fp)
+		}
+		f.locals[x].state = saved[x]
+	}
 }
 
 // emitCrossInstanceCall lowers a call to an imported function that is bound to
@@ -1809,6 +2012,9 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	resultSlot := slotTop
 	resultSlots := funcTypeSlots(ft.Results)
 
+	if f.emitGuardedNativeImportCall(ft, roots, types) {
+		return nil
+	}
 	f.flush()
 	f.storePinnedGlobals(false) // value-pinned globals → cells (reloaded after; callee can't touch B's cells)
 
@@ -1819,13 +2025,52 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	if p > 0 {
 		argOff = f.spillOff(int(slotOf[d-p]))
 	}
-	f.spillLocalsForCall()
+	nativeCandidate := f.nativeLeafContextShortcut(b, ft, recordRoots)
+	var nativeLocals localStateSnapshot
+	// Import aliases and proven fixed shared loops preserve native callee-saved
+	// pins. Every dynamic alternative joins with this same saved local state.
+	preserveNativeLocals := f.preserveNativeImportLocals(nativeCandidate)
+	if preserveNativeLocals {
+		// Native leaf validation excludes every FP instruction and GP registers
+		// X18 and above. Home only the local pins its wrapper can overwrite.
+		f.spillLocalsForClobbers((1<<18)-1, 0)
+		nativeLocals, _ = f.snapshotLocalStates()
+	} else {
+		f.spillLocalsForCall()
+	}
 	f.storeModuleGlobals(X9) // cross-instance boundary: shared globals must be cell-coherent
 
-	// Args/results buffers as absolute pointers (survive the STP pushes below —
-	// they hold absolute addresses, unaffected by the SP adjustment).
-	f.a.LeaSP(X0, argOff)                 // args = &first arg slot
-	f.a.LeaSP(X3, f.spillOff(resultSlot)) // results = &slot-width top
+	// Only a runtime-verified native leaf may bypass context publication. Its
+	// wrapper ABI and caller-clobbered register set stay unchanged. Operands
+	// are homed above; proven preserved local pins can remain in registers.
+	nativeLeaf := -1
+	goDirect := -1
+	directSharedGo := f.opt(optDirectGoHostImport) && f.cacheImportDispatch && f.threadedMemory0 && f.m.ImportedFuncCount() == 1 && !recordRoots && len(ft.Params) == 1 && ft.Params[0] == wasm.I32 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && os.Getenv("WAGO_ARM64_FIXED_SHARED_GOCALL") != "0"
+	// A single-import resource-free module retains its lean existing wrapper
+	// route: the extra dispatch branch regresses short dependent callback loops.
+	// Stateful modules and import aliases amortize this branch against context
+	// publication, while keeping the same native-leaf contract.
+	if nativeCandidate {
+		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
+		f.loadImportDispatchBase(X16)
+		f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
+		if directSharedGo {
+			f.a.AndImm64(X17, X12, runtime.ImportDispatchCallerNativeLeafTag)
+			nativeLeaf = f.a.Cbnz64(X17)
+			f.a.AndImm64(X12, X12, runtime.ImportDispatchCallerGoHostTag)
+			goDirect = f.a.Cbnz64(X12)
+		} else {
+			f.a.AndImm64(X12, X12, runtime.ImportDispatchCallerNativeLeafTag)
+			nativeLeaf = f.a.Cbnz64(X12)
+		}
+	}
+	// Only wrapper calls need buffer pointers. The native register branch
+	// skips this setup and loads its canonical i32 arguments directly.
+	f.a.LeaSP(X0, argOff)
+	f.a.LeaSP(X3, f.spillOff(resultSlot))
+	if preserveNativeLocals {
+		f.spillLocalsForCall()
+	}
 
 	// Preserve the caller's module-invariant registers (linMemReg=linMem, X27=memSize,
 	// X23-X25=module globals), and X22=the active EH record (3 STP pairs =
@@ -1841,12 +2086,12 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 			return fmt.Errorf("import dispatch index %d overflows displacement", b.ImportIndex)
 		}
 		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
-		f.ld64(X16, linMemReg, -int32(offImportDispatchPtr))
+		f.loadImportDispatchBase(X16)
 		f.ld64(X1, X16, disp+runtime.ImportDispatchHomeLinMemOffset)     // wrapper-ABI arg 1
 		f.ld64(X10, X16, disp+runtime.ImportDispatchTargetContextOffset) // target context
 		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)       // wrapper entry
 		f.ld64(X12, X16, disp+runtime.ImportDispatchCallerContextOffset)
-		f.a.AndImm64(X12, X12, ^runtime.ImportDispatchCallerGoHostTag)
+		f.a.AndImm64(X12, X12, ^runtime.ImportDispatchCallerTagMask)
 		// Ordinary host imports target this exact instance context. Its basedata
 		// is already installed, so publish neither a context image nor identical
 		// trap words. Equal linear memory alone is insufficient for aliased
@@ -1915,6 +2160,65 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	// this caller and grows its memory. Reload from the restored caller context
 	// before its continuation resumes.
 	f.refreshCachedMemoryBoundAfterExternalCall()
+	if preserveNativeLocals {
+		// The ordinary branch may clobber every pin. Restore its original
+		// register state before joining the native branch, where those values
+		// never left their registers. Dirty slots remain conservatively dirty.
+		f.restoreNativeLeafPreservedLocals(nativeLocals)
+	}
+	if nativeLeaf >= 0 {
+		done := f.a.Branch()
+		goDone := -1
+		if goDirect >= 0 {
+			f.patchBranch19(goDirect, f.a.Len())
+			if preserveNativeLocals {
+				f.spillLocalsForCall()
+			}
+			// The fixed shared import-only proof excludes helper/foreign guest
+			// calls and GC roots. The runtime Go-host tag selects ordinary
+			// rooted Go dispatch, with unchanged parked ownership and traps.
+			f.ld64(X11, linMemReg, -int32(offCustomCtx))
+			f.ld32(X9, SP, argOff)
+			f.syncHostStore64(X11, hcArgs, X9)
+			f.a.MovImm64(X16, uint64(b.ImportIndex))
+			f.st32(X11, hcImportIdx, X16)
+			f.a.MovImm64(X16, 0x10001)
+			f.st32(X11, hcNArgs, X16)
+			f.ld64(X16, X11, hcTrampoline)
+			if regallocCheckEnabled {
+				f.checkCallClobber()
+			}
+			f.a.Blr(X16)
+			f.ld64(X11, linMemReg, -int32(offCustomCtx))
+			f.syncHostLoad64(X9, X11, hcResults)
+			f.st64(SP, f.spillOff(resultSlot), X9)
+			f.refreshCachedMemoryBoundAfterExternalCall()
+			if preserveNativeLocals {
+				f.restoreNativeLeafPreservedLocals(nativeLocals)
+			}
+			f.stats.peep("fixed-shared-direct-go")
+			goDone = f.a.Branch()
+		}
+		f.patchBranch19(nativeLeaf, f.a.Len())
+		// Reload the cell target after the tag test. Native leaves keep this
+		// instance's basedata and cached memory bound intact.
+		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
+		f.ld64(X17, X16, disp+runtime.ImportDispatchCodePtrOffset)
+		f.ld32(X0, SP, argOff)
+		if p == 2 {
+			f.ld32(X1, SP, argOff+8)
+		}
+		f.a.AddImm64(X17, X17, runtime.NativeScalarLeafRegisterEntryOffset)
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
+		f.a.Blr(X17)
+		f.st64(SP, f.spillOff(resultSlot), X0)
+		f.patchBranch26(done, f.a.Len())
+		if goDone >= 0 {
+			f.patchBranch26(goDone, f.a.Len())
+		}
+	}
 
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.deriveModuleGlobals() // cross-instance callee may have written shared global cells
@@ -2048,6 +2352,11 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int, pres
 // emitRegisterCallVia emits either a direct internal BL (localIdx >= 0) or an
 // indirect BLR. Explicit operands avoid allocating a closure at every wasm call.
 func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins bool, localIdx int, indirect Reg) uint32 {
+	if indirect != regNone {
+		// Argument staging owns X0-X7, including a target selected under pressure.
+		f.a.MovReg64(X17, indirect)
+		indirect = X17
+	}
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
 	allRoots := f.rootsBottomToTop()
@@ -2866,7 +3175,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// testing the internal-entry tag, emitting the wrapper/cross-instance path, and
 	// reconciling two compiler states. The ordinary OOB/null/type checks above are
 	// still required and deliberately remain on this hot path.
-	if tableIdx == 0 && f.immutableLocalTable && f.monomorphicTarget >= 0 && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+	if tableIdx == 0 && f.opt(optRegABI) && f.immutableLocalTable && f.monomorphicTarget >= 0 && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
 		f.pinned = f.pinned.remove(idxReg)
 		f.release(idxReg)
 		f.pinned = f.pinned.remove(code)
@@ -2888,15 +3197,19 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	}
 	home := f.allocReg(maskOf(idxReg, code))
 	f.ld64(home, idxReg, 24) // entry home linMem base
-	canonical := f.allocReg(maskOf(idxReg, code, home))
-	f.ld64(canonical, idxReg, 32) // canonical descriptor pointer
-	f.trapIfZero(canonical, true, true, trapIndirectOOB)
-	targetContext := f.allocReg(maskOf(idxReg, code, home, canonical))
-	f.ld64(targetContext, canonical, runtime.FuncRefContextOffset)
-	f.trapIfZero(targetContext, true, true, trapIndirectOOB)
-	f.release(canonical)
-	f.pinned = f.pinned.remove(idxReg)
-	f.release(idxReg)
+	// The uniform private-table proof only accepts active function-index elements
+	// and no table initializer. Without function imports, its non-null entries
+	// therefore have valid local descriptors. Keep the entry cursor until the
+	// wrapper arm needs that descriptor, while retaining the runtime ABI tag fork.
+	localDescriptors := tableIdx == 0 && f.immutableLocalTable && f.immutableTableTyped && f.immutableTableType == canon && f.m.ImportedFuncCount() == 0
+	targetContext := idxReg
+	if !localDescriptors {
+		targetContext = f.allocReg(maskOf(idxReg, code, home))
+		f.ld64(targetContext, idxReg, 32) // canonical descriptor pointer
+		f.trapIfZero(targetContext, true, true, trapIndirectOOB)
+		f.pinned = f.pinned.remove(idxReg)
+		f.release(idxReg)
+	}
 	if sigFitsRegABI(ft) && sigIsIntOnly(ft) || sigFitsReferenceResultRegABI(ft) {
 		// Flush once, then emit both guarded paths from the same canonical stack
 		// state. The compiler state for locals is restored before producing the
@@ -2916,6 +3229,12 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		kind := f.descriptorEntryKind(home, maskOf(code, home, targetContext))
 		f.cmpImm(kind, uint32(abi.FuncRefInternalTagValue), true)
 		wrapper := f.a.Bcond(condNE)
+		// Internal entries inherit the active instance context. Resolve the
+		// descriptor's context only in the wrapper arm, where it is needed.
+		f.stats.peep("internal-call-indirect-context-elide")
+		if localDescriptors {
+			f.stats.peep("immutable-local-indirect-descriptor-elide")
+		}
 		f.stripDescriptorHomeTags(home)
 		f.pinned = f.pinned.remove(home)
 		var returnOffset uint32
@@ -2931,6 +3250,12 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.patchBranch19(wrapper, f.a.Len())
 		f.locals = savedLocals
 		f.setDepthTypesWithGCRoots(types, gcRoots)
+		if localDescriptors {
+			f.ld64(targetContext, targetContext, 32)
+			f.trapIfZero(targetContext, true, true, trapIndirectOOB)
+		}
+		f.ld64(targetContext, targetContext, runtime.FuncRefContextOffset)
+		f.trapIfZero(targetContext, true, true, trapIndirectOOB)
 		f.st64(linMemReg, -int32(offSpillRegion), code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
@@ -2942,6 +3267,13 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		return nil
 	}
 
+	// This signature always uses the wrapper entry and its descriptor context.
+	if localDescriptors {
+		f.ld64(targetContext, targetContext, 32)
+		f.trapIfZero(targetContext, true, true, trapIndirectOOB)
+	}
+	f.ld64(targetContext, targetContext, runtime.FuncRefContextOffset)
+	f.trapIfZero(targetContext, true, true, trapIndirectOOB)
 	// Stash the code ptr in linMem scratch so it survives the call staging.
 	kind := f.descriptorEntryKind(home, maskOf(code, home, targetContext))
 	f.stripDescriptorHomeTags(home)
@@ -3296,4 +3628,133 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
 	}
 	f.tmpGCRoots = gcRoots
 	f.setDepthTypesWithGCRoots(types, gcRoots)
+}
+
+// loadImportDispatchBase uses the function-local cache only for the import-only
+// call graph whose entry establishes it.
+func (f *fn) loadImportDispatchBase(dst Reg) {
+	if f.cacheImportDispatch {
+		f.a.MovReg64(dst, X25)
+	} else {
+		f.ld64(dst, linMemReg, -int32(offImportDispatchPtr))
+	}
+}
+
+// nativeI32ImportAliases admits identical scalar imports or one scalar import in a shared-memory
+// module, whose body must also pass nativeImportVariantEligible. A
+// runtime native-leaf tag still guards entry to the specialized body.
+func nativeI32ImportAliases(m *wasm.Module) bool {
+	if len(m.Imports) < 2 && !(len(m.Imports) == 1 && len(m.Memories) == 1 && m.Memories[0].Shared) {
+		return false
+	}
+	first := m.Imports[0]
+	if first.Type.Kind != wasm.ExternFunc {
+		return false
+	}
+	ft, ok := m.ImportFuncType(0)
+	if !ok || len(ft.Params) < 1 || len(ft.Params) > 2 || len(ft.Results) != 1 || ft.Results[0] != wasm.I32 {
+		return false
+	}
+	for _, param := range ft.Params {
+		if param != wasm.I32 {
+			return false
+		}
+	}
+	for _, imp := range m.Imports[1:] {
+		if imp.Module != first.Module || imp.Name != first.Name || imp.Type != first.Type {
+			return false
+		}
+	}
+	return true
+}
+
+// beginNativeImportVariant selects the unchecked body only while every alias
+// names the same immutable, runtime-admitted scalar native leaf. Such a body
+// cannot enter Go or mutate its bindings; the ordinary body remains complete.
+func (f *fn) beginNativeImportVariant() {
+	if f.sc == nil || f.sc.nativeImportFast || !f.cacheNativeImportTarget {
+		return
+	}
+	f.ld64(X16, linMemReg, -int32(offImportDispatchPtr))
+	f.ld64(X17, X16, runtime.ImportDispatchCallerContextOffset)
+	f.a.AndImm64(X17, X17, runtime.ImportDispatchCallerNativeLeafTag)
+	f.nativeImportRouter = f.a.Cbnz64(X17)
+	f.patchBranch19(f.nativeImportRouter, f.nativeImportRouter)
+}
+
+func (f *fn) nativeImportVariantEligible(body []byte) bool {
+	if len(f.m.Memories) != 0 {
+		mt := f.m.Memories[0]
+		if f.guardMode || len(f.m.Memories) != 1 || !mt.Shared || mt.Limits.Addr64 || !mt.Limits.HasMax || mt.Limits.Min != mt.Limits.Max {
+			return false
+		}
+		if bounded, _ := shared.BoundedFixedSharedHostSegments(body, uint32(f.m.ImportedFuncCount()), 0); !bounded {
+			return false
+		}
+	}
+	if profileEnabled || len(body) > 384 || len(f.m.Tables) != 0 || len(f.m.Tags) != 0 || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate || len(f.ft.Params) != 1 || f.ft.Params[0] != wasm.I32 || len(f.ft.Results) != 1 || f.ft.Results[0] != wasm.I32 || len(f.importBindings) != f.m.ImportedFuncCount() {
+		return false
+	}
+	for i, binding := range f.importBindings {
+		if !binding.Dynamic || binding.ImportIndex != uint32(i) {
+			return false
+		}
+	}
+	return nativeImportIntegerBody(f, body)
+}
+
+func nativeImportIntegerBody(f *fn, body []byte) bool {
+	for _, typ := range f.localType {
+		if typ != mtI32 && typ != mtI64 {
+			return false
+		}
+	}
+	r := wasm.ReaderFrom(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		var imm wasm.InstructionImmediate
+		if wasm.ClassifyInstructionImmediateInto(&r, op, &imm) != nil {
+			return false
+		}
+		switch {
+		case op == 0 || op == 1 || op >= 2 && op <= 5 || op >= 0x0b && op <= 0x10 || op == 0x1a || op == 0x1b || op >= 0x20 && op <= 0x22:
+		case op == 0x28 || op == 0x29 || op >= 0x2c && op <= 0x37 || op >= 0x3a && op <= 0x3e:
+			if len(f.m.Memories) != 1 || !f.threadedMemory0 {
+				return false
+			}
+		case op == 0x41 || op == 0x42 || op >= 0x45 && op <= 0x5a || op >= 0x67 && op <= 0x8a || op == 0xa7 || op == 0xac || op == 0xad || op >= 0xc0 && op <= 0xc4:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// Snapshot the choice once at function setup so all dynamic import alternatives
+// agree on their local-state join. Go and foreign paths still home every pin.
+func (f *fn) preserveNativeImportLocals(nativeCandidate bool) bool {
+	return nativeCandidate && f.usesCalls && len(f.locals) <= len(localStateSnapshot{}) && (f.m.ImportedFuncCount() > 1 || f.sharedNativePins)
+}
+
+// Keep source trap/load order and reject overlapping noncanonical homes.
+func nativeSharedArgPrefixSafe(roots []*elem) bool {
+	const params = 1
+	if params < 1 || params > 2 || len(roots) < params || len(roots) > len(intArgRegs) {
+		return false
+	}
+	for i, root := range roots[:len(roots)-params] {
+		plain := root.st.kind == stLocalReg || root.st.kind == stConst || root.st.kind == stSlot && root.st.slotIndex() == i
+		if root.elemKind() != ekValue || !plain || root.st.typ != mtI32 && root.st.typ != mtI64 {
+			return false
+		}
+	}
+	for i, root := range roots[len(roots)-params:] {
+		if root.elemKind() == ekValue && root.st.kind == stSlot && root.st.slotIndex() != len(roots)-params+i {
+			return false
+		}
+	}
+	return true
 }

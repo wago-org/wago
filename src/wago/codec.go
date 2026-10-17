@@ -20,6 +20,7 @@ const (
 	compiledSectionCount                 = 2
 	compiledHeader                       = compiledArchitecture<<4 | compiledSectionCount
 	_                             byte   = 15 - compiledSectionCount
+	compiledStartFunction         uint64 = 1 << 29
 	compiledCore1SegmentPreflight uint64 = 1 << 31
 
 	// Internal CPU/execution bits share the persisted u64 requirement word but
@@ -59,7 +60,7 @@ const (
 	compiledDynamicFuncrefEscape           uint64 = 1 << 57
 	compiledRegisterABIDisabled            uint64 = 1 << 58
 	compiledAtomicWaitExecution            uint64 = 1 << 59
-	compiledStartFunction                  uint64 = 1 << 60
+	compiledNotifyPendingExecution         uint64 = 1 << 60
 	compiledCPUFeatureBMI2                 uint64 = uint64(shared.AMD64BMI2) << 32
 	compiledCPUFeatureLZCNT                uint64 = uint64(shared.AMD64LZCNT) << 32
 	compiledCPUFeatureTZCNT                uint64 = uint64(shared.AMD64BMI1) << 32
@@ -68,7 +69,8 @@ const (
 	compiledGCExecutionDynamicFuncRefTest  uint64 = 1 << 61
 	compiledGCExecutionGenericStruct       uint64 = 1 << 62
 	compiledGCExecutionGenericArray        uint64 = 1 << 63
-	compiledCPUFeatures                    uint64 = 0x1ffff << 32
+	compiledCPUFeatureARM64LSE             uint64 = 1 << 52
+	compiledCPUFeatures                    uint64 = 0xfffff << 32
 	compiledGCExecutionMask                       = compiledGCExecutionI31Product | compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
 
 	// Import names are attacker-controlled artifact metadata. Bound the decoded
@@ -386,8 +388,8 @@ func encodeCompiledMetadataBody(c *Compiled, countOnly, checkRoots bool) ([]byte
 	if uint64(c.requiredAMD64Features)&^(compiledCPUFeatures>>32) != 0 {
 		return nil, ArtifactSectionSizes{}, fmt.Errorf("AMD64 CPU requirements exceed the encoded feature field")
 	}
-	if compiledArchitecture == 4 && uint64(c.requiredAMD64Features)&((compiledRV64OwnedExceptionReferences|compiledRV64Table64ImportedInitDropABI|compiledRV64Table64ImportedCopyABI|compiledRV64Table64ImportedFillABI|compiledRV64Table64ImportedGrowABI|compiledRV64Table64ImportedGetSetABI|compiledRV64Table64ImportedSizeABI|compiledRV64Table64InitDropABI|compiledRV64Table64CopyABI|compiledRV64Table64FillABI|compiledRV64Table64IndirectABI|compiledRV64Table64GetSetABI|compiledRV64Table64GrowABI|compiledRV64Table64SizeABI)>>32) != 0 {
-		return nil, ArtifactSectionSizes{}, fmt.Errorf("AMD64 CPU requirement aliases an RV64 table64 compiler witness")
+	if compiledArchitecture == 4 && uint64(c.requiredAMD64Features)&((compiledRV64OwnedExceptionReferences|compiledRV64Table64ImportedInitDropABI|compiledRV64Table64ImportedCopyABI|compiledRV64Table64ImportedFillABI|compiledRV64Table64ImportedGrowABI|compiledRV64Table64ImportedGetSetABI|compiledRV64Table64ImportedSizeABI|compiledRV64Table64InitDropABI|compiledRV64Table64CopyABI|compiledRV64Table64FillABI|compiledRV64Table64IndirectABI|compiledRV64Table64GetSetABI|compiledRV64Table64GrowABI|compiledRV64Table64SizeABI|compiledRV64ReferenceFunctionABI|compiledRV64ReferenceControlABI|compiledRV64ReferenceCallABI)>>32) != 0 {
+		return nil, ArtifactSectionSizes{}, fmt.Errorf("AMD64 CPU requirement aliases an RV64 execution marker")
 	}
 	w := compiledWriter{countOnly: countOnly}
 	if !countOnly {
@@ -581,6 +583,12 @@ func encodeCompiledMetadataBody(c *Compiled, countOnly, checkRoots bool) ([]byte
 	}
 	if c.usesAtomicWaitHelpers() {
 		required |= compiledAtomicWaitExecution
+	}
+	if c.requiresNotifyPending {
+		required |= compiledNotifyPendingExecution
+	}
+	if c.requiresARM64LSE {
+		required |= compiledCPUFeatureARM64LSE
 	}
 	required |= uint64(c.requiredAMD64Features) << 32
 	if c.needsFuncRefContextHeader {
@@ -1303,16 +1311,19 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	if err != nil {
 		return err
 	}
+	if compiledArchitecture != 4 && required&(compiledRV64TableContextABI|compiledRV64ContextTrapABI) != 0 {
+		return fmt.Errorf("RV64 native-context ABI on a foreign architecture")
+	}
 	gcExecution := required & compiledGCExecutionMask
 	if compiledArchitecture == 4 {
 		c.setOwnedExceptionReferences(required&compiledRV64OwnedExceptionReferences != 0)
 	}
-	c.nativeReferenceFunctionABI = required&compiledRV64ReferenceFunctionABI != 0
-	c.nativeReferenceControlABI = required&compiledRV64ReferenceControlABI != 0
-	c.nativeReferenceCallABI = required&compiledRV64ReferenceCallABI != 0
-	c.nativeContextTrapABI = required&compiledRV64ContextTrapABI != 0
-	c.nativeTableContextABI = required&compiledRV64TableContextABI != 0
-	c.nativeTableReferenceABI = required&compiledRV64TableReferenceABI != 0
+	c.nativeReferenceFunctionABI = compiledArchitecture == 4 && required&compiledRV64ReferenceFunctionABI != 0
+	c.nativeReferenceControlABI = compiledArchitecture == 4 && required&compiledRV64ReferenceControlABI != 0
+	c.nativeReferenceCallABI = compiledArchitecture == 4 && required&compiledRV64ReferenceCallABI != 0
+	c.nativeContextTrapABI = compiledArchitecture == 4 && required&compiledRV64ContextTrapABI != 0
+	c.nativeTableContextABI = compiledArchitecture == 4 && required&compiledRV64TableContextABI != 0
+	c.nativeTableReferenceABI = compiledArchitecture == 4 && required&compiledRV64TableReferenceABI != 0
 	sizeABI := compiledArchitecture == 4 && required&compiledRV64Table64SizeABI != 0
 	growABI := compiledArchitecture == 4 && required&compiledRV64Table64GrowABI != 0
 	getSetABI := compiledArchitecture == 4 && required&compiledRV64Table64GetSetABI != 0
@@ -1374,16 +1385,18 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	}
 	cpuRequirements := required & compiledCPUFeatures
 	if compiledArchitecture == 4 {
-		cpuRequirements &^= compiledRV64FunctionEnvironmentFrames | compiledRV64OpaqueExternFrames | compiledRV64OwnedExceptionReferences | compiledRV64Table64ImportedInitDropABI | compiledRV64Table64ImportedCopyABI | compiledRV64Table64ImportedFillABI | compiledRV64Table64ImportedGrowABI | compiledRV64Table64ImportedGetSetABI | compiledRV64Table64ImportedSizeABI | compiledRV64Table64InitDropABI | compiledRV64Table64CopyABI | compiledRV64Table64FillABI | compiledRV64Table64IndirectABI | compiledRV64Table64GetSetABI | compiledRV64Table64GrowABI | compiledRV64Table64SizeABI
+		cpuRequirements &^= compiledRV64FunctionEnvironmentFrames | compiledRV64OpaqueExternFrames | compiledRV64OwnedExceptionReferences | compiledRV64Table64ImportedInitDropABI | compiledRV64Table64ImportedCopyABI | compiledRV64Table64ImportedFillABI | compiledRV64Table64ImportedGrowABI | compiledRV64Table64ImportedGetSetABI | compiledRV64Table64ImportedSizeABI | compiledRV64Table64InitDropABI | compiledRV64Table64CopyABI | compiledRV64Table64FillABI | compiledRV64Table64IndirectABI | compiledRV64Table64GetSetABI | compiledRV64Table64GrowABI | compiledRV64Table64SizeABI | compiledRV64ReferenceFunctionABI | compiledRV64ReferenceControlABI | compiledRV64ReferenceCallABI
 	}
 	c.requiredAMD64Features = shared.AMD64Features(cpuRequirements >> 32)
 	if c.requiredAMD64Features&^shared.AMD64KnownFeatures != 0 {
 		return fmt.Errorf("unknown AMD64 CPU requirements %#x", c.requiredAMD64Features)
 	}
+	c.requiresNotifyPending = compiledArchitecture != 4 && required&compiledNotifyPendingExecution != 0
+	c.requiresARM64LSE = compiledArchitecture == 2 && required&compiledCPUFeatureARM64LSE != 0
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
 	c.core1SegmentPreflight = required&compiledCore1SegmentPreflight != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledCore1SegmentPreflight | compiledRV64OwnedExceptionReferences | compiledRV64Table64ImportedInitDropABI | compiledRV64Table64ImportedCopyABI | compiledRV64Table64ImportedFillABI | compiledRV64Table64ImportedGrowABI | compiledRV64Table64ImportedGetSetABI | compiledRV64Table64ImportedSizeABI | compiledRV64Table64InitDropABI | compiledRV64Table64CopyABI | compiledRV64Table64FillABI | compiledRV64Table64IndirectABI | compiledRV64Table64GetSetABI | compiledRV64Table64GrowABI | compiledRV64Table64SizeABI | compiledRV64ReferenceFunctionABI | compiledRV64ReferenceControlABI | compiledRV64ReferenceCallABI | compiledRV64TableReferenceABI | compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
+	c.requiredFeatures = CoreFeatures(required &^ (compiledCore1SegmentPreflight | compiledRV64FunctionEnvironmentFrames | compiledRV64OpaqueExternFrames | compiledRV64OwnedExceptionReferences | compiledRV64Table64ImportedInitDropABI | compiledRV64Table64ImportedCopyABI | compiledRV64Table64ImportedFillABI | compiledRV64Table64ImportedGrowABI | compiledRV64Table64ImportedGetSetABI | compiledRV64Table64ImportedSizeABI | compiledRV64Table64InitDropABI | compiledRV64Table64CopyABI | compiledRV64Table64FillABI | compiledRV64Table64IndirectABI | compiledRV64Table64GetSetABI | compiledRV64Table64GrowABI | compiledRV64Table64SizeABI | compiledRV64ReferenceFunctionABI | compiledRV64ReferenceControlABI | compiledRV64ReferenceCallABI | compiledRV64TableReferenceABI | compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledNotifyPendingExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures | compiledCPUFeatureARM64LSE))
 	if c.nativeReferenceCallABI || c.nativeReferenceControlABI {
 		c.ensureCodeCache()
 		c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
@@ -1468,6 +1481,9 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 		c.ensureCodeCache()
 		c.codeCache.stagedFeatures |= c.requiredFeatures & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
 		c.codeCache.gcI31Product = stagedGCI31ProductCore
+	}
+	if c.requiresNotifyPending && required&compiledAtomicWaitExecution == 0 {
+		return fmt.Errorf("native notify queue requirement needs recorded atomic helper execution")
 	}
 	if required&compiledAtomicWaitExecution != 0 {
 		if !c.requiredFeatures.IsEnabled(CoreFeatureThreads) {
@@ -2667,6 +2683,7 @@ func (r *compiledReader) gcTypeDescs() ([]gc.TypeDesc, error) {
 		if out[i].HasSuper, err = r.bool(); err != nil {
 			return nil, err
 		}
+		out[i].PrepareScanPlan()
 	}
 	return out, nil
 }

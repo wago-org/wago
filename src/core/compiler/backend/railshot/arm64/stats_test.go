@@ -220,10 +220,13 @@ func TestCodegenStatsStoreAndBoundsArm64(t *testing.T) {
 	if explicit.BoundsChecks != 1 {
 		t.Errorf("explicit BoundsChecks = %d, want 1", explicit.BoundsChecks)
 	}
-	if explicit.TrapStubs < 1 {
-		t.Errorf("explicit TrapStubs = %d, want >=1", explicit.TrapStubs)
+	if explicit.TrapStubs != 1 {
+		t.Errorf("explicit TrapStubs = %d, want 1", explicit.TrapStubs)
 	}
 
+	if explicit.Peephole["memory-min-bounds"] != 0 {
+		t.Error("dynamic address incorrectly received a declared-minimum proof")
+	}
 	guard := compileWithStats(t, m, true).Funcs[0]
 	if guard.Peephole["store-imm"] != 1 {
 		t.Errorf("guard store-imm = %d, want 1", guard.Peephole["store-imm"])

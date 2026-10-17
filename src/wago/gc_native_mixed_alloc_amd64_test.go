@@ -10,7 +10,9 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-func gcNativeMixedReservationCastModule() []byte {
+func gcNativeMixedReservationCastModule() []byte { return gcNativeMixedReservationModule(true) }
+
+func gcNativeMixedReservationModule(cancel bool) []byte {
 	packedArrayType := []byte{0x5e, 0x78, 0x01} // type 0: (array (mut i8))
 	structType := []byte{0x5f}
 	structType = append(structType, wasmtest.Vec([]byte{0x7f, 0x00})...) // type 1: (struct (field i32))
@@ -28,13 +30,13 @@ func gcNativeMixedReservationCastModule() []byte {
 	body = append(body,
 		0x41, 0x07, 0xfb, 0x00, 0x01, 0x21, 0x01, // native struct above the array chunk
 		0x41, 0x01, 0xfb, 0x07, 0x02, 0x21, 0x00, // native array inside the chunk
-		0x41,
 	)
-	body = append(body, wasmtest.SLEB32(5000)...)
-	body = append(body,
-		0xfb, 0x07, 0x00, 0x21, 0x02, // helper-only packed array cancels the native batch
-		0x20, 0x01, 0xfb, 0x16, 0x01, 0xd1, 0x0b, // live struct must still cast as type 1
-	)
+	if cancel {
+		body = append(body, 0x41)
+		body = append(body, wasmtest.SLEB32(5000)...)
+		body = append(body, 0xfb, 0x07, 0x00, 0x21, 0x02) // helper cancels the batch
+	}
+	body = append(body, 0x20, 0x01, 0xfb, 0x16, 0x01, 0xd1, 0x0b)
 	code := append(wasmtest.ULEB(uint32(len(body))), body...)
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(packedArrayType, structType, nativeArrayType, funcType)),
@@ -60,9 +62,37 @@ func TestGCNativeMixedReservationPreservesStructAcrossFallbackCollection(t *test
 			if got, err := in.Invoke("run"); err != nil || !reflect.DeepEqual(got, []uint64{0}) {
 				t.Fatalf("run = %v, %v; want [0]", got, err)
 			}
+			if got := in.gc.Stats().Allocations; got != 12 {
+				t.Fatalf("allocations = %d, want 12", got)
+			}
 			if native && in.gc.Stats().MinorCollections == 0 {
 				t.Fatal("native fallback did not collect after preserving the high live extent")
 			}
 		})
+	}
+}
+
+func TestGCNativeMixedReservationCountsBeforeAndAfterCollection(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcNativeMixedReservationModule(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	if got := in.gc.Stats().Allocations; got != 11 {
+		t.Fatalf("before cancellation: allocations=%d, want 11", got)
+	}
+	if err := in.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	if got := in.gc.Stats().Allocations; got != 11 {
+		t.Fatalf("after collection: allocations=%d, want 11", got)
 	}
 }

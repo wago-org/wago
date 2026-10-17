@@ -166,3 +166,19 @@ func TestAnalyzeModuleRequirementsIgnoresInvalidFactIndexesBeforeValidation(t *t
 		t.Fatalf("invalid indexes polluted fused facts: %+v", facts)
 	}
 }
+
+func TestAnalyzeModuleRequirementsSelectsSharedGrowMemory(t *testing.T) {
+	for _, byteBacked := range []bool{false, true} {
+		for _, index := range []uint32{0, 1} {
+			fn := wasm.Func{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrMemoryGrow, Index: index}}}}
+			if byteBacked {
+				fn = wasm.Func{BodyBytes: []byte{0x40, byte(index), 0x0b}}
+			}
+			m := &wasm.Module{Memories: []wasm.MemType{{}, {Shared: true}}, Code: []wasm.Func{fn}}
+			want := index == 1
+			if got := analyzeModuleRequirements(m).atomicWaitHelpers; got != want {
+				t.Fatalf("bytes=%t index=%d helpers=%t want=%t", byteBacked, index, got, want)
+			}
+		}
+	}
+}

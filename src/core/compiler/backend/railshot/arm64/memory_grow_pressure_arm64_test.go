@@ -28,9 +28,12 @@ func TestMemoryGrowFitsTransientRegisterFloor(t *testing.T) {
 						pinned = pinned.add(reg)
 					}
 				}
+				// Match production: the scratch owns fn state across lowerings.
+				// A fresh local fn would itself escape through shared-helper calls.
+				f := &sc.fnState
 				emit := func() {
 					sc.reset()
-					f := fn{a: sc.asm, sc: sc, s: sc.stack, m: m, memSizeReg: regNone, pinnedLocalMask: pinned}
+					*f = fn{a: sc.asm, sc: sc, s: sc.stack, m: m, memSizeReg: regNone, pinnedLocalMask: pinned}
 					f.s.pushValue(storage{kind: stConst, typ: typ, cval: 1})
 					r := wasm.ReaderFrom([]byte{memoryIndex})
 					if err := f.memoryGrow(&r); err != nil {

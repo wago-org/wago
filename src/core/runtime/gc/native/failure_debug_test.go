@@ -273,6 +273,10 @@ func TestNativeBatchCancellationSurvivesInjectedCollectionFailure(t *testing.T) 
 	if !c.PrepareNativeStructHandles() {
 		t.Fatal("prepare native handles")
 	}
+	c.nurseryBump += 3 * 16
+	c.stats.LiveObjects = 3
+	c.nativeView.setDeadNurseryCycle(c.collectionCycle())
+	bump := c.nurseryBump
 	epoch := c.nativeAllocEpoch
 	cleanup := armFailure(c, failPromotionPlan, 0)
 	err = c.CollectMinor(Slots{&root})
@@ -282,6 +286,9 @@ func TestNativeBatchCancellationSurvivesInjectedCollectionFailure(t *testing.T) 
 	}
 	if c.nativeAllocEpoch == epoch || c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.Cursor != 0 || c.nativeStructAlloc.ChunkEnd != 0 {
 		t.Fatal("failed collection retained native reservations or stale epoch")
+	}
+	if c.nurseryBump != bump || c.Stats().LiveObjects != 4 {
+		t.Fatalf("failed collection lost dead charges: bump %d/%d live %d/4", c.nurseryBump, bump, c.Stats().LiveObjects)
 	}
 	occurrences := 0
 	for _, h := range c.nurseryHandles {
@@ -304,5 +311,8 @@ func TestNativeBatchCancellationSurvivesInjectedCollectionFailure(t *testing.T) 
 	}
 	if err := c.CollectMinor(Slots{&root}); err != nil {
 		t.Fatalf("recovery collection: %v", err)
+	}
+	if c.Stats().LiveObjects != 1 {
+		t.Fatalf("recovery collection live objects = %d, want 1", c.Stats().LiveObjects)
 	}
 }

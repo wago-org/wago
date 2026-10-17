@@ -3,6 +3,7 @@ package wasm
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -10,7 +11,7 @@ func TestCompactImportsDecodeValidateAndPreserveOrder(t *testing.T) {
 	mixed := module(
 		section(secType, 0x01, 0x60, 0x00, 0x00),
 		section(secImport,
-			0x03,
+			0x01,
 			0x03, 'e', 'n', 'v', 0x00, 0x7f, 0x03,
 			0x01, 'f', byte(ExternFunc), 0x00,
 			0x01, 'm', byte(ExternMem), 0x01, 0x01, 0x02,
@@ -62,10 +63,10 @@ func TestCompactImportsDecodeValidateAndPreserveOrder(t *testing.T) {
 
 func TestCompactImportsSameKindMemoryGroup(t *testing.T) {
 	data := module(section(secImport,
-		0x02,
-		0x03, 'e', 'n', 'v', 0x00, 0x7e, byte(ExternMem), 0x02,
-		0x01, 'a', 0x00, 0x01,
-		0x01, 'b', 0x01, 0x02, 0x03,
+		0x01,
+		0x03, 'e', 'n', 'v', 0x00, 0x7e, byte(ExternMem), 0x01, 0x02, 0x03, 0x02,
+		0x01, 'a',
+		0x01, 'b',
 	))
 	m, err := DecodeModule(data)
 	if err != nil {
@@ -93,12 +94,12 @@ func TestCompactImportsRejectMalformedGroupsAndTypes(t *testing.T) {
 		code DecodeErrorCode
 	}{
 		{
-			name: "group exceeds section count",
+			name: "truncated group entries",
 			data: module(section(secImport,
 				0x01,
 				0x01, 'm', 0x00, 0x7f, 0x02,
 			)),
-			code: ErrInvalidImport,
+			code: ErrIndexOutOfBounds,
 		},
 		{
 			name: "invalid shared kind",
@@ -181,5 +182,41 @@ func TestCompactImportsRejectUnknownFunctionTypeIndex(t *testing.T) {
 				t.Fatalf("validation error = %v, want ErrUnknownType", err)
 			}
 		})
+	}
+}
+
+func TestCompactImportsGroupCountIncludesEmptyAndOrdinaryEntries(t *testing.T) {
+	data := module(section(secType, 1, 0x60, 0, 0), section(secImport,
+		3, 1, 'm', 1, 'a', 0, 0, // ordinary function import
+		1, 'm', 0, 0x7f, 0, // empty compact group
+		1, 'm', 0, 0x7e, 0, 0, 2, 1, 'b', 1, 'c', // shared complete function type
+	))
+	for _, decode := range []func([]byte) (*Module, error){DecodeModule, func(data []byte) (*Module, error) {
+		dm, err := DecodeModuleByteBacked(data)
+		if err != nil {
+			return nil, err
+		}
+		return dm.Module, nil
+	}} {
+		m, err := decode(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(m.Imports) != 3 || m.Imports[0].Name != "a" || m.Imports[1].Name != "b" || m.Imports[2].Name != "c" {
+			t.Fatalf("imports=%+v", m.Imports)
+		}
+	}
+}
+
+func TestCompactImportExpansionRespectsMetadataBudget(t *testing.T) {
+	group := []byte{1, 1, 'm', 0, 0x7e, 0, 0, 64}
+	group = append(group, make([]byte, 64)...)
+	data := module(section(secType, 1, 0x60, 0, 0), section(secImport, group...))
+	if _, err := DecodeModuleByteBackedWithLimits(data, ValidationFeatures{CompactImports: true}, DecodeLimits{MaxMetadataBytes: 4096}); err == nil || !strings.Contains(err.Error(), "allocation limit") {
+		t.Fatalf("expansion budget: %v", err)
+	}
+	m, err := DecodeModule(data)
+	if err != nil || len(m.Imports) != 64 {
+		t.Fatalf("normal decode: %+v %v", m, err)
 	}
 }

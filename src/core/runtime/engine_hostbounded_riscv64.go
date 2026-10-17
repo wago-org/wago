@@ -4,6 +4,8 @@ package runtime
 
 import (
 	"fmt"
+	goruntime "runtime"
+
 	"github.com/wago-org/wago/internal/runtimebridge"
 	"unsafe"
 )
@@ -21,6 +23,27 @@ func (p *PreparedHostScalarCall) EnableBoundedSegments(access runtimebridge.Host
 	}
 	p.boundedSegments = true
 	return nil
+}
+
+// CallFixedContext enters the prepared RV64 bounded portal with a rooted host
+// context. The cooperative transition retains the ordinary fallback contract.
+func (p *PreparedHostScalarCall) CallFixedContext(access runtimebridge.HostScalarCallAccess, context unsafe.Pointer, fixed FixedScalarHostContextCall, fallback FixedScalarHostCall) error {
+	if p == nil || p.engine == nil || !p.boundedSegments || !p.fixed || !access.Granted() || context == nil || fixed == nil || fallback == nil {
+		return fmt.Errorf("jit: invalid prepared bounded host context")
+	}
+	clearTrapUnlessInterrupted(p.trap)
+	err := p.engine.callRV64BoundedHost(p.code, p.serArgs, p.linMemBase, p.trap, p.results, p.ctrl, rv64BoundedPortal{slots: p.fixedSlots, contextScalar: fixed}, context, false)
+	goruntime.KeepAlive(p)
+	goruntime.KeepAlive(context)
+	return err
+}
+
+// CallFixedIntegerContext adds the fixed one-argument/one-result integer proof.
+func (p *PreparedHostScalarCall) CallFixedIntegerContext(access runtimebridge.HostScalarCallAccess, context unsafe.Pointer, fixed FixedScalarHostContextCall, fallback FixedScalarHostCall) error {
+	if p == nil || p.fixedSlots != 0x10001 {
+		return fmt.Errorf("jit: invalid integer host shape")
+	}
+	return p.CallFixedContext(access, context, fixed, fallback)
 }
 func (e *Engine) CallWithHostBaseScalarBounded(access runtimebridge.HostScalarCallAccess, code uintptr, args []byte, home uintptr, trap, results, ctrl []byte, slots uint32, fixed FixedScalarHostCall) error {
 	if !access.Granted() || fixed == nil || slots>>16 > 2 || slots&0xffff > 2 {

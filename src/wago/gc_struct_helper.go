@@ -29,6 +29,9 @@ const (
 	gcStructFinalCastArrayLen        = 13
 	gcFuncRefTest                    = 14
 	gcStructReserveDead              = 15
+	gcStructReserveDeadNative        = 40 // dead reservation followed by native batch preparation
+	gcStructReserveDeadBatch         = 42
+	gcArrayReserveDeadBatch          = 43
 )
 
 type gcStructHelperError struct{ err error }
@@ -53,7 +56,7 @@ func (in *Instance) gcObjectTypeMatches(actual gc.TypeID, want uint32) bool {
 
 func gcHelperMayAllocate(helper uint32) bool {
 	switch helper {
-	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead,
+	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead, gcStructReserveDeadNative, gcStructReserveDeadBatch, gcArrayReserveDeadBatch,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
 		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill,
 		gcArrayAllocDefaultNative, gcArrayAllocUniformNative, gcArrayAllocFixedNative,
@@ -96,7 +99,28 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 	switch helper {
 	case gcFuncRefTest:
 		in.dispatchGCFunctionRefTest(in, args, results)
-	case gcStructReserveDead:
+	case gcArrayReserveDeadBatch:
+		if len(args) != 2 || len(results) != 0 {
+			panic(gcHelperFailuref("gc array batch reservation arity = %d/%d, want 2/0", len(args), len(results)))
+		}
+		typeID, length, count := uint32(args[1]>>32), uint32(args[1]), uint32(args[0])
+		if err := in.gc.ReserveDeadArrayAllocationsWithPoll(in.requireGCDomainType(typeID), length, count, frameRoots, in.pollGCBatchInterrupt); err != nil {
+			panic(gcHelperFailure(err))
+		}
+		if gc.NativeDeadBatchSupported {
+			in.prepareNativeDeadArrayBatch(typeID, length, count)
+		}
+	case gcStructReserveDeadBatch:
+		if len(args) != 2 || len(results) != 0 {
+			panic(gcHelperFailuref("gc struct batch reservation arity = %d/%d, want 2/0", len(args), len(results)))
+		}
+		if err := in.gc.ReserveDeadStructAllocationsWithPoll(in.requireGCDomainType(uint32(args[1])), uint32(args[0]), frameRoots, in.pollGCBatchInterrupt); err != nil {
+			panic(gcHelperFailure(err))
+		}
+		if gc.NativeDeadBatchSupported {
+			in.prepareNativeDeadStructBatch(uint32(args[1]), uint32(args[0]))
+		}
+	case gcStructReserveDead, gcStructReserveDeadNative:
 		if len(args) != 1 {
 			panic(gcHelperFailuref("gc struct dead reservation helper arity = %d, want 1", len(args)))
 		}
@@ -106,6 +130,9 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		}
 		if len(results) != 0 {
 			results[0] = uint64(ref)
+		}
+		if helper == gcStructReserveDeadNative {
+			in.prepareNativeDeadStructHandle(uint32(args[0]))
 		}
 	case gcStructAllocDefault:
 		if len(args) != 1 || len(results) < 1 {
@@ -659,5 +686,13 @@ func (in *Instance) dispatchGCFunctionRefTest(entryOwner *Instance, args, result
 		results[0] = 1
 	} else {
 		results[0] = 0
+	}
+}
+
+// Reduced loops remain in Go across collecting boundaries, so native interrupt
+// delivery must be observed here before charging the next allocation batch.
+func (in *Instance) pollGCBatchInterrupt() {
+	if coreruntime.PreparedIntTrapCode(in.trap) == coreruntime.TrapInterrupted {
+		panic(gcHelperTrap(coreruntime.TrapInterrupted))
 	}
 }

@@ -32,6 +32,9 @@ const (
 	gcStructFinalCastArrayLen        = 13
 	gcFuncRefTest                    = 14
 	gcStructReserveDead              = 15
+	gcStructReserveDeadNative        = 40 // dead reservation followed by native batch preparation
+	gcStructReserveDeadBatch         = 42
+	gcArrayReserveDeadBatch          = 43
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
@@ -41,6 +44,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		return err
 	}
 	f.prepareGCResolvedFB(sub)
+	f.prepareGCFreshStructFB(sub)
 	f.gcOpcodeBarrier = false
 	defer func() { f.recordGCOpcodeBytes(sub, f.a.Len()-before) }()
 	if sub >= 6 && sub <= 19 {
@@ -56,6 +60,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		return f.emitGCBranchCast(sub, r)
 	}
 	if sub >= 28 && sub <= 30 {
+		if sub == 28 && f.tryFuseI31RoundTrip(r) {
+			return nil
+		}
 		return f.emitGCI31(sub)
 	}
 	if sub == 26 || sub == 27 {
@@ -113,20 +120,60 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			}
 			params = append(params, valueType)
 		}
+		forward, forwardReader, forwardOK := f.tryForwardGCConstructorGet(r, typeIndex, st)
+		_, native := f.nativeGCStructAllocLayout(typeIndex)
+		canReplace := native && f.opt(optDeadGCNew)
+		var selection [3]storage
+		var selectionReader wasm.Reader
+		selectionOK := false
+		if canReplace {
+			selection, selectionReader, selectionOK = f.tryForwardGCConstructorIf(r, typeIndex, st)
+		}
+		scalarReplacement := canReplace && (forwardOK || selectionOK) && gcStructHasOnlyDirectScalars(st)
+		freshValue, freshOK := f.gcFreshStructCandidate(st)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		params = append(params, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		if _, native := f.nativeGCStructAllocLayout(typeIndex); native {
+		if native {
 			f.nativeStructAllocType = typeIndex + 1
+			f.nativeStructAllocDead = scalarReplacement
 		}
 		if err := f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result}); err != nil {
 			return err
 		}
+
 		f.markTopGCReference()
+		if selectionOK {
+			f.dropValue()
+			for _, value := range selection {
+				f.pushGCForwardedValue(value)
+			}
+			f.emitSelect()
+			*r = selectionReader
+			f.stats.peep("gc-constructor-if-scalar-replace")
+		} else if forwardOK {
+			f.dropValue()
+			f.pushGCForwardedValue(forward)
+			*r = forwardReader
+			if scalarReplacement {
+				f.stats.peep("gc-constructor-scalar-replace")
+			} else {
+				f.stats.peep("gc-constructor-get-forward")
+			}
+		} else if freshOK {
+			f.setGCFreshStructFact(gcFreshStructFact{
+				objectLocal: -1,
+				typeIndex:   typeIndex,
+				value:       freshValue,
+			})
+		}
 		return nil
 	case 1: // struct.new_default typeidx
 		typeIndex, err := r.U32()
 		if err != nil {
+			return err
+		}
+		if grouped, err := f.tryDeadGCDefaultGroup(r, typeIndex); grouped || err != nil {
 			return err
 		}
 		if _, ok := f.stagedStructType(typeIndex); !ok {
@@ -174,7 +221,10 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		} else if field.Storage().Packed() {
 			return fmt.Errorf("amd64: plain struct.get cannot access packed type %d field %d", typeIndex, fieldIndex)
 		}
-		if f.emitDirectGCStructGet(typeIndex, fieldIndex, helper) {
+		if sub == 2 && f.tryForwardGCFreshStructGet(typeIndex, fieldIndex) {
+			return nil
+		}
+		if f.emitDirectGCStructGet(r, typeIndex, fieldIndex, helper) {
 			return nil
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -223,6 +273,263 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	default:
 		return fmt.Errorf("amd64: unsupported staged 0xfb opcode %d", sub)
 	}
+}
+
+func gcStructHasOnlyDirectScalars(st wasm.SubType) bool {
+	for _, field := range st.Comp.Fields {
+		if field.Storage().Packed() {
+			return false
+		}
+		if _, ok := directGCScalarStorage(field.Storage()); !ok {
+			return false
+		}
+	}
+	return true
+}
+
+type gcFreshStructFact struct {
+	value       storage
+	objectLocal int
+	typeIndex   uint32
+}
+
+// The three spare bytes in each fixed subtype-cache entry hold one byte from
+// each fresh-struct index. This keeps established subtype proofs intact and
+// does not enlarge the per-function compiler state or allocate storage.
+const gcFreshStructFactMode uint8 = 1 << 7
+
+func (f *fn) setGCFreshStructFact(fact gcFreshStructFact) {
+	objectLocal := ^uint32(0)
+	if fact.objectLocal >= 0 {
+		objectLocal = uint32(fact.objectLocal)
+	}
+	indices := [...]uint32{fact.typeIndex, objectLocal, uint32(fact.value.index())}
+	for i := range f.gcSubtypeProofs {
+		for j, index := range indices {
+			f.gcSubtypeProofs[i].fresh[j] = byte(index >> (8 * i))
+		}
+	}
+	f.gcSubtypeProofN |= gcFreshStructFactMode
+}
+
+func (f *fn) getGCFreshStructFact() (gcFreshStructFact, bool) {
+	if f.gcSubtypeProofN&gcFreshStructFactMode == 0 {
+		return gcFreshStructFact{}, false
+	}
+	var indices [3]uint32
+	for i := range f.gcSubtypeProofs {
+		for j := range indices {
+			indices[j] |= uint32(f.gcSubtypeProofs[i].fresh[j]) << (8 * i)
+		}
+	}
+	objectLocal := int(indices[1])
+	if indices[1] == ^uint32(0) {
+		objectLocal = -1
+	}
+	sourceLocal := indices[2]
+	if int(sourceLocal) >= len(f.localType) {
+		f.invalidateGCFreshStructFact()
+		return gcFreshStructFact{}, false
+	}
+	value := storage{kind: stLocalRef, typ: f.localType[sourceLocal], idx: sourceLocal}
+	return gcFreshStructFact{value: value, objectLocal: objectLocal, typeIndex: indices[0]}, true
+}
+
+func (f *fn) gcFreshStructCandidate(st wasm.SubType) (storage, bool) {
+	if len(st.Comp.Fields) != 1 {
+		return storage{}, false
+	}
+	field := st.Comp.Fields[0]
+	if field.Storage().Packed() {
+		return storage{}, false
+	}
+	if _, ok := directGCScalarStorage(field.Storage()); !ok {
+		return storage{}, false
+	}
+	value := f.s.back()
+	if value == nil || !value.isValue() {
+		return storage{}, false
+	}
+	forward := value.st
+	switch forward.kind {
+	case stLocalRef, stLocalReg:
+		forward.kind = stLocalRef
+		forward.reg = regNone
+	default:
+		return storage{}, false
+	}
+	return forward, true
+}
+
+func (f *fn) prepareGCFreshStructFact(op byte) {
+	fact, ok := f.getGCFreshStructFact()
+	if !ok {
+		return
+	}
+	if fact.objectLocal < 0 {
+		if op != 0x21 && op != 0x22 {
+			f.invalidateGCFreshStructFact()
+		}
+		return
+	}
+	switch op {
+	case 0x20, 0x23, 0x41, 0x71, 0xfb:
+		return
+	default:
+		f.invalidateGCFreshStructFact()
+	}
+}
+
+func (f *fn) prepareGCFreshStructFB(sub uint32) {
+	if _, ok := f.getGCFreshStructFact(); !ok {
+		return
+	}
+	switch sub {
+	case 2, 11, 14: // scalar get or a root-array store.
+		return
+	default:
+		f.invalidateGCFreshStructFact()
+	}
+}
+
+func (f *fn) bindOrInvalidateGCFreshStructLocal(local int) {
+	fact, ok := f.getGCFreshStructFact()
+	if !ok {
+		return
+	}
+	if fact.objectLocal < 0 {
+		fact.objectLocal = local
+		f.setGCFreshStructFact(fact)
+		return
+	}
+	if fact.objectLocal == local ||
+		(fact.value.kind == stLocalRef && fact.value.index() == local) {
+		f.invalidateGCFreshStructFact()
+	}
+}
+
+func (f *fn) invalidateGCFreshStructFact() {
+	f.gcSubtypeProofN &^= gcFreshStructFactMode
+}
+
+func (f *fn) tryForwardGCFreshStructGet(typeIndex, fieldIndex uint32) bool {
+	fact, ok := f.getGCFreshStructFact()
+	if !ok || fieldIndex != 0 || typeIndex != fact.typeIndex {
+		f.invalidateGCFreshStructFact()
+		return false
+	}
+	local, ok := gcLocalProvenance(f.s.back())
+	if !ok || local != fact.objectLocal {
+		f.invalidateGCFreshStructFact()
+		return false
+	}
+	f.dropValue()
+	f.pushGCForwardedValue(fact.value)
+	f.invalidateGCFreshStructFact()
+	f.stats.peep("gc-fresh-struct-get-forward")
+	return true
+}
+
+// tryForwardGCConstructorGet recognizes an adjacent cast and scalar field read
+// from a freshly allocated struct. It returns only constants and direct local
+// reads, which can be read again after the allocation helper without retaining
+// a register or compiler object snapshot across the call.
+func (f *fn) tryForwardGCConstructorGet(r *wasm.Reader, sourceType uint32, source wasm.SubType) (storage, wasm.Reader, bool) {
+	next := *r
+	op, err := next.Byte()
+	if err != nil || op != 0xfb {
+		return storage{}, wasm.Reader{}, false
+	}
+	sub, err := next.U32()
+	if err != nil || (sub != 22 && sub != 23) {
+		return storage{}, wasm.Reader{}, false
+	}
+	target, exact, err := readRefHeapTypeImmediate(&next)
+	if err != nil || target < 0 {
+		return storage{}, wasm.Reader{}, false
+	}
+	if op, err = next.Byte(); err != nil || op != 0xfb {
+		return storage{}, wasm.Reader{}, false
+	}
+	get, err := next.U32()
+	if err != nil || get != 2 { // plain struct.get only; packed reads need extension
+		return storage{}, wasm.Reader{}, false
+	}
+	accessType, err := next.U32()
+	if err != nil {
+		return storage{}, wasm.Reader{}, false
+	}
+	fieldIndex, err := next.U32()
+	if err != nil || int(fieldIndex) >= len(source.Comp.Fields) {
+		return storage{}, wasm.Reader{}, false
+	}
+	field, ok := f.stagedStructField(accessType, fieldIndex)
+	if !ok || field.Storage().Packed() {
+		return storage{}, wasm.Reader{}, false
+	}
+	_, scalar := directGCScalarStorage(field.Storage())
+	if !scalar {
+		return storage{}, wasm.Reader{}, false
+	}
+	fieldN := len(source.Comp.Fields)
+	if fieldN > f.depth() {
+		return storage{}, wasm.Reader{}, false
+	}
+	value := f.s.back()
+	for i := fieldN - 1; i > int(fieldIndex); i-- {
+		value = baseOfValentBlock(value).prev
+	}
+	if !value.isValue() {
+		return storage{}, wasm.Reader{}, false
+	}
+	forward := value.st
+	switch forward.kind {
+	case stConst:
+	case stLocalRef, stLocalReg:
+		forward.kind = stLocalRef
+		forward.reg = regNone
+	default:
+		return storage{}, wasm.Reader{}, false
+	}
+	if exact {
+		if uint32(target) != sourceType {
+			return storage{}, wasm.Reader{}, false
+		}
+	} else {
+		if !f.cachedGCSubtypeProof(sourceType, uint32(target)) {
+			return storage{}, wasm.Reader{}, false
+		}
+	}
+	if !f.cachedGCSubtypeProof(sourceType, accessType) {
+		return storage{}, wasm.Reader{}, false
+	}
+	return forward, next, true
+}
+
+type gcSubtypeProof struct {
+	source uint32
+	target uint32
+	result bool
+	fresh  [3]byte
+}
+
+func (f *fn) cachedGCSubtypeProof(source, target uint32) bool {
+	proofN := f.gcSubtypeProofN &^ gcFreshStructFactMode
+	for i := uint8(0); i < proofN; i++ {
+		proof := f.gcSubtypeProofs[i]
+		if proof.source == source && proof.target == target {
+			return proof.result
+		}
+	}
+	if f.gcSubtypeProofN&gcFreshStructFactMode != 0 || proofN == uint8(len(f.gcSubtypeProofs)) {
+		return false
+	}
+	actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: source}), false)
+	required := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: target}), false)
+	result := f.m.ReferenceTypeSubtype(actual, required)
+	f.gcSubtypeProofs[proofN] = gcSubtypeProof{source: source, target: target, result: result}
+	f.gcSubtypeProofN = proofN + 1
+	return result
 }
 
 func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
@@ -699,10 +1006,36 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 	return f.brOnCastResult(depth, sub == 24)
 }
 
-func (f *fn) emitGCI31(sub uint32) error {
-	if sub == 29 || sub == 30 {
-		f.materializePendingTraps()
+func (f *fn) tryFuseI31RoundTrip(r *wasm.Reader) bool {
+	next := *r
+	op, err := next.Byte()
+	if err != nil || op != 0xfb {
+		return false
 	}
+	get, err := next.U32()
+	if err != nil || (get != 29 && get != 30) {
+		return false
+	}
+	// The tagged intermediate never escapes, so it cannot be null. Keep
+	// earlier input traps in order before extracting the low 31 integer bits.
+	f.materializePendingTraps()
+	value := f.materialize(f.popValue())
+	if get == 29 {
+		f.a.ShiftImm(4, value, 1, false)
+		f.a.ShiftImm(7, value, 1, false)
+	} else {
+		f.a.AluRI(4, value, 0x7fffffff, false)
+	}
+	f.pushReg(value, mtI32)
+	*r = next
+	f.stats.peep("i31-roundtrip")
+	return true
+}
+
+func (f *fn) emitGCI31(sub uint32) error {
+	// Materializing the input can trap even though ref.i31 itself cannot.
+	// Preserve earlier deferred traps before evaluating that input.
+	f.materializePendingTraps()
 	value := f.materialize(f.popValue())
 	switch sub {
 	case 28: // ref.i31
@@ -850,15 +1183,15 @@ func gcFrameRefType(m *wasm.Module, t wasm.ValType) bool {
 }
 
 func (f *fn) gcFrameLocal(index int) bool {
-	if index < 0 || f.gcFrameRoots == nil {
+	if index < 0 || index/64 >= len(f.gcLocalTypes) {
 		return false
 	}
-	return f.gcFrameRoots.TracksLocal(uint32(index))
+	return f.gcLocalTypes[index/64]&(uint64(1)<<uint(index%64)) != 0
 }
 
 func gcHelperMayAllocate(helper uint32) bool {
 	switch helper {
-	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead,
+	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead, gcStructReserveDeadNative, gcStructReserveDeadBatch, gcArrayReserveDeadBatch,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
 		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill,
 		gcArrayAllocDefaultNative, gcArrayAllocUniformNative, gcArrayAllocFixedNative,
@@ -905,4 +1238,19 @@ func stagedStructField(m *wasm.Module, typeIndex, fieldIndex uint32) (wasm.Field
 		return wasm.FieldType{}, false
 	}
 	return sub.Comp.Fields[fieldIndex], true
+}
+
+// Forwarded local reads occur after allocation, which may either preserve dirty
+// pins or spill them through a helper. Recover from the current local state.
+func (f *fn) pushGCForwardedValue(value storage) {
+	if value.kind == stLocalRef {
+		x := int(value.idx)
+		if reg, _, pinned := f.pinReg(x); pinned {
+			f.recoverLocal(x)
+			value.kind, value.reg = stLocalReg, reg
+		} else if f.localConstZero(x) {
+			value = zeroStorage(value.typ)
+		}
+	}
+	f.pushValue(value)
 }

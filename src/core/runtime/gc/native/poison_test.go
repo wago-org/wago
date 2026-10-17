@@ -14,7 +14,7 @@ func TestThroughputOldAndLargeFreedMemoryIsPoisoned(t *testing.T) {
 	if err := c.CollectFull(Slots{&root}); err != nil {
 		t.Fatal(err)
 	}
-	for i, b := range c.throughput.mem[e.off : e.off+e.allocSize] {
+	for i, b := range c.throughput.mem[e.off : e.off+c.throughput.handleAllocSize(e)] {
 		if b != 0xdd {
 			t.Fatalf("old byte %d not poisoned: %#x", i, b)
 		}
@@ -33,7 +33,7 @@ func TestThroughputOldAndLargeFreedMemoryIsPoisoned(t *testing.T) {
 	if err := c.CollectFull(Slots{&root}); err != nil {
 		t.Fatal(err)
 	}
-	for i, b := range c.throughput.mem[e.off : e.off+e.allocSize] {
+	for i, b := range c.throughput.mem[e.off : e.off+c.throughput.handleAllocSize(e)] {
 		if b != 0xdd {
 			t.Fatalf("large byte %d not poisoned: %#x", i, b)
 		}

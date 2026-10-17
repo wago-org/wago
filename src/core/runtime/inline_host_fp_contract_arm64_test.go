@@ -69,7 +69,7 @@ func TestInlineBoundedBridgePreservesNativeFP(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer munmap(code)
-	for _, name := range []string{"scalar", "view", "context", "view-context"} {
+	for _, name := range []string{"scalar", "view", "context", "view-context", "prepared-context"} {
 		t.Run(name, func(t *testing.T) {
 			for n := 0; n < 3; n++ {
 				results, trap := memory[1024:1088], memory[1152:1152+TrapBufferBytes]
@@ -112,6 +112,29 @@ func TestInlineBoundedBridgePreservesNativeFP(t *testing.T) {
 							t.Fatal("context changed")
 						}
 						callback(args, out)
+					}, callback)
+				} else if name == "prepared-context" {
+					context := new(byte)
+					callback := func(a0, a1 uint64) uint64 {
+						if a0 != 41 {
+							t.Fatal(a0)
+						}
+						step()
+						return 42
+					}
+					jm := &JobMemory{mem: memory, linOff: 512}
+					prepared, prepareErr := e.PrepareHostScalarFixedCall(runtimebridge.GrantHostScalarCall(), slicePtr(code), nil, jm, trap, results, ctrl, 1|1<<16)
+					if prepareErr != nil {
+						t.Fatal(prepareErr)
+					}
+					if err := prepared.EnableBoundedSegments(runtimebridge.GrantHostScalarCall()); err != nil {
+						t.Fatal(err)
+					}
+					err = prepared.CallFixedContext(runtimebridge.GrantHostScalarCall(), unsafe.Pointer(context), func(pointer unsafe.Pointer, a0, a1 uint64) uint64 {
+						if pointer != unsafe.Pointer(context) {
+							t.Fatal("context changed")
+						}
+						return callback(a0, a1)
 					}, callback)
 				} else if name == "context" {
 					context := new(byte)

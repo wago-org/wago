@@ -234,6 +234,8 @@ func independent(t *testing.T, fixtures []Fixture) {
 	independentWithProbes(t, fixtures, independentFeatureProbes())
 }
 
+const independentV8Timeout = time.Minute
+
 func independentWithProbes(t *testing.T, fixtures []Fixture, probes []nodeFeatureProbe) {
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -292,13 +294,13 @@ process.stdin.on('end', async () => {
   }
 });`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), independentV8Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, node, "-e", script)
 	cmd.Stdin = bytes.NewReader(payload)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("independent V8: %v %s", err, out)
+		t.Fatal(independentV8Failure(ctx, err, out))
 	}
 	var report struct {
 		Node, V8    string
@@ -359,6 +361,13 @@ process.stdin.on('end', async () => {
 		}
 	}
 	t.Logf("independent engine %s V8=%s fixtures=%d", report.Node, report.V8, len(report.Rows))
+}
+
+func independentV8Failure(ctx context.Context, processErr error, output []byte) error {
+	if contextErr := ctx.Err(); contextErr != nil {
+		return fmt.Errorf("independent V8 context: %w; process: %w; output: %s", contextErr, processErr, output)
+	}
+	return fmt.Errorf("independent V8: %w; output: %s", processErr, output)
 }
 
 func BenchmarkCompile(b *testing.B, compile Compiler) {

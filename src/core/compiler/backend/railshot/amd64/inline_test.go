@@ -278,14 +278,14 @@ func TestInlineEnvEnabledDefaultAndOptOut(t *testing.T) {
 func TestInlineExecAdd(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	withInlineEnabled(t, func() {
-		// func 0 ()->i32: i32.const 5; i32.const 7; call 1; end  → add(5,7)
-		caller := []byte{0x00, 0x41, 0x05, 0x41, 0x07, 0x10, 0x01, 0x0b}
+		// func 0 (i32,i32)->i32: local.get 0; local.get 1; call 1; end
+		caller := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x10, 0x01, 0x0b}
 		leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b} // (i32,i32)->i32 a+b
 		m := modFuncs(t,
-			funcDef{params: nil, results: []wasm.ValType{vI32}, body: caller},
+			funcDef{params: []wasm.ValType{vI32, vI32}, results: []wasm.ValType{vI32}, body: caller},
 			funcDef{params: []wasm.ValType{vI32, vI32}, results: []wasm.ValType{vI32}, body: leaf},
 		)
-		if got := runAmd64(t, m); got != 12 {
+		if got := runAmd64(t, m, 5, 7); got != 12 {
 			t.Errorf("inlined add(5,7) = %d, want 12", got)
 		}
 		// Verify func 0 spliced the call instead of emitting one.

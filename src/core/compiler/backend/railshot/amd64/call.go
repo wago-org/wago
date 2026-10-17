@@ -20,7 +20,7 @@ import (
 // cross-instance continuation must read from the restored caller basedata.
 func (f *fn) refreshCachedMemoryBoundAfterExternalCall() {
 	if f.memSizeReg != regNone {
-		f.a.Load64(f.memSizeReg, RBX, -bdCurBytes)
+		f.loadMemoryCache()
 	}
 }
 
@@ -718,9 +718,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) {
 	}
 	f.a.Load64(R9, R8, disp+runtime.ImportDispatchCodePtrOffset)
 	f.a.Load64(R8, R8, disp+runtime.ImportDispatchCallerContextOffset)
-	if f.opt(optDirectGoHostImport) {
-		f.a.AluRI(4, R8, -2, true) // strip the Go binding tag before using the context
-	}
+	f.a.AluRI(4, R8, -int32(runtime.ImportDispatchCallerTagMask)-1, true) // strip binding tags before using the context
 
 	f.emitTailFrameRelease()
 
@@ -1239,15 +1237,32 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.invalidateGCResolvedObject()
 	f.stats.call(callKindHostSync)
-	internalGC := uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) != 0
+	// Blocking waits use the complete host frame and GC callsite maps. Other
+	// atomic helpers retain the compact internal transition.
+	atomicWait := uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 &&
+		(uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait32 || uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait64)
+	internalGC := uint32(importIdx)&gcStructDispatchBit != 0 || uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 && !atomicWait
 	nativeStructType := f.nativeStructAllocType
+	nativeStructDead := f.nativeStructAllocDead
 	nativeArray := f.nativeArrayAlloc
 	f.nativeStructAllocType = 0
+	f.nativeStructAllocDead = false
+	f.nativeStructDirectUsed = false
 	f.nativeArrayAlloc = gcArrayAllocStubSite{}
 	p, rN := len(ft.Params), len(ft.Results)
+	notifyIndex := uint32(0)
+	notifyFast := uint32(importIdx) == shared.AtomicWaitDispatchBit|shared.AtomicHelperNotify && f.opt(optAtomicNotifyEmpty) && (p == 3 || p == 4)
+	if notifyFast && p == 4 {
+		top := f.s.back()
+		if top.st.kind != stConst {
+			notifyFast = false
+		} else {
+			notifyIndex = uint32(top.st.cval)
+		}
+	}
 	var rootOffsets []uint32
 	recordRoots := false
-	if uint32(importIdx)&(gcStructDispatchBit|shared.AtomicWaitDispatchBit) == 0 {
+	if !internalGC {
 		rootOffsets, recordRoots = f.prepareGCFrameCallsite(p)
 	}
 	paramSlots := funcTypeSlots(ft.Params)
@@ -1285,6 +1300,16 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	f.tmpTypes = types
 	f.tmpStackSlots = slotOf
+	// Only memory32 index zero has this compact canonical-slot fast path.
+	// Other memories retain their existing width-aware helper lowering.
+	atomicFast := f.threadedMemory0 && !f.memoryAddr64(0) &&
+		(atomicWait && p == 4 || notifyFast && p == 3)
+	atomicOffset := uint32(0)
+	if atomicFast {
+		offset := roots[d-1].st
+		atomicFast = offset.kind == stConst && uint64(offset.cval) <= 0xffffffff
+		atomicOffset = uint32(offset.cval)
+	}
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
@@ -1293,13 +1318,32 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 
-	f.flush()                   // operands to canonical slot-width slots
+	f.flush() // operands to canonical slot-width slots
+	if nativeStructType != 0 && nativeGCStructDirectSlotsEnabled {
+		if localStates, ok := f.snapshotLocalStates(); ok {
+			f.nativeStructDirectUsed = true
+			return f.callNativeStructDirectSlots(importIdx, ft, nativeStructType-1, nativeStructDead, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates)
+		}
+	}
 	f.storePinnedGlobals(false) // coherence/preservation for value-pinned caller-saved globals
 	if !internalGC {
 		// Arbitrary host code may read or mutate module-global cells. Internal GC
 		// helpers cannot; their module-pinned registers are callee-saved across the
 		// parked transition, so avoid a redundant cell round trip at every GC op.
 		f.storeModuleGlobals(RAX)
+	}
+
+	atomicDone := -1
+	if atomicFast {
+		f.materializeGCFrameRootLocalsForCall(importIdx)
+		f.spillLocalsForCall()
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
+		atomicDone = f.emitAtomicWaitFastPath(uint32(importIdx)&^shared.AtomicWaitDispatchBit, int(slotOf[d-p]), atomicOffset)
+		if notifyFast {
+			f.stats.peep("atomic-notify-empty")
+		}
 	}
 
 	// Marshal params into the control frame as wrapper-ABI slots. A v128 occupies
@@ -1337,16 +1381,22 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// registers are caller-saved. Exact GC frame-root publication also requires
 	// lazy-zero reference locals to have concrete frame slots before RSP is
 	// published. Then store every dirty pinned local and mark it for lazy reload.
-	f.materializeGCFrameRootLocalsForCall(importIdx)
-	f.spillLocalsForCall()
+	if !atomicFast {
+		f.materializeGCFrameRootLocalsForCall(importIdx)
+		f.spillLocalsForCall()
+	}
 	nativeAllocDone := -1
 	if nativeStructType != 0 {
 		typeIndex := nativeStructType - 1
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		site := f.a.CallRel32()
-		f.sc.gcStructAllocStubSites = append(f.sc.gcStructAllocStubSites, gcStructAllocStubSite{typeIndex: typeIndex, site: site})
+		if nativeGCStructInlineEnabled {
+			f.emitNativeStructAllocStub(typeIndex, nativeStructDead, true)
+		} else {
+			site := f.a.CallRel32()
+			f.sc.gcStructAllocStubSites = append(f.sc.gcStructAllocStubSites, gcStructAllocStubSite{typeIndex: typeIndex, dead: nativeStructDead, site: site})
+		}
 		f.stats.call("gcnative")
 		nativeAllocDone = f.a.JccPlaceholder(condNE) // stub returns ZF=0 on success
 	} else if nativeArray.mode != gcArrayNativeNone {
@@ -1367,6 +1417,10 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// re-entry loop copies back only the real result count. Both fit uint16.
 	f.a.StoreImm32Mem(R8, hcNArgs, int32(paramSlots|resultSlots<<16))
 
+	notifyDone := -1
+	if notifyFast && !atomicFast {
+		notifyDone = f.notifyEmptyShortcut(notifyIndex)
+	}
 	// Park at the host call. Like the wrapper path, no post-call trap check: a
 	// trap unwinds the whole native tree in one jump (it never returns here).
 	if regallocCheckEnabled {
@@ -1376,8 +1430,14 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	if recordRoots {
 		f.gcFrameRoots.RecordCallsite(uint32(len(f.a.B)), 0, rootOffsets)
 	}
+	if notifyDone >= 0 {
+		f.a.PatchRel32(notifyDone, f.a.Len())
+	}
 	if nativeAllocDone >= 0 {
 		f.a.PatchRel32(nativeAllocDone, f.a.Len())
+	}
+	if atomicDone >= 0 {
+		f.a.PatchRel32(atomicDone, f.a.Len())
 	}
 	f.reloadLocalsForCall() // old model: restore caller-saved R9..R11 local pins
 
@@ -1483,6 +1543,80 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// memory. Reload after reconstructing the operand stack so the continuation
 	// cannot retain the parked activation's pre-call size.
 	f.refreshCachedMemoryBoundAfterExternalCall()
+	return nil
+}
+
+// callNativeStructDirectSlots keeps the ordinary allocation path entirely in
+// generated code. Constructor fields stay in canonical operand slots until the
+// native reservation succeeds or the cold Go-helper fallback marshals them.
+func (f *fn) callNativeStructDirectSlots(importIdx int, ft *wasm.CompType, typeIndex uint32, dead bool, paramSlots, resultSlots int, slotOf []uint32, depth, paramCount int, belowTypes []machineType, belowGCRoots []bool, localStates localStateSnapshot) error {
+	if len(ft.Results) != 1 || paramCount == 0 {
+		return fmt.Errorf("native struct helper has %d parameter(s), %d result(s)", paramCount, len(ft.Results))
+	}
+	argSlot := int(slotOf[depth-paramCount])
+	resultSlot := argSlot
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
+	f.emitNativeStructAllocSlots(typeIndex, dead, argSlot, resultSlot)
+	f.stats.call("gcnative")
+	nativeDone := f.a.JccPlaceholder(condNE)
+
+	// The native reservation failed. Publish the state that the parked Go
+	// helper may inspect, then use the existing synchronous control frame.
+	f.storePinnedGlobals(false)
+	f.a.Load64(R8, RBX, -offCustomCtx)
+	argSlotCursor, ctrlSlot := argSlot, 0
+	for i := 0; i < paramCount; i++ {
+		mt := mtOf(ft.Params[i])
+		if mt.isV128() {
+			x := f.allocFReg(0)
+			f.mov128LoadDisp(x, RSP, f.spillOff(argSlotCursor))
+			f.mov128StoreDisp(R8, hcArgs+int32(ctrlSlot)*8, x)
+			f.releaseF(x)
+		} else if mt.is64() {
+			f.a.Load64(RAX, RSP, f.spillOff(argSlotCursor))
+			f.a.Store64(R8, hcArgs+int32(ctrlSlot)*8, RAX)
+		} else {
+			f.a.Load32(RAX, RSP, f.spillOff(argSlotCursor))
+			f.a.Store64(R8, hcArgs+int32(ctrlSlot)*8, RAX)
+		}
+		argSlotCursor += mt.stackSlots()
+		ctrlSlot += mt.stackSlots()
+	}
+	f.materializeGCFrameRootLocalsForCall(importIdx)
+	f.spillLocalsForCall()
+	f.a.StoreImm32Mem(R8, hcImportIdx, int32(importIdx))
+	f.a.StoreImm32Mem(R8, hcNArgs, int32(paramSlots|resultSlots<<16))
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
+	f.a.CallMem(R8, hcTrampoline)
+	f.a.Load64(R8, RBX, -offCustomCtx)
+	f.a.Load64(RAX, R8, hcResults)
+	f.a.Store64(RSP, f.spillOff(resultSlot), RAX)
+
+	// The success path retained these registers. Restore the same physical
+	// state after the rare helper call so both branches share one compiler state.
+	f.derivePinnedGlobals()
+	for _, local := range f.pinnedLocals {
+		switch localStates[local] {
+		case lsReg, lsStackReg:
+			f.loadLocalReg(local, f.locals[local].reg, f.locals[local].isFloat)
+		}
+	}
+	f.restoreLocalStates(localStates)
+	f.a.PatchRel32(nativeDone, f.a.Len())
+
+	finalTypes := f.tmpTypes[:0]
+	finalTypes = append(finalTypes, belowTypes...)
+	finalTypes = append(finalTypes, mtOf(ft.Results[0]))
+	f.tmpTypes = finalTypes
+	finalRoots := f.tmpGCRoots[:0]
+	finalRoots = append(finalRoots, belowGCRoots...)
+	finalRoots = append(finalRoots, gcFrameRefType(f.m, ft.Results[0]))
+	f.tmpGCRoots = finalRoots
+	f.setDepthTypesWithGCRoots(finalTypes, finalRoots)
 	return nil
 }
 
@@ -1723,6 +1857,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	}
 	f.stats.call(kind)
 	p := len(ft.Params)
+
 	roots := f.rootsBottomToTop()
 	d := len(roots)
 	types := f.tmpTypes[:0]
@@ -1766,6 +1901,21 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.LeaRsp(RDI, argOff)                 // args = &first arg slot
 	f.a.LeaRsp(RCX, f.spillOff(resultSlot)) // results = &slot-width top
 
+	// Only a runtime-verified register leaf can retain this instance context.
+	// Locals and operands already follow the ordinary wrapper call contract;
+	// the leaf wrapper preserves RBX and never touches RBP/R12-R15 or FP state.
+	nativeLeaf := -1
+	if runtime.NativeScalarLeafSupported && f.opt(optNativeLeafHost) && b.Dynamic && !recordRoots && p >= 1 && p <= 2 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 && ft.Params[0] == wasm.I32 && (p == 1 || ft.Params[1] == wasm.I32) {
+		if b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
+			return fmt.Errorf("import dispatch index %d overflows displacement", b.ImportIndex)
+		}
+		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
+		f.a.Load64(RAX, RBX, -offImportDispatchPtr)
+		f.a.Load64(R9, RAX, disp+runtime.ImportDispatchCallerContextOffset)
+		f.a.TestImm(R9, uint32(runtime.ImportDispatchCallerNativeLeafTag), true)
+		nativeLeaf = f.a.JccPlaceholder(condNE)
+	}
+
 	// Preserve the caller's module-invariant registers (RBX=linMem, R15=memSize,
 	// R12-R14=module globals) plus one sixth word (6 pushes = 16-aligned → the
 	// callee's offset-0 entry sees RSP ≡ 8 mod 16 after the CALL, as it expects).
@@ -1788,13 +1938,11 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		}
 		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
 		f.a.Load64(RAX, RBX, -offImportDispatchPtr)
-		f.a.Load64(RSI, RAX, disp+runtime.ImportDispatchHomeLinMemOffset)    // wrapper-ABI arg 1
-		f.a.Load64(R10, RAX, disp+runtime.ImportDispatchTargetContextOffset) // target context
-		f.a.Load64(R9, RAX, disp+runtime.ImportDispatchCallerContextOffset)  // caller context
-		if f.opt(optDirectGoHostImport) {
-			f.a.AluRI(4, R9, -2, true) // strip the Go binding tag
-		}
-		f.a.Load64(R11, RAX, disp+runtime.ImportDispatchCodePtrOffset) // wrapper entry
+		f.a.Load64(RSI, RAX, disp+runtime.ImportDispatchHomeLinMemOffset)     // wrapper-ABI arg 1
+		f.a.Load64(R10, RAX, disp+runtime.ImportDispatchTargetContextOffset)  // target context
+		f.a.Load64(R9, RAX, disp+runtime.ImportDispatchCallerContextOffset)   // caller context
+		f.a.AluRI(4, R9, -int32(runtime.ImportDispatchCallerTagMask)-1, true) // strip binding tags
+		f.a.Load64(R11, RAX, disp+runtime.ImportDispatchCodePtrOffset)        // wrapper entry
 		f.a.Push(R9)
 		f.a.Push(R10) // alignment pad + preserves the caller-context pair
 		f.copyInstanceContext(RSI, R10)
@@ -1848,6 +1996,17 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	// this caller and grows its memory. R15 was saved before that call, so reload
 	// from the restored caller context instead of reviving the stale bound.
 	f.refreshCachedMemoryBoundAfterExternalCall()
+	if nativeLeaf >= 0 {
+		done := f.a.JmpPlaceholder()
+		f.a.PatchRel32(nativeLeaf, f.a.Len())
+		disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
+		f.a.Load64(R11, RAX, disp+runtime.ImportDispatchCodePtrOffset)
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
+		f.a.CallReg(R11)
+		f.a.PatchRel32(done, f.a.Len())
+	}
 
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.deriveModuleGlobals() // cross-instance callee may have written shared global cells
@@ -2024,6 +2183,19 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	})
 	finishRoots()
 	return nil
+}
+
+// Advance the source mask when an inline zero-timeout wait cannot suspend.
+func (f *fn) consumeGCFrameCallsite() {
+	plan := f.gcFrameRoots
+	if plan == nil || !plan.Candidate {
+		return
+	}
+	if f.gcCallsiteIndex >= plan.CallMaskCount() {
+		plan.Exact = false
+		return
+	}
+	f.gcCallsiteIndex++
 }
 
 func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
@@ -3315,7 +3487,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// path. A monomorphic table (single target) collapses to a direct call.
 	directRegisterCall := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
 	descriptorRegisterCall := (sigFitsRegABI(ft) && sigIsIntOnly(ft)) || (f.stagedTailDescriptors && (sigFitsRegABI(ft) || sigFitsReferenceResultRegABI(ft)))
-	if immutableTable && tableHint.monomorphicTarget >= 0 && directRegisterCall {
+	if immutableTable && f.opt(optRegABI) && tableHint.monomorphicTarget >= 0 && directRegisterCall {
 		f.pinned = f.pinned.remove(idxReg)
 		f.release(idxReg)
 		f.release(code)
@@ -3326,7 +3498,10 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		}
 		return nil
 	}
-	if immutableTable && descriptorRegisterCall {
+	// Ordinary local integer descriptors publish internal entries for at most
+	// two results. Disabled register ABI, wider results, and other signatures
+	// retain wrapper entries and must use the home-aware dispatch below.
+	if immutableTable && f.opt(optRegABI) && sigIsIntOnly(ft) && len(ft.Results) <= 2 && descriptorRegisterCall {
 		home := f.allocReg(maskOf(idxReg, code))
 		f.a.Load64(home, idxReg, 8+runtime.TableEntryHomeLinMemOffset)
 		kind := f.descriptorEntryKind(home, maskOf(idxReg, code, home))
