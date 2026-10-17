@@ -1726,8 +1726,10 @@ func (f *fn) emitNativeDeadStructChargeStub(objectSize, objectAlign uint32, inli
 	a.CmpImm32Mem(R8, gc.NativeViewNurseryObjectMaxBytesOffset, int32(objectSize))
 	addFallback(a.JccPlaceholder(condBE))
 
-	// A nonempty, current batch proves that this collector configuration permits
-	// native nursery allocation. Dead charges leave its handle cursor untouched.
+	// Batch cancellation clears Count before any identity can return to reuse.
+	// A nonempty bounded batch therefore proves that this collector configuration
+	// still permits native nursery allocation even though dead charges leave its
+	// handle cursor untouched.
 	a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
 	a.TestSelf(R10, true)
 	addFallback(a.JccPlaceholder(condE))
@@ -1736,13 +1738,6 @@ func (f *fn) emitNativeDeadStructChargeStub(objectSize, objectAlign uint32, inli
 	addFallback(a.JccPlaceholder(condE))
 	a.AluRI(cmpDigit, RAX, gc.NativeStructAllocHandleCapacity, false)
 	addFallback(a.JccPlaceholder(condA))
-	a.Load64(RAX, R8, gc.NativeViewStructAllocEpochOffset)
-	a.TestSelf(RAX, true)
-	addFallback(a.JccPlaceholder(condE))
-	a.Load32(RDX, RAX, 0)
-	a.Load32(RAX, R10, gc.NativeStructAllocEpochOffset)
-	a.Cmp32(RAX, RDX)
-	addFallback(a.JccPlaceholder(condNE))
 
 	a.Load64(R9, R8, gc.NativeViewNurseryBumpOffset)
 	a.TestSelf(R9, true)
