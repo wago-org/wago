@@ -1647,7 +1647,6 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 	}
 	a.Store32(R9, gc.NativeHandleOffsetOffset, RCX)
 	a.StoreImm32Mem(R9, gc.NativeHandleSizeOffset, int32(objectSize))
-	a.StoreImm32Mem(R9, 8, int32(objectSize))
 	a.StoreImm32Mem(R9, gc.NativeHandleCardSlotOffset, 0)
 	a.Load64(RAX, R8, gc.NativeViewNurseryBumpOffset)
 	a.MovRegReg32(R10, RCX)
