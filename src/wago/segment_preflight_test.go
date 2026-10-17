@@ -2,6 +2,7 @@ package wago
 
 import (
 	"fmt"
+	"runtime"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -85,6 +86,9 @@ func TestActiveDataFailureRespectsCoreVersionAndArtifact(t *testing.T) {
 }
 
 func TestMemory64ActiveDataGlobalOffsetPreservesHighBits(t *testing.T) {
+	if !supportsMemory64Backend(runtime.GOOS, runtime.GOARCH) {
+		t.Skip("memory64 execution is unavailable on this platform")
+	}
 	module := wasmtest.Module(
 		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "offset", wasm.I64, false))),
 		wasmtest.Section(5, []byte{1, 4, 1}),

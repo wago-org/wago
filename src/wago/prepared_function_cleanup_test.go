@@ -28,6 +28,9 @@ func TestPreparedFunctionCleanupMappedClose(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				// Exercise the ordinary scalar boundary on architectures whose
+				// private entry would otherwise select the direct register ABI.
+				fn.directIntFast = false
 				if !fn.scalarFast || fn.isolatedFast || fn.directIntFast || owner.gc != nil {
 					t.Fatal("fixture lacks ordinary scalar no-GC admission", fn.scalarFast, fn.isolatedFast, fn.directIntFast, owner.gc)
 				}

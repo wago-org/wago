@@ -13,10 +13,10 @@ import (
 //
 //go:nocheckptr
 func nativeGCFrameWord(address uintptr) uint64 {
-	return binary.LittleEndian.Uint64(unsafe.Slice((*byte)(unsafe.Pointer(address)), 8))
+	return binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(address)), 8))
 }
 
 //go:nocheckptr
 func nativeGCFrameRootSlot(address uintptr) *gc.Root {
-	return (*gc.Root)(unsafe.Pointer(address))
+	return (*gc.Root)(offHeapPtr(address))
 }

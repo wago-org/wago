@@ -55,7 +55,8 @@ func (e *Engine) callRV64BoundedHost(code uintptr, args []byte, home uintptr, tr
 	}
 	storeOffHeapU64(home-abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
 	root := slicePtr(ctrl)
-	e.enterNative(code, args, home, trap, results)
+	e.prepareNativeInvocation(args, results)
+	enterNative(code, slicePtr(args), home, slicePtr(trap), slicePtr(results), e.stackTop)
 	for {
 		if tc := loadTrap(trap); tc != hostCallPending {
 			if tc != 0 {
