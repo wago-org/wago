@@ -8,6 +8,7 @@ import (
 
 	"github.com/wago-org/wago/internal/runtimebridge"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // WasmFunc is a resolved local Wasm export ready for repeated calls.
@@ -16,45 +17,55 @@ import (
 // argument and result buffers, and returned results remain valid only until the
 // next call on that instance. Invoke must not race Instance.Close.
 type WasmFunc struct {
-	in                  *Instance
-	export              string
-	entry               uintptr
-	directEntry         uintptr
-	directLinMem        uintptr
-	paramSlots          int
-	resultSlots         int
-	paramTypes          []ValType
-	resultTypes         []ValType
-	paramExact          []ValueTypeDescriptor
-	resultExact         []ValueTypeDescriptor
-	paramWide           []bool
-	paramWidthClass     scalarSlotWidthClass
-	resultWidthClass    scalarSlotWidthClass
-	hasReferenceParams  bool
-	hasReferenceResults bool
-	gcMaintenance       bool
-	scalarWideMask      uint8
-	scalarFast          bool
-	scalarResultWide    bool
-	resultWide          []bool
-	boundedWrapper      bool
-	privateFast         bool
-	isolatedFast        bool
-	directIsolated      bool
-	directIntFast       bool
-	directFloatFast     bool
-	directMixedInfo     uint8
-	directIntLight      bool
-	directIntBounded    bool
-	directIntMode       preparedIntCallMode
-	boundedNumericHost  bool
-	directIntCall       wruntime.PreparedIntCall
-	directGate          *invocationGate
-	hostPrepared        *wruntime.PreparedHostScalarCall
-	hostMemBase         uintptr
-	hostContextVersion  uint64 // last independent native context bound for this handle
-	hostActivation      hostLoopActivation
-	hostFixed           wruntime.FixedScalarHostCall
+	in                    *Instance
+	export                string
+	entry                 uintptr
+	directEntry           uintptr
+	directLinMem          uintptr
+	paramSlots            int
+	resultSlots           int
+	paramTypes            []ValType
+	resultTypes           []ValType
+	paramExact            []ValueTypeDescriptor
+	resultExact           []ValueTypeDescriptor
+	paramWide             []bool
+	paramWidthClass       scalarSlotWidthClass
+	resultWidthClass      scalarSlotWidthClass
+	hasReferenceParams    bool
+	hasReferenceResults   bool
+	gcMaintenance         bool
+	gcPrepared            bool
+	gcScalar32            bool
+	gcScalar32Plain       bool
+	gcPrivateContext      bool
+	gcRevocableContext    bool
+	gcI31Induction        bool
+	gcDeadInductionLayout uint64
+	gcDeadBatch           gc.PreparedDeadAllocationBatch
+	gcBoundarySafe        bool
+	gcHasRefGlobals       bool
+	scalarWideMask        uint8
+	scalarFast            bool
+	scalarResultWide      bool
+	resultWide            []bool
+	boundedWrapper        bool
+	privateFast           bool
+	isolatedFast          bool
+	directIsolated        bool
+	directIntFast         bool
+	directFloatFast       bool
+	directMixedInfo       uint8
+	directIntLight        bool
+	directIntBounded      bool
+	directIntMode         preparedIntCallMode
+	boundedNumericHost    bool
+	directIntCall         wruntime.PreparedIntCall
+	directGate            *invocationGate
+	hostPrepared          *wruntime.PreparedHostScalarCall
+	hostMemBase           uintptr
+	hostContextVersion    uint64 // last independent native context bound for this handle
+	hostActivation        hostLoopActivation
+	hostFixed             wruntime.FixedScalarHostCall
 }
 
 type preparedIntCallMode uint8
@@ -263,9 +274,20 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 		hasReferenceParams:  hasReferenceValType(sig.Params),
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		gcMaintenance:       in.gc != nil && (in.c.genericGCBoundaryCollectionSafe() || in.c.hasGCRefGlobals()),
+		gcBoundarySafe:      in.c.genericGCBoundaryCollectionSafe(),
+		gcHasRefGlobals:     in.c.hasGCRefGlobals(),
+		gcPrepared:          (goruntime.GOARCH == "arm64" || goruntime.GOARCH == "amd64") && in.gc != nil && scalarFast && in.c.NumImports == 0 && !in.c.usesAtomicWaitHelpers(),
 		resultWide:          resultWide,
 		boundedWrapper:      in.c.directPreparedBoundedAt(ic.li) || in.isolatedNativeScalarLeaf(),
 	}
+	fn.gcScalar32 = fn.gcPrepared && fn.gcMaintenance && in.syncMode && ic.paramSlots == 1 && ic.resultSlots == 1 && scalarWideMask == 0 && !resultWide[0]
+	// The collector/config and compiled root plan are fixed before publication.
+	// Profiling builds retain the live inherited-profile and maintenance path.
+	fn.gcScalar32Plain = fn.gcScalar32 && !codeProfileEnabled && !fn.gcHasRefGlobals && len(in.hostLog) == 0 &&
+		(!fn.gcBoundarySafe || in.c.genericGCFrameRoots() != nil && in.gc.CollectsOnAllocation())
+	// These modules cannot replace resource-context pointers during execution.
+	// The instance GC view itself is stable; collector contents remain live.
+	fn.gcPrivateContext = fn.gcScalar32Plain && fn.boundedWrapper && in.c.memoryCount() == 0 && !in.c.HasTable && len(in.c.Globals) == 0
 	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled {
 		entryMode := in.preparedEntryMode()
 		if entryMode != preparedEntryGeneral {
@@ -322,6 +344,19 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 			fn.directGate = &in.ensurePluginState().invokeMu
 		}
 	}
+	// Preserve direct numeric ABI priority when GC types are otherwise unused.
+	fn.gcRevocableContext = fn.gcPrivateContext && in.rt == nil && !fn.directIntFast && !fn.directFloatFast && fn.directMixedInfo == 0 && gcPrivateNumericSignatures(in.c)
+	if fn.gcRevocableContext && preparedDirectIntSupported && preparedDirectIntEnabled && !in.c.registerABIDisabled {
+		if roots := in.c.genericGCFrameRoots(); roots != nil && ic.li < len(roots.deadInductionLayouts) {
+			fn.gcDeadInductionLayout = roots.deadInductionLayouts[ic.li]
+			fn.gcDeadBatch = in.gc.PrepareDeadAllocationBatch(uint32(fn.gcDeadInductionLayout), uint32(fn.gcDeadInductionLayout>>32))
+		}
+	}
+	if gcI31InductionSupported && !codeProfileEnabled && fn.directIntFast && fn.directIsolated && fn.directIntBounded && fn.paramSlots == 1 && fn.resultSlots == 1 {
+		if indexes := in.c.loadCompileIndexes(); indexes != nil && ic.li>>6 < len(indexes.gcI31Inductions) {
+			fn.gcI31Induction = indexes.gcI31Inductions[ic.li>>6]&(uint64(1)<<uint(ic.li&63)) != 0
+		}
+	}
 	return fn, nil
 }
 
@@ -332,6 +367,72 @@ func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 		return fn.invokeGeneral(args)
 	}
 	if fn != nil && fn.in != nil && len(args) == fn.paramSlots {
+		if fn.gcRevocableContext {
+			in := fn.in
+			state := in.pluginState.Load()
+			if state != nil && state.invokeMu.state.shared == &in.invocationState.word && in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
+				if !in.privateGCStateValid(state) || fn.gcDeadInductionLayout == 0 && !fn.privateGCNativeContextValid(state) {
+					in.endFastInvocation(state)
+				} else {
+					// This proven Go-only path cannot call guest/host code or collect.
+					// Every successful admission is released here or transferred to
+					// the ordinary driver, whose defer owns all collecting fallbacks.
+					if gcDeadInductionSupported && fn.gcDeadInductionLayout != 0 {
+						if err := validateNativeGCEntry(in); err != nil {
+							in.endFastInvocation(state)
+							return nil, err
+						}
+						if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+							if err := clearPreparedInductionTrap(in); err != nil {
+								in.endFastInvocation(state)
+								return nil, err
+							}
+						}
+						n := uint64(uint32(args[0]))
+						if fn.gcDeadBatch.TryReserve(max(uint32(n), 1)) {
+							value := uint64(uint32(n * (n - 1) / 2))
+							if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+								err := wruntime.ConsumePreparedIntTrap(in.trap)
+								in.endFastInvocation(state)
+								return nil, err
+							}
+							out := in.resultVals[:1]
+							out[0] = value
+							in.endFastInvocation(state)
+							goruntime.KeepAlive(in)
+							goruntime.KeepAlive(in.c)
+							return out, nil
+						}
+					}
+					return fn.invokePrivateGCScalar(args[0], state)
+				}
+			}
+		}
+		if gcI31InductionSupported && fn.gcI31Induction {
+			in := fn.in
+			if in.rt == nil && fn.directGate != nil && fn.directGate.state.shared == &in.invocationState.word && in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
+				if in.guestStorageBorrowed() || !in.preparedFastStateValid() {
+					in.endFastInvocation(in.pluginState.Load())
+				} else {
+					n := uint64(uint32(args[0]))
+					value := uint32(n*(n-1)/2) ^ ((uint32(n) << 31) & uint32(n))
+					// Pure arithmetic has no effects before the poll. Handle a pending
+					// interruption or stale trap before publishing the numeric result.
+					if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+						if err := clearPreparedInductionTrap(in); err != nil {
+							in.endFastInvocation(in.pluginState.Load())
+							return nil, err
+						}
+					}
+					out := in.resultVals[:1]
+					out[0] = uint64(value)
+					in.endFastInvocation(in.pluginState.Load())
+					goruntime.KeepAlive(in)
+					goruntime.KeepAlive(in.c)
+					return out, nil
+				}
+			}
+		}
 		if fn.directIntFast {
 			if preparedDirectWideSupported && (len(args) > 4 || fn.resultSlots > 2) {
 				return fn.invokeDirectIntWide(args)
@@ -356,6 +457,9 @@ func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 			return fn.invokeDirectMixed(args)
 		}
 		if fn.scalarFast {
+			if fn.gcPrepared && fn.gcMaintenance {
+				return fn.invokeGCScalar(args)
+			}
 			if fn.boundedNumericHost {
 				if out, err, ok := fn.tryInvokeBoundedNumeric(args); ok {
 					return out, err
@@ -537,13 +641,19 @@ func (in *Instance) lockPreparedScalarInvocationInto(l *preparedInvocationLease)
 	}()
 	id := newInvocationID()
 	state.setInvocationIdentity(id)
-	l.gc = in.lockGCInvocation(id)
+	if in.mayNeedGCInvocationLease() {
+		l.gc = in.lockGCInvocation(id)
+	} else {
+		l.gc = gcInvocationLease{}
+	}
 	returned = true
 }
 
 func (l *preparedInvocationLease) unlockScalarInvocation() {
 	var cleanup resourceCleanup
-	cleanup.run(l.gc.unlock)
+	if l.gc.acquired {
+		cleanup.run(l.gc.unlock)
+	}
 	if l.in != nil && (l.in.importsFuncrefStorage() || l.in.table != nil) {
 		cleanup.run(l.in.reconcileFuncrefRoots)
 	}
@@ -623,7 +733,11 @@ func (fn *WasmFunc) invokeGeneralAdmittedBody(args []uint64, argumentOwners *rai
 	}
 	var executionErr error
 	if in.syncMode {
-		executionErr = in.callNativeSync(fn.entry)
+		if fn.gcPrepared && (!codeProfileEnabled || in.boundaryProfile() == nil && activeHostInvocationContext(in).profileSession() == nil) {
+			executionErr = fn.callGCPrepared()
+		} else {
+			executionErr = in.callNativeSync(fn.entry)
+		}
 	} else {
 		prepared := directPreparedCallEnabled && preparedCallEnabled && in.ownsMem
 		executionErr = in.callNativeAsync(fn.entry, prepared)
@@ -687,7 +801,7 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 		if err != nil {
 			return err
 		}
-		if in.boundedHostSegments() && preparedHostFixedEnabled {
+		if (in.boundedHostSegments() || in.boundedFixedSharedHostPortal()) && preparedHostFixedEnabled {
 			if err := fn.hostPrepared.EnableBoundedSegments(runtimebridge.GrantHostScalarCall()); err != nil {
 				return err
 			}
@@ -698,7 +812,7 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 			ctrl:                        offHeapSlicePtr(in.ctrl),
 			state:                       in.ensurePluginState(),
 			entryNativeMu:               entry.local,
-			parkedNativeContextReusable: in.gc == nil && !in.c.threadedMemory0(),
+			parkedNativeContextReusable: in.parkedHostControlReusable(),
 		}
 		if preparedHostFixedEnabled {
 			switch in.syncHosts[0].scalarKind {

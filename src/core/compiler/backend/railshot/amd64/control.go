@@ -1188,6 +1188,7 @@ func (f *fn) setDepthTypes(types []machineType) {
 
 func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
+	f.s.pendingPrefix = nil
 	// The old list is detached; rebuild both live spill summaries from scratch.
 	f.s.spillExtent, f.s.spillExtentValid, f.s.spilledPrefix = 0, true, nil
 	f.s.logicalDepth = 0
@@ -1214,6 +1215,11 @@ func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 		f.fregUser[i] = nil
 	}
 	f.pinned = 0
+	// A straight-line GC address survives stack canonicalization. Its register
+	// remains owned by the cache until an effect or source assignment clears it.
+	if f.gcResolved.valid {
+		f.pinned = f.pinned.add(f.gcResolved.reg)
+	}
 	f.fpinned = 0
 }
 
@@ -1604,7 +1610,33 @@ func (f *fn) popBranchCondition() (Reg, bool) {
 	return reg, owned
 }
 
+// keepBlockOperands admits only a small, flat operand prefix. Keeping deferred
+// trees here can multiply the work in later local-reference scans.
+func (f *fn) keepBlockOperands() bool {
+	const limit = 32
+	if f.depth() > limit {
+		return false
+	}
+	n := 0
+	for e := f.s.head.next; e != f.s.head; e = e.next {
+		if n == limit || e.isDeferred() || e.st.typ == mtCustom {
+			return false
+		}
+		n++
+	}
+	return true
+}
+
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
+	if op == 0x03 && integerReductionLoopEnabled {
+		if done, err := f.tryIntegerReductionLoop(r); done || err != nil {
+			return err
+		}
+	}
+	return f.opBlockPlain(r, op)
+}
+
+func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 	paramTypes, resultTypes, frameTypes, res0, err := f.blockType(r)
 	if err != nil {
 		return err
@@ -1622,6 +1654,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
 	fr.setFloatConstBase(len(f.fconsts))
 	fr.set(ctrlEntryUnreachable, f.unreachable)
+	if f.straightLineBlock(r, kind, pN, rN, res0) {
+		fr.controlSite = straightLineBlockSite
+	}
 	if kind == cfLoop {
 		fr.branchN = uint32(pN)
 	} else {
@@ -1660,6 +1695,13 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	if f.unreachable {
 		f.pushCtrl(&fr)
 		f.releaseCtrlMerge(&fr)
+		return nil
+	}
+	if fr.isStraightLineBlock() {
+		fr.set(ctrlRegMerge1, false)
+		fr.height = f.depth()
+		f.pushCtrl(&fr)
+		f.stats.peep("straight-line-block")
 		return nil
 	}
 	if kind == cfIf {
@@ -1735,6 +1777,8 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 				f.setLocalsState(state)
 				f.stats.peep("callfree-loop-reg-state")
 			}
+		} else if pN != 0 && f.keepBlockOperands() {
+			f.materializePendingLoads()
 		} else {
 			f.flush()
 		}
@@ -2261,6 +2305,14 @@ func (f *fn) opEnd() error {
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
 
+	if fr.isStraightLineBlock() {
+		f.releaseCtrlMerge(&fr)
+		if f.unreachable || f.depth() != fr.height+fr.resultN {
+			return fmt.Errorf("straight-line block stack height mismatch")
+		}
+		return nil
+	}
+
 	if fr.kind == cfFunc {
 		if !f.unreachable {
 			if f.singleRegResult {
@@ -2540,6 +2592,9 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	if !f.usesCalls {
 		f.convergeBranchLocals(fr)
 	}
+	// Prefix evaluation can use fixed registers. Keep the reference tracked
+	// until that work is complete, then read its current home.
+	f.flushBelow(f.s.back())
 	value := f.popValue()
 	gcRoot := value.st.hasGCRoot()
 	ref := f.materialize(value)
@@ -2547,7 +2602,6 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 		f.convergeBranchLocals(fr)
 	}
 	d := f.depth()
-	f.flush()
 	refSlot := f.allocSpillSlot()
 	f.a.Store64(RSP, f.spillOff(refSlot), ref)
 	f.a.TestSelf(ref, true)

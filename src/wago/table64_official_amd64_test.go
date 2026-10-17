@@ -91,7 +91,8 @@ func stagedOfficialTable64JSON(t *testing.T, base string, dst any) string {
 	tmp := t.TempDir()
 	jsonPath := filepath.Join(tmp, base+".json")
 	wast := filepath.Join(suite.CoreDir, "memory64", base+".wast")
-	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+	args := append(spectest.Release3WABTFlags(), wast, "-o", jsonPath)
+	if out, err := exec.Command(wast2json, args...).CombinedOutput(); err != nil {
 		interpreter, resolveErr := resolveStagedTable64Interpreter()
 		if resolveErr != nil {
 			t.Fatalf("convert pinned %s.wast with WABT (%v: %s), interpreter unavailable: %v", base, err, stagedTable64FirstLine(out), resolveErr)

@@ -151,3 +151,57 @@ func moduleUsesI31Operations(m *wasm.Module) bool {
 	}
 	return false
 }
+
+// generalCollectorFreeI31Module proves that live GC references are compact i31
+// values. Unused aggregate declarations do not require a collector.
+func generalCollectorFreeI31Module(m *wasm.Module) bool {
+	if m == nil || m.TagCount() != 0 || moduleHasGCAllocationSites(m) || moduleUsesGenericGCStructHelpers(m) {
+		return false
+	}
+	i31Value := func(typ wasm.ValType) bool {
+		if typ.Kind() != wasm.ValRef {
+			return true
+		}
+		heap := typ.Ref().Heap()
+		if heap.Kind() != wasm.HeapAbs {
+			return false
+		}
+		switch heap.Abs() {
+		case wasm.HeapI31, wasm.HeapNone, wasm.HeapFunc, wasm.HeapNoFunc:
+			return true
+		default:
+			return false
+		}
+	}
+	for i := uint32(0); i < uint32(m.ImportedFuncCount()+len(m.Code)); i++ {
+		sig, found := m.FuncSignature(i)
+		if !found {
+			return false
+		}
+		for _, values := range [][]wasm.ValType{sig.Params, sig.Results} {
+			for _, value := range values {
+				if !i31Value(value) {
+					return false
+				}
+			}
+		}
+	}
+	for i := uint32(0); i < uint32(m.GlobalCount()); i++ {
+		global, found := m.GlobalTypeByIndex(i)
+		if !found || !i31Value(global.Type) {
+			return false
+		}
+	}
+	for i := uint32(0); i < uint32(m.TableCount()); i++ {
+		table, found := m.TableType(i)
+		if !found || !i31Value(wasm.RefVal(table.Ref)) {
+			return false
+		}
+	}
+	for _, elem := range m.Elements {
+		if elem.Kind.Kind == wasm.ElemTypedExprs && !i31Value(wasm.RefVal(elem.Kind.Ref)) {
+			return false
+		}
+	}
+	return moduleUsesI31Operations(m)
+}

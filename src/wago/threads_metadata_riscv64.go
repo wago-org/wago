@@ -14,11 +14,6 @@ func rv64ThreadedMemoryProfile(c *Compiled) bool {
 	if memory.Addr64 || memory.Min > 65536 || memory.HasMax && (memory.Max < memory.Min || memory.Max > 65536) || memory.Shared && (!memory.HasMax || c.memoryImport == "") {
 		return false
 	}
-	for _, global := range c.GlobalImports {
-		if global.Mutable {
-			return false
-		}
-	}
 	rootedReferences := c.requiredFeatures.IsEnabled(CoreFeatureGC) && c.usesGenericGCExecution() && c.nativeGCABIRequirement() == gc.NativeABIVersion && c.genericGCFrameRoots() != nil
 	for _, function := range c.Funcs {
 		for _, values := range [][]ValType{function.Params, function.Results} {

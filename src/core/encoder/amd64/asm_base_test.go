@@ -496,7 +496,7 @@ func TestRemainingIntegerInstructionForms(t *testing.T) {
 		{"lea displacement", func(a *Asm) { a.LeaDisp(R8, R9, 4) }, []byte{0x4d, 0x8d, 0x41, 4}},
 		{"add64", func(a *Asm) { a.Add64(R8, R9) }, []byte{0x4d, 0x01, 0xc8}},
 		{"cmp64", func(a *Asm) { a.Cmp64(R8, R9) }, []byte{0x4d, 0x39, 0xc8}},
-		{"string operations", func(a *Asm) { a.RepMovsb(); a.RepStosb(); a.Std(); a.Cld() }, []byte{0xf3, 0xa4, 0xf3, 0xaa, 0xfd, 0xfc}},
+		{"string operations", func(a *Asm) { a.RepMovsb(); a.RepStosb(); a.RepStosq(); a.Std(); a.Cld() }, []byte{0xf3, 0xa4, 0xf3, 0xaa, 0xf3, 0x48, 0xab, 0xfd, 0xfc}},
 		{"cdq", func(a *Asm) { a.Cdq(true) }, []byte{0x48, 0x99}},
 		{"unsigned divide", func(a *Asm) { a.Div(R8, true) }, []byte{0x49, 0xf7, 0xf0}},
 		{"unsigned multiply", func(a *Asm) { a.Mul(R8, true) }, []byte{0x49, 0xf7, 0xe0}},

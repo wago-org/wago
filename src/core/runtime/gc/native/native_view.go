@@ -11,17 +11,29 @@ import (
 // contract while reloading every mutable backing pointer/count they consume. The
 // view is refreshed in place whenever growable backing can relocate, and callers
 // must still serialize access with collector mutation.
-const NativeABIVersion uint32 = 1
+// Version 8 also gates the dead-reservation/native-preparation helper dispatch.
+const NativeABIVersion uint32 = 9
+
+// Native allocation-stat offsets are relative to the AllocationCount pointer
+// in NativeCollectorView. Generated AMD64 dead charges use these counters to
+// invalidate pending-object accounting after a collection without adding work
+// to ordinary allocation or collection paths.
+const (
+	NativeAllocationMinorCollectionsOffset = 8
+	NativeAllocationFullCollectionsOffset  = 16
+	NativeAllocationDeadObjectsOffset      = 56
+)
 
 // Native handle-entry layout. These constants are part of NativeABIVersion and
 // are verified against handleEntry below.
 const (
-	NativeHandleStride                = 20
+	NativeHandleStride                = 16
 	NativeHandleOffsetOffset          = 0
 	NativeHandleSizeOffset            = 4
-	NativeHandleCardSlotOffset        = 12
-	NativeHandleSpaceOffset           = 18
-	NativeHandleRememberedOffset      = 19
+	NativeHandleCardSlotOffset        = 8
+	NativeHandleMetadataOffset        = 12
+	NativeHandleSpaceOffset           = 14
+	NativeHandleRememberedOffset      = 15
 	NativeSpaceFree              byte = byte(spaceFree)
 	NativeSpaceNursery           byte = byte(spaceNursery)
 	NativeSpaceOld               byte = byte(spaceOld)
@@ -66,10 +78,11 @@ type NativeCollectorView struct {
 	NurseryBump           uintptr
 	AllocationCount       uintptr
 	NurseryObjectMaxBytes uint32
-	_                     uint32
-	SubtypeIntervals      uintptr
 	SubtypeIntervalCount  uint32
-	_                     uint32
+	SubtypeIntervals      uintptr
+	DeadNurseryCycle      uint64
+	LargeArrayAllocState  uintptr
+	LargeArrayAllocEpoch  uintptr
 }
 
 const (
@@ -90,9 +103,12 @@ const (
 	NativeViewNurseryBumpOffset           = 144
 	NativeViewAllocationCountOffset       = 152
 	NativeViewNurseryObjectMaxBytesOffset = 160
+	NativeViewSubtypeIntervalCountOffset  = 164
 	NativeViewSubtypeIntervalsOffset      = 168
-	NativeViewSubtypeIntervalCountOffset  = 176
-	NativeCollectorViewSize               = 184
+	NativeViewDeadNurseryCycleOffset      = 176
+	NativeViewLargeArrayAllocStateOffset  = 184
+	NativeViewLargeArrayAllocEpochOffset  = 192
+	NativeCollectorViewSize               = 200
 )
 
 // NativeInstanceView adds the immutable module-local to canonical-domain type
@@ -129,11 +145,18 @@ func sliceData[T any](s []T) uintptr {
 // It belongs at collector/artifact construction boundaries, never in generated
 // hot paths. Any mismatch is fail-closed before native code can follow a field.
 func ValidateNativeABI() error {
+	var stats Stats
+	if unsafe.Offsetof(stats.MinorCollections)-unsafe.Offsetof(stats.Allocations) != NativeAllocationMinorCollectionsOffset ||
+		unsafe.Offsetof(stats.FullCollections)-unsafe.Offsetof(stats.Allocations) != NativeAllocationFullCollectionsOffset ||
+		unsafe.Offsetof(stats.LiveObjects)-unsafe.Offsetof(stats.Allocations) != NativeAllocationDeadObjectsOffset {
+		return fmt.Errorf("gc: native allocation-stat layout mismatch")
+	}
 	var entry handleEntry
 	if unsafe.Sizeof(entry) != NativeHandleStride ||
 		unsafe.Offsetof(entry.off) != NativeHandleOffsetOffset ||
 		unsafe.Offsetof(entry.size) != NativeHandleSizeOffset ||
 		unsafe.Offsetof(entry.cardSlot) != NativeHandleCardSlotOffset ||
+		unsafe.Offsetof(entry.class) != NativeHandleMetadataOffset ||
 		unsafe.Offsetof(entry.space) != NativeHandleSpaceOffset ||
 		unsafe.Offsetof(entry.remembered) != NativeHandleRememberedOffset {
 		return fmt.Errorf("gc: native handle ABI layout mismatch")
@@ -159,6 +182,19 @@ func ValidateNativeABI() error {
 		unsafe.Offsetof(alloc.Handles) != NativeStructAllocHandlesOffset {
 		return fmt.Errorf("gc: native allocation-state ABI layout mismatch")
 	}
+	var largeAlloc nativeLargeArrayAllocState
+	if unsafe.Sizeof(largeAlloc) != NativeLargeArrayAllocStateSize ||
+		unsafe.Offsetof(largeAlloc.Epoch) != NativeStructAllocEpochOffset ||
+		unsafe.Offsetof(largeAlloc.Cursor) != NativeStructAllocCursorOffset ||
+		unsafe.Offsetof(largeAlloc.Count) != NativeStructAllocCountOffset ||
+		unsafe.Offsetof(largeAlloc.HandleBase) != NativeStructAllocHandleBaseOffset ||
+		unsafe.Offsetof(largeAlloc.ChunkStart) != NativeStructAllocChunkStartOffset ||
+		unsafe.Offsetof(largeAlloc.ChunkCursor) != NativeStructAllocChunkCursorOffset ||
+		unsafe.Offsetof(largeAlloc.ChunkEnd) != NativeStructAllocChunkEndOffset ||
+		unsafe.Offsetof(largeAlloc.ChunkBump) != NativeStructAllocChunkBumpOffset ||
+		unsafe.Offsetof(largeAlloc.Handle) != NativeStructAllocHandlesOffset || unsafe.Offsetof(largeAlloc.Rewind) != 36 {
+		return fmt.Errorf("gc: native large-array allocation-state ABI layout mismatch")
+	}
 	var space NativeSpaceView
 	if unsafe.Sizeof(space) != NativeViewSpaceStride ||
 		unsafe.Offsetof(space.Base) != NativeSpaceBaseOffset ||
@@ -181,9 +217,14 @@ func ValidateNativeABI() error {
 		unsafe.Offsetof(view.NurseryBump) != NativeViewNurseryBumpOffset ||
 		unsafe.Offsetof(view.AllocationCount) != NativeViewAllocationCountOffset ||
 		unsafe.Offsetof(view.NurseryObjectMaxBytes) != NativeViewNurseryObjectMaxBytesOffset ||
+		unsafe.Offsetof(view.SubtypeIntervalCount) != NativeViewSubtypeIntervalCountOffset ||
 		unsafe.Offsetof(view.SubtypeIntervals) != NativeViewSubtypeIntervalsOffset ||
-		unsafe.Offsetof(view.SubtypeIntervalCount) != NativeViewSubtypeIntervalCountOffset {
+		unsafe.Offsetof(view.DeadNurseryCycle) != NativeViewDeadNurseryCycleOffset {
 		return fmt.Errorf("gc: native collector ABI layout mismatch")
+	}
+	if unsafe.Offsetof(view.LargeArrayAllocState) != NativeViewLargeArrayAllocStateOffset ||
+		unsafe.Offsetof(view.LargeArrayAllocEpoch) != NativeViewLargeArrayAllocEpochOffset {
+		return fmt.Errorf("gc: native large-array allocation ABI layout mismatch")
 	}
 	var instance NativeInstanceView
 	if unsafe.Offsetof(instance.keepTypes) != NativeInstanceViewABISize ||
@@ -266,6 +307,9 @@ func (c *Collector) refreshNativeView() {
 		v.NurseryBump = 0
 		v.AllocationCount = 0
 		v.NurseryObjectMaxBytes = 0
+		v.setDeadNurseryCycle(0)
+		v.LargeArrayAllocState = 0
+		v.LargeArrayAllocEpoch = 0
 	} else {
 		v.NurseryAllocBytes = c.edenBytes()
 		v.StructAllocState = uintptr(unsafe.Pointer(&c.nativeStructAlloc))
@@ -273,6 +317,8 @@ func (c *Collector) refreshNativeView() {
 		v.NurseryBump = uintptr(unsafe.Pointer(&c.nurseryBump))
 		v.AllocationCount = uintptr(unsafe.Pointer(&c.stats.Allocations))
 		v.NurseryObjectMaxBytes = c.cfg.LargeObjectBytes
+		v.LargeArrayAllocState = uintptr(unsafe.Pointer(&c.nativeLargeArrayAlloc))
+		v.LargeArrayAllocEpoch = uintptr(unsafe.Pointer(&c.nativeLargeArrayEpoch))
 	}
 	v.RefreshGeneration++
 }

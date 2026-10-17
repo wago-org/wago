@@ -262,6 +262,7 @@ const (
 	ContractOptional                           = impl.ContractOptional
 	ContractRequired                           = impl.ContractRequired
 	CoreFeatureBulkMemoryOperations            = impl.CoreFeatureBulkMemoryOperations
+	CoreFeatureCompactImports                  = impl.CoreFeatureCompactImports
 	CoreFeatureExceptionHandling               = impl.CoreFeatureExceptionHandling
 	CoreFeatureExtendedConst                   = impl.CoreFeatureExtendedConst
 	CoreFeatureExtendedConstExpressions        = impl.CoreFeatureExtendedConstExpressions
@@ -278,6 +279,7 @@ const (
 	CoreFeatureTailCall                        = impl.CoreFeatureTailCall
 	CoreFeatureThreads                         = impl.CoreFeatureThreads
 	CoreFeatureTypedFunctionReferences         = impl.CoreFeatureTypedFunctionReferences
+	CoreFeatureWideArithmetic                  = impl.CoreFeatureWideArithmetic
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
 	CoreFeaturesV3                             = impl.CoreFeaturesV3

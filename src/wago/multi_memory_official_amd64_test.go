@@ -44,7 +44,8 @@ func stagedOfficialCoreJSON(t *testing.T, family, base string, dst any) string {
 	tmp := t.TempDir()
 	jsonPath := filepath.Join(tmp, base+".json")
 	wast := filepath.Join(suite.CoreDir, family, base+".wast")
-	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+	args := append(spectest.Release3WABTFlags(), wast, "-o", jsonPath)
+	if out, err := exec.Command(wast2json, args...).CombinedOutput(); err != nil {
 		t.Fatalf("convert pinned %s.wast: %v: %s", base, err, out)
 	}
 	raw, err := os.ReadFile(jsonPath)

@@ -675,6 +675,9 @@ func (f *fn) i8x16Swizzle() {
 func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
 	bElem := f.popValue()
 	aElem := f.popValue()
+	if f.tryV128AlignShuffle(aElem, bElem, lanes) {
+		return
+	}
 	var native simdBinaryOp
 	switch lanes {
 	case [16]byte{0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23}:
@@ -2425,7 +2428,7 @@ func (f *fn) v128ReplaceLane(kind uint32, lane byte) {
 }
 
 func (f *fn) simdMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32, baseOwned, eaOwned bool) {
-	if memoryIndex != 0 {
+	if memoryIndex != 0 || f.threadedMemory0 {
 		base, ea, disp = f.indexedMemAddr(memoryIndex, off, size)
 		f.pinned = f.pinned.add(base).add(ea)
 		return base, ea, disp, true, true
@@ -2453,6 +2456,10 @@ func (f *fn) v128Load(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	if handled, err := f.trySIMDLoadExtract(r, memoryIndex, off); handled || err != nil {
+		return err
+	}
+
 	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, 16)
 	x := f.allocFReg(0)
 	f.mov128LoadIdx(x, base, ea, disp)
@@ -2577,12 +2584,17 @@ func (f *fn) v128Store(r *wasm.Reader) error {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
+	load, reuseAddress := f.inspectSIMDStoreLoadAddress(r, memoryIndex, off)
 	base, ea, disp, baseOwned, eaOwned := f.simdMemAddr(memoryIndex, off, 16)
 	f.mov128StoreIdx(base, ea, x, disp)
 	f.fpinned = f.fpinned.remove(x)
-	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
 	f.releaseF(x)
-	return nil
+	var loadErr error
+	if reuseAddress {
+		loadErr = f.emitSIMDStoreLoadAddress(r, load, base, ea, disp)
+	}
+	f.releaseSIMDMemAddr(base, ea, baseOwned, eaOwned)
+	return loadErr
 }
 
 func simdLaneMemSize(sub uint32) int {

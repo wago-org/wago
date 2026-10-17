@@ -611,7 +611,7 @@ func gcCollectorLayoutEqual(a, b gc.TypeDesc) bool {
 		return false
 	}
 	for i, field := range a.Fields {
-		if field != b.Fields[i] {
+		if field.Kind != b.Fields[i].Kind || field.Offset != b.Fields[i].Offset {
 			return false
 		}
 	}

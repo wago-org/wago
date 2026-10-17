@@ -6,66 +6,367 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Fixed
+
+- Allow up to 32 nested synchronous host calls under standard Go so component
+  adapter chains can cross more than four boundaries. TinyGo retains its
+  four-call limit for fixed host stacks. Size parked GC callback and root storage
+  for the outer callback plus every permitted reentry.
+- Preserve deferred load addresses derived from pinned mutable globals on
+  AMD64, including Go-style exported function stack wrappers.
+
+- Preserve deferred memory-load addresses when AMD64 binary operations write
+  directly into a hinted register, fixing incorrect results in inlined C++
+  wrappers with stack-based arguments.
+
 ### Changed
 
-- Reuse exception payload summaries across functions on AMD64 and ARM64 to
-  reduce compilation work for modules with many tags and `catch_all_ref` handlers.
-- Improve ARM64 execution with guarded scalar and vector loop lowering, bounded
-  register reuse, borrowed operands, indexed address reuse, exact integer dot
-  and absolute-difference reductions, min-plus updates, independent floating-point
-  maps, vector unrolling, scoped constants, static table-address bounds and
-  arithmetic/branch simplification. Each optional lowering has strict admission
-  checks and a per-compilation rollback option. Reduce compilation overhead with
-  linear option resolution, cheaper loop/local-state scans and sufficient native
-  image capacity to avoid reallocating dense large modules.
-- Admit exact typed i64 synchronous host callbacks to the private prepared
-  integer route when the bounded-work and detached-context proofs hold. Other
-  callback shapes retain their existing route; each synchronous host binding
-  grows by one function-value slot.
-- Reduce ordinary, prepared numeric, and synchronous numeric host-call entry
-  overhead by combining instance lifetime and invocation-gate admission,
-  preserving close, callback publication, revocation, and waiter handoff.
-- Bound AMD64 compiler scratch growth by recycling operand arenas at proven-empty
-  instruction boundaries, tracking control-frame eligibility in constant time
-  and clearing only pointer slots written since the previous cleanup.
-- Reduce data-section decoding and execution-snapshot allocations with checked
-  vector preallocation and compact immutable active-data records, preserving
-  public data ownership and artifact encoding.
-- Reduce AMD64 and ARM64 synchronous host-call round trips with bounded native
-  bridges, private prepared owners, and specialized numeric marshalling. This
-  adds 32 bytes to the instance plugin sidecar and about 192 KiB to stripped
-  Go runtime binaries (63.3 KiB for the minimal TinyGo runtime).
+- Speed up AMD64 constant division/remainder pairs, scalar selects, predicate
+  shifts, and contiguous SIMD byte shuffles.
+  ([#895](https://github.com/wago-org/wago/pull/895))
+- Use two SIMD lanes for admitted pure integer reduction loops on Linux AMD64
+  with SSE4.1, with scalar execution below 16 iterations and for rejected loops.
+  ([#895](https://github.com/wago-org/wago/pull/895))
+- Add opt-in pure integer select branches through `WAGO_AMD64_PURE_SELECT=1`;
+  keep them disabled by default because unpredictable conditions can regress.
+  ([#895](https://github.com/wago-org/wago/pull/895))
+- Detect writes to live deferred-load address registers, cached global-cell
+  pointers, and forwarded store values in the AMD64 and ARM64 compilers when
+  `wago_regalloccheck` is enabled. Also guard inputs during address preparation
+  in the common scalar store path and during second-input preparation in `fbin`
+  and `fbinInto`.
+
+- Prepare native reservations only when the active backend has a matching
+  consumer, avoiding unused ARM64 live-struct and large-array batches. Retain
+  one reserved identity for proven-dead ARM64 scalar constructors.
+
+- Preserve invocation cancellation between reduced GC allocation batches and
+  slow per-object allocations.
+
+- Keep ordinary complete-loop and constructor/fill GC lowering, plus checked
+  helper-based dynamic array copies, in the lean TinyGo runtime to meet its
+  existing size budget.
+
+- Prepare one checked native identity for proven-dead GC batches on both
+  backends, avoiding unused live-object handle refills at collection.
+
+- Port checked GC induction reductions and prepared invocation paths to AMD64,
+  sharing allocation accounting and admission checks with ARM64.
+
+- Share sparse scans, occupied-block major collection, survivor-aware nursery
+  policies, zero-live recycling, and bounded native handle batches across
+  AMD64 and ARM64. Use exact local roots on both backends outside EH paths.
+
+- Unify ARM64 and AMD64 GC helper dispatch without overlapping helper IDs;
+  cached native GC artifacts require recompilation for ABI version 9.
+
+- Recycle zero-live AMD64 nursery identities in one batch while preserving
+  cleanup for owned storage and exact-capacity free lists.
+
+- Retain a checked AMD64 WasmGC object address across selected reads of other
+  objects, using a bounded compiler scan and the existing safety checks.
+
+- Keep ordinary AMD64 GC constructor selection and individual dead allocations
+  in the lean TinyGo build to meet the CLI size limit. Other builds retain the
+  specialized paths.
+
+- Require recompilation of cached native WasmGC artifacts after the native GC
+  ABI update to version 8.
+
+- Accelerate ARM64 WasmGC scalar constructor reads, small numeric array
+  allocation and access, array fills, i31 round trips, and proven nonescaping
+  scalar-struct, uniform-array, and unsigned i31 induction sums. Preserve
+  allocation accounting, collection policies, and checked helper fallbacks.
+
+- Accelerate AMD64 WasmGC allocation, array operations, subtype casts, and
+  i31 round trips with specialized generated paths, bounded native-handle
+  batches, and survivor-aware nursery management. Preserve the existing Go
+  fallbacks and collector safety checks.
+
+- Return from AMD64 and ARM64 atomic wait mismatches and empty notify calls
+  before the Go-call argument setup. Preserve memory ordering for zero-count
+  notify and keep matching dynamic waits on the synchronized helper path.
+
 
 ### Added
 
-- Add signed/unsigned SIMD floor-average source checks, baseline benchmarks,
-  and a bounded decoded corpus census.
-- Add full-vector widening-multiply source-pair tests, prepared-call benchmarks,
-  and a bounded decoded corpus census.
-- Add mixed-scalar host-call checks across nested memory, global, and table
-  changes, including nested traps and repeated resolved calls.
-- Bind corpus child completion to loaded input identity and exact invocation
-  evidence, with omitted-call and same-result substitution controls.
-  
+Require `wago_nativecompare` so ordinary builds and install discovery exclude it.
+
+- Add an opt-in operand-aware native comparison diagnostic with bounded Wasm
+  capture, source anchors, explicit opaque-byte coverage and focused test recipes.
+- Add Linux AMD64 and ARM64 integer conditional-join regression profiles with
+  independent result checks, native placement controls, and compile/execution
+  benchmarks.
+  ([#881](https://github.com/wago-org/wago/pull/881))
+
+## [v0.1.0-beta.13] - 2026-10-15
+
+### Changed
+
+- Share validated immutable native callback wrappers across instances. Each control
+  frame retains the code; closing the last owner releases its mapping.
+  ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Hoist validated native i32 import guards for fixed shared-memory ARM64 loops, keeping
+  admitted arguments/results in registers while preserving imported calls and the
+  complete Go/foreign fallback. ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Forward an immediately repeated plain i32 load from its identical store in one defined
+  fixed-size shared memory32 on ARM64. Preserve the store and its bounds/trap; atomic,
+  host-boundary and profiling cases keep their required access paths. The
+  `store-forward` optimization selection controls this lowering.
+  ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Select a guarded native body once at entry for bounded integer loops over identical
+  scalar import aliases on ARM64. Keep every original callback call, the complete
+  Go/foreign fallback, artifact admission, and optimization policies.
+  ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Reduce proven scalar host-import overhead with register arguments and cached dispatch
+  metadata on ARM64, and smaller rooted callback resume state on both native backends.
+  Fixed shared integer guests use the existing integer context bridge only when the
+  whole-module proof and binding guards hold; ARM64 direct Go dispatch preserves the
+  original callback and honors its rollback policy.
+  ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Cache stable shared-memory backing addresses on amd64 and arm64 while continuing to
+  read live atomic extents. `shared-memory-base` selects the lowering independently;
+  helper/context returns reestablish the backing cache.
+  ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Prove aligned constant atomic addresses against declared memory minimums on amd64 and
+  arm64, retaining runtime checks where the proof fails. `atomic-static-bounds` selects
+  this optimization independently. ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Use single-instruction acquire/release LSE atomics for arm64 RMW and compare-exchange
+  when supported by the host. Preserve exclusive-loop fallback through `atomic-lse`, and
+  persist CPU requirements for artifact admission.
+  ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Resolve literal zero-timeout shared-memory waits in native code, preserving
+  alignment/bounds trap order and retaining the parking helper for other waits.
+  `atomic-wait-zero-timeout` selects the lowering independently per compile.
+  ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Reuse exception payload summaries across functions on AMD64 and ARM64 to reduce
+  compilation work for modules with many tags and `catch_all_ref` handlers.
+  ([#837](https://github.com/wago-org/wago/pull/837))
+
+- Improve ARM64 execution with guarded scalar and vector loop lowering, bounded register
+  reuse, borrowed operands, indexed address reuse, exact integer dot and
+  absolute-difference reductions, min-plus updates, independent floating-point maps,
+  vector unrolling, scoped constants, static table-address bounds and arithmetic/branch
+  simplification. Each optional lowering has strict admission checks and a
+  per-compilation rollback option. Reduce compilation overhead with linear option
+  resolution, cheaper loop/local-state scans and sufficient native image capacity to
+  avoid reallocating dense large modules.
+  ([#943](https://github.com/wago-org/wago/pull/943))
+
+- Admit exact typed i64 synchronous host callbacks to the private prepared integer route
+  when the bounded-work and detached-context proofs hold. Other callback shapes retain
+  their existing route; each synchronous host binding grows by one function-value slot.
+  ([#939](https://github.com/wago-org/wago/pull/939),
+  [#940](https://github.com/wago-org/wago/pull/940))
+
+- Reduce ordinary, prepared numeric, and synchronous numeric host-call entry overhead by
+  combining instance lifetime and invocation-gate admission, preserving close, callback
+  publication, revocation, and waiter handoff.
+  ([#908](https://github.com/wago-org/wago/pull/908),
+  [#938](https://github.com/wago-org/wago/pull/938))
+
+- Bound AMD64 compiler scratch growth by recycling operand arenas at proven-empty
+  instruction boundaries, tracking control-frame eligibility in constant time and
+  clearing only pointer slots written since the previous cleanup.
+  ([#835](https://github.com/wago-org/wago/pull/835),
+  [#890](https://github.com/wago-org/wago/pull/890))
+
+- Reduce data-section decoding and execution-snapshot allocations with checked vector
+  preallocation and compact immutable active-data records, preserving public data
+  ownership and artifact encoding. ([#835](https://github.com/wago-org/wago/pull/835))
+
+- Reduce AMD64 and ARM64 synchronous host-call round trips with bounded native bridges,
+  private prepared owners, and specialized numeric marshalling. This adds 32 bytes to
+  the instance plugin sidecar and about 192 KiB to stripped Go runtime binaries (63.3
+  KiB for the minimal TinyGo runtime).
+  ([#872](https://github.com/wago-org/wago/pull/872))
+
+- Reduce repeated imported funcref retention scans and share source-root snapshots
+  across imported tables and globals.
+  ([#904](https://github.com/wago-org/wago/pull/904))
+
+- Avoid quadratic recursive-group type-equivalence scans during validation.
+  ([#902](https://github.com/wago-org/wago/pull/902))
+
+- Reduce AMD64 branch-fold relocation cleanup and avoid duplicate ARM64 immediate store
+  materialization. ([#903](https://github.com/wago-org/wago/pull/903),
+  [#897](https://github.com/wago-org/wago/pull/897))
+
+- Speed up profile sample resolution and Samply function metadata joins by indexing live
+  images and repeated function lookups.
+  ([#907](https://github.com/wago-org/wago/pull/907),
+  [#900](https://github.com/wago-org/wago/pull/900))
+
+- Improve AMD64 and ARM64 lowering for small straight-line blocks, constant vector
+  fills, adjacent SIMD addresses, scalar lane extraction, and proven minimum-memory
+  bounds. Fold repeated pure integer terms and retain eligible floating-point globals
+  and loop constants on ARM64. Each optional lowering has an independent optimization
+  selection. ([#963](https://github.com/wago-org/wago/pull/963))
+
+### Added
+
+- Execute shared `memory.grow` on amd64 and arm64, serializing growers and publishing
+  the new extent only after guarded pages are accessible. Shared accesses and size
+  queries read the live extent across active instances; constant-zero growth uses a
+  native size query. Preserve quotas and codec reload.
+  ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Execute shared `memory.copy` and `memory.fill` on amd64 and arm64, with overlap-safe
+  copying and bounds checks before writes. Use unrolled small constant operations
+  against shared backing on both architectures.
+  ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Execute ordinary scalar and SIMD loads/stores against shared memory on amd64 and
+  arm64, preserving exact float/vector bits and explicit bounds. Shared accesses use
+  backing-directory addresses. ARM64 can forward an exact adjacent plain i32 store/load
+  pair under the fixed-memory proof; other shared accesses keep their established
+  load/store path. ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Execute `memory.size` against shared-memory backing on amd64 and arm64, including
+  defined/imported memories and codec-loaded products. Admit `atomic.fence` in modules
+  without linear memory. ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Execute defined shared memory with classic atomics and wait/notify, keeping shared
+  backing separate from per-instance control. Preserve backing ownership across exports
+  and producer close, and account for both native mappings.
+  ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Implement wide integer arithmetic with native amd64/arm64 carry chains and
+  signed/unsigned widening multiplies, public feature selection, and persisted artifact
+  requirements. Cover edge cases, register pressure, and trap order.
+  ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Expose compact import sections through `CoreFeatureCompactImports` and CLI discovery,
+  independently of multiple-memory admission. Enable grouped imports by default without
+  adding runtime metadata or changing native code.
+  ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Add signed/unsigned SIMD floor-average source checks, baseline benchmarks, and a
+  bounded decoded corpus census. ([#875](https://github.com/wago-org/wago/pull/875))
+
+- Add bounded AMD64 integer loop-state regressions with independent state/work checks,
+  native layout controls, and paired compile/execution benchmarks.
+  ([#882](https://github.com/wago-org/wago/pull/882))
+
+- Add full-vector widening-multiply source-pair tests, prepared-call benchmarks, and a
+  bounded decoded corpus census. ([#874](https://github.com/wago-org/wago/pull/874))
+
+- Add mixed-scalar host-call checks across nested memory, global, and table changes,
+  including nested traps and repeated resolved calls.
+  ([#868](https://github.com/wago-org/wago/pull/868))
+
+- Bind corpus child completion to loaded input identity and exact invocation evidence,
+  with omitted-call and same-result substitution controls.
+  ([#876](https://github.com/wago-org/wago/pull/876))
+
+- Extend the opt-in `wago_regalloccheck` diagnostics with control-flow graphs, original
+  source recipes, immutable constant identities, and checked emission journals on AMD64
+  and ARM64. ([#807](https://github.com/wago-org/wago/pull/807))
+
+- Expand cached bounded-host rejection recovery checks and portable CLI/compiler
+  fixtures. Document the bounded Wasm-R3 corpus admission exclusions.
+  ([#941](https://github.com/wago-org/wago/pull/941),
+  [#912](https://github.com/wago-org/wago/pull/912),
+  [#949](https://github.com/wago-org/wago/pull/949),
+  [#861](https://github.com/wago-org/wago/pull/861))
+
 ### Fixed
 
-- Read Bash completion output synchronously while preserving nested arguments,
-  candidate text, and file-completion fallback for empty results.
-- Keep ARM64 i64x2 multiply lowering within five transient vector registers under pinned-local pressure.
+- Order ordinary guest stores before the lock-free empty-notify check with a full memory
+  barrier on AMD64 and ARM64, preventing missed waiter registration.
+  ([#963](https://github.com/wago-org/wago/pull/963))
 
-- Keep indexed memory sizes and bounds coherent across aliased imports and native
-  calls on AMD64 and ARM64. Recompile native artifacts to receive the fix.
-- Report batched Wago and wazero execution benchmark allocations per operation,
-  matching their timing units instead of reporting allocations per batch.
-- Check encoded ARM64 register aliases in NEON shuffle and byte-movemask helpers
-  so source and scratch overlap cannot bypass their guards.
-- Keep ARM64 integer call results in frame slots when local pins leave too few
-  registers for all result copies.
+- Preserve the invocation parent for Caller context resolution through foreign native
+  imports without publishing identity under a shared producer control frame. Independent
+  relays retain separate callback scopes and cancellation.
+  ([#963](https://github.com/wago-org/wago/pull/963))
+
+- Read Bash completion output synchronously while preserving nested arguments, candidate
+  text, and file-completion fallback for empty results.
+  ([#946](https://github.com/wago-org/wago/pull/946))
+
+- Keep ARM64 i64x2 multiply lowering within five transient vector registers under
+  pinned-local pressure. ([#874](https://github.com/wago-org/wago/pull/874))
+
+- Keep indexed memory sizes and bounds coherent across aliased imports and native calls
+  on AMD64 and ARM64. Recompile native artifacts to receive the fix.
+  ([#944](https://github.com/wago-org/wago/pull/944))
+
+- Report batched Wago and wazero execution benchmark allocations per operation, matching
+  their timing units instead of reporting allocations per batch.
+  ([#878](https://github.com/wago-org/wago/pull/878))
+
+- Check encoded ARM64 register aliases in NEON shuffle and byte-movemask helpers so
+  source and scratch overlap cannot bypass their guards.
+  ([#888](https://github.com/wago-org/wago/pull/888),
+  [#893](https://github.com/wago-org/wago/pull/893))
+
+- Keep ARM64 integer call results in frame slots when local pins leave too few registers
+  for all result copies. ([#862](https://github.com/wago-org/wago/pull/862))
+
 - Invalidate stale vector facts after indexed AMD64 loads in the optional
-  register-allocation checker, including encoded register aliases, without
-  allocating temporary kill values.
-- Key ARM64 worker adapter reuse by the memory-size register to prevent stale
-  entry code when leaf and memory-access functions share a type.
+  register-allocation checker, including encoded register aliases, without allocating
+  temporary kill values. ([#860](https://github.com/wago-org/wago/pull/860))
+
+- Key ARM64 worker adapter reuse by the memory-size register to prevent stale entry code
+  when leaf and memory-access functions share a type.
+  ([#866](https://github.com/wago-org/wago/pull/866))
+
+- Rearm cancellation overwritten during Windows host calls and preserve canceled context
+  errors on void invocation returns. ([#889](https://github.com/wago-org/wago/pull/889))
+
+- Drop native mapping owners and borrowed views before releasing memory, preventing
+  stale pointers from being scanned after Windows address reuse.
+  ([#947](https://github.com/wago-org/wago/pull/947))
+
+- Remove the fixed native frame-depth limit from GC root discovery while checking mapped
+  stack bounds, including parked host activations across reentry.
+  ([#898](https://github.com/wago-org/wago/pull/898))
+
+- Preserve imported funcref producer lifetimes across finalization and failed
+  instantiation; clear early unowned table writes during rollback.
+  ([#904](https://github.com/wago-org/wago/pull/904))
+
+- Deduplicate executable code-range registration on Linux and Darwin ARM64, avoiding
+  premature exhaustion of the range table.
+  ([#886](https://github.com/wago-org/wago/pull/886))
+
+- Preserve session PATH entries when refreshing a PowerShell installation.
+  ([#887](https://github.com/wago-org/wago/pull/887))
+
+- Reject existing symlinks and non-directory project build-cache roots during cleanup
+  and pruning. Concurrent path replacement remains outside this check.
+  ([#885](https://github.com/wago-org/wago/pull/885))
+
+- Resolve descriptor instruction type indexes within their recursive group and report
+  absolute byte offsets for byte-backed decode errors.
+  ([#884](https://github.com/wago-org/wago/pull/884),
+  [#896](https://github.com/wago-org/wago/pull/896))
+
+- Match custom instruction imports by their exact module/name pair, avoiding collisions
+  when either component contains dots.
+  ([#883](https://github.com/wago-org/wago/pull/883))
+
+- Escape every textual perf-map symbol field to prevent format injection.
+  ([#894](https://github.com/wago-org/wago/pull/894))
+
+- Preserve mixed scalar host-call results, restore pinned locals/globals after result
+  loads, and prevent general-purpose allocation from spilling floating-point registers
+  on ARM64. Reject out-of-range adapter PC-relative address patches.
+  ([#868](https://github.com/wago-org/wago/pull/868),
+  [#899](https://github.com/wago-org/wago/pull/899))
+
+- Align the installer module dependency and workspace replacement with beta.13 so
+  release qualification accepts the requested version.
 
 ## [v0.1.0-beta.12] - 2026-10-07
 
@@ -129,9 +430,6 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
-- Preserve ARM64 direct synchronous host-call results under register pressure,
-  restore locals and globals after control-frame result loads, and prevent
-  general-purpose allocation from spilling floating-point registers.
 - Publish `wago build` output atomically, preserving existing artifacts when
   publication fails and respecting platform access controls and file metadata.
 - Bound CLI module reads and artifact-cache admission, rejecting oversized

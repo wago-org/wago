@@ -191,7 +191,8 @@ func appendInstr(out *[]byte, in Instruction) error {
 		binary.LittleEndian.PutUint64(b[:], in.F64Bits)
 		*out = append(*out, b[:]...)
 	case InstrI64Add128, InstrI64Sub128, InstrI64MulWideS, InstrI64MulWideU:
-		*out = append(*out, 0xfc, byte(19+in.Kind-InstrI64Add128))
+		*out = append(*out, 0xfc)
+		appendU32(out, 19+uint32(in.Kind-InstrI64Add128))
 	case InstrMemoryCopy:
 		*out = append(*out, 0xfc)
 		appendU32(out, 10)

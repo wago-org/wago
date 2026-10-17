@@ -53,6 +53,8 @@ type Features struct {
 	TypedFunctionReferences bool // internal staged gate for indexed/non-null function refs and call_ref
 	TailCalls               bool // internal staged gate for bounded direct/indirect tail-call contexts
 	TypedTailCalls          bool // internal staged gate for bounded return_call_ref contexts
+	WideArithmetic          bool // 128-bit add/subtract and widening multiply
+	CompactImports          bool // grouped import-section entries
 	MultiMemory             bool // internal staged gate for bounded indexed memory execution
 	Memory64                bool // internal staged gate for bounded local 64-bit-address memory execution
 	Table64                 bool // internal staged gate for bounded local 64-bit-index table execution
@@ -74,7 +76,7 @@ type Features struct {
 // AllFeatures is the full optional set wago's backend lowers today; it is the
 // default applied by RejectUnsupported.
 func AllFeatures() Features {
-	return Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true, ReferenceTypes: true, Threads: true, SIMD: true, ExtendedConst: true, ExtendedConstGlobals: true}
+	return Features{WideArithmetic: true, CompactImports: true, SignExtension: true, BulkMemory: true, SaturatingTrunc: true, ReferenceTypes: true, Threads: true, SIMD: true, ExtendedConst: true, ExtendedConstGlobals: true}
 }
 
 // RejectUnsupported rejects modules that require features not explicitly wired
@@ -813,9 +815,6 @@ func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
 	if mem.Shared {
 		if !p.feat.Threads {
 			return p.unsupported("memory", "shared (threads disabled)", ctx)
-		}
-		if mem.Limits.Addr64 {
-			return p.unsupported("memory", "shared memory64", ctx)
 		}
 	}
 	if mem.Limits.Addr64 && !p.feat.Memory64 {
@@ -1664,6 +1663,9 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 	}
 	switch imm.Subopcode {
 	case 19, 20, 21, 22:
+		if !p.feat.WideArithmetic {
+			return p.unsupported("instruction", imm.Kind.String()+" (wide-arithmetic disabled)", context())
+		}
 		return nil
 	case 0, 1, 2, 3, 4, 5, 6, 7:
 		if !p.feat.SaturatingTrunc {
@@ -2145,6 +2147,11 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 	case wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
 		if !p.feat.GCStructProducts {
 			return p.unsupported("reference instruction", k.String()+" (gc extern conversion disabled)", context)
+		}
+		return nil
+	case wasm.InstrI64Add128, wasm.InstrI64Sub128, wasm.InstrI64MulWideS, wasm.InstrI64MulWideU:
+		if !p.feat.WideArithmetic {
+			return p.unsupported("instruction", k.String()+" (wide-arithmetic disabled)", context)
 		}
 		return nil
 	case wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U, wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,

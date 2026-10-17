@@ -138,6 +138,18 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	w := node.valueType().is64()
 	left := node.arg0
 	right := node.arg1
+	// A target hint may also hold a pending RHS load's address. Compute through
+	// the ordinary allocator before writing that target, keeping both memory
+	// reads in their original order and the RHS address live until it is used.
+	if dest != regNone && right.isValue() && right.st.kind == stMemRef && right.st.reg == dest {
+		result := f.condenseBinary(node, regNone)
+		if result != dest {
+			f.moveInt(dest, result, node.st.typ)
+			f.release(result)
+			f.occupy(node, dest)
+		}
+		return dest
+	}
 	// Keep trapping children in bytecode order. The tracked left value stays
 	// spillable while the right subtree claims fixed registers.
 	if right.isDeferred() && !treeReorderSafe(right) && !treeReorderSafe(left) {
@@ -641,6 +653,9 @@ func (f *fn) emitLeaAdd(dst, base Reg, right *elem, w bool) {
 // immediate shift; a variable count must live in CL (x86 constraint), so it is
 // forced into RCX and the value is shifted by CL.
 func (f *fn) condenseShift(node *elem, dest Reg) Reg {
+	if r, ok := f.tryPredicateShift(node, dest); ok {
+		return r
+	}
 	w := node.valueType().is64()
 	digit := shiftDigit(node.deferredOp())
 	left := node.arg0
@@ -816,6 +831,9 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 			f.a.AluRM(cmpRMcode, L, RSP, f.localAddr(right.st.index()), w)
 		case stMemRef:
 			if memRefFoldable(right.st, w) {
+				if regallocCheckEnabled {
+					f.checkConsumeMemRef(right)
+				}
 				f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)
 			} else {
 				// A narrow/wide mismatch needs a register value. Preserve a pinned
@@ -986,6 +1004,9 @@ func (f *fn) swarAnd(dst, mask Reg, value uint64, w, load bool) {
 // division traps: divide-by-zero (all four ops) and the signed INT_MIN/-1
 // overflow (div_s only; rem_s must instead yield 0 without faulting).
 func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
+	if r, ok := f.tryDivRemConstPair(node, dest); ok {
+		return r
+	}
 	w := node.valueType().is64()
 	signed := node.deferredOp() == opDivS || node.deferredOp() == opRemS
 	wantRem := node.deferredOp() == opRemS || node.deferredOp() == opRemU
@@ -1183,6 +1204,9 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 		f.a.AluRM(enc.rm, dest, RSP, f.localAddr(right.st.index()), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
+			if regallocCheckEnabled {
+				f.checkConsumeMemRef(right)
+			}
 			f.a.AluIdx(enc.rm, dest, RBX, right.st.reg, right.st.memDisp(), w) // op dest, [mem]
 			f.releaseMemRef(right.st)
 		} else {
@@ -1268,6 +1292,9 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 		f.a.ImulRM(dest, RSP, f.localAddr(right.st.index()), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
+			if regallocCheckEnabled {
+				f.checkConsumeMemRef(right)
+			}
 			f.a.ImulIdx(dest, RBX, right.st.reg, right.st.memDisp(), w)
 			f.releaseMemRef(right.st)
 		} else {

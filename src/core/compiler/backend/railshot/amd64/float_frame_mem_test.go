@@ -50,8 +50,14 @@ func TestFloatFrameMemoryOperands(t *testing.T) {
 							defer cm.CodeImage.Close()
 						}
 						if diagnosticsEnabled {
-							if stats.Funcs[0].Peephole["float-frame-mem"] == 0 {
-								t.Fatalf("frame operand not folded: %v", stats.Funcs[0].Peephole)
+							peep := "float-frame-mem"
+							if shape == "sink" {
+								// Both inputs are pinned; the arithmetic writes the
+								// destination local without a frame operand.
+								peep = "float-local-sink"
+							}
+							if stats.Funcs[0].Peephole[peep] == 0 {
+								t.Fatalf("missing %s: %v", peep, stats.Funcs[0].Peephole)
 							}
 						}
 						for _, pair := range [][2]float64{{6.5, 2.5}, {math.Copysign(0, -1), 0}, {math.Inf(1), 2}, {1, math.NaN()}} {

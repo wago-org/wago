@@ -287,7 +287,7 @@ func TestI32ParameterKeepsMemoryAddressCanonicalizationAcrossBlockArm64(t *testi
 	requireCompilerDiagnostics(t)
 	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x00,       // no locals
-		0x02, 0x40, // block (forces value-specific facts off)
+		0x02, 0x7f, // block (result i32), containing a parameter-based load
 		0x20, 0x00, // local.get 0
 		0x28, 0x02, 0x00, // i32.load align=4 offset=0
 		0x0b, 0x0b, // end block/function

@@ -25,6 +25,7 @@ type CompiledModule struct {
 	NativeReferenceCalls                                       bool
 	NativeReferenceControl                                     bool
 	NativeReferenceFunctions                                   bool
+	RequiresARM64LSE                                           bool
 	NativeTail                                                 *NativeTailModule
 	Code                                                       []byte
 	CodeImage                                                  codeimage.Image

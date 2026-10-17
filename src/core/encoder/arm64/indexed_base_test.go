@@ -150,6 +150,8 @@ func TestIndexedBaseInterveningInstructions(t *testing.T) {
 		{"ldr-literal", func(a *Asm, dst Reg) { a.word(0x58000000 | r(dst)) }, false},
 		{"ldar", func(a *Asm, dst Reg) { a.Ldar(dst, X9, 8) }, false},
 		{"ldaxr", func(a *Asm, dst Reg) { a.Ldaxr(dst, X9, 8) }, false},
+		{"ldaddal", func(a *Asm, dst Reg) { a.AtomicRMWAL(LSEAdd, X1, dst, X9, 8) }, false},
+		{"casal", func(a *Asm, dst Reg) { a.CasAL(dst, X1, X9, 8) }, false},
 		{"stlxr-status", func(a *Asm, dst Reg) { a.Stlxr(dst, X1, X9, 8) }, false},
 		{"branch", func(a *Asm, _ Reg) { a.word(0x14000000) }, false},
 		{"call", func(a *Asm, _ Reg) { a.Bl() }, false},

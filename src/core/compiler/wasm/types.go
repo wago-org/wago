@@ -1388,7 +1388,6 @@ const (
 	InstrI16x8RelaxedQ15mulrS
 	InstrI16x8RelaxedDotI8x16I7x16S
 	InstrI32x4RelaxedDotI8x16I7x16AddS
-
 	// Wide arithmetic uses low/high pairs of ordinary i64 values.
 	InstrI64Add128
 	InstrI64Sub128

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -206,13 +207,53 @@ func (j *JobMemory) reclaimForReuse() error {
 }
 
 // curBytes is the current in-bounds linear-memory size, read from the cache that
-// native code maintains (memory.grow updates it without involving Go).
-func (j *JobMemory) curBytes() int { return int(j.getU64(offActualLinMemByteSize64)) }
+// ordinary native growth and the shared growth helper publish.
+func (j *JobMemory) curBytes() int {
+	return int(atomic.LoadUint64(j.currentBytesCell()))
+}
+
+// Shared growers publish one aligned size word. Guarded mappings use the
+// immutable reservation address, so reading it does not race host-view growth.
+func (j *JobMemory) currentBytesCell() *uint64 {
+	return (*uint64)(offHeapPointer(j.LinMemBase() - uintptr(offActualLinMemByteSize64)))
+}
 
 // CurrentPages and MaxPages expose the native size caches for exact import
 // matching and indexed-memory directory construction.
-func (j *JobMemory) CurrentPages() uint32 { return j.getU32(offLinMemWasmSize) }
+func (j *JobMemory) CurrentPages() uint32 { return uint32(j.curBytes() >> 16) }
 func (j *JobMemory) MaxPages() uint32     { return j.getU32(offMaxLinMemPages) }
+
+// GrowShared grows a shared memory while its owner holds the memory mutex.
+// Commit guarded pages before publishing their extent; a failed commit leaves
+// the logical size unchanged. Other agents acquire-load the aligned byte size.
+func (j *JobMemory) GrowShared(delta, policyMaximum uint32) (uint32, bool) {
+	current := uint64(j.curBytes())
+	pages := uint32(current >> 16)
+	if delta == 0 {
+		return pages, true
+	}
+	maximum := j.MaxPages()
+	if policyMaximum != 0 && policyMaximum < maximum {
+		maximum = policyMaximum
+	}
+	if pages > maximum || delta > maximum-pages {
+		return pages, false
+	}
+	next := current + (uint64(delta) << 16)
+	if j.reserveBase != 0 {
+		if err := growGuardedHostView(j, int(next)); err != nil {
+			return pages, false
+		}
+	}
+	atomic.StoreUint64(j.currentBytesCell(), next)
+	return pages, true
+}
+
+// PublishSharedData orders a completed data-section initialization with shared
+// operations. RMW by zero preserves concurrent growth's authoritative extent.
+func (j *JobMemory) PublishSharedData() {
+	atomic.AddUint64(j.currentBytesCell(), 0)
+}
 
 // CurrentBytes returns the host-facing view of linear memory at its current
 // (possibly grown) logical size — what Memory.UnsafeBytes exposes.
@@ -573,4 +614,18 @@ func (j *JobMemory) putU64(below int, v uint64) {
 
 func (j *JobMemory) getU64(below int) uint64 {
 	return binary.LittleEndian.Uint64(j.mem[j.linOff-below:])
+}
+
+// SetSharedNotifyPending publishes registering or queued waits on shared backings.
+// It must never be called on an instance control mapping.
+func (j *JobMemory) SetSharedNotifyPending(pending bool) {
+	value := uint32(0)
+	if pending {
+		value = 1
+	}
+	atomic.StoreUint32((*uint32)(unsafe.Pointer(&j.mem[j.linOff-abi.SharedNotifyPendingOffset])), value)
+}
+
+func (j *JobMemory) SharedNotifyPending() uint32 {
+	return atomic.LoadUint32((*uint32)(unsafe.Pointer(&j.mem[j.linOff-abi.SharedNotifyPendingOffset])))
 }

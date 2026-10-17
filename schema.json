@@ -36,6 +36,7 @@
           "propertyNames": {
             "enum": [
               "bulk-memory-operations",
+              "compact-imports",
               "exception-handling",
               "extended-const-expressions",
               "extended-constant-expressions",
@@ -51,7 +52,8 @@
               "table64",
               "tail-call",
               "threads",
-              "typed-function-references"
+              "typed-function-references",
+              "wide-arithmetic"
             ]
           },
           "additionalProperties": { "type": "boolean" }
@@ -64,6 +66,10 @@
               "addr-zext-elim",
               "affine-lea",
               "assoc-tree",
+              "atomic-lse",
+              "atomic-notify-empty",
+              "atomic-static-bounds",
+              "atomic-wait-zero-timeout",
               "avx512-ternary",
               "avx512-vrotate",
               "bmi2-rorx",
@@ -73,6 +79,7 @@
               "bounds-facts",
               "br-table-branch-vector",
               "branch-fold",
+              "bulk-fill-vector",
               "call-next-use",
               "callfree-loop-cold-exit",
               "callfree-loop-reg-state",
@@ -131,6 +138,7 @@
               "leaf-scratch-pins",
               "legacy-fp-pins",
               "legacy-gp-pins",
+              "linear-integer-tree",
               "linear-sum-loop",
               "load-pair",
               "local-slot-order",
@@ -143,6 +151,7 @@
               "memcopy-qpairs",
               "memcopy-tail4",
               "memory-compare-immediate",
+              "memory-min-bounds",
               "memsize-regional-lease",
               "merge-next-use",
               "module-global-regional-lease",
@@ -164,9 +173,12 @@
               "select-sink-pure-guard",
               "select-source-read",
               "shared-adapters",
+              "shared-memory-base",
               "shared-trap-body",
               "shifted-register-alu",
+              "simd-load-extract",
               "simd-reduction-borrow",
+              "simd-store-load-address",
               "simd-superopt",
               "single-negative-move32",
               "small-frame",
@@ -176,6 +188,7 @@
               "store-forward",
               "store-load-fwd",
               "store8-flags",
+              "straight-line-block",
               "streaming-i32-reduction",
               "swar-idioms",
               "taken-zero-branch",

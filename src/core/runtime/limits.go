@@ -34,6 +34,10 @@ const (
 	ImportDispatchEntryBytes          = 32
 	// Native backends tag the aligned caller-context word for ordinary synchronous Go thunks.
 	ImportDispatchCallerGoHostTag uint64 = 1
+	// A verified native scalar wrapper touches only X0-X17 and its result buffer.
+	// It cannot access instance state, trap, grow memory, or call back into Go.
+	ImportDispatchCallerNativeLeafTag uint64 = 2
+	ImportDispatchCallerTagMask              = ImportDispatchCallerGoHostTag | ImportDispatchCallerNativeLeafTag
 )
 
 // PassiveElemDescBytes is the size of one passive element segment descriptor:

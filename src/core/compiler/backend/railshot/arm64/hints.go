@@ -544,7 +544,7 @@ func scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32,
 	if len(fn.BodyBytes) != 0 {
 		return scanBodyBytesIntoModule(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, classifier, moduleHints, nil, importedFuncs, globalHints, collectLoopIntConsts, collectLoopMemoryBases)
 	}
-	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, globalHints), nil
+	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, m, globalHints), nil
 }
 
 // scanBody performs the AST pre-scan walk. selfIdx is the function's global
@@ -554,7 +554,7 @@ func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHintVie
 	elig := newGlobalEligibilityTracker(nGlobals)
 	var accum shared.GlobalHintAccumulator
 	accum.Reset(nGlobals)
-	return finishGlobalHints(scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig, &accum), &accum)
+	return finishGlobalHints(scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig, nil, &accum), &accum)
 }
 
 func noteASTPhysicalEvent(h *funcHintView, kind wasm.InstrKind, depth int) {
@@ -641,7 +641,7 @@ func tableSetMayCall(m *wasm.Module, index uint32) bool {
 	return true
 }
 
-func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, globalHints *shared.GlobalHintAccumulator) funcHintView {
+func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, m *wasm.Module, globalHints *shared.GlobalHintAccumulator) funcHintView {
 	elig.reset()
 	// walk returns whether the subtree contains a call. curLoop identifies the
 	// innermost enclosing loop whose globals are being considered for eligibility.
@@ -670,7 +670,7 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			if wasm.IsSIMDValidationInstructionKind(in.Kind) {
 				h.flags.set(hintModuleSIMD)
 			}
-			if gcOrAtomicInstructionMayCall(in.Kind) {
+			if gcOrAtomicInstructionMayCall(in.Kind) || shared.SharedMemoryGrowMayCall(m, in.Kind, in.Index) {
 				sub = true
 				h.flags.set(hintHasCall)
 				h.flags.set(hintHasNonDirectCall)
@@ -1436,6 +1436,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				subHasCall = true
 			}
 			switch imm.Kind {
+			case wasm.InstrMemoryGrow:
+				if !shared.SharedMemoryGrowMayCall(s.m, imm.Kind, imm.Index) {
+					break
+				}
+				fallthrough
 			case wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
 				s.h.noteBoundaryEvent(shared.LocalEventCollection, depth)
 				s.h.flags.set(hintHasCall)

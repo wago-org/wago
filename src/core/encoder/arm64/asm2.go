@@ -324,6 +324,14 @@ func fbase(f64 bool, baseS, baseD uint32) uint32 {
 	return baseS
 }
 
+// Fcsel copies one scalar source according to the integer condition flags.
+func (a *Asm) Fcsel(rd, rn, rm Reg, cond Cond, f64 bool) {
+	a.word(fbase(f64, 0x1E200C00, 0x1E600C00) | r(rm)<<16 | uint32(cond)<<12 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
+}
+
 func (a *Asm) Fadd(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E202800, 0x1E602800) | r(rm)<<16 | r(rn)<<5 | r(rd))
 	if regallocCheckEnabled {
@@ -440,6 +448,22 @@ func (a *Asm) Frint(rd, rn Reg, f64 bool, mode byte) {
 // precision, dstWide selects an X (64-bit) vs W (32-bit) destination.
 func (a *Asm) Fcvtzs(rd, rn Reg, f64src, dstWide bool) {
 	base := uint32(0x1E380000)
+	if dstWide {
+		base |= 0x80000000
+	}
+	if f64src {
+		base |= 0x00400000
+	}
+	a.word(base | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rd, false))
+	}
+}
+
+// Fcvtzu converts float to unsigned integer, rounding toward zero with
+// saturation. NaNs and negative values become zero.
+func (a *Asm) Fcvtzu(rd, rn Reg, f64src, dstWide bool) {
+	base := uint32(0x1E390000)
 	if dstWide {
 		base |= 0x80000000
 	}
@@ -1468,6 +1492,7 @@ func (a *Asm) NeonUrhaddB(dst, n, m Reg)   { a.neon3(0x6E201400, 1, dst, n, m) }
 func (a *Asm) NeonUrhaddH(dst, n, m Reg)   { a.neon3(0x6E201400, 2, dst, n, m) }
 func (a *Asm) NeonMulH(dst, n, m Reg)      { a.neon3(0x4E209C00, 2, dst, n, m) }
 func (a *Asm) NeonMulS(dst, n, m Reg)      { a.neon3(0x4E209C00, 4, dst, n, m) }
+func (a *Asm) NeonMlaS(dst, n, m Reg)      { a.neon3(0x4E209400, 4, dst, n, m) }
 func (a *Asm) NeonSqrdmulhH(dst, n, m Reg) { a.neon3(0x6E20B400, 2, dst, n, m) }
 func (a *Asm) NeonHaddH(dst, n, m Reg)     { a.neon3(0x4E202800, 2, dst, n, m) }
 func (a *Asm) NeonHaddS(dst, n, m Reg)     { a.neon3(0x4E202800, 4, dst, n, m) }

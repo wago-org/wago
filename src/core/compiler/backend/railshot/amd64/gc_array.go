@@ -63,6 +63,11 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 				return nil
 			}
 		}
+		fill, fuseFill := f.matchGCArrayNewFill(r, typeIndex, field)
+		if fuseFill {
+			fill.replaceInitializer(f)
+		}
+		freshValue, freshOK := f.gcFreshArray16Candidate(typeIndex, field)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocUniform)
@@ -76,6 +81,12 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return err
 		}
 		f.markTopGCReference()
+		if freshOK {
+			f.setGCFreshStructFact(gcFreshStructFact{objectLocal: -1, typeIndex: typeIndex, value: freshValue})
+		}
+		if fuseFill {
+			fill.finish(f, r)
+		}
 		return nil
 	case 10: // array.new_elem typeidx elemidx
 		typeIndex, err := r.U32()
@@ -200,9 +211,12 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocDefault)
-		if layout, native := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native && (!layout.ref || layout.nullable) {
-			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
-				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeDefault}
+		if layout, native := nativeGCDefaultArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native && (!layout.ref || layout.nullable) {
+			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeLargeArrayAllocMaxBytes) {
+				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeDefault, large: bytes > uint64(gc.NativeArrayAllocMaxBytes)}
+				helper = gcArrayAllocDefaultNative
+			} else if !static {
+				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, mode: gcArrayNativeDefault, dynamic: true}
 				helper = gcArrayAllocDefaultNative
 			}
 		}
@@ -235,6 +249,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		} else if field.Storage().Packed() {
 			return fmt.Errorf("amd64: plain array.get cannot access packed type %d", typeIndex)
 		}
+		if sub == 11 && f.tryForwardGCFreshArray16Get(typeIndex) {
+			return nil
+		}
 		if f.emitDirectGCArrayGet(typeIndex, helper, 0, 0, false) {
 			return nil
 		}
@@ -255,6 +272,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("amd64: array.set type %d is unavailable", typeIndex)
 		}
+		f.prepareGCFreshArraySet(field)
 		if field.Mut() != wasm.Var {
 			return fmt.Errorf("amd64: array.set type %d is immutable", typeIndex)
 		}
@@ -278,6 +296,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(gcArraySet, []wasm.ValType{object, wasm.I32, valueType, wasm.I32}, nil)
 	case 15: // array.len
+		if typeIndex, ok := f.gcArrayLenParameterType(); ok && f.emitDirectGCArrayLen(typeIndex) {
+			return nil
+		}
 		object := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapArray), false))
 		return f.callGCStructHelper(gcArrayLen, []wasm.ValType{object}, []wasm.ValType{wasm.I32})
 	case 16: // array.fill typeidx
@@ -294,6 +315,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			valueType = wasm.I32
 		}
 		helper := uint32(gcArrayFill)
+		if f.emitDirectGCArrayFill(typeIndex) || f.emitDynamicGCArrayFill(typeIndex) {
+			return nil
+		}
 		if field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
 			f.stats.peep("gc-barrier-slow")
 			f.gcOpcodeBarrier = true
@@ -355,6 +379,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		if _, ok := f.stagedArrayType(srcType); !ok {
 			return fmt.Errorf("amd64: array.copy source type %d is unavailable", srcType)
+		}
+		if f.emitDirectGCArrayCopy(dstType, srcType) || f.emitDynamicGCArrayCopy(dstType, srcType) {
+			return nil
 		}
 		if dstField.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, dstField.Storage().Val()) {
 			f.gcOpcodeBarrier = true
@@ -440,4 +467,25 @@ func stagedArrayType(m *wasm.Module, typeIndex uint32) (wasm.FieldType, bool) {
 		index -= uint32(len(group.SubTypes))
 	}
 	return wasm.FieldType{}, false
+}
+
+// gcArrayLenParameterType recovers only the root function's declared parameter
+// type. Inlined locals use a separate index space and must keep the helper path.
+func (f *fn) gcArrayLenParameterType() (uint32, bool) {
+	if !gcSharedStubsEnabled || f.inlineDepth != 0 || f.localBase != 0 || f.ft == nil {
+		return 0, false
+	}
+	local, ok := gcLocalProvenance(f.s.back())
+	if !ok || local < 0 || local >= len(f.ft.Params) {
+		return 0, false
+	}
+	typ := f.ft.Params[local]
+	if typ.Kind() != wasm.ValRef {
+		return 0, false
+	}
+	heap := typ.Ref().Heap()
+	if heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec {
+		return 0, false
+	}
+	return heap.Type().Index, true
 }

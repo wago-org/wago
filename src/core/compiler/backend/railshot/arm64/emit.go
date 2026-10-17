@@ -142,6 +142,9 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 // place (const→imm, memory→register load, reg→reg). AArch64 is three-operand, so
 // the in-place accumulate is `op Rd,Rn,Rm` with Rd==Rn==dest.
 func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
+	if r := f.tryLinearIntegerTree(node, dest); r != regNone {
+		return r
+	}
 	w := node.st.typ.is64()
 	left := f.s.arg0(node)
 	right := f.s.arg1(node)
@@ -558,11 +561,32 @@ func (f *fn) tryShiftedRegisterALU(node, left, right *elem, dest Reg) Reg {
 		return regNone
 	}
 	shiftArg, kind, count, ok := constShiftOperand(f.s, right, node.st.typ)
+	wrapped := false
+	if !ok && node.st.typ == mtI32 && right.isDeferred() && right.deferredOp() == opWrap {
+		// Only the final low word is observable. Shift at the original i64
+		// width, combine in X registers, then canonicalize the i32 result.
+		shiftArg, kind, count, ok = constShiftOperand(f.s, f.s.arg0(right), mtI64)
+		wrapped = ok
+		if wrapped && left.isDeferred() && left.deferredOp() == opWrap {
+			left = f.s.arg0(left)
+		}
+	}
 	// Commutative integer operations can use a shift from either operand.
 	// Only swap across a concrete, nontrapping integer value: deferred RHS
 	// arithmetic and memory reads retain the established evaluation order.
 	if !ok && op.commutative() && left.isDeferred() && right.elemKind() == ekValue &&
 		!right.st.typ.isXMM() && right.st.kind != stMemRef && right.st.kind != stFuncRef {
+		// Keep an encodable add immediate in the immediate form. Commuting
+		// it into Rn would materialize a constant and lengthen address chains.
+		if op == opAdd && right.st.kind == stConst {
+			value := right.st.cval
+			if node.st.typ == mtI32 {
+				value = int64(int32(value))
+			}
+			if value >= -0xfff && value <= 0xfff || f.shiftedAddSubImmediate(value) {
+				return regNone
+			}
+		}
 		shiftArg, kind, count, ok = constShiftOperand(f.s, left, node.st.typ)
 		if ok {
 			left, right = right, left
@@ -575,6 +599,7 @@ func (f *fn) tryShiftedRegisterALU(node, left, right *elem, dest Reg) Reg {
 	// This matches condenseBinary's normal realization order: its deferred RHS
 	// (the whole shift) is condensed before the LHS. Pin each realized source
 	// while obtaining the other so allocator pressure cannot silently reuse it.
+	savedPins := f.pinned
 	rm, ownRM := f.materializeRead(shiftArg)
 	f.pinned = f.pinned.add(rm)
 	rn, ownRN := f.materializeRead(left)
@@ -590,7 +615,7 @@ func (f *fn) tryShiftedRegisterALU(node, left, right *elem, dest Reg) Reg {
 			rd = f.allocReg(maskOf(rn, rm))
 		}
 	}
-	w32 := !node.st.typ.is64()
+	w32 := !node.st.typ.is64() && !wrapped
 	switch op {
 	case opAdd:
 		f.a.AddShiftedReg(rd, rn, rm, kind, count, w32)
@@ -603,8 +628,11 @@ func (f *fn) tryShiftedRegisterALU(node, left, right *elem, dest Reg) Reg {
 	case opXor:
 		f.a.EorShiftedReg(rd, rn, rm, kind, count, w32)
 	}
-	f.pinned = f.pinned.remove(rn)
-	f.pinned = f.pinned.remove(rm)
+	if wrapped {
+		f.a.MovReg32(rd, rd)
+		f.stats.peep("wrapped-shifted-register-alu")
+	}
+	f.pinned = savedPins
 	if ownRN && rn != rd {
 		f.release(rn)
 	}

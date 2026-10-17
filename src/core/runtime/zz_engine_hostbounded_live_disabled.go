@@ -22,3 +22,7 @@ func (e *Engine) CallWithHostBaseScalarBoundedContextLive(access runtimebridge.H
 func (e *Engine) CallWithHostBaseFixedViewBoundedContextLive(access runtimebridge.HostScalarCallAccess, code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, rawSlots uint32, context unsafe.Pointer, fixed FixedHostContextCallView, fallback FixedHostCallView) error {
 	return e.CallWithHostBaseFixedViewBounded(access, code, serArgs, linMemBase, trap, results, ctrl, rawSlots, fallback)
 }
+
+func (e *Engine) tryInlinePreparedHostContext(p *PreparedHostScalarCall, context unsafe.Pointer, fixed FixedScalarHostContextCall, integer bool) (bool, error) {
+	return false, nil
+}

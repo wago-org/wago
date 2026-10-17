@@ -625,7 +625,7 @@ func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	var stats ModuleStats
-	if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats}); err != nil {
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"inline": false}}); err != nil {
 		t.Fatalf("compile: %v", err)
 	}
 	if got := stats.Funcs[1].Peephole["monomorphic-call-indirect"]; got != 1 {

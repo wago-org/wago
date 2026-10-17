@@ -111,6 +111,9 @@ func (f *fn) releaseDroppedValue(e *elem) {
 				f.release(r)
 			}
 		}
+		if regallocCheckEnabled {
+			f.checkConsumeMemRef(e)
+		}
 		f.releaseMemRef(e.st)
 	}
 }

@@ -457,6 +457,9 @@ func runtimeOwnedNativeMemoryMappings(mod *Module) uint32 {
 	if c.memoryImport == "" || c.threadedMemory0() {
 		count = 1
 	}
+	if c.threadedMemory0() && c.memoryImport == "" {
+		count++ // separately owned shared pages and per-instance control
+	}
 	for index := 1; index < c.memoryCount(); index++ {
 		if c.memoryDef(index).ImportKey == "" {
 			count++

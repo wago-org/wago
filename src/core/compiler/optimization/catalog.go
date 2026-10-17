@@ -389,6 +389,13 @@ func (b *Bindings) deltasMatchLocked(overrides, deltas map[string]bool) bool {
 	return changed == len(deltas)
 }
 
+// Catalog entries share these read-only lists. Public definitions clone them.
+var (
+	catalogBothArchitectures  = []string{"amd64", "arm64"}
+	catalogAMD64Architectures = []string{"amd64"}
+	catalogARM64Architectures = []string{"arm64"}
+)
+
 var catalog = []Definition{
 	both("bounds-facts", "Bounds facts", "straight-line bounds-check elision"),
 	both("simd-superopt", "SIMD superoptimization", "recognize bounded multi-operation SIMD sequences"),
@@ -410,15 +417,15 @@ var catalog = []Definition{
 	arm64("memcopy-tail4", "Four-byte memory-copy tails", "finish small dynamic memory copies with one four-byte tail chunk"),
 	arm64("memcopy-qpairs", "Paired vector memory-copy", "copy 32-byte groups with paired 128-bit loads and stores"),
 	arm64("uxtw-add", "Extended adds", "fold zero-extension into ADD UXTW"),
-	{Name: "select-group-guard", Label: "Select group guard", Description: "skip pure update groups when their unchanged mask has no selected bits", Default: true, Architectures: []string{"arm64"}},
-	{Name: "dot-loop-vector", Label: "Scalar loop vectorization", Description: "vectorize proven integer reductions, min-plus updates and independent floating-point maps with guarded scalar fallback", Default: true, Architectures: []string{"arm64"}},
-	{Name: "pure-reduce-vector", Label: "Pure integer reduction vectorization", Description: "vectorize independent i32 expressions accumulated into i64 sums with exact scalar tails", Default: true, Architectures: []string{"arm64"}},
-	{Name: "select-sink-pure-guard", Label: "Pure integer select update guard", Description: "skip bounded costly pure work when an integer select keeps its pinned local", Default: true, Architectures: []string{"arm64"}},
-	{Name: "streaming-i32-reduction", Label: "Streaming i32 product reductions", Description: "reassociate proven wrapping product sums into a concrete streaming accumulator", Default: true, Architectures: []string{"arm64"}},
-	{Name: "single-negative-move32", Label: "Single-word negative i32 constants", Description: "use one zero-extending W-MOVN for negative constants representable by its 16-bit immediate", Default: true, Architectures: []string{"arm64"}},
-	{Name: "select-source-read", Label: "Read-only select sink sources", Description: "borrow protected integer select sources and share large constants with their comparison", Default: true, Architectures: []string{"arm64"}},
-	{Name: "crowded-products", Label: "Crowded integer product scheduling", Description: "finish bounded pure products after pending effects to reduce live operand factors", Default: true, Architectures: []string{"arm64"}},
-	{Name: "guarded-test-ccmp", Label: "Guarded bit test conditional compare", Description: "combine adjacent short-circuit bit tests when both continuations overwrite flags", Default: true, Architectures: []string{"arm64"}},
+	{Name: "select-group-guard", Label: "Select group guard", Description: "skip pure update groups when their unchanged mask has no selected bits", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "dot-loop-vector", Label: "Scalar loop vectorization", Description: "vectorize proven integer reductions, min-plus updates and independent floating-point maps with guarded scalar fallback", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "pure-reduce-vector", Label: "Pure integer reduction vectorization", Description: "vectorize independent i32 expressions accumulated into i64 sums with exact scalar tails", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "select-sink-pure-guard", Label: "Pure integer select update guard", Description: "skip bounded costly pure work when an integer select keeps its pinned local", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "streaming-i32-reduction", Label: "Streaming i32 product reductions", Description: "reassociate proven wrapping product sums into a concrete streaming accumulator", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "single-negative-move32", Label: "Single-word negative i32 constants", Description: "use one zero-extending W-MOVN for negative constants representable by its 16-bit immediate", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "select-source-read", Label: "Read-only select sink sources", Description: "borrow protected integer select sources and share large constants with their comparison", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "crowded-products", Label: "Crowded integer product scheduling", Description: "finish bounded pure products after pending effects to reduce live operand factors", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "guarded-test-ccmp", Label: "Guarded bit test conditional compare", Description: "combine adjacent short-circuit bit tests when both continuations overwrite flags", Default: true, Architectures: catalogARM64Architectures},
 	arm64("inverted-logical", "Inverted logical operands", "fold integer bitwise complements into logical register operations"),
 	arm64("shifted-register-alu", "Shifted-register ALU", "fold constant shifts into integer ALU operands"),
 	arm64("fp-immediate-const", "Float immediates", "materialize exact AArch64 floating-point immediates directly"),
@@ -443,12 +450,23 @@ var catalog = []Definition{
 	arm64("leaf-scratch-pins", "Leaf scratch pins", "pin scratch values in leaf functions"),
 	arm64("leaf-scratch-memsize", "Leaf scratch memory size", "cache memory size in backend scratch for straight-line regional leaves"),
 	arm64("loop-trap-cell", "Loop trap cell", "cache the stable cancellation cell across call-free loops"),
+	both("atomic-notify-empty", "Empty atomic notifications", "bypass the Go notification helper when shared backing has no queued waiters"),
+	both("atomic-wait-zero-timeout", "Immediate atomic waits", "resolve literal zero-timeout shared-memory waits in native code"),
+	both("shared-memory-base", "Shared memory backing cache", "reuse stable shared backing addresses while reading live extents"),
+	arm64("atomic-lse", "LSE atomics", "use native acquire/release atomic RMW and compare-exchange on LSE hosts"),
+	both("atomic-static-bounds", "Constant atomic bounds", "prove aligned constant atomic addresses against the declared memory minimum"),
 	both("counted-loop-latch", "Counted loop latch", "fold exact top-tested i32 countdown loops into an architecture-safe latch"),
+	both("straight-line-block", "Straight-line blocks", "retain operand residency through small blocks without branches or calls"),
+	both("bulk-fill-vector", "Constant vector fills", "broadcast a byte into native vector stores for 16 to 64 byte constant fills"),
+	both("simd-store-load-address", "Adjacent SIMD memory addresses", "reuse an identical pure address expression for a vector store and following real load"),
+	both("simd-load-extract", "SIMD load lane extraction", "load the consumed scalar lane while retaining the original vector access bounds"),
+	both("memory-min-bounds", "Declared minimum memory bounds", "prove bounded integer address expressions fit the selected memory minimum"),
+	arm64("linear-integer-tree", "Repeated integer linear terms", "collect repeated pure local terms in bounded wrapping i32 expressions"),
 	both("linear-sum-loop", "Linear sum loops", "hoist bounds and split exact i64 memory reductions across four accumulators"),
 	{Name: "prepared-direct-entry", Label: "Direct prepared entry", Description: "enter compiler-proved integer functions through the register ABI", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
 	arm64("prepared-light-entry", "Light prepared entry", "use caller-clobber proofs to select a smaller native entry thunk"),
 	{Name: "prepared-bounded-entry", Label: "Bounded prepared entry", Description: "keep compiler-bounded native leaves on the Go scheduler", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
-	{Name: "native-leaf-host", Label: "Native scalar host leaves", Description: "lower proven pure Go scalar callbacks into native import trampolines", Default: true, Architectures: []string{"arm64", "riscv64"}},
+	{Name: "native-leaf-host", Label: "Native scalar host leaves", Description: "lower proven pure Go scalar callbacks into native import trampolines", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
 	both("direct-go-host-import", "Direct Go host imports", "bypass cross-instance marshaling for bound Go imports in bounded numeric functions"),
 	amd64("wide-loop-int-const", "Wide loop integer constants", "keep repeatedly materialized non-imm32 i64 loop constants in otherwise-idle registers"),
 	amd64("compact-loop-align32", "Compact loop alignment", "place small loop functions at 32-byte fetch-block boundaries"),
@@ -458,24 +476,24 @@ var catalog = []Definition{
 	both("interval-next-use", "Regional next-use eviction", "use a compact local-event tape to evict the farthest local version and elide dead stores"),
 	amd64("memsize-regional-lease", "Regional memory-size leasing", "lend the memory-size register to proved straight-line local regions"),
 	amd64("module-global-regional-lease", "Regional module-global leasing", "lend an unreferenced module-global register to proved straight-line local regions"),
-	{Name: "loop-memory-base", Label: "Loop memory page bases", Description: "hoist repeated linear-memory page bases into idle loop-constant registers", Default: true, Architectures: []string{"arm64"}},
+	{Name: "loop-memory-base", Label: "Loop memory page bases", Description: "hoist repeated linear-memory page bases into idle loop-constant registers", Default: true, Architectures: catalogARM64Architectures},
 	arm64("loop-int-const", "Loop integer constants", "keep costly loop-invariant integer constants in otherwise-idle registers"),
-	{Name: "interval-call-regions", Label: "Local regions around calls", Description: "cache local integer values in bounded regions that canonicalize before calls and fixed-scratch helpers", Default: true, Architectures: []string{"arm64"}},
-	{Name: "scoped-loop-int-const", Label: "Scoped loop integer constants", Description: "lease invariant integer constants only inside proven call-free loops, including functions that call elsewhere", Default: true, Architectures: []string{"arm64"}},
-	{Name: "wide-reuse-pins", Label: "Wide repeated local pins", Description: "retain bounded integer locals whose loop-weighted reads exceed definitions", Default: true, Architectures: []string{"arm64"}},
-	{Name: "regional-memory-read", Label: "Regional memory address reads", Description: "borrow immediate regional memory addresses while pinning their leases against eviction", Default: true, Architectures: []string{"arm64"}},
-	{Name: "br-table-branch-vector", Label: "Branch table vectors", Description: "dispatch small unique zero-argument tables directly through executable branches", Default: true, Architectures: []string{"arm64"}},
-	{Name: "bounded-branch-index", Label: "Bounded branch indices", Description: "omit branch-vector bounds tests for direct i32 masks and constants proved in range", Default: true, Architectures: []string{"arm64"}},
-	{Name: "borrowed-div-rem", Label: "Read-only division operands", Description: "read concrete pinned integer division and remainder operands without copying", Default: true, Architectures: []string{"arm64"}},
-	{Name: "bounded-signed-quotient", Label: "Bounded signed quotient", Description: "skip exact i32 division when a subsequent signed clamp saturates", Default: true, Architectures: []string{"arm64"}},
-	{Name: "taken-zero-branch", Label: "Known zero branch targets", Description: "thread direct zero branches through tests implied by their taken edge", Default: true, Architectures: []string{"arm64"}},
-	{Name: "common-exit-compare", Label: "Common-exit compares", Description: "combine consecutive integer comparison branches sharing an exit", Default: true, Architectures: []string{"arm64"}},
-	{Name: "guarded-boolean-xor", Label: "Guarded boolean XOR", Description: "if-convert pure bounded integer boolean XOR regions after exact clobber proofs", Default: true, Architectures: []string{"arm64"}},
-	{Name: "cset-lineage", Label: "Boolean comparison flags", Description: "reuse unchanged flags through exact CSET boolean copies for bounded integer selects", Default: true, Architectures: []string{"arm64"}},
-	{Name: "integer-select-local-read", Label: "Integer select local reads", Description: "borrow protected integer operands for materialized local select sinks", Default: true, Architectures: []string{"arm64"}},
-	{Name: "dominated-indexed-base", Label: "Dominated indexed addresses", Description: "reuse indexed addresses through proven bounded direct branch regions", Default: true, Architectures: []string{"arm64"}},
-	{Name: "dominated-indexed-key", Label: "Equivalent indexed addresses", Description: "merge bounded address facts by their exact register inputs", Default: true, Architectures: []string{"arm64"}},
-	{Name: "ordinary-shifted-immediate", Label: "Shifted integer displacements", Description: "use exact shifted immediates for read-only ordinary displacement arithmetic", Default: true, Architectures: []string{"arm64"}},
+	{Name: "interval-call-regions", Label: "Local regions around calls", Description: "cache local integer values in bounded regions that canonicalize before calls and fixed-scratch helpers", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "scoped-loop-int-const", Label: "Scoped loop integer constants", Description: "lease invariant integer constants only inside proven call-free loops, including functions that call elsewhere", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "wide-reuse-pins", Label: "Wide repeated local pins", Description: "retain bounded integer locals whose loop-weighted reads exceed definitions", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "regional-memory-read", Label: "Regional memory address reads", Description: "borrow immediate regional memory addresses while pinning their leases against eviction", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "br-table-branch-vector", Label: "Branch table vectors", Description: "dispatch small unique zero-argument tables directly through executable branches", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "bounded-branch-index", Label: "Bounded branch indices", Description: "omit branch-vector bounds tests for direct i32 masks and constants proved in range", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "borrowed-div-rem", Label: "Read-only division operands", Description: "read concrete pinned integer division and remainder operands without copying", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "bounded-signed-quotient", Label: "Bounded signed quotient", Description: "skip exact i32 division when a subsequent signed clamp saturates", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "taken-zero-branch", Label: "Known zero branch targets", Description: "thread direct zero branches through tests implied by their taken edge", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "common-exit-compare", Label: "Common-exit compares", Description: "combine consecutive integer comparison branches sharing an exit", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "guarded-boolean-xor", Label: "Guarded boolean XOR", Description: "if-convert pure bounded integer boolean XOR regions after exact clobber proofs", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "cset-lineage", Label: "Boolean comparison flags", Description: "reuse unchanged flags through exact CSET boolean copies for bounded integer selects", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "integer-select-local-read", Label: "Integer select local reads", Description: "borrow protected integer operands for materialized local select sinks", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "dominated-indexed-base", Label: "Dominated indexed addresses", Description: "reuse indexed addresses through proven bounded direct branch regions", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "dominated-indexed-key", Label: "Equivalent indexed addresses", Description: "merge bounded address facts by their exact register inputs", Default: true, Architectures: catalogARM64Architectures},
+	{Name: "ordinary-shifted-immediate", Label: "Shifted integer displacements", Description: "use exact shifted immediates for read-only ordinary displacement arithmetic", Default: true, Architectures: catalogARM64Architectures},
 	arm64("indexed-base-reuse", "Adjacent indexed base reuse", "reuse an unchanged base-plus-index address across adjacent memory accesses"),
 	arm64("convert-read", "Direct conversion reads", "read pinned integer conversion inputs without a temporary copy"),
 	arm64("cold-call-local-pins", "Cold-call local pins", "pin hot locals when every direct local call is outside loops"),
@@ -516,19 +534,19 @@ var catalog = []Definition{
 }
 
 func both(name, label, description string) Definition {
-	return Definition{Name: name, Label: label, Description: description, Default: true, Architectures: []string{"amd64", "arm64"}}
+	return Definition{Name: name, Label: label, Description: description, Default: true, Architectures: catalogBothArchitectures}
 }
 
 func amd64(name, label, description string) Definition {
-	return Definition{Name: name, Label: label, Description: description, Default: true, Architectures: []string{"amd64"}}
+	return Definition{Name: name, Label: label, Description: description, Default: true, Architectures: catalogAMD64Architectures}
 }
 
 func arm64(name, label, description string) Definition {
-	return Definition{Name: name, Label: label, Description: description, Default: true, Architectures: []string{"arm64"}}
+	return Definition{Name: name, Label: label, Description: description, Default: true, Architectures: catalogARM64Architectures}
 }
 
 func experimentalAMD64(name, label, description string) Definition {
-	return Definition{Name: name, Label: label, Description: description, Experimental: true, Architectures: []string{"amd64"}}
+	return Definition{Name: name, Label: label, Description: description, Experimental: true, Architectures: catalogAMD64Architectures}
 }
 
 // ForArch returns every optimization registered for arch in catalog order.

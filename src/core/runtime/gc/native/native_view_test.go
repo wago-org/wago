@@ -6,8 +6,8 @@ import (
 )
 
 func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
-	if NativeABIVersion != 1 {
-		t.Fatalf("native collector ABI version = %d, want unreleased version 1", NativeABIVersion)
+	if NativeABIVersion != 9 {
+		t.Fatalf("native collector ABI version = %d, want version 9", NativeABIVersion)
 	}
 	if got := unsafe.Sizeof(handleEntry{}); got != NativeHandleStride {
 		t.Fatalf("handle entry size = %d, want %d", got, NativeHandleStride)
@@ -21,6 +21,9 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 	}
 	if got := unsafe.Offsetof(entry.cardSlot); got != NativeHandleCardSlotOffset {
 		t.Fatalf("handle card slot field = %d", got)
+	}
+	if got := unsafe.Offsetof(entry.class); got != NativeHandleMetadataOffset {
+		t.Fatalf("handle metadata field = %d", got)
 	}
 	if got := unsafe.Offsetof(entry.space); got != NativeHandleSpaceOffset {
 		t.Fatalf("handle space field = %d", got)
@@ -56,8 +59,11 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 		{"nursery bump", unsafe.Offsetof(view.NurseryBump), NativeViewNurseryBumpOffset},
 		{"allocation count", unsafe.Offsetof(view.AllocationCount), NativeViewAllocationCountOffset},
 		{"nursery object max bytes", unsafe.Offsetof(view.NurseryObjectMaxBytes), NativeViewNurseryObjectMaxBytesOffset},
-		{"subtype intervals", unsafe.Offsetof(view.SubtypeIntervals), NativeViewSubtypeIntervalsOffset},
 		{"subtype interval count", unsafe.Offsetof(view.SubtypeIntervalCount), NativeViewSubtypeIntervalCountOffset},
+		{"subtype intervals", unsafe.Offsetof(view.SubtypeIntervals), NativeViewSubtypeIntervalsOffset},
+		{"dead nursery cycle", unsafe.Offsetof(view.DeadNurseryCycle), NativeViewDeadNurseryCycleOffset},
+		{"large array alloc state", unsafe.Offsetof(view.LargeArrayAllocState), NativeViewLargeArrayAllocStateOffset},
+		{"large array alloc epoch", unsafe.Offsetof(view.LargeArrayAllocEpoch), NativeViewLargeArrayAllocEpochOffset},
 	}
 	for _, check := range checks {
 		if check.got != check.want {
@@ -87,7 +93,7 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 	}
 	defer c.Close()
 	v := c.NativeView()
-	if v == nil || v.Version != NativeABIVersion || v.HandleCount != 1 || v.Handles == 0 || v.Spaces[NativeSpaceNursery].Base == 0 || v.NurseryAllocBytes != c.edenBytes() || v.StructAllocState == 0 || v.StructAllocEpoch == 0 || v.NurseryBump == 0 || v.AllocationCount == 0 || v.NurseryObjectMaxBytes != c.cfg.LargeObjectBytes || v.SubtypeIntervals == 0 || v.SubtypeIntervalCount != 1 {
+	if v == nil || v.Version != NativeABIVersion || v.HandleCount != 1 || v.Handles == 0 || v.Spaces[NativeSpaceNursery].Base == 0 || v.NurseryAllocBytes != c.edenBytes() || v.StructAllocState == 0 || v.StructAllocEpoch == 0 || v.NurseryBump == 0 || v.AllocationCount == 0 || v.NurseryObjectMaxBytes != c.cfg.LargeObjectBytes || v.SubtypeIntervals == 0 || v.SubtypeIntervalCount != 1 || v.LargeArrayAllocState == 0 || v.LargeArrayAllocEpoch == 0 {
 		t.Fatalf("initial native view = %+v", v)
 	}
 	generation := v.RefreshGeneration
@@ -103,7 +109,7 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 			t.Fatalf("closed native view space %d retains backing: %+v", i, space)
 		}
 	}
-	if v.Handles != 0 || v.HandleCount != 0 || v.ObjectCards != 0 || v.ObjectCardCount != 0 || v.NurseryAllocBytes != 0 || v.StructAllocState != 0 || v.StructAllocEpoch != 0 || v.NurseryBump != 0 || v.AllocationCount != 0 || v.NurseryObjectMaxBytes != 0 || v.SubtypeIntervals != 0 || v.SubtypeIntervalCount != 0 {
+	if v.Handles != 0 || v.HandleCount != 0 || v.ObjectCards != 0 || v.ObjectCardCount != 0 || v.NurseryAllocBytes != 0 || v.StructAllocState != 0 || v.StructAllocEpoch != 0 || v.NurseryBump != 0 || v.AllocationCount != 0 || v.NurseryObjectMaxBytes != 0 || v.deadNurseryCycle() != 0 || v.SubtypeIntervals != 0 || v.SubtypeIntervalCount != 0 || v.LargeArrayAllocState != 0 || v.LargeArrayAllocEpoch != 0 {
 		t.Fatalf("closed native view retains handles/cards/allocation state: %+v", v)
 	}
 }

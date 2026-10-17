@@ -9,17 +9,59 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // indirect, tail, custom, memory, reference, SIMD, and helper calls fail closed.
 // The proof covers every continuation after a host call as well as the entry.
 func BoundedHostSegments(body []byte, imports uint32) bool {
-	return boundedScalarHostCFG(body, imports, true)
+	return boundedScalarHostCFG(body, imports, true, hostSegmentExtension{})
 }
 
 // BoundedNativeHostBody proves a whole scalar body is bounded even when its
 // imported calls do not yield to Go. Import edges remain in the CFG. Runtime
 // admission must separately prove every import is a bounded native leaf.
 func BoundedNativeHostBody(body []byte, imports uint32) bool {
-	return boundedScalarHostCFG(body, imports, false)
+	return boundedScalarHostCFG(body, imports, false, hostSegmentExtension{})
 }
 
-func boundedScalarHostCFG(body []byte, imports uint32, cutHost bool) bool {
+type hostSegmentExtension struct {
+	fixedSharedMemory bool
+	yieldingLocals    uint64
+}
+
+// BoundedFixedSharedHostSegments additionally admits i32 load/store/size on
+// memory zero. The caller must prove that it is a fixed-size defined shared
+// memory with explicit bounds checks. yieldingLocals names local callees already
+// proved bounded and guaranteed to enter Go before a normal return. The second
+// result conservatively proves that guarantee for this function's entry too.
+func BoundedFixedSharedHostSegments(body []byte, imports uint32, yieldingLocals uint64) (bool, bool) {
+	ext := hostSegmentExtension{fixedSharedMemory: true, yieldingLocals: yieldingLocals}
+	if !boundedScalarHostCFG(body, imports, true, ext) {
+		return false, false
+	}
+	r := wasm.ReaderFrom(body)
+	depth := 0
+	for r.HasNext() {
+		op, err := r.Byte()
+		var imm wasm.InstructionImmediate
+		if err != nil || wasm.ClassifyInstructionImmediateInto(&r, op, &imm) != nil {
+			return true, false
+		}
+		switch op {
+		case 0x02, 0x03:
+			depth++
+		case 0x0b:
+			if depth == 0 {
+				return true, false
+			}
+			depth--
+		case 0x10:
+			return true, imm.Index < imports || imm.Index-imports < 64 && yieldingLocals&(uint64(1)<<(imm.Index-imports)) != 0
+		case 0x00, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f:
+			// A branch or early exit before the first yield needs a stronger
+			// entry-path analysis; do not use it to cut a caller's call edge.
+			return true, false
+		}
+	}
+	return true, false
+}
+
+func boundedScalarHostCFG(body []byte, imports uint32, cutHost bool, ext hostSegmentExtension) bool {
 	if len(body) == 0 || len(body) > 384 {
 		return false
 	}
@@ -80,6 +122,17 @@ func boundedScalarHostCFG(body []byte, imports uint32, cutHost bool) bool {
 			n.targets = []int{stack[len(stack)-1-int(imm.Index)]}
 		case op == 0x10:
 			if imm.Index >= imports {
+				local := imm.Index - imports
+				if !cutHost || local >= 64 || ext.yieldingLocals&(uint64(1)<<local) == 0 {
+					return false
+				}
+			}
+		case ext.fixedSharedMemory && (op == 0x28 || op == 0x36):
+			if imm.MemIndex != 0 || imm.MemAlign > 2 {
+				return false
+			}
+		case ext.fixedSharedMemory && op == 0x3f:
+			if imm.Index != 0 {
 				return false
 			}
 		case op == 0x00 || op == 0x01 || op == 0x0e || op == 0x0f || op == 0x1a || op == 0x1b:

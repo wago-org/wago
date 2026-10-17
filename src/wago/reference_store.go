@@ -706,7 +706,9 @@ type gcHostActivation struct {
 	savedControl gcHostSavedControl
 }
 
-const gcHostActivationLimit = 8
+// Include the outer callback as well as every permitted nested host reentry.
+// Preserve the existing capacity for builds with a lower reentry limit.
+const gcHostActivationLimit = max(8, maxHostReentryDepth+1)
 
 func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 	r.walk(fn, nil)
@@ -1415,10 +1417,16 @@ func (in *Instance) gcInvocationDomains() gcInvocationDomainView {
 	return domains
 }
 
+// mayNeedGCInvocationLease reads current ownership: a reference store or
+// dynamic GC domain can be published after a prepared handle is created.
+func (in *Instance) mayNeedGCInvocationLease() bool {
+	return in != nil && in.refStore != nil && (in.gc != nil || in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain) != 0)
+}
+
 func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
 	// Ordinary scalar calls still acquire the invocation gate, but modules with
 	// no collector or imported/dynamic GC domain have nothing to lock here.
-	if in == nil || in.refStore == nil || in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain) == 0 {
+	if !in.mayNeedGCInvocationLease() {
 		return gcInvocationLease{}
 	}
 	lease, _ := in.lockGCInvocationContext(context.Background(), owner)
@@ -3038,8 +3046,8 @@ func (in *Instance) rootGCHostArguments(token gcHostActivationToken, dispatch ui
 	return nil
 }
 
-func (s *referenceStore) stageGCHostResult(target *Instance, ctrl uintptr, token uint64, required ValueTypeDescriptor) (gc.Ref, error) {
-	if s == nil || target == nil || target.gc == nil || target.c == nil || ctrl == 0 || token == 0 {
+func (s *referenceStore) stageGCHostResult(target *Instance, parked gcHostActivationToken, token uint64, required ValueTypeDescriptor) (gc.Ref, error) {
+	if s == nil || target == nil || target.gc == nil || target.c == nil || parked.state == nil || token == 0 {
 		return gc.Null(), fmt.Errorf("invalid GC host result token")
 	}
 	unlockNative := lockNativeExecutionForHostAccess()
@@ -3076,14 +3084,11 @@ func (s *referenceStore) stageGCHostResult(target *Instance, ctrl uintptr, token
 	if required.Kind != ValueTypeReference || !target.gcRefMatchesValueType(current.ref, required) {
 		return gc.Null(), fmt.Errorf("GC host result token does not match the required structural result type")
 	}
-	activation := -1
-	for i := int(targetState.hostActivationCount) - 1; i >= 0; i-- {
-		if targetState.hostActivations[i].ctrl == ctrl {
-			activation = i
-			break
-		}
-	}
-	if activation < 0 {
+	// Multiple public roots can park on the same producer control frame. The
+	// dispatch token identifies this callback's exact slot, including holes
+	// reused after another root resumes out of suspension order.
+	activation := parked.index
+	if parked.state != targetState || activation >= targetState.hostActivationCount || targetState.hostActivations[activation].stack == nil {
 		return gc.Null(), fmt.Errorf("GC host result has no active parked frame")
 	}
 	count := targetState.hostResultRootCount[activation]
@@ -3897,6 +3902,7 @@ func (in *Instance) FuncRefMatchesFunction(ref FuncRef, index uint32) bool {
 }
 
 func (in *Instance) referenceStoreForBoundary() (*referenceStore, error) {
+	in.revokePrivateGCEntry()
 	in.lifeMu.Lock()
 	defer in.lifeMu.Unlock()
 	if in.closed {

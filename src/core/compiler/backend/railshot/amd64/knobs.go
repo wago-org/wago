@@ -10,12 +10,22 @@ import (
 // The binding inventory is checked against the amd64 Optimization Definitions
 // during package initialization. Public sense is always "on = enabled".
 var optimizationBindings = optimization.NewBindings("amd64",
+	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
+	optimization.Bind("shared-memory-base", &sharedMemoryBaseEnabled),
+	optimization.Bind("atomic-notify-empty", &atomicNotifyEmptyEnabled),
+	optimization.Bind("memory-min-bounds", &memoryMinimumBoundsEnabled),
+	optimization.Bind("atomic-static-bounds", &atomicStaticBoundsEnabled),
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
+	optimization.Bind("simd-load-extract", &simdLoadExtractEnabled),
+	optimization.Bind("simd-store-load-address", &simdStoreLoadAddressEnabled),
+	optimization.Bind("bulk-fill-vector", &bulkFillVectorEnabled),
+	optimization.Bind("straight-line-block", &straightLineBlockEnabled),
 	optimization.Bind("simd-reduction-borrow", &simdReductionBorrowEnabled),
 	optimization.Bind("prepared-direct-entry", &preparedDirectEntryEnabled),
 	optimization.Bind("prepared-bounded-entry", &preparedBoundedEntryEnabled),
 	optimization.Bind("direct-go-host-import", &directGoImportEnabled),
+	optimization.Bind("native-leaf-host", &nativeLeafHostEnabled),
 	optimization.Bind("wide-loop-int-const", &wideLoopIntConstEnabled),
 	optimization.Bind("compact-loop-align32", &compactLoopAlign32Enabled),
 	optimization.Bind("counted-loop-latch", &countedLoopLatchEnabled),
@@ -78,12 +88,22 @@ var optimizationBindings = optimization.NewBindings("amd64",
 )
 
 var (
+	optSharedMemoryBase        = optimizationBindings.Option("shared-memory-base")
+	optMemoryMinimumBounds     = optimizationBindings.Option("memory-min-bounds")
+	optAtomicNotifyEmpty       = optimizationBindings.Option("atomic-notify-empty")
+	optAtomicStaticBounds      = optimizationBindings.Option("atomic-static-bounds")
+	optAtomicZeroWait          = optimizationBindings.Option("atomic-wait-zero-timeout")
 	optBoundsFacts             = optimizationBindings.Option("bounds-facts")
+	optStraightLineBlock       = optimizationBindings.Option("straight-line-block")
+	optBulkFillVector          = optimizationBindings.Option("bulk-fill-vector")
+	optSIMDStoreLoadAddress    = optimizationBindings.Option("simd-store-load-address")
+	optSIMDLoadExtract         = optimizationBindings.Option("simd-load-extract")
 	optSIMDSuperopt            = optimizationBindings.Option("simd-superopt")
 	optSIMDReductionBorrow     = optimizationBindings.Option("simd-reduction-borrow")
 	optPreparedDirectEntry     = optimizationBindings.Option("prepared-direct-entry")
 	optPreparedBoundedEntry    = optimizationBindings.Option("prepared-bounded-entry")
 	optDirectGoHostImport      = optimizationBindings.Option("direct-go-host-import")
+	optNativeLeafHost          = optimizationBindings.Option("native-leaf-host")
 	optWideLoopIntConst        = optimizationBindings.Option("wide-loop-int-const")
 	optCompactLoopAlign32      = optimizationBindings.Option("compact-loop-align32")
 	optCountedLoopLatch        = optimizationBindings.Option("counted-loop-latch")

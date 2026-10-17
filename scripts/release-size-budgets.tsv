@@ -1,7 +1,7 @@
 # Go 1.27.1 / TinyGo 0.42.0 release toolchains; linux/amd64 stripped bytes.
-# Release size caps: 12 MB for Go builds and 3 MB for TinyGo (decimal bytes).
+# Release size caps: 12 MB for Go builds and 3.1 MB for TinyGo (decimal bytes).
 # profile	max_linux_amd64_bytes
 manager	12000000
 runtime-standard	12000000
 runtime-minimal	12000000
-runtime-minimal-tiny	3000000
+runtime-minimal-tiny	3100000

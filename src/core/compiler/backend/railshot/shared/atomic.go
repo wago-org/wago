@@ -30,7 +30,7 @@ const (
 	AtomicXchg
 )
 
-// AtomicWaitDispatchBit selects the internal synchronous wait/notify bridge.
+// AtomicWaitDispatchBit selects the internal synchronous shared-memory bridge.
 // It is disjoint from public host-funcref and GC helper dispatch bits.
 const AtomicWaitDispatchBit uint32 = 1 << 29
 
@@ -43,7 +43,7 @@ const (
 
 // Atomic describes exactly the architecture-neutral facts needed by direct
 // Railshot lowering. Align is the encoded log2 alignment; Size and ResultSize
-// are bytes. The initial product accepts memory32 index zero only.
+// are bytes. MemoryIndex selects the address type and backing.
 type Atomic struct {
 	Sub         uint32
 	Class       AtomicClass
@@ -56,6 +56,19 @@ type Atomic struct {
 }
 
 func DecodeAtomic(r *wasm.Reader) (Atomic, error) {
+	return DecodeAtomicForMemory(r, false)
+}
+
+func DecodeAtomicForMemory(r *wasm.Reader, address64 bool) (Atomic, error) {
+	return decodeAtomic(r, address64, nil)
+}
+
+// DecodeAtomicForModule resolves the offset width after reading the memory index.
+func DecodeAtomicForModule(r *wasm.Reader, m *wasm.Module) (Atomic, error) {
+	return decodeAtomic(r, false, m)
+}
+
+func decodeAtomic(r *wasm.Reader, address64 bool, m *wasm.Module) (Atomic, error) {
 	sub, err := r.U32()
 	if err != nil {
 		return Atomic{}, err
@@ -79,14 +92,37 @@ func DecodeAtomic(r *wasm.Reader) (Atomic, error) {
 	if err != nil {
 		return Atomic{}, err
 	}
-	if d.Align >= 64 {
-		return Atomic{}, fmt.Errorf("atomic explicit memory index is outside the initial threads boundary")
+	if d.Align&^127 != 0 {
+		return Atomic{}, fmt.Errorf("atomic memarg has unsupported alignment flags")
 	}
-	off, err := r.U32()
+	if d.Align&64 != 0 {
+		index, readErr := r.U32()
+		if readErr != nil {
+			return Atomic{}, readErr
+		}
+		if index != 0 && m == nil {
+			return Atomic{}, fmt.Errorf("atomic memory index %d is outside the current threads boundary", index)
+		}
+		d.MemoryIndex = index
+		d.Align &= 63
+	}
+	if m != nil {
+		mt, ok := m.MemoryType(d.MemoryIndex)
+		if !ok {
+			return Atomic{}, fmt.Errorf("atomic memory index %d is unavailable", d.MemoryIndex)
+		}
+		address64 = mt.Limits.Addr64
+	}
+	if address64 {
+		d.Offset, err = r.U64()
+	} else {
+		var off uint32
+		off, err = r.U32()
+		d.Offset = uint64(off)
+	}
 	if err != nil {
 		return Atomic{}, err
 	}
-	d.Offset = uint64(off)
 
 	switch sub {
 	case 0:
@@ -162,4 +198,14 @@ func DecodeAtomic(r *wasm.Reader) (Atomic, error) {
 		}
 	}
 	return d, nil
+}
+
+// SharedMemoryGrowMayCall keeps call-frame planning consistent with the
+// directory-backed growth helper. Ordinary memory.grow remains a native leaf.
+func SharedMemoryGrowMayCall(m *wasm.Module, kind wasm.InstrKind, memoryIndex uint32) bool {
+	if kind != wasm.InstrMemoryGrow || m == nil {
+		return false
+	}
+	mt, ok := m.MemoryType(memoryIndex)
+	return ok && mt.Shared
 }

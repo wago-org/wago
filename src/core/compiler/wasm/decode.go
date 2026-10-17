@@ -533,7 +533,8 @@ func decodeImports(r *reader) ([]Import, bool, error) {
 	capHint := boundedVecCap(n, r.left())
 	imports := make([]Import, 0, capHint)
 	compact := false
-	for uint32(len(imports)) < n {
+	// The section vector counts encoded groups, not expanded imports.
+	for group := uint32(0); group < n; group++ {
 		mod, err := r.name()
 		if err != nil {
 			return nil, compact, err
@@ -556,43 +557,44 @@ func decodeImports(r *reader) ([]Import, bool, error) {
 		}
 
 		compact = true
-		var sharedKind *ExternKind
+		var sharedType ExternType
 		if kindByte == 0x7e {
 			k, err := r.byte()
 			if err != nil {
 				return nil, compact, err
 			}
-			kind := ExternKind(k)
-			if kind > ExternTag {
-				return nil, compact, &DecodeError{Code: ErrInvalidImport, Offset: r.off() - 1}
+			sharedType, err = decodeExternTypeKind(r, ExternKind(k))
+			if err != nil {
+				return nil, compact, err
 			}
-			sharedKind = &kind
 		}
 		count, err := r.u32()
 		if err != nil {
 			return nil, compact, err
 		}
-		remaining := n - uint32(len(imports))
-		if count > remaining {
-			return nil, compact, &DecodeError{Code: ErrInvalidImport, Offset: r.off()}
+		// Every item has at least a one-byte name length. Bound malformed
+		// counts by input bytes, and charge expansion before allocating metadata.
+		if uint64(count) > uint64(r.left()) {
+			return nil, compact, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
+		}
+		if err := reserveDecodedSlice[Import](r, count); err != nil {
+			return nil, compact, err
 		}
 		for i := uint32(0); i < count; i++ {
 			field, err := r.name()
 			if err != nil {
 				return nil, compact, err
 			}
-			kind := sharedKind
-			if kind == nil {
+			et := sharedType
+			if kindByte == 0x7f {
 				k, err := r.byte()
 				if err != nil {
 					return nil, compact, err
 				}
-				entryKind := ExternKind(k)
-				kind = &entryKind
-			}
-			et, err := decodeExternTypeKind(r, *kind)
-			if err != nil {
-				return nil, compact, err
+				et, err = decodeExternTypeKind(r, ExternKind(k))
+				if err != nil {
+					return nil, compact, err
+				}
 			}
 			imports = append(imports, Import{Module: mod, Name: field, Type: et})
 		}

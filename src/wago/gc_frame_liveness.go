@@ -34,10 +34,10 @@ const maxGCFrameLivenessWorkWords = maxGCFrameLivenessArenaBytes / 8
 // exact root plan instead of publishing a partial fixed point.
 const maxGCFrameLivenessCumulativeWork = maxGCFrameLivenessWorkWords * 8
 
-// Four conservative local roots and a 512 root-byte budget bound additional
-// guest retention and serialized offsets while avoiding a pointer-rich CFG and
-// backwards dataflow for common narrow-root functions. A root-free collecting
-// function has no retention cost and always uses the cheap site-counting path.
+// Both native backends compute exact local liveness for functions without EH.
+// The historical conservative limits remain available for admission comparisons.
+// A root-free collecting function has no retention cost and always uses the
+// cheap site-counting path.
 // Fixed EH payload roots are accounted independently and remain always live.
 const (
 	gcFrameConservativeLocalLimit    = 4
@@ -311,7 +311,7 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 				node.def = bit
 			}
 		}
-		node.nativeCall = imm.Kind == wasm.InstrCall || imm.Kind == wasm.InstrCallIndirect || imm.Kind == wasm.InstrCallRef
+		node.nativeCall = gcFrameNativeCall(imm.Kind)
 		keep := node.use != noGCLiveIndex || node.def != noGCLiveIndex || node.nativeCall || node.flow == gcLiveBrTable
 		if gcFrameInstructionMayAllocate(op, imm) {
 			node.allocation = true
@@ -782,6 +782,12 @@ func gcFrameBodyMayCollect(body []byte) bool {
 	return gcFrameBodyMayCollectWithClassifier(body, &classifier)
 }
 
+// A wait can park the native activation while other agents collect. Keep its
+// source mask even when a constant-zero timeout removes the native transition.
+func gcFrameNativeCall(kind wasm.InstrKind) bool {
+	return kind == wasm.InstrCall || kind == wasm.InstrCallIndirect || kind == wasm.InstrCallRef || kind == wasm.InstrMemoryAtomicWait32 || kind == wasm.InstrMemoryAtomicWait64
+}
+
 func gcFrameBodyMayCollectWithClassifier(body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
 	r := wasm.NewReader(body)
 	for r.HasNext() {
@@ -794,7 +800,7 @@ func gcFrameBodyMayCollectWithClassifier(body []byte, classifier *wasm.ModuleIns
 			return true
 		}
 		switch imm.Kind {
-		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCall, wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
+		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCall, wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
 			return true
 		}
 		if gcFrameInstructionMayAllocate(op, imm) {
@@ -885,7 +891,7 @@ func gcFrameAllLiveMasksArenaWithClassifier(body []byte, localRoots int, classif
 			if wasm.OpaqueStorageMutation(m, imm.Kind, imm.Index, imm.Index2) {
 				allocationN++
 			}
-			if imm.Kind == wasm.InstrCall || imm.Kind == wasm.InstrCallIndirect || imm.Kind == wasm.InstrCallRef {
+			if gcFrameNativeCall(imm.Kind) {
 				callN++
 			}
 		}
@@ -923,7 +929,7 @@ func gcFrameAllLiveMasksArenaWithClassifier(body []byte, localRoots int, classif
 			appendMask(allocationIndex)
 			allocationIndex++
 		}
-		if imm.Kind == wasm.InstrCall || imm.Kind == wasm.InstrCallIndirect || imm.Kind == wasm.InstrCallRef {
+		if gcFrameNativeCall(imm.Kind) {
 			appendMask(allocationN + callIndex)
 			callIndex++
 		}

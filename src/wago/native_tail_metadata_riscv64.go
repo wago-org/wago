@@ -550,5 +550,5 @@ func railshotNativeTailImport(c *Compiled, index int) bool {
 
 func railshotNativeLeafAllowed(c *Compiled) bool {
 	indexes := c.loadCompileIndexes()
-	return indexes != nil && indexes.railshotTail.nativeLeafHost && rv64ArtifactContractValid(c)
+	return indexes != nil && indexes.railshotTail.nativeLeafHost && rv64NativeTailModule(c) == nil && !c.needsFuncRefDescs() && rv64ArtifactContractValid(c)
 }

@@ -17,6 +17,7 @@ func railshotCheckImportedStartCompletion(*Instance, context.Context) error { re
 
 func railshotNativeContextTrapABI() bool                               { return false }
 func railshotNativeImportArenaBytes(*Compiled, resolvedImports) int    { return 0 }
+func railshotRequiresPrivateOwnedHostThunk(*Compiled) bool             { return false }
 func railshotNativeContextIdentity(*coreruntime.JobMemory) uintptr     { return 0 }
 func railshotSetNativeContextIdentity(*coreruntime.JobMemory, uintptr) {}
 func railshotAlignNativeImportBlob(blob []byte) []byte                 { return blob }

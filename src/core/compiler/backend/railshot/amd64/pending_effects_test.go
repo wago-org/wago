@@ -62,3 +62,63 @@ func TestPartialBarrierRetainsPendingTrap(t *testing.T) {
 		t.Fatal("partial barrier lost pending trap")
 	}
 }
+
+func TestPendingEffectPrefixLifecycle(t *testing.T) {
+	f := &fn{a: &encoder.Asm{}, s: newStack(), sc: newScratch()}
+	first := f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+	load := f.pushValue(storage{kind: stMemRef, typ: mtI32, reg: R12, idx: 4})
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 3})
+	f.pushBinOp(opDivU, mtI32)
+	f.materializePendingTraps()
+	if f.s.pendingPrefix != f.s.back() || load.st.kind != stMemRef {
+		t.Fatal("full trap barrier did not retain its prefix or deferred load")
+	}
+	// A stronger barrier must revisit loads skipped by the trap-only barrier.
+	f.guardMode = true
+	f.materializePendingTraps()
+	if load.st.kind != stReg || !f.s.pendingPrefixLoads {
+		t.Fatal("guard barrier skipped an older deferred load")
+	}
+	// A partial limit can precede the checked prefix. It must not wrap around
+	// the sentinel and visit a newly added trap above that limit.
+	f.guardMode = false
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 0})
+	f.pushBinOp(opDivU, mtI32)
+	last := f.s.back()
+	f.materializePendingEffectsBelow(false, first)
+	if !last.isDeferred() {
+		t.Fatal("partial barrier visited a node above its limit")
+	}
+	f.materializePendingTraps()
+	if last.isDeferred() {
+		t.Fatal("full barrier missed a newly appended trap")
+	}
+	if !f.s.pendingPrefixLoads {
+		t.Fatal("trap-only barrier lost a load-free prefix proof")
+	}
+	prev := last.prev
+	f.erase(last)
+	if f.s.pendingPrefix != prev {
+		t.Fatal("erasing the prefix cursor did not rewind it")
+	}
+	// An in-place replacement can add an effect before the old cursor.
+	f.guardMode = true
+	f.replaceStorage(first, storage{kind: stMemRef, typ: mtI32, reg: R13, idx: 4})
+	if f.s.pendingPrefix != nil {
+		t.Fatal("load replacement did not invalidate the prefix")
+	}
+	f.materializePendingTraps()
+	if first.st.kind != stReg {
+		t.Fatal("replacement load was skipped")
+	}
+	f.setDepthTypes([]machineType{mtI32})
+	if f.s.pendingPrefix != nil {
+		t.Fatal("control stack rebuild retained a detached cursor")
+	}
+	f.s.reset()
+	if f.s.pendingPrefix != nil || f.s.pendingPrefixLoads {
+		t.Fatal("stack reset retained a pending-effect prefix")
+	}
+}

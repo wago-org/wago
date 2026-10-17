@@ -33,6 +33,9 @@ func (f *fn) globalCellPtr(x uint32) Reg {
 	f.a.Load64(r, r, int32(x*8))                     // r = &global[x]
 	f.pinned = f.pinned.add(r)
 	f.globalCellReg, f.globalCellIdx = r, x
+	if regallocCheckEnabled {
+		checkGlobalCell(f)
+	}
 	return r
 }
 
@@ -42,6 +45,9 @@ func (f *fn) invalidateGlobalsCache() {
 	if f.globalCellReg != regNone {
 		f.pinned = f.pinned.remove(f.globalCellReg)
 		f.globalCellReg = regNone
+		if regallocCheckEnabled {
+			checkGlobalCell(f)
+		}
 	}
 }
 
@@ -62,6 +68,10 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	return f.globalGetIndex(x)
+}
+
+func (f *fn) globalGetIndex(x uint32) error {
 	gt, ok := f.globalType(x)
 	if !ok {
 		return fmt.Errorf("amd64: unknown global %d", x)
@@ -148,6 +158,10 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	return f.globalSetIndex(x)
+}
+
+func (f *fn) globalSetIndex(x uint32) error {
 	f.invalidateBoundsCertFor(2, x)
 	gt, ok := f.globalType(x)
 	if !ok {

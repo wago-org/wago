@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	goruntime "runtime"
 	"sync"
 	"sync/atomic"
@@ -29,9 +30,9 @@ type HostModule interface {
 // callback. The HostModule carries an unforgeable, callback-scoped invocation
 // identity. If that call chain re-enters a parked Instance, Wago supplies an
 // isolated native stack and call buffers for the nested activation. One
-// invocation may have at most four active InvokeFromHost calls; a fifth call
-// returns an error wrapping ErrPermissionDenied. Retained or unrelated
-// HostModule values fail closed.
+// invocation may have at most 32 active InvokeFromHost calls under standard Go
+// or four under TinyGo. Exceeding that limit returns an error wrapping
+// ErrPermissionDenied. Retained or unrelated HostModule values fail closed.
 func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, export string, args ...uint64) (results []uint64, err error) {
 	var active *Instance
 	var id invocationID
@@ -123,14 +124,8 @@ func releaseHostReentryDepth(id invocationID) {
 	}
 }
 
-// Every re-entry level owns another native stack, control frame, and call
-// buffers. Four remains useful for component cycles while rejecting before
-// TinyGo's smaller host stack can corrupt its task-stack canary on supported
-// low-footprint targets.
-const (
-	maxHostReentryDepth          = 4
-	maxRetainedHostReentryChains = 64
-)
+// Bound retained accounting separately from each build's active call depth.
+const maxRetainedHostReentryChains = 64
 
 // ExternRefHostModule is the optional reference-store surface implemented by the
 // HostModule value wago passes to callbacks. Keeping it separate preserves the
@@ -547,8 +542,8 @@ type hostCallWaiter struct {
 	wake       chan struct{}
 }
 
-// hostCallState is allocated only after a plugin asks to watch a caller or
-// resolve an invocation context. The context list is bounded by the already-
+// hostCallState is allocated when a plugin watches/resolves a caller or a
+// cancelable foreign callback must retain its root parent independently. The context list is bounded by the already-
 // bounded synchronous re-entry depth, and its lock does not protect waiter so
 // the two optional facilities cannot replace or block each other.
 type hostCallState struct {
@@ -845,7 +840,7 @@ func (h staticHostModule) ReleaseExternRef(ref ExternRef) bool {
 // a public funcref boundary.
 type HostFuncRef struct {
 	mu            sync.Mutex
-	fn            slotHostFunc
+	fn            *syncHostBinding
 	store         *referenceStore
 	sig           FuncSig
 	source        *Instance
@@ -929,18 +924,12 @@ func (rt *Runtime) newHostFuncRef(callback any, sig FuncSig, gcCapable, allowLoa
 	if err != nil {
 		return nil, fmt.Errorf("wago: host function: %w", err)
 	}
-	fn := slotHostFunc(func(module HostModule, params, results []uint64) {
-		caller, ok := resolveHostCaller(module)
-		if !ok {
-			panic(HostTrap{Err: fmt.Errorf("wago: invalid host function caller")})
-		}
-		binding.callUnchecked(caller, params, results)
-	})
 	owner := &HostFuncRef{
-		fn:    fn,
+		fn:    &binding,
 		store: rt.refStore,
 		sig:   sig,
 	}
+	binding.sig = &owner.sig
 	owner.gcCapable = gcCapable
 	dispatchIndex, err := rt.refStore.registerHostFuncRef(owner)
 	if err != nil {
@@ -948,6 +937,23 @@ func (rt *Runtime) newHostFuncRef(callback any, sig FuncSig, gcCapable, allowLoa
 	}
 	owner.dispatchIndex = dispatchIndex
 	return owner, nil
+}
+
+// Attached importers retain the owner until their native code is released.
+// Pure typed numeric callbacks need no callback Caller or reference translation;
+// keeping their immutable binding permits the ordinary per-import scalar portal.
+// Materialized funcrefs still retain their owner and owned dispatch namespace.
+func (h *HostFuncRef) directNumericBinding() (syncHostBinding, bool) {
+	if h == nil {
+		return syncHostBinding{}, false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed || h.gcCapable || h.fn == nil || h.fn.gate != nil || h.fn.scalarKind < syncHostTypedI32 ||
+		hasReferenceValType(h.sig.Params) || hasReferenceValType(h.sig.Results) {
+		return syncHostBinding{}, false
+	}
+	return *h.fn, true
 }
 
 func funcSigHasGCRefs(sig FuncSig) bool {
@@ -1447,7 +1453,14 @@ func bindHostImport(v any, sig FuncSig) (slotHostFunc, error) {
 		if !funcSigEqual(f.sig, sig) {
 			return nil, fmt.Errorf("host funcref signature mismatch")
 		}
-		return f.fn, nil
+		binding := f.fn
+		return slotHostFunc(func(module HostModule, params, results []uint64) {
+			caller, ok := resolveHostCaller(module)
+			if !ok {
+				panic(HostTrap{Err: fmt.Errorf("wago: invalid host function caller")})
+			}
+			binding.callUnchecked(caller, params, results)
+		}), nil
 	case nil:
 		return nil, fmt.Errorf("no host function provided")
 	default:
@@ -1857,6 +1870,13 @@ func bindSyncHostImport(value any, sig FuncSig) (syncHostBinding, error) {
 		return syncHostBinding{}, fmt.Errorf("v128 host callbacks are not supported")
 	}
 	switch fn := value.(type) {
+	case *HostFuncRef:
+		if binding, ok := fn.directNumericBinding(); ok {
+			if !funcSigEqual(fn.sig, sig) {
+				return syncHostBinding{}, fmt.Errorf("host funcref signature mismatch")
+			}
+			return binding, nil
+		}
 	case I32HostEvent, gatedI32HostEvent:
 		return syncHostBinding{}, fmt.Errorf("deferred host event cannot be used by a module that requires synchronous host control")
 	case callerSlotHostFunc:
@@ -2207,7 +2227,7 @@ func (t *gcHostTempTokens) release(in *Instance) {
 
 type boundHostFuncRefCall struct {
 	owner           *HostFuncRef
-	fn              slotHostFunc
+	fn              *syncHostBinding
 	sig             FuncSig
 	params, results []ValueTypeDescriptor
 	types           *[]DefinedTypeDescriptor
@@ -2311,6 +2331,11 @@ func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, ctrl uintptr, bi
 	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
 	caller.exact = binding.exact
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
+	// Foreign roots use their own scope, not the producer's ambient control
+	// context. Preserve a cancelable parent before lazy resolver access.
+	if invocation.scope != nil && invocationMayCancel(invocation.parent) {
+		scope.invocationContext(caller.generation, invocation.parent)
+	}
 	binding.callBoundUnchecked(caller, args, results)
 }
 
@@ -2345,8 +2370,11 @@ func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr,
 	gcResultTemps.exactTypes = exactTypesPtr
 	caller.ephemeralGCResults = &gcResultTemps
 	defer gcResultTemps.release(in)
-	binding.callBoundUnchecked(caller, args, results)
-	if err := in.translateHostReferenceResults(ctrl, results, sig.Results, exactResults, exactTypes); err != nil {
+	if invocation.scope != nil && invocationMayCancel(invocation.parent) {
+		scope.invocationContext(caller.generation, invocation.parent)
+	}
+	binding.callUnchecked(caller, args, results)
+	if err := in.translateHostReferenceResults(invocation.gcActivation, results, sig.Results, exactResults, exactTypes); err != nil {
 		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 	}
 }
@@ -2383,7 +2411,10 @@ func (in *Instance) newHostDispatch() resolvedHostCall {
 }
 
 func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
-	scope := &in.ensurePluginState().hostScope
+	scope := invocation.scope
+	if scope == nil {
+		scope = &in.ensurePluginState().hostScope
+	}
 	if importIdx&shared.AtomicWaitDispatchBit != 0 {
 		if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
 			panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
@@ -2419,7 +2450,11 @@ func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, resul
 			exactTypes = exact.types
 			exactTypesPtr = &exact.types
 		}
-		dispatchSyncHostReference(in, scope, ctrl, importIdx, &syncHostBinding{fn: fn}, sig, signature, exactTypes, exactTypesPtr, args, results, invocation)
+		if fn.scalarKind >= syncHostTypedI32 && !hasReferenceValType(sig.Params) && !hasReferenceValType(sig.Results) {
+			dispatchSyncHostScalar(in, scope, ctrl, fn, args, results, invocation)
+		} else {
+			dispatchSyncHostReference(in, scope, ctrl, importIdx, fn, sig, signature, exactTypes, exactTypesPtr, args, results, invocation)
+		}
 		return
 	}
 	if int(importIdx) >= len(in.syncHosts) || !in.syncHosts[importIdx].callable() {
@@ -2526,7 +2561,7 @@ func (in *Instance) translateHostReferenceArgsMode(values []uint64, types []ValT
 	return nil
 }
 
-func (in *Instance) translateHostReferenceResults(ctrl uintptr, values []uint64, types []ValType, exact []ValueTypeDescriptor, exactTypes []DefinedTypeDescriptor) error {
+func (in *Instance) translateHostReferenceResults(activation gcHostActivationToken, values []uint64, types []ValType, exact []ValueTypeDescriptor, exactTypes []DefinedTypeDescriptor) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -2596,7 +2631,7 @@ func (in *Instance) translateHostReferenceResults(ctrl uintptr, values []uint64,
 			if uint64(ref) == bits && ref.IsObj() {
 				return fmt.Errorf("raw compact GC reference for result %d is not a host token", i)
 			}
-			resolved, err := in.refStore.stageGCHostResult(in, ctrl, bits, required)
+			resolved, err := in.refStore.stageGCHostResult(in, activation, bits, required)
 			if err != nil {
 				return fmt.Errorf("GC reference result %d: %w", i, err)
 			}
@@ -2794,6 +2829,16 @@ func (in *Instance) callPreparedHostSync(prepared *runtime.PreparedHostScalarCal
 		completed = true
 		return err
 	}
+	if preparedHostFixedEnabled && fixed != nil && in.boundedFixedSharedHostPortal() && in.syncHosts[0].scalarKind == syncHostTypedI32 {
+		portal := dispatchSingleTypedI32FixedPortalContext
+		if os.Getenv("WAGO_FIXED_HOST_RESUME_PAYLOAD") != "0" {
+			portal = dispatchSingleTypedI32FixedResumeContext
+		}
+		if in.c.fixedSharedHostInteger && integerNumericHostEnabled && (goruntime.GOARCH == "amd64" || armIntegerNumericEnabled) && os.Getenv("WAGO_FIXED_SHARED_INTEGER_CONTEXT") != "0" {
+			return prepared.CallFixedIntegerContext(runtimebridge.GrantHostScalarCall(), unsafe.Pointer(activation), portal, fixed)
+		}
+		return prepared.CallFixedContext(runtimebridge.GrantHostScalarCall(), unsafe.Pointer(activation), portal, fixed)
+	}
 	if preparedHostFixedEnabled {
 		if fixed == nil {
 			fixed = activation.dispatchSingleTypedScalarFixedPortal
@@ -2937,7 +2982,7 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		restoreInvocationContext := bindHostInvocationParent(in, waitParent)
 		defer restoreInvocationContext()
 	}
-	if goruntime.GOARCH != "arm64" || in.c.usesAtomicWaitHelpers() {
+	if goruntime.GOARCH != "arm64" || in.needsAtomicWaitContext() {
 		stopWaitContext := in.publishAtomicWaitContext(waitParent)
 		defer stopWaitContext()
 	}
@@ -2959,7 +3004,7 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		ctrl:                        offHeapSlicePtr(in.ctrl),
 		state:                       in.ensurePluginState(),
 		entryNativeMu:               heldNativeMu,
-		parkedNativeContextReusable: in.gc == nil && !in.c.threadedMemory0(),
+		parkedNativeContextReusable: in.parkedHostControlReusable(),
 	}
 	if codeProfileEnabled && (in.boundaryProfile() != nil || activeHostInvocationContext(in).profileSession() != nil) {
 		span, restore := activation.beginProfileActivation()
@@ -2969,7 +3014,7 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch)
 		completed = true
 	} else if in.hasSingleDirectTypedScalarHost() {
-		if in.boundedHostSegments() {
+		if in.boundedHostSegments() || in.boundedFixedSharedHostPortal() {
 			rawSlots, _ := in.syncHosts[0].typedScalarSlots()
 			fixed := runtime.FixedScalarHostCall(activation.dispatchSingleTypedI32FixedPortal)
 			if in.syncHosts[0].scalarKind == syncHostTypedI32x2 {

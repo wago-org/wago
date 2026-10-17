@@ -170,13 +170,16 @@ func TestCodegenStatsStoreAndBounds(t *testing.T) {
 	if explicit.Peephole["store-imm"] != 1 {
 		t.Errorf("explicit store-imm = %d, want 1", explicit.Peephole["store-imm"])
 	}
-	if explicit.BoundsChecks != 1 {
-		t.Errorf("explicit BoundsChecks = %d, want 1", explicit.BoundsChecks)
+	if explicit.BoundsChecks != 0 {
+		t.Errorf("explicit BoundsChecks = %d, want 0", explicit.BoundsChecks)
 	}
-	if explicit.TrapStubs < 1 {
-		t.Errorf("explicit TrapStubs = %d, want >=1", explicit.TrapStubs)
+	if explicit.TrapStubs != 0 {
+		t.Errorf("explicit TrapStubs = %d, want 0", explicit.TrapStubs)
 	}
 
+	if explicit.Peephole["memory-min-bounds"] != 1 {
+		t.Error("constant store lost declared-minimum proof")
+	}
 	guard := compileWithStats(t, m, true).Funcs[0]
 	if guard.Peephole["store-imm"] != 1 {
 		t.Errorf("guard store-imm = %d, want 1", guard.Peephole["store-imm"])

@@ -242,7 +242,7 @@ func TestPromotionPlanningFailureRestoresExactCollectorState(t *testing.T) {
 				}
 				roots[i] = Root(r)
 			}
-			objectBytes := c.entry(Ref(roots[0])).allocSize
+			objectBytes := Align16(c.entry(Ref(roots[0])).size)
 			c.throughput.mem = makeAlignedBytes(c.throughput.limit, 16)
 			c.throughput.bump = c.throughput.limit - uint32(destinationsBeforeFailure)*objectBytes
 			before := snapshotPromotionState(c)

@@ -14,6 +14,9 @@ import (
 // GC helpers share the synchronous parked-host dispatch ABI with amd64. Keep
 // these values stable: src/wago dispatches them before ordinary imports.
 const (
+	gcStructReserveDeadNative  uint32 = 40
+	gcStructReserveDeadBatch   uint32 = 42
+	gcArrayReserveDeadBatch    uint32 = 43
 	gcStructDispatchBit        uint32 = 1 << 30
 	gcStructAllocDefault       uint32 = 1
 	gcStructGet                uint32 = 2
@@ -45,6 +48,8 @@ const (
 	gcArrayInitData            uint32 = 29
 	gcArrayInitElem            uint32 = 30
 	gcArrayAllocFixedV128Spill uint32 = 31
+	gcArrayAllocDefaultNative  uint32 = 32
+	gcArrayAllocUniformNative  uint32 = 33
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
@@ -204,6 +209,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		return f.callGCStructHelper(gcExternConvertAny, []wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.ExternRef})
 	}
+	if sub == 28 && f.tryFuseI31RoundTrip(r) {
+		return nil
+	}
 	if sub >= 28 && sub <= 30 {
 		if sub == 29 || sub == 30 {
 			f.materializePendingTraps()
@@ -240,6 +248,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if !ok {
 			return fmt.Errorf("arm64: struct.new type %d is unavailable", typeIndex)
 		}
+		forward, next, forwardOK := f.tryForwardGCConstructorGet(r, typeIndex, st)
 		params := make([]wasm.ValType, 0, len(st.Comp.Fields)+1)
 		for _, field := range st.Comp.Fields {
 			valueType := field.Storage().Val()
@@ -248,10 +257,33 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			}
 			params = append(params, valueType)
 		}
+		helper := gcStructAllocOne
+		if forwardOK {
+			if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); ok && layout.NativeAlloc && layout.PointerFree {
+				// Evaluate every initializer before discarding its payload. The
+				// helper reserves only a dead identity and cannot observe it.
+				f.flush()
+				for range st.Comp.Fields {
+					f.dropValue()
+				}
+				params = params[:0]
+				helper = gcStructReserveDeadNative
+				f.nativeDeadStructType = typeIndex + 1
+			}
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		params = append(params, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result})
+		if err := f.callGCStructHelper(helper, params, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		if forwardOK {
+			f.dropValue()
+			f.pushValue(forward)
+			*r = next
+			f.stats.peep("gc-constructor-get-forward")
+		}
+		return nil
 	case 1: // struct.new_default
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -338,9 +370,29 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
+		fill, fuseFill := f.matchGCArrayNewFill(r, typeIndex, field)
+		if fuseFill {
+			fill.replaceInitializer(f)
+		}
+		forward, next, forwardOK := f.tryForwardGCArrayConstructorGet(r, typeIndex, field)
+		if forwardOK || fuseFill && fill.forwardRead && fill.deadObject {
+			f.nativeDeadArrayBytes = f.forwardArrayChargeSize(typeIndex)
+		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		return f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result})
+		if err := f.callGCStructHelper(gcArrayAllocUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+			return err
+		}
+		if forwardOK {
+			f.dropValue()
+			f.pushValue(forward)
+			*r = next
+			f.stats.peep("gc-array-constructor-get-forward")
+		}
+		if fuseFill {
+			fill.finish(f, r)
+		}
+		return nil
 	case 7: // array.new_default
 		typeIndex, err := r.U32()
 		if err != nil {
@@ -836,12 +888,30 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 	if f.gcFrameRoots != nil && f.gcFrameRoots.Candidate && arm64GCHelperMayAllocate(helper) {
 		safepoint = f.recordGCFrameSafepoint(len(params))
 	}
-	payload, ok := shared.EncodeGCDispatch(helper, safepoint)
+	dispatchHelper := helper
+	if helper == gcArrayAllocUniform || helper == gcArrayAllocDefault {
+		top := f.s.back()
+		if top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
+			if layout, ok := f.gcTypeLayout(uint32(top.st.cval), wasm.CompArray); ok && layout.Type.Final && layout.PointerFree && layout.ElemLayout.DirectAccess && (layout.ElemLayout.Size == 4 || layout.ElemLayout.Size == 8) {
+				dispatchHelper = gcArrayAllocDefaultNative
+				if helper == gcArrayAllocUniform {
+					dispatchHelper = gcArrayAllocUniformNative
+				}
+			}
+		}
+	}
+	payload, ok := shared.EncodeGCDispatch(dispatchHelper, safepoint)
 	if !ok {
 		if f.gcFrameRoots != nil {
 			f.gcFrameRoots.Exact = false
 		}
-		payload = helper
+		payload = dispatchHelper
+	}
+	if helper == gcArrayGet || helper == gcArrayFill || helper == gcArrayAllocUniform || helper == gcArrayAllocDefault {
+		top := f.s.back()
+		if top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
+			f.nativeArrayHelper, f.nativeArrayType = helper, uint32(top.st.cval)
+		}
 	}
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: results}
 	return f.callHostSync(int(gcStructDispatchBit|payload), ft)
@@ -953,7 +1023,7 @@ func (f *fn) gcFrameLocal(index int) bool {
 
 func arm64GCHelperMayAllocate(helper uint32) bool {
 	switch helper {
-	case gcStructAllocDefault, gcStructAllocOne,
+	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDeadNative, gcStructReserveDeadBatch, gcArrayReserveDeadBatch,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
 		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill:
 		return true
