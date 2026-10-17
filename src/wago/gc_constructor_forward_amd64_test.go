@@ -174,8 +174,7 @@ func TestGCConstructorNativeChargeComparesFullCollectionCycle(t *testing.T) {
 	stats := unsafe.Slice((*byte)(offHeapPtr(view.AllocationCount)), corergc.NativeAllocationDeadObjectsOffset+4)
 	binary.LittleEndian.PutUint64(stats[corergc.NativeAllocationMinorCollectionsOffset:], 1<<32)
 	binary.LittleEndian.PutUint32(stats[corergc.NativeAllocationDeadObjectsOffset:], 7)
-	view.DeadNurseryCycleLow = 0
-	view.DeadNurseryCycleHigh = 0
+	view.DeadNurseryCycle = 0
 	ordinaryLive := instance.gc.Stats().LiveObjects
 
 	if got, err := instance.Invoke("run", 41); err != nil || len(got) != 1 || got[0] != 41 {
@@ -184,8 +183,8 @@ func TestGCConstructorNativeChargeComparesFullCollectionCycle(t *testing.T) {
 	if pending := binary.LittleEndian.Uint32(stats[corergc.NativeAllocationDeadObjectsOffset:]); pending != 1 {
 		t.Fatalf("pending dead objects = %d, want 1", pending)
 	}
-	if view.DeadNurseryCycleLow != 0 || view.DeadNurseryCycleHigh != 1 {
-		t.Fatalf("dead nursery cycle = %#x:%#x, want 0x1:0x0", view.DeadNurseryCycleHigh, view.DeadNurseryCycleLow)
+	if view.DeadNurseryCycle != 1<<32 {
+		t.Fatalf("dead nursery cycle = %#x, want 0x100000000", view.DeadNurseryCycle)
 	}
 	if got := instance.gc.Stats().LiveObjects; got != ordinaryLive+1 {
 		t.Fatalf("live objects = %d, want %d", got, ordinaryLive+1)

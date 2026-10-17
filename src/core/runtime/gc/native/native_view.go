@@ -11,7 +11,7 @@ import (
 // contract while reloading every mutable backing pointer/count they consume. The
 // view is refreshed in place whenever growable backing can relocate, and callers
 // must still serialize access with collector mutation.
-const NativeABIVersion uint32 = 6
+const NativeABIVersion uint32 = 7
 
 // Native allocation-stat offsets are relative to the AllocationCount pointer
 // in NativeCollectorView. Generated AMD64 dead charges use these counters to
@@ -77,10 +77,9 @@ type NativeCollectorView struct {
 	NurseryBump           uintptr
 	AllocationCount       uintptr
 	NurseryObjectMaxBytes uint32
-	DeadNurseryCycleLow   uint32
-	SubtypeIntervals      uintptr
 	SubtypeIntervalCount  uint32
-	DeadNurseryCycleHigh  uint32
+	SubtypeIntervals      uintptr
+	DeadNurseryCycle      uint64
 	LargeArrayAllocState  uintptr
 	LargeArrayAllocEpoch  uintptr
 }
@@ -103,10 +102,9 @@ const (
 	NativeViewNurseryBumpOffset           = 144
 	NativeViewAllocationCountOffset       = 152
 	NativeViewNurseryObjectMaxBytesOffset = 160
-	NativeViewDeadNurseryCycleLowOffset   = 164
+	NativeViewSubtypeIntervalCountOffset  = 164
 	NativeViewSubtypeIntervalsOffset      = 168
-	NativeViewSubtypeIntervalCountOffset  = 176
-	NativeViewDeadNurseryCycleHighOffset  = 180
+	NativeViewDeadNurseryCycleOffset      = 176
 	NativeViewLargeArrayAllocStateOffset  = 184
 	NativeViewLargeArrayAllocEpochOffset  = 192
 	NativeCollectorViewSize               = 200
@@ -218,10 +216,9 @@ func ValidateNativeABI() error {
 		unsafe.Offsetof(view.NurseryBump) != NativeViewNurseryBumpOffset ||
 		unsafe.Offsetof(view.AllocationCount) != NativeViewAllocationCountOffset ||
 		unsafe.Offsetof(view.NurseryObjectMaxBytes) != NativeViewNurseryObjectMaxBytesOffset ||
-		unsafe.Offsetof(view.DeadNurseryCycleLow) != NativeViewDeadNurseryCycleLowOffset ||
-		unsafe.Offsetof(view.SubtypeIntervals) != NativeViewSubtypeIntervalsOffset ||
 		unsafe.Offsetof(view.SubtypeIntervalCount) != NativeViewSubtypeIntervalCountOffset ||
-		unsafe.Offsetof(view.DeadNurseryCycleHigh) != NativeViewDeadNurseryCycleHighOffset {
+		unsafe.Offsetof(view.SubtypeIntervals) != NativeViewSubtypeIntervalsOffset ||
+		unsafe.Offsetof(view.DeadNurseryCycle) != NativeViewDeadNurseryCycleOffset {
 		return fmt.Errorf("gc: native collector ABI layout mismatch")
 	}
 	if unsafe.Offsetof(view.LargeArrayAllocState) != NativeViewLargeArrayAllocStateOffset ||

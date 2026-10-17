@@ -6,8 +6,8 @@ import (
 )
 
 func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
-	if NativeABIVersion != 6 {
-		t.Fatalf("native collector ABI version = %d, want version 6", NativeABIVersion)
+	if NativeABIVersion != 7 {
+		t.Fatalf("native collector ABI version = %d, want version 7", NativeABIVersion)
 	}
 	if got := unsafe.Sizeof(handleEntry{}); got != NativeHandleStride {
 		t.Fatalf("handle entry size = %d, want %d", got, NativeHandleStride)
@@ -59,10 +59,9 @@ func TestNativeCollectorViewLayoutAndRefresh(t *testing.T) {
 		{"nursery bump", unsafe.Offsetof(view.NurseryBump), NativeViewNurseryBumpOffset},
 		{"allocation count", unsafe.Offsetof(view.AllocationCount), NativeViewAllocationCountOffset},
 		{"nursery object max bytes", unsafe.Offsetof(view.NurseryObjectMaxBytes), NativeViewNurseryObjectMaxBytesOffset},
-		{"dead nursery cycle low", unsafe.Offsetof(view.DeadNurseryCycleLow), NativeViewDeadNurseryCycleLowOffset},
-		{"subtype intervals", unsafe.Offsetof(view.SubtypeIntervals), NativeViewSubtypeIntervalsOffset},
 		{"subtype interval count", unsafe.Offsetof(view.SubtypeIntervalCount), NativeViewSubtypeIntervalCountOffset},
-		{"dead nursery cycle high", unsafe.Offsetof(view.DeadNurseryCycleHigh), NativeViewDeadNurseryCycleHighOffset},
+		{"subtype intervals", unsafe.Offsetof(view.SubtypeIntervals), NativeViewSubtypeIntervalsOffset},
+		{"dead nursery cycle", unsafe.Offsetof(view.DeadNurseryCycle), NativeViewDeadNurseryCycleOffset},
 		{"large array alloc state", unsafe.Offsetof(view.LargeArrayAllocState), NativeViewLargeArrayAllocStateOffset},
 		{"large array alloc epoch", unsafe.Offsetof(view.LargeArrayAllocEpoch), NativeViewLargeArrayAllocEpochOffset},
 	}

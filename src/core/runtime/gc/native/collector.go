@@ -351,10 +351,9 @@ func (c *Collector) restoreDeadNurseryAccounting() {
 }
 
 func (v *NativeCollectorView) deadNurseryCycle() uint64 {
-	return uint64(v.DeadNurseryCycleHigh)<<32 | uint64(v.DeadNurseryCycleLow)
+	return v.DeadNurseryCycle
 }
 
 func (v *NativeCollectorView) setDeadNurseryCycle(cycle uint64) {
-	v.DeadNurseryCycleLow = uint32(cycle)
-	v.DeadNurseryCycleHigh = uint32(cycle >> 32)
+	v.DeadNurseryCycle = cycle
 }
