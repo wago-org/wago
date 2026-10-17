@@ -63,11 +63,12 @@ func rv64CompactImportModule(form rv64CompactImportForm, compact, swar bool) []b
 		if form == rv64CompactMixed {
 			entries = append(entries, rv64CompactGlobalImport("bias"), rv64CompactMemoryImport("b", 2, 3))
 		} else {
-			entries = append(entries, rv64CompactMemoryImport("b", 2, 3), rv64CompactGlobalImport("bias"))
+			entries = append(entries, rv64CompactMemoryImport("b", 1, 2), rv64CompactGlobalImport("bias"))
 		}
 		importPayload = wasmtest.Vec(entries...)
 	} else if form == rv64CompactMixed {
-		importPayload = append(wasmtest.ULEB(4), wasmtest.Name("env")...)
+		// The import vector counts encoded groups, not expanded imports.
+		importPayload = append(wasmtest.ULEB(1), wasmtest.Name("env")...)
 		importPayload = append(importPayload, 0, 0x7f, 4)
 		importPayload = append(importPayload, wasmtest.Name("host")...)
 		importPayload = append(importPayload, byte(wasm.ExternFunc), 0)
@@ -78,13 +79,14 @@ func rv64CompactImportModule(form rv64CompactImportForm, compact, swar bool) []b
 		importPayload = append(importPayload, wasmtest.Name("b")...)
 		importPayload = append(importPayload, byte(wasm.ExternMem), 1, 2, 3)
 	} else {
-		importPayload = append(wasmtest.ULEB(4), rv64CompactFunctionImport("host")...)
+		// One ordinary function, one shared-type memory group and one ordinary
+		// global are three encoded entries. The group carries one complete
+		// memory type followed only by its two field names.
+		importPayload = append(wasmtest.ULEB(3), rv64CompactFunctionImport("host")...)
 		importPayload = append(importPayload, wasmtest.Name("env")...)
-		importPayload = append(importPayload, 0, 0x7e, byte(wasm.ExternMem), 2)
+		importPayload = append(importPayload, 0, 0x7e, byte(wasm.ExternMem), 1, 1, 2, 2)
 		importPayload = append(importPayload, wasmtest.Name("a")...)
-		importPayload = append(importPayload, 1, 1, 2)
 		importPayload = append(importPayload, wasmtest.Name("b")...)
-		importPayload = append(importPayload, 1, 2, 3)
 		importPayload = append(importPayload, rv64CompactGlobalImport("bias")...)
 	}
 
@@ -123,7 +125,13 @@ func TestRV64PublicCompactImportsScalarAndSWAR(t *testing.T) {
 						t.Fatal(err)
 					}
 					t.Cleanup(func() { _ = a.Close() })
-					b, err := NewSharedMemory(2, 3)
+					bMin, bMax := uint32(2), uint32(3)
+					want := uint64(24)
+					if tc.form == rv64CompactSharedMemory {
+						bMin, bMax = 1, 2
+						want = 23
+					}
+					b, err := NewSharedMemory(bMin, bMax)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -137,7 +145,7 @@ func TestRV64PublicCompactImportsScalarAndSWAR(t *testing.T) {
 						Global("env", "bias", bias).
 						Memory("env", "b", b)
 					in := rv64MMInstance(t, compact, imports)
-					rv64MMCall(t, in, "run", []uint64{24}, 0xdeadbeef00000009)
+					rv64MMCall(t, in, "run", []uint64{want}, 0xdeadbeef00000009)
 					if calls != 1 {
 						t.Fatal("compact imported host call count", calls)
 					}
@@ -164,6 +172,7 @@ func TestRV64PublicCompactImportsFeatureAndDecodeGates(t *testing.T) {
 	)
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
+	features.CompactImports = false
 	features.MultiMemory = false
 	compiled, err := compileWithFrontendFeatures(cfg, featureGate, features)
 	if compiled != nil {
