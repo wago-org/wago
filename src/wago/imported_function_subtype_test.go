@@ -28,7 +28,7 @@ func TestImportedFunctionPreservesDynamicSubtype(t *testing.T) {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			compile := func(source []byte) *Compiled {
 				t.Helper()
-				c, err := NewRuntimeConfig().Compile(source)
+				c, err := artifactTestConfig(artifact).Compile(source)
 				if err != nil {
 					t.Fatal(err)
 				}

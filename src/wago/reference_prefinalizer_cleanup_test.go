@@ -61,7 +61,7 @@ func prefinalizerTableMemoryCompile(t *testing.T, consumer, artifact bool) *Comp
 		t.Cleanup(func() { c.Close() })
 		return c
 	}
-	c, err := Compile(nil, prefinalizerTableMemorySource(consumer))
+	c, err := Compile(artifactTestConfig(artifact || mode == "prepare"), prefinalizerTableMemorySource(consumer))
 	if err != nil {
 		t.Fatal(err)
 	}
