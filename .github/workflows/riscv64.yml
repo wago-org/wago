@@ -33,7 +33,9 @@ jobs:
     # RISE requires exactly this single label; adding self-hosted breaks routing.
     # Org owner must install the RISE App and permit this repository first.
     runs-on: ubuntu-24.04-riscv
-    timeout-minutes: 20
+    # Native compilation plus the compiler-free artifact matrix exceeds twenty
+    # minutes on the shared two-core RISE runner before guard-page checks begin.
+    timeout-minutes: 60
     # Fork PRs need an explicitly approved same-repository branch for this
     # self-hosted service. Do not use pull_request_target or expose secrets.
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
