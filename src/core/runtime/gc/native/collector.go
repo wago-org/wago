@@ -163,9 +163,11 @@ type Collector struct {
 	stats                 Stats
 	rootMarkMode          uint8
 	closed                bool
+	majorYoungDirty       bool // uses padding before checkedHandles
 	checkedHandles        *[]uint64
 	// Keep optional proof state last so existing collector field offsets stay fixed.
 	lastCardBounds objectCardBounds
+	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
 }
 
 const defaultNursery = 64 << 10
@@ -247,6 +249,8 @@ func (c *Collector) Close() {
 	c.freeHandles = nil
 	c.nurseryHandles = nil
 	c.mark = nil
+	c.majorBlocks = nil
+	c.majorYoungDirty = false
 	c.markStack = nil
 	c.subtypeIntervals = nil
 	c.promotionScratch = nil

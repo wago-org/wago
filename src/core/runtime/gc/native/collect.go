@@ -143,16 +143,30 @@ func (c *Collector) finishFullCardMetadata() {
 }
 
 func (c *Collector) sweepAll() {
-	for h := uint32(1); int(h) < len(c.handles); h++ {
-		if c.handles[h].space != spaceFree && !c.mark[h] {
-			if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
-				c.deferThroughputFree(h)
-			} else {
-				c.free(h)
+	// A refilled table uses the original sweep before spending work indexing
+	// its young ledger. If that sweep makes it sparse again, retain the dirty
+	// ledger until the next indexed sweep (or reset it when disabling the map).
+	if runtime.GOARCH == "amd64" && len(c.majorBlocks) != 0 && len(c.freeHandles) >= len(c.handles)/2 {
+		if c.majorYoungDirty {
+			c.noteMajorHandles(c.nurseryHandles)
+			c.majorYoungDirty = false
+		}
+		c.sweepMajorBlocks()
+	} else {
+		for h := uint32(1); int(h) < len(c.handles); h++ {
+			if c.handles[h].space != spaceFree && !c.mark[h] {
+				if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
+					c.deferThroughputFree(h)
+				} else {
+					c.free(h)
+				}
 			}
 		}
+		c.compactNurseryHandles()
 	}
-	c.compactNurseryHandles()
+	if runtime.GOARCH == "amd64" {
+		c.prepareMajorBlocks()
+	}
 }
 
 // finishMinorEvacuation reclaims dead young handles and retains only live
@@ -751,6 +765,11 @@ func (c *Collector) promoteHandle(h uint32) error {
 }
 
 func (c *Collector) promoteHandleTo(h uint32, oldEntry handleEntry) {
+	// Native nursery objects may not be indexed yet. Cover a survivor before
+	// promotion removes it from the dense nursery ledger used by the next major.
+	if runtime.GOARCH == "amd64" && c.majorYoungDirty {
+		c.noteMajorHandle(h)
+	}
 	e := &c.handles[h]
 	src := c.nursery[e.off : e.off+e.size]
 	dst := c.throughput.bytes(oldEntry)

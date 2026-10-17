@@ -208,6 +208,7 @@ func (c *Collector) newHandle(e handleEntry) uint32 {
 			generations[h]++
 		}
 		c.handles[h] = e
+		c.noteMajorHandle(h)
 		return h
 	}
 	c.handles = append(c.handles, e)
@@ -220,7 +221,9 @@ func (c *Collector) newHandle(e handleEntry) uint32 {
 	// the shared Throughput handle-growth path at a zero append avoids irrelevant
 	// epoch encoding work.
 	c.tinyGC.color = append(c.tinyGC.color, 0)
-	return uint32(len(c.handles) - 1)
+	h := uint32(len(c.handles) - 1)
+	c.noteMajorHandle(h)
+	return h
 }
 
 func (c *Collector) desc(id TypeID) (TypeDesc, error) {

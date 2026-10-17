@@ -122,6 +122,11 @@ func (c *Collector) reserveNativeHandles(batch int) {
 	if contiguous {
 		s.HandleBase = base
 	}
+	// The nursery ledger already covers every reserved identity. Index native
+	// publications once at full collection, rather than walking each batch here.
+	if len(c.majorBlocks) != 0 {
+		c.majorYoungDirty = true
+	}
 	s.Epoch = c.nativeAllocEpoch
 
 	c.refreshNativeHandles()
