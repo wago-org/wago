@@ -4,6 +4,7 @@ package wago
 
 import (
 	"fmt"
+	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -14,16 +15,26 @@ import (
 // newGCFrameRootPlan is the bounded RV64 exact-root producer for rooted scalar
 // modules. Allocation helpers publish safepoint roots and Wasm/host calls
 // publish return-PC caller-frame maps.
-func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
+func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
+	return newGCFrameRootPlanOwned(m, exactRoots, diagnostic, analysis, railshotManagedExceptionReferences(m))
+}
+
+func newGCFrameRootPlanOwned(m *wasm.Module, exactRoots bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis, ownedExceptions bool, custom ...map[uint32]railcore.CustomInstruction) *shared.GCModuleFrameRootPlan {
+	var instructions map[uint32]railcore.CustomInstruction
+	if len(custom) != 0 {
+		instructions = custom[0]
+	}
+	customValues := false
+	for _, ins := range instructions {
+		customValues = customValues || ins.CustomOutput != nil
+		for _, typ := range ins.CustomInputs {
+			customValues = customValues || !typ.IsZero()
+		}
+	}
 	if diagnostic != nil {
 		*diagnostic = ""
 	}
 	if !exactRoots {
-		return nil
-	}
-	if !genericExecution {
-		// Exact RV64 products retain their existing persistent-root proofs until
-		// their product witnesses are deliberately migrated to frame maps.
 		return nil
 	}
 	reject := func(format string, args ...any) *shared.GCModuleFrameRootPlan {
@@ -32,16 +43,17 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		}
 		return nil
 	}
-	if m == nil || len(m.Code) == 0 {
+	if m == nil {
 		return reject("generic GC module has no local function bodies")
 	}
+	functionEnvironments := ownedExceptions || wasm.ModuleFunctionReferenceCarriers(m)
 	importedFunctions := m.ImportedFuncCount()
 	importedGlobals := m.ImportedGlobalCount()
 	importedMemories := m.ImportedMemCount()
 	importedTables := m.ImportedTableCount()
 	memoryCount := importedMemories + len(m.Memories)
 	tableCount := importedTables + len(m.Tables)
-	if importedFunctions+importedGlobals+importedMemories+importedTables != len(m.Imports) || importedFunctions > railshot.MaxHostFunctionImports || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > 2 || tableCount > 2 || memoryCount > rv64RootedMaxMemories || len(m.Tags) != 0 || importedGlobals+len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
+	if importedFunctions+importedGlobals+importedMemories+importedTables+m.ImportedTagCount() != len(m.Imports) || importedFunctions > railshot.MaxHostFunctionImports || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > maxRV64ExecutionTables || tableCount > maxRV64ExecutionTables || memoryCount > rv64RootedMaxMemories || m.TagCount() > railshot.MaxFunctions || importedGlobals+len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
 		return reject("RV64 exact roots require a bounded scalar allocation module")
 	}
 	rootedImportValue := func(typ wasm.ValType) bool {
@@ -57,7 +69,12 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				return false
 			}
 			switch heap.Abs() {
-			case wasm.HeapNone, wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray:
+			case wasm.HeapFunc, wasm.HeapNoFunc:
+				return functionEnvironments
+			case wasm.HeapExn, wasm.HeapNoExn:
+				return ownedExceptions
+			case wasm.HeapNone, wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray,
+				wasm.HeapExtern, wasm.HeapNoExtern:
 				return true
 			default:
 				return false
@@ -67,17 +84,23 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			return false
 		}
 		target, ok := m.TypeSubType(heap.Type().Index)
-		return ok && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray)
+		return ok && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray || functionEnvironments && target.Comp.Kind == wasm.CompFunc)
 	}
 	if len(m.Imports) != 0 {
+		functionIndex := uint32(0)
 		for i := range m.Imports {
 			im := &m.Imports[i]
 			switch im.Type.Kind {
 			case wasm.ExternFunc:
+				_, inline := instructions[functionIndex]
+				functionIndex++
 				ft, ok := m.ImportFuncType(i)
 				if !ok || len(ft.Params) > coreruntime.MaxHostArity || len(ft.Results) > coreruntime.MaxHostArity {
 					return reject("RV64 exact roots reject function import %d", i)
 				}
+				if inline {
+					continue
+				} // The validated directory owns the full physical signature.
 				for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
 					for _, typ := range values {
 						if !rootedImportValue(typ) {
@@ -85,6 +108,8 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 						}
 					}
 				}
+			case wasm.ExternTag:
+				// Immutable tag identities; payload roots are fixed below.
 			case wasm.ExternGlobal:
 				typ := im.Type.GlobalType().Type
 				if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !rv64RootedGlobalReference(m, typ) {
@@ -92,13 +117,13 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				}
 			case wasm.ExternMem:
 				memory := im.Type.MemType()
-				if memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min > memory.Limits.Max || memory.Limits.Max > 256 {
+				if memory.Limits.HasMax && memory.Limits.Min > memory.Limits.Max {
 					return reject("RV64 exact roots reject memory import %d", i)
 				}
 			case wasm.ExternTable:
 				table := im.Type.TableType()
 				elem := wasm.RefVal(table.Ref)
-				if !wasm.EqualValType(elem, wasm.FuncRef) && !rv64RootedAggregateTableReference(m, elem) || table.Limits.Addr64 || !table.Limits.HasMax || table.Limits.Min > table.Limits.Max || table.Limits.Max > 256 {
+				if !wasm.FunctionReferenceType(m, elem) && !rv64RootedAggregateTableReference(m, elem) || table.Limits.Addr64 || !table.Limits.HasMax || table.Limits.Min > table.Limits.Max || table.Limits.Max > 256 {
 					return reject("RV64 exact roots reject table import %d", i)
 				}
 			default:
@@ -123,23 +148,9 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	}
 	for i := range m.Memories {
 		memory := m.Memories[i]
-		if memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min > memory.Limits.Max || memory.Limits.Max > 256 {
+		if memory.Shared || memory.Limits.HasMax && memory.Limits.Min > memory.Limits.Max {
 			return reject("RV64 exact roots require bounded local memory32 %d", i)
 		}
-	}
-	publicTables := make([]bool, tableCount)
-	for i := 0; i < importedTables; i++ {
-		publicTables[i] = true
-	}
-	for i := range m.Exports {
-		export := m.Exports[i]
-		if export.Index.Kind == wasm.ExternTable && uint64(export.Index.Index) < uint64(tableCount) {
-			publicTables[export.Index.Index] = true
-		}
-	}
-	hasPrivateTable := false
-	for _, public := range publicTables {
-		hasPrivateTable = hasPrivateTable || !public
 	}
 	remainingElements := 256
 	retainedElementSegments := len(m.Elements)
@@ -147,8 +158,8 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		table := &m.Tables[i]
 		elem := wasm.RefVal(table.Type.Ref)
 		rootedTable := rv64RootedAggregateTableReference(m, elem)
-		if (!wasm.EqualValType(elem, wasm.FuncRef) && !rootedTable) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
-			table.Type.Limits.Min > table.Type.Limits.Max || table.Type.Limits.Max > 256 {
+		if (!wasm.FunctionReferenceType(m, elem) && !rootedTable) || table.Type.Limits.Addr64 || table.Type.Limits.Min > 256 || rootedTable && !table.Type.Ref.Nullable() ||
+			table.Type.Limits.HasMax && (table.Type.Limits.Min > table.Type.Limits.Max || table.Type.Limits.Max > 256) {
 			return reject("RV64 exact roots require a bounded local function or aggregate-reference table32")
 		}
 		if table.Init != nil {
@@ -177,8 +188,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 				}
 			}
 			value, err := wasm.ParseFuncrefElementExpr(expr)
-			public := publicTables[importedTables+i]
-			if err != nil || !value.Null && ((!public && uint64(value.FuncIndex) < uint64(importedFunctions)) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
+			if err != nil || !value.Null && (uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
 				return reject("RV64 exact roots reject table initializer target")
 			}
 		}
@@ -186,21 +196,19 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	for i := range m.Elements {
 		elem := &m.Elements[i]
 		values := 0
-		allowImported := !hasPrivateTable
 		if elem.Mode.Kind == wasm.ElemActive {
 			if uint64(elem.Mode.Table) >= uint64(tableCount) {
 				return reject("RV64 exact roots reject active element table index %d", elem.Mode.Table)
 			}
 			table, ok := m.TableType(uint32(elem.Mode.Table))
-			if !ok || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) && !rv64RootedAggregateTableReference(m, wasm.RefVal(table.Ref)) {
+			if !ok || !wasm.FunctionReferenceType(m, wasm.RefVal(table.Ref)) && !rv64RootedAggregateTableReference(m, wasm.RefVal(table.Ref)) {
 				return reject("RV64 exact roots reject aggregate-reference table elements")
 			}
 			typed := elem.Kind.Kind == wasm.ElemTypedExprs
-			if (typed && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.RefVal(table.Ref))) ||
+			if (typed && !m.ReferenceTypeSubtype(elem.Kind.Ref, table.Ref)) ||
 				(!typed && !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef)) {
 				return reject("RV64 exact roots reject active element/table type mismatch")
 			}
-			allowImported = publicTables[elem.Mode.Table]
 		}
 		switch elem.Kind.Kind {
 		case wasm.ElemFuncs:
@@ -209,18 +217,26 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			}
 			values = len(elem.Kind.Funcs)
 			for _, function := range elem.Kind.Funcs {
-				if (!allowImported && uint64(function) < uint64(importedFunctions)) || uint64(function) >= uint64(importedFunctions+len(m.FuncTypes)) {
+				if uint64(function) >= uint64(importedFunctions+len(m.FuncTypes)) {
 					return reject("RV64 exact roots reject element function %d", function)
 				}
 			}
 		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
 			aggregate := elem.Kind.Kind == wasm.ElemTypedExprs && rv64RootedAggregateTableReference(m, wasm.RefVal(elem.Kind.Ref))
+			typedFunction := elem.Kind.Kind == wasm.ElemTypedExprs && wasm.FunctionReferenceType(m, wasm.RefVal(elem.Kind.Ref))
 			if len(elem.Kind.Funcs) != 0 || elem.Kind.Kind == wasm.ElemFuncExprs && elem.Kind.Ref != (wasm.RefType{}) ||
-				elem.Kind.Kind == wasm.ElemTypedExprs && !aggregate && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) {
+				elem.Kind.Kind == wasm.ElemTypedExprs && !aggregate && !typedFunction && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) {
 				return reject("RV64 exact roots require exact nullable funcref expression elements")
 			}
 			values = len(elem.Kind.Exprs)
 			for j, expr := range elem.Kind.Exprs {
+				if typedFunction {
+					_, ok := wasm.FunctionElementSubtype(m, expr, elem.Kind.Ref)
+					if !ok {
+						return reject("RV64 exact roots reject typed function element %d:%d", i, j)
+					}
+					continue
+				}
 				if aggregate {
 					if !rv64RootedAggregateElement(expr, elem.Kind.Ref, aggregateParser, importedGlobals+len(m.Globals)) {
 						return reject("RV64 exact roots reject aggregate element %d:%d", i, j)
@@ -238,7 +254,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 					}
 				}
 				value, err := wasm.ParseFuncrefElementExpr(expr)
-				if err != nil || !value.Null && ((!allowImported && uint64(value.FuncIndex) < uint64(importedFunctions)) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
+				if err != nil || !value.Null && (uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
 					return reject("RV64 exact roots reject element expression %d:%d", i, j)
 				}
 			}
@@ -262,25 +278,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		}
 		remainingElements -= values
 	}
-	if importedFunctions != 0 && hasPrivateTable {
-		classifier := wasm.NewModuleInstructionClassifier(m, true)
-		for i := range m.Code {
-			r := wasm.NewReader(m.Code[i].BodyBytes)
-			for r.HasNext() {
-				op, err := r.Byte()
-				if err != nil {
-					return reject("RV64 exact roots reject malformed function %d", i)
-				}
-				var imm wasm.InstructionImmediate
-				if err = classifier.ClassifyInto(r, op, &imm); err != nil {
-					return reject("RV64 exact roots reject malformed function %d", i)
-				}
-				if imm.Kind == wasm.InstrRefFunc && uint64(imm.Index) < uint64(importedFunctions) {
-					return reject("RV64 exact roots reject imported ref.func in private table module")
-				}
-			}
-		}
-	}
+
 	remainingData := railshot.MaxModuleBytes
 	for i := range m.Data {
 		data := &m.Data[i]
@@ -312,6 +310,9 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		if export.Index.Kind == wasm.ExternTable && uint64(export.Index.Index) < uint64(tableCount) {
 			continue
 		}
+		if export.Index.Kind == wasm.ExternTag && uint64(export.Index.Index) < uint64(m.TagCount()) {
+			continue
+		}
 		if export.Index.Kind != wasm.ExternFunc {
 			return reject("RV64 exact roots reject non-function export %d", i)
 		}
@@ -320,7 +321,14 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 		}
 	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
-	modulePlan, err := gcFramePrepareModuleRootPlan(m, &classifier, analysis)
+	ehMaps, err := railshot.BuildExceptionRootMapsOwned(m, ownedExceptions)
+	if err != nil {
+		return reject("exception root maps: %v", err)
+	}
+	if len(m.Code) == 0 {
+		return shared.NewGCModuleFrameRootPlan(0)
+	}
+	modulePlan, err := gcFramePrepareRV64RootPlan(m, &classifier, analysis, ownedExceptions, instructions)
 	if err != nil {
 		return reject("%v", err)
 	}
@@ -338,17 +346,31 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			return reject("function %d root plan ownership is invalid", function)
 		}
 		*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase}
+		for i := range ehMaps {
+			if ehMaps[i].LocalFunction == uint32(function) && !plan.SetFixedOffsets(gcFrameFixedOffsets(&ehMaps[i])) {
+				return reject("function %d exception root layout", function)
+			}
+		}
 		usesSWAR, err := railshot.FunctionUsesSWAR(m, function)
+		usesSWAR = usesSWAR || customValues
 		if err != nil {
 			return reject("function %d SWAR root layout: %v", function, err)
 		}
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
-			if collectorFrameRefType(m, t) {
+			functionRef := functionEnvironments && wasm.FunctionReferenceType(m, t)
+			externRef := wasm.ExternReferenceType(t)
+			if collectorFrameRefType(m, t) || ownedExceptions && t.Kind() == wasm.ValRef && (t.Ref().Heap() == wasm.AbsHeap(wasm.HeapExn) || t.Ref().Heap() == wasm.AbsHeap(wasm.HeapNoExn)) || functionRef || externRef {
 				if len(plan.Locals) == shared.GCFrameTrackedLocalLimit {
 					return false
 				}
-				plan.Locals = append(plan.Locals, shared.GCFrameLocal{Index: local, Offset: uint32(shared.RV64CallFrameHeaderBytes + slot*8)})
+				offset := uint32(shared.RV64CallFrameHeaderBytes + slot*8)
+				if functionRef {
+					offset |= shared.GCFrameFuncRefRootFlag
+				} else if externRef {
+					offset |= shared.GCFrameExternRefRootFlag
+				}
+				plan.Locals = append(plan.Locals, shared.GCFrameLocal{Index: local, Offset: offset})
 			}
 			// SWAR keeps every logical local in one padded 16-byte home.
 			if usesSWAR || wasm.EqualValType(t, wasm.V128) {
@@ -372,15 +394,47 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 			}
 		}
 		plan.Conservative = true
-		liveMasks, err := gcFrameAllLiveMasksArenaWithClassifier(m.Code[function].BodyBytes, len(plan.Locals), &classifier)
+		liveMasks, err := gcFrameAllLiveMasksArenaWithClassifier(m.Code[function].BodyBytes, len(plan.Locals), &classifier, m)
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
+		}
+		if len(instructions) != 0 {
+			inline, _, err := rv64CustomInlineRootBoundaries(m, m.Code[function].BodyBytes, &classifier, instructions)
+			if err != nil || inline > liveMasks.callN {
+				return reject("function %d inline native call mask count", function)
+			}
+			// Every site has the same conservative all-local mask here. Removing
+			// inline sites cannot change any surviving site's local liveness.
+			liveMasks.callN -= inline
+			liveMasks.words = liveMasks.words[:(liveMasks.allocationN+liveMasks.callN)*liveMasks.wordsPerSite]
+		}
+		if ownedExceptions {
+			count, scanErr := railshot.ExceptionOwnedCopyCount(m, function)
+			if scanErr != nil {
+				return reject("function %d exception copies: %v", function, scanErr)
+			}
+			if count != 0 {
+				next := newGCFrameLiveMasks(liveMasks.allocationN+count, liveMasks.callN, liveMasks.wordsPerSite)
+				mask := make([]uint64, liveMasks.wordsPerSite)
+				for i := range mask {
+					mask[i] = ^uint64(0)
+				}
+				if n := len(plan.Locals) % 64; n != 0 {
+					mask[len(mask)-1] = (uint64(1) << n) - 1
+				} else if len(plan.Locals) == 0 {
+					mask[0] = 0
+				}
+				for site := 0; site < next.allocationN+next.callN; site++ {
+					copy(next.site(site), mask)
+				}
+				liveMasks = next
+			}
 		}
 		plan.Locals, liveMasks, _, err = gcFrameCompactLiveLocalsArena(plan.Locals, liveMasks)
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
-		if liveMasks.allocationN == 0 && liveMasks.callN == 0 && !rv64RootedBodyHasNumericTailBridge(m, m.Code[function].BodyBytes, &classifier) {
+		if liveMasks.allocationN == 0 && liveMasks.callN == 0 && !rv64RootedBodyHasTailBridge(m, m.Code[function].BodyBytes, &classifier) {
 			return reject("function %d is collecting without an RV64 root boundary", function)
 		}
 		if uint64(safepointBase)+uint64(liveMasks.allocationN) > uint64(shared.GCSafepointIDMax) {
@@ -394,7 +448,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, genericExecution bool, diagn
 	return modulePlan
 }
 
-func rv64RootedBodyHasNumericTailBridge(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
+func rv64RootedBodyHasTailBridge(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
 	if m == nil || classifier == nil {
 		return false
 	}
@@ -413,22 +467,22 @@ func rv64RootedBodyHasNumericTailBridge(m *wasm.Module, body []byte, classifier 
 		case wasm.InstrReturnCall:
 			if uint64(imm.Index) < imports {
 				sig, ok := m.FuncSignature(imm.Index)
-				if ok && rv64RootedNumericTailSignature(sig) {
+				if ok && rv64RootedTailSignature(m, sig) {
 					return true
 				}
 			}
 		case wasm.InstrReturnCallIndirect:
 			table, ok := m.TableType(imm.Index2)
-			if !ok || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
+			if !ok || !wasm.FunctionReferenceType(m, wasm.RefVal(table.Ref)) {
 				continue
 			}
 			sig, ok := m.ResolvedTypeFunc(imm.Index)
-			if ok && rv64RootedNumericTailSignature(sig) {
+			if ok && rv64RootedTailSignature(m, sig) {
 				return true
 			}
 		case wasm.InstrReturnCallRef:
 			sig, ok := m.ResolvedTypeFunc(imm.Index)
-			if ok && rv64RootedNumericTailSignature(sig) {
+			if ok && rv64RootedTailSignature(m, sig) {
 				return true
 			}
 		}
@@ -436,13 +490,13 @@ func rv64RootedBodyHasNumericTailBridge(m *wasm.Module, body []byte, classifier 
 	return false
 }
 
-func rv64RootedNumericTailSignature(sig *wasm.CompType) bool {
+func rv64RootedTailSignature(m *wasm.Module, sig *wasm.CompType) bool {
 	if sig == nil || sig.Kind != wasm.CompFunc || len(sig.Params) > 256 || len(sig.Results) > 256 {
 		return false
 	}
 	for _, values := range [][]wasm.ValType{sig.Params, sig.Results} {
 		for _, typ := range values {
-			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !wasm.EqualValType(typ, wasm.V128) {
+			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !wasm.EqualValType(typ, wasm.V128) && typ.Kind() != wasm.ValRef {
 				return false
 			}
 		}
@@ -469,13 +523,15 @@ func rv64RootedAggregateTableReference(m *wasm.Module, typ wasm.ValType) bool {
 	}
 	ref := typ.Ref()
 	heap := ref.Heap()
-	if !ref.Nullable() || ref.Exact() {
+	if ref.Exact() {
 		return false
 	}
 	switch heap.Kind() {
 	case wasm.HeapAbs:
 		switch heap.Abs() {
-		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray:
+		case wasm.HeapExn, wasm.HeapNoExn:
+			return railshot.ManagedExceptionReferences(m)
+		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapExtern, wasm.HeapNoExtern:
 			return true
 		default:
 			return false
@@ -703,6 +759,28 @@ func (p *rv64RootedAggregateParser) validateExpression(expr wasm.Expr, required 
 		case 0x44:
 			_, err = r.Bytes(8)
 			value.typ = wasm.F64
+		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e:
+			typ := wasm.I32
+			if op >= 0x7c {
+				typ = wasm.I64
+			}
+			if stackLen < 2 || !wasm.EqualValType(stack[stackLen-2].typ, typ) || !wasm.EqualValType(stack[stackLen-1].typ, typ) {
+				return false
+			}
+			left, right := stack[stackLen-2], stack[stackLen-1]
+			stackLen -= 2
+			value.typ = typ
+			if wasm.EqualValType(typ, wasm.I32) && left.knownI32 && right.knownI32 {
+				value.knownI32 = true
+				switch op {
+				case 0x6a:
+					value.i32 = left.i32 + right.i32
+				case 0x6b:
+					value.i32 = left.i32 - right.i32
+				case 0x6c:
+					value.i32 = left.i32 * right.i32
+				}
+			}
 		case 0x23:
 			index, indexErr := r.U32()
 			global, ok := p.m.GlobalTypeByIndex(index)
@@ -741,6 +819,22 @@ func (p *rv64RootedAggregateParser) validateExpression(expr wasm.Expr, required 
 			sub, subErr := r.U32()
 			if subErr != nil {
 				return false
+			}
+			if sub == 26 || sub == 27 {
+				if stackLen < 1 || stack[stackLen-1].typ.Kind() != wasm.ValRef {
+					return false
+				}
+				input := stack[stackLen-1]
+				want, output := wasm.HeapExtern, wasm.HeapAny
+				if sub == 27 {
+					want, output = wasm.HeapAny, wasm.HeapExtern
+				}
+				if !p.valueMatches(input, wasm.StorageVal(wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(want), false))), 0) {
+					return false
+				}
+				stackLen--
+				value.typ = wasm.RefVal(wasm.Ref(input.typ.Ref().Nullable(), wasm.AbsHeap(output), false))
+				break
 			}
 			if sub == 28 { // ref.i31
 				if stackLen < 1 || !wasm.EqualValType(stack[stackLen-1].typ, wasm.I32) {
@@ -853,11 +947,63 @@ func rv64RootedAggregateElement(expr wasm.Expr, ref wasm.RefType, p *rv64RootedA
 
 const rv64RootedAggregateParseWork = 8192
 
+// Opaque nulls carry no collector object. Mixed exception declarations can keep
+// them in state without treating function descriptors or extern tokens as roots.
+func rv64OwnedOpaqueNullGlobal(m *wasm.Module, global *wasm.Global) bool {
+	if m == nil || global == nil || !railshot.ManagedExceptionReferences(m) || global.Type.Type.Kind() != wasm.ValRef || len(global.Init.Instrs) != 0 {
+		return false
+	}
+	ref := global.Type.Type.Ref()
+	if !ref.Nullable() || ref.Exact() {
+		return false
+	}
+	heap := ref.Heap()
+	switch heap.Kind() {
+	case wasm.HeapAbs:
+		if heap.Abs() != wasm.HeapFunc && heap.Abs() != wasm.HeapNoFunc && heap.Abs() != wasm.HeapExtern && heap.Abs() != wasm.HeapNoExtern {
+			return false
+		}
+	case wasm.HeapTypeIndex:
+		if heap.Type().Rec {
+			return false
+		}
+		comp, ok := m.TypeFunc(heap.Type().Index)
+		if !ok || comp == nil {
+			return false
+		}
+	default:
+		return false
+	}
+	r := wasm.ReaderFrom(global.Init.BodyBytes)
+	op, err := r.Byte()
+	if err != nil || op != 0xd0 {
+		return false
+	}
+	literal, err := r.S33()
+	if err != nil {
+		return false
+	}
+	var actual wasm.HeapType
+	if literal >= 0 {
+		actual = wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(literal)})
+	} else {
+		actual = wasm.AbsHeap(wasm.AbsHeapType(byte(literal & 0x7f)))
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && !r.HasNext() && m.ReferenceTypeSubtype(wasm.Ref(true, actual, false), ref)
+}
+
 func rv64RootedScalarGlobal(m *wasm.Module, global *wasm.Global, limit int, p *rv64RootedAggregateParser) bool {
 	if global == nil || len(global.Init.Instrs) != 0 {
 		return false
 	}
 	if global.Type.Type.Kind() == wasm.ValRef {
+		if railshot.AdmitPrimitiveReferenceGlobalInitializer(*global, m, limit) {
+			return true
+		}
+		if rv64OwnedOpaqueNullGlobal(m, global) {
+			return true
+		}
 		ref := global.Type.Type.Ref()
 		heap := ref.Heap()
 		if ref.Exact() || !p.validateExpression(global.Init, ref, limit) {
@@ -866,8 +1012,12 @@ func rv64RootedScalarGlobal(m *wasm.Module, global *wasm.Global, limit int, p *r
 		switch heap.Kind() {
 		case wasm.HeapAbs:
 			switch heap.Abs() {
-			case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray:
-				return ref.Nullable()
+			case wasm.HeapNone:
+				return ref.Nullable() && railshot.ManagedExceptionReferences(m)
+			case wasm.HeapExn, wasm.HeapNoExn:
+				return ref.Nullable() && railshot.ManagedExceptionReferences(m)
+			case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapExtern, wasm.HeapNoExtern:
+				return ref.Nullable() || heap.Abs() == wasm.HeapI31
 			default:
 				return false
 			}
@@ -924,4 +1074,80 @@ func rv64RootedScalarGlobal(m *wasm.Module, global *wasm.Global, limit int, p *r
 	}
 	end, err := r.Byte()
 	return err == nil && end == 0x0b && !r.HasNext()
+}
+
+func gcFramePrepareRV64RootPlan(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, analysis *wasm.ValidatedModuleAnalysis, ownedExceptions bool, custom ...map[uint32]railcore.CustomInstruction) (*shared.GCModuleFrameRootPlan, error) {
+	var instructions map[uint32]railcore.CustomInstruction
+	if len(custom) != 0 {
+		instructions = custom[0]
+	}
+	if !ownedExceptions && len(instructions) == 0 {
+		return gcFramePrepareModuleRootPlan(m, classifier, analysis)
+	}
+	plan := shared.NewGCModuleFrameRootPlan(len(m.Code))
+	count := 0
+	for function := range m.Code {
+		copies := 0
+		var err error
+		if ownedExceptions {
+			copies, err = railshot.ExceptionOwnedCopyCount(m, function)
+		}
+		if err != nil {
+			return nil, err
+		}
+		needs := gcFrameBodyNeedsRootPlanWithClassifier(m, m.Code[function].BodyBytes, classifier)
+		if len(instructions) != 0 {
+			inline, boundary, err := rv64CustomInlineRootBoundaries(m, m.Code[function].BodyBytes, classifier, instructions)
+			if err != nil {
+				return nil, err
+			}
+			if inline != 0 && !boundary {
+				needs = false
+			}
+		}
+		if copies != 0 || needs {
+			if !plan.MarkFunction(function) {
+				return nil, fmt.Errorf("exception root function %d", function)
+			}
+			count++
+		}
+	}
+	if !plan.ReserveFunctions(count) {
+		return nil, fmt.Errorf("exception root capacity")
+	}
+	return plan, nil
+}
+
+func rv64CustomInlineRootBoundaries(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier, instructions map[uint32]railcore.CustomInstruction) (inline int, boundary bool, err error) {
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, e := r.Byte()
+		if e != nil {
+			return 0, false, e
+		}
+		var imm wasm.InstructionImmediate
+		if e = classifier.ClassifyInto(r, op, &imm); e != nil {
+			return 0, false, e
+		}
+		if op == 0xfb {
+			switch imm.Subopcode {
+			case 0, 1, 6, 7, 8, 9, 10:
+				boundary = true
+			}
+			if wasm.OpaqueStorageMutation(m, imm.Kind, imm.Index, imm.Index2) {
+				boundary = true
+			}
+		}
+		switch imm.Kind {
+		case wasm.InstrCall:
+			if _, ok := instructions[imm.Index]; ok {
+				inline++
+			} else {
+				boundary = true
+			}
+		case wasm.InstrCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCall, wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
+			boundary = true
+		}
+	}
+	return inline, boundary, nil
 }

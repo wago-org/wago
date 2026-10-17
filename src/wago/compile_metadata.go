@@ -287,11 +287,14 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: int(def.Min), Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
 		}
 	}
+	if err := railshotStoreTableCapacities(c, tableShapes); err != nil {
+		return err
+	}
 	// Dynamic call_ref dispatch and cold EH restoration need only descriptor zero:
 	// its arena-stable instance-context cell exists even when the module has no
 	// local ref.func/table descriptor payloads. Key EH to the analyzed required
 	// feature so tag-free try_table/catch_all modules receive the header too.
-	c.needsFuncRefContextHeader = moduleFacts.UsesCallRef || requirements.features.IsEnabled(CoreFeatureExceptionHandling) || railshotNeedsImportContextHeader(c.NumImports+len(c.Funcs))
+	c.needsFuncRefContextHeader = moduleFacts.UsesCallRef || requirements.features.IsEnabled(CoreFeatureExceptionHandling) || railshotNeedsImportContextHeader(c)
 	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptorsFromFacts(m, moduleFacts) || gcTypeSubtypingProduct.usesLinkFunctionIdentity() || indexedFunctionRefOps
 	for i := range m.Tables {
 		tableIndex := importedTables + i

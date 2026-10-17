@@ -131,6 +131,16 @@ func stagedGCArrayOpcodeProduct(m *wasm.Module) (stagedGCArrayProduct, bool) {
 			found = product
 		}
 	}
+	if !generic {
+		generic = moduleGCInitializerUses(m, func(kind wasm.InstrKind) bool {
+			switch kind {
+			case wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData, wasm.InstrArrayNewElem:
+				return true
+			default:
+				return false
+			}
+		})
+	}
 	if generic {
 		return stagedGCArrayProductGeneric, true
 	}

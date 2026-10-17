@@ -70,7 +70,7 @@ func TestPublicTableInitializerRejectBeforeStaging(t *testing.T) {
 }
 
 func TestPublicTableInitializerCountPreflight(t *testing.T) {
-	m := &wasm.Module{Tables: make([]wasm.Table, 2)}
+	m := &wasm.Module{Tables: make([]wasm.Table, MaxFunctions+1)}
 	if err := AdmitPublicInitializers(m); err == nil {
 		t.Fatal("table count not checked before initializer walk")
 	}
@@ -148,7 +148,7 @@ func TestPublicImportedGlobalTableInitializerAggregateBounds(t *testing.T) {
 	segments := importedGlobalTableInitializerModule(t, false)
 	segments.Tables[0].Type.Limits.Min = 0
 	segments.Elements = make([]wasm.Elem, MaxOwnedElementSegments)
-	if err := AdmitPublicInitializers(segments); !errors.Is(err, ErrUnsupported) {
-		t.Fatal("synthetic initializer segment budget admitted", err)
+	if err := AdmitPublicInitializers(segments); err != nil {
+		t.Fatal("public empty initializer metadata used a private segment count limit", err)
 	}
 }

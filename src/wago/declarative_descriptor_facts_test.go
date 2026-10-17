@@ -34,7 +34,7 @@ func TestLegacyDeclarativeDescriptorFactsPreserveFeatures(t *testing.T) {
 		}, wantRef: true, wantFeatures: CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes},
 		{name: "expression declaration", edit: func(m *wasm.Module) {
 			m.Elements[0].Kind = wasm.ElemKind{Kind: wasm.ElemFuncExprs, Exprs: []wasm.Expr{{BodyBytes: []byte{0xd2, 0, 0x0b}}}}
-		}, wantRef: true, wantFeatures: CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes},
+		}, wantFeatures: CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := &wasm.Module{Elements: []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemDeclarative}, Kind: wasm.ElemKind{Kind: wasm.ElemFuncs, Funcs: []wasm.FuncIdx{0}}}}}

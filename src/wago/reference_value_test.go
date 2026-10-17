@@ -86,10 +86,8 @@ func TestReferenceSignatureConversionPreservesTypes(t *testing.T) {
 }
 
 func TestTypedCallCarriesOpaqueExternRefTokensInWideSlots(t *testing.T) {
-	original := MustCompile(referenceSlotIdentityModule())
-	defer original.Close()
-	c := mutableCompiledFixture(original)
-	c.Funcs[0] = FuncSig{Params: []ValType{ValExternRef}, Results: []ValType{ValExternRef}}
+	c := MustCompile(referenceSlotIdentityModuleType(wasm.ExternRef))
+	defer c.Close()
 	in, err := Instantiate(c)
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
@@ -114,8 +112,12 @@ func TestTypedCallCarriesOpaqueExternRefTokensInWideSlots(t *testing.T) {
 }
 
 func referenceSlotIdentityModule() []byte {
+	return referenceSlotIdentityModuleType(wasm.I64)
+}
+
+func referenceSlotIdentityModuleType(typ wasm.ValType) []byte {
 	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{typ}, []wasm.ValType{typ}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("id", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x0b}))),
@@ -329,6 +331,9 @@ func TestHostFuncRefDescriptorLookup(t *testing.T) {
 		},
 		imports:      testImports(key, owner).bindings,
 		funcRefDescs: make([]byte, 3*coreruntime.FuncRefDescBytes),
+	}
+	if railshotNativeContextTrapABI() {
+		in.ensureImportState().importRefEntries = []importReferenceEntry{{host: owner}}
 	}
 	desc := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[coreruntime.FuncRefDescBytes])))
 	if got := in.hostFuncRefForDescriptor(desc); got != owner {

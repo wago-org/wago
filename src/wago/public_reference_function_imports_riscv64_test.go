@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -78,10 +78,8 @@ func TestRV64PublicReferenceFunctionImportsSourceArtifact(t *testing.T) {
 						in := rv64NativeTokenInstantiate(t, rt, c, imports)
 						controlCode := rv64NativeTailCompile(t, fmt.Sprintf("reference-imports-control-v%t", vector), rv64ReferenceImportNumericControl(vector), artifact)
 						control := rv64NativeTokenInstantiate(t, rt, controlCode, imports)
-						for _, i := range []int{5, 6} {
-							if !railshotNonCallableFunction(in.c, i) || !bytes.Equal(in.funcRefDescs[40*(i+1):40*(i+2)], make([]byte, 40)) {
-								t.Fatal("shifted internal descriptor ordinal", i)
-							}
+						for _, index := range []int{2, 3} {
+							rv64RequirePublishedLocalFunction(t, in, index)
 						}
 						args := []uint64{0xdeadbeeffffffffd, 0x7ff0000000000001}
 						payload := []uint64{args[1]}

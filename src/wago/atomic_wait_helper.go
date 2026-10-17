@@ -67,6 +67,8 @@ func (in *Instance) dispatchAtomicWaitHelper(helper uint32, args, results []uint
 		err    error
 	)
 	switch helper {
+	case shared.AtomicHelperMemoryGrow:
+		result, err = in.dispatchAtomicMemoryGrow(args)
 	case shared.AtomicHelperNotify:
 		if len(args) != 3 {
 			err = fmt.Errorf("atomic notify helper arity = %d, want 3", len(args))

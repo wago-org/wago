@@ -337,14 +337,24 @@ func TestSWARRV64BulkTableActiveFillInterruptCompleteRowsAndReuse(t *testing.T) 
 }
 
 func TestSWARRV64BulkTableActiveCopyGrowInterruptAndRetry(t *testing.T) {
-	// A ready second P observes the first changed row and requests interruption.
-	// Finite512/1021-row operations can finish first; bounded retries distinguish
-	// a late request from an actual cold safepoint using its recorded source PC.
+	// A ready second P observes a test-only marker before the bulk instruction.
+	// A straight-line delay leaves enough time to publish the request without
+	// adding another safepoint. The target bulk instruction must therefore
+	// report its own source PC.
 	previous := goruntime.GOMAXPROCS(2)
 	defer goruntime.GOMAXPROCS(previous)
 	for _, sub := range []byte{14, 15} {
 		e, j, args, results, trap, _ := thunkFixtureRV64(t, 256)
 		f := swarBulkTableFixture(sub)
+		marker := []byte{0x41, 0, 0xd0, 0x70, 0x26, 0}
+		for range 3000 {
+			marker = append(marker, 0x41, 0, 0x1a)
+		}
+		marker = append(marker, 0x41, 0, 0xd2, 1, 0x26, 0)
+		for range 3000 {
+			marker = append(marker, 0x41, 0, 0x1a)
+		}
+		f.body = append(append(f.body[:2:2], marker...), f.body[2:]...)
 		entry, table, directory, pcBase := swarBulkTableExecutionRV64(t, j, f)
 		pc := pcBase + uint32(bytes.Index(f.body, []byte{0xfc, sub}))
 		observed := false
@@ -353,7 +363,7 @@ func TestSWARRV64BulkTableActiveCopyGrowInterruptAndRetry(t *testing.T) {
 			for i := 0; i < 1024; i++ {
 				copy(table[8+i*32:8+(i+1)*32], directory[40:72])
 			}
-			watchIndex := 1023
+			watchIndex := 0
 			if sub == 14 {
 				binary.LittleEndian.PutUint32(table, 1024)
 				for i := 0; i < 512; i++ {
@@ -363,9 +373,7 @@ func TestSWARRV64BulkTableActiveCopyGrowInterruptAndRetry(t *testing.T) {
 			} else {
 				binary.LittleEndian.PutUint32(table, 3)
 				swarTableInputsRV64(args, 1021, 1)
-				watchIndex = 3
 			}
-			oldWord := binary.LittleEndian.Uint64(directory[40:])
 			word := (*uint64)(unsafe.Pointer(&table[8+watchIndex*32]))
 			beforeArgs := bytes.Clone(args)
 			for i := range results {
@@ -381,13 +389,19 @@ func TestSWARRV64BulkTableActiveCopyGrowInterruptAndRetry(t *testing.T) {
 				defer goruntime.UnlockOSThread()
 				defer close(joined)
 				close(ready)
+				cleared := false
 				for {
 					select {
 					case <-finished:
 						return
 					default:
 					}
-					if atomic.LoadUint64(word) != oldWord {
+					current := atomic.LoadUint64(word)
+					if !cleared {
+						cleared = current == 0
+						continue
+					}
+					if current != 0 {
 						coreruntime.RequestInterrupt(trap)
 						return
 					}

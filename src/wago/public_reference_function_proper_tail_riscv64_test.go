@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -66,9 +66,7 @@ func TestRV64PublicReferenceFunctionProperReferenceTailBare(t *testing.T) {
 				rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig().WithNativeStackBytes(MinNativeStackBytes)))
 				defer rv64HostCertificateCloseRuntime(t, rt)
 				in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
-				if !bytes.Equal(in.funcRefDescs[2*40:3*40], make([]byte, 40)) {
-					t.Fatal("private bare callable hole")
-				}
+				rv64RequirePublishedLocalFunction(t, in, 1)
 				for _, null := range []uint64{0, 1, 0, 1, 0} {
 					got, err := in.Invoke("run", 0xcafefeed00000000|null, 0xdeadbeef00001388)
 					if null == 0 {
@@ -118,33 +116,20 @@ func TestRV64PublicReferenceFunctionProperReferenceTailBare(t *testing.T) {
 						t.Fatal("warm private generation activation", allocs)
 					}
 				}()
-				// A distinct numeric declared signature with the same physical
-				// argument/result widths is admitted in trusted metadata. The
-				// actual canonical target still has its original i32 signature.
+				// An artifact cannot change a call site's recorded type while
+				// retaining the original compiled execution contract.
 				metadata := rv64ReferenceImportTailCopy(c)
 				rv64NativeTailModule(metadata).Plans[1].TypeIndex = 4
 				blob, err := metadata.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
+				if err == nil {
+					wrong, loadErr := LoadTrustedArtifact(blob)
+					if wrong != nil {
+						wrong.Close()
+					}
+					if loadErr == nil {
+						t.Fatal("artifact changed the compiled tail call type")
+					}
 				}
-				wrong, err := LoadTrustedArtifact(blob)
-				if err != nil {
-					t.Fatal(err)
-				}
-				t.Cleanup(func() { wrong.Close() })
-				bad := rv64NativeTokenInstantiate(t, rt, wrong, NewImports())
-				_, err = bad.Invoke("run", 0, 0)
-				trap := ownedTableTrap(t, err, coreruntime.TrapIndirectWrongSig)
-				if len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 1 || trap.Frames[0].ProgramCounter != 5 {
-					t.Fatal("bare wrong-signature origin", trap.Frames)
-				}
-				if state := &bad.pluginState.Load().railshotInvocation; state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || rv64EntryCapability(bad) != 0 {
-					t.Fatal("signature trap retained generation")
-				}
-				if got, err := bad.Invoke("safe", 0); err != nil || !slices.Equal(got, []uint64{42}) {
-					t.Fatal("reuse after private signature trap", got, err)
-				}
-
 			})
 		}
 	}

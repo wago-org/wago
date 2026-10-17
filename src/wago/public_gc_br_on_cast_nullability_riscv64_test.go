@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -117,15 +117,11 @@ func TestRV64PublicGCBrOnCastNullabilityExecutionAndArtifact(t *testing.T) {
 			for _, compiled := range compiledSet {
 				defer compiled.Close()
 				view := compiled.executionView()
-				exact, wantProduct := rv64GCBrOnCastNullability(view), stagedGCStructBrOnCastNullability
-				if fail {
-					exact, wantProduct = rv64GCBrOnCastFailNullability(view), stagedGCStructBrOnCastFailNullability
+				if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil {
+					t.Fatalf("invalid branch-cast execution contract: %v", railshotValidateCompiled(view))
 				}
-				if !exact || view.stagedGCStructProduct() != wantProduct || railshotValidateCompiled(view) != nil {
-					t.Fatalf("missing exact nullability branch-cast witness: exact=%t product=%v validation=%v code=%d/%x entries=%v/%v funcs=%+v types=%+v descs=%+v", exact, view.stagedGCStructProduct(), railshotValidateCompiled(view), len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.Funcs, view.Types, view.GCTypeDescs)
-				}
-				if params, results, err := view.maxCallSlots(); err != nil || params != 4 || results != 1 {
-					t.Fatalf("call capacity=%d/%d,%v want 4/1", params, results, err)
+				if params, results, err := view.maxCallSlots(); err != nil || params != 1 || results != 1 {
+					t.Fatalf("call capacity=%d/%d,%v want 1/1", params, results, err)
 				}
 				for _, gcConfig := range []GCConfig{{}, {CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true, StressBarriers: true}} {
 					rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
@@ -172,10 +168,6 @@ func TestRV64PublicGCBrOnCastNullabilityAdmissionIsExact(t *testing.T) {
 			}
 			defer compiled.Close()
 			base := compiled.executionView()
-			exact := rv64GCBrOnCastNullability
-			if fail {
-				exact = rv64GCBrOnCastFailNullability
-			}
 			for name, mutate := range map[string]func(*Compiled){
 				"code":        func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
 				"entry":       func(v *Compiled) { v.Entry[2]++; v.InternalEntry[2]++ },
@@ -187,10 +179,9 @@ func TestRV64PublicGCBrOnCastNullabilityAdmissionIsExact(t *testing.T) {
 				"feature":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 			} {
 				t.Run(name, func(t *testing.T) {
-					candidate := cloneCompiledMetadata(base)
-					candidate.validateMemo = &validateMemo{}
+					candidate := rv64ReferenceStartCopy(base)
 					mutate(candidate)
-					if exact(candidate) {
+					if rv64ArtifactContractValid(candidate) {
 						t.Fatal("hostile retained mutation kept nullability branch-cast witness")
 					}
 					if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {

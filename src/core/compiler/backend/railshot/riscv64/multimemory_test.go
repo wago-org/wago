@@ -121,6 +121,10 @@ func TestProductionMultiMemoryBoundsBeforeStagingAndPrivateClosure(t *testing.T)
 			case "reversed":
 				bad.Memories[99].Limits.Max = 0
 			}
+			if fault == "shared" {
+				checkPublicPrimitiveModule(t, bad, CompileOptions{})
+				continue
+			}
 			pressure := 0
 			image, err := CompileModuleWith(bad, CompileOptions{MemoryPressure: func() { pressure++ }})
 			if image != nil || err == nil || pressure != 0 {

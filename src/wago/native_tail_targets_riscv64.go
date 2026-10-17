@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -11,6 +11,53 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+// General source/artifact admission proves the complete primitive type graph.
+// Host reference tails still require the scalar host transport's exact carriers
+// and slot bounds; vector and collector references need separate transports.
+func rv64PrimitiveHostReferenceTransport(c *Compiled, sig FuncSig) bool {
+	if !rv64PrimitiveReferenceContract(c) || len(sig.Params) > coreruntime.MaxHostArity || len(sig.Results) > coreruntime.MaxHostArity {
+		return false
+	}
+	hasReference := false
+	for _, values := range [][]ValType{sig.Params, sig.Results} {
+		for _, value := range values {
+			switch value {
+			case ValI32, ValI64, ValF32, ValF64:
+			case ValFuncRef, ValExternRef:
+				hasReference = true
+			default:
+				return false
+			}
+		}
+	}
+	return hasReference
+}
+
+// Shape proof is independent of attachment. The shared binding path additionally
+// authenticates the owned handle, exact structural types and collector domain.
+func rv64CollectorHostTailTransport(c *Compiled, sig FuncSig) bool {
+	if c == nil || !rv64FreshRootedGC(c) || c.genericGCFrameRoots() == nil || !funcSigHasGCRefs(sig) {
+		return false
+	}
+	for _, values := range [][]ValType{sig.Params, sig.Results} {
+		slots := 0
+		for _, value := range values {
+			switch value {
+			case ValI32, ValI64, ValF32, ValF64, ValAnyRef, ValI31Ref:
+				slots++
+			case ValV128:
+				slots += 2
+			default:
+				return false
+			}
+		}
+		if slots > 64 {
+			return false
+		}
+	}
+	return true
+}
+
 // Only indexed canonical arenas need a target directory. Descriptor-zero-only
 // producers still have their context anchor, without an extra allocation.
 func rv64TailTargetsArenaBytes(c *Compiled) int {
@@ -18,6 +65,27 @@ func rv64TailTargetsArenaBytes(c *Compiled) int {
 		return 0
 	}
 	return abi.RV64TailTargetsHeaderBytes + abi.RV64TailTargetsRowBytes*len(c.FuncTypeID)
+}
+
+// The separate arena-owned context is the identity of a plain native owner.
+// A demanded descriptor anchor must also match that identity exactly. These
+// reads require the caller's physical lease or unpublished construction lease.
+func rv64NativeOwnerContextValid(producer *Instance) bool {
+	if producer == nil || producer.c == nil || producer.jm == nil || !producer.c.nativeContextTrapABI || !producer.c.registerABIDisabled || producer.nativeContext == 0 || producer.nativeContext&7 != 0 {
+		return false
+	}
+	// Construction allocates this context first. Authenticate the retained arena
+	// prefix before reading it; a forged context address must never be followed.
+	context := producer.ar.AllocatedPrefix(abi.RV64InstanceContextBytes)
+	if len(context) == 0 || offHeapSlicePtr(context) != producer.nativeContext || binary.LittleEndian.Uint64(context[16:]) != uint64(offHeapSlicePtr(producer.funcRefDescs)) {
+		return false
+	}
+	if len(producer.funcRefDescs) == 0 {
+		return !producer.c.needsFuncRefContext()
+	}
+	return len(producer.funcRefDescs) >= coreruntime.FuncRefDescBytes &&
+		binary.LittleEndian.Uint64(producer.funcRefDescs[coreruntime.FuncRefContextOffset:]) == uint64(producer.nativeContext) &&
+		binary.LittleEndian.Uint64(producer.funcRefDescs[coreruntime.TableEntryHomeLinMemOffset:]) == uint64(producer.jm.LinMemBase())
 }
 
 func rv64QualifiedNativeTailTarget(target *InstanceExport) (entry, home, context uint64, valid bool) {
@@ -32,7 +100,7 @@ func rv64QualifiedNativeTailTarget(target *InstanceExport) (entry, home, context
 	if err != nil {
 		return
 	}
-	if !producer.c.nativeContextTrapABI || !producer.c.registerABIDisabled || len(producer.funcRefDescs) < coreruntime.FuncRefDescBytes || producer.nativeContext == 0 || producer.nativeContext&7 != 0 || binary.LittleEndian.Uint64(producer.funcRefDescs[coreruntime.FuncRefContextOffset:]) != uint64(producer.nativeContext) || binary.LittleEndian.Uint64(producer.funcRefDescs[coreruntime.TableEntryHomeLinMemOffset:]) != uint64(producer.jm.LinMemBase()) || binary.LittleEndian.Uint64(rv64NativeInvocationContext(producer)[16:]) != uint64(offHeapSlicePtr(producer.funcRefDescs)) {
+	if !rv64NativeOwnerContextValid(producer) {
 		return
 	}
 	offset := producer.c.Entry[target.localIdx]
@@ -82,7 +150,10 @@ func rv64PrepareTailTargets(in *Instance, imports resolvedImports, sharedBase ui
 				continue // Keep the ordinary proxy; do not publish a tail entry.
 			}
 		} else {
-			if err := rv64ScalarHostSignature(in.c.importFuncSigs[function]); err != nil && !rv64PublicHostReferenceBoundary(in.c) && !rv64PublicDynamicHostReferenceBoundary(in.c) {
+			if in.hostEvents != nil {
+				continue // Deferred host events never publish transferable tail rows.
+			}
+			if err := rv64ValidateHostTailSignature(in.c, in.c.importFuncSigs[function]); err != nil {
 				// Preserve the ordinary descriptor; this signature has no
 				// qualified tail transport yet.
 				continue
@@ -125,7 +196,7 @@ func rv64ValidateTailTargets(in *Instance) error {
 		return fmt.Errorf("RV64 tail target directory has no owner")
 	}
 	d := state.railshotInvocation.tailTargets
-	if len(d) != size || len(in.funcRefDescs) != coreruntime.FuncRefDescBytes*(len(in.c.FuncTypeID)+1) || binary.LittleEndian.Uint64(in.funcRefDescs[abi.RV64TailTargetsAnchorOffset:]) != uint64(offHeapSlicePtr(d)) || binary.LittleEndian.Uint64(d) != abi.RV64TailTargetsMagic || binary.LittleEndian.Uint32(d[8:]) != abi.RV64TailTargetsVersion || binary.LittleEndian.Uint32(d[12:]) != uint32(len(in.c.FuncTypeID)) || binary.LittleEndian.Uint64(d[16:]) != uint64(offHeapSlicePtr(in.funcRefDescs)) || binary.LittleEndian.Uint64(d[24:]) != uint64(in.nativeContext) {
+	if !rv64NativeOwnerContextValid(in) || len(d) != size || len(in.funcRefDescs) != coreruntime.FuncRefDescBytes*(len(in.c.FuncTypeID)+1) || binary.LittleEndian.Uint64(in.funcRefDescs[abi.RV64TailTargetsAnchorOffset:]) != uint64(offHeapSlicePtr(d)) || binary.LittleEndian.Uint64(d) != abi.RV64TailTargetsMagic || binary.LittleEndian.Uint32(d[8:]) != abi.RV64TailTargetsVersion || binary.LittleEndian.Uint32(d[12:]) != uint32(len(in.c.FuncTypeID)) || binary.LittleEndian.Uint64(d[16:]) != uint64(offHeapSlicePtr(in.funcRefDescs)) || binary.LittleEndian.Uint64(d[24:]) != uint64(in.nativeContext) {
 		return fmt.Errorf("RV64 tail target directory identity/extent")
 	}
 	for function := range in.c.FuncTypeID {
@@ -154,7 +225,13 @@ func rv64ValidateTailTargets(in *Instance) error {
 				continue
 			}
 		} else {
-			if rv64ScalarHostSignature(in.c.importFuncSigs[function]) != nil && !rv64PublicHostReferenceBoundary(in.c) && !rv64PublicDynamicHostReferenceBoundary(in.c) {
+			if in.hostEvents != nil {
+				if !rv64EmptyTailTargetRow(row) {
+					return fmt.Errorf("RV64 deferred host tail row must be empty")
+				}
+				continue
+			}
+			if rv64ValidateHostTailSignature(in.c, in.c.importFuncSigs[function]) != nil {
 				if !rv64EmptyTailTargetRow(row) {
 					return fmt.Errorf("RV64 unsupported host tail row must be empty")
 				}
@@ -174,4 +251,11 @@ func rv64ValidateTailTargets(in *Instance) error {
 
 func rv64EmptyTailTargetRow(row []byte) bool {
 	return binary.LittleEndian.Uint64(row) == 0 && binary.LittleEndian.Uint64(row[8:]) == 0 && binary.LittleEndian.Uint64(row[16:]) == 0 && binary.LittleEndian.Uint64(row[24:]) == 0
+}
+
+func rv64ValidateHostTailSignature(c *Compiled, sig FuncSig) error {
+	if rv64CollectorHostTailTransport(c, sig) || rv64PrimitiveHostReferenceTransport(c, sig) || rv64PublicHostReferenceBoundary(c) || rv64PublicDynamicHostReferenceBoundary(c) {
+		return nil
+	}
+	return rv64ScalarHostSignature(sig)
 }

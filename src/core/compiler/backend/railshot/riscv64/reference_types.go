@@ -8,10 +8,15 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // Exactly one view is used; resolving an annotation never allocates or converts
 // the scalar width directory into a second type representation.
 type internalReferenceTypes struct {
+	exception bool
+	// Public ReferenceTypes use nullable abstract opaque extern carriers. This
+	// permission does not admit non-null or indexed reference annotations.
+	publicReferences  bool
 	scalar            []functionSpec
 	swar              []*wasm.CompType
 	decoded           []wasm.RecType
 	rootedDirectory   internalReferenceTypeDirectory
+	sourceDirectory   sourceFunctionTypeDirectory
 	decodedSWAR       bool
 	declarationExtern bool
 	// This exact execution permission admits nullable abstract extern carriers
@@ -132,7 +137,7 @@ func (types internalReferenceTypes) rootedStruct(index uint32) bool {
 		return false
 	}
 	signature := types.rootedStructType(index)
-	if signature == nil || len(signature.Fields) == 0 || len(signature.Fields) > 255 {
+	if signature == nil || len(signature.Fields) > 255 {
 		return false
 	}
 	for _, field := range signature.Fields {
@@ -154,7 +159,12 @@ func (types internalReferenceTypes) rootedCollectorReference(storage wasm.Storag
 	}
 	ref := storage.Val().Ref()
 	heap := ref.Heap()
-	if !ref.Exact() && heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapI31 {
+	if types.exception && !ref.Exact() && exceptionReferenceType(storage.Val()) {
+		return true
+	}
+	// This classifier selects a physical reference carrier. The exact operand
+	// catalogue separately marks raw function descriptors and compact GC refs.
+	if !ref.Exact() && heap.Kind() == wasm.HeapAbs && (heap.Abs() == wasm.HeapI31 || types.gcRootedScalar && (rootedAbstractObjectHeap(heap.Abs()) || heap.Abs() == wasm.HeapFunc || heap.Abs() == wasm.HeapNoFunc || heap.Abs() == wasm.HeapExtern || heap.Abs() == wasm.HeapNoExtern)) {
 		return true
 	}
 	if heap.Kind() != wasm.HeapTypeIndex {
@@ -170,7 +180,7 @@ func (types internalReferenceTypes) rootedCollectorReference(storage wasm.Storag
 	} else if target >= owner {
 		return false
 	}
-	return types.rootedStructType(target) != nil || types.rootedAggregateType(target, wasm.CompArray) != nil
+	return types.rootedStructType(target) != nil || types.rootedAggregateType(target, wasm.CompArray) != nil || types.gcRootedScalar && !ref.Exact() && types.function(target)
 }
 
 func (types internalReferenceTypes) rootedStructFieldReference(typeIndex, fieldIndex uint32) bool {
@@ -246,7 +256,7 @@ func (types internalReferenceTypes) rootedObjectHeap(heapType wasm.HeapType) (in
 		}
 		return int64(index), true
 	case wasm.HeapAbs:
-		if !rootedAbstractObjectHeap(heapType.Abs()) {
+		if !rootedAbstractObjectHeap(heapType.Abs()) && heapType.Abs() != wasm.HeapI31 {
 			return 0, false
 		}
 		switch heapType.Abs() {
@@ -256,6 +266,8 @@ func (types internalReferenceTypes) rootedObjectHeap(heapType wasm.HeapType) (in
 			return -18, true
 		case wasm.HeapEq:
 			return -19, true
+		case wasm.HeapI31:
+			return -20, true
 		case wasm.HeapStruct:
 			return -21, true
 		case wasm.HeapArray:
@@ -341,7 +353,13 @@ func (types internalReferenceTypes) function(index uint32) bool {
 		signature = types.swar[index]
 	} else {
 		var sub *wasm.SubType
-		if types.gcRootedScalar {
+		if (types.publicReferences || types.gcRootedScalar) && types.sourceDirectory.module != nil {
+			var ok bool
+			signature, ok = types.sourceDirectory.function(index)
+			if !ok {
+				return false
+			}
+		} else if types.gcRootedScalar {
 			var ok bool
 			sub, _, _, ok = types.rootedDirectory.lookup(index)
 			if !ok {
@@ -353,10 +371,12 @@ func (types internalReferenceTypes) function(index uint32) bool {
 			}
 			sub = &types.decoded[index].SubTypes[0]
 		}
-		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
+		if sub != nil && (!sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present()) {
 			return false
 		}
-		signature = &sub.Comp
+		if sub != nil {
+			signature = &sub.Comp
+		}
 	}
 	limit := 256
 	if vector {
@@ -373,6 +393,12 @@ func (types internalReferenceTypes) function(index uint32) bool {
 	}
 	for _, list := range [][]wasm.ValType{signature.Params, signature.Results} {
 		for _, typ := range list {
+			if types.exception && typ.Kind() == wasm.ValRef {
+				continue
+			}
+			if types.publicReferences && typ.Kind() == wasm.ValRef && types.publicFunctionReference(typ) {
+				continue
+			}
 			if !vector && !scalarType(typ, true) || vector && !swarCarrierType(typ) {
 				return false
 			}
@@ -381,22 +407,83 @@ func (types internalReferenceTypes) function(index uint32) bool {
 	return true
 }
 
+// Validate one carrier without traversing the target signature. The enclosing
+// public module scan checks every signature once, including recursive edges.
+func (types internalReferenceTypes) publicFunctionReference(typ wasm.ValType) bool {
+	if !types.publicReferences || typ.Kind() != wasm.ValRef || typ.Ref().Exact() {
+		return false
+	}
+	heap := typ.Ref().Heap()
+	if heap.Kind() == wasm.HeapAbs {
+		return heap.Abs() == wasm.HeapFunc || heap.Abs() == wasm.HeapNoFunc || heap.Abs() == wasm.HeapExtern || heap.Abs() == wasm.HeapNoExtern
+	}
+	if heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec {
+		return false
+	}
+	index := heap.Type().Index
+	if types.scalar != nil {
+		return uint64(index) < uint64(len(types.scalar)) && types.scalar[index].signature != nil && types.scalar[index].signature.Kind == wasm.CompFunc
+	}
+	if types.swar != nil {
+		return uint64(index) < uint64(len(types.swar)) && types.swar[index] != nil && types.swar[index].Kind == wasm.CompFunc
+	}
+	if types.sourceDirectory.module != nil {
+		_, ok := types.sourceDirectory.function(index)
+		return ok
+	}
+	if sub, _, _, ok := types.rootedDirectory.lookup(index); ok {
+		return sub.Comp.Kind == wasm.CompFunc
+	}
+	if uint64(index) >= uint64(len(types.decoded)) || len(types.decoded[index].SubTypes) != 1 {
+		return false
+	}
+	return types.decoded[index].SubTypes[0].Comp.Kind == wasm.CompFunc
+}
+
 // The frontend proves initialization, nullability and matching function types
 // before lowering erases these annotations to one full-width carrier class.
 func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types internalReferenceTypes) bool {
+	if types.gcRootedScalar && typ.Kind() == wasm.ValRef && !typ.Ref().Exact() && typ.Ref().Heap().Kind() == wasm.HeapAbs && (typ.Ref().Heap().Abs() == wasm.HeapExtern || typ.Ref().Heap().Abs() == wasm.HeapNoExtern) {
+		return true
+	}
 	if typ.Kind() != wasm.ValRef {
 		return false
 	}
 	ref := typ.Ref()
-	if ref.Exact() && !types.gcStructBasic || !ref.Nullable() && !typed {
+	heap := ref.Heap()
+	exceptionRef := types.exception && (heap == wasm.AbsHeap(wasm.HeapExn) || heap == wasm.AbsHeap(wasm.HeapNoExn))
+	nonNullBottom := !ref.Nullable() && !ref.Exact() && heap.Kind() == wasm.HeapAbs &&
+		(heap.Abs() == wasm.HeapNone || heap.Abs() == wasm.HeapNoFunc || heap.Abs() == wasm.HeapNoExtern)
+	if ref.Exact() && !types.gcRootedScalar || !ref.Nullable() && !typed && !exceptionRef && !nonNullBottom {
 		return false
 	}
-	heap := ref.Heap()
+	if exceptionRef {
+		return true
+	}
+	if types.exception && !ref.Exact() {
+		if heap.Kind() == wasm.HeapAbs {
+			switch heap.Abs() {
+			case wasm.HeapFunc, wasm.HeapNoFunc, wasm.HeapExtern, wasm.HeapNoExtern:
+				return true
+			}
+		} else if heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && types.function(heap.Type().Index) {
+			return true
+		}
+	}
+	if typed && nonNullBottom {
+		return true
+	}
+	if types.publicFunctionReference(typ) && (ref.Nullable() && heap.Kind() == wasm.HeapAbs || typed || nonNullBottom) {
+		return true
+	}
 	if types.gcRootedScalar {
+		if ref.Exact() {
+			return heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && (types.rootedStruct(heap.Type().Index) || types.rootedArray(heap.Type().Index))
+		}
 		if heap.Kind() == wasm.HeapAbs && rootedAbstractObjectHeap(heap.Abs()) {
 			return true
 		}
-		if heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && (types.rootedStruct(heap.Type().Index) || types.rootedArray(heap.Type().Index)) {
+		if heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && (types.rootedStruct(heap.Type().Index) || types.rootedArray(heap.Type().Index) || !ref.Exact() && types.function(heap.Type().Index)) {
 			return true
 		}
 	}
@@ -461,7 +548,7 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 	// externref carriers. Their enclosing whole-module proofs establish which
 	// functions may execute or publish. Keep these exceptions out of every
 	// ordinary control/call directory.
-	if (types.declarationExtern || types.executionExtern || types.publicReferenceCarriers) && ref.Nullable() && heap == wasm.AbsHeap(wasm.HeapExtern) {
+	if (types.publicReferences || types.declarationExtern || types.executionExtern || types.publicReferenceCarriers) && ref.Nullable() && heap == wasm.AbsHeap(wasm.HeapExtern) {
 		return true
 	}
 	if types.declarationNonNullExtern && !ref.Nullable() && heap == wasm.AbsHeap(wasm.HeapExtern) {
@@ -479,7 +566,19 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 // Both lower through the existing internal full-width result class.
 func internalReferenceBlockType(r *wasm.Reader, typed bool, types internalReferenceTypes) (int64, error) {
 	lead, ok := r.Peek()
-	if ok && (types.gcRootedScalar && rootedAbstractObjectHeap(wasm.AbsHeapType(lead)) || types.gcRefTestAbstract && (lead == 0x6a || lead == 0x6b || lead == 0x6c || lead == 0x6d || lead == 0x6e) || types.gcRefTestConcrete && lead == 0x6b || types.gcBrOnCastNullability && lead == 0x6e) {
+	if ok && types.publicReferences && lead == 0x6f {
+		if _, err := r.S33(); err != nil {
+			return 0, err
+		}
+		return -16, nil
+	}
+	if ok && types.exception && (lead == byte(wasm.HeapExn) || lead == byte(wasm.HeapNoExn) || lead == byte(wasm.HeapFunc) || lead == byte(wasm.HeapNoFunc) || lead == byte(wasm.HeapExtern) || lead == byte(wasm.HeapNoExtern)) {
+		if _, err := r.S33(); err != nil {
+			return 0, err
+		}
+		return -16, nil
+	}
+	if ok && (types.gcRootedScalar && (rootedAbstractObjectHeap(wasm.AbsHeapType(lead)) || (lead == byte(wasm.HeapExtern) || lead == byte(wasm.HeapNoExtern))) || types.gcRefTestAbstract && (lead == 0x6a || lead == 0x6b || lead == 0x6c || lead == 0x6d || lead == 0x6e) || types.gcRefTestConcrete && lead == 0x6b || types.gcBrOnCastNullability && lead == 0x6e) {
 		if _, err := r.S33(); err != nil {
 			return 0, err
 		}
@@ -515,13 +614,15 @@ func internalExplicitReferenceTypeMode(r *wasm.Reader, typed bool, types interna
 	if err != nil {
 		return false, err
 	}
-	requiresTyped := lead == 0x64 || heap >= 0
+	requiresTyped := (lead == 0x64 || heap >= 0) && !(types.exception && (heap == -23 || heap == -12))
 	if requiresTyped && !typed {
 		return false, unsupported("reference annotation requires retained typed-reference protocol")
 	}
 	declarationExtern := block && types.declarationExtern && lead == 0x64 && heap == -17
+	publicExtern := types.publicReferences && (lead == 0x63 || typed) && (heap == -17 || heap == -13 || heap == -14)
 	gcAbstract := block && (types.gcRefTestAbstract && (heap == -15 || heap == -18 || heap == -19 || heap == -20 || heap == -21 || heap == -22 || heap == 1 || heap == 2) || types.gcBrOnCastNullability && (heap == -18 || heap == 0))
-	rootedAbstract := types.gcRootedScalar && rootedAbstractObjectHeapS33(heap)
+	rootedAbstract := types.gcRootedScalar && (rootedAbstractObjectHeapS33(heap) || heap == -20 || heap == -17 || heap == -14)
+	exceptionReference := types.exception && (heap == -23 || heap == -12 || heap == -16 || heap == -13 || heap == -17 || heap == -14)
 	runtimeSubtype := types.gcTypeSubtypingRuntimeCallCast && heap >= 0 && heap < 3 && (!types.gcTypeSubtypingFinalityCallCast || heap < 2)
 	refTestSubtype := types.gcTypeSubtypingRefTestSingle &&
 		((types.gcTypeSubtypingRefTestVariant > 0 && types.gcTypeSubtypingRefTestVariant < 4 && heap == 4) ||
@@ -531,7 +632,7 @@ func internalExplicitReferenceTypeMode(r *wasm.Reader, typed bool, types interna
 			(types.gcTypeSubtypingRefTestVariant == 7 && heap >= 0 && heap < 8) ||
 			(types.gcTypeSubtypingRefTestVariant == 8 && heap == 0) ||
 			(types.gcTypeSubtypingRefTestVariant == 9 && heap == 2))
-	if heap != -16 && !declarationExtern && !gcAbstract && !rootedAbstract && !runtimeSubtype && !refTestSubtype && !(typed && heap >= 0 && (types.function(uint32(heap)) || types.rootedStruct(uint32(heap)) || types.rootedArray(uint32(heap)))) {
+	if heap != -16 && !exceptionReference && !publicExtern && !declarationExtern && !gcAbstract && !rootedAbstract && !runtimeSubtype && !refTestSubtype && !(typed && heap >= 0 && (types.function(uint32(heap)) || types.rootedStruct(uint32(heap)) || types.rootedArray(uint32(heap)))) {
 		return false, unsupported("explicit reference type requires abstract func or an admitted function-type index")
 	}
 	return requiresTyped, nil
@@ -541,6 +642,18 @@ func internalExplicitReferenceTypeMode(r *wasm.Reader, typed bool, types interna
 // existing numeric/reference byte allowlist, and canonicalize only explicit
 // function references. Void and bare indexed block signatures stay invalid.
 func internalSelectType(r *wasm.Reader, typed bool, types internalReferenceTypes) (byte, error) {
+	if lead, ok := r.Peek(); ok && types.publicReferences && lead == 0x6f {
+		if _, err := r.Byte(); err != nil {
+			return 0, err
+		}
+		return 0x70, nil
+	}
+	if lead, ok := r.Peek(); ok && types.exception && (lead == byte(wasm.HeapExn) || lead == byte(wasm.HeapNoExn) || lead == byte(wasm.HeapFunc) || lead == byte(wasm.HeapNoFunc) || lead == byte(wasm.HeapExtern) || lead == byte(wasm.HeapNoExtern)) {
+		if _, err := r.Byte(); err != nil {
+			return 0, err
+		}
+		return 0x70, nil
+	}
 	if lead, ok := r.Peek(); ok && (lead == 0x63 || lead == 0x64) {
 		_, err := internalExplicitReferenceType(r, typed, types)
 		return 0x70, err

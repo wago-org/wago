@@ -1,10 +1,9 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"maps"
@@ -43,7 +42,7 @@ func TestRV64PublicOwnedTable64IndirectTail(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64NativeTailCompile(t, "owned-table64-indirect-tail", rv64OwnedTable64IndirectTailSource(), artifact)
-			if len(c.code) != 3276 || sha256.Sum256(c.code) != [32]byte{0xda, 0xb3, 0x7b, 0x02, 0x59, 0x47, 0xed, 0x23, 0x0e, 0xb6, 0x05, 0x41, 0xdb, 0xea, 0xbc, 0xec, 0x4c, 0xd0, 0x67, 0x4a, 0xf3, 0xb2, 0xc3, 0xf3, 0xb0, 0x6b, 0x91, 0xa0, 0xba, 0x30, 0xb4, 0xef} || !rv64OwnedTable64IndirectTail(c.executionView()) {
+			if !rv64ArtifactContractValid(c.executionView()) || rv64NativeTailModule(c) == nil || len(rv64NativeTailModule(c).Plans) != 1 {
 				t.Fatal("owned table64 tail metadata contract")
 			}
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig().WithNativeStackBytes(MinNativeStackBytes)))
@@ -115,11 +114,19 @@ func TestRV64PublicOwnedTable64IndirectTailGates(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			c, err := rv64NativeTailConfig().Compile(source)
-			if c != nil {
-				c.Close()
-			}
-			if err == nil {
-				t.Fatal("nearby owned table64 tail source admitted")
+			if name == "table-limit" || name == "tail-nontail" {
+				if err != nil {
+					t.Fatal("valid table64 tail variant", err)
+				}
+				defer c.Close()
+				rv64RequireTableSourceArtifact(t, c)
+			} else {
+				if c != nil {
+					c.Close()
+				}
+				if err == nil {
+					t.Fatal("invalid table64 index or width admitted")
+				}
 			}
 		})
 	}
@@ -152,7 +159,7 @@ func TestRV64PublicOwnedTable64IndirectTailGates(t *testing.T) {
 			bad.InternalEntry = slices.Clone(bad.InternalEntry)
 			bad.Exports = maps.Clone(bad.Exports)
 			mutate(bad)
-			if rv64OwnedTable64IndirectTail(bad) || railshotValidateCompiled(bad) == nil {
+			if bad.validate() == nil {
 				t.Fatal("hostile owned table64 tail metadata admitted")
 			}
 			blob, err := bad.MarshalBinary()

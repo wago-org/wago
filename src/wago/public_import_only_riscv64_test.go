@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -215,9 +215,21 @@ func TestRV64PublicImportOnlyStartAndBindingGates(t *testing.T) {
 						}
 						if kind != "native" {
 							exported := rv64PublicStartCompile(t, rv64PublicImportOnlyModule(nil, false, false, true, vector), artifact)
-							before := exported.codeCache.base
-							if in, err := instantiate(context.Background(), exported); in != nil || err == nil || exported.codeCache.base != before {
-								t.Fatal("host reexport escaped pre-mapping gate", in, err)
+							in, err := instantiate(context.Background(), exported)
+							if in == nil || err != nil || calls != 2 {
+								t.Fatal("host reexport construction", err, calls)
+							}
+							for i, name := range []string{"relay", "alias"} {
+								got, err := in.Invoke(name)
+								if len(got) != 0 || trap && !errors.Is(err, cause) || !trap && err != nil || calls != 3+i {
+									t.Fatal("host reexport callback", name, got, err, calls)
+								}
+								if active, valid := resolveHostCaller(expired); valid && active.valid() {
+									t.Fatal("host reexport retained expired caller")
+								}
+							}
+							if err := in.Close(); err != nil {
+								t.Fatal(err)
 							}
 						}
 					})

@@ -19,3 +19,9 @@ func railshotRetireNativeTableTargets(railshotTableEntryLease) error { return ni
 func railshotRetryNativeTableRetirement(*Instance) error             { return nil }
 
 func railshotRetryClosedNativeTableRetirement(*Instance) error { return nil }
+
+func railshotRequiresNativeHostControl(*Compiled) bool { return false }
+
+func railshotRetainedFunctionExactType(*Instance, uint64) (ValueTypeDescriptor, []DefinedTypeDescriptor, bool) {
+	return ValueTypeDescriptor{}, nil, false
+}

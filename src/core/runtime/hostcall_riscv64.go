@@ -65,8 +65,8 @@ func prepareHostResume(ctrl, trap []byte, _ uintptr, stackLimit uintptr) {
 }
 
 func resumeNative(ctrl, stack uintptr) {
-	home := uintptr(*(*uint64)(offHeapPointer(ctrl + uintptr(hcSavedLinMem))))
-	trap := uintptr(*(*uint64)(offHeapPointer(home - abi.TrapCellPtrOffset)))
+	home := uintptr(loadOffHeapU64(ctrl + uintptr(hcSavedLinMem)))
+	trap := uintptr(loadOffHeapU64(home - abi.TrapCellPtrOffset))
 	resumeNativeRV64(ctrl, trap, stack)
 }
 
@@ -87,7 +87,10 @@ func (e *Engine) validateUnregisteredHostCtrl(ptr uintptr) error {
 	if ptr < limit || ptr-limit < 16 || ptr > bridge || bridge-ptr < uintptr(ctrlFrameSize) {
 		return fmt.Errorf("jit: RV64 parked control frame is outside the active stack")
 	}
-	frame := unsafe.Slice((*byte)(offHeapPointer(ptr)), ctrlFrameSize)
+	frame := e.NativeStackRange(ptr, ctrlFrameSize)
+	if frame == nil {
+		return fmt.Errorf("jit: RV64 parked control frame has no owned stack range")
+	}
 	sp := uintptr(binary.LittleEndian.Uint64(frame))
 	ra := binary.LittleEndian.Uint64(frame[8:])
 	home := binary.LittleEndian.Uint64(frame[hcSavedLinMem:])

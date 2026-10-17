@@ -24,7 +24,10 @@ const (
 	tailRAMaxSites              = 4096
 	tailRAMaxRanges             = 1024
 	tailRARecordBytes           = 5504
-	tailRAInvocationRecordBytes = tailRARecordBytes + abi.RV64InvocationViewBytes
+	tailRAPublicResultsOffset   = tailRAArgsOffset + nativePublicImportTransportBytes
+	tailRAPublicMaskOffset      = tailRAArgsOffset + 2*nativePublicImportTransportBytes
+	tailRAPublicRecordBytes     = tailRAPublicMaskOffset + 8*8
+	tailRAInvocationRecordBytes = tailRAPublicRecordBytes + abi.RV64InvocationViewBytes
 	tailRACtrlOffset            = 160
 	tailRAArgsOffset            = 1408
 	tailRAResultsOffset         = 3456
@@ -44,6 +47,7 @@ type tailRAProofSite struct {
 	dynamic                                          *tailRADynamicSite
 	invocationContext                                bool
 	hostEntry                                        bool
+	contextOnlyTarget                                bool
 	frameBytes                                       int
 	functionIndex, sourcePC                          uint32
 	callerHome, callerContext                        uintptr
@@ -55,9 +59,13 @@ type tailRAProofSite struct {
 }
 
 func tailRAResultMask(types []wasm.ValType) ([4]uint64, int, error) {
-	var mask [4]uint64
-	sig := &wasm.CompType{Kind: wasm.CompFunc, Results: types}
-	if err := tailRASignature(sig); err != nil {
+	full, count, err := tailRAResultMaskMode(types, false)
+	return [4]uint64(full[:4]), count, err
+}
+
+func tailRAResultMaskMode(types []wasm.ValType, public bool) ([8]uint64, int, error) {
+	var mask [8]uint64
+	if err := tailRASignatureMode(&wasm.CompType{Kind: wasm.CompFunc, Results: types}, public); err != nil {
 		return mask, 0, err
 	}
 	cell := 0
@@ -73,21 +81,27 @@ func tailRAResultMask(types []wasm.ValType) ([4]uint64, int, error) {
 	return mask, cell, nil
 }
 
-func tailRASignature(sig *wasm.CompType) error {
+func tailRASignature(sig *wasm.CompType) error { return tailRASignatureMode(sig, false) }
+
+func tailRASignatureMode(sig *wasm.CompType, public bool) error {
 	if sig == nil || sig.Kind != wasm.CompFunc || len(sig.Params) > 256 || len(sig.Results) > 256 {
 		return unsupported("private tail exact signature")
+	}
+	limit := 256
+	if public {
+		limit = MaxNativeCallSlots
 	}
 	for _, list := range [][]wasm.ValType{sig.Params, sig.Results} {
 		cells := 0
 		for _, typ := range list {
-			if swarClassOf(typ) == swarInvalid && !wasm.EqualValType(typ, wasm.FuncRef) && !wasm.EqualValType(typ, wasm.ExternRef) {
+			if swarClassOf(typ) == swarInvalid && typ.Kind() != wasm.ValRef {
 				return unsupported("private tail carrier type")
 			}
 			cells++
 			if wasm.EqualValType(typ, wasm.V128) {
 				cells++
 			}
-			if cells > 256 {
+			if cells > limit {
 				return unsupported("private tail physical signature bound")
 			}
 		}
@@ -99,7 +113,7 @@ func (s *tailRAProofSite) validate() error {
 	if s == nil || s.frameBytes < callFrameHeader || s.frameBytes > MaxFrameBytes || s.frameBytes&15 != 0 || s.callerHome == 0 || s.callerHome&7 != 0 || s.callerContext == 0 || s.callerContext&7 != 0 || (!s.invocationContext && (s.stackLimit == 0 || s.stackLimit&15 != 0 || s.stackTop&15 != 0 || s.stackTop <= s.stackLimit || s.stackTop-s.stackLimit < tailRARecordBytes+16)) {
 		return unsupported("private tail site framed identities/stack")
 	}
-	if err := tailRASignature(&wasm.CompType{Kind: wasm.CompFunc, Params: s.params, Results: s.results}); err != nil {
+	if err := tailRASignatureMode(&wasm.CompType{Kind: wasm.CompFunc, Params: s.params, Results: s.results}, s.invocationContext); err != nil {
 		return err
 	}
 	if s.hostEntry {
@@ -289,7 +303,7 @@ func (e *tailRAEmitter) record(record, exit enc.Reg, s *tailRAProofSite) {
 	a.Ld(enc.Scratch0, record, 144)
 	e.fail(enc.NE, enc.X29, enc.Scratch0)
 	if e.invocationContext {
-		tailRAAddress(a, enc.X28, record, tailRARecordBytes)
+		tailRAAddress(a, enc.X28, record, e.viewOffset())
 		a.Ld(enc.X29, enc.X25, -abi.RV64InvocationViewOffset)
 		e.fail(enc.NE, enc.X28, enc.X29)
 		e.bad = append(e.bad, nativeInvocationViewGuards(a, enc.X28, 0)...)
@@ -298,33 +312,43 @@ func (e *tailRAEmitter) record(record, exit enc.Reg, s *tailRAProofSite) {
 		for _, direction := range []struct {
 			pointer, capacity int32
 			offset            int
-		}{{abi.RV64InvocationArgumentsOffset, abi.RV64InvocationArgumentBytesOffset, tailRAArgsOffset}, {abi.RV64InvocationResultsOffset, abi.RV64InvocationResultBytesOffset, tailRAResultsOffset}} {
+		}{{abi.RV64InvocationArgumentsOffset, abi.RV64InvocationArgumentBytesOffset, tailRAArgsOffset}, {abi.RV64InvocationResultsOffset, abi.RV64InvocationResultBytesOffset, e.resultsOffset()}} {
 			tailRAAddress(a, enc.X29, record, direction.offset)
 			a.Ld(enc.Scratch0, enc.X28, direction.pointer)
 			e.fail(enc.NE, enc.X29, enc.Scratch0)
 			a.Ld(enc.X29, enc.X28, direction.capacity)
-			a.Constant64(enc.Scratch0, nativeImportTransportBytes)
+			a.Constant64(enc.Scratch0, int64(e.transportBytes()))
 			e.fail(enc.NE, enc.X29, enc.Scratch0)
 		}
 	}
 	a.Ld(enc.X5, record, 88)
-	a.Constant64(enc.Scratch0, 256)
+	a.Constant64(enc.Scratch0, int64(e.transportBytes()/8))
 	e.fail(enc.LTU, enc.Scratch0, enc.X5)
 	if s != nil {
-		mask, count, _ := tailRAResultMask(s.results)
+		mask, count, _ := tailRAResultMaskMode(s.results, e.invocationContext)
 		a.Constant64(enc.Scratch0, int64(count))
 		e.fail(enc.NE, enc.X5, enc.Scratch0)
-		for i, m := range mask {
-			a.Ld(enc.X29, record, int32(112+i*8))
+		for i, m := range mask[:e.maskWords()] {
+			if offset := e.maskOffset() + i*8; offset <= 2047 {
+				a.Ld(enc.X29, record, int32(offset))
+			} else {
+				tailRAAddress(a, enc.X29, record, offset)
+				a.Ld(enc.X29, enc.X29, 0)
+			}
 			a.Constant64(enc.Scratch0, int64(m))
 			e.fail(enc.NE, enc.X29, enc.Scratch0)
 		}
 	} else {
 		// Unused bits in all four immutable masks must be zero.
-		for i := 0; i < 4; i++ {
+		for i := 0; i < e.maskWords(); i++ {
 			a.Constant64(enc.Scratch0, int64((i+1)*64))
 			full := a.BranchLong(enc.GEU, enc.X5, enc.Scratch0)
-			a.Ld(enc.X29, record, int32(112+i*8))
+			if offset := e.maskOffset() + i*8; offset <= 2047 {
+				a.Ld(enc.X29, record, int32(offset))
+			} else {
+				tailRAAddress(a, enc.X29, record, offset)
+				a.Ld(enc.X29, enc.X29, 0)
+			}
 			a.Constant64(enc.Scratch0, int64(i*64))
 			empty := a.BranchLong(enc.GEU, enc.Scratch0, enc.X5)
 			a.Sub(enc.Scratch0, enc.X5, enc.Scratch0)
@@ -340,6 +364,10 @@ func (e *tailRAEmitter) record(record, exit enc.Reg, s *tailRAProofSite) {
 }
 
 func tailRAPreflight(s tailRAProofSite, exit, finalize uintptr) ([]byte, error) {
+	return tailRAPreflightInto(s, exit, finalize, nil)
+}
+
+func tailRAPreflightInto(s tailRAProofSite, exit, finalize uintptr, code []byte) ([]byte, error) {
 	if err := s.validate(); err != nil {
 		return nil, err
 	}
@@ -347,6 +375,10 @@ func tailRAPreflight(s tailRAProofSite, exit, finalize uintptr) ([]byte, error) 
 		return nil, unsupported("private tail dispatcher addresses")
 	}
 	e := tailRAEmitter{functionIndex: s.functionIndex, pc: s.sourcePC, invocationContext: s.invocationContext}
+	e.a.B = code
+	var bad [128]int
+	var stack [16]int
+	e.bad, e.stack = bad[:0], stack[:0]
 	a := &e.a
 	// Validate current frame before reading saved RA/transport. Caller and target
 	// authentication happens before any exchange, stack or basedata write.
@@ -364,9 +396,13 @@ func tailRAPreflight(s tailRAProofSite, exit, finalize uintptr) ([]byte, error) 
 	// target anchor too before committing exchange or activation state.
 	a.Constant64(enc.Scratch0, int64(s.target.context))
 	a.Ld(enc.X29, enc.Scratch0, 16)
-	e.fail(enc.EQ, enc.X29, enc.Zero)
-	a.Ld(enc.X29, enc.X29, coreruntime.FuncRefContextOffset)
-	e.fail(enc.NE, enc.X29, enc.Scratch0)
+	if s.contextOnlyTarget {
+		e.fail(enc.NE, enc.X29, enc.Zero)
+	} else {
+		e.fail(enc.EQ, enc.X29, enc.Zero)
+		a.Ld(enc.X29, enc.X29, coreruntime.FuncRefContextOffset)
+		e.fail(enc.NE, enc.X29, enc.Scratch0)
+	}
 	a.Ld(enc.X29, enc.X25, -abi.StackFenceOffset)
 	if !s.invocationContext {
 		a.Constant64(enc.Scratch0, int64(s.stackLimit))
@@ -388,7 +424,9 @@ func tailRAPreflight(s tailRAProofSite, exit, finalize uintptr) ([]byte, error) 
 		e.bad = append(e.bad, nativeInvocationViewGuards(a, enc.X28, s.frameBytes)...)
 	}
 	if s.dynamic != nil {
-		e.dynamicNativeTarget(s.dynamic)
+		if err := e.dynamicNativeTarget(s.dynamic, s.params, s.results); err != nil {
+			return nil, err
+		}
 		// Selection uses X14/15; restore the original incoming stack cursor.
 		tailRAAddress(a, enc.X14, enc.SP, s.frameBytes)
 	}
@@ -436,7 +474,7 @@ func tailRAPreflight(s tailRAProofSite, exit, finalize uintptr) ([]byte, error) 
 	tailRAAddress(a, enc.X29, enc.X14, tailRAArgsOffset)
 	a.Ld(enc.Scratch0, enc.SP, 16)
 	e.fail(enc.NE, enc.X29, enc.Scratch0)
-	tailRAAddress(a, enc.X29, enc.X14, tailRAResultsOffset)
+	tailRAAddress(a, enc.X29, enc.X14, e.resultsOffset())
 	a.Ld(enc.Scratch0, enc.SP, 8)
 	e.fail(enc.NE, enc.X29, enc.Scratch0)
 	e.patch(done)
@@ -446,6 +484,10 @@ func tailRAPreflight(s tailRAProofSite, exit, finalize uintptr) ([]byte, error) 
 }
 
 func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
+	return tailRAFinalizeInto(s, exit, nil)
+}
+
+func tailRAFinalizeInto(s tailRAProofSite, exit uintptr, code []byte) ([]byte, error) {
 	if err := s.validate(); err != nil {
 		return nil, err
 	}
@@ -453,11 +495,17 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 		return nil, unsupported("private tail exit address")
 	}
 	e := tailRAEmitter{functionIndex: s.functionIndex, pc: s.sourcePC, invocationContext: s.invocationContext}
+	e.a.B = code
+	var bad [128]int
+	var stack [16]int
+	e.bad, e.stack = bad[:0], stack[:0]
 	a := &e.a
 	if s.dynamic != nil {
 		// Reload the full-width reference while its framed spill still exists.
 		// Repeat authentication before the first record/stack/basedata write.
-		e.dynamicNativeTarget(s.dynamic)
+		if err := e.dynamicNativeTarget(s.dynamic, s.params, s.results); err != nil {
+			return nil, err
+		}
 	}
 	// No park/callback is permitted between preflight and this frozen finalizer.
 	// Reload original header0, never the linked preflight's live RA.
@@ -487,7 +535,7 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 	a.Sd(enc.Scratch0, enc.SP, 72)
 	a.Constant64(enc.Scratch0, int64(tailRARecordMagic))
 	a.Sd(enc.Scratch0, enc.SP, 80)
-	mask, count, _ := tailRAResultMask(s.results)
+	mask, count, _ := tailRAResultMaskMode(s.results, e.invocationContext)
 	a.Constant64(enc.Scratch0, int64(count))
 	a.Sd(enc.Scratch0, enc.SP, 88)
 	a.Constant64(enc.Scratch0, int64(e.recordBytes()))
@@ -495,9 +543,14 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 	if s.invocationContext {
 		a.Sd(enc.X15, enc.SP, 152)
 	}
-	for i, m := range mask {
+	for i, m := range mask[:e.maskWords()] {
 		a.Constant64(enc.Scratch0, int64(m))
-		a.Sd(enc.Scratch0, enc.SP, int32(112+i*8))
+		if offset := e.maskOffset() + i*8; offset <= 2047 {
+			a.Sd(enc.Scratch0, enc.SP, int32(offset))
+		} else {
+			tailRAAddress(a, enc.X29, enc.SP, offset)
+			a.Sd(enc.Scratch0, enc.X29, 0)
+		}
 	}
 	// Bounded raw first-hop copy; staged source is outside the discarded frame
 	// and the new record. Subsequent hops already stage into record.args.
@@ -554,7 +607,7 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 		// First hop retains its exact original view; reuse inherits this
 		// record's own view so nested ordinary calls keep full transport.
 		a.Ld(enc.X15, enc.X25, -abi.RV64InvocationViewOffset)
-		nativeInvocationActivation(a, enc.X15, tailRARecordBytes, tailRAArgsOffset, tailRAResultsOffset)
+		nativeInvocationActivation(a, enc.X15, e.viewOffset(), tailRAArgsOffset, e.resultsOffset(), e.transportBytes())
 		if s.hostEntry || s.dynamic != nil {
 			// A qualified host wrapper saves/restores RA, but has no guest
 			// prologue to initialize the authenticated view's first return.
@@ -580,7 +633,7 @@ func tailRAFinalize(s tailRAProofSite, exit uintptr) ([]byte, error) {
 	a.Sd(enc.Scratch0, enc.X11, -40)
 	a.Addi(enc.X25, enc.X11, 0)
 	tailRAAddress(a, enc.X10, enc.SP, tailRAArgsOffset)
-	tailRAAddress(a, enc.X13, enc.SP, tailRAResultsOffset)
+	tailRAAddress(a, enc.X13, enc.SP, e.resultsOffset())
 	a.Constant64(enc.RA, int64(exit))
 	if s.dynamic != nil {
 		a.Addi(enc.X28, enc.X16, 0)
@@ -608,9 +661,9 @@ func tailRAExitCodeInvocation(invocation bool) ([]byte, error) {
 	a.Addi(enc.X14, enc.SP, 0)
 	e.record(enc.X14, enc.X9, nil)
 	a.Ld(enc.X5, enc.SP, 88)
-	tailRAAddress(a, enc.X6, enc.SP, tailRAResultsOffset)
+	tailRAAddress(a, enc.X6, enc.SP, e.resultsOffset())
 	a.Ld(enc.X7, enc.SP, 40)
-	a.Addi(enc.X9, enc.SP, 112)
+	tailRAAddress(a, enc.X9, enc.SP, e.maskOffset())
 	a.Ld(enc.X14, enc.X9, 0)
 	a.Addi(enc.X15, enc.Zero, 64)
 	finished := a.BranchLong(enc.EQ, enc.X5, enc.Zero)
@@ -684,9 +737,12 @@ func (f *integerEmitter) tailRAProofCall(site uint32, sig *wasm.CompType, base i
 		f.err = unsupported("private tail proof guest contract")
 		return
 	}
-	if err := tailRASignature(sig); err != nil {
-		f.err = err
-		return
+	if err := tailRASignatureMode(sig, f.mode.invocationContext); err != nil {
+		primitive := f.mode.primitiveTailTypes
+		if primitive == nil || !primitiveReferenceTargetWithTypes(sig, internalReferenceTypes{sourceDirectory: *primitive, publicReferences: true, decodedSWAR: true}, true) || swarSignatureSlots(sig.Params) > MaxNativeCallSlots || swarSignatureSlots(sig.Results) > MaxNativeCallSlots {
+			f.err = err
+			return
+		}
 	}
 	a := &f.a
 	// Prior scalar/vector operations may use every transport register. The

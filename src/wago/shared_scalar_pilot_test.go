@@ -1,4 +1,4 @@
-//go:build (amd64 || arm64 || (linux && riscv64 && wago_rv64_experimental)) && !tinygo
+//go:build (amd64 || arm64 || (linux && riscv64)) && !tinygo
 
 package wago
 
@@ -152,12 +152,6 @@ func TestSharedScalarMixedBankFallback(t *testing.T) {
 	for _, typ := range []wasm.ValType{wasm.F32, wasm.F64, wasm.V128} {
 		m := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, typ}, []wasm.ValType{wasm.I32}))), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 1, 0x1a, 0x20, 0, 0x41, 1, 0x6a, 0x0b}))))
 		c, e := Compile(nil, m)
-		if runtime.GOARCH == "riscv64" && wasm.EqualValType(typ, wasm.V128) {
-			if e == nil || c != nil {
-				t.Fatal("RV64 admitted pending SIMD lowering", c, e)
-			}
-			continue
-		}
 		if e != nil {
 			t.Fatal(e)
 		}

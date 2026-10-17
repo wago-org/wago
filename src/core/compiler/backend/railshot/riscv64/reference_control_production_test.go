@@ -3,7 +3,6 @@
 package riscv64
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
@@ -55,14 +54,13 @@ func TestReferenceControlProductionDeclarations(t *testing.T) {
 									opts.ImportBindings = hostImportBindings(1)
 								}
 								image, err := CompileModuleWith(m, opts)
-								allowed := !witness || typed && (defined || !imported)
-								if !allowed {
-									if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
-										t.Fatal("closed typed declaration", typed, err, pressure)
+								if witness && !typed && (defined || imported) {
+									if image != nil || err == nil || pressure != 0 {
+										t.Fatal("typed declaration lacks retained reference authority", err, pressure)
 									}
 									continue
 								}
-								if image == nil || err != nil || image.NativeReferenceControl != (witness && defined) || image.NativeReferenceCalls || image.CodeImage != nil || pressure != 1 {
+								if image == nil || err != nil || typed && defined && image.NativeReferenceControl != witness || image.NativeReferenceCalls || image.CodeImage != nil || pressure != 1 {
 									t.Fatal("unused declaration witness", typed, err, pressure)
 								}
 							}
@@ -93,10 +91,11 @@ func TestReferenceControlProductionNumericCallableBoundary(t *testing.T) {
 					m.Code[0].Locals.Runs = []wasm.LocalRun{{Count: 1, Type: wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 1}), false))}}
 				}
 				pressure := 0
-				image, err := CompileModuleWith(m, referenceControlProductionOptions(true, &pressure))
-				if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
-					t.Fatal("reference control reached callable/heap ABI", err, pressure)
+				opts := referenceControlProductionOptions(true, &pressure)
+				if binding == "import" {
+					opts.ImportBindings = hostImportBindings(1)
 				}
+				checkPublicPrimitiveModule(t, m, opts)
 			})
 		}
 	}
@@ -136,11 +135,8 @@ func TestReferenceControlProductionAggregateTypeBudget(t *testing.T) {
 				}
 				pressure := 0
 				image, err := CompileModuleWith(m, referenceControlProductionOptions(false, &pressure))
-				if over {
-					if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
-						t.Fatal("over-budget declarations staged", err, pressure)
-					}
-				} else if image == nil || err != nil || pressure != 1 {
+				// Both sides of the former private 1 MiB budget fit the public limit.
+				if image == nil || err != nil || pressure != 1 {
 					t.Fatal("exact aggregate type budget", err, pressure)
 				}
 			})

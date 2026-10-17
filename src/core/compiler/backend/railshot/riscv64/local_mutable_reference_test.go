@@ -44,7 +44,7 @@ func TestLocalMutableReferenceSourceAdmission(t *testing.T) {
 	}
 }
 
-func TestLocalMutableReferenceWholeModuleRejections(t *testing.T) {
+func TestLocalMutableReferenceWholeModuleValidation(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for name, mutate := range map[string]func(*wasm.Module){
 			"export": func(m *wasm.Module) {
@@ -73,11 +73,7 @@ func TestLocalMutableReferenceWholeModuleRejections(t *testing.T) {
 			t.Run(name+map[bool]string{false: "-scalar", true: "-swar"}[vector], func(t *testing.T) {
 				m := localTailDecode(t, localMutableReferenceSource(vector))
 				mutate(m)
-				pressure := 0
-				image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, MemoryPressure: func() { pressure++ }})
-				if err == nil || image != nil || pressure != 0 {
-					t.Fatal("unsupported local reference shape staged", err, pressure)
-				}
+				checkPublicPrimitiveModule(t, m, CompileOptions{Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceCalls: true})
 			})
 		}
 	}

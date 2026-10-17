@@ -436,10 +436,10 @@ func TestRV64RootedImportedNumericTailCompiles(t *testing.T) {
 	}
 }
 
-func TestRV64RootedImportedReferenceTailRejected(t *testing.T) {
+func TestRV64RootedImportedReferenceTailAdmitted(t *testing.T) {
 	source := rv64RootedImportedNumericTailModule(false, true)
-	if AdmitGCRootedScalarSource(source) {
-		t.Fatal("rooted imported collector-reference tail was admitted")
+	if !AdmitGCRootedScalarSource(source) {
+		t.Fatal("rooted imported collector-reference tail was rejected")
 	}
 }
 
@@ -522,9 +522,9 @@ func TestRV64RootedIndirectNumericTailCompiles(t *testing.T) {
 	}
 }
 
-func TestRV64RootedIndirectReferenceTailRejected(t *testing.T) {
-	if AdmitGCRootedScalarSource(rv64RootedIndirectNumericTailModule(false, true)) {
-		t.Fatal("rooted indirect collector-reference tail was admitted")
+func TestRV64RootedIndirectReferenceTailAdmitted(t *testing.T) {
+	if !AdmitGCRootedScalarSource(rv64RootedIndirectNumericTailModule(false, true)) {
+		t.Fatal("rooted indirect collector-reference tail was rejected")
 	}
 }
 
@@ -607,9 +607,9 @@ func TestRV64RootedReferenceNumericTailCompiles(t *testing.T) {
 	}
 }
 
-func TestRV64RootedReferenceCollectorTailRejected(t *testing.T) {
-	if AdmitGCRootedScalarSource(rv64RootedReferenceNumericTailModule(false, true)) {
-		t.Fatal("rooted reference collector tail was admitted")
+func TestRV64RootedReferenceCollectorTailAdmitted(t *testing.T) {
+	if !AdmitGCRootedScalarSource(rv64RootedReferenceNumericTailModule(false, true)) {
+		t.Fatal("rooted reference collector tail was rejected")
 	}
 }
 
@@ -862,17 +862,17 @@ func TestRV64RootedReferenceCollectorVectorCallCompiles(t *testing.T) {
 	}
 }
 
-func TestRV64RootedReferenceCollectorCallRejectsPublicCallableTable(t *testing.T) {
-	if AdmitGCRootedScalarSource(rv64RootedReferenceCollectorCallModule(true)) {
-		t.Fatal("collector call_ref with externally mutable callable table was admitted")
+func TestRV64RootedReferenceCollectorCallPublicTableUsesContextGuard(t *testing.T) {
+	if !AdmitGCRootedScalarSource(rv64RootedReferenceCollectorCallModule(true)) {
+		t.Fatal("collector call_ref with runtime context guard was rejected")
 	}
 	m, err := wasm.DecodeModule(rv64RootedReferenceCollectorCallModule(false))
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.Exports = append(m.Exports, wasm.Export{Name: "target", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 0}})
-	if admitRV64GCRootedScalarModule(m) {
-		t.Fatal("collector call_ref with externally supplied reference parameter was admitted")
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("collector call_ref with guarded reference parameter was rejected")
 	}
 }
 
@@ -2760,8 +2760,12 @@ func TestRV64RootedAggregateSubtypeTableInitializerCompiles(t *testing.T) {
 		})
 	}
 	for _, nested := range []bool{false, true} {
-		if err := AdmitProductionSource(rv64RootedAggregateSubtypeTableInitializerModule(nested, true)); err == nil {
-			t.Fatalf("unrelated aggregate constructor escaped subtype table admission (nested=%t)", nested)
+		m, err := wasm.DecodeModule(rv64RootedAggregateSubtypeTableInitializerModule(nested, true))
+		if err == nil {
+			err = wasm.ValidateModule(m)
+		}
+		if err == nil {
+			t.Fatalf("unrelated aggregate constructor passed table initializer validation (nested=%t)", nested)
 		}
 	}
 }
@@ -3858,8 +3862,8 @@ func TestRV64RootedScalarTypeWireDistinguishesFieldCountFromRecGroup(t *testing.
 		t.Fatalf("78-field struct source rejected: %v", err)
 	}
 	explicitRec := append([]byte{0x4e, 0x01}, fields...)
-	if err := AdmitProductionSource(module(explicitRec, function)); err == nil {
-		t.Fatal("explicit rec-group wrapper escaped rooted scalar wire admission")
+	if err := AdmitProductionSource(module(explicitRec, function)); err != nil {
+		t.Fatal("valid explicit rec-group wrapper was rejected", err)
 	}
 }
 
@@ -3905,8 +3909,23 @@ func TestRV64RootedScalarTypeWireBoundsRecursiveGroups(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if admitRV64GCRootedScalarTypeWire(wasmtest.Vec(group, function)) {
-				t.Fatal("invalid recursive group escaped raw type admission")
+			payload := wasmtest.Vec(group, function)
+			valid := name != "out-of-group-forward"
+			m, err := wasm.DecodeModule(wasmtest.Module(wasmtest.Section(1, payload)))
+			if err == nil {
+				err = wasm.ValidateModule(m)
+			}
+			if valid {
+				if err != nil {
+					t.Fatal("valid recursive group failed validation", err)
+				}
+				if name != "empty" && name != "exact-member" && !admitRV64GCRootedScalarTypeWire(payload) {
+					t.Fatal("supported recursive group rejected")
+				}
+				// Empty groups are inert. Exact reference extensions use their
+				// separate feature gate rather than this rooted scalar classifier.
+			} else if err == nil {
+				t.Fatal("invalid recursive group passed validation")
 			}
 		})
 	}
@@ -3939,8 +3958,12 @@ func TestRV64RootedScalarTypeWireAcceptsFlatAggregateSubtypes(t *testing.T) {
 		"function":     {0x4f, 0x01, 0x00, 0x60, 0x00, 0x00},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if err := AdmitProductionSource(module(open, bad, function)); err == nil {
-				t.Fatal("invalid flat aggregate subtype escaped wire admission")
+			m, err := wasm.DecodeModule(module(open, bad, function))
+			if err == nil {
+				err = wasm.ValidateModule(m)
+			}
+			if err == nil {
+				t.Fatal("invalid flat aggregate subtype passed validation")
 			}
 		})
 	}
@@ -4512,8 +4535,8 @@ func TestRV64RootedImportedAbstractGlobalsAdmitted(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Imports[0].Type = wasm.NewGlobalExternType(wasm.GlobalType{Type: wasm.RefVal(wasm.Ref(false, wasm.AbsHeap(wasm.HeapAny), false))})
-	if admitRV64GCRootedScalarModule(m) {
-		t.Fatal("non-null abstract collector-reference global import was admitted")
+	if !admitRV64GCRootedScalarModule(m) {
+		t.Fatal("non-null abstract collector-reference global import was not admitted")
 	}
 }
 
@@ -4867,5 +4890,21 @@ func TestRV64RootedScalarI31TestCastCompiles(t *testing.T) {
 	}
 	if len(compiled.Code) == 0 || plan.SafepointCount() != 1 {
 		t.Fatalf("code=%d safepoints=%d", len(compiled.Code), plan.SafepointCount())
+	}
+}
+
+func TestRootedScalarHelperProfileIgnoresAbstractOpsWithoutAggregateTypes(t *testing.T) {
+	m := &wasm.Module{
+		Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
+		Code:  []wasm.Func{{BodyBytes: []byte{0xfb, 0x14, byte(wasm.HeapI31), 0x0b}}},
+	}
+	structs, arrays, ok := rootedScalarHelperProfile(m)
+	if !ok || structs || arrays {
+		t.Fatalf("helper profile = %v/%v/%v, want false/false/true", structs, arrays, ok)
+	}
+	m.Types = append(m.Types, wasm.RecType{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompStruct}}}})
+	structs, arrays, ok = rootedScalarHelperProfile(m)
+	if !ok || !structs || arrays {
+		t.Fatalf("aggregate helper profile = %v/%v/%v, want true/false/true", structs, arrays, ok)
 	}
 }

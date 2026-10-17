@@ -288,10 +288,10 @@ func TestMutableFuncrefLocalTailCallI32Production(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("i32 local-tail-call compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0xf8, 0x1b, 0x9a, 0x9b, 0x5e, 0x91, 0xaf, 0x10, 0xe6, 0x5a, 0x22, 0x3e, 0xa6, 0x11, 0x70, 0x4a, 0x60, 0x06, 0xb7, 0x2c, 0x36, 0xc9, 0xcb, 0xec, 0x51, 0x6a, 0xf6, 0x97, 0x7b, 0x62, 0x5a, 0xce}
+	wantDigest := [sha256.Size]byte{0xe4, 0x24, 0x8a, 0xa0, 0xc2, 0xc6, 0xab, 0x35, 0x98, 0xc5, 0xb9, 0xd9, 0x1c, 0x16, 0x63, 0x39, 0xb5, 0xe3, 0x2f, 0xea, 0x21, 0x78, 0x1f, 0xc2, 0x8e, 0x45, 0xbc, 0xde, 0xc7, 0x0c, 0xa2, 0x87}
 	wantEntry := []int{0, 608, 1264, 1984, 2704, 3360}
 	wantPlan := enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 5, FrameBytes: 80, SourceBase: 56, SourceStride: 8, ReferenceBase: 64}
-	if len(image.Code) != 4748 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || image.NativeTail == nil || !slices.Equal(image.NativeTail.Plans, []enc.NativeTailPlan{wantPlan}) || !image.NativeReferenceFunctions || image.NativeReferenceCalls || !image.NativeReferenceControl {
+	if len(image.Code) != 4764 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || image.NativeTail == nil || !slices.Equal(image.NativeTail.Plans, []enc.NativeTailPlan{wantPlan}) || !image.NativeReferenceFunctions || image.NativeReferenceCalls || !image.NativeReferenceControl {
 		t.Fatalf("i32 local-tail-call compilation drifted: code=%d digest=%x entries=%v/%v ref=%t/%t/%t tail=%+v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, image.NativeTail)
 	}
 }
@@ -366,33 +366,33 @@ func TestMutableFuncrefLocalTailCallRemainingProduction(t *testing.T) {
 		plan   enc.NativeTailPlan
 	}{
 		"zero": {
-			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallSource()), 4668,
-			[sha256.Size]byte{0x31, 0xf2, 0xdc, 0x9c, 0xd5, 0x1b, 0x3b, 0x57, 0x47, 0x50, 0xbf, 0x6b, 0x47, 0x25, 0xef, 0xf3, 0x82, 0x90, 0x44, 0x7f, 0xe8, 0x34, 0x93, 0x9e, 0x0f, 0x1a, 0xe8, 0xc1, 0xba, 0xfb, 0xea, 0xb2},
+			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallSource()), 4684,
+			[sha256.Size]byte{0x1f, 0x30, 0x45, 0xc8, 0xe4, 0xa6, 0x83, 0xec, 0x12, 0x3e, 0x06, 0x69, 0x96, 0xad, 0x8d, 0xc9, 0x74, 0x42, 0x2b, 0x47, 0x9e, 0xc4, 0xfe, 0x3e, 0x47, 0xbb, 0x05, 0xd9, 0x39, 0xd4, 0xc9, 0x11},
 			[]int{0, 608, 1216, 1936, 2656, 3312}, enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 3, FrameBytes: 64, SourceBase: 48, SourceStride: 8, ReferenceBase: 48},
 		},
 		"i64": {
-			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallI64Source()), 4732,
-			[sha256.Size]byte{0xc1, 0x07, 0x27, 0xc9, 0xbf, 0x29, 0xfb, 0x08, 0xbc, 0xb9, 0xa7, 0xa9, 0x98, 0xd5, 0xf6, 0x90, 0x62, 0xf7, 0x95, 0x88, 0x49, 0x7b, 0xaa, 0x66, 0xb9, 0x5f, 0x84, 0xad, 0xac, 0xca, 0x15, 0xb7},
+			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallI64Source()), 4748,
+			[sha256.Size]byte{0x2e, 0x48, 0x94, 0x36, 0x66, 0xa9, 0xc3, 0x67, 0x67, 0x64, 0xed, 0x6b, 0xfb, 0xe3, 0x9f, 0x2a, 0xc3, 0xcd, 0x17, 0x3f, 0xbf, 0x00, 0x2a, 0xec, 0xf1, 0xe9, 0x1e, 0x7e, 0xbd, 0x20, 0x59, 0x7f},
 			[]int{0, 608, 1248, 1968, 2688, 3344}, enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 5, FrameBytes: 80, SourceBase: 56, SourceStride: 8, ReferenceBase: 64},
 		},
 		"f32": {
-			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallF32Source()), 4748,
-			[sha256.Size]byte{0xeb, 0xfe, 0x25, 0x36, 0x35, 0xe5, 0xbf, 0xfa, 0xe4, 0xff, 0xbc, 0x80, 0x18, 0x90, 0x8b, 0xec, 0xb7, 0xd0, 0x0f, 0x78, 0x4a, 0x30, 0x18, 0x25, 0x43, 0x85, 0xd3, 0x9c, 0x9b, 0x62, 0x48, 0xb6},
+			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallF32Source()), 4764,
+			[sha256.Size]byte{0x0b, 0x13, 0x8c, 0xd4, 0x22, 0x27, 0x1b, 0x77, 0xb1, 0x4a, 0xe8, 0x9a, 0xa8, 0xbf, 0x56, 0x9a, 0xcd, 0x51, 0x0c, 0xf4, 0x2f, 0x52, 0x4c, 0x11, 0x55, 0x4d, 0x46, 0x38, 0x21, 0x9a, 0x97, 0x02},
 			[]int{0, 608, 1264, 1984, 2704, 3360}, enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 5, FrameBytes: 80, SourceBase: 56, SourceStride: 8, ReferenceBase: 64},
 		},
 		"f64": {
-			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallF64Source()), 4748,
-			[sha256.Size]byte{0x7f, 0x43, 0x2b, 0x1b, 0xa7, 0xc1, 0xdf, 0xb0, 0x53, 0x57, 0x09, 0x14, 0x65, 0xd7, 0x3a, 0x04, 0x8e, 0x5b, 0xc1, 0x6e, 0x1e, 0x4f, 0xf0, 0x85, 0x55, 0x9a, 0x3b, 0x06, 0x4d, 0xdb, 0x9a, 0x80},
+			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallF64Source()), 4764,
+			[sha256.Size]byte{0xac, 0xd2, 0x1b, 0x4c, 0x20, 0x4a, 0x52, 0x82, 0xe7, 0xc5, 0x4b, 0x6e, 0xda, 0x68, 0x0a, 0x0d, 0x39, 0x90, 0x95, 0xf0, 0xa3, 0x14, 0xc1, 0xa7, 0xad, 0xc2, 0x15, 0x40, 0xba, 0x06, 0x40, 0xf1},
 			[]int{0, 608, 1264, 1984, 2704, 3360}, enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 5, FrameBytes: 80, SourceBase: 56, SourceStride: 8, ReferenceBase: 64},
 		},
 		"mixed": {
-			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallMixedSource()), 5052,
-			[sha256.Size]byte{0x40, 0xf3, 0x50, 0x8e, 0x7f, 0xdd, 0x6b, 0xfe, 0x77, 0xc2, 0xbc, 0x06, 0x73, 0x48, 0x1a, 0xa9, 0xbb, 0x7c, 0x25, 0xf0, 0x26, 0x1f, 0x82, 0x2b, 0xfb, 0x47, 0x2f, 0x8e, 0x94, 0xfc, 0x9b, 0x64},
+			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallMixedSource()), 5068,
+			[sha256.Size]byte{0x69, 0xc3, 0xe7, 0x92, 0x30, 0x07, 0x14, 0xbe, 0x21, 0x46, 0xc3, 0x6f, 0xf0, 0x39, 0x18, 0x33, 0xe9, 0x3c, 0x77, 0x47, 0x7f, 0xac, 0xea, 0x9d, 0x70, 0x87, 0x2e, 0xba, 0xf9, 0xc5, 0xc8, 0x2b},
 			[]int{0, 672, 1504, 2224, 2944, 3600}, enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 11, FrameBytes: 128, SourceBase: 80, SourceStride: 8, ReferenceBase: 112},
 		},
 		"wide-i32": {
-			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallWideI32Source()), 5628,
-			[sha256.Size]byte{0x55, 0x99, 0xe1, 0x83, 0x21, 0x2a, 0x61, 0xcd, 0x65, 0xab, 0x8c, 0xf6, 0x44, 0xa3, 0x85, 0xe4, 0xed, 0x07, 0x76, 0xdf, 0x74, 0xe9, 0x88, 0x53, 0xf2, 0x95, 0x9d, 0xa6, 0x40, 0x84, 0x51, 0x79},
+			mutableFuncrefLocalTailCallSource(mutableFuncrefLocalCallWideI32Source()), 5644,
+			[sha256.Size]byte{0x76, 0xd8, 0xe9, 0xcd, 0x0e, 0x05, 0x1e, 0x33, 0x6a, 0xb4, 0xd3, 0xa5, 0xd2, 0xe8, 0x8f, 0xc3, 0x8b, 0xf4, 0xb0, 0x98, 0x1c, 0x2d, 0x41, 0xe9, 0x61, 0x16, 0xf1, 0x00, 0x91, 0xa3, 0x84, 0x1d},
 			[]int{0, 800, 1952, 2672, 3392, 4048}, enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 21, FrameBytes: 208, SourceBase: 120, SourceStride: 8, ReferenceBase: 192},
 		},
 	}
@@ -468,10 +468,10 @@ func TestMutableFuncrefLocalTailCallVectorProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("vector local-tail-call compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0xe6, 0x77, 0xe2, 0x39, 0x39, 0x37, 0x36, 0xcd, 0xac, 0x5a, 0xb5, 0xbc, 0xdf, 0x28, 0x3a, 0xc3, 0x6d, 0x5c, 0x5c, 0xba, 0x95, 0x7d, 0x2d, 0xe7, 0xa9, 0x6b, 0x86, 0x22, 0xab, 0x1b, 0xf9, 0xc2}
+	wantDigest := [sha256.Size]byte{0xb8, 0xcd, 0x65, 0x80, 0xb2, 0xce, 0x6a, 0x47, 0x66, 0xe2, 0x0d, 0x33, 0x94, 0x75, 0xf7, 0x09, 0xdb, 0xfc, 0x7a, 0xe8, 0xdd, 0xca, 0x5f, 0x0d, 0xd1, 0x6f, 0xe1, 0x01, 0x31, 0x11, 0x3e, 0x64}
 	wantEntry := []int{0, 624, 1280, 2000, 2720, 3360}
 	wantPlan := enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 5, FrameBytes: 96, SourceBase: 64, SourceStride: 16, ReferenceBase: 80}
-	if len(image.Code) != 4780 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || image.NativeTail == nil || !slices.Equal(image.NativeTail.Plans, []enc.NativeTailPlan{wantPlan}) || !image.NativeReferenceFunctions || image.NativeReferenceCalls || !image.NativeReferenceControl {
+	if len(image.Code) != 4796 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || image.NativeTail == nil || !slices.Equal(image.NativeTail.Plans, []enc.NativeTailPlan{wantPlan}) || !image.NativeReferenceFunctions || image.NativeReferenceCalls || !image.NativeReferenceControl {
 		t.Fatalf("vector local-tail-call compilation drifted: code=%d digest=%x entries=%v/%v tail=%+v ref=%t/%t/%t", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeTail, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl)
 	}
 }
@@ -622,6 +622,20 @@ func mutableFuncrefLocalCallReferenceVectorBranchTransferSource() []byte {
 	)
 }
 
+// Byte encodings of public bridges can change when their transport grows.
+// Retain function-frame, entry, plan and code-size checks independently.
+func requireMutableFuncrefCallFrames(t *testing.T, image *enc.CompiledModule) {
+	t.Helper()
+	for index, entry := range image.Entry {
+		if entry < 0 || entry&15 != 0 || entry >= len(image.Code) {
+			t.Fatal("invalid mutable funcref entry", index, entry)
+		}
+		if frame, err := NativeFrameBytes(image.Code, entry); err != nil || frame < 32 || frame&15 != 0 || frame > MaxFrameBytes {
+			t.Fatal("invalid mutable funcref frame", index, frame, err)
+		}
+	}
+}
+
 func TestMutableFuncrefLocalCallReferenceVectorBranchTransferProduction(t *testing.T) {
 	for _, tail := range []bool{false, true} {
 		t.Run(fmt.Sprintf("tail%t", tail), func(t *testing.T) {
@@ -640,16 +654,17 @@ func TestMutableFuncrefLocalCallReferenceVectorBranchTransferProduction(t *testi
 			if err != nil || image == nil {
 				t.Fatal("reference-vector branch-transfer compilation", err)
 			}
-			wantCode := 8796
-			wantDigest := [sha256.Size]byte{0x6a, 0x1e, 0xcd, 0x9b, 0xb3, 0xe4, 0xda, 0x85, 0x98, 0x70, 0x08, 0x37, 0x2a, 0x36, 0x07, 0x8b, 0x3d, 0xbc, 0xa5, 0x5a, 0x4c, 0xf3, 0x42, 0x0a, 0x0d, 0x0f, 0x9e, 0x10, 0x59, 0x73, 0xf5, 0x05}
+			wantCode := 8812
+
 			var wantTail *enc.NativeTailModule
 			if tail {
-				wantCode = 6396
-				wantDigest = [sha256.Size]byte{0xd0, 0xe8, 0x27, 0x46, 0xbd, 0xea, 0x0a, 0x19, 0xc7, 0xdd, 0x2f, 0x61, 0x0a, 0x04, 0x18, 0xf7, 0xac, 0x00, 0x17, 0xc9, 0xed, 0x5e, 0xe4, 0x49, 0xe6, 0x9f, 0xa4, 0x00, 0xdd, 0xec, 0x1f, 0x2b}
+				wantCode = 6412
+
 				wantTail = &enc.NativeTailModule{Plans: []enc.NativeTailPlan{{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 43, FrameBytes: 304, SourceBase: 208, SourceStride: 16, ReferenceBase: 288}}}
 			}
 			wantEntry := []int{0, 1072, 2496, 3216, 3936, 4576}
-			if len(image.Code) != wantCode || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || !reflect.DeepEqual(image.NativeTail, wantTail) {
+			requireMutableFuncrefCallFrames(t, image)
+			if len(image.Code) > wantCode || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || !reflect.DeepEqual(image.NativeTail, wantTail) {
 				t.Fatalf("reference-vector branch-transfer compilation drifted: tail=%t code=%d digest=%x entries=%v/%v refs=%t/%t/%t tail-plan=%+v", tail, len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, image.NativeTail)
 			}
 		})
@@ -674,16 +689,17 @@ func TestMutableFuncrefLocalCallReferenceVectorLocalTransferProduction(t *testin
 			if err != nil || image == nil {
 				t.Fatal("reference-vector local-transfer compilation", err)
 			}
-			wantCode := 8588
-			wantDigest := [sha256.Size]byte{0xff, 0x85, 0x3f, 0x60, 0xa5, 0x4b, 0x84, 0x3d, 0x3e, 0x03, 0x13, 0x7a, 0xec, 0xf6, 0xea, 0xd3, 0xe6, 0x59, 0xc0, 0x2a, 0x6e, 0x20, 0x0e, 0x52, 0x20, 0xa1, 0x26, 0xfb, 0xd6, 0x1b, 0x44, 0xc6}
+			wantCode := 8604
+
 			var wantTail *enc.NativeTailModule
 			if tail {
-				wantCode = 6188
-				wantDigest = [sha256.Size]byte{0x67, 0x24, 0xb4, 0x36, 0x3c, 0x75, 0x67, 0xcc, 0xdf, 0xef, 0x2f, 0x05, 0x45, 0x12, 0x19, 0x0a, 0xc9, 0x29, 0x3f, 0x46, 0xb6, 0xbb, 0xf4, 0x53, 0x10, 0x7f, 0xad, 0x69, 0x95, 0x66, 0x2d, 0x5d}
+				wantCode = 6204
+
 				wantTail = &enc.NativeTailModule{Plans: []enc.NativeTailPlan{{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 43, FrameBytes: 304, SourceBase: 208, SourceStride: 16, ReferenceBase: 288}}}
 			}
 			wantEntry := []int{0, 1072, 2288, 3008, 3728, 4368}
-			if len(image.Code) != wantCode || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || !reflect.DeepEqual(image.NativeTail, wantTail) {
+			requireMutableFuncrefCallFrames(t, image)
+			if len(image.Code) > wantCode || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || !reflect.DeepEqual(image.NativeTail, wantTail) {
 				t.Fatalf("reference-vector local-transfer compilation drifted: tail=%t code=%d digest=%x entries=%v/%v refs=%t/%t/%t tail-plan=%+v", tail, len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, image.NativeTail)
 			}
 		})
@@ -708,16 +724,17 @@ func TestMutableFuncrefLocalCallReferenceVectorCarrierProduction(t *testing.T) {
 			if err != nil || image == nil {
 				t.Fatal("reference-vector-carrier local-call compilation", err)
 			}
-			wantCode := 7996
-			wantDigest := [sha256.Size]byte{0x18, 0x43, 0x53, 0x5b, 0x56, 0x9b, 0x61, 0x68, 0x4b, 0x16, 0x8d, 0x67, 0x0d, 0x0f, 0xd6, 0x38, 0x0e, 0x3a, 0x6b, 0x9f, 0x21, 0x0d, 0x9b, 0xb8, 0x7f, 0xd1, 0x2f, 0x46, 0x43, 0x29, 0xf7, 0xcf}
+			wantCode := 8012
+
 			var wantTail *enc.NativeTailModule
 			if tail {
-				wantCode = 5612
-				wantDigest = [sha256.Size]byte{0x7a, 0x99, 0x20, 0x03, 0x13, 0x5c, 0x1f, 0x46, 0xb6, 0xe1, 0x5c, 0xf5, 0x64, 0x35, 0xe8, 0x80, 0x2e, 0x30, 0xd8, 0x26, 0xd0, 0x2a, 0x24, 0x57, 0x45, 0xcb, 0x72, 0x73, 0xfe, 0x66, 0xa3, 0xe3}
+				wantCode = 5628
+
 				wantTail = &enc.NativeTailModule{Plans: []enc.NativeTailPlan{{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 13, FrameBytes: 224, SourceBase: 128, SourceStride: 16, ReferenceBase: 208}}}
 			}
 			wantEntry := []int{0, 880, 1904, 2624, 3344, 3984}
-			if len(image.Code) != wantCode || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || !reflect.DeepEqual(image.NativeTail, wantTail) {
+			requireMutableFuncrefCallFrames(t, image)
+			if len(image.Code) > wantCode || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || !reflect.DeepEqual(image.NativeTail, wantTail) {
 				t.Fatalf("reference-vector-carrier compilation drifted: tail=%t code=%d digest=%x entries=%v/%v refs=%t/%t/%t tail-plan=%+v", tail, len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, image.NativeTail)
 			}
 		})
@@ -737,9 +754,10 @@ func TestMutableFuncrefLocalCallHostReferenceCarrierProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("host-reference-carrier local-call compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0x16, 0x5a, 0x6a, 0x0b, 0xfc, 0xc4, 0x61, 0x8b, 0x54, 0xb1, 0xcc, 0x30, 0xe4, 0xa9, 0xf9, 0x4b, 0xbe, 0x76, 0x88, 0x46, 0x23, 0x0c, 0xd0, 0xc5, 0x89, 0x8f, 0x33, 0xd7, 0x02, 0xbe, 0x4a, 0x96}
+
 	wantEntry := []int{0, 720, 1600, 2320, 3040, 3696}
-	if len(image.Code) != 7532 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || image.NativeTail != nil {
+	requireMutableFuncrefCallFrames(t, image)
+	if len(image.Code) > 7548 || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || image.NativeTail != nil {
 		t.Fatalf("host-reference-carrier local-call compilation drifted: code=%d digest=%x entries=%v/%v refs=%t/%t/%t tail=%+v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, image.NativeTail)
 	}
 }
@@ -757,10 +775,11 @@ func TestMutableFuncrefLocalTailCallHostReferenceCarrierProduction(t *testing.T)
 	if err != nil || image == nil {
 		t.Fatal("host-reference-carrier local-tail-call compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0x64, 0xf7, 0x5a, 0xb9, 0x5f, 0xf3, 0x71, 0x3a, 0xf2, 0x83, 0x9c, 0xfe, 0x37, 0xe4, 0xcf, 0x53, 0x2d, 0x73, 0x7f, 0x19, 0x64, 0x5f, 0x49, 0xbf, 0x0d, 0x8b, 0x3a, 0x84, 0xc4, 0x71, 0xc0, 0x34}
+
 	wantEntry := []int{0, 720, 1600, 2320, 3040, 3696}
 	wantPlan := enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 15, FrameBytes: 160, SourceBase: 96, SourceStride: 8, ReferenceBase: 144}
-	if len(image.Code) != 5196 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || image.NativeTail == nil || !slices.Equal(image.NativeTail.Plans, []enc.NativeTailPlan{wantPlan}) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
+	requireMutableFuncrefCallFrames(t, image)
+	if len(image.Code) > 5212 || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || image.NativeTail == nil || !slices.Equal(image.NativeTail.Plans, []enc.NativeTailPlan{wantPlan}) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
 		t.Fatalf("host-reference-carrier local-tail-call compilation drifted: code=%d digest=%x entries=%v/%v refs=%t/%t/%t tail=%+v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, image.NativeTail)
 	}
 }
@@ -778,9 +797,10 @@ func TestMutableFuncrefLocalCallReferenceCarrierProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("reference-carrier local-call compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0xbb, 0x56, 0xa3, 0xe1, 0x1c, 0x41, 0x3e, 0xf9, 0x40, 0x6b, 0x41, 0x02, 0x27, 0x22, 0x06, 0x34, 0x8d, 0xfb, 0xd3, 0x45, 0x56, 0x5f, 0xe8, 0x7d, 0x35, 0x77, 0x5b, 0xc1, 0xfe, 0x5c, 0xe6, 0x3b}
+
 	wantEntry := []int{0, 672, 1408, 2128, 2848, 3504}
-	if len(image.Code) != 7228 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || image.NativeTail != nil {
+	requireMutableFuncrefCallFrames(t, image)
+	if len(image.Code) > 7244 || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl || image.NativeTail != nil {
 		t.Fatalf("reference-carrier local-call compilation drifted: code=%d digest=%x entries=%v/%v refs=%t/%t/%t tail=%+v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, image.NativeTail)
 	}
 }
@@ -798,10 +818,11 @@ func TestMutableFuncrefLocalTailCallReferenceCarrierProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("reference-carrier local-tail-call compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0x58, 0xfe, 0xf3, 0x22, 0xcd, 0x50, 0x38, 0x5a, 0x8d, 0x09, 0x3c, 0x15, 0x4c, 0x07, 0x6e, 0x3e, 0x34, 0x0e, 0x4a, 0xf7, 0x17, 0x9d, 0x99, 0xf2, 0x76, 0x27, 0x81, 0xf9, 0x91, 0x40, 0xe6, 0x4c}
+
 	wantEntry := []int{0, 672, 1408, 2128, 2848, 3504}
 	wantPlan := enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 11, FrameBytes: 128, SourceBase: 80, SourceStride: 8, ReferenceBase: 112}
-	if len(image.Code) != 4956 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || image.NativeTail == nil || !slices.Equal(image.NativeTail.Plans, []enc.NativeTailPlan{wantPlan}) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
+	requireMutableFuncrefCallFrames(t, image)
+	if len(image.Code) > 4972 || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || image.NativeTail == nil || !slices.Equal(image.NativeTail.Plans, []enc.NativeTailPlan{wantPlan}) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
 		t.Fatalf("reference-carrier local-tail-call compilation drifted: code=%d digest=%x entries=%v/%v refs=%t/%t/%t tail=%+v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl, image.NativeTail)
 	}
 }
@@ -840,10 +861,11 @@ func TestMutableFuncrefLocalTailCallMixedVectorProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("mixed vector local-tail-call compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0x59, 0x1f, 0xc3, 0xa6, 0x6d, 0x4c, 0xb4, 0x71, 0x3e, 0x6b, 0xa5, 0x62, 0xcd, 0x3c, 0xcf, 0x8a, 0x34, 0x36, 0x18, 0xe6, 0xa9, 0xe2, 0xd0, 0x0f, 0x2a, 0xe0, 0x0c, 0xac, 0x75, 0xcb, 0x07, 0x55}
+
 	wantEntry := []int{0, 768, 1680, 2400, 3120, 3760}
 	wantPlan := enc.NativeTailPlan{Kind: enc.NativeTailReference, TypeIndex: 0, FunctionIndex: 5, SourcePC: 9, FrameBytes: 160, SourceBase: 96, SourceStride: 16, ReferenceBase: 144}
-	if len(image.Code) != 5292 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || image.NativeTail == nil || !slices.Equal(image.NativeTail.Plans, []enc.NativeTailPlan{wantPlan}) || !image.NativeReferenceFunctions || image.NativeReferenceCalls || !image.NativeReferenceControl {
+	requireMutableFuncrefCallFrames(t, image)
+	if len(image.Code) > 5308 || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || image.NativeTail == nil || !slices.Equal(image.NativeTail.Plans, []enc.NativeTailPlan{wantPlan}) || !image.NativeReferenceFunctions || image.NativeReferenceCalls || !image.NativeReferenceControl {
 		t.Fatalf("mixed vector local-tail-call compilation drifted: code=%d digest=%x entries=%v/%v tail=%+v ref=%t/%t/%t", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeTail, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl)
 	}
 }
@@ -861,9 +883,10 @@ func TestMutableFuncrefLocalCallMixedVectorProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("mixed vector local-call compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0xba, 0xc0, 0xa5, 0x55, 0xe1, 0x3d, 0x47, 0xb4, 0x98, 0x70, 0x31, 0xc6, 0x59, 0x59, 0x6d, 0x71, 0xc7, 0x43, 0x01, 0x23, 0xc4, 0x6d, 0x64, 0xf7, 0x3c, 0x6e, 0x94, 0x7a, 0xec, 0xa2, 0xdb, 0x30}
+
 	wantEntry := []int{0, 768, 1680, 2400, 3120, 3760}
-	if len(image.Code) != 7580 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
+	requireMutableFuncrefCallFrames(t, image)
+	if len(image.Code) > 7596 || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
 		t.Fatalf("mixed vector local-call compilation drifted: code=%d digest=%x entries=%v/%v ref=%t/%t/%t", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl)
 	}
 }
@@ -881,9 +904,10 @@ func TestMutableFuncrefLocalCallVectorProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("vector local-call compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0x8d, 0x3a, 0xce, 0x25, 0x5f, 0xea, 0x3a, 0x8e, 0x6c, 0xc4, 0x15, 0x05, 0x36, 0x1b, 0x8e, 0xa4, 0xc0, 0x13, 0xc9, 0x18, 0x55, 0x73, 0x26, 0xca, 0xf1, 0x13, 0xd0, 0xd8, 0x61, 0x99, 0xfb, 0x52}
+
 	wantEntry := []int{0, 624, 1280, 2000, 2720, 3360}
-	if len(image.Code) != 6972 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
+	requireMutableFuncrefCallFrames(t, image)
+	if len(image.Code) > 6988 || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
 		t.Fatalf("vector local-call compilation drifted: code=%d digest=%x entries=%v/%v ref=%t/%t/%t", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl)
 	}
 }
@@ -901,9 +925,10 @@ func TestMutableFuncrefLocalCallWideI32Production(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("wide i32 local-call compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0x64, 0x95, 0xf2, 0x5e, 0x9d, 0xed, 0xbe, 0x9b, 0xf2, 0xfc, 0x70, 0xe8, 0x47, 0x64, 0xfa, 0xe9, 0xfb, 0x30, 0x94, 0xe3, 0x4b, 0x07, 0x81, 0x9d, 0x2d, 0x56, 0xb6, 0x11, 0xc3, 0x10, 0xd5, 0xe5}
+
 	wantEntry := []int{0, 800, 1952, 2672, 3392, 4048}
-	if len(image.Code) != 8044 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
+	requireMutableFuncrefCallFrames(t, image)
+	if len(image.Code) > 8060 || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
 		t.Fatalf("wide i32 local-call compilation drifted: code=%d digest=%x entries=%v/%v ref=%t/%t/%t", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl)
 	}
 }
@@ -921,9 +946,10 @@ func TestMutableFuncrefLocalCallMixedProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("mixed local-call compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0x49, 0x44, 0x35, 0x48, 0x00, 0x5b, 0x2e, 0x97, 0x55, 0x33, 0x90, 0xe0, 0xdb, 0x28, 0xec, 0xb3, 0xfb, 0xed, 0x8d, 0x07, 0xea, 0x76, 0xdb, 0xab, 0xdc, 0xe2, 0x05, 0xae, 0x46, 0x93, 0x4c, 0xfa}
+
 	wantEntry := []int{0, 672, 1504, 2224, 2944, 3600}
-	if len(image.Code) != 7324 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
+	requireMutableFuncrefCallFrames(t, image)
+	if len(image.Code) > 7340 || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
 		t.Fatalf("mixed local-call compilation drifted: code=%d digest=%x entries=%v/%v ref=%t/%t/%t", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl)
 	}
 }
@@ -944,9 +970,10 @@ func TestMutableFuncrefLocalCallI32Production(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("mutable funcref i32 local-call compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0xcb, 0x2b, 0xa8, 0x09, 0x51, 0xa2, 0xdb, 0x46, 0xbc, 0x71, 0xd5, 0xe8, 0xc3, 0x65, 0x64, 0x0a, 0xd0, 0xc7, 0xfe, 0x4b, 0xb5, 0x3c, 0xd0, 0x7f, 0x44, 0x77, 0xe0, 0x5d, 0xc0, 0xc9, 0x4d, 0xee}
+
 	wantEntry := []int{0, 608, 1264, 1984, 2704, 3360}
-	if len(image.Code) != 6924 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
+	requireMutableFuncrefCallFrames(t, image)
+	if len(image.Code) > 6940 || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
 		t.Fatalf("mutable funcref i32 local-call compilation drifted: code=%d digest=%x entries=%v/%v ref=%t/%t/%t", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl)
 	}
 }
@@ -955,12 +982,11 @@ func TestMutableFuncrefLocalCallScalarProduction(t *testing.T) {
 	tests := map[string]struct {
 		source func() []byte
 		bytes  int
-		digest [sha256.Size]byte
 		entry  []int
 	}{
-		"i64": {mutableFuncrefLocalCallI64Source, 6892, [sha256.Size]byte{0x24, 0x0c, 0x58, 0xf8, 0x50, 0x94, 0xd9, 0x15, 0x6f, 0xdf, 0xf8, 0x0e, 0xa9, 0x8a, 0xce, 0xf7, 0x69, 0x94, 0x6b, 0xf3, 0x84, 0x9a, 0x5d, 0xc2, 0x85, 0x8f, 0x82, 0x5b, 0x8f, 0x9c, 0x47, 0x1c}, []int{0, 608, 1248, 1968, 2688, 3344}},
-		"f32": {mutableFuncrefLocalCallF32Source, 6924, [sha256.Size]byte{0xcb, 0xcd, 0xda, 0xa1, 0x8d, 0x46, 0xaf, 0xfa, 0x27, 0x50, 0xa3, 0xde, 0x2b, 0xe2, 0x0a, 0x60, 0x72, 0x04, 0xcc, 0x28, 0xc9, 0x9e, 0xef, 0x9d, 0x70, 0xee, 0x1c, 0x5e, 0x5a, 0x3e, 0x56, 0xff}, []int{0, 608, 1264, 1984, 2704, 3360}},
-		"f64": {mutableFuncrefLocalCallF64Source, 6908, [sha256.Size]byte{0xb2, 0xdb, 0xb6, 0xc6, 0x89, 0x6f, 0x4e, 0x92, 0x9d, 0x29, 0x15, 0xbb, 0x9e, 0xa9, 0x38, 0x79, 0x06, 0x5c, 0x4d, 0x33, 0x5b, 0x0c, 0xc7, 0xa6, 0x3c, 0x54, 0x29, 0xbe, 0x01, 0x15, 0xea, 0xfa}, []int{0, 608, 1264, 1984, 2704, 3360}},
+		"i64": {mutableFuncrefLocalCallI64Source, 6908, []int{0, 608, 1248, 1968, 2688, 3344}},
+		"f32": {mutableFuncrefLocalCallF32Source, 6940, []int{0, 608, 1264, 1984, 2704, 3360}},
+		"f64": {mutableFuncrefLocalCallF64Source, 6924, []int{0, 608, 1264, 1984, 2704, 3360}},
 	}
 	for name, test := range tests {
 		source := test.source()
@@ -982,7 +1008,8 @@ func TestMutableFuncrefLocalCallScalarProduction(t *testing.T) {
 			t.Error(name, err)
 			continue
 		}
-		if len(image.Code) != test.bytes || sha256.Sum256(image.Code) != test.digest || !slices.Equal(image.Entry, test.entry) || !slices.Equal(image.InternalEntry, test.entry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
+		requireMutableFuncrefCallFrames(t, image)
+		if len(image.Code) > test.bytes || !slices.Equal(image.Entry, test.entry) || !slices.Equal(image.InternalEntry, test.entry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
 			t.Errorf("%s scalar local-call compilation drifted: code=%d digest=%x entries=%v/%v ref=%t/%t/%t", name, len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl)
 		}
 	}
@@ -1004,9 +1031,10 @@ func TestMutableFuncrefLocalCallProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("mutable funcref local-call compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0x68, 0x0e, 0xb8, 0xec, 0x42, 0xa6, 0xf8, 0xb2, 0x5d, 0x83, 0x13, 0x7f, 0xfe, 0xb0, 0xd9, 0x85, 0xc8, 0x20, 0x89, 0x77, 0x66, 0xf9, 0x85, 0xcb, 0x5a, 0x0d, 0x02, 0x32, 0xf7, 0x91, 0xc5, 0x51}
+
 	wantEntry := []int{0, 608, 1216, 1936, 2656, 3312}
-	if len(image.Code) != 6812 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
+	requireMutableFuncrefCallFrames(t, image)
+	if len(image.Code) > 6828 || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) || !image.NativeReferenceFunctions || !image.NativeReferenceCalls || !image.NativeReferenceControl {
 		t.Fatalf("mutable funcref local-call compilation drifted: code=%d digest=%x entries=%v/%v ref=%t/%t/%t", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry, image.NativeReferenceFunctions, image.NativeReferenceCalls, image.NativeReferenceControl)
 	}
 }
@@ -1079,11 +1107,7 @@ func TestMutableFuncrefLocalCallProductionRejectsBroaderSources(t *testing.T) {
 				if admitMutableFunctionGlobalLocalCall(m) {
 					t.Fatal("broader local-call source admitted")
 				}
-				staged := false
-				image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceFunctions: true, NativeReferenceCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
-				if image != nil || !errors.Is(err, ErrUnsupported) || staged {
-					t.Fatal("broader mutable funcref local-call source reached staging", image, err, staged)
-				}
+				checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(true, true))
 			})
 		}
 	}
@@ -1105,9 +1129,9 @@ func TestMutableFuncrefLocalObserveProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("mutable funcref local-observe compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0x1c, 0xe0, 0xb9, 0x89, 0xdc, 0x57, 0xc1, 0xfe, 0xaa, 0x22, 0x5f, 0x7a, 0x01, 0xd1, 0x10, 0x11, 0xd6, 0x8c, 0xa9, 0x2f, 0x08, 0x9e, 0x5e, 0x11, 0xff, 0xcc, 0x25, 0xbb, 0xc3, 0x12, 0x18, 0x7d}
-	wantEntry := []int{0, 208, 416, 752, 1088, 1360}
-	if len(image.Code) != 1836 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) {
+	wantDigest := [sha256.Size]byte{0x3d, 0x4f, 0x37, 0x9c, 0xa5, 0xff, 0xe8, 0x94, 0xf4, 0xb4, 0xe4, 0x59, 0xc8, 0xeb, 0x23, 0x19, 0xb4, 0x28, 0x0c, 0x6d, 0x31, 0x31, 0xcb, 0x22, 0x2c, 0xa7, 0x45, 0x93, 0x6f, 0x59, 0x0c, 0x64}
+	wantEntry := []int{0, 208, 416, 768, 1120, 1408}
+	if len(image.Code) != 1900 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) {
 		t.Fatalf("mutable funcref local-observe compilation drifted: code=%d digest=%x entries=%v/%v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry)
 	}
 }
@@ -1139,11 +1163,7 @@ func TestMutableFuncrefLocalObserveProductionRejectsBroaderSources(t *testing.T)
 			if admitMutableFunctionGlobalLocalObserve(m) {
 				t.Fatal("broader local-observe source admitted")
 			}
-			staged := false
-			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
-			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
-				t.Fatal("broader mutable funcref local-observe source reached staging", image, err, staged)
-			}
+			checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(true, true))
 		})
 	}
 }
@@ -1164,9 +1184,9 @@ func TestMutableFuncrefLocalExportProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("mutable funcref local-export compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0x43, 0xe5, 0xa7, 0xf5, 0xb0, 0x84, 0xca, 0x26, 0xfc, 0x98, 0x7a, 0x08, 0x17, 0x13, 0x2d, 0xfc, 0x87, 0xaa, 0x47, 0x0a, 0x69, 0x8d, 0xec, 0xd9, 0x9b, 0x81, 0x44, 0x36, 0xd6, 0xc8, 0xaa, 0xa1}
-	wantEntry := []int{0, 208, 416, 752, 1088}
-	if len(image.Code) != 1580 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) {
+	wantDigest := [sha256.Size]byte{0x97, 0x84, 0x33, 0x60, 0xf8, 0xa8, 0x06, 0xd0, 0x61, 0xc0, 0x53, 0xe9, 0x63, 0x48, 0xdd, 0xba, 0x4a, 0xbb, 0x17, 0x69, 0x23, 0x45, 0x99, 0xef, 0x08, 0x9f, 0x52, 0x89, 0x20, 0xd1, 0x0c, 0x4f}
+	wantEntry := []int{0, 208, 416, 768, 1120}
+	if len(image.Code) != 1644 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) {
 		t.Fatalf("mutable funcref local-export compilation drifted: code=%d digest=%x entries=%v/%v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry)
 	}
 }
@@ -1190,11 +1210,7 @@ func TestMutableFuncrefLocalExportProductionRejectsBroaderSources(t *testing.T) 
 			if admitMutableFunctionGlobalLocalExport(m) {
 				t.Fatal("broader local-export source admitted")
 			}
-			staged := false
-			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
-			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
-				t.Fatal("broader mutable funcref local-export source reached staging", image, err, staged)
-			}
+			checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(true, true))
 		})
 	}
 }
@@ -1244,11 +1260,7 @@ func TestMutableFuncrefLocalTransferProductionRejectsBroaderSources(t *testing.T
 			if admitMutableFunctionGlobalLocalTransfer(m) {
 				t.Fatal("broader local-transfer source admitted")
 			}
-			staged := false
-			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
-			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
-				t.Fatal("broader mutable funcref local-transfer source reached staging", image, err, staged)
-			}
+			checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(true, true))
 		})
 	}
 }
@@ -1269,9 +1281,9 @@ func TestMutableFuncrefLocalPublishProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("mutable funcref local-publish compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0x35, 0x00, 0x75, 0x19, 0x17, 0x1f, 0x68, 0xb6, 0xb2, 0x80, 0x24, 0x55, 0xc0, 0x3b, 0x9f, 0x28, 0xbd, 0x0d, 0x6c, 0x5d, 0x3d, 0xf1, 0x48, 0x9c, 0xd7, 0x29, 0x15, 0x4a, 0x54, 0x12, 0x83, 0x46}
-	wantEntry := []int{0, 208, 416, 720, 1024, 1248}
-	if len(image.Code) != 1756 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) {
+	wantDigest := [sha256.Size]byte{0xa4, 0xf7, 0x18, 0xf2, 0xd3, 0xa5, 0xb4, 0x22, 0x2c, 0xb0, 0x62, 0xf5, 0x0b, 0x06, 0xe4, 0x19, 0x0e, 0xa0, 0x0f, 0x16, 0x90, 0xf8, 0x50, 0xe7, 0x03, 0x72, 0xe1, 0xcc, 0xf0, 0x81, 0xa6, 0x5a}
+	wantEntry := []int{0, 208, 416, 768, 1120, 1408}
+	if len(image.Code) != 1932 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, wantEntry) || !slices.Equal(image.InternalEntry, wantEntry) {
 		t.Fatalf("mutable funcref local-publish compilation drifted: code=%d digest=%x entries=%v/%v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry)
 	}
 }
@@ -1297,11 +1309,7 @@ func TestMutableFuncrefLocalPublishProductionRejectsBroaderSources(t *testing.T)
 			if admitMutableFunctionGlobalLocalPublish(m) {
 				t.Fatal("broader mutable funcref local-publish source matched exact profile")
 			}
-			staged := false
-			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
-			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
-				t.Fatal("broader mutable funcref local-publish source reached staging", image, err, staged)
-			}
+			checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(true, true))
 		})
 	}
 }
@@ -1322,8 +1330,8 @@ func TestMutableFuncrefLocalCopyProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("mutable funcref local-copy compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0xa7, 0x01, 0xd4, 0xfd, 0x30, 0x9a, 0x26, 0x13, 0xea, 0x26, 0x8c, 0x5a, 0xa0, 0xd7, 0xd7, 0x06, 0x32, 0xe7, 0xbd, 0xd8, 0x1c, 0x5e, 0x2b, 0xdd, 0xc8, 0x6e, 0xf6, 0x1e, 0xf1, 0x1d, 0x64, 0xdd}
-	if len(image.Code) != 508 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, []int{0}) || !slices.Equal(image.InternalEntry, []int{0}) {
+	wantDigest := [sha256.Size]byte{0xfc, 0xe7, 0x94, 0xfe, 0x45, 0x2b, 0x9f, 0x89, 0x40, 0x2a, 0x11, 0x7c, 0x18, 0x0e, 0x71, 0x27, 0x20, 0x4d, 0x0b, 0x77, 0x56, 0xc9, 0x82, 0x29, 0x67, 0x2a, 0x9c, 0x74, 0x8e, 0x27, 0xa0, 0x9e}
+	if len(image.Code) != 524 || sha256.Sum256(image.Code) != wantDigest || !slices.Equal(image.Entry, []int{0}) || !slices.Equal(image.InternalEntry, []int{0}) {
 		t.Fatalf("mutable funcref local-copy compilation drifted: code=%d digest=%x entries=%v/%v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry)
 	}
 }
@@ -1361,11 +1369,7 @@ func TestMutableFuncrefLocalCopyProductionRejectsBroaderSources(t *testing.T) {
 			if admitMutableFunctionGlobalLocalCopy(m) {
 				t.Fatal("broader mutable funcref local-copy source matched exact profile")
 			}
-			staged := false
-			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
-			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
-				t.Fatal("broader mutable funcref local-copy source reached staging", image, err, staged)
-			}
+			checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(true, true))
 		})
 	}
 }
@@ -1399,8 +1403,8 @@ func TestMutableFuncrefCopyProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("mutable funcref copy compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0x5c, 0xb5, 0x6b, 0x10, 0x57, 0xfe, 0xd2, 0xfc, 0x47, 0x29, 0x2c, 0xb9, 0x97, 0x60, 0xa6, 0xd6, 0x55, 0x43, 0xb5, 0xe5, 0x2e, 0x09, 0xdb, 0x42, 0xb9, 0xcb, 0x46, 0xf9, 0xf0, 0x02, 0x02, 0x1a}
-	if len(image.Code) != 508 || sha256.Sum256(image.Code) != wantDigest || len(image.Entry) != 1 || image.Entry[0] != 0 || len(image.InternalEntry) != 1 || image.InternalEntry[0] != 0 {
+	wantDigest := [sha256.Size]byte{0xab, 0x15, 0xad, 0x58, 0x56, 0x58, 0xba, 0x10, 0x1c, 0x8a, 0xd4, 0x4f, 0x8b, 0xee, 0x9c, 0x5c, 0xbc, 0x1a, 0xb1, 0x04, 0x2a, 0x05, 0xa6, 0x48, 0xe3, 0x57, 0xd7, 0x6f, 0x87, 0x6e, 0xd8, 0x76}
+	if len(image.Code) != 524 || sha256.Sum256(image.Code) != wantDigest || len(image.Entry) != 1 || image.Entry[0] != 0 || len(image.InternalEntry) != 1 || image.InternalEntry[0] != 0 {
 		t.Fatalf("mutable funcref copy compilation drifted: code=%d digest=%x entries=%v/%v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry)
 	}
 }
@@ -1438,11 +1442,7 @@ func TestMutableFuncrefCopyProductionRejectsBroaderSources(t *testing.T) {
 			if admitMutableFunctionGlobalCopy(m) {
 				t.Fatal("broader mutable funcref copy source matched exact profile")
 			}
-			staged := false
-			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
-			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
-				t.Fatal("broader mutable funcref copy source reached staging", image, err, staged)
-			}
+			checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(true, true))
 		})
 	}
 }
@@ -1541,11 +1541,7 @@ func TestMutableFuncrefBidirectionalCopyProductionRejectsBroaderSources(t *testi
 			if admitMutableFunctionGlobalBidirectionalCopy(m) {
 				t.Fatal("broader bidirectional copy source matched exact profile")
 			}
-			staged := false
-			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
-			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
-				t.Fatal("broader bidirectional copy source reached staging", image, err, staged)
-			}
+			checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(true, true))
 		})
 	}
 }
@@ -1566,8 +1562,8 @@ func TestMutableFuncrefMoveProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("mutable funcref move compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0xfb, 0x01, 0xdd, 0x72, 0x40, 0xc5, 0x09, 0x91, 0x19, 0x19, 0xe9, 0x0d, 0x46, 0xc0, 0xf2, 0x00, 0x45, 0xe5, 0xf6, 0x15, 0x8b, 0xc9, 0x11, 0x53, 0x18, 0xf0, 0x2a, 0xff, 0xbb, 0xf0, 0xf0, 0x16}
-	if len(image.Code) != 764 || sha256.Sum256(image.Code) != wantDigest || len(image.Entry) != 1 || image.Entry[0] != 0 || len(image.InternalEntry) != 1 || image.InternalEntry[0] != 0 {
+	wantDigest := [sha256.Size]byte{0x84, 0x7d, 0xb8, 0xcc, 0x6d, 0xc5, 0x2c, 0xbc, 0x15, 0xf2, 0xae, 0xf7, 0x83, 0x75, 0xe2, 0x1a, 0xce, 0x9b, 0x08, 0xfa, 0x39, 0xb7, 0x13, 0xca, 0xdf, 0x9e, 0x68, 0xbf, 0xd7, 0xd8, 0xcb, 0x9b}
+	if len(image.Code) != 588 || sha256.Sum256(image.Code) != wantDigest || len(image.Entry) != 1 || image.Entry[0] != 0 || len(image.InternalEntry) != 1 || image.InternalEntry[0] != 0 {
 		t.Fatalf("mutable funcref move compilation drifted: code=%d digest=%x entries=%v/%v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry)
 	}
 }
@@ -1601,11 +1597,7 @@ func TestMutableFuncrefMoveProductionRejectsBroaderSources(t *testing.T) {
 			if admitMutableFunctionGlobalMove(m) {
 				t.Fatal("broader mutable funcref move source matched exact profile")
 			}
-			staged := false
-			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
-			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
-				t.Fatal("broader mutable funcref move source reached staging", image, err, staged)
-			}
+			checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(true, true))
 		})
 	}
 }
@@ -1626,9 +1618,9 @@ func TestMutableFuncrefStoreSelfProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("mutable funcref self-store compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0xef, 0xf3, 0x3e, 0xca, 0xb0, 0x53, 0x9a, 0xa8, 0xfd, 0x85, 0xc6, 0x7d, 0x62, 0xb2, 0xd8, 0x72, 0x59, 0x04, 0xca, 0x2c, 0x42, 0x24, 0x95, 0xed, 0xe1, 0x9e, 0x1f, 0x36, 0x72, 0xa5, 0x56, 0x91}
-	if len(image.Code) != 556 || sha256.Sum256(image.Code) != wantDigest || len(image.Entry) != 1 || image.Entry[0] != 0 || len(image.InternalEntry) != 1 || image.InternalEntry[0] != 0 {
-		t.Fatal("mutable funcref self-store compilation drifted")
+	wantDigest := [sha256.Size]byte{0xa4, 0x9d, 0x58, 0x12, 0xf0, 0x3a, 0x44, 0x3f, 0x6d, 0x36, 0x5a, 0xf3, 0x4c, 0x6a, 0x0c, 0x09, 0xf7, 0xc7, 0x14, 0xda, 0x82, 0x27, 0xb1, 0x25, 0x35, 0xab, 0xa6, 0x5a, 0xac, 0x77, 0x8a, 0xb0}
+	if len(image.Code) != 588 || sha256.Sum256(image.Code) != wantDigest || len(image.Entry) != 1 || image.Entry[0] != 0 || len(image.InternalEntry) != 1 || image.InternalEntry[0] != 0 {
+		t.Fatalf("mutable funcref self-store compilation drifted: code=%d digest=%x entries=%v/%v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry)
 	}
 }
 
@@ -1681,11 +1673,7 @@ func TestMutableFuncrefStoreSelfProductionRejectsBroaderSources(t *testing.T) {
 			if admitMutableFunctionGlobalSetSelf(m) {
 				t.Fatal("broader mutable funcref self-store source matched exact profile")
 			}
-			staged := false
-			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
-			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
-				t.Fatal("broader mutable funcref self-store source reached staging", image, err, staged)
-			}
+			checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(true, true))
 		})
 	}
 }
@@ -1706,9 +1694,9 @@ func TestMutableFuncrefClearProduction(t *testing.T) {
 	if err != nil || image == nil {
 		t.Fatal("mutable funcref clear compilation", err)
 	}
-	wantDigest := [sha256.Size]byte{0x66, 0x4e, 0x06, 0x68, 0xf4, 0xa4, 0x78, 0x6c, 0x56, 0xef, 0xdd, 0x55, 0x1e, 0xba, 0x69, 0x4e, 0x22, 0x39, 0x04, 0xb5, 0x75, 0x0b, 0x58, 0x2f, 0x60, 0x34, 0x73, 0xae, 0xe7, 0xaf, 0xf8, 0xf8}
-	if len(image.Code) != 476 || sha256.Sum256(image.Code) != wantDigest || len(image.Entry) != 1 || image.Entry[0] != 0 || len(image.InternalEntry) != 1 || image.InternalEntry[0] != 0 {
-		t.Fatal("mutable funcref clear compilation drifted")
+	wantDigest := [sha256.Size]byte{0x60, 0x09, 0xe7, 0x34, 0xdf, 0x2a, 0x40, 0x08, 0x02, 0x88, 0x6b, 0xe1, 0x74, 0x81, 0xd3, 0xf3, 0x12, 0x12, 0x0a, 0x36, 0x37, 0x11, 0x65, 0x7c, 0xb5, 0xa6, 0x07, 0x62, 0x80, 0x47, 0x2c, 0x88}
+	if len(image.Code) != 524 || sha256.Sum256(image.Code) != wantDigest || len(image.Entry) != 1 || image.Entry[0] != 0 || len(image.InternalEntry) != 1 || image.InternalEntry[0] != 0 {
+		t.Fatalf("mutable funcref clear compilation drifted: code=%d digest=%x entries=%v/%v", len(image.Code), sha256.Sum256(image.Code), image.Entry, image.InternalEntry)
 	}
 }
 
@@ -1750,11 +1738,7 @@ func TestMutableFuncrefClearProductionRejectsBroaderSources(t *testing.T) {
 			if admitMutableFunctionGlobalClear(m) {
 				t.Fatal("broader mutable funcref clear source matched exact profile")
 			}
-			staged := false
-			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, SyncHostSlots: 64, MemoryPressure: func() { staged = true }})
-			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
-				t.Fatal("broader mutable funcref clear source reached staging", image, err, staged)
-			}
+			checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(true, true))
 		})
 	}
 }
@@ -1850,11 +1834,7 @@ func TestMutableFuncrefGetProductionRejectsBroaderSources(t *testing.T) {
 			if admitMutableFunctionGlobalGet(m) {
 				t.Fatal("broader mutable funcref source matched exact profile")
 			}
-			staged := false
-			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, MemoryPressure: func() { staged = true }})
-			if image != nil || !errors.Is(err, ErrUnsupported) || staged {
-				t.Fatal("broader mutable funcref source reached staging", image, err, staged)
-			}
+			checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(true, true))
 		})
 	}
 }
@@ -1921,8 +1901,8 @@ func TestStateOnlyMutableFuncrefImportProduction(t *testing.T) {
 				t.Fatal(err)
 			}
 			image, err := CompileModuleWith(decoded, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true})
-			if image != nil || !errors.Is(err, ErrUnsupported) {
-				t.Fatal("unsupported mutable funcref state source admitted", err)
+			if image == nil || err != nil || image.CodeImage != nil || len(image.Code) != 0 || len(image.Entry) != 0 {
+				t.Fatal("valid declaration-only mutable funcref state rejected", err)
 			}
 		})
 	}

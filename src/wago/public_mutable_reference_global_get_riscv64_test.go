@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -43,7 +43,7 @@ func TestRV64PublicMutableFuncrefGlobalGet(t *testing.T) {
 			defer shared.Close()
 			compiled := rv64TableStageCompile(t, "mutable-funcref-get-consumer", rv64MutableFuncrefGetModule(), artifact)
 			defer compiled.Close()
-			if !rv64MutableFuncrefGlobalGet(compiled.executionView()) {
+			if !(rv64MutableFuncrefGlobalGet(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 				t.Fatal("mutable funcref get witness missing")
 			}
 			module, err := rt.Module(compiled)
@@ -90,8 +90,11 @@ func TestRV64PublicMutableFuncrefGlobalGet(t *testing.T) {
 func TestRV64PublicMutableFuncrefGlobalGetAdmission(t *testing.T) {
 	compiled := rv64TableStageCompile(t, "mutable-funcref-get-admission", rv64MutableFuncrefGetModule(), true)
 	defer compiled.Close()
-	if !rv64MutableFuncrefGlobalGet(compiled.executionView()) {
+	if !(rv64MutableFuncrefGlobalGet(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 		t.Fatal("base mutable funcref get witness rejected")
+	}
+	if err := rv64ReferenceImportTailCopy(compiled).validate(); err != nil {
+		t.Fatal("valid copied metadata rejected", err)
 	}
 	for name, mutate := range map[string]func(*Compiled){
 		"code":            func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
@@ -111,13 +114,13 @@ func TestRV64PublicMutableFuncrefGlobalGetAdmission(t *testing.T) {
 		"abi":              func(v *Compiled) { v.nativeTableReferenceABI = false },
 	} {
 		t.Run(name, func(t *testing.T) {
-			bad := *compiled.executionView()
+			bad := rv64ReferenceImportTailCopy(compiled)
 			bad.GlobalImports = slices.Clone(bad.GlobalImports)
 			bad.Globals = slices.Clone(bad.Globals)
 			bad.Exports = maps.Clone(bad.Exports)
 			bad.GlobalExports = maps.Clone(bad.GlobalExports)
-			mutate(&bad)
-			if err := railshotValidateCompiled(&bad); !errors.Is(err, railshot.ErrUnsupported) {
+			mutate(bad)
+			if err := bad.validate(); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile mutable get artifact admitted", err)
 			}
 		})

@@ -27,7 +27,7 @@ func TestVectorLocalTailExactSignatureBounds(t *testing.T) {
 			}
 		}
 	}
-	for _, n := range []int{128, 129} {
+	for _, n := range []int{maxSWARLocals, maxSWARLocals + 1} {
 		list := make([]wasm.ValType, n)
 		for i := range list {
 			list[i] = wasm.V128
@@ -40,10 +40,10 @@ func TestVectorLocalTailExactSignatureBounds(t *testing.T) {
 				sig.Results = list
 			}
 			err := admitSWARLocalTailSignature(sig, sig)
-			if (err == nil) != (n == 128) {
+			if (err == nil) != (n == maxSWARLocals) {
 				t.Fatal("logical bound", n, wideParams, err)
 			}
-			if n == 128 && swarSignatureSlots(list) != 256 {
+			if n == maxSWARLocals && swarSignatureSlots(list) != 2*maxSWARLocals {
 				t.Fatal("physical slot count")
 			}
 		}
@@ -121,7 +121,7 @@ func TestVectorLocalTailPhysicalTransferBudget(t *testing.T) {
 }
 
 func TestVectorLocalTailSourceArityBoundBeforeStaging(t *testing.T) {
-	for _, n := range []int{128, 129} {
+	for _, n := range []int{maxSWARLocals, maxSWARLocals + 1} {
 		v := make([]wasm.ValType, n)
 		body := []byte{}
 		for i := range v {
@@ -136,7 +136,7 @@ func TestVectorLocalTailSourceArityBoundBeforeStaging(t *testing.T) {
 		opts := localTailOptions()
 		opts.MemoryPressure = func() { pressure++ }
 		image, err := CompileModuleWith(m, opts)
-		if n == 128 {
+		if n == maxSWARLocals {
 			if err != nil || image == nil || pressure != 1 {
 				t.Fatal("maximum source shape", err, pressure)
 			}

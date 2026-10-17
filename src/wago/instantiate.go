@@ -230,9 +230,9 @@ func (c *Compiled) allowsIndependentInstanceExecution(imports resolvedImports, e
 }
 
 func (c *Compiled) arenaNeedForImports(imports resolvedImports, syncMode bool) int {
-	need := c.instantiateArenaNeed + railshotNativeInvocationContextBytes - runtime.InstanceContextBytes
+	need := c.instantiateArenaNeed
 	baselineHostBytes := 0
-	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalStoreHelper() {
+	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.needsOwnedExceptionReferences() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalStoreHelper() {
 		baselineHostBytes = c.hostCtrlFrameBytes()
 	} else if len(c.Imports) > 0 {
 		baselineHostBytes = runtime.HostCallLogBytes
@@ -288,6 +288,13 @@ func (b *instanceBuilder) prepareCollector() error {
 	needsExternConversion := b.c.stagedGCStructProduct().requiresExternConversion()
 	needsHelpers := b.c.usesGCStructHelpers() || b.c.usesGCArrayHelpers()
 	needsRuntimeDomain := b.c.needsRuntimeGCCollectorDomain()
+	if b.c.hasOpaqueExternFrames() && !needsRuntimeDomain {
+		preferred, err := preferredGCCollectorFromImports(b.c, b.imports, b.opts.store)
+		if err != nil {
+			return err
+		}
+		needsRuntimeDomain = preferred != nil
+	}
 	if !needsRuntimeDomain && !needsHelpers && ((!gc.HasHeapObjectTypes(b.c.GCTypeDescs) && !needsExternConversion) || (!needsExternConversion && (b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.collectorFreeGCArrayMetadata()))) {
 		return nil
 	}
@@ -339,7 +346,7 @@ func (b *instanceBuilder) prepareCollector() error {
 			return err
 		}
 	}
-	if b.opts.store != nil && !b.opts.store.private {
+	if b.opts.store != nil && (!b.opts.store.private || compiledManagedFunctionReachability(b.c)) {
 		if err := b.opts.store.bindFuncrefGCStore(); err != nil {
 			return err
 		}
@@ -387,6 +394,11 @@ func (b *instanceBuilder) attachImports(cleanup *resourceCleanup) ([]*resolvedGl
 		global := importGlobals[i].global
 		if global == nil || (!isReferenceValType(imp.Type) && global.owner == nil) {
 			continue
+		}
+		if b.c.compactExternFrameRoots() {
+			if err := railshotAttachCompactExternHostGlobal(global, b.opts.store, b.collector); err != nil {
+				return nil, err
+			}
 		}
 		if err := b.globalAttachments.attach(global, b.opts.store, b.collector, cleanup); err != nil {
 			return nil, fmt.Errorf("imported global %q.%q: %w", imp.Module, imp.Name, err)
@@ -466,7 +478,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			opts.maxInstanceMetadataBytes = c.validateMemo.maxInstanceMetadataBytes
 		}
 	}
-	syncMode := c.importsRequireSync(imports, opts.forceSyncHost || railshotNativeImportArenaBytes(c, imports) != 0)
+	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
 	if syncMode {
 		// A forced host mode can request a protocol the target cannot implement,
 		// even for an import-free module. Reject before footprint helpers whose
@@ -503,8 +515,13 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	needsExternConversion := c.stagedGCStructProduct().requiresExternConversion()
 	var conversionStore *referenceStore
 	var gcExternConversion *gcExternConversionState
+	if opts.store == nil && (c.usesGuestGlobalStoreHelper() || compiledManagedFunctionReachability(c) || compactExternConstructionNeeded(c)) {
+		conversionStore = newReferenceStore(true)
+	}
 	if needsExternConversion {
-		conversionStore = opts.store
+		if opts.store != nil {
+			conversionStore = opts.store
+		}
 		if conversionStore == nil {
 			conversionStore = newReferenceStore(true)
 		}
@@ -731,6 +748,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			cleanup.run(func() { _ = c.releaseOwnedCodeMapping(thunkMem) })
 		}
 		cleanup.run(c.releaseCode)
+		cleanup.run(func() { releaseNativeExceptionTags(c, nativeTagIDs) })
 		cleanup.run(func() { runtime.ReleaseArena(ar) })
 	}()
 	// An ordinary imported memory shares its basedata with the provider and
@@ -742,14 +760,19 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		// Shared collector activations acquire domain then native execution.
 		// Construction already owns the domain through store registration.
 		nativeExecutionMu.Lock()
+		// Construction changes shared basedata even when initialization fails.
+		// Cached entries must not reuse a context from before those mutations.
+		nativeExecutionEpoch++
 		var previous, empty [runtime.InstanceContextBytes]byte
 		previousOrigin := railshotNativeContextIdentity(jm)
+		previousFence := jm.StackFence()
 		jm.CaptureInstanceContextBytes(previous[:])
 		binary.LittleEndian.PutUint64(previous[runtime.InstanceContextGCNativeViewOffset:], uint64(jm.GCNativeViewPtr()))
 		finishMemoryContext = func(initialized bool) {
 			if !initialized {
 				jm.BindInstanceContextBytes(previous[:])
 				railshotSetNativeContextIdentity(jm, previousOrigin)
+				jm.SetStackFence(previousFence)
 			}
 			nativeExecutionMu.Unlock()
 		}
@@ -779,8 +802,14 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			}
 			entry := nativeMemoryDir[i*abi.MemoryDirEntryBytes:]
 			binary.LittleEndian.PutUint64(entry[abi.MemoryDirBaseOffset:], uint64(memoryJM.LinMemBase()))
-			binary.LittleEndian.PutUint64(entry[abi.MemoryDirCurrentBytesOffset:], uint64(len(memoryJM.HostBytes())))
-			binary.LittleEndian.PutUint32(entry[abi.MemoryDirCurrentPagesOffset:], memoryJM.CurrentPages())
+			if c.memoryDef(i).Shared {
+				bytes := uint64(len(threadedMemoryHostBytes(memory)))
+				binary.LittleEndian.PutUint64(entry[abi.MemoryDirCurrentBytesOffset:], bytes)
+				binary.LittleEndian.PutUint32(entry[abi.MemoryDirCurrentPagesOffset:], uint32(bytes>>16))
+			} else {
+				binary.LittleEndian.PutUint64(entry[abi.MemoryDirCurrentBytesOffset:], uint64(len(memoryJM.HostBytes())))
+				binary.LittleEndian.PutUint32(entry[abi.MemoryDirCurrentPagesOffset:], memoryJM.CurrentPages())
+			}
 			binary.LittleEndian.PutUint32(entry[abi.MemoryDirPolicyMaxPagesOffset:], opts.memoryLimitPages)
 		}
 		jm.SetMemoryDirPtr(uintptr(unsafe.Pointer(&nativeMemoryDir[0])))
@@ -788,7 +817,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
 		nativeTagIDs = ar.Alloc(len(c.memoryDir.ehTags) * 8)
 		for i, def := range c.memoryDir.ehTags {
-			identity := uint64(uintptr(unsafe.Pointer(&nativeTagIDs[i*8])))
+			identity := newNativeExceptionTag(c, i, uint64(uintptr(unsafe.Pointer(&nativeTagIDs[i*8]))))
 			if def.ImportKey != "" {
 				tag, ok := imports.tag(c.tagImportBindingKey(i))
 				if !ok {
@@ -1101,7 +1130,15 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], code)
 				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], taggedHome)
 			}
-			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntrySigKeyOffset:], c.funcTypeKey(fidx))
+			typeKey := c.funcTypeKey(fidx)
+			if fidx < c.NumImports {
+				// The imported declaration can be a supertype of the actual native
+				// function. ref.func preserves the producer's dynamic type.
+				if ex, ok := imports[c.functionImportBindingKey(fidx)].(*InstanceExport); ok && ex != nil && ex.inst != nil {
+					typeKey = ex.inst.c.funcTypeKey(ex.inst.c.NumImports + ex.localIdx)
+				}
+			}
+			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntrySigKeyOffset:], typeKey)
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&funcRefDescs[off]))))
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.FuncRefContextOffset:], targetContext)
 			if fidx < c.NumImports && (!railshotNativeContextTrapABI() || rv64GCTypeSubtypingLink(c) || rv64GCTypeSubtypingFinalityLink(c) || rv64GCTypeSubtypingStructLink(c) || rv64GCTypeSubtypingStructProjectionLink(c) || rv64GCTypeSubtypingStructMismatchLink(c) || rv64GCTypeSubtypingIndependentStructLink(c) || rv64GCTypeSubtypingExtendedProjectionLink(c) || rv64GCTypeSubtypingDuplicateRecursiveLink(c) || rv64GCTypeSubtypingExtendedRecursiveLink(c) || rv64GCTypeSubtypingCrossGroupMismatchLink(c) || rv64GCTypeSubtypingTransitiveMismatchLink(c)) {
@@ -1139,10 +1176,21 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	}
 	var globalCells []*Global
 	var instantiationRoots gc.Slots
+	functionConstruction := newManagedFunctionConstruction(c, b.collector, &instantiationRoots)
+	defer functionConstruction.close()
+	constructionStore := opts.store
+	if constructionStore == nil {
+		constructionStore = conversionStore
+	}
+	externConstruction := newCompactExternConstruction(c, b.collector, constructionStore, b.gcDomain, &instantiationRoots)
+	defer externConstruction.close()
 	// prev is the segment's previous entry (nil for its first value).
-	writeElemEntry := func(entry, prev []byte, refType ValType, value RefInit) (err error) {
+	writeElemEntry := func(entry, prev []byte, refType ValType, value RefInit, physicalOwner *Instance) (err error) {
 		rootCompactEntry := normalizedElemRefType(refType) == ValAnyRef || normalizedElemRefType(refType) == ValI31Ref
 		defer func() {
+			if err == nil && normalizedElemRefType(refType) == ValExternRef {
+				err = externConstruction.record(entry, physicalOwner)
+			}
 			if err == nil && rootCompactEntry && len(entry) >= 4 {
 				instantiationRoots = append(instantiationRoots, compactRefRootSlot(entry[:4]))
 			}
@@ -1155,13 +1203,13 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			return nil
 		}
 		if len(value.Expr) != 0 {
-			if normalizedElemRefType(refType) != ValAnyRef && normalizedElemRefType(refType) != ValI31Ref && !(normalizedElemRefType(refType) == ValExternRef && needsExternConversion) {
+			if normalizedElemRefType(refType) != ValAnyRef && normalizedElemRefType(refType) != ValI31Ref && !(normalizedElemRefType(refType) == ValExternRef && (needsExternConversion || externConstruction != nil)) {
 				return fmt.Errorf("GC element expression has incompatible destination %s", refType)
 			}
 			if len(entry) < 8 {
 				return errors.New("GC element expression entry is truncated")
 			}
-			bits, err := evalCompiledGCConstExpr(value.Expr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, len(globalCells), funcRefDescs, instantiationRoots)
+			bits, err := evalCompiledGCConstExpr(value.Expr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, len(globalCells), funcRefDescs, functionConstruction.roots(instantiationRoots), externConstruction)
 			if err != nil {
 				return err
 			}
@@ -1306,6 +1354,9 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 					}
 				} else if gcInit, ok := c.gcArrayGlobalInit(i); ok {
 					ref, slot, err := instantiateGCArrayGlobal(b.collector, b.gcTypeMap, c.GCTypeDescs, gcInit, funcRefDescs)
+					if err == nil {
+						recordManagedFunctionConstruction(b.collector, c, ref, gcInit.TypeID)
+					}
 					if err != nil {
 						return nil, fmt.Errorf("global %d GC array initializer: %w", i, err)
 					}
@@ -1335,8 +1386,8 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				if len(g.InitExpr) != 0 {
 					var value uint64
 					var err error
-					if g.Type == ValAnyRef || g.Type == ValI31Ref || (g.Type == ValExternRef && needsExternConversion) {
-						value, err = evalCompiledGCConstExpr(g.InitExpr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, i, funcRefDescs, instantiationRoots)
+					if g.Type == ValAnyRef || g.Type == ValI31Ref || (g.Type == ValExternRef && (needsExternConversion || externConstruction != nil)) {
+						value, err = evalCompiledGCConstExpr(g.InitExpr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, i, funcRefDescs, functionConstruction.roots(instantiationRoots), externConstruction)
 					} else {
 						value, err = evalCompiledScalarConstExpr(g.InitExpr, g.Type, globalCells, c.Globals, constExprGlobalScope{context: constExprGlobalInitializer, limit: i})
 					}
@@ -1353,6 +1404,15 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				}
 			}
 			globalCells[i] = cell
+			if g.Type == ValExternRef {
+				var physicalOwner *Instance
+				if cell.owner != nil {
+					physicalOwner = cell.owner.instance
+				}
+				if err := externConstruction.record(cell.cell, physicalOwner); err != nil {
+					return nil, fmt.Errorf("global %d compact extern ownership: %w", i, err)
+				}
+			}
 			binary.LittleEndian.PutUint64(globals[i*8:], uint64(uintptr(unsafe.Pointer(&cell.cell[0]))))
 			if b.collector != nil && isGCRefValType(g.Type) && len(cell.cell) >= 4 {
 				// Keep the actual native cell mutable during the remainder of
@@ -1383,6 +1443,11 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		}
 	}
 
+	if c.core1SegmentPreflight {
+		if err := preflightCore1DataSegments(c, globalCells, jm, memoryObjs); err != nil {
+			return nil, err
+		}
+	}
 	var gcRefTestTable *gcRefTestTableState
 	var gcRefTestDescriptors [][]byte
 	if c.stagedGCStructProduct().requiresRefTableState() {
@@ -1525,6 +1590,11 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				binary.LittleEndian.PutUint64(tableDir[tableIndex*8:], uint64(uintptr(unsafe.Pointer(&desc[0]))))
 			}
 		}
+		if c.core1SegmentPreflight {
+			if err := preflightCore1ElementSegments(c, globalCells, tableDesc, tableDir); err != nil {
+				return nil, err
+			}
+		}
 		for seg, el := range c.Elems {
 			desc := tableDesc
 			var importedTable *Table
@@ -1586,7 +1656,11 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				if importedTable != nil && entryBytes == runtime.TableEntryBytes {
 					copy(before[:], desc[off:off+entryBytes])
 				}
-				writeErr := writeElemEntry(desc[off:off+entryBytes], prev, el.RefType, value)
+				var physicalOwner *Instance
+				if importedTable != nil && importedTable.owner != nil {
+					physicalOwner = importedTable.owner.instance
+				}
+				writeErr := writeElemEntry(desc[off:off+entryBytes], prev, el.RefType, value, physicalOwner)
 				recordImportedFuncrefWrite(importedTable, off, before, desc[off:off+entryBytes])
 				if writeErr != nil {
 					initErr = fmt.Errorf("active element segment %d value %d: %w", seg, k, writeErr)
@@ -1630,7 +1704,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				if k > 0 {
 					prev = entries[(k-1)*entryBytes : k*entryBytes]
 				}
-				if err := writeElemEntry(entries[k*entryBytes:(k+1)*entryBytes], prev, el.RefType, value); err != nil {
+				if err := writeElemEntry(entries[k*entryBytes:(k+1)*entryBytes], prev, el.RefType, value, nil); err != nil {
 					initErr = fmt.Errorf("passive element segment %d value %d: %w", i, k, err)
 					break
 				}
@@ -1696,7 +1770,10 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 					initErr = fmt.Errorf("data offset global %d out of range", d.Offset.Global)
 					break
 				}
-				off = uint64(uint32(readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type)))
+				off = readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type)
+				if !memory64 {
+					off = uint64(uint32(off))
+				}
 			}
 			if len(d.Offset.Expr) != 0 {
 				want := ValI32
@@ -1991,6 +2068,14 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		}
 		in.refStore = conversionStore
 	}
+	if err := functionConstruction.bind(in, b.gcDomain); err != nil {
+		return nil, err
+	}
+	functionConstruction.close()
+	if err := externConstruction.bind(in); err != nil {
+		return nil, err
+	}
+	externConstruction.close()
 	if finishGCDomainConstruction != nil {
 		finishGCDomainConstruction()
 		finishGCDomainConstruction = nil
@@ -2025,16 +2110,33 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		// Publish producer membership before releasing construction: a host table
 		// has no instance owner from which another importer can discover these
 		// local canonical descriptors. Keep the ordinary attachment until Close.
-		table, _ := imports.table(c.tableImportBindingKey(0))
-		redundantRoot := railshotPublishConstructedTableProducer(table, in)
+		var published importDedup[*Table]
+		redundantRoots := 0
+		var publicationCleanup resourceCleanup
+		for index := 0; index < c.tableImportCount(); index++ {
+			if c.tableDef(index).Type != ValFuncRef {
+				continue
+			}
+			table, _ := imports.table(c.tableImportBindingKey(index))
+			if published.add(table) {
+				publicationCleanup.run(func() {
+					if railshotPublishConstructedTableProducer(table, in) != nil {
+						redundantRoots++
+					}
+				})
+			}
+		}
 		if finishMemoryContext != nil {
-			finishMemoryContext(initErr == nil)
+			finish := finishMemoryContext
 			finishMemoryContext = nil
+			publicationCleanup.run(func() { finish(initErr == nil && !publicationCleanup.panicked) })
 		}
-		if redundantRoot != nil {
-			redundantRoot.releaseResourceRoot()
+		for redundantRoots != 0 {
+			redundantRoots--
+			publicationCleanup.run(in.releaseResourceRoot)
 		}
-		table.pruneRetainedInstances()
+		published.each(func(table *Table) { publicationCleanup.run(table.pruneRetainedInstances) })
+		publicationCleanup.finish()
 	}
 	if initErr != nil {
 		return nil, initErr

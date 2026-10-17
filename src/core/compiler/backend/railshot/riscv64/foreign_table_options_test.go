@@ -128,13 +128,10 @@ func TestProductionForeignTableAggregateBoundBeforeStaging(t *testing.T) {
 			t.Fatal(err)
 		}
 		pressure := 0
-		image, err := CompileModuleWith(m, CompileOptions{Interruptible: true, ForeignTableCalls: true, MemoryPressure: func() { pressure++ }})
-		if image != nil || err == nil || pressure != 0 {
-			t.Fatal("aggregate foreign helpers reached executable staging", vector, err, pressure)
+		image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, MemoryPressure: func() { pressure++ }})
+		if image == nil || err != nil || pressure != 1 || image.CodeImage != nil || len(image.Code) > MaxPublicCodeBytes || len(image.Entry) != len(m.Code) {
+			t.Fatal("public aggregate image admission", vector, err, pressure)
 		}
-		if !strings.Contains(err.Error(), "emitted code exceeds") && !strings.Contains(err.Error(), "module aggregate code bound") {
-			t.Fatal("aggregate fixture hit an unrelated rejection", vector, err)
-		}
-		t.Log("aggregate image rejected before staging", vector, err)
+		t.Log("bounded public image bytes", vector, len(image.Code))
 	}
 }

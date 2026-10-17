@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -201,8 +201,12 @@ func rv64ReferenceFunctionNumericCallsMaximum(t *testing.T, ownedTable bool, pro
 					if properTail {
 						rows++
 					}
-					if len(in.funcRefDescs) != rows*40 || !railshotNonCallableFunction(c, 2) || (properTail && !railshotNonCallableFunction(c, 3)) {
-						t.Fatal("max private sparse row")
+					if len(in.funcRefDescs) != rows*40 {
+						t.Fatal("maximum descriptor extent", len(in.funcRefDescs))
+					}
+					rv64RequirePublishedLocalFunction(t, in, 2-c.NumImports)
+					if properTail {
+						rv64RequirePublishedLocalFunction(t, in, 3-c.NumImports)
 					}
 					n, stride := 256, 4
 					if vector {

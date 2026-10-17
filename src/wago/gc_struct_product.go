@@ -266,6 +266,55 @@ func moduleHasGCHeapType(m *wasm.Module) bool {
 	return false
 }
 
+// Initializers can allocate without any function body using a GC helper.
+// Keep product selection aligned with the instructions evaluated at instantiate.
+func moduleGCInitializerUses(m *wasm.Module, matches func(wasm.InstrKind) bool) bool {
+	if m == nil {
+		return false
+	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	uses := func(expr wasm.Expr) bool {
+		for _, in := range expr.Instrs {
+			if matches(in.Kind) {
+				return true
+			}
+		}
+		r := wasm.NewReader(expr.BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return false
+			}
+			var imm wasm.InstructionImmediate
+			if classifier.ClassifyInto(r, op, &imm) != nil {
+				return false
+			}
+			if matches(imm.Kind) {
+				return true
+			}
+		}
+		return false
+	}
+	for i := range m.Globals {
+		if uses(m.Globals[i].Init) {
+			return true
+		}
+	}
+	for i := range m.Tables {
+		if m.Tables[i].Init != nil && uses(*m.Tables[i].Init) {
+			return true
+		}
+	}
+	for i := range m.Elements {
+		for _, expr := range m.Elements[i].Kind.Exprs {
+			if uses(expr) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func moduleUsesGenericGCStructHelpers(m *wasm.Module) bool {
 	if m == nil {
 		return false
@@ -296,7 +345,14 @@ func moduleUsesGenericGCStructHelpers(m *wasm.Module) bool {
 			}
 		}
 	}
-	return false
+	return moduleGCInitializerUses(m, func(kind wasm.InstrKind) bool {
+		switch kind {
+		case wasm.InstrStructNew, wasm.InstrStructNewDefault:
+			return true
+		default:
+			return false
+		}
+	})
 }
 
 func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {

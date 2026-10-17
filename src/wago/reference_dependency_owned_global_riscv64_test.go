@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -265,6 +265,7 @@ func TestRV64OwnedGlobalDescriptorClosedAdoptionRetirementOverlap(t *testing.T) 
 		t.Fatal(err)
 	}
 	graph := row.receipt.graph
+	receiptIdentity := row.receipt.identity
 	graph.mu.Lock()
 	graphHeld := true
 	type terminalResult struct {
@@ -332,14 +333,21 @@ func TestRV64OwnedGlobalDescriptorClosedAdoptionRetirementOverlap(t *testing.T) 
 		if result.panicked {
 			t.Fatal("terminal scheduler panicked after retirement overlap", result.value)
 		}
+		if err := owner.waitTerminalClose(); err != nil {
+			t.Fatal("terminal adoption failed after retirement overlap", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("terminal scheduler did not finish after graph release")
 	}
 	global.owner.mu.Lock()
 	rows := len(global.owner.descriptorDependencies.rows)
 	global.owner.mu.Unlock()
-	if !retireRequested || row.phase != rv64GlobalDescriptorReleased || rows != 0 || dependencyTestRefs(producer) != 0 || graph.live != 0 || ownership.member.outgoing.Load() != 0 {
-		t.Fatal("retirement overlap did not consume the adopted row", retireRequested, row.phase, rows, dependencyTestRefs(producer), graph.live, ownership.member.outgoing.Load())
+	graph.mu.Lock()
+	record, _ := graph.recordLocked(receiptIdentity)
+	receiptReleased := record == nil || record.state == dependencyReleased && record.target == nil && record.consumer == nil
+	graph.mu.Unlock()
+	if !retireRequested || row.phase != rv64GlobalDescriptorReleased || rows != 0 || dependencyTestRefs(producer) != 0 || !receiptReleased || ownership.member.outgoing.Load() != 0 {
+		t.Fatal("retirement overlap did not consume the adopted row", retireRequested, row.phase, rows, dependencyTestRefs(producer), receiptReleased, ownership.member.outgoing.Load())
 	}
 	owner.releaseResourceRoot()
 	rootHeld = false

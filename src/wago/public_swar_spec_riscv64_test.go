@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -301,7 +301,7 @@ func rv64PublicSpecExecution(t *testing.T, variable string, relaxed bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]int{"modules": 472, "register": 1, "assert_return": 24273, "assert_trap": 54, "assert_invalid": 669, "assert_invalid_decode": 1, "assert_invalid_validate": 668, "excluded_text_assert_malformed": 510}
+	want := map[string]int{"modules": 472, "register": 1, "assert_return": 24273, "assert_trap": 54, "assert_invalid": 669, "assert_invalid_validate": 669, "excluded_text_assert_malformed": 510}
 	if relaxed {
 		want = map[string]int{"modules": 8, "assert_return": 69, "assert_return_either": 32}
 	}
@@ -458,29 +458,6 @@ func rv64PublicSpecAssertInvalid(t *testing.T, source []byte, command simdfixtur
 	if mismatch := rv64PublicSpecInvalidError(command.Text, err); mismatch != nil {
 		t.Fatalf("invalid pinned module %s line %d: %v", command.Filename, command.Line, mismatch)
 	}
-	var decode *wasm.DecodeError
-	decodedRejection := errors.As(err, &decode)
-	// The pinned shuffle with an out-of-range immediate is the sole invalid
-	// binary rejected by decoding. A different decoder failure is a regression.
-	if decodedRejection != (command.Filename == "simd_lane.96.wasm") {
-		t.Fatalf("invalid pinned module %s rejected at unexpected stage: %v", command.Filename, err)
-	}
-	if decodedRejection {
-		// This manifest-pinned binary has one code body starting at byte 23.
-		// Its shuffle starts at byte 60; the final lane is 255 at byte 77.
-		// DecodeError.Offset is relative to that body, not the whole module.
-		if len(source) != 79 || source[19] != 10 || source[20] != 58 ||
-			source[21] != 1 || source[22] != 56 || source[23] != 0 ||
-			source[60] != 0xfd || source[61] != 13 || source[77] != 255 || source[78] != 0x0b {
-			t.Fatal("pinned invalid shuffle instruction/source layout changed")
-		}
-		for lane := 0; lane < 15; lane++ {
-			if source[62+lane] != byte(lane) {
-				t.Fatal("pinned shuffle has an earlier invalid or changed lane", lane)
-			}
-		}
-		return "decode"
-	}
 	return "validate"
 }
 
@@ -489,13 +466,6 @@ func rv64PublicSpecInvalidError(text string, err error) error {
 	switch text {
 	case "type mismatch":
 	case "invalid lane index":
-		// Shuffle lane bytes are rejected by decoding; other lane bounds are
-		// checked by validation. Both reject the specified invalid immediate.
-		var decode *wasm.DecodeError
-		if errors.As(err, &decode) && decode.Code == wasm.ErrInvalidInstruction &&
-			decode.Offset == 54 && decode.SectionID == 10 && decode.SectionStart == 21 && decode.SectionEnd == 79 {
-			return nil
-		}
 	case "alignment must not be larger than natural":
 		want = wasm.ErrInvalidAlignment
 	case "unknown local 2", "unknown local":

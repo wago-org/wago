@@ -3,6 +3,7 @@ package wago
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
@@ -15,7 +16,7 @@ const rv64RootedMaxMemories = 4
 // encode physical layout, so semantic properties such as reference exactness
 // and heap identity need their own receipt.
 func rv64RootedTypeDigest(c *Compiled) ([32]byte, bool) {
-	if c == nil || len(c.Types) == 0 || len(c.Types) > 1<<16 {
+	if c == nil || len(c.Types) == 0 && !c.needsOwnedExceptionReferences() || len(c.Types) > 1<<16 {
 		return [32]byte{}, false
 	}
 	descriptorBudget := len(c.Types)
@@ -107,6 +108,20 @@ type compactDataRecord struct {
 
 const minCompactActiveData = 1024
 
+// Validate packed spans before any reader forms a payload slice. Public
+// metadata copies can reach admission without the execution clone's proof.
+func (c *Compiled) validateCompactData() error {
+	if c == nil || c.compactData == nil {
+		return nil
+	}
+	for _, record := range c.compactData.records {
+		if record.end < record.start || uint64(record.end) > uint64(len(c.compactData.bytes)) {
+			return fmt.Errorf("compiled metadata invalid: compact data payload range")
+		}
+	}
+	return nil
+}
+
 func (c *Compiled) activeDataCount() int {
 	if c.compactData != nil {
 		return len(c.compactData.records)
@@ -152,6 +167,12 @@ func rv64RootedImportDigest(c *Compiled) ([32]byte, bool) {
 				return false
 			}
 			switch exact.Ref.Heap.Abstract {
+			case AbstractHeapFunc, AbstractHeapNoFunc:
+				return abi == ValFuncRef
+			case AbstractHeapExtern, AbstractHeapNoExtern:
+				return abi == ValExternRef
+			case AbstractHeapExn, AbstractHeapNoExn:
+				return c.needsOwnedExceptionReferences() && abi == ValExnRef
 			case AbstractHeapI31:
 				return abi == ValI31Ref
 			case AbstractHeapNone, AbstractHeapAny, AbstractHeapEq, AbstractHeapStruct, AbstractHeapArray:
@@ -160,11 +181,11 @@ func rv64RootedImportDigest(c *Compiled) ([32]byte, bool) {
 				return false
 			}
 		}
-		if int(exact.Ref.Heap.TypeIndex) >= len(c.Types) || abi != ValAnyRef {
+		if int(exact.Ref.Heap.TypeIndex) >= len(c.Types) {
 			return false
 		}
 		target := c.Types[exact.Ref.Heap.TypeIndex]
-		return target.Kind == CompositeTypeStruct || target.Kind == CompositeTypeArray
+		return target.Kind == CompositeTypeFunction && abi == ValFuncRef || (target.Kind == CompositeTypeStruct || target.Kind == CompositeTypeArray) && abi == ValAnyRef
 	}
 	binary.LittleEndian.PutUint32(word[:4], uint32(c.NumImports))
 	_, _ = h.Write(word[:4])
@@ -182,7 +203,7 @@ func rv64RootedImportDigest(c *Compiled) ([32]byte, bool) {
 		_, _ = h.Write(word[:])
 
 		sig := &c.importFuncSigs[i]
-		if !sig.HasTypeIndex || sig.unsafeCrossTail || uint64(sig.TypeIndex) >= uint64(len(c.Types)) || len(sig.Params) > coreruntime.MaxHostArity || len(sig.Results) > coreruntime.MaxHostArity {
+		if !sig.HasTypeIndex || sig.unsafeCrossTail && !(compiledArchitecture == 4 && c.nativeGCABIRequirement() == 1 && c.genericGCFrameRoots() != nil && railshotNativeTailImport(c, i)) || uint64(sig.TypeIndex) >= uint64(len(c.Types)) || len(sig.Params) > coreruntime.MaxHostArity || len(sig.Results) > coreruntime.MaxHostArity {
 			return [32]byte{}, false
 		}
 		typ := &c.Types[sig.TypeIndex]
@@ -276,10 +297,19 @@ func rv64RootedMemoryExportDigest(c *Compiled) ([32]byte, bool) {
 	_, _ = h.Write(word[:4])
 	for i := range c.memoryDir.defs {
 		def := &c.memoryDir.defs[i]
-		if def.Shared || def.Addr64 || !def.HasMax || def.Min > def.Max || def.Max > 256 {
+		if def.Shared && (!c.requiredFeatures.IsEnabled(CoreFeatureThreads) || def.Addr64 || !def.HasMax || def.ImportKey == "") || def.HasMax && def.Min > def.Max {
 			return [32]byte{}, false
 		}
-		flags := byte(1)
+		flags := byte(0)
+		if def.HasMax {
+			flags |= 1
+		}
+		if def.Addr64 {
+			flags |= 4
+		}
+		if def.Shared {
+			flags |= 8
+		}
 		if def.ImportKey != "" {
 			if imports != i || imports >= len(memoryEnds) || validateImportModuleEnd(def.ImportKey, memoryEnds[imports]) != nil || uint64(len(def.ImportKey)) > remaining {
 				return [32]byte{}, false
@@ -357,17 +387,19 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 	for i := range c.Globals {
 		global := &c.Globals[i]
 		collectorRef := isGCRefValType(global.Type)
+		initializerRef := collectorRef || global.Type == ValExternRef && c.compactExternFrameRoots()
+		primitiveRef := global.Type == ValFuncRef || global.Type == ValExternRef
 		validI31Bits := global.Type != ValI31Ref || (global.Bits>>32 == 0 && (global.Bits == 0 || global.Bits&1 != 0))
-		if global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && !collectorRef ||
-			!global.HasValueType || global.HasInitFunc || global.InitFunc != 0 ||
+		if global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && !collectorRef && !primitiveRef ||
+			!global.HasValueType || global.HasInitFunc && (global.Type != ValFuncRef || i < len(c.GlobalImports) || global.HasInitGlobal || len(global.InitExpr) != 0) || !global.HasInitFunc && global.InitFunc != 0 ||
 			global.V128 != (V128{}) || (global.Type == ValI32 || global.Type == ValF32) && global.Bits>>32 != 0 ||
-			collectorRef && global.Type != ValI31Ref && global.Bits != 0 || !validI31Bits {
+			(collectorRef && global.Type != ValI31Ref || primitiveRef) && global.Bits != 0 || !validI31Bits {
 			return [32]byte{}, false
 		}
 		if len(global.InitExpr) != 0 {
 			if i < len(c.GlobalImports) || global.HasInitGlobal || global.InitGlobal != 0 ||
-				(!collectorRef && global.Type != ValI32 && global.Type != ValI64) ||
-				(!collectorRef && len(global.InitExpr) > 128) || (collectorRef && len(global.InitExpr) > 4096) || uint64(len(global.InitExpr)) > remaining {
+				(!initializerRef && global.Type != ValI32 && global.Type != ValI64) ||
+				(!initializerRef && len(global.InitExpr) > 128) || (initializerRef && len(global.InitExpr) > 4096) || uint64(len(global.InitExpr)) > remaining {
 				return [32]byte{}, false
 			}
 			remaining -= uint64(len(global.InitExpr))
@@ -376,7 +408,7 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 				return [32]byte{}, false
 			}
 			parent := &c.Globals[global.InitGlobal]
-			if !collectorRef && (parent.Mutable || parent.Type != global.Type) {
+			if !collectorRef && !primitiveRef && (parent.Mutable || parent.Type != global.Type) {
 				return [32]byte{}, false
 			}
 		} else if global.InitGlobal != 0 {
@@ -384,10 +416,18 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 		}
 		exact, err := c.globalExactType(i)
 		plain, ok := valueTypeDescriptorFromValType(global.Type)
-		if err != nil || !ok || (!collectorRef && exact != plain) || collectorRef && exact.Kind != ValueTypeReference {
+		if err != nil || !ok || (!collectorRef && !primitiveRef && exact != plain) || (collectorRef || primitiveRef) && exact.Kind != ValueTypeReference {
 			return [32]byte{}, false
 		}
-		if collectorRef && global.HasInitGlobal && !rv64InitializerReferenceGlobal(c, global.InitGlobal, exact, i) {
+		if global.HasInitFunc {
+			actual, err := c.functionRefExactType(global.InitFunc)
+			if err != nil || !c.needsFuncRefDescs() || !valueTypeSubtype(actual, c.Types, exact, c.Types) {
+				return [32]byte{}, false
+			}
+		} else if primitiveRef && !global.HasInitGlobal && !exact.Ref.Nullable {
+			return [32]byte{}, false
+		}
+		if (collectorRef || primitiveRef) && global.HasInitGlobal && !rv64InitializerReferenceGlobal(c, global.InitGlobal, exact, i) {
 			return [32]byte{}, false
 		}
 		flags := byte(1)
@@ -399,6 +439,9 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 		}
 		if len(global.InitExpr) != 0 {
 			flags |= 16
+		}
+		if global.HasInitFunc {
+			flags |= 32
 		}
 		if i < len(c.GlobalImports) {
 			imp := &c.GlobalImports[i]
@@ -418,7 +461,7 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 		_, _ = h.Write([]byte{byte(global.Type), flags})
 		binary.LittleEndian.PutUint32(word[:4], global.ValueTypeIndex)
 		_, _ = h.Write(word[:4])
-		if collectorRef {
+		if collectorRef || primitiveRef {
 			refFlags := byte(0)
 			if exact.Ref.Nullable {
 				refFlags |= 1
@@ -431,6 +474,10 @@ func rv64RootedGlobalDigest(c *Compiled) ([32]byte, bool) {
 			}
 			_, _ = h.Write([]byte{refFlags, byte(exact.Ref.Heap.Abstract)})
 			binary.LittleEndian.PutUint32(word[:4], exact.Ref.Heap.TypeIndex)
+			_, _ = h.Write(word[:4])
+		}
+		if global.HasInitFunc {
+			binary.LittleEndian.PutUint32(word[:4], global.InitFunc)
 			_, _ = h.Write(word[:4])
 		}
 		binary.LittleEndian.PutUint32(word[:4], uint32(global.InitGlobal))
@@ -468,7 +515,7 @@ func rv64InitializerReferenceGlobal(c *Compiled, index int, required ValueTypeDe
 		return false
 	}
 	source := &c.Globals[index]
-	if source.Mutable || !isGCRefValType(source.Type) {
+	if source.Mutable || !isGCRefValType(source.Type) && source.Type != ValFuncRef && source.Type != ValExternRef {
 		return false
 	}
 	actual, err := c.globalExactType(index)
@@ -481,7 +528,7 @@ func rv64InitializerReferenceGlobal(c *Compiled, index int, required ValueTypeDe
 // namespace. Callable rows remain retained canonical descriptors; bounded
 // aggregate element expressions are authenticated byte-for-byte.
 func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
-	if c == nil || len(c.tableExports) > 256 || len(c.Elems) > 256 || len(c.passiveElems) > 256 {
+	if c == nil || len(c.tableExports) > maxRV64ExecutionTables || len(c.Elems) > 256 || len(c.passiveElems) > 256 {
 		return [32]byte{}, false
 	}
 	h := sha256.New()
@@ -495,7 +542,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 			len(c.Elems) != 0 || len(c.tableExports) != 0 {
 			return [32]byte{}, false
 		}
-	} else if tableCount > 2 || !c.HasTable || !c.hasTableExportMetadata || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
+	} else if tableCount > maxRV64ExecutionTables || !c.HasTable || !c.hasTableExportMetadata || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return [32]byte{}, false
 	}
 	importCount := c.tableImportCount()
@@ -520,7 +567,7 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	needsDescriptors := false
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 	rootedReference := func(exact ValueTypeDescriptor) bool {
-		if exact.Kind != ValueTypeReference || !exact.Ref.Nullable || exact.Ref.Exact {
+		if exact.Kind != ValueTypeReference || exact.Ref.Exact {
 			return false
 		}
 		if !exact.Ref.Heap.Defined {
@@ -528,6 +575,10 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 				return false
 			}
 			switch exact.Ref.Heap.Abstract {
+			case AbstractHeapExn, AbstractHeapNoExn:
+				return c.needsOwnedExceptionReferences()
+			case AbstractHeapExtern, AbstractHeapNoExtern:
+				return c.compactExternFrameRoots()
 			case AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray:
 				return true
 			default:
@@ -540,9 +591,12 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		kind := c.Types[exact.Ref.Heap.TypeIndex].Kind
 		return kind == CompositeTypeStruct || kind == CompositeTypeArray
 	}
+	functionReference := func(exact ValueTypeDescriptor) bool {
+		return exact == plain || (c.usesGenericGCExecution() || c.hasOpaqueExternFrames()) && exact.Kind == ValueTypeReference && !exact.Ref.Exact && exact.Ref.Heap.Defined && uint64(exact.Ref.Heap.TypeIndex) < uint64(len(c.Types)) && c.Types[exact.Ref.Heap.TypeIndex].Kind == CompositeTypeFunction
+	}
 	writeElemType := func(elem *ElemInit) (ValueTypeDescriptor, bool) {
 		normalized := normalizedElemRefType(elem.RefType)
-		if elem.RefType != 0 && elem.RefType != ValFuncRef && normalized != ValAnyRef && normalized != ValI31Ref {
+		if elem.RefType != 0 && elem.RefType != ValFuncRef && normalized != ValAnyRef && normalized != ValI31Ref && normalized != ValExternRef && (!c.usesManagedFunctionStorage() || normalized != ValFuncRef) && (!c.needsOwnedExceptionReferences() || normalized != ValExnRef) {
 			return ValueTypeDescriptor{}, false
 		}
 		if !elem.HasValueType {
@@ -557,7 +611,8 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		}
 		exact := c.ValueTypes[elem.ValueTypeIndex]
 		abi, abiOK := exact.ABIType(c.Types)
-		if exact == plain && normalized != ValFuncRef || exact != plain && (!rootedReference(exact) || !abiOK || normalized != abi) {
+		functionSegment := functionReference(exact)
+		if exact == plain && normalized != ValFuncRef || exact != plain && ((!rootedReference(exact) && !functionSegment) || !abiOK || normalized != abi) {
 			return ValueTypeDescriptor{}, false
 		}
 		_, _ = h.Write([]byte{1})
@@ -615,10 +670,22 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 				return false
 			}
 			if value.Null {
-				if value.FuncIndex != 0 {
+				if value.FuncIndex != 0 || !exact.Ref.Nullable {
 					return false
 				}
 				_, _ = h.Write([]byte{0})
+				continue
+			}
+			if exact != plain && functionReference(exact) {
+				actual, err := c.functionRefExactType(value.FuncIndex)
+				if err != nil || !valueTypeSubtype(actual, c.Types, exact, c.Types) || !allowImported && uint64(value.FuncIndex) < uint64(c.NumImports) {
+					return false
+				}
+				needsDescriptors = true
+				_, _ = h.Write([]byte{1})
+				binary.LittleEndian.PutUint32(word[:4], value.FuncIndex)
+				_, _ = h.Write(word[:4])
+				canRepeat = true
 				continue
 			}
 			if exact != plain {
@@ -642,11 +709,19 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 		}
 		return true
 	}
-	_, _ = h.Write([]byte{byte(tableCount)})
+	if tableCount <= 255 {
+		_, _ = h.Write([]byte{byte(tableCount)})
+	} else {
+		// The legacy receipt encodes small directories in one byte. A marker
+		// plus a full count keeps larger directories distinct and unambiguous.
+		_, _ = h.Write([]byte{0xff, 0xff, 0xff, 0xff})
+		binary.LittleEndian.PutUint32(word[:4], uint32(tableCount))
+		_, _ = h.Write(word[:4])
+	}
 	for tableIndex := 0; tableIndex < tableCount; tableIndex++ {
 		def := c.tableDef(tableIndex)
 		exact, err := c.tableExactType(tableIndex)
-		functionTable := exact == plain
+		functionTable := functionReference(exact)
 		rootedTable := rootedReference(exact)
 		abi, abiOK := exact.ABIType(c.Types)
 		if err != nil || !functionTable && !rootedTable || !abiOK || def.Addr64 || !def.HasValueType ||
@@ -690,9 +765,9 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 			_, _ = h.Write(word[:4])
 			continue
 		}
-		if tableIndex < importCount || def.ImportKey != "" || def.ImportHasMax || !def.HasMax || def.Size < 0 || def.Size > 256 || def.Max < uint64(def.Size) || def.Max > 256 ||
+		if tableIndex < importCount || def.ImportKey != "" || def.ImportHasMax || def.Size < 0 || def.Size > 256 || def.HasMax && (def.Max < uint64(def.Size) || def.Max > 256) || rootedTable && !exact.Ref.Nullable ||
 			rootedTable && (def.HasInitFunc || def.InitFunc != 0) ||
-			!def.HasInitFunc && def.InitFunc != 0 || def.HasInitFunc && ((!publicTables[tableIndex] && uint64(def.InitFunc) < uint64(c.NumImports)) || uint64(def.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || railshotNonCallableFunction(c, int(def.InitFunc))) {
+			!def.HasInitFunc && def.InitFunc != 0 || def.HasInitFunc && (uint64(def.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || railshotNonCallableFunction(c, int(def.InitFunc))) {
 			return [32]byte{}, false
 		}
 		_, _ = h.Write([]byte{0})
@@ -735,21 +810,21 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 			return [32]byte{}, false
 		}
 		exact, err := c.tableExactType(int(elem.TableIndex))
-		if err != nil || exact != plain && !rootedReference(exact) {
+		if err != nil || !functionReference(exact) && !rootedReference(exact) {
 			return [32]byte{}, false
 		}
 		remaining -= len(elem.Values)
 		binary.LittleEndian.PutUint32(word[:4], elem.TableIndex)
 		_, _ = h.Write(word[:4])
 		elemType, ok := writeElemType(elem)
-		if !ok || elemType != exact {
+		if !ok || !valueTypeSubtype(elemType, c.Types, exact, c.Types) {
 			return [32]byte{}, false
 		}
 		binary.LittleEndian.PutUint32(word[:4], elem.Offset.Base)
 		_, _ = h.Write(word[:4])
 		binary.LittleEndian.PutUint32(word[:4], uint32(len(elem.Values)))
 		_, _ = h.Write(word[:4])
-		if !writeValues(elem.Values, publicTables[elem.TableIndex], elemType) {
+		if !writeValues(elem.Values, true, elemType) {
 			return [32]byte{}, false
 		}
 	}

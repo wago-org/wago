@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -8,6 +8,7 @@ import (
 	"unsafe"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 // Construction-only mutation ends after the separate thunk mapping is RX and
@@ -103,6 +104,20 @@ func railshotInstallNativeImportConstruction(in *Instance, s *railshotNativeImpo
 // successful publication and the exact logical extent, never page padding or a
 // shared code-cache refcount in place of the particular importer's lease.
 type rv64TailThunkCodeOwner struct{ instance *Instance }
+
+func (o rv64TailThunkCodeOwner) nativeTailFunctionType(index uint32) (*Compiled, uint32, error) {
+	if _, err := o.NativeTailCodeView(); err != nil {
+		return nil, 0, err
+	}
+	return rv64TailDeclaredFunctionType(o.instance.c, index)
+}
+
+func (o rv64TailThunkCodeOwner) NativeTailFunctionKey(index uint32, params, results []wasm.ValType) (uint64, error) {
+	if _, err := o.NativeTailCodeView(); err != nil {
+		return 0, err
+	}
+	return (rv64TailCodeOwner{o.instance}).nativeTailFunctionKey(index, params, results, true)
+}
 
 func (o rv64TailThunkCodeOwner) NativeTailCodeView() ([]byte, error) {
 	in := o.instance

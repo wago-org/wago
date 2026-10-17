@@ -39,9 +39,9 @@ func TestLegacyDeclarativeDescriptorDemand(t *testing.T) {
 		{name: "global instructions", edit: func(m *wasm.Module) {
 			m.Globals = []wasm.Global{{Init: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrRefFunc}}}}}
 		}, want: true},
-		{name: "expression declaration remains conservative", edit: func(m *wasm.Module) {
+		{name: "expression declaration only", edit: func(m *wasm.Module) {
 			m.Elements[0].Kind = wasm.ElemKind{Kind: wasm.ElemFuncExprs, Exprs: []wasm.Expr{{BodyBytes: []byte{0xd2, 0x00, 0x0b}}}}
-		}, want: true},
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := legacyDeclarativeDescriptorFixture(1)

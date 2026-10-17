@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -2138,33 +2138,63 @@ func rv64OwnedTwoTable64InitDrop(c *Compiled) bool {
 }
 
 func rv64QualifiedTable64(c *Compiled) bool {
+	if rv64GenericTable64(c) {
+		return true
+	}
 	return rv64StateOnlyTable64(c) || rv64OwnedTable64ActiveElement(c) || rv64MixedTable64ActiveElement(c) || rv64MixedTable64DualActiveElements(c) || rv64MixedTable64DualActiveVectors(c) || rv64OwnedTable64Size(c) || rv64OwnedTwoTable64Size(c) || rv64MixedTable64Size(c) || rv64MixedTable64GetSet(c) || rv64MixedTable64Grow(c) || rv64MixedTable64Fill(c) || rv64MixedTable64Copy(c) || rv64MixedTable64CrossCopy(c) || rv64MixedTable64InitDrop(c) || rv64MixedTable64Indirect(c) || rv64MixedTable64ActiveIndirect(c) || rv64OwnedTable64Grow(c) || rv64OwnedTwoTable64Grow(c) || rv64OwnedTable64GetSet(c) || rv64OwnedTwoTable64GetSet(c) || rv64OwnedTable64Indirect(c) || rv64OwnedTwoTable64Indirect(c) || rv64ImportedTable64Indirect(c) || rv64OwnedTable64Fill(c) || rv64OwnedTwoTable64Fill(c) || rv64OwnedTable64Copy(c) || rv64OwnedTwoTable64Copy(c) || rv64OwnedTable64InitDrop(c) || rv64OwnedTwoTable64InitDrop(c) || rv64ImportedTable64Size(c) || rv64ImportedTable64GetSet(c) || rv64ImportedTable64Grow(c) || rv64ImportedTable64Fill(c) || rv64ImportedTable64Copy(c) || rv64ImportedTable64InitDrop(c)
 }
 
 // One bounded owned or imported table is qualified. Exact metadata prevents the legacy
 // ExportedTable fallback from exposing an undeclared table handle.
 func rv64ValidateOwnedTable(c *Compiled) error {
+	if rv64GenericTable64(c) {
+		return rv64ValidateGenericTable64(c)
+	}
 	if rv64Core3RefIsNullExecution(c) || rv64I31OfficialTable(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialAnyTable(c) || rv64I31RefEqPilot(c) || rv64OfficialGCRefEq(c) || rv64GCArrayReference(c) || rv64GCArrayInitElem(c) || rv64GCTypeSubtypingRuntimeCallCast(c) || rv64GCTypeSubtypingRuntimeFinalityCallCast(c) || rv64GCTypeSubtypingRuntimeTypedTableCall(c) {
 		return nil
 	}
 	if c.tableCount() == 0 {
+		// Fresh rooted receipts authenticate exact table-free GC element types,
+		// values, and segment bounds, including i31 immediates and expressions.
+		if rv64FreshRootedGC(c) {
+			if len(c.passiveElems) != 0 && (!c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled) {
+				return fmt.Errorf("rooted elements require the framed retained reference ABI")
+			}
+			return nil
+		}
 		if c.HasTableInitFunc || c.TableInitFunc != 0 || c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.TableAddr64 || c.TableType != 0 || c.TableHasValueType || len(c.Elems) != 0 || len(c.tableExports) != 0 {
 			return fmt.Errorf("table metadata requires a declared table")
 		}
-		if len(c.passiveElems) > railshot.MaxOwnedElementSegments || len(c.passiveElems) != 0 && !c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
+		if len(c.passiveElems) > railshot.MaxPublicElementSegments || len(c.passiveElems) != 0 && !c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
 			return fmt.Errorf("element directory count/feature")
 		}
 		remaining := railshot.MaxOwnedTableEntries
 		hasLegacyPassive := false
 		hasLegacyDescriptorPayload := false
 		for _, e := range c.passiveElems {
-			if (e.Mode != ElemModeDeclarative && e.Mode != ElemModePassive) || e.TableIndex != 0 || e.RefType != ValFuncRef && e.RefType != 0 || len(e.Values) > remaining || e.Offset.Base != 0 || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 {
+			collectorNulls := false
+			if c.requiredFeatures.IsEnabled(CoreFeatureGC) {
+				exact, err := c.elemExactType(e)
+				if err == nil && exact.Kind == ValueTypeReference && exact.Ref.Nullable && !exact.Ref.Exact && !exact.Ref.Heap.Defined {
+					switch exact.Ref.Heap.Abstract {
+					case AbstractHeapNone, AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray, AbstractHeapNoExtern:
+						collectorNulls = true
+					}
+					for _, value := range e.Values {
+						collectorNulls = collectorNulls && value.Null && value.FuncIndex == 0 && !value.HasGlobal && value.GlobalIndex == 0 && !value.I31Wrap && !value.RepeatPrevious && len(value.Expr) == 0
+					}
+				}
+			}
+			if (e.Mode != ElemModeDeclarative && e.Mode != ElemModePassive) || e.TableIndex != 0 || e.RefType != ValFuncRef && e.RefType != 0 && !collectorNulls || len(e.Values) > remaining || e.Offset.Base != 0 || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 {
 				return fmt.Errorf("bounded table-free passive/declarative funcref state required")
 			}
 			if e.Mode == ElemModeDeclarative && len(e.Values) != 0 {
 				return fmt.Errorf("declarative state must start dropped")
 			}
 			remaining -= len(e.Values)
+			if collectorNulls {
+				continue
+			}
 			if err := rv64ValidateElementPayload(c, e); err != nil {
 				return err
 			}
@@ -2185,7 +2215,7 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		// materialize descriptors even without reference instructions. Explicit
 		// reference globals, expression payloads and descriptor-only bodies
 		// still require their ReferenceTypes witness.
-		if (hasReferenceGlobal || !hasLegacyPassive || c.needsFuncRefDescs() && !hasLegacyDescriptorPayload) && !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+		if (hasReferenceGlobal || !hasLegacyPassive || c.needsFuncRefDescs() && !hasLegacyDescriptorPayload) && c.requiredFeatures&(CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences|CoreFeatureGC) == 0 {
 			return fmt.Errorf("references require the reference-types feature")
 		}
 		if c.needsFuncRefDescs() {
@@ -2196,6 +2226,17 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	if !c.nativeTableContextABI || !c.nativeTableReferenceABI {
 		return fmt.Errorf("retained native table context and reference ABI are required")
 	}
+	if rv64ImmediateReferenceContract(c) || rv64GeneralI31Contract(c) {
+		return nil
+	}
+	if rv64FreshRootedGC(c) {
+		// The rooted receipt binds exact native function and compact collector
+		// table types, all initializer values, limits and structural keys.
+		return nil
+	}
+	if (c.tableCount() > 1 || rv64HasExternTable32(c) || c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) && rv64PrimitiveReferenceContract(c)) && rv64PlainReferenceTable32Directory(c) {
+		return rv64ValidateFunctionTable32Directory(c)
+	}
 	stateOnlyLocalDeclarations := c.hasNoFunctionCode() && c.tableImportCount() == 0 && len(c.GlobalImports) == 0 && c.memoryImportCount() == 0 && c.tagImportCount() == 0
 	if stateOnlyLocalDeclarations && len(c.Globals) != 0 && !rv64StateOnlyTable32ScalarGlobals(c) {
 		return fmt.Errorf("table/scalar globals require the exact state-only literal profile")
@@ -2205,7 +2246,7 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	qualifiedGenericGCRefTable := false
 	if rv64FreshRootedGC(c) {
 		for tableIndex := 0; tableIndex < c.tableCount(); tableIndex++ {
-			qualifiedGenericGCRefTable = qualifiedGenericGCRefTable || isGCRefValType(c.tableElementType(tableIndex))
+			qualifiedGenericGCRefTable = qualifiedGenericGCRefTable || isGCRefValType(c.tableElementType(tableIndex)) || c.compactExternFrameRoots() && c.tableElementType(tableIndex) == ValExternRef
 		}
 	}
 	qualifiedGCRefTable := qualifiedGenericGCRefTable || rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefCastConcrete(c) || rv64GCBrOnCastConcrete(c) || rv64GCBrOnCastFailConcrete(c) || rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCRefCastAbstract(c) || rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c)
@@ -2237,7 +2278,7 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		return fmt.Errorf("private table requires exact nullable abstract funcref")
 	}
 	// Check uint64 before runtime capacity narrows to int.
-	if c.TableSize < 0 || c.TableSize > railshot.MaxOwnedTableEntries || c.TableMax > railshot.MaxOwnedTableEntries || (c.TableHasMax && c.TableMax < uint64(c.TableSize)) || c.tableRuntimeCapacity(0) < c.TableSize || c.tableRuntimeCapacity(0) > railshot.MaxOwnedTableEntries {
+	if c.TableSize < 0 || uint64(c.TableSize) > uint64(^uint32(0)) || c.TableMax > uint64(^uint32(0)) || (c.TableHasMax && c.TableMax < uint64(c.TableSize)) || c.tableRuntimeCapacity(0) < c.TableSize || uint64(c.tableRuntimeCapacity(0)) > uint64(^uint32(0)) {
 		return fmt.Errorf("private table capacity bound")
 	}
 	if def, imported := c.tableImportAt(0); imported {
@@ -2245,7 +2286,7 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 			return fmt.Errorf("bounded imported table declaration with no local limits required")
 		}
 	}
-	if len(c.Elems) > railshot.MaxOwnedElementSegments || len(c.passiveElems) > railshot.MaxOwnedElementSegments {
+	if len(c.Elems) > railshot.MaxPublicElementSegments || len(c.passiveElems) > railshot.MaxPublicElementSegments {
 		return fmt.Errorf("element descriptor bound")
 	}
 	remaining := railshot.MaxOwnedTableEntries
@@ -2294,9 +2335,13 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 
 func rv64ValidateElementPayload(c *Compiled, e ElemInit) error {
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+	exact := plain
+	typed := false
 	if e.HasValueType {
-		exact, err := c.elemExactType(e)
-		if err != nil || exact != plain || e.RefType != ValFuncRef || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+		var err error
+		exact, err = c.elemExactType(e)
+		typed = err == nil && exact != plain && rv64PrimitiveReferenceContract(c) && rv64PrimitiveReferenceValue(c, exact)
+		if err != nil || exact != plain && !typed || e.RefType != ValFuncRef || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
 			return fmt.Errorf("expression elements require exact nullable funcref metadata")
 		}
 	}
@@ -2308,17 +2353,32 @@ func rv64ValidateElementPayload(c *Compiled, e ElemInit) error {
 			if (e.Mode != ElemModeActive && e.Mode != ElemModePassive) || !e.HasValueType || v.Null || v.FuncIndex != 0 || !rv64InitializerGlobal(c, int(v.GlobalIndex), ValFuncRef, len(c.Globals)) {
 				return fmt.Errorf("element global requires an available immutable funcref and expression metadata")
 			}
+			globalType, err := c.globalExactType(int(v.GlobalIndex))
+			if typed && (err != nil || !valueTypeSubtype(globalType, c.Types, exact, c.Types)) {
+				return fmt.Errorf("element global type differs from the exact payload type")
+			}
 			continue
 		}
 		if v.GlobalIndex != 0 {
 			return fmt.Errorf("element global index without global initializer")
 		}
 		if v.Null {
-			if !e.HasValueType || v.FuncIndex != 0 {
+			if !e.HasValueType || v.FuncIndex != 0 || !exact.Ref.Nullable {
 				return fmt.Errorf("element null requires expression metadata")
 			}
 		} else if !c.needsFuncRefDescs() || uint64(v.FuncIndex) >= uint64(c.NumImports+len(c.Funcs)) {
 			return fmt.Errorf("element requires a valid function index")
+		} else if typed {
+			sig := FuncSig{}
+			if int(v.FuncIndex) < c.NumImports {
+				sig = c.importFuncSigs[v.FuncIndex]
+			} else {
+				sig = c.Funcs[int(v.FuncIndex)-c.NumImports]
+			}
+			actual := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: sig.TypeIndex}}}
+			if !sig.HasTypeIndex || !valueTypeSubtype(actual, c.Types, exact, c.Types) {
+				return fmt.Errorf("element function type differs from the exact payload type")
+			}
 		}
 	}
 	return nil
@@ -2328,9 +2388,19 @@ func rv64ValidateReferenceFunctionKeys(c *Compiled) error {
 	if len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return fmt.Errorf("private table signature-key count")
 	}
+	if rv64FreshRootedGC(c) {
+		return nil // The rooted type receipt verifies local and imported keys.
+	}
 	var params, results [256]wasm.ValType
+	primitive := rv64PrimitiveReferenceContract(c)
+	if primitive && rv64PrimitiveUsesTypedSignatures(c) {
+		return rv64ValidatePrimitiveFunctionKeys(c)
+	}
 	for i := range c.FuncTypeID {
-		if railshotNonCallableFunction(c, i) {
+		if !primitive && rv64RootedClosedCallableFunction(c, i) {
+			continue // Fresh proof binds exact collector signatures and keys.
+		}
+		if !primitive && railshotNonCallableFunction(c, i) {
 			continue // Source-attested internal signature has no callable row.
 		}
 		publicReferenceCarrier := i == 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierSignature(c.Funcs[0]) || rv64MutableReferenceCarrierTarget(c, i)
@@ -2360,9 +2430,15 @@ func rv64ValidateReferenceFunctionKeys(c *Compiled) error {
 		}
 		for j, t := range sig.Params {
 			params[j] = rv64NumericWasmType(t)
+			if primitive {
+				params[j] = rv64ReferenceWasmType(t)
+			}
 		}
 		for j, t := range sig.Results {
 			results[j] = rv64NumericWasmType(t)
+			if primitive {
+				results[j] = rv64ReferenceWasmType(t)
+			}
 		}
 		key := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: params[:len(sig.Params)], Results: results[:len(sig.Results)]})
 		if c.FuncTypeID[i] != key {

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -21,6 +21,9 @@ type referenceRootAccounting struct {
 // legacy/finalization-only acquisitions until its guard is rolled back or the
 // later collector has drained all outgoing ownership.
 func railshotResourceRootRetainAllowedLocked(in *Instance) bool {
+	if !managedFunctionRetainAllowedLocked(in) {
+		return false
+	}
 	if state := in.importState.Load(); state != nil && state.rootAccounting.dependencies != nil {
 		return !state.rootAccounting.dependencies.member.collecting.Load()
 	}
@@ -29,6 +32,7 @@ func railshotResourceRootRetainAllowedLocked(in *Instance) bool {
 
 // Called after resourceRefs increments, with lifeMu held.
 func railshotResourceRootAcquiredLocked(in *Instance) {
+	managedFunctionRootEpochLocked(in)
 	accounting := &in.ensureImportState().rootAccounting
 	if accounting.ledger == nil {
 		// Any preexisting roots are conservatively external as well. No source or
@@ -42,6 +46,7 @@ func railshotResourceRootAcquiredLocked(in *Instance) {
 // Called after a successful resourceRefs decrement, with lifeMu held. A missing
 // node is possible for synthetic/preexisting roots; release stays allocation-free.
 func railshotResourceRootReleasedLocked(in *Instance) {
+	managedFunctionRootEpochLocked(in)
 	if state := in.importState.Load(); state != nil && state.rootAccounting.ledger != nil {
 		state.rootAccounting.ledger.external--
 	}

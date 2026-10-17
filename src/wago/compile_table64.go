@@ -26,118 +26,9 @@ const (
 	nativeTable64ImportedInitDropABI
 )
 
-func stagedNativeTable64ABI(m *wasm.Module) uint8 {
-	if goruntime.GOOS != "linux" || goruntime.GOARCH != "riscv64" {
-		return nativeTable64NoABI
-	}
-	if stagedOwnedTwoTable32SizeShape(m) {
-		return nativeTable64SizeABI
-	}
-	if stagedOwnedTwoTable32GetSetShape(m) {
-		return nativeTable64GetSetABI
-	}
-	if stagedOwnedTwoTable32GrowShape(m) {
-		return nativeTable64GrowABI
-	}
-	if stagedOwnedTwoTable32FillShape(m) {
-		return nativeTable64FillABI
-	}
-	if stagedOwnedTwoTable32CopyShape(m) || stagedOwnedTwoTable32CrossCopyShape(m) {
-		return nativeTable64CopyABI
-	}
-	if stagedOwnedTwoTable32InitDropShape(m) {
-		return nativeTable64InitDropABI
-	}
-	if stagedOwnedTwoTable32IndirectShape(m) {
-		return nativeTable64IndirectABI
-	}
-	if stagedOwnedTwoTable64SizeShape(m) {
-		return nativeTable64SizeABI
-	}
-	if stagedMixedTable64SizeShape(m) {
-		return nativeTable64ImportedSizeABI
-	}
-	if stagedMixedTable64GetSetShape(m) {
-		return nativeTable64ImportedGetSetABI
-	}
-	if stagedMixedTable64GrowShape(m) {
-		return nativeTable64ImportedGrowABI
-	}
-	if stagedMixedTable64FillShape(m) {
-		return nativeTable64ImportedFillABI
-	}
-	if stagedMixedTable64CopyShape(m) || stagedMixedTable64CrossCopyShape(m) {
-		return nativeTable64ImportedCopyABI
-	}
-	if stagedMixedTable64InitDropShape(m) {
-		return nativeTable64ImportedInitDropABI
-	}
-	if stagedOwnedTable64SizeShape(m) {
-		return nativeTable64SizeABI
-	}
-	if stagedOwnedTable64GrowShape(m) {
-		return nativeTable64GrowABI
-	}
-	if stagedOwnedTwoTable64GrowShape(m) {
-		return nativeTable64GrowABI
-	}
-	if stagedOwnedTable64GetSetShape(m) {
-		return nativeTable64GetSetABI
-	}
-	if stagedOwnedTwoTable64GetSetShape(m) {
-		return nativeTable64GetSetABI
-	}
-	if stagedOwnedTwoTable64FillShape(m) {
-		return nativeTable64FillABI
-	}
-	if stagedOwnedTwoTable64CopyShape(m) {
-		return nativeTable64CopyABI
-	}
-	if stagedOwnedTwoTable64CrossCopyShape(m) {
-		return nativeTable64CopyABI
-	}
-	if stagedOwnedTable64IndirectShape(m) {
-		return nativeTable64IndirectABI
-	}
-	if stagedOwnedTwoTable64IndirectShape(m) {
-		return nativeTable64IndirectABI
-	}
-	if stagedMixedTable64IndirectShape(m) {
-		return nativeTable64IndirectABI
-	}
-	if stagedImportedTable64IndirectShape(m) {
-		return nativeTable64IndirectABI
-	}
-	if stagedOwnedTable64FillShape(m) {
-		return nativeTable64FillABI
-	}
-	if stagedOwnedTable64CopyShape(m) {
-		return nativeTable64CopyABI
-	}
-	if stagedOwnedTable64InitDropShape(m) {
-		return nativeTable64InitDropABI
-	}
-	if stagedOwnedTwoTable64InitDropShape(m) {
-		return nativeTable64InitDropABI
-	}
-	if stagedImportedTable64SizeShape(m) {
-		return nativeTable64ImportedSizeABI
-	}
-	if stagedImportedTable64GetSetShape(m) {
-		return nativeTable64ImportedGetSetABI
-	}
-	if stagedImportedTable64GrowShape(m) {
-		return nativeTable64ImportedGrowABI
-	}
-	if stagedImportedTable64FillShape(m) {
-		return nativeTable64ImportedFillABI
-	}
-	if stagedImportedTable64CopyShape(m) {
-		return nativeTable64ImportedCopyABI
-	}
-	if stagedImportedTable64InitDropShape(m) {
-		return nativeTable64ImportedInitDropABI
-	}
+// New source modules use the indexed descriptor ABI and the complete execution
+// contract. Operation-specific markers remain decoder compatibility metadata.
+func stagedNativeTable64ABI(*wasm.Module) uint8 {
 	return nativeTable64NoABI
 }
 
@@ -146,6 +37,9 @@ func stagedNativeTable64ABI(m *wasm.Module) uint8 {
 //
 //go:noinline
 func validateCompileTable64(m *wasm.Module) error {
+	if goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" {
+		return validateRV64GenericTable64Source(m)
+	}
 	rv64Qualified := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && (stagedStateOnlyOwnedTable64DeclarationShape(m) || stagedOwnedTable64ActiveElementShape(m) || stagedMixedTable64ActiveElementShape(m) || stagedMixedTable64DualActiveElementsShape(m) || stagedMixedTable64DualActiveVectorsShape(m) || stagedOwnedTwoTable32SizeShape(m) || stagedOwnedTwoTable32GetSetShape(m) || stagedOwnedTwoTable32GrowShape(m) || stagedOwnedTwoTable32FillShape(m) || stagedOwnedTwoTable32CopyShape(m) || stagedOwnedTwoTable32CrossCopyShape(m) || stagedOwnedTwoTable32InitDropShape(m) || stagedOwnedTwoTable32IndirectShape(m) || stagedOwnedTwoTable64SizeShape(m) || stagedMixedTable64SizeShape(m) || stagedMixedTable64GetSetShape(m) || stagedMixedTable64GrowShape(m) || stagedMixedTable64FillShape(m) || stagedMixedTable64CopyShape(m) || stagedMixedTable64CrossCopyShape(m) || stagedMixedTable64InitDropShape(m) || stagedMixedTable64IndirectShape(m) || stagedOwnedTwoTable64GetSetShape(m) || stagedOwnedTwoTable64GrowShape(m) || stagedOwnedTwoTable64FillShape(m) || stagedOwnedTwoTable64CopyShape(m) || stagedOwnedTwoTable64CrossCopyShape(m) || stagedOwnedTwoTable64InitDropShape(m) || stagedOwnedTwoTable64IndirectShape(m) || stagedOwnedTable64SizeShape(m) || stagedOwnedTable64GrowShape(m) || stagedOwnedTable64GetSetShape(m) || stagedOwnedTable64IndirectShape(m) || stagedImportedTable64IndirectShape(m) || stagedOwnedTable64FillShape(m) || stagedOwnedTable64CopyShape(m) || stagedOwnedTable64InitDropShape(m) || stagedImportedTable64SizeShape(m) || stagedImportedTable64GetSetShape(m) || stagedImportedTable64GrowShape(m) || stagedImportedTable64FillShape(m) || stagedImportedTable64CopyShape(m) || stagedImportedTable64InitDropShape(m))
 	if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !rv64Qualified {
 		return fmt.Errorf("compile: unsupported table table64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)

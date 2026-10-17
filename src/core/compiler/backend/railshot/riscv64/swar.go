@@ -144,6 +144,14 @@ func (f *integerEmitter) swarMemoryAddressTypedAt(index uint32, offset uint64, f
 	if address64 {
 		f.trap(TrapMemoryBounds, f.a.BranchLong(enc.LTU, enc.X5, enc.Scratch0))
 	}
+	if f.mode.production && f.mode.elideBounds && index == 0 && !address64 {
+		// The guard reservation covers every memory32 index plus its complete
+		// static offset. Probe the final byte before split stores can write:
+		// a bounds fault must leave all earlier guest bytes unchanged.
+		f.a.Add(enc.X5, enc.X25, enc.X5)
+		f.a.Lbu(enc.X29, enc.X5, int32(footprint-1))
+		return
+	}
 	if f.mode.production {
 		f.productionMemorySizeAt(index, enc.X29)
 	} else {

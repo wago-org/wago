@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -226,7 +226,7 @@ func TestRV64PublicOwnedTwoTable32Size(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table32-size", rv64TwoTable32SizeInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64SizeABI || !rv64OwnedTwoTable32Size(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
 				t.Fatalf("two-table32.size metadata contract: witness=%d qualified=%v tables=%d features=%#x table0=%+v table1=%+v funcs=%+v exports=%v tableExports=%v refs=%v keys=%v", c.nativeTable64ABI, rv64OwnedTwoTable32Size(c), c.tableCount(), c.requiredFeatures, c.tableDef(0), c.tableDef(1), c.Funcs, c.Exports, c.tableExports, c.NeedsFuncRefDescs, c.FuncTypeID)
 			}
 			in, err := Instantiate(c)
@@ -279,7 +279,7 @@ func TestRV64PublicOwnedTwoTable32Size(t *testing.T) {
 func TestRV64PublicOwnedTwoTable32SizeArtifactGates(t *testing.T) {
 	c := rv64TableStageCompile(t, "owned-two-table32-size-admission", rv64TwoTable32SizeInstructionSource(), true)
 	for name, mutate := range map[string]func(*Compiled){
-		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
 		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
 		"table64-feature": func(v *Compiled) { v.requiredFeatures |= CoreFeatureTable64 },
 		"missing-table":   func(v *Compiled) { v.extraTables = nil },
@@ -308,12 +308,22 @@ func TestRV64PublicOwnedTwoTable32SizeArtifactGates(t *testing.T) {
 			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
 			bad.Exports = maps.Clone(bad.Exports)
 			bad.tableExports = maps.Clone(bad.tableExports)
+			if err := bad.validate(); err != nil {
+				t.Fatalf("unchanged execution copy: %v", err)
+			}
 			mutate(&bad)
+			// The operation selector is not a declaration requirement. A
+			// changed copy still lacks the immutable image's full contract,
+			// so serialization or loading below must reject it.
 			if err := bad.validate(); err == nil {
 				t.Fatal("invalid two-table32.size metadata admitted")
 			}
 			blob, err := marshalCompiled(&bad)
 			if err != nil {
+				if name == "missing-ref" || name == "missing-bulk" && len(bad.passiveElems) != 0 {
+					t.Fatalf("structural feature restoration must serialize: %v", err)
+				}
+				rv64RequireTableMutationSerializationError(t, name, err)
 				return
 			}
 			loaded, err := LoadTrustedArtifact(blob)
@@ -338,7 +348,7 @@ func TestRV64PublicOwnedTwoTable32GetSet(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table32-get-set", rv64TwoTable32GetSetInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64GetSetABI || !rv64OwnedTwoTable32GetSet(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
 				t.Fatalf("two-table32 get/set metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable32GetSet(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -420,7 +430,7 @@ func TestRV64PublicOwnedTwoTable32Grow(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table32-grow", rv64TwoTable32GrowInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64GrowABI || !rv64OwnedTwoTable32Grow(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
 				t.Fatalf("two-table32 grow metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable32Grow(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -510,7 +520,7 @@ func TestRV64PublicOwnedTwoTable32Fill(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table32-fill", rv64TwoTable32FillInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64FillABI || !rv64OwnedTwoTable32Fill(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
 				t.Fatalf("two-table32 fill metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable32Fill(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -611,7 +621,7 @@ func TestRV64PublicOwnedTwoTable32Fill(t *testing.T) {
 func TestRV64PublicOwnedTwoTable32GetSetArtifactGates(t *testing.T) {
 	c := rv64TableStageCompile(t, "owned-two-table32-get-set-admission", rv64TwoTable32GetSetInstructionSource(), true)
 	for name, mutate := range map[string]func(*Compiled){
-		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
 		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
 		"table64-feature": func(v *Compiled) { v.requiredFeatures |= CoreFeatureTable64 },
 		"missing-table":   func(v *Compiled) { v.extraTables = nil },
@@ -641,12 +651,22 @@ func TestRV64PublicOwnedTwoTable32GetSetArtifactGates(t *testing.T) {
 			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
 			bad.Exports = maps.Clone(bad.Exports)
 			bad.tableExports = maps.Clone(bad.tableExports)
+			if err := bad.validate(); err != nil {
+				t.Fatalf("unchanged execution copy: %v", err)
+			}
 			mutate(&bad)
+			// The operation selector is not a declaration requirement. A
+			// changed copy still lacks the immutable image's full contract,
+			// so serialization or loading below must reject it.
 			if err := bad.validate(); err == nil {
 				t.Fatal("invalid two-table32 get/set metadata admitted")
 			}
 			blob, err := marshalCompiled(&bad)
 			if err != nil {
+				if name == "missing-ref" || name == "missing-bulk" && len(bad.passiveElems) != 0 {
+					t.Fatalf("structural feature restoration must serialize: %v", err)
+				}
+				rv64RequireTableMutationSerializationError(t, name, err)
 				return
 			}
 			loaded, err := LoadTrustedArtifact(blob)
@@ -670,7 +690,7 @@ func TestRV64PublicOwnedTwoTable32GetSetArtifactGates(t *testing.T) {
 func TestRV64PublicOwnedTwoTable32GrowArtifactGates(t *testing.T) {
 	c := rv64TableStageCompile(t, "owned-two-table32-grow-admission", rv64TwoTable32GrowInstructionSource(), true)
 	for name, mutate := range map[string]func(*Compiled){
-		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
 		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
 		"table64-feature": func(v *Compiled) { v.requiredFeatures |= CoreFeatureTable64 },
 		"missing-table":   func(v *Compiled) { v.extraTables = nil },
@@ -700,12 +720,22 @@ func TestRV64PublicOwnedTwoTable32GrowArtifactGates(t *testing.T) {
 			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
 			bad.Exports = maps.Clone(bad.Exports)
 			bad.tableExports = maps.Clone(bad.tableExports)
+			if err := bad.validate(); err != nil {
+				t.Fatalf("unchanged execution copy: %v", err)
+			}
 			mutate(&bad)
+			// The operation selector is not a declaration requirement. A
+			// changed copy still lacks the immutable image's full contract,
+			// so serialization or loading below must reject it.
 			if err := bad.validate(); err == nil {
 				t.Fatal("invalid two-table32 grow metadata admitted")
 			}
 			blob, err := marshalCompiled(&bad)
 			if err != nil {
+				if name == "missing-ref" || name == "missing-bulk" && len(bad.passiveElems) != 0 {
+					t.Fatalf("structural feature restoration must serialize: %v", err)
+				}
+				rv64RequireTableMutationSerializationError(t, name, err)
 				return
 			}
 			loaded, err := LoadTrustedArtifact(blob)
@@ -729,7 +759,7 @@ func TestRV64PublicOwnedTwoTable32GrowArtifactGates(t *testing.T) {
 func TestRV64PublicOwnedTwoTable32FillArtifactGates(t *testing.T) {
 	c := rv64TableStageCompile(t, "owned-two-table32-fill-admission", rv64TwoTable32FillInstructionSource(), true)
 	for name, mutate := range map[string]func(*Compiled){
-		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
 		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
 		"table64-feature": func(v *Compiled) { v.requiredFeatures |= CoreFeatureTable64 },
 		"bulk-feature":    func(v *Compiled) { v.requiredFeatures |= CoreFeatureBulkMemoryOperations },
@@ -761,12 +791,22 @@ func TestRV64PublicOwnedTwoTable32FillArtifactGates(t *testing.T) {
 			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
 			bad.Exports = maps.Clone(bad.Exports)
 			bad.tableExports = maps.Clone(bad.tableExports)
+			if err := bad.validate(); err != nil {
+				t.Fatalf("unchanged execution copy: %v", err)
+			}
 			mutate(&bad)
+			// The operation selector is not a declaration requirement. A
+			// changed copy still lacks the immutable image's full contract,
+			// so serialization or loading below must reject it.
 			if err := bad.validate(); err == nil {
 				t.Fatal("invalid two-table32 fill metadata admitted")
 			}
 			blob, err := marshalCompiled(&bad)
 			if err != nil {
+				if name == "missing-ref" || name == "missing-bulk" && len(bad.passiveElems) != 0 {
+					t.Fatalf("structural feature restoration must serialize: %v", err)
+				}
+				rv64RequireTableMutationSerializationError(t, name, err)
 				return
 			}
 			loaded, err := LoadTrustedArtifact(blob)
@@ -791,7 +831,7 @@ func TestRV64PublicOwnedTwoTable32Copy(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table32-copy", rv64TwoTable32CopyInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64CopyABI || !rv64OwnedTwoTable32Copy(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
 				t.Fatalf("two-table32 copy metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable32Copy(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -871,7 +911,7 @@ func TestRV64PublicOwnedTwoTable32CrossCopy(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table32-cross-copy", rv64TwoTable32CrossCopyInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64CopyABI || !rv64OwnedTwoTable32Copy(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
 				t.Fatalf("cross-table32 copy metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable32Copy(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -946,7 +986,7 @@ func TestRV64PublicOwnedTwoTable32CrossCopy(t *testing.T) {
 func TestRV64PublicOwnedTwoTable32CopyArtifactGates(t *testing.T) {
 	c := rv64TableStageCompile(t, "owned-two-table32-copy-admission", rv64TwoTable32CopyInstructionSource(), true)
 	for name, mutate := range map[string]func(*Compiled){
-		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
 		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
 		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
 		"table64-feature": func(v *Compiled) { v.requiredFeatures |= CoreFeatureTable64 },
@@ -980,12 +1020,22 @@ func TestRV64PublicOwnedTwoTable32CopyArtifactGates(t *testing.T) {
 			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
 			bad.Exports = maps.Clone(bad.Exports)
 			bad.tableExports = maps.Clone(bad.tableExports)
+			if err := bad.validate(); err != nil {
+				t.Fatalf("unchanged execution copy: %v", err)
+			}
 			mutate(&bad)
+			// The operation selector is not a declaration requirement. A
+			// changed copy still lacks the immutable image's full contract,
+			// so serialization or loading below must reject it.
 			if err := bad.validate(); err == nil {
 				t.Fatal("invalid two-table32 copy metadata admitted")
 			}
 			blob, err := marshalCompiled(&bad)
 			if err != nil {
+				if name == "missing-ref" || name == "missing-bulk" && len(bad.passiveElems) != 0 {
+					t.Fatalf("structural feature restoration must serialize: %v", err)
+				}
+				rv64RequireTableMutationSerializationError(t, name, err)
 				return
 			}
 			loaded, err := LoadTrustedArtifact(blob)
@@ -1010,7 +1060,7 @@ func TestRV64PublicOwnedTwoTable32InitDrop(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table32-init-drop", rv64TwoTable32InitDropInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64InitDropABI || !rv64OwnedTwoTable32InitDrop(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
 				t.Fatalf("indexed table32.init/drop metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable32InitDrop(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -1105,7 +1155,7 @@ func TestRV64PublicOwnedTwoTable32InitDrop(t *testing.T) {
 func TestRV64PublicOwnedTwoTable32InitDropArtifactGates(t *testing.T) {
 	c := rv64TableStageCompile(t, "owned-two-table32-init-drop-admission", rv64TwoTable32InitDropInstructionSource(), true)
 	for name, mutate := range map[string]func(*Compiled){
-		"missing-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
 		"missing-table":   func(v *Compiled) { v.extraTables = nil },
 		"table64-feature": func(v *Compiled) { v.requiredFeatures |= CoreFeatureTable64 },
 		"second-table64":  func(v *Compiled) { v.extraTables[0].Addr64 = true },
@@ -1140,12 +1190,22 @@ func TestRV64PublicOwnedTwoTable32InitDropArtifactGates(t *testing.T) {
 			bad.tableExports = maps.Clone(bad.tableExports)
 			bad.passiveElems = slices.Clone(bad.passiveElems)
 			bad.passiveElems[0].Values = slices.Clone(bad.passiveElems[0].Values)
+			if err := bad.validate(); err != nil {
+				t.Fatalf("unchanged execution copy: %v", err)
+			}
 			mutate(&bad)
+			// The operation selector is not a declaration requirement. A
+			// changed copy still lacks the immutable image's full contract,
+			// so serialization or loading below must reject it.
 			if err := bad.validate(); err == nil {
 				t.Fatal("invalid indexed table32.init/drop metadata admitted")
 			}
 			blob, err := marshalCompiled(&bad)
 			if err != nil {
+				if name == "missing-ref" || name == "missing-bulk" && len(bad.passiveElems) != 0 {
+					t.Fatalf("structural feature restoration must serialize: %v", err)
+				}
+				rv64RequireTableMutationSerializationError(t, name, err)
 				return
 			}
 			loaded, err := LoadTrustedArtifact(blob)
@@ -1170,7 +1230,7 @@ func TestRV64PublicOwnedTwoTable32Indirect(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "owned-two-table32-indirect", rv64TwoTable32IndirectInstructionSource(), artifact)
-			if c.nativeTable64ABI != nativeTable64IndirectABI || !rv64OwnedTwoTable32Indirect(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
 				t.Fatalf("indexed table32 indirect metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable32Indirect(c), c.tableCount(), c.requiredFeatures)
 			}
 			in, err := Instantiate(c)
@@ -1232,7 +1292,7 @@ func TestRV64PublicOwnedTwoTable32Indirect(t *testing.T) {
 func TestRV64PublicOwnedTwoTable32IndirectArtifactGates(t *testing.T) {
 	c := rv64TableStageCompile(t, "owned-two-table32-indirect-admission", rv64TwoTable32IndirectInstructionSource(), true)
 	for name, mutate := range map[string]func(*Compiled){
-		"missing-witness":  func(v *Compiled) { v.nativeTable64ABI = nativeTable64NoABI },
+		"invalid-witness":  func(v *Compiled) { v.nativeTable64ABI = 255 },
 		"missing-table":    func(v *Compiled) { v.extraTables = nil },
 		"table64-feature":  func(v *Compiled) { v.requiredFeatures |= CoreFeatureTable64 },
 		"second-table64":   func(v *Compiled) { v.extraTables[0].Addr64 = true },
@@ -1260,12 +1320,22 @@ func TestRV64PublicOwnedTwoTable32IndirectArtifactGates(t *testing.T) {
 			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
 			bad.Exports = maps.Clone(bad.Exports)
 			bad.tableExports = maps.Clone(bad.tableExports)
+			if err := bad.validate(); err != nil {
+				t.Fatalf("unchanged execution copy: %v", err)
+			}
 			mutate(&bad)
+			// The operation selector is not a declaration requirement. A
+			// changed copy still lacks the immutable image's full contract,
+			// so serialization or loading below must reject it.
 			if err := bad.validate(); err == nil {
 				t.Fatal("invalid indexed table32 indirect metadata admitted")
 			}
 			blob, err := marshalCompiled(&bad)
 			if err != nil {
+				if name == "missing-ref" || name == "missing-bulk" && len(bad.passiveElems) != 0 {
+					t.Fatalf("structural feature restoration must serialize: %v", err)
+				}
+				rv64RequireTableMutationSerializationError(t, name, err)
 				return
 			}
 			loaded, err := LoadTrustedArtifact(blob)
@@ -1283,5 +1353,49 @@ func TestRV64PublicOwnedTwoTable32IndirectArtifactGates(t *testing.T) {
 				t.Fatal("invalid indexed table32 indirect artifact admitted")
 			}
 		})
+	}
+}
+
+// Verify newly supported table combinations through the public artifact path.
+func rv64RequireTableSourceArtifact(t *testing.T, c *Compiled) {
+	t.Helper()
+	if err := c.validate(); err != nil {
+		t.Fatal(err)
+	}
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadTrustedArtifact(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loaded.Close()
+	in, err := Instantiate(loaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Binding-dependent execution is covered separately with real table imports.
+func rv64RequireTableArtifactMetadata(t *testing.T, c *Compiled) {
+	t.Helper()
+	if err := c.validate(); err != nil {
+		t.Fatal(err)
+	}
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadTrustedArtifact(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loaded.Close()
+	if err := loaded.validate(); err != nil {
+		t.Fatal(err)
 	}
 }

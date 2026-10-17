@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -83,7 +83,8 @@ func rv64PublicTailModule(types []wasm.ValType, ordinary bool) []byte {
 	im := append(append(wasmtest.Name("env"), wasmtest.Name("tail")...), 0, 0)
 	body := []byte{}
 	for i := range types {
-		body = append(body, 0x20, byte(i))
+		body = append(body, 0x20)
+		body = append(body, wasmtest.ULEB(uint32(i))...)
 	}
 	body = append(body, 0x12, 0, 0x0b)
 	indices := []byte{1, 0}
@@ -123,6 +124,7 @@ func TestRV64PublicNativeTailSourceArtifactTransportLifetime(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer producer.Close()
+				t.Logf("producer descriptor bytes=%d", len(producer.funcRefDescs))
 				target, err := producer.ExportedFunc("identity")
 				if err != nil {
 					t.Fatal(err)
@@ -223,7 +225,7 @@ func TestRV64PublicNativeTailAdmissionAndCodec(t *testing.T) {
 				v.Funcs[0].Results = []ValType{ValI64}
 			}
 			r := compiledReader{data: blob, budget: newArtifactDecodeBudget(0)}
-			if err := railshotReadNativeTail(&r, &v); err == nil {
+			if err := rv64ReadValidatedNativeTailForTest(&r, &v); err == nil {
 				t.Fatal("bad plan accepted")
 			}
 		})
@@ -264,11 +266,12 @@ func TestRV64PublicNativeTailAdmissionAndCodec(t *testing.T) {
 		t.Fatal(err)
 	}
 	bindings := testImports("env.tail", export)
-	anchor := producer.funcRefDescs
-	producer.funcRefDescs = nil
+	context := rv64NativeInvocationContext(producer)
+	anchor := binary.LittleEndian.Uint64(context[16:])
+	binary.LittleEndian.PutUint64(context[16:], anchor^8)
 	beforeBase, beforeSealed, beforeRefs := c.codeCache.base, c.codeCache.sealed, c.codeCache.refs
 	bad, linkErr := Instantiate(c, bindings)
-	producer.funcRefDescs = anchor
+	binary.LittleEndian.PutUint64(context[16:], anchor)
 	if bad != nil || !errors.Is(linkErr, railshot.ErrUnsupported) || c.codeCache.base != beforeBase || c.codeCache.sealed != beforeSealed || c.codeCache.refs != beforeRefs {
 		t.Fatal("anchorless target reached caller publication", linkErr)
 	}
@@ -276,7 +279,8 @@ func TestRV64PublicNativeTailAdmissionAndCodec(t *testing.T) {
 	if err := view.validateCached(); err != nil {
 		t.Fatal(err)
 	}
-	need := view.arenaNeedForImports(bindings.bindings, true) + railshotNativeImportMetadataBytes(view, bindings.bindings)
+	syncMode := view.importsRequireSync(bindings.bindings, false)
+	need := view.arenaNeedForImports(bindings.bindings, syncMode) + railshotNativeImportMetadataBytes(view, bindings.bindings)
 	roots := producer.referenceLifetime().snapshot().ResourceRoots
 	if err := c.prepareCodeMapping(); err != nil {
 		t.Fatal(err)
@@ -292,10 +296,10 @@ func TestRV64PublicNativeTailAdmissionAndCodec(t *testing.T) {
 	}
 }
 
-func TestRV64PublicNativeTailOlderArchitecture4Anchor(t *testing.T) {
+func TestRV64PublicNativeTailNumericArtifactWithoutAnchor(t *testing.T) {
 	pc := rv64NativeTailCompile(t, "native-tail-old4-leaf", rv64PublicNativeIdentityModule([]wasm.ValType{wasm.I32}), false)
-	// Older architecture4 numeric images omitted the redundant context-header
-	// requirement. Keep their real native invocation ABI and code unchanged.
+	// A numeric leaf has no reference or import use that needs descriptor zero.
+	// Its artifact must remain callable through a retained tail bridge.
 	old := cloneCompiledMetadata(pc)
 	old.needsFuncRefContextHeader = false
 	old.validateMemo = &validateMemo{}
@@ -308,8 +312,8 @@ func TestRV64PublicNativeTailOlderArchitecture4Anchor(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer loaded.Close()
-	if !loaded.needsFuncRefContextHeader {
-		t.Fatal("old4 loader failed to derive canonical header")
+	if loaded.needsFuncRefContextHeader || loaded.needsFuncRefDescs() {
+		t.Fatal("numeric leaf acquired unused descriptor storage")
 	}
 	producer, err := Instantiate(loaded)
 	if err != nil {
@@ -361,7 +365,9 @@ func TestRV64PublicNativeTailHostPauseReentryColdReuse(t *testing.T) {
 					if depth == 0 {
 						pointer := railshotParkedNativeInvocation(producer)
 						view := rv64InvocationViewForTest(producer)
-						if pointer < consumer.eng.StackLimit() || pointer+64 > consumer.eng.RV64InvocationViewPointer() || binary.LittleEndian.Uint64(view[24:]) != uint64(pointer-4096) || binary.LittleEndian.Uint64(view[40:]) != uint64(pointer-2048) || binary.LittleEndian.Uint64(view[32:]) != 2048 || binary.LittleEndian.Uint64(view[48:]) != 2048 || binary.LittleEndian.Uint64(view[56:]) == 0 {
+						const transportBytes = railshot.MaxNativeCallSlots * 8
+						const maskBytes = (railshot.MaxNativeCallSlots + 63) / 64 * 8
+						if pointer < consumer.eng.StackLimit() || pointer+64 > consumer.eng.RV64InvocationViewPointer() || binary.LittleEndian.Uint64(view[24:]) != uint64(pointer-2*transportBytes-maskBytes) || binary.LittleEndian.Uint64(view[40:]) != uint64(pointer-transportBytes-maskBytes) || binary.LittleEndian.Uint64(view[32:]) != transportBytes || binary.LittleEndian.Uint64(view[48:]) != transportBytes || binary.LittleEndian.Uint64(view[56:]) == 0 {
 							panic("public tail activation lost authority")
 						}
 						before := bytes.Clone(view)
@@ -511,8 +517,8 @@ func rv64HeaderOnlyContext(in *Instance) bool {
 	if in.c.needsFuncRefDescs() {
 		return false
 	}
-	if in.c.NumImports+len(in.c.Funcs) == 0 {
-		return len(in.funcRefDescs) == 0
+	if len(in.funcRefDescs) == 0 {
+		return !in.c.needsFuncRefContext()
 	}
 	return len(in.funcRefDescs) == coreruntime.FuncRefDescBytes && binary.LittleEndian.Uint64(in.funcRefDescs[coreruntime.FuncRefContextOffset:]) == uint64(in.nativeContext) && binary.LittleEndian.Uint64(in.funcRefDescs[coreruntime.TableEntryHomeLinMemOffset:]) == uint64(in.jm.LinMemBase())
 }

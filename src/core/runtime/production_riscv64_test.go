@@ -109,7 +109,7 @@ func TestProductionRV64ZeroMemoryPreparedWrapper(t *testing.T) {
 	}
 }
 
-func TestProductionRV64UnsupportedGuardAndInvalidHostFrame(t *testing.T) {
+func TestProductionRV64GuardModeAndInvalidHostFrame(t *testing.T) {
 	e, _, arena := productionFixtureRV64(t, 0)
 	trap, results := arena.Alloc(TrapBufferBytes), arena.Alloc(8)
 	binary.LittleEndian.PutUint64(results, 0x5555)
@@ -117,8 +117,14 @@ func TestProductionRV64UnsupportedGuardAndInvalidHostFrame(t *testing.T) {
 	if err := e.CallWithHost(0, nil, nil, trap, results, nil, func(uintptr, uint32, []uint64, []uint64) { called = true }); err == nil || called || binary.LittleEndian.Uint64(results) != 0x5555 {
 		t.Fatal("invalid host entry", err, called)
 	}
-	if m, err := NewJobMemoryGuarded(0, 65536); m != nil || !errors.Is(err, ErrUnsupported) {
-		t.Fatal("guard rejection", m, err)
+	m, err := NewJobMemoryGuarded(0, 65536)
+	if rv64GuardMemoryEnabled {
+		if err != nil || m == nil || m.reserveBase == 0 {
+			t.Fatal("guard allocation", err)
+		}
+		defer m.Close()
+	} else if m != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("guard rejection", err)
 	}
 	if HostInterruptSupported() {
 		t.Fatal("unimplemented asynchronous cancellation claimed")

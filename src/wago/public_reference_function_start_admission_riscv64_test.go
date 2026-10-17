@@ -1,10 +1,9 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -67,7 +66,7 @@ func TestRV64PublicReferenceFunctionDefinedStartRetainedAdmission(t *testing.T) 
 		}
 		without := rv64ReferenceStartCopy(c)
 		without.HasStart = false
-		if err := without.validate(); err != nil {
+		if err := rv64ValidateReferenceFunctions(without); err != nil {
 			t.Fatal("canonical no-start metadata", err)
 		}
 		// Start selection contributes exactly five bytes to the retained aggregate.
@@ -110,11 +109,11 @@ func TestRV64PublicReferenceFunctionDefinedStartRetainedAdmission(t *testing.T) 
 		in, err := rt.Instantiate(context.Background(), mod, WithImports(im))
 		mod.Close()
 		rt.Close()
-		if in != nil {
-			in.Close()
+		if waitErr := rt.WaitClosed(context.Background()); waitErr != nil {
+			t.Fatal(waitErr)
 		}
-		if in != nil || !errors.Is(err, railshot.ErrUnsupported) || c.loadCodeCache().sealed || c.loadCodeCache().refs != 0 || calls != 0 || provider.referenceLifetime().snapshot().ResourceRoots != roots {
-			t.Fatal("default destination published private start", err)
+		if in == nil || err != nil || c.loadCodeCache().refs != 0 || calls == 0 || provider.referenceLifetime().snapshot().ResourceRoots != roots {
+			t.Fatal("public start or root release", err, calls)
 		}
 	}
 }

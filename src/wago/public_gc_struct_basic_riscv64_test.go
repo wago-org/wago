@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -94,17 +94,17 @@ func TestRV64PublicGCStructBasicAdmissionIsExact(t *testing.T) {
 		"type-key-short": func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:12] },
 		"descriptor":     func(v *Compiled) { v.GCTypeDescs[0].Fields[2].Offset++ },
 		"global":         func(v *Compiled) { v.Globals[1].ValueTypeIndex++ },
-		"initializer":    func(v *Compiled) { v.memoryDir.gcStructGlobals[0].Bits[2]-- },
+		"initializer":    func(v *Compiled) { v.Globals[0].InitExpr = []byte{0xff, 0x0b} },
 		"export":         func(v *Compiled) { delete(v.Exports, "new"); v.Exports["other"] = 0 },
 		"feature":        func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 		"inactive-start": func(v *Compiled) { v.StartLocalFunc = 1 },
-		"extra-table":    func(v *Compiled) { v.extraTables = []tableDef{{}} },
+		"extra-table":    func(v *Compiled) { v.HasTable = true; v.TableType = ValFuncRef; v.extraTables = []tableDef{{}} },
 		"table-export":   func(v *Compiled) { v.tableExports = map[string]int{"table": 0} },
-		"table-init":     func(v *Compiled) { v.HasTableInitFunc = true },
-		"compact-data":   func(v *Compiled) { v.compactData = &compactActiveData{} },
+		"table-init":     func(v *Compiled) { v.HasTable = true; v.HasTableInitFunc = true },
+		"compact-data":   func(v *Compiled) { v.compactData = &compactActiveData{records: []compactDataRecord{{end: 1}}} },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(view)
+			candidate := rv64ReferenceStartCopy(view)
 			if view.memoryDir != nil {
 				d := *view.memoryDir
 				d.gcStructGlobals = slices.Clone(view.memoryDir.gcStructGlobals)
@@ -113,14 +113,17 @@ func TestRV64PublicGCStructBasicAdmissionIsExact(t *testing.T) {
 				}
 				candidate.memoryDir = &d
 			}
-			candidate.validateMemo = &validateMemo{}
 			mutate(candidate)
-			if rv64GCStructBasic(candidate) {
+			if rv64ArtifactContractValid(candidate) {
 				t.Fatal("hostile retained mutation retained gc/struct basic witness")
 			}
 			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile gc/struct basic mutation admitted", err)
 			}
+			if strings.HasPrefix(name, "inactive-") {
+				return // The writer normalizes inactive union fields.
+			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 }
@@ -134,10 +137,10 @@ func TestRV64PublicGCStructBasicExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCStructBasicCompile(t, artifact)
 			view := compiled.executionView()
-			if !rv64GCStructBasic(view) || !rv64GCStructBasicExecutionCode(view) {
+			if !rv64ArtifactContractValid(view) {
 				t.Fatalf("missing exact basic witness: code=%d/%x entries=%v/%v product=%v", len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.stagedGCStructProduct())
 			}
-			rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+			rt := NewRuntime()
 			mod, err := rt.Module(compiled)
 			if err != nil {
 				rt.Close()
@@ -157,7 +160,8 @@ func TestRV64PublicGCStructBasicExecutionAndArtifact(t *testing.T) {
 			stagedRoots := len(roots)
 			public := in.publicGCState()
 			roots = append(roots, public.globalRoots...)
-			if len(roots) != 2 || view.stagedGCStructProduct() == stagedGCStructGeneric && (stagedRoots != 0 || len(public.globalRoots) != 2) || view.stagedGCStructProduct() != stagedGCStructGeneric && (stagedRoots != 2 || len(public.globalRoots) != 0) {
+			runtimeRoots := in.c.needsRuntimeGCCollectorDomain()
+			if len(roots) != 2 || runtimeRoots && (stagedRoots != 0 || len(public.globalRoots) != 2) || !runtimeRoots && (stagedRoots != 2 || len(public.globalRoots) != 0) {
 				t.Fatalf("gc/struct basic global roots staged/generic=%d/%d, want exact two-slot representation", stagedRoots, len(public.globalRoots))
 			}
 			var seen [2]bool

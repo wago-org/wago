@@ -19,13 +19,29 @@ const maxRootedScalarMemories = 4
 // over bounded numeric scalar structs. Instruction admission remains the
 // responsibility of the typed integer walker, and exact allocation roots are
 // authenticated independently by validateGCFrameRootPlans.
-func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
-	if m == nil || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions ||
-		len(m.Tables) > 2 || len(m.Memories) > maxRootedScalarMemories || len(m.Globals) > 256 ||
+func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionDirectory) bool {
+	var instructions *pluginInstructionDirectory
+	if len(custom) != 0 {
+		instructions = custom[0]
+	}
+	if m == nil || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions ||
+		len(m.Tables) > MaxFunctions || len(m.Memories) > maxRootedScalarMemories || len(m.Globals) > 256 ||
 		len(m.Elements) > 256 || len(m.Data) > 256 || len(m.Tags) != 0 ||
-		len(m.StringRefs) != 0 || len(m.Customs) != 0 || m.HasNameMetadata() ||
-		m.BranchHints != nil || m.UsesCompactImports {
+		len(m.StringRefs) != 0 || m.BranchHints != nil || m.UsesCompactImports {
 		return false
+	}
+	functionStorage := wasm.ModuleFunctionReferenceCarriers(m)
+	opaqueExternSignatures := false
+	for _, group := range m.Types {
+		for _, sub := range group.SubTypes {
+			if sub.Comp.Kind == wasm.CompFunc {
+				for _, values := range [][]wasm.ValType{sub.Comp.Params, sub.Comp.Results} {
+					for _, value := range values {
+						opaqueExternSignatures = opaqueExternSignatures || wasm.ExternReferenceType(value)
+					}
+				}
+			}
+		}
 	}
 	importedFunctions := m.ImportedFuncCount()
 	importedGlobals := m.ImportedGlobalCount()
@@ -34,7 +50,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	memoryCount := importedMemories + len(m.Memories)
 	tableCount := importedTables + len(m.Tables)
 	if importedFunctions+importedGlobals+importedMemories+importedTables != len(m.Imports) || importedFunctions > maxRootedScalarHostImports || importedFunctions+len(m.Code) > MaxFunctions ||
-		importedGlobals+len(m.Globals) > 256 || memoryCount > maxRootedScalarMemories || tableCount > 2 {
+		importedGlobals+len(m.Globals) > 256 || memoryCount > maxRootedScalarMemories || tableCount > MaxFunctions {
 		return false
 	}
 	if len(m.Imports) != 0 {
@@ -64,13 +80,13 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				}
 			case wasm.ExternMem:
 				memory := im.Type.MemType()
-				if memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min > memory.Limits.Max || memory.Limits.Max > 256 {
+				if memory.Limits.HasMax && memory.Limits.Min > memory.Limits.Max {
 					return false
 				}
 			case wasm.ExternTable:
 				table := im.Type.TableType()
 				elem := wasm.RefVal(table.Ref)
-				if !wasm.EqualValType(elem, wasm.FuncRef) && !rootedScalarTableReference(elem, m) || table.Limits.Addr64 || !table.Limits.HasMax ||
+				if !wasm.FunctionReferenceType(m, elem) && !rootedScalarTableReference(elem, m) || table.Limits.Addr64 || !table.Limits.HasMax ||
 					table.Limits.Min > table.Limits.Max || table.Limits.Max > 256 {
 					return false
 				}
@@ -87,23 +103,9 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	}
 	for i := range m.Memories {
 		memory := m.Memories[i]
-		if memory.Shared || memory.Limits.Addr64 || !memory.Limits.HasMax || memory.Limits.Min > memory.Limits.Max || memory.Limits.Max > 256 {
+		if memory.Shared || memory.Limits.HasMax && memory.Limits.Min > memory.Limits.Max {
 			return false
 		}
-	}
-	publicTables := make([]bool, tableCount)
-	for i := 0; i < importedTables; i++ {
-		publicTables[i] = true
-	}
-	for i := range m.Exports {
-		export := m.Exports[i]
-		if export.Index.Kind == wasm.ExternTable && uint64(export.Index.Index) < uint64(tableCount) {
-			publicTables[export.Index.Index] = true
-		}
-	}
-	hasPrivateTable := false
-	for _, public := range publicTables {
-		hasPrivateTable = hasPrivateTable || !public
 	}
 	remainingElements := 256
 	retainedElementSegments := len(m.Elements)
@@ -112,8 +114,8 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		table := &m.Tables[i]
 		elem := wasm.RefVal(table.Type.Ref)
 		rootedTable := rootedScalarTableReference(elem, m)
-		if (!wasm.EqualValType(elem, wasm.FuncRef) && !rootedTable) || table.Type.Limits.Addr64 || !table.Type.Limits.HasMax ||
-			table.Type.Limits.Min > table.Type.Limits.Max || table.Type.Limits.Max > 256 {
+		if (!wasm.FunctionReferenceType(m, elem) && !rootedTable) || table.Type.Limits.Addr64 || table.Type.Limits.Min > 256 || rootedTable && !table.Type.Ref.Nullable() ||
+			table.Type.Limits.HasMax && (table.Type.Limits.Min > table.Type.Limits.Max || table.Type.Limits.Max > 256) {
 			return false
 		}
 		if table.Init != nil {
@@ -131,8 +133,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				continue
 			}
 			value, err := tableElementExpression(*table.Init)
-			public := publicTables[importedTables+i]
-			if err != nil || !value.Null && ((!public && uint64(value.FuncIndex) < uint64(importedFunctions)) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
+			if err != nil || !value.Null && (uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
 				return false
 			}
 		}
@@ -140,21 +141,19 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 	for i := range m.Elements {
 		elem := &m.Elements[i]
 		values := 0
-		allowImported := !hasPrivateTable
 		if elem.Mode.Kind == wasm.ElemActive {
 			if uint64(elem.Mode.Table) >= uint64(tableCount) {
 				return false
 			}
 			table, ok := m.TableType(uint32(elem.Mode.Table))
-			if !ok || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) && !rootedScalarTableReference(wasm.RefVal(table.Ref), m) {
+			if !ok || !wasm.FunctionReferenceType(m, wasm.RefVal(table.Ref)) && !rootedScalarTableReference(wasm.RefVal(table.Ref), m) {
 				return false
 			}
 			typed := elem.Kind.Kind == wasm.ElemTypedExprs
-			if (typed && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.RefVal(table.Ref))) ||
+			if (typed && !m.ReferenceTypeSubtype(elem.Kind.Ref, table.Ref)) ||
 				(!typed && !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef)) {
 				return false
 			}
-			allowImported = publicTables[elem.Mode.Table]
 		}
 		switch elem.Kind.Kind {
 		case wasm.ElemFuncs:
@@ -163,18 +162,26 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			}
 			values = len(elem.Kind.Funcs)
 			for _, function := range elem.Kind.Funcs {
-				if (!allowImported && uint64(function) < uint64(importedFunctions)) || uint64(function) >= uint64(importedFunctions+len(m.FuncTypes)) {
+				if uint64(function) >= uint64(importedFunctions+len(m.FuncTypes)) {
 					return false
 				}
 			}
 		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
 			aggregate := elem.Kind.Kind == wasm.ElemTypedExprs && rootedScalarTableReference(wasm.RefVal(elem.Kind.Ref), m)
+			typedFunction := elem.Kind.Kind == wasm.ElemTypedExprs && wasm.FunctionReferenceType(m, wasm.RefVal(elem.Kind.Ref))
 			if len(elem.Kind.Funcs) != 0 || elem.Kind.Kind == wasm.ElemFuncExprs && elem.Kind.Ref != (wasm.RefType{}) ||
-				elem.Kind.Kind == wasm.ElemTypedExprs && !aggregate && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) {
+				elem.Kind.Kind == wasm.ElemTypedExprs && !aggregate && !typedFunction && !wasm.EqualValType(wasm.RefVal(elem.Kind.Ref), wasm.FuncRef) {
 				return false
 			}
 			values = len(elem.Kind.Exprs)
 			for _, expr := range elem.Kind.Exprs {
+				if typedFunction {
+					_, ok := wasm.FunctionElementSubtype(m, expr, elem.Kind.Ref)
+					if !ok {
+						return false
+					}
+					continue
+				}
 				if aggregate {
 					if !rootedScalarAggregateElementExpressionWithParser(expr, elem.Kind.Ref, aggregateParser, importedGlobals+len(m.Globals)) {
 						return false
@@ -182,7 +189,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 					continue
 				}
 				value, err := tableElementExpression(expr)
-				if err != nil || !value.Null && ((!allowImported && uint64(value.FuncIndex) < uint64(importedFunctions)) || uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
+				if err != nil || !value.Null && (uint64(value.FuncIndex) >= uint64(importedFunctions+len(m.FuncTypes))) {
 					return false
 				}
 			}
@@ -209,8 +216,13 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 		remainingElements -= values
 	}
+	collectorFunctionUse := false
+	immediateReferenceExecution := false
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
+		if sig, ok := m.FuncSignature(uint32(importedFunctions + i)); ok && referenceCallCarriesCollector(sig) {
+			collectorFunctionUse = true
+		}
 		r := wasm.NewReader(m.Code[i].BodyBytes)
 		for r.HasNext() {
 			op, err := r.Byte()
@@ -222,13 +234,23 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				return false
 			}
 			switch imm.Kind {
+			case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU, wasm.InstrRefTest, wasm.InstrRefCast:
+				immediateReferenceExecution = true
+			}
+			switch imm.Kind {
+			case wasm.InstrCallRef, wasm.InstrReturnCallRef, wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect:
+				if sig, ok := m.TypeFunc(imm.Index); ok && referenceCallCarriesCollector(sig) {
+					collectorFunctionUse = true
+				}
+			}
+			switch imm.Kind {
 			case wasm.InstrReturnCall:
 				if uint64(imm.Index) >= uint64(importedFunctions+len(m.Code)) {
 					return false
 				}
 				if uint64(imm.Index) < uint64(importedFunctions) {
 					sig, ok := m.FuncSignature(imm.Index)
-					if !ok || !rootedScalarNumericTailSignature(sig) {
+					if !ok || !rootedScalarTailSignature(m, sig) {
 						return false
 					}
 				}
@@ -244,10 +266,6 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				if !rootedScalarReferenceCall(m, imm) {
 					return false
 				}
-			case wasm.InstrRefFunc:
-				if importedFunctions != 0 && hasPrivateTable && uint64(imm.Index) < uint64(importedFunctions) {
-					return false
-				}
 			}
 		}
 	}
@@ -257,6 +275,9 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			return false
 		}
 		if global.Type.Type.Kind() == wasm.ValRef {
+			if admitPrimitiveReferenceGlobalInitializer(*global, m, importedGlobals+i) {
+				continue
+			}
 			if !rootedScalarAggregateGlobal(*global, aggregateParser, importedGlobals+i) {
 				return false
 			}
@@ -324,6 +345,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 		}
 	}
 	hasAggregate := false
+	hasCollectorFunction := false
 	flatTypes := 0
 	admittedAggregates := make([]bool, 0, len(m.Types))
 	rootedValue := func(typ wasm.ValType) bool {
@@ -334,8 +356,11 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			return false
 		}
 		heap := typ.Ref().Heap()
+		if functionStorage && !typ.Ref().Exact() && wasm.FunctionReferenceType(m, typ) {
+			return heap.Kind() == wasm.HeapAbs || !heap.Type().Rec && int(heap.Type().Index) < flatTypes
+		}
 		if heap.Kind() == wasm.HeapAbs {
-			return !typ.Ref().Exact() && (rootedAbstractObjectHeap(heap.Abs()) || heap.Abs() == wasm.HeapI31)
+			return !typ.Ref().Exact() && (rootedAbstractObjectHeap(heap.Abs()) || heap.Abs() == wasm.HeapI31 || heap.Abs() == wasm.HeapExtern || heap.Abs() == wasm.HeapNoExtern)
 		}
 		return heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && int(heap.Type().Index) < flatTypes && admittedAggregates[heap.Type().Index]
 	}
@@ -351,22 +376,22 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				return false
 			}
 			aggregateSubtype := sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray
-			if multi && (!aggregateSubtype || sub.HasPrefix || !sub.Final || len(sub.Supers) != 0) {
+			if multi && aggregateSubtype && (sub.HasPrefix || !sub.Final || len(sub.Supers) != 0) {
 				return false
 			}
 			if !sub.HasPrefix {
 				if !sub.Final || len(sub.Supers) != 0 {
 					return false
 				}
-			} else if !aggregateSubtype || len(sub.Supers) > 1 {
+			} else if len(sub.Supers) > 1 {
 				return false
 			} else if len(sub.Supers) == 1 {
 				super := sub.Supers[0]
-				if super.Rec || int(super.Index) >= flatTypes || !admittedAggregates[super.Index] {
+				if super.Rec || int(super.Index) >= flatTypes {
 					return false
 				}
-				superComp := rootedScalarAggregateType(m, super.Index)
-				if superComp == nil || superComp.Kind != sub.Comp.Kind {
+				superType, valid := m.TypeSubType(super.Index)
+				if !valid || superType.Final || superType.Comp.Kind != sub.Comp.Kind {
 					return false
 				}
 			}
@@ -382,10 +407,13 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 					return false
 				}
 				heap := value.Ref().Heap()
-				if !value.Ref().Exact() && heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapI31 {
+				if !value.Ref().Exact() && heap.Kind() == wasm.HeapAbs && (heap.Abs() == wasm.HeapI31 || rootedAbstractObjectHeap(heap.Abs()) || heap.Abs() == wasm.HeapExtern || heap.Abs() == wasm.HeapNoExtern) {
 					return true
 				}
-				if !value.Ref().Exact() && heap.Kind() == wasm.HeapAbs && heap.Abs() == wasm.HeapFunc {
+				if !value.Ref().Exact() && heap.Kind() == wasm.HeapAbs && (heap.Abs() == wasm.HeapFunc || heap.Abs() == wasm.HeapNoFunc) {
+					return true
+				}
+				if !value.Ref().Exact() && heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && int(heap.Type().Index) < flatTypes && wasm.FunctionReferenceType(m, value) {
 					return true
 				}
 				if heap.Kind() != wasm.HeapTypeIndex || value.Ref().Exact() && heap.Type().Rec {
@@ -399,7 +427,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			}
 			switch sub.Comp.Kind {
 			case wasm.CompStruct:
-				if len(sub.Comp.Fields) == 0 || len(sub.Comp.Fields) > 255 {
+				if len(sub.Comp.Fields) > 255 {
 					return false
 				}
 				for _, field := range sub.Comp.Fields {
@@ -423,7 +451,10 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 				}
 				for _, values := range [][]wasm.ValType{sub.Comp.Params, sub.Comp.Results} {
 					for _, typ := range values {
-						if !rootedValue(typ) {
+						if typ.Kind() == wasm.ValRef && !typ.Ref().Exact() && typ.Ref().Heap().Kind() == wasm.HeapAbs && rootedAbstractObjectHeap(typ.Ref().Heap().Abs()) {
+							hasCollectorFunction = true
+						}
+						if !rootedValue(typ) && !rootedCustomImportType(m, instructions, uint32(flatTypes)) {
 							return false
 						}
 					}
@@ -435,7 +466,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			flatTypes++
 		}
 	}
-	if !hasAggregate || flatTypes > MaxFunctions || len(m.FuncTypes) != len(m.Code) {
+	if !hasAggregate && !opaqueExternSignatures && !immediateReferenceExecution && !(hasCollectorFunction && (collectorFunctionUse || m.ImportedFuncCount() > 0)) || flatTypes > MaxFunctions || len(m.FuncTypes) != len(m.Code) {
 		return false
 	}
 	for _, typ := range m.FuncTypes {
@@ -458,14 +489,26 @@ func admitRV64GCRootedScalarModule(m *wasm.Module) bool {
 			return false
 		}
 		heap := typ.Ref().Heap()
+		if functionStorage && !typ.Ref().Exact() && wasm.FunctionReferenceType(m, typ) {
+			return heap.Kind() == wasm.HeapAbs || !heap.Type().Rec && int(heap.Type().Index) < flatTypes
+		}
 		if heap.Kind() == wasm.HeapAbs {
-			return !typ.Ref().Exact() && (rootedAbstractObjectHeap(heap.Abs()) || heap.Abs() == wasm.HeapI31)
+			return !typ.Ref().Exact() && (rootedAbstractObjectHeap(heap.Abs()) || heap.Abs() == wasm.HeapI31 || heap.Abs() == wasm.HeapExtern || heap.Abs() == wasm.HeapNoExtern)
 		}
 		return heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && int(heap.Type().Index) < flatTypes && admittedAggregates[heap.Type().Index]
 	}
+	importIndex := uint32(0)
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind != wasm.ExternFunc {
 			continue
+		}
+		inline := false
+		if instructions != nil {
+			_, inline = instructions.instructions[importIndex]
+		}
+		importIndex++
+		if inline {
+			continue // The exact native directory validates every physical carrier.
 		}
 		ft, ok := m.ImportFuncType(i)
 		if !ok {
@@ -548,16 +591,41 @@ func rootedScalarNumericTailSignature(sig *wasm.CompType) bool {
 	return true
 }
 
+// Tail transport has no safepoint between releasing the source frame and
+// entering the checked target. Collector carriers use one full-width cell;
+// the target owns their exact homes before it can allocate.
+func rootedScalarTailSignature(m *wasm.Module, sig *wasm.CompType) bool {
+	if sig == nil || sig.Kind != wasm.CompFunc || len(sig.Params) > 256 || len(sig.Results) > 256 {
+		return false
+	}
+	for _, values := range [][]wasm.ValType{sig.Params, sig.Results} {
+		cells := 0
+		for _, typ := range values {
+			if !swarCarrierType(typ) && !rv64CollectorFrameRefType(m, typ) {
+				return false
+			}
+			cells++
+			if wasm.EqualValType(typ, wasm.V128) {
+				cells++
+			}
+		}
+		if cells > 256 {
+			return false
+		}
+	}
+	return true
+}
+
 func rootedScalarNumericIndirectTail(m *wasm.Module, imm wasm.InstructionImmediate) bool {
 	if m == nil || imm.Kind != wasm.InstrReturnCallIndirect {
 		return false
 	}
 	table, ok := m.TableType(imm.Index2)
-	if !ok || !wasm.EqualValType(wasm.RefVal(table.Ref), wasm.FuncRef) {
+	if !ok || !wasm.FunctionReferenceType(m, wasm.RefVal(table.Ref)) {
 		return false
 	}
 	sig, ok := m.ResolvedTypeFunc(imm.Index)
-	return ok && rootedScalarNumericTailSignature(sig)
+	return ok && rootedScalarTailSignature(m, sig)
 }
 
 func rootedScalarNumericReferenceTail(m *wasm.Module, imm wasm.InstructionImmediate) bool {
@@ -565,7 +633,7 @@ func rootedScalarNumericReferenceTail(m *wasm.Module, imm wasm.InstructionImmedi
 		return false
 	}
 	sig, ok := m.ResolvedTypeFunc(imm.Index)
-	return ok && rootedScalarNumericTailSignature(sig)
+	return ok && rootedScalarTailSignature(m, sig)
 }
 
 func rootedScalarNumericReferenceCall(m *wasm.Module, imm wasm.InstructionImmediate) bool {
@@ -576,16 +644,14 @@ func rootedScalarNumericReferenceCall(m *wasm.Module, imm wasm.InstructionImmedi
 	return ok && rootedScalarNumericTailSignature(sig)
 }
 
-// rootedScalarReferenceCall admits collector carriers only when the module has
-// a closed callable-reference universe. In that profile every non-null target
-// is owned by this instance: function imports are absent and no funcref table
-// can be populated by another instance after publication. The native lowering
-// independently checks the target context before copying collector pointers.
+// Collector reference calls retain exact maps and verify the target native
+// context before copying collector pointers. Imported owned-host wrappers share
+// this context; a foreign descriptor cannot bypass that runtime check.
 func rootedScalarReferenceCall(m *wasm.Module, imm wasm.InstructionImmediate) bool {
 	if rootedScalarNumericReferenceCall(m, imm) {
 		return true
 	}
-	if m == nil || imm.Kind != wasm.InstrCallRef || !rootedScalarClosedFunctionReferenceWorld(m) {
+	if m == nil || imm.Kind != wasm.InstrCallRef {
 		return false
 	}
 	sig, ok := m.ResolvedTypeFunc(imm.Index)
@@ -611,25 +677,22 @@ func rootedScalarClosedFunctionReferenceWorld(m *wasm.Module) bool {
 	if m == nil || m.ImportedFuncCount() != 0 || m.ImportedTableCount() != 0 {
 		return false
 	}
-	for i := range m.Imports {
-		if m.Imports[i].Type.Kind == wasm.ExternGlobal && m.Imports[i].Type.GlobalType().Type.Kind() == wasm.ValRef {
+	for _, im := range m.Imports {
+		if im.Type.Kind == wasm.ExternGlobal && im.Type.GlobalType().Type.Kind() == wasm.ValRef {
 			return false
 		}
 	}
-	for i := range m.Exports {
-		export := m.Exports[i]
-		switch export.Index.Kind {
+	for _, ex := range m.Exports {
+		switch ex.Index.Kind {
 		case wasm.ExternTable:
-			// An externally populated aggregate can itself contain a funcref, so
-			// closing only callable tables would not close the descriptor graph.
 			return false
 		case wasm.ExternGlobal:
-			global, ok := m.GlobalTypeByIndex(export.Index.Index)
-			if !ok || global.Mutable && global.Type.Kind() == wasm.ValRef {
+			g, ok := m.GlobalTypeByIndex(ex.Index.Index)
+			if !ok || g.Mutable && g.Type.Kind() == wasm.ValRef {
 				return false
 			}
 		case wasm.ExternFunc:
-			sig, ok := m.FuncSignature(export.Index.Index)
+			sig, ok := m.FuncSignature(ex.Index.Index)
 			if !ok || sig == nil {
 				return false
 			}
@@ -649,13 +712,13 @@ func rootedScalarTableReference(typ wasm.ValType, m *wasm.Module) bool {
 	}
 	ref := typ.Ref()
 	heap := ref.Heap()
-	if !ref.Nullable() || ref.Exact() {
+	if ref.Exact() {
 		return false
 	}
 	switch heap.Kind() {
 	case wasm.HeapAbs:
 		switch heap.Abs() {
-		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray:
+		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapExtern, wasm.HeapNoExtern:
 			return true
 		default:
 			return false
@@ -880,6 +943,28 @@ func (p *rootedScalarAggregateParser) validateExpression(expr wasm.Expr, require
 		case 0x44:
 			_, err = r.Bytes(8)
 			value.typ = wasm.F64
+		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e:
+			typ := wasm.I32
+			if op >= 0x7c {
+				typ = wasm.I64
+			}
+			if stackLen < 2 || !wasm.EqualValType(stack[stackLen-2].typ, typ) || !wasm.EqualValType(stack[stackLen-1].typ, typ) {
+				return false
+			}
+			left, right := stack[stackLen-2], stack[stackLen-1]
+			stackLen -= 2
+			value.typ = typ
+			if wasm.EqualValType(typ, wasm.I32) && left.knownI32 && right.knownI32 {
+				value.knownI32 = true
+				switch op {
+				case 0x6a:
+					value.i32 = left.i32 + right.i32
+				case 0x6b:
+					value.i32 = left.i32 - right.i32
+				case 0x6c:
+					value.i32 = left.i32 * right.i32
+				}
+			}
 		case 0x23:
 			index, indexErr := r.U32()
 			global, ok := p.m.GlobalTypeByIndex(index)
@@ -918,6 +1003,22 @@ func (p *rootedScalarAggregateParser) validateExpression(expr wasm.Expr, require
 			sub, subErr := r.U32()
 			if subErr != nil {
 				return false
+			}
+			if sub == 26 || sub == 27 {
+				if stackLen < 1 || stack[stackLen-1].typ.Kind() != wasm.ValRef {
+					return false
+				}
+				input := stack[stackLen-1]
+				want, output := wasm.HeapExtern, wasm.HeapAny
+				if sub == 27 {
+					want, output = wasm.HeapAny, wasm.HeapExtern
+				}
+				if !p.valueMatches(input, wasm.StorageVal(wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(want), false))), 0) {
+					return false
+				}
+				stackLen--
+				value.typ = wasm.RefVal(wasm.Ref(input.typ.Ref().Nullable(), wasm.AbsHeap(output), false))
+				break
 			}
 			if sub == 28 { // ref.i31
 				if stackLen < 1 || !wasm.EqualValType(stack[stackLen-1].typ, wasm.I32) {
@@ -1049,11 +1150,11 @@ func rootedScalarAggregateGlobal(global wasm.Global, p *rootedScalarAggregatePar
 	}
 	switch heap.Kind() {
 	case wasm.HeapAbs:
-		if !ref.Nullable() {
+		if !ref.Nullable() && heap.Abs() != wasm.HeapI31 {
 			return false
 		}
 		switch heap.Abs() {
-		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray:
+		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapExtern, wasm.HeapNoExtern:
 			return p.validateExpression(global.Init, ref, globalLimit)
 		default:
 			return false
@@ -1069,8 +1170,8 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 		return false
 	}
 	r := wasm.ReaderFrom(data[8:])
-	const required = uint16(1<<1 | 1<<3 | 1<<7 | 1<<10)
-	const allowed = required | 1<<2 | 1<<4 | 1<<5 | 1<<6 | 1<<8 | 1<<9 | 1<<11 | 1<<12
+	const required = uint16(1 << 1)
+	const allowed = required | 1<<3 | 1<<10 | 1<<2 | 1<<4 | 1<<5 | 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<11 | 1<<12
 	var seen uint16
 	var previousRank byte
 	for r.HasNext() {
@@ -1083,6 +1184,13 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 			rank = 11
 		case 11:
 			rank = 12
+		}
+		if err == nil && id == 0 {
+			n, err := r.U32()
+			if err != nil || uint64(n) > uint64(r.BytesLeft()) || r.JumpTo(r.Offset()+int(n)) != nil {
+				return false
+			}
+			continue
 		}
 		if err != nil || id > 12 || allowed&(1<<id) == 0 || seen&(1<<id) != 0 || rank <= previousRank {
 			return false
@@ -1111,7 +1219,7 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 		seen |= 1 << id
 		previousRank = rank
 	}
-	if seen&required != required {
+	if seen&required != required || (seen&(1<<3) != 0) != (seen&(1<<10) != 0) {
 		return false
 	}
 	m, err := wasm.DecodeModule(data)
@@ -1122,6 +1230,10 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 // The public query also typechecks the source: unlike the compiler's private
 // preclassification pass, callers have not necessarily run validation first.
 func AdmitGCRootedScalarSource(data []byte) bool {
+	if AdmitExceptionHandlingSource(data) {
+		m, err := wasm.DecodeModule(data)
+		return err == nil && admitRV64GCRootedScalarModule(exceptionAdmissionProjection(m))
+	}
 	if !admitRV64GCRootedScalarWire(data) {
 		return false
 	}
@@ -1154,7 +1266,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 			if typ >= 0x7b && typ <= 0x7f {
 				continue
 			}
-			if rootedAbstractObjectHeap(wasm.AbsHeapType(typ)) || wasm.AbsHeapType(typ) == wasm.HeapI31 {
+			if rootedAbstractObjectHeap(wasm.AbsHeapType(typ)) || wasm.AbsHeapType(typ) == wasm.HeapI31 || wasm.AbsHeapType(typ) == wasm.HeapFunc || wasm.AbsHeapType(typ) == wasm.HeapNoFunc || wasm.AbsHeapType(typ) == wasm.HeapExtern || wasm.AbsHeapType(typ) == wasm.HeapNoExtern {
 				continue
 			}
 			if typ != 0x63 && typ != 0x64 {
@@ -1170,7 +1282,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 				return false
 			}
 			if heap < 0 {
-				if exact || !rootedAbstractObjectHeapS33(heap) && heap != -20 {
+				if exact || !rootedAbstractObjectHeapS33(heap) && heap != -20 && heap != -17 && heap != -14 && heap != -16 && heap != -13 {
 					return false
 				}
 				continue
@@ -1181,7 +1293,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 				}
 				continue
 			}
-			if uint64(heap) >= uint64(owner) || kinds[heap] != 0x5f && kinds[heap] != 0x5e {
+			if uint64(heap) >= uint64(owner) || kinds[heap] != 0x5f && kinds[heap] != 0x5e && kinds[heap] != 0x60 {
 				return false
 			}
 		}
@@ -1195,7 +1307,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 		if storage == byte(wasm.PackI8) || storage == byte(wasm.PackI16) || storage >= 0x7c && storage <= 0x7f {
 			return true
 		}
-		if references && (storage == 0x70 || storage == byte(wasm.HeapI31)) { // funcref or i31ref
+		if references && (storage == 0x70 || storage == 0x6f || storage == byte(wasm.HeapNoExtern) || storage == byte(wasm.HeapI31) || rootedAbstractObjectHeap(wasm.AbsHeapType(storage))) { // funcref or i31ref
 			return true
 		}
 		if !references || storage != 0x63 && storage != 0x64 {
@@ -1210,7 +1322,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 		if err != nil {
 			return false
 		}
-		if !exact && (heap == -16 || heap == -20) {
+		if !exact && (heap == -16 || heap == -20 || rootedAbstractObjectHeapS33(heap)) {
 			return true
 		}
 		if heap < 0 {
@@ -1219,26 +1331,23 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 		if uint64(heap) >= uint64(groupBase) && uint64(heap) < uint64(groupLimit) {
 			return !exact
 		}
-		return uint64(heap) < uint64(owner) && (kinds[heap] == 0x5f || kinds[heap] == 0x5e)
+		return uint64(heap) < uint64(owner) && (kinds[heap] == 0x5f || kinds[heap] == 0x5e || !exact && kinds[heap] == 0x60)
 	}
 	parseSubtype := func(owner, groupBase, groupLimit uint32, multi bool) bool {
 		form, err := r.Byte()
 		if err != nil {
 			return false
 		}
-		compForm, final, prefixed, superKind := form, true, false, byte(0)
+		compForm, final, superKind := form, true, byte(0)
 		if form == 0x4f || form == 0x50 {
-			if multi {
-				return false
-			}
-			prefixed, final = true, form == 0x4f
+			final = form == 0x4f
 			supers, err := r.U32()
 			if err != nil || supers > 1 {
 				return false
 			}
 			if supers == 1 {
 				super, err := r.S33()
-				if err != nil || super < 0 || uint64(super) >= uint64(owner) || finals[super] || kinds[super] != 0x5f && kinds[super] != 0x5e {
+				if err != nil || super < 0 || uint64(super) >= uint64(owner) || finals[super] || kinds[super] != 0x5f && kinds[super] != 0x5e && kinds[super] != 0x60 {
 					return false
 				}
 				superKind = kinds[super]
@@ -1251,7 +1360,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 		switch compForm {
 		case 0x5f:
 			fields, err := r.U32()
-			if err != nil || fields == 0 || fields > 255 {
+			if err != nil || fields > 255 {
 				return false
 			}
 			for range fields {
@@ -1264,7 +1373,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 				}
 			}
 		case 0x60:
-			if multi || prefixed || !valueTypes(owner, groupBase, groupLimit) || !valueTypes(owner, groupBase, groupLimit) {
+			if !valueTypes(owner, groupBase, groupLimit) || !valueTypes(owner, groupBase, groupLimit) {
 				return false
 			}
 		case 0x5e:
@@ -1291,7 +1400,7 @@ func admitRV64GCRootedScalarTypeWire(payload []byte) bool {
 		if marker, ok := r.Peek(); ok && marker == 0x4e {
 			_, _ = r.Byte()
 			members, err = r.U32()
-			if err != nil || members < 2 || uint64(groupBase)+uint64(members) > MaxFunctions {
+			if err != nil || members == 0 || uint64(groupBase)+uint64(members) > MaxFunctions {
 				return false
 			}
 		}
@@ -1352,30 +1461,67 @@ func rootedScalarHelperProfile(m *wasm.Module) (structs, arrays, ok bool) {
 	if m == nil {
 		return false, false, false
 	}
+	hasAggregateType := false
+	for _, group := range m.Types {
+		for i := range group.SubTypes {
+			kind := group.SubTypes[i].Comp.Kind
+			hasAggregateType = hasAggregateType || kind == wasm.CompStruct || kind == wasm.CompArray
+		}
+	}
+	classify := func(kind wasm.InstrKind) {
+		switch kind {
+		case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet,
+			wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
+			structs = true
+		case wasm.InstrRefTest, wasm.InstrRefCast, wasm.InstrBrOnCast, wasm.InstrBrOnCastFail,
+			wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
+			structs = structs || hasAggregateType
+		case wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed,
+			wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU,
+			wasm.InstrArraySet, wasm.InstrArrayLen, wasm.InstrArrayFill,
+			wasm.InstrArrayCopy, wasm.InstrArrayInitData, wasm.InstrArrayInitElem,
+			wasm.InstrArrayNewData, wasm.InstrArrayNewElem:
+			arrays = true
+		}
+	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
-	for i := range m.Code {
-		r := wasm.NewReader(m.Code[i].BodyBytes)
+	scan := func(expr wasm.Expr) bool {
+		for _, in := range expr.Instrs {
+			classify(in.Kind)
+		}
+		r := wasm.NewReader(expr.BodyBytes)
 		for r.HasNext() {
 			op, err := r.Byte()
 			if err != nil {
-				return false, false, false
+				return false
 			}
 			var imm wasm.InstructionImmediate
-			if err = classifier.ClassifyInto(r, op, &imm); err != nil {
-				return false, false, false
+			if classifier.ClassifyInto(r, op, &imm) != nil {
+				return false
 			}
-			switch imm.Kind {
-			case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet,
-				wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
-				structs = true
-			case wasm.InstrRefTest, wasm.InstrRefCast, wasm.InstrBrOnCast, wasm.InstrBrOnCastFail:
-				structs = true
-			case wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed,
-				wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU,
-				wasm.InstrArraySet, wasm.InstrArrayLen, wasm.InstrArrayFill,
-				wasm.InstrArrayCopy, wasm.InstrArrayInitData, wasm.InstrArrayInitElem,
-				wasm.InstrArrayNewData, wasm.InstrArrayNewElem:
-				arrays = true
+			classify(imm.Kind)
+		}
+		return true
+	}
+	for i := range m.Code {
+		if !scan(wasm.Expr{BodyBytes: m.Code[i].BodyBytes}) {
+			return false, false, false
+		}
+	}
+	for i := range m.Globals {
+		if !scan(m.Globals[i].Init) {
+			return false, false, false
+		}
+	}
+	for i := range m.Tables {
+		if m.Tables[i].Init != nil && !scan(*m.Tables[i].Init) {
+			return false, false, false
+		}
+	}
+	for i := range m.Elements {
+		for _, expr := range m.Elements[i].Kind.Exprs {
+			if !scan(expr) {
+				return false, false, false
 			}
 		}
 	}

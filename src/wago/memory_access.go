@@ -45,9 +45,7 @@ func (in *Instance) memPtr(offset uint32, size int) (unsafe.Pointer, bool) {
 // whose outer invocation owns one.
 func (in *Instance) mem() []byte {
 	if in.c.threadedMemory0() && in.memory != nil {
-		if jm := in.memory.jobMemory(); jm != nil {
-			return jm.HostBytes()
-		}
+		return threadedMemoryHostBytes(in.memory)
 	}
 	if in.jm == nil {
 		return nil

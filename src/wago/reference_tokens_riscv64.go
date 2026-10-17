@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -13,7 +13,16 @@ import (
 // importer owns the framed wrapper; its frozen attachment retains the producer.
 // Do not take a native execution or instance lifetime lock under the store lock.
 func railshotCanonicalImportedFuncref(store *referenceStore, source *Instance, ex *InstanceExport, index int, descriptor uint64) bool {
-	if source.refStore != store || ex.inst.refStore != store || !store.hasInstanceResourcesLocked(source) || !store.hasInstanceResourcesLocked(ex.inst) {
+	if source.refStore != store || !store.hasInstanceResourcesLocked(source) {
+		return false
+	}
+	// The descriptor is the importer's own framed wrapper, including for a
+	// foreign Runtime producer. Its exact frozen native attachment owns the
+	// producer physically; no foreign store lookup or raw pointer is authority.
+	if source.importReferenceNative(index) != ex {
+		return false
+	}
+	if ex.inst.refStore == store && !store.hasInstanceResourcesLocked(ex.inst) {
 		return false
 	}
 	return railshotPublishedFuncref(store, source, index, descriptor)
@@ -33,11 +42,21 @@ func railshotPublishedFuncref(store *referenceStore, source *Instance, index int
 		return false
 	}
 	entry := source.funcRefDescs[off : off+coreruntime.FuncRefDescBytes]
-	return binary.LittleEndian.Uint64(entry[coreruntime.TableEntryCodePtrOffset:]) == entries[index].address &&
-		binary.LittleEndian.Uint64(entry[coreruntime.TableEntrySigKeyOffset:]) == source.c.funcTypeKey(index) &&
+	key := rv64AttachedFunctionTypeKey(source, index)
+	return key != 0 && binary.LittleEndian.Uint64(entry[coreruntime.TableEntryCodePtrOffset:]) == entries[index].address &&
+		binary.LittleEndian.Uint64(entry[coreruntime.TableEntrySigKeyOffset:]) == key &&
 		binary.LittleEndian.Uint64(entry[coreruntime.TableEntryHomeLinMemOffset:]) == uint64(source.jm.LinMemBase())|abi.FuncRefLocalWrapperHomeTag &&
 		binary.LittleEndian.Uint64(entry[coreruntime.TableEntryRefSlotOffset:]) == descriptor &&
 		binary.LittleEndian.Uint64(entry[coreruntime.FuncRefContextOffset:]) == uint64(source.nativeContext)
+}
+
+// Plain Go host imports have no HostFuncRef owner. Their published framed
+// wrapper and synchronous callback both belong to the importing instance.
+func railshotCanonicalPlainHostFuncref(store *referenceStore, source *Instance, index int, descriptor uint64) bool {
+	entries := source.importReferenceEntries()
+	return index >= 0 && index < len(entries) && index < len(source.syncHosts) &&
+		entries[index].native == nil && entries[index].host == nil && source.syncHosts[index].callable() &&
+		railshotPublishedFuncref(store, source, index, descriptor)
 }
 
 // Store lock precedes the host lock. Canonicalization may choose an already
@@ -107,4 +126,13 @@ func railshotFuncRefMatchesFunction(in *Instance, ref FuncRef, index uint32) boo
 	}
 	actual, valid := entry.owner.funcrefFunctionIdentity(entry.descriptor)
 	return valid && actual == expected
+}
+
+// The store lock proves physical lifetime before the bounded native row read.
+func railshotValidFuncrefPublication(store *referenceStore, source *Instance, descriptor uint64) bool {
+	if source == nil || source.refStore != store || !store.hasInstanceResourcesLocked(source) {
+		return false
+	}
+	_, valid := rv64PublishedDescriptor(source, descriptor)
+	return valid
 }

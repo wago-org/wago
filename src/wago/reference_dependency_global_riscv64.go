@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -54,7 +54,7 @@ type rv64GlobalDependencySnapshot struct {
 // The caller holds owner.mu. Validation and any producer/graph acquisition
 // occur outside this lock; only exact cell ownership and count are claimed here.
 func rv64SnapshotGlobalDependency(global *Global, owner *globalOwner) (rv64GlobalDependencySnapshot, error) {
-	if global.owner != owner || owner.closed || len(global.cell) < globalCellSize(owner.typ) || global.Type != owner.typ || global.Mutable != owner.mutable {
+	if global.owner != owner || owner.closed || !railshotCompactExternHostGlobalOpen(owner) || len(global.cell) < globalCellSize(owner.typ) || global.Type != owner.typ || global.Mutable != owner.mutable {
 		return rv64GlobalDependencySnapshot{}, errors.New("global attachment identity or type is invalid")
 	}
 	if err := owner.validateImporterCountLocked(); err != nil {
@@ -245,7 +245,11 @@ func (rows *rv64GlobalDependencyRows) release(row *rv64GlobalDependencyRow, term
 	}
 	var cleanup resourceCleanup
 	rows.mu.Lock()
-	if row.state != rv64GlobalDependencyAttached {
+	// An adopted graph edge remains the closed callee's dependency while
+	// an open downstream importer retains it. Only graph collection or the
+	// terminal physical drain can retire that edge safely.
+	keepClosedEdge := transferred && !terminal && consumer != nil && row.root.receipt.graph != nil && consumer.invocationState.Load()&instanceInvocationClosed != 0 && !rv64StorageFreeCallable(consumer.c)
+	if row.state != rv64GlobalDependencyAttached || keepClosedEdge {
 		rows.mu.Unlock()
 		if consumer != nil && !terminal {
 			cleanup.run(consumer.releaseResourceRoot)

@@ -3,6 +3,7 @@ package wago
 import (
 	"encoding/binary"
 	"errors"
+	"strconv"
 	"strings"
 	"unsafe"
 
@@ -62,6 +63,12 @@ func (in *Instance) dispatchGCHelperParked(ctrl uintptr, helper, safepoint uint3
 }
 
 func (in *Instance) dispatchGCHelperParkedOnStack(ctrl uintptr, helper, safepoint uint32, args, results []uint64, stack *coreruntime.Engine) {
+	if in.dispatchCompactExternStore(ctrl, helper, safepoint, args, results, stack) {
+		return
+	}
+	if dispatchOwnedExceptionHelper(in, ctrl, helper, safepoint, args, results, stack) {
+		return
+	}
 	if helper < gcArrayAllocDefault {
 		in.dispatchGCStructHelperParked(ctrl, helper, safepoint, args, results, stack)
 		return
@@ -77,17 +84,26 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 	if in == nil || in.gc == nil {
 		panic(gcHelperFailuref("gc array helper %d has no live collector", helper))
 	}
+	defer drainExceptionReclaims(in.gc)
 	lockedDomain := in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
 	var state *gcPublicState
 	var frameRoots gc.RootSet = gc.EmptyRoots{}
-	if gcHelperMayAllocate(helper) {
+	if gcHelperMayAllocate(helper) || in.managedFunctionAggregateMayAllocate(helper, args) || in.compactExternPersistentMayAllocate(helper, args) {
 		in.gc.CancelNativeAllocationBatch()
 		state = in.publicGCState()
 		state.mu.Lock()
 		defer state.mu.Unlock()
 		defer func() { state.frameRoots.physicalStack = nil }()
 		frameRoots = in.gcHelperRoots(ctrl, state, safepoint, stack)
+	}
+
+	if in.dispatchManagedFunctionAggregate(helper, args, results, frameRoots, state) {
+		return
+	}
+
+	if in.dispatchCompactExternTableBulk(helper, args, results, lockedDomain, frameRoots) {
+		return
 	}
 
 	switch helper {
@@ -724,17 +740,30 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 	}
 }
 
-// gcRootedTableDescriptor returns a private, bounded compact collector table.
+// gcRootedTableDescriptor returns a bounded compact collector table.
 // Generic rooted modules authenticate this shape in their retained receipt;
 // these checks keep a corrupted runtime descriptor from becoming an arbitrary
 // off-heap write primitive.
 func (in *Instance) gcRootedTableDescriptor(table uint64) ([]byte, uint32, uint32, ValueTypeDescriptor) {
+	descriptor, length, capacity, exact, _ := in.gcRootedTableStorage(table)
+	return descriptor, length, capacity, exact
+}
+
+func (in *Instance) gcRootedTableStorage(table uint64) ([]byte, uint32, uint32, ValueTypeDescriptor, *Instance) {
+	d, n, capacity, typ, owner, _ := in.gcRootedTablePhysicalStorage(table)
+	return d, n, capacity, typ, owner
+}
+func (in *Instance) gcRootedTablePhysicalStorage(table uint64) ([]byte, uint32, uint32, ValueTypeDescriptor, *Instance, *tableOwner) {
+	var hostOwner *tableOwner
+
+	storageOwner := in
 	if table >= uint64(in.c.tableCount()) || in.existingGCRefTestTableState() != nil {
 		panic(gcHelperFailuref("generic GC table %d is unavailable", table))
 	}
 	index := int(table)
-	if _, imported := in.c.tableImportAt(index); imported || in.c.tableEntryBytes(index) != 8 || !isGCRefValType(in.c.tableElementType(index)) {
-		panic(gcHelperFailuref("generic GC table %d is not a private compact table", table))
+	opaque := in.c.compactExternFrameRoots() && in.c.tableElementType(index) == ValExternRef
+	if in.c.tableEntryBytes(index) != 8 || !isGCRefValType(in.c.tableElementType(index)) && !opaque {
+		panic(gcHelperFailuref("generic GC table %d is not a compact collector table", table))
 	}
 	exact, err := in.c.tableExactType(index)
 	if err != nil || exact.Kind != ValueTypeReference || !exact.Ref.Nullable || exact.Ref.Exact {
@@ -748,11 +777,57 @@ func (in *Instance) gcRootedTableDescriptor(table uint64) ([]byte, uint32, uint3
 		if kind != CompositeTypeStruct && kind != CompositeTypeArray {
 			panic(gcHelperFailuref("generic GC table %d has non-aggregate reference type", table))
 		}
-	} else if exact.Ref.Heap.Abstract != AbstractHeapI31 || exact.Ref.Heap.TypeIndex != 0 {
-		panic(gcHelperFailuref("generic GC table %d has unsupported abstract reference type", table))
+	} else {
+		if exact.Ref.Heap.TypeIndex != 0 {
+			panic(gcHelperFailuref("generic GC table %d has invalid abstract reference type", table))
+		}
+		switch exact.Ref.Heap.Abstract {
+		case AbstractHeapExtern, AbstractHeapNoExtern:
+			if !opaque {
+				panic(gcHelperFailuref("generic GC table has unqualified extern storage"))
+			}
+		case AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray, AbstractHeapNone:
+		default:
+			panic(gcHelperFailuref("generic GC table %d has unsupported abstract reference type", table))
+		}
 	}
-	descriptor := in.tableDescriptor(index)
+	var descriptor []byte
 	capacity := in.c.tableRuntimeCapacity(index)
+	if def, imported := in.c.tableImportAt(index); imported {
+		_, ends, _, _, _ := in.c.importModuleEndSections()
+		module, name := splitImportKeyAt(def.Key, importModuleEndAt(ends, index))
+		// The map consumes this key only for the lookup. Keep ordinary names on
+		// the stack instead of allocating a returned binding-key string.
+		var keyBuffer [256]byte
+		key := strconv.AppendInt(keyBuffer[:0], int64(len(module)), 10)
+		key = append(key, ':')
+		key = append(key, module...)
+		key = append(key, name...)
+		shared, ok := in.imports[string(key)].(*Table)
+		if !ok || shared.owner == nil {
+			panic(gcHelperFailuref("generic GC table %d has no retained owner", table))
+		}
+		owner := shared.owner
+		owner.mu.Lock()
+		valid := !owner.closed && owner.store != nil && owner.store == in.refStore && (owner.instance != nil && owner.instance.gc == in.gc || opaque && owner.instance == nil && railshotCompactExternHostTableMatches(shared, in.refStore, in.gc))
+		if valid && owner.instance == nil {
+			hostOwner = owner
+		}
+		storageOwner = owner.instance
+		owner.mu.Unlock()
+		if !valid {
+			panic(gcHelperFailuref("generic GC table %d belongs to an incompatible collector domain", table))
+		}
+		descriptor = shared.desc
+		// Import limits describe the accepted external type. The retained owner
+		// supplies the actual storage capacity, which can be smaller.
+		if len(descriptor) < 8 || (len(descriptor)-8)%8 != 0 {
+			panic(gcHelperFailuref("generic GC table %d descriptor size is invalid", table))
+		}
+		capacity = (len(descriptor) - 8) / 8
+	} else {
+		descriptor = gcRetainedTableDescriptor(in, index)
+	}
 	if capacity < 0 || capacity > int(^uint32(0)) || len(descriptor) != 8+capacity*8 {
 		panic(gcHelperFailuref("generic GC table %d descriptor size is invalid", table))
 	}
@@ -760,7 +835,7 @@ func (in *Instance) gcRootedTableDescriptor(table uint64) ([]byte, uint32, uint3
 	if runtimeCapacity != uint32(capacity) || length > runtimeCapacity {
 		panic(gcHelperFailuref("generic GC table %d descriptor header is invalid", table))
 	}
-	return descriptor, length, runtimeCapacity, exact
+	return descriptor, length, runtimeCapacity, exact, storageOwner, hostOwner
 }
 
 func (in *Instance) gcRootedTableReference(word uint64, exact ValueTypeDescriptor) gc.Ref {
@@ -782,7 +857,7 @@ func (in *Instance) gcRootedTableElementDescriptor(elemIndex uint32) ([]byte, El
 		panic(gcHelperFailuref("generic GC table element segment %d is unavailable", elemIndex))
 	}
 	elem := in.c.passiveElems[elemIndex]
-	if elem.Mode != ElemModePassive || elemEntryBytes(elem.RefType) != 8 || !isGCRefValType(normalizedElemRefType(elem.RefType)) {
+	if elem.Mode != ElemModePassive && (elem.Mode != ElemModeActive && elem.Mode != ElemModeDeclarative || len(elem.Values) != 0) || elemEntryBytes(elem.RefType) != 8 || !isGCRefValType(normalizedElemRefType(elem.RefType)) && (!in.c.compactExternFrameRoots() || normalizedElemRefType(elem.RefType) != ValExternRef) {
 		panic(gcHelperFailuref("generic GC table element segment %d is not passive aggregate reference data", elemIndex))
 	}
 	descOff := int(elemIndex) * coreruntime.PassiveElemDescBytes

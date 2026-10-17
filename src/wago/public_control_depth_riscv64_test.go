@@ -1,14 +1,12 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"errors"
 	"fmt"
-	"os"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -78,21 +76,29 @@ func TestRV64PublicControlDepth128(t *testing.T) {
 	}
 }
 
-func TestRV64PublicControlDepth129Rejects(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
-		t.Skip("source admission requires compiler")
-	}
-	for _, swar := range []bool{false, true} {
-		for _, kind := range []string{"branch", "loop", "dead", "unreachable"} {
-			t.Run(fmt.Sprintf("swar%t-%s", swar, kind), func(t *testing.T) {
-				c, err := Compile(nil, rv64ControlDepthSource(129, kind, swar))
-				if c != nil {
-					_ = c.Close()
+func TestRV64PublicControlDepthBeyondInline(t *testing.T) {
+	for _, depth := range []int{129, 257} {
+		for _, swar := range []bool{false, true} {
+			for _, kind := range []string{"branch", "loop", "dead", "unreachable"} {
+				for _, artifact := range []bool{false, true} {
+					t.Run(fmt.Sprintf("depth%d-swar%t-%s-artifact%t", depth, swar, kind, artifact), func(t *testing.T) {
+						c := rv64TableStageCompile(t, fmt.Sprintf("control-depth%d-%t-%s", depth, swar, kind), rv64ControlDepthSource(depth, kind, swar), artifact)
+						in := rv64MMInstance(t, c)
+						if kind == "unreachable" {
+							got, err := in.Invoke("run", 0xdeadbeef80000001, 3)
+							var trap *coreruntime.TrapError
+							wantPC := uint32(depth*2 + 1)
+							if got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapUnreachable || len(trap.Frames) != 1 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != wantPC {
+								t.Fatal("deep unreachable source/result", got, err)
+							}
+							return
+						}
+						for _, count := range []uint64{1, 3} {
+							rv64MMCall(t, in, "run", []uint64{0x80000001}, 0xdeadbeef80000001, 0xaabbccdd00000000|count)
+						}
+					})
 				}
-				if !errors.Is(err, railshot.ErrUnsupported) {
-					t.Fatal("depth129 did not fail closed", err)
-				}
-			})
+			}
 		}
 	}
 }

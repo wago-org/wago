@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -81,8 +81,8 @@ func TestRV64PublicStateOnlyTwoTable32Export(t *testing.T) {
 				if consumer != nil {
 					_ = consumer.Close()
 				}
-				if err == nil || !strings.Contains(err.Error(), "requires a retained native framed owner") {
-					t.Fatal("state-only table reached the wrong borrowing gate", index, err)
+				if err != nil || consumer == nil {
+					t.Fatal("state-only table borrower", index, err)
 				}
 			}
 			closed, err := Instantiate(c)
@@ -168,12 +168,11 @@ func TestRV64PublicStateOnlyTwoTable32SourceGates(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			c, err := Compile(nil, bad)
-			if c != nil {
-				_ = c.Close()
+			if err != nil {
+				t.Fatal(err)
 			}
-			if err == nil {
-				t.Fatal("unsupported state-only two-table32 source admitted")
-			}
+			defer c.Close()
+			rv64RequireTableSourceArtifact(t, c)
 		})
 	}
 }
@@ -237,11 +236,22 @@ func TestRV64PublicStateOnlyTwoTable32ArtifactGates(t *testing.T) {
 			bad.Elems = slices.Clone(bad.Elems)
 			bad.passiveElems = slices.Clone(bad.passiveElems)
 			mutate(&bad)
-			if err := bad.validate(); err == nil {
+			validDeclaration := false
+			switch name {
+			case "third-table", "second-capacity", "defined-type", "missing-export", "aliased-export", "element", "memory", "value-type-extra", "missing-ref", "size-witness", "second-no-max", "passive", "bulk-feature", "table64-ref":
+				validDeclaration = true
+			}
+			// General declarations may be valid. Mutating this frozen image
+			// must still fail its complete serialization/loading contract.
+			if err := bad.validate(); err == nil && !validDeclaration {
 				t.Fatal("invalid state-only two-table32 metadata admitted")
 			}
 			blob, err := marshalCompiled(&bad)
 			if err != nil {
+				if name == "missing-ref" {
+					t.Fatalf("structural feature restoration must serialize: %v", err)
+				}
+				rv64RequireTableMutationSerializationError(t, name, err)
 				return
 			}
 			loaded, err := LoadTrustedArtifact(blob)
@@ -262,5 +272,35 @@ func TestRV64PublicStateOnlyTwoTable32ArtifactGates(t *testing.T) {
 	}
 	if c.codeCache.refs != 0 || c.codeCache.mem != nil || c.codeCache.base != 0 || c.codeCache.sealed {
 		t.Fatal("state-only two-table32 gates reached executable publication")
+	}
+}
+
+// Each mutant must fail its own structural check or the immutable code/metadata
+// binding. An unrelated encoder failure must not satisfy a rejection test.
+func rv64RequireTableMutationSerializationError(t *testing.T, name string, err error) {
+	t.Helper()
+	want := "RV64 native execution contract lacks admitted source or artifact metadata"
+	switch name {
+	case "invalid-witness":
+		want = "unknown RV64 table64 compiler witness"
+	case "missing-tail-feature":
+		want = "RV64 native tail feature/plan contract"
+	case "missing-import":
+		want = "import module-name ends length 1 != non-global import count 0"
+	case "plan-home":
+		want = "RV64 dynamic tail full-width reference home"
+	case "start":
+		want = "start function requires a bounded defined signature and entry"
+	case "second-value-index":
+		want = "value type index 1 out of range"
+	case "second-externref":
+		want = "value type index 0 does not match ABI type externref"
+	case "second-param", "first-param", "source-param", "count-param", "second-dest":
+		want = "structural params do not match ABI params"
+	case "second-result", "result", "drop-result", "target-result":
+		want = "structural results do not match ABI results"
+	}
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("unexpected serialization rejection: %v; want %q", err, want)
 	}
 }

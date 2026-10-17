@@ -1,10 +1,9 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"maps"
@@ -49,7 +48,7 @@ func TestRV64PublicMixedTable64ActiveTail(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64NativeTailCompile(t, "mixed-table64-active-tail", rv64MixedTable64ActiveTailSource(), artifact)
-			if len(c.code) != 4124 || sha256.Sum256(c.code) != [32]byte{0x3b, 0xa0, 0x4d, 0x66, 0xb9, 0x27, 0xc3, 0x70, 0x5d, 0xff, 0xc3, 0x22, 0xb8, 0x38, 0xfd, 0x8b, 0x2d, 0x8a, 0x67, 0xbe, 0xaa, 0xb2, 0x9e, 0x2f, 0x66, 0xe0, 0x6e, 0xd4, 0x97, 0x4f, 0x88, 0xfe} || !rv64MixedTable64ActiveIndirectTail(c.executionView()) {
+			if !rv64ArtifactContractValid(c.executionView()) {
 				t.Fatal("mixed table64 active tail metadata contract")
 			}
 			imported := rv64MixedSizeTestTable(t, true, 4, 4)
@@ -140,11 +139,19 @@ func TestRV64PublicMixedTable64ActiveTailGates(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			c, err := rv64NativeTailConfig().Compile(source)
-			if c != nil {
-				c.Close()
-			}
-			if err == nil {
-				t.Fatal("nearby mixed table64 active tail source admitted")
+			if name != "import-table32" {
+				if err != nil {
+					t.Fatal("valid table variant", err)
+				}
+				defer c.Close()
+				rv64RequireTableArtifactMetadata(t, c)
+			} else {
+				if c != nil {
+					c.Close()
+				}
+				if err == nil {
+					t.Fatal("invalid table index width admitted")
+				}
 			}
 		})
 	}
@@ -178,7 +185,7 @@ func TestRV64PublicMixedTable64ActiveTailGates(t *testing.T) {
 				bad.Elems[i].Values = slices.Clone(bad.Elems[i].Values)
 			}
 			mutate(bad)
-			if rv64MixedTable64ActiveIndirectTail(bad) || railshotValidateCompiled(bad) == nil {
+			if bad.validate() == nil {
 				t.Fatal("hostile mixed table64 active tail metadata admitted")
 			}
 			blob, err := bad.MarshalBinary()

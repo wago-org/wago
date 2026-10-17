@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -161,12 +161,12 @@ func TestRV64PublicReferenceCallMarkerAdmission(t *testing.T) {
 		{"cpu-marker-alias", func(c *Compiled) { c.requiredAMD64Features = shared.AMD64Features(1 << 19) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := cloneCompiledMetadata(base)
-			c.validateMemo, c.codeCache = &validateMemo{}, nil
-			c.ensureCodeCache()
-			c.codeCache.stagedFeatures = CoreFeatureTypedFunctionReferences
+			c := rv64ReferenceImportTailCopy(base)
+			if err := c.validate(); err != nil {
+				t.Fatal("unchanged call_ref metadata", err)
+			}
 			tc.mutate(c)
-			if err := railshotValidateCompiled(c); !errors.Is(err, railshot.ErrUnsupported) {
+			if err := c.validate(); err == nil {
 				t.Fatal("invalid call_ref shape accepted", err)
 			}
 			blob, err := marshalCompiled(c)

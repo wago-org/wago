@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -10,7 +10,6 @@ import (
 	"slices"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -52,7 +51,7 @@ func TestRV64PublicMixedTable64Indirect(t *testing.T) {
 			readerCode := rv64TableStageCompile(t, "mixed-table64-indirect-reader", rv64ImportedTable64IndirectInstructionSource(), artifact)
 			defer readerCode.Close()
 			view := writerCode.executionView()
-			if view.nativeTable64ABI != nativeTable64IndirectABI || !rv64MixedTable64Indirect(view) || view.tableCount() != 2 || view.tableImportCount() != 1 || view.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations || !view.NeedsFuncRefDescs {
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || view.tableCount() != 2 || view.tableImportCount() != 1 || view.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations || !view.NeedsFuncRefDescs {
 				t.Fatal("mixed table64 indirect metadata contract")
 			}
 			imported := rv64MixedSizeTestTable(t, true, 2, 4)
@@ -161,11 +160,19 @@ func TestRV64PublicMixedTable64IndirectSourceGates(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			c, err := Compile(nil, source)
-			if c != nil {
-				c.Close()
-			}
-			if err == nil {
-				t.Fatal("nearby mixed table64 indirect source admitted")
+			if name == "wrong-table" {
+				if err != nil {
+					t.Fatal("valid mixed table source", err)
+				}
+				defer c.Close()
+				rv64RequireTableArtifactMetadata(t, c)
+			} else {
+				if c != nil {
+					c.Close()
+				}
+				if err == nil {
+					t.Fatal("invalid table width or malformed source admitted")
+				}
 			}
 		})
 	}
@@ -195,16 +202,15 @@ func TestRV64PublicMixedTable64IndirectArtifactGates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			base := rv64TableStageCompile(t, "mixed-table64-indirect-gates", rv64MixedTable64IndirectSource(), false)
 			defer base.Close()
-			bad := cloneCompiledMetadata(base.executionView())
+			bad := rv64ReferenceImportTailCopy(base)
 			bad.extraTables = slices.Clone(bad.extraTables)
 			bad.Funcs = slices.Clone(bad.Funcs)
 			bad.Funcs[2].Params = slices.Clone(bad.Funcs[2].Params)
 			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
 			bad.Exports = maps.Clone(bad.Exports)
 			bad.tableExports = maps.Clone(bad.tableExports)
-			bad.validateMemo, bad.codeCache = &validateMemo{}, nil
 			mutate(bad)
-			if rv64MixedTable64Indirect(bad) || !errors.Is(railshotValidateCompiled(bad), railshot.ErrUnsupported) {
+			if bad.validate() == nil {
 				t.Fatal("hostile mixed table64 indirect metadata admitted")
 			}
 			blob, err := marshalCompiled(bad)

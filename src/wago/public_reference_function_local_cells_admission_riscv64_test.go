@@ -1,10 +1,9 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -51,6 +50,10 @@ func TestRV64PublicReferenceFunctionLocalCellsAdmission(t *testing.T) {
 			t.Run(fmt.Sprintf("vector%t-%s", vector, name), func(t *testing.T) {
 				v := rv64ReferenceStartCopy(c)
 				change(v)
+				if name == "inactive-function-index" || name == "inactive-global-index" {
+					rv64RequireTableArtifactMetadata(t, v)
+					return
+				}
 				if err := v.validate(); err == nil {
 					t.Fatal("malformed private reference cell admitted")
 				}
@@ -85,11 +88,11 @@ func TestRV64PublicReferenceFunctionLocalCellsAdmission(t *testing.T) {
 		in, err := rt.Instantiate(context.Background(), mod, WithImports(im))
 		mod.Close()
 		rt.Close()
-		if in != nil {
-			in.Close()
+		if waitErr := rt.WaitClosed(context.Background()); waitErr != nil {
+			t.Fatal(waitErr)
 		}
-		if in != nil || !errors.Is(err, railshot.ErrUnsupported) || calls != 0 || c.loadCodeCache().base != 0 || c.loadCodeCache().sealed || c.loadCodeCache().refs != 0 || provider.referenceLifetime().snapshot().ResourceRoots != roots {
-			t.Fatal("default Runtime published private local cells", err)
+		if in == nil || err != nil || calls != 1 || c.loadCodeCache().refs != 0 || provider.referenceLifetime().snapshot().ResourceRoots != roots {
+			t.Fatal("public reference local cells or root release", err, calls)
 		}
 	}
 }

@@ -1,12 +1,14 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
+	"encoding/binary"
 	"slices"
 	"unsafe"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
@@ -77,6 +79,26 @@ type rv64HostTailCodeOwner struct {
 	signature       FuncSig
 }
 
+func (o *rv64HostTailCodeOwner) NativeTailFunctionKey(index uint32, params, results []wasm.ValType) (uint64, error) {
+	if o == nil || uint64(index) != uint64(o.index) {
+		return 0, rv64TailGenerationError("host function key binding index")
+	}
+	if _, err := o.NativeTailCodeView(); err != nil {
+		return 0, err
+	}
+	return (rv64TailCodeOwner{o.instance}).nativeTailFunctionKey(index, params, results, true)
+}
+
+func (o *rv64HostTailCodeOwner) nativeTailFunctionType(index uint32) (*Compiled, uint32, error) {
+	if o == nil || uint64(index) != uint64(o.index) {
+		return nil, 0, rv64TailGenerationError("subtype host binding index")
+	}
+	if _, err := o.NativeTailCodeView(); err != nil {
+		return nil, 0, err
+	}
+	return rv64TailDeclaredFunctionType(o.instance.c, index)
+}
+
 type rv64HostTailAttachment struct {
 	record  rv64HostThunkRecord
 	view    []byte
@@ -95,13 +117,29 @@ func rv64HostTailAttached(in *Instance, index int) (a rv64HostTailAttachment, er
 		return a, rv64TailGenerationError("host attachment extent/transport")
 	}
 	sig := in.c.importFuncSigs[index]
-	if err := rv64ScalarHostSignature(sig); err != nil && !rv64PublicHostReferenceBoundary(in.c) && !rv64PublicDynamicHostReferenceBoundary(in.c) {
-		return a, err
+	collectorTransport := rv64CollectorHostTailTransport(in.c, sig)
+	if !collectorTransport && !rv64PrimitiveReferenceContract(in.c) && !rv64PublicHostReferenceBoundary(in.c) && !rv64PublicDynamicHostReferenceBoundary(in.c) {
+		if err := rv64ScalarHostSignature(sig); err != nil {
+			return a, err
+		}
 	}
 	entry := in.importReferenceEntries()[index]
 	a.binding, a.host = &in.syncHosts[index], entry.host
 	if entry.native != nil || !a.binding.callable() || a.binding.importIdx != uint32(index) || a.binding.sig == nil || !slices.Equal(sig.Params, a.binding.sig.Params) || !slices.Equal(sig.Results, a.binding.sig.Results) {
 		return a, rv64TailGenerationError("host immutable import binding")
+	}
+	if collectorTransport {
+		if a.host == nil || in.gc == nil || in.refStore == nil {
+			return a, rv64TailGenerationError("collector host tail requires owned domain")
+		}
+		context := rv64NativeInvocationContext(in)
+		if len(context) < coreruntime.InstanceContextGCDomainOffset+8 {
+			return a, rv64TailGenerationError("collector host native domain extent")
+		}
+		domainID := binary.LittleEndian.Uint64(context[coreruntime.InstanceContextGCDomainOffset:])
+		if err := a.host.validateAttachedImporter(in.refStore, sig, in.gc, domainID, in.c); err != nil {
+			return a, err
+		}
 	}
 	if a.host != nil {
 		a.view, err = (rv64TailThunkCodeOwner{in}).NativeTailCodeView()

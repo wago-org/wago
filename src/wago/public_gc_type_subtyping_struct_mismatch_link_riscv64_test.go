@@ -1,11 +1,10 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"os"
@@ -13,10 +12,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"unsafe"
-
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 var rv64PublicGCTypeSubtypingStructMismatchLinkHex = []string{
@@ -96,17 +91,14 @@ func TestRV64PublicGCTypeSubtypingStructMismatchLinkExecutionAndArtifact(t *test
 			defer providerCompiled.Close()
 			consumerCompiled := rv64PublicGCTypeSubtypingStructMismatchLinkCompile(t, 2, artifact)
 			defer consumerCompiled.Close()
-			for i, compiled := range []*Compiled{providerCompiled, consumerCompiled} {
+			for _, compiled := range []*Compiled{providerCompiled, consumerCompiled} {
 				view := compiled.executionView()
-				metadata, err := marshalCompiledMetadata(view)
-				if err != nil || len(metadata) != rv64GCTypeSubtypingStructMismatchLinkMetadataLens[i] || sha256.Sum256(metadata) != rv64GCTypeSubtypingStructMismatchLinkMetadataDigests[i] || rv64GCTypeSubtypingStructMismatchLinkProfileWithCode(view, false, true) != uint8(i+1) || railshotValidateCompiled(view) != nil {
-					t.Fatalf("missing exact struct-mismatch-link witness %d: metadata=%d/%x err=%v profile=%d validation=%v", i+1, len(metadata), sha256.Sum256(metadata), err, rv64GCTypeSubtypingStructMismatchLinkProfileWithCode(view, false, true), railshotValidateCompiled(view))
+				if !rv64ArtifactContractValid(view) || view.validate() != nil {
+					t.Fatal("invalid public subtype link execution contract")
 				}
 			}
 
-			cfg := rv64I31Config()
-			cfg.railshotState.tailProducts = true
-			rt := NewRuntime(WithRuntimeConfig(cfg))
+			rt := NewRuntime()
 			defer rt.Close()
 			providerModule, err := rt.Module(providerCompiled)
 			if err != nil {
@@ -121,14 +113,8 @@ func TestRV64PublicGCTypeSubtypingStructMismatchLinkExecutionAndArtifact(t *test
 			if provider.gc != nil {
 				t.Fatal("struct-mismatch-link provider allocated a collector")
 			}
-			if got, want := len(provider.funcRefDescs), 2*coreruntime.FuncRefDescBytes; got != want {
-				t.Fatalf("provider descriptor arena = %d, want %d", got, want)
-			}
-			providerOff := coreruntime.FuncRefDescBytes
-			providerIdentity := binary.LittleEndian.Uint64(provider.funcRefDescs[providerOff+coreruntime.TableEntryRefSlotOffset:])
-			if providerIdentity != uint64(uintptr(unsafe.Pointer(&provider.funcRefDescs[providerOff]))) {
-				t.Fatalf("provider identity = %#x, want canonical descriptor address", providerIdentity)
-			}
+			rv64RequireSubtypeStorage(t, provider)
+
 			if got, invokeErr := provider.Invoke("g"); invokeErr != nil || len(got) != 0 {
 				t.Fatalf("g = %v, %v; want []", got, invokeErr)
 			}
@@ -167,42 +153,34 @@ func TestRV64PublicGCTypeSubtypingStructMismatchLinkAdmissionIsExact(t *testing.
 	defer provider.Close()
 	defer consumer.Close()
 	for name, mutate := range map[string]func(*Compiled){
-		"provider-code": func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
-		"provider-type": func(v *Compiled) { v.Types[4].Supers = nil },
-		"provider-desc": func(v *Compiled) { v.GCTypeDescs[4].HasSuper = false },
-		"provider-product": func(v *Compiled) {
-			cache := *v.codeCache
-			v.codeCache = &cache
-			v.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingStructMismatchLinkConsumer
-		},
+		"provider-code":               func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
+		"provider-type":               func(v *Compiled) { v.Types[4].Supers = nil },
+		"provider-desc":               func(v *Compiled) { v.GCTypeDescs[4].HasSuper = false },
+		"provider-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(provider.executionView())
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(provider.executionView())
 			mutate(candidate)
-			if rv64GCTypeSubtypingStructMismatchLink(candidate) || !errors.Is(railshotValidateCompiled(candidate), railshot.ErrUnsupported) {
+			if err := candidate.validate(); err == nil {
 				t.Fatal("hostile struct-mismatch-link provider mutation admitted")
 			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 	for name, mutate := range map[string]func(*Compiled){
-		"consumer-import":    func(v *Compiled) { v.Imports[0] = "M4.g" },
-		"consumer-signature": func(v *Compiled) { v.importFuncSigs[0].TypeIndex = 0 },
-		"consumer-type":      func(v *Compiled) { v.Types[2].Supers = nil },
-		"consumer-desc":      func(v *Compiled) { v.GCTypeDescs[2].HasSuper = false },
-		"consumer-product": func(v *Compiled) {
-			cache := *v.codeCache
-			v.codeCache = &cache
-			v.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingStructMismatchLinkProvider
-		},
+		"consumer-import":             func(v *Compiled) { v.Imports[0] = "M4.g" },
+		"consumer-signature":          func(v *Compiled) { v.importFuncSigs[0].TypeIndex = 0 },
+		"consumer-type":               func(v *Compiled) { v.Types[2].Supers = nil },
+		"consumer-desc":               func(v *Compiled) { v.GCTypeDescs[2].HasSuper = false },
+		"consumer-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(consumer.executionView())
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(consumer.executionView())
 			mutate(candidate)
-			if rv64GCTypeSubtypingStructMismatchLink(candidate) || !errors.Is(railshotValidateCompiled(candidate), railshot.ErrUnsupported) {
+			if err := candidate.validate(); err == nil {
 				t.Fatal("hostile struct-mismatch-link consumer mutation admitted")
 			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 	providerView, consumerView := provider.executionView(), consumer.executionView()
@@ -214,19 +192,19 @@ func TestRV64PublicGCTypeSubtypingStructMismatchLinkAdmissionIsExact(t *testing.
 		{"provider-metadata-consumer-image", providerView, consumerView},
 	} {
 		t.Run(pair.name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(pair.metadataOwner)
+			candidate := rv64ReferenceStartCopy(pair.metadataOwner)
 			candidate.code = slices.Clone(pair.codeOwner.code)
 			candidate.Entry = slices.Clone(pair.codeOwner.Entry)
 			candidate.InternalEntry = slices.Clone(pair.codeOwner.InternalEntry)
-			candidate.validateMemo = &validateMemo{}
-			if rv64GCTypeSubtypingStructMismatchLink(candidate) || !errors.Is(railshotValidateCompiled(candidate), railshot.ErrUnsupported) {
+			if err := candidate.validate(); err == nil {
 				t.Fatal("cross-paired struct-mismatch-link artifact admitted")
 			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 }
 
-func TestRV64PublicGCTypeSubtypingStructMismatchLinkMismatchAndPermission(t *testing.T) {
+func TestRV64PublicGCTypeSubtypingStructMismatchLinkMismatchAndPublicRuntime(t *testing.T) {
 	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_STRUCT_MISMATCH_LINK_ARTIFACT_MODE") == "load" {
 		t.Skip("compiler-free runner selected")
 	}
@@ -234,19 +212,17 @@ func TestRV64PublicGCTypeSubtypingStructMismatchLinkMismatchAndPermission(t *tes
 	consumerCompiled := rv64PublicGCTypeSubtypingStructMismatchLinkCompile(t, 2, false)
 	defer providerCompiled.Close()
 	defer consumerCompiled.Close()
-	plain := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+	plain := NewRuntime()
 	mod, err := plain.Module(providerCompiled)
 	if err == nil {
 		_, err = plain.Instantiate(context.Background(), mod, WithImports(NewImports()))
 		mod.Close()
 	}
 	plain.Close()
-	if !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("struct-mismatch-link provider instantiated without private runtime permission", err)
+	if err != nil {
+		t.Fatal("public subtype provider instantiation", err)
 	}
-	cfg := rv64I31Config()
-	cfg.railshotState.tailProducts = true
-	rt := NewRuntime(WithRuntimeConfig(cfg))
+	rt := NewRuntime()
 	defer rt.Close()
 	providerModule, err := rt.Module(providerCompiled)
 	if err != nil {
@@ -279,9 +255,7 @@ func TestRV64PublicGCTypeSubtypingStructMismatchLinkMismatchAndPermission(t *tes
 	if err = try(invalid); err == nil || !strings.Contains(err.Error(), "no retained framed entry") {
 		t.Fatal("invalid struct-mismatch-link export admitted", err)
 	}
-	if err = try(slotHostFunc(func(HostModule, []uint64, []uint64) {})); err == nil || !strings.Contains(err.Error(), "exact gc/type-subtyping link provider") {
-		t.Fatal("host struct-mismatch-link import admitted", err)
-	}
+	rv64RequireSubtypePublicImport(t, rt, consumerCompiled, testImports("M5.g", slotHostFunc(func(HostModule, []uint64, []uint64) {})))
 	projectionCompiled := rv64PublicGCTypeSubtypingStructProjectionLinkCompile(t, 1, false)
 	defer projectionCompiled.Close()
 	projectionModule, err := rt.Module(projectionCompiled)
@@ -298,7 +272,7 @@ func TestRV64PublicGCTypeSubtypingStructMismatchLinkMismatchAndPermission(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = try(projectionExport); err == nil || !strings.Contains(err.Error(), "outside the exact gc/type-subtyping link product") {
+	if err = try(projectionExport); err == nil || !strings.Contains(err.Error(), "signature mismatch") {
 		t.Fatal("cross-product struct-mismatch-link import admitted", err)
 	}
 	provider.lifeMu.Lock()

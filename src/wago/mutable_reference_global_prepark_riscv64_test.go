@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -52,11 +52,11 @@ func TestRV64GuestGlobalStoreRetainsDescriptorBeforeParking(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer consumer.Close()
-	if retained, err := consumer.retainGuestGlobalStoreDescriptor(hostFuncRefDispatchBit, []uint64{0}, nil); err != nil || retained != nil {
+	if retained, err := consumer.retainGuestGlobalStoreDescriptor(hostFuncRefDispatchBit, []uint64{0, 1}, nil); err != nil || retained != nil {
 		t.Fatalf("null pre-park retain = %p, %v; want nil, nil", retained, err)
 	}
 	invalidBefore := producer.referenceLifetime().snapshot()
-	if retained, err := consumer.retainGuestGlobalStoreDescriptor(hostFuncRefDispatchBit, []uint64{descriptor + 8}, nil); err == nil || retained != nil {
+	if retained, err := consumer.retainGuestGlobalStoreDescriptor(hostFuncRefDispatchBit, []uint64{descriptor + 8, 1}, nil); err == nil || retained != nil {
 		if retained != nil {
 			retained.releaseResourceRoot()
 		}
@@ -68,7 +68,7 @@ func TestRV64GuestGlobalStoreRetainsDescriptorBeforeParking(t *testing.T) {
 
 	before := producer.referenceLifetime().snapshot()
 	nativeExecutionMu.Lock()
-	retained, retainErr := consumer.retainGuestGlobalStoreDescriptor(hostFuncRefDispatchBit, []uint64{descriptor}, nil)
+	retained, retainErr := consumer.retainGuestGlobalStoreDescriptor(hostFuncRefDispatchBit, []uint64{descriptor, 1}, nil)
 	if retainErr != nil || retained != producer {
 		nativeExecutionMu.Unlock()
 		t.Fatalf("pre-park retain = %p, %v; want producer %p", retained, retainErr, producer)
@@ -104,7 +104,7 @@ func TestRV64GuestGlobalStoreRetainsDescriptorBeforeParking(t *testing.T) {
 		t.Fatal("pre-park root did not preserve the closed descriptor owner", parked)
 	}
 
-	consumer.dispatchGuestGlobalStore(hostFuncRefDispatchBit, []uint64{descriptor}, nil)
+	consumer.dispatchGuestGlobalStore(hostFuncRefDispatchBit, []uint64{descriptor, 1}, nil)
 	// Claim before release so a cleanup panic cannot cause the deferred fallback
 	// to release the same unit twice.
 	leaseHeld = false

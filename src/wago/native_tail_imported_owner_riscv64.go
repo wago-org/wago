@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -33,6 +33,7 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 		counts.MaskSlots = n
 	}
 	publicReferenceCarriers := rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierTarget(c, 0)
+	primitiveReferences := rv64PrimitiveReferenceContract(c)
 	publicDynamicHostReferenceCarriers := rv64PublicDynamicHostReferenceBoundary(c)
 	mutableVariant := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
 	mutableReferenceCarriers := mutableVariant >= 19 && mutableVariant <= 28
@@ -47,7 +48,7 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 		} else {
 			sig = c.Funcs[i-c.NumImports]
 		}
-		values, e := rv64NativeTailSignatureValues(sig, publicReferenceCarriers && i == 0 || publicDynamicHostReferenceCarriers && i <= 1 || mutableReferenceCarriers && i <= 1)
+		values, e := rv64NativeTailSignatureValues(sig, primitiveReferences || publicReferenceCarriers && i == 0 || publicDynamicHostReferenceCarriers && i <= 1 || mutableReferenceCarriers && i <= 1, rv64FreshRootedGC(c))
 		if e != nil {
 			return counts, 0, e
 		}
@@ -120,7 +121,7 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 	return counts, metadata, err
 }
 
-func rv64NativeTailSignatureValues(sig FuncSig, referenceCarriers bool) (int, error) {
+func rv64NativeTailSignatureValues(sig FuncSig, referenceCarriers bool, collectorProof ...bool) (int, error) {
 	for _, list := range [][]ValType{sig.Params, sig.Results} {
 		if len(list) > 256 {
 			return 0, rv64TailGenerationError("native owner signature count")
@@ -132,6 +133,11 @@ func rv64NativeTailSignatureValues(sig FuncSig, referenceCarriers bool) (int, er
 				cells++
 			case ValV128:
 				cells += 2
+			case ValAnyRef, ValI31Ref, ValExnRef:
+				if len(collectorProof) != 1 || !collectorProof[0] {
+					return 0, rv64TailGenerationError("native collector owner signature proof")
+				}
+				cells++
 			case ValFuncRef, ValExternRef:
 				if !referenceCarriers {
 					return 0, rv64TailGenerationError("native owner signature type")
@@ -141,7 +147,7 @@ func rv64NativeTailSignatureValues(sig FuncSig, referenceCarriers bool) (int, er
 				return 0, rv64TailGenerationError("native owner signature type")
 			}
 		}
-		if cells > 256 {
+		if cells > railshot.MaxNativeCallSlots {
 			return 0, rv64TailGenerationError("native owner physical signature bound")
 		}
 	}
@@ -211,7 +217,10 @@ func rv64NewNativeTailOwner(in *Instance, counts railshot.NativeTailOwnerCounts)
 			}
 			r := owner.record
 			var host *railshot.NativeTailHostFunction
-			if rv64PublicDynamicHostReferenceBoundary(in.c) && i == 0 {
+			primitiveHostReferences := rv64PrimitiveHostReferenceTransport(in.c, sig)
+			if rv64CollectorHostTailTransport(in.c, sig) {
+				host, err = railshot.NewNativeTailHostCollectorFunction(actual, r.certificate, in.jm, rv64NativeInvocationContext(in), in.funcRefDescs, r.offset, r.dispatchIndex, r.owned, signatures[i])
+			} else if primitiveHostReferences || rv64PublicDynamicHostReferenceBoundary(in.c) && i == 0 {
 				host, err = railshot.NewNativeTailHostReferenceFunction(actual, r.certificate, in.jm, rv64NativeInvocationContext(in), in.funcRefDescs, r.offset, r.dispatchIndex, r.owned, signatures[i])
 			} else {
 				host, err = railshot.NewNativeTailHostFunction(actual, r.certificate, in.jm, rv64NativeInvocationContext(in), in.funcRefDescs, r.offset, r.dispatchIndex, r.owned, signatures[i])

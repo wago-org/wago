@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -106,8 +106,9 @@ func TestRV64Core3BrOnNullPinnedDeclarations(t *testing.T) {
 				t.Skip("compiler-free artifact case only")
 			}
 			c := rv64NativeTailCompile(t, "core3-br-on-null-declarations", source, artifact)
-			if !rv64Core3ReferenceDeclarations(c) || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || c.needsFuncRefDescs() || c.tableCount() != 0 || c.memoryCount() != 0 || len(c.Funcs) != 3 || len(c.Exports) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
-				t.Fatal("pinned declaration-only source/artifact witnesses")
+			view := c.executionView()
+			if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || c.tableCount() != 0 || c.memoryCount() != 0 || len(c.Funcs) != 3 || len(c.Exports) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+				t.Fatalf("pinned declaration-only source/artifact witnesses: contract=%t validation=%v function=%t control=%t call=%t funcs=%d exports=%d tables=%d memories=%d elems=%d passive=%d", rv64ArtifactContractValid(view), railshotValidateCompiled(view), c.nativeReferenceFunctionABI, c.nativeReferenceControlABI, c.nativeReferenceCallABI, len(c.Funcs), len(c.Exports), c.tableCount(), c.memoryCount(), len(c.Elems), len(c.passiveElems))
 			}
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 			defer rt.Close()
@@ -284,19 +285,9 @@ func TestRV64Core3BrOnNullPinnedDeltaGates(t *testing.T) {
 	}
 	// Changing the declaration target to reference-valued function zero is a
 	// valid Core module, but it escapes the selected numeric descriptor profile.
-	if c, err := rv64NativeTailConfig().Compile(rv64Core3BrOnNullBasicSource(0)); c != nil || err == nil {
-		if c != nil {
-			c.Close()
-		}
-		t.Fatal("reference-valued passive target escaped the pinned delta", err)
-	}
+	rv64RequireCore3SourceValidation(t, rv64Core3BrOnNullBasicSource(0))
 	typedPassive := rv64ReplaceTableStageSection(t, rv64Core3BrOnNullBasicSource(2), 9, wasmtest.Section(9, []byte{1, 5, 0x70, 1, 0xd2, 2, 0x0b}))
-	if c, err := rv64NativeTailConfig().Compile(typedPassive); c != nil || err == nil {
-		if c != nil {
-			c.Close()
-		}
-		t.Fatal("typed-expression passive shape escaped the pinned legacy delta", err)
-	}
+	rv64RequireCore3SourceValidation(t, typedPassive)
 	base := rv64NativeTailCompile(t, "core3-br-on-null-basic", rv64Core3BrOnNullBasicSource(2), true)
 	mutations := map[string]struct {
 		mutate func(*Compiled)
@@ -310,14 +301,14 @@ func TestRV64Core3BrOnNullPinnedDeltaGates(t *testing.T) {
 	}
 	for name, mutation := range mutations {
 		t.Run(name, func(t *testing.T) {
-			bad := *base.executionView()
+			bad := rv64ReferenceStartCopy(base.executionView())
 			bad.passiveElems = slices.Clone(bad.passiveElems)
 			bad.passiveElems[0].Values = slices.Clone(bad.passiveElems[0].Values)
-			mutation.mutate(&bad)
-			if err := railshotValidateCompiled(&bad); err == nil {
+			mutation.mutate(bad)
+			if err := bad.validate(); err == nil {
 				t.Fatal("hostile retained Core 3 delta admitted")
 			}
-			blob, err := marshalCompiled(&bad)
+			blob, err := marshalCompiled(bad)
 			if err != nil {
 				return
 			}

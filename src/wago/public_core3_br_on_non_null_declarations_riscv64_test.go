@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -45,8 +45,9 @@ func TestRV64Core3BrOnNonNullPinnedDeclarations(t *testing.T) {
 				t.Skip("compiler-free artifact case only")
 			}
 			c := rv64NativeTailCompile(t, "core3-br-on-non-null-declarations", source, artifact)
-			if !rv64Core3ReferenceDeclarations(c) || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || c.requiredFeatures != CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences || c.needsFuncRefDescs() || c.NumImports != 0 || len(c.Funcs) != 3 || len(c.Types) != 4 || len(c.Exports) != 0 || c.tableCount() != 0 || c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.HasStart {
-				t.Fatal("pinned declaration-only source/artifact witnesses")
+			view := c.executionView()
+			if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || c.requiredFeatures != CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences || c.NumImports != 0 || len(c.Funcs) != 3 || len(c.Types) != 4 || len(c.Exports) != 0 || c.tableCount() != 0 || c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.HasStart {
+				t.Fatalf("pinned declaration-only source/artifact witnesses: contract=%t validation=%v function=%t control=%t call=%t features=%#x imports=%d funcs=%d types=%d exports=%d tables=%d memories=%d globals=%d elems=%d passive=%d start=%t", rv64ArtifactContractValid(view), railshotValidateCompiled(view), c.nativeReferenceFunctionABI, c.nativeReferenceControlABI, c.nativeReferenceCallABI, c.requiredFeatures, c.NumImports, len(c.Funcs), len(c.Types), len(c.Exports), c.tableCount(), c.memoryCount(), len(c.Globals), len(c.Elems), len(c.passiveElems), c.HasStart)
 			}
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 			in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
@@ -94,13 +95,7 @@ func TestRV64Core3BrOnNonNullPinnedDeclarationSourceGates(t *testing.T) {
 	}
 	for name, source := range mutations {
 		t.Run(name, func(t *testing.T) {
-			c, err := rv64NativeTailConfig().Compile(source)
-			if c != nil {
-				c.Close()
-			}
-			if err == nil {
-				t.Fatal("nearby declaration source admitted")
-			}
+			rv64RequireCore3SourceValidation(t, source)
 		})
 	}
 }
@@ -186,8 +181,8 @@ func TestRV64Core3ReferenceDeclarationClassifiersRemainDistinct(t *testing.T) {
 	nonNullDecl := rv64NativeTailCompile(t, "core3-br-on-non-null-declarations-distinct", rv64Core3BrOnNonNullDeclarationsSource(), false)
 	defer nullDecl.Close()
 	defer nonNullDecl.Close()
-	if !rv64Core3ReferenceDeclarations(nullDecl) || !rv64Core3ReferenceDeclarations(nonNullDecl) {
-		t.Fatal("identical retained declaration metadata was not recognized")
+	if !rv64ArtifactContractValid(nullDecl.executionView()) || !rv64ArtifactContractValid(nonNullDecl.executionView()) {
+		t.Fatal("retained declaration metadata lost the general artifact contract")
 	}
 	if err := railshotValidateCompiled(nullDecl); err != nil {
 		t.Fatal("exact br_on_null retained artifact rejected", err)

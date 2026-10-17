@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -22,12 +22,25 @@ func newRV64FunctionDependencyGraph(nodes, receipts int) (*dependencyGraph, erro
 	if err == nil {
 		g.afterReceiptRelease = func(target, consumer *dependencyMember) {
 			rv64RetireFunctionDependencyMember(target)
+			rv64RecheckReleasedDependencyComponent(target)
 			if consumer != target {
 				rv64RetireFunctionDependencyMember(consumer)
+				rv64RecheckReleasedDependencyComponent(consumer)
 			}
 		}
 	}
 	return g, err
+}
+
+// Removing an open importer's final edge can unblock a component whose members
+// completed Close earlier. Retry only after the exact receipt has left the graph;
+// the strict collector rechecks lifecycle, external roots and member identities.
+func rv64RecheckReleasedDependencyComponent(member *dependencyMember) {
+	if member == nil || member.owner == nil || !member.active.Load() {
+		return
+	}
+	owner := member.owner
+	railshotCollectTerminalClosedDependencyComponent(owner, owner.closeState.Load())
 }
 
 func rv64FunctionDependencyGraph() *dependencyGraph {
@@ -414,6 +427,28 @@ func railshotAdoptClosedContainerDependencies(in *Instance) {
 	cleanup.run(func() { railshotAdoptClosedTableDescriptorDependencies(in) })
 	cleanup.run(func() { railshotAdoptClosedGlobalDescriptorDependencies(in) })
 	cleanup.finish()
+}
+
+func railshotReconcileClosedReferenceProxies(in *Instance) {
+	if in == nil || !in.isLogicallyClosed() {
+		return
+	}
+	in.lifeMu.Lock()
+	if in.proxyReconciliation || in.proxyReconciled || in.resourceRefs == 0 {
+		in.lifeMu.Unlock()
+		return
+	}
+	in.proxyReconciliation = true
+	in.lifeMu.Unlock()
+	complete := false
+	defer func() {
+		in.lifeMu.Lock()
+		in.proxyReconciliation = false
+		in.proxyReconciled = in.proxyReconciled || complete
+		in.lifeMu.Unlock()
+	}()
+	retainProducerRootsInImportedContainersForFinalization(in)
+	complete = true
 }
 
 func railshotClosedContainerAdoptionReady(in *Instance) bool {

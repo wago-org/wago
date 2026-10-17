@@ -5,6 +5,18 @@ import (
 	"sort"
 )
 
+// GCFrameFuncRefRootFlag marks a raw native function descriptor word. Only the
+// RV64 owned-environment ABI uses it; it is never a compact collector handle.
+const GCFrameFuncRefRootFlag uint32 = 1 << 31
+
+// GCFrameExternRefRootFlag marks an opaque extern word. Its conditional
+// collector shell is resolved by the owning Runtime, never by truncating bits.
+const GCFrameExternRefRootFlag uint32 = 1 << 30
+
+func GCFrameRootOffset(encoded uint32) uint32 {
+	return encoded &^ (GCFrameFuncRefRootFlag | GCFrameExternRefRootFlag)
+}
+
 // AMD64FrameHeaderBytes, ARM64FrameHeaderBytes and RV64FrameHeaderBytes are the
 // stable local-slot bases used by the railshot native frames. Root-map producers
 // and consumers must use the matching architecture value.

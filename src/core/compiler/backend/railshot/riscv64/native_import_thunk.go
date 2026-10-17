@@ -30,7 +30,11 @@ type nativeImportTarget struct {
 }
 
 const nativeImportFrameBytes = 64
-const nativeImportTransportBytes = 256 * 8
+const nativeImportTransportBytes = 256 * 8 // legacy private activation
+
+// A v128 value occupies two physical slots within the 256-value public ABI.
+const MaxNativeCallSlots = 2 * MaxVectorFunctionValues
+const nativePublicImportTransportBytes = MaxNativeCallSlots * 8
 
 // NativeImportTarget is a trusted physically retained framed RV64 target. The
 // transport slices must be retained off-heap for the complete activation; they
@@ -74,12 +78,28 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	if callee.entry == 0 || callee.entry&15 != 0 || callee.home == 0 || callee.home&7 != 0 || callee.context == 0 || callee.context&7 != 0 || callerHome == 0 || callerHome&7 != 0 || callerContext == 0 || callerContext&7 != 0 || importIndex >= MaxHostFunctionImports {
 		return nil, fmt.Errorf("rv64: native import requires aligned retained framed target and caller identities")
 	}
-	if len(callee.arguments) != nativeImportTransportBytes || len(callee.results) != nativeImportTransportBytes || callee.argumentSlots < 0 || callee.argumentSlots > 256 || callee.resultSlots < 0 || callee.resultSlots > 256 {
-		return nil, fmt.Errorf("rv64: native import requires bounded full-width target transport")
+	transportBytes := nativeImportTransportBytes
+	if callee.invocationContext {
+		transportBytes = nativePublicImportTransportBytes
 	}
-	argumentBase, resultBase := uintptr(unsafe.Pointer(&callee.arguments[0])), uintptr(unsafe.Pointer(&callee.results[0]))
-	if argumentBase&7 != 0 || resultBase&7 != 0 || argumentBase < resultBase+nativeImportTransportBytes && resultBase < argumentBase+nativeImportTransportBytes {
-		return nil, fmt.Errorf("rv64: native import requires aligned disjoint target transport")
+	if callee.argumentSlots < 0 || callee.argumentSlots > transportBytes/8 || callee.resultSlots < 0 || callee.resultSlots > transportBytes/8 {
+		return nil, fmt.Errorf("rv64: native import requires bounded target transport")
+	}
+	var argumentBase, resultBase uintptr
+	if !callee.stackOwnedActivation || len(callee.arguments) != 0 || len(callee.results) != 0 {
+		providedBytes := transportBytes
+		// Stack-owned activations never use these optional legacy buffers.
+		// Retain their original range checks when an older owner supplies them.
+		if callee.stackOwnedActivation && len(callee.arguments) == nativeImportTransportBytes && len(callee.results) == nativeImportTransportBytes {
+			providedBytes = nativeImportTransportBytes
+		}
+		if len(callee.arguments) != providedBytes || len(callee.results) != providedBytes {
+			return nil, fmt.Errorf("rv64: native import requires bounded full-width target transport")
+		}
+		argumentBase, resultBase = uintptr(unsafe.Pointer(&callee.arguments[0])), uintptr(unsafe.Pointer(&callee.results[0]))
+		if argumentBase&7 != 0 || resultBase&7 != 0 || argumentBase < resultBase+uintptr(providedBytes) && resultBase < argumentBase+uintptr(providedBytes) {
+			return nil, fmt.Errorf("rv64: native import requires aligned disjoint target transport")
+		}
 	}
 	if callee.stackOwnedActivation && (callee.hostTrampoline == 0 || callee.hostTrampoline&3 != 0) {
 		return nil, fmt.Errorf("rv64: stack activation requires its stable host trampoline")
@@ -89,7 +109,7 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	}
 	frameBytes := nativeImportFrameBytes
 	if callee.stackOwnedActivation {
-		frameBytes += 16 + HostFixedFrameBytes + 2*nativeImportTransportBytes
+		frameBytes += 16 + HostFixedFrameBytes + 2*transportBytes
 	}
 	viewOffset := frameBytes
 	if callee.invocationContext {
@@ -138,12 +158,14 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 		a.Constant64(enc.X28, int64(argumentBase))
 	}
 	for i := 0; i < callee.argumentSlots; i++ {
-		a.Ld(enc.Scratch0, enc.X10, int32(i*8))
-		a.Sd(enc.Scratch0, enc.X28, int32(i*8))
+		source, offset := f.addressAt(enc.X10, int32(i*8), enc.Scratch1)
+		a.Ld(enc.Scratch0, source, offset)
+		destination, offset := f.addressAt(enc.X28, int32(i*8), enc.Scratch1)
+		a.Sd(enc.Scratch0, destination, offset)
 	}
 	a.Addi(enc.X10, enc.X28, 0)
 	if callee.stackOwnedActivation {
-		a.Constant64(enc.X13, nativeImportFrameBytes+16+HostFixedFrameBytes+nativeImportTransportBytes)
+		a.Constant64(enc.X13, int64(nativeImportFrameBytes+16+HostFixedFrameBytes+transportBytes))
 		a.Add(enc.X13, enc.SP, enc.X13)
 	} else {
 		a.Constant64(enc.X13, int64(resultBase))
@@ -161,7 +183,7 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	}
 	if callee.invocationContext {
 		a.Ld(enc.X28, enc.SP, 72)
-		nativeInvocationActivation(a, enc.X28, viewOffset, nativeImportFrameBytes+16+HostFixedFrameBytes, nativeImportFrameBytes+16+HostFixedFrameBytes+nativeImportTransportBytes)
+		nativeInvocationActivation(a, enc.X28, viewOffset, nativeImportFrameBytes+16+HostFixedFrameBytes, nativeImportFrameBytes+16+HostFixedFrameBytes+transportBytes, transportBytes)
 		a.Sd(enc.X9, enc.X11, -abi.RV64InvocationViewOffset)
 	}
 	copyContext(enc.X11)
@@ -203,14 +225,16 @@ func nativeImportThunk(callee nativeImportTarget, callerHome, callerContext uint
 	a.Ld(enc.X12, enc.SP, 32)
 	a.Ld(enc.X13, enc.SP, 40)
 	if callee.stackOwnedActivation {
-		a.Constant64(enc.Scratch1, nativeImportFrameBytes+16+HostFixedFrameBytes+nativeImportTransportBytes)
+		a.Constant64(enc.Scratch1, int64(nativeImportFrameBytes+16+HostFixedFrameBytes+transportBytes))
 		a.Add(enc.Scratch1, enc.SP, enc.Scratch1)
 	} else {
 		a.Constant64(enc.Scratch1, int64(resultBase))
 	}
 	for i := 0; i < callee.resultSlots; i++ {
-		a.Ld(enc.Scratch0, enc.Scratch1, int32(i*8))
-		a.Sd(enc.Scratch0, enc.X13, int32(i*8))
+		source, offset := f.addressAt(enc.Scratch1, int32(i*8), enc.X29)
+		a.Ld(enc.Scratch0, source, offset)
+		destination, offset := f.addressAt(enc.X13, int32(i*8), enc.X29)
+		a.Sd(enc.Scratch0, destination, offset)
 	}
 	a.Ld(enc.X24, enc.SP, 48)
 	a.Addi(enc.X11, enc.X25, 0)

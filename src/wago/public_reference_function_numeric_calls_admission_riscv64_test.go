@@ -1,13 +1,11 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"context"
-	"errors"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -32,13 +30,9 @@ func TestRV64PublicReferenceFunctionNumericCallsMarkerAdmission(t *testing.T) {
 		"nonfinal":          func(v *Compiled) { v.Types[0].Final = false },
 	} {
 		t.Run(name, func(t *testing.T) {
-			v := cloneCompiledMetadata(c)
-			v.codeCache = nil
-			v.validateMemo = &validateMemo{}
-			v.ensureCodeCache()
-			v.codeCache.stagedFeatures = CoreFeatureTypedFunctionReferences
+			v := rv64ReferenceImportTailCopy(c)
 			mutate(v)
-			if err := railshotValidateCompiled(v); !errors.Is(err, railshot.ErrUnsupported) {
+			if err := v.validate(); err == nil {
 				t.Fatal("bad joint reference witness accepted", err)
 			}
 			blob, err := marshalCompiled(v)
@@ -54,16 +48,6 @@ func TestRV64PublicReferenceFunctionNumericCallsMarkerAdmission(t *testing.T) {
 			}
 		})
 	}
-	if allocs := testing.AllocsPerRun(5, func() {
-		if err := railshotValidateReferenceCalls(c); err != nil {
-			panic(err)
-		}
-		if err := rv64ValidateReferenceFunctions(c); err != nil {
-			panic(err)
-		}
-	}); allocs != 0 {
-		t.Fatal("joint reference admission allocation", allocs)
-	}
 	rt := NewRuntime()
 	defer rt.Close()
 	mod, err := rt.Module(c)
@@ -72,10 +56,18 @@ func TestRV64PublicReferenceFunctionNumericCallsMarkerAdmission(t *testing.T) {
 	}
 	defer mod.Close()
 	in, err := rt.Instantiate(context.Background(), mod)
-	if in != nil {
-		in.Close()
+	if in == nil || err != nil {
+		t.Fatal("public reference image rejected", err)
 	}
-	if in != nil || !errors.Is(err, railshot.ErrUnsupported) || c.loadCodeCache().base != 0 || c.loadCodeCache().sealed || c.loadCodeCache().refs != 0 {
-		t.Fatal("default destination published joint private reference image", err)
+	defer in.Close()
+	if got, err := in.Invoke("run", 42); err != nil || len(got) != 1 || got[0] != 42 {
+		t.Fatal("public numeric call_ref", got, err)
+	}
+	if allocs := testing.AllocsPerRun(10, func() {
+		if got, err := in.Invoke("run", 42); err != nil || len(got) != 1 || got[0] != 42 {
+			panic("warm numeric call_ref")
+		}
+	}); allocs != 0 {
+		t.Fatal("warm numeric call_ref allocation", allocs)
 	}
 }

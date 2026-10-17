@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -105,7 +105,8 @@ func (in *Instance) ensureGuestLocalFuncrefGlobalOwner(index int) error {
 	localExport := in != nil && rv64MutableFuncrefGlobalLocalExport(in.c) && index == 0 && len(in.globalCells) == 1
 	localObserve := in != nil && rv64MutableFuncrefGlobalLocalObserve(in.c) && index == 0 && len(in.globalCells) == 1
 	localCall := in != nil && rv64MutableFuncrefGlobalLocalCall(in.c) && index == 0 && len(in.globalCells) == 1
-	if !localTransfer && !localExport && !localObserve && !localCall || in.refStore == nil {
+	generic := in != nil && index >= len(in.c.GlobalImports) && index < len(in.globalCells) && rv64PrimitiveMutableFunctionGlobal(in.c, uint64(index))
+	if !generic && !localTransfer && !localExport && !localObserve && !localCall || in.refStore == nil {
 		return fmt.Errorf("invalid RV64 private funcref owner request")
 	}
 	g := in.globalCells[index]
@@ -152,6 +153,6 @@ func (in *Instance) copyGuestFuncrefDescriptorToLocal(index int, descriptor uint
 		cleanup.run(roots.release)
 		cleanup.finish()
 	}()
-	cleanup.run(func() { err = in.globalCells[index].copyGuestFuncrefDescriptorNoLease(in, descriptor, &roots) })
+	cleanup.run(func() { err = in.globalCells[index].copyGuestFuncrefDescriptorNoLease(in, descriptor, nil, &roots) })
 	return err
 }

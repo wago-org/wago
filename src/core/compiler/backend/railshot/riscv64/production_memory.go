@@ -3,6 +3,7 @@
 package riscv64
 
 import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -20,7 +21,7 @@ func admitMemoryType(t wasm.MemType, production, public bool) error {
 	if t.Limits.Addr64 && production && public {
 		maxPages, maxDeclared = 65535, 1<<48
 	}
-	if t.Shared || t.Limits.Addr64 && !(production && public) || t.Limits.Min > maxPages || t.Limits.HasMax && (t.Limits.Max < t.Limits.Min || t.Limits.Max > maxDeclared) {
+	if t.Shared && (!production || !public || t.Limits.Addr64 || !t.Limits.HasMax) || t.Limits.Addr64 && !(production && public) || t.Limits.Min > maxPages || t.Limits.HasMax && (t.Limits.Max < t.Limits.Min || t.Limits.Max > maxDeclared) {
 		return unsupported("shared/memory64/initial memory bound")
 	}
 	return nil
@@ -29,14 +30,7 @@ func admitMemoryType(t wasm.MemType, production, public bool) error {
 // Globals are a pointer directory of aliased cells, never inline values. I32
 // writes replace the complete numeric cell with a zero-normalized carrier.
 func (f *integerEmitter) productionGlobal(index uint32, wide, store bool) {
-	f.a.Ld(enc.X28, enc.X25, -abi.GlobalsPtrOffset)
-	offset := int64(index) * 8
-	if offset > 2047 {
-		f.a.Constant64(enc.Scratch1, offset)
-		f.a.Add(enc.X28, enc.X28, enc.Scratch1)
-		offset = 0
-	}
-	f.a.Ld(enc.X28, enc.X28, int32(offset))
+	f.productionGlobalCell(index)
 	if store {
 		if !wide {
 			f.NormalizeI32(5)
@@ -49,11 +43,24 @@ func (f *integerEmitter) productionGlobal(index uint32, wide, store bool) {
 	}
 }
 
+// productionGlobalCell leaves the selected cell address in X28. Scratch1 is
+// reserved, so forming a large offset preserves both words of a vector store.
+func (f *integerEmitter) productionGlobalCell(index uint32) {
+	f.a.Ld(enc.X28, enc.X25, -abi.GlobalsPtrOffset)
+	offset := int64(index) * 8
+	if offset > 2047 {
+		f.a.Constant64(enc.Scratch1, offset)
+		f.a.Add(enc.X28, enc.X28, enc.Scratch1)
+		offset = 0
+	}
+	f.a.Ld(enc.X28, enc.X28, int32(offset))
+}
+
 // A directory row names the actual JobMemory, so aliased indices observe growth
 // immediately through authoritative basedata rather than stale directory caches.
 // X25 remains the execution home. Index zero also works without a directory.
 func (f *integerEmitter) productionMemoryBaseAt(index uint32, out enc.Reg) {
-	if index == 0 {
+	if index == 0 && !f.mode.threadedMemory {
 		f.a.Addi(out, enc.X25, 0)
 		return
 	}
@@ -84,6 +91,19 @@ func (f *integerEmitter) productionMemorySizeGrowAt(index uint32, grow bool) {
 	f.productionMemorySizeGrowTypedAt(index, grow, false)
 }
 func (f *integerEmitter) productionMemorySizeGrowTypedAt(index uint32, grow, address64 bool) {
+	if f.mode.threadedMemory && index == 0 {
+		if grow {
+			f.restoreCallTransport()
+			f.a.Sd(enc.X5, enc.X10, 0)
+			f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), atomicHelper: shared.AtomicWaitDispatchBit | shared.AtomicHelperMemoryGrow})
+			f.restoreCallTransport()
+			f.a.Lwu(enc.X5, enc.X13, 0)
+		} else {
+			f.productionMemorySizeAt(index, enc.X5)
+			f.a.Srli(enc.X5, enc.X5, 16)
+		}
+		return
+	}
 	f.productionMemoryBaseAt(index, enc.X28)
 	f.a.Lwu(enc.X6, enc.X28, -abi.LinMemCurrentPagesOffset)
 	if !grow {

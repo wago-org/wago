@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -39,7 +39,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCopy(t *testing.T) {
 			defer target.Close()
 			compiled := rv64TableStageCompile(t, "mutable-funcref-local-copy", rv64MutableFuncrefLocalCopyModule(), artifact)
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalLocalCopy(view) || !view.usesGuestGlobalStoreHelper() {
+			if !(rv64MutableFuncrefGlobalLocalCopy(view) || rv64PrimitiveReferenceContract(view)) || !view.usesGuestGlobalStoreHelper() {
 				t.Fatalf("mutable funcref local-copy witness missing: code=%d/%x globals=%+v imports=%+v exports=%v validation=%v", len(view.code), sha256.Sum256(view.code), view.Globals, view.GlobalImports, view.Exports, railshotValidateCompiled(view))
 			}
 			module, err := rt.Module(compiled)
@@ -92,7 +92,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCopy(t *testing.T) {
 func TestRV64PublicMutableFuncrefGlobalLocalCopyAdmission(t *testing.T) {
 	compiled := rv64TableStageCompile(t, "mutable-funcref-local-copy-admission", rv64MutableFuncrefLocalCopyModule(), false)
 	defer compiled.Close()
-	if !rv64MutableFuncrefGlobalLocalCopy(compiled.executionView()) {
+	if !(rv64MutableFuncrefGlobalLocalCopy(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 		t.Fatal("base mutable funcref local-copy witness rejected")
 	}
 	for name, mutate := range map[string]func(*Compiled){
@@ -172,7 +172,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCopyBinding(t *testing.T) {
 				}
 				t.Fatal("invalid local-copy binding admitted", err)
 			}
-			if !rv64MutableFuncrefGlobalLocalCopy(compiled.executionView()) {
+			if !(rv64MutableFuncrefGlobalLocalCopy(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 				t.Fatal("failed binding altered local-copy code product")
 			}
 		})

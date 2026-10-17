@@ -95,7 +95,7 @@ func newNativeTailDefinedOwner(image *NativeTailCodeImage, job *coreruntime.JobM
 		if sparse && sig == nil {
 			nonCallable++
 		} else {
-			if err := tailRASignature(sig); err != nil {
+			if err := tailRASignatureMode(sig, true); err != nil {
 				return nil, err
 			}
 			if len(sig.Fields) != 0 || sig.Array != (wasm.FieldType{}) {
@@ -140,7 +140,11 @@ func newNativeTailDefinedOwner(image *NativeTailCodeImage, job *coreruntime.JobM
 			copy.Params = append([]wasm.ValType(nil), sig.Params...)
 			copy.Results = append([]wasm.ValType(nil), sig.Results...)
 			frozen = &copy
-			o.owner.signatureKeys[i] = wasm.StructuralFuncTypeKey(frozen)
+			key, err := image.functionKey(uint32(i), frozen)
+			if err != nil {
+				return nil, err
+			}
+			o.owner.signatureKeys[i] = key
 			info.Params, info.Results = swarSignatureSlots(sig.Params), swarSignatureSlots(sig.Results)
 		} else {
 			o.owner.uncallable[i] = true
@@ -172,26 +176,45 @@ func (o *NativeTailOwner) Validate() error {
 // complete aggregate budget/publication check before allocating native storage.
 // This internal runtime contract does not change public feature admission.
 func NativeTailDefinedSite(s NativeTailSite, referenceBase int, owners []*NativeTailDefinedOwner) (NativeTailSite, error) {
+	return nativeTailDefinedSite(s, referenceBase, owners, nil, 0)
+}
+
+// NativeTailDefinedTypedSite binds a validated source plan's declared type to
+// the retained caller image. It accepts no caller-supplied raw key.
+func NativeTailDefinedTypedSite(s NativeTailSite, referenceBase int, owners []*NativeTailDefinedOwner, image *NativeTailCodeImage, typeIndex uint32) (NativeTailSite, error) {
+	if image == nil {
+		return NativeTailSite{}, unsupported("native typed tail site missing caller image")
+	}
+	return nativeTailDefinedSite(s, referenceBase, owners, image, typeIndex)
+}
+
+func nativeTailDefinedSite(s NativeTailSite, referenceBase int, owners []*NativeTailDefinedOwner, image *NativeTailCodeImage, typeIndex uint32) (NativeTailSite, error) {
 	if s.dynamic != nil || len(owners) == 0 || len(owners) > tailRAMaxRanges || len(s.Continuations) == 0 || len(s.Continuations) > tailRAMaxRanges || len(s.Parameters) > 256 || len(s.Results) > 256 {
 		return NativeTailSite{}, unsupported("native defined tail site count/shape")
 	}
-	var retained [tailRAMaxRanges]tailRADynamicOwner
+	retained := make([]tailRADynamicOwner, len(owners))
 	for i, owner := range owners {
 		if owner == nil {
 			return NativeTailSite{}, unsupported("native defined tail site missing owner")
 		}
 		retained[i] = owner.owner
 	}
-	d := tailRADynamicSite{referenceBase: referenceBase, key: wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: s.Parameters, Results: s.Results}), owners: retained[:len(owners)]}
+	d := tailRADynamicSite{referenceBase: referenceBase, key: wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: s.Parameters, Results: s.Results}), owners: retained}
+	if image != nil {
+		key, err := image.typeKey(typeIndex, s.Parameters, s.Results)
+		if err != nil {
+			return NativeTailSite{}, err
+		}
+		d.key, d.typeImage, d.typeIndex = key, image, typeIndex
+	}
 	if _, _, err := d.budget(); err != nil {
 		return NativeTailSite{}, err
 	}
-	// Validate source homes and every owner before copying retained records.
+	// Validate source homes and every owner before publishing retained records.
 	p := tailRAProofSite{dynamic: &d, invocationContext: true, hostEntry: s.HostEntry, frameBytes: s.FrameBytes, callerHome: s.CallerHome, callerContext: tailRAPointer(s.CallerContext), target: nativeImportTarget{entry: s.Target.Entry, home: s.Target.Home, context: s.Target.Context, hostTrampoline: s.Target.HostTrampoline}, params: s.Parameters, results: s.Results, sourceBase: s.SourceBase, sourceStride: s.SourceStride, continuationRanges: []tailRARange{{s.Continuations[0].Base, s.Continuations[0].Bytes}}}
 	if err := p.validate(); err != nil {
 		return NativeTailSite{}, err
 	}
-	d.owners = append([]tailRADynamicOwner(nil), d.owners...)
 	s.dynamic = &d
 	return s, nil
 }

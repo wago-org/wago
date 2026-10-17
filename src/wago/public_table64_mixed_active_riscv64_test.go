@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -10,7 +10,6 @@ import (
 	"slices"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -39,7 +38,7 @@ func TestRV64PublicMixedTable64ActiveElement(t *testing.T) {
 			producerCode := rv64TableStageCompile(t, "mixed-table64-active-producer", rv64MixedTable64ActiveElementSource(), artifact)
 			readerCode := rv64TableStageCompile(t, "mixed-table64-active-reader", rv64ImportedTable64IndirectInstructionSource(), artifact)
 			defer readerCode.Close()
-			if !rv64MixedTable64ActiveElement(producerCode.executionView()) {
+			if !rv64ArtifactContractValid(producerCode.executionView()) {
 				t.Fatal("mixed table64 active metadata contract")
 			}
 			imported := rv64MixedSizeTestTable(t, true, 3, 3)
@@ -146,11 +145,19 @@ func TestRV64PublicMixedTable64ActiveElementSourceGates(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			c, err := Compile(nil, source)
-			if c != nil {
-				c.Close()
-			}
-			if err == nil {
-				t.Fatal("nearby mixed active source admitted")
+			if name != "import-table32" {
+				if err != nil {
+					t.Fatal("valid table variant", err)
+				}
+				defer c.Close()
+				rv64RequireTableArtifactMetadata(t, c)
+			} else {
+				if c != nil {
+					c.Close()
+				}
+				if err == nil {
+					t.Fatal("invalid table index width admitted")
+				}
 			}
 		})
 	}
@@ -185,7 +192,7 @@ func TestRV64PublicMixedTable64ActiveElementArtifactGates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			base := rv64TableStageCompile(t, "mixed-table64-active-gates", rv64MixedTable64ActiveElementSource(), false)
 			defer base.Close()
-			bad := cloneCompiledMetadata(base.executionView())
+			bad := rv64ReferenceImportTailCopy(base)
 			bad.extraTables = slices.Clone(bad.extraTables)
 			bad.Funcs = slices.Clone(bad.Funcs)
 			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
@@ -194,9 +201,8 @@ func TestRV64PublicMixedTable64ActiveElementArtifactGates(t *testing.T) {
 			bad.Elems = slices.Clone(bad.Elems)
 			bad.Elems[0].Offset.Expr = bytes.Clone(bad.Elems[0].Offset.Expr)
 			bad.Elems[0].Values = slices.Clone(bad.Elems[0].Values)
-			bad.validateMemo, bad.codeCache = &validateMemo{}, nil
 			mutate(bad)
-			if rv64MixedTable64ActiveElement(bad) || !errors.Is(railshotValidateCompiled(bad), railshot.ErrUnsupported) {
+			if bad.validate() == nil {
 				t.Fatal("hostile mixed active metadata admitted")
 			}
 			blob, err := marshalCompiled(bad)
@@ -205,14 +211,14 @@ func TestRV64PublicMixedTable64ActiveElementArtifactGates(t *testing.T) {
 			}
 			loaded, err := LoadTrustedArtifact(blob)
 			if name == "local-import-max" {
-				if err != nil || loaded == nil || loaded.extraTables[0].ImportHasMax || !rv64MixedTable64ActiveElement(loaded.executionView()) {
+				if err != nil || loaded == nil || loaded.extraTables[0].ImportHasMax || !rv64ArtifactContractValid(loaded.executionView()) {
 					t.Fatal("serialized local table retained stale import maximum", err)
 				}
 				loaded.Close()
 				return
 			}
 			if name == "missing-ref" {
-				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || !rv64MixedTable64ActiveElement(loaded.executionView()) {
+				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || !rv64ArtifactContractValid(loaded.executionView()) {
 					t.Fatal("serialized mixed active structural feature was not restored", err)
 				}
 				loaded.Close()

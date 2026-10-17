@@ -108,7 +108,7 @@ func (c *Collector) finishMinorCardMetadata() {
 	for _, h := range c.remembered {
 		keep := h != 0 && int(h) < len(c.handles) && c.handles[h].remembered && !c.handles[h].young() &&
 			(c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge)
-		if keep && c.cardFallback {
+		if keep && (c.cardFallback || c.objectEdgeCount(makeObjRef(h)) != 0) {
 			keep = c.handleContainsNurseryRef(h)
 		} else if keep && c.handles[h].cardSlot != 0 {
 			keep = c.objectCardsContainYoung(h)

@@ -14,7 +14,7 @@ import (
 // canonical frame constant and bounded cold destinations. It does not establish
 // code ownership or authenticate the rest of a trusted native artifact.
 func NativeFrameBytes(code []byte, entry int) (int, error) {
-	if entry < 0 || entry&15 != 0 || entry > len(code)-36 || len(code) > MaxCodeBytes {
+	if entry < 0 || entry&15 != 0 || entry > len(code)-36 || len(code) > 1<<31-1 {
 		return 0, unsupported("native frame entry/span")
 	}
 	b := code[entry:]

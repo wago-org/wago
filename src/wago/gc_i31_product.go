@@ -124,3 +124,30 @@ func stagedGCI31TableInitializer(m *wasm.Module) (*gcI31TableInitializer, error)
 	}
 	return &gcI31TableInitializer{TableIndex: 0, GlobalIndex: globalIndex}, nil
 }
+
+// moduleUsesI31Operations distinguishes immediate execution from inert null
+// metadata. Null collector heaps alone need no i31 execution image or domain.
+func moduleUsesI31Operations(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	for _, fn := range m.Code {
+		r := wasm.NewReader(fn.BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return false
+			}
+			var imm wasm.InstructionImmediate
+			if classifier.ClassifyInto(r, op, &imm) != nil {
+				return false
+			}
+			switch imm.Kind {
+			case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU:
+				return true
+			}
+		}
+	}
+	return false
+}

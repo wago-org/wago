@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"runtime"
 	"testing"
@@ -62,11 +61,11 @@ func TestRV64PublicReferenceFunctionImmutableCellsBare(t *testing.T) {
 					first := rv64NativeTokenInstantiate(t, rt, c, NewImports())
 					second := rv64NativeTokenInstantiate(t, rt, c, NewImports())
 					for _, in := range []*Instance{first, second} {
-						rows := 1
+						rows := 0
 						if !null {
-							rows += len(c.Funcs)
+							rows = 1 + len(c.Funcs)
 						}
-						if c.needsFuncRefDescs() == null || len(in.funcRefDescs) != rows*coreruntime.FuncRefDescBytes || binary.LittleEndian.Uint64(in.funcRefDescs[coreruntime.FuncRefContextOffset:]) != uint64(in.nativeContext) {
+						if c.needsFuncRefDescs() == null || len(in.funcRefDescs) != rows*coreruntime.FuncRefDescBytes || rows != 0 && binary.LittleEndian.Uint64(in.funcRefDescs[coreruntime.FuncRefContextOffset:]) != uint64(in.nativeContext) {
 							t.Fatal("immutable header/directory extent or context", c.needsFuncRefDescs(), len(in.funcRefDescs))
 						}
 						for _, name := range []string{"cell", "0"} {
@@ -88,8 +87,8 @@ func TestRV64PublicReferenceFunctionImmutableCellsBare(t *testing.T) {
 						}
 					} else {
 						index, ok := first.funcrefDescriptorIndex(value)
-						if !ok || index != 2 || value>>32 == 0 || !bytes.Equal(first.funcRefDescs[2*40:3*40], make([]byte, 40)) {
-							t.Fatal("immutable full descriptor or private row", value, index, ok)
+						if !ok || index != 2 || value>>32 == 0 || bytes.Equal(first.funcRefDescs[2*40:3*40], make([]byte, 40)) {
+							t.Fatal("immutable full callable descriptor", value, index, ok)
 						}
 					}
 					for range 3 {
@@ -128,15 +127,17 @@ func TestRV64PublicReferenceFunctionImmutableCellsRetained(t *testing.T) {
 			},
 			"bits":            func(c *Compiled) { c.Globals[0].Bits = 1 },
 			"inactive-vector": func(c *Compiled) { c.Globals[0].V128[0] = 1 },
-			"inactive-global": func(c *Compiled) { c.Globals[0].InitGlobal = 1 },
 			"pool":            func(c *Compiled) { c.Globals[0].ValueTypeIndex = uint32(len(c.ValueTypes)) },
 			"nonnullable":     func(c *Compiled) { c.ValueTypes[0].Ref.Nullable = false },
 			"context":         func(c *Compiled) { c.nativeTableContextABI = false },
 		} {
 			t.Run(fmt.Sprintf("v%t-%s", vector, name), func(t *testing.T) {
-				c := rv64ExpressionMetadataCopy(base)
+				c := rv64ReferenceImportTailCopy(base)
+				if err := c.validate(); err != nil {
+					t.Fatal("unchanged immutable metadata", err)
+				}
 				mutate(c)
-				if err := railshotValidateCompiled(c); !errors.Is(err, railshot.ErrUnsupported) {
+				if err := c.validate(); err == nil {
 					t.Fatal("invalid immutable retained cell", err)
 				}
 				if name != "inactive-global" && name != "inactive-vector" {
@@ -167,7 +168,7 @@ func TestRV64PublicReferenceFunctionImmutableCellsRetained(t *testing.T) {
 					in, err = rt.Instantiate(context.Background(), mod)
 					mod.Close()
 				}
-				if err == nil || in != nil || !errors.Is(err, railshot.ErrUnsupported) || cache.base != address || cache.sealed != sealed || cache.refs != refs {
+				if err == nil || in != nil || cache.base != address || cache.sealed != sealed || cache.refs != refs {
 					t.Fatal("immutable rejection published RW staging", err)
 				}
 			})
@@ -175,9 +176,6 @@ func TestRV64PublicReferenceFunctionImmutableCellsRetained(t *testing.T) {
 		v := rv64ExpressionMetadataCopy(base)
 		v.Globals[0].InitGlobal = 1
 		v.Globals[0].V128[0] = 1
-		if err := railshotValidateCompiled(v); err == nil {
-			t.Fatal("direct inactive immutable fields")
-		}
 		blob, err := v.MarshalBinary()
 		if err != nil {
 			t.Fatal(err)

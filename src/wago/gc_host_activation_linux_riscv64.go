@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"unsafe"
 
+	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -70,20 +71,37 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *c
 	// foreign stack envelope and accept an exact compiler callsite PC.
 	const wrapperScanBytes = uintptr(512)
 	returnSlot, callsite := uintptr(0), -1
+	frameHeader := uintptr(shared.RV64CallFrameHeaderBytes)
 	limit := wrapperScanBytes
 	if available := stackTop - savedSP - 8; available < limit {
 		limit = available
 	}
 	limit &^= 7
-	for off := uintptr(0); off <= limit; off += 8 {
-		candidateSlot := savedSP + off
-		candidatePC := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(candidateSlot)), 8)))
-		if candidate := findCallsite(candidatePC); candidate >= 0 {
-			returnSlot, callsite = candidateSlot, candidate
-			break
+	tailRoot := false
+	if pc, top, tailRecord := railshot.NativeTailHostContinuation(ctrl, in.jm.LinMemBase(), in.nativeContext, in.jm.RV64InvocationView(), stackLimit, stackTop); tailRecord {
+		frameHeader = 0 // The discarded Wasm frame's top already names its caller.
+		if candidate := findCallsite(pc); candidate >= 0 {
+			// The proper tail discarded its source frame. The record's
+			// original stack top is the older caller's transport boundary.
+			returnSlot, callsite = top, candidate
+		} else {
+			rootView := stackTop - abi.RV64InvocationViewBytes
+			if rootView >= stackLimit && rootView <= stackTop && stackTop-rootView >= abi.RV64InvocationViewBytes {
+				root := unsafe.Slice((*byte)(offHeapPtr(rootView)), abi.RV64InvocationViewBytes)
+				tailRoot = pc == uintptr(binary.LittleEndian.Uint64(root[abi.RV64InvocationFirstRAOffset:]))
+			}
+		}
+	} else {
+		for off := uintptr(0); off <= limit; off += 8 {
+			candidateSlot := savedSP + off
+			candidatePC := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(candidateSlot)), 8)))
+			if candidate := findCallsite(candidatePC); candidate >= 0 {
+				returnSlot, callsite = candidateSlot, candidate
+				break
+			}
 		}
 	}
-	if callsite < 0 && !gcBridge {
+	if callsite < 0 && !gcBridge && !tailRoot {
 		panic(gcHelperFailuref("generic GC RV64 host activation return PC %#x has no callsite map in the bounded wrapper envelope", savedRA))
 	}
 	state := in.publicGCState()
@@ -99,7 +117,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *c
 	if callsite < 0 {
 		activation.noFrame = true
 	} else {
-		adjust := uintptr(shared.RV64CallFrameHeaderBytes) + uintptr(plan.callsites[callsite].stackAdjust)
+		adjust := frameHeader + uintptr(plan.callsites[callsite].stackAdjust)
 		if returnSlot > ^uintptr(0)-adjust {
 			panic(gcHelperFailuref("generic GC RV64 host activation frame base overflows"))
 		}

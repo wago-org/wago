@@ -1,4 +1,4 @@
-name: Experimental RV64 / RISE
+name: Linux RISC-V64 / RISE
 
 on:
   pull_request:
@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/riscv64.yml"
       - "scripts/ci-riscv64.sh"
+      - "scripts/test-riscv64.sh"
       - "src/core/compiler/backend/railshot/riscv64/**"
       - "src/core/compiler/backend/railshot/shared/**"
       - "src/core/compiler/wasm/**"
@@ -28,7 +29,7 @@ concurrency:
 
 jobs:
   native:
-    name: Experimental JIT / native Linux RV64
+    name: JIT / native Linux RISC-V64
     # RISE requires exactly this single label; adding self-hosted breaks routing.
     # Org owner must install the RISE App and permit this repository first.
     runs-on: ubuntu-24.04-riscv
@@ -81,3 +82,5 @@ jobs:
         run: scripts/ci-riscv64.sh supported
       - name: Public ownership and compiler-free artifacts
         run: scripts/ci-riscv64.sh public
+      - name: Guard pages and thread behavior
+        run: scripts/ci-riscv64.sh guards

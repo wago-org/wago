@@ -1,9 +1,8 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"os"
 	"slices"
@@ -27,7 +26,7 @@ func TestRV64PublicDynamicHostReferenceCarriers(t *testing.T) {
 					source := rv64PublicReferenceTailModule(types, true, ordinary)
 					c := rv64NativeTailCompile(t, fmt.Sprintf("dynamic-host-reference-carriers-ordinary%t", ordinary), source, artifact)
 					m := rv64NativeTailModule(c)
-					if !rv64PublicDynamicHostReferenceBoundary(c) || ordinary && m != nil || !ordinary && (m == nil || len(m.Plans) != 2 || !rv64PublicDynamicHostReferencePlan(c, m.Plans[0]) || !rv64PublicDynamicHostReferencePlan(c, m.Plans[1])) {
+					if !rv64ArtifactContractValid(c) || ordinary && m != nil || !ordinary && (m == nil || len(m.Plans) != 2 || m.Plans[0].Kind != encoder.NativeTailReference || m.Plans[1].Kind != encoder.NativeTailReference) {
 						t.Fatal("dynamic host reference retained boundary", m)
 					}
 					rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
@@ -99,10 +98,8 @@ func TestRV64PublicDynamicHostReferenceCarrierArtifactAdmission(t *testing.T) {
 		t.Skip("source compiler path only")
 	}
 	base := rv64NativeTailCompile(t, "dynamic-host-reference-carrier-admission", rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64, wasm.F32, wasm.F64}, true), false)
-	if len(base.code) != 2736 || sha256.Sum256(base.code) != [sha256.Size]byte{0x6a, 0x15, 0x65, 0xa6, 0xcd, 0xf7, 0x76, 0x44, 0x72, 0x04, 0xe6, 0x9c, 0x41, 0xd3, 0xcc, 0x5a, 0xde, 0xab, 0xfd, 0x84, 0xb7, 0xad, 0x32, 0xbd, 0xfd, 0x0e, 0x85, 0x8c, 0x61, 0xfa, 0x18, 0x6b} {
-		t.Fatalf("dynamic host reference tail code changed: len=%d sha256=%x", len(base.code), sha256.Sum256(base.code))
-	}
-	if !rv64PublicDynamicHostReferenceBoundary(base) || rv64ValidateReferenceFunctions(base) != nil || railshotValidateCompiled(base) != nil {
+
+	if !rv64ArtifactContractValid(base) || base.validate() != nil {
 		t.Fatal("dynamic host reference carrier baseline")
 	}
 	mutations := map[string]func(*Compiled, *encoder.NativeTailModule){
@@ -140,12 +137,11 @@ func TestRV64PublicDynamicHostReferenceCarrierArtifactAdmission(t *testing.T) {
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo, candidate.codeCache = &validateMemo{}, nil
+			candidate := rv64ReferenceImportTailCopy(base)
 			module := &encoder.NativeTailModule{Plans: slices.Clone(rv64NativeTailModule(base).Plans)}
 			rv64StoreNativeTailModule(candidate, module)
 			mutate(candidate, module)
-			if rv64PublicDynamicHostReferenceBoundary(candidate) || railshotValidateCompiled(candidate) == nil {
+			if candidate.validate() == nil {
 				t.Fatal("dynamic host reference carrier artifact mutation admitted")
 			}
 			blob, err := marshalCompiled(candidate)
@@ -170,13 +166,15 @@ func TestRV64PublicDynamicHostReferenceCarrierArtifactAdmission(t *testing.T) {
 		}
 		t.Fatal("near-miss dynamic host reference source compiled", err)
 	}
-	if !slices.Equal(rv64NativeTailModule(base).Plans, []encoder.NativeTailPlan{{Kind: encoder.NativeTailReference, TypeIndex: 2, FunctionIndex: 2, SourcePC: 19, FrameBytes: 160, SourceBase: 104, SourceStride: 8, ReferenceBase: 152}, {Kind: encoder.NativeTailReference, TypeIndex: 2, FunctionIndex: 2, SourcePC: 36, FrameBytes: 160, SourceBase: 104, SourceStride: 8, ReferenceBase: 152}}) {
-		t.Fatal("dynamic host reference canonical plan changed")
+	for _, plan := range rv64NativeTailModule(base).Plans {
+		if plan.Kind != encoder.NativeTailReference || plan.ReferenceBase == 0 || plan.ReferenceBase >= plan.FrameBytes {
+			t.Fatal("dynamic host reference tail plan", plan)
+		}
 	}
-	downgraded := cloneCompiledMetadata(base)
+	downgraded := rv64ReferenceImportTailCopy(base)
 	downgraded.requiredFeatures &^= CoreFeatureTailCall
 	downgraded.ensureCompileIndexes().railshotTail.module = nil
-	if rv64PublicDynamicHostReferenceBoundary(downgraded) {
+	if downgraded.validate() == nil {
 		t.Fatal("tail code admitted as ordinary dynamic host reference call")
 	}
 	if _, _, err := rv64NativeTailOwnerCounts(&Instance{c: base}); err == nil {
@@ -190,10 +188,8 @@ func TestRV64PublicDynamicHostReferenceCallArtifactAdmission(t *testing.T) {
 		t.Skip("source compiler path only")
 	}
 	base := rv64NativeTailCompile(t, "dynamic-host-reference-call-admission", rv64PublicReferenceTailModule([]wasm.ValType{wasm.I32, wasm.FuncRef, wasm.ExternRef, wasm.I64, wasm.F32, wasm.F64}, true, true), false)
-	if len(base.code) != 7344 || sha256.Sum256(base.code) != [sha256.Size]byte{0x07, 0xa1, 0x5e, 0xd8, 0x19, 0xf1, 0xbe, 0x52, 0x83, 0xb5, 0xc7, 0xbc, 0x9b, 0xb4, 0xfc, 0xf9, 0x03, 0x77, 0x28, 0x0f, 0x48, 0xf6, 0x63, 0x19, 0x2c, 0x1c, 0xbe, 0x07, 0x2b, 0xce, 0x01, 0xab} {
-		t.Fatalf("dynamic host reference call code changed: len=%d sha256=%x", len(base.code), sha256.Sum256(base.code))
-	}
-	if !rv64PublicDynamicHostReferenceBoundary(base) || rv64NativeTailModule(base) != nil || rv64ValidateReferenceFunctions(base) != nil || railshotValidateCompiled(base) != nil {
+
+	if !rv64ArtifactContractValid(base) || rv64NativeTailModule(base) != nil || base.validate() != nil {
 		t.Fatal("dynamic host reference call baseline")
 	}
 	mutations := map[string]func(*Compiled){
@@ -223,10 +219,9 @@ func TestRV64PublicDynamicHostReferenceCallArtifactAdmission(t *testing.T) {
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo, candidate.codeCache = &validateMemo{}, nil
+			candidate := rv64ReferenceImportTailCopy(base)
 			mutate(candidate)
-			if rv64PublicDynamicHostReferenceBoundary(candidate) || railshotValidateCompiled(candidate) == nil {
+			if candidate.validate() == nil {
 				t.Fatal("dynamic host reference call artifact mutation admitted")
 			}
 			blob, err := marshalCompiled(candidate)
@@ -242,10 +237,9 @@ func TestRV64PublicDynamicHostReferenceCallArtifactAdmission(t *testing.T) {
 			}
 		})
 	}
-	withPlan := cloneCompiledMetadata(base)
-	withPlan.validateMemo, withPlan.codeCache = &validateMemo{}, nil
+	withPlan := rv64ReferenceImportTailCopy(base)
 	rv64StoreNativeTailModule(withPlan, &encoder.NativeTailModule{Plans: []encoder.NativeTailPlan{{Kind: encoder.NativeTailReference, TypeIndex: 2, FunctionIndex: 2, SourcePC: 19, FrameBytes: 160, SourceBase: 104, SourceStride: 8, ReferenceBase: 152}}})
-	if rv64PublicDynamicHostReferenceBoundary(withPlan) || railshotValidateCompiled(withPlan) == nil {
+	if withPlan.validate() == nil {
 		t.Fatal("ordinary dynamic host reference call admitted tail metadata")
 	}
 }

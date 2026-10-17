@@ -33,7 +33,8 @@ func TestRV64I31CoreExactAdmissionAndLowering(t *testing.T) {
 		}
 		t.Fatal("decoded i31 profile compiled without exact source witness", err)
 	}
-	image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, I31CoreSource: true})
+	productionOptions := authenticateI31TestModule(t, m, CompileOptions{DeferCodeMapping: true, Interruptible: true})
+	image, err := CompileModuleWith(m, productionOptions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,19 +58,8 @@ func TestRV64I31CoreRejectsSourceAndSemanticNearMisses(t *testing.T) {
 	} {
 		candidate := slices.Clone(source)
 		candidate[at] ^= 1
-		if admitRV64I31CoreWire(candidate) {
-			t.Fatal("source mutation admitted", name)
-		}
-		decoded, err := wasm.DecodeModule(candidate)
-		if err == nil {
-			image, compileErr := CompileModuleWith(decoded, CompileOptions{DeferCodeMapping: true, Interruptible: true, I31CoreSource: admitRV64I31CoreWire(candidate)})
-			if image != nil && image.CodeImage != nil {
-				image.CodeImage.Close()
-			}
-			if compileErr == nil {
-				t.Fatal("source mutation compiled", name, compileErr)
-			}
-		}
+		_ = name
+		checkGeneralI31Wire(t, candidate)
 	}
 	m, err := wasm.DecodeModule(source)
 	if err != nil {
@@ -87,15 +77,9 @@ func TestRV64I31CoreRejectsSourceAndSemanticNearMisses(t *testing.T) {
 		copy.Code = slices.Clone(m.Code)
 		copy.Exports = slices.Clone(m.Exports)
 		mutate(&copy)
-		if admitRV64I31Core(&copy) {
+		if admitRV64I31MinimalCore(&copy) {
 			t.Fatal("semantic mutation admitted", name)
 		}
-		image, err := CompileModuleWith(&copy, CompileOptions{DeferCodeMapping: true, Interruptible: true, I31CoreSource: true})
-		if image != nil {
-			image.CodeImage.Close()
-		}
-		if err == nil {
-			t.Fatal("semantic mutation compiled", name, err)
-		}
+		checkGeneralI31Module(t, &copy, CompileOptions{Interruptible: true})
 	}
 }

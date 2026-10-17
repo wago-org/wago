@@ -37,7 +37,7 @@ func admitProductionWireProfile(data []byte, public bool) error {
 		if id == 2 {
 			section := wasm.ReaderFrom(data[8+r.Offset() : 8+r.Offset()+int(n)])
 			count, err := section.U32()
-			if err != nil || count == 0 && !public || count > uint32(MaxProductionImports) {
+			if err != nil || count == 0 && !public || count > uint32(productionImportLimit(public)) {
 				return unsupported("production import section count bound")
 			}
 			// Decoded admission checks every import's kind/type and aggregate bounds.
@@ -58,11 +58,11 @@ func admitProductionWireProfile(data []byte, public bool) error {
 			count, err := section.U32()
 			limit := uint32(1)
 			if id == 4 && public {
-				// Decoded admission restricts the second table to the exact bounded
-				// indexed-size profile before code generation.
-				limit = 2
+				// The public runtime addresses tables through a directory. Apply
+				// the same metadata count bound as decoded admission.
+				limit = MaxFunctions
 			} else if id == 9 {
-				limit = MaxOwnedElementSegments
+				limit = uint32(productionElementSegmentLimit(public))
 			}
 			if err != nil || count == 0 && !public || count > limit {
 				return unsupported("bounded private table/element section")
@@ -85,6 +85,10 @@ func productionTrapCode(code int) int {
 		return abi.TrapDivOverflow
 	case TrapMemoryBounds:
 		return abi.TrapLinMemOutOfBounds
+	case trapExceptionUnhandled:
+		return abi.TrapUnhandledException
+	case trapAtomicUnaligned:
+		return abi.TrapAtomicUnaligned
 	case trapFloatConversion:
 		return abi.TrapTruncOverflow
 	case trapCooperativeInterrupt:

@@ -65,7 +65,7 @@ func TestCore3BrOnNonNullDeclarationsPinnedProduction(t *testing.T) {
 	}
 }
 
-func TestCore3BrOnNonNullDeclarationsWireConfinement(t *testing.T) {
+func TestCore3BrOnNonNullDeclarationsWireProfileSeparation(t *testing.T) {
 	debug := append(bytes.Clone(core3BrOnNonNullDeclarationsWire),
 		0x00, 0x1d, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x02,
 		0x10, 0x03, 0x00, 0x01, 0x00, 0x01, 0x72, 0x01,
@@ -85,14 +85,15 @@ func TestCore3BrOnNonNullDeclarationsWireConfinement(t *testing.T) {
 	}
 	for name, source := range mutations {
 		t.Run(name, func(t *testing.T) {
-			if admitCore3BrOnNonNullDeclarationsWire(source) || AdmitProductionSource(source) == nil {
+			checkGeneralDeclarationWire(t, source)
+			if admitCore3BrOnNonNullDeclarationsWire(source) {
 				t.Fatal("nearby wire module admitted")
 			}
 		})
 	}
 }
 
-func TestCore3BrOnNonNullDeclarationsDecodedConfinement(t *testing.T) {
+func TestCore3BrOnNonNullDeclarationsDecodedProfileSeparation(t *testing.T) {
 	mutations := map[string]func(*wasm.Module){
 		"opcode":            func(m *wasm.Module) { m.Code[0].BodyBytes[5] = 0xd5 },
 		"depth":             func(m *wasm.Module) { m.Code[0].BodyBytes[6] = 1 },
@@ -141,12 +142,7 @@ func TestCore3BrOnNonNullDeclarationsDecodedConfinement(t *testing.T) {
 			if admitCore3BrOnNonNullDeclarations(m) {
 				t.Fatal("nearby decoded module inherited the exact declaration profile")
 			}
-			pressure := 0
-			opts := closedReferenceProductionOptions(false, true)
-			opts.MemoryPressure = func() { pressure++ }
-			if image, err := CompileModuleWith(m, opts); image != nil || err == nil || pressure != 0 {
-				t.Fatal("nearby declaration shape published", err, pressure)
-			}
+			checkGeneralDeclarationModule(t, m)
 		})
 	}
 }

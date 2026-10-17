@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -6,14 +6,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
-
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 )
 
 var rv64PublicGCTypeSubtypingRecursiveFunctionsHex = []string{
@@ -100,10 +97,8 @@ func TestRV64PublicGCTypeSubtypingRecursiveFunctionsExecutionAndArtifact(t *test
 				compiled := rv64PublicGCTypeSubtypingRecursiveFunctionsCompile(t, variant, artifact)
 				t.Cleanup(func() { _ = compiled.Close() })
 				view := compiled.executionView()
-				profile := rv64GCTypeSubtypingRecursiveFunctionsProfile(view, false)
-				validation := railshotValidateCompiled(view)
-				if profile != variant || !rv64GCTypeSubtypingRecursiveFunctions(view) || view.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingRecursiveFunctions || validation != nil {
-					t.Fatalf("missing exact recursive-function witness: profile=%d metadata=%d/%d exact=%t product=%v validation=%v code=%d/%x entries=%v/%v flags=%t/%t/%t/%t/%t/%t/%t table64=%d header=%t exports=%t desc=%t escape=%t helpers=%t/%t nativegc=%d roots=%v products=%v/%v staged=%v required=%v funcs=%+v ids=%v types=%+v descs=%+v memoryDir=%+v", profile, rv64GCTypeSubtypingRecursiveFunctionsProfileWithCode(view, false, false), variant, rv64GCTypeSubtypingRecursiveFunctions(view), view.stagedGCTypeSubtypingProduct(), validation, len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.nativeContextTrapABI, view.nativeTableContextABI, view.nativeTableReferenceABI, view.registerABIDisabled, view.nativeReferenceFunctionABI, view.nativeReferenceCallABI, view.nativeReferenceControlABI, view.nativeTable64ABI, view.needsFuncRefContextHeader, view.hasTableExportMetadata, view.NeedsFuncRefDescs, view.dynamicFuncrefEscape, view.usesGCStructHelpers(), view.usesGCArrayHelpers(), view.nativeGCABIRequirement(), view.genericGCFrameRoots(), view.stagedGCStructProduct(), view.stagedGCArrayProduct(), view.stagedFeatures(), view.requiredFeatures, view.Funcs, view.FuncTypeID, view.Types, view.GCTypeDescs, view.memoryDir)
+				if !rv64ArtifactContractValid(view) || view.validate() != nil {
+					t.Fatal("invalid public recursive-function execution contract")
 				}
 				cache := compiled.loadCodeCache()
 				if cache == nil || !artifact && (cache.base != 0 || len(cache.mem) != 0 || cache.sealed || cache.flags&compiledCacheWritableCode != 0) ||
@@ -111,9 +106,7 @@ func TestRV64PublicGCTypeSubtypingRecursiveFunctionsExecutionAndArtifact(t *test
 					compiled.Close()
 					t.Fatalf("recursive-function unpublished mapping state: artifact=%t base=%#x mem=%d sealed=%t writable=%t refs=%d", artifact, cache.base, len(cache.mem), cache.sealed, cache.flags&compiledCacheWritableCode != 0, cache.refs)
 				}
-				cfg := rv64I31Config()
-				cfg.railshotState.tailProducts = true
-				rt := NewRuntime(WithRuntimeConfig(cfg))
+				rt := NewRuntime()
 				mod, err := rt.Module(compiled)
 				if err != nil {
 					compiled.Close()
@@ -173,20 +166,21 @@ func TestRV64PublicGCTypeSubtypingRecursiveFunctionsAdmissionIsExact(t *testing.
 			"descriptor": func(v *Compiled) { v.GCTypeDescs[0].Final = true },
 			"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 			"function-abi": func(v *Compiled) {
-				v.nativeReferenceFunctionABI = false
+				v.nativeReferenceFunctionABI = !v.nativeReferenceFunctionABI
 			},
-			"product": func(v *Compiled) { v.codeCache.gcTypeSubtypingProduct = 0 },
+			"invalid-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
 		} {
 			t.Run(strconv.Itoa(int(variant))+"/"+name, func(t *testing.T) {
-				candidate := cloneCompiledMetadata(base)
-				candidate.validateMemo = &validateMemo{}
+				candidate := rv64ReferenceStartCopy(base)
 				mutate(candidate)
-				if rv64GCTypeSubtypingRecursiveFunctions(candidate) {
-					t.Fatal("hostile retained mutation kept recursive-function witness")
+				if err := candidate.validate(); err == nil {
+					t.Fatal("hostile retained recursive-function mutation admitted")
 				}
-				if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
-					t.Fatal("hostile retained recursive-function mutation admitted", err)
+				if name == "feature" {
+					rv64RequireRestoredGCFeature(t, candidate)
+					return
 				}
+				rv64RequireRejectedArtifact(t, candidate)
 			})
 		}
 		compiled.Close()

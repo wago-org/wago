@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -54,8 +54,8 @@ func TestRV64PublicReferenceFunctionResourceAdmission(t *testing.T) {
 				}
 			})
 		}
-		public := rv64ReferenceResourceCopy(c)
-		public.Exports["reference"] = 2
+		publicSource := rv64ReferenceAddSourceExport(t, wasmtest.ClosedReferenceResources(vector, false, true), wasmtest.ExportEntry("reference", 0, 2))
+		public := rv64NativeTailCompile(t, "reference-resource-public-export", publicSource, false)
 		if err := public.validate(); err != nil {
 			t.Fatal("ephemeral resource-profile reference export", err)
 		}
@@ -70,7 +70,7 @@ func TestRV64PublicReferenceFunctionResourceAdmission(t *testing.T) {
 		loaded.Close()
 		copy := rv64ReferenceResourceCopy(c)
 		copy.memoryDir.exports[""] = 1
-		if err := copy.validate(); err != nil {
+		if err := rv64ValidateReferenceFunctions(copy); err != nil {
 			t.Fatal("valid empty export name", err)
 		}
 		if a := testing.AllocsPerRun(10, func() {
@@ -85,7 +85,7 @@ func TestRV64PublicReferenceFunctionResourceAdmission(t *testing.T) {
 			name := fmt.Sprintf("resource%d", len(copy.memoryDir.exports))
 			copy.memoryDir.exports[name] = 0
 		}
-		if err := copy.validate(); err != nil {
+		if err := rv64ValidateReferenceFunctions(copy); err != nil {
 			t.Fatal("exact combined export count", err)
 		}
 		copy.GlobalExports["overflow"] = 1
@@ -105,7 +105,7 @@ func TestRV64PublicReferenceFunctionResourceAdmission(t *testing.T) {
 			}
 		}
 		copy.PassiveData[2].Bytes = buffer[:lo]
-		if lo == 0 || copy.validate() != nil {
+		if lo == 0 || rv64ValidateReferenceFunctions(copy) != nil {
 			t.Fatal("exact combined resource name/state/type budget")
 		}
 		delete(copy.GlobalExports, "counter-alias")

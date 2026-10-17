@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -168,15 +168,24 @@ func TestRV64PublicNativeReexportBindingAndOwnedEntryGates(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer owner.Close()
-		before := c.codeCache.base
-		for _, binding := range []any{func(v int32) int32 { return v }, owner, (*InstanceExport)(nil)} {
-			in, err := Instantiate(c, NewImports().Global("env", "flag", flag).Function("env", "unused", func() {}).Function("env", "target", binding))
-			if in != nil || err == nil || c.codeCache.base != before {
-				if in != nil {
-					in.Close()
-				}
-				t.Fatal("non-native unused reexport published", err)
+		for _, binding := range []any{func(v int32) int32 { return v }, owner} {
+			in, err := Instantiate(c, InstantiateOptions{Imports: NewImports().Global("env", "flag", flag).Function("env", "unused", func() {}).Function("env", "target", binding), store: rt.refStore})
+			if err != nil {
+				t.Fatal("host reexport", err)
 			}
+			if got, err := in.Invoke("relay", 9); err != nil || !slices.Equal(got, []uint64{9}) {
+				in.Close()
+				t.Fatal("host reexport result", got, err)
+			}
+			in.Close()
+		}
+		before := c.codeCache.base
+		in, err := Instantiate(c, NewImports().Global("env", "flag", flag).Function("env", "unused", func() {}).Function("env", "target", (*InstanceExport)(nil)))
+		if in != nil || err == nil || c.codeCache.base != before {
+			if in != nil {
+				in.Close()
+			}
+			t.Fatal("nil native reexport published", err)
 		}
 		producer, err := Instantiate(rv64PublicStartCompile(t, rv64PublicNativeIdentityModule(types), artifact))
 		if err != nil {
@@ -217,7 +226,7 @@ func TestRV64PublicNativeReexportBindingAndOwnedEntryGates(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		in, err := Instantiate(c, NewImports().Global("env", "flag", flag).Function("env", "unused", func() {}).Function("env", "target", wrongTarget))
+		in, err = Instantiate(c, NewImports().Global("env", "flag", flag).Function("env", "unused", func() {}).Function("env", "target", wrongTarget))
 		wrong.Close()
 		if in != nil || err == nil {
 			if in != nil {
@@ -358,7 +367,14 @@ func TestRV64PublicNativeReexportConcurrentParkedRelaysAndProducer(t *testing.T)
 					unblock(i)
 					select {
 					case got := <-done[i]:
-						if got.err != nil || !slices.Equal(got.value, []uint64{uint64(100 + i)}) {
+						// Invoke returns instance-backed results. The two calls already
+						// queued on producer can replace its value as soon as its gate
+						// opens, while each relay has an independent result buffer.
+						validValue := len(got.value) == 1
+						if i != 2 {
+							validValue = slices.Equal(got.value, []uint64{uint64(100 + i)})
+						}
+						if got.err != nil || !validValue {
 							t.Fatalf("independent parked transport %d: values=%v error=%v", i, got.value, got.err)
 						}
 					case <-time.After(5 * time.Second):

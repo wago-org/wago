@@ -99,7 +99,7 @@ versions fail closed. Plugin declarations, BMI2 and bit-count instructions share
 this mask. The AVX-512 plugin tier requires F/DQ/BW/VL and enabled ZMM/opmask state.
 Core and relaxed SIMD do not require FMA, AVX2, AVX-512 or VNNI.
 
-Experimental Linux/RV64 artifacts use architecture ID 3. The retained table-call
+Linux/RV64 artifacts use architecture ID 3. The retained table-call
 requirement in bit 53 depends on the native-context trap requirement in bit 54.
 The full-width retained table-reference requirement in bit 52 depends on both.
 Callable table code requires all three, synchronous framed controls, full

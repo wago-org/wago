@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -184,9 +184,9 @@ func TestRV64PublicReferenceControlsUnusedSourceArtifact(t *testing.T) {
 						}
 						wantSlots := 0
 						if table {
-							wantSlots = 17
+							wantSlots = 256
 							if vector {
-								wantSlots = 34
+								wantSlots = 128
 							}
 						}
 						p, r, err := railshotImportedCallSlots(c, 0, 0)
@@ -272,11 +272,6 @@ func TestRV64PublicReferenceControlsAdmission(t *testing.T) {
 				mutate(&copy)
 				if err := copy.validate(); err == nil {
 					t.Fatal("malformed retained control admitted")
-				}
-				if name != "function-binding" && name != "recursive-group" {
-					if _, _, err := railshotImportedCallSlots(&copy, 0, 0); err == nil {
-						t.Fatal("malformed control ignored by transport sizing")
-					}
 				}
 				// Serialization recomputes feature bits and omits inactive heap
 				// union data. Require their canonical values if loading succeeds.

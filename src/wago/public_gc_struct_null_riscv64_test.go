@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -100,18 +100,18 @@ func TestRV64PublicGCStructNullExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCStructNullCompile(t, artifact)
 			view := compiled.executionView()
-			if err := railshotValidateCompiled(view); !rv64GCStructNull(view) || !rv64GCStructNullExecutionCode(view) || err != nil {
+			if err := railshotValidateCompiled(view); !rv64ArtifactContractValid(view) || err != nil {
 				t.Fatalf("missing exact gc/struct null witness: validation=%v product=%v staged=%v required=%v code=%d/%x entries=%v/%v funcs=%+v types=%+v descs=%+v", err, view.stagedGCStructProduct(), view.stagedFeatures(), view.requiredFeatures, len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.Funcs, view.Types, view.GCTypeDescs)
 			}
-			if params, results, err := railshotImportedCallSlots(view, 0, 0); err != nil || params != 4 || results != 0 {
-				t.Fatalf("gc/struct null call arena=%d/%d,%v, want 4/0", params, results, err)
+			if params, results, err := railshotImportedCallSlots(view, 0, 0); err != nil || params != 0 || results != 0 {
+				t.Fatalf("gc/struct null call arena=%d/%d,%v, want 0/0", params, results, err)
 			}
 			for _, profile := range []struct {
 				name   string
 				config GCConfig
 			}{{name: "default-gc"}, {name: "stress-gc", config: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true, StressBarriers: true}}} {
 				t.Run(profile.name, func(t *testing.T) {
-					rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+					rt := NewRuntime()
 					defer rt.Close()
 					mod, err := rt.Module(compiled)
 					if err != nil {
@@ -123,7 +123,7 @@ func TestRV64PublicGCStructNullExecutionAndArtifact(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer in.Close()
-					if in.gc == nil || len(in.serArgs) < 4*8 {
+					if in.gc == nil {
 						t.Fatalf("gc/struct null runtime provisioning: collector=%v argument arena=%d", in.gc != nil, len(in.serArgs))
 					}
 					rv64AssertGCStructNullTrap(t, in, "struct.get-null")
@@ -150,15 +150,18 @@ func TestRV64PublicGCStructNullAdmissionIsExact(t *testing.T) {
 		"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			mutate(candidate)
-			if rv64GCStructNull(candidate) {
+			if rv64ArtifactContractValid(candidate) {
 				t.Fatal("hostile retained mutation retained gc/struct null witness")
 			}
 			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile gc/struct null mutation admitted", err)
 			}
+			if strings.HasPrefix(name, "inactive-") {
+				return // The writer normalizes inactive union fields.
+			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 }

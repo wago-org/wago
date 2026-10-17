@@ -50,7 +50,7 @@ func TestCore3RefDeclarationsPinnedProduction(t *testing.T) {
 	}
 }
 
-func TestCore3RefDeclarationsWireConfinement(t *testing.T) {
+func TestCore3RefDeclarationsWireProfileSeparation(t *testing.T) {
 	debug := append(bytes.Clone(core3RefDeclarationsWire),
 		0x00, 0x0b, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x04,
 		0x04, 0x01, 0x00, 0x01, 0x74,
@@ -68,14 +68,15 @@ func TestCore3RefDeclarationsWireConfinement(t *testing.T) {
 	}
 	for name, source := range mutations {
 		t.Run(name, func(t *testing.T) {
-			if admitCore3RefDeclarationsWire(source) || AdmitProductionSource(source) == nil {
+			checkGeneralDeclarationWire(t, source)
+			if admitCore3RefDeclarationsWire(source) {
 				t.Fatal("nearby wire module admitted")
 			}
 		})
 	}
 }
 
-func TestCore3RefDeclarationsDecodedConfinement(t *testing.T) {
+func TestCore3RefDeclarationsDecodedProfileSeparation(t *testing.T) {
 	mutations := map[string]func(*wasm.Module){
 		"extern-nullable": func(m *wasm.Module) {
 			m.Types[1].SubTypes[0].Comp.Params[3] = wasm.ExternRef
@@ -115,12 +116,7 @@ func TestCore3RefDeclarationsDecodedConfinement(t *testing.T) {
 			if admitCore3RefDeclarations(m) {
 				t.Fatal("nearby decoded module inherited the exact declaration profile")
 			}
-			pressure := 0
-			opts := closedReferenceProductionOptions(false, true)
-			opts.MemoryPressure = func() { pressure++ }
-			if image, err := CompileModuleWith(m, opts); image != nil || err == nil || pressure != 0 {
-				t.Fatal("nearby declaration shape published", err, pressure)
-			}
+			checkGeneralDeclarationModule(t, m)
 		})
 	}
 }

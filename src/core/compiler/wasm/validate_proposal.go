@@ -809,6 +809,13 @@ func (v *funcValidator) stepBrOnCast(in Instruction) error {
 
 func (v *funcValidator) stepSIMD(in Instruction) error {
 	e := simdEffects[in.Kind]
+	if in.Kind == InstrI8x16Shuffle {
+		for _, lane := range in.Lanes() {
+			if lane >= 32 {
+				return v.verr(ErrTypeMismatch, "simd lane out of range")
+			}
+		}
+	}
 	if e.laneLimit != 0 && in.Lane >= e.laneLimit {
 		return v.verr(ErrTypeMismatch, "simd lane out of range")
 	}

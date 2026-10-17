@@ -58,6 +58,8 @@ type Instance struct {
 	closed                  bool                    // logical close; retained references may defer physical release
 	finalizing              bool                    // one goroutine owns quiescent finalization
 	resourcesClosed         bool
+	proxyReconciliation     bool                     // RV64 closed-proxy scan is non-reentrant
+	proxyReconciled         bool                     // imported reference containers were transferred after close
 	icNext                  uint8                    // round-robin invoke-cache replacement cursor
 	ownsMem                 bool                     // false when memory 0 is host-imported (don't close it)
 	syncMode                bool                     // true when host imports use the synchronous re-entry protocol

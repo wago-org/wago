@@ -475,6 +475,9 @@ func (rt *Runtime) NewExternRefGlobal(initial ExternRef, mutable bool) (*Global,
 // global importer closes. Instance-owned exported globals remain no-ops because
 // their producer instance owns the cell.
 func (g *Global) Close() error {
+	if handled, err := railshotTryCloseCompactExternHostGlobal(g); handled {
+		return err
+	}
 	if g == nil || g.owner == nil {
 		return nil
 	}
@@ -513,6 +516,7 @@ func (g *Global) Close() error {
 	var cleanup resourceCleanup
 	cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&dependencies) })
 	var err error
+	cleanup.run(func() { railshotReleaseCompactExternHostGlobal(o) })
 	cleanup.run(func() { err = arena.Close() })
 	if store != nil {
 		cleanup.run(store.storeObjectClosed)
@@ -614,11 +618,35 @@ func (g *Global) Set(bits uint64) error {
 // GetValue returns a reference global through its exact owner store. Numeric and
 // vector globals keep their existing Get/GetV128 accessors.
 func (g *Global) GetValue() (Value, error) {
-	end, ok := g.beginOwnerAccess()
-	if !ok {
+	if g == nil {
 		return Value{}, fmt.Errorf("global owner instance is closed")
 	}
-	defer end()
+	var owner *Instance
+	if g.owner != nil {
+		owner = g.owner.instance
+	}
+	if owner != nil {
+		if err := owner.beginInvocation(); err != nil {
+			return Value{}, fmt.Errorf("global owner instance is closed")
+		}
+	}
+	nativeMu := &nativeExecutionMu
+	if owner != nil {
+		nativeMu = owner.acquireInstanceNativeStateForHostAccess()
+	} else {
+		nativeMu.Lock()
+	}
+	defer func() {
+		var cleanup resourceCleanup
+		if value := recover(); value != nil {
+			cleanup.panicked, cleanup.value = true, value
+		}
+		cleanup.run(nativeMu.Unlock)
+		if owner != nil {
+			cleanup.run(owner.endInvocation)
+		}
+		cleanup.finish()
+	}()
 	return g.getValueNoLease()
 }
 
@@ -643,7 +671,15 @@ func (g *Global) ReleaseGCRef(ref GCRef) error {
 	return owner.ReleaseGCRef(ref)
 }
 
+// ReleaseExnRef releases an owned exception token returned by GetValue.
+func (g *Global) ReleaseExnRef(ref ExnRef) error {
+	return g.ReleaseGCRef(GCRef{token: ref.token})
+}
+
 func (g *Global) getValueNoLease() (Value, error) {
+	if value, handled, err := railshotGetCompactExternHostGlobal(g); handled {
+		return value, err
+	}
 	if g == nil || g.owner == nil {
 		return Value{}, fmt.Errorf("global has no compatible reference owner")
 	}
@@ -800,6 +836,9 @@ func finishGlobalValueAccess(nativeMu *sync.Mutex, owner *Instance, roots *globa
 }
 
 func (g *Global) setValueNoLease(v Value, roots *globalValueRoots) error {
+	if handled, err := railshotSetCompactExternHostGlobal(g, v, roots); handled {
+		return err
+	}
 	if g == nil || g.owner == nil {
 		return fmt.Errorf("global has no compatible reference owner")
 	}
@@ -836,7 +875,10 @@ func (g *Global) setValueNoLease(v Value, roots *globalValueRoots) error {
 	}
 	if bits != 0 {
 		if store == nil {
-			return fmt.Errorf("global has no compatible reference store")
+			if typ == ValFuncRef {
+				return fmt.Errorf("invalid funcref token")
+			}
+			return fmt.Errorf("invalid externref token")
 		}
 		if typ == ValExternRef {
 			internal, handled, err := containerOwner.internalExternForGlobal(bits)
@@ -1252,11 +1294,12 @@ type Compiled struct {
 	Data        []DataInit         // active data segments (copied into linear memory at instantiate)
 	PassiveData []PassiveDataInit  // data-state descriptors keyed by original index; active slots start dropped
 
-	HasMemory   bool   // module declares memory 0; direct execution cache
-	MemMinPages uint32 // memory-0 initial size (pages); allocated at instantiate
-	MemMaxPages uint32 // memory-0 reservation ceiling; 0 means use the engine default
-	MemHasMax   bool   // memory-0 declaration/import has an explicit maximum
-	memoryDir   *compiledMemoryDirectory
+	HasMemory             bool   // module declares memory 0; direct execution cache
+	core1SegmentPreflight bool   // Core 1 checks all active segment bounds before writes
+	MemMinPages           uint32 // memory-0 initial size (pages); allocated at instantiate
+	MemMaxPages           uint32 // memory-0 reservation ceiling; 0 means use the engine default
+	MemHasMax             bool   // memory-0 declaration/import has an explicit maximum
+	memoryDir             *compiledMemoryDirectory
 
 	HasStart       bool // module declares a start function to run at instantiate
 	StartLocalFunc int  // its local function index (valid when HasStart && !StartIsImport)
@@ -1374,7 +1417,7 @@ func (c *Compiled) boundedNativeScalarLeaf() bool {
 }
 
 func (c *Compiled) nativeScalarLeafAllowed() bool {
-	return c != nil && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&nativeScalarLeafMask != 0
+	return c != nil && (railshotNativeLeafAllowed(c) || len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&nativeScalarLeafMask != 0)
 }
 
 func (c *Compiled) boundedHostSegments() bool {
@@ -1412,6 +1455,7 @@ type validateMemo struct {
 	// loaded artifacts therefore remain fail-closed until generic RV64 images
 	// gain a persisted machine-code authenticator.
 	rv64FreshRootedGC                 bool
+	rv64RootedNoCollectingBodies      bool
 	rv64FreshRootedGCDigest           [32]byte
 	rv64FreshRootedGCTypeDigest       [32]byte
 	rv64FreshRootedGCSyncHostSlots    uint16
@@ -1783,6 +1827,9 @@ func (g *Global) validateReferenceImportWithCollector(store *referenceStore, col
 		return nil
 	}
 	if typ == ValExternRef {
+		if railshotValidCompactExternHostGlobalWord(g, store, collector, bits) {
+			return nil
+		}
 		if _, ok := store.resolveExternref(bits); !ok {
 			return fmt.Errorf("reference global contains an invalid externref token")
 		}
@@ -1829,7 +1876,7 @@ func (g *Global) attachReferenceImporterWithCollector(store *referenceStore, col
 	o := g.owner
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if o.closed {
+	if o.closed || !railshotCompactExternHostGlobalOpen(o) {
 		return fmt.Errorf("reference global owner is closed")
 	}
 	if err := o.validateImporterCountLocked(); err != nil {
@@ -1870,6 +1917,7 @@ func (g *Global) detachImporterCounterMatching(expected *Instance, checkExpected
 		return nil, false
 	}
 	o := g.owner
+	defer railshotFinishCompactExternHostGlobalDetach(g)
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.importers <= 0 || checkExpected && (g.owner != o || o.instance != expected) {

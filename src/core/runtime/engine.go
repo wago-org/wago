@@ -147,6 +147,25 @@ func (e *Engine) StackTop() uintptr {
 	return uintptr(unsafe.Pointer(&e.stack[0])) + uintptr(len(e.stack))
 }
 
+// NativeStackRange returns an alias within the usable owned foreign stack.
+// It checks addresses without following them. The caller must retain the active
+// Engine and its stack lease for the lifetime of the returned view.
+func (e *Engine) NativeStackRange(address uintptr, size int) []byte {
+	if e == nil || len(e.stack) == 0 || size <= 0 {
+		return nil
+	}
+	base := slicePtr(e.stack)
+	if address < base || address-base < stackFenceMargin || address-base > uintptr(len(e.stack)) {
+		return nil
+	}
+	offset := address - base
+	if uintptr(size) > uintptr(len(e.stack))-offset {
+		return nil
+	}
+	start := int(offset)
+	return e.stack[start : start+size : start+size]
+}
+
 // StackBytes reports the mapped foreign execution stack capacity.
 func (e *Engine) StackBytes() uint64 {
 	if e == nil {
@@ -370,6 +389,18 @@ func offHeapPointer(addr uintptr) unsafe.Pointer {
 	return *(*unsafe.Pointer)(unsafe.Pointer(&addr))
 }
 
+// The engine's retained native-memory lease authenticates addr. This store
+// never accepts a Go-heap address; avoid a temporary pointer-sized Go object.
+//
+//go:nocheckptr
 func storeOffHeapU64(addr uintptr, value uint64) {
-	*(*uint64)(offHeapPointer(addr)) = value
+	*(*uint64)(unsafe.Pointer(addr)) = value
+}
+
+// The active native lease owns the complete mmap-backed control or instance
+// word at addr. This reader must never receive an address into the Go heap.
+//
+//go:nocheckptr
+func loadOffHeapU64(addr uintptr) uint64 {
+	return *(*uint64)(unsafe.Pointer(addr))
 }

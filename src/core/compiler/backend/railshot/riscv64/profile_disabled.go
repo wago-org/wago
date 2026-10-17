@@ -12,6 +12,10 @@ const profileEnabled = false
 type profileModuleState struct{}
 type profileMode struct{}
 
+func (profileModuleState) hasFinalizedFunctionProfiles(_ []FunctionInfo, enabled bool) bool {
+	return !enabled
+}
+
 func newProfileModule(bool, bool, int) profileModuleState                    { return profileModuleState{} }
 func (profileModuleState) baseProfileMode() profileMode                      { return profileMode{} }
 func (profileMode) moduleProfile() profileModuleState                        { return profileModuleState{} }
@@ -28,3 +32,5 @@ func (profileModuleState) installProfileStats(*ModuleStats)                  {}
 func (f *target) compileProfileScalar(worker *shared.ScalarState, fn *wasm.Func, summary shared.ScalarSummary, widths []bool, params int) (int, error) {
 	return worker.CompileScalar(fn.BodyBytes, summary, widths, params, f)
 }
+
+func (profileModuleState) prepareProfileCode([]byte, []FunctionInfo, bool) error { return nil }

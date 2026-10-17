@@ -169,7 +169,7 @@ func TestPublicExplicitSingletonRecAbstractControlIdentity(t *testing.T) {
 	}
 }
 
-func TestPublicExplicitSingletonRecRejectsBroaderGrammar(t *testing.T) {
+func TestPublicTypeGroupsRetainWireBounds(t *testing.T) {
 	header := []byte{0, 97, 115, 109, 1, 0, 0, 0}
 	for name, payload := range map[string][]byte{
 		"empty":           {1, 0x4e, 0},
@@ -188,8 +188,12 @@ func TestPublicExplicitSingletonRecRejectsBroaderGrammar(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			source := section(append([]byte(nil), header...), 1, payload)
-			if err := admitWireStartProfile(source, true, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("broader singleton rec grammar admitted", err)
+			invalid := name == "nested" || name == "truncated" || name == "arity"
+			if err := admitWireStartProfile(source, true, true, true); (err != nil) != invalid {
+				t.Fatal("public type group wire bound", name, err)
+			}
+			if err := admitWireStartProfile(source, true, true, false); !errors.Is(err, ErrUnsupported) {
+				t.Fatal("private type group grammar widened", name, err)
 			}
 		})
 	}

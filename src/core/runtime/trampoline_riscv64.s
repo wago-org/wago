@@ -46,6 +46,7 @@ TEXT ·enterNativeRaw(SB),NOSPLIT|NOFRAME,$0-48
  // CSRRS X31,fcsr,X0. Preserve accrued flags and the caller's rounding mode.
  WORD $0x00302ff3
  MOV T6, nativeWrapperSaveFrame_FCSR(T1)
+ MOV ZERO, nativeWrapperSaveFrame_Padding(T1) // invocation-owned EH handler chain
  MOV serArgs+8(FP), A0
  MOV results+32(FP), A3
  MOV A1, X25

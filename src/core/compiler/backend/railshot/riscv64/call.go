@@ -13,14 +13,18 @@ const callFrameHeader = 48
 const maxDirectCalls = 1024
 
 type directCall struct {
-	site        int
-	callee      uint32
-	helper      uint32
-	helperSlots int
-	safepoint   uint32
+	atomicHelper uint32
+	site         int
+	callee       uint32
+	helper       uint32
+	helperSlots  int
+	safepoint    uint32
 }
 
 const (
+	gcExceptionAlloc     uint32 = 45
+	gcExceptionPayload   uint32 = 46
+	gcExternGlobalSet    uint32 = 47
 	gcStructDispatchBit  uint32 = 1 << 30
 	gcStructAllocDefault uint32 = 1
 	gcStructGet          uint32 = 2
@@ -67,18 +71,22 @@ const (
 // allocation shapes retain the already admitted per-call arity.
 func gcAllocHelperSlots(helper uint32, admitted int) (int, bool) {
 	switch helper {
-	case gcStructAllocDefault:
+	case gcStructAllocDefault, gcExceptionAlloc, gcAnyConvertExtern, gcExternConvertAny:
 		return 1, true
 	case gcStructAllocOne:
-		return admitted, admitted >= 2 && admitted <= 256
-	case gcArrayAllocDefault:
+		return admitted, admitted >= 1 && admitted <= 256
+	case gcArrayAllocDefault, gcExternGlobalSet:
 		return 2, true
-	case gcArrayAllocUniform:
+	case gcArrayAllocUniform, gcStructTableSet, gcTableGrow:
 		return 3, true
 	case gcArrayAllocFixed:
 		return admitted, admitted >= 2 && admitted <= maxRootedScalarArrayFixed+2
-	case gcArrayAllocData, gcArrayAllocElem:
+	case gcArrayAllocData, gcArrayAllocElem, gcStructSet, gcArraySet, gcTableFill:
 		return 4, true
+	case gcArrayFill, gcTableCopy, gcTableInit:
+		return 5, true
+	case gcArrayInitElem:
+		return 6, true
 	default:
 		return 0, false
 	}
@@ -129,11 +137,14 @@ func (f *integerEmitter) storeGuestGlobalAt(offset int32) {
 }
 
 // storeGuestGlobalIndexed transfers one authenticated descriptor and its exact
-// destination index through the parked bridge. Only the two-function exact
-// bidirectional-copy profile can emit this relocation.
+// destination index through the parked bridge.
 func (f *integerEmitter) storeGuestGlobalIndexed(slot int, index uint32) {
+	f.storeGuestGlobalIndexedAt(f.SpillOffset(slot), index)
+}
+
+func (f *integerEmitter) storeGuestGlobalIndexedAt(offset int32, index uint32) {
 	f.restoreCallTransport()
-	f.Load(5, f.SpillOffset(slot), true)
+	f.Load(5, offset, true)
 	f.a.Sd(enc.X5, enc.X10, 0)
 	f.a.Addi(enc.X5, enc.Zero, int32(index))
 	f.a.Sd(enc.X5, enc.X10, 8)
@@ -142,6 +153,9 @@ func (f *integerEmitter) storeGuestGlobalIndexed(slot int, index uint32) {
 }
 
 func (f *integerEmitter) directCall(index uint32, sig functionSpec, base, importedFunctions int, hiddenRefs []bool) {
+	if f.tryPluginCall(index, sig, base) {
+		return
+	}
 	imported := index < uint32(importedFunctions)
 	if imported {
 		f.importCallTarget(index)
@@ -346,7 +360,7 @@ func (f *integerEmitter) gcElementDrop(elemIndex uint32) {
 	f.restoreCallTransport()
 }
 
-func (f *integerEmitter) gcArrayInitializeElements(base int, typeIndex, elemIndex uint32) {
+func (f *integerEmitter) gcArrayInitializeElements(base int, typeIndex, elemIndex uint32, roots ...[]bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0) // destination array reference
@@ -360,7 +374,7 @@ func (f *integerEmitter) gcArrayInitializeElements(base int, typeIndex, elemInde
 	f.a.Sd(enc.X5, enc.X10, 32)
 	f.a.Constant32(enc.X5, elemIndex)
 	f.a.Sd(enc.X5, enc.X10, 40)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayInitElem})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayInitElem, safepoint: f.functionMutationSafepoint(roots)})
 	f.restoreCallTransport()
 }
 
@@ -382,7 +396,7 @@ func (f *integerEmitter) gcArrayInitializeData(base int, typeIndex, dataIndex ui
 	f.restoreCallTransport()
 }
 
-func (f *integerEmitter) gcArrayFillScalar(base int, typeIndex uint32, wide bool) {
+func (f *integerEmitter) gcArrayFillScalar(base int, typeIndex uint32, wide bool, roots ...[]bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0) // destination array reference
@@ -394,7 +408,7 @@ func (f *integerEmitter) gcArrayFillScalar(base int, typeIndex uint32, wide bool
 	f.a.Sd(enc.X5, enc.X10, 24) // element count
 	f.a.Constant32(enc.X5, typeIndex)
 	f.a.Sd(enc.X5, enc.X10, 32)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayFill})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArrayFill, safepoint: f.functionMutationSafepoint(roots)})
 	f.restoreCallTransport()
 }
 
@@ -458,7 +472,7 @@ func (f *integerEmitter) gcArrayGetRef(base int, typeIndex uint32) {
 	f.Store(f.SpillOffset(base), 5, true)
 }
 
-func (f *integerEmitter) gcArraySetScalar(base int, typeIndex uint32, wide bool) {
+func (f *integerEmitter) gcArraySetScalar(base int, typeIndex uint32, wide bool, roots ...[]bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0)
@@ -468,11 +482,11 @@ func (f *integerEmitter) gcArraySetScalar(base int, typeIndex uint32, wide bool)
 	f.a.Sd(enc.X5, enc.X10, 16)
 	f.a.Constant32(enc.X5, typeIndex)
 	f.a.Sd(enc.X5, enc.X10, 24)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArraySet})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArraySet, safepoint: f.functionMutationSafepoint(roots)})
 	f.restoreCallTransport()
 }
 
-func (f *integerEmitter) gcArraySetRef(base int, typeIndex uint32) {
+func (f *integerEmitter) gcArraySetRef(base int, typeIndex uint32, roots ...[]bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0)
@@ -482,7 +496,7 @@ func (f *integerEmitter) gcArraySetRef(base int, typeIndex uint32) {
 	f.a.Sd(enc.X5, enc.X10, 16)
 	f.a.Constant32(enc.X5, typeIndex)
 	f.a.Sd(enc.X5, enc.X10, 24)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArraySet})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcArraySet, safepoint: f.functionMutationSafepoint(roots)})
 	f.restoreCallTransport()
 }
 
@@ -541,7 +555,7 @@ func (f *integerEmitter) gcStructGetScalar(base int, typeIndex, fieldIndex, help
 	f.Store(f.SpillOffset(base), 5, wide)
 }
 
-func (f *integerEmitter) gcStructSetScalar(base int, typeIndex, fieldIndex uint32, wide bool) {
+func (f *integerEmitter) gcStructSetScalar(base int, typeIndex, fieldIndex uint32, wide bool, roots ...[]bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0) // object reference
@@ -551,23 +565,27 @@ func (f *integerEmitter) gcStructSetScalar(base int, typeIndex, fieldIndex uint3
 	f.a.Sd(enc.X5, enc.X10, 16)
 	f.a.Constant32(enc.X5, fieldIndex)
 	f.a.Sd(enc.X5, enc.X10, 24)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructSet})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructSet, safepoint: f.functionMutationSafepoint(roots)})
 	f.restoreCallTransport()
 }
 
-func (f *integerEmitter) gcObjectTableSet(base int, tableIndex uint32) {
+func (f *integerEmitter) gcObjectTableSet(base int, tableIndex uint32, roots ...[]bool) {
+	f.gcObjectTableSetAt(f.SpillOffset(base), f.SpillOffset(base+1), tableIndex, roots...)
+}
+
+func (f *integerEmitter) gcObjectTableSetAt(indexOffset, valueOffset int32, tableIndex uint32, roots ...[]bool) {
 	f.restoreCallTransport()
-	f.Load(5, f.SpillOffset(base), false)
+	f.Load(5, indexOffset, false)
 	f.a.Sd(enc.X5, enc.X10, 0) // zero-normalized table index
-	f.Load(5, f.SpillOffset(base+1), true)
+	f.Load(5, valueOffset, true)
 	f.a.Sd(enc.X5, enc.X10, 8) // compact GC reference
 	f.a.Constant32(enc.X5, tableIndex)
 	f.a.Sd(enc.X5, enc.X10, 16)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructTableSet})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcStructTableSet, safepoint: f.functionMutationSafepoint(roots)})
 	f.restoreCallTransport()
 }
 
-func (f *integerEmitter) gcObjectTableFill(base int, tableIndex uint32) {
+func (f *integerEmitter) gcObjectTableFill(base int, tableIndex uint32, roots ...[]bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), false)
 	f.a.Sd(enc.X5, enc.X10, 0) // zero-normalized destination index
@@ -577,11 +595,11 @@ func (f *integerEmitter) gcObjectTableFill(base int, tableIndex uint32) {
 	f.a.Sd(enc.X5, enc.X10, 16) // zero-normalized element count
 	f.a.Constant32(enc.X5, tableIndex)
 	f.a.Sd(enc.X5, enc.X10, 24)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcTableFill})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcTableFill, safepoint: f.functionMutationSafepoint(roots)})
 	f.restoreCallTransport()
 }
 
-func (f *integerEmitter) gcObjectTableCopy(base int, destinationTable, sourceTable uint32) {
+func (f *integerEmitter) gcObjectTableCopy(base int, destinationTable, sourceTable uint32, roots ...[]bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), false)
 	f.a.Sd(enc.X5, enc.X10, 0) // zero-normalized destination index
@@ -593,11 +611,11 @@ func (f *integerEmitter) gcObjectTableCopy(base int, destinationTable, sourceTab
 	f.a.Sd(enc.X5, enc.X10, 24)
 	f.a.Constant32(enc.X5, sourceTable)
 	f.a.Sd(enc.X5, enc.X10, 32)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcTableCopy})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcTableCopy, safepoint: f.functionMutationSafepoint(roots)})
 	f.restoreCallTransport()
 }
 
-func (f *integerEmitter) gcObjectTableGrow(base int, tableIndex uint32) {
+func (f *integerEmitter) gcObjectTableGrow(base int, tableIndex uint32, roots ...[]bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0) // compact GC reference
@@ -605,7 +623,7 @@ func (f *integerEmitter) gcObjectTableGrow(base int, tableIndex uint32) {
 	f.a.Sd(enc.X5, enc.X10, 8) // zero-normalized growth delta
 	f.a.Constant32(enc.X5, tableIndex)
 	f.a.Sd(enc.X5, enc.X10, 16)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcTableGrow})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcTableGrow, safepoint: f.functionMutationSafepoint(roots)})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {
@@ -615,7 +633,7 @@ func (f *integerEmitter) gcObjectTableGrow(base int, tableIndex uint32) {
 	f.Store(f.SpillOffset(base), 5, false)
 }
 
-func (f *integerEmitter) gcObjectTableInit(base int, elementIndex, tableIndex uint32) {
+func (f *integerEmitter) gcObjectTableInit(base int, elementIndex, tableIndex uint32, roots ...[]bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), false)
 	f.a.Sd(enc.X5, enc.X10, 0) // zero-normalized destination index
@@ -627,7 +645,7 @@ func (f *integerEmitter) gcObjectTableInit(base int, elementIndex, tableIndex ui
 	f.a.Sd(enc.X5, enc.X10, 24)
 	f.a.Constant32(enc.X5, elementIndex)
 	f.a.Sd(enc.X5, enc.X10, 32)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcTableInit})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcTableInit, safepoint: f.functionMutationSafepoint(roots)})
 	f.restoreCallTransport()
 }
 
@@ -712,11 +730,11 @@ func (f *integerEmitter) gcObjectRefCast(base int, heap int64, nullable, exact b
 	f.Store(f.SpillOffset(base), 5, true)
 }
 
-func (f *integerEmitter) gcObjectConversion(base int, helper uint32) {
+func (f *integerEmitter) gcObjectConversion(base int, helper uint32, roots []bool) {
 	f.restoreCallTransport()
 	f.Load(5, f.SpillOffset(base), true)
 	f.a.Sd(enc.X5, enc.X10, 0)
-	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: helper})
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: helper, safepoint: f.recordGCFrameSafepoint(roots)})
 	f.restoreCallTransport()
 	result := enc.X11
 	if f.mode.production {
@@ -768,4 +786,14 @@ func (f *integerEmitter) importCallTarget(index uint32) {
 	f.a.Ld(enc.X6, enc.X6, coreruntime.FuncRefContextOffset)
 	f.trap(trapImportContext, f.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
 	f.trap(trapImportContext, f.a.BranchLong(enc.NE, enc.X7, enc.X6))
+}
+
+func (f *integerEmitter) storeExternGlobal(offset int32, index uint32, roots ...[]bool) {
+	f.restoreCallTransport()
+	f.Load(5, offset, true)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.a.Constant32(enc.X5, index)
+	f.a.Sd(enc.X5, enc.X10, 8)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcExternGlobalSet, safepoint: f.functionMutationSafepoint(roots)})
+	f.restoreCallTransport()
 }

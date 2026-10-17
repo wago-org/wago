@@ -1,10 +1,11 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math"
 	"runtime"
 	"slices"
@@ -461,26 +462,32 @@ func TestRV64PublicSWARGlobalImportLastDirectoryCell(t *testing.T) {
 }
 
 func TestRV64PublicSWARImportedGlobalDataOffsetRequiresImmutableI32(t *testing.T) {
-	c := rv64PublicSWARGlobalImportCompile(t, false, true)
-	view := *c.executionView()
-	view.GlobalImports = slices.Clone(view.GlobalImports)
-	view.Globals = slices.Clone(view.Globals)
-	view.Data = []DataInit{{Bytes: []byte{1}, Offset: OffsetInit{HasGlobal: true, Global: 0}}}
-	if err := railshotValidateCompiled(&view); !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("mutable SIMD data offset admitted", err)
-	}
-	view.GlobalImports[0].Mutable = false
-	view.Globals[0].Mutable = false
-	if err := railshotValidateCompiled(&view); err != nil {
-		t.Fatal("immutable I32 data offset rejected", err)
-	}
-	view.Data[0].Offset.Global = 2
-	if err := railshotValidateCompiled(&view); !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("same-width F32 data offset admitted", err)
-	}
-	view.Data[0].Offset = OffsetInit{}
-	if err := railshotValidateCompiled(&view); err != nil {
-		t.Fatal("literal active data offset rejected", err)
+	for _, tc := range []struct {
+		name    string
+		mutable bool
+		offset  []byte
+	}{
+		{"immutable-i32", false, []byte{0x23, 0, 0x0b}},
+		{"mutable-i32", true, []byte{0x23, 0, 0x0b}},
+		{"same-width-f32", false, []byte{0x23, 1, 0x0b}},
+		{"literal", false, []byte{0x41, 0, 0x0b}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := append([]byte{0xfd, 12}, make([]byte, 16)...)
+			body = append(body, 0x0b)
+			segment := append([]byte{0}, tc.offset...)
+			segment = append(segment, 1, 1)
+			source := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+				wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "i32", wasm.I32, tc.mutable), wasmtest.GlobalImportEntry("env", "f32", wasm.F32, false))),
+				wasmtest.Section(3, []byte{1, 0}),
+				wasmtest.Section(5, []byte{1, 0, 1}),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+				wasmtest.Section(11, wasmtest.Vec(segment)),
+			)
+			rv64RequireCore3SourceValidation(t, source)
+		})
 	}
 }
 
@@ -504,8 +511,79 @@ func TestRV64PublicSWARImportedGlobalMixturesRemainClosed(t *testing.T) {
 		if err := wasm.ValidateModule(m); err != nil {
 			t.Fatal("mixture fixture must be normally valid", err)
 		}
-		if c, err := Compile(nil, source); c != nil || !errors.Is(err, railshot.ErrUnsupported) {
-			t.Fatal("pending mixed import profile admitted", err)
+		rv64RequireCore3SourceValidation(t, source)
+	}
+}
+
+func TestRV64PublicSWARGlobalIndex256(t *testing.T) {
+	const low, high = uint64(0x0123456789abcdef), uint64(0xfedcba9876543210)
+	shared := NewGlobalV128(rv64PublicVector(low, high), true)
+	defer shared.Close()
+	for _, local := range []bool{false, true} {
+		for _, artifact := range []bool{false, true} {
+			t.Run(fmt.Sprintf("local%t-artifact%t", local, artifact), func(t *testing.T) {
+				if err := shared.SetV128(rv64PublicVector(low, high)); err != nil {
+					t.Fatal(err)
+				}
+				count := 257
+				if local {
+					count--
+				}
+				entries := make([][]byte, count)
+				imports := NewImports()
+				for i := range entries {
+					name := fmt.Sprintf("g%d", i)
+					entries[i] = wasmtest.GlobalImportEntry("env", name, wasm.V128, true)
+					imports.Global("env", name, shared)
+				}
+				sections := [][]byte{
+					wasmtest.Section(1, wasmtest.Vec(
+						wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}),
+						wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}),
+					)),
+					wasmtest.Section(2, wasmtest.Vec(entries...)),
+					wasmtest.Section(3, []byte{2, 0, 1}),
+				}
+				if local {
+					literal := make([]byte, 19)
+					literal[0], literal[1], literal[18] = 0xfd, 0x0c, 0x0b
+					binary.LittleEndian.PutUint64(literal[2:], low)
+					binary.LittleEndian.PutUint64(literal[10:], high)
+					sections = append(sections, wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.V128, true, literal))))
+				}
+				sections = append(sections,
+					wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0), wasmtest.ExportEntry("set", 0, 1))),
+					wasmtest.Section(10, wasmtest.Vec(
+						wasmtest.Code([]byte{0x23, 0x80, 0x02, 0x0b}),
+						wasmtest.Code([]byte{0x20, 0, 0x24, 0x80, 0x02, 0x23, 0x80, 0x02, 0x0b}),
+					)),
+				)
+				compiled := rv64PublicStartCompile(t, wasmtest.Module(sections...), artifact)
+				instance, err := Instantiate(compiled, imports)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer instance.Close()
+				compiled.Close()
+				for range 3 {
+					if got, err := instance.Invoke("get"); err != nil || !slices.Equal(got, []uint64{low, high}) {
+						t.Fatal("global index256 vector words", got, err)
+					}
+				}
+				const changedLow, changedHigh = high, low
+				setter := func() {
+					if got, err := instance.Invoke("set", changedLow, changedHigh); err != nil || !slices.Equal(got, []uint64{changedLow, changedHigh}) {
+						t.Fatal("global index256 vector store", got, err)
+					}
+				}
+				setter()
+				if got, err := instance.Invoke("get"); err != nil || !slices.Equal(got, []uint64{changedLow, changedHigh}) {
+					t.Fatal("global index256 stored vector words", got, err)
+				}
+				if got := testing.AllocsPerRun(1000, setter); got != 0 {
+					t.Fatalf("warm vector setter allocations: %v", got)
+				}
+			})
 		}
 	}
 }

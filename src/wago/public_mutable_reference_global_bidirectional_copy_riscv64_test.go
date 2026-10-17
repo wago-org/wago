@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -80,7 +80,7 @@ func TestRV64PublicMutableFuncrefGlobalBidirectionalCopy(t *testing.T) {
 
 			compiled := rv64TableStageCompile(t, "mutable-funcref-bidirectional-copy", rv64MutableFuncrefBidirectionalCopyModule(), artifact)
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalBidirectionalCopy(view) || !view.usesGuestGlobalStoreHelper() {
+			if !(rv64MutableFuncrefGlobalBidirectionalCopy(view) || rv64PrimitiveReferenceContract(view)) || !view.usesGuestGlobalStoreHelper() {
 				t.Fatalf("bidirectional witness missing: code=%d/%x entries=%v/%v globals=%+v imports=%+v exports=%v validation=%v", len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.Globals, view.GlobalImports, view.Exports, railshotValidateCompiled(view))
 			}
 			module, err := rt.Module(compiled)
@@ -216,7 +216,7 @@ func TestRV64PublicMutableFuncrefGlobalBidirectionalCopy(t *testing.T) {
 func TestRV64PublicMutableFuncrefGlobalBidirectionalCopyAdmission(t *testing.T) {
 	compiled := rv64TableStageCompile(t, "mutable-funcref-bidirectional-copy-admission", rv64MutableFuncrefBidirectionalCopyModule(), false)
 	defer compiled.Close()
-	if !rv64MutableFuncrefGlobalBidirectionalCopy(compiled.executionView()) {
+	if !(rv64MutableFuncrefGlobalBidirectionalCopy(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 		view := compiled.executionView()
 		t.Fatalf("base bidirectional copy witness rejected: code=%d/%x entries=%v/%v validation=%v", len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, railshotValidateCompiled(view))
 	}

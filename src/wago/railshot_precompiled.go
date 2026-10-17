@@ -44,6 +44,7 @@ type railshotCompileOptions struct {
 	GCStructHelpers          bool
 	GCArrayHelpers           bool
 	GCFrameRoots             *shared.GCModuleFrameRootPlan
+	GeneralI31Source         bool
 	Codegen                  codegen.Options
 	Stats                    *railshotModuleStats
 	CustomInstructions       map[uint32]railshot.CustomInstruction

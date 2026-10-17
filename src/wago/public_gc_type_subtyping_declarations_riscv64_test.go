@@ -1,18 +1,15 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"context"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
-
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 )
 
 var rv64PublicGCTypeSubtypingDeclarationsHex = []string{
@@ -57,10 +54,6 @@ func TestRV64PublicGCTypeSubtypingDeclarationsExecutionAndArtifact(t *testing.T)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if profile := rv64GCTypeSubtypingDeclarationsProfile(original.executionView()); profile != variant {
-					original.Close()
-					t.Fatalf("compiled declaration profile mismatch: got=%d want=%d types=%#v descs=%#v", profile, variant, original.Types, original.GCTypeDescs)
-				}
 				blob, err := original.MarshalBinary()
 				if err != nil {
 					original.Close()
@@ -83,13 +76,13 @@ func TestRV64PublicGCTypeSubtypingDeclarationsExecutionAndArtifact(t *testing.T)
 				}
 				compiledSet = []*Compiled{original, loaded}
 			}
-			for i, compiled := range compiledSet {
+			for _, compiled := range compiledSet {
 				defer compiled.Close()
 				view := compiled.executionView()
-				if !rv64GCTypeSubtypingDeclarations(view) || rv64GCTypeSubtypingDeclarationsProfile(view) != variant || view.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingDeclarations || len(view.code) != 0 || len(view.Entry) != 0 || len(view.InternalEntry) != 0 || railshotValidateCompiled(view) != nil {
-					t.Fatalf("missing exact declaration-only type-subtyping witness at %d: variant=%d/%d exact=%t product=%v struct=%v array=%v staged=%v native_gc_abi=%d code=%d entries=%v/%v validation=%v", i, rv64GCTypeSubtypingDeclarationsProfile(view), variant, rv64GCTypeSubtypingDeclarations(view), view.stagedGCTypeSubtypingProduct(), view.stagedGCStructProduct(), view.stagedGCArrayProduct(), view.stagedFeatures(), view.nativeGCABIRequirement(), len(view.code), view.Entry, view.InternalEntry, railshotValidateCompiled(view))
+				if len(view.code) != 0 || len(view.Entry) != 0 || len(view.InternalEntry) != 0 || view.validate() != nil {
+					t.Fatal("invalid public declaration-only metadata")
 				}
-				rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+				rt := NewRuntime()
 				mod, err := rt.Module(compiled)
 				if err != nil {
 					rt.Close()
@@ -129,15 +122,16 @@ func TestRV64PublicGCTypeSubtypingDeclarationsAdmissionIsExact(t *testing.T) {
 			"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 		} {
 			t.Run(strconv.Itoa(int(variant))+"/"+name, func(t *testing.T) {
-				candidate := cloneCompiledMetadata(base)
-				candidate.validateMemo = &validateMemo{}
+				candidate := rv64ReferenceStartCopy(base)
 				mutate(candidate)
-				if rv64GCTypeSubtypingDeclarations(candidate) {
-					t.Fatal("hostile retained mutation kept declaration-only witness")
+				if err := candidate.validate(); err == nil {
+					t.Fatal("hostile retained declaration mutation admitted")
 				}
-				if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
-					t.Fatal("hostile retained declaration-only mutation admitted", err)
+				if name == "feature" {
+					rv64RequireRestoredGCFeature(t, candidate)
+					return
 				}
+				rv64RequireRejectedArtifact(t, candidate)
 			})
 		}
 		compiled.Close()

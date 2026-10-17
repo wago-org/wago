@@ -175,10 +175,7 @@ func TestReferenceFunctionPrivateNeverPublished(t *testing.T) {
 			}
 		}
 		pressure := 0
-		image, err := CompileModuleWith(m, referenceControlProductionOptions(true, &pressure))
-		if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
-			t.Fatal("source reference callable gate", vector, err, pressure)
-		}
+		checkPublicPrimitiveModule(t, m, referenceControlProductionOptions(true, &pressure))
 	}
 }
 
@@ -238,7 +235,7 @@ func TestReferenceFunctionPrivateBoundsAndBudget(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		limit := 256
 		if vector {
-			limit = 128
+			limit = maxSWARLocals
 		}
 		for _, n := range []int{limit, limit + 1} {
 			params := make([]wasm.ValType, n)

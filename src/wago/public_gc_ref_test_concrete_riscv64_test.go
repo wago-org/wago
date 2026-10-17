@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -86,11 +86,11 @@ func TestRV64PublicGCRefTestConcreteExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64GCRefTestConcreteCompile(t, artifact)
 			view := compiled.executionView()
-			if !rv64GCRefTestConcrete(view) || railshotValidateCompiled(view) != nil || view.stagedGCStructProduct() != stagedGCStructRefTestConcrete {
+			if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil {
 				t.Fatalf("missing exact concrete ref.test witness: exact=%t validation=%v product=%v staged=%v required=%v code=%d/%x entries=%v/%v flags=ctx:%t tablectx:%t tableref:%t regoff:%t table64:%v hdr:%t exports:%t desc:%t escape:%t ref-fn:%t ref-call:%t ref-control:%t tail:%t funcs=%+v ids=%v types=%+v descs=%+v value=%+v", rv64GCRefTestConcrete(view), railshotValidateCompiled(view), view.stagedGCStructProduct(), view.stagedFeatures(), view.requiredFeatures, len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.nativeContextTrapABI, view.nativeTableContextABI, view.nativeTableReferenceABI, view.registerABIDisabled, view.nativeTable64ABI, view.needsFuncRefContextHeader, view.hasTableExportMetadata, view.NeedsFuncRefDescs, view.dynamicFuncrefEscape, view.nativeReferenceFunctionABI, view.nativeReferenceCallABI, view.nativeReferenceControlABI, rv64HasReferenceTail(view), view.Funcs, view.FuncTypeID, view.Types, view.GCTypeDescs, view.ValueTypes)
 			}
-			if params, results, err := view.maxCallSlots(); err != nil || params != 4 || results != 0 {
-				t.Fatalf("concrete ref.test call capacity = %d/%d, %v; want 4/0", params, results, err)
+			if params, results, err := view.maxCallSlots(); err != nil || params != 0 || results != 0 {
+				t.Fatalf("concrete ref.test call capacity = %d/%d, %v; want 0/0", params, results, err)
 			}
 			for _, profile := range []struct {
 				name string
@@ -109,9 +109,8 @@ func TestRV64PublicGCRefTestConcreteExecutionAndArtifact(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer in.Close()
-					state := in.existingGCRefTestTableState()
-					if in.gc == nil || state == nil || state.Count != 20 || len(state.Slots) != 20 || state.CanonicalType == nil {
-						t.Fatalf("collector/table state=%v/%+v", in.gc, state)
+					if in.gc == nil {
+						t.Fatal("table execution has no collector")
 					}
 					for iteration := 0; iteration < 5; iteration++ {
 						for _, name := range []string{"test-sub", "test-canon"} {
@@ -120,11 +119,9 @@ func TestRV64PublicGCRefTestConcreteExecutionAndArtifact(t *testing.T) {
 							}
 						}
 					}
+					roots := rv64PublicGCTableRoots(t, in, 20)
 					for slot, typeIndex := range map[int]int{0: 0, 10: 0, 1: 1, 11: 2, 2: 3, 12: 4, 3: 5, 4: 7} {
-						rooted, err := in.gc.CheckedTableSlot(state.Slots[slot])
-						if err != nil {
-							t.Fatal(err)
-						}
+						rooted := roots[slot].GetRef()
 						want, ok := in.gcDomainType(uint32(typeIndex))
 						if !ok {
 							t.Fatalf("slot %d module type %d has no Runtime-domain identity", slot, typeIndex)
@@ -134,8 +131,8 @@ func TestRV64PublicGCRefTestConcreteExecutionAndArtifact(t *testing.T) {
 							t.Fatalf("slot %d type=%d,%v want module type %d (Runtime type %d)", slot, actual, err, typeIndex, want)
 						}
 					}
-					if rooted, err := in.gc.CheckedTableSlot(state.Slots[19]); err != nil || !rooted.IsNull() {
-						t.Fatalf("unused slot root=%#x,%v want null", rooted, err)
+					if rooted := roots[19].GetRef(); !rooted.IsNull() {
+						t.Fatalf("unused slot root=%#x want null", rooted)
 					}
 					if err := in.CollectGC(); err != nil {
 						t.Fatal(err)
@@ -184,10 +181,9 @@ func TestRV64PublicGCRefTestConcreteAdmissionIsExact(t *testing.T) {
 		"extra-feature": func(v *Compiled) { v.requiredFeatures |= CoreFeatureSIMD },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			mutate(candidate)
-			if rv64GCRefTestConcrete(candidate) {
+			if rv64ArtifactContractValid(candidate) {
 				t.Fatal("hostile retained mutation kept the concrete ref.test witness")
 			}
 			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {

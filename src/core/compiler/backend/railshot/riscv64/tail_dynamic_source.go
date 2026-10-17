@@ -7,6 +7,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
@@ -17,6 +18,19 @@ func (f *integerEmitter) dynamicIndirectTailCall(typeIndex uint32, sig *wasm.Com
 	if !f.mode.dynamicTailCalls || !f.mode.importTailCalls || !f.mode.invocationContext || !f.mode.foreignTableCalls || f.mode.tailPlans == nil || !f.admitLocalTailFrame() || sig == nil || spill == nil || typeIndex >= MaxFunctions {
 		f.err = unsupported("private dynamic indirect source contract")
 		return
+	}
+	if directory := f.mode.primitiveTailTypes; directory != nil && directory.localNumericTails && !f.mode.gcRootedScalar && f.mode.exceptionModule == nil {
+		keys, ok := directory.subtypeKeys(typeIndex)
+		if ok && len(keys) == 1 && keys[0] == key {
+			// Closed numeric boundaries can only select this instance's framed
+			// definitions. Keep the local wrapper/home/context checks, including
+			// for nonzero and table64 indices, without a runtime code factory.
+			foreign := f.mode.foreignTableCalls
+			f.mode.foreignTableCalls = false
+			f.localIndirectTailCallAt(sig, key, base, indexSlot, indexWide, tableIndex, spill)
+			f.mode.foreignTableCalls = foreign
+			return
+		}
 	}
 	n := len(*f.mode.tailPlans)
 	if f.mode.tailSiteBase > tailRAMaxSites || n >= tailRAMaxSites-int(f.mode.tailSiteBase) {
@@ -46,14 +60,28 @@ func (f *integerEmitter) dynamicIndirectTailCall(typeIndex uint32, sig *wasm.Com
 	f.a.Add(enc.X6, enc.X6, enc.X5)
 	f.a.Ld(enc.X7, enc.X6, 8)
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X7, enc.Zero))
-	f.a.Ld(enc.X7, enc.X6, 16)
-	f.a.Constant64(enc.X5, int64(key))
-	f.trap(trapIndirectSignature, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+	if f.mode.primitiveTailTypes == nil {
+		f.a.Ld(enc.X7, enc.X6, 16)
+		f.a.Constant64(enc.X5, int64(key))
+		f.trap(trapIndirectSignature, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
+	} else if !f.mode.primitiveTailTypes.needsSubtypeHelper(typeIndex) {
+		keys, ok := f.mode.primitiveTailTypes.subtypeKeys(typeIndex)
+		if !ok {
+			f.err = unsupported("dynamic indirect tail subtype key bound")
+			return
+		}
+		f.a.Ld(enc.X7, enc.X6, 16)
+		f.guardSignatureKeys(enc.X7, keys)
+	}
+	// Open structural subtype sets require the retained dispatcher's full type
+	// match. Closed sets also reject a stale cached key before transport writes;
+	// their accepted keys include every validated proper subtype.
 	f.a.Ld(enc.X14, enc.X6, 32)
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
 	// The selected reference home is eight bytes physically. Sd preserves
 	// every reference bit; a narrow Store would truncate the selected address.
 	f.Store(int32(p.referenceBase), 14, true)
+	f.guardCollectorTailContext(sig)
 	*f.mode.tailPlans = append(*f.mode.tailPlans, p)
 	f.tailRAProofCall(p.site, sig, base, spill)
 }
@@ -80,8 +108,27 @@ func (f *integerEmitter) dynamicReferenceTailCall(typeIndex uint32, sig *wasm.Co
 	// instruction's signed 12-bit offset. Use the bounded frame address helper.
 	f.Load(14, int32(p.referenceBase), true)
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
+	f.guardCollectorTailContext(sig)
 	*f.mode.tailPlans = append(*f.mode.tailPlans, p)
 	f.tailRAProofCall(p.site, sig, base, spill)
+}
+
+// Compact object references can leave a discarded frame only through an
+// authenticated callable context in the same GC domain. The dispatcher still
+// validates the complete retained descriptor and declared signature afterward.
+func (f *integerEmitter) guardCollectorTailContext(sig *wasm.CompType) {
+	if !f.mode.gcRootedScalar || !referenceCallCarriesCollector(sig) {
+		return
+	}
+	f.canonicalReferenceGuard(enc.X14, enc.X5, enc.X7)
+	f.a.Ld(enc.X7, enc.X14, 32)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X7, enc.Zero))
+	f.a.Ld(enc.X7, enc.X7, coreruntime.InstanceContextGCDomainOffset)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X7, enc.Zero))
+	f.a.Ld(enc.X5, enc.X25, -abi.RV64NativeContextOffset)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X5, enc.Zero))
+	f.a.Ld(enc.X5, enc.X5, coreruntime.InstanceContextGCDomainOffset)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
 }
 
 func compileDynamicTailSource(source []byte, siteBase uint32, forceSWAR bool) (*tailImportImage, error) {
@@ -123,7 +170,7 @@ func compileDynamicTailSource(source []byte, siteBase uint32, forceSWAR bool) (*
 	}
 	for n := range m.Imports {
 		sig, ok := m.ImportFuncType(n)
-		if !ok {
+		if !ok || swarSignatureSlots(sig.Params) > 64 || swarSignatureSlots(sig.Results) > 64 {
 			return nil, unsupported("private dynamic import signature")
 		}
 		i.signatures = append(i.signatures, sig)

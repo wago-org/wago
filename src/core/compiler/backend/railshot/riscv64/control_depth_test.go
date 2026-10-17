@@ -3,7 +3,6 @@
 package riscv64
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 	"unsafe"
@@ -52,10 +51,10 @@ func controlDepthSource(depth int, kind string, swar bool) []byte {
 	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(types...)), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
 }
 
-func TestProductionControlDepth128And129BeforePublication(t *testing.T) {
+func TestProductionControlDepthInlineAndGrowthBeforePublication(t *testing.T) {
 	for _, swar := range []bool{false, true} {
 		for _, kind := range []string{"branch", "loop", "dead", "unreachable"} {
-			for _, depth := range []int{128, 129} {
+			for _, depth := range []int{128, 129, 257} {
 				t.Run(fmt.Sprintf("swar%t-%s-%d", swar, kind, depth), func(t *testing.T) {
 					source := controlDepthSource(depth, kind, swar)
 					m, err := wasm.DecodeModule(source)
@@ -67,14 +66,8 @@ func TestProductionControlDepth128And129BeforePublication(t *testing.T) {
 					}
 					pressure := 0
 					image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, MemoryPressure: func() { pressure++ }})
-					if depth == 129 {
-						if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
-							t.Fatal("depth129 must reject before publication", err, pressure)
-						}
-						return
-					}
 					if err != nil || image == nil || len(image.Code) == 0 || image.CodeImage != nil || pressure != 1 {
-						t.Fatal("depth128 production image", err, pressure)
+						t.Fatal("deep control production image", depth, err, pressure)
 					}
 					if len(image.Code) > MaxCodeBytes {
 						t.Fatal("control depth escaped aggregate code budget")

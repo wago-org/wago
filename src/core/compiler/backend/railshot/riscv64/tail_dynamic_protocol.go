@@ -76,6 +76,8 @@ func (o tailRADynamicOwner) targetFlags(i int) uint64 {
 type tailRADynamicSite struct {
 	referenceBase int
 	key           uint64
+	typeImage     *NativeTailCodeImage
+	typeIndex     uint32
 	owners        []tailRADynamicOwner
 }
 
@@ -90,6 +92,9 @@ func (d *tailRADynamicSite) budget() (metadata, code int, err error) {
 		return 0, 0, unsupported("dynamic tail owner count")
 	}
 	metadata = int(unsafe.Sizeof(*d)) + len(d.owners)*int(unsafe.Sizeof(tailRADynamicOwner{}))
+	if d.typeImage != nil {
+		metadata += int(unsafe.Sizeof(NativeTailCodeImage{}))
+	}
 	code = 2048 + 1024*len(d.owners)
 	count := 0
 	for _, o := range d.owners {
@@ -149,7 +154,10 @@ func (d *tailRADynamicSite) validate(s *tailRAProofSite) error {
 	if _, _, err := d.budget(); err != nil {
 		return err
 	}
-	if !s.invocationContext || s.hostEntry || d.referenceBase < callFrameHeader || d.referenceBase > s.frameBytes-8 || d.referenceBase&7 != 0 || d.key != wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: s.params, Results: s.results}) {
+	if err := d.validateType(s.callerHome, s.callerContext, s.params, s.results); err != nil {
+		return err
+	}
+	if !s.invocationContext || s.hostEntry || d.referenceBase < callFrameHeader || d.referenceBase > s.frameBytes-8 || d.referenceBase&7 != 0 {
 		return unsupported("dynamic tail exact signature/reference home")
 	}
 	for n := range s.params {
@@ -170,6 +178,28 @@ func (d *tailRADynamicSite) validate(s *tailRAProofSite) error {
 		if err := o.validate(s.target.hostTrampoline); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (d *tailRADynamicSite) validateType(home, context uintptr, params, results []wasm.ValType) error {
+	var key uint64
+	if d.typeImage != nil {
+		if err := d.typeImage.validateCaller(home, context); err != nil {
+			return err
+		}
+		var err error
+		key, err = d.typeImage.typeKey(d.typeIndex, params, results)
+		if err != nil {
+			return err
+		}
+	} else if d.typeIndex != 0 {
+		return unsupported("dynamic tail declared type has no owner")
+	} else {
+		key = wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: results})
+	}
+	if d.key != key {
+		return unsupported("dynamic tail exact signature/reference home")
 	}
 	return nil
 }
@@ -219,7 +249,7 @@ func (o tailRADynamicOwner) validate(trampoline uintptr) error {
 		} else if err := t.validate(true); err != nil {
 			return err
 		}
-		if !t.info.mode.invocationContext || !wasm.FuncTypeEqual(f.signature, t.signature) || binary.LittleEndian.Uint64(t.directory[16:]) != uint64(t.job.LinMemBase()) {
+		if !t.info.mode.invocationContext || !wasm.FuncTypeEqual(f.signature, t.signature) || len(t.directory) != 0 && binary.LittleEndian.Uint64(t.directory[16:]) != uint64(t.job.LinMemBase()) {
 			return unsupported("dynamic tail exact producer signature/anchor")
 		}
 		if p := o.proxy(i); p != nil {
@@ -312,6 +342,34 @@ func (d *tailRADynamicSite) freeze() *tailRADynamicSite {
 	return &f
 }
 
+func sameTailDynamicSlice[T any](a, b []T) bool {
+	return len(a) == len(b) && unsafe.SliceData(a) == unsafe.SliceData(b)
+}
+
+// Only identical borrowed records can share their immutable frozen copy.
+// Keys and reference homes are site-local and are never shared here.
+func sameTailDynamicOwners(a, b *tailRADynamicSite) bool {
+	if a == nil || b == nil || len(a.owners) != len(b.owners) {
+		return false
+	}
+	for i, x := range a.owners {
+		y := b.owners[i]
+		if !sameTailDynamicSlice(x.descriptors, y.descriptors) || !sameTailDynamicSlice(x.context, y.context) ||
+			!sameTailDynamicSlice(x.directory, y.directory) || !sameTailDynamicSlice(x.functions, y.functions) ||
+			!sameTailDynamicSlice(x.signatureKeys, y.signatureKeys) || !sameTailDynamicSlice(x.uncallable, y.uncallable) ||
+			!sameTailDynamicSlice(x.targets, y.targets) || !sameTailDynamicSlice(x.proxies, y.proxies) || !sameTailDynamicSlice(x.hosts, y.hosts) {
+			return false
+		}
+	}
+	return true
+}
+
+func (d *tailRADynamicSite) freezeShared(owners []tailRADynamicOwner) *tailRADynamicSite {
+	f := *d
+	f.owners = owners
+	return &f
+}
+
 // The private proof's declared guest budget must include every distinct target
 // image. Deduplicate with bounded metadata scans before allocating scratch maps.
 func nativeTailDynamicCodeBytes(sites []NativeTailSite) (int, error) {
@@ -357,7 +415,7 @@ func nativeTailDynamicCodeBytes(sites []NativeTailSite) (int, error) {
 // Membership is established against frozen owned slices before dereferencing
 // the supplied reference. X16/17/18 retain entry/home/context through finalizing;
 // X19/20/21 are owner cursors. X26/27 remain reserved for Go's CTXT/g registers.
-func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite) {
+func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite, params, results []wasm.ValType) error {
 	a := &e.a
 	frozenKeys := true
 	for _, o := range d.owners {
@@ -440,6 +498,21 @@ func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite) {
 			t := o.target(i)
 			// A live key cannot relabel a genuine function of another signature.
 			matching := wasm.StructuralFuncTypeKey(f.signature) == d.key && wasm.StructuralFuncTypeKey(t.signature) == d.key
+			if o.signatureKeys != nil {
+				matching = matching && o.signatureKeys[i] == d.key
+			}
+			if d.typeImage != nil {
+				transport := wasm.FuncTypeEqual(f.signature, &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: results}) && wasm.FuncTypeEqual(t.signature, f.signature)
+				accepted := o.signatureKeys != nil && o.signatureKeys[i] == d.key
+				if !accepted && transport && o.signatureKeys != nil {
+					var err error
+					accepted, err = d.typeImage.typeMatchesFunction(d.typeIndex, f.published, uint32(i))
+					if err != nil {
+						return err
+					}
+				}
+				matching = accepted && transport
+			}
 			if !matching && !frozenKeys {
 				continue
 			}
@@ -465,10 +538,12 @@ func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite) {
 			a.Ld(enc.Scratch0, enc.X18, 16)
 			a.Constant64(enc.X29, int64(tailRAPointer(t.directory)))
 			e.fail(enc.NE, enc.Scratch0, enc.X29)
-			a.Ld(enc.Scratch0, enc.X29, 32)
-			e.fail(enc.NE, enc.Scratch0, enc.X18)
-			a.Ld(enc.Scratch0, enc.X29, 16)
-			e.fail(enc.NE, enc.Scratch0, enc.X17)
+			if len(t.directory) != 0 {
+				a.Ld(enc.Scratch0, enc.X29, 32)
+				e.fail(enc.NE, enc.Scratch0, enc.X18)
+				a.Ld(enc.Scratch0, enc.X29, 16)
+				e.fail(enc.NE, enc.Scratch0, enc.X17)
+			}
 			if frozenKeys {
 				// Distinguish an authentic function with another declared type
 				// from corrupted metadata. Authenticate its complete frozen
@@ -490,4 +565,5 @@ func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite) {
 	for _, site := range genuine {
 		e.patch(site)
 	}
+	return nil
 }

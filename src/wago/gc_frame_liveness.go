@@ -313,12 +313,9 @@ func gcFrameLocalLivenessArenaWithClassifier(body []byte, locals []shared.GCFram
 		}
 		node.nativeCall = imm.Kind == wasm.InstrCall || imm.Kind == wasm.InstrCallIndirect || imm.Kind == wasm.InstrCallRef
 		keep := node.use != noGCLiveIndex || node.def != noGCLiveIndex || node.nativeCall || node.flow == gcLiveBrTable
-		if op == 0xfb {
-			switch imm.Subopcode {
-			case 0, 1, 6, 7, 8, 9, 10: // struct.new*, array.new*
-				node.allocation = true
-				keep = true
-			}
+		if gcFrameInstructionMayAllocate(op, imm) {
+			node.allocation = true
+			keep = true
 		}
 
 		nodeIndex := len(nodes)
@@ -814,12 +811,18 @@ func gcFrameInstructionMayAllocate(op byte, imm wasm.InstructionImmediate) bool 
 	switch imm.Subopcode {
 	case 0, 1, 6, 7, 8, 9, 10:
 		return true
+	case 26, 27:
+		return compiledArchitecture == 4 // compact extern wrappers and shells
 	default:
 		return false
 	}
 }
 
-func gcFrameBodyMayAllocateWithClassifier(body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
+func gcFrameBodyMayAllocateWithClassifier(body []byte, classifier *wasm.ModuleInstructionClassifier, typedModule ...*wasm.Module) bool {
+	var m *wasm.Module
+	if compiledArchitecture == 4 && len(typedModule) != 0 {
+		m = typedModule[0]
+	}
 	r := wasm.NewReader(body)
 	for r.HasNext() {
 		op, err := r.Byte()
@@ -830,7 +833,7 @@ func gcFrameBodyMayAllocateWithClassifier(body []byte, classifier *wasm.ModuleIn
 		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
 			return true
 		}
-		if gcFrameInstructionMayAllocate(op, imm) {
+		if gcFrameInstructionMayAllocate(op, imm) || wasm.OpaqueStorageMutation(m, imm.Kind, imm.Index, imm.Index2) {
 			return true
 		}
 	}
@@ -842,7 +845,11 @@ func gcFrameAllLiveMasksArena(body []byte, localRoots int) (gcFrameLiveMasks, er
 	return gcFrameAllLiveMasksArenaWithClassifier(body, localRoots, &classifier)
 }
 
-func gcFrameAllLiveMasksArenaWithClassifier(body []byte, localRoots int, classifier *wasm.ModuleInstructionClassifier) (gcFrameLiveMasks, error) {
+func gcFrameAllLiveMasksArenaWithClassifier(body []byte, localRoots int, classifier *wasm.ModuleInstructionClassifier, typedModule ...*wasm.Module) (gcFrameLiveMasks, error) {
+	var m *wasm.Module
+	if len(typedModule) != 0 {
+		m = typedModule[0]
+	}
 	if localRoots < 0 || localRoots > shared.GCFrameTrackedLocalLimit {
 		return gcFrameLiveMasks{}, fmt.Errorf("GC conservative liveness tracks %d locals, representation limit %d", localRoots, shared.GCFrameTrackedLocalLimit)
 	}
@@ -871,10 +878,12 @@ func gcFrameAllLiveMasksArenaWithClassifier(body []byte, localRoots int, classif
 				return 0, 0, readErr
 			}
 			if op == 0xfb {
-				switch imm.Subopcode {
-				case 0, 1, 6, 7, 8, 9, 10:
+				if gcFrameInstructionMayAllocate(op, imm) {
 					allocationN++
 				}
+			}
+			if wasm.OpaqueStorageMutation(m, imm.Kind, imm.Index, imm.Index2) {
+				allocationN++
 			}
 			if imm.Kind == wasm.InstrCall || imm.Kind == wasm.InstrCallIndirect || imm.Kind == wasm.InstrCallRef {
 				callN++
@@ -905,11 +914,14 @@ func gcFrameAllLiveMasksArenaWithClassifier(body []byte, localRoots int, classif
 			return gcFrameLiveMasks{}, readErr
 		}
 		if op == 0xfb {
-			switch imm.Subopcode {
-			case 0, 1, 6, 7, 8, 9, 10:
+			if gcFrameInstructionMayAllocate(op, imm) {
 				appendMask(allocationIndex)
 				allocationIndex++
 			}
+		}
+		if wasm.OpaqueStorageMutation(m, imm.Kind, imm.Index, imm.Index2) {
+			appendMask(allocationIndex)
+			allocationIndex++
 		}
 		if imm.Kind == wasm.InstrCall || imm.Kind == wasm.InstrCallIndirect || imm.Kind == wasm.InstrCallRef {
 			appendMask(allocationN + callIndex)

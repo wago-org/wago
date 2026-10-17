@@ -1,16 +1,14 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"maps"
 	"slices"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -42,7 +40,7 @@ func TestRV64PublicMixedTable64Grow(t *testing.T) {
 			consumerCode := rv64TableStageCompile(t, "mixed-table64-grow-consumer", rv64MixedTable64GrowSource(), artifact)
 			defer consumerCode.Close()
 			view := consumerCode.executionView()
-			if view.nativeTable64ABI != nativeTable64ImportedGrowABI || !rv64MixedTable64Grow(view) || view.tableCount() != 2 || view.tableImportCount() != 1 || view.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes || !view.NeedsFuncRefDescs {
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || view.tableCount() != 2 || view.tableImportCount() != 1 || view.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes || !view.NeedsFuncRefDescs {
 				t.Fatal("mixed table64.grow metadata contract")
 			}
 			producer, err := Instantiate(producerCode)
@@ -159,11 +157,19 @@ func TestRV64PublicMixedTable64GrowSourceGates(t *testing.T) {
 	for name, source := range mutations {
 		t.Run(name, func(t *testing.T) {
 			c, err := Compile(nil, source)
-			if c != nil {
-				c.Close()
-			}
-			if err == nil {
-				t.Fatal("nearby mixed table64.grow source admitted")
+			if name == "wrong-index" {
+				if err != nil {
+					t.Fatal("valid mixed table source", err)
+				}
+				defer c.Close()
+				rv64RequireTableArtifactMetadata(t, c)
+			} else {
+				if c != nil {
+					c.Close()
+				}
+				if err == nil {
+					t.Fatal("invalid table width or malformed source admitted")
+				}
 			}
 		})
 	}
@@ -197,15 +203,14 @@ func TestRV64PublicMixedTable64GrowArtifactGates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			base := rv64TableStageCompile(t, "mixed-table64-grow-gates", rv64MixedTable64GrowSource(), false)
 			defer base.Close()
-			bad := cloneCompiledMetadata(base.executionView())
+			bad := rv64ReferenceImportTailCopy(base)
 			bad.extraTables = slices.Clone(bad.extraTables)
 			bad.Funcs = slices.Clone(bad.Funcs)
 			bad.Funcs[1].Results = slices.Clone(bad.Funcs[1].Results)
 			bad.Exports = maps.Clone(bad.Exports)
 			bad.tableExports = maps.Clone(bad.tableExports)
-			bad.validateMemo, bad.codeCache = &validateMemo{}, nil
 			mutate(bad)
-			if rv64MixedTable64Grow(bad) || !errors.Is(railshotValidateCompiled(bad), railshot.ErrUnsupported) {
+			if bad.validate() == nil {
 				t.Fatal("hostile mixed table64.grow metadata admitted")
 			}
 			blob, err := marshalCompiled(bad)

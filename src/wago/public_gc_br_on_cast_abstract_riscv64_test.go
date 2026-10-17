@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -102,13 +102,8 @@ func TestRV64PublicGCBrOnCastAbstractExecutionAndArtifact(t *testing.T) {
 				t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 					compiled := rv64PublicGCBrOnCastAbstractCompile(t, fail, artifact)
 					view := compiled.executionView()
-					exact := rv64GCBrOnCastAbstract(view)
-					wantProduct := stagedGCStructBrOnCastAbstract
-					if fail {
-						exact, wantProduct = rv64GCBrOnCastFailAbstract(view), stagedGCStructBrOnCastFailAbstract
-					}
-					if !exact || view.stagedGCStructProduct() != wantProduct || railshotValidateCompiled(view) != nil {
-						t.Fatalf("missing exact abstract branch-cast witness: exact=%t product=%v validation=%v code=%d/%x", exact, view.stagedGCStructProduct(), railshotValidateCompiled(view), len(view.code), sha256.Sum256(view.code))
+					if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil {
+						t.Fatalf("invalid branch-cast execution contract: %v", railshotValidateCompiled(view))
 					}
 					if params, results, err := view.maxCallSlots(); err != nil || params != 4 || results != 1 {
 						t.Fatalf("branch-cast call capacity=%d/%d,%v want 4/1", params, results, err)
@@ -192,10 +187,8 @@ func TestRV64PublicGCBrOnCastAbstractAdmissionIsExact(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		t.Run(map[bool]string{false: "success", true: "fail"}[fail], func(t *testing.T) {
 			base := rv64PublicGCBrOnCastAbstractCompile(t, fail, false).executionView()
-			exact := rv64GCBrOnCastAbstract
 			export := "br_on_array"
 			if fail {
-				exact = rv64GCBrOnCastFailAbstract
 				export = "br_on_non_array"
 			}
 			for name, mutate := range map[string]func(*Compiled){
@@ -214,10 +207,9 @@ func TestRV64PublicGCBrOnCastAbstractAdmissionIsExact(t *testing.T) {
 				"feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureMultiValue },
 			} {
 				t.Run(name, func(t *testing.T) {
-					candidate := cloneCompiledMetadata(base)
-					candidate.validateMemo = &validateMemo{}
+					candidate := rv64ReferenceStartCopy(base)
 					mutate(candidate)
-					if exact(candidate) {
+					if rv64ArtifactContractValid(candidate) {
 						t.Fatal("hostile retained mutation kept abstract branch-cast witness")
 					}
 					if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
@@ -226,13 +218,12 @@ func TestRV64PublicGCBrOnCastAbstractAdmissionIsExact(t *testing.T) {
 				})
 			}
 			t.Run("array-product", func(t *testing.T) {
-				candidate := cloneCompiledMetadata(base)
-				candidate.validateMemo = &validateMemo{}
+				candidate := rv64ReferenceStartCopy(base)
 				candidate.ensureCodeCache()
 				previous := candidate.codeCache.gcArrayProduct
 				candidate.codeCache.gcArrayProduct = stagedGCArrayProductGeneric
 				t.Cleanup(func() { candidate.codeCache.gcArrayProduct = previous })
-				if exact(candidate) {
+				if rv64ArtifactContractValid(candidate) {
 					t.Fatal("hostile retained array product kept abstract branch-cast witness")
 				}
 				if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {

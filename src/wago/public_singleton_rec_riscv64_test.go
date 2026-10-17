@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -251,10 +251,5 @@ func TestRV64PublicExplicitSingletonRecWrappedReferenceFeatureGate(t *testing.T)
 		0x60, 1, 0x70, 0,
 		0x4e, 1, 0x60, 0, 1, 0x63, 0,
 	}))
-	if compiled, err := rv64NativeTailConfig().Compile(referenceTarget); compiled != nil || err == nil {
-		if compiled != nil {
-			compiled.Close()
-		}
-		t.Fatal("wrapped indexed control admitted reference-bearing target", err)
-	}
+	rv64RequireCore3SourceValidation(t, referenceTarget)
 }

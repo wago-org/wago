@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -225,10 +225,9 @@ func TestRV64PublicSWARArtifactProfileRejectionsBeforeMapping(t *testing.T) {
 		name   string
 		mutate func(*Compiled)
 	}{
-		{"vector-arity", func(v *Compiled) { v.Funcs = slices.Clone(v.Funcs); v.Funcs[0].Params = make([]ValType, 129) }},
-		{"vector-unused-type-arity", func(v *Compiled) {
-			v.Types = slices.Clone(v.Types)
-			v.Types[0].Params = make([]ValueTypeDescriptor, 129)
+		{"vector-arity", func(v *Compiled) {
+			v.Funcs = slices.Clone(v.Funcs)
+			v.Funcs[0].Params = make([]ValType, railshot.MaxVectorFunctionValues+1)
 		}},
 		{"ISA", func(v *Compiled) { v.requiredAMD64Features = 1 }},
 		{"global-export-index", func(v *Compiled) { v.GlobalExports = map[string]int{"g": 0} }},
@@ -553,14 +552,15 @@ func TestRV64PublicSWARSourceUnsupportedStateImportsRemainClosed(t *testing.T) {
 				t.Fatal("native vector import source rejected", err)
 			}
 			defer c.Close()
-			if in, err := Instantiate(c, testImports("env.state", HostCallFunc(func(HostCall) {}))); in != nil || !errors.Is(err, railshot.ErrUnsupported) || c.codeCache.base != 0 {
+			if in, err := Instantiate(c, testImports("env.state", HostCallFunc(func(HostCall) {}))); in != nil || err == nil || !strings.Contains(err.Error(), "v128 host callbacks are not supported") || c.codeCache.base != 0 {
 				t.Fatal("unused vector Go host import published", err)
 			}
 			continue
 		}
-		if c != nil || !errors.Is(err, railshot.ErrUnsupported) {
-			t.Fatal("unsupported vector state import accepted", test.kind, err)
+		if c != nil {
+			c.Close()
 		}
+		rv64RequireCore3SourceValidation(t, source)
 	}
 }
 

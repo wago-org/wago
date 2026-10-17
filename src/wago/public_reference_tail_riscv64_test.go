@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -191,48 +191,28 @@ func TestRV64PublicReferenceTailCodecAdmission(t *testing.T) {
 	view := rv64TailCodecView(base)
 	view.requiredFeatures &^= CoreFeatureTypedFunctionReferences
 	r := compiledReader{data: w.buf, budget: newArtifactDecodeBudget(0)}
-	if err := railshotReadNativeTail(&r, view); err == nil {
-		t.Fatal("decoder accepted Kind2 without typed feature")
+	if err := railshotReadNativeTail(&r, view); err != nil {
+		t.Fatal("tail plan grammar decode", err)
 	}
-	if view.stagedFeatures().IsEnabled(CoreFeatureTypedFunctionReferences) {
-		t.Fatal("decoder published typed staging for invalid metadata")
+	if !view.stagedFeatures().IsEnabled(CoreFeatureTypedFunctionReferences) {
+		t.Fatal("decoded reference plan lost its type feature")
 	}
-	// Produce exact metadata with a serialized execution marker, without using
-	// public MarshalBinary's validation; Load must reject before executable sealing.
-	c := cloneCompiledMetadata(base)
-	c.validateMemo, c.codeCache = &validateMemo{}, nil
-	rv64StoreNativeTailModule(c, &encoder.NativeTailModule{Plans: slices.Clone(rv64NativeTailModule(base).Plans)})
-	c.codeCache.flags |= compiledCacheDynamicFuncRefTest
-	blob, err := marshalCompiled(c)
-	if err != nil {
-		t.Fatal(err)
+	if err := railshotValidateDecodedNativeTail(view); err == nil {
+		t.Fatal("execution validation accepted a reference tail without its feature")
 	}
-	if _, err := LoadTrustedArtifact(blob); !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("loader accepted unqualified ref.test execution marker", err)
-	}
-	// Typed feature metadata alone never authorizes arbitrary typed operations.
+	candidate := rv64ReferenceStartCopy(base.executionView())
+	candidate.codeCache.flags |= compiledCacheDynamicFuncRefTest
+	rv64RequireRejectedArtifact(t, candidate)
 	plain := rv64NativeTailCompile(t, "reference-tail-no-plan", rv64PublicNativeIdentityModule([]wasm.ValType{wasm.I32}), false)
-	v := cloneCompiledMetadata(plain)
-	v.validateMemo, v.codeCache = &validateMemo{}, nil
-	v.requiredFeatures |= CoreFeatureTypedFunctionReferences
-	if err := railshotValidateCompiled(v); !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("typed-only metadata without Kind2 accepted", err)
+	candidate = rv64ReferenceStartCopy(plain.executionView())
+	candidate.requiredFeatures |= CoreFeatureTypedFunctionReferences
+	if err := candidate.validate(); err == nil {
+		t.Fatal("changed typed feature admitted without a matching execution contract")
 	}
-	blob, err = marshalCompiled(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := LoadTrustedArtifact(blob); !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("loader accepted typed feature without Kind2", err)
-	}
+	rv64RequireRejectedArtifact(t, candidate)
 }
 
 func TestRV64PublicReferenceTailWholeModuleGate(t *testing.T) {
 	source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0xd0, 0, 0x15, 0, 0x0b}))))
-	if c, err := rv64NativeTailConfig().Compile(source); c != nil || err == nil {
-		if c != nil {
-			_ = c.Close()
-		}
-		t.Fatal("dead-only typed tail module admitted without a qualified tail plan", err)
-	}
+	rv64RequireCore3SourceValidation(t, source)
 }

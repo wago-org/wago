@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -66,8 +66,12 @@ type railshotPublicFuncrefArguments struct {
 	slot  int
 }
 
+func rv64PublicReferenceArgumentScopeRequired(in *Instance) bool {
+	return in != nil && in.c != nil && (in.c.nativeReferenceCallABI || rv64Core3RefIsNullExecution(in.c) || in.c.nativeReferenceFunctionABI && in.c.nativeContextTrapABI)
+}
+
 func railshotBeginPublicFuncrefArguments(in *Instance) (railshotPublicFuncrefArguments, error) {
-	if in == nil || in.c == nil || !in.c.nativeReferenceCallABI && !rv64Core3RefIsNullExecution(in.c) {
+	if !rv64PublicReferenceArgumentScopeRequired(in) {
 		return railshotPublicFuncrefArguments{}, nil
 	}
 	pool := &in.ensurePluginState().railshotInvocation
@@ -88,7 +92,7 @@ func railshotBeginPublicFuncrefArguments(in *Instance) (railshotPublicFuncrefArg
 }
 
 func railshotStagePublicExternrefArgument(in *Instance, arguments *railshotPublicFuncrefArguments, token uint64) error {
-	if in == nil || in.c == nil || token == 0 || !in.c.nativeReferenceCallABI && !rv64Core3RefIsNullExecution(in.c) {
+	if token == 0 || !rv64PublicReferenceArgumentScopeRequired(in) {
 		return nil
 	}
 	pool := &in.ensurePluginState().railshotInvocation
@@ -112,7 +116,7 @@ func railshotStagePublicExternrefArgument(in *Instance, arguments *railshotPubli
 }
 
 func railshotStagePublicFuncrefArgument(in *Instance, arguments *railshotPublicFuncrefArguments, token, descriptor uint64) error {
-	if in == nil || in.c == nil || !in.c.nativeReferenceCallABI || token == 0 {
+	if token == 0 || !rv64PublicReferenceArgumentScopeRequired(in) {
 		return nil
 	}
 	pool := &in.ensurePluginState().railshotInvocation
@@ -135,17 +139,8 @@ func railshotStagePublicFuncrefArgument(in *Instance, arguments *railshotPublicF
 		owner.releaseResourceRoot()
 		return fmt.Errorf("RV64 reference argument descriptor is not a published callable")
 	}
-	// This first boundary deliberately admits only the same closed no-import,
-	// no-resource owner recipe. That owner cannot park in a host callback while
-	// this invocation quiesces its independent native execution. Once foreign
-	// code becomes callable, both sides permanently join the shared native domain.
-	if owner != in && !rv64PublicReferenceCallBoundary(owner.c) {
-		function, indexed := owner.funcrefDescriptorIndex(descriptor)
-		if !indexed || !rv64MutableReferenceCarrierTarget(owner.c, function) {
-			owner.releaseResourceRoot()
-			return fmt.Errorf("RV64 reference argument owner is outside the public call boundary")
-		}
-	}
+	// The token and canonical descriptor identify this exact physical owner.
+	// Entry authenticates the retained call graph before native execution.
 	for _, existing := range scope.owners[:scope.count] {
 		if existing == owner {
 			owner.releaseResourceRoot()
@@ -207,14 +202,15 @@ type railshotTableEntryLease struct {
 }
 
 func railshotRequiresNativeOwnerScope(c *Compiled) bool {
-	return c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || c.tableCount() != 0 || rv64HasDynamicTail(rv64NativeTailModule(c))
+	return c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || c.tableCount() != 0 || rv64HasDynamicTail(rv64NativeTailModule(c)) || rv64PrimitiveFunctionGlobalStores(c)
 }
 
 func rv64NeedsTableEntry(root *Instance) (bool, error) {
-	var owners [257]*Instance
-	owners[0] = root
-	count, edges := 1, 0
-	for cursor := 0; cursor < count; cursor++ {
+	inline := [8]*Instance{root}
+	owners := inline[:1]
+	var ownerIndex map[*Instance]struct{}
+	edges := 0
+	for cursor := 0; cursor < len(owners); cursor++ {
 		owner := owners[cursor]
 		if owner == nil || owner.c == nil {
 			return false, fmt.Errorf("RV64 native attachment has no owner")
@@ -236,21 +232,12 @@ func rv64NeedsTableEntry(root *Instance) (bool, error) {
 			if export == nil || export.inst == nil {
 				return false, fmt.Errorf("RV64 native attachment is nil")
 			}
-			seen := false
-			for _, existing := range owners[:count] {
-				if existing == export.inst {
-					seen = true
-					break
-				}
-			}
-			if seen {
-				continue
-			}
-			if count == len(owners) {
+			var ok bool
+			owners, ok = rv64AppendOwnerForWalk(owners, &ownerIndex, export.inst)
+			if !ok {
 				return false, fmt.Errorf("RV64 table entry owner bound")
 			}
-			owners[count] = export.inst
-			count++
+
 		}
 	}
 	return false, nil
@@ -355,4 +342,35 @@ func rv64ActiveTableTrapOwner(root *Instance, identity uintptr) *Instance {
 		}
 	}
 	return nil
+}
+
+// Physical owner retention also protects stored references. Host control is
+// needed only for actual bridge calls or tail dispatch, not storage alone.
+func railshotRequiresNativeHostControl(c *Compiled) bool {
+	return c != nil && (rv64NativeTailModule(c) != nil || railshot.NativeTableHostControlRequired(c.code))
+}
+
+// Resolve frozen table imports with a temporary stack key. Long names use the
+// ordinary accessor; no new per-instance cache is needed for the common case.
+func rv64NativeTableAttachment(owner *Instance, index int) (*Table, bool) {
+	c := owner.c
+	_, ends, _, _, _ := c.importModuleEndSections()
+	def, ok := c.tableImportAt(index)
+	if !ok {
+		return nil, false
+	}
+	module, name := splitImportKeyAt(def.Key, importModuleEndAt(ends, index))
+	var storage [256]byte
+	key := strconv.AppendInt(storage[:0], int64(len(module)), 10)
+	if len(key)+1+len(module)+len(name) > len(storage) {
+		return owner.imports.table(c.tableImportBindingKey(index))
+	}
+	key = append(key, ':')
+	key = append(key, module...)
+	key = append(key, name...)
+	return owner.imports.table(string(key))
+}
+
+func railshotNativeFunctionAttachment(in *Instance, index int) (*InstanceExport, bool) {
+	return rv64NativeFunctionAttachment(in, index)
 }

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -26,7 +26,7 @@ var rv64I31RefEqPilotCodeDigest = [sha256.Size]byte{0x35, 0xa6, 0xd7, 0xcf, 0x47
 // visibility is bound to exact RV64G code images and complete surviving
 // metadata.
 func rv64I31Core(c *Compiled) bool {
-	return rv64I31MinimalCore(c) || rv64I31OfficialCore(c) || rv64I31OfficialTable(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialGlobalInitializer(c) || rv64I31OfficialAnyGlobal(c) || rv64I31OfficialAnyTable(c) || rv64I31OfficialRefTest(c) || rv64I31RefEqPilot(c)
+	return rv64ImmediateReferenceContract(c) || rv64GeneralI31Contract(c) || rv64I31MinimalCore(c) || rv64I31OfficialCore(c) || rv64I31OfficialTable(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialGlobalInitializer(c) || rv64I31OfficialAnyGlobal(c) || rv64I31OfficialAnyTable(c) || rv64I31OfficialRefTest(c) || rv64I31RefEqPilot(c)
 }
 
 // rv64I31CoreExecutionCode recognizes the nine qualified machine-code images

@@ -1,4 +1,4 @@
-//go:build ((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64 && wago_rv64_experimental)
+//go:build ((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64)
 
 package wago
 
@@ -406,9 +406,7 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 
 func TestDefaultCoreFeaturePolicy(t *testing.T) {
 	want := coreFeaturesWithoutSidecar
-	if runtime.GOOS == "linux" && runtime.GOARCH == "riscv64" {
-		want = platformCoreFeatures()
-	} else if supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
+	if supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
 		want |= CoreFeaturesV3
 	}
 	if got := NewRuntimeConfig().CoreFeatures(); got != want {
@@ -479,6 +477,9 @@ func TestCompleteCore3BackendPlatforms(t *testing.T) {
 	}{
 		{goos: "linux", goarch: "amd64", want: true},
 		{goos: "linux", goarch: "arm64", want: true},
+		{goos: "linux", goarch: "riscv64", want: true},
+		{goos: "darwin", goarch: "riscv64"},
+		{goos: "windows", goarch: "riscv64"},
 		{goos: "darwin", goarch: "arm64", want: true},
 		{goos: "darwin", goarch: "amd64"},
 		{goos: "windows", goarch: "amd64"},
@@ -592,7 +593,7 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 			CoreFeatureMultiMemory |
 			CoreFeatureMemory64 |
 			CoreFeatureTable64
-		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
+		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") || runtime.GOARCH == "riscv64" && runtime.GOOS == "linux" {
 			unsupported &^= CoreFeatureTailCall | CoreFeatureTypedFunctionReferences | CoreFeatureGC | CoreFeatureExceptionHandling | CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64
 		}
 		if supportsMultiMemoryBackend(runtime.GOOS, runtime.GOARCH) {

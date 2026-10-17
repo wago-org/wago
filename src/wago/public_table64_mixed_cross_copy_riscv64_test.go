@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -10,7 +10,6 @@ import (
 	"slices"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -45,7 +44,7 @@ func TestRV64PublicMixedTable64CrossCopy(t *testing.T) {
 			readerCode := rv64TableStageCompile(t, "mixed-table64-cross-copy-reader", rv64ImportedTable64IndirectInstructionSource(), artifact)
 			defer readerCode.Close()
 			view := crossCode.executionView()
-			if view.nativeTable64ABI != nativeTable64ImportedCopyABI || !rv64MixedTable64CrossCopy(view) || rv64MixedTable64Copy(view) || view.tableCount() != 2 || view.tableImportCount() != 1 || view.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations || !view.NeedsFuncRefDescs {
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || view.tableCount() != 2 || view.tableImportCount() != 1 || view.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations || !view.NeedsFuncRefDescs {
 				t.Fatal("mixed table64 cross-copy metadata contract")
 			}
 
@@ -194,9 +193,20 @@ func TestRV64PublicMixedTable64CrossCopyGates(t *testing.T) {
 		"local-table32":  bytes.Replace(bytes.Clone(base), []byte{0x70, 0x05, 3, 3}, []byte{0x70, 0x01, 3, 3}, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if c, err := Compile(nil, source); err == nil {
-				c.Close()
-				t.Fatal("nearby mixed cross-copy source admitted")
+			c, err := Compile(nil, source)
+			if name == "same-first" || name == "same-second" {
+				if err != nil {
+					t.Fatal("valid same-table copy", err)
+				}
+				defer c.Close()
+				rv64RequireTableArtifactMetadata(t, c)
+			} else {
+				if c != nil {
+					c.Close()
+				}
+				if err == nil {
+					t.Fatal("invalid cross-table index width admitted")
+				}
 			}
 		})
 	}
@@ -245,15 +255,14 @@ func TestRV64PublicMixedTable64CrossCopyGates(t *testing.T) {
 		t.Run("artifact-"+name, func(t *testing.T) {
 			base := rv64TableStageCompile(t, "mixed-table64-cross-copy-artifact-gates", rv64MixedTable64CrossCopySource(), false)
 			defer base.Close()
-			bad := cloneCompiledMetadata(base.executionView())
+			bad := rv64ReferenceImportTailCopy(base)
 			bad.extraTables = slices.Clone(bad.extraTables)
 			bad.Funcs = slices.Clone(bad.Funcs)
 			bad.Funcs[1].Params = slices.Clone(bad.Funcs[1].Params)
 			bad.Exports = maps.Clone(bad.Exports)
 			bad.tableExports = maps.Clone(bad.tableExports)
-			bad.validateMemo, bad.codeCache = &validateMemo{}, nil
 			mutate(bad)
-			if rv64MixedTable64CrossCopy(bad) || !errors.Is(railshotValidateCompiled(bad), railshot.ErrUnsupported) {
+			if bad.validate() == nil {
 				t.Fatal("hostile mixed cross-copy metadata admitted")
 			}
 			blob, err := marshalCompiled(bad)

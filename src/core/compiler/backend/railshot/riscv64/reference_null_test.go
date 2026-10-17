@@ -78,6 +78,10 @@ func TestProductionReferenceNullRejectedBeforeStaging(t *testing.T) {
 					if tc.name == "truncated" {
 						m.Code[0].BodyBytes = []byte{0xd0, 0x80}
 					}
+					if tc.name == "extern" || tc.name == "any" {
+						checkPublicPrimitiveModule(t, m, CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true})
+						return
+					}
 					pressure := 0
 					image, err := CompileModuleWith(m, CompileOptions{NativeReferenceCalls: true, ForeignTableCalls: true, InvocationContext: true, Interruptible: true, DeferCodeMapping: true, MemoryPressure: func() { pressure++ }})
 					if image != nil || err == nil || pressure != 0 {

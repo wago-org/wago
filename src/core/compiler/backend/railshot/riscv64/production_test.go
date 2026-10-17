@@ -180,7 +180,7 @@ func TestProductionImportedMemoryRejectsOtherDependenciesBeforeImage(t *testing.
 			}
 			pressureCalls := 0
 			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, MemoryPressure: func() { pressureCalls++ }})
-			if shape.name == "two-memories" || shape.name == "memory64" {
+			if shape.name == "two-memories" || shape.name == "memory64" || shape.name == "shared-memory" {
 				if image == nil || image.CodeImage != nil || err != nil || pressureCalls != 1 {
 					t.Fatal("public indexed memories rejected while private gate remains closed", err, pressureCalls)
 				}

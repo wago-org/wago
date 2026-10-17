@@ -12,7 +12,12 @@ import (
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
-type swarHostSignature struct{ params, results []wasm.ValType }
+type swarHostSignature struct {
+	params, results []wasm.ValType
+	custom          bool
+	rooted          bool // exact rooted module carrier proof, retained only during compilation
+	primitive       bool // validated primitive reference carrier proof
+}
 
 func swarImportSignature(sig *wasm.CompType) error {
 	return swarCallSignature(sig)
@@ -25,7 +30,7 @@ func swarHostThunks(signatures []swarHostSignature, limit int) ([]byte, []int, e
 		return nil, nil, unsupported("SWAR host thunk resource bound")
 	}
 	for _, sig := range signatures {
-		if err := swarImportSignature(&wasm.CompType{Kind: wasm.CompFunc, Params: sig.params, Results: sig.results}); err != nil {
+		if err := swarImportSignature(&wasm.CompType{Kind: wasm.CompFunc, Params: sig.params, Results: sig.results}); err != nil && !sig.custom && !((sig.rooted || sig.primitive) && tailRASignature(&wasm.CompType{Kind: wasm.CompFunc, Params: sig.params, Results: sig.results}) == nil) {
 			return nil, nil, err
 		}
 	}

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -6,13 +6,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 )
 
 const rv64PublicGCTypeSubtypingRuntimeFinalityCallCastHex = "0061736d0100000001898080800002500060000060000003878080800006000101010101048580808000017001020207a18080800004056661696c310002056661696c320003056661696c330004056661696c340005098c80808000010441000b02d2000bd2010b0acb80808000068280808000000b8280808000000b8a8080800000024041011100000b0b8a8080800000024041001101000b0b8a808080000041012500fb16001a0b8a808080000041002500fb16011a0b"
@@ -83,12 +80,9 @@ func TestRV64PublicGCTypeSubtypingRuntimeFinalityCallCastExecutionAndArtifact(t 
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCTypeSubtypingRuntimeFinalityCallCastCompile(t, artifact)
 			view := compiled.executionView()
-			metadata, metadataErr := marshalCompiledMetadata(view)
-			validation := railshotValidateCompiled(view)
-			if metadataErr != nil || len(metadata) != rv64GCTypeSubtypingRuntimeFinalityCallCastMetadataLen || sha256.Sum256(metadata) != rv64GCTypeSubtypingRuntimeFinalityCallCastMetadataDigest ||
-				!rv64GCTypeSubtypingRuntimeFinalityCallCast(view) || view.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingRuntimeFinalityCallCast || validation != nil {
+			if !rv64ArtifactContractValid(view) || view.validate() != nil {
 				compiled.Close()
-				t.Fatalf("missing exact runtime finality witness: metadata=%d/%x err=%v exact=%t product=%v validation=%v code=%d/%x entries=%v/%v", len(metadata), sha256.Sum256(metadata), metadataErr, rv64GCTypeSubtypingRuntimeFinalityCallCast(view), view.stagedGCTypeSubtypingProduct(), validation, len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry)
+				t.Fatal("missing public subtype execution contract")
 			}
 			cache := compiled.loadCodeCache()
 			if cache == nil || !artifact && (cache.base != 0 || len(cache.mem) != 0 || cache.sealed || cache.flags&compiledCacheWritableCode != 0) ||
@@ -96,9 +90,7 @@ func TestRV64PublicGCTypeSubtypingRuntimeFinalityCallCastExecutionAndArtifact(t 
 				compiled.Close()
 				t.Fatalf("runtime finality unpublished mapping state: artifact=%t base=%#x mem=%d sealed=%t writable=%t refs=%d", artifact, cache.base, len(cache.mem), cache.sealed, cache.flags&compiledCacheWritableCode != 0, cache.refs)
 			}
-			cfg := rv64I31Config()
-			cfg.railshotState.tailProducts = true
-			rt := NewRuntime(WithRuntimeConfig(cfg))
+			rt := NewRuntime()
 			mod, err := rt.Module(compiled)
 			if err != nil {
 				compiled.Close()
@@ -169,31 +161,32 @@ func TestRV64PublicGCTypeSubtypingRuntimeFinalityCallCastAdmissionIsExact(t *tes
 		"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 		"escape":     func(v *Compiled) { v.dynamicFuncrefEscape = true },
 		"function-abi": func(v *Compiled) {
-			v.nativeReferenceFunctionABI = false
+			v.nativeReferenceFunctionABI = !v.nativeReferenceFunctionABI
 		},
-		"product": func(v *Compiled) { v.codeCache.gcTypeSubtypingProduct = 0 },
+		"missing-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(nil) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			mutate(candidate)
-			if rv64GCTypeSubtypingRuntimeFinalityCallCast(candidate) {
-				t.Fatal("hostile retained mutation kept runtime finality witness")
-			}
-			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+			if err := candidate.validate(); err == nil {
 				t.Fatal("hostile retained runtime finality mutation admitted", err)
+			}
+			if name == "feature" {
+				rv64RequireRestoredGCFeature(t, candidate)
+			} else {
+				rv64RequireRejectedArtifact(t, candidate)
 			}
 		})
 	}
 }
 
-func TestRV64PublicGCTypeSubtypingRuntimeFinalityCallCastRequiresPrivateRuntimePermission(t *testing.T) {
+func TestRV64PublicGCTypeSubtypingRuntimeFinalityCallCastPublicRuntime(t *testing.T) {
 	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RUNTIME_FINALITY_CALL_CAST_ARTIFACT_MODE") == "load" {
 		t.Skip("compiler-free runner selected")
 	}
 	compiled := rv64PublicGCTypeSubtypingRuntimeFinalityCallCastCompile(t, false)
 	defer compiled.Close()
-	rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+	rt := NewRuntime()
 	defer rt.Close()
 	mod, err := rt.Module(compiled)
 	if err != nil {
@@ -204,7 +197,7 @@ func TestRV64PublicGCTypeSubtypingRuntimeFinalityCallCastRequiresPrivateRuntimeP
 	if in != nil {
 		_ = in.Close()
 	}
-	if !errors.Is(err, railshot.ErrUnsupported) {
+	if err != nil {
 		t.Fatal("runtime finality call/cast instantiated without private Runtime permission", err)
 	}
 }

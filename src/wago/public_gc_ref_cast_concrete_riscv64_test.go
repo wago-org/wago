@@ -1,11 +1,10 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"os"
@@ -88,11 +87,11 @@ func TestRV64PublicGCRefCastConcreteExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCRefCastConcreteCompile(t, artifact)
 			view := compiled.executionView()
-			if !rv64GCRefCastConcrete(view) || railshotValidateCompiled(view) != nil || view.stagedGCStructProduct() != stagedGCStructRefCastConcrete {
+			if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil {
 				t.Fatalf("missing exact concrete gc/ref_cast witness: exact=%t validation=%v product=%v staged=%v required=%v code=%d/%x entries=%v/%v flags=ctx:%t tablectx:%t tableref:%t regoff:%t table64:%v hdr:%t exports:%t desc:%t escape:%t ref-fn:%t ref-call:%t ref-control:%t tail:%t funcs=%+v ids=%v types=%+v descs=%+v value=%+v", rv64GCRefCastConcrete(view), railshotValidateCompiled(view), view.stagedGCStructProduct(), view.stagedFeatures(), view.requiredFeatures, len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.nativeContextTrapABI, view.nativeTableContextABI, view.nativeTableReferenceABI, view.registerABIDisabled, view.nativeTable64ABI, view.needsFuncRefContextHeader, view.hasTableExportMetadata, view.NeedsFuncRefDescs, view.dynamicFuncrefEscape, view.nativeReferenceFunctionABI, view.nativeReferenceCallABI, view.nativeReferenceControlABI, rv64HasReferenceTail(view), view.Funcs, view.FuncTypeID, view.Types, view.GCTypeDescs, view.ValueTypes)
 			}
-			if params, results, err := view.maxCallSlots(); err != nil || params != 4 || results != 1 {
-				t.Fatalf("concrete gc/ref_cast call capacity=%d/%d,%v, want 4/1", params, results, err)
+			if params, results, err := view.maxCallSlots(); err != nil || params != 0 || results != 0 {
+				t.Fatalf("concrete gc/ref_cast call capacity=%d/%d,%v, want 0/0", params, results, err)
 			}
 			for _, profile := range []struct {
 				name string
@@ -111,9 +110,8 @@ func TestRV64PublicGCRefCastConcreteExecutionAndArtifact(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer in.Close()
-					state := in.existingGCRefTestTableState()
-					if in.gc == nil || state == nil || state.Count != 20 || len(state.Slots) != 20 || state.CanonicalType == nil {
-						t.Fatalf("collector/table state=%v/%+v", in.gc, state)
+					if in.gc == nil {
+						t.Fatal("table execution has no collector")
 					}
 					for iteration := 0; iteration < 5; iteration++ {
 						for _, name := range []string{"test-sub", "test-canon"} {
@@ -125,27 +123,20 @@ func TestRV64PublicGCRefCastConcreteExecutionAndArtifact(t *testing.T) {
 					// Exercise the same helper state with a hostile null/type mismatch.
 					// The rejected cast must not modify the rooted table word; restoring
 					// the original word must leave the official function successful.
-					zeroOffset := 8 + 0*8
-					zero, err := in.gc.CheckedTableSlot(state.Slots[0])
-					if err != nil {
-						t.Fatal(err)
-					}
-					if err := state.set(in.gc, 0, corergc.Null()); err != nil {
-						t.Fatalf("replace concrete cast table root with null: %v", err)
-					}
+					roots := rv64PublicGCTableRoots(t, in, 20)
+					zero := roots[0].GetRef()
+					roots[0].SetRef(corergc.Null())
 					typeZero, ok := in.gcDomainType(0)
 					if !ok {
 						t.Fatal("concrete cast type 0 has no Runtime identity")
 					}
-					if value, err := state.refCast(in.gc, 0, corergc.RefTestTarget{Kind: corergc.RefTestDefined, Type: typeZero}); !errors.Is(err, corergc.ErrCastFailure) {
-						t.Fatalf("null unexpectedly cast to non-null type 0 as %#x", value)
+					if value, err := in.gc.RefCast(roots[0].GetRef(), corergc.RefTestTarget{Kind: corergc.RefTestDefined, Type: typeZero}); !errors.Is(err, corergc.ErrCastFailure) {
+						t.Fatalf("null unexpectedly cast to non-null type 0 as %#x: %v", value, err)
 					}
-					if binary.LittleEndian.Uint64(state.Descriptor[zeroOffset:]) != 0 {
-						t.Fatalf("rejected null cast mutated table=%#x", binary.LittleEndian.Uint64(state.Descriptor[zeroOffset:]))
+					if !roots[0].GetRef().IsNull() {
+						t.Fatal("rejected null cast changed the table root")
 					}
-					if err := state.set(in.gc, 0, zero); err != nil {
-						t.Fatal(err)
-					}
+					roots[0].SetRef(zero)
 					if got, err := in.Invoke("test-sub"); err != nil || len(got) != 0 {
 						t.Fatalf("test-sub after trap restore=%v,%v", got, err)
 					}
@@ -181,10 +172,9 @@ func TestRV64PublicGCRefCastConcreteAdmissionIsExact(t *testing.T) {
 		"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			mutate(candidate)
-			if rv64GCRefCastConcrete(candidate) {
+			if rv64ArtifactContractValid(candidate) {
 				t.Fatal("hostile retained mutation kept concrete gc/ref_cast witness")
 			}
 			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {

@@ -44,7 +44,7 @@ func TestRV64I31OfficialCoreAdmissionAndImage(t *testing.T) {
 	if _, err = CompileModuleWith(m, productionOptions); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("decoded shape escaped exact-wire provenance", err)
 	}
-	productionOptions.I31CoreSource = true
+	productionOptions = authenticateI31TestModule(t, m, productionOptions)
 	compiled, err := CompileModuleWith(m, productionOptions)
 	if err != nil {
 		t.Fatal("production compile", err)
@@ -55,20 +55,22 @@ func TestRV64I31OfficialCoreAdmissionAndImage(t *testing.T) {
 		t.Fatalf("official i31 image identity = %d/%x entries %v/%v", len(compiled.Code), sha256.Sum256(compiled.Code), compiled.Entry, compiled.InternalEntry)
 	}
 
-	// An inert empty table section is erased by decoding. It must not acquire
-	// the exact source witness merely because its semantic module is identical.
+	// An inert empty table section is erased by decoding. The exact recognizer
+	// stays closed, while the independent general immediate proof accepts it.
 	nearWire := slices.Concat(source[:53], []byte{4, 1, 0}, source[53:])
 	nearModule, err := wasm.DecodeModule(nearWire)
 	if err != nil {
 		t.Fatal("decode inert-section near miss", err)
 	}
-	if !admitRV64I31OfficialCore(nearModule) || admitRV64I31CoreWire(nearWire) || AdmitI31CoreSource(nearWire) {
+	if !admitRV64I31OfficialCore(nearModule) || admitExactProductWireShape(nearWire, nil) || !AdmitI31CoreSource(nearWire) {
 		t.Fatal("inert-section near miss lost decoded/wire distinction")
 	}
 	productionOptions.I31CoreSource = false
 	if _, err = CompileModuleWith(nearModule, productionOptions); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("inert-section near miss escaped provenance", err)
 	}
+
+	checkGeneralI31Wire(t, nearWire)
 
 	for name, mutate := range map[string]func(*wasm.Module){
 		"body":   func(v *wasm.Module) { v.Code[1].BodyBytes[5] = 0x1d },
@@ -80,12 +82,9 @@ func TestRV64I31OfficialCoreAdmissionAndImage(t *testing.T) {
 			t.Fatal(err)
 		}
 		mutate(candidate)
-		if admitRV64I31OfficialCore(candidate) || admitRV64I31Core(candidate) {
+		if admitRV64I31OfficialCore(candidate) {
 			t.Fatal("decoded near miss admitted", name)
 		}
-		productionOptions.I31CoreSource = true
-		if _, err = CompileModuleWith(candidate, productionOptions); !errors.Is(err, ErrUnsupported) {
-			t.Fatal("decoded near miss escaped provenance", name, err)
-		}
+		checkGeneralI31Module(t, candidate, productionOptions)
 	}
 }

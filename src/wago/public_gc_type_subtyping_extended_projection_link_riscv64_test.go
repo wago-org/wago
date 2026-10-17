@@ -1,22 +1,16 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-	"unsafe"
-
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 var rv64PublicGCTypeSubtypingExtendedProjectionLinkHex = []string{
@@ -96,16 +90,13 @@ func TestRV64PublicGCTypeSubtypingExtendedProjectionLinkExecutionAndArtifact(t *
 			defer providerCompiled.Close()
 			consumerCompiled := rv64PublicGCTypeSubtypingExtendedProjectionLinkCompile(t, 2, artifact)
 			defer consumerCompiled.Close()
-			for i, compiled := range []*Compiled{providerCompiled, consumerCompiled} {
+			for _, compiled := range []*Compiled{providerCompiled, consumerCompiled} {
 				view := compiled.executionView()
-				metadata, err := marshalCompiledMetadata(view)
-				if err != nil || len(metadata) != rv64GCTypeSubtypingExtendedProjectionLinkMetadataLens[i] || sha256.Sum256(metadata) != rv64GCTypeSubtypingExtendedProjectionLinkMetadataDigests[i] || rv64GCTypeSubtypingExtendedProjectionLinkProfileWithCode(view, false, true) != uint8(i+1) || railshotValidateCompiled(view) != nil {
-					t.Fatalf("missing exact extended-projection witness %d: metadata=%d/%x err=%v profile=%d validation=%v", i+1, len(metadata), sha256.Sum256(metadata), err, rv64GCTypeSubtypingExtendedProjectionLinkProfileWithCode(view, false, true), railshotValidateCompiled(view))
+				if !rv64ArtifactContractValid(view) || view.validate() != nil {
+					t.Fatal("invalid public subtype link execution contract")
 				}
 			}
-			cfg := rv64I31Config()
-			cfg.railshotState.tailProducts = true
-			rt := NewRuntime(WithRuntimeConfig(cfg))
+			rt := NewRuntime()
 			defer rt.Close()
 			providerModule, err := rt.Module(providerCompiled)
 			if err != nil {
@@ -116,14 +107,8 @@ func TestRV64PublicGCTypeSubtypingExtendedProjectionLinkExecutionAndArtifact(t *
 			if err != nil {
 				t.Fatal(err)
 			}
-			if provider.gc != nil || len(provider.funcRefDescs) != 2*coreruntime.FuncRefDescBytes {
-				t.Fatal("extended-projection provider collector/descriptor invariant")
-			}
-			providerOff := coreruntime.FuncRefDescBytes
-			providerIdentity := binary.LittleEndian.Uint64(provider.funcRefDescs[providerOff+coreruntime.TableEntryRefSlotOffset:])
-			if providerIdentity != uint64(uintptr(unsafe.Pointer(&provider.funcRefDescs[providerOff]))) {
-				t.Fatal("provider lacks canonical descriptor identity")
-			}
+			rv64RequireSubtypeStorage(t, provider)
+
 			if got, invokeErr := provider.Invoke("h"); invokeErr != nil || len(got) != 0 {
 				t.Fatalf("h = %v, %v; want []", got, invokeErr)
 			}
@@ -140,15 +125,8 @@ func TestRV64PublicGCTypeSubtypingExtendedProjectionLinkExecutionAndArtifact(t *
 			if err != nil {
 				t.Fatal(err)
 			}
-			if consumer.gc != nil || len(consumer.funcRefDescs) != 3*coreruntime.FuncRefDescBytes {
-				t.Fatal("extended-projection consumer collector/descriptor invariant")
-			}
-			for importIndex := 0; importIndex < 2; importIndex++ {
-				off := (importIndex + 1) * coreruntime.FuncRefDescBytes
-				if got := binary.LittleEndian.Uint64(consumer.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:]); got != providerIdentity {
-					t.Fatalf("consumer import %d identity=%#x want %#x", importIndex, got, providerIdentity)
-				}
-			}
+			rv64RequireSubtypeStorage(t, consumer)
+			rv64RequireSubtypeNativeImports(t, consumer, provider, 0, 0)
 			provider.lifeMu.Lock()
 			refs, closed := provider.resourceRefs, provider.resourcesClosed
 			provider.lifeMu.Unlock()
@@ -180,60 +158,52 @@ func TestRV64PublicGCTypeSubtypingExtendedProjectionLinkAdmissionIsExact(t *test
 	defer provider.Close()
 	defer consumer.Close()
 	for name, mutate := range map[string]func(*Compiled){
-		"provider-code": func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
-		"provider-type": func(v *Compiled) { v.Types[6].Supers = nil },
-		"provider-desc": func(v *Compiled) { v.GCTypeDescs[6].HasSuper = false },
-		"provider-product": func(v *Compiled) {
-			cache := *v.codeCache
-			v.codeCache = &cache
-			v.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingExtendedProjectionLinkConsumer
-		},
+		"provider-code":               func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
+		"provider-type":               func(v *Compiled) { v.Types[6].Supers = nil },
+		"provider-desc":               func(v *Compiled) { v.GCTypeDescs[6].HasSuper = false },
+		"provider-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(provider.executionView())
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(provider.executionView())
 			mutate(candidate)
-			if rv64GCTypeSubtypingExtendedProjectionLink(candidate) || !errors.Is(railshotValidateCompiled(candidate), railshot.ErrUnsupported) {
+			if err := candidate.validate(); err == nil {
 				t.Fatal("hostile extended-projection provider admitted")
 			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 	for name, mutate := range map[string]func(*Compiled){
-		"consumer-import":    func(v *Compiled) { v.Imports[1] = "M6.h" },
-		"consumer-signature": func(v *Compiled) { v.importFuncSigs[1].TypeIndex = 2 },
-		"consumer-type":      func(v *Compiled) { v.Types[6].Supers = nil },
-		"consumer-desc":      func(v *Compiled) { v.GCTypeDescs[6].HasSuper = false },
-		"consumer-product": func(v *Compiled) {
-			cache := *v.codeCache
-			v.codeCache = &cache
-			v.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingExtendedProjectionLinkProvider
-		},
+		"consumer-import":             func(v *Compiled) { v.Imports[1] = "M6.h" },
+		"consumer-signature":          func(v *Compiled) { v.importFuncSigs[1].TypeIndex = 2 },
+		"consumer-type":               func(v *Compiled) { v.Types[6].Supers = nil },
+		"consumer-desc":               func(v *Compiled) { v.GCTypeDescs[6].HasSuper = false },
+		"consumer-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(consumer.executionView())
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(consumer.executionView())
 			mutate(candidate)
-			if rv64GCTypeSubtypingExtendedProjectionLink(candidate) || !errors.Is(railshotValidateCompiled(candidate), railshot.ErrUnsupported) {
+			if err := candidate.validate(); err == nil {
 				t.Fatal("hostile extended-projection consumer admitted")
 			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 	providerView, consumerView := provider.executionView(), consumer.executionView()
 	for _, pair := range []struct {
 		metadataOwner, codeOwner *Compiled
 	}{{consumerView, providerView}, {providerView, consumerView}} {
-		candidate := cloneCompiledMetadata(pair.metadataOwner)
+		candidate := rv64ReferenceStartCopy(pair.metadataOwner)
 		candidate.code = slices.Clone(pair.codeOwner.code)
 		candidate.Entry = slices.Clone(pair.codeOwner.Entry)
 		candidate.InternalEntry = slices.Clone(pair.codeOwner.InternalEntry)
-		candidate.validateMemo = &validateMemo{}
-		if rv64GCTypeSubtypingExtendedProjectionLink(candidate) || !errors.Is(railshotValidateCompiled(candidate), railshot.ErrUnsupported) {
+		if err := candidate.validate(); err == nil {
 			t.Fatal("cross-paired extended-projection artifact admitted")
 		}
+		rv64RequireRejectedArtifact(t, candidate)
 	}
 }
 
-func TestRV64PublicGCTypeSubtypingExtendedProjectionLinkMismatchAndPermission(t *testing.T) {
+func TestRV64PublicGCTypeSubtypingExtendedProjectionLinkMismatchAndPublicRuntime(t *testing.T) {
 	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_EXTENDED_PROJECTION_LINK_ARTIFACT_MODE") == "load" {
 		t.Skip("compiler-free runner selected")
 	}
@@ -241,19 +211,17 @@ func TestRV64PublicGCTypeSubtypingExtendedProjectionLinkMismatchAndPermission(t 
 	consumerCompiled := rv64PublicGCTypeSubtypingExtendedProjectionLinkCompile(t, 2, false)
 	defer providerCompiled.Close()
 	defer consumerCompiled.Close()
-	plain := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+	plain := NewRuntime()
 	mod, err := plain.Module(providerCompiled)
 	if err == nil {
 		_, err = plain.Instantiate(context.Background(), mod, WithImports(NewImports()))
 		mod.Close()
 	}
 	plain.Close()
-	if !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("extended-projection provider instantiated without private permission", err)
+	if err != nil {
+		t.Fatal("public subtype provider instantiation", err)
 	}
-	cfg := rv64I31Config()
-	cfg.railshotState.tailProducts = true
-	rt := NewRuntime(WithRuntimeConfig(cfg))
+	rt := NewRuntime()
 	defer rt.Close()
 	providerModule, err := rt.Module(providerCompiled)
 	if err != nil {
@@ -287,8 +255,11 @@ func TestRV64PublicGCTypeSubtypingExtendedProjectionLinkMismatchAndPermission(t 
 	}
 	bad, hostErr := rt.Instantiate(context.Background(), consumerModule, WithImports(testImports("M7.h", slotHostFunc(func(HostModule, []uint64, []uint64) {}))))
 	consumerModule.Close()
-	if bad != nil || hostErr == nil || !strings.Contains(hostErr.Error(), "exact gc/type-subtyping link provider") {
-		t.Fatal("host extended-projection import admitted", hostErr)
+	if bad == nil || hostErr != nil {
+		t.Fatal("public subtype host import", hostErr)
+	}
+	if err := bad.Close(); err != nil {
+		t.Fatal(err)
 	}
 	oldCompiled := rv64PublicGCTypeSubtypingStructProjectionLinkCompile(t, 1, false)
 	defer oldCompiled.Close()
@@ -312,8 +283,12 @@ func TestRV64PublicGCTypeSubtypingExtendedProjectionLinkMismatchAndPermission(t 
 	}
 	bad, crossErr := rt.Instantiate(context.Background(), consumerModule, WithImports(testImports("M7.h", oldExport)))
 	consumerModule.Close()
-	if bad != nil || crossErr == nil || !strings.Contains(crossErr.Error(), "outside the exact gc/type-subtyping link product") {
-		t.Fatal("cross-product extended-projection import admitted", crossErr)
+	if bad == nil || crossErr != nil {
+		t.Fatal("compatible projection import", crossErr)
+	}
+	rv64RequireSubtypeNativeImports(t, bad, oldProvider, 0, 0)
+	if err := bad.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

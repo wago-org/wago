@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -45,8 +45,9 @@ func TestRV64Core3RefAsNonNullPinnedDeclarations(t *testing.T) {
 				t.Skip("compiler-free artifact case only")
 			}
 			c := rv64NativeTailCompile(t, "core3-ref-as-non-null-declarations", source, artifact)
-			if !rv64Core3RefAsNonNullDeclarations(c) || rv64Core3ReferenceDeclarations(c) || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || c.requiredFeatures != CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences || c.needsFuncRefDescs() || c.NumImports != 0 || len(c.Funcs) != 3 || len(c.Types) != 4 || len(c.Exports) != 0 || c.tableCount() != 0 || c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.HasStart {
-				t.Fatal("pinned ref.as_non_null declaration-only source/artifact witnesses")
+			view := c.executionView()
+			if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI || c.nativeReferenceCallABI || c.requiredFeatures != CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences || c.NumImports != 0 || len(c.Funcs) != 3 || len(c.Types) != 4 || len(c.Exports) != 0 || c.tableCount() != 0 || c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.HasStart {
+				t.Fatalf("pinned ref.as_non_null declaration-only source/artifact witnesses: contract=%t validation=%v function=%t control=%t call=%t features=%#x imports=%d funcs=%d types=%d exports=%d tables=%d memories=%d globals=%d elems=%d passive=%d start=%t", rv64ArtifactContractValid(view), railshotValidateCompiled(view), c.nativeReferenceFunctionABI, c.nativeReferenceControlABI, c.nativeReferenceCallABI, c.requiredFeatures, c.NumImports, len(c.Funcs), len(c.Types), len(c.Exports), c.tableCount(), c.memoryCount(), len(c.Globals), len(c.Elems), len(c.passiveElems), c.HasStart)
 			}
 			for i := 1; i < 4; i++ {
 				if len(c.Types[i].Params) != 1 || c.Types[i].Params[0].Kind != ValueTypeReference || c.Types[i].Params[0].Ref.Nullable {
@@ -98,13 +99,7 @@ func TestRV64Core3RefAsNonNullPinnedDeclarationSourceGates(t *testing.T) {
 	}
 	for name, source := range mutations {
 		t.Run(name, func(t *testing.T) {
-			c, err := rv64NativeTailConfig().Compile(source)
-			if c != nil {
-				c.Close()
-			}
-			if err == nil {
-				t.Fatal("nearby declaration source admitted")
-			}
+			rv64RequireCore3SourceValidation(t, source)
 		})
 	}
 }

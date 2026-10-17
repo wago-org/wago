@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -441,7 +441,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCall(t *testing.T) {
 
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call", rv64MutableFuncrefLocalCallModule(), artifact)
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalLocalCall(view) || !view.usesGuestGlobalStoreHelper() {
+			if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || !view.usesGuestGlobalStoreHelper()) {
 				t.Fatalf("local-call witness missing: code=%d/%x entries=%v/%v refs=%t/%t/%t escape=%t globals=%+v values=%+v exports=%v/%v validation=%v", len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.nativeReferenceFunctionABI, view.nativeReferenceCallABI, view.nativeReferenceControlABI, view.dynamicFuncrefEscape, view.Globals, view.ValueTypes, view.Exports, view.GlobalExports, railshotValidateCompiled(view))
 			}
 			module, err := rt.Module(compiled)
@@ -541,7 +541,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallI32(t *testing.T) {
 			defer rt.Close()
 
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-i32", rv64MutableFuncrefLocalCallI32Module(), artifact)
-			if !rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) {
+			if !(rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 				t.Fatal("i32 local-call witness missing")
 			}
 			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -615,7 +615,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalTailCallI32(t *testing.T) {
 			defer rt.Close()
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-i32", rv64MutableFuncrefLocalTailCallI32Module(), artifact)
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalLocalCall(view) || !rv64HasReferenceTail(view) {
+			if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || !rv64HasReferenceTail(view)) {
 				t.Fatal("i32 local-tail-call witness missing")
 			}
 			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -731,7 +731,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalTailCallRemaining(t *testing.T) {
 				defer rt.Close()
 				compiled := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-"+name, test.source, artifact)
 				view := compiled.executionView()
-				if !rv64MutableFuncrefGlobalLocalCall(view) || !rv64HasReferenceTail(view) {
+				if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || !rv64HasReferenceTail(view)) {
 					t.Fatal("local-tail-call witness missing", name)
 				}
 				consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -825,7 +825,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallScalars(t *testing.T) {
 				rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 				defer rt.Close()
 				compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-"+name, rv64MutableFuncrefLocalCallScalarModule(test.typ, test.body), artifact)
-				if !rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) {
+				if !(rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 					t.Fatal("scalar local-call witness missing")
 				}
 				consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -893,7 +893,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallMixed(t *testing.T) {
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 			defer rt.Close()
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-mixed", rv64MutableFuncrefLocalCallMixedModule(), artifact)
-			if view := compiled.executionView(); !rv64MutableFuncrefGlobalLocalCall(view) {
+			if view := compiled.executionView(); !(rv64MutableFuncrefGlobalLocalCall(view) || rv64PrimitiveReferenceContract(view)) {
 				t.Fatalf("mixed local-call witness missing: code=%d/%x entries=%v/%v validation=%v", len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, railshotValidateCompiled(view))
 			}
 			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -964,7 +964,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallWideI32(t *testing.T) {
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 			defer rt.Close()
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-wide-i32", rv64MutableFuncrefLocalCallWideI32Module(), artifact)
-			if !rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) {
+			if !(rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 				t.Fatal("wide i32 local-call witness missing")
 			}
 			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -1045,7 +1045,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallVector(t *testing.T) {
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 			defer rt.Close()
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-vector", rv64MutableFuncrefLocalCallVectorModule(), artifact)
-			if !rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) {
+			if !(rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 				t.Fatal("vector local-call witness missing")
 			}
 			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -1115,7 +1115,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalTailCallVector(t *testing.T) {
 			defer rt.Close()
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-vector", rv64MutableFuncrefLocalTailCallVectorModule(), artifact)
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalLocalCall(view) || !rv64HasReferenceTail(view) {
+			if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || !rv64HasReferenceTail(view)) {
 				t.Fatal("vector local-tail-call witness missing")
 			}
 			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -1184,7 +1184,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallMixedVector(t *testing.T) {
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 			defer rt.Close()
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-mixed-vector", rv64MutableFuncrefLocalCallMixedVectorModule(), artifact)
-			if !rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) {
+			if !(rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 				t.Fatal("mixed vector local-call witness missing")
 			}
 			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -1257,7 +1257,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallReferenceCarriers(t *testing.T) 
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-reference-carriers", rv64MutableFuncrefLocalCallReferenceCarrierModule(), artifact)
 			view := compiled.executionView()
 			profile, target0, target1 := rv64MutableFuncrefGlobalLocalCall(view), rv64MutableReferenceCarrierTarget(view, 0), rv64MutableReferenceCarrierTarget(view, 1)
-			if !profile || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 19 || !target0 || !target1 {
+			if !rv64PrimitiveReferenceContract(view) && (!profile || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 19 || !target0 || !target1) {
 				t.Fatal("reference-carrier local-call witness missing")
 			}
 			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -1369,7 +1369,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalTailCallReferenceCarriers(t *testing
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-reference-carriers", rv64MutableFuncrefLocalTailCallReferenceCarrierModule(), artifact)
 			view := compiled.executionView()
 			m := rv64NativeTailModule(view)
-			if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 20 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) || m == nil || len(m.Plans) != 1 || !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0]) {
+			if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 20 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) || m == nil || len(m.Plans) != 1 || !rv64PrimitiveReferenceContract(view) && !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0])) {
 				t.Fatal("reference-carrier local-tail-call witness missing")
 			}
 			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -1534,7 +1534,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallHostReferenceCarriers(t *testing
 			defer rv64HostCertificateCloseRuntime(t, rt)
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-host-reference-carriers", rv64MutableFuncrefLocalCallHostReferenceCarrierModule(), artifact)
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 21 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) || rv64HasReferenceTail(view) {
+			if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 21 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) || rv64HasReferenceTail(view)) {
 				t.Fatal("host-reference-carrier local-call witness missing")
 			}
 			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -1590,10 +1590,11 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallHostReferenceCarriers(t *testing
 			}
 			defer owner.Close()
 			producer := rv64HostTailInstantiate(t, rt, producerCode, NewImports().Function("env", "target", owner))
-			if !rv64PublicDynamicHostReferenceBoundary(producer.c) || len(producer.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+			descriptor := uint64(offHeapSlicePtr(producer.funcRefDescs)) + coreruntime.FuncRefDescBytes
+			functionIndex, published := producer.funcrefDescriptorIndex(descriptor)
+			if !published || functionIndex != 0 || !rv64PublicDynamicHostReferenceBoundary(producer.c) && !rv64PrimitiveReferenceContract(producer.c) {
 				t.Fatal("dynamic host-reference-carrier producer witness")
 			}
-			descriptor := uint64(offHeapSlicePtr(producer.funcRefDescs)) + coreruntime.FuncRefDescBytes
 			token, err := rt.refStore.issue(producer, descriptor)
 			if err != nil {
 				t.Fatal("dynamic host-reference-carrier token", err)
@@ -1637,7 +1638,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalTailCallHostReferenceCarriers(t *tes
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-host-reference-carriers", rv64MutableFuncrefLocalTailCallHostReferenceCarrierModule(), artifact)
 			view := compiled.executionView()
 			m := rv64NativeTailModule(view)
-			if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 22 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) || m == nil || len(m.Plans) != 1 || !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0]) {
+			if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 22 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) || m == nil || len(m.Plans) != 1 || !rv64PrimitiveReferenceContract(view) && !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0])) {
 				t.Fatal("host-reference-carrier local-tail-call witness missing")
 			}
 			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -1722,10 +1723,11 @@ func TestRV64PublicMutableFuncrefGlobalLocalTailCallHostReferenceCarriers(t *tes
 			}
 			defer owner.Close()
 			producer := rv64HostTailInstantiate(t, rt, producerCode, NewImports().Function("env", "target", owner))
-			if !rv64PublicDynamicHostReferenceBoundary(producer.c) || len(producer.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+			descriptor := uint64(offHeapSlicePtr(producer.funcRefDescs)) + coreruntime.FuncRefDescBytes
+			functionIndex, published := producer.funcrefDescriptorIndex(descriptor)
+			if !published || functionIndex != 0 || !rv64PublicDynamicHostReferenceBoundary(producer.c) && !rv64PrimitiveReferenceContract(producer.c) {
 				t.Fatal("dynamic tail host-reference-carrier producer witness")
 			}
-			descriptor := uint64(offHeapSlicePtr(producer.funcRefDescs)) + coreruntime.FuncRefDescBytes
 			token, err := rt.refStore.issue(producer, descriptor)
 			if err != nil {
 				t.Fatal("dynamic tail host-reference-carrier token", err)
@@ -1778,12 +1780,12 @@ func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorCarriers(t *testing.T
 				}
 				compiled := rv64NativeTailCompile(t, fmt.Sprintf("mutable-funcref-local-reference-vector-carriers-tail%t", tail), source, artifact)
 				view := compiled.executionView()
-				if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) {
+				if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1)) {
 					t.Fatal("reference-vector-carrier local-call witness missing")
 				}
 				m := rv64NativeTailModule(view)
 				if tail {
-					if m == nil || len(m.Plans) != 1 || !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0]) {
+					if m == nil || len(m.Plans) != 1 || !rv64PrimitiveReferenceContract(view) && !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0]) {
 						t.Fatal("reference-vector-carrier local-tail plan missing", m)
 					}
 				} else if m != nil {
@@ -1892,10 +1894,10 @@ func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorLocalTransfers(t *tes
 				}
 				compiled := rv64NativeTailCompile(t, fmt.Sprintf("mutable-funcref-local-reference-vector-transfers-tail%t", tail), source, artifact)
 				view := compiled.executionView()
-				if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) {
+				if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1)) {
 					t.Fatal("reference-vector local-transfer witness missing")
 				}
-				if m := rv64NativeTailModule(view); tail && (m == nil || len(m.Plans) != 1 || !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0])) {
+				if m := rv64NativeTailModule(view); tail && (m == nil || len(m.Plans) != 1 || !rv64PrimitiveReferenceContract(view) && !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0])) {
 					t.Fatal("reference-vector local-transfer tail plan missing", m)
 				} else if !tail && m != nil {
 					t.Fatal("ordinary reference-vector local-transfer retained tail plan")
@@ -1990,10 +1992,10 @@ func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorBranchTransfers(t *te
 				}
 				compiled := rv64NativeTailCompile(t, fmt.Sprintf("mutable-funcref-local-reference-vector-branches-tail%t", tail), source, artifact)
 				view := compiled.executionView()
-				if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) {
+				if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1)) {
 					t.Fatal("reference-vector branch-transfer witness missing")
 				}
-				if m := rv64NativeTailModule(view); tail && (m == nil || len(m.Plans) != 1 || !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0])) {
+				if m := rv64NativeTailModule(view); tail && (m == nil || len(m.Plans) != 1 || !rv64PrimitiveReferenceContract(view) && !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0])) {
 					t.Fatal("reference-vector branch-transfer tail plan missing", m)
 				} else if !tail && m != nil {
 					t.Fatal("ordinary reference-vector branch-transfer retained tail plan")
@@ -2087,7 +2089,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalTailCallMixedVector(t *testing.T) {
 			defer rt.Close()
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-mixed-vector", rv64MutableFuncrefLocalTailCallMixedVectorModule(), artifact)
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalLocalCall(view) || !rv64HasReferenceTail(view) {
+			if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || !rv64HasReferenceTail(view)) {
 				t.Fatal("mixed vector local-tail-call witness missing")
 			}
 			consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -2239,7 +2241,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallHostReentryClear(t *testing.T) {
 				}
 				compiled := rv64NativeTailCompile(t, fmt.Sprintf("mutable-funcref-local-call-host-reentry-tail%t", tail), consumerSource, artifact)
 				view := compiled.executionView()
-				if !rv64MutableFuncrefGlobalLocalCall(view) || rv64HasReferenceTail(view) != tail {
+				if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || rv64HasReferenceTail(view) != tail) {
 					t.Fatal("mutable host reentry caller witness", tail)
 				}
 				consumer := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
@@ -2319,7 +2321,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallHostReentryClear(t *testing.T) {
 func TestRV64PublicMutableFuncrefGlobalLocalCallAdmission(t *testing.T) {
 	compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-admission", rv64MutableFuncrefLocalCallModule(), false)
 	defer compiled.Close()
-	if !rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) {
+	if !(rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 		t.Fatal("base local-call witness rejected")
 	}
 	for name, mutate := range map[string]func(*Compiled){
@@ -2356,7 +2358,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallReferenceCarrierAdmission(t *tes
 	compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-reference-carrier-admission", rv64MutableFuncrefLocalCallReferenceCarrierModule(), false)
 	defer compiled.Close()
 	view := compiled.executionView()
-	if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 19 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) {
+	if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 19 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1)) {
 		t.Fatal("base reference-carrier local-call witness rejected")
 	}
 	for name, mutate := range map[string]func(*Compiled){
@@ -2404,7 +2406,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallHostReferenceCarrierAdmission(t 
 	compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-host-reference-carrier-admission", rv64MutableFuncrefLocalCallHostReferenceCarrierModule(), false)
 	defer compiled.Close()
 	view := compiled.executionView()
-	if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 21 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) {
+	if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 21 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1)) {
 		t.Fatal("base host-reference-carrier local-call witness rejected")
 	}
 	for name, mutate := range map[string]func(*Compiled){
@@ -2452,7 +2454,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalTailCallReferenceCarrierAdmission(t 
 	compiled := rv64NativeTailCompile(t, "mutable-funcref-local-tail-call-reference-carrier-admission", rv64MutableFuncrefLocalTailCallReferenceCarrierModule(), false)
 	defer compiled.Close()
 	view := compiled.executionView()
-	if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 20 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) {
+	if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 20 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1)) {
 		t.Fatal("base reference-carrier local-tail-call witness rejected")
 	}
 	for name, mutate := range map[string]func(*Compiled){
@@ -2488,7 +2490,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalTailCallHostReferenceCarrierAdmissio
 	defer compiled.Close()
 	view := compiled.executionView()
 	m := rv64NativeTailModule(view)
-	if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 22 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) || m == nil || len(m.Plans) != 1 || !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0]) {
+	if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != 22 || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) || m == nil || len(m.Plans) != 1 || !rv64PrimitiveReferenceContract(view) && !rv64MutableReferenceCarrierTailPlan(view, m.Plans[0])) {
 		t.Fatal("base host-reference-carrier local-tail-call witness rejected")
 	}
 	for name, mutate := range map[string]func(*Compiled){
@@ -2540,7 +2542,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorCarrierAdmission(t *t
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-reference-vector-carrier-admission", source, false)
 			defer compiled.Close()
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) {
+			if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1)) {
 				t.Fatal("base reference-vector-carrier witness rejected")
 			}
 			for name, mutate := range map[string]func(*Compiled){
@@ -2597,7 +2599,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorLocalTransferAdmissio
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-reference-vector-transfer-admission", source, false)
 			defer compiled.Close()
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) {
+			if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1)) {
 				t.Fatal("base reference-vector local-transfer witness rejected")
 			}
 			for name, mutate := range map[string]func(*Compiled){
@@ -2654,7 +2656,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorBranchTransferAdmissi
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-reference-vector-branch-admission", source, false)
 			defer compiled.Close()
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1) {
+			if !rv64PrimitiveReferenceContract(view) && (!rv64MutableFuncrefGlobalLocalCall(view) || rv64MutableFuncrefGlobalLocalCallCodeVariant(view) != variant || !rv64MutableReferenceCarrierTarget(view, 0) || !rv64MutableReferenceCarrierTarget(view, 1)) {
 				t.Fatal("base reference-vector branch-transfer witness rejected")
 			}
 			for name, mutate := range map[string]func(*Compiled){
@@ -2696,7 +2698,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalReferenceVectorBranchTransferAdmissi
 func TestRV64PublicMutableFuncrefGlobalLocalCallI32Admission(t *testing.T) {
 	compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-i32-admission", rv64MutableFuncrefLocalCallI32Module(), false)
 	defer compiled.Close()
-	if !rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) {
+	if !(rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 		t.Fatal("base i32 local-call witness rejected")
 	}
 	for name, mutate := range map[string]func(*Compiled){
@@ -2735,7 +2737,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallScalarAdmission(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-"+name+"-admission", source, false)
 			defer compiled.Close()
-			if !rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) {
+			if !(rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 				t.Fatal("base scalar local-call witness rejected")
 			}
 			for mutation, mutate := range map[string]func(*Compiled){
@@ -2769,7 +2771,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalCallScalarAdmission(t *testing.T) {
 func TestRV64PublicMutableFuncrefGlobalLocalCallMixedAdmission(t *testing.T) {
 	compiled := rv64NativeTailCompile(t, "mutable-funcref-local-call-mixed-admission", rv64MutableFuncrefLocalCallMixedModule(), false)
 	defer compiled.Close()
-	if !rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) {
+	if !(rv64MutableFuncrefGlobalLocalCall(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 		t.Fatal("base mixed local-call witness rejected")
 	}
 	for name, mutate := range map[string]func(*Compiled){

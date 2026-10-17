@@ -338,7 +338,17 @@ func TestPublicHostReferenceBoundaryRejectsNearMisses(t *testing.T) {
 	if admitPublicHostReferenceBoundaryWire(oversized) || admitPublicHostReferenceBoundary(oversizedModule) {
 		t.Fatal("oversized host reference wrapper admitted")
 	}
-	if image, err := CompileModuleWith(oversizedModule, oversizedOpts); err == nil || image != nil {
-		t.Fatal("oversized host reference wrapper compiled", image, err)
+	checkPublicPrimitiveModule(t, oversizedModule, oversizedOpts)
+	// The private 64-slot profile stays closed; the public host limit is 256.
+	tooMany := append(append([]wasm.ValType(nil), oversizedTypes...), make([]wasm.ValType, 257-len(oversizedTypes))...)
+	for i := len(oversizedTypes); i < len(tooMany); i++ {
+		tooMany[i] = wasm.I32
+	}
+	m, err := wasm.DecodeModule(publicHostReferenceBoundarySource(tooMany))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image, err := CompileModuleWith(m, oversizedOpts); image != nil || err == nil {
+		t.Fatal("public host arity limit bypassed", err)
 	}
 }

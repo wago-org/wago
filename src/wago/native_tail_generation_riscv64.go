@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -29,6 +29,7 @@ type rv64NativeTailGeneration struct {
 	caller        *Instance
 	scope         *rv64NativeTableTargets
 	state         *railshotInvocationState
+	hostScope     hostCallScope
 	factory       *railshot.NativeTailDispatcher
 	owners        []*Instance
 	snapshots     []*railshot.NativeTailDefinedOwner
@@ -186,6 +187,12 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 		return nil, err
 	}
 	metadata += ownerMetadata + int(unsafe.Sizeof(rv64NativeTailGeneration{})) + 2*int(unsafe.Sizeof(rv64RetiredTailGeneration{})) + 32 + scope.count*16
+	primitiveTails := (rv64PrimitiveReferenceContract(caller.c) || rv64FreshRootedGC(caller.c)) && rv64HasDynamicTail(rv64NativeTailModule(caller.c))
+	if primitiveTails {
+		// All typed sites share one retained caller image. Factory budgeting
+		// charges the per-site proof fields through tailRADynamicSite's size.
+		metadata += 2 * int(unsafe.Sizeof(railshot.NativeTailCodeImage{}))
+	}
 	// Conservatively charge every retained guest image per live generation.
 	// Distinct overlapping scopes can contain different images; subtracting
 	// only the newest graph's guests would undercharge their retained union.
@@ -212,6 +219,7 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 		}
 	}
 	g := &rv64NativeTailGeneration{caller: caller, scope: scope, state: state, codeBytes: code, metadataBytes: metadata, reserved: true}
+	g.hostScope.bound = true
 	for _, reservation := range budgets {
 		budget := reservation.budget
 		budget.limits = reservation.limits
@@ -242,6 +250,13 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 		return g, err
 	}
 	sites := make([]railshot.NativeTailSite, len(plans))
+	var typedImage *railshot.NativeTailCodeImage
+	if primitiveTails {
+		typedImage, err = railshot.NewNativeTailCodeImage(rv64TailCodeOwner{caller})
+		if err != nil {
+			return g, err
+		}
+	}
 	for i, p := range plans {
 		sig, _ := rv64NativeTailPlanSignature(caller.c, p)
 		params, results := make([]ValType, sig.paramCount()), make([]ValType, sig.resultCount())
@@ -278,15 +293,23 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 			if target == nil {
 				return g, rv64TailGenerationError("mixed direct target has no native definition")
 			}
+			if funcSigHasGCRefs(caller.c.importFuncSigs[p.ImportIndex]) && (caller.gc == nil || caller.gc != target.inst.gc || caller.refStore != target.inst.refStore) {
+				return g, rv64TailGenerationError("mixed collector tail target requires the same Runtime collector domain")
+			}
 			entry, home, ctx, valid := rv64QualifiedNativeTailTarget(target)
 			if !valid {
 				return g, rv64TailGenerationError("mixed direct target frame")
 			}
 			site.TargetContext = rv64NativeInvocationContext(target.inst)
+			site.ContextOnlyTarget = !target.inst.c.needsFuncRefContext()
 			site.Target = railshot.NativeImportTarget{Entry: uintptr(entry), Home: uintptr(home), Context: uintptr(ctx), HostTrampoline: trampoline, StackOwnedActivation: true, InvocationContext: true}
 			sites[i] = site
 		} else {
-			sites[i], err = railshot.NativeTailDefinedSite(site, p.ReferenceBase, indexed)
+			if typedImage != nil {
+				sites[i], err = railshot.NativeTailDefinedTypedSite(site, p.ReferenceBase, indexed, typedImage, p.TypeIndex)
+			} else {
+				sites[i], err = railshot.NativeTailDefinedSite(site, p.ReferenceBase, indexed)
+			}
 		}
 		if err != nil {
 			return g, err
@@ -412,7 +435,15 @@ func (g *rv64NativeTailGeneration) Close() error {
 }
 
 func (g *rv64NativeTailGeneration) releaseReservation() {
-	for _, budget := range []*rv64NativeTailGenerationBudget{&g.scope.tailBudget, &g.state.tailGenerationBudget} {
+	var budgets [2]*rv64NativeTailGenerationBudget
+	if g.scope != nil {
+		budgets[0] = &g.scope.tailBudget
+	}
+	budgets[1] = &g.state.tailGenerationBudget
+	for _, budget := range budgets {
+		if budget == nil {
+			continue
+		}
 		budget.code -= g.codeBytes
 		budget.metadata -= g.metadataBytes
 		budget.count--
@@ -421,5 +452,6 @@ func (g *rv64NativeTailGeneration) releaseReservation() {
 		}
 	}
 	g.factory, g.owners, g.snapshots, g.callerOwner = nil, nil, nil, nil
+	g.scope = nil
 	g.reserved = false
 }

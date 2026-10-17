@@ -1,16 +1,17 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -70,15 +71,16 @@ func TestRV64PublicArtifactBoundaries(t *testing.T) {
 	}
 	defer c.Close()
 	base := c.executionView()
-	check := func(name string, mutate func(*Compiled), accepted bool) {
+	check := func(name string, mutate func(*Compiled)) {
 		t.Helper()
 		t.Run(name, func(t *testing.T) {
-			view := *base
+			view := *rv64ReferenceStartCopy(base)
 			mutate(&view)
 			err := railshotValidateCompiled(&view)
-			if accepted && err != nil || !accepted && !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("artifact boundary", accepted, err)
+			if !errors.Is(err, railshot.ErrUnsupported) {
+				t.Fatal("changed artifact execution metadata admitted", err)
 			}
+			rv64RequireRejectedArtifact(t, &view)
 		})
 	}
 	for _, count := range []int{256, 257} {
@@ -91,18 +93,42 @@ func TestRV64PublicArtifactBoundaries(t *testing.T) {
 				unused.Results[i].Kind = ValueTypeI64
 			}
 			v.Types = append(slices.Clone(v.Types), unused)
-		}, count == 256)
-		check("active-descriptors", func(v *Compiled) { v.Data = make([]DataInit, count) }, count == 256)
-		check("passive-descriptors", func(v *Compiled) { v.PassiveData = make([]PassiveDataInit, count) }, count == 256)
+		})
+		check("active-descriptors", func(v *Compiled) { v.Data = make([]DataInit, count) })
+		check("passive-descriptors", func(v *Compiled) { v.PassiveData = make([]PassiveDataInit, count) })
 	}
 	check("inert-GC-count", func(v *Compiled) {
 		v.GCTypeDescs = make([]gc.TypeDesc, railshot.MaxFunctions+1)
-	}, false)
+	})
 	for _, extra := range []int{0, 1} {
 		check("combined-payload", func(v *Compiled) {
 			v.Data = []DataInit{{Bytes: make([]byte, railshot.MaxModuleBytes/2)}}
 			v.PassiveData = []PassiveDataInit{{Bytes: make([]byte, railshot.MaxModuleBytes/2+extra)}}
-		}, extra == 0)
+		})
+	}
+	for _, count := range []int{256, 257} {
+		t.Run(fmt.Sprintf("fresh-source-%d", count), func(t *testing.T) {
+			params := make([]wasm.ValType, min(count, 256))
+			for i := range params {
+				params[i] = wasm.I32
+			}
+			segments := make([][]byte, count)
+			for i := range segments {
+				segments[i] = []byte{0, 0x41, 0, 0x0b, 0}
+			}
+			rv64RequireCore3SourceValidation(t, wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, params))),
+				wasmtest.Section(5, []byte{1, 0, 1}),
+				wasmtest.Section(11, wasmtest.Vec(segments...)),
+			))
+			for i := range segments {
+				segments[i] = []byte{1, 0}
+			}
+			rv64RequireCore3SourceValidation(t, wasmtest.Module(
+				wasmtest.Section(5, []byte{1, 0, 1}),
+				wasmtest.Section(11, wasmtest.Vec(segments...)),
+			))
+		})
 	}
 }
 

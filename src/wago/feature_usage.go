@@ -143,7 +143,7 @@ func analyzeModuleRequirementsWithValidation(m *wasm.Module, analysis *wasm.Vali
 		for _, expr := range elem.Kind.Exprs {
 			features, usesRefFunc := analyzeConstExprRequirements(expr, m.ImportedGlobalCount())
 			out |= features
-			moduleFacts.UsesRefFunc = moduleFacts.UsesRefFunc || usesRefFunc
+			moduleFacts.UsesRefFunc = moduleFacts.UsesRefFunc || elem.Mode.Kind != wasm.ElemDeclarative && usesRefFunc
 		}
 		// Legacy declarations have no runtime values. Keep their feature bits
 		// below while avoiding an otherwise unused per-function descriptor arena.
@@ -288,11 +288,17 @@ func analyzeConstExprBytes(body []byte, importedGlobals int) (CoreFeatures, bool
 	r := wasm.NewReader(body)
 	var out CoreFeatures
 	usesRefFunc := false
-	usesArithmetic, usesPriorLocal, usesGCConst := false, false, false
+	usesArithmetic, usesPriorLocal := false, false
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
 			return out, true
+		}
+		if op == 0xd0 {
+			probe := *r
+			if heap, err := probe.S33(); err == nil {
+				out |= requiredFeaturesForHeapImmediate(heap)
+			}
 		}
 		imm, err := wasm.ClassifyInstructionImmediate(r, op)
 		if err != nil {
@@ -304,7 +310,7 @@ func analyzeConstExprBytes(body []byte, importedGlobals int) (CoreFeatures, bool
 			usesRefFunc = true
 		case wasm.InstrStructNew, wasm.InstrArrayNew, wasm.InstrArrayNewDefault,
 			wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
-			usesGCConst = true
+			out |= CoreFeatureReferenceTypes | CoreFeatureGC
 		case wasm.InstrGlobalGet:
 			if int(imm.Index) >= importedGlobals {
 				usesPriorLocal = true
@@ -314,7 +320,7 @@ func analyzeConstExprBytes(body []byte, importedGlobals int) (CoreFeatures, bool
 			usesArithmetic = true
 		}
 	}
-	if usesPriorLocal || usesGCConst {
+	if usesPriorLocal {
 		out |= CoreFeatureExtendedConstExpressions
 	} else if usesArithmetic {
 		out |= CoreFeatureExtendedConst

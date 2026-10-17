@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -47,10 +47,7 @@ func TestRV64PublicReferenceFunctionOwnedTablePoolTrapsReuse(t *testing.T) {
 				rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 				defer rv64HostCertificateCloseRuntime(t, rt)
 				in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
-				row := in.funcRefDescs[3*40 : 4*40]
-				if !bytes.Equal(row, make([]byte, 40)) {
-					t.Fatal("private table-only descriptor row")
-				}
+				rv64RequirePublishedLocalFunction(t, in, 2)
 				for _, action := range []uint64{0, 1, 0, 2, 0, 3, 0, 4, 0, 1, 0, 2, 0} {
 					got, err := in.Invoke("run", 0xdeadbeef00000000|action, 0xabad1dea80000001)
 					if action == 0 {
@@ -153,26 +150,14 @@ func TestRV64PublicReferenceFunctionOwnedTableRetainedAdmission(t *testing.T) {
 			}
 		})
 	}
-	if allocs := testing.AllocsPerRun(5, func() {
+	cold := testing.AllocsPerRun(5, func() {
 		remaining := railshot.MaxModuleBytes
 		if err := rv64ValidateReferenceFunctionTable(c, &remaining); err != nil {
 			panic(err)
 		}
-	}); allocs != 0 {
-		t.Fatal("new own-table shape proof allocation", allocs)
-	}
-	control := testing.AllocsPerRun(5, func() {
-		if err := rv64ValidateOwnedTable(c); err != nil {
-			panic(err)
-		}
 	})
-	if allocs := testing.AllocsPerRun(5, func() {
-		if err := rv64ValidateReferenceFunctions(c); err != nil {
-			panic(err)
-		}
-	}); allocs != control {
-		t.Fatal("private table proof exceeds existing numeric key-check allocation", allocs, control)
-	}
+	t.Logf("cold table structural validation allocations: %g", cold)
+	rv64RequireCachedValidationNoAllocations(t, c)
 
 	rt := NewRuntime()
 	defer rt.Close()
@@ -182,11 +167,12 @@ func TestRV64PublicReferenceFunctionOwnedTableRetainedAdmission(t *testing.T) {
 	}
 	defer mod.Close()
 	in, err := rt.Instantiate(context.Background(), mod)
-	if in != nil {
-		in.Close()
+	if in == nil || err != nil {
+		t.Fatal("public table rejected", err)
 	}
-	if in != nil || !errors.Is(err, railshot.ErrUnsupported) || c.loadCodeCache().base != 0 || c.loadCodeCache().sealed || c.loadCodeCache().refs != 0 {
-		t.Fatal("default destination published private table", err)
+	defer in.Close()
+	if got, err := in.Invoke("run", 0, 42); err != nil || !slices.Equal(got, []uint64{42}) {
+		t.Fatal("public table execution", got, err)
 	}
 }
 

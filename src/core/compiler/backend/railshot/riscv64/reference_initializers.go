@@ -630,7 +630,7 @@ func privateIndexedFunctionGlobal(global wasm.Global, m *wasm.Module) (uint32, b
 // Public immutable cells use retained canonical descriptors. Imported cells
 // require the retained-reference profile and frozen Runtime descriptor-owner roots.
 func admitImmutableFunctionGlobal(global wasm.Global, m *wasm.Module, limit int) error {
-	if global.Type.Mutable || !wasm.EqualValType(global.Type.Type, wasm.FuncRef) || len(m.Tables)+m.ImportedTableCount() > 1 {
+	if global.Type.Mutable || !wasm.EqualValType(global.Type.Type, wasm.FuncRef) || len(m.Tables)+m.ImportedTableCount() > 1 && !admitPublicPrimitiveReferenceModule(m, false) && !admitPublicPrimitiveReferenceModule(m, true) {
 		return unsupported("reference global requires immutable local funcref and retained references")
 	}
 	if len(global.Init.BodyBytes) > 0 && global.Init.BodyBytes[0] == 0x23 {
@@ -652,6 +652,11 @@ func admitImmutableFunctionGlobal(global wasm.Global, m *wasm.Module, limit int)
 // Export chains are validated before folding. Imported-function targets need
 // same-store native binding validation at public instantiation.
 func admitReferenceGlobalExport(m *wasm.Module, index uint32) error {
+	if admitPublicPrimitiveReferenceModule(m, false) || admitPublicPrimitiveReferenceModule(m, true) {
+		if typ, ok := m.GlobalTypeByIndex(index); ok && (internalReferenceTypes{publicReferences: true, sourceDirectory: sourceFunctionTypeDirectory{module: m}}).publicFunctionReference(typ.Type) {
+			return nil
+		}
+	}
 	if index == 0 && (admitMutableFunctionGlobalLocalExport(m) || admitMutableFunctionGlobalLocalObserve(m) || admitMutableFunctionGlobalLocalCall(m)) {
 		return nil
 	}
@@ -684,5 +689,8 @@ func admitReferenceGlobalExport(m *wasm.Module, index uint32) error {
 }
 
 func admitImportedFunctionGlobal(m *wasm.Module, typ wasm.GlobalType) bool {
+	if (internalReferenceTypes{publicReferences: true, sourceDirectory: sourceFunctionTypeDirectory{module: m}}).publicFunctionReference(typ.Type) && (admitPublicPrimitiveReferenceModule(m, false) || admitPublicPrimitiveReferenceModule(m, true)) {
+		return true
+	}
 	return wasm.EqualValType(typ.Type, wasm.FuncRef) && (!typ.Mutable && len(m.Tables)+m.ImportedTableCount() <= 1 || typ.Mutable && (admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m) || admitMutableFunctionGlobalSetSelf(m) || admitMutableFunctionGlobalCopy(m) || admitMutableFunctionGlobalMove(m) || admitMutableFunctionGlobalBidirectionalCopy(m) || admitMutableFunctionGlobalLocalCopy(m) || admitMutableFunctionGlobalLocalPublish(m) || admitMutableFunctionGlobalLocalTransfer(m)))
 }

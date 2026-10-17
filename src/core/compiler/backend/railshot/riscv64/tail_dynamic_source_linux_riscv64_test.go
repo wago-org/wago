@@ -211,6 +211,9 @@ func TestTailDynamicSourceRV64PrewriteTableAndTokenGuards(t *testing.T) {
 			copy(x.tables[0], table)
 			x.prepare(t, 1)
 			tc.mutate()
+			if tc.name == "wrong-type" && binary.LittleEndian.Uint64(x.tables[0][16:]) == binary.LittleEndian.Uint64(table[16:]) {
+				t.Fatal("wrong-type fixture did not change the table key")
+			}
 			before := bytes.Clone(f.args)
 			for i := range f.results {
 				f.results[i] = 0xa5

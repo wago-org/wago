@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -257,10 +257,13 @@ func TestRV64PublicReferenceBranchMarkerAdmission(t *testing.T) {
 		if c, err := compatibilityDefaultConfig().Compile(source); c != nil || err == nil {
 			t.Fatal("public typed-reference gate widened")
 		}
-		c := rv64NativeTailCompile(t, "branch-marker", source, false)
+		base := rv64NativeTailCompile(t, "branch-marker", source, false)
+		c := rv64ReferenceImportTailCopy(base)
+		if err := c.validate(); err != nil {
+			t.Fatal("unchanged branch metadata", err)
+		}
 		c.nativeReferenceControlABI = false
-		c.validateMemo = &validateMemo{}
-		if err := railshotValidateCompiled(c); err == nil {
+		if err := c.validate(); err == nil {
 			t.Fatal("branch descriptor without control witness admitted")
 		}
 		blob, err := marshalCompiled(c)

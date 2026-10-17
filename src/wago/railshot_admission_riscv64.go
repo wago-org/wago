@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -13,21 +13,36 @@ import (
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
-	rv64runtime "github.com/wago-org/wago/src/core/runtime/riscv64"
 )
 
 var _ [railshot.MaxHostFunctionImports - rv64RootedMaxHostFunctionImports]struct{}
 var _ [rv64RootedMaxHostFunctionImports - railshot.MaxHostFunctionImports]struct{}
 
 func rv64FreshRootedGC(c *Compiled) bool {
-	if c == nil {
+	if c == nil || c.nativeGCABIRequirement() != gc.NativeABIVersion {
 		return false
 	}
 	memo := c.loadValidateMemo()
+	contract := c.rv64ExecutionContract()
+	if contract != nil && memo != nil && memo.executionView() == c && len(c.code) != 0 && contract.rooted.Load() == c {
+		return true
+	}
+	var artifactReceipt validateMemo
+	if memo != nil && contract != nil {
+		if !rv64ArtifactContractValid(c) {
+			return false
+		}
+		if !memo.rv64FreshRootedGC {
+			if !rv64PopulateArtifactReceipt(&artifactReceipt, c) {
+				return false
+			}
+			memo = &artifactReceipt
+		}
+	}
 	if memo == nil || !memo.rv64FreshRootedGC || sha256.Sum256(c.code) != memo.rv64FreshRootedGCDigest || c.syncHostSlots != memo.rv64FreshRootedGCSyncHostSlots {
 		return false
 	}
-	if len(c.Types) == 0 || len(c.Types) > railshot.MaxFunctions || len(c.Funcs) == 0 || len(c.Funcs) > railshot.MaxFunctions ||
+	if len(c.Types) == 0 || len(c.Types) > railshot.MaxFunctions || len(c.Funcs) == 0 && !c.hasNoFunctionCode() && !(len(c.code) == 0 && c.NumImports > 0 && c.hasCollectorReferenceCallBoundary()) || len(c.Funcs) > railshot.MaxFunctions ||
 		len(c.FuncTypeID) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions ||
 		compiledStructuralRequiredFeatures(c)&^c.requiredFeatures != 0 {
 		return false
@@ -43,7 +58,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	if structProduct != 0 && !structHelpers || arrayProduct != 0 && !arrayHelpers ||
 		c.usesGCStructHelpers() != structHelpers || c.usesGCArrayHelpers() != arrayHelpers || c.syncHostSlots < 4 ||
 		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports ||
-		len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports != 0) || c.tableCount() > 2 || c.memoryCount() > rv64RootedMaxMemories ||
+		len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports != 0) || c.tableCount() > maxRV64ExecutionTables || c.memoryCount() > rv64RootedMaxMemories ||
 		len(c.GlobalImports) > 256 || len(c.GlobalImports) > len(c.Globals) || len(c.Globals) > 256 || len(c.Elems) > 256 ||
 		len(c.passiveElems) > 256 || len(c.PassiveData) > 256 {
 		return false
@@ -74,20 +89,20 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		return false
 	}
 	directory := c.memoryDir
-	if directory == nil || len(directory.defs) > rv64RootedMaxMemories || !directory.exactExports || directory.staged != memo.rv64FreshRootedGCMemoryStaged || len(directory.defs) > 1 && !directory.staged || directory.stagedMemory64 ||
+	if directory == nil || len(directory.defs) > rv64RootedMaxMemories || !directory.exactExports || directory.staged != memo.rv64FreshRootedGCMemoryStaged || len(directory.defs) > 1 && !directory.staged ||
 		len(directory.gcStructGlobals) != 0 || len(directory.gcArrayGlobals) != 0 || directory.gcArrayElement != nil || directory.gcI31TableInit != nil ||
-		len(directory.ehTags) != 0 || len(directory.ehTagExports) != 0 || uint8(len(directory.defs)) != memo.rv64FreshRootedGCMemories {
+		(len(directory.ehTags) != 0 || len(directory.ehTagExports) != 0) && !rv64ExceptionHandling(c) || uint8(len(directory.defs)) != memo.rv64FreshRootedGCMemories {
 		return false
 	}
 	if len(directory.defs) != 0 {
 		primary := directory.defs[0]
-		if !c.HasMemory || uint64(c.MemMinPages) != primary.Min || uint64(c.MemMaxPages) < primary.Min || uint64(c.MemMaxPages) > primary.Max || c.MemHasMax != primary.HasMax || c.memoryImport != primary.ImportKey ||
+		if !c.HasMemory || uint64(c.MemMinPages) != primary.Min || uint64(c.MemMaxPages) < primary.Min || primary.HasMax && uint64(c.MemMaxPages) > primary.Max || c.MemHasMax != primary.HasMax || c.memoryImport != primary.ImportKey ||
 			primary.Min != memo.rv64FreshRootedGCMemMin || primary.Max != memo.rv64FreshRootedGCMemMax || c.MemMaxPages != memo.rv64FreshRootedGCReserveMax {
 			return false
 		}
 		for i := range directory.defs {
 			memory := directory.defs[i]
-			if memory.Shared || memory.Addr64 || !memory.HasMax || memory.Min > memory.Max || memory.Max > 256 {
+			if memory.Shared && !rv64ThreadedMemoryProfile(c) || memory.HasMax && memory.Min > memory.Max {
 				return false
 			}
 		}
@@ -110,7 +125,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	for i := range c.Globals {
 		global := &c.Globals[i]
 		if global.HasInitGlobal {
-			if isGCRefValType(global.Type) {
+			if isGCRefValType(global.Type) || global.Type == ValExternRef && c.compactExternFrameRoots() {
 				exact, err := c.globalExactType(i)
 				if err != nil || !rv64InitializerReferenceGlobal(c, global.InitGlobal, exact, i) {
 					return false
@@ -120,7 +135,7 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			}
 		}
 		if len(global.InitExpr) != 0 {
-			if isGCRefValType(global.Type) {
+			if isGCRefValType(global.Type) || global.Type == ValExternRef && c.compactExternFrameRoots() {
 				exact, err := c.globalExactType(i)
 				if err != nil || c.validateGCConstExpr(global.InitExpr, exact, i) != nil {
 					return false
@@ -149,14 +164,28 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		remainingData -= len(c.PassiveData[i].Bytes)
 	}
 	roots := c.genericGCFrameRoots()
-	if roots == nil || len(roots.safepoints) == 0 || len(c.Types) != len(c.GCTypeDescs) {
+	if roots == nil || len(c.Types) != len(c.GCTypeDescs) {
 		return false
 	}
-	if validateCompiledGCFrameRoots(c, roots) != nil {
+	if err := validateCompiledGCFrameRoots(c, roots); err != nil {
 		return false
 	}
+	opaqueNoCollect := c.needsOwnedExceptionReferences() && rv64ExceptionHandling(c) && len(roots.safepoints) == 0 && len(roots.callsites) == 0
+	ownedFunctionRoots := c.needsOwnedExceptionReferences() && rv64ExceptionHandling(c) && c.functionEnvironmentFrameRoots()
 	rootedAbstract := func(heap AbstractHeapType) (wasm.AbsHeapType, bool) {
 		switch heap {
+		case AbstractHeapFunc:
+			return wasm.HeapFunc, opaqueNoCollect || ownedFunctionRoots || c.functionEnvironmentFrameRoots()
+		case AbstractHeapNoFunc:
+			return wasm.HeapNoFunc, opaqueNoCollect || ownedFunctionRoots || c.functionEnvironmentFrameRoots()
+		case AbstractHeapExtern:
+			return wasm.HeapExtern, opaqueNoCollect || c.compactExternFrameRoots()
+		case AbstractHeapNoExtern:
+			return wasm.HeapNoExtern, opaqueNoCollect || c.compactExternFrameRoots()
+		case AbstractHeapExn:
+			return wasm.HeapExn, rv64ExceptionHandling(c)
+		case AbstractHeapNoExn:
+			return wasm.HeapNoExn, rv64ExceptionHandling(c)
 		case AbstractHeapNone:
 			return wasm.HeapNone, true
 		case AbstractHeapAny:
@@ -191,10 +220,18 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			return false
 		}
 		target := c.Types[value.Ref.Heap.TypeIndex]
-		return target.Kind == CompositeTypeStruct || target.Kind == CompositeTypeArray
+		return target.Kind == CompositeTypeStruct || target.Kind == CompositeTypeArray || (opaqueNoCollect || ownedFunctionRoots || c.functionEnvironmentFrameRoots()) && target.Kind == CompositeTypeFunction
 	}
 	rootedAbstractGlobal := func(heap AbstractHeapType) bool {
 		switch heap {
+		case AbstractHeapExtern, AbstractHeapNoExtern:
+			return opaqueNoCollect || c.compactExternFrameRoots()
+		case AbstractHeapFunc, AbstractHeapNoFunc:
+			return opaqueNoCollect || c.functionEnvironmentFrameRoots()
+		case AbstractHeapNone:
+			return opaqueNoCollect
+		case AbstractHeapExn, AbstractHeapNoExn:
+			return c.needsOwnedExceptionReferences() && rv64ExceptionHandling(c)
 		case AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray:
 			return true
 		default:
@@ -224,9 +261,9 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		if err != nil || !abiOK || global.Type != abiType || exact.Kind != ValueTypeReference ||
 			exact.Ref.Exact || !rootedGlobalType || !rootedValue(exact, len(c.Types)) ||
 			!exact.Ref.Heap.Defined && !exact.Ref.Nullable ||
-			global.Bits != 0 || global.HasInitFunc || global.InitFunc != 0 ||
+			(global.Type != ValI31Ref && global.Bits != 0 || global.Type == ValI31Ref && (global.Bits>>32 != 0 || global.Bits != 0 && global.Bits&1 == 0)) || global.HasInitFunc || global.InitFunc != 0 ||
 			(global.HasInitGlobal && (len(global.InitExpr) != 0 || !rv64InitializerReferenceGlobal(c, global.InitGlobal, exact, i))) ||
-			(!global.HasInitGlobal && (global.InitGlobal != 0 || len(global.InitExpr) == 0 && !exact.Ref.Nullable)) {
+			(!global.HasInitGlobal && (global.InitGlobal != 0 || i >= len(c.GlobalImports) && len(global.InitExpr) == 0 && !exact.Ref.Nullable)) {
 			return false
 		}
 	}
@@ -259,12 +296,28 @@ func rv64FreshRootedGC(c *Compiled) bool {
 					return 0, false
 				}
 				switch ref.Heap.Abstract {
+				case AbstractHeapExn, AbstractHeapNoExn:
+					if !c.needsOwnedExceptionReferences() || !rv64ExceptionHandling(c) {
+						return 0, false
+					}
+					if ref.Nullable {
+						return gc.StorageRefNull, true
+					}
+					return gc.StorageRef, true
+				case AbstractHeapExtern, AbstractHeapNoExtern:
+					if !c.compactExternFrameRoots() {
+						return 0, false
+					}
+					if ref.Nullable {
+						return gc.StorageExternRefNull, true
+					}
+					return gc.StorageExternRef, true
 				case AbstractHeapFunc:
 					if ref.Nullable {
 						return gc.StorageFuncRefNull, true
 					}
 					return gc.StorageFuncRef, true
-				case AbstractHeapI31:
+				case AbstractHeapNone, AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray:
 					if ref.Nullable {
 						return gc.StorageRefNull, true
 					}
@@ -279,6 +332,12 @@ func rv64FreshRootedGC(c *Compiled) bool {
 				return 0, false
 			}
 			target := c.Types[ref.Heap.TypeIndex]
+			if target.Kind == CompositeTypeFunction && !ref.Exact && c.functionEnvironmentFrameRoots() {
+				if ref.Nullable {
+					return gc.StorageFuncRefNull, true
+				}
+				return gc.StorageFuncRef, true
+			}
 			if target.Kind != CompositeTypeStruct && target.Kind != CompositeTypeArray {
 				return 0, false
 			}
@@ -299,6 +358,8 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			return gc.StorageF32, true
 		case ValueTypeF64:
 			return gc.StorageF64, true
+		case ValueTypeV128:
+			return gc.StorageV128, true
 		default:
 			return 0, false
 		}
@@ -320,11 +381,11 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		if typ.HasDescribes || typ.HasDescriptor {
 			return false
 		}
-		if groupSizes[typ.RecGroup] > 1 && (!typ.Final || len(typ.Supers) != 0 || typ.Kind == CompositeTypeFunction) {
+		if groupSizes[typ.RecGroup] > 1 && typ.Kind != CompositeTypeFunction && (!typ.Final || len(typ.Supers) != 0) {
 			return false
 		}
 		if typ.Kind == CompositeTypeFunction {
-			if !typ.Final || len(typ.Supers) != 0 {
+			if len(typ.Supers) > 1 {
 				return false
 			}
 		} else if typ.Kind == CompositeTypeStruct || typ.Kind == CompositeTypeArray {
@@ -350,18 +411,21 @@ func rv64FreshRootedGC(c *Compiled) bool {
 		}
 		switch desc.Kind {
 		case gc.KindFunc:
-			if typ.Kind != CompositeTypeFunction || len(typ.Params) > 256 || len(typ.Results) > 256 || !desc.Final || desc.HasSuper || len(desc.Fields) != 0 || desc.Elem != 0 || desc.HasRefs {
+			if typ.Kind != CompositeTypeFunction || len(typ.Params) > 256 || len(typ.Results) > 256 || len(desc.Fields) != 0 || desc.Elem != 0 || desc.HasRefs {
 				return false
 			}
 			for _, values := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
 				for _, value := range values {
-					if !rootedValue(value, i) {
+					// Function signatures also describe validated inline custom
+					// imports. Opaque carriers are metadata here; source root maps
+					// and native binding admission govern their executable uses.
+					if !rootedValue(value, i) && !rv64PrimitiveReferenceValue(c, value) {
 						return false
 					}
 				}
 			}
 		case gc.KindStruct:
-			if typ.Kind != CompositeTypeStruct || len(typ.Fields) == 0 || len(typ.Fields) > 255 || len(typ.Fields) != len(desc.Fields) {
+			if typ.Kind != CompositeTypeStruct || len(typ.Fields) > 255 || len(typ.Fields) != len(desc.Fields) {
 				return false
 			}
 			kinds := make([]gc.StorageKind, len(typ.Fields))
@@ -431,6 +495,8 @@ func rv64FreshRootedGC(c *Compiled) bool {
 			return wasm.F32, true
 		case ValueTypeF64:
 			return wasm.F64, true
+		case ValueTypeV128:
+			return wasm.V128, true
 		case ValueTypeReference:
 			if value.Ref.Heap.Defined {
 				index := wasm.TypeIdx{Index: value.Ref.Heap.TypeIndex}
@@ -441,6 +507,18 @@ func rv64FreshRootedGC(c *Compiled) bool {
 				return wasm.RefVal(wasm.Ref(value.Ref.Nullable, wasm.IndexedHeap(index), value.Ref.Exact)), true
 			}
 			heap, ok := rootedAbstract(value.Ref.Heap.Abstract)
+			if !ok && c.Types[owner].Kind == CompositeTypeFunction && rv64PrimitiveReferenceValue(c, value) {
+				switch value.Ref.Heap.Abstract {
+				case AbstractHeapFunc:
+					heap, ok = wasm.HeapFunc, true
+				case AbstractHeapNoFunc:
+					heap, ok = wasm.HeapNoFunc, true
+				case AbstractHeapExtern:
+					heap, ok = wasm.HeapExtern, true
+				case AbstractHeapNoExtern:
+					heap, ok = wasm.HeapNoExtern, true
+				}
+			}
 			if !ok || value.Ref.Heap.TypeIndex != 0 || value.Ref.Exact {
 				return wasm.ValType{}, false
 			}
@@ -595,7 +673,11 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	// both defined aggregate kinds. An array-only rooted module can therefore
 	// require it without declaring a struct descriptor. The fresh compiler
 	// receipt and code digest authenticate the actual helper callsites.
-	return (!structHelpers || hasStruct || hasArray) && (!arrayHelpers || hasArray) && int(c.syncHostSlots) >= requiredSlots
+	valid := (!structHelpers || hasStruct || hasArray) && (!arrayHelpers || hasArray) && int(c.syncHostSlots) >= requiredSlots
+	if valid && contract != nil && c.loadValidateMemo().executionView() == c {
+		contract.rooted.Store(c)
+	}
+	return valid
 }
 
 // rv64StateOnlyExternrefGlobals is the persisted-artifact witness for a
@@ -693,6 +775,25 @@ func rv64StateOnlyMutableFuncrefImport(c *Compiled) bool {
 // Loading and hand-built metadata must enforce the same bounded public ABI as
 // source compilation before any executable image or host thunk is published.
 func railshotValidateCompiled(c *Compiled) error {
+	if err := c.validateCompactData(); err != nil {
+		return fmt.Errorf("%w: public RV64 %v", railshot.ErrUnsupported, err)
+	}
+	if c != nil && c.rv64ExecutionContract() != nil {
+		// A general contract cannot fall back to an older image profile when
+		// its bound code or metadata changes, including for state-only modules.
+		if !rv64ArtifactContractValid(c) {
+			return fmt.Errorf("%w: RV64 native execution contract lacks admitted source or artifact metadata", railshot.ErrUnsupported)
+		}
+		if compiledStructuralRequiredFeatures(c)&^c.requiredFeatures != 0 {
+			return fmt.Errorf("%w: RV64 native execution feature contract", railshot.ErrUnsupported)
+		}
+	}
+	// A state-only module has no native entry or imported execution bridge.
+	// Its tables, globals, descriptors, and initializers still pass the common
+	// metadata and resource checks in Compiled.validate.
+	if c != nil && c.hasNoFunctionCode() {
+		return nil
+	}
 	reject := func(detail string) error { return fmt.Errorf("%w: public RV64 %s", railshot.ErrUnsupported, detail) }
 	stateOnlyMutableFuncrefImport := rv64StateOnlyMutableFuncrefImport(c)
 	mutableFuncrefGlobalGet := rv64MutableFuncrefGlobalGet(c)
@@ -708,41 +809,53 @@ func railshotValidateCompiled(c *Compiled) error {
 	mutableFuncrefGlobalLocalObserve := rv64MutableFuncrefGlobalLocalObserve(c)
 	mutableFuncrefGlobalLocalCall := rv64MutableFuncrefGlobalLocalCall(c)
 	freshRootedGC := rv64FreshRootedGC(c)
-	if rv64MutableFuncrefGlobalGetExecutionCode(c) && !mutableFuncrefGlobalGet {
-		return reject("mutable funcref global.get image requires its exact retained metadata")
+	qualifiedEH := rv64ExceptionHandling(c)
+	primitiveReferences := rv64PrimitiveReferenceContract(c)
+	functionOnlyTypes := compiledFunctionOnlyTypeGraph(c)
+	// Dynamic tail metadata is executable state. Require its source or artifact
+	// receipt before any declared type graph can grant execution permission.
+	if rv64HasDynamicTail(rv64NativeTailModule(c)) && !rv64ArtifactContractValid(c) && c.rv64ExecutionContract() == nil {
+		return reject("dynamic tail requires admitted source or artifact metadata")
 	}
-	if rv64MutableFuncrefGlobalClearExecutionCode(c) && !mutableFuncrefGlobalClear {
-		return reject("mutable funcref global.clear image requires its exact retained metadata")
-	}
-	if rv64MutableFuncrefGlobalStoreSelfExecutionCode(c) && !mutableFuncrefGlobalStoreSelf {
-		return reject("mutable funcref self-store image requires its exact retained metadata")
-	}
-	if rv64MutableFuncrefGlobalCopyExecutionCode(c) && !mutableFuncrefGlobalCopy {
-		return reject("mutable funcref copy image requires its exact retained metadata")
-	}
-	if rv64MutableFuncrefGlobalMoveExecutionCode(c) && !mutableFuncrefGlobalMove {
-		return reject("mutable funcref move image requires its exact retained metadata")
-	}
-	if rv64MutableFuncrefGlobalBidirectionalCopyExecutionCode(c) && !mutableFuncrefGlobalBidirectionalCopy {
-		return reject("mutable funcref bidirectional-copy image requires its exact retained metadata")
-	}
-	if rv64MutableFuncrefGlobalLocalCopyExecutionCode(c) && !mutableFuncrefGlobalLocalCopy {
-		return reject("mutable funcref local-copy image requires its exact retained metadata")
-	}
-	if rv64MutableFuncrefGlobalLocalPublishExecutionCode(c) && !mutableFuncrefGlobalLocalPublish {
-		return reject("mutable funcref local-publish image requires its exact retained metadata")
-	}
-	if rv64MutableFuncrefGlobalLocalTransferExecutionCode(c) && !mutableFuncrefGlobalLocalTransfer {
-		return reject("mutable funcref local-transfer image requires its exact retained metadata")
-	}
-	if rv64MutableFuncrefGlobalLocalExportExecutionCode(c) && !mutableFuncrefGlobalLocalExport {
-		return reject("mutable funcref local-export image requires its exact retained metadata")
-	}
-	if rv64MutableFuncrefGlobalLocalObserveExecutionCode(c) && !mutableFuncrefGlobalLocalObserve {
-		return reject("mutable funcref local-observe image requires its exact retained metadata")
-	}
-	if rv64MutableFuncrefGlobalLocalCallExecutionCode(c) && !mutableFuncrefGlobalLocalCall {
-		return reject("mutable funcref local-call image requires its exact retained metadata")
+	// A verified general contract binds the full code and metadata. Legacy
+	// image fingerprints remain required when that broader proof is absent.
+	if !primitiveReferences {
+		if rv64MutableFuncrefGlobalGetExecutionCode(c) && !mutableFuncrefGlobalGet {
+			return reject("mutable funcref global.get image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalClearExecutionCode(c) && !mutableFuncrefGlobalClear {
+			return reject("mutable funcref global.clear image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalStoreSelfExecutionCode(c) && !mutableFuncrefGlobalStoreSelf {
+			return reject("mutable funcref self-store image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalCopyExecutionCode(c) && !mutableFuncrefGlobalCopy {
+			return reject("mutable funcref copy image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalMoveExecutionCode(c) && !mutableFuncrefGlobalMove {
+			return reject("mutable funcref move image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalBidirectionalCopyExecutionCode(c) && !mutableFuncrefGlobalBidirectionalCopy {
+			return reject("mutable funcref bidirectional-copy image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalLocalCopyExecutionCode(c) && !mutableFuncrefGlobalLocalCopy {
+			return reject("mutable funcref local-copy image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalLocalPublishExecutionCode(c) && !mutableFuncrefGlobalLocalPublish {
+			return reject("mutable funcref local-publish image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalLocalTransferExecutionCode(c) && !mutableFuncrefGlobalLocalTransfer {
+			return reject("mutable funcref local-transfer image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalLocalExportExecutionCode(c) && !mutableFuncrefGlobalLocalExport {
+			return reject("mutable funcref local-export image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalLocalObserveExecutionCode(c) && !mutableFuncrefGlobalLocalObserve {
+			return reject("mutable funcref local-observe image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalLocalCallExecutionCode(c) && !mutableFuncrefGlobalLocalCall {
+			return reject("mutable funcref local-call image requires its exact retained metadata")
+		}
 	}
 	exactGCRefEq := rv64OfficialGCRefEq(c)
 	exactGCRefTestTable := rv64GCRefTestTable(c)
@@ -793,40 +906,40 @@ func railshotValidateCompiled(c *Compiled) error {
 	exactGCArrayInitData := rv64GCArrayInitData(c)
 	exactGCArrayFill := rv64GCArrayFill(c)
 	exactGCArrayCopy := rv64GCArrayCopy(c)
-	if rv64GCTypeSubtypingRecursiveFunctionsExecutionCode(c) && !exactGCTypeSubtypingRecursiveFunctions {
+	if !primitiveReferences && rv64GCTypeSubtypingRecursiveFunctionsExecutionCode(c) && !exactGCTypeSubtypingRecursiveFunctions {
 		return reject("gc/type-subtyping recursive-function image requires its exact retained metadata")
 	}
-	if rv64GCTypeSubtypingRecursiveFunctionsProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingRecursiveFunctions {
+	if !primitiveReferences && rv64GCTypeSubtypingRecursiveFunctionsProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingRecursiveFunctions {
 		return reject("gc/type-subtyping recursive-function metadata requires its exact retained image")
 	}
-	if rv64GCTypeSubtypingRefFuncGlobalsExecutionCode(c) && rv64GCTypeSubtypingRefFuncGlobalsExecutionClaim(c) && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink {
+	if !primitiveReferences && !freshRootedGC && rv64GCTypeSubtypingRefFuncGlobalsExecutionCode(c) && rv64GCTypeSubtypingRefFuncGlobalsExecutionClaim(c) && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink {
 		return reject("gc/type-subtyping ref.func-global image requires its exact retained metadata")
 	}
-	if rv64GCTypeSubtypingRefFuncGlobalsProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingRefFuncGlobals {
+	if !primitiveReferences && !freshRootedGC && rv64GCTypeSubtypingRefFuncGlobalsProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingRefFuncGlobals {
 		return reject("gc/type-subtyping ref.func-global metadata requires its exact retained image")
 	}
-	if rv64GCTypeSubtypingRuntimeCallCastExecutionCode(c) && !exactGCTypeSubtypingRuntimeCallCast {
+	if !primitiveReferences && rv64GCTypeSubtypingRuntimeCallCastExecutionCode(c) && !exactGCTypeSubtypingRuntimeCallCast {
 		return reject("gc/type-subtyping runtime call/cast image requires its exact retained metadata")
 	}
-	if rv64GCTypeSubtypingRuntimeCallCastProfileWithCode(c, true, false) && !exactGCTypeSubtypingRuntimeCallCast {
+	if !primitiveReferences && rv64GCTypeSubtypingRuntimeCallCastProfileWithCode(c, true, false) && !exactGCTypeSubtypingRuntimeCallCast {
 		return reject("gc/type-subtyping runtime call/cast metadata requires its exact retained image")
 	}
-	if rv64GCTypeSubtypingRuntimeFinalityCallCastExecutionCode(c) && !exactGCTypeSubtypingRuntimeFinalityCallCast {
+	if !primitiveReferences && rv64GCTypeSubtypingRuntimeFinalityCallCastExecutionCode(c) && !exactGCTypeSubtypingRuntimeFinalityCallCast {
 		return reject("gc/type-subtyping runtime finality call/cast image requires its exact retained metadata")
 	}
-	if rv64GCTypeSubtypingRuntimeFinalityCallCastProfileWithCode(c, true, false) && !exactGCTypeSubtypingRuntimeFinalityCallCast {
+	if !primitiveReferences && rv64GCTypeSubtypingRuntimeFinalityCallCastProfileWithCode(c, true, false) && !exactGCTypeSubtypingRuntimeFinalityCallCast {
 		return reject("gc/type-subtyping runtime finality call/cast metadata requires its exact retained image")
 	}
-	if rv64GCTypeSubtypingRuntimeTypedTableCallExecutionCode(c) && !exactGCTypeSubtypingRuntimeTypedTableCall {
+	if !primitiveReferences && rv64GCTypeSubtypingRuntimeTypedTableCallExecutionCode(c) && !exactGCTypeSubtypingRuntimeTypedTableCall {
 		return reject("gc/type-subtyping runtime typed-table call image requires its exact retained metadata")
 	}
-	if rv64GCTypeSubtypingRuntimeTypedTableCallProfileWithCode(c, true, false) && !exactGCTypeSubtypingRuntimeTypedTableCall {
+	if !primitiveReferences && rv64GCTypeSubtypingRuntimeTypedTableCallProfileWithCode(c, true, false) && !exactGCTypeSubtypingRuntimeTypedTableCall {
 		return reject("gc/type-subtyping runtime typed-table call metadata requires its exact retained image")
 	}
-	if rv64GCTypeSubtypingRefTestSingleExecutionCode(c) && !exactGCTypeSubtypingRefTestSingle {
+	if !primitiveReferences && rv64GCTypeSubtypingRefTestSingleExecutionCode(c) && !exactGCTypeSubtypingRefTestSingle {
 		return reject("gc/type-subtyping ref.test image requires its exact retained metadata")
 	}
-	if rv64GCTypeSubtypingRefTestSingleProfileWithCode(c, true, false) && !exactGCTypeSubtypingRefTestSingle {
+	if !primitiveReferences && rv64GCTypeSubtypingRefTestSingleProfileWithCode(c, true, false) && !exactGCTypeSubtypingRefTestSingle {
 		return reject("gc/type-subtyping ref.test metadata requires its exact retained image")
 	}
 	if rv64GCTypeSubtypingLinkExecutionCode(c) && rv64GCTypeSubtypingLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingLink {
@@ -895,121 +1008,139 @@ func railshotValidateCompiled(c *Compiled) error {
 	if rv64GCTypeSubtypingTransitiveMismatchLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingTransitiveMismatchLink {
 		return reject("gc/type-subtyping transitive-mismatch-link metadata requires its exact retained image")
 	}
-	if rv64GCTypeSubtypingNonFlatExportExecutionCode(c) && !exactGCTypeSubtypingNonFlatExport {
+	if !primitiveReferences && rv64GCTypeSubtypingNonFlatExportExecutionCode(c) && !exactGCTypeSubtypingNonFlatExport {
 		return reject("gc/type-subtyping non-flat-export image requires its exact retained metadata")
 	}
-	if rv64GCTypeSubtypingNonFlatExportProfileWithCode(c, true, false) && !exactGCTypeSubtypingNonFlatExport {
+	if !primitiveReferences && rv64GCTypeSubtypingNonFlatExportProfileWithCode(c, true, false) && !exactGCTypeSubtypingNonFlatExport {
 		return reject("gc/type-subtyping non-flat-export metadata requires its exact retained image")
 	}
-	if rv64OfficialGCRefEqExecutionCode(c) && !exactGCRefEq {
-		return reject("allocating gc/ref.eq image requires its exact retained metadata")
-	}
-	if rv64GCRefTestTableExecutionCode(c) && !exactGCRefTestTable {
-		return reject("gc object-table ref.test image requires its exact retained metadata")
-	}
-	if rv64GCRefTestConcreteExecutionCode(c) && !exactGCRefTestConcrete {
-		return reject("gc concrete ref.test image requires its exact retained metadata")
-	}
-	if rv64GCRefCastConcreteExecutionCode(c) && !exactGCRefCastConcrete {
-		return reject("gc concrete ref.cast image requires its exact retained metadata")
-	}
-	if rv64GCRefTestAbstractExecutionCode(c) && !exactGCRefTestAbstract {
-		return reject("gc abstract ref.test image requires its exact retained metadata")
-	}
-	if rv64GCExternExecutionCode(c) && !exactGCExtern {
-		return reject("gc extern conversion image requires its exact retained metadata")
-	}
-	if rv64GCRefCastAbstractExecutionCode(c) && !exactGCRefCastAbstract {
-		return reject("gc abstract ref.cast image requires its exact retained metadata")
-	}
-	if rv64GCBrOnCastAbstractExecutionCode(c) && !exactGCBrOnCastAbstract {
-		return reject("gc abstract br_on_cast image requires its exact retained metadata")
-	}
-	if rv64GCBrOnCastFailAbstractExecutionCode(c) && !exactGCBrOnCastFailAbstract {
-		return reject("gc abstract br_on_cast_fail image requires its exact retained metadata")
-	}
-	if rv64GCBrOnCastConcreteExecutionCode(c) && !exactGCBrOnCastConcrete {
-		return reject("gc concrete br_on_cast image requires its exact retained metadata")
-	}
-	if rv64GCBrOnCastFailConcreteExecutionCode(c) && !exactGCBrOnCastFailConcrete {
-		return reject("gc concrete br_on_cast_fail image requires its exact retained metadata")
-	}
-	if rv64GCBrOnCastNullabilityExecutionCode(c) && !exactGCBrOnCastNullability {
-		return reject("gc nullability br_on_cast image requires its exact retained metadata")
-	}
-	if rv64GCBrOnCastFailNullabilityExecutionCode(c) && !exactGCBrOnCastFailNullability {
-		return reject("gc nullability br_on_cast_fail image requires its exact retained metadata")
-	}
-	if rv64GCStructGetExecutionCode(c) && !exactGCStructGet {
-		return reject("allocating gc/struct.get image requires its exact retained metadata")
-	}
-	if rv64GCStructMutationExecutionCode(c) && !exactGCStructMutation {
-		return reject("allocating gc/struct mutation image requires its exact retained metadata")
-	}
-	if rv64GCStructNullExecutionCode(c) && !exactGCStructNull {
-		return reject("gc/struct null image requires its exact retained metadata")
-	}
-	if rv64GCStructPackedExecutionCode(c) && !exactGCStructPacked {
-		return reject("gc/struct packed image requires its exact retained metadata")
-	}
-	if rv64GCStructBasicExecutionCode(c) && !exactGCStructBasic {
-		return reject("gc/struct basic image requires its exact retained metadata")
-	}
-	if rv64GCArrayLocalExecutionCode(c) && !exactGCArrayLocal {
-		return reject("allocating gc/array local image requires its exact retained metadata")
-	}
-	if rv64GCArrayUniformExecutionCode(c) && !exactGCArrayUniform {
-		return reject("allocating gc/array uniform image requires its exact retained metadata")
-	}
-	if rv64GCArrayFixedLocalExecutionCode(c) && !exactGCArrayFixedLocal {
-		return reject("allocating gc/array fixed local image requires its exact retained metadata")
-	}
-	if rv64GCArrayFixedOfficialExecutionCode(c) && !exactGCArrayFixedOfficial {
-		return reject("allocating official gc/array fixed image requires its exact retained metadata")
-	}
-	if rv64GCArrayDefaultOfficialExecutionCode(c) && !exactGCArrayDefaultOfficial {
-		return reject("allocating official gc/array default image requires its exact retained metadata")
-	}
-	if rv64GCArrayPackedDataExecutionCode(c) && !exactGCArrayPackedData {
-		return reject("allocating gc/array packed data image requires its exact retained metadata")
-	}
-	if rv64GCArrayReferenceExecutionCode(c) && !exactGCArrayReference {
-		return reject("allocating gc/array reference image requires its exact retained metadata")
-	}
-	if rv64GCArrayInitElemExecutionCode(c) && !exactGCArrayInitElem {
-		return reject("allocating gc/array init elem image requires its exact retained metadata")
-	}
-	if rv64GCArrayInitDataExecutionCode(c) && !exactGCArrayInitData {
-		return reject("allocating gc/array init data image requires its exact retained metadata")
-	}
-	if rv64GCArrayFillExecutionCode(c) && !exactGCArrayFill {
-		return reject("allocating gc/array fill image requires its exact retained metadata")
-	}
-	if rv64GCArrayCopyExecutionCode(c) && !exactGCArrayCopy {
-		return reject("allocating gc/array copy image requires its exact retained metadata")
+	// A general rooted execution contract binds code, exact type/state receipts
+	// and root maps. Legacy image collisions constrain only legacy contracts.
+	if !freshRootedGC {
+		if rv64OfficialGCRefEqExecutionCode(c) && !exactGCRefEq {
+			return reject("allocating gc/ref.eq image requires its exact retained metadata")
+		}
+		if rv64GCRefTestTableExecutionCode(c) && !exactGCRefTestTable {
+			return reject("gc object-table ref.test image requires its exact retained metadata")
+		}
+		if rv64GCRefTestConcreteExecutionCode(c) && !exactGCRefTestConcrete {
+			return reject("gc concrete ref.test image requires its exact retained metadata")
+		}
+		if rv64GCRefCastConcreteExecutionCode(c) && !exactGCRefCastConcrete {
+			return reject("gc concrete ref.cast image requires its exact retained metadata")
+		}
+		if rv64GCRefTestAbstractExecutionCode(c) && !exactGCRefTestAbstract {
+			return reject("gc abstract ref.test image requires its exact retained metadata")
+		}
+		if rv64GCExternExecutionCode(c) && !exactGCExtern {
+			return reject("gc extern conversion image requires its exact retained metadata")
+		}
+		if rv64GCRefCastAbstractExecutionCode(c) && !exactGCRefCastAbstract {
+			return reject("gc abstract ref.cast image requires its exact retained metadata")
+		}
+		if rv64GCBrOnCastAbstractExecutionCode(c) && !exactGCBrOnCastAbstract {
+			return reject("gc abstract br_on_cast image requires its exact retained metadata")
+		}
+		if rv64GCBrOnCastFailAbstractExecutionCode(c) && !exactGCBrOnCastFailAbstract {
+			return reject("gc abstract br_on_cast_fail image requires its exact retained metadata")
+		}
+		if rv64GCBrOnCastConcreteExecutionCode(c) && !exactGCBrOnCastConcrete {
+			return reject("gc concrete br_on_cast image requires its exact retained metadata")
+		}
+		if rv64GCBrOnCastFailConcreteExecutionCode(c) && !exactGCBrOnCastFailConcrete {
+			return reject("gc concrete br_on_cast_fail image requires its exact retained metadata")
+		}
+		if rv64GCBrOnCastNullabilityExecutionCode(c) && !exactGCBrOnCastNullability {
+			return reject("gc nullability br_on_cast image requires its exact retained metadata")
+		}
+		if rv64GCBrOnCastFailNullabilityExecutionCode(c) && !exactGCBrOnCastFailNullability {
+			return reject("gc nullability br_on_cast_fail image requires its exact retained metadata")
+		}
+		if rv64GCStructGetExecutionCode(c) && !exactGCStructGet {
+			return reject("allocating gc/struct.get image requires its exact retained metadata")
+		}
+		if rv64GCStructMutationExecutionCode(c) && !exactGCStructMutation {
+			return reject("allocating gc/struct mutation image requires its exact retained metadata")
+		}
+		if rv64GCStructNullExecutionCode(c) && !exactGCStructNull {
+			return reject("gc/struct null image requires its exact retained metadata")
+		}
+		if rv64GCStructPackedExecutionCode(c) && !exactGCStructPacked {
+			return reject("gc/struct packed image requires its exact retained metadata")
+		}
+		if rv64GCStructBasicExecutionCode(c) && !exactGCStructBasic {
+			return reject("gc/struct basic image requires its exact retained metadata")
+		}
+		if rv64GCArrayLocalExecutionCode(c) && !exactGCArrayLocal {
+			return reject("allocating gc/array local image requires its exact retained metadata")
+		}
+		if rv64GCArrayUniformExecutionCode(c) && !exactGCArrayUniform {
+			return reject("allocating gc/array uniform image requires its exact retained metadata")
+		}
+		if rv64GCArrayFixedLocalExecutionCode(c) && !exactGCArrayFixedLocal {
+			return reject("allocating gc/array fixed local image requires its exact retained metadata")
+		}
+		if rv64GCArrayFixedOfficialExecutionCode(c) && !exactGCArrayFixedOfficial {
+			return reject("allocating official gc/array fixed image requires its exact retained metadata")
+		}
+		if rv64GCArrayDefaultOfficialExecutionCode(c) && !exactGCArrayDefaultOfficial {
+			return reject("allocating official gc/array default image requires its exact retained metadata")
+		}
+		if rv64GCArrayPackedDataExecutionCode(c) && !exactGCArrayPackedData {
+			return reject("allocating gc/array packed data image requires its exact retained metadata")
+		}
+		if rv64GCArrayReferenceExecutionCode(c) && !exactGCArrayReference {
+			return reject("allocating gc/array reference image requires its exact retained metadata")
+		}
+		if rv64GCArrayInitElemExecutionCode(c) && !exactGCArrayInitElem {
+			return reject("allocating gc/array init elem image requires its exact retained metadata")
+		}
+		if rv64GCArrayInitDataExecutionCode(c) && !exactGCArrayInitData {
+			return reject("allocating gc/array init data image requires its exact retained metadata")
+		}
+		if rv64GCArrayFillExecutionCode(c) && !exactGCArrayFill {
+			return reject("allocating gc/array fill image requires its exact retained metadata")
+		}
+		if rv64GCArrayCopyExecutionCode(c) && !exactGCArrayCopy {
+			return reject("allocating gc/array copy image requires its exact retained metadata")
+		}
 	}
 	if rv64I31CoreExecutionCode(c) && !rv64I31Core(c) {
 		return reject("i31 execution image requires its exact retained metadata")
 	}
-	if c != nil && c.stagedGCI31Product() != 0 && !rv64I31Core(c) {
+	if c != nil && c.stagedGCI31Product() != 0 && !rv64I31Core(c) && !freshRootedGC {
 		return reject("i31 execution product requires its exact retained image")
 	}
+	immediateReferences := rv64ImmediateReferenceContract(c)
+	generalI31 := rv64GeneralI31Contract(c)
 	exactAnyI31 := rv64I31OfficialAnyGlobal(c)
-	typedI31 := rv64I31OfficialCore(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialGlobalInitializer(c) || exactAnyI31
+	typedI31 := immediateReferences || rv64I31OfficialCore(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialGlobalInitializer(c) || exactAnyI31
 	exactCore3RefIsNull := rv64Core3RefIsNullExecution(c)
+	// General function-only GC images require the binding that joins their code
+	// and declarations. Old artifacts retain their independent exact proof.
+	if functionOnlyTypes && c.requiredFeatures.IsEnabled(CoreFeatureGC) && c.rv64ExecutionContract() == nil && !freshRootedGC && !qualifiedEH && !typedI31 && !exactCore3RefIsNull {
+		legacy := exactGCTypeSubtypingDeclarations || exactGCTypeSubtypingRecursiveFunctions || exactGCTypeSubtypingRefFuncGlobals ||
+			exactGCTypeSubtypingRuntimeCallCast || exactGCTypeSubtypingRefTestSingle || exactGCTypeSubtypingLink || exactGCTypeSubtypingFinalityLink ||
+			exactGCTypeSubtypingStructLink || exactGCTypeSubtypingStructProjectionLink || exactGCTypeSubtypingStructMismatchLink ||
+			exactGCTypeSubtypingIndependentStructLink || exactGCTypeSubtypingExtendedProjectionLink || exactGCTypeSubtypingDuplicateRecursiveLink ||
+			exactGCTypeSubtypingExtendedRecursiveLink || exactGCTypeSubtypingCrossGroupMismatchLink || exactGCTypeSubtypingTransitiveMismatchLink || exactGCTypeSubtypingNonFlatExport
+		if !legacy {
+			return reject("function-only GC execution requires its general binding or a legacy proof")
+		}
+	}
 	if rv64Core3RefIsNullExecutionCode(c) && !exactCore3RefIsNull {
 		return reject("Core 3 ref.is_null image requires its exact retained metadata")
 	}
 	if !c.nativeContextTrapABI {
 		return reject("native-context trap ABI is required")
 	}
-	if len(c.code) > railshot.MaxCodeBytes || len(c.Funcs) > railshot.MaxFunctions || len(c.Types) > railshot.MaxFunctions || len(c.GCTypeDescs) > railshot.MaxFunctions || len(c.Globals) > 256 {
+	if len(c.code) > railshot.MaxPublicCodeBytes || uint64(len(c.Types)) > uint64(railshot.MaxPublicCodeBytes)/8 || len(c.GCTypeDescs) > len(c.Types) || len(c.Globals) > railshot.MaxPublicGlobals {
 		return reject("bounded artifact shape")
 	}
 	if len(c.Funcs) == 0 && c.NumImports == 0 && !c.hasNoFunctionCode() {
 		return reject("state-only artifact contains code or function entries")
 	}
-	if c.activeDataCount() > rv64runtime.MaxDataSegments || len(c.PassiveData) > rv64runtime.MaxDataSegments {
+	if uint64(c.activeDataCount()) > uint64(railshot.MaxPublicCodeBytes)/16 || uint64(len(c.PassiveData)) > uint64(railshot.MaxPublicCodeBytes)/16 {
 		return reject("data descriptor count bound")
 	}
 	remaining := railshot.MaxModuleBytes
@@ -1026,13 +1157,13 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		remaining -= len(data.Bytes)
 	}
-	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || c.NumImports+len(c.Funcs) > railshot.MaxFunctions || c.dynamicImports != (c.NumImports > 0) {
+	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || uint64(c.NumImports)+uint64(len(c.Funcs)) > uint64(railshot.MaxPublicCodeBytes)/16 || c.dynamicImports != (c.NumImports > 0) {
 		return reject("dynamic function import shape")
 	}
-	if c.NumImports+len(c.GlobalImports)+c.memoryImportCount()+c.tableImportCount() > railshot.MaxProductionImports {
+	if c.NumImports+len(c.GlobalImports)+c.memoryImportCount()+c.tableImportCount() > railshot.MaxPublicImports {
 		return reject("aggregate import bound")
 	}
-	if !freshRootedGC {
+	if !freshRootedGC && !qualifiedEH {
 		if err := railshotValidateReferenceCalls(c); err != nil {
 			return reject(err.Error())
 		}
@@ -1040,7 +1171,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if err := rv64ValidateNativeTail(c); err != nil {
 		return reject(err.Error())
 	}
-	if !freshRootedGC && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink {
+	if !freshRootedGC && !qualifiedEH && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink {
 		if err := rv64ValidateReferenceFunctions(c); err != nil {
 			return reject(err.Error())
 		}
@@ -1057,11 +1188,8 @@ func railshotValidateCompiled(c *Compiled) error {
 		if !c.needsFuncRefContextHeader {
 			return reject("host imports require an instance context anchor")
 		}
-		maxImportArity := coreruntime.MaxHostArity
-		if vectorProfile {
-			maxImportArity = 128
-		}
-		publicHostReferenceBoundary := rv64PublicHostReferenceBoundary(c) || rv64PublicDynamicHostReferenceBoundary(c) || exactGCTypeSubtypingLink || exactGCTypeSubtypingFinalityLink || exactGCTypeSubtypingStructLink || exactGCTypeSubtypingStructProjectionLink || exactGCTypeSubtypingStructMismatchLink || exactGCTypeSubtypingIndependentStructLink || exactGCTypeSubtypingExtendedProjectionLink || exactGCTypeSubtypingDuplicateRecursiveLink || exactGCTypeSubtypingExtendedRecursiveLink || exactGCTypeSubtypingCrossGroupMismatchLink || exactGCTypeSubtypingTransitiveMismatchLink
+		maxImportArity := railshot.MaxVectorFunctionValues
+		publicHostReferenceBoundary := primitiveReferences || rv64PublicHostReferenceBoundary(c) || rv64PublicDynamicHostReferenceBoundary(c) || exactGCTypeSubtypingLink || exactGCTypeSubtypingFinalityLink || exactGCTypeSubtypingStructLink || exactGCTypeSubtypingStructProjectionLink || exactGCTypeSubtypingStructMismatchLink || exactGCTypeSubtypingIndependentStructLink || exactGCTypeSubtypingExtendedProjectionLink || exactGCTypeSubtypingDuplicateRecursiveLink || exactGCTypeSubtypingExtendedRecursiveLink || exactGCTypeSubtypingCrossGroupMismatchLink || exactGCTypeSubtypingTransitiveMismatchLink
 		for _, sig := range c.importFuncSigs {
 			if len(sig.Params) > maxImportArity || len(sig.Results) > maxImportArity {
 				return reject("function import signature arity")
@@ -1069,7 +1197,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			for _, values := range [][]ValType{sig.Params, sig.Results} {
 				for _, typ := range values {
 					if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) &&
-						(!publicHostReferenceBoundary || typ != ValFuncRef && typ != ValExternRef) && (!freshRootedGC || !isGCRefValType(typ)) {
+						(!(publicHostReferenceBoundary || c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes)) || typ != ValFuncRef && typ != ValExternRef) && (!freshRootedGC || !isGCRefValType(typ)) {
 						return reject("unsupported function import signature")
 					}
 				}
@@ -1082,20 +1210,21 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 
-	if c.boundsMode == BoundsChecksSignalsBased || c.genericGCFrameRoots() != nil && !freshRootedGC || c.usesDynamicFuncRefTest() || c.memoryCount() > railshot.MaxProductionMemories {
+	if c.boundsMode == BoundsChecksSignalsBased && c.memoryCount() != 0 && !rv64GuardedMemoryProfile(c) || c.genericGCFrameRoots() != nil && !freshRootedGC || c.usesDynamicFuncRefTest() && !primitiveReferences && !freshRootedGC || c.memoryCount() > railshot.MaxProductionMemories {
 		return reject("resource/host/reference lowering is pending")
 	}
 	if len(c.GlobalImports) > len(c.Globals) {
 		return reject("global import index shape")
 	}
 	for i, global := range c.GlobalImports {
-		funcref := global.Type == ValFuncRef && (!global.Mutable || stateOnlyMutableFuncrefImport || mutableFuncrefGlobalGet || mutableFuncrefGlobalClear || mutableFuncrefGlobalStoreSelf || mutableFuncrefGlobalCopy || mutableFuncrefGlobalMove || mutableFuncrefGlobalBidirectionalCopy || mutableFuncrefGlobalLocalCopy || mutableFuncrefGlobalLocalPublish || mutableFuncrefGlobalLocalTransfer) && c.tableCount() <= 1
+		funcref := global.Type == ValFuncRef && (primitiveReferences || !global.Mutable || stateOnlyMutableFuncrefImport || mutableFuncrefGlobalGet || mutableFuncrefGlobalClear || mutableFuncrefGlobalStoreSelf || mutableFuncrefGlobalCopy || mutableFuncrefGlobalMove || mutableFuncrefGlobalBidirectionalCopy || mutableFuncrefGlobalLocalCopy || mutableFuncrefGlobalLocalPublish || mutableFuncrefGlobalLocalTransfer) && (primitiveReferences || c.tableCount() <= 1)
+		externRef := (primitiveReferences || freshRootedGC && c.compactExternFrameRoots()) && global.Type == ValExternRef
 		collectorRef := freshRootedGC && isGCRefValType(global.Type)
-		reference := funcref || collectorRef
-		if funcref {
-			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+		reference := funcref || externRef || collectorRef
+		if funcref || externRef {
+			plain, _ := valueTypeDescriptorFromValType(global.Type)
 			exact, err := exactValueType(global.Type, global.HasValueType, global.ValueTypeIndex, c.ValueTypes, c.Types)
-			if err != nil || exact != plain {
+			if err != nil || exact != plain && !(primitiveReferences && rv64PrimitiveReferenceValue(c, exact)) {
 				return reject("reference global import exact type")
 			}
 		} else if collectorRef {
@@ -1109,12 +1238,25 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 	}
 	for _, desc := range c.GCTypeDescs {
-		if !freshRootedGC && !exactGCTypeSubtypingDeclarations && !exactGCTypeSubtypingRecursiveFunctions && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRuntimeCallCast && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink && !exactGCTypeSubtypingNonFlatExport && !exactGCRefEq && !exactGCRefTestTable && !exactGCRefTestConcrete && !exactGCRefCastConcrete && !exactGCRefTestAbstract && !exactGCExtern && !exactGCRefCastAbstract && !exactGCBrOnCastAbstract && !exactGCBrOnCastFailAbstract && !exactGCBrOnCastConcrete && !exactGCBrOnCastFailConcrete && !exactGCBrOnCastNullability && !exactGCBrOnCastFailNullability && !exactGCStructGet && !exactGCStructMutation && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy && (desc.Kind != gc.KindFunc || !desc.Final || desc.HasSuper) {
-			return reject("GC descriptor lowering is pending")
+		if !freshRootedGC && !generalI31 && !qualifiedEH && !exactGCTypeSubtypingDeclarations && !exactGCTypeSubtypingRecursiveFunctions && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRuntimeCallCast && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink && !exactGCTypeSubtypingNonFlatExport && !exactGCRefEq && !exactGCRefTestTable && !exactGCRefTestConcrete && !exactGCRefCastConcrete && !exactGCRefTestAbstract && !exactGCExtern && !exactGCRefCastAbstract && !exactGCBrOnCastAbstract && !exactGCBrOnCastFailAbstract && !exactGCBrOnCastConcrete && !exactGCBrOnCastFailConcrete && !exactGCBrOnCastNullability && !exactGCBrOnCastFailNullability && !exactGCStructGet && !exactGCStructMutation && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy && (desc.Kind != gc.KindFunc || !primitiveReferences && !functionOnlyTypes && (!desc.Final || desc.HasSuper)) {
+			if !primitiveReferences {
+				return reject("GC descriptor lowering is pending")
+			}
 		}
 	}
 	qualifiedFeatures := platformCoreFeatures() | CoreFeatureTailCall
+	if qualifiedEH {
+		qualifiedFeatures |= CoreFeatureExceptionHandling
+	}
+	if rv64ThreadedMemoryProfile(c) {
+		qualifiedFeatures |= CoreFeatureThreads
+	}
 	if freshRootedGC {
+		qualifiedFeatures |= CoreFeatureGC | CoreFeatureTypedFunctionReferences
+	}
+	if primitiveReferences {
+		// Aggregate declarations can participate in canonical function identity
+		// without requiring collector-backed execution.
 		qualifiedFeatures |= CoreFeatureGC | CoreFeatureTypedFunctionReferences
 	}
 	if rv64I31Core(c) {
@@ -1141,7 +1283,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c.nativeTable64ABI == nativeTable64GetSetABI && !rv64OwnedTwoTable32GetSet(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64GetSet(c) && !rv64OwnedTwoTable64GetSet(c)) {
 		return reject("table.get/set compiler witness requires its exact owned or indexed two-table profile")
 	}
-	if c.nativeTable64ABI == nativeTable64IndirectABI && !rv64OwnedTwoTable32Indirect(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Indirect(c) && !rv64OwnedTwoTable64Indirect(c) && !rv64MixedTable64Indirect(c) && !rv64MixedTable64ActiveIndirect(c) && !rv64ImportedTable64Indirect(c)) {
+	if !primitiveReferences && c.nativeTable64ABI == nativeTable64IndirectABI && !rv64OwnedTwoTable32Indirect(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Indirect(c) && !rv64OwnedTwoTable64Indirect(c) && !rv64MixedTable64Indirect(c) && !rv64MixedTable64ActiveIndirect(c) && !rv64ImportedTable64Indirect(c)) {
 		return reject("table indirect-call compiler witness requires its exact owned, indexed two-table32/table64, or imported table64 profile")
 	}
 	if c.nativeTable64ABI == nativeTable64FillABI && !rv64OwnedTwoTable32Fill(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Fill(c) && !rv64OwnedTwoTable64Fill(c)) {
@@ -1177,7 +1319,16 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c.requiredFeatures.IsEnabled(CoreFeatureTable64) && !rv64QualifiedTable64(c) {
 		return reject("table64 requires an exact qualified owned-table profile")
 	}
-	if rv64HasReferenceTail(c) || c.nativeReferenceCallABI || c.nativeReferenceControlABI {
+	// Dead validated reference-tail instructions need no emitted plan or ABI
+	// flag. Their retained syntax feature still needs its full code binding.
+	emptyTypedTail := rv64NativeTailModule(c) != nil && len(rv64NativeTailModule(c).Plans) == 0 && rv64ArtifactContractValid(c)
+	if primitiveReferences || functionOnlyTypes {
+		qualifiedFeatures |= CoreFeatureGC
+	}
+	if functionOnlyTypes {
+		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
+	}
+	if rv64HasReferenceTail(c) || c.nativeReferenceCallABI || c.nativeReferenceControlABI || emptyTypedTail {
 		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
 	}
 	declarativeTyped := false
@@ -1196,10 +1347,16 @@ func railshotValidateCompiled(c *Compiled) error {
 		return reject("feature or ISA contract")
 	}
 	for i, entry := range c.Entry {
-		if entry&15 != 0 || i >= len(c.InternalEntry) || c.InternalEntry[i] != entry {
+		if entry&15 != 0 || i >= len(c.InternalEntry) {
 			return reject("entry is not an aligned framed wrapper")
 		}
+		internal := c.InternalEntry[i]
+		adapter := internalEntryOffset(internal) != entry && rv64DirectIntegerAdapter(c, i)
+		if internalEntryOffset(internal) != entry && !adapter || !rv64DirectIntegerMarkerShape(internal, adapter) {
+			return reject("entry lacks its exact checked integer adapter")
+		}
 	}
+
 	if vectorProfile {
 		if len(c.GlobalExports) > railshot.MaxFunctions {
 			return reject("global export count bound")
@@ -1212,12 +1369,14 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	maxArity := 256
 	if vectorProfile {
-		maxArity = 128
+		maxArity = railshot.MaxVectorFunctionValues
 	}
 	mutableReferenceCarrier := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
-	declarationExtern := exactGCRefTestAbstract || exactGCExtern || exactGCRefCastAbstract || exactGCBrOnCastAbstract || exactGCBrOnCastFailAbstract || exactCore3RefIsNull || rv64Core3RefDeclarations(c) || rv64Core3ReferenceDeclarations(c) || rv64Core3RefAsNonNullDeclarations(c) || rv64Core3RefIsNullDeclarations(c) || rv64PublicReferenceCallBoundary(c) || rv64PublicHostReferenceBoundary(c) || rv64PublicDynamicHostReferenceBoundary(c) || mutableReferenceCarrier >= 19 && mutableReferenceCarrier <= 28
+	declarationExtern := c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || primitiveReferences || exactGCRefTestAbstract || exactGCExtern || exactGCRefCastAbstract || exactGCBrOnCastAbstract || exactGCBrOnCastFailAbstract || exactCore3RefIsNull || rv64Core3RefDeclarations(c) || rv64Core3ReferenceDeclarations(c) || rv64Core3RefAsNonNullDeclarations(c) || rv64Core3RefIsNullDeclarations(c) || rv64PublicReferenceCallBoundary(c) || rv64PublicHostReferenceBoundary(c) || rv64PublicDynamicHostReferenceBoundary(c) || mutableReferenceCarrier >= 19 && mutableReferenceCarrier <= 28
 	freshRootedReference := func(typ ValType) bool {
-		return freshRootedGC && (typ == ValAnyRef || typ == ValI31Ref)
+		roots := c.genericGCFrameRoots()
+		opaqueNoCollect := qualifiedEH && c.needsOwnedExceptionReferences() && roots != nil && len(roots.safepoints) == 0 && len(roots.callsites) == 0
+		return freshRootedGC && (typ == ValAnyRef || typ == ValI31Ref || opaqueNoCollect && (typ == ValFuncRef || typ == ValExternRef))
 	}
 	for _, sig := range c.Funcs {
 		if len(sig.Params) > maxArity || len(sig.Results) > maxArity {
@@ -1225,13 +1384,13 @@ func railshotValidateCompiled(c *Compiled) error {
 		}
 		for _, types := range [][]ValType{sig.Params, sig.Results} {
 			for _, typ := range types {
-				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!c.nativeReferenceFunctionABI || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!typedI31 || typ != ValI31Ref) && !freshRootedReference(typ) && (!(exactGCExtern || exactGCBrOnCastNullability || exactGCBrOnCastFailNullability || exactGCStructBasic || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy) || typ != ValAnyRef) {
+				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!(c.nativeReferenceFunctionABI || primitiveReferences || c.functionEnvironmentFrameRoots()) || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!typedI31 || typ != ValI31Ref) && !freshRootedReference(typ) && (!qualifiedEH || typ != ValExnRef) && (!(exactGCExtern || exactGCBrOnCastNullability || exactGCBrOnCastFailNullability || exactGCStructBasic || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy) || typ != ValAnyRef) {
 					return reject("unsupported signature")
 				}
 			}
 		}
 	}
-	if !freshRootedGC && !exactGCTypeSubtypingDeclarations && !exactGCTypeSubtypingRecursiveFunctions && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRuntimeCallCast && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink && !exactGCTypeSubtypingNonFlatExport && !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCRefTestTable && !exactGCRefTestConcrete && !exactGCRefCastConcrete && !exactGCRefTestAbstract && !exactGCExtern && !exactGCRefCastAbstract && !exactGCBrOnCastAbstract && !exactGCBrOnCastFailAbstract && !exactGCBrOnCastConcrete && !exactGCBrOnCastFailConcrete && !exactGCBrOnCastNullability && !exactGCBrOnCastFailNullability && !exactGCStructGet && !exactGCStructMutation && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy {
+	if !freshRootedGC && !qualifiedEH && !exactGCTypeSubtypingDeclarations && !exactGCTypeSubtypingRecursiveFunctions && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRuntimeCallCast && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink && !exactGCTypeSubtypingNonFlatExport && !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCRefTestTable && !exactGCRefTestConcrete && !exactGCRefCastConcrete && !exactGCRefTestAbstract && !exactGCExtern && !exactGCRefCastAbstract && !exactGCBrOnCastAbstract && !exactGCBrOnCastFailAbstract && !exactGCBrOnCastConcrete && !exactGCBrOnCastFailConcrete && !exactGCBrOnCastNullability && !exactGCBrOnCastFailNullability && !exactGCStructGet && !exactGCStructMutation && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy {
 		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
 			return reject(err.Error())
 		}
@@ -1248,7 +1407,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	hasReferenceGlobal := false
 	stateOnlyExternrefs := rv64StateOnlyExternrefGlobals(c)
 	for i, global := range c.Globals {
-		if freshRootedGC && isGCRefValType(global.Type) {
+		if freshRootedGC && (isGCRefValType(global.Type) || global.Type == ValFuncRef || global.Type == ValExternRef) {
 			continue // The generic receipt pins exact nullable aggregate roots.
 		}
 		if exactGCTypeSubtypingRefFuncGlobals {
@@ -1269,10 +1428,31 @@ func railshotValidateCompiled(c *Compiled) error {
 		if exactGCArrayFixedOfficial && i == 0 || exactGCArrayDefaultOfficial && i < 2 || exactGCArrayInitElem && i < 2 || exactGCArrayInitData && i < 3 || exactGCArrayFill && i < 2 || exactGCArrayCopy && i < 2 {
 			continue // The exact product pins this rooted non-null array initializer.
 		}
+		if immediateReferences && isGCRefValType(global.Type) {
+			exact, err := c.globalExactType(i)
+			if err != nil || !rv64ImmediateCollectorValue(exact) || global.HasInitFunc || global.InitFunc != 0 || global.V128 != (V128{}) || global.Bits>>32 != 0 || global.Bits != 0 && global.Bits&1 == 0 {
+				return reject("immediate reference global metadata")
+			}
+			if len(global.InitExpr) != 0 {
+				if i < len(c.GlobalImports) || global.HasInitGlobal || c.validateGCConstExpr(global.InitExpr, exact, i) != nil {
+					return reject("immediate reference global initializer")
+				}
+			} else if global.HasInitGlobal && !rv64InitializerReferenceGlobal(c, global.InitGlobal, exact, i) {
+				return reject("immediate reference global source")
+			}
+			continue
+		}
 		if typedI31 && (global.Type == ValI31Ref || exactAnyI31 && global.Type == ValAnyRef) {
 			continue // The exact product witness pins both globals and their initial values.
 		}
 		if global.Type == ValExternRef {
+			if primitiveReferences {
+				exact, err := c.globalExactType(i)
+				if err != nil || !rv64PrimitiveReferenceValue(c, exact) || global.HasInitFunc || global.InitFunc != 0 || global.Bits != 0 || global.V128 != (V128{}) || len(global.InitExpr) != 0 || i < len(c.GlobalImports) && global.HasInitGlobal || global.HasInitGlobal && !rv64InitializerGlobal(c, global.InitGlobal, ValExternRef, i) {
+					return reject("plain external global initializer/type metadata")
+				}
+				continue
+			}
 			if !stateOnlyExternrefs {
 				return reject("externref globals require the exact state-only null directory")
 			}
@@ -1284,11 +1464,12 @@ func railshotValidateCompiled(c *Compiled) error {
 			exact, err := c.globalExactType(i)
 			typedIndex, typed := rv64PrivateIndexedFunctionType(c, exact)
 			callTyped := mutableFuncrefGlobalLocalCall && i == 0 && exact.Kind == ValueTypeReference && exact.Ref.Nullable && !exact.Ref.Exact && exact.Ref.Heap.Defined && exact.Ref.Heap.Abstract == 0 && exact.Ref.Heap.TypeIndex == 0
-			mutableQualified := localMutableReferences && i >= len(c.GlobalImports) || (stateOnlyMutableFuncrefImport || mutableFuncrefGlobalGet || mutableFuncrefGlobalClear || mutableFuncrefGlobalStoreSelf || mutableFuncrefGlobalCopy || mutableFuncrefGlobalMove || mutableFuncrefGlobalBidirectionalCopy || mutableFuncrefGlobalLocalCopy || mutableFuncrefGlobalLocalPublish || mutableFuncrefGlobalLocalTransfer) && i < len(c.GlobalImports)
-			if err != nil || exact != plain && !typed && !callTyped || global.Mutable && !mutableQualified || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() > 1 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
+			mutableQualified := primitiveReferences || localMutableReferences && i >= len(c.GlobalImports) || (stateOnlyMutableFuncrefImport || mutableFuncrefGlobalGet || mutableFuncrefGlobalClear || mutableFuncrefGlobalStoreSelf || mutableFuncrefGlobalCopy || mutableFuncrefGlobalMove || mutableFuncrefGlobalBidirectionalCopy || mutableFuncrefGlobalLocalCopy || mutableFuncrefGlobalLocalPublish || mutableFuncrefGlobalLocalTransfer) && i < len(c.GlobalImports)
+			primitiveTyped := primitiveReferences && rv64PrimitiveReferenceValue(c, exact)
+			if err != nil || exact != plain && !typed && !callTyped && !primitiveTyped || global.Mutable && !mutableQualified || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() > 1 && !primitiveReferences || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
 				return reject("qualified reference global and retained references required")
 			}
-			if typed && !callTyped {
+			if typed && !callTyped && !primitiveTyped {
 				local := int(global.InitFunc) - c.NumImports
 				if i < len(c.GlobalImports) || global.Mutable || c.NumImports != 0 || c.tableCount() != 0 || c.memoryCount() != 0 || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || c.HasStart || !global.HasInitFunc || global.HasInitGlobal || global.InitGlobal != 0 || local < 0 || local >= len(c.Funcs) || !c.Funcs[local].HasTypeIndex || c.Funcs[local].TypeIndex != typedIndex || !c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) {
 					return reject("private indexed reference global exact target")
@@ -1365,7 +1546,7 @@ func railshotValidateCompiled(c *Compiled) error {
 			}
 		}
 		reservation, err := ownedMemoryReservationPages(memory)
-		if memory.Shared || err != nil || (memory.HasMax && memory.Max > maxTypePages) {
+		if memory.Shared && !rv64ThreadedMemoryProfile(c) || err != nil || (memory.HasMax && memory.Max > maxTypePages) {
 			return reject("bounded unshared memory required")
 		}
 		if i == 0 && (!c.HasMemory || uint64(c.MemMinPages) != memory.Min || uint64(c.MemMaxPages) < memory.Min || uint64(c.MemMaxPages) > reservation) {
@@ -1380,15 +1561,18 @@ func railshotValidateCompiled(c *Compiled) error {
 			return reject("memory export index bound")
 		}
 	}
-	if c.memoryDir != nil && (len(c.memoryDir.ehTags) != 0 || len(c.memoryDir.gcStructGlobals) != 0 && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals || len(c.memoryDir.gcArrayGlobals) != 0 && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy || c.memoryDir.gcArrayElement != nil && !exactGCArrayReference || c.memoryDir.gcI31TableInit != nil) {
+	if c.memoryDir != nil && (len(c.memoryDir.ehTags) != 0 && !qualifiedEH || len(c.memoryDir.gcStructGlobals) != 0 && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals || len(c.memoryDir.gcArrayGlobals) != 0 && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy || c.memoryDir.gcArrayElement != nil && !exactGCArrayReference || c.memoryDir.gcI31TableInit != nil) {
 		return reject("GC/EH initializer lowering is pending")
 	}
 	return nil
 }
 
-// Every callable RV64 producer has a canonical context anchor, including
-// import-free scalar exports used as retained proper-tail targets.
-func railshotNeedsImportContextHeader(count int) bool { return count > 0 }
+// Imported dispatch still reads descriptor zero. Typed and collector profiles
+// also retain their established descriptor anchor protocol. Plain local
+// functions use the separate, arena-owned native context until a ref.func use.
+func railshotNeedsImportContextHeader(c *Compiled) bool {
+	return c.NumImports != 0 || c.usesAtomicWaitHelpers() || !c.hasNoFunctionCode() && c.requiredFeatures&(CoreFeatureGC|CoreFeatureTypedFunctionReferences) != 0
+}
 
 // Binding policy runs before prepareCodeMapping, including trusted artifacts.
 // Numeric/vector native bindings use retained framed bridges. Go callbacks and
@@ -1450,25 +1634,25 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 			}
 		}
 	}
-	var reexported [railshot.MaxHostFunctionImports]bool
+	freshRootedGC := rv64FreshRootedGC(c)
 	for _, index := range c.Exports {
 		if index < 0 || index >= c.NumImports+len(c.Funcs) {
 			return fmt.Errorf("%w: public RV64 function export index", railshot.ErrUnsupported)
 		}
-		if index < c.NumImports {
-			reexported[index] = true
-		}
 	}
 	for i, key := range c.Imports {
 		value := imports[c.functionImportBindingKey(i)]
-		if reexported[i] {
-			if _, native := value.(*InstanceExport); !native {
-				return fmt.Errorf("%w: public RV64 import %q reexport requires a native instance export", railshot.ErrUnsupported, key)
-			}
-		}
 		switch value := value.(type) {
+		case nativeCustomInstructionBinding:
+			if err := value.validate(c.importFuncSigs[i]); err != nil {
+				return fmt.Errorf("public RV64 import %q: %w", key, err)
+			}
+			continue
 		case *HostFuncRef:
-			if !rv64PublicHostReferenceBoundary(c) && !rv64PublicDynamicHostReferenceBoundary(c) {
+			if funcSigHasGCRefs(c.importFuncSigs[i]) && (value == nil || !value.gcCapable || store == nil || value.store != store) {
+				return fmt.Errorf("public RV64 host import %q cannot transfer collector references: use Runtime.NewGCHostFuncRef from the owning Runtime", key)
+			}
+			if !freshRootedGC && !rv64PrimitiveReferenceContract(c) && !rv64PublicHostReferenceBoundary(c) && !rv64PublicDynamicHostReferenceBoundary(c) {
 				if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {
 					return fmt.Errorf("public RV64 import %q: %w", key, err)
 				}
@@ -1485,9 +1669,19 @@ func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store
 			}
 			continue
 		case I32HostEvent, gatedI32HostEvent:
-			return fmt.Errorf("%w: public RV64 import %q target ownership/protocol is pending", railshot.ErrUnsupported, key)
+			// Events have no guest capability and can only use the bounded
+			// post-invocation log. Shared mode checks reject synchronous owners.
+			if _, err := bindI32HostEvent(value, c.importFuncSigs[i]); err != nil {
+				return fmt.Errorf("%w: public RV64 import %q: %v", railshot.ErrUnsupported, key, err)
+			}
+			for _, global := range c.GlobalImports {
+				if valTypeMayCarryFuncref(global.Type) {
+					return fmt.Errorf("%w: deferred host-event instance cannot import a funcref global", railshot.ErrUnsupported)
+				}
+			}
+			continue
 		}
-		if !rv64PublicHostReferenceBoundary(c) && !rv64PublicDynamicHostReferenceBoundary(c) {
+		if !freshRootedGC && !rv64PrimitiveReferenceContract(c) && !rv64PublicHostReferenceBoundary(c) && !rv64PublicDynamicHostReferenceBoundary(c) {
 			if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {
 				return fmt.Errorf("public RV64 import %q: %w", key, err)
 			}
@@ -1506,11 +1700,14 @@ func rv64ImportedInitializer(c *Compiled, index int, typ ValType) bool {
 // This binding-dependent gate runs for every host import, including unused
 // signatures and trusted artifacts, before executable mapping or owner retention.
 func rv64ScalarHostSignature(sig FuncSig) error {
-	if len(sig.Params) > coreruntime.MaxHostArity || len(sig.Results) > coreruntime.MaxHostArity {
+	if len(sig.Params) > railshot.MaxVectorFunctionValues || len(sig.Results) > railshot.MaxVectorFunctionValues {
 		return fmt.Errorf("%w: public RV64 scalar host signature arity", railshot.ErrUnsupported)
 	}
 	for _, types := range [][]ValType{sig.Params, sig.Results} {
 		for _, typ := range types {
+			if typ == ValV128 {
+				return fmt.Errorf("%w: v128 host callbacks are not supported", railshot.ErrUnsupported)
+			}
 			if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 {
 				return fmt.Errorf("%w: public RV64 nonscalar host signature", railshot.ErrUnsupported)
 			}
@@ -1581,12 +1778,21 @@ func rv64ValidateResolvedTable(c *Compiled, imports resolvedImports, store *refe
 		}
 		table.owner.mu.Lock()
 		table.mu.Lock()
-		size, capacity := uint64(binary.LittleEndian.Uint32(table.desc)), uint64(binary.LittleEndian.Uint32(table.desc[4:]))
-		valid := size >= def.Min && size <= capacity && capacity <= railshot.MaxOwnedTableEntries && 8+capacity*uint64(entryBytes) <= uint64(len(table.desc)) && (!def.HasMax || table.owner.declaredHasMax && capacity <= def.Max)
+		valid := false
+		var size uint64
+		if len(table.desc) >= 8 {
+			size = uint64(binary.LittleEndian.Uint32(table.desc))
+			capacity := uint64(binary.LittleEndian.Uint32(table.desc[4:]))
+			maximum, hasMaximum := rv64DeclaredTableMaximumLocked(table, capacity)
+			valid = size >= def.Min && size <= capacity && 8+capacity*uint64(entryBytes) <= uint64(len(table.desc)) && (!def.HasMax || hasMaximum && maximum <= def.Max)
+		}
 		table.mu.Unlock()
 		table.owner.mu.Unlock()
+		if size < def.Min {
+			return fmt.Errorf("imported table %q size %d < required minimum %d", def.Key, size, def.Min)
+		}
 		if !valid {
-			return fmt.Errorf("%w: imported table %d capacity/limits/extent", railshot.ErrUnsupported, tableIndex)
+			return fmt.Errorf("%w: imported table %q capacity, extent, or required maximum %d", railshot.ErrUnsupported, def.Key, def.Max)
 		}
 	}
 	if err := roots.validateReachable(); err != nil {
@@ -1658,4 +1864,32 @@ func rv64CoreIntegerInitializer(body []byte) bool {
 	}
 	end, err := r.Byte()
 	return err == nil && end == 0x0b && !r.HasNext()
+}
+
+// Called under both table locks with its owner retained by the native scope.
+// The owner snapshot supplies exact declared limits; descriptor capacity is a
+// storage reservation. Host-created tables declare that reservation as a max.
+func rv64DeclaredTableMaximumLocked(table *Table, capacity uint64) (uint64, bool) {
+	owner := table.owner
+	if owner == nil || !owner.declaredHasMax {
+		return 0, false
+	}
+	if owner.instance == nil {
+		return capacity, true
+	}
+	instance := owner.instance
+	if instance.c == nil {
+		return 0, false
+	}
+	for index := 0; index < instance.c.tableCount(); index++ {
+		if _, imported := instance.c.tableImportAt(index); imported {
+			continue
+		}
+		descriptor := instance.tableDescriptor(index)
+		if len(descriptor) == len(table.desc) && offHeapSlicePtr(descriptor) == offHeapSlicePtr(table.desc) {
+			definition := instance.c.tableDef(index)
+			return definition.Max, definition.HasMax
+		}
+	}
+	return 0, false
 }

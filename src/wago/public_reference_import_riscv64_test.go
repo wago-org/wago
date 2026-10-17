@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -169,7 +169,7 @@ func TestRV64PublicReferenceImportAdmission(t *testing.T) {
 	}
 }
 
-func TestRV64PublicReferenceImportUnusedSourceGates(t *testing.T) {
+func TestRV64PublicReferenceImportUnusedSourceAndLimits(t *testing.T) {
 	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
 		t.Skip("source rejection")
 	}
@@ -222,20 +222,29 @@ func TestRV64PublicReferenceImportUnusedSourceGates(t *testing.T) {
 			if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}); err != nil {
 				t.Fatal("negative fixture invalid before RV64 admission", tc.name, err)
 			}
-			image, err := railshot.CompileModuleWith(m, railshot.CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true})
-			if image != nil {
+			image, err := railshot.CompileModuleWith(m, railshot.CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceFunctions: true, NativeReferenceCalls: true})
+			if image != nil && image.CodeImage != nil {
 				image.CodeImage.Close()
 			}
-			if image != nil || !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("unsupported decoded unused import", tc.name, vector, err)
+			if image == nil || err != nil {
+				t.Fatal("valid decoded unused import rejected", tc.name, vector, err)
 			}
-			c, err := Compile(nil, source)
-			if c != nil {
-				c.Close()
+			cfg := NewRuntimeConfig().WithCoreFeatures(platformCoreFeatures() | CoreFeatureTypedFunctionReferences | CoreFeatureGC)
+			c, err := cfg.Compile(source)
+
+			if err != nil {
+				t.Fatal("valid unused reference import rejected", tc.name, vector, err)
 			}
-			if c != nil || err == nil {
-				t.Fatal("unsupported public unused import", tc.name, vector, err)
+			blob, err := c.MarshalBinary()
+			c.Close()
+			if err != nil {
+				t.Fatal("unused reference import artifact", tc.name, vector, err)
 			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if err != nil {
+				t.Fatal("load unused reference import", tc.name, vector, err)
+			}
+			loaded.Close()
 		}
 	}
 }

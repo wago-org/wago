@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -183,13 +183,7 @@ func TestRV64PublicI31CoreAdmissionIsExact(t *testing.T) {
 		} else {
 			mutate(candidate)
 		}
-		c, err := rv64I31Config().Compile(candidate)
-		if c != nil {
-			c.Close()
-		}
-		if err == nil || !errors.Is(err, railshot.ErrUnsupported) {
-			t.Fatal("near-miss source admitted", name, err)
-		}
+		t.Run(name, func(t *testing.T) { rv64RequireCore3SourceValidation(t, candidate) })
 	}
 	c := rv64I31Compile(t, false)
 	base := c.executionView()
@@ -216,12 +210,12 @@ func TestRV64PublicI31CoreAdmissionIsExact(t *testing.T) {
 		"context-header": func(v *Compiled) { v.needsFuncRefContextHeader = false },
 		"table-context":  func(v *Compiled) { v.nativeTableContextABI = false },
 	} {
-		copy := *base
-		mutate(&copy)
-		if rv64I31Core(&copy) || railshotValidateCompiled(&copy) == nil {
+		copy := rv64ReferenceStartCopy(base)
+		mutate(copy)
+		if rv64I31Core(copy) || copy.validate() == nil {
 			t.Fatal("hostile retained mutation admitted", name)
 		}
-		if blob, err := marshalCompiled(&copy); err == nil {
+		if blob, err := marshalCompiled(copy); err == nil {
 			loaded, loadErr := LoadTrustedArtifact(blob)
 			if loaded != nil {
 				normalized := name == "context-header" && loadErr == nil && rv64I31Core(loaded.executionView())
@@ -237,8 +231,8 @@ func TestRV64PublicI31CoreAdmissionIsExact(t *testing.T) {
 	}
 
 	plain := compatibilityDefaultConfig().WithCoreFeatures(platformCoreFeatures() | CoreFeatureGC)
-	if err := plain.Validate(); err == nil {
-		t.Fatal("GC feature escaped the private i31 qualification gate")
+	if err := plain.Validate(); err != nil {
+		t.Fatal("public GC config rejected", err)
 	}
 	if err := rv64I31Config().Validate(); err != nil {
 		t.Fatal("qualified i31 config rejected", err)

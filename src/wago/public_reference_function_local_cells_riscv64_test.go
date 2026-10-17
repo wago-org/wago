@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -9,18 +9,31 @@ import (
 	"runtime"
 	"slices"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+func rv64ReferenceTargetRowValid(in *Instance, index int) bool {
+	row := in.funcRefDescs[(index+1)*40 : (index+2)*40]
+	if rv64PrimitiveReferenceContract(in.c) {
+		if railshotNonCallableFunction(in.c, index) {
+			return false
+		}
+		_, valid := rv64PublishedDescriptor(in, uint64(uintptr(unsafe.Pointer(&row[0]))))
+		return valid
+	}
+	return railshotNonCallableFunction(in.c, index) && bytes.Equal(row, make([]byte, 40))
+}
+
 func rv64ReferenceLocalCellsRows(in *Instance) bool {
 	if len(in.funcRefDescs) != 12*coreruntime.FuncRefDescBytes {
 		return false
 	}
 	for _, index := range []int{4, 8, 9} {
-		if !railshotNonCallableFunction(in.c, index) || !bytes.Equal(in.funcRefDescs[(index+1)*40:(index+2)*40], make([]byte, 40)) {
+		if !rv64ReferenceTargetRowValid(in, index) {
 			return false
 		}
 	}
@@ -227,7 +240,7 @@ func TestRV64PublicReferenceFunctionLocalCellsInitializerOnly(t *testing.T) {
 						t.Fatal("plain local cell manufactured typed control/call permission")
 					}
 					in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
-					want, rows := uint64(1), 1
+					want, rows := uint64(1), 0
 					if nonnull {
 						want, rows = 0, 3
 					}

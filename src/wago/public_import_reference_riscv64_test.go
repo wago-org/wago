@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -375,8 +375,7 @@ func TestRV64PublicImportReferenceAuthentication(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	scope := rv64NativeTableTargets{count: 1}
-	scope.owners[0] = in
+	scope := rv64NativeTableTargets{count: 1, owners: []*Instance{in}}
 	desc := in.funcRefDescs[coreruntime.FuncRefDescBytes : 2*coreruntime.FuncRefDescBytes]
 	row := slices.Clone(desc[:coreruntime.TableEntryBytes])
 	if !scope.authenticatedRow(row) {

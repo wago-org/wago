@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -7,14 +7,13 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const rv64PublicGCArrayReferenceHex = "0061736d0100000001cd808080000f5e78005e6400005e6400015e6300005e6e0160000164016000016403600001640460037f7f6401017f60027f7f017f60047f7f64027f017f60037f7f7f017f6001646a017f6000017f600000038c808080000b0505060708090a0b0c0d0e07b88080800006036e657700000c6e65772d6f766572666c6f770001036765740005077365745f6765740007036c656e00090964726f705f73656773000a099680808000010564000241074103fb06000b41014102fb0800020b0abf818080000b8a808080000041004102fb0a01000b928080800000418080808078418080808078fb0a01000b8a808080000041004102fb0a03000b8a808080000041004102fb0a04000b8e808080000020022000fb0b012001fb0d000b8a808080000020002001100010040b9c80808000002002200020022003fb0b02fb0e0220022000fb0b022001fb0d000b9280808000002000200141004102fb0a0200200210060b8680808000002000fb0f0b868080800000100010080b858080800000fc0d000b"
@@ -88,15 +87,15 @@ func TestRV64PublicGCArrayReferenceExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCArrayReferenceCompile(t, artifact)
 			view := compiled.executionView()
-			if err := railshotValidateCompiled(view); !rv64GCArrayReference(view) || !rv64GCArrayReferenceExecutionCode(view) || err != nil {
-				t.Fatalf("missing reference array witness: %v", err)
+			if !rv64ArtifactContractValid(view) || view.validate() != nil {
+				t.Fatal("invalid public reference array execution contract")
 			}
 			for _, profile := range []struct {
 				name   string
 				config GCConfig
 			}{{name: "default"}, {name: "stress", config: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 96, ForceMajorEveryMinor: true, VerifyAfterCollect: true, StressBarriers: true}}} {
 				t.Run(profile.name, func(t *testing.T) {
-					rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+					rt := NewRuntime()
 					defer rt.Close()
 					mod, err := rt.Module(compiled)
 					if err != nil {
@@ -108,9 +107,9 @@ func TestRV64PublicGCArrayReferenceExecutionAndArtifact(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer in.Close()
-					state := in.existingGCArrayElementState()
-					if state == nil || state.Count != 2 || len(state.Descriptor) != 16 || binary.LittleEndian.Uint32(state.Descriptor[8:]) != 2 {
-						t.Fatalf("passive element state=%+v", state)
+					descriptor, _ := in.gcRootedTableElementDescriptor(0)
+					if binary.LittleEndian.Uint32(descriptor[8:]) != 2 || len(rv64ArrayReferenceRoots(t, in)) != 2 {
+						t.Fatal("passive element roots are incomplete")
 					}
 					raw, err := in.Invoke("new")
 					if err != nil || len(raw) != 1 || raw[0] == 0 {
@@ -154,13 +153,11 @@ func TestRV64PublicGCArrayReferenceExecutionAndArtifact(t *testing.T) {
 					if got, err := in.Invoke("drop_segs"); err != nil || len(got) != 0 {
 						t.Fatalf("drop=%v err=%v", got, err)
 					}
-					if binary.LittleEndian.Uint32(state.Descriptor[8:]) != 0 {
-						t.Fatalf("dropped descriptor=%x", state.Descriptor)
+					if binary.LittleEndian.Uint32(descriptor[8:]) != 0 {
+						t.Fatalf("dropped descriptor=%x", descriptor)
 					}
-					for i := uint32(0); i < state.Count; i++ {
-						if rooted, err := in.gc.CheckedTableSlot(state.Slots[i]); err != nil || !rooted.IsNull() {
-							t.Fatalf("dropped root %d=%v err=%v", i, rooted, err)
-						}
+					if roots := rv64ArrayReferenceRoots(t, in); len(roots) != 0 {
+						t.Fatal("dropped segment retained roots", roots)
 					}
 					if _, err = in.Invoke("drop_segs"); err != nil {
 						t.Fatal("repeated drop", err)
@@ -195,9 +192,9 @@ func TestRV64PublicGCArrayReferenceCloseDropsOnlyOwnedSegmentRoots(t *testing.T)
 	if first.gc == nil || first.gc != second.gc || !store.ownsGCCollector(first.gc) {
 		t.Fatalf("reference array collector domains first=%p second=%p store-owned=%t needs=%t safe=%t", first.gc, second.gc, store.ownsGCCollector(first.gc), compiled.needsRuntimeGCCollectorDomain(), compiled.sharedGCPersistentDomainSafe())
 	}
-	firstState, secondState := first.existingGCArrayElementState(), second.existingGCArrayElementState()
-	if firstState == nil || secondState == nil || firstState == secondState || firstState.Count != 2 || secondState.Count != 2 {
-		t.Fatalf("element states = %p/%+v and %p/%+v", firstState, firstState, secondState, secondState)
+	firstRoots, secondRoots := rv64ArrayReferenceRoots(t, first), rv64ArrayReferenceRoots(t, second)
+	if len(firstRoots) != 2 || len(secondRoots) != 2 || firstRoots[0] == secondRoots[0] || firstRoots[1] == secondRoots[1] {
+		t.Fatal("element roots are not instance-owned", firstRoots, secondRoots)
 	}
 	collector := second.gc
 	if got := collector.Stats().LiveObjects; got != 4 {
@@ -206,35 +203,23 @@ func TestRV64PublicGCArrayReferenceCloseDropsOnlyOwnedSegmentRoots(t *testing.T)
 	if err = first.Close(); err != nil {
 		t.Fatal(err)
 	}
+	if err := first.WaitClosed(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	if !first.resourcesClosed || first.existingGCArrayElementState() != nil {
 		t.Fatalf("first physical teardown retained element state: closed=%t state=%p", first.resourcesClosed, first.existingGCArrayElementState())
 	}
-	for i := uint32(0); i < firstState.Count; i++ {
-		rooted, slotErr := collector.CheckedTableSlot(firstState.Slots[i])
-		if slotErr != nil || !rooted.IsNull() {
-			t.Fatalf("closed instance root %d = %v, %v", i, rooted, slotErr)
-		}
-	}
-	for i := uint32(0); i < secondState.Count; i++ {
-		rooted, slotErr := collector.CheckedTableSlot(secondState.Slots[i])
-		if slotErr != nil || rooted.IsNull() {
-			t.Fatalf("surviving instance root %d = %v, %v", i, rooted, slotErr)
-		}
-	}
-	if err = collector.CollectFull(nil); err != nil {
+	roots := second.gcCollectFrameRoots(second.publicGCState())
+	if err = collector.CollectFull(&roots); err != nil {
 		t.Fatal(err)
 	}
 	if got := collector.Stats().LiveObjects; got != 2 {
 		t.Fatalf("live objects after closed-instance collection = %d, want 2", got)
 	}
-	for i, want := range []uint64{7, 1} {
-		rooted, slotErr := collector.CheckedTableSlot(secondState.Slots[i])
-		if slotErr != nil || rooted.IsNull() {
-			t.Fatalf("surviving instance root %d after collection = %v, %v", i, rooted, slotErr)
-		}
-		value, valueErr := collector.ArrayGet(rooted, 0)
-		if valueErr != nil || value.Bits != want {
-			t.Fatalf("surviving element %d = %+v, %v; want %d", i, value, valueErr, want)
+	for i, rooted := range rv64ArrayReferenceRoots(t, second) {
+		value, err := collector.ArrayGet(rooted, 0)
+		if want := []uint64{7, 1}[i]; err != nil || value.Bits != want {
+			t.Fatal("surviving element value", i, value, err)
 		}
 	}
 }
@@ -254,13 +239,12 @@ func TestRV64PublicGCArrayReferenceAdmissionIsExact(t *testing.T) {
 			v.GCTypeDescs[1].ElemSize++
 		},
 		"element-mode": func(v *Compiled) { v.passiveElems[0].Mode = ElemModeDeclarative },
-		"initializer":  func(v *Compiled) { v.memoryDir.gcArrayElement.Values[0].Bits[0]++ },
+		"initializer":  func(v *Compiled) { v.passiveElems[0].Values[0].Expr[0] ^= 1 },
 		"export":       func(v *Compiled) { delete(v.Exports, "new"); v.Exports["make"] = 0 },
 		"feature":      func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			if candidate.memoryDir != nil && candidate.memoryDir.gcArrayElement != nil {
 				dir := *candidate.memoryDir
 				candidate.memoryDir = &dir
@@ -272,12 +256,11 @@ func TestRV64PublicGCArrayReferenceAdmissionIsExact(t *testing.T) {
 				candidate.memoryDir.gcArrayElement = &init
 			}
 			mutate(candidate)
-			if rv64GCArrayReference(candidate) {
-				t.Fatal("hostile mutation retained reference witness")
+			if err := candidate.validate(); err == nil {
+				t.Fatal("hostile retained array mutation admitted")
 			}
-			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("hostile mutation admitted", err)
-			}
+
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 }
@@ -293,4 +276,18 @@ func TestRV64PublicGCArrayReferenceCompilerFreeRejectsSource(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
 		t.Fatal("compiler-free reference array path used source compilation", err)
 	}
+}
+
+func rv64ArrayReferenceRoots(t *testing.T, in *Instance) []gc.Ref {
+	t.Helper()
+	var roots []gc.Ref
+	in.rangeLocalGCTableRoots(func(slot gc.RootSlot) bool {
+		ref := slot.GetRef()
+		if ref.IsNull() {
+			t.Fatal("live passive element contains a null root")
+		}
+		roots = append(roots, ref)
+		return true
+	}, nil)
+	return roots
 }

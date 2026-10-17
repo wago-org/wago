@@ -5,12 +5,14 @@ package riscv64
 import (
 	"encoding/binary"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 type nativeTailDynamicLease struct {
-	site       *tailRADynamicSite
-	trampoline uintptr
+	site            *tailRADynamicSite
+	trampoline      uintptr
+	params, results []wasm.ValType
 }
 
 // Bind restores a sealed factory under a reacquired physical owner graph lease.
@@ -35,6 +37,14 @@ func (o *NativeTailDispatcher) Bind(caller *NativeTailDefinedOwner) error {
 	for _, retained := range o.dynamic {
 		if _, _, err := retained.site.budget(); err != nil {
 			return err
+		}
+		// Legacy transport signatures and their hash were frozen together at
+		// construction. Typed sites additionally recheck the retained runtime
+		// authority, without rebuilding the allocating fallback hash.
+		if retained.site.typeImage != nil {
+			if err := retained.site.validateType(o.callerHome, tailRAPointer(o.contexts[0]), retained.params, retained.results); err != nil {
+				return err
+			}
 		}
 		for _, target := range retained.site.owners {
 			if err := target.validate(retained.trampoline); err != nil {

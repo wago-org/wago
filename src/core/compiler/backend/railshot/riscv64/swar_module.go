@@ -87,6 +87,8 @@ func compileSWARDecodedModule(m *wasm.Module, mode emissionMode, policy swarModu
 }
 
 type swarStateProfile struct {
+	moduleByteLimit      int
+	maxFunctionLocals    uint32
 	publicInitializers   bool
 	publicStarts         bool
 	exports              bool
@@ -103,6 +105,10 @@ type swarStateProfile struct {
 // Production integrates qualified state with current public lifecycles.
 // Private pilots retain their original import/export policy.
 func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy swarModulePolicy, state swarStateProfile) (*swarModuleImage, error) {
+	codeLimit := MaxCodeBytes
+	if state.publicStarts {
+		codeLimit = MaxPublicCodeBytes
+	}
 	if mode.dynamicTailCalls && (!mode.importTailCalls || !mode.invocationContext || !mode.foreignTableCalls) {
 		return nil, unsupported("private SWAR dynamic tails require invocation/foreign factory contract")
 	}
@@ -118,15 +124,19 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if len(state.integerFunctions) != 0 && len(state.integerFunctions) != len(m.Code) {
 		return nil, unsupported("hybrid integer function directory")
 	}
-	if mode.referenceFunctions {
-		if !mode.interruptible || !mode.foreignTableCalls || !mode.invocationContext || !state.publicStarts || !state.exports || mode.dynamicTailCalls && (!mode.localTailCalls || !mode.importTailCalls) || mode.profileMode != (profileMode{}) {
+	if mode.referenceFunctions && mode.exceptionModule == nil {
+		if !mode.interruptible || !mode.foreignTableCalls || !mode.invocationContext || !state.publicStarts || !state.exports || mode.dynamicTailCalls && (!mode.localTailCalls || !mode.importTailCalls) {
 			return nil, unsupported("closed reference SWAR module requires private cooperative production")
 		}
-		if err := admitClosedReferenceFunctionModule(m, true); err != nil {
+		if err := admitProductionReferenceFunctionModule(m, true); err != nil {
 			return nil, err
 		}
 	}
-	if err := admitSWARDecodedBudgetReferences(m, state.publicStarts, state.publicStarts, mode.referenceCalls, mode.gcRootedScalar); err != nil {
+	budgetModule := m
+	if mode.exceptionModule != nil {
+		budgetModule = exceptionAdmissionProjection(m)
+	}
+	if err := admitSWARDecodedBudgetReferencesLimit(pluginBudgetModule(budgetModule, mode.customInstructions), state.publicStarts, state.publicStarts, mode.referenceCalls, mode.gcRootedScalar, state.moduleByteLimit); err != nil {
 		return nil, err
 	}
 	if state.publicStarts {
@@ -141,15 +151,43 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	hosts = hosts || tables && state.functionTableImports && state.publicStarts && state.exports && mode.interruptible && mode.foreignTableCalls
 	mode.borrowedTable = state.importedTable && mode.foreignTableCalls && mode.interruptible && m.ImportedTableCount() != 0
 	var err error
-	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{CompactImports: state.publicStarts, ExtendedConstGlobals: state.publicInitializers, MultiMemory: state.indexedMemories, GCConstExpr: mode.gcRootedScalar}, 1, wasm.ValidationLimits{MaxFunctionLocals: maxSWARLocals}); err != nil {
+	localLimit := uint32(maxSWARLocals)
+	if state.publicStarts {
+		localLimit = state.maxFunctionLocals
+		if localLimit == 0 {
+			localLimit = wasm.DefaultMaxFunctionLocals
+		}
+		for index := range m.Code {
+			typ, ok := m.LocalFuncType(index)
+			if !ok {
+				return nil, unsupported("SWAR function signature")
+			}
+			count := uint64(len(typ.Params))
+			for _, run := range m.Code[index].Locals.Runs {
+				count += uint64(run.Count)
+			}
+			if count > uint64((MaxFrameBytes-callFrameHeader)/16) {
+				return nil, unsupported("SWAR local frame exceeds stack-fence headroom")
+			}
+		}
+	}
+	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{CompactImports: state.publicStarts, ExtendedConstGlobals: state.publicInitializers, MultiMemory: state.indexedMemories, GCConstExpr: mode.gcRootedScalar}, 1, wasm.ValidationLimits{MaxFunctionLocals: localLimit}); err != nil {
 		return nil, err
 	}
-	if len(m.Code) == 0 && (!state.publicStarts || !state.exports) || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxProductionImports || len(m.Tables) > 1 || len(m.Globals) > 256 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !state.publicStarts || len(m.Elements) > MaxOwnedElementSegments || len(m.Data) > 256 || !state.publicStarts && m.BranchHints != nil || len(m.Memories) > MaxProductionMemories {
+	tableLimit := 1
+	if state.publicStarts && state.exports {
+		tableLimit = MaxFunctions
+	}
+	if len(m.Code) == 0 && (!state.publicStarts || !state.exports) || len(m.Code) > MaxFunctions && !state.publicStarts || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions && !state.publicStarts || len(m.Imports) > productionImportLimit(state.publicStarts) || len(m.Tables) > tableLimit || len(m.Globals) > productionGlobalLimit(state.publicStarts) || len(m.Tags) != 0 && mode.exceptionModule == nil || len(m.StringRefs) != 0 || m.Start != nil && !state.publicStarts || len(m.Elements) > productionElementSegmentLimit(state.publicStarts) || len(m.Data) > 256 && !state.publicStarts || !state.publicStarts && m.BranchHints != nil || len(m.Memories) > MaxProductionMemories {
 		return nil, unsupported("SWAR module state/features/function bound")
 	}
 	imported, memoryImports, globalImports := 0, 0, 0
 	for _, im := range m.Imports {
 		switch im.Type.Kind {
+		case wasm.ExternTag:
+			if mode.exceptionModule == nil {
+				return nil, unsupported("SWAR tag source proof")
+			}
 		case wasm.ExternFunc:
 			if !hosts {
 				return nil, unsupported("SWAR module import policy")
@@ -166,6 +204,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			memoryImports++
 		case wasm.ExternGlobal:
 			reference := state.exports && state.publicInitializers && (state.importedTable && mode.foreignTableCalls || admitStateOnlyMutableFunctionGlobalImport(m) || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m) || admitMutableFunctionGlobalSetSelf(m) || admitMutableFunctionGlobalCopy(m) || admitMutableFunctionGlobalMove(m) || admitMutableFunctionGlobalBidirectionalCopy(m) || admitMutableFunctionGlobalLocalCopy(m) || admitMutableFunctionGlobalLocalPublish(m) || admitMutableFunctionGlobalLocalTransfer(m)) && admitImportedFunctionGlobal(m, im.Type.GlobalType())
+			reference = reference || mode.gcRootedScalar && wasm.ExternReferenceType(im.Type.GlobalType().Type) || mode.ownedExceptionReferences && exceptionReferenceType(im.Type.GlobalType().Type)
 			if !state.importedGlobals || swarClassOf(im.Type.GlobalType().Type) == swarInvalid && !reference {
 				return nil, unsupported("SWAR numeric global import profile")
 			}
@@ -183,7 +222,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if memoryImports+len(m.Memories) > maxMemories {
 		return nil, unsupported("SWAR imported memory profile")
 	}
-	if imported+len(m.Code) == 0 && !state.publicStarts || imported > MaxHostFunctionImports || imported+len(m.Code) > MaxFunctions || imported != 0 && !mode.interruptible {
+	if imported+len(m.Code) == 0 && !state.publicStarts || imported > MaxHostFunctionImports || imported+len(m.Code) > MaxFunctions && !state.publicStarts || imported != 0 && !mode.interruptible {
 		return nil, unsupported("SWAR module aggregate functions/host bridge")
 	}
 	if !tables && (len(m.Tables) != 0 || len(m.Elements) != 0 && !mode.gcRootedScalar) {
@@ -193,15 +232,17 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	var elements []swarElement
 	var typeKeys, functionKeys []uint64
 	if tables {
-		ownedTable, err := admitTableProfile(m, true, state.importedTable && mode.interruptible && mode.foreignTableCalls)
+		ownedTable, err := admitTableProfile(budgetModule, true, state.importedTable && mode.interruptible && mode.foreignTableCalls)
 		if err != nil {
 			return nil, err
 		}
 		if ownedTable {
 			resolved, _ := m.TableType(0)
 			table = &resolved
-			if err := swarOwnedTableType(table); err != nil {
-				return nil, err
+			if !mode.foreignTableCalls {
+				if err := swarOwnedTableType(table); err != nil {
+					return nil, err
+				}
 			}
 			if !mode.foreignTableCalls {
 				elements, err = swarModuleElements(m.Elements)
@@ -228,27 +269,47 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		}
 		mode.gcRootedDirectory = &rootedDirectory
 	}
-	referenceTypes := internalReferenceTypes{decoded: m.Types, rootedDirectory: rootedDirectory, decodedSWAR: true, publicReferenceCarriers: publicReferenceCarriers, gcRootedScalar: mode.gcRootedScalar}
-	types := make([]*wasm.CompType, len(m.Types))
-	for i := range m.Types {
-		rec := &m.Types[i]
-		if len(rec.SubTypes) != 1 {
+	sourceDirectory, err := newSourceFunctionTypeDirectory(m)
+	if err != nil {
+		return nil, err
+	}
+	primitiveDeclarations := state.publicStarts && admitPublicPrimitiveReferenceModule(m, true)
+	if primitiveDeclarations || mode.gcRootedScalar {
+		mode.primitiveTailTypes = &sourceDirectory
+	}
+	referenceTypes := internalReferenceTypes{sourceDirectory: sourceDirectory, exception: mode.exceptionModule != nil, publicReferences: mode.referenceFunctions, decoded: m.Types, rootedDirectory: rootedDirectory, decodedSWAR: true, publicReferenceCarriers: publicReferenceCarriers, gcRootedScalar: mode.gcRootedScalar}
+	flatCount := 0
+	for _, group := range m.Types {
+		flatCount += len(group.SubTypes)
+	}
+	types := make([]*wasm.CompType, flatCount)
+	flatIndex := uint32(0)
+	for _, rec := range m.Types {
+		if len(rec.SubTypes) != 1 && !state.publicStarts {
 			return nil, unsupported("SWAR recursive type group")
 		}
-		sub := &rec.SubTypes[0]
-		if mode.gcRootedScalar && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
-			continue
+		for subtypeIndex := range rec.SubTypes {
+			sub := &rec.SubTypes[subtypeIndex]
+			index := flatIndex
+			flatIndex++
+			if (mode.gcRootedScalar || primitiveDeclarations) && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
+				continue
+			}
+			if (!state.publicStarts && (!sub.Final || sub.HasPrefix || len(sub.Supers) != 0)) || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
+				return nil, unsupported("SWAR type metadata")
+			}
+			signature, callable := sourceDirectory.function(index)
+			if !callable {
+				return nil, unsupported("SWAR function type directory")
+			}
+			if err := admitSWARControlSignature(signature, referenceTypes, state.publicStarts, mode.referenceCalls); err != nil && !mode.customInstructions.physicalSignature(signature) {
+				return nil, err
+			}
+			types[index] = signature
 		}
-		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
-			return nil, unsupported("SWAR type metadata")
-		}
-		if err := admitSWARControlSignature(&sub.Comp, referenceTypes, state.publicStarts, mode.referenceCalls); err != nil {
-			return nil, err
-		}
-		types[i] = &sub.Comp
 	}
 	for _, ex := range m.Exports {
-		if state.exports && tables && table != nil && ex.Index.Kind == wasm.ExternTable && ex.Index.Index == 0 {
+		if state.exports && tables && table != nil && ex.Index.Kind == wasm.ExternTable && uint64(ex.Index.Index) < uint64(m.TableCount()) {
 			continue
 		}
 		if state.exports && ex.Index.Kind == wasm.ExternGlobal && uint64(ex.Index.Index) < uint64(globalImports+len(m.Globals)) {
@@ -261,6 +322,9 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			continue
 		}
 		if state.exports && ex.Index.Kind == wasm.ExternMem && uint64(ex.Index.Index) < uint64(memoryImports+len(m.Memories)) {
+			continue
+		}
+		if ex.Index.Kind == wasm.ExternTag && mode.exceptionModule != nil {
 			continue
 		}
 		if ex.Index.Kind != wasm.ExternFunc || (uint64(ex.Index.Index) < uint64(imported) && !state.exports) || uint64(ex.Index.Index) >= uint64(imported+len(m.Code)) {
@@ -287,7 +351,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	var activeData []swarActiveData
 	var globals []swarGlobalInitializer
 	if state.publicInitializers {
-		if err := admitSWARPublicInitializersWithMemories(m, memories); err != nil {
+		if err := admitSWARPublicInitializersWithMemories(budgetModule, memories, mode.gcRootedScalar); err != nil {
 			return nil, err
 		}
 	} else {
@@ -305,7 +369,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if err != nil {
 		return nil, err
 	}
-	mode.localMutableReferences = mode.localMutableReferences || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m) || admitMutableFunctionGlobalSetSelf(m) || admitMutableFunctionGlobalCopy(m) || admitMutableFunctionGlobalMove(m) || admitMutableFunctionGlobalBidirectionalCopy(m) || admitMutableFunctionGlobalLocalCopy(m) || admitMutableFunctionGlobalLocalPublish(m) || admitMutableFunctionGlobalLocalTransfer(m) || admitMutableFunctionGlobalLocalExport(m) || admitMutableFunctionGlobalLocalObserve(m) || admitMutableFunctionGlobalLocalCall(m)
+	mode.localMutableReferences = mode.localMutableReferences || mode.ownedExceptionReferences || admitMutableFunctionGlobalGet(m) || admitMutableFunctionGlobalClear(m) || admitMutableFunctionGlobalSetSelf(m) || admitMutableFunctionGlobalCopy(m) || admitMutableFunctionGlobalMove(m) || admitMutableFunctionGlobalBidirectionalCopy(m) || admitMutableFunctionGlobalLocalCopy(m) || admitMutableFunctionGlobalLocalPublish(m) || admitMutableFunctionGlobalLocalTransfer(m) || admitMutableFunctionGlobalLocalExport(m) || admitMutableFunctionGlobalLocalObserve(m) || admitMutableFunctionGlobalLocalCall(m)
 	mode.parkedMutableReferenceGlobals = admitMutableFunctionGlobalLocalCall(m)
 	if mode.localMutableReferences && !(state.publicInitializers && state.exports && mode.foreignTableCalls && mode.interruptible) {
 		return nil, unsupported("mutable reference globals require the retained cooperative public profile")
@@ -322,20 +386,33 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			continue
 		}
 		ft, ok := m.ImportFuncType(entry)
-		if !ok || swarImportSignature(ft) != nil {
+		if state.publicStarts {
+			index, found := m.FuncTypeIndex(uint32(functionImport))
+			ft, ok = sourceDirectory.function(index.Index)
+			ok = ok && found
+		}
+		plugin := false
+		if mode.customInstructions != nil {
+			_, plugin = mode.customInstructions.instructions[uint32(functionImport)]
+		}
+		referenceImport := (mode.gcRootedScalar || primitiveDeclarations) && admitSWARControlSignature(ft, referenceTypes, true, mode.referenceCalls) == nil
+		if !ok || swarImportSignature(ft) != nil && !plugin && !referenceImport {
 			return nil, unsupported("SWAR module imported carrier signature")
 		}
 		functions[functionImport] = ft
-		hostSignatures[functionImport] = swarHostSignature{params: append([]wasm.ValType(nil), ft.Params...), results: append([]wasm.ValType(nil), ft.Results...)}
+		hostSignatures[functionImport] = swarHostSignature{custom: plugin, rooted: mode.gcRootedScalar, primitive: primitiveDeclarations && referenceImport, params: append([]wasm.ValType(nil), ft.Params...), results: append([]wasm.ValType(nil), ft.Results...)}
 		functionImport++
 	}
 	for i := range m.Code {
 		ft, ok := m.LocalFuncType(i)
+		if state.publicStarts && i < len(m.FuncTypes) {
+			ft, ok = sourceDirectory.function(m.FuncTypes[i].Index)
+		}
 		if !ok {
 			return nil, unsupported("SWAR module function binding")
 		}
-		if mode.referenceFunctions || mode.gcRootedScalar {
-			if err := admitSWARControlSignature(ft, internalReferenceTypes{swar: types, rootedDirectory: rootedDirectory, gcRootedScalar: mode.gcRootedScalar, publicReferenceCarriers: publicReferenceCarriers}, true, mode.referenceCalls); err != nil {
+		if mode.referenceFunctions || mode.gcRootedScalar || mode.exceptionModule != nil {
+			if err := admitSWARControlSignature(ft, internalReferenceTypes{sourceDirectory: sourceDirectory, exception: mode.exceptionModule != nil, publicReferences: mode.referenceFunctions, swar: types, rootedDirectory: rootedDirectory, gcRootedScalar: mode.gcRootedScalar, publicReferenceCarriers: publicReferenceCarriers}, true, mode.referenceCalls); err != nil {
 				return nil, err
 			}
 		} else if err := swarCallSignature(ft); err != nil {
@@ -343,9 +420,12 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		}
 		functions[imported+i] = ft
 	}
-	if table != nil {
+	if table != nil || mode.gcRootedScalar {
 		typeKeys = make([]uint64, len(types))
 		for i := range typeKeys {
+			if primitiveDeclarations && types[i] == nil {
+				continue
+			}
 			if mode.gcRootedScalar {
 				sub, _, _, ok := rootedDirectory.lookup(uint32(i))
 				if !ok {
@@ -361,6 +441,8 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			}
 			typeKeys[i] = key
 		}
+	}
+	if table != nil {
 		functionKeys = make([]uint64, len(functions))
 		for i, ft := range functions {
 			// Preserve every physical ordinal. Private signatures have no callable
@@ -369,6 +451,15 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 				continue
 			}
 			functionKeys[i] = wasm.StructuralFuncTypeKey(ft)
+		}
+	}
+	if mode.invocationContext {
+		for _, signature := range functions {
+			if signature == nil {
+				continue
+			}
+			mode.moduleArgumentSlots = max(mode.moduleArgumentSlots, uint16(swarSignatureSlots(signature.Params)))
+			mode.moduleResultSlots = max(mode.moduleResultSlots, uint16(swarSignatureSlots(signature.Results)))
 		}
 	}
 	summaries := make([]swarSummary, len(m.Code))
@@ -386,7 +477,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			}
 			continue
 		}
-		summaries[i], err = walkSWARPairsWithParkedReferenceMode(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, nil)
+		summaries[i], err = walkSWARPairsWithOwnedExceptions(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, mode.exceptionModule, mode.customInstructions, mode.tableModuleSource, mode.ownedExceptionReferences, nil, mode.primitiveTailTypes)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
@@ -397,12 +488,15 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		if summaries[i].usesLoops && !mode.interruptible {
 			return nil, unsupported("SWAR module loops require interruption bridge")
 		}
-		if summaries[i].codeBound > MaxCodeBytes-bound-15 {
+		if summaries[i].codeBound > codeLimit-bound-15 {
 			return nil, unsupported("SWAR module aggregate code bound")
 		}
 		bound += summaries[i].codeBound + 15
 	}
-	hostCode, hostEntries, err := swarHostThunks(hostSignatures, MaxCodeBytes-bound)
+	// Host signatures remain bounded independently of the public module size.
+	// Keep the private thunk generator's budget and apply the final module
+	// quota after layout; large local directories do not enlarge host code.
+	hostCode, hostEntries, err := swarHostThunks(hostSignatures, min(MaxCodeBytes, codeLimit-bound))
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +531,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
 		padding := (-len(image.code)) & 15
-		if len(code) > MaxCodeBytes-len(image.hostCode)-len(image.code)-padding {
+		if len(code) > codeLimit-len(image.hostCode)-len(image.code)-padding {
 			return nil, unsupported("SWAR module image bound")
 		}
 		for ; padding > 0; padding -= 4 {
@@ -464,7 +558,10 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		safepoint uint32
 	}
 	helperEntries := make(map[swarHelperBridge]int, 12)
-	bridges := []swarHelperBridge{{helper: gcStructAllocDefault, slots: 1}, {helper: gcStructAllocOne, slots: 2}, {helper: gcStructAllocOne, slots: 4}, {helper: gcStructGet, slots: 3}, {helper: gcStructSet, slots: 4}, {helper: gcStructGetS, slots: 3}, {helper: gcStructGetU, slots: 3}, {helper: gcStructRefTest, slots: 4}, {helper: gcStructRefCast, slots: 4}, {helper: gcStructTableSet, slots: 3}, {helper: gcAnyConvertExtern, slots: 1}, {helper: gcExternConvertAny, slots: 1}, {helper: gcArrayAllocDefault, slots: 2}, {helper: gcArrayAllocFixed, slots: 4}, {helper: gcArrayAllocFixed, slots: 5}, {helper: gcArrayAllocUniform, slots: 3}, {helper: gcArrayAllocData, slots: 4}, {helper: gcArrayAllocElem, slots: 4}, {helper: gcArrayDropElem, slots: 1}, {helper: gcArrayFill, slots: 5}, {helper: gcArrayCopy, slots: 7}, {helper: gcArrayGet, slots: 3}, {helper: gcArrayGetS, slots: 3}, {helper: gcArrayGetU, slots: 3}, {helper: gcArraySet, slots: 4}, {helper: gcArrayLen, slots: 1}, {helper: gcArrayInitData, slots: 6}, {helper: gcArrayInitElem, slots: 6}, {helper: gcTableFill, slots: 4}, {helper: gcTableCopy, slots: 5}, {helper: gcTableGrow, slots: 3}, {helper: gcTableInit, slots: 5}, {helper: gcTableElemDrop, slots: 1}, {helper: guestGlobalClear}, {helper: guestGlobalStore, slots: 1}, {helper: guestGlobalStoreIndexed, slots: 2}}
+	bridges := []swarHelperBridge{{helper: gcExternGlobalSet, slots: 2}, {helper: gcStructAllocDefault, slots: 1}, {helper: gcStructAllocOne, slots: 2}, {helper: gcStructAllocOne, slots: 4}, {helper: gcStructGet, slots: 3}, {helper: gcStructSet, slots: 4}, {helper: gcStructGetS, slots: 3}, {helper: gcStructGetU, slots: 3}, {helper: gcStructRefTest, slots: 4}, {helper: gcFunctionSubtypeTest, slots: 3}, {helper: gcStructRefCast, slots: 4}, {helper: gcStructTableSet, slots: 3}, {helper: gcAnyConvertExtern, slots: 1}, {helper: gcExternConvertAny, slots: 1}, {helper: gcArrayAllocDefault, slots: 2}, {helper: gcArrayAllocFixed, slots: 4}, {helper: gcArrayAllocFixed, slots: 5}, {helper: gcArrayAllocUniform, slots: 3}, {helper: gcArrayAllocData, slots: 4}, {helper: gcArrayAllocElem, slots: 4}, {helper: gcArrayDropElem, slots: 1}, {helper: gcArrayFill, slots: 5}, {helper: gcArrayCopy, slots: 7}, {helper: gcArrayGet, slots: 3}, {helper: gcArrayGetS, slots: 3}, {helper: gcArrayGetU, slots: 3}, {helper: gcArraySet, slots: 4}, {helper: gcArrayLen, slots: 1}, {helper: gcArrayInitData, slots: 6}, {helper: gcArrayInitElem, slots: 6}, {helper: gcTableFill, slots: 4}, {helper: gcTableCopy, slots: 5}, {helper: gcTableGrow, slots: 3}, {helper: gcTableInit, slots: 5}, {helper: gcTableElemDrop, slots: 1}, {helper: guestGlobalClear}, {helper: guestGlobalStore, slots: 1}, {helper: guestGlobalStoreIndexed, slots: 2}}
+	if mode.ownedExceptionReferences {
+		bridges = append(bridges, swarHelperBridge{helper: gcExceptionPayload, slots: 1})
+	}
 	for _, call := range calls {
 		if call.helper == 0 || call.safepoint == 0 {
 			continue
@@ -488,7 +585,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		}
 		padding := (-len(image.code)) & 15
 		paramSlots, resultSlots := helper.slots, 1
-		if helper.helper == gcStructSet || helper.helper == gcStructTableSet || helper.helper == gcArraySet || helper.helper == gcArrayDropElem || helper.helper == gcArrayFill || helper.helper == gcArrayCopy || helper.helper == gcArrayInitData || helper.helper == gcArrayInitElem || helper.helper == gcTableFill || helper.helper == gcTableCopy || helper.helper == gcTableInit || helper.helper == gcTableElemDrop {
+		if helper.helper == gcExternGlobalSet || helper.helper == gcStructSet || helper.helper == gcStructTableSet || helper.helper == gcArraySet || helper.helper == gcArrayDropElem || helper.helper == gcArrayFill || helper.helper == gcArrayCopy || helper.helper == gcArrayInitData || helper.helper == gcArrayInitElem || helper.helper == gcTableFill || helper.helper == gcTableCopy || helper.helper == gcTableInit || helper.helper == gcTableElemDrop {
 			resultSlots = 0
 		}
 		dispatch := guestGlobalStoreDispatch
@@ -502,7 +599,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			resultSlots = 0
 		}
 		stub := HostIndirectOwnedSyncThunk(dispatch, paramSlots, resultSlots)
-		if len(stub) == 0 || padding > MaxCodeBytes-len(image.hostCode)-len(image.code) || len(stub) > MaxCodeBytes-len(image.hostCode)-len(image.code)-padding {
+		if len(stub) == 0 || padding > codeLimit-len(image.hostCode)-len(image.code) || len(stub) > codeLimit-len(image.hostCode)-len(image.code)-padding {
 			return nil, unsupported("SWAR mutable funcref helper image bound")
 		}
 		for ; padding > 0; padding -= 4 {
@@ -515,8 +612,15 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		helperEntries[key] = len(image.code)
 		image.code = append(image.code, stub...)
 	}
+	image.code, err = appendAtomicHelpers(image.code, calls)
+	if err != nil {
+		return nil, err
+	}
 	a := enc.Asm{B: image.code}
 	for _, call := range calls {
+		if call.atomicHelper != 0 {
+			continue
+		}
 		target := 0
 		if call.helper != 0 {
 			var ok bool
@@ -553,16 +657,26 @@ func admitSWARDecodedBudgetProfile(m *wasm.Module, publicStarts bool) error {
 	return admitSWARDecodedBudgetReferences(m, publicStarts, false, false, false)
 }
 func admitSWARDecodedBudgetReferences(m *wasm.Module, publicStarts, referencesAllowed, typed, rootedScalar bool) error {
+	limit := MaxModuleBytes
+	if publicStarts {
+		limit = MaxPublicCodeBytes
+	}
+	return admitSWARDecodedBudgetReferencesLimit(m, publicStarts, referencesAllowed, typed, rootedScalar, limit)
+}
+
+func admitSWARDecodedBudgetReferencesLimit(m *wasm.Module, publicStarts, referencesAllowed, typed, rootedScalar bool, limit int) error {
 	maxMemories := 1
+	maxTables := 1
 	if publicStarts {
 		maxMemories = MaxProductionMemories
+		maxTables = MaxFunctions
 	}
 	if m.UsesCompactImports && !publicStarts {
 		return unsupported("compact imports require public production")
 	}
 	// Count and byte budgets precede validation, metadata expansion and payload
 	// copies. Decoded callers do not necessarily retain a bounded source blob.
-	if len(m.Code) == 0 && !publicStarts || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Imports) > MaxProductionImports || len(m.Tables) > 1 || len(m.Memories) > maxMemories || len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments || len(m.Exports) > MaxFunctions || len(m.Customs) > MaxFunctions || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || !publicStarts && m.BranchHints != nil {
+	if len(m.Code) == 0 && !publicStarts || len(m.Code) > MaxFunctions && !publicStarts || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions && !publicStarts || len(m.Imports) > productionImportLimit(publicStarts) || len(m.Tables) > maxTables || len(m.Memories) > maxMemories || len(m.Globals) > productionGlobalLimit(publicStarts) || len(m.Data) > 256 && !publicStarts || len(m.Elements) > productionElementSegmentLimit(publicStarts) || len(m.Exports) > MaxFunctions || len(m.Customs) > MaxFunctions || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || !publicStarts && m.BranchHints != nil {
 		return unsupported("SWAR module state/features/function bound")
 	}
 	globalCount, functionCount, memoryCount := len(m.Globals), 0, len(m.Memories)
@@ -585,10 +699,13 @@ func admitSWARDecodedBudgetReferences(m *wasm.Module, publicStarts, referencesAl
 	if memoryCount > maxMemories {
 		return unsupported("SWAR aggregate memory bound")
 	}
-	if globalCount > 256 {
+	if globalCount > productionGlobalLimit(publicStarts) {
 		return unsupported("SWAR aggregate global bound")
 	}
-	remaining := MaxModuleBytes
+	remaining := limit
+	if remaining == 0 {
+		remaining = MaxModuleBytes
+	}
 	consume := func(n int) bool {
 		if n > remaining {
 			return false
@@ -608,22 +725,32 @@ func admitSWARDecodedBudgetReferences(m *wasm.Module, publicStarts, referencesAl
 			return unsupported("SWAR rooted type directory")
 		}
 	}
-	declaredTypes := internalReferenceTypes{decoded: m.Types, rootedDirectory: rootedDirectory, decodedSWAR: true, publicReferenceCarriers: publicReferenceCarriers, gcRootedScalar: rootedScalar}
+	sourceDirectory, err := newSourceFunctionTypeDirectory(m)
+	if err != nil {
+		return err
+	}
+	primitiveDeclarations := publicStarts && admitPublicPrimitiveReferenceModule(m, true)
+	declaredTypes := internalReferenceTypes{sourceDirectory: sourceDirectory, publicReferences: publicStarts, decoded: m.Types, rootedDirectory: rootedDirectory, decodedSWAR: true, publicReferenceCarriers: publicReferenceCarriers, gcRootedScalar: rootedScalar}
+	flatIndex := uint32(0)
 	for _, group := range m.Types {
-		if len(group.SubTypes) != 1 {
+		if len(group.SubTypes) != 1 && !publicStarts {
 			return unsupported("SWAR decoded numeric function types")
 		}
-		sub := &group.SubTypes[0]
-		if rootedScalar && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
-			continue
+		for subtypeIndex := range group.SubTypes {
+			sub := &group.SubTypes[subtypeIndex]
+			index := flatIndex
+			flatIndex++
+			if (rootedScalar || primitiveDeclarations) && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
+				continue
+			}
+			signature, callable := sourceDirectory.function(index)
+			if !callable || admitSWARControlSignature(signature, declaredTypes, referencesAllowed, typed) != nil {
+				return unsupported("SWAR decoded numeric function types")
+			}
+			if (!publicStarts && (!sub.Final || sub.HasPrefix || len(sub.Supers) != 0)) || len(sub.Comp.Fields) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
+				return unsupported("SWAR decoded type metadata")
+			}
 		}
-		if admitSWARControlSignature(&sub.Comp, declaredTypes, referencesAllowed, typed) != nil {
-			return unsupported("SWAR decoded numeric function types")
-		}
-		if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || len(sub.Comp.Fields) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
-			return unsupported("SWAR decoded type metadata")
-		}
-
 	}
 	for _, fn := range m.Code {
 		if fn.BodyBytes == nil || len(fn.Body.Instrs) != 0 || len(fn.Body.BodyBytes) != 0 || len(fn.BodyBytes) > 64<<10 || len(fn.Locals.Runs) > maxSWARLocals || fn.LocalDeclBytes > MaxModuleBytes || !consume(len(fn.BodyBytes)) || !consume(int(fn.LocalDeclBytes)) {
@@ -640,7 +767,7 @@ func admitSWARDecodedBudgetReferences(m *wasm.Module, publicStarts, referencesAl
 			if rootedModule && rootedScalarTableReference(wasm.RefVal(table.Type.Ref), m) && rootedScalarAggregateElementExpression(*table.Init, table.Type.Ref, m) {
 				continue
 			}
-			if _, err := admitTableInitializer(*table.Init, m); err != nil {
+			if _, err := admitTableInitializer(*table.Init, m, table.Type.Ref); err != nil {
 				return err
 			}
 		}

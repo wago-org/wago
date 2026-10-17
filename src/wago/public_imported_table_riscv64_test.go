@@ -1,11 +1,10 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 	"sync"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -393,12 +391,7 @@ func TestRV64ImportedTableBoundedDeclaration(t *testing.T) {
 	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
 		t.Skip("source admission only")
 	}
-	if c, err := Compile(nil, rv64ImportedTableModule([]wasm.ValType{wasm.I32}, 7, false, false, false, 1025)); c != nil || !errors.Is(err, railshot.ErrUnsupported) {
-		if c != nil {
-			_ = c.Close()
-		}
-		t.Fatal("unbounded imported declaration admitted", err)
-	}
+	rv64RequireCore3SourceValidation(t, rv64ImportedTableModule([]wasm.ValType{wasm.I32}, 7, false, false, false, 1025))
 }
 
 func rv64ReplaceTableStageSection(t *testing.T, source []byte, replacementID byte, replacement []byte) []byte {

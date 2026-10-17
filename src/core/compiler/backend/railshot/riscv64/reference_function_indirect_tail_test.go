@@ -135,7 +135,11 @@ func TestReferenceFunctionIndirectTailKindWitnesses(t *testing.T) {
 					if mask != 7 {
 						t.Fatal("mixed kinds", mask)
 					}
-				} else if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+				} else if kind == "live-indirect-dead-reference" || kind == "live-reference-dead-indirect" || kind == "dead-only" || kind == "private" {
+					if image == nil || err != nil || pressure != 1 || image.CodeImage != nil || image.NativeTail == nil {
+						t.Fatal("valid public tail witness rejected", err, pressure)
+					}
+				} else if image != nil || err == nil || pressure != 0 {
 					t.Fatal("unproven kind/type staged", err, pressure)
 				}
 			})

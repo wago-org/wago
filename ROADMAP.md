@@ -1,6 +1,12 @@
 # Wago roadmap
 
-Experimental Linux/RV64 now combines a bounded owned/imported funcref table32
+Linux/RV64 is now an ordinary supported build. The detailed notes below record
+the incremental qualification work that led to full Core 1/2/3, runtime, host,
+artifact, guard-page, plugin, profiling, GC, threads, and wide-arithmetic
+support. QEMU results establish functional correctness; native RV64 performance
+qualification remains separate.
+
+The initial RV64 work combined a bounded owned/imported funcref table32
 with numeric function imports, including retained foreign targets and parked
 host callbacks, imported references through owned thunks, and bounded nullable
 funcref element expressions with immutable imported-i32 offsets. Scalar/SWAR

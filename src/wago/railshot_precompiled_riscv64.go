@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo && wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && wago_precompiled
 
 package wago
 
@@ -18,6 +18,8 @@ func railshotAdmitSource([]byte, *wasm.Module) error {
 
 func railshotI31CoreSource([]byte) bool                                     { return false }
 func railshotConfigureI31Core(bool, *railshotCompileOptions)                {}
+func railshotGeneralI31Module(*wasm.Module) bool                            { return false }
+func railshotConfigureGeneralI31(bool, *railshotCompileOptions)             {}
 func railshotGCRefEqSource([]byte) bool                                     { return false }
 func railshotConfigureGCRefEq(bool, *railshotCompileOptions)                {}
 func railshotGCRefTestTableSource([]byte) bool                              { return false }
@@ -142,7 +144,7 @@ func railshotCompileModuleWith(*wasm.Module, railshotCompileOptions) (*railshotC
 	return nil, fmt.Errorf("source compilation is unavailable in a precompiled runtime")
 }
 
-func railshotHostIndirectThunk(uint32) []byte { return nil }
+func railshotHostIndirectThunk(index uint32) []byte { return railshot.HostIndirectThunk(index) }
 
 func railshotHostIndirectSyncThunk(index uint32, params, results int) []byte {
 	return railshot.HostIndirectSyncThunk(index, params, results)
@@ -151,3 +153,5 @@ func railshotHostIndirectSyncThunk(index uint32, params, results int) []byte {
 func railshotHostIndirectOwnedSyncThunk(index uint32, params, results int) []byte {
 	return railshot.HostIndirectOwnedSyncThunk(index, params, results)
 }
+
+func railshotFunctionSubtypeHelpers(*wasm.Module) bool { return false }

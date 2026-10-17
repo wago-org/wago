@@ -47,3 +47,19 @@ func TestNativeTailDefinedFactoryCountsMatchFrozenOwnership(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeTailFactorySharedOwnerBudget(t *testing.T) {
+	counts := NativeTailOwnerCounts{Owners: 1, Functions: 64, Values: 128}
+	metadata, code, err := NativeTailFactoryCountsBudget(64, 128, 1, counts, 4096)
+	if err != nil || metadata >= MaxModuleBytes/4 || code >= MaxCodeBytes {
+		t.Fatalf("shared 64-function graph: metadata=%d code=%d err=%v", metadata, code, err)
+	}
+	if allocations := testing.AllocsPerRun(100, func() {
+		if _, _, err := NativeTailFactoryCountsBudget(64, 128, 1, counts, 4096); err != nil {
+			panic(err)
+		}
+	}); allocations != 0 {
+		t.Fatalf("shared owner budget allocations=%g", allocations)
+	}
+	t.Logf("64 tail sites share one 64-function owner: metadata bound=%d code bound=%d; warm budget allocations=0", metadata, code)
+}

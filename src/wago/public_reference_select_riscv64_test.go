@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -158,12 +158,12 @@ func TestRV64PublicReferenceSelectAdmission(t *testing.T) {
 		t.Fatal("non-null select bypassed public feature gate")
 	}
 	c = rv64NativeTailCompile(t, "reference-select-marker", source, false)
-	c.nativeReferenceControlABI = false
-	c.validateMemo = &validateMemo{}
-	if err := railshotValidateCompiled(c); err == nil {
+	candidate := rv64ReferenceStartCopy(c.executionView())
+	candidate.nativeReferenceControlABI = false
+	if err := candidate.validate(); err == nil {
 		t.Fatal("select missing witness admitted")
 	}
-	blob, err := marshalCompiled(c)
+	blob, err := marshalCompiled(candidate)
 	if err == nil {
 		if got, err := LoadTrustedArtifact(blob); err == nil {
 			if got != nil {

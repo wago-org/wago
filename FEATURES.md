@@ -9,12 +9,20 @@ older artifacts must be rebuilt. Optional native plugins can require newer CPU
 extensions even when ordinary Wasm code can use the baseline.
 
 This is the feature-support matrix for Wago's pure-Go, no-cgo engine. Wago
-supports Linux, macOS, and Windows on amd64 and arm64. For planned work, see
-[ROADMAP.md](ROADMAP.md).
+supports Linux, macOS, and Windows on amd64 and arm64, plus Linux on RV64. For
+planned work, see [ROADMAP.md](ROADMAP.md).
 
-Experimental Linux/RV64 requires `wago_rv64_experimental`. Its bounded numeric
-profile includes scalar/SWAR SIMD execution and one nullable funcref table32
-combined with numeric function imports. Imported function references use retained
+Linux/RV64 is supported in ordinary builds and needs no opt-in build tag. It
+advertises the complete Core 3 feature set, plus Wago's threads, guard-page,
+artifact, host, plugin, profiling, and wide-arithmetic paths. The acceptance
+commands are documented in [tests/README.md](tests/README.md). QEMU establishes
+functional correctness; runtime performance still requires native RV64 hardware.
+
+<details>
+<summary>Historical RV64 qualification notes</summary>
+
+The initial bounded numeric profile included scalar/SWAR SIMD execution and one
+nullable funcref table32 combined with numeric function imports. Imported function references use retained
 importer-owned thunks for Go callbacks, HostFuncRef and native targets. Reference
 element expressions support bounded `ref.func` and `ref.null func` literals,
 with active offsets from i32 constants or immutable imported-i32 globals.
@@ -460,6 +468,8 @@ remain fail-closed. Explicit `target.CloneGCRefFrom(source, ref)` instead perfor
 bounded transactional graph clone across distinct Runtime stores, preserving cycles
 and internal sharing while assigning new target identity and rejecting non-null
 opaque store-owned payloads.
+</details>
+
 The feature matrix below is the current support reference. `SupportedFeatures()`
 is the runtime authority for a specific build and host.
 
@@ -493,10 +503,9 @@ passes in full: 57 of 57 applicable files and 0 failing assertions. See
 
 ### Wide Arithmetic (Phase 4)
 
-AMD64, ARM64, and experimental Linux/RV64 support `i64.add128`, `i64.sub128`,
+AMD64, ARM64, and Linux/RV64 support `i64.add128`, `i64.sub128`,
 `i64.mul_wide_s`, and `i64.mul_wide_u` using baseline integer instructions.
-RV64 support requires the existing `wago_rv64_experimental` build tag and uses
-only RV64G instructions. Operands and results use ordinary i64 low/high pairs,
+RV64 uses only RV64G instructions. Operands and results use ordinary i64 low/high pairs,
 with the low half first. Support is automatic, with no additional feature
 switch or new value type. This proposal is separate from the Core 3 release
 group. Native artifacts preserve the compiled instructions without additional

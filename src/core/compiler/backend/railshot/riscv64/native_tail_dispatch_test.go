@@ -22,6 +22,22 @@ func TestTailInvocationFactoryRejectsBeforePublication(t *testing.T) {
 	if _, err := nativeTailDispatcherBound([]NativeTailSite{valid}, 64); err != nil {
 		t.Fatal("retained descriptor control", err)
 	}
+	contextOnly := valid
+	contextOnly.ContextOnlyTarget = true
+	if _, err := nativeTailDispatcherBound([]NativeTailSite{contextOnly}, 64); err != nil {
+		t.Fatal("retained context-only control", err)
+	}
+	contextOnly.HostEntry = true
+	if _, err := nativeTailDispatcherBound([]NativeTailSite{contextOnly}, 64); err == nil {
+		t.Fatal("context-only host target accepted")
+	}
+	contextOnly.HostEntry = false
+	binary.LittleEndian.PutUint64(target[16:], 8)
+	_, anchorErr := nativeTailDispatcherBound([]NativeTailSite{contextOnly}, 64)
+	binary.LittleEndian.PutUint64(target[16:], 0)
+	if anchorErr == nil {
+		t.Fatal("context-only target with a descriptor anchor accepted")
+	}
 	for _, tc := range []struct {
 		name   string
 		modify func(*NativeTailSite)

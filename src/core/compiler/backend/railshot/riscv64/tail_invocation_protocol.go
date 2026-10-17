@@ -23,7 +23,7 @@ func (e *tailRAEmitter) invocationTransport(pointer enc.Reg, bytes int, view enc
 	a.Ld(enc.X29, view, capacity)
 	a.Constant64(enc.Scratch0, int64(bytes))
 	e.fail(enc.LTU, enc.X29, enc.Scratch0)
-	a.Constant64(enc.Scratch0, nativeImportTransportBytes)
+	a.Constant64(enc.Scratch0, nativePublicImportTransportBytes)
 	e.fail(enc.LTU, enc.Scratch0, enc.X29)
 	a.Add(enc.Scratch0, pointer, enc.X29)
 	e.fail(enc.LTU, enc.Scratch0, pointer)
@@ -32,4 +32,35 @@ func (e *tailRAEmitter) invocationTransport(pointer enc.Reg, bytes int, view enc
 		e.fail(enc.NE, enc.X29, enc.Zero)
 		e.fail(enc.EQ, pointer, enc.Zero)
 	}
+}
+
+func (e *tailRAEmitter) transportBytes() int {
+	if e.invocationContext {
+		return nativePublicImportTransportBytes
+	}
+	return nativeImportTransportBytes
+}
+func (e *tailRAEmitter) resultsOffset() int {
+	if e.invocationContext {
+		return tailRAPublicResultsOffset
+	}
+	return tailRAResultsOffset
+}
+func (e *tailRAEmitter) viewOffset() int {
+	if e.invocationContext {
+		return tailRAPublicRecordBytes
+	}
+	return tailRARecordBytes
+}
+func (e *tailRAEmitter) maskOffset() int {
+	if e.invocationContext {
+		return tailRAPublicMaskOffset
+	}
+	return 112
+}
+func (e *tailRAEmitter) maskWords() int {
+	if e.invocationContext {
+		return 8
+	}
+	return 4
 }

@@ -1,20 +1,18 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
@@ -86,12 +84,9 @@ func TestRV64PublicGCTypeSubtypingRefTestSupertypeTrueExecutionAndArtifact(t *te
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCTypeSubtypingRefTestSupertypeTrueCompile(t, artifact)
 			view := compiled.executionView()
-			metadata, metadataErr := marshalCompiledMetadata(view)
-			validation := railshotValidateCompiled(view)
-			if metadataErr != nil || len(metadata) != rv64GCTypeSubtypingRefTestSingleMetadataLens[3] || sha256.Sum256(metadata) != rv64GCTypeSubtypingRefTestSingleMetadataDigests[3] ||
-				rv64GCTypeSubtypingRefTestSingleProfileVariantWithCode(view, false, true) != 4 || view.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingRefTestSingle || validation != nil {
+			if !rv64ArtifactContractValid(view) || view.validate() != nil {
 				compiled.Close()
-				t.Fatalf("missing exact supertype-true ref.test witness: metadata=%d/%x err=%v variant=%d product=%v validation=%v code=%d/%x entries=%v/%v", len(metadata), sha256.Sum256(metadata), metadataErr, rv64GCTypeSubtypingRefTestSingleProfileVariantWithCode(view, false, true), view.stagedGCTypeSubtypingProduct(), validation, len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry)
+				t.Fatal("missing public ref.test execution contract")
 			}
 			cache := compiled.loadCodeCache()
 			if cache == nil || !artifact && (cache.base != 0 || len(cache.mem) != 0 || cache.sealed || cache.flags&compiledCacheWritableCode != 0) ||
@@ -99,9 +94,7 @@ func TestRV64PublicGCTypeSubtypingRefTestSupertypeTrueExecutionAndArtifact(t *te
 				compiled.Close()
 				t.Fatalf("supertype-true ref.test unpublished mapping state: artifact=%t base=%#x mem=%d sealed=%t writable=%t refs=%d", artifact, cache.base, len(cache.mem), cache.sealed, cache.flags&compiledCacheWritableCode != 0, cache.refs)
 			}
-			cfg := rv64I31Config()
-			cfg.railshotState.tailProducts = true
-			rt := NewRuntime(WithRuntimeConfig(cfg))
+			rt := NewRuntime()
 			mod, err := rt.Module(compiled)
 			if err != nil {
 				compiled.Close()
@@ -164,24 +157,21 @@ func TestRV64PublicGCTypeSubtypingRefTestSupertypeTrueAdmissionIsExact(t *testin
 		"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 		"escape":     func(v *Compiled) { v.dynamicFuncrefEscape = true },
 		"function-abi": func(v *Compiled) {
-			v.nativeReferenceFunctionABI = false
+			v.nativeReferenceFunctionABI = !v.nativeReferenceFunctionABI
 		},
-		"product": func(v *Compiled) {
-			cache := *v.codeCache
-			v.codeCache = &cache
-			v.codeCache.gcTypeSubtypingProduct = 0
-		},
+		"missing-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(nil) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			mutate(candidate)
-			if rv64GCTypeSubtypingRefTestSingle(candidate) {
-				t.Fatal("hostile retained mutation kept exact witness")
-			}
-			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+			if err := candidate.validate(); err == nil {
 				t.Fatal("hostile retained mutation admitted", err)
 			}
+			if name == "feature" {
+				rv64RequireRestoredGCFeature(t, candidate)
+				return
+			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 	single := rv64PublicGCTypeSubtypingRefTestSingleCompile(t, false)
@@ -193,20 +183,17 @@ func TestRV64PublicGCTypeSubtypingRefTestSupertypeTrueAdmissionIsExact(t *testin
 		"recursive-metadata-super-image": {recursive.executionView(), base},
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(pair[0])
+			candidate := rv64ReferenceStartCopy(pair[0])
 			candidate.code = slices.Clone(pair[1].code)
-			candidate.validateMemo = &validateMemo{}
-			if rv64GCTypeSubtypingRefTestSingle(candidate) {
-				t.Fatal("cross-paired retained metadata and image kept exact witness")
-			}
-			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+			if err := candidate.validate(); err == nil {
 				t.Fatal("cross-paired retained metadata and image admitted", err)
 			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 	directionFalse := rv64PublicGCTypeSubtypingRefTestDirectionFalseCompile(t, false)
-	if !bytes.Equal(base.code, directionFalse.executionView().code) || rv64GCTypeSubtypingRefTestSingleProfileVariantWithCode(base, false, true) != 4 || rv64GCTypeSubtypingRefTestSingleProfileVariantWithCode(directionFalse.executionView(), false, true) != 3 {
-		t.Fatal("shared type-4 lowering did not retain distinct .22/.23 graphs")
+	if reflect.DeepEqual(base.Types, directionFalse.executionView().Types) {
+		t.Fatal("distinct subtype graphs collapsed")
 	}
 	directionFalse.Close()
 	recursive.Close()
@@ -214,12 +201,12 @@ func TestRV64PublicGCTypeSubtypingRefTestSupertypeTrueAdmissionIsExact(t *testin
 	compiled.Close()
 }
 
-func TestRV64PublicGCTypeSubtypingRefTestSupertypeTrueRequiresPrivateRuntimePermission(t *testing.T) {
+func TestRV64PublicGCTypeSubtypingRefTestSupertypeTruePublicRuntime(t *testing.T) {
 	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_REF_TEST_SUPERTYPE_TRUE_ARTIFACT_MODE") == "load" {
 		t.Skip("compiler-free runner selected")
 	}
 	compiled := rv64PublicGCTypeSubtypingRefTestSupertypeTrueCompile(t, false)
-	rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+	rt := NewRuntime()
 	mod, err := rt.Module(compiled)
 	if err == nil {
 		_, err = rt.Instantiate(context.Background(), mod, WithImports(NewImports()))
@@ -227,8 +214,8 @@ func TestRV64PublicGCTypeSubtypingRefTestSupertypeTrueRequiresPrivateRuntimePerm
 	}
 	compiled.Close()
 	rt.Close()
-	if !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("supertype-true ref.test instantiated without private runtime permission", err)
+	if err != nil {
+		t.Fatal("supertype-true ref.test public runtime instantiation failed", err)
 	}
 }
 

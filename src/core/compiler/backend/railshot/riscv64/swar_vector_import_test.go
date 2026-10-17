@@ -10,17 +10,18 @@ import (
 )
 
 func TestSWARPublicSelectorBoundsBeforeScanning(t *testing.T) {
-	oversized := make([]byte, MaxModuleBytes+1)
+	oversized := make([]byte, MaxPublicCodeBytes+1)
 	for _, module := range []*wasm.Module{
 		nil,
-		{Globals: make([]wasm.Global, 257)},
 		{Code: []wasm.Func{{BodyBytes: oversized}}},
-		{Code: []wasm.Func{{BodyBytes: oversized[:MaxModuleBytes]}}, Data: []wasm.Data{{Init: []byte{1}}}},
-		{Data: make([]wasm.Data, 257)},
+		{Code: []wasm.Func{{BodyBytes: oversized[:MaxPublicCodeBytes]}}, Data: []wasm.Data{{Init: []byte{1}}}},
 	} {
 		if yes, err := UsesSWAR(module); yes || !errors.Is(err, ErrUnsupported) {
 			t.Fatal("unbounded decoded selector", yes, err)
 		}
+	}
+	if yes, err := UsesSWAR(&wasm.Module{Data: make([]wasm.Data, 257)}); yes || err != nil {
+		t.Fatal("inert public data declarations rejected", yes, err)
 	}
 	for _, module := range []*wasm.Module{
 		{Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.V128}}}},

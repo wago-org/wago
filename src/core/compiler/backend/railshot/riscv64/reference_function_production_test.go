@@ -83,7 +83,7 @@ func TestReferenceFunctionProductionStaging(t *testing.T) {
 							}
 						}
 						if indexed || !nullable {
-							if image, err := CompileModuleWith(m, closedReferenceProductionOptions(tails, false)); image != nil || !errors.Is(err, ErrUnsupported) {
+							if image, err := CompileModuleWith(m, closedReferenceProductionOptions(tails, false)); image != nil || err == nil {
 								t.Fatal("typed signature silently became baseline", err)
 							}
 						}
@@ -194,7 +194,7 @@ func TestReferenceFunctionProductionAdmissionBeforeStaging(t *testing.T) {
 			{"inactive-fields", func(m *wasm.Module, o *CompileOptions) { m.Types[2].SubTypes[0].Comp.Fields = []wasm.FieldType{{}} }},
 			{"local-metadata-bound", func(m *wasm.Module, o *CompileOptions) { m.Code[4].LocalDeclBytes = MaxModuleBytes + 1 }},
 			{"depth-bound", func(m *wasm.Module, o *CompileOptions) {
-				m.Code[1].BodyBytes = append(bytes.Repeat([]byte{2, 0x40}, maxControlNesting+1), bytes.Repeat([]byte{0x0b}, maxControlNesting+2)...)
+				m.Code[1].BodyBytes = append(bytes.Repeat([]byte{2, 0x40}, integerBudget+1), bytes.Repeat([]byte{0x0b}, integerBudget+2)...)
 			}},
 		} {
 			t.Run(fmt.Sprintf("vector%t-%s", vector, test.name), func(t *testing.T) {
@@ -203,7 +203,13 @@ func TestReferenceFunctionProductionAdmissionBeforeStaging(t *testing.T) {
 				pressure := 0
 				opts.MemoryPressure = func() { pressure++ }
 				test.change(m, &opts)
-				if image, err := CompileModuleWith(m, opts); image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+				if !vector && (test.name == "inactive-fields" || test.name == "local-metadata-bound") {
+					if image, err := CompileModuleWith(m, opts); image == nil || err != nil || pressure != 1 || image.CodeImage != nil {
+						t.Fatal("valid public metadata rejected", err, pressure)
+					}
+					return
+				}
+				if image, err := CompileModuleWith(m, opts); image != nil || err == nil || pressure != 0 {
 					t.Fatal("closed admission reached staging", err, pressure)
 				}
 			})

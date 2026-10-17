@@ -40,7 +40,7 @@ func TestRV64I31OfficialRefTestAdmissionAndImage(t *testing.T) {
 	if _, err = CompileModuleWith(m, opts); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("decoded ref.test shape escaped exact-wire provenance", err)
 	}
-	opts.I31CoreSource = true
+	opts = authenticateI31TestModule(t, m, opts)
 	compiled, err := CompileModuleWith(m, opts)
 	if err != nil {
 		t.Fatal("production compile", err)
@@ -58,8 +58,8 @@ func TestRV64I31OfficialRefTestAdmissionAndImage(t *testing.T) {
 	if err != nil {
 		t.Fatal("decode inert-section near miss", err)
 	}
-	if !admitRV64I31OfficialRefTest(nearModule) || admitRV64I31CoreWire(nearWire) || AdmitI31CoreSource(nearWire) {
-		t.Fatal("inert-section near miss lost decoded/wire distinction")
+	if !admitRV64I31OfficialRefTest(nearModule) || !admitRV64I31CoreWire(nearWire) || !AdmitI31CoreSource(nearWire) {
+		t.Fatal("valid inert section was rejected by general immediate-reference admission")
 	}
 	opts.I31CoreSource = false
 	if _, err = CompileModuleWith(nearModule, opts); !errors.Is(err, ErrUnsupported) {
@@ -76,12 +76,9 @@ func TestRV64I31OfficialRefTestAdmissionAndImage(t *testing.T) {
 			t.Fatal(err)
 		}
 		mutate(candidate)
-		if admitRV64I31OfficialRefTest(candidate) || admitRV64I31Core(candidate) {
+		if admitRV64I31OfficialRefTest(candidate) {
 			t.Fatal("decoded near miss admitted", name)
 		}
-		opts.I31CoreSource = true
-		if _, err = CompileModuleWith(candidate, opts); !errors.Is(err, ErrUnsupported) {
-			t.Fatal("decoded near miss escaped provenance", name, err)
-		}
+		checkGeneralI31Module(t, candidate, opts)
 	}
 }

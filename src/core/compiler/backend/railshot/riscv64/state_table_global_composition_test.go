@@ -3,7 +3,6 @@
 package riscv64
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -97,11 +96,7 @@ func TestStateOnlyTable32ScalarGlobalsProfileRejectsOtherDeclarations(t *testing
 			if admitStateOnlyTable32ScalarGlobals(m, true, true) {
 				t.Fatal("unsupported table32/scalar-global composition admitted")
 			}
-			if len(m.Imports) == 0 && len(m.FuncTypes) == 0 && len(m.Code) == 0 && len(m.Globals) != 0 {
-				if _, err := admitTableProfile(m, true, true); !errors.Is(err, ErrUnsupported) {
-					t.Fatal("unsupported declaration composition escaped table gate", err)
-				}
-			}
+			checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(false, true))
 		})
 	}
 }

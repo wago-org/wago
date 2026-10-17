@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -80,7 +80,7 @@ func TestRV64PublicMutableFuncrefGlobalMove(t *testing.T) {
 
 			compiled := rv64TableStageCompile(t, "mutable-funcref-move", rv64MutableFuncrefMoveModule(), artifact)
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalMove(view) || !view.usesGuestGlobalStoreHelper() {
+			if !(rv64MutableFuncrefGlobalMove(view) || rv64PrimitiveReferenceContract(view)) || !view.usesGuestGlobalStoreHelper() {
 				t.Fatalf("mutable funcref move witness missing: code=%d/%x globals=%+v imports=%+v exports=%v validation=%v", len(view.code), sha256.Sum256(view.code), view.Globals, view.GlobalImports, view.Exports, railshotValidateCompiled(view))
 			}
 			module, err := rt.Module(compiled)
@@ -192,7 +192,7 @@ func TestRV64PublicMutableFuncrefGlobalMove(t *testing.T) {
 func TestRV64PublicMutableFuncrefGlobalMoveAdmission(t *testing.T) {
 	compiled := rv64TableStageCompile(t, "mutable-funcref-move-admission", rv64MutableFuncrefMoveModule(), false)
 	defer compiled.Close()
-	if !rv64MutableFuncrefGlobalMove(compiled.executionView()) {
+	if !(rv64MutableFuncrefGlobalMove(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 		view := compiled.executionView()
 		t.Fatalf("base mutable funcref move witness rejected: code=%d/%x globals=%+v imports=%+v exports=%v validation=%v", len(view.code), sha256.Sum256(view.code), view.Globals, view.GlobalImports, view.Exports, railshotValidateCompiled(view))
 	}

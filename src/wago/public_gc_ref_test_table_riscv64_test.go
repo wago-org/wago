@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -15,7 +15,7 @@ import (
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const rv64PublicGCRefTestTableHex = "0061736d01000000019b808080000550005f005001005f017f005001005f017e0060000060017f017f0385808080000403040404048480808000016b0002079e808080000404696e6974000004626173650001046c656674000205726967687400030ac080808000049080808000004100fb010126004101fb010226000b89808080000020002500fb14000b89808080000020002500fb14010b89808080000020002500fb14020b"
@@ -88,7 +88,7 @@ func TestRV64PublicGCRefTestTableExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64GCRefTestTableCompile(t, artifact)
 			view := compiled.executionView()
-			if !rv64GCRefTestTable(view) || railshotValidateCompiled(view) != nil || view.stagedGCStructProduct() != stagedGCStructRefTestTable {
+			if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil {
 				t.Fatalf("missing exact object-table ref.test witness: exact=%t validation=%v product=%v staged=%v required=%v code=%d/%x entries=%v/%v table=%v/%v/%d/%d/%v valueTypes=%+v types=%+v descs=%+v", rv64GCRefTestTable(view), railshotValidateCompiled(view), view.stagedGCStructProduct(), view.stagedFeatures(), view.requiredFeatures, len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.TableType, view.TableHasValueType, view.TableSize, view.TableMax, view.TableHasMax, view.ValueTypes, view.Types, view.GCTypeDescs)
 			}
 			for _, profile := range []struct {
@@ -108,9 +108,8 @@ func TestRV64PublicGCRefTestTableExecutionAndArtifact(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer in.Close()
-					state := in.existingGCRefTestTableState()
-					if in.gc == nil || state == nil || state.Count != 2 || len(state.Slots) != 2 {
-						t.Fatalf("collector/table state=%v/%+v", in.gc, state)
+					if in.gc == nil {
+						t.Fatal("table execution has no collector")
 					}
 					for iteration := 0; iteration < 5; iteration++ {
 						if _, err := in.Invoke("init"); err != nil {
@@ -135,12 +134,16 @@ func TestRV64PublicGCRefTestTableExecutionAndArtifact(t *testing.T) {
 							t.Fatalf("base(2) trap=%v", err)
 						}
 					}
+					var roots []gc.Ref
+					in.rangeLocalGCTableRoots(func(slot gc.RootSlot) bool {
+						roots = append(roots, slot.GetRef())
+						return true
+					}, nil)
+					if len(roots) != 2 {
+						t.Fatalf("table root count=%d, want two", len(roots))
+					}
 					for i, want := range []gc.TypeID{1, 2} {
-						rooted, err := in.gc.CheckedTableSlot(state.Slots[i])
-						if err != nil {
-							t.Fatal(err)
-						}
-						actual, err := in.gc.ObjectType(rooted)
+						actual, err := in.gc.ObjectType(roots[i])
 						if err != nil || actual != want {
 							t.Fatalf("slot %d type=%d,%v want %d", i, actual, err, want)
 						}
@@ -192,10 +195,9 @@ func TestRV64PublicGCRefTestTableAdmissionIsExact(t *testing.T) {
 		"extra-feature":       func(v *Compiled) { v.requiredFeatures |= CoreFeatureSIMD },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			mutate(candidate)
-			if rv64GCRefTestTable(candidate) {
+			if rv64ArtifactContractValid(candidate) {
 				t.Fatal("hostile retained mutation kept the object-table ref.test witness")
 			}
 			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {

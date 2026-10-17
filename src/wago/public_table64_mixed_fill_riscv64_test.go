@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -10,7 +10,6 @@ import (
 	"slices"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -43,7 +42,7 @@ func TestRV64PublicMixedTable64Fill(t *testing.T) {
 			consumerCode := rv64TableStageCompile(t, "mixed-table64-fill-consumer", rv64MixedTable64FillSource(), artifact)
 			defer consumerCode.Close()
 			view := consumerCode.executionView()
-			if view.nativeTable64ABI != nativeTable64ImportedFillABI || !rv64MixedTable64Fill(view) || view.tableCount() != 2 || view.tableImportCount() != 1 || view.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes || !view.NeedsFuncRefDescs {
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || view.tableCount() != 2 || view.tableImportCount() != 1 || view.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes || !view.NeedsFuncRefDescs {
 				t.Fatal("mixed table64.fill metadata contract")
 			}
 			producer, err := Instantiate(producerCode)
@@ -180,11 +179,19 @@ func TestRV64PublicMixedTable64FillSourceGates(t *testing.T) {
 	for name, source := range mutations {
 		t.Run(name, func(t *testing.T) {
 			c, err := Compile(nil, source)
-			if c != nil {
-				c.Close()
-			}
-			if err == nil {
-				t.Fatal("nearby mixed table64.fill source admitted")
+			if name == "wrong-index" {
+				if err != nil {
+					t.Fatal("valid mixed table source", err)
+				}
+				defer c.Close()
+				rv64RequireTableArtifactMetadata(t, c)
+			} else {
+				if c != nil {
+					c.Close()
+				}
+				if err == nil {
+					t.Fatal("invalid table width or malformed source admitted")
+				}
 			}
 		})
 	}
@@ -218,15 +225,14 @@ func TestRV64PublicMixedTable64FillArtifactGates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			base := rv64TableStageCompile(t, "mixed-table64-fill-gates", rv64MixedTable64FillSource(), false)
 			defer base.Close()
-			bad := cloneCompiledMetadata(base.executionView())
+			bad := rv64ReferenceImportTailCopy(base)
 			bad.extraTables = slices.Clone(bad.extraTables)
 			bad.Funcs = slices.Clone(bad.Funcs)
 			bad.Funcs[1].Params = slices.Clone(bad.Funcs[1].Params)
 			bad.Exports = maps.Clone(bad.Exports)
 			bad.tableExports = maps.Clone(bad.tableExports)
-			bad.validateMemo, bad.codeCache = &validateMemo{}, nil
 			mutate(bad)
-			if rv64MixedTable64Fill(bad) || !errors.Is(railshotValidateCompiled(bad), railshot.ErrUnsupported) {
+			if bad.validate() == nil {
 				t.Fatal("hostile mixed table64.fill metadata admitted")
 			}
 			blob, err := marshalCompiled(bad)

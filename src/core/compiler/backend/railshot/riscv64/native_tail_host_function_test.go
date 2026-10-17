@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -219,5 +220,63 @@ func TestNativeTailHostReferenceFunctionRequiresExplicitConstructor(t *testing.T
 	mutated.signature = &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.V128}}
 	if err := mutated.Validate(); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("reference host constructor accepted vector carrier", err)
+	}
+}
+
+func TestNativeTailHostCollectorFunctionCertificate(t *testing.T) {
+	typ := reflect.TypeOf(NativeTailHostFunction{})
+	var fields []reflect.StructField
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		if field.Name != "collectorCarriers" {
+			fields = append(fields, field)
+		}
+	}
+	if previous := reflect.StructOf(fields).Size(); typ.Size() != previous {
+		t.Fatalf("collector mode grew host target from%d to%d", previous, typ.Size())
+	}
+	t.Logf("host target=%dB; collector mode adds0B", typ.Size())
+
+	sig := wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.AnyRef, wasm.V128}, Results: []wasm.ValType{wasm.AnyRef}}
+	source := tailRAProofFunctionFixture(t, &sig, abi.RV64InstanceContextBytes)
+	binary.LittleEndian.PutUint64(source.directory[16:], uint64(source.job.LinMemBase()))
+	b, cert, err := NativeTailHostThunkWithCertificate(37, 3, 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := tailRAProofBuffer(t, b)
+	if err := code.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	image, err := NewNativeTailCodeImage(&tailPublishedOwnerForTest{view: code.Bytes()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewNativeTailHostFunction(image, cert, source.job, source.context, source.directory, 0, 37, true, sig); err == nil {
+		t.Fatal("scalar constructor accepted collector signature")
+	}
+	if _, err := NewNativeTailHostCollectorFunction(image, cert, source.job, source.context, source.directory, 0, 37, false, sig); err == nil {
+		t.Fatal("collector constructor accepted unowned callback")
+	}
+	f, err := NewNativeTailHostCollectorFunction(image, cert, source.job, source.context, source.directory, 0, 37, true, sig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.function(&sig).info.Params != 3 {
+		t.Fatal("vector physical slots not preserved")
+	}
+	if got := testing.AllocsPerRun(8, func() {
+		if err := f.Validate(); err != nil {
+			panic(err)
+		}
+	}); got != 0 {
+		t.Fatal("collector certificate warm allocations", got)
+	}
+	_, wrong, err := NativeTailHostThunkWithCertificate(37, 2, 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewNativeTailHostCollectorFunction(image, wrong, source.job, source.context, source.directory, 0, 37, true, sig); err == nil {
+		t.Fatal("logical arity substituted for physical slots")
 	}
 }

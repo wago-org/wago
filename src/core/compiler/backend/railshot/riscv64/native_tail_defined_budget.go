@@ -28,7 +28,7 @@ func NativeTailDefinedFactoryBudget(sites, values, continuations int, owners []*
 	if err != nil {
 		return 0, 0, err
 	}
-	return nativeTailDefinedFactoryBytes(sites, values, continuations, dynamicMetadata, dynamicCode, guestCodeBytes)
+	return nativeTailDefinedFactoryBytes(sites, values, continuations, len(owners), dynamicMetadata, dynamicCode, guestCodeBytes)
 }
 
 // NativeTailDefinedFactoryCountsBudget charges genuine defined owners whose
@@ -60,10 +60,10 @@ func NativeTailFactoryCountsBudget(sites, values, continuations int, counts Nati
 	if dynamicMetadata > MaxModuleBytes || dynamicCode > MaxCodeBytes {
 		return 0, 0, unsupported("native factory aggregate owner bytes")
 	}
-	return nativeTailDefinedFactoryBytes(sites, values, continuations, dynamicMetadata, dynamicCode, guestCodeBytes)
+	return nativeTailDefinedFactoryBytes(sites, values, continuations, c.Owners, dynamicMetadata, dynamicCode, guestCodeBytes)
 }
 
-func nativeTailDefinedFactoryBytes(sites, values, continuations, dynamicMetadata, dynamicCode, guestCodeBytes int) (metadata, code int, err error) {
+func nativeTailDefinedFactoryBytes(sites, values, continuations, owners, dynamicMetadata, dynamicCode, guestCodeBytes int) (metadata, code int, err error) {
 	if sites <= 0 || sites > tailRAMaxSites || values < 0 || values > 512*sites || continuations <= 0 || continuations > tailRAMaxRanges || guestCodeBytes <= 0 || guestCodeBytes > MaxCodeBytes {
 		return 0, 0, unsupported("native defined factory aggregate count")
 	}
@@ -73,7 +73,14 @@ func nativeTailDefinedFactoryBytes(sites, values, continuations, dynamicMetadata
 		return 0, 0, unsupported("native defined factory aggregate signature bytes")
 	}
 	base += 32 * values
-	perSite := 2*(tailRASiteRow+128+16*continuations+dynamicMetadata) + int(unsafe.Sizeof(NativeTailSite{}))
+	// Every site borrows the same frozen owner graph. Charge its payload once,
+	// and retain the per-site staging owner headers and site-local metadata.
+	if dynamicMetadata > (MaxModuleBytes-base)/2 {
+		return 0, 0, unsupported("native defined factory shared owner byte bound")
+	}
+	base += 2 * dynamicMetadata
+	ownerHeaders := int(unsafe.Sizeof(tailRADynamicSite{})) + owners*int(unsafe.Sizeof(tailRADynamicOwner{}))
+	perSite := 2*(tailRASiteRow+128+16*continuations+ownerHeaders) + int(unsafe.Sizeof(NativeTailSite{})) + 2*int(unsafe.Sizeof(nativeTailDynamicLease{}))
 	codePerSite := tailRADispatchBound + 128*continuations + dynamicCode
 	if perSite > (MaxModuleBytes-base)/sites || codePerSite > (MaxCodeBytes-guestCodeBytes)/sites {
 		return 0, 0, unsupported("native defined factory aggregate byte bound")

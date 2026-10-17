@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -546,13 +546,21 @@ func TestRV64PublicReferenceImportHostTablePublishPanicStillReleasesScope(t *tes
 			producer.resourcesClosed = true
 			producer.lifeMu.Unlock()
 			faultOwned = true
-			value, panicked := cleanupTestPanic(scope.release)
+			value, panicked := cleanupTestPanic(func() {
+				defer func() {
+					nativeExecutionMu.Lock()
+					clear(table.desc[8:40])
+					nativeExecutionMu.Unlock()
+					scope.release()
+				}()
+				scope.publishHostTableReferenceRows(table)
+			})
 			restoreFault()
 			if !panicked || value != "RV64 scoped descriptor owner lost physical storage" {
 				t.Fatal("publication panic", value, panicked)
 			}
-			if scope.count != 0 || scope.writers[0] != nil || scope.storage[0] != nil {
-				t.Fatal("publication panic stranded scope ownership", scope.count, scope.writers[0], scope.storage[0])
+			if scope.count != 0 || len(scope.writers) != 0 || len(scope.storage) != 0 {
+				t.Fatal("publication panic stranded scope ownership", scope.count, scope.writers, scope.storage)
 			}
 			table.owner.mu.Lock()
 			gotLeases := table.owner.nativeLeases

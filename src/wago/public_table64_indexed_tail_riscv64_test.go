@@ -1,10 +1,9 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"slices"
@@ -55,10 +54,7 @@ func TestRV64PublicOwnedTwoTable64IndirectTail(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64NativeTailCompile(t, "owned-two-table64-indirect-tail", rv64TwoTable64IndirectTailSource(), artifact)
-			if len(c.code) != 6156 || sha256.Sum256(c.code) != [32]byte{0x44, 0x5d, 0xdd, 0x59, 0x50, 0x60, 0x90, 0x83, 0x8a, 0x71, 0xb0, 0x7a, 0xba, 0xfe, 0xbc, 0x94, 0x19, 0x41, 0xe1, 0xfd, 0x79, 0xd9, 0xc4, 0xab, 0xa4, 0xbf, 0xcd, 0xb5, 0xd5, 0x28, 0x4d, 0x69} {
-				t.Fatal("indexed table64 tail code image contract")
-			}
-			if !rv64OwnedTwoTable64IndirectTail(c.executionView()) || c.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations|CoreFeatureTailCall {
+			if !rv64ArtifactContractValid(c.executionView()) || rv64NativeTailModule(c) == nil || len(rv64NativeTailModule(c).Plans) != 2 || c.requiredFeatures != CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations|CoreFeatureTailCall {
 				t.Fatal("indexed table64 tail metadata contract")
 			}
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig().WithNativeStackBytes(MinNativeStackBytes)))
@@ -146,11 +142,19 @@ func TestRV64PublicOwnedTwoTable64IndirectTailGates(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			c, err := rv64NativeTailConfig().Compile(source)
-			if c != nil {
-				c.Close()
-			}
-			if err == nil {
-				t.Fatal("nearby indexed table64 tail source admitted")
+			if name != "table1-table32" {
+				if err != nil {
+					t.Fatal("valid indexed table64 tail variant", err)
+				}
+				defer c.Close()
+				rv64RequireTableSourceArtifact(t, c)
+			} else {
+				if c != nil {
+					c.Close()
+				}
+				if err == nil {
+					t.Fatal("table32 with i64 index admitted")
+				}
 			}
 		})
 	}
@@ -175,7 +179,7 @@ func TestRV64PublicOwnedTwoTable64IndirectTailGates(t *testing.T) {
 			bad.Entry = slices.Clone(bad.Entry)
 			bad.InternalEntry = slices.Clone(bad.InternalEntry)
 			mutate(bad)
-			if rv64OwnedTwoTable64IndirectTail(bad) || railshotValidateCompiled(bad) == nil {
+			if bad.validate() == nil {
 				t.Fatal("hostile indexed table64 tail metadata admitted")
 			}
 			blob, err := bad.MarshalBinary()

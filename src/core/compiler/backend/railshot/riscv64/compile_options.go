@@ -26,13 +26,19 @@ type CompileOptions struct {
 	OptimizationDeltas              map[string]bool
 	CompactNative                   bool
 	Workers                         int
-	DeferCodeMapping                bool
-	ElideBoundsChecks               bool
-	NoBoundsFacts                   bool
-	ImportBindings                  []ImportBinding
-	SyncHostCalls                   bool
-	SyncHostSlots                   int
-	Interruptible                   bool
+	// MaxFunctionLocals is the public frontend's configured validation ceiling.
+	// Zero uses the common validator default. Native frame bounds still apply.
+	MaxFunctionLocals        uint32
+	MaxModuleBytes           uint64
+	MaxNativeCodeBytes       uint64
+	MaxCompiledMetadataBytes uint64
+	DeferCodeMapping         bool
+	ElideBoundsChecks        bool
+	NoBoundsFacts            bool
+	ImportBindings           []ImportBinding
+	SyncHostCalls            bool
+	SyncHostSlots            int
+	Interruptible            bool
 	// ForeignTableCalls requires a runtime that authenticates and retains all
 	// canonical table targets through entry, host resume and cold decoration.
 	// Entries use a synchronous root control frame and full signature transport.
@@ -63,15 +69,23 @@ type CompileOptions struct {
 	// Stats collects CompileModuleWith's finalized local-function sizes with
 	// wago_codegenstats or wago_profile. Success replaces the sink; failure
 	// leaves it unchanged. The isolated private pilot does not collect stats.
-	Stats               *ModuleStats
-	CollectInlineReport bool
-	CustomInstructions  map[uint32]railcore.CustomInstruction
-	ForceFallback       bool
+	Stats                    *ModuleStats
+	CollectInlineReport      bool
+	CustomInstructions       map[uint32]railcore.CustomInstruction
+	ForceFallback            bool
+	ExceptionHandlingSource  bool
+	OwnedExceptionReferences bool
+	exceptionOperands        *[]*wasm.CollectorOperandRoots
+	gcFunctionEnvironments   bool
 	// I31CoreSource is an exact-wire provenance witness supplied by the public
 	// source frontend for a bounded i31 product. It never grants lowering by
 	// itself: CompileModuleWith independently rechecks the decoded module before
 	// selecting the pilot.
 	I31CoreSource bool
+	// GeneralI31Source selects the collector-free i31 lowering for a decoded
+	// rooted-scalar module whose live storage and call signatures can carry only
+	// numeric values or compact i31 references. The backend rechecks that shape.
+	GeneralI31Source bool
 	// GCRefEqSource is the exact-wire witness for the allocating official
 	// gc/ref_eq checkpoint. It is useful only when the decoded module, helper
 	// options and collector metadata independently match that product.
@@ -214,6 +228,7 @@ type CompileOptions struct {
 	// GCArrayCopySource is the exact-wire witness for the official packed-i8
 	// array.copy checkpoint.
 	GCArrayCopySource bool
+	pluginDirectory   *pluginInstructionDirectory
 	production        bool
 	publicStarts      bool
 	hostImports       bool
@@ -292,7 +307,8 @@ type CompileOptions struct {
 // measured size. All other fields are currently unavailable and remain zero/nil;
 // in particular, zero BoundsChecks/Spills/Reloads is not a measured count.
 // Profile/SourceMaps add sparse finalized metadata in wago_profile builds;
-// operation counters, CodeSites, inline reports and unwind remain unavailable.
+// Profile builds add proved frame load/store sites and optional stack-return
+// unwind ranges. Other operation counters and inline reports remain unavailable.
 type CodegenStats struct {
 	FuncIdx, CodeBytes, FrameBytes int
 	Name                           string
@@ -313,7 +329,9 @@ type ModuleStats struct {
 	Funcs          []*CodegenStats
 }
 
-var optimizationBindings = optimization.NewBindings("riscv64")
+var optNativeLeafHost, optRegisterABI, optPreparedDirectEntry, optPreparedBoundedEntry = true, true, true, true
+
+var optimizationBindings = optimization.NewBindings("riscv64", optimization.BindingSpec{Name: "native-leaf-host", Value: &optNativeLeafHost}, optimization.BindingSpec{Name: "reg-abi", Value: &optRegisterABI}, optimization.BindingSpec{Name: "prepared-direct-entry", Value: &optPreparedDirectEntry}, optimization.BindingSpec{Name: "prepared-bounded-entry", Value: &optPreparedBoundedEntry})
 
 func OptKnobs() []KnobInfo { return optimizationBindings.Infos() }
 func OptKnobSnapshot() ([]KnobInfo, OptimizationSnapshot) {

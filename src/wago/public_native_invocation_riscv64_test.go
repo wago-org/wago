@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -13,6 +13,7 @@ import (
 	"testing"
 	"unsafe"
 
+	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
@@ -59,8 +60,9 @@ func TestRV64PublicNativeInvocationSurvivesForeignHostReentry(t *testing.T) {
 						args, results := offHeapSlicePtr(root.serArgs), offHeapSlicePtr(root.results)
 						argsBytes, resultsBytes := len(root.serArgs), len(root.results)
 						if depth == 0 {
-							args, results = pointer-4096, pointer-2048
-							argsBytes, resultsBytes = 2048, 2048
+							const transportBytes = railshot.MaxNativeCallSlots * 8
+							args, results = pointer-2*transportBytes, pointer-transportBytes
+							argsBytes, resultsBytes = transportBytes, transportBytes
 						}
 						if binary.LittleEndian.Uint64(view[24:]) != uint64(args) || binary.LittleEndian.Uint64(view[32:]) != uint64(argsBytes) || binary.LittleEndian.Uint64(view[40:]) != uint64(results) || binary.LittleEndian.Uint64(view[48:]) != uint64(resultsBytes) {
 							panic("actual activation transport capacities")

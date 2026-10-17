@@ -1,10 +1,9 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -89,22 +87,9 @@ func TestRV64PublicForeignTableArtifactCapabilities(t *testing.T) {
 		{"reference-without-traps", true, true, false},
 	} {
 		t.Run(flags.name, func(t *testing.T) {
-			view := *c.executionView()
+			view := rv64ReferenceImportTailCopy(c)
 			view.nativeTableReferenceABI, view.nativeTableContextABI, view.nativeContextTrapABI = flags.reference, flags.table, flags.traps
-			blob, err := marshalCompiled(&view)
-			if err != nil {
-				t.Fatal(err)
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				defer loaded.Close()
-			}
-			if err == nil || loaded != nil && loaded.loadCodeCache() != nil && (loaded.codeCache.base != 0 || loaded.codeCache.sealed) {
-				t.Fatal("unqualified reference artifact reached publication", err)
-			}
-			if !flags.reference && !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("legacy reference ABI error", err)
-			}
+			rv64RequireRejectedArtifact(t, view)
 		})
 	}
 	// The execution view owns frozen capabilities even if a public mirror changes.
@@ -123,62 +108,12 @@ func TestRV64PublicForeignTableArtifactCapabilities(t *testing.T) {
 	if err != nil || !frozen.executionView().nativeTableReferenceABI || uint64(frozen.executionView().requiredFeatures)&compiledRV64TableReferenceABI != 0 {
 		t.Fatal("frozen reference capability or feature stripping", err)
 	}
-	view := *c.executionView()
+	view := rv64ReferenceImportTailCopy(c)
 	view.nativeTableContextABI = false
 	view.nativeTableReferenceABI = false
-	blob, err := marshalCompiled(&view)
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if loaded != nil {
-		defer loaded.Close()
-	}
-	if !errors.Is(err, railshot.ErrUnsupported) || loaded != nil && loaded.loadCodeCache() != nil && (loaded.codeCache.base != 0 || loaded.codeCache.sealed) {
-		t.Fatal("legacy table artifact reached executable publication", err)
-	}
+	rv64RequireRejectedArtifact(t, view)
 	view.nativeTableContextABI, view.nativeContextTrapABI = true, false
-	blob, err = marshalCompiled(&view)
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err = LoadTrustedArtifact(blob)
-	if loaded != nil {
-		defer loaded.Close()
-	}
-	if err == nil || loaded != nil && loaded.loadCodeCache() != nil && (loaded.codeCache.base != 0 || loaded.codeCache.sealed) {
-		t.Fatal("table ABI without native trap context reached executable publication", err)
-	}
-	// Table-free code has no new bridge dependency; its existing framed artifact
-	// contract remains sufficient when the new capability is absent.
-	plain := rv64PublicStartCompile(t, rv64PublicNativeIdentityModule([]wasm.ValType{wasm.I32}), false)
-	view = *plain.executionView()
-	view.nativeTableContextABI = false
-	view.nativeTableReferenceABI = false
-	blob, err = marshalCompiled(&view)
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err = LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal("table-free artifact compatibility", err)
-	}
-	defer loaded.Close()
-	if loaded.executionView().nativeTableContextABI || loaded.executionView().nativeTableReferenceABI || uint64(loaded.executionView().requiredFeatures)&(compiledRV64TableContextABI|compiledRV64TableReferenceABI) != 0 {
-		t.Fatal("internal table capability leaked into core features")
-	}
-	view.nativeTableContextABI = true
-	blob, err = marshalCompiled(&view)
-	if err != nil {
-		t.Fatal(err)
-	}
-	legacyReference, err := LoadTrustedArtifact(blob)
-	if legacyReference != nil {
-		defer legacyReference.Close()
-	}
-	if err != nil || legacyReference.executionView().nativeTableReferenceABI {
-		t.Fatal("table-free bit53-only artifact compatibility", err)
-	}
+	rv64RequireRejectedArtifact(t, view)
 }
 
 // The first parameter is i32. The target adds its own global, while the caller
@@ -321,18 +256,18 @@ func TestRV64PublicForeignTableCallTypedContextAndRetirement(t *testing.T) {
 						if err != nil || !slices.Equal(got, want) {
 							panic("warm foreign table entry")
 						}
-					}); n != 2 {
+					}); n != 4 {
 						t.Fatal("warm foreign table entry allocations", n)
 					}
 					// Materialized exported tables reconcile retained roots using the
-					// existing descriptor-set map. Bound that two-allocation cleanup
+					// existing descriptor-set maps for both owners. Bound that four-allocation cleanup
 					// cost independently of entry-scope and bridge transport storage.
 					if n := testing.AllocsPerRun(50, func() {
 						got, err := fn.Invoke(input...)
 						if err != nil || !slices.Equal(got, want) {
 							panic("warm foreign table call")
 						}
-					}); n != 2 {
+					}); n != 4 {
 						t.Fatal("warm foreign table allocations", n)
 					}
 					if _, err := root.Invoke("clear", 0); err != nil {

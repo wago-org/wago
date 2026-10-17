@@ -22,19 +22,22 @@ func admitHostBindings(m *wasm.Module, opts *CompileOptions) error {
 			count++
 		}
 	}
-	if count > MaxHostFunctionImports || count+len(m.Code) > MaxFunctions {
+	if count > MaxHostFunctionImports {
 		return unsupported("aggregate function import bound")
 	}
-	if len(opts.ImportBindings) != count || (count == 0 && opts.SyncHostCalls) {
+	if len(opts.ImportBindings) != count || (count == 0 && opts.SyncHostCalls && atomicHelperSlots(m) == 0 && !opts.OwnedExceptionReferences && !NeedsFunctionSubtypeHelpers(m)) {
 		return unsupported("dynamic host binding count")
 	}
 	for i, binding := range opts.ImportBindings {
-		if !binding.Dynamic || binding.ImportIndex != uint32(i) || binding.CrossInstance || binding.CalleeEntry != 0 || binding.CalleeLinMem != 0 || binding.EHTransfer {
+		if !binding.Dynamic || binding.ImportIndex != uint32(i) || binding.CrossInstance || binding.CalleeEntry != 0 || binding.CalleeLinMem != 0 || binding.EHTransfer && !opts.ExceptionHandlingSource {
 			return unsupported("dynamic host binding identity")
 		}
 	}
 	if count != 0 && (len(m.Tables)+m.ImportedTableCount() != 0 || len(m.Elements) != 0) && (!opts.Interruptible || !opts.ForeignTableCalls) {
 		return unsupported("function imports with tables require the retained public table ABI")
+	}
+	if slots := atomicHelperSlots(m); slots != 0 && (!opts.SyncHostCalls || opts.SyncHostSlots < slots || !opts.Interruptible || !opts.InvocationContext || !opts.ForeignTableCalls) {
+		return unsupported("atomic wait helper requires cooperative synchronous host slots")
 	}
 	opts.hostImports = count != 0
 	return nil

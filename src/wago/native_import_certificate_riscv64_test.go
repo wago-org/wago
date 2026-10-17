@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -49,8 +49,8 @@ func TestRV64NativeImportCertificateActualMappingAndLease(t *testing.T) {
 				if s == nil || !s.published || len(s.records) != 1 || s.codeBytes <= 0 || s.codeBytes > len(in.thunkMem) || s.base != offHeapSlicePtr(in.thunkMem) || s.mappingBytes != len(in.thunkMem) {
 					t.Fatal("missing actual separate mapping owner")
 				}
-				if len(producer.funcRefDescs) != coreruntime.FuncRefDescBytes {
-					t.Fatal("fixture did not use descriptor-zero-only producer")
+				if len(producer.funcRefDescs) != 0 || producer.c.NeedsFuncRefDescs || producer.c.needsFuncRefContextHeader {
+					t.Fatalf("numeric producer gained descriptor storage: bytes=%d required=%t header=%t", len(producer.funcRefDescs), producer.c.NeedsFuncRefDescs, producer.c.needsFuncRefContextHeader)
 				}
 				owner := rv64TailThunkCodeOwner{in}
 				if image, err := railshot.NewNativeTailCodeImage(owner); image != nil || !errors.Is(err, railshot.ErrUnsupported) {
@@ -94,7 +94,7 @@ func TestRV64NativeImportCertificateActualMappingAndLease(t *testing.T) {
 				if allocations != 0 {
 					t.Fatal("warm import provenance allocated", allocations)
 				}
-				for _, kind := range []string{"publication", "base", "mapped-length", "logical-length", "span", "transport", "producer"} {
+				for _, kind := range []string{"publication", "base", "mapped-length", "logical-length", "span", "activation", "producer"} {
 					saved := *s
 					savedRecord := *record
 					switch kind {
@@ -108,8 +108,8 @@ func TestRV64NativeImportCertificateActualMappingAndLease(t *testing.T) {
 						s.codeBytes -= 4
 					case "span":
 						record.codeBytes -= 4
-					case "transport":
-						record.target.Arguments = record.target.Results
+					case "activation":
+						record.target.StackOwnedActivation = !record.target.StackOwnedActivation
 					case "producer":
 						record.producer = in
 					}

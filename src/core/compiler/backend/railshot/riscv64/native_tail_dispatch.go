@@ -5,6 +5,7 @@ package riscv64
 import (
 	"encoding/binary"
 	"errors"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -26,11 +27,14 @@ type NativeTailCodeRange struct{ Base, Bytes uintptr }
 type NativeTailSite struct {
 	// dynamic is restricted to the package-private native-only proof. No public
 	// source/product/artifact option admits dynamic tails at this boundary.
-	dynamic                              *tailRADynamicSite
-	CallerHome                           uintptr
-	CallerContext, TargetContext         []byte
-	Target                               NativeImportTarget
-	HostEntry                            bool
+	dynamic                      *tailRADynamicSite
+	CallerHome                   uintptr
+	CallerContext, TargetContext []byte
+	Target                       NativeImportTarget
+	HostEntry                    bool
+	// ContextOnlyTarget selects a retained definition with no descriptor demand.
+	// Hosts and dynamic descriptor targets keep their canonical anchor.
+	ContextOnlyTarget                    bool
 	FrameBytes, SourceBase, SourceStride int
 	FunctionIndex, SourcePC              uint32
 	Parameters, Results                  []wasm.ValType
@@ -88,7 +92,7 @@ func nativeTailProofSite(s NativeTailSite) tailRAProofSite {
 	for n, r := range s.Continuations {
 		ranges[n] = tailRARange{r.Base, r.Bytes}
 	}
-	return tailRAProofSite{dynamic: s.dynamic, invocationContext: true, hostEntry: s.HostEntry, frameBytes: s.FrameBytes, functionIndex: s.FunctionIndex, sourcePC: s.SourcePC, callerHome: s.CallerHome, callerContext: tailRAPointer(s.CallerContext), target: nativeImportTarget{entry: s.Target.Entry, home: s.Target.Home, context: tailRAPointer(s.TargetContext), hostTrampoline: s.Target.HostTrampoline}, params: s.Parameters, results: s.Results, sourceBase: s.SourceBase, sourceStride: s.SourceStride, continuationRanges: ranges}
+	return tailRAProofSite{dynamic: s.dynamic, invocationContext: true, hostEntry: s.HostEntry, contextOnlyTarget: s.ContextOnlyTarget, frameBytes: s.FrameBytes, functionIndex: s.FunctionIndex, sourcePC: s.SourcePC, callerHome: s.CallerHome, callerContext: tailRAPointer(s.CallerContext), target: nativeImportTarget{entry: s.Target.Entry, home: s.Target.Home, context: tailRAPointer(s.TargetContext), hostTrampoline: s.Target.HostTrampoline}, params: s.Parameters, results: s.Results, sourceBase: s.SourceBase, sourceStride: s.SourceStride, continuationRanges: ranges}
 }
 
 // Validate all aggregate bounds and source homes before allocating native data,
@@ -103,9 +107,12 @@ func nativeTailDispatcherBoundForBinding(sites []NativeTailSite, guestCodeBytes 
 	}
 	metadata := tailRACapHeader + len(sites)*tailRASiteRow
 	code := 0
-	for _, s := range sites {
+	for index, s := range sites {
 		if s.CallerHome != sites[0].CallerHome || tailRAPointer(s.CallerContext) != tailRAPointer(sites[0].CallerContext) || len(s.CallerContext) != abi.RV64InstanceContextBytes || len(s.TargetContext) != abi.RV64InstanceContextBytes || tailRAPointer(s.CallerContext)&7 != 0 || tailRAPointer(s.TargetContext)&7 != 0 || s.Target.Context != tailRAPointer(s.TargetContext) || !s.Target.InvocationContext || !s.Target.StackOwnedActivation || s.FunctionIndex >= 2*MaxFunctions || bind && binary.LittleEndian.Uint64(s.CallerContext[abi.RV64TailCapabilityOffset:]) != 0 || len(s.Parameters) > 256 || len(s.Results) > 256 || len(s.Continuations) == 0 || len(s.Continuations) > tailRAMaxRanges {
 			return 0, unsupported("native tail retained public contexts/target")
+		}
+		if s.ContextOnlyTarget && (s.HostEntry || s.dynamic != nil || binary.LittleEndian.Uint64(s.TargetContext[16:]) != 0) {
+			return 0, unsupported("native context-only tail target cannot carry descriptor or host state")
 		}
 		// Account copied signatures and continuation records, not just native rows.
 		cost := 128 + 16*(len(s.Parameters)+len(s.Results)+len(s.Continuations))
@@ -113,13 +120,19 @@ func nativeTailDispatcherBoundForBinding(sites []NativeTailSite, guestCodeBytes 
 		if err != nil {
 			return 0, err
 		}
+		for _, prior := range sites[:index] {
+			if sameTailDynamicOwners(prior.dynamic, s.dynamic) {
+				dynamicMetadata = int(unsafe.Sizeof(tailRADynamicSite{}))
+				break
+			}
+		}
 		cost += dynamicMetadata
 		if cost > MaxModuleBytes-metadata {
 			return 0, unsupported("native tail factory metadata bound")
 		}
 		metadata += cost
 		// Validate ranges and source homes without copying their payloads first.
-		p := tailRAProofSite{dynamic: s.dynamic, invocationContext: true, hostEntry: s.HostEntry, frameBytes: s.FrameBytes, callerHome: s.CallerHome, callerContext: tailRAPointer(s.CallerContext), target: nativeImportTarget{entry: s.Target.Entry, home: s.Target.Home, context: s.Target.Context, hostTrampoline: s.Target.HostTrampoline}, params: s.Parameters, results: s.Results, sourceBase: s.SourceBase, sourceStride: s.SourceStride, continuationRanges: []tailRARange{{s.Continuations[0].Base, s.Continuations[0].Bytes}}}
+		p := tailRAProofSite{dynamic: s.dynamic, invocationContext: true, hostEntry: s.HostEntry, contextOnlyTarget: s.ContextOnlyTarget, frameBytes: s.FrameBytes, callerHome: s.CallerHome, callerContext: tailRAPointer(s.CallerContext), target: nativeImportTarget{entry: s.Target.Entry, home: s.Target.Home, context: s.Target.Context, hostTrampoline: s.Target.HostTrampoline}, params: s.Parameters, results: s.Results, sourceBase: s.SourceBase, sourceStride: s.SourceStride, continuationRanges: []tailRARange{{s.Continuations[0].Base, s.Continuations[0].Bytes}}}
 		if err := p.validate(); err != nil {
 			return 0, err
 		}
@@ -211,19 +224,43 @@ func newNativeTailDispatcher(sites []NativeTailSite, guestCodeBytes int, arena *
 	binary.LittleEndian.PutUint32(o.capability[12:], uint32(len(sites)))
 	for n, s := range sites {
 		p := nativeTailProofSite(s)
-		p.dynamic = s.dynamic.freeze()
-		if p.dynamic != nil {
-			o.dynamic = append(o.dynamic, nativeTailDynamicLease{p.dynamic, s.Target.HostTrampoline})
+		p.dynamic = nil
+		if s.dynamic != nil {
+			leaseIndex := 0
+			for _, prior := range sites[:n] {
+				if prior.dynamic == nil {
+					continue
+				}
+				if sameTailDynamicOwners(prior.dynamic, s.dynamic) {
+					p.dynamic = s.dynamic.freezeShared(o.dynamic[leaseIndex].site.owners)
+					break
+				}
+				leaseIndex++
+			}
+			if p.dynamic == nil {
+				p.dynamic = s.dynamic.freeze()
+			}
 		}
 		p.params = append([]wasm.ValType(nil), s.Parameters...)
 		p.results = append([]wasm.ValType(nil), s.Results...)
-		final, err := tailRAFinalize(p, exit)
+		if p.dynamic != nil {
+			o.dynamic = append(o.dynamic, nativeTailDynamicLease{site: p.dynamic, trampoline: s.Target.HostTrampoline, params: p.params, results: p.results})
+		}
+		// Emit into the reserved mapping. The bound above includes all sites;
+		// retain the ordinary append fallback if emission outgrows its tail.
+		tail, err := o.code.AppendTail(0)
+		if err != nil {
+			return o, err
+		}
+		final, err := tailRAFinalizeInto(p, exit, tail)
 		if err != nil {
 			return o, err
 		}
 		finalAddress := o.code.Base() + uintptr(len(o.code.Bytes()))
-		if err = o.code.Append(final); err != nil {
-			return o, err
+		if !o.code.CommitTail(final) {
+			if err = o.code.Append(final); err != nil {
+				return o, err
+			}
 		}
 		for len(o.code.Bytes())&15 != 0 {
 			if err = o.code.Append([]byte{0x13, 0, 0, 0}); err != nil {
@@ -231,7 +268,11 @@ func newNativeTailDispatcher(sites []NativeTailSite, guestCodeBytes int, arena *
 			}
 		}
 		preAddress := o.code.Base() + uintptr(len(o.code.Bytes()))
-		pre, err := tailRAPreflight(p, exit, finalAddress)
+		tail, err = o.code.AppendTail(0)
+		if err != nil {
+			return o, err
+		}
+		pre, err := tailRAPreflightInto(p, exit, finalAddress, tail)
 		if err != nil {
 			return o, err
 		}
@@ -239,8 +280,10 @@ func newNativeTailDispatcher(sites []NativeTailSite, guestCodeBytes int, arena *
 		if len(final)+len(pre)+32 > tailRADispatchBound+128*len(s.Continuations)+dynamicCode {
 			return o, unsupported("native tail actual dispatcher bound")
 		}
-		if err = o.code.Append(pre); err != nil {
-			return o, err
+		if !o.code.CommitTail(pre) {
+			if err = o.code.Append(pre); err != nil {
+				return o, err
+			}
 		}
 		for len(o.code.Bytes())&15 != 0 {
 			if err = o.code.Append([]byte{0x13, 0, 0, 0}); err != nil {

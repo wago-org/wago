@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -6,15 +6,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
@@ -112,11 +109,8 @@ func TestRV64GCTypeSubtypingRefFuncGlobalsSourceAndArtifact(t *testing.T) {
 			t.Run(strconv.Itoa(int(variant))+"/artifact="+strconv.FormatBool(artifact), func(t *testing.T) {
 				compiled := rv64CompileGCTypeSubtypingRefFuncGlobal(t, variant, artifact)
 				view := compiled.executionView()
-				validation := railshotValidateCompiled(view)
-				if got := rv64GCTypeSubtypingRefFuncGlobalsProfileWithCode(view, false, true); got != variant || !rv64GCTypeSubtypingRefFuncGlobals(view) ||
-					view.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingRefFuncGlobals || validation != nil {
-					compiled.Close()
-					t.Fatalf("missing exact ref.func-global witness: got=%d want=%d product=%v validation=%v", got, variant, view.stagedGCTypeSubtypingProduct(), validation)
+				if !rv64ArtifactContractValid(view) || view.validate() != nil {
+					t.Fatal("invalid public ref.func global execution contract")
 				}
 				cache := compiled.loadCodeCache()
 				if cache == nil || !artifact && (cache.base != 0 || len(cache.mem) != 0 || cache.sealed || cache.flags&compiledCacheWritableCode != 0) ||
@@ -124,9 +118,7 @@ func TestRV64GCTypeSubtypingRefFuncGlobalsSourceAndArtifact(t *testing.T) {
 					compiled.Close()
 					t.Fatalf("unexpected unpublished mapping state artifact=%t base=%#x mem=%d sealed=%t writable=%t refs=%d", artifact, cache.base, len(cache.mem), cache.sealed, cache.flags&compiledCacheWritableCode != 0, cache.refs)
 				}
-				cfg := rv64I31Config()
-				cfg.railshotState.tailProducts = true
-				rt := NewRuntime(WithRuntimeConfig(cfg))
+				rt := NewRuntime()
 				mod, err := rt.Module(compiled)
 				if err != nil {
 					compiled.Close()
@@ -193,16 +185,16 @@ func TestRV64GCTypeSubtypingRefFuncGlobalsRejectHostileRetainedState(t *testing.
 		compiled := rv64CompileGCTypeSubtypingRefFuncGlobal(t, variant, false)
 		base := compiled.executionView()
 		for name, mutate := range map[string]func(*Compiled){
-			"code":       func(v *Compiled) { v.code[len(v.code)-1] ^= 1 },
-			"entry":      func(v *Compiled) { v.Entry[0] += 4; v.InternalEntry[0] += 4 },
-			"function":   func(v *Compiled) { v.Funcs[0].TypeIndex ^= 1 },
-			"type":       func(v *Compiled) { v.Types[0].Final = !v.Types[0].Final },
-			"type-key":   func(v *Compiled) { v.FuncTypeID[0] ^= 1 },
-			"descriptor": func(v *Compiled) { v.GCTypeDescs[0].Final = !v.GCTypeDescs[0].Final },
-			"global":     func(v *Compiled) { v.Globals[0].InitFunc = uint32(len(v.Funcs)) },
-			"value-type": func(v *Compiled) { v.ValueTypes[0].Ref.Nullable = true },
-			"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
-			"product":    func(v *Compiled) { v.codeCache.gcTypeSubtypingProduct = 0 },
+			"code":                       func(v *Compiled) { v.code[len(v.code)-1] ^= 1 },
+			"entry":                      func(v *Compiled) { v.Entry[0] += 4; v.InternalEntry[0] += 4 },
+			"function":                   func(v *Compiled) { v.Funcs[0].TypeIndex ^= 1 },
+			"type":                       func(v *Compiled) { v.Types[0].Final = !v.Types[0].Final },
+			"type-key":                   func(v *Compiled) { v.FuncTypeID[0] ^= 1 },
+			"descriptor":                 func(v *Compiled) { v.GCTypeDescs[0].Final = !v.GCTypeDescs[0].Final },
+			"global":                     func(v *Compiled) { v.Globals[0].InitFunc = uint32(len(v.Funcs)) },
+			"value-type":                 func(v *Compiled) { v.ValueTypes[0].Ref.Nullable = !v.ValueTypes[0].Ref.Nullable },
+			"feature":                    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
+			"invalid-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
 			"all-claims": func(v *Compiled) {
 				v.requiredFeatures &^= CoreFeatureGC
 				v.codeCache.stagedFeatures &^= CoreFeatureGC
@@ -210,20 +202,18 @@ func TestRV64GCTypeSubtypingRefFuncGlobalsRejectHostileRetainedState(t *testing.
 			},
 		} {
 			t.Run(strconv.Itoa(int(variant))+"/"+name, func(t *testing.T) {
-				candidate := cloneCompiledMetadata(base)
-				candidate.code = slices.Clone(candidate.code)
-				cache := *candidate.codeCache
-				candidate.codeCache = &cache
-				candidate.validateMemo = &validateMemo{}
+				candidate := rv64ReferenceStartCopy(base)
 				mutate(candidate)
-				if rv64GCTypeSubtypingRefFuncGlobals(candidate) {
-					t.Fatal("hostile retained mutation kept exact witness")
+				if err := candidate.validate(); err == nil {
+					t.Fatal("hostile retained ref.func global mutation admitted")
 				}
-				if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
-					t.Fatal("hostile retained mutation admitted", err)
+				if name == "feature" || name == "all-claims" {
+					rv64RequireRestoredGCFeature(t, candidate)
+				} else {
+					rv64RequireRejectedArtifact(t, candidate)
 				}
-				if got := rv64GCTypeSubtypingRefFuncGlobalsProfileWithCode(base, false, true); got != variant || railshotValidateCompiled(base) != nil {
-					t.Fatal("hostile mutation contaminated exact baseline", got, variant)
+				if !rv64ArtifactContractValid(base) || base.validate() != nil {
+					t.Fatal("hostile mutation contaminated baseline")
 				}
 			})
 		}
@@ -237,11 +227,8 @@ func TestRV64GCTypeSubtypingRefFuncGlobalsCodeFingerprintCollisionCompatibility(
 			compiled := rv64NativeTailCompile(t, "ref-func-global-code-collision", rv64PublicNativeIdentityModule(nil), artifact)
 			defer compiled.Close()
 			view := compiled.executionView()
-			if !rv64GCTypeSubtypingRefFuncGlobalsExecutionCode(view) {
-				t.Fatal("numeric identity no longer exercises the ref.func-global code collision")
-			}
-			if rv64GCTypeSubtypingRefFuncGlobalsExecutionClaim(view) || rv64GCTypeSubtypingRefFuncGlobals(view) {
-				t.Fatal("ordinary numeric identity acquired a GC product claim")
+			if !rv64ArtifactContractValid(view) || view.stagedGCTypeSubtypingProduct() != 0 {
+				t.Fatal("ordinary numeric identity lost its public execution contract")
 			}
 			if err := railshotValidateCompiled(view); err != nil {
 				t.Fatal("ordinary numeric identity rejected by a GC-only code fingerprint", err)

@@ -276,6 +276,9 @@ func (t *Table) runtimeCapacity() (uint32, bool) {
 // Close releases a host-created table after every importer closes. Instance-owned
 // export handles remain no-ops; their producer instance owns the descriptor.
 func (t *Table) Close() error {
+	if handled, err := railshotTryCloseCompactExternHostTable(t); handled || err != nil {
+		return err
+	}
 	if t == nil || t.owner == nil {
 		return nil
 	}
@@ -325,6 +328,7 @@ func (t *Table) Close() error {
 	var cleanup resourceCleanup
 	cleanup.run(func() { railshotFlushTableDescriptorDependencies(&dependencies) })
 	var err error
+	cleanup.run(func() { railshotReleaseCompactExternHostTable(o) })
 	cleanup.run(func() { err = arena.Close() })
 	if store != nil {
 		cleanup.run(store.storeObjectClosed)
@@ -377,7 +381,7 @@ func (o *tableOwner) validateFuncrefStoreLocked(store *referenceStore) error {
 	}
 	if o.instance != nil {
 		if o.store != store {
-			return fmt.Errorf("instance-owned funcref table requires its producer and importer in the same reference store")
+			return fmt.Errorf("instance-owned funcref table requires its producer and importer in the same reference store and the same Runtime GC domain")
 		}
 		return nil
 	}
@@ -451,7 +455,8 @@ func (t *Table) validateImportWithRetainedOwner(elementType ValType, exact Value
 	}
 	if isGCRefValType(elementType) {
 		source := o.instance
-		if source == nil || source.gc == nil || store == nil || collector == nil || source.gc != collector || source.refStore != store || !store.ownsGCCollector(collector) {
+		immediateOnly := immediateI31ReferenceType(actual)
+		if !immediateOnly && (source == nil || source.gc == nil || store == nil || collector == nil || source.gc != collector || source.refStore != store || !store.ownsGCCollector(collector)) {
 			return fmt.Errorf("collector-reference table requires producer and importer in the same Runtime GC domain")
 		}
 		t.mu.Lock()
@@ -470,12 +475,16 @@ func (t *Table) validateImportWithRetainedOwner(elementType ValType, exact Value
 			if !ref.IsNull() && !ref.IsI31() && !ref.IsObj() {
 				return fmt.Errorf("collector-reference table slot %d contains invalid reference %#x", i, bits)
 			}
-			if ref.IsObj() {
+			if ref.IsObj() && !immediateOnly {
 				if _, err := collector.ObjectType(ref); err != nil {
 					return fmt.Errorf("collector-reference table slot %d contains stale or foreign object: %w", i, err)
 				}
 			}
-			if !source.gcRefMatchesValueType(ref, actual) {
+			matches := source != nil && source.gcRefMatchesValueType(ref, actual)
+			if immediateOnly {
+				matches = ref.IsNull() && actual.Ref.Nullable || ref.IsI31() && actual.Ref.Heap.Abstract == AbstractHeapI31
+			}
+			if !matches {
 				return fmt.Errorf("collector-reference table slot %d contains a reference with an incompatible exact structural type", i)
 			}
 		}
@@ -510,6 +519,9 @@ func (t *Table) attachImporterWithExpectedHost(elementType ValType, exact ValueT
 	if err != nil {
 		return err
 	}
+	if err := railshotAttachCompactExternHostTable(t, store, collector); err != nil {
+		return err
+	}
 	if expected != nil && elementType == ValFuncRef || expected == nil && o.elementType == ValFuncRef && o.instance == nil {
 		if t.hasIncompatibleGCProducer(store) {
 			return fmt.Errorf("funcref table contains a producer from an incompatible GC invocation domain")
@@ -525,7 +537,7 @@ func (t *Table) attachImporterWithExpectedHost(elementType ValType, exact ValueT
 		if expected != nil && (t.owner != expected || o != expected || o.instance != nil || o.elementType != elementType) {
 			return fmt.Errorf("host table owner changed before acquisition")
 		}
-		if o.closed {
+		if o.closed || !railshotCompactExternHostTableOpen(o) {
 			return fmt.Errorf("table owner is closed")
 		}
 		if err := o.validateImporterCountLocked(); err != nil {
@@ -571,7 +583,7 @@ func (t *Table) attachImporterWithExpectedHost(elementType ValType, exact ValueT
 	if expected != nil && (t.owner != expected || o != expected || o.instance != nil || o.elementType != elementType) {
 		return fmt.Errorf("host table owner changed before acquisition")
 	}
-	if o.closed {
+	if o.closed || !railshotCompactExternHostTableOpen(o) {
 		return fmt.Errorf("table owner is closed")
 	}
 	if err := o.validateImporterCountLocked(); err != nil {
@@ -658,8 +670,11 @@ func (t *Table) detachImporterCounterMatching(store *referenceStore, expectedOwn
 }
 
 func (t *Table) detachImporter(store *referenceStore) {
-	if instance, consumed := t.detachImporterCounter(store); consumed && instance != nil {
-		instance.releaseResourceRoot()
+	if instance, consumed := t.detachImporterCounter(store); consumed {
+		if instance != nil {
+			instance.releaseResourceRoot()
+		}
+		railshotFinishCompactExternHostTableDetach(t)
 	}
 }
 

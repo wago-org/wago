@@ -100,9 +100,14 @@ func TestReferenceFunctionResourceImportsRejectShapes(t *testing.T) {
 				edit(m)
 				opts := closedReferenceProductionOptions(true, false)
 				opts.ImportBindings = hostImportBindings(3)
+				switch name {
+				case "memory-inactive-union", "function-inactive-union", "late-shared-memory", "late-inactive-max":
+					checkPublicPrimitiveModule(t, m, opts)
+					return
+				}
 				pressure := 0
 				opts.MemoryPressure = func() { pressure++ }
-				if image, err := CompileModuleWith(m, opts); image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+				if image, err := CompileModuleWith(m, opts); image != nil || err == nil || pressure != 0 {
 					t.Fatal("unsupported resource staged", err, pressure)
 				}
 			})
@@ -195,7 +200,7 @@ func TestReferenceFunctionResourceImportsNamespaceBounds(t *testing.T) {
 			pressure := 0
 			opts.MemoryPressure = func() { pressure++ }
 			image, err := CompileModuleWith(m, opts)
-			if extra == "exact" {
+			if extra == "exact" || extra == "globals" {
 				if err != nil || image == nil || pressure != 1 {
 					t.Fatal("exact combined namespaces", err, pressure)
 				}

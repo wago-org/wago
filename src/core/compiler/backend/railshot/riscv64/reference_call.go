@@ -11,23 +11,36 @@ import (
 // References are full-width canonical carriers supplied by a retained owner.
 // Resolve null, identity and the exact declared signature before marshalling
 // into shared root arenas. The native bridge retains normal-return semantics.
-func (f *integerEmitter) referenceCall(sig *wasm.CompType, key uint64, base, referenceSlot int, spill func(int) int32, stride int, hiddenRefs []bool) {
-	if !f.mode.referenceCalls || !f.mode.foreignTableCalls || !f.mode.invocationContext || !f.mode.production || !f.mode.interruptible || (stride != 8 && stride != 16) {
+func (f *integerEmitter) referenceCall(sig *wasm.CompType, key uint64, base, referenceSlot int, spill func(int) int32, stride int, hiddenRefs []bool, typeIndexes ...uint32) {
+	if (!f.mode.referenceCalls && !f.functionSubtypeHelper(typeIndexes)) || !f.mode.foreignTableCalls || !f.mode.invocationContext || !f.mode.production || !f.mode.interruptible || (stride != 8 && stride != 16) {
 		f.err = unsupported("call_ref native owner contract")
 		return
+	}
+	keys := []uint64{key}
+	if f.mode.primitiveTailTypes != nil && len(typeIndexes) == 1 {
+		var ok bool
+		keys, ok = f.mode.primitiveTailTypes.subtypeKeys(typeIndexes[0])
+		if !ok {
+			f.err = unsupported("call_ref subtype key bound")
+			return
+		}
 	}
 	f.Load(14, spill(referenceSlot), true)
 	// call_ref has its own null-reference trap. Descriptor corruption and owner
 	// failures below remain indirect-call bounds/signature failures.
 	f.trap(trapNullReference, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
 	f.canonicalReferenceGuard(enc.X14, enc.X5, enc.X7)
+	f.a.Ld(enc.X7, enc.X14, 8)
+	checkedType := f.functionSubtypeHelper(typeIndexes)
+	if checkedType {
+		f.guardReferenceSubtype(referenceSlot, typeIndexes[0], keys, spill)
+	} else {
+		f.guardSignatureKeys(enc.X7, keys)
+	}
 	f.a.Ld(enc.X28, enc.X14, 0)
 	f.a.Addi(enc.X5, enc.Zero, 15)
 	f.a.And(enc.X5, enc.X28, enc.X5)
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X5, enc.Zero))
-	f.a.Ld(enc.X7, enc.X14, 8)
-	f.a.Constant64(enc.X5, int64(key))
-	f.trap(trapIndirectSignature, f.a.BranchLong(enc.NE, enc.X7, enc.X5))
 	// Complete target home/context/anchor checks before caller arena writes.
 	f.a.Ld(enc.X6, enc.X14, 16)
 	f.a.Constant64(enc.X5, int64(^abi.FuncRefHomeTagMask))
@@ -62,7 +75,7 @@ func (f *integerEmitter) referenceCall(sig *wasm.CompType, key uint64, base, ref
 
 	// Argument transport uses X5/X6 and reserved address scratch; X14 survives.
 	f.swarCallArguments(sig, base, spill)
-	returnOffset, stackAdjust := f.nativeTableCall(key, swarSignatureSlots(sig.Params), swarSignatureSlots(sig.Results))
+	returnOffset, stackAdjust := f.nativeTableCallKeysMode(keys, swarSignatureSlots(sig.Params), swarSignatureSlots(sig.Results), checkedType)
 	if f.mode.gcRootedScalar && returnOffset != 0 {
 		f.recordGCFrameCallsiteAdjusted(returnOffset, stackAdjust, hiddenRefs)
 	} else {
@@ -101,12 +114,16 @@ func referenceCallCarriesCollector(sig *wasm.CompType) bool {
 // functionReferenceCast checks the canonical descriptor's exact structural key
 // against the bounded subtype closure admitted for one target indexed heap. The
 // carrier itself is unchanged on success.
-func (f *integerEmitter) functionReferenceCast(base int, keys []uint64, nullable bool) {
-	if !f.mode.referenceCalls || !f.mode.foreignTableCalls || !f.mode.invocationContext || !f.mode.production || !f.mode.interruptible || len(keys) == 0 || len(keys) > 3 {
+func (f *integerEmitter) functionReferenceCast(base int, keys []uint64, nullable bool, types ...uint32) {
+	f.functionReferenceCastAt(base, keys, nullable, f.SpillOffset, types...)
+}
+
+func (f *integerEmitter) functionReferenceCastAt(base int, keys []uint64, nullable bool, spill func(int) int32, types ...uint32) {
+	if !f.mode.referenceCalls && f.mode.primitiveTailTypes == nil || !f.mode.foreignTableCalls || !f.mode.invocationContext || !f.mode.production || !f.mode.interruptible || len(keys) == 0 || len(keys) > MaxFunctions {
 		f.err = unsupported("function ref.cast owner/signature contract")
 		return
 	}
-	f.Load(14, f.SpillOffset(base), true)
+	f.Load(14, spill(base), true)
 	var success []int
 	if nullable {
 		success = append(success, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
@@ -119,7 +136,12 @@ func (f *integerEmitter) functionReferenceCast(base int, keys []uint64, nullable
 		f.a.Constant64(enc.X5, int64(key))
 		success = append(success, f.a.BranchLong(enc.EQ, enc.X7, enc.X5))
 	}
-	f.trap(trapI31CastFailure, f.Jump())
+	if f.functionSubtypeHelper(types) {
+		f.functionSubtypeTestHelper(base, types[0], nullable, spill)
+		f.trap(trapI31CastFailure, f.a.BranchLong(enc.EQ, enc.X5, enc.Zero))
+	} else {
+		f.trap(trapI31CastFailure, f.Jump())
+	}
 	for _, site := range success {
 		if err := f.Patch(site, f.Position()); err != nil {
 			f.err = err
@@ -131,12 +153,16 @@ func (f *integerEmitter) functionReferenceCast(base int, keys []uint64, nullable
 // functionReferenceTest checks one canonical local descriptor against the
 // bounded subtype closure and leaves a normalized i32 result. Unlike ref.cast,
 // a signature mismatch is false, and null follows the immediate's nullability.
-func (f *integerEmitter) functionReferenceTest(base int, keys []uint64, nullable bool) {
-	if !f.mode.referenceFunctions || !f.mode.foreignTableCalls || !f.mode.invocationContext || !f.mode.production || !f.mode.interruptible || len(keys) == 0 || len(keys) > 3 {
+func (f *integerEmitter) functionReferenceTest(base int, keys []uint64, nullable bool, types ...uint32) {
+	f.functionReferenceTestAt(base, keys, nullable, f.SpillOffset, types...)
+}
+
+func (f *integerEmitter) functionReferenceTestAt(base int, keys []uint64, nullable bool, spill func(int) int32, types ...uint32) {
+	if !f.mode.referenceFunctions && !f.mode.gcRootedScalar && f.mode.primitiveTailTypes == nil || !f.mode.foreignTableCalls || !f.mode.invocationContext || !f.mode.production || !f.mode.interruptible || len(keys) == 0 || len(keys) > MaxFunctions {
 		f.err = unsupported("function ref.test owner/signature contract")
 		return
 	}
-	f.Load(14, f.SpillOffset(base), true)
+	f.Load(14, spill(base), true)
 	if nullable {
 		f.a.Constant32(enc.X6, 1)
 	} else {
@@ -153,6 +179,10 @@ func (f *integerEmitter) functionReferenceTest(base int, keys []uint64, nullable
 		f.a.Constant64(enc.X5, int64(key))
 		success = append(success, f.a.BranchLong(enc.EQ, enc.X7, enc.X5))
 	}
+	if f.functionSubtypeHelper(types) {
+		f.functionSubtypeTestHelper(base, types[0], nullable, spill)
+		f.a.Addi(enc.X6, enc.X5, 0)
+	}
 	done = append(done, f.Jump())
 	for _, site := range success {
 		if err := f.Patch(site, f.Position()); err != nil {
@@ -167,7 +197,7 @@ func (f *integerEmitter) functionReferenceTest(base int, keys []uint64, nullable
 			return
 		}
 	}
-	f.Store(f.SpillOffset(base), 6, false)
+	f.Store(spill(base), 6, false)
 }
 
 // functionReferenceIdentityTest compares a private ref.func carrier with its
@@ -203,4 +233,76 @@ func (f *integerEmitter) functionReferenceIdentityTest(base int, functionIndex u
 		}
 	}
 	f.Store(f.SpillOffset(base), 6, false)
+}
+
+const gcFunctionSubtypeTest uint32 = 14
+
+func (f *integerEmitter) functionSubtypeHelper(types []uint32) bool {
+	return len(types) == 1 && f.mode.primitiveTailTypes != nil && f.mode.primitiveTailTypes.needsSubtypeHelper(types[0])
+}
+
+// This helper neither allocates collector objects nor invokes guest callbacks.
+// The raw descriptor stays in its original home throughout park/resume. Runtime
+// resolution checks its exact retained physical owner before reading its type.
+func (f *integerEmitter) functionSubtypeTestHelper(base int, index uint32, nullable bool, spill func(int) int32) {
+	f.restoreCallTransport()
+	f.Load(5, spill(base), true)
+	f.a.Sd(enc.X5, enc.X10, 0)
+	f.a.Constant32(enc.X5, index)
+	f.a.Sd(enc.X5, enc.X10, 8)
+	flag := uint32(0)
+	if nullable {
+		flag = 1
+	}
+	f.a.Constant32(enc.X5, flag)
+	f.a.Sd(enc.X5, enc.X10, 16)
+	f.calls = append(f.calls, directCall{site: f.a.JumpLong(true), helper: gcFunctionSubtypeTest})
+	f.restoreCallTransport()
+	f.a.Lwu(enc.X5, enc.X13, 0)
+}
+
+func (f *integerEmitter) guardReferenceSubtype(slot int, index uint32, keys []uint64, spill func(int) int32) {
+	var success []int
+	for _, key := range keys {
+		f.a.Constant64(enc.X5, int64(key))
+		success = append(success, f.a.BranchLong(enc.EQ, enc.X7, enc.X5))
+	}
+	f.functionSubtypeTestHelper(slot, index, false, spill)
+	f.trap(trapIndirectSignature, f.a.BranchLong(enc.EQ, enc.X5, enc.Zero))
+	f.Load(14, spill(slot), true)
+	f.canonicalReferenceGuard(enc.X14, enc.X5, enc.X7)
+	for _, site := range success {
+		if err := f.Patch(site, f.Position()); err != nil {
+			f.err = err
+			return
+		}
+	}
+}
+
+// Select the canonical descriptor while every original argument home is intact.
+// The row's complete cached tuple must agree before its consumed index home is
+// reused as parked storage for the exact selected descriptor.
+func (f *integerEmitter) tableReferenceForSubtype(slot int, wide bool, table uint32, spill func(int) int32) {
+	f.Load(5, spill(slot), wide)
+	if table == 0 {
+		f.a.Ld(enc.X6, enc.X25, -80)
+	} else {
+		f.a.Ld(enc.X6, enc.X25, -abi.TableDirPtrOffset)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
+		f.a.Ld(enc.X6, enc.X6, int32(table*8))
+	}
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
+	f.a.Lwu(enc.X7, enc.X6, 0)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.GEU, enc.X5, enc.X7))
+	f.a.Slli(enc.X5, enc.X5, 5)
+	f.a.Add(enc.X6, enc.X6, enc.X5)
+	f.a.Ld(enc.X14, enc.X6, 32)
+	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
+	f.canonicalReferenceGuard(enc.X14, enc.X5, enc.X7)
+	for _, offset := range []int32{0, 8, 16} {
+		f.a.Ld(enc.X5, enc.X14, offset)
+		f.a.Ld(enc.X7, enc.X6, offset+8)
+		f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X5, enc.X7))
+	}
+	f.Store(spill(slot), 14, true)
 }

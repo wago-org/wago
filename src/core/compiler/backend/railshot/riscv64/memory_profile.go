@@ -8,6 +8,7 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // grammar in both admission and emission. Mixed modules cannot use one global
 // offset-width flag. Count/shape bounds precede this classifier's construction.
 type memoryProfile struct {
+	shared     bool
 	count      int
 	indexed    bool
 	address64  [2]uint64
@@ -15,7 +16,7 @@ type memoryProfile struct {
 }
 
 func makeMemoryProfile(memories []wasm.MemType, indexed bool) memoryProfile {
-	p := memoryProfile{count: len(memories), indexed: indexed}
+	p := memoryProfile{shared: len(memories) == 1 && memories[0].Shared, count: len(memories), indexed: indexed}
 	for i, memory := range memories {
 		if memory.Limits.Addr64 {
 			p.address64[i>>6] |= uint64(1) << (uint(i) & 63)

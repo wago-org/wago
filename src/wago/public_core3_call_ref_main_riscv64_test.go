@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -203,12 +203,7 @@ func TestRV64Core3CallRefMainFeatureAndSourceGates(t *testing.T) {
 	} {
 		source := slices.Clone(base)
 		mutate(source)
-		if c, err := rv64NativeTailConfig().Compile(source); c != nil || err == nil {
-			if c != nil {
-				_ = c.Close()
-			}
-			t.Fatal("nearby typed-global source admitted", name, err)
-		}
+		t.Run(name, func(t *testing.T) { rv64RequireCore3SourceValidation(t, source) })
 	}
 }
 
@@ -234,7 +229,7 @@ func TestRV64Core3CallRefMainRetainedAdmission(t *testing.T) {
 		"typed-feature":       func(v *Compiled) { v.requiredFeatures &^= CoreFeatureTypedFunctionReferences },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base.executionView())
+			candidate := rv64ReferenceStartCopy(base.executionView())
 			mutate(candidate)
 			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile private typed-global metadata admitted", err)
@@ -243,10 +238,8 @@ func TestRV64Core3CallRefMainRetainedAdmission(t *testing.T) {
 	}
 }
 
-func TestRV64Core3CallRefMainRequiresPrivateRuntimePermission(t *testing.T) {
+func TestRV64Core3CallRefMainPublicRuntime(t *testing.T) {
 	compiled := rv64Core3CallRefMainCompile(t, os.Getenv("WAGO_RV64_CORE3_CALL_REF_ARTIFACT_MODE") == "load")
-	cache := compiled.loadCodeCache()
-	base, mapped, sealed, writable, refs := cache.base, len(cache.mem), cache.sealed, cache.flags&compiledCacheWritableCode != 0, cache.refs
 
 	cfg := compatibilityDefaultConfig().WithCoreFeatures(platformCoreFeatures() | CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences)
 	rt := NewRuntime(WithRuntimeConfig(cfg))
@@ -256,12 +249,10 @@ func TestRV64Core3CallRefMainRequiresPrivateRuntimePermission(t *testing.T) {
 		_ = mod.Close()
 	}
 	_ = rt.Close()
-	if !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("call_ref.0 instantiated without private runtime permission", err)
+	if err != nil {
+		t.Fatal("public Core 3 instantiation", err)
 	}
-	if cache.base != base || len(cache.mem) != mapped || cache.sealed != sealed || cache.flags&compiledCacheWritableCode != 0 != writable || cache.refs != refs {
-		t.Fatalf("permission rejection changed publication state: before=(%#x,%d,%t,%t,%d) after=(%#x,%d,%t,%t,%d)", base, mapped, sealed, writable, refs, cache.base, len(cache.mem), cache.sealed, cache.flags&compiledCacheWritableCode != 0, cache.refs)
-	}
+	_ = compiled.Close()
 }
 
 func TestRV64Core3CallRefMainCompilerFreeRejectsSource(t *testing.T) {

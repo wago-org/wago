@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -64,7 +64,7 @@ func rv64ReferenceNumericCallsRows(in *Instance) bool {
 		return false
 	}
 	for _, index := range []int{4, 8, 9, 12} {
-		if !railshotNonCallableFunction(in.c, index) || !bytes.Equal(in.funcRefDescs[(index+1)*40:(index+2)*40], make([]byte, 40)) {
+		if !rv64ReferenceTargetRowValid(in, index) {
 			return false
 		}
 	}

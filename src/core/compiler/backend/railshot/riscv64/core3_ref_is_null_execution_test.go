@@ -42,12 +42,13 @@ func TestCore3RefIsNullExecutionPinnedContract(t *testing.T) {
 	}
 }
 
-func TestCore3RefIsNullExecutionWireConfinement(t *testing.T) {
+func TestCore3RefIsNullExecutionWireProfileSeparation(t *testing.T) {
 	base := core3RefIsNullExecutionSource()
 	for i := range base {
 		mutated := bytes.Clone(base)
 		mutated[i] ^= 1
-		if isCore3RefIsNullExecutionWire(mutated) || AdmitProductionSource(mutated) == nil {
+		checkGeneralDeclarationWire(t, mutated)
+		if isCore3RefIsNullExecutionWire(mutated) {
 			t.Fatal("one-bit source mutation admitted", i)
 		}
 	}
@@ -56,7 +57,7 @@ func TestCore3RefIsNullExecutionWireConfinement(t *testing.T) {
 	}
 }
 
-func TestCore3RefIsNullExecutionDecodedConfinement(t *testing.T) {
+func TestCore3RefIsNullExecutionDecodedProfileSeparation(t *testing.T) {
 	mutations := map[string]func(*wasm.Module){
 		"type-heap": func(m *wasm.Module) {
 			m.Types[2].SubTypes[0].Comp.Params[0] = wasm.FuncRef
@@ -151,12 +152,7 @@ func TestCore3RefIsNullExecutionDecodedConfinement(t *testing.T) {
 			if isCore3RefIsNullExecution(m) {
 				t.Fatal("hostile decoded shape admitted")
 			}
-			pressure := 0
-			opts := closedReferenceProductionOptions(false, true)
-			opts.MemoryPressure = func() { pressure++ }
-			if image, err := CompileModuleWith(m, opts); image != nil || err == nil || pressure != 0 {
-				t.Fatal("hostile decoded shape reached backend checkpoint", err, pressure)
-			}
+			checkGeneralDeclarationModule(t, m)
 		})
 	}
 }

@@ -3,21 +3,66 @@
 package riscv64
 
 import (
+	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/nativeabi"
+	"slices"
 )
+
+// Source plans include dead sites. Once every source site has been accounted
+// for, retain only masks for emitted sites. The independently validated source
+// plan is conservative: every mask contains every tracked local, so removing
+// a dead site cannot change the local roots of a later live site.
+func finalizeGCFrameRootMasks(plan *shared.GCFrameRootPlan, deadAllocations, deadCalls uint32) bool {
+	if plan == nil || deadAllocations == 0 && deadCalls == 0 {
+		return true
+	}
+	if !plan.Exact || !plan.Conservative || plan.SafepointCount()+int(deadAllocations) != plan.AllocationMaskCount() || plan.CallsiteCount()+int(deadCalls) != plan.CallMaskCount() {
+		return false
+	}
+	wordsPerSite := (len(plan.Locals) + 63) / 64
+	if wordsPerSite == 0 {
+		wordsPerSite = 1
+	}
+	words := make([]uint64, wordsPerSite*(plan.SafepointCount()+plan.CallsiteCount()))
+	for site := 0; site < plan.SafepointCount()+plan.CallsiteCount(); site++ {
+		for local := range plan.Locals {
+			words[site*wordsPerSite+local/64] |= uint64(1) << (local % 64)
+		}
+	}
+	return plan.SetLiveMasks(words, plan.SafepointCount(), plan.CallsiteCount())
+}
 
 // validateGCFrameRootPlans independently authenticates the initial RV64
 // frontend/backend handshake. This stage deliberately requires every collector
 // local at every allocation site; later liveness-exact admission can replace
 // this conservative invariant once its analysis is shared with the backend.
 func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPlan) bool {
+	return validateGCFrameRootPlansOwned(m, plans, false)
+}
+
+func validateGCFrameRootPlansOwned(m *wasm.Module, plans *shared.GCModuleFrameRootPlan, ownedExceptions bool, custom ...map[uint32]railcore.CustomInstruction) bool {
+	var instructions map[uint32]railcore.CustomInstruction
+	if len(custom) != 0 {
+		instructions = custom[0]
+	}
+	if err := admitCustomInstructions(m, instructions); err != nil {
+		return false
+	}
+	customValues := pluginInstructions(instructions).hasCustom()
 	if m == nil || plans == nil || plans.FunctionCount() != len(m.Code) {
+		return false
+	}
+	functionEnvironments := ownedExceptions || wasm.ModuleFunctionReferenceCarriers(m)
+	ehMaps, err := BuildExceptionRootMapsOwned(m, ownedExceptions)
+	if err != nil {
 		return false
 	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for function := range m.Code {
 		usesSWAR, err := functionUsesSWAR(m, function)
+		usesSWAR = usesSWAR || customValues
 		if err != nil {
 			return false
 		}
@@ -25,6 +70,13 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 			return false
 		}
 		allocations, calls := 0, 0
+		if ownedExceptions {
+			count, err := ExceptionOwnedCopyCount(m, function)
+			if err != nil {
+				return false
+			}
+			allocations = count
+		}
 		tailBridge := false
 		r := wasm.NewReader(m.Code[function].BodyBytes)
 		for r.HasNext() {
@@ -38,7 +90,9 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 			}
 			switch imm.Kind {
 			case wasm.InstrCall:
-				calls++
+				if _, inline := instructions[imm.Index]; !inline {
+					calls++
+				}
 			case wasm.InstrCallIndirect:
 				calls++
 			case wasm.InstrCallRef:
@@ -62,7 +116,7 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 				}
 				if uint64(imm.Index) < uint64(m.ImportedFuncCount()) {
 					sig, ok := m.FuncSignature(imm.Index)
-					if !ok || !rootedScalarNumericTailSignature(sig) {
+					if !ok || !rootedScalarTailSignature(m, sig) {
 						return false
 					}
 					tailBridge = true
@@ -70,12 +124,28 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 			}
 			if op == 0xfb {
 				switch imm.Subopcode {
-				case 0, 1, 6, 7, 8, 9, 10:
+				case 0, 1, 6, 7, 8, 9, 10, 26, 27:
 					allocations++
 				}
 			}
+			if wasm.OpaqueStorageMutation(m, imm.Kind, imm.Index, imm.Index2) {
+				allocations++
+			}
 		}
 		plan := plans.Function(function)
+		var fixed []uint32
+		for _, rootMap := range ehMaps {
+			if rootMap.LocalFunction == uint32(function) {
+				for _, slot := range rootMap.Slots {
+					if slot.Kind == nativeabi.RootGCRef {
+						fixed = append(fixed, slot.Offset)
+					}
+				}
+			}
+		}
+		if plan != nil && !slices.Equal(plan.FixedOffsets(), fixed) {
+			return false
+		}
 		if allocations == 0 && calls == 0 {
 			if !tailBridge {
 				if plan != nil {
@@ -83,15 +153,15 @@ func validateGCFrameRootPlans(m *wasm.Module, plans *shared.GCModuleFrameRootPla
 				}
 				continue
 			}
-			if plan == nil || !plan.Candidate || !plan.Exact || !plan.Conservative || plan.AllocationMaskCount() != 0 || plan.CallMaskCount() != 0 || plan.HasFixedOffsets() || len(plan.Locals) != 0 || !plan.ValidLiveMasks() {
+			if plan == nil || !plan.Candidate || !plan.Exact || !plan.Conservative || plan.AllocationMaskCount() != 0 || plan.CallMaskCount() != 0 || len(plan.Locals) != 0 || !plan.ValidLiveMasks() {
 				return false
 			}
 			continue
 		}
-		if plan == nil || !plan.Candidate || !plan.Exact || !plan.Conservative || plan.AllocationMaskCount() != allocations || plan.CallMaskCount() != calls || plan.HasFixedOffsets() || !plan.ValidLiveMasks() {
+		if plan == nil || !plan.Candidate || !plan.Exact || !plan.Conservative || plan.AllocationMaskCount() != allocations || plan.CallMaskCount() != calls || !plan.ValidLiveMasks() {
 			return false
 		}
-		locals, ok := rv64GCFrameLocalsLayout(m, function, usesSWAR)
+		locals, ok := rv64GCFrameLocalsLayoutOwned(m, function, usesSWAR, functionEnvironments)
 		if !ok || len(locals) != len(plan.Locals) {
 			return false
 		}
@@ -125,6 +195,10 @@ func rv64GCFrameLocals(m *wasm.Module, function int) ([]shared.GCFrameLocal, boo
 }
 
 func rv64GCFrameLocalsLayout(m *wasm.Module, function int, usesSWAR bool) ([]shared.GCFrameLocal, bool) {
+	return rv64GCFrameLocalsLayoutOwned(m, function, usesSWAR, false)
+}
+
+func rv64GCFrameLocalsLayoutOwned(m *wasm.Module, function int, usesSWAR, ownedExceptions bool) ([]shared.GCFrameLocal, bool) {
 	ft, ok := m.LocalFuncType(function)
 	if !ok {
 		return nil, false
@@ -132,11 +206,19 @@ func rv64GCFrameLocalsLayout(m *wasm.Module, function int, usesSWAR bool) ([]sha
 	locals := make([]shared.GCFrameLocal, 0)
 	slot, index := 0, uint32(0)
 	add := func(t wasm.ValType) bool {
-		if rv64CollectorFrameRefType(m, t) {
+		functionRef := ownedExceptions && wasm.FunctionReferenceType(m, t)
+		externRef := wasm.ExternReferenceType(t)
+		if rv64CollectorFrameRefType(m, t) || ownedExceptions && exceptionReferenceType(t) || functionRef || externRef {
 			if len(locals) == shared.GCFrameTrackedLocalLimit {
 				return false
 			}
-			locals = append(locals, shared.GCFrameLocal{Index: index, Offset: uint32(shared.RV64CallFrameHeaderBytes + slot*8)})
+			offset := uint32(shared.RV64CallFrameHeaderBytes + slot*8)
+			if functionRef {
+				offset |= shared.GCFrameFuncRefRootFlag
+			} else if externRef {
+				offset |= shared.GCFrameExternRefRootFlag
+			}
+			locals = append(locals, shared.GCFrameLocal{Index: index, Offset: offset})
 		}
 		// SWAR uses two physical qwords for every logical local so scalar and
 		// reference homes cannot overlap either half of a vector carrier.

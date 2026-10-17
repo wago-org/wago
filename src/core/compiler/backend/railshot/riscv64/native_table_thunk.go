@@ -3,6 +3,7 @@
 package riscv64
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -16,11 +17,21 @@ const nativeTableFrameBytes = nativeImportFrameBytes + 16 + HostFixedFrameBytes 
 // reaches the skip envelope; continuation then reconstructs caller values from
 // their canonical homes. All source/descriptor lifetimes belong to the owner.
 func (f *integerEmitter) nativeTableCall(key uint64, argumentSlots, resultSlots int) (returnOffset int, stackAdjust uint32) {
+	return f.nativeTableCallKeys([]uint64{key}, argumentSlots, resultSlots)
+}
+
+func (f *integerEmitter) nativeTableCallKeys(keys []uint64, argumentSlots, resultSlots int) (returnOffset int, stackAdjust uint32) {
+	return f.nativeTableCallKeysMode(keys, argumentSlots, resultSlots, false)
+}
+
+// A source-bound checked site has already authenticated the exact descriptor's
+// declared subtype before writing transport. All physical thunk guards remain.
+func (f *integerEmitter) nativeTableCallKeysMode(keys []uint64, argumentSlots, resultSlots int, checkedType bool) (returnOffset int, stackAdjust uint32) {
 	if !f.mode.production {
 		f.err = unsupported("foreign table call requires production framed ABI")
 		return 0, 0
 	}
-	image, err := nativeTableThunkImageAtInvocation(key, argumentSlots, resultSlots, f.mode.functionIndex, f.sourcePC, f.mode.invocationContext)
+	image, err := nativeTableThunkImageAtInvocationKeysMode(keys, argumentSlots, resultSlots, f.mode.functionIndex, f.sourcePC, f.mode.invocationContext, checkedType)
 	if err != nil {
 		f.err = err
 		return 0, 0
@@ -80,7 +91,19 @@ type nativeTableThunkImage struct {
 }
 
 func nativeTableThunkImageAtInvocation(key uint64, argumentSlots, resultSlots int, functionIndex, sourcePC uint32, invocation bool) (nativeTableThunkImage, error) {
-	if argumentSlots < 0 || argumentSlots > 256 || resultSlots < 0 || resultSlots > 256 || functionIndex >= MaxFunctions {
+	return nativeTableThunkImageAtInvocationKeys([]uint64{key}, argumentSlots, resultSlots, functionIndex, sourcePC, invocation)
+}
+
+func nativeTableThunkImageAtInvocationKeys(keys []uint64, argumentSlots, resultSlots int, functionIndex, sourcePC uint32, invocation bool) (nativeTableThunkImage, error) {
+	return nativeTableThunkImageAtInvocationKeysMode(keys, argumentSlots, resultSlots, functionIndex, sourcePC, invocation, false)
+}
+
+func nativeTableThunkImageAtInvocationKeysMode(keys []uint64, argumentSlots, resultSlots int, functionIndex, sourcePC uint32, invocation, checkedType bool) (nativeTableThunkImage, error) {
+	transportBytes := nativeImportTransportBytes
+	if invocation {
+		transportBytes = nativePublicImportTransportBytes
+	}
+	if len(keys) == 0 || len(keys) > MaxFunctions || argumentSlots < 0 || argumentSlots > transportBytes/8 || resultSlots < 0 || resultSlots > transportBytes/8 || functionIndex >= MaxFunctions {
 		return nativeTableThunkImage{}, fmt.Errorf("rv64: native table bridge requires bounded signature and source index")
 	}
 	headerBytes := nativeImportFrameBytes + 16
@@ -89,8 +112,8 @@ func nativeTableThunkImageAtInvocation(key uint64, argumentSlots, resultSlots in
 	}
 	ctrlOffset := headerBytes
 	argsOffset := ctrlOffset + HostFixedFrameBytes
-	resultsOffset := argsOffset + nativeImportTransportBytes
-	viewOffset := resultsOffset + nativeImportTransportBytes
+	resultsOffset := argsOffset + transportBytes
+	viewOffset := resultsOffset + transportBytes
 	frameBytes := viewOffset
 	if invocation {
 		frameBytes += abi.RV64InvocationViewBytes
@@ -122,8 +145,24 @@ func nativeTableThunkImageAtInvocation(key uint64, argumentSlots, resultSlots in
 	guard(enc.EQ, enc.X28, enc.Zero)
 	aligned(enc.X28, 15)
 	a.Ld(enc.X6, enc.X14, coreruntime.TableEntrySigKeyOffset)
-	a.Constant64(enc.X5, int64(key))
-	guard(enc.NE, enc.X6, enc.X5)
+	if !checkedType {
+		if len(keys) == 1 {
+			a.Constant64(enc.X5, int64(keys[0]))
+			guard(enc.NE, enc.X6, enc.X5)
+		} else {
+			var matches []int
+			for _, key := range keys {
+				a.Constant64(enc.X5, int64(key))
+				matches = append(matches, a.BranchLong(enc.EQ, enc.X6, enc.X5))
+			}
+			invalid = append(invalid, a.JumpLong(false))
+			for _, site := range matches {
+				if err := a.PatchLong(site, int64(a.Len())); err != nil {
+					return nativeTableThunkImage{}, err
+				}
+			}
+		}
+	}
 	a.Ld(enc.X6, enc.X14, coreruntime.TableEntryHomeLinMemOffset)
 	homeTagMask := uint64(abi.FuncRefHomeTagMask)
 	a.Constant64(enc.X5, int64(homeTagMask))
@@ -193,8 +232,10 @@ func nativeTableThunkImageAtInvocation(key uint64, argumentSlots, resultSlots in
 	a.Constant64(enc.Scratch1, int64(argsOffset))
 	a.Add(enc.Scratch1, enc.SP, enc.Scratch1)
 	for i := 0; i < argumentSlots; i++ {
-		a.Ld(enc.Scratch0, enc.X10, int32(i*8))
-		a.Sd(enc.Scratch0, enc.Scratch1, int32(i*8))
+		source, offset := f.addressAt(enc.X10, int32(i*8), enc.X29)
+		a.Ld(enc.Scratch0, source, offset)
+		destination, offset := f.addressAt(enc.Scratch1, int32(i*8), enc.X29)
+		a.Sd(enc.Scratch0, destination, offset)
 	}
 	a.Addi(enc.X10, enc.Scratch1, 0)
 	a.Constant64(enc.X13, int64(resultsOffset))
@@ -213,7 +254,7 @@ func nativeTableThunkImageAtInvocation(key uint64, argumentSlots, resultSlots in
 	if invocation {
 		// X28 retains the qualified target entry; use X5 for the parent cursor.
 		a.Ld(enc.X5, enc.SP, 88)
-		nativeInvocationActivation(a, enc.X5, viewOffset, argsOffset, resultsOffset)
+		nativeInvocationActivation(a, enc.X5, viewOffset, argsOffset, resultsOffset, transportBytes)
 		a.Sd(enc.X9, enc.X11, -abi.RV64InvocationViewOffset)
 	}
 	copyContext(enc.X11)
@@ -253,8 +294,10 @@ func nativeTableThunkImageAtInvocation(key uint64, argumentSlots, resultSlots in
 	a.Constant64(enc.Scratch1, int64(resultsOffset))
 	a.Add(enc.Scratch1, enc.SP, enc.Scratch1)
 	for i := 0; i < resultSlots; i++ {
-		a.Ld(enc.Scratch0, enc.Scratch1, int32(i*8))
-		a.Sd(enc.Scratch0, enc.X13, int32(i*8))
+		source, offset := f.addressAt(enc.Scratch1, int32(i*8), enc.X29)
+		a.Ld(enc.Scratch0, source, offset)
+		destination, offset := f.addressAt(enc.X13, int32(i*8), enc.X29)
+		a.Sd(enc.Scratch0, destination, offset)
 	}
 	a.Ld(enc.X24, enc.SP, 48)
 	a.Addi(enc.X11, enc.X25, 0)
@@ -278,4 +321,21 @@ func nativeTableThunkImageAtInvocation(key uint64, argumentSlots, resultSlots in
 		return nativeTableThunkImage{}, err
 	}
 	return nativeTableThunkImage{code: a.B, targetReturnOffset: targetReturnOffset, frameBytes: uint32(frameBytes)}, nil
+}
+
+// NativeTableHostControlRequired reports the actual root-control read emitted
+// by every table/reference-call bridge. False positives retain host control;
+// declaration-only tables and reference storage emit no such instruction.
+// Images use fixed-width instructions; malformed spans remain conservative.
+func NativeTableHostControlRequired(code []byte) bool {
+	if len(code)&3 != 0 {
+		return true
+	}
+	const word = uint32(0xfd8)<<20 | uint32(enc.X25)<<15 | 3<<12 | uint32(enc.X15)<<7 | 3 // LD x15,-40(x25)
+	for at := 0; at < len(code); at += 4 {
+		if binary.LittleEndian.Uint32(code[at:]) == word {
+			return true
+		}
+	}
+	return false
 }

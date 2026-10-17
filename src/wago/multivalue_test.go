@@ -1,4 +1,4 @@
-//go:build linux && (amd64 || (riscv64 && wago_rv64_experimental))
+//go:build linux && (amd64 || riscv64)
 
 package wago
 

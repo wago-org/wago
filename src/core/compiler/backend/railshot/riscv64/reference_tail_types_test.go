@@ -113,7 +113,7 @@ func TestReferenceTailPrivateBoundsAndBudget(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		limit := 256
 		if vector {
-			limit = 128
+			limit = maxSWARLocals
 		}
 		for _, n := range []int{limit, limit + 1} {
 			params := make([]wasm.ValType, n)

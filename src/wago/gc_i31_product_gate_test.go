@@ -3,6 +3,7 @@ package wago
 import (
 	"encoding/hex"
 	goruntime "runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -120,18 +121,10 @@ func TestStagedGCI31ProductPlatformBoundsAndIdentityGate(t *testing.T) {
 		}
 	}
 	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
-	if stagedRV64Core {
-		if widened != nil {
-			_ = widened.Close()
-		}
-		if err == nil {
-			t.Fatal("non-pinned i31 source escaped the staged RV64 identity gate")
-		}
-		return
-	}
 	if err != nil {
 		t.Fatalf("generic i31 product compile = %v", err)
 	}
+	checkGeneralI31NamedModule(t, widened, "get_u", []uint64{7}, []uint64{7}, "")
 	_ = widened.Close()
 }
 
@@ -162,18 +155,10 @@ func TestStagedGCI31TableProductPlatformBoundsAndIdentityGate(t *testing.T) {
 		}
 	}
 	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
-	if stagedRV64 {
-		if widened != nil {
-			_ = widened.Close()
-		}
-		if err == nil {
-			t.Fatal("non-pinned i31-table source escaped the staged RV64 identity gate")
-		}
-		return
-	}
 	if err != nil {
 		t.Fatalf("generic i31-table product compile = %v", err)
 	}
+	checkGeneralI31NamedModule(t, widened, "get", []uint64{0}, []uint64{999}, "")
 	_ = widened.Close()
 }
 
@@ -204,18 +189,10 @@ func TestStagedGCI31TableGlobalInitializerPlatformBoundsAndIdentityGate(t *testi
 		}
 	}
 	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
-	if stagedRV64 {
-		if widened != nil {
-			_ = widened.Close()
-		}
-		if err == nil {
-			t.Fatal("non-pinned i31 table-global initializer escaped the staged RV64 identity gate")
-		}
-		return
-	}
 	if err != nil {
 		t.Fatalf("generic i31 table-global initializer compile = %v", err)
 	}
+	checkGeneralI31NamedModule(t, widened, "get", []uint64{0}, []uint64{42}, "")
 	_ = widened.Close()
 }
 
@@ -246,18 +223,10 @@ func TestStagedGCI31GlobalInitializerPlatformBoundsAndIdentityGate(t *testing.T)
 		}
 	}
 	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
-	if stagedRV64 {
-		if widened != nil {
-			_ = widened.Close()
-		}
-		if err == nil {
-			t.Fatal("non-pinned i31 global-global initializer escaped the staged RV64 identity gate")
-		}
-		return
-	}
 	if err != nil {
 		t.Fatalf("generic i31 global-global initializer compile = %v", err)
 	}
+	checkGeneralI31NamedModule(t, widened, "get", []uint64{}, []uint64{42}, "")
 	_ = widened.Close()
 }
 
@@ -288,18 +257,10 @@ func TestStagedGCI31AnyGlobalPlatformBoundsAndIdentityGate(t *testing.T) {
 		}
 	}
 	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
-	if stagedRV64 {
-		if widened != nil {
-			_ = widened.Close()
-		}
-		if err == nil {
-			t.Fatal("non-pinned i31 anyref-global source escaped the staged RV64 identity gate")
-		}
-		return
-	}
 	if err != nil {
 		t.Fatalf("generic i31 anyref-global compile = %v", err)
 	}
+	checkGeneralI31NamedModule(t, widened, "get_globalx", []uint64{}, []uint64{1234, 5678}, "")
 	_ = widened.Close()
 }
 
@@ -330,18 +291,10 @@ func TestStagedGCI31AnyTablePlatformBoundsAndIdentityGate(t *testing.T) {
 		}
 	}
 	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
-	if stagedRV64 {
-		if widened != nil {
-			_ = widened.Close()
-		}
-		if err == nil {
-			t.Fatal("non-pinned i31 anyref-table source escaped the staged RV64 identity gate")
-		}
-		return
-	}
 	if err != nil {
 		t.Fatalf("generic i31 anyref-table compile = %v", err)
 	}
+	checkGeneralI31NamedModule(t, widened, "get", []uint64{0}, []uint64{999}, "")
 	_ = widened.Close()
 }
 
@@ -372,17 +325,34 @@ func TestStagedGCI31RefTestPlatformBoundsAndIdentityGate(t *testing.T) {
 		}
 	}
 	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
-	if stagedRV64 {
-		if widened != nil {
-			_ = widened.Close()
-		}
-		if err == nil {
-			t.Fatal("non-pinned i31 ref.test source escaped the staged RV64 identity gate")
-		}
-		return
-	}
 	if err != nil {
 		t.Fatalf("generic i31 ref.test compile = %v", err)
+	}
+	checkGeneralI31NamedModule(t, widened, "i31", []uint64{7}, []uint64{2}, "")
+	if compiledArchitecture != 4 && widened.stagedGCStructProduct() == stagedGCStructGeneric {
+		view := widened.executionView()
+		cache := view.loadCodeCache()
+		if cache.gcI31Product == 0 {
+			t.Fatal("reference helper lacks separate i31 execution contract")
+		}
+		bad := cloneCompiledMetadata(view)
+		bad.codeCache = &compiledCodeCache{
+			gcMetadataFlags: cache.gcMetadataFlags,
+			gcStructProduct: cache.gcStructProduct,
+			stagedFeatures:  cache.stagedFeatures,
+		}
+		bad.validateMemo = &validateMemo{gcFrameRoots: view.genericGCFrameRoots(), importModuleEnds: slices.Clone(view.loadValidateMemo().importModuleEnds)}
+		blob, err := bad.MarshalBinary()
+		if err != nil {
+			t.Fatal("encode missing i31 execution contract", err)
+		}
+		loaded, err := LoadTrustedArtifact(blob)
+		if loaded != nil {
+			_ = loaded.Close()
+		}
+		if err == nil || !strings.Contains(err.Error(), "require recorded GC heap metadata") {
+			t.Fatal("heap-free generic helper admitted without i31 execution contract", err)
+		}
 	}
 	_ = widened.Close()
 }
@@ -414,17 +384,45 @@ func TestStagedGCI31RefEqPilotPlatformBoundsAndIdentityGate(t *testing.T) {
 		}
 	}
 	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
-	if stagedRV64 {
-		if widened != nil {
-			_ = widened.Close()
-		}
-		if err == nil {
-			t.Fatal("non-pinned i31 ref.eq source escaped the staged RV64 identity gate")
-		}
-		return
-	}
 	if err != nil {
 		t.Fatalf("generic i31 ref.eq compile = %v", err)
 	}
+	checkGeneralI31NamedModule(t, widened, "eq", []uint64{2, 3}, []uint64{1}, "inix")
 	_ = widened.Close()
+}
+
+// Names do not change the validated instruction or type semantics. Check both
+// native source and retained artifact execution after changing those names.
+func checkGeneralI31NamedModule(t *testing.T, c *Compiled, export string, args, want []uint64, setup string) {
+	t.Helper()
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadTrustedArtifact(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loaded.Close()
+	for _, candidate := range []*Compiled{c, loaded} {
+		imports := NewImports()
+		for _, global := range candidate.GlobalImports {
+			imports.Global(global.Module, global.Name, GlobalImport{Type: global.Type, Bits: 42, Mutable: global.Mutable})
+		}
+		in, err := Instantiate(candidate, InstantiateOptions{Imports: imports})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if setup != "" {
+			if _, err = in.Invoke(setup); err != nil {
+				in.Close()
+				t.Fatal(err)
+			}
+		}
+		got, err := in.Invoke(export, args...)
+		in.Close()
+		if err != nil || !slices.Equal(got, want) {
+			t.Fatalf("renamed %s = %v, %v; want %v", export, got, err, want)
+		}
+	}
 }

@@ -1,10 +1,9 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -81,8 +80,8 @@ func TestRV64PublicReferenceFunctionImportsRetainedAdmission(t *testing.T) {
 				}
 			})
 		}
-		public := rv64ReferenceImportCopy(c)
-		public.Exports["reference"] = 5
+		publicSource := rv64ReferenceAddSourceExport(t, wasmtest.ClosedReferenceImports(vector, true, true), wasmtest.ExportEntry("reference", 0, 5))
+		public := rv64NativeTailCompile(t, "reference-import-public-export", publicSource, false)
 		if err := public.validate(); err != nil {
 			t.Fatal("ephemeral imported-profile reference export", err)
 		}
@@ -109,7 +108,7 @@ func TestRV64PublicReferenceFunctionImportsRetainedAdmission(t *testing.T) {
 			}
 		}
 		v.Imports[2] = name[:lo]
-		if lo == 4 || v.validate() != nil {
+		if lo == 4 || rv64ValidateReferenceFunctions(v) != nil {
 			t.Fatal("exact retained import name bound")
 		}
 		v.Imports[2] = name[:lo+1]
@@ -149,14 +148,21 @@ func TestRV64PublicReferenceFunctionImportsRejectHostShapes(t *testing.T) {
 				defer mod.Close()
 				imports := NewImports().Function("env", "unused", HostCallFunc(func(HostCall) { t.Fatal("unsupported unused host called") }))
 				in, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
-				if in != nil {
+				if wide {
+					if err != nil || in == nil {
+						t.Fatal("wide unused scalar host rejected", err)
+					}
+					if got, err := in.Invoke("run"); err != nil || len(got) != 0 {
+						t.Fatal("unused scalar host execution", got, err)
+					}
 					in.Close()
-				}
-				if in != nil || !errors.Is(err, railshot.ErrUnsupported) {
-					t.Fatal("unsupported unused host published", err)
-				}
-				if cc := c.loadCodeCache(); cc != nil && (cc.sealed || cc.refs != 0) {
-					t.Fatal("unsupported unused host acquired executable mapping")
+				} else {
+					if in != nil || err == nil || !strings.Contains(err.Error(), "v128 host callbacks are not supported") {
+						t.Fatal("unsupported vector host published", err)
+					}
+					if cc := c.loadCodeCache(); cc != nil && (cc.sealed || cc.refs != 0) {
+						t.Fatal("unsupported vector host acquired executable mapping")
+					}
 				}
 			})
 		}

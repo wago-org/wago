@@ -25,6 +25,8 @@ type profileModuleCapture struct {
 	shared      shared.ScalarSourceRecorder
 	regions     []jitprofile.Region
 	sources     []shared.NativeSourceRange
+	sites       []shared.NativeCodeSite
+	unwind      []jitprofile.UnwindRange
 }
 type profileFunctionCapture struct {
 	module           *profileModuleCapture
@@ -44,6 +46,20 @@ func newProfileModule(enabled, sources bool, functions int) profileModuleState {
 }
 func (p profileModuleState) baseProfileMode() profileMode { return profileMode{profileModuleState: p} }
 func (p profileMode) moduleProfile() profileModuleState   { return p.profileModuleState }
+func (p profileModuleState) hasFinalizedFunctionProfiles(functions []FunctionInfo, enabled bool) bool {
+	if !enabled {
+		return p.profile == nil
+	}
+	if p.profile == nil || len(p.profile.functions) != len(functions) {
+		return false
+	}
+	for i, layout := range p.profile.functions {
+		if layout.Entry != functions[i].Entry || layout.CodeBytes != functions[i].CodeBytes || layout.validate() != nil {
+			return false
+		}
+	}
+	return true
+}
 func (p profileModuleState) newFunctionProfile(fn *wasm.Func, function uint32) profileMode {
 	mode := p.baseProfileMode()
 	if p.profile != nil {
@@ -197,5 +213,21 @@ func (p profileModuleState) prepareProfile(codeBytes int) error {
 func (p profileModuleState) installProfileStats(stats *ModuleStats) {
 	if p.profile != nil {
 		stats.ProfileRegions, stats.SourceRanges = p.profile.regions, p.profile.sources
+		stats.CodeSites, stats.UnwindRanges = p.profile.sites, p.profile.unwind
 	}
+}
+
+func (p profileModuleState) prepareProfileCode(code []byte, functions []FunctionInfo, unwind bool) error {
+	if err := p.prepareProfile(len(code)); err != nil {
+		return err
+	}
+	if p.profile == nil {
+		return nil
+	}
+	sites, ranges, err := profileInstructionMetadata(code, functions, p.profile.regions, p.profile.wantSources, unwind)
+	if err != nil {
+		return err
+	}
+	p.profile.sites, p.profile.unwind = sites, ranges
+	return nil
 }

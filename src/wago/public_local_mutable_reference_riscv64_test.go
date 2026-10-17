@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -138,13 +138,7 @@ func TestRV64PublicLocalMutableReferenceMetadataAdmission(t *testing.T) {
 			}
 		}
 		exported := rv64ReplaceTableStageSection(t, source, 7, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("target", 0, 3), wasmtest.ExportEntry("hidden", 3, 0))))
-		bad, err := Compile(NewRuntimeConfig(), exported)
-		if bad != nil {
-			bad.Close()
-		}
-		if err == nil || bad != nil {
-			t.Fatal("mutable reference export source", err)
-		}
+		rv64RequireCore3SourceValidation(t, exported)
 	}
 }
 

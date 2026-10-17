@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -76,6 +76,9 @@ func railshotRecordGlobalDescriptorDependencyLocked(owner *globalOwner, producer
 }
 
 func railshotPublishGlobalDescriptorDependencyLocked(owner *globalOwner, mapState *retainedInstanceRoot, batch *globalDescriptorDependencyBatch) {
+	if mapState == nil || !mapState.precise && len(mapState.proxyDescriptors) != 0 {
+		return
+	}
 	if row := owner.descriptorDependencies.rows[mapState]; row != nil && (row.phase == rv64GlobalDescriptorBootstrap || row.phase == rv64GlobalDescriptorFailed) {
 		batch.publications.add(row)
 	}

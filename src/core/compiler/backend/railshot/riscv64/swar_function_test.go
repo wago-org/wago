@@ -16,7 +16,7 @@ func swarValidatedFunction(t *testing.T, fixture fixtureFunc) (*wasm.Func, *wasm
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
+	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: uint32(maxSWARLocals + 1)}); err != nil {
 		t.Fatal(err)
 	}
 	ft, ok := m.LocalFuncType(0)
@@ -54,7 +54,7 @@ func TestSWARWholeFunctionAdmissionAndBoundedSlots(t *testing.T) {
 		{params: []byte{0x7b}, result: 0x7b, body: []byte{0x20, 0, 0x10, 0, 0x0b}},    // direct vector call remains pending
 		{params: []byte{0x7b}, result: 0x7b, locals: []byte{1, 1, 0x70}, body: []byte{0x20, 0, 0x0b}},
 		{params: []byte{0x7b}, result: 0x7b, body: []byte{0x20, 0, 0x0f, 0x20, 0, 0x10, 0, 0x1a, 0x0b}},
-		{params: []byte{0x7b}, result: 0x7b, locals: []byte{1, 128, 1, 0x7b}, body: []byte{0x20, 0, 0x0b}},
+		{params: []byte{0x7b}, result: 0x7b, locals: append(uleb([]byte{1}, uint32(maxSWARLocals)), 0x7b), body: []byte{0x20, 0, 0x0b}},
 	} {
 		fn, ft := swarValidatedFunction(t, fixture)
 		if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil {
@@ -68,8 +68,8 @@ func TestSWARWholeFunctionAdmissionAndBoundedSlots(t *testing.T) {
 			t.Fatal("malformed pilot body emitted", body, err)
 		}
 	}
-	body := bytes.Repeat([]byte{0x20, 0}, 257)
-	body = append(body, bytes.Repeat([]byte{0x1a}, 256)...)
+	body := bytes.Repeat([]byte{0x20, 0}, maxSWAROperands+1)
+	body = append(body, bytes.Repeat([]byte{0x1a}, maxSWAROperands)...)
 	body = append(body, 0x0b)
 	fn, ft := swarValidatedFunction(t, fixtureFunc{params: []byte{0x7b}, result: 0x7b, body: body})
 	if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil {
@@ -78,7 +78,7 @@ func TestSWARWholeFunctionAdmissionAndBoundedSlots(t *testing.T) {
 }
 
 func TestSWARWholeFunctionArityAndInstructionBudget(t *testing.T) {
-	for _, count := range []int{128, 129} {
+	for _, count := range []int{maxSWARLocals, maxSWARLocals + 1} {
 		for _, params := range []bool{false, true} {
 			fixture := fixtureFunc{params: []byte{0x7b}, result: 0x7b, body: []byte{0x20, 0, 0x0b}}
 			if params {
@@ -90,7 +90,7 @@ func TestSWARWholeFunctionArityAndInstructionBudget(t *testing.T) {
 			}
 			fn, ft := swarValidatedFunction(t, fixture)
 			code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true})
-			if count == 128 {
+			if count == maxSWARLocals {
 				if err != nil || len(code) == 0 {
 					t.Fatal("maximum pair arity", params, err)
 				}

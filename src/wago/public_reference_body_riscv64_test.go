@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -10,7 +10,6 @@ import (
 	"slices"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -221,7 +220,7 @@ func TestRV64PublicBodyReferenceMissingDirectoryTraps(t *testing.T) {
 	}
 }
 
-func TestRV64PublicBodyReferenceHostReexportRejected(t *testing.T) {
+func TestRV64PublicBodyReferenceHostReexports(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "ref-body-vectorfalse-importedtrue", rv64BodyReferenceModule(false, true), artifact)
@@ -233,13 +232,23 @@ func TestRV64PublicBodyReferenceHostReexportRejected(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, binding := range []any{func(v uint64) uint64 { return v }, host} {
+			for _, binding := range []any{HostCallFunc(func(call HostCall) { copy(call.ResultSlots(), call.ParamSlots()) }), host} {
 				in, err := rt.Instantiate(context.Background(), mod, WithImports(NewImports().Function("env", "target", binding)))
-				if in != nil {
-					in.Close()
+				if in == nil || err != nil {
+					t.Fatal("host reexport constructor", err)
 				}
-				if in != nil || !errors.Is(err, railshot.ErrUnsupported) {
-					t.Fatal("host reexport admitted", err)
+				for _, input := range []uint64{0, 1, ^uint64(0)} {
+					if got, err := in.Invoke("target", input); err != nil || !slices.Equal(got, []uint64{input}) {
+						t.Fatal("host reexport identity", got, err)
+					}
+				}
+				for _, input := range []uint64{0, 1} {
+					if got, err := in.Invoke("carrier", input); err != nil || !slices.Equal(got, []uint64{1 - input}) {
+						t.Fatal("host reference carrier", got, err)
+					}
+				}
+				if err := in.Close(); err != nil {
+					t.Fatal(err)
 				}
 			}
 			mod.Close()

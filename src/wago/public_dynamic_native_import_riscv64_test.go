@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -26,8 +26,10 @@ func rv64DynamicNativeImportModule(types []wasm.ValType, mixed bool, typed ...bo
 	im := append(append(wasmtest.Name("env"), wasmtest.Name("target")...), 0, 0)
 	var identity, args []byte
 	for i := range types {
-		identity = append(identity, 0x20, byte(i))
-		args = append(args, 0x20, byte(i))
+		identity = append(identity, 0x20)
+		identity = append(identity, wasmtest.ULEB(uint32(i))...)
+		args = append(args, 0x20)
+		args = append(args, wasmtest.ULEB(uint32(i))...)
 	}
 	identity = append(identity, 0x0b)
 	var call []byte
@@ -100,7 +102,7 @@ func rv64PublicDynamicNativeImportSourceArtifact(t *testing.T, reference bool) {
 						t.Fatal(err)
 					}
 					defer in.Close()
-					if len(producer.funcRefDescs) != 40 || binary.LittleEndian.Uint64(in.funcRefDescs[40:]) == uint64(producer.base+uintptr(producer.c.Entry[0])) {
+					if len(producer.funcRefDescs) != 0 || producer.c.needsFuncRefContextHeader || producer.c.NeedsFuncRefDescs || binary.LittleEndian.Uint64(in.funcRefDescs[40:]) == uint64(producer.base+uintptr(producer.c.Entry[0])) {
 						t.Fatal("ordinary proxy or bare producer identity changed")
 					}
 					if rv64StaticTailPlanCount(rv64NativeTailModule(c)) != 0 || in.pluginState.Load().railshotInvocation.tailDispatcher != nil {
@@ -153,12 +155,12 @@ func TestRV64PublicDynamicNativeImportRejectsUnsupportedHost(t *testing.T) {
 			}
 		})
 	}
-	types := make([]wasm.ValType, 65)
+	types := make([]wasm.ValType, railshot.MaxVectorFunctionValues+1)
 	for i := range types {
 		types[i] = wasm.I32
 	}
 	if c, err := rv64NativeTailConfig().Compile(rv64DynamicNativeImportModule(types, true)); c != nil || !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("unsupported wide65 host source", err)
+		t.Fatal("unsupported over-limit host source", err)
 	}
 }
 

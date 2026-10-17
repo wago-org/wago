@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -8,13 +8,12 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
-	"unsafe"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
-const rv64NativeImportTransportBytes = 256 * 8
+const rv64NativeImportTransportBytes = railshot.MaxNativeCallSlots * 8
 
 // Native imported starts enter the constructor's already published owned bridge,
 // with the same invocation identity, cancellation and stack used by local starts.
@@ -44,6 +43,12 @@ func railshotCheckImportedStartCompletion(in *Instance, ctx context.Context) err
 			return err
 		}
 	}
+	// An admitted plugin operation retains its terminal observers through runtime
+	// shutdown. A normal imported-start return must reach those observers before
+	// Runtime.instantiateOrigin rejects publication of the closed instance.
+	if in.rt != nil && in.rt.isClosed() && in.constructionReservationSnapshot() != nil {
+		return nil
+	}
 	if in.isLogicallyClosed() || in.rt != nil && in.rt.isClosed() {
 		return fmt.Errorf("instance is closed")
 	}
@@ -56,13 +61,9 @@ func railshotNativeContextTrapABI() bool { return true }
 // narrow: the producer may make wider internal calls on the same transport.
 // Admission bounds the edge count before this footprint is computed.
 func railshotNativeImportArenaBytes(c *Compiled, imports resolvedImports) int {
-	bytes := 0
-	for i := range c.Imports {
-		if _, native := imports[c.functionImportBindingKey(i)].(*InstanceExport); native {
-			bytes += 2 * rv64NativeImportTransportBytes
-		}
-	}
-	return bytes
+	// Public native imports carry arguments/results in their checked stack
+	// activation. Their certificate retains no unused arena transport buffers.
+	return 0
 }
 
 func railshotNativeContextIdentity(jm *coreruntime.JobMemory) uintptr { return jm.RV64NativeContext() }
@@ -104,8 +105,10 @@ func railshotValidateNativeExport(c *Compiled, index int, export *InstanceExport
 	if expectedProvider := consumerProduct.linkProviderProduct(); expectedProvider != 0 && producer.c.stagedGCTypeSubtypingProduct() != expectedProvider {
 		return fmt.Errorf("native instance export signature mismatch: producer is outside the exact gc/type-subtyping link product")
 	}
-	allowSubtype := (rv64GCTypeSubtypingLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingLinkConsumer &&
-		rv64GCTypeSubtypingLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingLinkProvider) ||
+	allowSubtype := rv64PrimitiveReferenceContract(c) && rv64PrimitiveReferenceContract(producer.c) ||
+		(c.usesDynamicFuncRefTest() && rv64FreshRootedGC(c) && (rv64FreshRootedGC(producer.c) || rv64PrimitiveReferenceContract(producer.c))) ||
+		(rv64GCTypeSubtypingLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingLinkConsumer &&
+			rv64GCTypeSubtypingLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingLinkProvider) ||
 		(rv64GCTypeSubtypingFinalityLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingFinalityLinkConsumer &&
 			rv64GCTypeSubtypingFinalityLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingFinalityLinkProvider) ||
 		(rv64GCTypeSubtypingStructLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingStructLinkConsumer &&
@@ -159,7 +162,7 @@ func railshotNativeImportCode(c *Compiled, export *InstanceExport, arena *coreru
 	target := railshot.NativeImportTarget{
 		Entry: producer.base + uintptr(producer.c.Entry[export.localIdx]),
 		Home:  producer.jm.LinMemBase(), Context: producer.nativeContext,
-		Arguments: arena.Alloc(rv64NativeImportTransportBytes), Results: arena.Alloc(rv64NativeImportTransportBytes),
+
 		ArgumentSlots: args, ResultSlots: results, StackOwnedActivation: true, InvocationContext: true, HostTrampoline: trampoline,
 	}
 	if len(construction.records) != 0 {
@@ -285,14 +288,18 @@ func railshotResolveNativeHostControl(root *Instance, ctrl uintptr) *Instance {
 	if root == nil || root.eng == nil || ctrl&15 != 0 || ctrl < root.eng.StackLimit()+16 || ctrl > root.eng.StackTop() || root.eng.StackTop()-ctrl < railshot.HostFixedFrameBytes {
 		return nil
 	}
-	identity := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(ctrl-16)), 8)))
+	view := root.eng.NativeStackRange(ctrl-16, railshot.HostFixedFrameBytes+16)
+	if view == nil {
+		return nil
+	}
+	identity := uintptr(binary.LittleEndian.Uint64(view))
 	rv64NativeHostOwners.Lock()
 	owner := rv64NativeHostOwners.values[identity].owner
 	rv64NativeHostOwners.Unlock()
 	if owner == nil {
 		return nil
 	}
-	frame := unsafe.Slice((*byte)(offHeapPtr(ctrl)), railshot.HostFixedFrameBytes)
+	frame := view[16:]
 	home := uintptr(binary.LittleEndian.Uint64(frame[railshot.HostSavedHomeOffset:]))
 	if owner.jm == nil || owner.jm.LinMemBase() != home || owner.nativeContext != identity || railshotNativeContextIdentity(owner.jm) != identity {
 		return nil
@@ -318,23 +325,48 @@ func railshotInvokeNativeReexport(in *Instance, name string, index int, args []u
 	if len(args) != params {
 		return nil, true, fmt.Errorf("%s expects %d arg slot(s), got %d", name, params, len(args))
 	}
-	if params > 256 || results > 256 || params > len(in.serArgs)/8 || results > len(in.results)/8 || results > len(in.resultVals) {
+	if params > railshot.MaxNativeCallSlots || results > railshot.MaxNativeCallSlots || params > len(in.serArgs)/8 || results > len(in.results)/8 || results > len(in.resultVals) {
 		return nil, true, fmt.Errorf("RV64 native reexport exceeds instance call buffers")
 	}
 	// Read the immutable per-instance snapshot, not the currently bound shared
 	// memory home, which may still name a different instance between entries.
-	ctx := unsafe.Slice((*byte)(offHeapPtr(in.nativeContext)), coreruntime.InstanceContextBytes)
+	ctx := in.ar.AllocatedRange(in.nativeContext, coreruntime.InstanceContextBytes)
+	if len(ctx) != coreruntime.InstanceContextBytes {
+		return nil, true, fmt.Errorf("RV64 native reexport context is outside its retained arena")
+	}
 	dispatch := uintptr(binary.LittleEndian.Uint64(ctx[coreruntime.InstanceContextImportDispatchOffset:]))
 	if dispatch == 0 {
 		return nil, true, fmt.Errorf("RV64 native reexport has no owned dispatch")
 	}
-	row := unsafe.Slice((*byte)(offHeapPtr(dispatch)), in.c.NumImports*coreruntime.ImportDispatchEntryBytes)[index*coreruntime.ImportDispatchEntryBytes:]
+	directory := in.ar.AllocatedRange(dispatch, in.c.NumImports*coreruntime.ImportDispatchEntryBytes)
+	if len(directory) != in.c.NumImports*coreruntime.ImportDispatchEntryBytes {
+		return nil, true, fmt.Errorf("RV64 native reexport dispatch is outside its retained arena")
+	}
+	row := directory[index*coreruntime.ImportDispatchEntryBytes:]
 	entry := uintptr(binary.LittleEndian.Uint64(row[coreruntime.ImportDispatchCodePtrOffset:]))
 	base := offHeapSlicePtr(in.thunkMem)
 	if entry == 0 || entry&15 != 0 || entry < base || entry-base >= uintptr(len(in.thunkMem)) {
 		return nil, true, fmt.Errorf("RV64 native reexport requires its owned framed bridge")
 	}
-	marshalPublicScalarArgs(in.serArgs, args, sig.Params)
+	if err := in.collectGenericGCAtBoundary(); err != nil {
+		return nil, true, err
+	}
+	if hasReferenceValType(sig.Params) {
+		owners, err := railshotBeginPublicFuncrefArguments(in)
+		if err != nil {
+			return nil, true, err
+		}
+		defer railshotReleasePublicFuncrefArguments(owners)
+		exact, _, err := exactFuncSignatureView(sig, in.c.Types)
+		if err != nil {
+			return nil, true, err
+		}
+		if err := in.marshalPublicReferenceArgs(name, args, sig.Params, exact, &owners); err != nil {
+			return nil, true, err
+		}
+	} else {
+		marshalPublicScalarArgs(in.serArgs, args, sig.Params)
+	}
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
@@ -345,7 +377,16 @@ func railshotInvokeNativeReexport(in *Instance, name string, index int, args []u
 		}
 		defer stop()
 	}
-	if err := in.callNativeSyncWithTrapContext(entry, in.trap, contexts.callback); err != nil {
+	var executionErr error
+	if in.syncMode {
+		executionErr = in.callNativeSyncWithTrapContext(entry, in.trap, contexts.callback)
+	} else {
+		executionErr = in.callNativeAsync(entry, false)
+		if executionErr == nil {
+			executionErr = in.replayHostLog()
+		}
+	}
+	if err := in.reconcileGCGlobalRootsAfter(executionErr); err != nil {
 		return nil, true, err
 	}
 	out := in.resultVals[:results]
@@ -364,6 +405,15 @@ func railshotInvokeNativeReexport(in *Instance, name string, index int, args []u
 			slot++
 		}
 	}
+	if hasReferenceValType(sig.Results) {
+		_, exact, err := exactFuncSignatureView(sig, in.c.Types)
+		if err != nil {
+			return nil, true, err
+		}
+		if err := in.translatePublicReferenceResultsMode(name, out, sig.Results, exact, true); err != nil {
+			return nil, true, err
+		}
+	}
 	runtime.KeepAlive(in)
 	return out, true, nil
 }
@@ -374,8 +424,18 @@ func railshotInvokeNativeReexport(in *Instance, name string, index int, args []u
 // can reach signatures with no local definition, so their frozen type directory
 // contributes too, including currently unused indirect signatures.
 func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, error) {
+	if rv64StructuralCodecMetadata(c) {
+		// This legacy image declares no executable RV64 ABI. Common codec
+		// validation has checked its stored signatures; native transport sizing
+		// is only needed after execution admission succeeds.
+		return params, results, nil
+	}
 	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.importFuncSigs) != c.NumImports {
 		return 0, 0, fmt.Errorf("RV64 imported call signature directory is invalid")
+	}
+	if c.usesDynamicFuncRefTest() {
+		params = max(params, 3)
+		results = max(results, 1)
 	}
 	for _, index := range c.Exports {
 		if index < 0 || index >= c.NumImports+len(c.Funcs) {
@@ -384,11 +444,11 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 	}
 	for _, sig := range c.importFuncSigs {
 		p, err := valTypesSlots(sig.Params)
-		if err != nil || p > 256 {
+		if err != nil || p > railshot.MaxNativeCallSlots {
 			return 0, 0, fmt.Errorf("RV64 imported function parameter slot bound")
 		}
 		r, err := valTypesSlots(sig.Results)
-		if err != nil || r > 256 {
+		if err != nil || r > railshot.MaxNativeCallSlots {
 			return 0, 0, fmt.Errorf("RV64 imported function result slot bound")
 		}
 		params, results = max(params, p), max(results, r)
@@ -464,9 +524,10 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 			return params, results, nil
 		}
 		rootedGC := rv64FreshRootedGC(c)
+		functionGraph := compiledFunctionOnlyTypeGraph(c) || rv64PrimitiveReferenceDeclarations(c)
 		for i := range c.Types {
 			typ := &c.Types[i]
-			if rootedGC {
+			if rootedGC || functionGraph {
 				// Generic rooted modules retain their complete GC type graph next to
 				// the function signatures. Struct and array definitions are not
 				// callable directory entries, while reference values in a function
@@ -507,6 +568,9 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 }
 
 func rv64RootedSignatureSlots(values []ValueTypeDescriptor) (int, error) {
+	if len(values) > railshot.MaxVectorFunctionValues {
+		return 0, fmt.Errorf("RV64 rooted signature value bound")
+	}
 	slots := 0
 	for _, value := range values {
 		switch value.Kind {
@@ -517,7 +581,7 @@ func rv64RootedSignatureSlots(values []ValueTypeDescriptor) (int, error) {
 		default:
 			return 0, fmt.Errorf("RV64 rooted signature carrier kind")
 		}
-		if slots > 256 {
+		if slots > railshot.MaxNativeCallSlots {
 			return 0, fmt.Errorf("RV64 rooted signature physical slot bound")
 		}
 	}
@@ -536,7 +600,7 @@ func rv64IndirectSignatureSlots(values []ValueTypeDescriptor) (int, error) {
 		default:
 			return 0, fmt.Errorf("RV64 indirect signature requires numeric carriers")
 		}
-		if slots > 256 {
+		if slots > railshot.MaxNativeCallSlots {
 			return 0, fmt.Errorf("RV64 indirect signature physical slot bound")
 		}
 	}
@@ -576,11 +640,31 @@ func railshotCanReenter(in *Instance, id invocationID) bool {
 	return id != 0 && state.railshotInvocation.gateOwner == id
 }
 
+// Select the scope while native serialization still protects the active tail
+// generation. The parked entry retains that generation until this callback has
+// resumed, so retained Caller values can safely refer to its durable storage.
+func railshotRetainedCallbackHostScope(in *Instance, ctrl uintptr, state *instancePluginState, parent context.Context) *hostCallScope {
+	if in == nil || state == nil || ctrl == 0 || ctrl == offHeapSlicePtr(in.ctrl) {
+		return nil
+	}
+	generation := state.railshotInvocation.activeTailGeneration
+	if generation == nil || generation.caller != in {
+		return nil
+	}
+	scope := &generation.hostScope
+	scope.parentMu.Lock()
+	if scope.active.Load() == 0 {
+		scope.parent = parent
+	}
+	scope.parentMu.Unlock()
+	return scope
+}
+
 // Independent roots can park in one producer simultaneously. Each foreign
 // callback needs its own generation so expiry of one cannot revoke another.
-func railshotCallbackHostScope(in *Instance, ctrl uintptr, ordinary *hostCallScope) *hostCallScope {
-	if owner, registered := hostControlInstances.Load(ctrl); !registered || owner != in {
-		return new(hostCallScope)
+func railshotCallbackHostScope(in *Instance, ctrl uintptr, ordinary *hostCallScope, parent context.Context) *hostCallScope {
+	if in != nil && ctrl != 0 && ctrl == offHeapSlicePtr(in.ctrl) {
+		return ordinary
 	}
-	return ordinary
+	return &hostCallScope{railshotHostScopeParent: railshotHostScopeParent{parent: parent, bound: true}}
 }

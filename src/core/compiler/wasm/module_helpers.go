@@ -784,7 +784,11 @@ func (m *Module) StructuralTypeKeyChecked(typeIdx uint32) (uint64, bool) {
 	if !ok {
 		return 0, false
 	}
-	if compTypeHasIndexedReferences(ft) || m.typeInNonSingletonRecGroup(typeIdx) {
+	sub, declared := m.TypeSubType(typeIdx)
+	if !declared {
+		return 0, false
+	}
+	if compTypeHasIndexedReferences(ft) || m.typeInNonSingletonRecGroup(typeIdx) || !sub.Final || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 		return m.structuralIndexedFuncTypeKey(typeIdx)
 	}
 	return StructuralFuncTypeKey(ft), true
@@ -962,7 +966,14 @@ func structuralLegacyValTypeByte(t ValType) byte {
 }
 
 func StructuralFuncTypeKey(ft *CompType) uint64 {
-	encoded := make([]byte, 0, 16+8*(len(ft.Params)+len(ft.Results)))
+	// Native call signatures have at most 256 parameters and 256 results.
+	// Each encoded value uses at most four bytes. Larger parser-side shapes
+	// keep the heap fallback without retaining scratch storage in module state.
+	var inline [16 + 4*512]byte
+	encoded := inline[:0]
+	if len(ft.Params)+len(ft.Results) > 512 {
+		encoded = make([]byte, 0, 16+8*(len(ft.Params)+len(ft.Results)))
+	}
 	mixU32 := func(v uint32) {
 		encoded = append(encoded, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
 	}

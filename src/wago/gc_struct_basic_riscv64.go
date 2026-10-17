@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -72,8 +72,11 @@ func rv64GCStructBasicMetadata(c *Compiled, requireInitializers bool) bool {
 			return false
 		}
 	}
-	wantDescs := []nativegc.TypeDesc{{ID: 0, Kind: corergc.KindStruct, Fields: []nativegc.FieldDesc{{Kind: corergc.StorageF32}, {Kind: corergc.StorageF32, Offset: 4}, {Kind: corergc.StorageF32, Offset: 8}}, Size: 12, Align: 4, Final: true}}
-	wantDescs = append(wantDescs, nativegc.TypeDesc{ID: 1, Kind: corergc.KindFunc, Final: true}, nativegc.TypeDesc{ID: 2, Kind: corergc.KindFunc, Final: true}, nativegc.TypeDesc{ID: 3, Kind: corergc.KindFunc, Final: true}, nativegc.TypeDesc{ID: 4, Kind: corergc.KindFunc, Final: true}, nativegc.TypeDesc{ID: 5, Kind: corergc.KindFunc, Final: true})
+	wantDescs := [6]nativegc.TypeDesc{
+		{ID: 0, Kind: corergc.KindStruct, Fields: []nativegc.FieldDesc{{Kind: corergc.StorageF32}, {Kind: corergc.StorageF32, Offset: 4}, {Kind: corergc.StorageF32, Offset: 8}}, Size: 12, Align: 4, Final: true},
+		{ID: 1, Kind: corergc.KindFunc, Final: true}, {ID: 2, Kind: corergc.KindFunc, Final: true},
+		{ID: 3, Kind: corergc.KindFunc, Final: true}, {ID: 4, Kind: corergc.KindFunc, Final: true}, {ID: 5, Kind: corergc.KindFunc, Final: true},
+	}
 	for i, want := range wantDescs {
 		got := c.GCTypeDescs[i]
 		if got.ID != want.ID || got.Kind != want.Kind || !slices.Equal(got.Fields, want.Fields) || got.Elem != want.Elem || got.Size != want.Size || got.ElemSize != want.ElemSize || got.Align != want.Align || got.HasRefs != want.HasRefs || got.Final != want.Final || got.Super != want.Super || got.HasSuper != want.HasSuper {

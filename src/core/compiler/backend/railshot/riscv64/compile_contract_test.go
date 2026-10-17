@@ -66,12 +66,12 @@ func TestProductionDecodedCompilerRejectsSemanticDependencies(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, opts := range []CompileOptions{
-		{ElideBoundsChecks: true}, {SyncHostCalls: true}, {ImportBindings: []ImportBinding{{Dynamic: true}}},
+		{SyncHostCalls: true}, {ImportBindings: []ImportBinding{{Dynamic: true}}},
 		{GCTypeSubtypingRefTest: true}, {GCStructHelpers: true}, {GCArrayHelpers: true},
 		{Profile: true}, {SourceMaps: true}, {UnwindMaps: true}, {Stats: &ModuleStats{}}, {CollectInlineReport: true},
 		{Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: []gc.TypeDesc{{Kind: gc.KindStruct}}}}},
 		{Codegen: codegen.Options{Module: codegen.ModuleInfo{Features: codegen.Features{GC: true}}}},
-		{Optimizations: map[string]bool{"reg-abi": true}}, {SyncHostSlots: -1}, {SyncHostSlots: 65536},
+		{SyncHostSlots: -1}, {SyncHostSlots: 65536},
 	} {
 		if opts.Stats != nil && diagnosticsEnabled || opts.Profile && profileEnabled {
 			continue // Finalized sizes are qualified independently of profiling.
@@ -86,8 +86,8 @@ func TestProductionDecodedCompilerRejectsSemanticDependencies(t *testing.T) {
 	if image, err := CompileModuleWith(nil, CompileOptions{}); err == nil || image != nil {
 		t.Fatal("nil decoded module admitted")
 	}
-	if SetOptKnob("reg-abi", true) || len(OptKnobs()) != 0 {
-		t.Fatal("unimplemented optimization advertised")
+	if !SetOptKnob("reg-abi", true) || len(OptKnobs()) != 4 {
+		t.Fatal("qualified optimization directory mismatch")
 	}
 }
 
@@ -121,5 +121,35 @@ func TestProductionSourceRetainsPrivateWireAdmission(t *testing.T) {
 	}
 	if err := AdmitProductionSource(base); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestProductionGuardContractBeforeStaging(t *testing.T) {
+	for _, vector := range []bool{false, true} {
+		fn := fixtureFunc{result: 0x7f, body: []byte{0x41, 7, 0x0b}}
+		if vector {
+			fn = fixtureFunc{params: []byte{0x7b}, result: 0x7b, body: []byte{0x20, 0, 0x0b}}
+		}
+		m, err := wasm.DecodeModule(binaryModule(fn))
+		if err != nil {
+			t.Fatal(err)
+		}
+		memory := wasm.MemType{Limits: wasm.Limits{Min: 1, Max: 2, HasMax: true}}
+		m.Memories = []wasm.MemType{memory}
+		image, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: true, DeferCodeMapping: true})
+		if err != nil || image == nil {
+			t.Fatal("memory32 guard contract", vector, err)
+		}
+		for _, shared := range []bool{false, true} {
+			bad := memory
+			bad.Shared = shared
+			bad.Limits.Addr64 = !shared
+			m.Memories[0] = bad
+			staged := 0
+			image, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: true, DeferCodeMapping: true, MemoryPressure: func() { staged++ }})
+			if image != nil || !errors.Is(err, ErrUnsupported) || staged != 0 {
+				t.Fatal("invalid guard contract staged", vector, shared, err, staged)
+			}
+		}
 	}
 }

@@ -1,9 +1,8 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -26,7 +25,7 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 		for i := 0; i < c.NumImports; i++ {
 			target, native := imports[c.functionImportBindingKey(i)].(*InstanceExport)
 			if !native {
-				if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil && !rv64PublicHostReferenceBoundary(c) && !rv64PublicDynamicHostReferenceBoundary(c) {
+				if err := rv64ValidateHostTailSignature(c, c.importFuncSigs[i]); err != nil {
 					return err
 				}
 				// Ordinary admission authenticates the callback or owned handle
@@ -63,7 +62,7 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 		}
 		target, ok := imports[c.functionImportBindingKey(int(p.ImportIndex))].(*InstanceExport)
 		if !ok {
-			if err := rv64ScalarHostSignature(c.importFuncSigs[p.ImportIndex]); err != nil && !rv64PublicHostReferenceBoundary(c) && !rv64PublicDynamicHostReferenceBoundary(c) {
+			if err := rv64ValidateHostTailSignature(c, c.importFuncSigs[p.ImportIndex]); err != nil {
 				return err
 			}
 			// The ordinary import admission below authenticates callback/owned
@@ -79,10 +78,7 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 		if err := producer.beginInvocation(); err != nil {
 			return err
 		}
-		valid := len(producer.funcRefDescs) >= coreruntime.FuncRefDescBytes
-		if valid {
-			valid = binary.LittleEndian.Uint64(producer.funcRefDescs[coreruntime.FuncRefContextOffset:]) == uint64(producer.nativeContext) && binary.LittleEndian.Uint64(producer.funcRefDescs[coreruntime.TableEntryHomeLinMemOffset:]) == uint64(producer.jm.LinMemBase()) && binary.LittleEndian.Uint64(rv64NativeInvocationContext(producer)[16:]) == uint64(offHeapSlicePtr(producer.funcRefDescs))
-		}
+		valid := rv64NativeOwnerContextValid(producer)
 		producer.endInvocation()
 		if !valid {
 			return fmt.Errorf("%w: RV64 native tail target has no canonical context anchor", railshot.ErrUnsupported)
@@ -108,6 +104,12 @@ func rv64TailTypes(values []ValType) ([]wasm.ValType, error) {
 			out[i] = wasm.FuncRef
 		case ValExternRef:
 			out[i] = wasm.ExternRef
+		case ValAnyRef:
+			out[i] = wasm.AnyRef
+		case ValI31Ref:
+			out[i] = wasm.I31Ref
+		case ValExnRef:
+			out[i] = wasm.RefVal(wasm.AbsRef(wasm.HeapExn))
 		default:
 			return nil, fmt.Errorf("RV64 staged tail transport type")
 		}
@@ -162,6 +164,10 @@ func railshotPrepareNativeTail(in *Instance, imports resolvedImports, sharedBase
 				return fmt.Errorf("RV64 staged tail invalid attached native target")
 			}
 			producer := target.inst
+			if funcSigHasGCRefs(sig) && (in.gc == nil || in.gc != producer.gc || in.refStore != nil && in.refStore != producer.refStore) {
+				return rv64TailGenerationError("collector tail target requires the same Runtime collector domain")
+			}
+			sites[i].ContextOnlyTarget = !producer.c.needsFuncRefContext()
 			sites[i].TargetContext = rv64NativeInvocationContext(producer)
 			sites[i].Target = railshot.NativeImportTarget{Entry: producer.base + uintptr(producer.c.Entry[target.localIdx]), Home: producer.jm.LinMemBase(), Context: producer.nativeContext, HostTrampoline: trampoline, StackOwnedActivation: true, InvocationContext: true}
 			continue

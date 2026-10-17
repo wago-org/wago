@@ -1,4 +1,4 @@
-//go:build !linux || !riscv64 || !wago_rv64_experimental || tinygo || wago_target_tinygo
+//go:build !linux || !riscv64 || tinygo || wago_target_tinygo
 
 package wago
 
@@ -9,3 +9,7 @@ func (*Instance) retainGuestGlobalStoreDescriptor(uint32, []uint64, []uint64) (*
 }
 
 func (*Instance) dispatchGuestGlobalStore(uint32, []uint64, []uint64) bool { return false }
+
+func (*Instance) dispatchGuestGlobalStoreWithOwner(uint32, []uint64, []uint64, *Instance) bool {
+	return false
+}

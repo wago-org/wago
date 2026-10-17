@@ -1,0 +1,8 @@
+[tools]
+gh = "2.102.0"
+go = "1.27.1"
+just = "1.43.1"
+wasm-tools = "1.251.0"
+
+[env]
+_.path = ["{{config_root}}/.tools/bin"]

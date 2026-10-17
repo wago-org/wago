@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -88,7 +88,7 @@ func TestRV64PublicGCArrayFixedOfficialExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64GCArrayFixedOfficialCompile(t, artifact)
 			view := compiled.executionView()
-			if err := railshotValidateCompiled(view); !rv64GCArrayFixedOfficial(view) || !rv64GCArrayFixedOfficialExecutionCode(view) || err != nil {
+			if err := railshotValidateCompiled(view); !rv64ArtifactContractValid(view) || err != nil {
 				t.Fatalf("missing exact retained gc array fixed official witness: validation=%v products=%v/%v code=%d/%x entries=%v/%v", err, view.stagedGCStructProduct(), view.stagedGCArrayProduct(), len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry)
 			}
 			for _, profile := range []struct {
@@ -99,7 +99,7 @@ func TestRV64PublicGCArrayFixedOfficialExecutionAndArtifact(t *testing.T) {
 				{name: "stress-gc", config: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 96, VerifyAfterCollect: true}},
 			} {
 				t.Run(profile.name, func(t *testing.T) {
-					rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+					rt := NewRuntime()
 					defer rt.Close()
 					mod, err := rt.Module(compiled)
 					if err != nil {
@@ -176,17 +176,14 @@ func TestRV64PublicGCArrayFixedOfficialAdmissionIsExact(t *testing.T) {
 	}
 	base := rv64GCArrayFixedOfficialCompile(t, false).executionView()
 	for name, mutate := range map[string]func(*Compiled){
-		"code":       func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
-		"entry":      func(v *Compiled) { v.Entry[4], v.InternalEntry[4] = 2992, 2992 },
-		"function":   func(v *Compiled) { v.Funcs[3].Params[2] = ValI64 },
-		"type":       func(v *Compiled) { v.Types[1].Array.Mutable = false },
-		"type-key":   func(v *Compiled) { v.FuncTypeID[5] ^= 1 },
-		"descriptor": func(v *Compiled) { v.GCTypeDescs[1].ElemSize++ },
-		"global":     func(v *Compiled) { v.Globals[0].Mutable = true },
-		"initializer": func(v *Compiled) {
-			v.memoryDir.gcArrayGlobals[0].Bits = slices.Clone(v.memoryDir.gcArrayGlobals[0].Bits)
-			v.memoryDir.gcArrayGlobals[0].Bits[1] ^= 1
-		},
+		"code":        func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
+		"entry":       func(v *Compiled) { v.Entry[4], v.InternalEntry[4] = 2992, 2992 },
+		"function":    func(v *Compiled) { v.Funcs[3].Params[2] = ValI64 },
+		"type":        func(v *Compiled) { v.Types[1].Array.Mutable = false },
+		"type-key":    func(v *Compiled) { v.FuncTypeID[5] ^= 1 },
+		"descriptor":  func(v *Compiled) { v.GCTypeDescs[1].ElemSize++ },
+		"global":      func(v *Compiled) { v.Globals[0].Mutable = true },
+		"initializer": func(v *Compiled) { v.Globals[0].InitExpr[0] ^= 1 },
 		"export": func(v *Compiled) {
 			delete(v.Exports, "new")
 			v.Exports["make"] = 0
@@ -194,14 +191,18 @@ func TestRV64PublicGCArrayFixedOfficialAdmissionIsExact(t *testing.T) {
 		"feature": func(v *Compiled) { v.requiredFeatures |= CoreFeatureMemory64 },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			mutate(candidate)
-			if rv64GCArrayFixedOfficial(candidate) {
+			if rv64ArtifactContractValid(candidate) {
 				t.Fatal("hostile retained mutation retained the fixed official witness")
 			}
 			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile retained fixed official mutation admitted", err)
+			}
+			if !candidate.requiredFeatures.IsEnabled(CoreFeatureGC) {
+				rv64RequireRestoredGCFeature(t, candidate)
+			} else {
+				rv64RequireRejectedArtifact(t, candidate)
 			}
 		})
 	}

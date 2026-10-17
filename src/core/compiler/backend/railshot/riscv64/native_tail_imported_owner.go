@@ -35,7 +35,7 @@ func NewNativeTailFunction(image *NativeTailCodeImage, job *coreruntime.JobMemor
 // Validate the physical image before reading the borrowed job/context/anchor.
 // Runtime metadata supplies exact entry boundaries; the image supplies framing.
 func nativeTailPublishedFunction(image *NativeTailCodeImage, job *coreruntime.JobMemory, context, anchor []byte, entry, end int, functionIndex uint32, signature *wasm.CompType) (tailRAFunction, error) {
-	if image == nil || job == nil || len(context) != abi.RV64InstanceContextBytes || len(anchor) < 40 {
+	if image == nil || job == nil || len(context) != abi.RV64InstanceContextBytes || len(anchor) != 0 && len(anchor) < 40 {
 		return tailRAFunction{}, unsupported("native tail function owner extent")
 	}
 	if err := image.Validate(); err != nil {
@@ -45,7 +45,7 @@ func nativeTailPublishedFunction(image *NativeTailCodeImage, job *coreruntime.Jo
 	if entry < 0 || entry&15 != 0 || end <= entry || end > len(code) || end&3 != 0 {
 		return tailRAFunction{}, unsupported("native tail function span")
 	}
-	if err := tailRASignature(signature); err != nil {
+	if err := tailRASignatureMode(signature, true); err != nil {
 		return tailRAFunction{}, err
 	}
 	frame, err := NativeFrameBytes(code[:end], entry)
@@ -57,7 +57,7 @@ func nativeTailPublishedFunction(image *NativeTailCodeImage, job *coreruntime.Jo
 	if err := f.validate(true); err != nil {
 		return tailRAFunction{}, err
 	}
-	if binary.LittleEndian.Uint64(anchor[16:]) != uint64(job.LinMemBase()) {
+	if len(anchor) != 0 && binary.LittleEndian.Uint64(anchor[16:]) != uint64(job.LinMemBase()) {
 		return tailRAFunction{}, unsupported("native tail function home anchor")
 	}
 	return f, nil
@@ -254,7 +254,15 @@ func newNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.Job
 		var frozen *wasm.CompType
 		if sig := signature(i); sig != nil {
 			frozen = nativeTailCloneSignature(*sig)
-			o.owner.signatureKeys[i] = wasm.StructuralFuncTypeKey(frozen)
+			keyImage := image
+			if keyImage == nil && i < ni {
+				keyImage = imports[i].Image
+			}
+			key, err := keyImage.functionKey(uint32(i), frozen)
+			if err != nil {
+				return nil, err
+			}
+			o.owner.signatureKeys[i] = key
 		} else {
 			o.owner.uncallable[i] = true
 		}

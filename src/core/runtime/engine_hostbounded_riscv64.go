@@ -3,54 +3,75 @@
 package runtime
 
 import (
-	"errors"
-	"unsafe"
-
+	"fmt"
 	"github.com/wago-org/wago/internal/runtimebridge"
+	"unsafe"
 )
-
-// RV64 retains its framed, cooperative parked-host protocol. The fresh-code
-// bounded/live Go portals have no RV64 ABI qualification or compiler proof bit.
-// Keep their common API available without admitting a native entry through it.
-var errRV64BoundedHostUnavailable = errors.New("jit: bounded live host entry is unavailable on RV64")
 
 const HostCtrlImportIndexOffset = hcImportIdx
 
 type FixedScalarHostContextCall func(unsafe.Pointer, uint64, uint64) uint64
 type FixedHostContextCallView func(unsafe.Pointer, []uint64, []uint64)
 
-func (p *PreparedHostScalarCall) EnableBoundedSegments(runtimebridge.HostScalarCallAccess) error {
-	return errRV64BoundedHostUnavailable
+// Bounded RV64 calls retain the qualified cooperative park/resume ABI.
+// The caller proves a bound for each native segment, not the complete call.
+func (p *PreparedHostScalarCall) EnableBoundedSegments(access runtimebridge.HostScalarCallAccess) error {
+	if !access.Granted() || p == nil || p.engine == nil || !p.fixed || p.fixedSlots>>16 > 2 || p.fixedSlots&0xffff > 2 {
+		return fmt.Errorf("jit: invalid bounded host segment admission")
+	}
+	p.boundedSegments = true
+	return nil
+}
+func (e *Engine) CallWithHostBaseScalarBounded(access runtimebridge.HostScalarCallAccess, code uintptr, args []byte, home uintptr, trap, results, ctrl []byte, slots uint32, fixed FixedScalarHostCall) error {
+	if !access.Granted() || fixed == nil || slots>>16 > 2 || slots&0xffff > 2 {
+		return fmt.Errorf("jit: invalid bounded host segment admission")
+	}
+	return e.callRV64BoundedHost(code, args, home, trap, results, ctrl, rv64BoundedPortal{slots: slots, scalar: fixed}, nil, true)
+}
+func (e *Engine) callWithBoundedHostLoop(code uintptr, args []byte, home uintptr, trap, results, ctrl []byte, slots uint32, fixed FixedScalarHostCall) error {
+	return e.callRV64BoundedHost(code, args, home, trap, results, ctrl, rv64BoundedPortal{slots: slots, scalar: fixed}, nil, false)
+}
+func (e *Engine) CallWithHostBaseFixedViewBounded(access runtimebridge.HostScalarCallAccess, code uintptr, args []byte, home uintptr, trap, results, ctrl []byte, slots uint32, fixed FixedHostCallView) error {
+	if !access.Granted() || fixed == nil || slots>>16 > maxHostArity || slots&0xffff > maxHostArity {
+		return fmt.Errorf("jit: invalid bounded host view admission")
+	}
+	return e.callRV64BoundedHost(code, args, home, trap, results, ctrl, rv64BoundedPortal{slots: slots, view: fixed}, nil, true)
+}
+func (e *Engine) CallWithHostBaseMultiViewBounded(access runtimebridge.HostScalarCallAccess, code uintptr, args []byte, home uintptr, trap, results, ctrl []byte, signatures []uint32, fixed FixedHostCallView) error {
+	if !access.Granted() || fixed == nil || len(signatures) < 2 || len(signatures) > 64 {
+		return fmt.Errorf("jit: invalid bounded multi-host admission")
+	}
+	for _, slots := range signatures {
+		if slots>>16 > maxHostArity || slots&0xffff > maxHostArity {
+			return fmt.Errorf("jit: invalid bounded multi-host shape")
+		}
+	}
+	return e.callRV64BoundedHost(code, args, home, trap, results, ctrl, rv64BoundedPortal{signatures: signatures, view: fixed}, nil, true)
 }
 
-func (e *Engine) callWithBoundedHostLoop(uintptr, []byte, uintptr, []byte, []byte, []byte, uint32, FixedScalarHostCall) error {
-	return errRV64BoundedHostUnavailable
+// Live API entry uses the cooperative transition until a direct Go bridge has
+// its own RV64 stack-map and register proof. Callback semantics are unchanged.
+func (e *Engine) CallWithHostBaseScalarBoundedLive(access runtimebridge.HostScalarCallAccess, code uintptr, args []byte, home uintptr, trap, results, ctrl []byte, slots uint32, fixed FixedScalarHostCall) error {
+	return e.CallWithHostBaseScalarBounded(access, code, args, home, trap, results, ctrl, slots, fixed)
 }
-
-func (e *Engine) CallWithHostBaseScalarBounded(runtimebridge.HostScalarCallAccess, uintptr, []byte, uintptr, []byte, []byte, []byte, uint32, FixedScalarHostCall) error {
-	return errRV64BoundedHostUnavailable
+func (e *Engine) CallWithHostBaseFixedViewBoundedLive(access runtimebridge.HostScalarCallAccess, code uintptr, args []byte, home uintptr, trap, results, ctrl []byte, slots uint32, fixed FixedHostCallView) error {
+	return e.CallWithHostBaseFixedViewBounded(access, code, args, home, trap, results, ctrl, slots, fixed)
 }
-
-func (e *Engine) CallWithHostBaseFixedViewBounded(runtimebridge.HostScalarCallAccess, uintptr, []byte, uintptr, []byte, []byte, []byte, uint32, FixedHostCallView) error {
-	return errRV64BoundedHostUnavailable
+func (e *Engine) CallWithHostBaseScalarBoundedContextLive(access runtimebridge.HostScalarCallAccess, code uintptr, args []byte, home uintptr, trap, results, ctrl []byte, slots uint32, context unsafe.Pointer, fixed FixedScalarHostContextCall, fallback FixedScalarHostCall) error {
+	if fixed == nil || context == nil {
+		return e.CallWithHostBaseScalarBounded(access, code, args, home, trap, results, ctrl, slots, fallback)
+	}
+	if !access.Granted() || slots>>16 > 2 || slots&0xffff > 2 {
+		return fmt.Errorf("jit: invalid bounded host segment admission")
+	}
+	return e.callRV64BoundedHost(code, args, home, trap, results, ctrl, rv64BoundedPortal{slots: slots, contextScalar: fixed}, context, true)
 }
-
-func (e *Engine) CallWithHostBaseMultiViewBounded(runtimebridge.HostScalarCallAccess, uintptr, []byte, uintptr, []byte, []byte, []byte, []uint32, FixedHostCallView) error {
-	return errRV64BoundedHostUnavailable
-}
-
-func (e *Engine) CallWithHostBaseScalarBoundedLive(runtimebridge.HostScalarCallAccess, uintptr, []byte, uintptr, []byte, []byte, []byte, uint32, FixedScalarHostCall) error {
-	return errRV64BoundedHostUnavailable
-}
-
-func (e *Engine) CallWithHostBaseFixedViewBoundedLive(runtimebridge.HostScalarCallAccess, uintptr, []byte, uintptr, []byte, []byte, []byte, uint32, FixedHostCallView) error {
-	return errRV64BoundedHostUnavailable
-}
-
-func (e *Engine) CallWithHostBaseScalarBoundedContextLive(runtimebridge.HostScalarCallAccess, uintptr, []byte, uintptr, []byte, []byte, []byte, uint32, unsafe.Pointer, FixedScalarHostContextCall, FixedScalarHostCall) error {
-	return errRV64BoundedHostUnavailable
-}
-
-func (e *Engine) CallWithHostBaseFixedViewBoundedContextLive(runtimebridge.HostScalarCallAccess, uintptr, []byte, uintptr, []byte, []byte, []byte, uint32, unsafe.Pointer, FixedHostContextCallView, FixedHostCallView) error {
-	return errRV64BoundedHostUnavailable
+func (e *Engine) CallWithHostBaseFixedViewBoundedContextLive(access runtimebridge.HostScalarCallAccess, code uintptr, args []byte, home uintptr, trap, results, ctrl []byte, slots uint32, context unsafe.Pointer, fixed FixedHostContextCallView, fallback FixedHostCallView) error {
+	if fixed == nil || context == nil {
+		return e.CallWithHostBaseFixedViewBounded(access, code, args, home, trap, results, ctrl, slots, fallback)
+	}
+	if !access.Granted() || slots>>16 > maxHostArity || slots&0xffff > maxHostArity {
+		return fmt.Errorf("jit: invalid bounded host view admission")
+	}
+	return e.callRV64BoundedHost(code, args, home, trap, results, ctrl, rv64BoundedPortal{slots: slots, contextView: fixed}, context, true)
 }

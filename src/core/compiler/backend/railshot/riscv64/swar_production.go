@@ -17,7 +17,11 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	if m == nil {
 		return nil, fmt.Errorf("rv64: nil module")
 	}
-	if err := admitSWARDecodedBudgetReferences(m, true, true, opts.NativeReferenceCalls || opts.gcRootedScalar, opts.gcRootedScalar); err != nil {
+	admissionModule := m
+	if opts.ExceptionHandlingSource {
+		admissionModule = exceptionAdmissionProjection(m)
+	}
+	if err := admitSWARDecodedBudgetReferences(pluginBudgetModule(admissionModule, opts.pluginDirectory), true, true, opts.NativeReferenceCalls || opts.gcRootedScalar, opts.gcRootedScalar); err != nil {
 		return nil, err
 	}
 	if err := admitProductionOptions(m, &opts, true); err != nil {
@@ -25,7 +29,7 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	}
 	integerFunctions := make([]bool, len(m.Code))
 	var integerState *moduleState
-	if opts.gcRootedScalar {
+	if opts.gcRootedScalar && !opts.pluginDirectory.hasCustom() {
 		for i := range m.Code {
 			usesSWAR, err := functionUsesSWAR(m, i)
 			if err != nil {
@@ -37,9 +41,13 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 			if !integer {
 				continue
 			}
-			state, err := admitStatePolicy(m, true, opts.hostImports, true, opts.Interruptible && opts.ForeignTableCalls)
+			state, err := admitStatePolicy(admissionModule, true, opts.hostImports, true, opts.Interruptible && opts.ForeignTableCalls)
 			if err != nil {
 				return nil, err
+			}
+			if opts.ExceptionHandlingSource {
+				state.exceptionModule = m
+				restoreExceptionStateTypes(m, &state)
 			}
 			state.localTailCalls = opts.localTailCalls
 			state.foreignTableCalls = opts.ForeignTableCalls
@@ -65,14 +73,18 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	} else if len(m.Imports) != 0 {
 		policy = swarModuleHosts
 	}
-	image, err := compileSWARDecodedModuleProfile(m, emissionMode{profileMode: newProfileModule(opts.Profile, opts.SourceMaps, len(m.Code)).baseProfileMode(), production: true, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls || opts.gcRootedScalar, gcRootedScalar: opts.gcRootedScalar, referenceFunctions: opts.referenceFunctions, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase}, policy, swarStateProfile{publicInitializers: true, publicStarts: true, exports: true, importedMemory: true, indexedMemories: true, importedGlobals: true, importedTable: opts.Interruptible && opts.ForeignTableCalls, functionTableImports: opts.Interruptible && opts.ForeignTableCalls, gcFrameRoots: opts.GCFrameRoots, integerState: integerState, integerFunctions: integerFunctions})
+	exceptionModule := (*wasm.Module)(nil)
+	if opts.ExceptionHandlingSource {
+		exceptionModule = m
+	}
+	image, err := compileSWARDecodedModuleProfile(m, emissionMode{tableModuleSource: m, exceptionModule: exceptionModule, exceptionOperands: opts.exceptionOperands, ownedExceptionReferences: opts.OwnedExceptionReferences, gcFunctionEnvironments: opts.gcFunctionEnvironments, profileMode: newProfileModule(opts.Profile, opts.SourceMaps, len(m.Code)).baseProfileMode(), production: true, threadedMemory: moduleThreadedMemory(m), elideBounds: opts.ElideBoundsChecks, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls || opts.gcRootedScalar, gcRootedScalar: opts.gcRootedScalar, referenceFunctions: opts.referenceFunctions, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase, customInstructions: opts.pluginDirectory, customMemory: m.ImportedMemCount()+len(m.Memories) > 0}, policy, swarStateProfile{moduleByteLimit: publicModuleByteLimit(opts), maxFunctionLocals: publicFunctionLocalLimit(opts), publicInitializers: true, publicStarts: true, exports: true, importedMemory: true, indexedMemories: true, importedGlobals: true, importedTable: opts.Interruptible && opts.ForeignTableCalls, functionTableImports: opts.Interruptible && opts.ForeignTableCalls, gcFrameRoots: opts.GCFrameRoots, integerState: integerState, integerFunctions: integerFunctions})
 	if err != nil {
 		return nil, err
 	}
 	c := &Compiled{profileModuleState: image.profileModuleState, code: image.code, functions: image.functions, state: moduleState{importedFunctions: len(image.hosts), referenceFunctions: opts.referenceFunctions, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls}}
 	c.finalizedReferenceImportTails = image.finalizedReferenceImportTails
 	c.referenceImportTailsFinalized = image.referenceImportTailsFinalized
-	if opts.referenceFunctions {
+	if opts.referenceFunctions && !opts.ExceptionHandlingSource {
 		return stageClosedReferenceProductionModule(c, opts, m, true)
 	}
 	return stageProductionModule(c, opts)
@@ -83,14 +95,14 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 // Existing production count/byte budgets precede this walk, and per-type/run
 // limits prevent hand-built decoded callers from hiding unbounded metadata.
 func moduleUsesSWAR(m *wasm.Module) (bool, error) {
-	if m == nil || len(m.Imports) > MaxProductionImports || len(m.Memories) > MaxProductionMemories || m.MemCount() > MaxProductionMemories {
+	if m == nil || len(m.Imports) > MaxPublicImports || len(m.Memories) > MaxProductionMemories || m.MemCount() > MaxProductionMemories {
 		return false, unsupported("SWAR selector memory/import count bound")
 	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	flatTypes := 0
 	for _, group := range m.Types {
 		flatTypes += len(group.SubTypes)
-		if flatTypes > MaxFunctions {
+		if flatTypes > MaxPublicCodeBytes/8 {
 			return false, unsupported("decoded type directory bound")
 		}
 		for subtypeIndex := range group.SubTypes {
@@ -303,10 +315,10 @@ func FunctionUsesSWAR(m *wasm.Module, function int) (bool, error) {
 // The shared frontend does not populate Codegen.Features with Wasm SIMD
 // requirements, so that field cannot select the public vector import profile.
 func UsesSWAR(m *wasm.Module) (bool, error) {
-	if m == nil || len(m.Types) > MaxFunctions || len(m.Code) > MaxFunctions || len(m.Imports) > MaxProductionImports || len(m.Globals) > 256 || len(m.Data) > 256 {
+	if m == nil || len(m.Imports) > MaxPublicImports || len(m.Globals) > MaxPublicGlobals {
 		return false, unsupported("SWAR selector decoded count bound")
 	}
-	remaining := MaxModuleBytes
+	remaining := MaxPublicCodeBytes
 	for _, fn := range m.Code {
 		if len(fn.BodyBytes) > remaining {
 			return false, unsupported("SWAR selector instruction/data size bound")

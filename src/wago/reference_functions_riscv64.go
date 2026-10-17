@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"slices"
+	"unsafe"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -17,7 +18,7 @@ import (
 // or a source Compiled's cache. Trusted decoding retains unpublished RW staging.
 func railshotValidateReferenceFunctionInstance(c *Compiled, opts InstantiateOptions) error {
 	c = c.executionView()
-	if (c.nativeReferenceFunctionABI || rv64GCTypeSubtypingFinalityLink(c) || rv64GCTypeSubtypingStructLink(c) || rv64GCTypeSubtypingStructProjectionLink(c) || rv64GCTypeSubtypingStructMismatchLink(c) || rv64GCTypeSubtypingIndependentStructLink(c) || rv64GCTypeSubtypingExtendedProjectionLink(c) || rv64GCTypeSubtypingCrossGroupMismatchLink(c) || rv64GCTypeSubtypingTransitiveMismatchLink(c)) && !opts.railshotTailPolicy.referenceFunctions {
+	if (c.nativeReferenceFunctionABI || rv64GCTypeSubtypingFinalityLink(c) || rv64GCTypeSubtypingStructLink(c) || rv64GCTypeSubtypingStructProjectionLink(c) || rv64GCTypeSubtypingStructMismatchLink(c) || rv64GCTypeSubtypingIndependentStructLink(c) || rv64GCTypeSubtypingExtendedProjectionLink(c) || rv64GCTypeSubtypingCrossGroupMismatchLink(c) || rv64GCTypeSubtypingTransitiveMismatchLink(c)) && !opts.railshotTailPolicy.referenceFunctions && !rv64PrimitiveReferenceContract(c) && !rv64RootedInternalFunctionContract(c) {
 		return fmt.Errorf("%w: closed RV64 reference functions require private Runtime permission", railshot.ErrUnsupported)
 	}
 	if c.nativeReferenceFunctionABI || rv64GCTypeSubtypingFinalityLink(c) || rv64GCTypeSubtypingStructLink(c) || rv64GCTypeSubtypingStructProjectionLink(c) || rv64GCTypeSubtypingStructMismatchLink(c) || rv64GCTypeSubtypingIndependentStructLink(c) || rv64GCTypeSubtypingExtendedProjectionLink(c) || rv64GCTypeSubtypingCrossGroupMismatchLink(c) || rv64GCTypeSubtypingTransitiveMismatchLink(c) {
@@ -26,11 +27,18 @@ func railshotValidateReferenceFunctionInstance(c *Compiled, opts InstantiateOpti
 	return nil
 }
 
-// The closed profile preserves physical function indices, but internal
-// reference-valued signatures are never canonical descriptor identities.
+// The closed profile preserves physical function indices. Internal reference
+// signatures need exact product admission or fresh rooted closed-owner proof
+// before they can have canonical descriptor identities.
 // Callers use frozen metadata; admission validates exact type bindings first.
 func railshotNonCallableFunction(c *Compiled, function int) bool {
 	if c == nil || !c.nativeReferenceFunctionABI {
+		return false
+	}
+	if rv64PrimitiveReferenceContract(c) {
+		return false
+	}
+	if rv64RootedClosedCallableFunction(c, function) {
 		return false
 	}
 	if function >= 0 && function < 3 && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingRuntimeCallCast && rv64GCTypeSubtypingRuntimeCallCast(c) {
@@ -71,6 +79,162 @@ func railshotNonCallableFunction(c *Compiled, function int) bool {
 		}
 	}
 	return false
+}
+
+// Only fresh source proof can publish collector-reference targets in this
+// closed owner. The receipt binds exact signatures and signature keys. Imports
+// and exported reference parameters cannot supply foreign callable targets.
+func rv64RootedClosedCallableFunction(c *Compiled, function int) bool {
+	if c == nil || function < 0 || function >= len(c.Funcs) {
+		return false
+	}
+	if memo := c.loadValidateMemo(); memo != nil && memo.executionView() == c {
+		indexes := c.loadCompileIndexes()
+		if indexes == nil {
+			return false
+		}
+		mask := indexes.railshotTail.rootedClosedCallables
+		return function/64 < len(mask) && mask[function/64]&(uint64(1)<<uint(function%64)) != 0
+	}
+	return rv64RootedCollectorSignature(c.Funcs[function]) && rv64RootedClosedCallableOwner(c) && rv64FreshRootedGC(c)
+}
+
+func rv64RootedCollectorSignature(sig FuncSig) bool {
+	collectorSignature := false
+	for _, list := range [][]ValType{sig.Params, sig.Results} {
+		for _, typ := range list {
+			collectorSignature = collectorSignature || isGCRefValType(typ)
+		}
+	}
+	return collectorSignature
+}
+
+func rv64RootedClosedCallableOwner(c *Compiled) bool {
+	if c == nil || (!c.nativeReferenceCallABI && !rv64CollectorTailMetadata(c)) || c.NumImports != 0 || c.tableImportCount() != 0 || len(c.tableExports) != 0 {
+		return false
+	}
+	for _, global := range c.GlobalImports {
+		if global.Type == ValFuncRef || global.Type == ValExternRef || isGCRefValType(global.Type) {
+			return false
+		}
+	}
+	for _, index := range c.GlobalExports {
+		if index < 0 || index >= len(c.Globals) {
+			return false
+		}
+		global := c.Globals[index]
+		if global.Mutable && (global.Type == ValFuncRef || global.Type == ValExternRef || isGCRefValType(global.Type)) {
+			return false
+		}
+	}
+	for _, index := range c.Exports {
+		if index < 0 || index >= len(c.Funcs) {
+			return false
+		}
+		for _, typ := range c.Funcs[index].Params {
+			if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && typ != ValV128 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// freezeExecution calls this with a deeply owned unpublished snapshot under
+// the code-cache lock. Publish the completed mask before the snapshot pointer.
+// Public views and metadata copies never use it: lookup requires pointer identity.
+func railshotInitializeExecutionSnapshot(c *Compiled) error {
+	if memo := c.loadValidateMemo(); memo == nil || memo.executionView() != nil {
+		return nil
+	}
+	if rv64PrimitiveReferenceContract(c) {
+		if err := c.validate(); err != nil {
+			return err
+		}
+		// The owner already exists because a canonical execution contract is
+		// held there. No snapshot allocation is required for this bounded flag.
+		c.rv64ExecutionContract().verified.Store(c)
+		c.ensureCompileIndexes().railshotTail.primitiveReferences = true
+		if rv64HasDynamicTail(rv64NativeTailModule(c)) {
+			var keys []uint64
+			if err := rv64ValidatePrimitiveFunctionKeys(c, &keys); err != nil {
+				return err
+			}
+			c.ensureCompileIndexes().railshotTail.primitiveTailTypeKeys = keys
+		}
+	}
+	if rv64HasDynamicTail(rv64NativeTailModule(c)) && rv64FreshRootedGC(c) {
+		graph, err := rv64DeclaredGraph(c, true)
+		if err != nil {
+			return err
+		}
+		keys := make([]uint64, len(c.Types))
+		for index, typ := range c.Types {
+			if typ.Kind != CompositeTypeFunction {
+				continue
+			}
+			key, ok := graph.StructuralTypeKeyChecked(uint32(index))
+			if !ok {
+				return rv64TailGenerationError("rooted snapshot declared key")
+			}
+			keys[index] = key
+		}
+		c.ensureCompileIndexes().railshotTail.primitiveTailTypeKeys = keys
+	}
+	if !rv64RootedClosedCallableOwner(c) || len(c.Funcs) > railshot.MaxFunctions {
+		return nil
+	}
+	hasCollectorSignature := false
+	for _, sig := range c.Funcs {
+		hasCollectorSignature = hasCollectorSignature || rv64RootedCollectorSignature(sig)
+	}
+	if !hasCollectorSignature || !rv64FreshRootedGC(c) {
+		return nil
+	}
+	if err := c.validate(); err != nil {
+		return err
+	}
+	mask := make([]uint64, (len(c.Funcs)+63)/64)
+	for function, sig := range c.Funcs {
+		if rv64RootedCollectorSignature(sig) {
+			mask[function/64] |= uint64(1) << uint(function%64)
+		}
+	}
+	c.ensureCompileIndexes().railshotTail.rootedClosedCallables = mask
+	return nil
+}
+
+// Quota preflight reserves the new cache without rebuilding the proof graph.
+// An invalid receipt may leave this reservation unused; it never creates trust.
+func railshotExecutionSnapshotCacheBytes(c *Compiled) uintptr {
+	if c == nil {
+		return 0
+	}
+	var primitiveBytes uintptr
+	if c.rv64ExecutionContract() != nil {
+		// One alignment word added to the RV64 cold owner for the immutable
+		// primitive classification. Reserve without running a source graph proof.
+		primitiveBytes = unsafe.Sizeof(uint64(0))
+		if rv64HasDynamicTail(rv64NativeTailModule(c)) {
+			primitiveBytes += unsafe.Sizeof([]uint64(nil)) + uintptr(len(c.Types))*unsafe.Sizeof(uint64(0))
+		}
+	}
+	if len(c.Funcs) > railshot.MaxFunctions || !rv64RootedClosedCallableOwner(c) {
+		return primitiveBytes
+	}
+	if memo := c.loadValidateMemo(); memo == nil || !memo.rv64FreshRootedGC && c.rv64ExecutionContract() == nil {
+		return primitiveBytes
+	}
+	for _, sig := range c.Funcs {
+		if rv64RootedCollectorSignature(sig) {
+			bytes := uintptr((len(c.Funcs)+63)/64) * unsafe.Sizeof(uint64(0))
+			if c.loadCompileIndexes() == nil {
+				bytes += unsafe.Sizeof(compiledCacheIndexes{})
+			}
+			return bytes + primitiveBytes
+		}
+	}
+	return primitiveBytes
 }
 
 func rv64PublicReferenceCallBoundary(c *Compiled) bool {
@@ -894,6 +1058,14 @@ func rv64Core3RefIsNullDeclarations(c *Compiled) bool {
 // bodies and dropped declarative targets are not retained in native artifacts.
 // The retained shape and every binding still require independent admission.
 func rv64ValidateReferenceFunctions(c *Compiled) error {
+	if c.nativeReferenceFunctionABI && rv64PrimitiveReferenceContract(c) {
+		for _, sig := range c.Funcs {
+			if err := validateFuncSignature(sig, c.Types); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	if !c.nativeReferenceFunctionABI {
 		return nil
 	}
@@ -1066,4 +1238,47 @@ func rv64ValidateReferenceFunctions(c *Compiled) error {
 		return rv64ValidateOwnedTable(c)
 	}
 	return nil
+}
+
+// Internal collector signatures are safe without a separate Runtime pilot flag
+// when the authenticated rooted frame contract exposes only numeric callable
+// parameters/results. Reference metadata remains private to the compiled owner.
+func rv64RootedInternalFunctionContract(c *Compiled) bool {
+	if c == nil || !rv64ArtifactContractValid(c) || !rv64FreshRootedGC(c) {
+		return false
+	}
+	numeric := func(sig FuncSig) bool {
+		if !sig.HasTypeIndex || uint64(sig.TypeIndex) >= uint64(len(c.Types)) || validateFuncSignature(sig, c.Types) != nil {
+			return false
+		}
+		for _, values := range [][]ValueTypeDescriptor{c.Types[sig.TypeIndex].Params, c.Types[sig.TypeIndex].Results} {
+			for _, value := range values {
+				if value.Kind == ValueTypeReference {
+					return false
+				}
+			}
+		}
+		for _, values := range [][]ValType{sig.Params, sig.Results} {
+			for _, value := range values {
+				if value != ValI32 && value != ValI64 && value != ValF32 && value != ValF64 && value != ValV128 {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	for _, sig := range c.importFuncSigs {
+		if !numeric(sig) {
+			return false
+		}
+	}
+	for _, index := range c.Exports {
+		if index < 0 || index >= c.NumImports+len(c.Funcs) {
+			return false
+		}
+		if index >= c.NumImports && !numeric(c.Funcs[index-c.NumImports]) {
+			return false
+		}
+	}
+	return true
 }

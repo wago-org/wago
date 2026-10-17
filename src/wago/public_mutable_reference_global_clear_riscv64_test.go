@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -47,7 +47,7 @@ func TestRV64PublicMutableFuncrefGlobalClear(t *testing.T) {
 			compiled := rv64TableStageCompile(t, "mutable-funcref-clear-consumer", rv64MutableFuncrefClearModule(), artifact)
 			defer compiled.Close()
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalClear(view) || !view.usesGuestGlobalStoreHelper() {
+			if !(rv64MutableFuncrefGlobalClear(view) || rv64PrimitiveReferenceContract(view)) || !view.usesGuestGlobalStoreHelper() {
 				t.Fatalf("mutable funcref clear witness missing: trap=%t tablectx=%t tableref=%t regoff=%t table64=%d header=%t exports=%t desc=%t escape=%t refs=%t/%t/%t tails=%t imports=%d/%d/%d funcs=%+v ids=%v exports=%v types=%+v descs=%+v globals=%+v globalimports=%+v globalexports=%v values=%+v entries=%v/%v features=%#x structural=%#x sync=%d codeok=%t", view.nativeContextTrapABI, view.nativeTableContextABI, view.nativeTableReferenceABI, view.registerABIDisabled, view.nativeTable64ABI, view.needsFuncRefContextHeader, view.hasTableExportMetadata, view.NeedsFuncRefDescs, view.dynamicFuncrefEscape, view.nativeReferenceFunctionABI, view.nativeReferenceCallABI, view.nativeReferenceControlABI, rv64HasReferenceTail(view), view.NumImports, len(view.Imports), len(view.importFuncSigs), view.Funcs, view.FuncTypeID, view.Exports, view.Types, view.GCTypeDescs, view.Globals, view.GlobalImports, view.GlobalExports, view.ValueTypes, view.Entry, view.InternalEntry, view.requiredFeatures, compiledStructuralRequiredFeatures(view), view.syncHostSlots, rv64MutableFuncrefGlobalClearExecutionCode(view))
 			}
 			module, err := rt.Module(compiled)
@@ -94,8 +94,11 @@ func TestRV64PublicMutableFuncrefGlobalClear(t *testing.T) {
 func TestRV64PublicMutableFuncrefGlobalClearAdmission(t *testing.T) {
 	compiled := rv64TableStageCompile(t, "mutable-funcref-clear-admission", rv64MutableFuncrefClearModule(), true)
 	defer compiled.Close()
-	if !rv64MutableFuncrefGlobalClear(compiled.executionView()) {
+	if !(rv64MutableFuncrefGlobalClear(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 		t.Fatal("base mutable funcref clear witness rejected")
+	}
+	if err := rv64ReferenceImportTailCopy(compiled).validate(); err != nil {
+		t.Fatal("valid copied metadata rejected", err)
 	}
 	for name, mutate := range map[string]func(*Compiled){
 		"code":            func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
@@ -114,13 +117,13 @@ func TestRV64PublicMutableFuncrefGlobalClearAdmission(t *testing.T) {
 		"abi":              func(v *Compiled) { v.nativeTableReferenceABI = false },
 	} {
 		t.Run(name, func(t *testing.T) {
-			bad := *compiled.executionView()
+			bad := rv64ReferenceImportTailCopy(compiled)
 			bad.GlobalImports = slices.Clone(bad.GlobalImports)
 			bad.Globals = slices.Clone(bad.Globals)
 			bad.Exports = maps.Clone(bad.Exports)
 			bad.GlobalExports = maps.Clone(bad.GlobalExports)
-			mutate(&bad)
-			if err := railshotValidateCompiled(&bad); !errors.Is(err, railshot.ErrUnsupported) {
+			mutate(bad)
+			if err := bad.validate(); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile mutable clear artifact admitted", err)
 			}
 		})

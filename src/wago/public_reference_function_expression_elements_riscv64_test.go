@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -274,13 +274,7 @@ func TestRV64PublicReferenceFunctionExpressionElementsRetained(t *testing.T) {
 				case "private", "missing", "legacy-null", "dropped-payload", "inactive-table", "inactive-offset", "active-pool", "passive-pool", "dropped-pool", "wrong-type":
 					blob, err := c.MarshalBinary()
 					if err != nil {
-						// Shared metadata validation rejects these before writing.
-						switch name {
-						case "missing", "active-pool", "passive-pool", "dropped-pool", "wrong-type":
-							t.Log("writer rejected persistent metadata", name)
-						default:
-							t.Fatal("unexpected mutation writer rejection", name, err)
-						}
+						t.Log("writer rejected invalid expression metadata", name, err)
 					} else {
 						loaded, err := LoadTrustedArtifact(blob)
 						if loaded != nil {
@@ -447,17 +441,48 @@ func TestRV64PublicReferenceFunctionExpressionElementsFeatureGates(t *testing.T)
 					t.Fatal("tableless passive/unused exact type admitted", passive, err)
 				}
 				blob, err := v.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if loaded != nil {
-					loaded.Close()
-				}
-				if err == nil {
-					t.Fatal("tableless passive/unused type artifact admitted", passive)
+				// The execution digest binds the element directory. Reject the
+				// changed view before it can become an artifact.
+				if err == nil || blob != nil {
+					t.Fatal("tableless passive/unused type artifact written", passive, err)
 				}
 			}
 		})
 	}
+}
+
+func rv64ReferenceAddSourceExport(t *testing.T, source []byte, entry []byte) []byte {
+	t.Helper()
+	r := wasm.ReaderFrom(source[8:])
+	for r.HasNext() {
+		id, err := r.Byte()
+		if err != nil {
+			t.Fatal(err)
+		}
+		size, err := r.U32()
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload, err := r.Bytes(int(size))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id != 7 {
+			continue
+		}
+		exports := wasm.ReaderFrom(payload)
+		count, err := exports.U32()
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries, err := exports.Bytes(exports.BytesLeft())
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := append(wasmtest.ULEB(count+1), entries...)
+		out = append(out, entry...)
+		return rv64ExpressionReplaceSection(t, source, 7, out)
+	}
+	t.Fatal("missing source export section")
+	return nil
 }

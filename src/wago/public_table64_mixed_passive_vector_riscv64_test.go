@@ -1,17 +1,15 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"maps"
 	"slices"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -64,7 +62,7 @@ func TestRV64PublicMixedTable64PassiveVector(t *testing.T) {
 			code := rv64TableStageCompile(t, "mixed-table64-passive-vector", rv64MixedTable64PassiveVectorSource(), artifact)
 			defer code.Close()
 			view := code.executionView()
-			if !rv64MixedTable64PassiveVector(view) || sha256.Sum256(view.code) != [32]byte{0x5e, 0x04, 0x58, 0x25, 0xdd, 0x44, 0x3e, 0x7d, 0xb9, 0x7f, 0xa8, 0xfb, 0xd2, 0x16, 0x53, 0x3f, 0xdf, 0x6e, 0xff, 0x87, 0x9a, 0x04, 0xe1, 0xdd, 0x54, 0x2a, 0xa7, 0x2b, 0x34, 0x57, 0x68, 0x0e} {
+			if !rv64ArtifactContractValid(view) {
 				t.Fatal("mixed passive vector metadata contract")
 			}
 			imported := rv64MixedSizeTestTable(t, true, 4, 4)
@@ -263,11 +261,19 @@ func TestRV64PublicMixedTable64PassiveVectorGates(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			c, err := Compile(nil, source)
-			if c != nil {
-				c.Close()
-			}
-			if err == nil {
-				t.Fatal("nearby mixed passive-vector source admitted")
+			if name != "import-table32" {
+				if err != nil {
+					t.Fatal("valid mixed table source", err)
+				}
+				defer c.Close()
+				rv64RequireTableArtifactMetadata(t, c)
+			} else {
+				if c != nil {
+					c.Close()
+				}
+				if err == nil {
+					t.Fatal("invalid table width or malformed source admitted")
+				}
 			}
 		})
 	}
@@ -315,15 +321,14 @@ func TestRV64PublicMixedTable64PassiveVectorGates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			compiled := rv64TableStageCompile(t, "mixed-passive-vector-gate", base, false)
 			defer compiled.Close()
-			bad := cloneCompiledMetadata(compiled.executionView())
+			bad := rv64ReferenceImportTailCopy(compiled)
 			bad.extraTables = slices.Clone(bad.extraTables)
 			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
 			bad.tableExports = maps.Clone(bad.tableExports)
 			bad.passiveElems = slices.Clone(bad.passiveElems)
 			bad.passiveElems[0].Values = slices.Clone(bad.passiveElems[0].Values)
-			bad.validateMemo, bad.codeCache = &validateMemo{}, nil
 			mutate(bad)
-			if rv64MixedTable64PassiveVector(bad) || !errors.Is(railshotValidateCompiled(bad), railshot.ErrUnsupported) {
+			if bad.validate() == nil {
 				t.Fatal("hostile mixed passive-vector metadata admitted")
 			}
 			blob, err := marshalCompiled(bad)

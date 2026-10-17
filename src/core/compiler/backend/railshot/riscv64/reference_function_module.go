@@ -368,6 +368,14 @@ func appendPublicReferenceBoundaryU32(dst []byte, value uint32) []byte {
 // authenticates opaque tokens and never makes that function a ref.func target.
 // It does not authorize production staging or general reference ownership.
 // Every bound precedes frontend validation and derived carrier allocation.
+func admitProductionReferenceFunctionModule(m *wasm.Module, vector bool) error {
+
+	if admitPublicPrimitiveReferenceModule(m, vector) {
+		return nil
+	}
+	return admitClosedReferenceFunctionModule(m, vector)
+}
+
 func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	if m == nil || len(m.Imports) > MaxProductionImports || len(m.Code) == 0 || len(m.Code) > MaxFunctions || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions || len(m.Elements) > MaxOwnedElementSegments || len(m.Customs) > MaxFunctions {
 		return unsupported("closed reference module directory bound")
@@ -534,7 +542,12 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 	}
 	numericTarget := func(index uint32) bool { return uint64(index) < uint64(imported+len(m.Code)) && !references[index] }
 	descriptorTarget := numericTarget
-	if (publicReferenceCallBoundary || publicDynamicHostReferenceBoundary) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp) {
+	if rootedScalar && rootedScalarClosedFunctionReferenceWorld(m) {
+		// Collector calls retain local descriptors only in a closed owner graph.
+		// The typed call proof and lowering still authenticate every carrier and
+		// target context before passing collector pointers.
+		descriptorTarget = func(index uint32) bool { return uint64(index) < uint64(len(m.Code)) }
+	} else if (publicReferenceCallBoundary || publicDynamicHostReferenceBoundary) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp) {
 		descriptorTarget = func(index uint32) bool { return index == 0 || numericTarget(index) }
 	} else if publicMutableReferenceCarrier {
 		descriptorTarget = func(index uint32) bool { return index <= 1 || numericTarget(index) }
@@ -699,7 +712,9 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 					return unsupported("closed reference numeric descriptor call type index")
 				}
 				sig := &m.Types[imm.Index].SubTypes[0].Comp
-				if vector {
+				if rootedScalar && op == 0x14 && rootedScalarReferenceCall(m, imm) {
+					// This normal-return collector ABI is distinct from numeric tails.
+				} else if vector {
 					if err := swarCallSignature(sig); err != nil && ((!publicMutableReferenceCarrier || imm.Index != 0) || (op != 0x14 && op != 0x15) || !publicReferenceVectorCarrierTarget(sig)) {
 						return err
 					}

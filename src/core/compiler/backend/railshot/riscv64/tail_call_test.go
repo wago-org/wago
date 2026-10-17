@@ -49,7 +49,7 @@ func localTailDecode(t *testing.T, source []byte) *wasm.Module {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := wasm.ValidateModuleWithConfig(d.Module, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: 256}); err != nil {
+	if err := wasm.ValidateModuleWithConfig(d.Module, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{MaxFunctionLocals: wasm.DefaultMaxFunctionLocals}); err != nil {
 		t.Fatal(err)
 	}
 	return d.Module

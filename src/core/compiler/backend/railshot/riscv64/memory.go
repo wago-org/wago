@@ -31,12 +31,16 @@ type memorySpec struct {
 	module, name     string
 }
 type moduleState struct {
-	production        bool
-	localTailCalls    bool
-	foreignTableCalls bool
-	importTailCalls   bool
-	dynamicTailCalls  bool
-	referenceCalls    bool
+	sourceFunctions       *sourceFunctionTypeDirectory
+	production            bool
+	publicReferences      bool
+	publicReferenceStores bool
+	exceptionModule       *wasm.Module
+	localTailCalls        bool
+	foreignTableCalls     bool
+	importTailCalls       bool
+	dynamicTailCalls      bool
+	referenceCalls        bool
 	// The exact public two-token boundary may pass one authenticated funcref
 	// argument through call_ref in addition to the callable target reference.
 	publicReferenceCarriers            bool
@@ -237,13 +241,14 @@ func admitStateMode(m *wasm.Module, production bool) (moduleState, error) {
 	return admitStatePolicy(m, production, false, false, false)
 }
 func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, importedTables bool) (moduleState, error) {
-	s := moduleState{production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
+	s := moduleState{publicReferences: production && publicExports && importedTables, production: production, memoryExports: make(map[string]bool), globalExports: make(map[string]int)}
+	if production && publicExports && admitPublicTypeDeclarations(m) {
+		return s, nil
+	}
 	gcRootedScalar := admitRV64GCRootedScalarModule(m)
 	gcTypeSubtypingDeclarations := admitRV64GCTypeSubtypingDeclarations(m) != 0
 	gcTypeSubtypingRefTestSingle := admitRV64GCTypeSubtypingRefTestSingle(m)
 	gcTypeSubtypingReferenceFunctions := admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0 || admitRV64GCTypeSubtypingRuntimeCallCast(m) || admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m) || admitRV64GCTypeSubtypingRuntimeTypedTableCall(m) || gcTypeSubtypingRefTestSingle || admitRV64GCTypeSubtypingLink(m) != 0 || admitRV64GCTypeSubtypingDuplicateRecursiveLink(m) != 0
-	gcTypeSubtypingFinalityCallCast := admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m)
-	gcTypeSubtypingTypedTableCall := admitRV64GCTypeSubtypingRuntimeTypedTableCall(m)
 	gcTypeSubtypingRefFuncGlobals := admitRV64GCTypeSubtypingRefFuncGlobals(m) != 0
 	gcTypeSubtypingStructLink := admitRV64GCTypeSubtypingStructLink(m) != 0
 	gcTypeSubtypingStructProjectionLink := admitRV64GCTypeSubtypingStructProjectionLink(m) != 0
@@ -278,7 +283,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	gcArrayFill := admitRV64GCArrayFill(m)
 	gcArrayCopy := admitRV64GCArrayCopy(m)
 	i31Core := admitRV64I31Core(m) || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy
-	i31RefEq := gcRootedScalar || i31Core && (admitRV64I31RefEqPilot(m) || gcRefEq)
+	i31RefEq := gcRootedScalar || admitRV64ImmediateReferenceModule(m) || i31Core && (admitRV64I31RefEqPilot(m) || gcRefEq)
 	s.mutableFuncrefGlobalClear = admitMutableFunctionGlobalClear(m)
 	s.mutableFuncrefGlobalSetSelf = admitMutableFunctionGlobalSetSelf(m)
 	s.mutableFuncrefGlobalCopy = admitMutableFunctionGlobalCopy(m)
@@ -290,6 +295,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s.mutableFuncrefGlobalLocalExport = admitMutableFunctionGlobalLocalExport(m)
 	s.mutableFuncrefGlobalLocalObserve = admitMutableFunctionGlobalLocalObserve(m)
 	s.mutableFuncrefGlobalLocalCall = admitMutableFunctionGlobalLocalCall(m)
+	s.publicReferenceStores = s.publicReferences && (admitPublicPrimitiveReferenceModule(m, false) || admitPublicPrimitiveReferenceModule(m, true))
 	s.importReferences = production && (importedTables || gcRootedScalar)
 	if production && gcRootedScalar {
 		// Rooted admission proves every compact reference global and every
@@ -302,7 +308,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		if err != nil {
 			return s, err
 		}
-		s.localMutableReferences = s.localMutableReferences || mutableFunctionGlobals || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy || s.mutableFuncrefGlobalLocalCopy || s.mutableFuncrefGlobalLocalPublish || s.mutableFuncrefGlobalLocalTransfer || s.mutableFuncrefGlobalLocalExport || s.mutableFuncrefGlobalLocalObserve || s.mutableFuncrefGlobalLocalCall
+		s.localMutableReferences = s.publicReferenceStores || s.localMutableReferences || mutableFunctionGlobals || admitMutableFunctionGlobalGet(m) || s.mutableFuncrefGlobalClear || s.mutableFuncrefGlobalSetSelf || s.mutableFuncrefGlobalCopy || s.mutableFuncrefGlobalMove || s.mutableFuncrefGlobalBidirectionalCopy || s.mutableFuncrefGlobalLocalCopy || s.mutableFuncrefGlobalLocalPublish || s.mutableFuncrefGlobalLocalTransfer || s.mutableFuncrefGlobalLocalExport || s.mutableFuncrefGlobalLocalObserve || s.mutableFuncrefGlobalLocalCall
 	}
 	s.indexedMemories = production && publicExports
 	var tableErr error
@@ -322,11 +328,11 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			t, _ := m.TableType(uint32(index))
 			s.tableAddr64[index] = t.Limits.Addr64
 			elem := wasm.RefVal(t.Ref)
-			s.tableCompactRef[index] = wasm.EqualValType(elem, wasm.ExternRef) || gcRootedScalar && rootedScalarTableReference(elem, m) || (gcRefTestTable || gcRefTestConcrete) && wasm.EqualValType(elem, wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapStruct), false))) || i31Core && (wasm.EqualValType(elem, wasm.I31Ref) || isI31CoreRef(elem) || wasm.EqualValType(elem, wasm.AnyRef) || i31RefEq && wasm.EqualValType(elem, wasm.EqRef))
+			s.tableCompactRef[index] = wasm.EqualValType(elem, wasm.ExternRef) || gcRootedScalar && rootedScalarTableReference(elem, m) || (gcRefTestTable || gcRefTestConcrete) && wasm.EqualValType(elem, wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapStruct), false))) || i31Core && (immediateCollectorType(elem) || wasm.EqualValType(elem, wasm.I31Ref) || isI31CoreRef(elem) || wasm.EqualValType(elem, wasm.AnyRef) || i31RefEq && wasm.EqualValType(elem, wasm.EqRef))
 			if index == 0 {
 				// The frontend reserves max(1024,2*min) for observable no-max growth.
 				s.table64 = t.Limits.Addr64
-				s.ownedTableGrowth = importedTables && m.ImportedTableCount() != 0 || t.Limits.HasMax || t.Limits.Min <= MaxOwnedTableEntries/2
+				s.ownedTableGrowth = importedTables || t.Limits.HasMax || t.Limits.Min <= MaxOwnedTableEntries/2
 			}
 		}
 	}
@@ -335,7 +341,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	}
 	maxImports := 1
 	if production {
-		maxImports = MaxProductionImports
+		maxImports = productionImportLimit(publicExports)
 	} // 256 globals and one memory
 	maxMemories := 1
 	if s.indexedMemories {
@@ -378,7 +384,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			if !scalarType(g.Type, true) && !reference && !collectorReference {
 				return s, unsupported("nonscalar global import")
 			}
-			s.globals = append(s.globals, globalSpec{wide: reference || collectorReference || scalarWide(g.Type), mutable: g.Mutable, reference: collectorReference, typ: g.Type})
+			s.globals = append(s.globals, globalSpec{wide: reference || collectorReference || scalarWide(g.Type), mutable: g.Mutable, reference: collectorReference || reference && wasm.EqualValType(g.Type, wasm.ExternRef), typ: g.Type})
 		default:
 			return s, unsupported("nonmemory/nonglobal import")
 		}
@@ -396,7 +402,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			s.memory = &memorySpec{min: uint32(t.Limits.Min), max: t.Limits.Max, hasMax: t.Limits.HasMax}
 		}
 	}
-	if len(s.globals)+len(m.Globals) > 256 || len(m.Data) > native.MaxDataSegments {
+	if len(s.globals)+len(m.Globals) > productionGlobalLimit(production && publicExports) || len(m.Data) > native.MaxDataSegments && !(production && publicExports) {
 		return s, unsupported("state count bound")
 	}
 	importedGlobals := len(s.globals)
@@ -405,9 +411,21 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	if gcRootedScalar {
 		aggregateParser = newRootedScalarAggregateParser(m)
 	}
+	immediate := production && publicExports && admitRV64ImmediateReferenceModule(m)
 	for i, g := range m.Globals {
+		if production && publicExports && abstractCollectorNullInitializer(g) || immediate && immediateCollectorType(g.Type.Type) && immediateReferenceInitializer(g.Init, m) {
+			s.globals = append(s.globals, globalSpec{wide: true, reference: true, mutable: g.Type.Mutable, typ: g.Type.Type})
+			continue
+		}
+		if s.publicReferenceStores && g.Type.Type.Kind() == wasm.ValRef && !wasm.EqualValType(g.Type.Type, wasm.FuncRef) && !wasm.EqualValType(g.Type.Type, wasm.ExternRef) {
+			if !admitPrimitiveReferenceGlobalInitializer(g, m, importedGlobals+i) {
+				return s, unsupported("typed reference global requires a compatible initializer")
+			}
+			s.globals = append(s.globals, globalSpec{wide: true, reference: true, mutable: g.Type.Mutable, typ: g.Type.Type})
+			continue
+		}
 		if gcRootedScalar && g.Type.Type.Kind() == wasm.ValRef {
-			if !rootedScalarAggregateGlobal(g, aggregateParser, importedGlobals+i) {
+			if !admitPrimitiveReferenceGlobalInitializer(g, m, importedGlobals+i) && !rootedScalarAggregateGlobal(g, aggregateParser, importedGlobals+i) {
 				return s, unsupported("generic rooted reference global initializer")
 			}
 			s.globals = append(s.globals, globalSpec{wide: true, reference: true, mutable: g.Type.Mutable, typ: g.Type.Type})
@@ -446,18 +464,20 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			continue
 		}
 		if wasm.EqualValType(g.Type.Type, wasm.ExternRef) {
-			if !stateOnlyExternrefs {
-				return s, unsupported("externref global requires the exact state-only null profile")
+			if !stateOnlyExternrefs && (!s.publicReferences || !admitPrimitiveReferenceGlobalInitializer(g, m, importedGlobals+i)) {
+				return s, unsupported("externref global requires a validated nullable initializer")
 			}
-			s.globals = append(s.globals, globalSpec{wide: true, typ: g.Type.Type})
+			s.globals = append(s.globals, globalSpec{wide: true, mutable: g.Type.Mutable, reference: true, typ: g.Type.Type})
 			continue
 		}
 		if wasm.EqualValType(g.Type.Type, wasm.FuncRef) {
 			if !publicExports || !importedTables {
 				return s, unsupported("reference global requires retained public table")
 			}
-			if err := admitLocalFunctionGlobal(g, m, len(s.globals), s.localMutableReferences); err != nil {
-				return s, err
+			if !admitPrimitiveReferenceGlobalInitializer(g, m, len(s.globals)) {
+				if err := admitLocalFunctionGlobal(g, m, len(s.globals), s.localMutableReferences); err != nil {
+					return s, err
+				}
 			}
 			s.globals = append(s.globals, globalSpec{wide: true, mutable: g.Type.Mutable, typ: g.Type.Type})
 			continue
@@ -525,25 +545,26 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			return s, unsupported("noninteger state export")
 		}
 	}
+	if production && publicExports && (gcRootedScalar || sourceNeedsFunctionTypeDirectory(m)) {
+		directory, err := newSourceFunctionTypeDirectory(m)
+		if err != nil {
+			return s, err
+		}
+		s.sourceFunctions = &directory
+	}
 	flatTypeIndex := uint32(0)
 	for _, rec := range m.Types {
 		for subtypeIndex := range rec.SubTypes {
 			ft := &rec.SubTypes[subtypeIndex].Comp
+			if s.sourceFunctions != nil && ft.Kind == wasm.CompFunc {
+				ft, _ = s.sourceFunctions.function(flatTypeIndex)
+			}
 			fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
-			if (s.ownedTable || s.importReferences || gcTypeSubtypingRefTestSingle || gcRootedScalar) && !((gcTypeSubtypingDeclarations || gcTypeSubtypingRefFuncGlobals || gcTypeSubtypingStructLink || gcTypeSubtypingStructProjectionLink || gcTypeSubtypingStructMismatchLink || gcTypeSubtypingCrossGroupMismatchLink || gcTypeSubtypingTransitiveMismatchLink || gcTypeSubtypingIndependentStructLink || gcTypeSubtypingExtendedProjectionLink || gcTypeSubtypingDuplicateRecursiveLink || gcTypeSubtypingRefTestSingle || gcRootedScalar || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
+			if ft.Kind == wasm.CompFunc && (s.ownedTable || s.importReferences || gcTypeSubtypingRefTestSingle || gcRootedScalar) && !((gcTypeSubtypingDeclarations || gcTypeSubtypingRefFuncGlobals || gcTypeSubtypingStructLink || gcTypeSubtypingStructProjectionLink || gcTypeSubtypingStructMismatchLink || gcTypeSubtypingCrossGroupMismatchLink || gcTypeSubtypingTransitiveMismatchLink || gcTypeSubtypingIndependentStructLink || gcTypeSubtypingExtendedProjectionLink || gcTypeSubtypingDuplicateRecursiveLink || gcTypeSubtypingRefTestSingle || gcRootedScalar || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
 				var ok bool
 				fn.key, ok = m.StructuralTypeKeyChecked(flatTypeIndex)
 				if !ok {
 					return s, unsupported("bounded table signature identity")
-				}
-				if gcTypeSubtypingFinalityCallCast && flatTypeIndex == 1 {
-					fn.key ^= rv64GCTypeSubtypingRuntimeFinalityKeySalt
-				}
-				if gcTypeSubtypingTypedTableCall {
-					fn.key = rv64GCTypeSubtypingRuntimeTypedTableKey(flatTypeIndex, fn.key)
-				}
-				if gcTypeSubtypingRefTestSingle && ft.Kind == wasm.CompFunc {
-					fn.key = rv64GCTypeSubtypingRefTestSingleKey(flatTypeIndex, fn.key)
 				}
 			}
 			for k, t := range ft.Params {
@@ -556,7 +577,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			flatTypeIndex++
 		}
 	}
-	if s.importedFunctions > MaxHostFunctionImports || s.importedFunctions+len(m.Code) > MaxFunctions {
+	if s.importedFunctions > MaxHostFunctionImports || s.importedFunctions+len(m.Code) > MaxFunctions && !(production && publicExports) {
 		return s, unsupported("aggregate function count bound")
 	}
 	for _, im := range m.Imports {

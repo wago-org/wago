@@ -314,7 +314,7 @@ func (m *ManagedInstance) ValidateVoidTableEntry(index uint32) error {
 }
 
 func validateVoidTableEntry(in *Instance, index uint32) error {
-	desc := in.tableDescriptor(0)
+	desc := railshotManagedTableDescriptor(in)
 	if len(desc) < 8 {
 		return fmt.Errorf("wago: instance has no table")
 	}
@@ -357,6 +357,12 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 	if err := validateVoidTableEntry(in, index); err != nil {
 		return err
 	}
+	if entry, handled, err := railshotManagedVoidTableEntry(in, index); handled {
+		if err != nil {
+			return err
+		}
+		return in.invokeVoidEntry(ctx, entry, nil)
+	}
 	base, err := manager.ensureVoidDispatcher()
 	if err != nil {
 		return err
@@ -383,7 +389,7 @@ func (m *InstanceManager) ensureVoidDispatcher() (uintptr, error) {
 	if closed || rt == nil {
 		return 0, fmt.Errorf("wago: instance manager is closed")
 	}
-	c, err := Compile(rt.cfg, managedVoidDispatcherWasm)
+	c, err := compileManagedVoidDispatcher(rt.cfg)
 	if err != nil {
 		return 0, fmt.Errorf("compile managed call_indirect dispatcher: %w", err)
 	}

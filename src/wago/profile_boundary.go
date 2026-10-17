@@ -120,7 +120,7 @@ func (a *hostLoopActivation) beginProfileActivation() (jitprofile.SpanToken, fun
 	return span, bindHostInvocationContext(a.ctrl, invocation)
 }
 
-func (a *hostLoopActivation) callProfiledHost(active *Instance, ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
+func (a *hostLoopActivation) callProfiledHost(active *Instance, ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext, guestDescriptorOwner *Instance) {
 	session := invocation.traceSession
 	if session == nil {
 		session = a.root.boundaryProfile()
@@ -136,7 +136,7 @@ func (a *hostLoopActivation) callProfiledHost(active *Instance, ctrl uintptr, im
 		restoreRoot := bindHostInvocationContext(a.ctrl, invocation)
 		defer restoreRoot()
 	}
-	active.callHostDispatch(ctrl, importIdx, args, results, invocation)
+	active.callHostDispatch(ctrl, importIdx, args, results, invocation, guestDescriptorOwner)
 	completed = true
 }
 

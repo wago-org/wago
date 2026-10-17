@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -17,9 +17,8 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-// The reference-valued exports remain non-callable descriptor holes. Their
-// public wrappers are the only boundary: ref.func can name only the numeric
-// target, while id transports an already authenticated descriptor.
+// Reference-valued exports use callable descriptors. The identity wrapper
+// transports an authenticated descriptor through the public token boundary.
 func rv64PublicReferenceFunctionBoundaryModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
@@ -100,8 +99,8 @@ func TestRV64PublicReferenceFunctionBoundarySourceArtifact(t *testing.T) {
 			}
 			for _, index := range []int{1, 2} {
 				row := in.funcRefDescs[(index+1)*coreruntime.FuncRefDescBytes : (index+2)*coreruntime.FuncRefDescBytes]
-				if !slices.Equal(row, make([]byte, len(row))) || !railshotNonCallableFunction(in.c, index) {
-					t.Fatal("reference export acquired callable descriptor", index, row)
+				if slices.Equal(row, make([]byte, len(row))) || railshotNonCallableFunction(in.c, index) {
+					t.Fatal("reference export lacks callable descriptor", index, row)
 				}
 			}
 
@@ -299,8 +298,8 @@ func TestRV64PublicReferenceFunctionCallBoundaryForeignOwner(t *testing.T) {
 			if err != nil || len(outsideResult) != 1 || outsideResult[0] == 0 {
 				t.Fatal("outside owner token", outsideResult, err)
 			}
-			if got, err = consumer.Invoke("call", outsideResult[0]); err == nil || got != nil || !strings.Contains(err.Error(), "outside the public call boundary") {
-				t.Fatal("outside owner profile admitted", got, err)
+			if got, err = consumer.Invoke("call", outsideResult[0]); err != nil || !slices.Equal(got, []uint64{42}) {
+				t.Fatal("additional same-runtime callable owner", got, err)
 			}
 			rv64AssertPublicReferenceArgumentScopesClear(t, consumer)
 
@@ -331,6 +330,65 @@ func TestRV64PublicReferenceArgumentScopeFailedBegin(t *testing.T) {
 	railshotReleasePublicFuncrefArguments(scope)
 	if !outer.active || outer.count != 0 || pool.argumentOwners[len(pool.argumentOwners)-1] != outer {
 		t.Fatal("failed scope begin disturbed the outer owner scope")
+	}
+}
+
+func TestRV64TableFreeReferenceArgumentOwnerScope(t *testing.T) {
+	if os.Getenv("WAGO_RV64_TAIL_ARTIFACT_MODE") == "load" {
+		t.Skip("source compiler path only")
+	}
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64NativeTailCompile(t, "table-free-argument-owner", rv64PublicReferenceFunctionBoundaryModule(), artifact)
+			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
+			defer rv64HostCertificateCloseRuntime(t, rt)
+			producer := rv64NativeTokenInstantiate(t, rt, c, NewImports())
+			consumer := rv64NativeTokenInstantiate(t, rt, c, NewImports())
+			defer consumer.Close()
+			if consumer.c.NumImports != 0 || consumer.c.tableCount() != 0 || consumer.c.nativeReferenceCallABI {
+				t.Fatal("fixture has an import, table or call_ref")
+			}
+			values, err := producer.Invoke("get")
+			if err != nil || len(values) != 1 || values[0] == 0 {
+				t.Fatal("producer reference", values, err)
+			}
+			token := values[0]
+			descriptor, ok := consumer.refStore.resolve(token)
+			if !ok || descriptor == 0 {
+				t.Fatal("producer descriptor unavailable")
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			refs := func() int {
+				producer.lifeMu.Lock()
+				defer producer.lifeMu.Unlock()
+				return producer.resourceRefs
+			}
+			before := refs()
+			func() {
+				arguments, err := railshotBeginPublicFuncrefArguments(consumer)
+				if err != nil || arguments.scope == nil {
+					t.Fatal("table-free argument scope unavailable", err)
+				}
+				defer railshotReleasePublicFuncrefArguments(arguments)
+				for i := 0; i < 2; i++ {
+					if err := railshotStagePublicFuncrefArgument(consumer, &arguments, token, descriptor); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if refs() != before+1 || arguments.scope.count != 1 {
+					t.Fatal("argument scope did not retain exactly one producer root")
+				}
+			}()
+			if refs() != before {
+				t.Fatal("argument scope retained its producer pin after release")
+			}
+			if got, err := consumer.Invoke("id", token); err != nil || !slices.Equal(got, []uint64{token}) {
+				t.Fatal("table-free reference identity", got, err)
+			}
+			rv64AssertPublicReferenceArgumentScopesClear(t, consumer)
+		})
 	}
 }
 

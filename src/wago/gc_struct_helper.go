@@ -68,6 +68,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 	if in == nil || (in.gc == nil && helper != gcFuncRefTest) {
 		panic(gcHelperFailuref("gc struct helper %d has no live collector", helper))
 	}
+	defer drainExceptionReclaims(in.gc)
 	var lockedDomain *gcStoreDomain
 	if in.gc != nil && helper != gcFuncRefTest {
 		lockedDomain = in.lockGCCollector()
@@ -75,7 +76,8 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 	defer unlockGCCollector(lockedDomain)
 	var state *gcPublicState
 	var frameRoots gc.RootSet = gc.EmptyRoots{}
-	if gcHelperMayAllocate(helper) {
+	compactConversion := compiledArchitecture == 4 && (helper == gcAnyConvertExtern || helper == gcExternConvertAny) && in.c.compactExternFrameRoots()
+	if gcHelperMayAllocate(helper) || compactConversion || in.managedFunctionAggregateMayAllocate(helper, args) || in.compactExternPersistentMayAllocate(helper, args) {
 		// Native batches own unpublished handles and a top nursery chunk. Cancel
 		// them before any Go allocation, trap, or collecting fallback so the helper
 		// sees the exact used bump and cannot overlap reserved bytes.
@@ -87,33 +89,13 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		frameRoots = in.gcHelperRoots(ctrl, state, safepoint, stack)
 	}
 
+	if in.dispatchManagedFunctionAggregate(helper, args, results, frameRoots, state) {
+		return
+	}
+
 	switch helper {
 	case gcFuncRefTest:
-		if len(args) != 3 || len(results) < 1 {
-			panic(gcHelperFailuref("function ref.test helper arity = %d/%d, want 3/at-least-1", len(args), len(results)))
-		}
-		bits, targetType, nullable := args[0], uint32(args[1]), args[2] != 0
-		if int(targetType) >= len(in.c.Types) || in.c.Types[targetType].Kind != CompositeTypeFunction {
-			panic(gcHelperFailuref("function ref.test target type %d is unavailable", targetType))
-		}
-		if bits == 0 {
-			if nullable {
-				results[0] = 1
-			} else {
-				results[0] = 0
-			}
-			break
-		}
-		actual, actualTypes, ok := in.attachedFuncrefExactType(bits)
-		if !ok && in.refStore != nil {
-			actual, actualTypes, ok = in.refStore.descriptorFuncrefExactType(in, bits)
-		}
-		want := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: nullable, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: targetType}}}
-		if ok && valueTypeSubtype(actual, actualTypes, want, in.c.Types) {
-			results[0] = 1
-		} else {
-			results[0] = 0
-		}
+		in.dispatchGCFunctionRefTest(in, args, results)
 	case gcStructReserveDead:
 		if len(args) != 1 {
 			panic(gcHelperFailuref("gc struct dead reservation helper arity = %d, want 1", len(args)))
@@ -241,7 +223,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if state := in.existingGCRefTestTableState(); state != nil {
 			matched, err = state.refTest(in.gc, args[0], target)
 		} else {
-			matched, err = in.gc.RefTest(gc.Ref(uint32(args[0])), target)
+			matched, err = (*gcRefTestTableState)(nil).refTest(in.gc, args[0], target)
 		}
 		if err != nil {
 			panic(gcHelperFailure(err))
@@ -274,9 +256,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if state := in.existingGCRefTestTableState(); state != nil {
 			value, err = state.refCast(in.gc, args[0], target)
 		} else {
-			var ref gc.Ref
-			ref, err = in.gc.RefCast(gc.Ref(uint32(args[0])), target)
-			value = uint64(ref)
+			value, err = (*gcRefTestTableState)(nil).refCast(in.gc, args[0], target)
 		}
 		if errors.Is(err, gc.ErrCastFailure) {
 			panic(gcHelperTrap(coreruntime.TrapCastFailure))
@@ -403,6 +383,9 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		}
 		state := in.existingGCRefTestTableState()
 		table, index := args[2], args[0]
+		if in.storeCompactExternTable(table, index, args[1], lockedDomain, frameRoots) {
+			break
+		}
 		if state == nil {
 			if table >= uint64(in.c.tableCount()) || !isGCRefValType(in.c.tableElementType(int(table))) {
 				panic(gcHelperFailuref("gc ref.test table state is unavailable"))
@@ -432,6 +415,10 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 	case gcAnyConvertExtern, gcExternConvertAny:
 		if len(args) != 1 || len(results) < 1 {
 			panic(gcHelperFailuref("gc extern conversion helper arity = %d/%d, want 1/at-least-1", len(args), len(results)))
+		}
+		if compactConversion {
+			results[0] = in.dispatchCompactExternConversion(lockedDomain, helper, args[0], frameRoots)
+			break
 		}
 		state := in.existingGCRefTestTableState()
 		if state == nil || state.Conversion == nil {
@@ -637,4 +624,40 @@ func (in *Instance) gcStructValueKnown(typeID, fieldID uint32, kind gc.StorageKi
 func (in *Instance) gcStructValue(typeID, fieldID uint32, words []uint64) gc.Value {
 	kind := in.gcStructFieldKind(typeID, fieldID)
 	return in.gcStructValueKnown(typeID, fieldID, kind, in.c.Types[typeID].Fields[fieldID].Storage.Value, words)
+}
+
+// entryOwner owns the physical entry lease when a native callee parks on a
+// different instance control block. No unretained descriptor is dereferenced.
+func (in *Instance) dispatchGCFunctionRefTest(entryOwner *Instance, args, results []uint64) {
+	if len(args) != 3 || len(results) < 1 {
+		panic(gcHelperFailuref("function ref.test helper arity = %d/%d, want 3/at-least-1", len(args), len(results)))
+	}
+	bits, targetType, nullable := args[0], uint32(args[1]), args[2] != 0
+	if int(targetType) >= len(in.c.Types) || in.c.Types[targetType].Kind != CompositeTypeFunction {
+		panic(gcHelperFailuref("function ref.test target type %d is unavailable", targetType))
+	}
+	if bits == 0 {
+		if nullable {
+			results[0] = 1
+		} else {
+			results[0] = 0
+		}
+		return
+	}
+	actual, actualTypes, ok := in.attachedFuncrefExactType(bits)
+	if !ok {
+		actual, actualTypes, ok = railshotRetainedFunctionExactType(in, bits)
+	}
+	if !ok && entryOwner != nil && entryOwner != in {
+		actual, actualTypes, ok = railshotRetainedFunctionExactType(entryOwner, bits)
+	}
+	if !ok && in.refStore != nil {
+		actual, actualTypes, ok = in.refStore.descriptorFuncrefExactType(in, bits)
+	}
+	want := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: nullable, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: targetType}}}
+	if ok && valueTypeSubtype(actual, actualTypes, want, in.c.Types) {
+		results[0] = 1
+	} else {
+		results[0] = 0
+	}
 }

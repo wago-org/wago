@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -20,6 +20,15 @@ import (
 // symbolic sites or claim public dynamic source/artifact execution admission.
 func rv64GenerationPlanForTest(t *testing.T, in *Instance, vector bool) []encoder.NativeTailPlan {
 	t.Helper()
+	state := &in.c.ensureCompileIndexes().railshotTail
+	if len(state.primitiveTailTypeKeys) == 0 {
+		if !rv64PrimitiveReferenceContract(in.c) {
+			t.Fatal("symbolic tail fixture has no primitive execution contract")
+		}
+		if err := rv64ValidatePrimitiveFunctionKeys(in.c, &state.primitiveTailTypeKeys); err != nil {
+			t.Fatal(err)
+		}
+	}
 	frame, err := railshot.NativeFrameBytes(in.c.code, in.c.Entry[0])
 	if err != nil {
 		t.Fatal(err)

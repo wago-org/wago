@@ -126,13 +126,13 @@ func TestTailRAProofExactMaskAndFullPhysicalSignature(t *testing.T) {
 			t.Fatal("next signature", typ, err)
 		}
 	}
-	for _, typ := range []wasm.ValType{wasm.FuncRef, wasm.ExternRef} {
+	for _, typ := range []wasm.ValType{wasm.FuncRef, wasm.ExternRef, wasm.AnyRef, wasm.I31Ref} {
 		if mask, count, err := tailRAResultMask([]wasm.ValType{typ}); err != nil || count != 1 || mask != [4]uint64{} {
 			t.Fatal("full-width reference result", typ, mask, count, err)
 		}
 	}
-	if _, _, err := tailRAResultMask([]wasm.ValType{wasm.AnyRef}); !errors.Is(err, ErrUnsupported) {
-		t.Fatal("unsupported reference result widened", err)
+	if _, _, err := tailRAResultMask([]wasm.ValType{wasm.Bot}); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("unsupported bottom result widened", err)
 	}
 }
 

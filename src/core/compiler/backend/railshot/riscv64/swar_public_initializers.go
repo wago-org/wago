@@ -6,12 +6,12 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 // Public instantiation owns the authoritative initializer metadata. Admission
 // checks shapes without retaining private copies or placeholder values.
-func admitSWARPublicInitializersWithMemories(m *wasm.Module, memories []wasm.MemType) error {
+func admitSWARPublicInitializersWithMemories(m *wasm.Module, memories []wasm.MemType, rooted ...bool) error {
 	if len(memories) > MaxProductionMemories {
 		return unsupported("SWAR initializer memory count")
 	}
 
-	if m.ImportedGlobalCount()+len(m.Globals) > 256 || len(m.Data) > 256 {
+	if m.ImportedGlobalCount()+len(m.Globals) > MaxPublicGlobals || len(m.Data) > 256 {
 		return unsupported("SWAR initializer count bound")
 	}
 	localMutableReferences, err := admitLocalMutableFunctionGlobals(m)
@@ -19,7 +19,18 @@ func admitSWARPublicInitializersWithMemories(m *wasm.Module, memories []wasm.Mem
 		return err
 	}
 	localCall := admitMutableFunctionGlobalLocalCall(m)
+	primitiveReferences := admitPublicPrimitiveReferenceModule(m, true)
+	parser := newRootedScalarAggregateParser(m)
 	for i, global := range m.Globals {
+		if len(rooted) != 0 && rooted[0] && (wasm.ExternReferenceType(global.Type.Type) || wasm.CollectorReferenceType(m, global.Type.Type)) && rootedScalarAggregateGlobal(global, parser, m.ImportedGlobalCount()+i) {
+			continue
+		}
+		if (primitiveReferences || wasm.ExternReferenceType(global.Type.Type)) && global.Type.Type.Kind() == wasm.ValRef {
+			if !admitPrimitiveReferenceGlobalInitializer(global, m, m.ImportedGlobalCount()+i) {
+				return unsupported("SWAR primitive reference global initializer")
+			}
+			continue
+		}
 		if localCall && i == 0 {
 			// The exact profile pins the indexed nullable type and typed-null
 			// initializer; runtime initialization owns the mutable cell itself.

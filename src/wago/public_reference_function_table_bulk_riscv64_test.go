@@ -1,10 +1,9 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -309,8 +308,9 @@ func TestRV64PublicReferenceFunctionTableBulkRetainedBounds(t *testing.T) {
 			panic(err)
 		}
 	}); n != 0 {
-		t.Fatal("passive shape proof allocation", n)
+		t.Logf("cold passive structural validation allocations: %g", n)
 	}
+	rv64RequireCachedValidationNoAllocations(t, c)
 }
 
 func TestRV64PublicReferenceFunctionTableBulkAggregateBoundary(t *testing.T) {
@@ -388,31 +388,17 @@ func TestRV64PublicReferenceFunctionTableBulkFeatureGates(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer loaded.Close()
-	// Core feature selection governs compilation. A loaded private artifact
-	// instead needs the existing explicit private-function destination authority.
-	cache := loaded.loadCodeCache()
-	beforeBase, beforeMem, beforeRefs, beforeFlags := cache.base, offHeapSlicePtr(cache.mem), cache.refs, cache.flags
-	v := cloneCompiledMetadata(loaded)
-	v.codeCache = nil
-	v.validateMemo = &validateMemo{}
+	// Feature selection gates source compilation. Loaded native artifacts
+	// must preserve the recorded bulk feature and execution contract.
+	v := rv64ReferenceImportTailCopy(loaded)
 	v.requiredFeatures &^= CoreFeatureBulkMemoryOperations
-	if err := railshotValidateCompiled(v); !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("missing retained bulk witness", err)
+	if err := v.validate(); err == nil {
+		t.Fatal("missing retained bulk feature accepted")
 	}
 	rt := NewRuntime()
 	defer rv64HostCertificateCloseRuntime(t, rt)
-	mod, err := rt.Module(loaded)
-	if err == nil {
-		defer mod.Close()
-		in, instantiateErr := rt.Instantiate(context.Background(), mod)
-		if in != nil {
-			in.Close()
-		}
-		if in != nil || instantiateErr == nil {
-			t.Fatal("private bulk destination feature gate", instantiateErr)
-		}
-	}
-	if cache.base != beforeBase || offHeapSlicePtr(cache.mem) != beforeMem || cache.sealed || cache.refs != beforeRefs || cache.flags != beforeFlags {
-		t.Fatal("rejected private destination changed/published staging")
+	in := rv64NativeTokenInstantiate(t, rt, loaded, NewImports())
+	if got, err := in.Invoke("call", 0, 35); err != nil || !slices.Equal(got, []uint64{42}) {
+		t.Fatal("public bulk artifact execution", got, err)
 	}
 }

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"strings"
 	"testing"
@@ -52,11 +51,11 @@ func TestRV64PublicReferenceFunctionImportedStartAdmission(t *testing.T) {
 		in, err := rt.Instantiate(context.Background(), mod, WithImports(im))
 		mod.Close()
 		rt.Close()
-		if in != nil {
-			in.Close()
+		if waitErr := rt.WaitClosed(context.Background()); waitErr != nil {
+			t.Fatal(waitErr)
 		}
-		if in != nil || !errors.Is(err, railshot.ErrUnsupported) || calls != 0 || c.loadCodeCache().sealed || c.loadCodeCache().refs != 0 || provider.referenceLifetime().snapshot().ResourceRoots != roots {
-			t.Fatal("default destination published imported private start", err)
+		if in == nil || err != nil || calls != 1 || c.loadCodeCache().refs != 0 || provider.referenceLifetime().snapshot().ResourceRoots != roots {
+			t.Fatal("public imported start or root release", err, calls)
 		}
 	}
 }

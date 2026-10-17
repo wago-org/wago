@@ -3,7 +3,7 @@ package wago
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // gcTypeMapping translates immutable module-local flattened type indexes to the
@@ -252,6 +252,10 @@ func gcCanonicalTypePlan(c *Compiled, reps []gcDomainTypeRepresentative, domainT
 		}
 		candidates = make(map[[32]byte][]int, len(newReps)+len(c.Types))
 		for domain, rep := range newReps {
+			// Runtime-private layouts have no guest structural representative.
+			if len(rep.types) == 0 {
+				continue
+			}
 			fingerprint, ok := fingerprintFor(rep.types, rep.index)
 			if !ok {
 				return false
@@ -399,6 +403,20 @@ func gcModuleFitsDomain(c *Compiled, domain *gcStoreDomain) bool {
 
 func preferredGCCollectorFromImports(c *Compiled, imports resolvedImports, store *referenceStore) (*gc.Collector, error) {
 	var collector *gc.Collector
+	considerGlobal := func(global *Global) error {
+		if global == nil || global.owner == nil {
+			return nil
+		}
+		owner := global.owner
+		owner.mu.Lock()
+		reference := isReferenceValType(owner.typ)
+		compatible := owner.store == store
+		owner.mu.Unlock()
+		if reference && !compatible {
+			return fmt.Errorf("reference global belongs to an incompatible reference store")
+		}
+		return nil
+	}
 	consider := func(candidate *Instance) error {
 		if candidate == nil || candidate.gc == nil {
 			return nil
@@ -417,7 +435,7 @@ func preferredGCCollectorFromImports(c *Compiled, imports resolvedImports, store
 	// list for every InstanceExport in the imports map.
 	if c != nil {
 		for i, displayKey := range c.Imports {
-			if i >= len(c.importFuncSigs) || !funcSigHasGCRefs(c.importFuncSigs[i]) {
+			if i >= len(c.importFuncSigs) || !c.needsOwnedExceptionReferences() && !funcSigHasGCRefs(c.importFuncSigs[i]) {
 				continue
 			}
 			v, ok := imports[c.functionImportBindingKey(i)].(*InstanceExport)
@@ -433,12 +451,42 @@ func preferredGCCollectorFromImports(c *Compiled, imports resolvedImports, store
 		case *InstanceExport:
 			// Function owners were handled by the index-aligned pass above.
 		case *Global:
+			if err := considerGlobal(v); err != nil {
+				return nil, err
+			}
+			if v != nil {
+				bound, err := railshotCompactExternHostGlobalCollector(v, store)
+				if err != nil {
+					return nil, err
+				}
+				if bound != nil {
+					if collector != nil && collector != bound {
+						return nil, fmt.Errorf("wago: imports require the same Runtime GC domain")
+					}
+					collector = bound
+				}
+			}
 			if v != nil && v.owner != nil {
 				if err := consider(v.owner.instance); err != nil {
 					return nil, err
 				}
 			}
 		case GlobalImport:
+			if err := considerGlobal(v.Global); err != nil {
+				return nil, err
+			}
+			if v.Global != nil {
+				bound, err := railshotCompactExternHostGlobalCollector(v.Global, store)
+				if err != nil {
+					return nil, err
+				}
+				if bound != nil {
+					if collector != nil && collector != bound {
+						return nil, fmt.Errorf("wago: imports require the same Runtime GC domain")
+					}
+					collector = bound
+				}
+			}
 			if v.Global != nil && v.Global.owner != nil {
 				if err := consider(v.Global.owner.instance); err != nil {
 					return nil, err
@@ -446,6 +494,16 @@ func preferredGCCollectorFromImports(c *Compiled, imports resolvedImports, store
 			}
 		case *Table:
 			if v != nil && v.owner != nil {
+				bound, err := railshotCompactExternHostTableCollector(v, store)
+				if err != nil {
+					return nil, err
+				}
+				if bound != nil {
+					if collector != nil && collector != bound {
+						return nil, fmt.Errorf("wago: imports require the same Runtime GC domain")
+					}
+					collector = bound
+				}
 				if err := consider(v.owner.instance); err != nil {
 					return nil, err
 				}
@@ -505,6 +563,12 @@ func (in *Instance) gcRefMatchesValueType(ref gc.Ref, required ValueTypeDescript
 	}
 	if in.gc == nil {
 		return false
+	}
+	if matched, handled := ownedExceptionReferenceMatches(in.gc, ref, required); handled {
+		return matched
+	}
+	if matched, handled := compactForeignAnyMatches(in.gc, ref, required); handled {
+		return matched
 	}
 	var target gc.RefTestTarget
 	target.Nullable = required.Ref.Nullable

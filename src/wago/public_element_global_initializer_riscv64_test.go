@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -445,17 +445,17 @@ func TestRV64PublicElementGlobalMetadataAdmission(t *testing.T) {
 		"missing-local-feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureExtendedConstExpressions },
 	} {
 		t.Run(name, func(t *testing.T) {
-			v := *c.executionView()
+			v := rv64ReferenceStartCopy(c.executionView())
 			v.Globals = slices.Clone(v.Globals)
 			v.Elems = slices.Clone(v.Elems)
 			v.Elems[0].Values = slices.Clone(v.Elems[0].Values)
-			mutate(&v)
-			if err := railshotValidateCompiled(&v); err == nil {
+			mutate(v)
+			if err := v.validate(); err == nil {
 				t.Fatal("invalid element global metadata admitted")
 			}
 			var normalized []RefInit
 			switch name {
-			case "null-and-global", "function-and-global", "missing-global-flag":
+			case "function-and-global":
 				// The codec stores one initializer tag: null precedes global,
 				// global precedes function, and an unset global flag stores the
 				// function index alone. Inactive conflicting fields are omitted.
@@ -467,7 +467,7 @@ func TestRV64PublicElementGlobalMetadataAdmission(t *testing.T) {
 					normalized[1] = RefInit{FuncIndex: 0}
 				}
 			}
-			blob, err := marshalCompiled(&v)
+			blob, err := marshalCompiled(v)
 			if err != nil {
 				if normalized != nil {
 					t.Fatal("initializer alias did not encode", err)

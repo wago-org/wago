@@ -1,4 +1,4 @@
-//go:build linux && (amd64 || arm64 || (riscv64 && wago_rv64_experimental)) && !tinygo && !wago_target_tinygo
+//go:build linux && (amd64 || arm64 || riscv64) && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -127,21 +127,36 @@ func TestPhysicalPrefinalizerTableMemoryTransferPanicCompletes(t *testing.T) {
 					t.Fatal("producer must remain physically retained by both imports", err)
 				}
 				var visited []int
+				componentClaim := compiledArchitecture == 4
+				var firstObserved any
 				first, later := new(int), new(int)
 				producer.referenceLifetime().afterPhysicalRelease(func() {
+					defer func() { firstObserved = recover(); panic(firstObserved) }()
 					visited = append(visited, 0)
-					if retained && !consumer.retainResourceRootForFinalization() {
-						panic("consumer operation lease denied before physical claim")
+					if retained {
+						// A closed RV64 dependency component claims every member
+						// before its physical journal. Such a claim is terminal;
+						// callbacks cannot resurrect an already claimed member.
+						if componentClaim && !consumer.resourcesClosed {
+							panic("RV64 component was not physically claimed")
+						}
+						acquired := consumer.retainResourceRootForFinalization()
+						if componentClaim == acquired {
+							panic("consumer operation lease disagrees with physical claim")
+						}
 					}
 					panic(first)
 				})
 				consumer.referenceLifetime().afterPhysicalRelease(func() { visited = append(visited, 1); panic(later) })
 				consumer.referenceLifetime().afterPhysicalRelease(func() { visited = append(visited, 2) })
 				err = consumer.Close()
+				if firstObserved != first {
+					t.Fatal("first physical callback panic changed", firstObserved)
+				}
 				if !errors.Is(err, ErrCallbackPanic) {
 					t.Fatal("pre-finalization panic lost its Close outcome", err)
 				}
-				if retained {
+				if retained && !componentClaim {
 					if consumer.finalizing || consumer.resourcesClosed || consumer.resourceRefs != 1 || consumer.jm == nil || secondary.jobMemory() == nil || !reflect.DeepEqual(visited, []int{0}) {
 						t.Fatal("deferred physical cleanup kept its finalizing claim or lost the operation lease", visited)
 					}

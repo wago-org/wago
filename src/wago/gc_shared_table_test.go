@@ -1,4 +1,4 @@
-//go:build (linux && (amd64 || arm64)) || (darwin && arm64)
+//go:build (linux && (amd64 || arm64 || riscv64)) || (darwin && arm64)
 
 package wago
 
@@ -364,6 +364,10 @@ func TestGCSharedTableImportRejectsIllTypedCompactRows(t *testing.T) {
 	multiConsumerCode := compile(gcSharedMultiTableModule(true))
 	i31ProviderCode := compile(gcSharedI31TableModule(false))
 	i31ConsumerCode := compile(gcSharedI31TableModule(true))
+	if compiledArchitecture == 4 && (i31ProviderCode.nativeGCABIRequirement() != 0 || i31ProviderCode.genericGCFrameRoots() != nil || i31ProviderCode.stagedGCI31Product() == 0 ||
+		i31ConsumerCode.nativeGCABIRequirement() != 0 || i31ConsumerCode.genericGCFrameRoots() != nil || i31ConsumerCode.stagedGCI31Product() == 0) {
+		t.Fatal("non-allocating i31 tables require a collector-free execution product")
+	}
 	gcConfig := GCConfig{DisableCollection: true}
 	expectRejected := func(code *Compiled, store *referenceStore, imports *Imports) {
 		t.Helper()
@@ -428,8 +432,8 @@ func TestGCSharedTableImportRejectsIllTypedCompactRows(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer i31.Close()
-		if aggregate.gc != i31.gc {
-			t.Fatal("test providers did not share one collector")
+		if aggregate.gc == nil || i31.gc != nil {
+			t.Fatal("aggregate provider requires a collector and i31 provider must remain collector-free")
 		}
 		if _, err := aggregate.Invoke("set", 0, 47); err != nil {
 			t.Fatal(err)

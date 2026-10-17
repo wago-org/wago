@@ -3,6 +3,7 @@
 package riscv64
 
 import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
@@ -14,6 +15,7 @@ type swarControl struct {
 	params                         []swarClass
 	entry, then, incoming, hasElse bool
 	unreachable                    bool
+	resultBound                    bool
 	falseSite                      int
 	start                          int
 	sites                          []int
@@ -24,19 +26,28 @@ type swarControl struct {
 // each control frame's typing floor. Every live branch transports exact classes through real
 // padded stack homes; no synthetic graph identities stand in for those copies.
 type swarFlow struct {
-	frames          [1 + maxControlNesting]swarControl
-	depth           int
-	live            bool
-	h, peak, budget *int
-	classes         *[256]swarClass
-	spill           func(int) int32
-	reserve         func(int) error
-	emit            *integerEmitter
-	types           []*wasm.CompType
-	referenceTypes  internalReferenceTypes
-	usesLoops       bool
-	privateRefs     bool
-	typedRefs       bool
+	plugins           *pluginInstructionDirectory
+	frameStorage      [1 + maxControlNesting]swarControl
+	frames            []swarControl
+	depth             int
+	live              bool
+	h, peak, budget   *int
+	classes           *[maxSWAROperands]swarClass
+	spill             func(int) int32
+	recordHome        func(int, swarClass)
+	helperBase        func(int) int
+	hiddenRefs        func(int) []bool
+	reserve           func(int) error
+	emit              *integerEmitter
+	types             []*wasm.CompType
+	referenceTypes    internalReferenceTypes
+	exceptionModule   *wasm.Module
+	ownedExceptions   bool
+	exceptionControls map[int]*exceptionControl
+	nextExceptionRoot int
+	usesLoops         bool
+	privateRefs       bool
+	typedRefs         bool
 }
 
 func (flow *swarFlow) floor() int { return flow.frames[flow.depth-1].base }
@@ -157,6 +168,12 @@ func (flow *swarFlow) branch(label uint32, retainPayload bool) error {
 	}
 	fr := &flow.frames[flow.depth-1-int(label)]
 	values := fr.results
+	if fr.kind != 0x03 && fr.kind != 0xff && flow.live {
+		if err := flow.bindValues(values, fr.resultBound); err != nil {
+			return err
+		}
+		fr.resultBound = true
+	}
 	if fr.kind == 0x03 {
 		values = fr.params
 	}
@@ -174,11 +191,23 @@ func (flow *swarFlow) branch(label uint32, retainPayload bool) error {
 	if err := flow.reserve(128*len(values) + 64); err != nil {
 		return err
 	}
+	if flow.live && flow.recordHome != nil {
+		for i, class := range values {
+			flow.recordHome(fr.base+i, class)
+		}
+	}
 	if flow.live && flow.emit != nil {
 		// Destinations are never above sources. Forward pair copies therefore
 		// preserve overlapping mixed results. X5 retains br_table's raw index.
 		pair := swarPair{enc.X7, enc.X9}
 		for i, class := range values {
+			if custom, ok := flow.plugins.customType(class); ok {
+				for cell := int32(0); cell < custom.Size(); cell += 8 {
+					flow.emit.Load(7, flow.spill(*flow.h-len(values)+i)+cell, true)
+					flow.emit.Store(flow.spill(fr.base+i)+cell, 7, true)
+				}
+				continue
+			}
 			flow.emit.swarLoad(flow.spill(*flow.h-len(values)+i), pair)
 			if class.narrow() {
 				flow.emit.NormalizeI32(7)
@@ -188,6 +217,7 @@ func (flow *swarFlow) branch(label uint32, retainPayload bool) error {
 			}
 			flow.emit.swarStore(flow.spill(fr.base+i), pair)
 		}
+		flow.emit.restoreExceptionHandlers(flow.depth - 1 - int(label))
 		site := flow.emit.Jump()
 		if fr.kind == 0x03 {
 			if err := flow.patch(site, fr.start); err != nil {
@@ -269,13 +299,19 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 		flow.live = false
 		flow.frames[flow.depth-1].unreachable = true
 		*flow.h = flow.floor()
-	case 0x02, 0x03, 0x04:
+	case 0x02, 0x03, 0x04, 0x1f:
 		bt, e := internalReferenceBlockType(r, flow.privateRefs && flow.typedRefs, flow.referenceTypes)
 		if e != nil {
 			return false, false, e
 		}
 		if flow.depth == len(flow.frames) {
-			return false, false, unsupported("SWAR control nesting/dead shape")
+			if len(flow.frames) >= integerBudget+1 {
+				return false, false, unsupported("SWAR control nesting/dead shape")
+			}
+			n := min(len(flow.frames)*2, integerBudget+1)
+			grown := make([]swarControl, n)
+			copy(grown, flow.frames)
+			flow.frames = grown
 		}
 		var params, results []swarClass
 		if bt != -64 {
@@ -283,16 +319,16 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 				if bt >= int64(len(flow.types)) || flow.types[bt] == nil {
 					return false, false, unsupported("SWAR indexed control signature")
 				}
-				params, results, e = swarControlSignature(flow.types[bt], flow.referenceTypes, flow.privateRefs, flow.privateRefs && flow.typedRefs, flow.budget)
+				params, results, e = swarControlSignature(flow.types[bt], flow.referenceTypes, flow.privateRefs, flow.privateRefs && flow.typedRefs, flow.budget, flow.plugins)
 				if e != nil {
 					return false, false, e
 				}
 			} else {
-				if (bt < -5 || bt > -1) && !(flow.privateRefs && bt == -16) {
+				if (bt < -5 || bt > -1) && !(flow.privateRefs && (bt == -16 || flow.plugins.hasCustom() && bt == -17)) {
 					return false, false, unsupported("SWAR control carrier signature")
 				}
 				class := swarByteClass(byte(bt & 0x7f))
-				if bt == -16 {
+				if bt == -16 || bt == -17 {
 					class = swarFuncRef
 				}
 				results = []swarClass{class}
@@ -316,6 +352,9 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 				fr.falseSite = flow.emit.BranchZero(5)
 			}
 		}
+		if err := flow.bindValues(params, false); err != nil {
+			return false, false, err
+		}
 		if err := flow.match(flow.floor(), params, false); err != nil {
 			return false, false, err
 		}
@@ -327,12 +366,66 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 				flow.emit.emitProductionInterruptPoll()
 			}
 		}
+		if op == 0x1f {
+			if flow.exceptionModule == nil {
+				return false, false, unsupported("SWAR try_table source proof")
+			}
+			control, err := parseExceptionCatches(r, flow.exceptionModule, flow.depth, &flow.nextExceptionRoot)
+			if err != nil {
+				return false, false, err
+			}
+			for _, clause := range control.clauses {
+				target := &flow.frames[clause.target]
+				values := target.results
+				if target.kind == 0x03 {
+					values = target.params
+				}
+				arity := len(clause.payload)
+				if clause.root >= 0 {
+					arity++
+				}
+				if arity != len(values) {
+					return false, false, unsupported("SWAR exception payload arity")
+				}
+				for i, typ := range clause.payload {
+					if swarControlClass(typ, flow.referenceTypes, true, flow.typedRefs) != values[i] {
+						return false, false, unsupported("SWAR exception payload class")
+					}
+				}
+				if clause.root >= 0 && values[arity-1] != swarFuncRef {
+					return false, false, unsupported("SWAR catch_ref class")
+				}
+				if flow.live && target.kind != 0x03 {
+					target.incoming = true
+				}
+			}
+			if flow.exceptionControls == nil {
+				flow.exceptionControls = make(map[int]*exceptionControl)
+			}
+			if flow.live && flow.emit != nil && flow.emit.mode.ownedExceptionReferences {
+				refs := flow.hiddenRefs(*flow.h)
+				for i := range control.clauses {
+					control.clauses[i].hiddenRefs = refs
+					control.clauses[i].collectorPC = flow.emit.sourcePC
+				}
+			}
+			flow.exceptionControls[flow.depth] = control
+			if flow.live && flow.emit != nil {
+				flow.emit.beginExceptionHandler(control, flow.depth)
+			}
+		}
 		flow.frames[flow.depth] = fr
 		flow.depth++
 	case 0x05:
 		fr := &flow.frames[flow.depth-1]
 		if fr.kind != 0x04 || fr.hasElse {
 			return false, false, unsupported("SWAR else shape")
+		}
+		if flow.live && fr.kind != 0xff {
+			if err := flow.bindValues(fr.results, fr.resultBound); err != nil {
+				return false, false, err
+			}
+			fr.resultBound = true
 		}
 		if err := flow.match(fr.base, fr.results, true); err != nil {
 			return false, false, err
@@ -366,8 +459,46 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 				}
 			}
 		}
+		if flow.live && fr.kind != 0xff {
+			if err := flow.bindValues(fr.results, fr.resultBound); err != nil {
+				return false, false, err
+			}
+			fr.resultBound = true
+		}
 		if err := flow.match(fr.base, fr.results, true); err != nil {
 			return false, false, err
+		}
+		if fr.kind == 0x1f {
+			control := flow.exceptionControls[flow.depth-1]
+			if flow.emit != nil && control.active {
+				skip := -1
+				if flow.live || fr.incoming {
+					flow.emit.restoreExceptionHandlers(flow.depth - 1)
+					skip = flow.emit.Jump()
+				}
+				flow.emit.exception.active = flow.emit.exception.active[:len(flow.emit.exception.active)-1]
+				if err := flow.emit.emitExceptionHandler(control, func(clause *exceptionCatch) error {
+					target := &flow.frames[clause.target]
+					flow.emit.copyExceptionPayloadAt(clause, target.base, flow.spill)
+					flow.emit.restoreExceptionHandlers(clause.target)
+					site := flow.emit.Jump()
+					if target.kind == 0x03 {
+						return flow.patch(site, target.start)
+					}
+					target.sites = append(target.sites, site)
+					return nil
+				}); err != nil {
+					return false, false, err
+				}
+				if skip >= 0 {
+					if err := flow.patch(skip, flow.position()); err != nil {
+						return false, false, err
+					}
+				}
+			} else if flow.emit != nil {
+				flow.emit.emitInactiveExceptionCopies(control)
+			}
+			delete(flow.exceptionControls, flow.depth-1)
 		}
 		for _, site := range fr.sites {
 			if err := flow.patch(site, flow.position()); err != nil {
@@ -393,6 +524,46 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 		}
 		flow.depth--
 		done = flow.depth == 0
+	case 0x08, 0x0a:
+		if flow.exceptionModule == nil {
+			return false, false, unsupported("SWAR throw source proof")
+		}
+		if op == 0x08 {
+			tag, err := r.U32()
+			if err != nil {
+				return false, false, err
+			}
+			sig, err := exceptionTagSignature(flow.exceptionModule, tag)
+			if err != nil {
+				return false, false, err
+			}
+			var classes [shared.MaxEHTagPayloadWords]swarClass
+			for i, typ := range sig.Params {
+				classes[i] = swarControlClass(typ, flow.referenceTypes, true, flow.typedRefs)
+			}
+			if err := flow.match(flow.floor(), classes[:len(sig.Params)], false); err != nil {
+				return false, false, err
+			}
+			*flow.h -= len(sig.Params)
+			if flow.live && flow.emit != nil {
+				flow.emit.throwExceptionAt(tag, sig.Params, *flow.h, flow.spill)
+			}
+		} else {
+			if err := flow.prepareDead(swarFuncRef); err != nil {
+				return false, false, err
+			}
+			if *flow.h == flow.floor() || flow.classes[*flow.h-1] != swarFuncRef {
+				return false, false, unsupported("SWAR throw_ref class")
+			}
+			*flow.h--
+			if flow.live && flow.emit != nil {
+				flow.emit.throwExceptionReference(flow.helperBase(*flow.h))
+			}
+		}
+		trap = true
+		flow.live = false
+		flow.frames[flow.depth-1].unreachable = true
+		*flow.h = flow.floor()
 	case 0x0c, 0x0d, 0x0f:
 		label := uint32(flow.depth - 1)
 		if op != 0x0f {
@@ -473,4 +644,26 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 		*flow.h = flow.floor()
 	}
 	return done, trap, nil
+}
+
+// Bind a block's erased signature to explicitly produced custom operands. Once
+// a live incoming edge fixes a result, all other edges must agree exactly.
+func (flow *swarFlow) bindValues(values []swarClass, bound bool) error {
+	if !flow.plugins.hasCustom() || !flow.live || len(values) > *flow.h-flow.floor() {
+		return nil
+	}
+	for i, wanted := range values {
+		actual := flow.classes[*flow.h-len(values)+i]
+		if actual == wanted || actual == swarUnknown {
+			continue
+		}
+		if !bound && actual >= swarCustomBase && flow.plugins.physicalClass(actual) == wanted {
+			values[i] = actual
+			continue
+		}
+		if actual >= swarCustomBase || wanted >= swarCustomBase {
+			return unsupported("incompatible custom type at control join")
+		}
+	}
+	return nil
 }

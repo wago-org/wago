@@ -284,6 +284,14 @@ func hostCtrlFrame(ptr uintptr) []byte {
 // parkedHostCtrlFrame authenticates unknown architecture-owned stack frames
 // before any unsafe control-frame view is constructed.
 func (e *Engine) parkedHostCtrlFrame(ptr uintptr) ([]byte, error) {
+	if registerFixedHostCtrlFrames {
+		if frame := e.NativeStackRange(ptr, ctrlFrameSize); frame != nil && e.validateUnregisteredHostCtrl(ptr) == nil {
+			raw := binary.LittleEndian.Uint32(frame[hcNArgs:])
+			if raw&0xffff <= maxHostArity && raw>>16 <= maxHostArity {
+				return frame, nil
+			}
+		}
+	}
 	if _, known := registeredHostCtrlFrames.Load(ptr); !known {
 		if err := e.validateUnregisteredHostCtrl(ptr); err != nil {
 			return nil, err

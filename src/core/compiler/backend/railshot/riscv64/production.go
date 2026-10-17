@@ -74,10 +74,20 @@ func stageProductionImage(c *Compiled, deferMapping bool) (*enc.CompiledModule, 
 		return nil, err
 	}
 	entries, internal := shared.ModuleEntries(len(c.functions))
+	var direct, bounded []uint64
 	for i, f := range c.functions {
-		// No direct/prepared proof is advertised. Internal aliases enter the
-		// same fully framed wrapper ABI until a genuine register ABI is added.
 		entries[i], internal[i] = f.Entry, f.Entry
+		if f.directEntry != 0 {
+			if direct == nil {
+				direct = make([]uint64, (len(c.functions)+63)/64)
+				bounded = make([]uint64, len(direct))
+			}
+			internal[i] += f.directEntry
+			direct[i/64] |= 1 << uint(i%64)
+			if f.directBounded {
+				bounded[i/64] |= 1 << uint(i%64)
+			}
+		}
 	}
-	return &enc.CompiledModule{Code: image.Bytes(), CodeImage: image, Entry: entries, InternalEntry: internal}, nil
+	return &enc.CompiledModule{Code: image.Bytes(), CodeImage: image, Entry: entries, InternalEntry: internal, DirectPrepared: direct, DirectPreparedBounded: bounded}, nil
 }

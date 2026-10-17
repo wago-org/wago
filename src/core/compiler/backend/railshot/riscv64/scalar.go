@@ -8,6 +8,7 @@ package riscv64
 import (
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
 
@@ -15,20 +16,32 @@ var scalarRegisters = [...]uint8{5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
 
 type target struct {
 	regallocFnState
-	a        enc.Asm
-	regs     []uint8
-	nlocals  int
-	header   int
-	err      error
-	mode     emissionMode
-	sourcePC uint32
+	a           enc.Asm
+	regs        []uint8
+	nlocals     int
+	spillPrefix int32
+	header      int
+	err         error
+	mode        emissionMode
+	sourcePC    uint32
 }
 
 type emissionMode struct {
 	profileMode
-	production        bool
-	interruptible     bool
-	invocationContext bool
+	tableModuleSource        *wasm.Module // borrowed validated public table types
+	customInstructions       *pluginInstructionDirectory
+	customMemory             bool
+	production               bool
+	threadedMemory           bool
+	elideBounds              bool
+	exceptionModule          *wasm.Module
+	exceptionOperands        *[]*wasm.CollectorOperandRoots
+	ownedExceptionReferences bool
+	gcFunctionEnvironments   bool
+	interruptible            bool
+	invocationContext        bool
+	moduleArgumentSlots      uint16
+	moduleResultSlots        uint16
 	// The runtime authenticates and retains canonical foreign descriptors at
 	// entry/resume and provides a synchronous root control frame.
 	foreignTableCalls bool
@@ -54,6 +67,8 @@ type emissionMode struct {
 	gcFrameRoots                  *shared.GCFrameRootPlan
 	// Compile-only immutable lookup for mixed SWAR/rooted-reference functions.
 	gcRootedDirectory *internalReferenceTypeDirectory
+	// Whole-module primitive-reference admission, shared by all emitted tails.
+	primitiveTailTypes *sourceFunctionTypeDirectory
 }
 
 var _ shared.ScalarTarget = (*target)(nil)
@@ -67,7 +82,9 @@ func (f *target) frameHeader() int {
 	return f.header
 }
 func (f *target) LocalOffset(i int) int32 { return int32(f.frameHeader() + 8*i) }
-func (f *target) SpillOffset(i int) int32 { return int32(f.frameHeader() + 8*f.nlocals + 8*i) }
+func (f *target) SpillOffset(i int) int32 {
+	return int32(f.frameHeader()+8*f.nlocals+8*i) + f.spillPrefix
+}
 func (f *target) Constant(r uint8, v int64, w bool) {
 	if w {
 		f.a.Constant64(enc.Reg(r), v)
@@ -84,12 +101,18 @@ func (f *target) Move(d, s uint8, w bool) {
 }
 func (f *target) NormalizeI32(r uint8) { f.a.ZeroExtend32(enc.Reg(r), enc.Reg(r)) }
 func (f *target) address(off int32) (enc.Reg, int32) {
+	return f.addressAt(enc.SP, off, enc.Scratch1)
+}
+
+// The caller chooses a reserved temporary distinct from the base and any
+// value still needed by a store. Small offsets retain their single instruction.
+func (f *target) addressAt(base enc.Reg, off int32, temporary enc.Reg) (enc.Reg, int32) {
 	if off >= -2048 && off <= 2047 {
-		return enc.SP, off
+		return base, off
 	}
-	f.a.Constant64(enc.Scratch1, int64(off))
-	f.a.Add(enc.Scratch1, enc.SP, enc.Scratch1)
-	return enc.Scratch1, 0
+	f.a.Constant64(temporary, int64(off))
+	f.a.Add(temporary, base, temporary)
+	return temporary, 0
 }
 func (f *target) Load(r uint8, off int32, w bool) {
 	base, off := f.address(off)

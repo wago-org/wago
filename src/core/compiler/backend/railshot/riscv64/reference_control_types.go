@@ -2,7 +2,10 @@
 
 package riscv64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"fmt"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 func integerNumericSignature(sig *wasm.CompType, floating bool) error {
 	if sig == nil || sig.Kind != wasm.CompFunc || len(sig.Params) > 256 || len(sig.Results) > 256 {
@@ -105,23 +108,30 @@ func integerSameClasses(a, aRefs, b, bRefs []bool) bool {
 	return true
 }
 
-func swarControlClass(typ wasm.ValType, types internalReferenceTypes, referencesAllowed, typed bool) swarClass {
+func swarControlClass(typ wasm.ValType, types internalReferenceTypes, referencesAllowed, typed bool, custom ...*pluginInstructionDirectory) swarClass {
 	if class := swarClassOf(typ); class != swarInvalid {
 		return class
 	}
 	if referencesAllowed && internalFunctionReferenceWithTypes(typ, typed, types) {
 		return swarFuncRef
 	}
+	if referencesAllowed && len(custom) != 0 && custom[0].hasCustom() {
+		for _, value := range custom[0].types {
+			if wasm.EqualValType(typ, pluginCarrierType(value)) {
+				return swarFuncRef
+			}
+		}
+	}
 	return swarInvalid
 }
 
-func admitSWARControlSignature(sig *wasm.CompType, types internalReferenceTypes, referencesAllowed, typed bool) error {
+func admitSWARControlSignature(sig *wasm.CompType, types internalReferenceTypes, referencesAllowed, typed bool, custom ...*pluginInstructionDirectory) error {
 	if sig == nil || sig.Kind != wasm.CompFunc || len(sig.Params) > maxSWARLocals || len(sig.Results) > maxSWARLocals {
 		return unsupported("SWAR control type shape/bound")
 	}
 	for _, list := range [][]wasm.ValType{sig.Params, sig.Results} {
 		for _, typ := range list {
-			if swarControlClass(typ, types, referencesAllowed, typed) == swarInvalid {
+			if swarControlClass(typ, types, referencesAllowed, typed, custom...) == swarInvalid {
 				return unsupported("SWAR control type carrier")
 			}
 		}
@@ -129,8 +139,8 @@ func admitSWARControlSignature(sig *wasm.CompType, types internalReferenceTypes,
 	return nil
 }
 
-func swarControlSignature(sig *wasm.CompType, types internalReferenceTypes, referencesAllowed, typed bool, budget *int) ([]swarClass, []swarClass, error) {
-	if err := admitSWARControlSignature(sig, types, referencesAllowed, typed); err != nil {
+func swarControlSignature(sig *wasm.CompType, types internalReferenceTypes, referencesAllowed, typed bool, budget *int, custom ...*pluginInstructionDirectory) ([]swarClass, []swarClass, error) {
+	if err := admitSWARControlSignature(sig, types, referencesAllowed, typed, custom...); err != nil {
 		return nil, nil, err
 	}
 	if err := chargeControlTypes(budget, len(sig.Params)+len(sig.Results)); err != nil {
@@ -139,10 +149,10 @@ func swarControlSignature(sig *wasm.CompType, types internalReferenceTypes, refe
 	backing := make([]swarClass, len(sig.Params)+len(sig.Results))
 	params, results := backing[:len(sig.Params)], backing[len(sig.Params):]
 	for i, typ := range sig.Params {
-		params[i] = swarControlClass(typ, types, referencesAllowed, typed)
+		params[i] = swarControlClass(typ, types, referencesAllowed, typed, custom...)
 	}
 	for i, typ := range sig.Results {
-		results[i] = swarControlClass(typ, types, referencesAllowed, typed)
+		results[i] = swarControlClass(typ, types, referencesAllowed, typed, custom...)
 	}
 	return params, results, nil
 }
@@ -166,7 +176,7 @@ func admitDeclaredControlSignature(sig *wasm.CompType, types internalReferenceTy
 				continue
 			}
 			if !referencesAllowed || !internalFunctionReferenceWithTypes(typ, typed, types) {
-				return false, false, unsupported("declared internal reference carrier")
+				return false, false, unsupported(fmt.Sprintf("declared internal reference carrier %v (typed=%t rooted=%t)", typ, typed, types.gcRootedScalar))
 			}
 			reference = true
 			witness = witness || !typ.Ref().Nullable() || typ.Ref().Heap().Kind() == wasm.HeapTypeIndex

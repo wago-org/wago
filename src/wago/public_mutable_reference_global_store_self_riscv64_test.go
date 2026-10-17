@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -38,7 +38,7 @@ func TestRV64PublicMutableFuncrefGlobalStoreSelf(t *testing.T) {
 			defer shared.Close()
 			compiled := rv64TableStageCompile(t, "mutable-funcref-store-self", rv64MutableFuncrefStoreSelfModule(), artifact)
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalStoreSelf(view) || !view.usesGuestGlobalStoreHelper() {
+			if !(rv64MutableFuncrefGlobalStoreSelf(view) || rv64PrimitiveReferenceContract(view)) || !view.usesGuestGlobalStoreHelper() {
 				t.Fatalf("mutable funcref self-store witness missing: code=%d/%x desc=%t escape=%t refs=%t/%t/%t sync=%d validation=%v", len(view.code), sha256.Sum256(view.code), view.NeedsFuncRefDescs, view.dynamicFuncrefEscape, view.nativeReferenceFunctionABI, view.nativeReferenceCallABI, view.nativeReferenceControlABI, view.syncHostSlots, railshotValidateCompiled(view))
 			}
 			module, err := rt.Module(compiled)
@@ -119,7 +119,7 @@ func TestRV64PublicMutableFuncrefGlobalStoreSelf(t *testing.T) {
 func TestRV64PublicMutableFuncrefGlobalStoreSelfAdmission(t *testing.T) {
 	compiled := rv64TableStageCompile(t, "mutable-funcref-store-self-admission", rv64MutableFuncrefStoreSelfModule(), true)
 	defer compiled.Close()
-	if !rv64MutableFuncrefGlobalStoreSelf(compiled.executionView()) {
+	if !(rv64MutableFuncrefGlobalStoreSelf(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 		t.Fatal("base mutable funcref self-store witness rejected")
 	}
 	for name, mutate := range map[string]func(*Compiled){

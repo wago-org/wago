@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -48,9 +48,7 @@ func TestRV64PublicReferenceFunctionProperIndirectTailBare(t *testing.T) {
 				rt := NewRuntime(WithRuntimeConfig(cfg))
 				defer rv64HostCertificateCloseRuntime(t, rt)
 				in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
-				if !bytes.Equal(in.funcRefDescs[2*40:3*40], make([]byte, 40)) {
-					t.Fatal("callable private source")
-				}
+				rv64RequirePublishedLocalFunction(t, in, 1)
 				// Public arguments establish end-to-end i32 normalization. The
 				// decoded backend sentinels separately cover dirty incoming carriers.
 				for _, index := range []uint64{0, 1, 0, 3, 4, 5, 0xffffffff, 2, 0} {
@@ -119,8 +117,7 @@ func TestRV64PublicReferenceFunctionProperIndirectTailRetained(t *testing.T) {
 		// Funcref table metadata itself requires the directory even when the
 		// optional explicit descriptor flag is absent. This is a valid shape.
 		metadata := rv64ReferenceImportTailCopy(base)
-		metadata.NeedsFuncRefDescs = false
-		if !metadata.needsFuncRefDescs() || railshotValidateCompiled(metadata) != nil {
+		if !metadata.needsFuncRefDescs() || metadata.validate() != nil {
 			t.Fatal("derived table descriptor contract")
 		}
 		blob, err := metadata.MarshalBinary()
@@ -141,28 +138,26 @@ func TestRV64PublicReferenceFunctionProperIndirectTailRetained(t *testing.T) {
 		}
 
 		for name, change := range map[string]func(*Compiled){
-			"context-witness": func(c *Compiled) { c.nativeTableReferenceABI = false },
-			"tableless":       func(c *Compiled) { c.HasTable = false },
-			"table64":         func(c *Compiled) { c.TableAddr64 = true },
-			"import-ingress":  func(c *Compiled) { c.tableImport = "env.table" },
-			"export-ingress":  func(c *Compiled) { c.tableExports = map[string]int{"escape": 0} },
-			"private-type":    func(c *Compiled) { rv64NativeTailModule(c).Plans[1].TypeIndex = 1 },
-			"unbound-type":    func(c *Compiled) { rv64NativeTailModule(c).Plans[1].TypeIndex = uint32(len(c.Types)) },
-			"inactive-import": func(c *Compiled) { rv64NativeTailModule(c).Plans[1].ImportIndex = 1 },
-			"home-overlap":    func(c *Compiled) { p := &rv64NativeTailModule(c).Plans[1]; p.ReferenceBase = p.SourceBase },
-			"home-outside":    func(c *Compiled) { p := &rv64NativeTailModule(c).Plans[1]; p.ReferenceBase = p.FrameBytes },
-			"descriptors":     func(c *Compiled) { c.NeedsFuncRefDescs = false; c.TableType = ValExternRef },
-			"kind-reference":  func(c *Compiled) { rv64NativeTailModule(c).Plans[1].Kind = encoder.NativeTailReference },
-			"unbound-actual":  func(c *Compiled) { c.Funcs = slices.Clone(c.Funcs); c.Funcs[1].TypeIndex = uint32(len(c.Types)) },
-			"tail-feature":    func(c *Compiled) { c.requiredFeatures &^= CoreFeatureTailCall },
+			"descriptor-witness": func(c *Compiled) { c.NeedsFuncRefDescs = false },
+			"context-witness":    func(c *Compiled) { c.nativeTableReferenceABI = false },
+			"tableless":          func(c *Compiled) { c.HasTable = false },
+			"table64":            func(c *Compiled) { c.TableAddr64 = true },
+			"import-ingress":     func(c *Compiled) { c.tableImport = "env.table" },
+			"export-ingress":     func(c *Compiled) { c.tableExports = map[string]int{"escape": 0} },
+			"private-type":       func(c *Compiled) { rv64NativeTailModule(c).Plans[1].TypeIndex = 1 },
+			"unbound-type":       func(c *Compiled) { rv64NativeTailModule(c).Plans[1].TypeIndex = uint32(len(c.Types)) },
+			"inactive-import":    func(c *Compiled) { rv64NativeTailModule(c).Plans[1].ImportIndex = 1 },
+			"home-overlap":       func(c *Compiled) { p := &rv64NativeTailModule(c).Plans[1]; p.ReferenceBase = p.SourceBase },
+			"home-outside":       func(c *Compiled) { p := &rv64NativeTailModule(c).Plans[1]; p.ReferenceBase = p.FrameBytes },
+			"descriptors":        func(c *Compiled) { c.NeedsFuncRefDescs = false; c.TableType = ValExternRef },
+			"kind-reference":     func(c *Compiled) { rv64NativeTailModule(c).Plans[1].Kind = encoder.NativeTailReference },
+			"unbound-actual":     func(c *Compiled) { c.Funcs = slices.Clone(c.Funcs); c.Funcs[1].TypeIndex = uint32(len(c.Types)) },
+			"tail-feature":       func(c *Compiled) { c.requiredFeatures &^= CoreFeatureTailCall },
 		} {
 			t.Run(fmt.Sprintf("vector%t-%s", vector, name), func(t *testing.T) {
-				c := cloneCompiledMetadata(base)
-				c.codeCache, c.validateMemo = nil, &validateMemo{}
-				rv64StoreNativeTailModule(c, &encoder.NativeTailModule{Plans: slices.Clone(rv64NativeTailModule(base).Plans)})
-				c.codeCache.stagedFeatures = base.stagedFeatures()
+				c := rv64ReferenceImportTailCopy(base)
 				change(c)
-				if err := railshotValidateCompiled(c); err == nil {
+				if err := c.validate(); err == nil {
 					t.Fatal("malformed indirect metadata accepted")
 				}
 				if err := c.prepareCodeMapping(); err != nil {

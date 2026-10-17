@@ -1,10 +1,9 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"maps"
@@ -12,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -34,93 +34,97 @@ func rv64ImportedTable64IndirectTailSource() []byte {
 }
 
 func TestRV64PublicImportedTable64IndirectTail(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
-		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
-			producerCode := rv64NativeTailCompile(t, "imported-table64-tail-producer", rv64Table64IndirectInstructionSource(), artifact)
-			consumerCode := rv64NativeTailCompile(t, "imported-table64-tail-consumer", rv64ImportedTable64IndirectTailSource(), artifact)
-			if len(consumerCode.code) != 1436 || sha256.Sum256(consumerCode.code) != [32]byte{0xa9, 0x67, 0xe6, 0x62, 0xfd, 0xd6, 0x5c, 0x25, 0x37, 0x1d, 0xd0, 0x96, 0x73, 0x16, 0x14, 0x00, 0x7c, 0x39, 0x98, 0x6d, 0xa3, 0x11, 0x30, 0xa1, 0x7b, 0xa1, 0xbd, 0xa4, 0x5c, 0xbf, 0x47, 0xae} || !rv64ImportedTable64IndirectTail(consumerCode.executionView()) {
-				t.Fatal("imported table64 tail metadata contract")
-			}
-			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig().WithNativeStackBytes(MinNativeStackBytes)))
-			defer rv64HostCertificateCloseRuntime(t, rt)
-			producer := rv64HostTailInstantiate(t, rt, producerCode, nil)
-			table, err := producer.ExportedTable("table")
-			if err != nil || table.Size() != 2 {
-				t.Fatal("imported table64 tail producer table", table, err)
-			}
-			defer table.Close()
-			consumer := rv64HostTailInstantiate(t, rt, consumerCode, NewImports().Table("env", "table", table))
-			alias, err := consumer.ExportedTable("table")
-			if err != nil || alias != table {
-				t.Fatal("imported table64 tail export identity", err)
-			}
-			if err := consumerCode.Close(); err != nil {
-				t.Fatal("close consumer compiled handle before tails", err)
-			}
+	for _, minimum := range []byte{1, 2} {
+		for _, artifact := range []bool{false, true} {
+			t.Run(fmt.Sprintf("minimum%d/artifact%t", minimum, artifact), func(t *testing.T) {
+				producerCode := rv64TableStageCompile(t, "imported-table64-tail-producer", rv64Table64IndirectInstructionSource(), artifact)
+				source := bytes.Replace(rv64ImportedTable64IndirectTailSource(), []byte{0x70, 0x05, 1, 4}, []byte{0x70, 0x05, minimum, 4}, 1)
+				consumerCode := rv64TableStageCompile(t, fmt.Sprintf("imported-table64-tail-consumer-min%d", minimum), source, artifact)
+				plan := rv64NativeTailModule(consumerCode)
+				if !rv64ArtifactContractValid(consumerCode.executionView()) || plan == nil || len(plan.Plans) != 1 || plan.Plans[0].Kind != encoder.NativeTailIndirect {
+					t.Fatal("imported table64 tail execution contract")
+				}
+				rt := NewRuntime(WithRuntimeConfig(compatibilityDefaultConfig().WithNativeStackBytes(MinNativeStackBytes)))
+				defer rv64HostCertificateCloseRuntime(t, rt)
+				producer := rv64HostTailInstantiate(t, rt, producerCode, nil)
+				table, err := producer.ExportedTable("table")
+				if err != nil || table.Size() != 2 {
+					t.Fatal("imported table64 tail producer table", table, err)
+				}
+				defer table.Close()
+				consumer := rv64HostTailInstantiate(t, rt, consumerCode, NewImports().Table("env", "table", table))
+				alias, err := consumer.ExportedTable("table")
+				if err != nil || alias != table {
+					t.Fatal("imported table64 tail export identity", err)
+				}
+				if err := consumerCode.Close(); err != nil {
+					t.Fatal("close consumer compiled handle before tails", err)
+				}
 
-			checkTrap := func(index uint64) {
-				t.Helper()
-				before := slices.Clone(table.desc)
-				got, callErr := consumer.Invoke("tail", index)
-				var trap *coreruntime.TrapError
-				if callErr == nil || got != nil || !errors.As(callErr, &trap) || trap.Code != coreruntime.TrapIndirectOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 3 {
-					t.Fatal("imported table64 tail index did not trap", index, got, callErr)
+				checkTrap := func(index uint64) {
+					t.Helper()
+					before := slices.Clone(table.desc)
+					got, callErr := consumer.Invoke("tail", index)
+					var trap *coreruntime.TrapError
+					if callErr == nil || got != nil || !errors.As(callErr, &trap) || trap.Code != coreruntime.TrapIndirectOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 3 {
+						t.Fatal("imported table64 tail index did not trap", index, got, callErr)
+					}
+					if !slices.Equal(table.desc, before) || table.Size() != 2 {
+						t.Fatal("imported table64 tail trap changed storage", index)
+					}
+					if state := &consumer.pluginState.Load().railshotInvocation; state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || state.tableDepth != 0 || rv64EntryCapability(consumer) != 0 {
+						t.Fatal("imported table64 tail leaked generation", index)
+					}
 				}
-				if !slices.Equal(table.desc, before) || table.Size() != 2 {
-					t.Fatal("imported table64 tail trap changed storage", index)
+				checkTrap(0)
+				for index := uint64(0); index < 2; index++ {
+					if got, callErr := producer.Invoke("call", index); callErr != nil || !slices.Equal(got, []uint64{7}) {
+						t.Fatal("imported table64 tail producer seed", index, got, callErr)
+					}
+					if got, callErr := consumer.Invoke("tail", index); callErr != nil || !slices.Equal(got, []uint64{7}) {
+						t.Fatal("imported table64 proper tail", index, got, callErr)
+					}
 				}
-				if state := &consumer.pluginState.Load().railshotInvocation; state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || state.tableDepth != 0 || rv64EntryCapability(consumer) != 0 {
-					t.Fatal("imported table64 tail leaked generation", index)
+				for _, index := range []uint64{2, 1<<32 | 1, ^uint64(0)} {
+					checkTrap(index)
+					if got, callErr := consumer.Invoke("tail", 1); callErr != nil || !slices.Equal(got, []uint64{7}) {
+						t.Fatal("imported table64 tail reuse after trap", index, got, callErr)
+					}
 				}
-			}
-			checkTrap(0)
-			for index := uint64(0); index < 2; index++ {
-				if got, callErr := producer.Invoke("call", index); callErr != nil || !slices.Equal(got, []uint64{7}) {
-					t.Fatal("imported table64 tail producer seed", index, got, callErr)
-				}
-				if got, callErr := consumer.Invoke("tail", index); callErr != nil || !slices.Equal(got, []uint64{7}) {
-					t.Fatal("imported table64 proper tail", index, got, callErr)
-				}
-			}
-			for _, index := range []uint64{2, 1<<32 | 1, ^uint64(0)} {
-				checkTrap(index)
-				if got, callErr := consumer.Invoke("tail", 1); callErr != nil || !slices.Equal(got, []uint64{7}) {
-					t.Fatal("imported table64 tail reuse after trap", index, got, callErr)
-				}
-			}
 
-			if err := producerCode.Close(); err != nil {
-				t.Fatal("close producer code before retained tail", err)
-			}
-			if err := producer.Close(); err != nil {
-				t.Fatal("close producer before retained tail", err)
-			}
-			fn, err := consumer.WasmFunc("tail")
-			if err != nil {
-				t.Fatal(err)
-			}
-			session, err := fn.OpenSession()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer session.Close()
-			if got, callErr := session.Invoke(1); callErr != nil || !slices.Equal(got, []uint64{7}) {
-				t.Fatal("prepared imported table64 tail after producer close", got, callErr)
-			}
-		})
+				if err := producerCode.Close(); err != nil {
+					t.Fatal("close producer code before retained tail", err)
+				}
+				if err := producer.Close(); err != nil {
+					t.Fatal("close producer before retained tail", err)
+				}
+				fn, err := consumer.WasmFunc("tail")
+				if err != nil {
+					t.Fatal(err)
+				}
+				session, err := fn.OpenSession()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer session.Close()
+				if got, callErr := session.Invoke(1); callErr != nil || !slices.Equal(got, []uint64{7}) {
+					t.Fatal("prepared imported table64 tail after producer close", got, callErr)
+				}
+			})
+		}
 	}
+
 }
 
 func TestRV64PublicImportedTable64IndirectTailGates(t *testing.T) {
 	base := rv64ImportedTable64IndirectTailSource()
 	for name, source := range map[string][]byte{
-		"table32":       bytes.Replace(bytes.Clone(base), []byte{0x70, 0x05, 1, 4}, []byte{0x70, 0x01, 1, 4}, 1),
-		"different-min": bytes.Replace(bytes.Clone(base), []byte{0x70, 0x05, 1, 4}, []byte{0x70, 0x05, 2, 4}, 1),
-		"wrong-table":   bytes.Replace(bytes.Clone(base), []byte{0x20, 0, 0x13, 0, 0}, []byte{0x20, 0, 0x13, 0, 1}, 1),
-		"wrong-type":    bytes.Replace(bytes.Clone(base), []byte{0x20, 0, 0x13, 0, 0}, []byte{0x20, 0, 0x13, 1, 0}, 1),
+		"table32":     bytes.Replace(bytes.Clone(base), []byte{0x70, 0x05, 1, 4}, []byte{0x70, 0x01, 1, 4}, 1),
+		"wrong-table": bytes.Replace(bytes.Clone(base), []byte{0x20, 0, 0x13, 0, 0}, []byte{0x20, 0, 0x13, 0, 1}, 1),
+		"wrong-type":  bytes.Replace(bytes.Clone(base), []byte{0x20, 0, 0x13, 0, 0}, []byte{0x20, 0, 0x13, 1, 0}, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
-			c, err := rv64NativeTailConfig().Compile(source)
+			c, err := compatibilityDefaultConfig().Compile(source)
 			if c != nil {
 				c.Close()
 			}
@@ -130,7 +134,7 @@ func TestRV64PublicImportedTable64IndirectTailGates(t *testing.T) {
 		})
 	}
 
-	compiled := rv64NativeTailCompile(t, "imported-table64-tail-gates", base, false)
+	compiled := rv64TableStageCompile(t, "imported-table64-tail-gates", base, false)
 	for name, mutate := range map[string]func(*Compiled){
 		"missing-tail-feature": func(c *Compiled) { c.requiredFeatures &^= CoreFeatureTailCall },
 		"missing-import":       func(c *Compiled) { c.tableImport = "" },
@@ -152,11 +156,12 @@ func TestRV64PublicImportedTable64IndirectTailGates(t *testing.T) {
 			bad.InternalEntry = slices.Clone(bad.InternalEntry)
 			bad.Exports = maps.Clone(bad.Exports)
 			mutate(bad)
-			if rv64ImportedTable64IndirectTail(bad) || railshotValidateCompiled(bad) == nil {
+			if bad.validate() == nil {
 				t.Fatal("hostile imported table64 tail metadata admitted")
 			}
 			blob, err := bad.MarshalBinary()
 			if err != nil {
+				rv64RequireTableMutationSerializationError(t, name, err)
 				return
 			}
 			loaded, err := LoadTrustedArtifact(blob)

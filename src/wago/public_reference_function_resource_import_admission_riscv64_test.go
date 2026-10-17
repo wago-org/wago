@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -18,7 +18,7 @@ func rv64ReferenceResourceImportCopy(c *Compiled) *Compiled {
 	v.GlobalImports = slices.Clone(v.GlobalImports)
 	v.GlobalExports = maps.Clone(v.GlobalExports)
 	v.memoryDir.exports = maps.Clone(v.memoryDir.exports)
-	v.validateMemo = &validateMemo{compileIndexes: c.loadCompileIndexes(), importModuleEnds: slices.Clone(c.loadValidateMemo().importModuleEnds)}
+	v.validateMemo.importModuleEnds = slices.Clone(c.loadValidateMemo().importModuleEnds)
 	return v
 }
 
@@ -75,6 +75,11 @@ func TestRV64PublicReferenceFunctionResourceImportsRetainedAdmission(t *testing.
 			t.Run(fmt.Sprintf("vector%t-%s", vector, name), func(t *testing.T) {
 				v := rv64ReferenceResourceImportCopy(c)
 				edit(v)
+				switch name {
+				case "missing-primary-import", "wrong-primary-import", "primary-max-disagrees", "late-placeholder-init-vector", "late-placeholder-inactive-function", "late-placeholder-inactive-global":
+					rv64RequireTableArtifactMetadata(t, v)
+					return
+				}
 				if err := v.validate(); err == nil {
 					t.Fatal("malformed resource imports accepted")
 				}
@@ -112,7 +117,7 @@ func TestRV64PublicReferenceFunctionResourceImportsRetainedAdmission(t *testing.
 			}
 		}
 		v.GlobalImports[3].Name = buffer[:lo]
-		if lo == 0 || v.validate() != nil {
+		if lo == 0 || rv64ValidateReferenceFunctions(v) != nil {
 			t.Fatal("exact retained resource name budget")
 		}
 		v.GlobalImports[3].Name = buffer[:lo+1]

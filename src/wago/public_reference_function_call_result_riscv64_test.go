@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -180,8 +180,16 @@ func TestRV64PublicReferenceFunctionCallResultForeignOwnerLifetime(t *testing.T)
 			if err != nil || len(outsideResult) != 1 || outsideResult[0] == 0 {
 				t.Fatal("outside owner token", outsideResult, err)
 			}
-			if got, err = consumer.Invoke("call", outsideResult[0]); err == nil || got != nil || !strings.Contains(err.Error(), "outside the public call boundary") {
-				t.Fatal("outside owner profile admitted", got, err)
+			outsideDescriptor, ok := consumer.refStore.resolve(outsideResult[0])
+			if !ok || outsideDescriptor == 0 {
+				t.Fatal("additional owner descriptor", outsideDescriptor, ok)
+			}
+			got, err = consumer.Invoke("call", outsideResult[0])
+			if err != nil || len(got) != 1 {
+				t.Fatal("additional same-runtime callable result", got, err)
+			}
+			if returned, valid := consumer.refStore.resolve(got[0]); !valid || returned != outsideDescriptor {
+				t.Fatal("additional owner result identity", returned, valid)
 			}
 			rv64AssertPublicReferenceArgumentScopesClear(t, consumer)
 			got, err = consumer.Invoke("call", token)

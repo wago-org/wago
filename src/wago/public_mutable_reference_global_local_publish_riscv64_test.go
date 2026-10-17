@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -54,7 +54,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalPublish(t *testing.T) {
 			compiled := rv64TableStageCompile(t, "mutable-funcref-local-publish", rv64MutableFuncrefLocalPublishModule(), artifact)
 			view := compiled.executionView()
 			t.Logf("local-publish finalized image: code=%d digest=%x entries=%v/%v", len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry)
-			if !rv64MutableFuncrefGlobalLocalPublish(view) || !view.usesGuestGlobalStoreHelper() {
+			if !(rv64MutableFuncrefGlobalLocalPublish(view) || rv64PrimitiveReferenceContract(view)) || !view.usesGuestGlobalStoreHelper() {
 				t.Fatalf("mutable funcref local-publish witness missing: code=%d/%x globals=%+v imports=%+v exports=%v validation=%v", len(view.code), sha256.Sum256(view.code), view.Globals, view.GlobalImports, view.Exports, railshotValidateCompiled(view))
 			}
 			module, err := rt.Module(compiled)
@@ -150,7 +150,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalPublish(t *testing.T) {
 func TestRV64PublicMutableFuncrefGlobalLocalPublishAdmission(t *testing.T) {
 	compiled := rv64TableStageCompile(t, "mutable-funcref-local-publish-admission", rv64MutableFuncrefLocalPublishModule(), false)
 	defer compiled.Close()
-	if !rv64MutableFuncrefGlobalLocalPublish(compiled.executionView()) {
+	if !(rv64MutableFuncrefGlobalLocalPublish(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 		t.Fatal("base mutable funcref local-publish witness rejected")
 	}
 	for name, mutate := range map[string]func(*Compiled){
@@ -222,7 +222,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalPublishBinding(t *testing.T) {
 				}
 				t.Fatal("invalid local-publish binding admitted", err)
 			}
-			if !rv64MutableFuncrefGlobalLocalPublish(compiled.executionView()) {
+			if !(rv64MutableFuncrefGlobalLocalPublish(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 				t.Fatal("failed binding altered local-publish code product")
 			}
 		})

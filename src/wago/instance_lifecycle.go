@@ -30,6 +30,7 @@ func (in *Instance) Close() (err error) {
 	if in == nil {
 		return nil
 	}
+	defer managedFunctionAfterClose(in)
 	state, owner := in.beginClose()
 	if !owner {
 		if state.completed.Load() {
@@ -409,6 +410,7 @@ func (in *Instance) hasManagedOwner() bool {
 }
 
 func (in *Instance) finishTerminalClose(state *instanceCloseState) {
+	defer managedFunctionAfterClose(in)
 	var errs []error
 	if state.hooks != nil && state.event != nil {
 		for i := len(state.hooks.afterClose) - 1; i >= 0; i-- {
@@ -660,6 +662,8 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 	cleanup.run(func() { railshotReleaseInstanceGlobalReferences(in) })
 	cleanup.run(func() { detachImportedTables(in) })
 	cleanup.run(func() { detachImportedTags(in) })
+	cleanup.run(func() { releaseInstanceExceptionTags(in) })
+	cleanup.run(func() { releaseInstanceCompactExtern(in) })
 	if in.gc != nil {
 		closeCollector := func() {
 			if table := in.existingGCRefTestTableState(); table != nil {

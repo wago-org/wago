@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -70,7 +70,7 @@ func rv64MutableFuncrefGlobalClear(c *Compiled) bool {
 }
 
 func railshotUsesGuestGlobalStoreHelper(c *Compiled) bool {
-	return rv64MutableFuncrefGlobalClear(c) || rv64MutableFuncrefGlobalStoreSelf(c) || rv64MutableFuncrefGlobalCopy(c) || rv64MutableFuncrefGlobalMove(c) || rv64MutableFuncrefGlobalBidirectionalCopy(c) || rv64MutableFuncrefGlobalLocalCopy(c) || rv64MutableFuncrefGlobalLocalPublish(c) || rv64MutableFuncrefGlobalLocalTransfer(c) || rv64MutableFuncrefGlobalLocalExport(c) || rv64MutableFuncrefGlobalLocalObserve(c) || rv64MutableFuncrefGlobalLocalCall(c)
+	return rv64PrimitiveFunctionGlobalStores(c) || rv64MutableFuncrefGlobalClear(c) || rv64MutableFuncrefGlobalStoreSelf(c) || rv64MutableFuncrefGlobalCopy(c) || rv64MutableFuncrefGlobalMove(c) || rv64MutableFuncrefGlobalBidirectionalCopy(c) || rv64MutableFuncrefGlobalLocalCopy(c) || rv64MutableFuncrefGlobalLocalPublish(c) || rv64MutableFuncrefGlobalLocalTransfer(c) || rv64MutableFuncrefGlobalLocalExport(c) || rv64MutableFuncrefGlobalLocalObserve(c) || rv64MutableFuncrefGlobalLocalCall(c)
 }
 
 // retainGuestGlobalStoreDescriptor closes the raw-load/park ownership window
@@ -85,6 +85,8 @@ func (in *Instance) retainGuestGlobalStoreDescriptor(dispatch uint32, args, resu
 	}
 	var descriptor uint64
 	switch {
+	case len(args) == 2 && args[1] < uint64(len(in.globalCells)) && rv64PrimitiveMutableFunctionGlobal(in.c, args[1]):
+		descriptor = args[0]
 	case rv64MutableFuncrefGlobalClear(in.c) && len(args) == 0 && len(in.globalCells) == 1:
 		return nil, nil
 	case rv64MutableFuncrefGlobalStoreSelf(in.c) && len(args) == 1 && len(in.globalCells) == 1:
@@ -115,20 +117,39 @@ func (in *Instance) retainGuestGlobalStoreDescriptor(dispatch uint32, args, resu
 	if descriptor == 0 {
 		return nil, nil
 	}
-	if in.refStore == nil {
-		return nil, fmt.Errorf("RV64 guest global store reference owner is unavailable")
+	if in.refStore != nil {
+		if owner := in.refStore.retainDescriptorOwnerForFinalization(descriptor); owner != nil {
+			return owner, nil
+		}
 	}
-	owner := in.refStore.retainDescriptorOwnerForFinalization(descriptor)
-	if owner == nil {
+	lease := railshotCurrentNativeTableTargets(in)
+	if lease.targets == nil {
 		return nil, fmt.Errorf("RV64 guest global store descriptor owner is unavailable")
 	}
-	return owner, nil
+	var retained *Instance
+	for _, candidate := range lease.targets.owners[:lease.targets.count] {
+		if _, valid := rv64PublishedDescriptor(candidate, descriptor); !valid {
+			continue
+		}
+		if retained != nil && retained != candidate {
+			return nil, fmt.Errorf("RV64 guest global store descriptor owner is ambiguous")
+		}
+		retained = candidate
+	}
+	if retained == nil || !retained.retainResourceRootForFinalization() {
+		return nil, fmt.Errorf("RV64 guest global store descriptor owner is unavailable")
+	}
+	return retained, nil
 }
 
 // The zero-index host-funcref dispatch encoding is permanently invalid for a
 // public HostFuncRef. The exact authenticated image uses it as a private bridge
 // while retaining the ordinary parked-host lease and context restoration path.
 func (in *Instance) dispatchGuestGlobalStore(dispatch uint32, args, results []uint64) bool {
+	return in.dispatchGuestGlobalStoreWithOwner(dispatch, args, results, nil)
+}
+
+func (in *Instance) dispatchGuestGlobalStoreWithOwner(dispatch uint32, args, results []uint64, descriptorOwner *Instance) bool {
 	if dispatch != hostFuncRefDispatchBit {
 		return false
 	}
@@ -137,18 +158,25 @@ func (in *Instance) dispatchGuestGlobalStore(dispatch uint32, args, results []ui
 	}
 	var err error
 	switch {
+	case len(args) == 2 && args[1] < uint64(len(in.globalCells)) && rv64PrimitiveMutableFunctionGlobal(in.c, args[1]):
+		index := int(args[1])
+		if index < len(in.c.GlobalImports) {
+			err = in.globalCells[index].copyGuestFuncrefDescriptorWithOwner(in, args[0], descriptorOwner)
+		} else {
+			err = in.copyGuestFuncrefDescriptorToLocal(index, args[0])
+		}
 	case rv64MutableFuncrefGlobalClear(in.c) && len(args) == 0 && len(in.globalCells) == 1:
 		err = in.globalCells[0].SetValue(ValueFuncRef(NullFuncRef()))
 	case rv64MutableFuncrefGlobalStoreSelf(in.c) && len(args) == 1 && len(in.globalCells) == 1:
 		err = in.globalCells[0].setGuestFuncrefDescriptor(in, args[0])
 	case rv64MutableFuncrefGlobalCopy(in.c) && len(args) == 1 && len(in.globalCells) == 2:
-		err = in.globalCells[1].copyGuestFuncrefDescriptor(in, args[0])
+		err = in.globalCells[1].copyGuestFuncrefDescriptorWithOwner(in, args[0], descriptorOwner)
 	case rv64MutableFuncrefGlobalMove(in.c) && len(args) == 1 && len(in.globalCells) == 2:
-		err = in.globalCells[1].copyGuestFuncrefDescriptor(in, args[0])
+		err = in.globalCells[1].copyGuestFuncrefDescriptorWithOwner(in, args[0], descriptorOwner)
 	case rv64MutableFuncrefGlobalMove(in.c) && len(args) == 0 && len(in.globalCells) == 2:
 		err = in.globalCells[0].SetValue(ValueFuncRef(NullFuncRef()))
 	case rv64MutableFuncrefGlobalBidirectionalCopy(in.c) && len(args) == 2 && len(in.globalCells) == 2 && args[1] < 2:
-		err = in.globalCells[args[1]].copyGuestFuncrefDescriptor(in, args[0])
+		err = in.globalCells[args[1]].copyGuestFuncrefDescriptorWithOwner(in, args[0], descriptorOwner)
 	case rv64MutableFuncrefGlobalLocalCopy(in.c) && len(args) == 1 && len(in.globalCells) == 2:
 		err = in.globalCells[0].setGuestFuncrefDescriptor(in, args[0])
 	case rv64MutableFuncrefGlobalLocalPublish(in.c) && len(args) == 1 && len(in.globalCells) == 2:
@@ -161,7 +189,7 @@ func (in *Instance) dispatchGuestGlobalStore(dispatch uint32, args, results []ui
 		if args[1] == 2 {
 			err = in.copyGuestFuncrefDescriptorToLocal(2, args[0])
 		} else {
-			err = in.globalCells[args[1]].copyGuestFuncrefDescriptor(in, args[0])
+			err = in.globalCells[args[1]].copyGuestFuncrefDescriptorWithOwner(in, args[0], descriptorOwner)
 		}
 	case rv64MutableFuncrefGlobalLocalExport(in.c) && len(args) == 1 && len(in.globalCells) == 1:
 		err = in.copyGuestFuncrefDescriptorToLocal(0, args[0])

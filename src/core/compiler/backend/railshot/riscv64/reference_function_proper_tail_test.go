@@ -47,6 +47,10 @@ func TestReferenceFunctionProperTailSource(t *testing.T) {
 				case "private":
 					broken.NativeReferenceFunctions = false
 				}
+				if field == "private" {
+					checkPublicPrimitiveModule(t, m, broken)
+					continue
+				}
 				pressure := 0
 				broken.MemoryPressure = func() { pressure++ }
 				if image, err := CompileModuleWith(m, broken); image != nil || err == nil || pressure != 0 {
@@ -123,7 +127,11 @@ func TestReferenceFunctionProperTailDeadWitness(t *testing.T) {
 					if image == nil || err != nil || len(image.NativeTail.Plans) != 2 {
 						t.Fatal("live/dead witness", err)
 					}
-				} else if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+				} else if kind == "dead-only" || kind == "private-dead" {
+					if image == nil || err != nil || pressure != 1 || image.CodeImage != nil || image.NativeTail == nil {
+						t.Fatal("valid public tail witness rejected", err, pressure)
+					}
+				} else if image != nil || err == nil || pressure != 0 {
 					t.Fatal("dead/type confinement reached allocation", err, pressure)
 				}
 			})

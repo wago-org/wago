@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -67,7 +67,7 @@ func TestRV64PublicNativeImportTypedTransportOwnershipAndSessions(t *testing.T) 
 					t.Fatal(err)
 				}
 				defer second.Close()
-				if first.base != second.base || len(first.thunkMem) == 0 || len(second.thunkMem) == 0 || offHeapSlicePtr(first.thunkMem) == offHeapSlicePtr(second.thunkMem) || !first.syncMode || producer.referenceLifetime().snapshot().ResourceRoots != before+2 {
+				if first.base != second.base || len(first.thunkMem) == 0 || len(second.thunkMem) == 0 || offHeapSlicePtr(first.thunkMem) == offHeapSlicePtr(second.thunkMem) || first.syncMode || producer.referenceLifetime().snapshot().ResourceRoots != before+2 {
 					t.Fatal("native bridge ownership/publication")
 				}
 				for _, in := range []*Instance{first, second, producer} {
@@ -406,33 +406,23 @@ func TestRV64PublicNativeImportAdmissionABIAndArenaBeforePublication(t *testing.
 			t.Fatal("invalid producer entry published", err)
 		}
 		// An originless old experimental artifact is deliberately incompatible.
-		view := *c.executionView()
+		view := rv64ReferenceImportTailCopy(c)
 		view.nativeContextTrapABI = false
 		view.nativeTableContextABI = false
 		view.nativeTableReferenceABI = false
-		if err := railshotValidateCompiled(&view); !errors.Is(err, railshot.ErrUnsupported) {
+		if err := railshotValidateCompiled(view); !errors.Is(err, railshot.ErrUnsupported) {
 			t.Fatal("legacy origin ABI admitted", err)
 		}
-		legacy, err := marshalCompiled(&view)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(legacy)
-		if loaded != nil {
-			defer loaded.Close()
-		}
-		if !errors.Is(err, railshot.ErrUnsupported) || loaded != nil && (loaded.loadCodeCache() != nil && (loaded.codeCache.base != 0 || loaded.codeCache.sealed)) {
-			t.Fatal("originless serialized artifact admitted", err)
-		}
+		rv64RequireRejectedArtifact(t, view)
 	}
 	consumer := rv64PublicStartCompile(t, consumerSource, false)
 	if err := consumer.executionView().validateCached(); err != nil {
 		t.Fatal(err)
 	}
 	resolved := testImports("env.host", export).bindings
-	need := consumer.executionView().arenaNeedForImports(resolved, true)
-	if railshotNativeImportArenaBytes(consumer.executionView(), resolved) != 4096 {
-		t.Fatal("full edge transport not charged")
+	need := consumer.executionView().arenaNeedForImports(resolved, consumer.executionView().importsRequireSync(resolved, false))
+	if railshotNativeImportArenaBytes(consumer.executionView(), resolved) != 0 {
+		t.Fatal("stack transport acquired unused arena storage")
 	}
 	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithMaxInstanceMetadataBytes(uint64(need - 1))))
 	defer rt.Close()

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -135,8 +135,7 @@ func TestRV64Core3RefAsNonNullPinnedGates(t *testing.T) {
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
-			bad := cloneCompiledMetadata(base.executionView())
-			bad.validateMemo, bad.codeCache = &validateMemo{}, nil
+			bad := rv64ReferenceStartCopy(base.executionView())
 			mutate(bad)
 			if err := railshotValidateCompiled(bad); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile retained ref.as_non_null metadata admitted", err)
@@ -155,51 +154,17 @@ func TestRV64Core3RefAsNonNullPinnedGates(t *testing.T) {
 		})
 	}
 
-	// For this exact module, call-witness-gated public argument staging and
-	// imported/table transport are unreachable: all exports are numeric and it
-	// has no imports or tables. maxCallSlots already includes the call_ref's bound
-	// numeric target signature. Removing the witness is therefore not a hostile
-	// boundary widening. The independent function witness still constructs the
-	// private descriptors, while the control witness still selects the retained-
-	// owner entry scope used by the internal call_ref. Lock down that existing
-	// retained-artifact implication instead of misclassifying this bit as a
-	// required gate here.
-	t.Run("internal-call-witness-redundancy", func(t *testing.T) {
-		compatible := cloneCompiledMetadata(base.executionView())
-		compatible.validateMemo, compatible.codeCache = &validateMemo{}, nil
-		compatible.nativeReferenceCallABI = false
-		if err := railshotValidateCompiled(compatible); err != nil || !compatible.nativeReferenceFunctionABI || !compatible.nativeReferenceControlABI || !railshotRequiresNativeOwnerScope(compatible) {
-			t.Fatal("internal-only retained call contract", err)
+	// The contract binds the recorded native ABI even where a narrower call
+	// convention could execute this particular body.
+	t.Run("internal-call-witness-binding", func(t *testing.T) {
+		candidate := rv64ReferenceStartCopy(base.executionView())
+		candidate.nativeReferenceCallABI = !candidate.nativeReferenceCallABI
+		if err := candidate.validate(); err == nil {
+			t.Fatal("edited internal call witness admitted")
 		}
-		blob, err := marshalCompiled(compatible)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
-		in := rv64NativeTokenInstantiate(t, rt, loaded, NewImports())
-		if err := loaded.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if loaded.nativeReferenceCallABI || !loaded.nativeReferenceFunctionABI || !loaded.nativeReferenceControlABI {
-			t.Fatal("serialized internal-only witness implication")
-		}
-		rv64AssertCore3PassiveTarget(t, in, 2)
-		if got, err := in.Invoke("nullable-f"); err != nil || !slices.Equal(got, []uint64{7}) {
-			t.Fatal("internal-only retained call execution", got, err)
-		}
-		rv64AssertCore3RefAsNonNullTrap(t, in, "nullable-null", coreruntime.TrapNullReference)
-		if err := in.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if err := rt.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if in.hasPhysicalResources() || loaded.codeCache.mem != nil || loaded.codeCache.refs != 0 {
-			t.Fatal("internal-only retained call cleanup")
+		rv64RequireRejectedArtifact(t, candidate)
+		if !rv64ArtifactContractValid(base.executionView()) || base.executionView().validate() != nil {
+			t.Fatal("edited call witness changed baseline")
 		}
 	})
 }

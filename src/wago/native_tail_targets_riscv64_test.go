@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -65,7 +65,10 @@ func TestRV64PrivateTailTargetDirectory(t *testing.T) {
 					t.Fatal(err)
 				}
 				if native {
-					for _, region := range [][]byte{producer.funcRefDescs[16:24], rv64NativeInvocationContext(producer)[16:24]} {
+					if len(producer.funcRefDescs) != 0 {
+						t.Fatal("bare native producer allocated descriptor storage before use")
+					}
+					for _, region := range [][]byte{rv64NativeInvocationContext(producer)[16:24]} {
 						before := binary.LittleEndian.Uint64(region)
 						binary.LittleEndian.PutUint64(region, before^0x8000000000000001)
 						if err = rv64ValidateTailTargets(in); err == nil {
@@ -92,7 +95,7 @@ func TestRV64PrivateTailTargetDirectory(t *testing.T) {
 				}
 				// Authentication uses retained slice extents and attachments. No bad
 				// pointer below is dereferenced, and restoring bytes permits cold reuse.
-				for _, region := range [][]byte{d[:32], row[:32], in.funcRefDescs[8:16]} {
+				for _, region := range [][]byte{d[:32], row[:32], in.funcRefDescs[8:24], in.funcRefDescs[32:40]} {
 					for offset := 0; offset < len(region); offset += 8 {
 						before := binary.LittleEndian.Uint64(region[offset:])
 						binary.LittleEndian.PutUint64(region[offset:], before^0x8000000000000001)
@@ -172,7 +175,7 @@ func TestRV64PrivateTailTargetDirectoryUnsupportedRows(t *testing.T) {
 		view.FuncTypeID = view.FuncTypeID[:1]
 		view.Funcs, view.Entry = nil, nil
 		view.importFuncSigs = []FuncSig{{Params: []ValType{typ}, Results: []ValType{typ}}}
-		ar, err := coreruntime.NewArena(80 + 64)
+		ar, err := coreruntime.NewArena(abi.RV64InstanceContextBytes + 80 + 64)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -182,7 +185,13 @@ func TestRV64PrivateTailTargetDirectoryUnsupportedRows(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer j.Close()
-		in := &Instance{c: &view, ar: ar, jm: j, nativeContext: 0x1000, funcRefDescs: ar.Alloc(80), syncMode: true}
+		ctx := ar.Alloc(abi.RV64InstanceContextBytes)
+		clear(ctx)
+		in := &Instance{c: &view, ar: ar, jm: j, nativeContext: offHeapSlicePtr(ctx), funcRefDescs: ar.Alloc(80), syncMode: true}
+		clear(in.funcRefDescs)
+		binary.LittleEndian.PutUint64(ctx[16:], uint64(offHeapSlicePtr(in.funcRefDescs)))
+		binary.LittleEndian.PutUint64(in.funcRefDescs[coreruntime.FuncRefContextOffset:], uint64(in.nativeContext))
+		binary.LittleEndian.PutUint64(in.funcRefDescs[coreruntime.TableEntryHomeLinMemOffset:], uint64(j.LinMemBase()))
 		if err = rv64PrepareTailTargets(in, nil, 0, nil, nil); err != nil {
 			t.Fatal("unsupported eligibility must stay empty", typ, err)
 		}
@@ -190,6 +199,14 @@ func TestRV64PrivateTailTargetDirectoryUnsupportedRows(t *testing.T) {
 		if !rv64EmptyTailTargetRow(d[32:]) || rv64ValidateTailTargets(in) != nil {
 			t.Fatal("unsupported tail row publication", typ)
 		}
+		identity := in.nativeContext
+		for _, invalid := range []uintptr{0, 1, 0x1000, identity + 8} {
+			in.nativeContext = invalid
+			if rv64NativeOwnerContextValid(in) || rv64ValidateTailTargets(in) == nil {
+				t.Fatal("invalid native context accepted", typ, invalid)
+			}
+		}
+		in.nativeContext = identity
 		binary.LittleEndian.PutUint64(d[32:], 0x2000)
 		if rv64ValidateTailTargets(in) == nil {
 			t.Fatal("unsupported tail row acquired an entry", typ)

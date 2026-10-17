@@ -14,6 +14,8 @@ import (
 const (
 	maxProfileFunctionRanges = shared.MaxScalarSourceRanges
 	maxProfileModuleRanges   = 262144
+	maxProfileCodeBytes      = 1<<31 - 1
+	maxProfileFunctionIndex  = uint32(1<<32 - 1)
 )
 
 // profileSourceRecorder records target.Position coordinates. Unknown origins
@@ -43,10 +45,10 @@ func (r *profileSourceRecorder) switchOrigin(at int, origin shared.EmissionOrigi
 	if r.err != nil {
 		return r.err
 	}
-	if at < r.cursor || at > MaxCodeBytes || at&3 != 0 {
+	if at < r.cursor || at > maxProfileCodeBytes || at&3 != 0 {
 		return r.fail("source position is not monotonic bounded RV64 code")
 	}
-	if origin.Valid && (origin.Function >= MaxFunctions || origin.InlineParent != 0) {
+	if origin.Valid && (origin.Function >= maxProfileFunctionIndex || origin.InlineParent != 0) {
 		return r.fail("source function/inline identity")
 	}
 	if at > r.cursor && r.origin.Valid {
@@ -103,7 +105,7 @@ type profileBodyRegion struct {
 
 // profileFunctionLayout records measured final spans, never estimates. Prefix
 // includes all entry checks/setup; Epilogue follows the complete body (including
-// its cold islands). Remaining bytes are the entry-failure island. Sources use
+// its cold islands). Remaining bytes are entry failures and optional direct-entry adapters. Sources use
 // their original target coordinates, with BodySourceStart naming the first body
 // byte in those coordinates. This also accepts shared scalar recorder output.
 type profileFunctionLayout struct {
@@ -130,12 +132,12 @@ func (b *profileMetadataBudget) charge(regionCount, sourceCount int) error {
 	return nil
 }
 
-func profileAlignedSize(n int) bool { return n >= 0 && n <= MaxCodeBytes && n&3 == 0 }
+func profileAlignedSize(n int) bool { return n >= 0 && n <= maxProfileCodeBytes && n&3 == 0 }
 
 func (f *profileFunctionLayout) validate() error {
-	if f.Function >= MaxFunctions || !profileAlignedSize(f.Entry) || f.Entry&15 != 0 || !profileAlignedSize(f.CodeBytes) || f.CodeBytes == 0 ||
+	if f.Function >= maxProfileFunctionIndex || !profileAlignedSize(f.Entry) || f.Entry&15 != 0 || !profileAlignedSize(f.CodeBytes) || f.CodeBytes == 0 ||
 		!profileAlignedSize(f.PrefixBytes) || f.PrefixBytes == 0 || !profileAlignedSize(f.BodyBytes) || !profileAlignedSize(f.EpilogueBytes) || f.EpilogueBytes == 0 ||
-		!profileAlignedSize(f.BodySourceStart) || f.BodyBytes > MaxCodeBytes-f.BodySourceStart ||
+		!profileAlignedSize(f.BodySourceStart) || f.BodyBytes > maxProfileCodeBytes-f.BodySourceStart ||
 		f.PrefixBytes > f.CodeBytes || f.BodyBytes > f.CodeBytes-f.PrefixBytes || f.EpilogueBytes > f.CodeBytes-f.PrefixBytes-f.BodyBytes ||
 		len(f.BodyRegions) > maxProfileFunctionRanges || len(f.Sources) > maxProfileFunctionRanges || uint64(f.LocalDeclBytes)+uint64(f.WasmBodyBytes) > uint64(^uint32(0)) {
 		return fmt.Errorf("rv64: invalid finalized profile function layout")
@@ -176,7 +178,7 @@ func (f *profileFunctionLayout) validate() error {
 // directories. It covers exactly finalized bytes, including alignment, while
 // source gaps in prefixes, epilogues, helpers and entry failures remain gaps.
 func finalizeProfileMetadata(functions []profileFunctionLayout, codeBytes int) ([]jitprofile.Region, []shared.NativeSourceRange, error) {
-	if len(functions) > MaxFunctions || !profileAlignedSize(codeBytes) {
+	if len(functions) > maxProfileModuleRanges/2 || !profileAlignedSize(codeBytes) {
 		return nil, nil, fmt.Errorf("rv64: finalized profile image bound")
 	}
 	var budget profileMetadataBudget

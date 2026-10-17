@@ -84,7 +84,11 @@ func TestReferenceFunctionImportsRejectEscapes(t *testing.T) {
 				pressure := 0
 				opts.MemoryPressure = func() { pressure++ }
 				tc.edit(m, &opts)
-				if image, err := CompileModuleWith(m, opts); image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+				if tc.name == "import-name-bound" {
+					checkPublicPrimitiveModule(t, m, opts)
+					return
+				}
+				if image, err := CompileModuleWith(m, opts); image != nil || err == nil || pressure != 0 {
 					t.Fatal("unsupported shape staged", err, pressure)
 				}
 			})

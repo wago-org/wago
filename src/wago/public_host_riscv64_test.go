@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -301,7 +301,7 @@ func TestRV64PublicSynchronousHostBindingAndArtifactGatesBeforeMapping(t *testin
 	if err := view.validate(); !errors.Is(err, railshot.ErrUnsupported) {
 		t.Fatal("artifact missing host anchor", err)
 	}
-	wide := make([]wasm.ValType, 65)
+	wide := make([]wasm.ValType, railshot.MaxVectorFunctionValues+1)
 	for i := range wide {
 		wide[i] = wasm.I32
 	}

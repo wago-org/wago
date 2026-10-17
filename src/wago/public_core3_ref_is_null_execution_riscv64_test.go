@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -13,8 +13,8 @@ func TestRV64Core3RefIsNullExecution(t *testing.T) {
 			compiled := rv64Core3RefIsNullExecutionCompile(t, artifact)
 			t.Cleanup(func() { _ = compiled.Close() })
 			view := compiled.executionView()
-			if !rv64Core3RefIsNullExecution(view) || railshotValidateCompiled(view) != nil {
-				t.Fatal("source compiler lost the exact ref_is_null witness", railshotValidateCompiled(view))
+			if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil {
+				t.Fatal("source compiler lost the general ref_is_null contract", railshotValidateCompiled(view))
 			}
 			cache := compiled.loadCodeCache()
 			if cache == nil || !artifact && (cache.base != 0 || len(cache.mem) != 0 || cache.sealed || cache.flags&compiledCacheWritableCode != 0) || artifact && (cache.base == 0 || len(cache.mem) < len(view.code) || cache.sealed || cache.flags&compiledCacheWritableCode == 0 || cache.refs != 0) {
@@ -25,7 +25,7 @@ func TestRV64Core3RefIsNullExecution(t *testing.T) {
 			rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 			t.Cleanup(func() { _ = rt.Close() })
 			in := rv64NativeTokenInstantiate(t, rt, compiled, NewImports())
-			if in.gc != nil || cache.base == 0 || len(cache.mem) < len(view.code) || !cache.sealed || (cache.flags&compiledCacheWritableCode != 0) != artifact || cache.refs == 0 {
+			if in.gc == nil || in.refStore != rt.refStore || rt.refStore.gcDomainForCollector(in.gc) == nil || cache.base == 0 || len(cache.mem) < len(view.code) || !cache.sealed || (cache.flags&compiledCacheWritableCode != 0) != artifact || cache.refs == 0 {
 				in.Close()
 				compiled.Close()
 				rt.Close()
@@ -92,6 +92,9 @@ func TestRV64Core3RefIsNullExecution(t *testing.T) {
 			}
 			if got, err := in.Invoke("deinit"); err != nil || len(got) != 0 {
 				t.Fatal("deinit references", got, err)
+			}
+			if err := in.CollectGC(); err != nil {
+				t.Fatal("collect deinitialized references", err)
 			}
 			for _, export := range []string{"funcref-elem", "externref-elem", "ref-elem"} {
 				if got := invokeI32(export, 1); got != 1 {

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -47,6 +47,23 @@ func rv64PublishedCodeImageLeaseForTest(t *testing.T, artifact bool) {
 	image, err := railshot.NewNativeTailCodeImage(owner)
 	if err != nil || image.Base() != in.base || len(image.Bytes()) != len(in.c.code) || !bytes.Equal(image.Bytes(), in.c.code) {
 		t.Fatal("actual sealed logical cache view", err)
+	}
+	params, results := []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}
+	if key, err := owner.NativeTailFunctionKey(0, params, results); err != nil || key != in.c.funcTypeKey(0) {
+		t.Fatal("retained exact function key", key, err)
+	}
+	if _, err := owner.NativeTailFunctionKey(1, params, results); !errors.Is(err, railshot.ErrUnsupported) {
+		t.Fatal("foreign function index accepted", err)
+	}
+	if _, err := owner.NativeTailFunctionKey(0, []wasm.ValType{wasm.I64}, results); !errors.Is(err, railshot.ErrUnsupported) {
+		t.Fatal("wrong function transport accepted", err)
+	}
+	if n := testing.AllocsPerRun(4, func() {
+		if _, err := owner.NativeTailFunctionKey(0, params, results); err != nil {
+			panic(err)
+		}
+	}); n != 0 {
+		t.Fatal("warm key lookup allocated", n)
 	}
 	if err := c.Close(); err != nil {
 		t.Fatal(err)

@@ -157,12 +157,13 @@ func TestRV64AllocationHelpersCarryExactSafepointIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = CompileModuleWith(m, CompileOptions{
+	opts := authenticateI31TestModule(t, m, CompileOptions{
 		DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true,
-		GCStructHelpers: true, GCArrayHelpers: true, SyncHostSlots: 2, GCRefEqSource: true,
+		GCStructHelpers: true, GCArrayHelpers: true, SyncHostSlots: 4,
 		GCFrameRoots: roots, GCFrameRootsSource: true,
 		Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}},
 	})
+	_, err = CompileModuleWith(m, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,6 +238,7 @@ func TestRV64SafepointHelperBridgeArities(t *testing.T) {
 		want             int
 	}{
 		{gcStructAllocDefault, 0, 1},
+		{gcStructAllocOne, 1, 1},
 		{gcStructAllocOne, 2, 2},
 		{gcStructAllocOne, 3, 3},
 		{gcStructAllocOne, 4, 4},
@@ -258,7 +260,7 @@ func TestRV64SafepointHelperBridgeArities(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		helper, admitted uint32
-	}{{gcStructGet, 0}, {gcStructAllocOne, 1}, {gcStructAllocOne, 257}, {gcArrayAllocFixed, 1}, {gcArrayAllocFixed, 257}} {
+	}{{gcStructGet, 0}, {gcStructAllocOne, 0}, {gcStructAllocOne, 257}, {gcArrayAllocFixed, 1}, {gcArrayAllocFixed, 257}} {
 		if got, ok := gcAllocHelperSlots(tc.helper, int(tc.admitted)); ok {
 			t.Fatalf("helper %d/%d unexpectedly admitted with %d slots", tc.helper, tc.admitted, got)
 		}

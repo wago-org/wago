@@ -1,11 +1,13 @@
 package wago
 
 import (
+	"crypto/sha256"
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/nativeabi"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func gcFrameFixedOffsets(rootMap *nativeabi.FunctionRootMap) []uint32 {
@@ -75,7 +77,7 @@ func gcFrameBodyNeedsRootPlanWithClassifier(m *wasm.Module, body []byte, classif
 				return true
 			}
 		}
-		if gcFrameInstructionMayAllocate(op, imm) {
+		if gcFrameInstructionMayAllocate(op, imm) || compiledArchitecture == 4 && wasm.OpaqueStorageMutation(m, imm.Kind, imm.Index, imm.Index2) {
 			return true
 		}
 	}
@@ -204,6 +206,52 @@ func moduleHasCollectorReferenceCallBoundary(m *wasm.Module) bool {
 			return true
 		}
 	}
+	if compiledArchitecture == 4 {
+		for _, export := range m.Exports {
+			if export.Index.Kind != wasm.ExternFunc {
+				continue
+			}
+			ft, ok := m.FuncSignature(export.Index.Index)
+			if !ok || wasmFuncTypeTransfersCollectorRefs(m, ft) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Internal collector-bearing signatures need exact frame declarations even
+// when no exported boundary or allocating instruction selects a GC product.
+func moduleHasInternalCollectorReferenceFunctions(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	imports := m.ImportedFuncCount()
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	for i := range m.Code {
+		ft, ok := m.FuncSignature(uint32(imports + i))
+		if !ok || wasmFuncTypeTransfersCollectorRefs(m, ft) {
+			return true
+		}
+		r := wasm.NewReader(m.Code[i].BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return false
+			}
+			var imm wasm.InstructionImmediate
+			if classifier.ClassifyInto(r, op, &imm) != nil {
+				return false
+			}
+			switch imm.Kind {
+			case wasm.InstrCallRef, wasm.InstrReturnCallRef, wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect:
+				ft, ok := m.TypeFunc(imm.Index)
+				if !ok || wasmFuncTypeTransfersCollectorRefs(m, ft) {
+					return true
+				}
+			}
+		}
+	}
 	return false
 }
 
@@ -213,7 +261,7 @@ func moduleHasGCAllocationSites(m *wasm.Module) bool {
 	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
-		if gcFrameBodyMayAllocateWithClassifier(m.Code[i].BodyBytes, &classifier) {
+		if gcFrameBodyMayAllocateWithClassifier(m.Code[i].BodyBytes, &classifier, m) {
 			return true
 		}
 	}
@@ -222,7 +270,12 @@ func moduleHasGCAllocationSites(m *wasm.Module) bool {
 
 func moduleHasGCAllocationSitesWithValidation(m *wasm.Module, analysis *wasm.ValidatedModuleAnalysis) bool {
 	if analysis.ValidFor(m) {
-		return analysis.Flags()&wasm.ValidatedFuncMayAllocate != 0
+		allocates := analysis.Flags()&wasm.ValidatedFuncMayAllocate != 0
+		if allocates || compiledArchitecture != 4 {
+			return allocates
+		}
+		// An RV64 opaque-storage setter can allocate its first lifetime anchor.
+		// The architecture-neutral Wasm summary only counts GC constructors.
 	}
 	return moduleHasGCAllocationSites(m)
 }
@@ -298,10 +351,59 @@ func gcFrameCollectorElementExprSafe(expr wasm.Expr) bool {
 }
 
 func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
+	return validGCModuleFrameRootPlanMode(module, false)
+}
+
+func (c *Compiled) functionEnvironmentFrameRoots() bool {
+	return c != nil && c.genericGCFrameRoots() != nil && c.usesManagedFunctionStorage()
+}
+
+func (c *Compiled) compactExternFrameRoots() bool {
+	return compiledArchitecture == 4 && c != nil && c.nativeGCABIRequirement() == gc.NativeABIVersion && c.genericGCFrameRoots() != nil &&
+		(c.usesGenericGCExecution() || c.needsOwnedExceptionReferences() || c.hasCollectorDeclarationRoots())
+}
+
+// usesManagedFunctionStorage classifies validated runtime ownership needs. It
+// grants no source, frame-root, or artifact authority by itself. Plain unused
+// GC type declarations have no managed execution product or native GC ABI.
+func (c *Compiled) usesManagedFunctionStorage() bool {
+	if compiledArchitecture != 4 || c == nil || c.nativeGCABIRequirement() != gc.NativeABIVersion {
+		return false
+	}
+	if c.needsOwnedExceptionReferences() && c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) {
+		return true
+	}
+	if c.hasFunctionEnvironmentFrames() && (c.requiredFeatures.IsEnabled(CoreFeatureGC) || c.hasOpaqueExternFrames()) && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary() || c.hasInternalCollectorReferenceFunctions() || c.hasOpaqueExternFrames()) {
+		return true
+	}
+	if !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !c.usesGenericGCExecution() {
+		return false
+	}
+	for _, desc := range c.GCTypeDescs {
+		if desc.Kind == gc.KindArray && (desc.Elem == gc.StorageFuncRef || desc.Elem == gc.StorageFuncRefNull) {
+			return true
+		}
+		if desc.Kind == gc.KindStruct {
+			for _, field := range desc.Fields {
+				if field.Kind == gc.StorageFuncRef || field.Kind == gc.StorageFuncRefNull {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func validGCModuleFrameRootPlanMode(module *shared.GCModuleFrameRootPlan, allowFunctions bool) bool {
+	return validGCModuleFrameRootPlanKinds(module, allowFunctions, false)
+}
+
+func validGCModuleFrameRootPlanKinds(module *shared.GCModuleFrameRootPlan, allowFunctions, allowExterns bool) bool {
 	if module == nil || module.FunctionCount() == 0 {
 		return false
 	}
 	totalSafepoints, totalCallsites := 0, 0
+	noCollectingBodies := true
 	var previousID uint32
 	for function := 0; function < module.FunctionCount(); function++ {
 		if module.FunctionPending(function) {
@@ -315,16 +417,17 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 			return false
 		}
 		active := plan.SafepointCount() != 0 || plan.CallsiteCount() != 0
+		noCollectingBodies = noCollectingBodies && !active
 		if active && plan.FrameBytes < 8 {
 			return false
 		}
-		if active && !validGCFrameLocals(plan.Locals, plan.FrameBytes) {
+		if active && !validGCFrameLocalsKinds(plan.Locals, plan.FrameBytes, allowFunctions, allowExterns) {
 			return false
 		}
 		var previousReturn uint32
 		if !plan.VisitCallsites(func(i int, callsite shared.GCFrameCallsite) bool {
 			returnOffset, stackAdjust := callsite.ReturnOffset(), callsite.StackAdjust()
-			if returnOffset == 0 || (i != 0 && returnOffset <= previousReturn) || stackAdjust%8 != 0 || stackAdjust > 1<<20 || !validGCFrameOffsets(callsite.Offsets(), plan.FrameBytes) {
+			if returnOffset == 0 || (i != 0 && returnOffset <= previousReturn) || stackAdjust%8 != 0 || stackAdjust > 1<<20 || !validGCFrameOffsetsKinds(callsite.Offsets(), plan.FrameBytes, allowFunctions, allowExterns) {
 				return false
 			}
 			previousReturn = returnOffset
@@ -335,7 +438,7 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 		}
 		if !plan.VisitSafepoints(func(i int, offsets []uint32) bool {
 			id64 := uint64(plan.SafepointBase) + uint64(i) + 1
-			if id64 == 0 || id64 > uint64(shared.GCSafepointIDMax) || (totalSafepoints != 0 && uint32(id64) <= previousID) || !validGCFrameOffsets(offsets, plan.FrameBytes) {
+			if id64 == 0 || id64 > uint64(shared.GCSafepointIDMax) || (totalSafepoints != 0 && uint32(id64) <= previousID) || !validGCFrameOffsetsKinds(offsets, plan.FrameBytes, allowFunctions, allowExterns) {
 				return false
 			}
 			previousID = uint32(id64)
@@ -345,7 +448,7 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 			return false
 		}
 	}
-	return totalSafepoints != 0 || totalCallsites != 0
+	return totalSafepoints != 0 || totalCallsites != 0 || compiledArchitecture == 4 && noCollectingBodies
 }
 
 func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) error {
@@ -355,7 +458,13 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	if c == nil || !c.needsExactNativeGCRoots() {
 		return fmt.Errorf("GC frame-root metadata requires exact native GC roots")
 	}
-	if !validCompiledGCFunctionTables(c) || len(c.Funcs) == 0 {
+	ownedState := (c.hasNoFunctionCode() || compiledArchitecture == 4 && len(c.Funcs) == 0 && len(c.code) == 0 && c.NumImports > 0 && c.hasCollectorReferenceCallBoundary()) && (c.needsOwnedExceptionReferences() || compiledArchitecture == 4 && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary()) && c.requiredFeatures.IsEnabled(CoreFeatureGC) && c.nativeGCABIRequirement() == gc.NativeABIVersion)
+	// Import-only plugin calls execute through the public Go boundary. Their
+	// Runtime collector domain has no native function or safepoint to describe.
+	ownedState = ownedState || len(c.Funcs) == 0 && len(c.code) == 0 && c.NumImports > 0 && c.hasCollectorReferenceCallBoundary() && c.needsRuntimeGCCollectorDomain()
+	allowFunctions := c.functionEnvironmentFrameRoots()
+	allowExterns := c.compactExternFrameRoots()
+	if !validCompiledGCFunctionTables(c) || len(c.Funcs) == 0 && !ownedState {
 		return fmt.Errorf("GC frame-root metadata requires a validated local call graph with private tables")
 	}
 	if c.HasStart {
@@ -380,6 +489,18 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 		}
 	}
 	if len(rootMap.safepoints) == 0 && len(rootMap.callsites) == 0 {
+		if ownedState && len(c.Funcs) == 0 && len(rootMap.adapterReturnOffsets) == 0 {
+			return nil
+		}
+		// Only the fresh RV64 compiler can prove that all function bodies are
+		// non-collecting. This proof is never carried by a saved artifact.
+		memo := c.loadValidateMemo()
+		if compiledArchitecture == 4 && rootMap == c.genericGCFrameRoots() && rv64ArtifactContractValid(c) && len(rootMap.adapterReturnOffsets) == 0 {
+			return nil
+		}
+		if compiledArchitecture == 4 && memo != nil && memo.rv64FreshRootedGC && memo.rv64RootedNoCollectingBodies && sha256.Sum256(c.code) == memo.rv64FreshRootedGCDigest && len(rootMap.adapterReturnOffsets) == 0 {
+			return nil
+		}
 		return fmt.Errorf("GC frame-root metadata has no safepoints or callsites")
 	}
 	if len(rootMap.safepoints) == 0 && c.usesGenericGCExecution() && !c.hasCollectorReferenceCallBoundary() {
@@ -395,7 +516,7 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	var previousReturn uint32
 	for i := range rootMap.callsites {
 		callsite := &rootMap.callsites[i]
-		if callsite.frameBytes < 8 || callsite.frameBytes > 1<<31-1 || callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.code)) || (i != 0 && callsite.returnOffset <= previousReturn) || callsite.stackAdjust%8 != 0 || callsite.stackAdjust > 1<<20 || !validGCFrameOffsets(callsite.offsets, callsite.frameBytes) {
+		if callsite.frameBytes < 8 || callsite.frameBytes > 1<<31-1 || callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.code)) || (i != 0 && callsite.returnOffset <= previousReturn) || callsite.stackAdjust%8 != 0 || callsite.stackAdjust > 1<<20 || !validGCFrameOffsetsKinds(callsite.offsets, callsite.frameBytes, allowFunctions, allowExterns) {
 			return fmt.Errorf("GC frame-root callsite %d is malformed", callsite.returnOffset)
 		}
 		previousReturn = callsite.returnOffset
@@ -403,7 +524,7 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	var previousID uint32
 	for i := range rootMap.safepoints {
 		safepoint := &rootMap.safepoints[i]
-		if safepoint.frameBytes < 8 || safepoint.frameBytes > 1<<31-1 || safepoint.id == 0 || safepoint.id > shared.GCSafepointIDMax || (i != 0 && safepoint.id <= previousID) || !validGCFrameOffsets(safepoint.offsets, safepoint.frameBytes) {
+		if safepoint.frameBytes < 8 || safepoint.frameBytes > 1<<31-1 || safepoint.id == 0 || safepoint.id > shared.GCSafepointIDMax || (i != 0 && safepoint.id <= previousID) || !validGCFrameOffsetsKinds(safepoint.offsets, safepoint.frameBytes, allowFunctions, allowExterns) {
 			return fmt.Errorf("GC frame-root safepoint %d is malformed", safepoint.id)
 		}
 		previousID = safepoint.id
@@ -416,6 +537,7 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 		return false
 	}
 	totalFuncs := c.NumImports + len(c.Funcs)
+	opaqueExtern := c.compactExternFrameRoots()
 	validValues := func(refType ValType, values []RefInit) bool {
 		refType = normalizedElemRefType(refType)
 		for k, value := range values {
@@ -426,7 +548,7 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 				continue
 			}
 			if len(value.Expr) != 0 {
-				if !c.usesGenericGCExecution() || (refType != ValAnyRef && refType != ValI31Ref) || value.Expr[len(value.Expr)-1] != 0x0b {
+				if !c.usesGenericGCExecution() || (refType != ValAnyRef && refType != ValI31Ref && (!opaqueExtern || refType != ValExternRef)) || value.Expr[len(value.Expr)-1] != 0x0b {
 					return false
 				}
 				continue
@@ -439,7 +561,7 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 					if refType != ValI31Ref || c.Globals[value.GlobalIndex].Type != ValI32 {
 						return false
 					}
-				} else if !isGCRefValType(c.Globals[value.GlobalIndex].Type) {
+				} else if !isGCRefValType(c.Globals[value.GlobalIndex].Type) && (!opaqueExtern || refType != ValExternRef || c.Globals[value.GlobalIndex].Type != ValExternRef) {
 					return false
 				}
 				continue
@@ -459,7 +581,7 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 				}
 				continue
 			}
-			if !isGCRefValType(refType) || !value.Null {
+			if !isGCRefValType(refType) && (!opaqueExtern || refType != ValExternRef) || !value.Null {
 				return false
 			}
 		}
@@ -467,7 +589,7 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 	}
 	for tableIndex := 0; tableIndex < c.tableCount(); tableIndex++ {
 		typ := c.tableElementType(tableIndex)
-		if typ != ValFuncRef && !isGCRefValType(typ) {
+		if typ != ValFuncRef && !isGCRefValType(typ) && (!opaqueExtern || typ != ValExternRef) {
 			return false
 		}
 		if tableIndex == 0 {
@@ -539,13 +661,44 @@ func gcFramePublicCallABI(sig FuncSig) bool {
 }
 
 func validGCFrameOffsets(offsets []uint32, frameBytes uint32) bool {
+	return validGCFrameOffsetsMode(offsets, frameBytes, false)
+}
+
+func validGCFrameOffsetsMode(offsets []uint32, frameBytes uint32, allowFunctions bool) bool {
+	return validGCFrameOffsetsKinds(offsets, frameBytes, allowFunctions, false)
+}
+
+func validGCFrameOffsetsKinds(offsets []uint32, frameBytes uint32, allowFunctions, allowExterns bool) bool {
 	if len(offsets) != 0 && frameBytes < 8 {
 		return false
 	}
 	var previous uint32
+	first := [3]int{len(offsets), len(offsets), len(offsets)}
+	end := [3]int{}
 	for i, off := range offsets {
-		if off%8 != 0 || off > frameBytes-8 || (i != 0 && off <= previous) {
+		flags := off & (shared.GCFrameExternRefRootFlag | shared.GCFrameFuncRefRootFlag)
+		if flags == shared.GCFrameExternRefRootFlag|shared.GCFrameFuncRefRootFlag || off&shared.GCFrameExternRefRootFlag != 0 && !allowExterns || off&shared.GCFrameFuncRefRootFlag != 0 && !allowFunctions || off%8 != 0 || shared.GCFrameRootOffset(off) > frameBytes-8 || (i != 0 && off <= previous) {
 			return false
+		}
+		group := int(flags >> 30)
+		if first[group] == len(offsets) {
+			first[group] = i
+		}
+		end[group] = i + 1
+		physical := shared.GCFrameRootOffset(off)
+		for prior := 0; prior < group; prior++ {
+			lo, hi := first[prior], end[prior]
+			for lo < hi {
+				mid := int(uint(lo+hi) >> 1)
+				if shared.GCFrameRootOffset(offsets[mid]) < physical {
+					lo = mid + 1
+				} else {
+					hi = mid
+				}
+			}
+			if lo < end[prior] && shared.GCFrameRootOffset(offsets[lo]) == physical {
+				return false
+			}
 		}
 		previous = off
 	}
@@ -553,13 +706,22 @@ func validGCFrameOffsets(offsets []uint32, frameBytes uint32) bool {
 }
 
 func validGCFrameLocals(locals []shared.GCFrameLocal, frameBytes uint32) bool {
+	return validGCFrameLocalsMode(locals, frameBytes, false)
+}
+
+func validGCFrameLocalsMode(locals []shared.GCFrameLocal, frameBytes uint32, allowFunctions bool) bool {
+	return validGCFrameLocalsKinds(locals, frameBytes, allowFunctions, false)
+}
+
+func validGCFrameLocalsKinds(locals []shared.GCFrameLocal, frameBytes uint32, allowFunctions, allowExterns bool) bool {
 	if len(locals) != 0 && frameBytes < 8 {
 		return false
 	}
 	var previousIndex, previousOffset uint32
 	for i, local := range locals {
-		off := local.Offset
-		if off%8 != 0 || off > frameBytes-8 ||
+		off := shared.GCFrameRootOffset(local.Offset)
+		flags := local.Offset & (shared.GCFrameExternRefRootFlag | shared.GCFrameFuncRefRootFlag)
+		if flags == shared.GCFrameExternRefRootFlag|shared.GCFrameFuncRefRootFlag || local.Offset&shared.GCFrameExternRefRootFlag != 0 && !allowExterns || local.Offset&shared.GCFrameFuncRefRootFlag != 0 && !allowFunctions || off%8 != 0 || off > frameBytes-8 ||
 			(i != 0 && (local.Index <= previousIndex || off <= previousOffset)) {
 			return false
 		}

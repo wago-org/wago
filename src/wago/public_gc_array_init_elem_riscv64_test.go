@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,7 +14,6 @@ import (
 	"testing"
 	"unsafe"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
@@ -90,11 +88,11 @@ func TestRV64PublicGCArrayInitElemExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCArrayInitElemCompile(t, artifact)
 			view := compiled.executionView()
-			if err := railshotValidateCompiled(view); !rv64GCArrayInitElem(view) || !rv64GCArrayInitElemExecutionCode(view) || err != nil {
-				t.Fatalf("missing exact array.init_elem witness: validation=%v product=%v code=%d/%x entries=%v/%v", err, view.stagedGCArrayProduct(), len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry)
+			if !rv64ArtifactContractValid(view) || view.validate() != nil {
+				t.Fatal("invalid public array.init_elem execution contract")
 			}
-			if params, results, err := railshotImportedCallSlots(view, 3, 0); err != nil || params != 6 || results != 0 {
-				t.Fatalf("array.init_elem call arena=%d/%d,%v, want 6/0", params, results, err)
+			if params, results, err := railshotImportedCallSlots(view, 3, 0); err != nil || params != 3 || results != 0 {
+				t.Fatalf("array.init_elem call arena=%d/%d,%v, want 3/0", params, results, err)
 			}
 			for _, profile := range []struct {
 				name   string
@@ -104,14 +102,14 @@ func TestRV64PublicGCArrayInitElemExecutionAndArtifact(t *testing.T) {
 				{name: "stress-gc", config: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 224, ForceMajorEveryMinor: true, VerifyAfterCollect: true, StressBarriers: true}},
 			} {
 				t.Run(profile.name, func(t *testing.T) {
-					rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+					rt := NewRuntime()
 					defer rt.Close()
 					mod, err := rt.Module(compiled)
 					if err != nil {
 						t.Fatal(err)
 					}
-					if !rv64GCArrayInitElem(mod.c) {
-						t.Fatalf("frozen array.init_elem witness changed: product=%v globals=%#v entries=%v/%v passive=%#v", mod.c.stagedGCArrayProduct(), mod.c.memoryDir.gcArrayGlobals, mod.c.Entry, mod.c.InternalEntry, mod.c.passiveElems)
+					if !rv64ArtifactContractValid(mod.c) || mod.c.validate() != nil {
+						t.Fatal("frozen array.init_elem execution contract changed")
 					}
 					in, err := rt.Instantiate(context.Background(), mod, WithImports(NewImports()), WithGC(profile.config))
 					mod.Close()
@@ -119,8 +117,8 @@ func TestRV64PublicGCArrayInitElemExecutionAndArtifact(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer in.Close()
-					if len(in.serArgs) < 6*8 {
-						t.Fatalf("array.init_elem argument arena=%d bytes, want at least 48", len(in.serArgs))
+					if len(in.serArgs) < 3*8 {
+						t.Fatalf("array.init_elem argument arena=%d bytes, want at least 24", len(in.serArgs))
 					}
 
 					state := in.pluginState.Load()
@@ -206,8 +204,22 @@ func TestRV64PublicGCArrayInitElemExecutionAndArtifact(t *testing.T) {
 					if err = in.gc.CollectFull(nil); err != nil {
 						t.Fatal(err)
 					}
-					if live := in.gc.Stats().LiveObjects; live != 2 {
-						t.Fatalf("live objects=%d, want two rooted arrays", live)
+					wantLive := uint32(2)
+					environmentState, hasEnvironment := managedFunctionCollectors.Load(in.gc)
+					if in.c.usesManagedFunctionStorage() {
+						if !hasEnvironment {
+							t.Fatal("managed function-bearing array lacks its producer environment")
+						}
+						environments := environmentState.(*managedFunctionCollector)
+						if len(environments.envs) != 1 || len(environments.byOwner) != 1 || environments.byOwner[in] == nil {
+							t.Fatal("function environment was not shared by the array elements")
+						}
+						wantLive++ // One 16-byte producer environment for managed function storage.
+					} else if hasEnvironment {
+						t.Fatal("unmanaged legacy source allocated a function environment")
+					}
+					if live := in.gc.Stats().LiveObjects; live != wantLive {
+						t.Fatalf("live objects=%d, want %d arrays and producer environments", live, wantLive)
 					}
 					if _, err = in.Invoke("array_call_nth", 3); err != nil {
 						t.Fatalf("initialized function reference after collection: %v", err)
@@ -246,14 +258,13 @@ func TestRV64PublicGCArrayInitElemAdmissionIsExact(t *testing.T) {
 		"global":     func(v *Compiled) { v.Globals[1].Mutable = true },
 		"element":    func(v *Compiled) { v.passiveElems[0].Values[7].FuncIndex = 1 },
 		"initializer": func(v *Compiled) {
-			v.memoryDir.gcArrayGlobals[0].Bits[0]++
+			v.Globals[0].InitExpr[0] ^= 1
 		},
 		"export":  func(v *Compiled) { delete(v.Exports, "array_init_elem"); v.Exports["init"] = 3 },
 		"feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			if candidate.memoryDir != nil {
 				dir := *candidate.memoryDir
 				dir.gcArrayGlobals = slices.Clone(dir.gcArrayGlobals)
@@ -263,12 +274,11 @@ func TestRV64PublicGCArrayInitElemAdmissionIsExact(t *testing.T) {
 				candidate.memoryDir = &dir
 			}
 			mutate(candidate)
-			if rv64GCArrayInitElem(candidate) {
-				t.Fatal("hostile mutation retained array.init_elem witness")
+			if err := candidate.validate(); err == nil {
+				t.Fatal("hostile retained array mutation admitted")
 			}
-			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("hostile mutation admitted", err)
-			}
+
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 }

@@ -12,6 +12,10 @@ import (
 const trapI31CastFailure = 18 // private tag; production TrapCastFailure is 18
 
 func admitRV64I31CoreWire(data []byte) bool {
+	decoded, decodeErr := wasm.DecodeModule(data)
+	if decodeErr == nil && admitRV64ImmediateReferenceModule(decoded) {
+		return wasm.ValidateModuleWithFeatures(decoded, wasm.ValidationFeatures{ExtendedConstGlobals: true, GCConstExpr: true, MultiMemory: true}) == nil
+	}
 	if !admitExactProductWireShape(data, nil) {
 		return false
 	}
@@ -19,19 +23,93 @@ func admitRV64I31CoreWire(data []byte) bool {
 	return err == nil && admitRV64I31Core(m)
 }
 
-// AdmitI31CoreSource returns the exact-wire provenance witness for the bounded
-// non-allocating RV64 i31 products. Callers must pass this witness back in
-// CompileOptions; decoded shape alone is deliberately insufficient because the
-// decoder discards semantically inert wire sections.
+// AdmitI31CoreSource proves a valid collector-free immediate-reference module,
+// or an existing bounded i31 product. Callers must pass this source proof back
+// in CompileOptions; legacy exact products retain their wire-shape check.
 func AdmitI31CoreSource(data []byte) bool {
 	return admitRV64I31CoreWire(data)
 }
 
 // admitRV64I31Core independently proves the decoded shape used to select the
-// lowering. This is intentionally narrower than the general collector-free
-// i31 implementation on complete backends.
+// collector-free lowering, including the existing bounded products.
 func admitRV64I31Core(m *wasm.Module) bool {
-	return admitRV64I31MinimalCore(m) || admitRV64I31OfficialCore(m) || admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m) || admitRV64I31OfficialGlobalInitializer(m) || admitRV64I31OfficialAnyGlobal(m) || admitRV64I31OfficialAnyTable(m) || admitRV64I31OfficialRefTest(m) || admitRV64I31RefEqPilot(m)
+	return admitRV64ImmediateReferenceModule(m) || admitRV64I31MinimalCore(m) || admitRV64I31OfficialCore(m) || admitRV64I31OfficialTable(m) || admitRV64I31OfficialTableGlobalInitializer(m) || admitRV64I31OfficialGlobalInitializer(m) || admitRV64I31OfficialAnyGlobal(m) || admitRV64I31OfficialAnyTable(m) || admitRV64I31OfficialRefTest(m) || admitRV64I31RefEqPilot(m)
+}
+
+// AdmitGeneralI31Module proves that the generic rooted-scalar lowering cannot
+// expose a collector object. Unused aggregate type declarations are allowed.
+// Live GC reference carriers are confined to compact i31 values; function
+// references use the separate callable descriptor lifetime.
+func AdmitGeneralI31Module(m *wasm.Module) bool {
+	if m == nil || !admitRV64GCRootedScalarModule(m) || m.TagCount() != 0 {
+		return false
+	}
+	structs, arrays, ok := rootedScalarHelperProfile(m)
+	if !ok || structs || arrays {
+		return false
+	}
+	i31Value := func(typ wasm.ValType) bool {
+		if typ.Kind() != wasm.ValRef {
+			return true
+		}
+		heap := typ.Ref().Heap()
+		if heap.Kind() != wasm.HeapAbs {
+			return false
+		}
+		switch heap.Abs() {
+		case wasm.HeapI31, wasm.HeapNone, wasm.HeapFunc, wasm.HeapNoFunc:
+			return true
+		default:
+			return false
+		}
+	}
+	for i := uint32(0); i < uint32(m.ImportedFuncCount()+len(m.Code)); i++ {
+		sig, found := m.FuncSignature(i)
+		if !found {
+			return false
+		}
+		for _, values := range [][]wasm.ValType{sig.Params, sig.Results} {
+			for _, value := range values {
+				if !i31Value(value) {
+					return false
+				}
+			}
+		}
+	}
+	for i := uint32(0); i < uint32(m.GlobalCount()); i++ {
+		global, found := m.GlobalTypeByIndex(i)
+		if !found || !i31Value(global.Type) {
+			return false
+		}
+	}
+	for i := uint32(0); i < uint32(m.TableCount()); i++ {
+		table, found := m.TableType(i)
+		if !found || !i31Value(wasm.RefVal(table.Ref)) {
+			return false
+		}
+	}
+	for _, elem := range m.Elements {
+		if elem.Kind.Kind == wasm.ElemTypedExprs && !i31Value(wasm.RefVal(elem.Kind.Ref)) {
+			return false
+		}
+	}
+	usesI31 := false
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	for i := range m.Code {
+		r := wasm.NewReader(m.Code[i].BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return false
+			}
+			var imm wasm.InstructionImmediate
+			if classifier.ClassifyInto(r, op, &imm) != nil {
+				return false
+			}
+			usesI31 = usesI31 || imm.Kind == wasm.InstrRefI31 || imm.Kind == wasm.InstrI31GetS || imm.Kind == wasm.InstrI31GetU
+		}
+	}
+	return usesI31
 }
 
 func admitRV64I31TableProduct(m *wasm.Module) bool {
@@ -497,11 +575,26 @@ func (f *integerEmitter) i31Test(nullable bool, heap wasm.AbsHeapType) {
 		if nullable {
 			f.a.Or(enc.X5, enc.X5, enc.X6)
 		}
-	case wasm.HeapStruct, wasm.HeapArray:
+	case wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 		if nullable {
 			f.a.Sltiu(enc.X5, enc.X5, 1)
 		} else {
 			f.a.Addi(enc.X5, enc.Zero, 0)
 		}
+	}
+}
+
+func (f *integerEmitter) i31CastHeap(nullable bool, heap wasm.AbsHeapType) {
+	switch heap {
+	case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31:
+		f.i31Cast(nullable)
+	case wasm.HeapNone, wasm.HeapStruct, wasm.HeapArray:
+		if nullable {
+			f.trap(trapI31CastFailure, f.a.BranchLong(enc.NE, enc.X5, enc.Zero))
+		} else {
+			f.trap(trapI31CastFailure, f.a.BranchLong(enc.EQ, enc.Zero, enc.Zero))
+		}
+	default:
+		f.err = unsupported("immediate cast heap")
 	}
 }

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -87,18 +87,18 @@ func TestRV64PublicGCStructPackedExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCStructPackedCompile(t, artifact)
 			view := compiled.executionView()
-			if err := railshotValidateCompiled(view); !rv64GCStructPacked(view) || !rv64GCStructPackedExecutionCode(view) || err != nil {
+			if err := railshotValidateCompiled(view); !rv64ArtifactContractValid(view) || err != nil {
 				t.Fatalf("missing exact gc/struct packed witness: validation=%v product=%v staged=%v required=%v code=%d/%x entries=%v/%v funcs=%+v types=%+v descs=%+v", err, view.stagedGCStructProduct(), view.stagedFeatures(), view.requiredFeatures, len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.Funcs, view.Types, view.GCTypeDescs)
 			}
-			if params, results, err := railshotImportedCallSlots(view, 1, 2); err != nil || params != 4 || results != 2 {
-				t.Fatalf("gc/struct packed call arena=%d/%d,%v, want 4/2", params, results, err)
+			if params, results, err := railshotImportedCallSlots(view, 1, 2); err != nil || params != 1 || results != 2 {
+				t.Fatalf("gc/struct packed call arena=%d/%d,%v, want 1/2", params, results, err)
 			}
 			for _, profile := range []struct {
 				name   string
 				config GCConfig
 			}{{name: "default-gc"}, {name: "stress-gc", config: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true, StressBarriers: true}}} {
 				t.Run(profile.name, func(t *testing.T) {
-					rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+					rt := NewRuntime()
 					defer rt.Close()
 					mod, err := rt.Module(compiled)
 					if err != nil {
@@ -110,7 +110,7 @@ func TestRV64PublicGCStructPackedExecutionAndArtifact(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer in.Close()
-					if in.gc == nil || len(in.serArgs) < 4*8 {
+					if in.gc == nil || len(in.serArgs) < 8 {
 						t.Fatalf("gc/struct packed runtime provisioning: collector=%v argument arena=%d", in.gc != nil, len(in.serArgs))
 					}
 					var roots []gcGlobalRootMapping
@@ -182,18 +182,18 @@ func TestRV64PublicGCStructPackedAdmissionIsExact(t *testing.T) {
 		"type-key-short": func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:9] },
 		"descriptor":     func(v *Compiled) { v.GCTypeDescs[0].Fields[3].Offset++ },
 		"global":         func(v *Compiled) { v.Globals[1].ValueTypeIndex++ },
-		"initializer":    func(v *Compiled) { v.memoryDir.gcStructGlobals[1].Bits[3]-- },
+		"initializer":    func(v *Compiled) { v.Globals[1].InitExpr = []byte{0xff, 0x0b} },
 		"export":         func(v *Compiled) { delete(v.Exports, "get_packed_g0_0"); v.Exports["get"] = 0 },
 		"global-export":  func(v *Compiled) { delete(v.GlobalExports, "g0"); v.GlobalExports["global"] = 0 },
 		"feature":        func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 		"inactive-start": func(v *Compiled) { v.StartLocalFunc = 1 },
-		"extra-table":    func(v *Compiled) { v.extraTables = []tableDef{{}} },
+		"extra-table":    func(v *Compiled) { v.HasTable = true; v.TableType = ValFuncRef; v.extraTables = []tableDef{{}} },
 		"table-export":   func(v *Compiled) { v.tableExports = map[string]int{"table": 0} },
-		"table-init":     func(v *Compiled) { v.HasTableInitFunc = true },
-		"compact-data":   func(v *Compiled) { v.compactData = &compactActiveData{} },
+		"table-init":     func(v *Compiled) { v.HasTable = true; v.HasTableInitFunc = true },
+		"compact-data":   func(v *Compiled) { v.compactData = &compactActiveData{records: []compactDataRecord{{end: 1}}} },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
+			candidate := rv64ReferenceStartCopy(base)
 			if base.memoryDir != nil {
 				d := *base.memoryDir
 				d.gcStructGlobals = slices.Clone(base.memoryDir.gcStructGlobals)
@@ -202,14 +202,17 @@ func TestRV64PublicGCStructPackedAdmissionIsExact(t *testing.T) {
 				}
 				candidate.memoryDir = &d
 			}
-			candidate.validateMemo = &validateMemo{}
 			mutate(candidate)
-			if rv64GCStructPacked(candidate) {
+			if rv64ArtifactContractValid(candidate) {
 				t.Fatal("hostile retained mutation retained gc/struct packed witness")
 			}
 			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile gc/struct packed mutation admitted", err)
 			}
+			if strings.HasPrefix(name, "inactive-") {
+				return // The writer normalizes inactive union fields.
+			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 }

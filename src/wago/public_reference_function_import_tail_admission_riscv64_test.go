@@ -1,24 +1,36 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func rv64ReferenceImportTailCopy(c *Compiled) *Compiled {
 	v := cloneCompiledMetadata(c.executionView())
+	if cache := c.loadCodeCache(); cache != nil {
+		// Each mutant owns its staging cache. Do not copy a mutex or share an
+		// executable mapping with the unchanged fixture.
+		v.codeCache = &compiledCodeCache{
+			gcMetadataFlags:        cache.gcMetadataFlags,
+			gcTypeSubtypingProduct: cache.gcTypeSubtypingProduct,
+			gcStructProduct:        cache.gcStructProduct,
+			gcArrayProduct:         cache.gcArrayProduct,
+			gcI31Product:           cache.gcI31Product,
+			flags:                  cache.flags,
+			stagedFeatures:         cache.stagedFeatures,
+		}
+	}
 	indexes := *c.loadCompileIndexes()
-	indexes.railshotTail.module = &encoder.NativeTailModule{Plans: slices.Clone(rv64NativeTailModule(c).Plans)}
+	if module := rv64NativeTailModule(c); module != nil {
+		indexes.railshotTail.module = &encoder.NativeTailModule{Plans: slices.Clone(module.Plans)}
+	}
 	v.validateMemo = &validateMemo{compileIndexes: &indexes, importModuleEnds: slices.Clone(c.loadValidateMemo().importModuleEnds)}
 	return v
 }
@@ -69,8 +81,8 @@ func TestRV64PublicReferenceFunctionImportedTailsRetainedAdmission(t *testing.T)
 			})
 		}
 		{
-			public := rv64ReferenceImportTailCopy(c)
-			public.Exports["reference"] = 5
+			publicSource := rv64ReferenceAddSourceExport(t, wasmtest.ClosedReferenceImportTails(vector, true), wasmtest.ExportEntry("reference", 0, 5))
+			public := rv64NativeTailCompile(t, "reference-import-public-export", publicSource, false)
 			if err := public.validate(); err != nil {
 				t.Fatal("ephemeral imported-tail reference export", err)
 			}
@@ -84,43 +96,20 @@ func TestRV64PublicReferenceFunctionImportedTailsRetainedAdmission(t *testing.T)
 			}
 			loaded.Close()
 		}
-		// Trusted native artifacts retain structurally bounded plans, not the
-		// source compiler's exact emission witness. Actual frame authentication
-		// remains mandatory before any callable mapping or borrowed target lease.
-		rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
-		defer rt.Close()
-		nc := rv64NativeTailCompile(t, "reference-imports-native", rv64PublicNativeIdentityModule([]wasm.ValType{wasm.I32}), false)
-		native := rv64NativeTokenInstantiate(t, rt, nc, NewImports())
-		nf, err := native.ExportedFunc("identity")
-		if err != nil {
-			t.Fatal(err)
-		}
+		// Persisted plans must keep the source frame binding.
 		v := rv64ReferenceImportTailCopy(c)
 		rv64NativeTailModule(v).Plans[0].FrameBytes += 16
-		if err := v.validate(); err != nil {
-			t.Fatal("structural frame fixture", err)
+		if err := v.validate(); err == nil {
+			t.Fatal("artifact changed the compiled tail frame")
 		}
-		blob, err := marshalCompiled(v)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer loaded.Close()
-		before := native.referenceLifetime().snapshot().ResourceRoots
-		mod, err := rt.Module(loaded)
-		if err != nil {
-			t.Fatal(err)
-		}
-		in, err := rt.Instantiate(context.Background(), mod, WithImports(NewImports().Function("env.calls", "native.fn", nf).Function("env.calls", "shared.fn", nf).Function("env.calls", "owned.fn", nf)))
-		mod.Close()
-		if in != nil {
-			in.Close()
-		}
-		if in != nil || !errors.Is(err, railshot.ErrUnsupported) || loaded.loadCodeCache().sealed || loaded.loadCodeCache().refs != 0 || native.referenceLifetime().snapshot().ResourceRoots != before {
-			t.Fatal("unauthenticated actual source frame published or attached", err)
+		if blob, err := marshalCompiled(v); err == nil {
+			loaded, loadErr := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				loaded.Close()
+			}
+			if loadErr == nil {
+				t.Fatal("mismatched tail frame artifact loaded")
+			}
 		}
 	}
 }

@@ -75,6 +75,7 @@ type NativeTailHostFunction struct {
 	dispatchIndex     uint32
 	owned             bool
 	referenceCarriers bool
+	collectorCarriers bool
 }
 
 // Charge both the staging signature and its frozen copy before construction.
@@ -91,18 +92,28 @@ func NativeTailHostFunctionBytes(values int) (int, error) {
 // and ordered signature. A shared cache lease alone cannot satisfy this contract:
 // identical wrapper bytes do not authenticate another instance's callback or data.
 func NewNativeTailHostFunction(image *NativeTailCodeImage, certificate *NativeTailHostCertificate, job *coreruntime.JobMemory, context, anchor []byte, offset int, dispatchIndex uint32, owned bool, signature wasm.CompType) (*NativeTailHostFunction, error) {
-	return newNativeTailHostFunction(image, certificate, job, context, anchor, offset, dispatchIndex, owned, signature, false)
+	return newNativeTailHostFunction(image, certificate, job, context, anchor, offset, dispatchIndex, owned, signature, false, false)
 }
 
 // NewNativeTailHostReferenceFunction is restricted to whole-module profiles
 // that separately prove authenticated public reference-carrier transport. The
 // ordinary constructor deliberately remains scalar-only.
 func NewNativeTailHostReferenceFunction(image *NativeTailCodeImage, certificate *NativeTailHostCertificate, job *coreruntime.JobMemory, context, anchor []byte, offset int, dispatchIndex uint32, owned bool, signature wasm.CompType) (*NativeTailHostFunction, error) {
-	return newNativeTailHostFunction(image, certificate, job, context, anchor, offset, dispatchIndex, owned, signature, true)
+	return newNativeTailHostFunction(image, certificate, job, context, anchor, offset, dispatchIndex, owned, signature, true, false)
 }
 
-func newNativeTailHostFunction(image *NativeTailCodeImage, certificate *NativeTailHostCertificate, job *coreruntime.JobMemory, context, anchor []byte, offset int, dispatchIndex uint32, owned bool, signature wasm.CompType, referenceCarriers bool) (*NativeTailHostFunction, error) {
-	f := NativeTailHostFunction{image: image, certificate: certificate, signature: &signature, job: job, context: context, anchor: anchor, offset: offset, dispatchIndex: dispatchIndex, owned: owned, referenceCarriers: referenceCarriers}
+// NewNativeTailHostCollectorFunction requires a runtime-owned host binding in
+// the caller's exact collector domain, with authenticated native root maps.
+// The image owner must repeat that proof whenever the target is validated.
+func NewNativeTailHostCollectorFunction(image *NativeTailCodeImage, certificate *NativeTailHostCertificate, job *coreruntime.JobMemory, context, anchor []byte, offset int, dispatchIndex uint32, owned bool, signature wasm.CompType) (*NativeTailHostFunction, error) {
+	if !owned {
+		return nil, unsupported("native tail collector host ownership")
+	}
+	return newNativeTailHostFunction(image, certificate, job, context, anchor, offset, dispatchIndex, owned, signature, false, true)
+}
+
+func newNativeTailHostFunction(image *NativeTailCodeImage, certificate *NativeTailHostCertificate, job *coreruntime.JobMemory, context, anchor []byte, offset int, dispatchIndex uint32, owned bool, signature wasm.CompType, referenceCarriers, collectorCarriers bool) (*NativeTailHostFunction, error) {
+	f := NativeTailHostFunction{image: image, certificate: certificate, signature: &signature, job: job, context: context, anchor: anchor, offset: offset, dispatchIndex: dispatchIndex, owned: owned, referenceCarriers: referenceCarriers, collectorCarriers: collectorCarriers}
 	if err := f.Validate(); err != nil {
 		return nil, err
 	}
@@ -111,17 +122,17 @@ func newNativeTailHostFunction(image *NativeTailCodeImage, certificate *NativeTa
 }
 
 func (f *NativeTailHostFunction) Validate() error {
-	if f == nil || f.signature == nil || f.signature.Kind != wasm.CompFunc || len(f.signature.Params) > 64 || len(f.signature.Results) > 64 {
+	if f == nil || f.signature == nil || f.signature.Kind != wasm.CompFunc || swarSignatureSlots(f.signature.Params) > 64 || swarSignatureSlots(f.signature.Results) > 64 {
 		return unsupported("native tail host scalar signature extent")
 	}
 	for _, values := range [][]wasm.ValType{f.signature.Params, f.signature.Results} {
 		for _, typ := range values {
-			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && (!f.referenceCarriers || !wasm.EqualValType(typ, wasm.FuncRef) && !wasm.EqualValType(typ, wasm.ExternRef)) {
+			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !(f.collectorCarriers && nativeTailCollectorHostCarrier(typ)) && (!f.referenceCarriers || !wasm.EqualValType(typ, wasm.FuncRef) && !wasm.EqualValType(typ, wasm.ExternRef)) {
 				return unsupported("native tail host scalar carrier")
 			}
 		}
 	}
-	if err := f.certificate.Validate(f.image, f.offset, f.dispatchIndex, len(f.signature.Params), len(f.signature.Results), f.owned); err != nil {
+	if err := f.certificate.Validate(f.image, f.offset, f.dispatchIndex, swarSignatureSlots(f.signature.Params), swarSignatureSlots(f.signature.Results), f.owned); err != nil {
 		return err
 	}
 	// The authenticated image owner has now confirmed this particular physical
@@ -136,5 +147,16 @@ func (f *NativeTailHostFunction) Validate() error {
 // certificate may validate this entry in an explicitly marked dynamic row.
 func (f *NativeTailHostFunction) function(signature *wasm.CompType) tailRAFunction {
 	return tailRAFunction{published: f.image, snapshot: f.image.Bytes(), signature: signature, job: f.job, context: f.context, directory: f.anchor,
-		info: FunctionInfo{Entry: f.offset, CodeBytes: f.certificate.CodeBytes(), Params: len(signature.Params), Results: len(signature.Results), mode: emissionMode{production: true, interruptible: true, invocationContext: true}}}
+		info: FunctionInfo{Entry: f.offset, CodeBytes: f.certificate.CodeBytes(), Params: swarSignatureSlots(signature.Params), Results: swarSignatureSlots(signature.Results), mode: emissionMode{production: true, interruptible: true, invocationContext: true}}}
+}
+
+func nativeTailCollectorHostCarrier(typ wasm.ValType) bool {
+	if wasm.EqualValType(typ, wasm.V128) {
+		return true
+	}
+	if typ.Kind() != wasm.ValRef {
+		return false
+	}
+	heap := typ.Ref().Heap()
+	return heap.Kind() == wasm.HeapAbs && (heap.Abs() == wasm.HeapAny || heap.Abs() == wasm.HeapI31)
 }

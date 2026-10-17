@@ -185,6 +185,7 @@ func (a *Asm) Srlw(dst, left, right Reg)  { a.r(0x3b, 5, 0, dst, left, right) }
 func (a *Asm) Sraw(dst, left, right Reg)  { a.r(0x3b, 5, 0x20, dst, left, right) }
 
 func (a *Asm) Addi(dst, src Reg, imm int32)  { a.i(0x13, 0, dst, src, imm) }
+func (a *Asm) Andi(dst, src Reg, imm int32)  { a.i(0x13, 7, dst, src, imm) }
 func (a *Asm) Addiw(dst, src Reg, imm int32) { a.i(0x1b, 0, dst, src, imm) }
 func (a *Asm) Xori(dst, src Reg, imm int32)  { a.i(0x13, 4, dst, src, imm) }
 func (a *Asm) Sltiu(dst, src Reg, imm int32) { a.i(0x13, 3, dst, src, imm) }
@@ -248,6 +249,7 @@ func (a *Asm) ZeroExtend32(dst, src Reg) {
 // must be materialized by the adapter into a permanently reserved address reg.
 func (a *Asm) Ld(dst, base Reg, offset int32)  { a.i(0x03, 3, dst, base, offset) }
 func (a *Asm) Lbu(dst, base Reg, offset int32) { a.i(0x03, 4, dst, base, offset) }
+func (a *Asm) Lhu(dst, base Reg, offset int32) { a.i(0x03, 5, dst, base, offset) }
 func (a *Asm) Lwu(dst, base Reg, offset int32) { a.i(0x03, 6, dst, base, offset) }
 func (a *Asm) Lw(dst, base Reg, offset int32)  { a.i(0x03, 2, dst, base, offset) }
 
@@ -269,6 +271,7 @@ func (a *Asm) store(f3 uint32, src, base Reg, offset int32) {
 func (a *Asm) Sd(src, base Reg, offset int32)    { a.store(3, src, base, offset) }
 func (a *Asm) Sw(src, base Reg, offset int32)    { a.store(2, src, base, offset) }
 func (a *Asm) Sb(src, base Reg, offset int32)    { a.store(0, src, base, offset) }
+func (a *Asm) Sh(src, base Reg, offset int32)    { a.store(1, src, base, offset) }
 func (a *Asm) Jalr(link, base Reg, offset int32) { a.i(0x67, 0, link, base, offset) }
 func (a *Asm) Ret()                              { a.Jalr(Zero, RA, 0) }
 func (a *Asm) Nop()                              { a.Addi(Zero, Zero, 0) }

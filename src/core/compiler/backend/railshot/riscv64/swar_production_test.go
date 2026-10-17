@@ -36,12 +36,12 @@ func TestSWARProductionCompilerOwnershipAndEntries(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			reference, err := compileSWARModulePolicy(test.source, emissionMode{production: true, interruptible: true}, test.policy)
+			reference, err := compileSWARProductionModule(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, SyncHostSlots: 64, ForceFallback: true, ImportBindings: hostImportBindings(test.imports), Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, Features: codegen.Features{V128: true}}}})
 			if err != nil {
 				t.Fatal(err)
 			}
 			for _, heap := range []bool{false, true} {
-				for _, threshold := range []int{0, len(reference.code) + 1} {
+				for _, threshold := range []int{0, len(reference.Code) + 1} {
 					calls := 0
 					opts := CompileOptions{DeferCodeMapping: heap, Interruptible: true, Workers: 8, SyncHostSlots: 64, ForceFallback: true, ImportBindings: hostImportBindings(test.imports), MemoryPressureAt: threshold, MemoryPressure: func() { calls++ }, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, Features: codegen.Features{V128: true}}}}
 					image, err := compileSWARProductionModule(m, opts)
@@ -49,14 +49,14 @@ func TestSWARProductionCompilerOwnershipAndEntries(t *testing.T) {
 						t.Fatal(err)
 					}
 					wantCalls := 1
-					if threshold > len(reference.code) {
+					if threshold > len(reference.Code) {
 						wantCalls = 0
 					}
-					if calls != wantCalls || !bytes.Equal(image.Code, reference.code) || len(image.Entry) != len(reference.functions) || len(image.InternalEntry) != len(reference.functions) {
+					if calls != wantCalls || !bytes.Equal(image.Code, reference.Code) || len(image.Entry) != len(reference.Entry) || len(image.InternalEntry) != len(reference.Entry) {
 						t.Fatal("shared staging code/pressure/entries", calls, err)
 					}
-					for i, info := range reference.functions {
-						if image.Entry[i] != info.Entry || image.Entry[i]&15 != 0 || image.InternalEntry[i] != info.Entry {
+					for i, entry := range reference.Entry {
+						if image.Entry[i] != entry || image.Entry[i]&15 != 0 || image.InternalEntry[i] != entry {
 							t.Fatal("framed entry", i)
 						}
 					}
@@ -75,7 +75,7 @@ func TestSWARProductionCompilerOwnershipAndEntries(t *testing.T) {
 						if err != nil {
 							t.Fatal(err)
 						}
-						if base == 0 || !bytes.Equal(mapping[:len(image.Code)], reference.code) {
+						if base == 0 || !bytes.Equal(mapping[:len(image.Code)], reference.Code) {
 							t.Error("RW transfer changed code")
 						}
 						if err := coreruntime.Unmap(mapping); err != nil {
@@ -88,7 +88,7 @@ func TestSWARProductionCompilerOwnershipAndEntries(t *testing.T) {
 				}
 			}
 			// The decoded shared entry point selects the same bounded SWAR image.
-			if image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ImportBindings: hostImportBindings(test.imports)}); image == nil || err != nil || !bytes.Equal(image.Code, reference.code) || image.CodeImage != nil {
+			if image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ImportBindings: hostImportBindings(test.imports)}); image == nil || err != nil || !bytes.Equal(image.Code, reference.Code) || image.CodeImage != nil {
 				t.Fatal("shared SIMD compiler route", err)
 			}
 		})
@@ -102,12 +102,12 @@ func TestSWARProductionCompilerRejectsDependenciesBeforeStaging(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, opts := range []CompileOptions{
-		{ElideBoundsChecks: true}, {SyncHostCalls: true}, {ImportBindings: []ImportBinding{{Dynamic: true}}},
+		{SyncHostCalls: true}, {ImportBindings: []ImportBinding{{Dynamic: true}}},
 		{GCTypeSubtypingRefTest: true}, {GCStructHelpers: true}, {GCArrayHelpers: true},
 		{Profile: true}, {SourceMaps: true}, {UnwindMaps: true}, {Stats: &ModuleStats{}}, {CollectInlineReport: true},
 		{Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: []gc.TypeDesc{{Kind: gc.KindStruct}}}}},
 		{Codegen: codegen.Options{Module: codegen.ModuleInfo{Features: codegen.Features{GC: true}}}},
-		{Optimizations: map[string]bool{"reg-abi": true}}, {SyncHostSlots: -1}, {SyncHostSlots: 65536},
+		{SyncHostSlots: -1}, {SyncHostSlots: 65536},
 	} {
 		if opts.Stats != nil && diagnosticsEnabled || opts.Profile && profileEnabled {
 			continue // Finalized sizes are qualified independently of profiling.
@@ -147,14 +147,14 @@ func TestSWARProductionCompilerDescriptorPreflight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, count := range []int{MaxFunctions, MaxFunctions + 1} {
+	for _, count := range []int{1, MaxFunctions, MaxFunctions + 1} {
 		descs := make([]gc.TypeDesc, count)
 		for i := range descs {
 			descs[i] = gc.TypeDesc{ID: gc.TypeID(i), Kind: gc.KindFunc, Final: true}
 		}
 		pressure := 0
 		image, err := compileSWARProductionModule(m, CompileOptions{DeferCodeMapping: true, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: descs}}, MemoryPressure: func() { pressure++ }})
-		if count == MaxFunctions && (err != nil || image == nil || pressure != 1) || count > MaxFunctions && (image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0) {
+		if count == 1 && (err != nil || image == nil || pressure != 1) || count > 1 && (image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0) {
 			t.Fatal("descriptor count preflight", count, pressure, err)
 		}
 	}

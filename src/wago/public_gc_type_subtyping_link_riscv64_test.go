@@ -1,20 +1,17 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
@@ -99,17 +96,12 @@ func TestRV64PublicGCTypeSubtypingLinkExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			providerCompiled := rv64PublicGCTypeSubtypingLinkCompile(t, 1, artifact)
 			consumerCompiled := rv64PublicGCTypeSubtypingLinkCompile(t, 2, artifact)
-			for variant, c := range []*Compiled{providerCompiled.executionView(), consumerCompiled.executionView()} {
-				metadata, err := marshalCompiledMetadata(c)
-				if err != nil || len(metadata) != rv64GCTypeSubtypingLinkMetadataLens[variant] || sha256.Sum256(metadata) != rv64GCTypeSubtypingLinkMetadataDigests[variant] || rv64GCTypeSubtypingLinkProfileWithCode(c, false, true) != uint8(variant+1) || railshotValidateCompiled(c) != nil {
-					providerCompiled.Close()
-					consumerCompiled.Close()
-					t.Fatalf("missing exact link witness %d: metadata=%d/%x err=%v profile=%d validation=%v", variant+1, len(metadata), sha256.Sum256(metadata), err, rv64GCTypeSubtypingLinkProfileWithCode(c, false, true), railshotValidateCompiled(c))
+			for _, c := range []*Compiled{providerCompiled.executionView(), consumerCompiled.executionView()} {
+				if !rv64ArtifactContractValid(c) || c.validate() != nil {
+					t.Fatal("invalid public subtype link execution contract")
 				}
 			}
-			cfg := rv64I31Config()
-			cfg.railshotState.tailProducts = true
-			rt := NewRuntime(WithRuntimeConfig(cfg))
+			rt := NewRuntime()
 			providerModule, err := rt.Module(providerCompiled)
 			if err != nil {
 				t.Fatal(err)
@@ -138,18 +130,9 @@ func TestRV64PublicGCTypeSubtypingLinkExecutionAndArtifact(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(provider.funcRefDescs) != 4*coreruntime.FuncRefDescBytes || len(consumer.funcRefDescs) != 7*coreruntime.FuncRefDescBytes {
-				t.Fatal("link descriptor arenas are incomplete")
-			}
-			for importIndex, providerFunction := range []int{0, 1, 1, 2, 2, 2} {
-				consumerOff := (importIndex + 1) * coreruntime.FuncRefDescBytes
-				providerOff := (providerFunction + 1) * coreruntime.FuncRefDescBytes
-				got := binary.LittleEndian.Uint64(consumer.funcRefDescs[consumerOff+coreruntime.TableEntryRefSlotOffset:])
-				want := binary.LittleEndian.Uint64(provider.funcRefDescs[providerOff+coreruntime.TableEntryRefSlotOffset:])
-				if got == 0 || got != want {
-					t.Fatalf("consumer import %d identity = %#x, want provider function %d identity %#x", importIndex, got, providerFunction, want)
-				}
-			}
+			rv64RequireSubtypeStorage(t, provider)
+			rv64RequireSubtypeStorage(t, consumer)
+			rv64RequireSubtypeNativeImports(t, consumer, provider, 0, 1, 1, 2, 2, 2)
 			if err = provider.Close(); err != nil {
 				t.Fatal(err)
 			}
@@ -182,42 +165,34 @@ func TestRV64PublicGCTypeSubtypingLinkAdmissionIsExact(t *testing.T) {
 	provider := rv64PublicGCTypeSubtypingLinkCompile(t, 1, false)
 	consumer := rv64PublicGCTypeSubtypingLinkCompile(t, 2, false)
 	for name, mutate := range map[string]func(*Compiled){
-		"provider-code": func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
-		"provider-type": func(v *Compiled) { v.Types[1].Supers[0] ^= 1 },
-		"provider-desc": func(v *Compiled) { v.GCTypeDescs[1].Super ^= 1 },
-		"provider-product": func(v *Compiled) {
-			cache := *v.codeCache
-			v.codeCache = &cache
-			v.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingLinkConsumer
-		},
+		"provider-code":               func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
+		"provider-type":               func(v *Compiled) { v.Types[1].Supers[0] ^= 1 },
+		"provider-desc":               func(v *Compiled) { v.GCTypeDescs[1].Super ^= 1 },
+		"provider-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(provider.executionView())
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(provider.executionView())
 			mutate(candidate)
-			if rv64GCTypeSubtypingLink(candidate) || !errors.Is(railshotValidateCompiled(candidate), railshot.ErrUnsupported) {
+			if err := candidate.validate(); err == nil {
 				t.Fatal("hostile provider mutation admitted")
 			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 	for name, mutate := range map[string]func(*Compiled){
-		"consumer-import":    func(v *Compiled) { v.Imports[5] = "M.f1" },
-		"consumer-signature": func(v *Compiled) { v.importFuncSigs[5].TypeIndex = 1 },
-		"consumer-type":      func(v *Compiled) { v.Types[2].Supers[0] = 0 },
-		"consumer-desc":      func(v *Compiled) { v.GCTypeDescs[2].Super = 0 },
-		"consumer-product": func(v *Compiled) {
-			cache := *v.codeCache
-			v.codeCache = &cache
-			v.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingLinkProvider
-		},
+		"consumer-import":             func(v *Compiled) { v.Imports[5] = "M.f1" },
+		"consumer-signature":          func(v *Compiled) { v.importFuncSigs[5].TypeIndex = 1 },
+		"consumer-type":               func(v *Compiled) { v.Types[2].Supers[0] = 0 },
+		"consumer-desc":               func(v *Compiled) { v.GCTypeDescs[2].Super = 0 },
+		"consumer-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(consumer.executionView())
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(consumer.executionView())
 			mutate(candidate)
-			if rv64GCTypeSubtypingLink(candidate) || !errors.Is(railshotValidateCompiled(candidate), railshot.ErrUnsupported) {
+			if err := candidate.validate(); err == nil {
 				t.Fatal("hostile consumer mutation admitted")
 			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 	providerView, consumerView := provider.executionView(), consumer.executionView()
@@ -229,36 +204,35 @@ func TestRV64PublicGCTypeSubtypingLinkAdmissionIsExact(t *testing.T) {
 		{"provider-metadata-consumer-image", providerView, consumerView},
 	} {
 		t.Run(pair.name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(pair.metadataOwner)
+			candidate := rv64ReferenceStartCopy(pair.metadataOwner)
 			candidate.code = slices.Clone(pair.codeOwner.code)
 			candidate.Entry = slices.Clone(pair.codeOwner.Entry)
 			candidate.InternalEntry = slices.Clone(pair.codeOwner.InternalEntry)
-			candidate.validateMemo = &validateMemo{}
-			if rv64GCTypeSubtypingLink(candidate) || !errors.Is(railshotValidateCompiled(candidate), railshot.ErrUnsupported) {
+			if err := candidate.validate(); err == nil {
 				t.Fatal("cross-paired link artifact admitted")
 			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 	for variant := 3; variant <= 5; variant++ {
 		unlinkable := rv64PublicGCTypeSubtypingLinkCompile(t, variant, false)
-		if got := rv64GCTypeSubtypingLinkProfileWithCode(unlinkable.executionView(), false, true); got != uint8(variant) {
-			unlinkable.Close()
-			t.Fatalf("unlinkable .%d profile = %d, want %d", variant+28, got, variant)
+		if !rv64ArtifactContractValid(unlinkable.executionView()) || unlinkable.executionView().validate() != nil {
+			t.Fatal("invalid unlinkable consumer execution contract")
 		}
-		candidate := cloneCompiledMetadata(unlinkable.executionView())
+		candidate := rv64ReferenceStartCopy(unlinkable.executionView())
 		candidate.importFuncSigs[0].TypeIndex ^= 1
-		candidate.validateMemo = &validateMemo{}
-		if rv64GCTypeSubtypingLink(candidate) || !errors.Is(railshotValidateCompiled(candidate), railshot.ErrUnsupported) {
+		if err := candidate.validate(); err == nil {
 			unlinkable.Close()
 			t.Fatalf("hostile unlinkable .%d signature mutation admitted", variant+28)
 		}
+		rv64RequireRejectedArtifact(t, candidate)
 		unlinkable.Close()
 	}
 	provider.Close()
 	consumer.Close()
 }
 
-func TestRV64PublicGCTypeSubtypingLinkMismatchAndPermission(t *testing.T) {
+func TestRV64PublicGCTypeSubtypingLinkMismatchAndPublicRuntime(t *testing.T) {
 	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_LINK_ARTIFACT_MODE") == "load" {
 		t.Skip("compiler-free runner selected")
 	}
@@ -266,19 +240,17 @@ func TestRV64PublicGCTypeSubtypingLinkMismatchAndPermission(t *testing.T) {
 	consumerCompiled := rv64PublicGCTypeSubtypingLinkCompile(t, 2, false)
 	defer providerCompiled.Close()
 	defer consumerCompiled.Close()
-	plain := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+	plain := NewRuntime()
 	mod, err := plain.Module(providerCompiled)
 	if err == nil {
 		_, err = plain.Instantiate(context.Background(), mod, WithImports(NewImports()))
 		mod.Close()
 	}
 	plain.Close()
-	if !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("link provider instantiated without private runtime permission", err)
+	if err != nil {
+		t.Fatal("public subtype provider instantiation", err)
 	}
-	cfg := rv64I31Config()
-	cfg.railshotState.tailProducts = true
-	rt := NewRuntime(WithRuntimeConfig(cfg))
+	rt := NewRuntime()
 	defer rt.Close()
 	providerModule, err := rt.Module(providerCompiled)
 	if err != nil {
@@ -308,9 +280,7 @@ func TestRV64PublicGCTypeSubtypingLinkExpectedUnlinkables(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			providerCompiled := rv64PublicGCTypeSubtypingLinkCompile(t, 1, artifact)
 			defer providerCompiled.Close()
-			cfg := rv64I31Config()
-			cfg.railshotState.tailProducts = true
-			rt := NewRuntime(WithRuntimeConfig(cfg))
+			rt := NewRuntime()
 			defer rt.Close()
 			providerModule, err := rt.Module(providerCompiled)
 			if err != nil {
@@ -332,10 +302,8 @@ func TestRV64PublicGCTypeSubtypingLinkExpectedUnlinkables(t *testing.T) {
 			for variant := 3; variant <= 5; variant++ {
 				consumerCompiled := rv64PublicGCTypeSubtypingLinkCompile(t, variant, artifact)
 				view := consumerCompiled.executionView()
-				metadata, metadataErr := marshalCompiledMetadata(view)
-				if metadataErr != nil || len(metadata) != rv64GCTypeSubtypingLinkMetadataLens[variant-1] || sha256.Sum256(metadata) != rv64GCTypeSubtypingLinkMetadataDigests[variant-1] || rv64GCTypeSubtypingLinkProfileWithCode(view, false, true) != uint8(variant) || railshotValidateCompiled(view) != nil {
-					consumerCompiled.Close()
-					t.Fatalf("missing exact unlinkable .%d witness", variant+28)
+				if !rv64ArtifactContractValid(view) || view.validate() != nil {
+					t.Fatal("invalid public subtype link execution contract")
 				}
 				consumerModule, moduleErr := rt.Module(consumerCompiled)
 				if moduleErr != nil {
@@ -375,5 +343,67 @@ func TestRV64PublicGCTypeSubtypingLinkCompilerFreeRejectsSource(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
 			t.Fatal("compiler-free link path used source compilation", variant, err)
 		}
+	}
+}
+
+// Reference-free call graphs can retain only the context header. If descriptor
+// rows exist, check their full publication rather than a fixed product layout.
+func rv64RequireSubtypeStorage(t *testing.T, in *Instance) {
+	t.Helper()
+	if in.gc != nil {
+		t.Fatal("non-allocating subtype module created a collector")
+	}
+	n := len(in.funcRefDescs)
+	if n == 0 || n == coreruntime.FuncRefDescBytes {
+		return
+	}
+	if n != (in.c.NumImports+len(in.c.Funcs)+1)*coreruntime.FuncRefDescBytes {
+		t.Fatal("incomplete subtype descriptor storage", n)
+	}
+	for i := range in.c.Funcs {
+		rv64RequirePublishedLocalFunction(t, in, i)
+	}
+}
+
+func rv64RequireSubtypeNativeImports(t *testing.T, consumer, provider *Instance, functions ...int) {
+	t.Helper()
+	state := consumer.pluginState.Load()
+	if state == nil || state.railshotInvocation.nativeImports == nil {
+		t.Fatal("missing native import publication")
+	}
+	native := state.railshotInvocation.nativeImports
+	if !native.published || native.base == 0 || native.codeBytes == 0 || len(functions) != consumer.c.NumImports {
+		t.Fatal("incomplete native import publication")
+	}
+	if len(native.records) != 0 && len(native.records) != len(functions) {
+		t.Fatal("incomplete native import records")
+	}
+	for i, function := range functions {
+		export, ok := consumer.imports[consumer.c.functionImportBindingKey(i)].(*InstanceExport)
+		if !ok || export.inst != provider || export.localIdx != function {
+			t.Fatal("retained native import target mismatch", i, function)
+		}
+		if len(native.records) != 0 {
+			record := &native.records[i]
+			if record.producer != provider || record.local != function || record.certificate == nil || record.codeBytes == 0 {
+				t.Fatal("native import proof mismatch", i, function)
+			}
+		}
+	}
+}
+
+func rv64RequireSubtypePublicImport(t *testing.T, rt *Runtime, compiled *Compiled, imports *Imports) {
+	t.Helper()
+	module, err := rt.Module(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := rt.Instantiate(context.Background(), module, WithImports(imports))
+	module.Close()
+	if instance == nil || err != nil {
+		t.Fatal("public subtype host import", err)
+	}
+	if err := instance.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -1,9 +1,8 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"runtime"
@@ -11,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -47,10 +45,7 @@ func TestRV64PublicReferenceFunctionImportedTailsSourceArtifact(t *testing.T) {
 						call.ResultSlots()[0] = 0xcafebeef00000001
 					}), pc.importFuncSigs[2])
 					producer := rv64NativeTokenInstantiate(t, rt, pc, NewImports().Function("env.calls", "native.fn", nf).Function("env.calls", "shared.fn", shared).Function("env.calls", "owned.fn", owned))
-					row := producer.funcRefDescs[6*coreruntime.FuncRefDescBytes : 7*coreruntime.FuncRefDescBytes]
-					if !railshotNonCallableFunction(producer.c, 5) || !bytes.Equal(row, make([]byte, len(row))) {
-						t.Fatal("private source acquired callable descriptor")
-					}
+					rv64RequirePublishedLocalFunction(t, producer, 2)
 					state := &producer.pluginState.Load().railshotInvocation
 					capability := binary.LittleEndian.Uint64(rv64NativeInvocationContext(producer)[abi.RV64TailCapabilityOffset:])
 					if state.tailDispatcher == nil || capability == 0 {

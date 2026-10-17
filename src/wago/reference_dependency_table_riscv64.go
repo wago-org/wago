@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -322,7 +322,11 @@ func (rows *rv64TableDependencyRows) release(row *rv64TableDependencyRow, termin
 	}
 	var cleanup resourceCleanup
 	rows.mu.Lock()
-	if row.state != rv64TableDependencyAttached {
+	// An adopted graph edge remains the closed callee's dependency while
+	// an open downstream importer retains it. Only graph collection or the
+	// terminal physical drain can retire that edge safely.
+	keepClosedEdge := transferred && !terminal && consumer != nil && row.root.receipt.graph != nil && consumer.invocationState.Load()&instanceInvocationClosed != 0 && !rv64StorageFreeCallable(consumer.c)
+	if row.state != rv64TableDependencyAttached || keepClosedEdge {
 		rows.mu.Unlock()
 		if consumer != nil && !terminal {
 			cleanup.run(consumer.releaseResourceRoot)
@@ -369,6 +373,9 @@ func (rows *rv64TableDependencyRows) release(row *rv64TableDependencyRow, termin
 		row.state, row.transferred = rv64TableDependencyAttached, false
 	}
 	rows.mu.Unlock()
+	if counterConsumed {
+		cleanup.run(func() { railshotFinishCompactExternHostTableDetach(row.table) })
+	}
 	if consumer != nil && !terminal {
 		cleanup.run(consumer.releaseResourceRoot)
 	}

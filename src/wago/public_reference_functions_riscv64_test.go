@@ -1,17 +1,14 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"bytes"
-	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"testing"
 	"unsafe"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -93,30 +90,8 @@ func TestRV64PublicReferenceFunctionsSourceArtifact(t *testing.T) {
 							if len(in.funcRefDescs) != 6*coreruntime.FuncRefDescBytes {
 								t.Fatal("physical descriptor extent", len(in.funcRefDescs))
 							}
-							for _, index := range []int{2, 3} {
-								row := in.funcRefDescs[(index+1)*coreruntime.FuncRefDescBytes : (index+2)*coreruntime.FuncRefDescBytes]
-								if !bytes.Equal(row, make([]byte, len(row))) {
-									t.Fatal("noncallable descriptor row", index, row)
-								}
-								if _, ok := in.localFuncrefDescriptor(index); ok {
-									t.Fatal("hole acquired local identity", index)
-								}
-								pointer := uint64(offHeapSlicePtr(row))
-								if _, ok := in.funcrefDescriptorIndex(pointer); ok {
-									t.Fatal("hole acquired indexed identity", index)
-								}
-								if _, ok := rv64PublishedDescriptor(in, pointer); ok {
-									t.Fatal("hole published", index)
-								}
-							}
-							for _, index := range []int{1, 4} {
-								pointer, ok := in.localFuncrefDescriptor(index)
-								if !ok {
-									t.Fatal("numeric descriptor missing", index)
-								}
-								if _, valid := rv64PublishedDescriptor(in, pointer); !valid {
-									t.Fatal("numeric descriptor identity", index)
-								}
+							for index := range c.Funcs {
+								rv64RequirePublishedLocalFunction(t, in, index)
 							}
 							before := bytes.Clone(in.funcRefDescs)
 							args := []uint64{0, 0x7ff0000000000001}
@@ -155,7 +130,7 @@ func TestRV64PublicReferenceFunctionsSourceArtifact(t *testing.T) {
 								nativeExecutionMu.Lock()
 								defer nativeExecutionMu.Unlock()
 								counts, _, err := rv64NativeTailOwnerCounts(in)
-								if err != nil || counts.Functions != 5 || counts.MaskSlots != 5 || counts.NonCallable != 2 {
+								if err != nil || counts.Functions != 5 || counts.MaskSlots != 5 || counts.NonCallable != 0 {
 									t.Fatal("sparse generation counts", counts, err)
 								}
 								owner, err := rv64NativeDefinedTailOwner(in)
@@ -182,8 +157,13 @@ func TestRV64PublicReferenceFunctionsBaselineAndDestination(t *testing.T) {
 		t.Fatal("compiled footprint", unsafe.Sizeof(Compiled{}))
 	}
 	source := rv64BareReferenceFunctionSource()
-	if c, err := compatibilityDefaultConfig().Compile(source); c != nil || !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("default source gate", err)
+	public, err := compatibilityDefaultConfig().Compile(source)
+	if err != nil {
+		t.Fatal("default source compilation", err)
+	}
+	public.Close()
+	if disabled, err := rv64NativeTailConfig().WithCoreFeatures(0).Compile(source); err == nil || disabled != nil {
+		t.Fatal("disabled reference source admitted", err)
 	}
 	cfg := rv64NativeTailConfig().WithCoreFeatures(CoreFeatureReferenceTypes)
 	c, err := cfg.Compile(source)
@@ -206,33 +186,24 @@ func TestRV64PublicReferenceFunctionsBaselineAndDestination(t *testing.T) {
 	if loaded.codeCache.sealed || loaded.codeCache.flags&compiledCacheWritableCode == 0 || loaded.codeCache.base == 0 {
 		t.Fatal("decode did not retain unpublished RW staging")
 	}
-	beforeBase, beforeMem, beforeRefs, beforeFlags := loaded.codeCache.base, offHeapSlicePtr(loaded.codeCache.mem), loaded.codeCache.refs, loaded.codeCache.flags
-	unchanged := func() bool {
-		return !loaded.codeCache.sealed && loaded.codeCache.base == beforeBase && offHeapSlicePtr(loaded.codeCache.mem) == beforeMem && loaded.codeCache.refs == beforeRefs && loaded.codeCache.flags == beforeFlags
-	}
-	if in, err := Instantiate(loaded); in != nil || !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("standalone private authority", err)
-	}
-	if !unchanged() {
-		t.Fatal("rejected standalone changed/published code")
-	}
-	ordinary := NewRuntime()
-	defer ordinary.Close()
-	mod, err := ordinary.Module(loaded)
+	standalone, err := Instantiate(loaded)
 	if err != nil {
-		t.Fatal("configuration-free binding", err)
+		t.Fatal("public standalone instantiation", err)
 	}
-	if in, err := ordinary.Instantiate(context.Background(), mod); in != nil || !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("default destination permission", err)
+	if got, err := standalone.Invoke("run"); err != nil || !slices.Equal(got, []uint64{1}) {
+		t.Fatal("public standalone reference call", got, err)
 	}
-	mod.Close()
-	if !unchanged() {
-		t.Fatal("rejected Runtime changed/published code")
+	standalone.Close()
+	ordinary := NewRuntime(WithRuntimeConfig(cfg.WithCoreFeatures(0)))
+	defer ordinary.Close()
+	publicInstance := rv64NativeTokenInstantiate(t, ordinary, loaded, NewImports())
+	if got, err := publicInstance.Invoke("run"); err != nil || !slices.Equal(got, []uint64{1}) {
+		t.Fatal("default Runtime reference call", got, err)
 	}
 	rt := NewRuntime(WithRuntimeConfig(cfg))
 	defer rt.Close()
 	in := rv64NativeTokenInstantiate(t, rt, loaded, NewImports())
-	if in.c.needsFuncRefDescs() || len(in.funcRefDescs) != coreruntime.FuncRefDescBytes || rv64TailTargetsArenaBytes(in.c) != 0 {
+	if in.c.needsFuncRefDescs() || len(in.funcRefDescs) != 0 || rv64TailTargetsArenaBytes(in.c) != 0 {
 		t.Fatal("null-only module acquired indexed arenas", len(in.funcRefDescs))
 	}
 	if got, err := in.Invoke("run"); err != nil || !slices.Equal(got, []uint64{1}) {

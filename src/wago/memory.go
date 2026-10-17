@@ -231,6 +231,14 @@ func (m *Memory) UnsafeBytes() []byte {
 	if s := m.state.Load(); s != nil {
 		s.mu.Lock()
 		owner, closed := s.owner, s.has(memoryStateClosed)
+		if s.has(memoryStateWasmShared) && !closed && (owner == nil || !owner.isLogicallyClosed()) {
+			var bytes []byte
+			if m.jm != nil {
+				bytes = m.jm.HostBytes()
+			}
+			s.mu.Unlock()
+			return bytes
+		}
 		s.mu.Unlock()
 		if closed || (owner != nil && owner.isLogicallyClosed()) {
 			return nil

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -29,7 +29,7 @@ func TestRV64PublicSpecInvalidDiagnosticGate(t *testing.T) {
 		{"label-type-mismatch", "unknown label", &wasm.ValidationError{Code: wasm.ErrTypeMismatch}, false},
 		{"label-unsupported", "unknown label", railshot.ErrUnsupported, false},
 		{"lane", "invalid lane index", &wasm.ValidationError{Code: wasm.ErrTypeMismatch, Detail: "simd lane out of range"}, true},
-		{"shuffle", "invalid lane index", &wasm.DecodeError{Code: wasm.ErrInvalidInstruction, Offset: 54, SectionID: 10, SectionStart: 21, SectionEnd: 79}, true},
+		{"shuffle-decode-stage", "invalid lane index", &wasm.DecodeError{Code: wasm.ErrInvalidInstruction, Offset: 54, SectionID: 10, SectionStart: 21, SectionEnd: 79}, false},
 		{"unrelated-shuffle-offset", "invalid lane index", &wasm.DecodeError{Code: wasm.ErrInvalidInstruction, Offset: 38, SectionID: 10, SectionStart: 21, SectionEnd: 79}, false},
 		{"unrelated-shuffle-section", "invalid lane index", &wasm.DecodeError{Code: wasm.ErrInvalidInstruction, Offset: 54, SectionID: 6, SectionStart: 21, SectionEnd: 79}, false},
 		{"unrelated-shuffle-source-range", "invalid lane index", &wasm.DecodeError{Code: wasm.ErrInvalidInstruction, Offset: 54, SectionID: 10, SectionStart: 20, SectionEnd: 79}, false},

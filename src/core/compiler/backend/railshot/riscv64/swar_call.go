@@ -15,7 +15,7 @@ import (
 func (f *integerEmitter) swarCompactGCArguments(base, count int, spill func(int) int32) {
 	for i := 0; i < count; i++ {
 		f.Load(5, spill(base+i), true)
-		f.Store(f.SpillOffset(base*2+i), 5, true)
+		f.Store(spill(base)+int32(i*8), 5, true)
 	}
 }
 
@@ -53,11 +53,13 @@ func (f *integerEmitter) swarCallArguments(sig *wasm.CompType, base int, spill f
 			class = swarFuncRef
 		}
 		f.Load(5, spill(base+i), !class.narrow())
-		f.a.Sd(enc.X5, enc.X10, offset)
+		baseRegister, byteOffset := f.addressAt(enc.X10, offset, enc.Scratch1)
+		f.a.Sd(enc.X5, baseRegister, byteOffset)
 		offset += 8
 		if class == swarV128 {
 			f.Load(6, spill(base+i)+8, true)
-			f.a.Sd(enc.X6, enc.X10, offset)
+			baseRegister, byteOffset := f.addressAt(enc.X10, offset, enc.Scratch1)
+			f.a.Sd(enc.X6, baseRegister, byteOffset)
 			offset += 8
 		}
 	}
@@ -71,15 +73,17 @@ func (f *integerEmitter) swarCallResults(sig *wasm.CompType, base int, spill fun
 		if (f.mode.referenceFunctions || f.mode.gcRootedScalar) && typ.Kind() == wasm.ValRef {
 			class = swarFuncRef
 		}
+		baseRegister, byteOffset := f.addressAt(enc.X13, offset, enc.Scratch1)
 		if class.narrow() {
-			f.a.Lwu(enc.X5, enc.X13, offset)
+			f.a.Lwu(enc.X5, baseRegister, byteOffset)
 		} else {
-			f.a.Ld(enc.X5, enc.X13, offset)
+			f.a.Ld(enc.X5, baseRegister, byteOffset)
 		}
 		f.Store(spill(base+i), 5, true)
 		offset += 8
 		if class == swarV128 {
-			f.a.Ld(enc.X6, enc.X13, offset)
+			baseRegister, byteOffset := f.addressAt(enc.X13, offset, enc.Scratch1)
+			f.a.Ld(enc.X6, baseRegister, byteOffset)
 			offset += 8
 		} else {
 			f.a.Addi(enc.X6, enc.Zero, 0)
@@ -89,8 +93,26 @@ func (f *integerEmitter) swarCallResults(sig *wasm.CompType, base int, spill fun
 }
 
 func (f *integerEmitter) swarIndirectCall(sig *wasm.CompType, key uint64, base, indexSlot int, spill func(int) int32, hiddenRefs []bool) {
-	f.Load(5, spill(indexSlot), false)
-	f.ownedIndirectTarget(key)
+	f.swarIndirectCallAt(sig, key, base, indexSlot, false, 0, spill, hiddenRefs)
+}
+
+func (f *integerEmitter) swarIndirectCallAt(sig *wasm.CompType, key uint64, base, indexSlot int, wide bool, tableIndex uint32, spill func(int) int32, hiddenRefs []bool, typeIndexes ...uint32) {
+	if f.functionSubtypeHelper(typeIndexes) {
+		f.tableReferenceForSubtype(indexSlot, wide, tableIndex, spill)
+		f.referenceCall(sig, key, base, indexSlot, spill, 16, hiddenRefs, typeIndexes...)
+		return
+	}
+	keys := []uint64{key}
+	if f.mode.primitiveTailTypes != nil && len(typeIndexes) == 1 {
+		var ok bool
+		keys, ok = f.mode.primitiveTailTypes.subtypeKeys(typeIndexes[0])
+		if !ok {
+			f.err = unsupported("indirect function subtype key bound")
+			return
+		}
+	}
+	f.Load(5, spill(indexSlot), wide)
+	f.ownedIndirectTargetAtKeys(keys, tableIndex)
 	f.swarCallArguments(sig, base, spill)
 	returnOffset, stackAdjust := 0, uint32(0)
 	if f.mode.foreignTableCalls {
@@ -105,7 +127,7 @@ func (f *integerEmitter) swarIndirectCall(sig *wasm.CompType, key uint64, base, 
 				results++
 			}
 		}
-		returnOffset, stackAdjust = f.nativeTableCall(key, params, results)
+		returnOffset, stackAdjust = f.nativeTableCallKeys(keys, params, results)
 	} else {
 		f.a.Jalr(enc.RA, enc.X28, 0)
 	}
@@ -121,6 +143,9 @@ func (f *integerEmitter) swarIndirectCall(sig *wasm.CompType, key uint64, base, 
 // context identity before compact argument writes. X28 survives escaped stack
 // homes; raw vector values stay in caller homes across the parked host bridge.
 func (f *integerEmitter) swarImportCall(index uint32, sig *wasm.CompType, base int, spill func(int) int32, hiddenRefs []bool) {
+	if f.emitPluginCall(index, sig, base, spill) {
+		return
+	}
 	f.importCallTarget(index)
 	f.swarCallArguments(sig, base, spill)
 	f.a.Jalr(enc.RA, enc.X28, 0)

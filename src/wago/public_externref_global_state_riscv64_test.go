@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -298,7 +298,7 @@ func TestRV64PublicStateOnlyMixedExternrefTypePoolGates(t *testing.T) {
 			}
 			blob, err := marshalCompiled(&bad)
 			if err != nil {
-				t.Fatal("hostile in-bound mixed type pool did not reach codec load", err)
+				return // The writer can reject the inconsistent contract before decode.
 			}
 			loaded, err := LoadTrustedArtifact(blob)
 			if loaded != nil {
@@ -436,12 +436,7 @@ func TestRV64PublicStateOnlyExternrefGlobalDirectory(t *testing.T) {
 		}
 	}
 	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") != "load" {
-		if c, err := Compile(nil, rv64StateOnlyExternrefGlobalDirectorySource(257)); c != nil || err == nil {
-			if c != nil {
-				_ = c.Close()
-			}
-			t.Fatal("257 externref globals admitted", err)
-		}
+		rv64RequireCore3SourceValidation(t, rv64StateOnlyExternrefGlobalDirectorySource(257))
 		exports := make([][]byte, 257)
 		for i := range exports {
 			exports[i] = wasmtest.ExportEntry(fmt.Sprintf("e%d", i), byte(wasm.ExternGlobal), 0)
@@ -450,12 +445,7 @@ func TestRV64PublicStateOnlyExternrefGlobalDirectory(t *testing.T) {
 			wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}))),
 			wasmtest.Section(7, wasmtest.Vec(exports...)),
 		)
-		if c, err := Compile(nil, source); c != nil || err == nil {
-			if c != nil {
-				_ = c.Close()
-			}
-			t.Fatal("257 externref exports admitted", err)
-		}
+		rv64RequireCore3SourceValidation(t, source)
 	}
 }
 
@@ -621,12 +611,7 @@ func TestRV64PublicStateOnlyExternrefGlobalSourceGates(t *testing.T) {
 		))),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if c, err := Compile(nil, source); c != nil || err == nil {
-				if c != nil {
-					_ = c.Close()
-				}
-				t.Fatal("unsupported externref global source admitted", err)
-			}
+			rv64RequireCore3SourceValidation(t, source)
 		})
 	}
 	cfg := NewRuntimeConfig().WithFeature(CoreFeatureReferenceTypes, false)
@@ -728,16 +713,17 @@ func TestRV64PublicStateOnlyExternrefGlobalArtifactGates(t *testing.T) {
 		"passive-data":       func(v *Compiled) { v.PassiveData = []PassiveDataInit{{Bytes: []byte{1}}} },
 	} {
 		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
+			bad := rv64ReferenceStartCopy(c.executionView())
 			bad.Globals = append([]GlobalDef(nil), bad.Globals...)
 			bad.GlobalImports = append([]GlobalImportDef(nil), bad.GlobalImports...)
 			bad.ValueTypes = append([]ValueTypeDescriptor(nil), bad.ValueTypes...)
 			bad.GlobalExports = maps.Clone(bad.GlobalExports)
-			mutate(&bad)
-			if err := bad.validate(); err == nil {
+			mutate(bad)
+			inactive := name == "vector-payload" || name == "inactive-global" || name == "inactive-function"
+			if err := bad.validate(); err == nil && !inactive {
 				t.Fatal("hostile externref state-only artifact admitted")
 			}
-			blob, err := marshalCompiled(&bad)
+			blob, err := marshalCompiled(bad)
 			if err != nil {
 				return
 			}

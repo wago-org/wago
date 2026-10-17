@@ -206,7 +206,7 @@ func TestReferenceFunctionImportedTailDeadAdmission(t *testing.T) {
 			opts.ImportBindings = hostImportBindings(3)
 			pressure := 0
 			opts.MemoryPressure = func() { pressure++ }
-			if image, err := CompileModuleWith(m, opts); image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+			if image, err := CompileModuleWith(m, opts); image != nil || err == nil || pressure != 0 {
 				t.Fatal("dead/live imported-tail result mismatch reached allocation", vector, dead, err, pressure)
 			}
 			m, err = wasm.DecodeModule(wasmtest.ClosedReferenceImportTails(vector, false))
@@ -214,7 +214,7 @@ func TestReferenceFunctionImportedTailDeadAdmission(t *testing.T) {
 				t.Fatal(err)
 			}
 			opts.NativeTailCalls = false
-			if image, err := CompileModuleWith(m, opts); image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+			if image, err := CompileModuleWith(m, opts); image != nil || err == nil || pressure != 0 {
 				t.Fatal("direct imported tails acquired permission implicitly", vector, err, pressure)
 			}
 			if dead {

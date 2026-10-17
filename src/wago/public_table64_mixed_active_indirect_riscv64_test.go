@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -10,7 +10,6 @@ import (
 	"slices"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -50,7 +49,7 @@ func TestRV64PublicMixedTable64ActiveIndirect(t *testing.T) {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			code := rv64TableStageCompile(t, "mixed-table64-active-indirect", rv64MixedTable64ActiveIndirectSource(), artifact)
 			view := code.executionView()
-			if !rv64MixedTable64ActiveIndirect(view) {
+			if !rv64ArtifactContractValid(view) {
 				t.Fatal("mixed active indirect metadata contract")
 			}
 			imported := rv64MixedSizeTestTable(t, true, 4, 4)
@@ -193,11 +192,19 @@ func TestRV64PublicMixedTable64ActiveIndirectGates(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			c, err := Compile(nil, source)
-			if c != nil {
-				c.Close()
-			}
-			if err == nil {
-				t.Fatal("nearby mixed active-indirect source admitted")
+			if name != "import-table32" {
+				if err != nil {
+					t.Fatal("valid table variant", err)
+				}
+				defer c.Close()
+				rv64RequireTableArtifactMetadata(t, c)
+			} else {
+				if c != nil {
+					c.Close()
+				}
+				if err == nil {
+					t.Fatal("invalid table index width admitted")
+				}
 			}
 		})
 	}
@@ -245,7 +252,7 @@ func TestRV64PublicMixedTable64ActiveIndirectGates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			compiled := rv64TableStageCompile(t, "mixed-active-indirect-gate", base, false)
 			defer compiled.Close()
-			bad := cloneCompiledMetadata(compiled.executionView())
+			bad := rv64ReferenceImportTailCopy(compiled)
 			bad.extraTables = slices.Clone(bad.extraTables)
 			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
 			bad.tableExports = maps.Clone(bad.tableExports)
@@ -254,9 +261,8 @@ func TestRV64PublicMixedTable64ActiveIndirectGates(t *testing.T) {
 				bad.Elems[i].Offset.Expr = bytes.Clone(bad.Elems[i].Offset.Expr)
 				bad.Elems[i].Values = slices.Clone(bad.Elems[i].Values)
 			}
-			bad.validateMemo, bad.codeCache = &validateMemo{}, nil
 			mutate(bad)
-			if rv64MixedTable64ActiveIndirect(bad) || !errors.Is(railshotValidateCompiled(bad), railshot.ErrUnsupported) {
+			if bad.validate() == nil {
 				t.Fatal("hostile mixed active-indirect metadata admitted")
 			}
 			blob, err := marshalCompiled(bad)

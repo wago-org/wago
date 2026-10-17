@@ -1,6 +1,6 @@
 //go:build linux && !tinygo
 
-// This harness force-links experimental RV64 emission on either host ISA.
+// This harness force-links RV64 emission on either host ISA.
 package main
 
 import (

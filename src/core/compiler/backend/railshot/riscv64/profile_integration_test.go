@@ -50,8 +50,17 @@ func profileCheckDirectory(t *testing.T, m *wasm.Module, code []byte, stats Modu
 	if len(stats.ProfileRegions) == 0 || len(stats.Funcs) != len(m.Code) {
 		t.Fatal("missing finalized directories")
 	}
-	if stats.CodeSites != nil || stats.UnwindRanges != nil || stats.SourceFrames != nil {
-		t.Fatal("invented sites, inline frames, or unwind rules")
+	if stats.UnwindRanges != nil || stats.SourceFrames != nil {
+		t.Fatal("unrequested inline frames or unwind rules")
+	}
+	if sources != (len(stats.CodeSites) != 0) {
+		t.Fatal("site option did not control measured frame operations")
+	}
+	if err := jitprofile.ValidateCodeSites(stats.CodeSites, uint64(len(code))); err != nil {
+		t.Fatal(err)
+	}
+	if err := jitprofile.ValidateCodeSiteRegions(stats.CodeSites, stats.ProfileRegions); err != nil {
+		t.Fatal(err)
 	}
 	if sources != (len(stats.SourceRanges) != 0) {
 		t.Fatal("source option did not control sparse map")
@@ -107,6 +116,7 @@ func TestProductionProfileFinalizedCodeAndSources(t *testing.T) {
 	}{
 		{"shared", sharedSource, false, 0, false},
 		{"fallback", sharedSource, true, 0, false},
+		{"large-branch-table", binaryModule(largeBranchTableFixture(24615, false)), true, 0, false},
 		{"direct", binaryModule(sumCallFixture(0)), false, 0, false},
 		{"host", hostImportModule(2, 1, []byte{0x7e}, true), false, 2, false},
 		{"fp", binaryModule(floatFixture(false, 0x92, false, false), floatFixture(true, 0xa0, false, false)), false, 0, false},
@@ -217,7 +227,7 @@ func TestProductionProfileFailureBeforeStagingAndSnapshotOwnership(t *testing.T)
 	}
 	prior := stats
 	regions, sources := slices.Clone(stats.ProfileRegions), slices.Clone(stats.SourceRanges)
-	for _, bad := range []CompileOptions{{Profile: true, UnwindMaps: true}, {Profile: true, CollectInlineReport: true}, {SourceMaps: true}} {
+	for _, bad := range []CompileOptions{{Profile: true, CollectInlineReport: true}, {SourceMaps: true}, {UnwindMaps: true}} {
 		bad.Stats, bad.DeferCodeMapping = &stats, true
 		staged := false
 		bad.MemoryPressure = func() { staged = true }

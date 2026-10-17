@@ -43,7 +43,7 @@ func TestPrivateNativeTableThunkFrameWalkMetadata(t *testing.T) {
 		}
 		want := uint32(nativeTableFrameBytes)
 		if invocation {
-			want += uint32(abi.RV64InvocationViewBytes + 16)
+			want += uint32(abi.RV64InvocationViewBytes + 16 + 2*(nativePublicImportTransportBytes-nativeImportTransportBytes))
 		}
 		if image.frameBytes != want {
 			t.Fatalf("invocation=%t frame=%d, want %d", invocation, image.frameBytes, want)

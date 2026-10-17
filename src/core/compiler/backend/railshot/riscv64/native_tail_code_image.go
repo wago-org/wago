@@ -2,7 +2,10 @@
 
 package riscv64
 
-import coreruntime "github.com/wago-org/wago/src/core/runtime"
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
+)
 
 // NativeTailCodeOwner supplies an exact logical image from a trusted runtime
 // code owner, already RX and synchronized for process-wide instruction fetch.
@@ -11,6 +14,112 @@ import coreruntime "github.com/wago-org/wago/src/core/runtime"
 // instance's reference to the same cache is not such a lease.
 type NativeTailCodeOwner interface {
 	NativeTailCodeView() ([]byte, error)
+}
+
+// NativeTailContextOwner authenticates a definition that needs no descriptor
+// header. The same retained runtime owner supplies its exact job and context.
+// This optional native lease contract is never serialized.
+type NativeTailContextOwner interface {
+	NativeTailContextView() (*coreruntime.JobMemory, []byte, error)
+}
+
+// NativeTailFunctionKeyOwner supplies the exact descriptor key for a function
+// of the retained image. It must check that the supplied transport signature
+// matches that function's immutable metadata. The key is not an ABI-type hash:
+// indexed and recursive types can share a transport signature.
+type NativeTailFunctionKeyOwner interface {
+	NativeTailFunctionKey(uint32, []wasm.ValType, []wasm.ValType) (uint64, error)
+}
+
+// NativeTailTypeKeyOwner checks an exact declared type against its transport
+// signature under the retained runtime image lease.
+type NativeTailTypeKeyOwner interface {
+	NativeTailTypeKey(uint32, []wasm.ValType, []wasm.ValType) (uint64, error)
+}
+
+// NativeTailTypeMatchOwner compares immutable declared graphs while building
+// a dispatcher. The runtime must authenticate both particular image leases.
+// Emitted dispatch retains the target's exact key; no subtype search runs in
+// guest code or adds a per-site retained match array.
+type NativeTailTypeMatchOwner interface {
+	NativeTailTypeMatchesFunction(uint32, NativeTailCodeOwner, uint32) (bool, error)
+}
+
+func (i *NativeTailCodeImage) typeMatchesFunction(index uint32, target *NativeTailCodeImage, function uint32) (bool, error) {
+	if err := i.Validate(); err != nil {
+		return false, err
+	}
+	if target == nil {
+		return false, unsupported("native typed tail target has no retained image")
+	}
+	if err := target.Validate(); err != nil {
+		return false, err
+	}
+	owner, ok := i.owner.(NativeTailTypeMatchOwner)
+	if !ok {
+		return false, nil
+	}
+	return owner.NativeTailTypeMatchesFunction(index, target.owner, function)
+}
+
+func (i *NativeTailCodeImage) typeKey(index uint32, params, results []wasm.ValType) (uint64, error) {
+	if err := i.Validate(); err != nil {
+		return 0, err
+	}
+	owner, ok := i.owner.(NativeTailTypeKeyOwner)
+	if !ok {
+		return 0, unsupported("native tail declared type requires its published runtime owner")
+	}
+	return owner.NativeTailTypeKey(index, params, results)
+}
+
+func (i *NativeTailCodeImage) validateCaller(home, context uintptr) error {
+	if err := i.Validate(); err != nil {
+		return err
+	}
+	owner, ok := i.owner.(NativeTailContextOwner)
+	if !ok {
+		return unsupported("native typed tail caller requires its published context owner")
+	}
+	job, actual, err := owner.NativeTailContextView()
+	if err != nil {
+		return err
+	}
+	if job == nil || job.LinMemBase() != home || tailRAPointer(actual) != context {
+		return unsupported("native typed tail caller image/context identity")
+	}
+	return nil
+}
+
+func (i *NativeTailCodeImage) functionKey(index uint32, signature *wasm.CompType) (uint64, error) {
+	if i == nil {
+		return wasm.StructuralFuncTypeKey(signature), nil
+	}
+	if err := i.Validate(); err != nil {
+		return 0, err
+	}
+	if owner, ok := i.owner.(NativeTailFunctionKeyOwner); ok {
+		return owner.NativeTailFunctionKey(index, signature.Params, signature.Results)
+	}
+	return wasm.StructuralFuncTypeKey(signature), nil
+}
+
+func (i *NativeTailCodeImage) validateContext(job *coreruntime.JobMemory, context []byte) error {
+	if err := i.Validate(); err != nil {
+		return err
+	}
+	owner, ok := i.owner.(NativeTailContextOwner)
+	if !ok {
+		return unsupported("native tail context requires its published runtime owner")
+	}
+	actualJob, actualContext, err := owner.NativeTailContextView()
+	if err != nil {
+		return err
+	}
+	if job != actualJob || len(context) != len(actualContext) || tailRAPointer(context) != tailRAPointer(actualContext) {
+		return unsupported("native tail published context identity")
+	}
+	return nil
 }
 
 // NativeTailCodeImage borrows an immutable published image. It retains its Go

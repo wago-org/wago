@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const rv64GCArrayDefaultOfficialHex = "0061736d0100000001b080808000095e7d005e7d01600001640060027f6400017d60017f017d60037f64017d017d60027f7d017d6001646a017f6000017f038880808000070203040506070806988080800002640000430000803f4103fb06000b6400004103fb07000b079d8080800004036e65770000036765740002077365745f6765740004036c656e00060ae780808000078780808000004103fb07000b89808080000020012000fb0b000b8880808000002000100010010b928080800000200120002002fb0e0120012000fb0b010b8d808080000020004103fb0701200110030b8680808000002000fb0f0b868080800000100010050b"
@@ -89,7 +89,7 @@ func TestRV64PublicGCArrayDefaultOfficialExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64GCArrayDefaultOfficialCompile(t, artifact)
 			view := compiled.executionView()
-			if err := railshotValidateCompiled(view); !rv64GCArrayDefaultOfficial(view) || !rv64GCArrayDefaultOfficialExecutionCode(view) || err != nil {
+			if err := railshotValidateCompiled(view); !rv64ArtifactContractValid(view) || err != nil {
 				t.Fatalf("missing exact retained gc array default official witness: validation=%v products=%v/%v code=%d/%x entries=%v/%v", err, view.stagedGCStructProduct(), view.stagedGCArrayProduct(), len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry)
 			}
 			for _, profile := range []struct {
@@ -100,7 +100,7 @@ func TestRV64PublicGCArrayDefaultOfficialExecutionAndArtifact(t *testing.T) {
 				{name: "stress-gc", config: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 96, VerifyAfterCollect: true}},
 			} {
 				t.Run(profile.name, func(t *testing.T) {
-					rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+					rt := NewRuntime()
 					defer rt.Close()
 					mod, err := rt.Module(compiled)
 					if err != nil {
@@ -203,19 +203,16 @@ func TestRV64PublicGCArrayDefaultOfficialAdmissionIsExact(t *testing.T) {
 	}
 	base := rv64GCArrayDefaultOfficialCompile(t, false).executionView()
 	for name, mutate := range map[string]func(*Compiled){
-		"code":       func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
-		"entry":      func(v *Compiled) { v.Entry[4], v.InternalEntry[4] = 2992, 2992 },
-		"function":   func(v *Compiled) { v.Funcs[3].Params[2] = ValI64 },
-		"type":       func(v *Compiled) { v.Types[1].Array.Mutable = false },
-		"type-key":   func(v *Compiled) { v.FuncTypeID[5] ^= 1 },
-		"descriptor": func(v *Compiled) { v.GCTypeDescs[1].ElemSize++ },
-		"global":     func(v *Compiled) { v.Globals[1].Mutable = true },
-		"initializer": func(v *Compiled) {
-			v.memoryDir.gcArrayGlobals[0].Bits = slices.Clone(v.memoryDir.gcArrayGlobals[0].Bits)
-			v.memoryDir.gcArrayGlobals[0].Bits[0] ^= 1
-		},
+		"code":        func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
+		"entry":       func(v *Compiled) { v.Entry[4], v.InternalEntry[4] = 2992, 2992 },
+		"function":    func(v *Compiled) { v.Funcs[3].Params[2] = ValI64 },
+		"type":        func(v *Compiled) { v.Types[1].Array.Mutable = false },
+		"type-key":    func(v *Compiled) { v.FuncTypeID[5] ^= 1 },
+		"descriptor":  func(v *Compiled) { v.GCTypeDescs[1].ElemSize++ },
+		"global":      func(v *Compiled) { v.Globals[1].Mutable = true },
+		"initializer": func(v *Compiled) { v.Globals[0].InitExpr[0] ^= 1 },
 		"default-initializer": func(v *Compiled) {
-			v.memoryDir.gcArrayGlobals[1].Mode = gcArrayGlobalInitUniform
+			v.Globals[1].InitExpr = []byte{0xff, 0x0b}
 		},
 		"export": func(v *Compiled) {
 			delete(v.Exports, "new")
@@ -224,14 +221,18 @@ func TestRV64PublicGCArrayDefaultOfficialAdmissionIsExact(t *testing.T) {
 		"feature": func(v *Compiled) { v.requiredFeatures |= CoreFeatureMemory64 },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			mutate(candidate)
-			if rv64GCArrayDefaultOfficial(candidate) {
+			if rv64ArtifactContractValid(candidate) {
 				t.Fatal("hostile retained mutation retained the default official witness")
 			}
 			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile retained default official mutation admitted", err)
+			}
+			if !candidate.requiredFeatures.IsEnabled(CoreFeatureGC) {
+				rv64RequireRestoredGCFeature(t, candidate)
+			} else {
+				rv64RequireRejectedArtifact(t, candidate)
 			}
 		})
 	}

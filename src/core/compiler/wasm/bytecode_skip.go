@@ -516,14 +516,6 @@ func classifyFDBytes(r *reader, imm *InstructionImmediate, widths memargWidths) 
 		if err != nil {
 			return err
 		}
-		if sub == 13 {
-			start := r.pos - 16
-			for i, b := range r.data[start:r.pos] {
-				if b >= 32 {
-					return &DecodeError{Code: ErrInvalidInstruction, Offset: start + i}
-				}
-			}
-		}
 		return nil
 	}
 	if k, ok := lookupPrefixKind(fdNoImm[:], sub); ok {

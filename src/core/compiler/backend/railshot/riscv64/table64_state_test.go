@@ -57,8 +57,8 @@ func TestStateOnlyTable64ProfileRejectsExecutableAndResourceShapes(t *testing.T)
 		t.Run(name, func(t *testing.T) {
 			m := stateOnlyTable64Profile()
 			mutate(m)
-			if _, err := admitTableProfile(m, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("unsupported table64 shape admitted", err)
+			if admitStateOnlyTable64(m, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -123,8 +123,8 @@ func TestStateOnlyTwoTable32ProfileRejectsExecutableAndResourceShapes(t *testing
 		t.Run(name, func(t *testing.T) {
 			m := stateOnlyTwoTable32Profile()
 			mutate(m)
-			if _, err := admitTableProfile(m, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("unsupported state-only two-table32 shape admitted", err)
+			if admitStateOnlyTwoTable32(m, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -155,8 +155,8 @@ func TestOwnedTable64SizeProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTable64SizeProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid table64.size profile admitted", err)
+			if admitOwnedTable64Size(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -201,11 +201,8 @@ func TestOwnedTwoTable32SizeProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable32SizeProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed two-table32.size profile admitted", err)
-			}
-			if err := AdmitPublicInitializers(bad); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed two-table32.size initializer preflight", err)
+			if admitOwnedTwoTable32Size(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -254,11 +251,8 @@ func TestOwnedTwoTable32GetSetProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable32GetSetProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed two-table32 get/set profile admitted", err)
-			}
-			if err := AdmitPublicInitializers(bad); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed two-table32 get/set initializer preflight", err)
+			if admitOwnedTwoTable32GetSet(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -307,11 +301,8 @@ func TestOwnedTwoTable32GrowProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable32GrowProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed two-table32 grow profile admitted", err)
-			}
-			if err := AdmitPublicInitializers(bad); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed two-table32 grow initializer preflight", err)
+			if admitOwnedTwoTable32Grow(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -361,11 +352,8 @@ func TestOwnedTwoTable32FillProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable32FillProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed two-table32 fill profile admitted", err)
-			}
-			if err := AdmitPublicInitializers(bad); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed two-table32 fill initializer preflight", err)
+			if admitOwnedTwoTable32Fill(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -422,8 +410,8 @@ func TestOwnedTwoTable64SizeProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable64SizeProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed two-table64.size profile admitted", err)
+			if admitOwnedTwoTable64Size(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -465,8 +453,8 @@ func TestOwnedTwoTable64GetSetProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable64GetSetProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed two-table64 get/set profile admitted", err)
+			if admitOwnedTwoTable64GetSet(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -499,8 +487,8 @@ func TestOwnedTwoTable64GrowProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable64GrowProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed two-table64 grow profile admitted", err)
+			if admitOwnedTwoTable64Grow(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -535,8 +523,8 @@ func TestOwnedTwoTable64FillProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable64FillProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed two-table64 fill profile admitted", err)
+			if admitOwnedTwoTable64Fill(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -573,8 +561,8 @@ func TestOwnedTwoTable64CopyProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable64CopyProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed two-table64 copy profile admitted", err)
+			if admitOwnedTwoTable64Copy(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -606,8 +594,8 @@ func TestOwnedTwoTable64CrossCopyProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable64CrossCopyProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid cross-table64 copy profile admitted", err)
+			if admitOwnedTwoTable64CrossCopy(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -643,8 +631,8 @@ func TestOwnedTwoTable32CopyProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable32CopyProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed two-table32 copy profile admitted", err)
+			if admitOwnedTwoTable32Copy(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -676,8 +664,8 @@ func TestOwnedTwoTable32CrossCopyProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable32CrossCopyProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid cross-table32 copy profile admitted", err)
+			if admitOwnedTwoTable32CrossCopy(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -718,8 +706,8 @@ func TestImportedTable64SizeProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := importedTable64SizeProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid imported table64.size profile admitted", err)
+			if admitImportedTable64Size(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -758,8 +746,8 @@ func TestImportedTable64GetSetProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := importedTable64GetSetProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid imported table64.get/set profile admitted", err)
+			if admitImportedTable64GetSet(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -794,8 +782,8 @@ func TestImportedTable64GrowProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := importedTable64GrowProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid imported table64.grow profile admitted", err)
+			if admitImportedTable64Grow(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -836,8 +824,8 @@ func TestImportedTable64FillProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := importedTable64FillProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid imported table64.fill profile admitted", err)
+			if admitImportedTable64Fill(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -881,8 +869,8 @@ func TestImportedTable64CopyProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := importedTable64CopyProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid imported table64.copy profile admitted", err)
+			if admitImportedTable64Copy(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -914,8 +902,8 @@ func TestOwnedTable64GrowProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTable64GrowProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid table64.grow profile admitted", err)
+			if admitOwnedTable64Grow(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -947,8 +935,8 @@ func TestOwnedTable64GetSetProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTable64GetSetProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid table64 get/set profile admitted", err)
+			if admitOwnedTable64GetSet(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -992,8 +980,8 @@ func TestOwnedTable64IndirectProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTable64IndirectProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid table64 indirect-call profile admitted", err)
+			if admitOwnedTable64Indirect(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -1032,8 +1020,8 @@ func TestOwnedTwoTable64IndirectProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable64IndirectProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed table64 indirect-call profile admitted", err)
+			if admitOwnedTwoTable64Indirect(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -1064,8 +1052,8 @@ func TestOwnedTwoTable32IndirectProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable32IndirectProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed table32 indirect-call profile admitted", err)
+			if admitOwnedTwoTable32Indirect(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -1106,8 +1094,8 @@ func TestImportedTable64IndirectProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := importedTable64IndirectProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid imported table64 indirect-call profile admitted", err)
+			if admitImportedTable64Indirect(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -1144,8 +1132,8 @@ func TestOwnedTable64FillProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTable64FillProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid table64.fill profile admitted", err)
+			if admitOwnedTable64Fill(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -1180,8 +1168,8 @@ func TestOwnedTable64CopyProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTable64CopyProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid table64.copy profile admitted", err)
+			if admitOwnedTable64Copy(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -1232,8 +1220,8 @@ func TestOwnedTable64InitDropProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTable64InitDropProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid table64.init/drop profile admitted", err)
+			if admitOwnedTable64InitDrop(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -1273,8 +1261,8 @@ func TestOwnedTwoTable64InitDropProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable64InitDropProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed table64.init/drop profile admitted", err)
+			if admitOwnedTwoTable64InitDrop(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -1307,8 +1295,8 @@ func TestOwnedTwoTable32InitDropProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := ownedTwoTable32InitDropProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid indexed table32.init/drop profile admitted", err)
+			if admitOwnedTwoTable32InitDrop(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}
@@ -1353,8 +1341,8 @@ func TestImportedTable64InitDropProfile(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			bad := importedTable64InitDropProfile()
 			mutate(bad)
-			if _, err := admitTableProfile(bad, true, true); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("invalid imported table64.init/drop profile admitted", err)
+			if admitImportedTable64InitDrop(bad, true, true) {
+				t.Fatal("changed module kept exact table optimization profile")
 			}
 		})
 	}

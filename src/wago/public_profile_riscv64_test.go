@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo && !wago_precompiled && wago_profile
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled && wago_profile
 
 package wago
 
@@ -60,14 +60,17 @@ func TestRV64PublicProfileSourcesAndMappingLifetime(t *testing.T) {
 				if image.Size != uint64(len(compiled.code)) || !bytes.Equal(image.Code, compiled.code) || len(image.Functions) != 1 || image.Functions[0].Index != 0 || image.Functions[0].NativeBytes != len(compiled.code) {
 					t.Fatal("profile does not describe exact finalized image", image)
 				}
-				if len(image.CodeSites) != 0 || len(image.Unwind) != 0 || len(image.InlineFrames) != 0 || image.SiteCoverage != "" || image.UnwindCoverage != "" {
+				if len(image.Unwind) != 0 || len(image.InlineFrames) != 0 || image.UnwindCoverage != "" {
 					t.Fatal("unqualified diagnostic attribution", image)
 				}
 				if sources {
+					if len(image.CodeSites) == 0 || image.SiteCoverage != "frame-loads-stores-and-return-address-transfers" {
+						t.Fatal("missing real frame sites", image)
+					}
 					if len(image.Sources) == 0 || image.SourceCoverage != "sparse-opcode-and-deferred-origins-with-wrapper-helper-gaps" {
 						t.Fatal("missing truthful source coverage", image)
 					}
-				} else if len(image.Sources) != 0 || image.SourceCoverage != "" {
+				} else if len(image.Sources) != 0 || len(image.CodeSites) != 0 || image.SiteCoverage != "" || image.SourceCoverage != "" {
 					t.Fatal("unrequested source map", image)
 				}
 				compiled.Close()
@@ -120,7 +123,7 @@ func TestRV64PublicProfileArtifactHasNoInventedSources(t *testing.T) {
 		t.Fatal(images, status)
 	}
 	image := images[0]
-	if len(image.Regions) != 1 || image.Regions[0].Kind != "unknown" || len(image.Sources) != 0 || len(image.Functions) != 0 || len(image.CodeSites) != 0 || len(image.Unwind) != 0 || image.SourceCoverage != "" || image.SiteCoverage != "" || image.UnwindCoverage != "" || !bytes.Equal(image.Code, compiled.code) {
+	if len(image.Regions) != 1 || image.Regions[0].Kind != "unknown" || len(image.Sources) != 0 || len(image.Functions) != 0 || len(image.Unwind) != 0 || image.SourceCoverage != "" || image.UnwindCoverage != "" || !bytes.Equal(image.Code, compiled.code) {
 		t.Fatal("artifact invented compiler provenance", image)
 	}
 	if got, err := instance.Invoke("identity", 41); err != nil || len(got) != 1 || got[0] != 41 {
@@ -128,18 +131,34 @@ func TestRV64PublicProfileArtifactHasNoInventedSources(t *testing.T) {
 	}
 }
 
-func TestRV64PublicProfileRejectsUnwindBeforePublication(t *testing.T) {
+func TestRV64PublicProfileUnwindPublishedFromCode(t *testing.T) {
 	session := NewCodeProfile(CodeProfileOptions{SourceMaps: true, UnwindMaps: true})
 	defer session.Close()
 	compiled, err := Compile(NewRuntimeConfig().WithCodeProfile(session), identityI32Module())
-	if compiled != nil {
-		compiled.Close()
-		t.Fatal("unsupported unwind published a compiled module")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err == nil {
-		t.Fatal("unwind request was silently ignored")
+	defer compiled.Close()
+	in, err := Instantiate(compiled)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if events, status := session.Read(0); len(events) != 0 || status.Dropped != 0 {
-		t.Fatal("unsupported unwind published diagnostic events", events, status)
+	defer in.Close()
+	events, status := session.Read(0)
+	if len(events) != 1 || status.Dropped != 0 {
+		t.Fatal("profile mapping", len(events), status)
+	}
+	image := events[0].Image
+	if len(image.Unwind) == 0 || image.UnwindCoverage != "rv64-proved-stack-return-addresses" || len(image.CodeSites) == 0 {
+		t.Fatal("missing real RV64 instruction metadata", image)
+	}
+	if err := jitprofile.ValidateUnwind(image.Unwind, image.Size); err != nil {
+		t.Fatal(err)
+	}
+	if err := jitprofile.ValidateCodeSiteRegions(image.CodeSites, image.Regions); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := in.Invoke("identity", 42); err != nil || len(got) != 1 || got[0] != 42 {
+		t.Fatal(got, err)
 	}
 }

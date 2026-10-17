@@ -93,16 +93,28 @@ func admitModuleIntegerInitializer(expr wasm.Expr, expected wasm.ValType, m *was
 // AdmitPublicInitializers runs on the original decoded expressions before
 // frontend folding. Literal folding must not erase source resource limits.
 func AdmitPublicInitializers(m *wasm.Module) error {
-	if m == nil || len(m.Imports) > MaxProductionImports || len(m.Memories) > MaxProductionMemories || m.MemCount() > MaxProductionMemories || len(m.Tables)+m.ImportedTableCount() > 1 && !admitRV64GCRootedScalarModule(m) && !admitRV64GCRefTestAbstract(m) && !admitRV64GCExtern(m) && !isCore3RefIsNullExecution(m) && !admitMixedTable64ActiveElement(m, true, true) && !admitMixedTable64DualActiveElements(m, true, true) && !admitMixedTable64DualActiveVectors(m, true, true) && !admitStateOnlyTwoTable32(m, true, true) && !admitOwnedTwoTable32Size(m, true, true) && !admitOwnedTwoTable32GetSet(m, true, true) && !admitOwnedTwoTable32Grow(m, true, true) && !admitOwnedTwoTable32Fill(m, true, true) && !admitOwnedTwoTable32Copy(m, true, true) && !admitOwnedTwoTable32CrossCopy(m, true, true) && !admitOwnedTwoTable32InitDrop(m, true, true) && !admitOwnedTwoTable32Indirect(m, true, true) && !admitOwnedTwoTable64Size(m, true, true) && !admitMixedTable64Size(m, true, true) && !admitMixedTable64GetSet(m, true, true) && !admitMixedTable64Grow(m, true, true) && !admitMixedTable64Fill(m, true, true) && !admitMixedTable64Copy(m, true, true) && !admitMixedTable64CrossCopy(m, true, true) && !admitMixedTable64InitDrop(m, true, true) && !admitMixedTable64Indirect(m, true, true) && !admitOwnedTwoTable64GetSet(m, true, true) && !admitOwnedTwoTable64Grow(m, true, true) && !admitOwnedTwoTable64Fill(m, true, true) && !admitOwnedTwoTable64Copy(m, true, true) && !admitOwnedTwoTable64CrossCopy(m, true, true) && !admitOwnedTwoTable64InitDrop(m, true, true) && !admitOwnedTwoTable64Indirect(m, true, true) || m.ImportedGlobalCount()+len(m.Globals) > 256 || len(m.Data) > 256 || len(m.Elements) > MaxOwnedElementSegments {
+	immediate := admitRV64ImmediateReferenceModule(m)
+	if m == nil || len(m.Imports) > MaxPublicImports || len(m.Memories) > MaxProductionMemories || m.MemCount() > MaxProductionMemories || m.TableCount() > MaxFunctions || m.ImportedGlobalCount()+len(m.Globals) > MaxPublicGlobals || uint64(len(m.Data)) > uint64(MaxPublicCodeBytes)/16 || len(m.Elements) > MaxPublicElementSegments {
 		return unsupported("public initializer count bound")
 	}
-	rootedScalar := admitRV64GCRootedScalarModule(m)
+	aggregateParser := newRootedScalarAggregateParser(m)
 	rootedInitializerEntries := uint64(0)
 	rootedInitializerSegments := 0
 	for _, table := range m.Tables {
+		if table.Init != nil && table.Type.Ref.Nullable() && wasm.ExternReferenceType(wasm.RefVal(table.Type.Ref)) && rootedScalarAggregateNullExpression(*table.Init, table.Type.Ref) {
+			continue
+		}
 		if table.Init != nil {
-			if rootedScalar && rootedScalarTableReference(wasm.RefVal(table.Type.Ref), m) {
-				if !rootedScalarAggregateElementExpression(*table.Init, table.Type.Ref, m) {
+			if immediate && immediateCollectorType(wasm.RefVal(table.Type.Ref)) && immediateReferenceInitializer(*table.Init, m) {
+				rootedInitializerSegments++
+				rootedInitializerEntries += table.Type.Limits.Min
+				if len(m.Elements)+rootedInitializerSegments > MaxPublicElementSegments || rootedInitializerEntries > MaxOwnedTableEntries {
+					return unsupported("immediate table initializer retained bound")
+				}
+				continue
+			}
+			if rootedScalarTableReference(wasm.RefVal(table.Type.Ref), m) {
+				if !rootedScalarAggregateElementExpressionWithParser(*table.Init, table.Type.Ref, aggregateParser, m.ImportedGlobalCount()+len(m.Globals)) {
 					return unsupported("aggregate table initializer expression")
 				}
 				if rootedScalarAggregateNullExpression(*table.Init, table.Type.Ref) {
@@ -110,7 +122,7 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 				}
 				rootedInitializerSegments++
 				rootedInitializerEntries += table.Type.Limits.Min
-				if len(m.Elements)+rootedInitializerSegments > MaxOwnedElementSegments || rootedInitializerEntries > MaxOwnedTableEntries {
+				if len(m.Elements)+rootedInitializerSegments > MaxPublicElementSegments || rootedInitializerEntries > MaxOwnedTableEntries {
 					return unsupported("aggregate table initializer retained bound")
 				}
 				continue
@@ -120,13 +132,13 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 			if admitRV64I31OfficialTableGlobalInitializer(m) {
 				global = true
 			} else {
-				global, err = admitTableInitializer(*table.Init, m)
+				global, err = admitTableInitializer(*table.Init, m, table.Type.Ref)
 			}
 			if err != nil {
 				return err
 			}
 			if global {
-				if len(m.Elements) >= MaxOwnedElementSegments || table.Type.Limits.Min > MaxOwnedTableEntries {
+				if len(m.Elements) >= MaxPublicElementSegments || table.Type.Limits.Min > MaxOwnedTableEntries {
 					return unsupported("table global initializer aggregate bound")
 				}
 				remaining := uint64(MaxOwnedTableEntries) - table.Type.Limits.Min
@@ -154,11 +166,20 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 		}
 	}
 	for i, global := range m.Globals {
+		if abstractCollectorNullInitializer(global) || immediate && immediateCollectorType(global.Type.Type) && immediateReferenceInitializer(global.Init, m) {
+			continue
+		}
+		if rootedScalarAggregateGlobal(global, aggregateParser, m.ImportedGlobalCount()+i) {
+			continue
+		}
 		if i == 0 && admitRV64I31OfficialGlobalInitializer(m) {
 			continue
 		}
 		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) {
 			hasReferenceGlobal = true
+			if admitPrimitiveReferenceGlobalInitializer(global, m, m.ImportedGlobalCount()+i) {
+				continue
+			}
 			if err := admitLocalFunctionGlobal(global, m, m.ImportedGlobalCount()+i, localMutableReferences); err != nil {
 				return err
 			}

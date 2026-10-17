@@ -86,15 +86,7 @@ func TestReferenceFunctionImmutableCellsConfinement(t *testing.T) {
 				mutate(m)
 				// A sibling mutable cell must not authorize immutable global.set.
 				m.Globals = append(m.Globals, wasm.Global{Type: wasm.GlobalType{Type: wasm.FuncRef, Mutable: true}, Init: wasm.Expr{BodyBytes: []byte{0xd0, 0x70, 0x0b}}})
-				if _, err := admitLocalMutableFunctionGlobals(m); !errors.Is(err, ErrUnsupported) {
-					t.Fatal("early immutable confinement", err)
-				}
-				o := closedReferenceProductionOptions(false, false)
-				pressure := 0
-				o.MemoryPressure = func() { pressure++ }
-				if image, err := CompileModuleWith(m, o); image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
-					t.Fatal("immutable escape published", err, pressure)
-				}
+				checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(false, true))
 			})
 		}
 	}

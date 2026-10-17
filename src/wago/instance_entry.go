@@ -301,6 +301,7 @@ func (in *Instance) lockInvocationContext(ctx context.Context, id invocationID) 
 		id = newInvocationID()
 	}
 	state.setInvocationIdentity(id)
+	managedFunctionBindInvocationState(in, state)
 	return state, nil
 }
 
@@ -315,12 +316,15 @@ func (in *Instance) lockInvocation(id invocationID) *instancePluginState {
 		id = newInvocationID()
 	}
 	state.setInvocationIdentity(id)
+	managedFunctionBindInvocationState(in, state)
 	return state
 }
 
 func (state *instancePluginState) unlockInvocation() {
+	id := state.invocationID
 	state.setInvocationIdentity(0)
 	state.invokeMu.Unlock()
+	managedFunctionAfterInvocationUnlock(state, id)
 }
 
 // invokeVoidEntry runs a table dispatcher or local start under the same native,

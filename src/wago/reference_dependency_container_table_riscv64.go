@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -164,7 +164,7 @@ func railshotRetryClosedTableDescriptorRetirement(in *Instance) error {
 }
 
 func railshotPublishTableDescriptorDependencyLocked(table *Table, mapState *retainedInstanceRoot, batch *tableDescriptorDependencyBatch) {
-	if batch == nil || table.owner == nil {
+	if batch == nil || table.owner == nil || mapState == nil || !mapState.precise && len(mapState.proxyDescriptors) != 0 {
 		return
 	}
 	if row := table.owner.descriptorDependencies.rows[mapState]; row != nil && (row.phase == rv64TableDescriptorBootstrap || row.phase == rv64TableDescriptorFailed) {

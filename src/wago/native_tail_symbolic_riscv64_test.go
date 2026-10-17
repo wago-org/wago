@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -18,6 +18,14 @@ import (
 // Symbolic metadata proof only: these fixtures fabricate frame metadata on
 // unrelated code and remain rejected before mapping. Genuine dynamic source
 // and artifact execution is covered by the public dynamic/reference tests.
+// Mirror the public loader: symbolic parsing precedes metadata-dependent checks.
+func rv64ReadValidatedNativeTailForTest(r *compiledReader, c *Compiled) error {
+	if err := railshotReadNativeTail(r, c); err != nil {
+		return err
+	}
+	return railshotValidateDecodedNativeTail(c)
+}
+
 func rv64TailSymbolicFixture(t *testing.T, kind uint32, vector bool) *Compiled {
 	t.Helper()
 	values := []wasm.ValType{wasm.I32, wasm.F32, wasm.I64, wasm.F64}
@@ -87,7 +95,7 @@ func TestRV64PrivateTailSymbolicVersion2AndClosedPublication(t *testing.T) {
 			}
 			v := rv64TailCodecView(c)
 			r := compiledReader{data: w.buf, budget: newArtifactDecodeBudget(0)}
-			if err := railshotReadNativeTail(&r, v); err != nil || len(r.data) != 0 || !slices.Equal(rv64NativeTailModule(c).Plans, rv64NativeTailModule(v).Plans) {
+			if err := rv64ReadValidatedNativeTailForTest(&r, v); err != nil || len(r.data) != 0 || !slices.Equal(rv64NativeTailModule(c).Plans, rv64NativeTailModule(v).Plans) {
 				t.Fatal("exact symbolic roundtrip", err)
 			}
 			w2 := compiledWriter{}
@@ -170,14 +178,35 @@ func TestRV64PrivateTailSymbolicInvalidFieldsAndAllocationBudget(t *testing.T) {
 			b, v := bytes.Clone(w.buf), rv64TailCodecView(c)
 			tc.mutate(b, v)
 			r := compiledReader{data: b, budget: newArtifactDecodeBudget(0)}
-			if err := railshotReadNativeTail(&r, v); err == nil {
+			err := rv64ReadValidatedNativeTailForTest(&r, v)
+			if tc.name == "declared-nonfinal" || tc.name == "declared-super" {
+				if err != nil {
+					t.Fatal("declared function subtype metadata rejected", err)
+				}
+				blob, err := marshalCompiled(v)
+				if err != nil {
+					return // The writer may reject before the public loader.
+				}
+				loaded, err := LoadTrustedArtifact(blob)
+				if err != nil {
+					return
+				}
+				defer loaded.Close()
+				instance, err := Instantiate(loaded, testImports("env.tail", HostCallFunc(func(HostCall) {})))
+				if instance != nil {
+					instance.Close()
+				}
+				if err == nil {
+					t.Fatal("fabricated subtype plan acquired executable admission")
+				}
+			} else if err == nil {
 				t.Fatal("invalid symbolic plan accepted")
 			}
 		})
 	}
 	for n := 0; n < len(w.buf); n++ {
 		r := compiledReader{data: w.buf[:n], budget: newArtifactDecodeBudget(0)}
-		if err := railshotReadNativeTail(&r, rv64TailCodecView(c)); err == nil {
+		if err := rv64ReadValidatedNativeTailForTest(&r, rv64TailCodecView(c)); err == nil {
 			t.Fatal("truncated dynamic plan", n)
 		}
 	}
@@ -185,7 +214,7 @@ func TestRV64PrivateTailSymbolicInvalidFieldsAndAllocationBudget(t *testing.T) {
 	for _, limit := range []int64{actual - 1, actual} {
 		v := rv64TailCodecView(c)
 		r := compiledReader{data: w.buf, budget: newArtifactDecodeBudget(limit)}
-		err := railshotReadNativeTail(&r, v)
+		err := rv64ReadValidatedNativeTailForTest(&r, v)
 		if limit < actual {
 			if err == nil || rv64NativeTailModule(v) != nil {
 				t.Fatal("undercharged Go footprint", err)
@@ -212,7 +241,7 @@ func TestRV64PrivateTailSymbolicDirectVersion1AndVersion2Compatibility(t *testin
 	v2 = append(v2, w.buf[5:]...)
 	v := rv64TailCodecView(c)
 	r := compiledReader{data: v2, budget: newArtifactDecodeBudget(0)}
-	if err := railshotReadNativeTail(&r, v); err != nil || !slices.Equal(rv64NativeTailModule(v).Plans, rv64NativeTailModule(c).Plans) {
+	if err := rv64ReadValidatedNativeTailForTest(&r, v); err != nil || !slices.Equal(rv64NativeTailModule(v).Plans, rv64NativeTailModule(c).Plans) {
 		t.Fatal("v2 direct compatibility", err)
 	}
 	w2 := compiledWriter{}
@@ -223,13 +252,13 @@ func TestRV64PrivateTailSymbolicDirectVersion1AndVersion2Compatibility(t *testin
 		b := bytes.Clone(v2)
 		binary.LittleEndian.PutUint32(b[off:], 1)
 		r := compiledReader{data: b, budget: newArtifactDecodeBudget(0)}
-		if err := railshotReadNativeTail(&r, rv64TailCodecView(c)); err == nil {
+		if err := rv64ReadValidatedNativeTailForTest(&r, rv64TailCodecView(c)); err == nil {
 			t.Fatal("noncanonical unused direct field", off)
 		}
 	}
 	actual := int64(artifactCollectionCopies * unsafe.Sizeof(encoder.NativeTailPlan{}))
 	r = compiledReader{data: w.buf, budget: newArtifactDecodeBudget(actual - 1)}
-	if err := railshotReadNativeTail(&r, rv64TailCodecView(c)); err == nil {
+	if err := rv64ReadValidatedNativeTailForTest(&r, rv64TailCodecView(c)); err == nil {
 		t.Fatal("v1 decoder used stale Go plan footprint")
 	}
 }
@@ -249,7 +278,7 @@ func TestRV64PrivateTailSymbolicMixedRowsAndScalarSWAROverlap(t *testing.T) {
 	}
 	v := rv64TailCodecView(c)
 	r := compiledReader{data: w.buf, budget: newArtifactDecodeBudget(0)}
-	if err := railshotReadNativeTail(&r, v); err != nil || !slices.Equal(rv64NativeTailModule(v).Plans, rv64NativeTailModule(c).Plans) {
+	if err := rv64ReadValidatedNativeTailForTest(&r, v); err != nil || !slices.Equal(rv64NativeTailModule(v).Plans, rv64NativeTailModule(c).Plans) {
 		t.Fatal("mixed direct/dynamic identity", err)
 	}
 	// Every parameter is scalar. The last zero high-half belongs to the
@@ -265,7 +294,7 @@ func TestRV64PrivateTailSymbolicMixedRowsAndScalarSWAROverlap(t *testing.T) {
 		blob := bytes.Clone(w.buf)
 		binary.LittleEndian.PutUint32(blob[off:], 1)
 		r := compiledReader{data: blob, budget: newArtifactDecodeBudget(0)}
-		if err := railshotReadNativeTail(&r, rv64TailCodecView(c)); err == nil {
+		if err := rv64ReadValidatedNativeTailForTest(&r, rv64TailCodecView(c)); err == nil {
 			t.Fatal("mixed direct unused field accepted", off)
 		}
 	}

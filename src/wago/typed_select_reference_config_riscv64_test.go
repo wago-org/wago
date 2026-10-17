@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !wago_precompiled
+//go:build linux && riscv64 && !wago_precompiled
 
 package wago
 

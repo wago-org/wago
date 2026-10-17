@@ -81,6 +81,10 @@ func TestReferenceFunctionOwnedStateAdmission(t *testing.T) {
 			t.Run(fmt.Sprintf("vector%t-%s", vector, name), func(t *testing.T) {
 				m := referenceStateDecode(t, vector, false, false)
 				mutate(m)
+				if name == "shared" {
+					checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(false, true))
+					return
+				}
 				if err := admitClosedReferenceFunctionModule(m, vector); !errors.Is(err, ErrUnsupported) {
 					t.Fatal("owned state admission", err)
 				}

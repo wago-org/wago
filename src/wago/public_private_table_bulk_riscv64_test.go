@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -13,7 +13,6 @@ import (
 	"time"
 	"unsafe"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -23,14 +22,14 @@ func TestRV64PrivateTableGrowthReservationBoundaries(t *testing.T) {
 	for _, tc := range []struct {
 		minimum       uint32
 		hasMax, admit bool
-	}{{512, false, true}, {513, false, false}, {513, true, true}} {
+	}{{512, false, true}, {513, false, true}, {513, true, true}, {1024, false, true}, {1025, false, true}, {1025, true, false}} {
 		c, err := Compile(ownedTableConfig(), privateTableBulkSizedModule(tc.hasMax, tc.minimum, 1024))
 		if !tc.admit {
-			if c != nil || !errors.Is(err, railshot.ErrUnsupported) {
+			if c != nil || err == nil {
 				if c != nil {
 					_ = c.Close()
 				}
-				t.Fatal("unbounded reserve admitted", c, err)
+				t.Fatal("minimum exceeds declared maximum", c, err)
 			}
 			continue
 		}
@@ -43,9 +42,14 @@ func TestRV64PrivateTableGrowthReservationBoundaries(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer in.Close()
-		importedGlobalInvoke(t, in, "grow-a", []uint64{uint64(tc.minimum)}, uint64(1024-tc.minimum))
-		importedGlobalInvoke(t, in, "size", []uint64{1024})
-		importedGlobalInvoke(t, in, "call", []uint64{12}, 1023, 5)
+		target := max(uint32(1024), tc.minimum)
+		importedGlobalInvoke(t, in, "grow-a", []uint64{uint64(tc.minimum)}, uint64(target-tc.minimum))
+		importedGlobalInvoke(t, in, "size", []uint64{uint64(target)})
+		if tc.minimum == target {
+			ownedTableTrap(t, invokePrivateReference(t, in, "call", uint64(target-1), 5), coreruntime.TrapIndirectOutOfBounds)
+			importedGlobalInvoke(t, in, "fill-a", nil, uint64(target-1), 1)
+		}
+		importedGlobalInvoke(t, in, "call", []uint64{12}, uint64(target-1), 5)
 	}
 }
 

@@ -31,6 +31,12 @@ func TestTableFreePassiveElementProfile(t *testing.T) {
 			if table, err := admitTableProfile(m, true, true); table || err != nil {
 				t.Fatal("bounded passive profile needs no table", table, err)
 			}
+			// An additional empty segment consumes metadata, not element slots.
+			larger := passiveElementsProfile(expressions)
+			larger.Elements = append(larger.Elements, wasm.Elem{Mode: wasm.ElemMode{Kind: wasm.ElemPassive}})
+			if _, err := admitTableProfile(larger, true, true); err != nil {
+				t.Fatal("empty public segment above the private count limit", err)
+			}
 			for _, production := range []bool{false, true} {
 				if _, err := admitTableProfile(m, production, false); !errors.Is(err, ErrUnsupported) {
 					t.Fatal("private table-free profile widened", err)
@@ -40,9 +46,6 @@ func TestTableFreePassiveElementProfile(t *testing.T) {
 				"active": func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemActive },
 				"offset": func(m *wasm.Module) { m.Elements[0].Mode.Offset.BodyBytes = []byte{0x41, 0, 0x0b} },
 				"table":  func(m *wasm.Module) { m.Elements[0].Mode.Table = 1 },
-				"count": func(m *wasm.Module) {
-					m.Elements = append(m.Elements, wasm.Elem{Mode: wasm.ElemMode{Kind: wasm.ElemPassive}})
-				},
 				"aggregate": func(m *wasm.Module) {
 					if expressions {
 						m.Elements[0].Kind.Exprs = append(m.Elements[0].Kind.Exprs, wasm.Expr{BodyBytes: []byte{0xd0, 0x70, 0x0b}})

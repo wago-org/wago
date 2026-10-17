@@ -5,6 +5,7 @@ package wago
 import (
 	"context"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"strconv"
 )
 
 func railshotInvokeNativeImportedStart(*Instance, int, map[uint32]uint64, context.Context) (bool, error) {
@@ -42,11 +43,18 @@ type railshotInvocationState struct{}
 func railshotSetInvocationGateOwner(*instancePluginState, invocationID) {}
 func railshotCanReenter(*Instance, invocationID) bool                   { return true }
 
-func railshotCallbackHostScope(_ *Instance, _ uintptr, ordinary *hostCallScope) *hostCallScope {
+func railshotRetainedCallbackHostScope(*Instance, uintptr, *instancePluginState, context.Context) *hostCallScope {
+	return nil
+}
+
+func railshotCallbackHostScope(_ *Instance, _ uintptr, ordinary *hostCallScope, _ context.Context) *hostCallScope {
 	return ordinary
 }
 
 func railshotCanonicalImportedFuncref(*referenceStore, *Instance, *InstanceExport, int, uint64) bool {
+	return false
+}
+func railshotCanonicalPlainHostFuncref(*referenceStore, *Instance, int, uint64) bool {
 	return false
 }
 func railshotFuncRefMatchesFunction(*Instance, FuncRef, uint32) bool { return false }
@@ -83,3 +91,21 @@ func railshotRecordNativeImportSpan(*railshotNativeImportConstruction, int, int,
 func railshotFinishNativeImportConstruction(*railshotNativeImportConstruction, []byte, uintptr, int) {
 }
 func railshotInstallNativeImportConstruction(*Instance, *railshotNativeImportConstruction) {}
+
+func railshotNativeFunctionAttachment(in *Instance, index int) (*InstanceExport, bool) {
+	ends, _, _, _, _ := in.c.importModuleEndSections()
+	module, name := splitImportKeyAt(in.c.Imports[index], importModuleEndAt(ends, index))
+	var storage [256]byte
+	key := strconv.AppendInt(storage[:0], int64(len(module)), 10)
+	if len(key)+1+len(module)+len(name) <= len(storage) {
+		key = append(key, ':')
+		key = append(key, module...)
+		key = append(key, name...)
+		export, ok := in.imports[string(key)].(*InstanceExport)
+		return export, ok
+	}
+	export, ok := in.imports[in.c.functionImportBindingKey(index)].(*InstanceExport)
+	return export, ok
+}
+
+func railshotValidFuncrefPublication(*referenceStore, *Instance, uint64) bool { return true }

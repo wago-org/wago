@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -190,7 +190,7 @@ func TestRV64PublicReferenceNonNullMarkerAdmission(t *testing.T) {
 	}
 	base := rv64NativeTailCompile(t, "non-null-marker", source, false)
 	for _, call := range []bool{false, true} {
-		impossible := cloneCompiledMetadata(base)
+		impossible := rv64ReferenceStartCopy(base.executionView())
 		impossible.NumImports, impossible.Funcs = len(impossible.Funcs), nil
 		impossible.nativeReferenceCallABI = call
 		impossible.nativeReferenceControlABI = !call
@@ -215,10 +215,7 @@ func TestRV64PublicReferenceNonNullMarkerAdmission(t *testing.T) {
 		{"cpu-marker-alias", func(c *Compiled) { c.requiredAMD64Features = shared.AMD64Features(1 << 18) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := cloneCompiledMetadata(base)
-			c.validateMemo, c.codeCache = &validateMemo{}, nil
-			c.ensureCodeCache()
-			c.codeCache.stagedFeatures = CoreFeatureTypedFunctionReferences
+			c := rv64ReferenceStartCopy(base.executionView())
 			tc.mutate(c)
 			if err := railshotValidateCompiled(c); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("invalid non-null ABI shape admitted", err)

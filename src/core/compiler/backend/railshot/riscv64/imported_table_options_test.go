@@ -57,7 +57,7 @@ func TestProductionImportedTableRequiresQualifiedOptions(t *testing.T) {
 	}
 }
 
-func TestProductionImportedTableNoMaxGrowthKeepsOwnedReserveGate(t *testing.T) {
+func TestProductionImportedAndOwnedTableNoMaxGrowth(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		m, err := wasm.DecodeModule(importedTableOptionFixture(vector, false, 600))
 		if err != nil {
@@ -68,8 +68,8 @@ func TestProductionImportedTableNoMaxGrowthKeepsOwnedReserveGate(t *testing.T) {
 		}
 		m.Imports = nil
 		m.Tables = []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref(), Limits: wasm.Limits{Min: 600}}}}
-		if image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true}); image != nil || !errors.Is(err, ErrUnsupported) {
-			t.Fatal("owned no-max reserve gate widened", vector, err)
+		if image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true}); image == nil || err != nil {
+			t.Fatal("owned no-max table rejected", vector, err)
 		}
 	}
 }
@@ -98,12 +98,16 @@ func TestProductionImportedTableDecodedBoundsPrecedeTraversalAndStaging(t *testi
 			table.Ref = wasm.ExternRef.Ref()
 			copy.Imports[0].Type = wasm.NewTableExternType(table)
 		}
+		if kind == "capacity" || kind == "second" {
+			checkPublicPrimitiveModule(t, &copy, CompileOptions{Interruptible: true, ForeignTableCalls: true})
+			continue
+		}
 		pressure := 0
 		image, err := CompileModuleWith(&copy, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, MemoryPressure: func() { pressure++ }})
-		if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+		if image != nil || err == nil || pressure != 0 {
 			t.Fatal("invalid decoded import staged", kind, err)
 		}
-		if kind == "count" && !strings.Contains(err.Error(), "count bound") {
+		if kind == "count" && !strings.Contains(err.Error(), "aggregate function import bound") {
 			t.Fatal("decoded count gate lost", err)
 		}
 	}

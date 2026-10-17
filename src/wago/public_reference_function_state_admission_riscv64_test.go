@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -15,7 +15,7 @@ import (
 )
 
 func rv64ReferenceStateCopy(c *Compiled) *Compiled {
-	copy := *c.executionView()
+	copy := *rv64ReferenceImportTailCopy(c)
 	copy.Types = cloneDefinedTypeDescriptors(copy.Types)
 	copy.ValueTypes = slices.Clone(copy.ValueTypes)
 	copy.Globals = slices.Clone(copy.Globals)
@@ -52,12 +52,7 @@ func TestRV64PublicReferenceFunctionStateRetainedAdmission(t *testing.T) {
 			"global-wrong-abi":             func(v *Compiled) { v.Globals[0].Type = ValI64 },
 			"global-count":                 func(v *Compiled) { v.Globals = make([]GlobalDef, 257) },
 			"global-reference-initializer": func(v *Compiled) { v.Globals[0].HasInitFunc = true },
-			"global-inactive-function":     func(v *Compiled) { v.Globals[0].InitFunc = 1 },
-			"global-inactive-index":        func(v *Compiled) { v.Globals[0].InitGlobal = 1 },
-			"global-inactive-vector":       func(v *Compiled) { v.Globals[0].V128[0] = 1 },
 			"global-i32-upper":             func(v *Compiled) { v.Globals[0].Bits |= 1 << 32 },
-			"global-expression-bits":       func(v *Compiled) { v.Globals[1].Bits = 2 },
-			"global-expression-vector":     func(v *Compiled) { v.Globals[1].V128[0] = 1 },
 			"global-expression-index":      func(v *Compiled) { v.Globals[1].HasInitGlobal = true },
 			"global-expression-large":      func(v *Compiled) { v.Globals[1].InitExpr = make([]byte, railshot.MaxIntegerInitializerBytes+1) },
 			"global-expression-wrong-type": func(v *Compiled) { v.Globals[1].InitExpr = []byte{0x42, 0, 0x0b} },
@@ -65,7 +60,6 @@ func TestRV64PublicReferenceFunctionStateRetainedAdmission(t *testing.T) {
 			"memory-shared":                func(v *Compiled) { v.memoryDir.defs[1].Shared = true },
 			"memory-inactive-max":          func(v *Compiled) { v.memoryDir.defs[1].HasMax = false },
 			"memory-late-import":           func(v *Compiled) { v.memoryDir.defs[1].ImportKey = "env.memory" },
-			"memory-advisory-exports":      func(v *Compiled) { v.memoryDir.exactExports = false },
 			"memory-export":                func(v *Compiled) { v.memoryDir.exports = map[string]int{"memory": 2} },
 			"memory-primary-cache":         func(v *Compiled) { v.MemMinPages++ },
 			"data-count":                   func(v *Compiled) { v.Data = make([]DataInit, 257) },
@@ -77,6 +71,44 @@ func TestRV64PublicReferenceFunctionStateRetainedAdmission(t *testing.T) {
 			"offset-expression-large":      func(v *Compiled) { v.Data[0].Offset.Expr = make([]byte, railshot.MaxIntegerInitializerBytes+1) },
 			"offset-i64-missing":           func(v *Compiled) { v.Data[0].Offset = OffsetInit{Base: 32} },
 			"offset-i64-wrong-type":        func(v *Compiled) { v.Data[0].Offset.Expr = []byte{0x41, 32, 0x0b} },
+		}
+		// These fields do not select initializer data or executable memory
+		// metadata. The canonical codec deliberately omits their inactive values.
+		canonical := map[string]func(*Compiled){
+			"global-inactive-function": func(v *Compiled) { v.Globals[0].InitFunc = 1 },
+			"global-inactive-index":    func(v *Compiled) { v.Globals[0].InitGlobal = 1 },
+			"global-inactive-vector":   func(v *Compiled) { v.Globals[0].V128[0] = 1 },
+			"global-expression-bits":   func(v *Compiled) { v.Globals[1].Bits = 2 },
+			"global-expression-vector": func(v *Compiled) { v.Globals[1].V128[0] = 1 },
+			"memory-advisory-exports":  func(v *Compiled) { v.memoryDir.exactExports = false },
+		}
+		for name, mutate := range canonical {
+			t.Run(fmt.Sprintf("vector%t-canonical-%s", vector, name), func(t *testing.T) {
+				copy := rv64ReferenceStateCopy(c)
+				mutate(copy)
+				before, _, err := encodeCompiledMetadataBody(c.executionView(), false, false)
+				if err != nil {
+					t.Fatal(err)
+				}
+				after, _, err := encodeCompiledMetadataBody(copy, false, false)
+				if err != nil || !bytes.Equal(before, after) {
+					t.Fatal("inactive payload changed canonical metadata", err)
+				}
+				if err := copy.validate(); err != nil {
+					t.Fatal(err)
+				}
+				blob, err := marshalCompiled(copy)
+				if err != nil {
+					t.Fatal(err)
+				}
+				loaded, err := LoadTrustedArtifact(blob)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := loaded.Close(); err != nil {
+					t.Fatal(err)
+				}
+			})
 		}
 		if vector {
 			mutations["global-vector-inactive-bits"] = func(v *Compiled) { v.Globals[2].Bits = 1 }
@@ -113,7 +145,7 @@ func TestRV64PublicReferenceFunctionStateRetainedAdmission(t *testing.T) {
 		}
 		copy := rv64ReferenceStateCopy(c)
 		copy.memoryDir.defs[1].HasMax, copy.memoryDir.defs[1].Max = false, 0
-		if err := copy.validate(); err != nil {
+		if err := rv64ValidateReferenceFunctions(copy); err != nil {
 			t.Fatal("canonical no-maximum owned memory", err)
 		}
 		copy = rv64ReferenceStateCopy(c)
@@ -129,7 +161,7 @@ func TestRV64PublicReferenceFunctionStateRetainedAdmission(t *testing.T) {
 			}
 		}
 		copy.PassiveData[2].Bytes = buffer[:lo]
-		if lo == 0 || copy.validate() != nil {
+		if lo == 0 || rv64ValidateReferenceFunctions(copy) != nil {
 			t.Fatal("exact combined retained state/type budget")
 		}
 		copy.PassiveData[2].Bytes = buffer[:lo+1]

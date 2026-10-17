@@ -9,19 +9,57 @@ import (
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
 
-// Permission is not an ABI witness. Only actual defined bindings select this
-// profile; unused reference control types and ordinary modules keep their ABI.
+// Permission is not an ABI witness. Only actual function bindings and locals
+// select this profile; unused reference control types keep their ABI.
 // Directory bounds precede this allocation-free selection pass.
-func hasDefinedReferenceFunctions(m *wasm.Module) (bool, error) {
-	if m == nil || len(m.Code) > MaxFunctions || len(m.Types) > MaxFunctions || len(m.FuncTypes) != len(m.Code) {
+func hasDefinedReferenceFunctions(m *wasm.Module, plugins ...*pluginInstructionDirectory) (bool, error) {
+	if m == nil || len(m.Code) > MaxPublicCodeBytes/16 || len(m.Types) > MaxPublicCodeBytes/8 || len(m.FuncTypes) != len(m.Code) {
 		return false, unsupported("closed reference selection directory bound")
 	}
+	directory, directoryErr := newSourceFunctionTypeDirectory(m)
+	if directoryErr != nil {
+		return false, directoryErr
+	}
 	references := admitMutableFunctionGlobalLocalCall(m)
-	for _, index := range m.FuncTypes {
-		if index.Rec || uint64(index.Index) >= uint64(len(m.Types)) || len(m.Types[index.Index].SubTypes) != 1 {
+	var pluginDirectory *pluginInstructionDirectory
+	if len(plugins) != 0 {
+		pluginDirectory = plugins[0]
+	}
+	importIndex := uint32(0)
+	for _, imported := range m.Imports {
+		if imported.Type.Kind != wasm.ExternFunc {
+			continue
+		}
+		index := imported.Type.FuncType()
+		sig, ok := directory.function(index.Index)
+		if index.Rec || !ok {
+			return false, unsupported("closed reference selection import binding")
+		}
+		if sig.Kind != wasm.CompFunc || len(sig.Params) > 256 || len(sig.Results) > 256 {
+			return false, unsupported("closed reference selection imported signature bound")
+		}
+		for result, list := range [][]wasm.ValType{sig.Params, sig.Results} {
+			for position, value := range list {
+				custom := false
+				if pluginDirectory != nil {
+					if instruction, registered := pluginDirectory.instructions[importIndex]; registered {
+						if result == 0 && position < len(instruction.CustomInputs) {
+							custom = pluginCustomCarrier(instruction.CustomInputs[position], value)
+						} else if result == 1 && position == 0 && instruction.CustomOutput != nil {
+							custom = pluginCustomCarrier(*instruction.CustomOutput, value)
+						}
+					}
+				}
+				references = references || value.Kind() == wasm.ValRef && !custom
+			}
+		}
+		importIndex++
+	}
+	for function, index := range m.FuncTypes {
+		sig, ok := directory.function(index.Index)
+		if index.Rec || !ok {
 			return false, unsupported("closed reference selection function binding")
 		}
-		sig := &m.Types[index.Index].SubTypes[0].Comp
 		if sig.Kind != wasm.CompFunc || len(sig.Params) > 256 || len(sig.Results) > 256 {
 			return false, unsupported("closed reference selection signature bound")
 		}
@@ -30,12 +68,15 @@ func hasDefinedReferenceFunctions(m *wasm.Module) (bool, error) {
 				references = references || v.Kind() == wasm.ValRef
 			}
 		}
+		for _, run := range m.Code[function].Locals.Runs {
+			references = references || run.Count != 0 && run.Type.Kind() == wasm.ValRef
+		}
 	}
 	return references, nil
 }
 
 func admitClosedReferenceProductionOptions(opts CompileOptions) error {
-	if !opts.NativeReferenceFunctions || !opts.referenceFunctions || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext || opts.importTailCalls && !opts.localTailCalls || opts.dynamicTailCalls && (!opts.NativeTailCalls || !opts.importTailCalls) || opts.localTailCalls != opts.NativeTailCalls || opts.Profile || opts.SourceMaps || opts.UnwindMaps {
+	if !opts.NativeReferenceFunctions || !opts.referenceFunctions || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext || opts.importTailCalls && !opts.localTailCalls || opts.dynamicTailCalls && (!opts.NativeTailCalls || !opts.importTailCalls) || opts.localTailCalls != opts.NativeTailCalls || opts.Profile && !profileEnabled || (opts.SourceMaps || opts.UnwindMaps) && !opts.Profile {
 		return unsupported("closed reference staging requires cooperative local-call production")
 	}
 	if opts.NativeTailCalls && opts.tailPlans == nil || !opts.importTailCalls && opts.tailPlans != nil && len(*opts.tailPlans) != 0 || (opts.referenceTailInstructions || opts.indirectTailInstructions) != opts.dynamicTailCalls || opts.referenceTailInstructions && !opts.NativeReferenceCalls || opts.referenceCallInstructions && !opts.NativeReferenceCalls {
@@ -51,8 +92,13 @@ func stageClosedReferenceProductionModule(c *Compiled, opts CompileOptions, m *w
 	if err := admitClosedReferenceProductionOptions(opts); err != nil {
 		return nil, err
 	}
-	if err := admitClosedReferenceFunctionModule(m, vector); err != nil {
+	if err := admitProductionReferenceFunctionModule(m, vector); err != nil {
 		return nil, err
+	}
+	// General public admission no longer proves one exact fixture body. Recheck
+	// the decoded input before publication, including exports and late bodies.
+	if err := wasm.ValidateModuleWithConfig(m, wasm.ValidationFeatures{CompactImports: true, ExtendedConstGlobals: true, MultiMemory: true}, 1, wasm.ValidationLimits{MaxFunctionLocals: publicFunctionLocalLimit(opts)}); err != nil {
+		return nil, unsupported("closed reference staged validation: " + err.Error())
 	}
 	if opts.NativeTailCalls && opts.tailModule != m || !opts.NativeTailCalls && opts.tailModule != nil {
 		return nil, unsupported("closed reference staged source identity")
@@ -64,12 +110,15 @@ func stageClosedReferenceProductionModule(c *Compiled, opts CompileOptions, m *w
 	if opts.referenceTailInstructions != tails || opts.indirectTailInstructions != indirect || opts.dynamicTailCalls != (tails || indirect) || opts.referenceCallInstructions != calls || opts.referenceControlInstructions != control {
 		return nil, unsupported("closed reference staged call/control witness")
 	}
-	if c == nil || !c.state.referenceFunctions || c.state.importedFunctions != m.ImportedFuncCount() || len(c.functions) != len(m.Code) || len(c.code) == 0 || len(c.code) > MaxCodeBytes {
+	if c == nil || !c.state.referenceFunctions || c.state.importedFunctions != m.ImportedFuncCount() || len(c.functions) != len(m.Code) || len(m.Code) != 0 && len(c.code) == 0 || len(c.code) > MaxPublicCodeBytes {
 		return nil, unsupported("closed reference staged function extent")
 	}
 	wantPublicReferenceCarriers := !vector && admitPublicReferenceCarrierBoundary(m) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp)
 	if c.state.publicReferenceCarriers != wantPublicReferenceCarriers {
 		return nil, unsupported("closed reference staged public argument protocol")
+	}
+	if !c.hasFinalizedFunctionProfiles(c.functions, opts.Profile) {
+		return nil, unsupported("closed reference staged profile ownership")
 	}
 	for _, f := range c.functions {
 		mode := f.mode
@@ -107,13 +156,22 @@ func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wa
 	if opts.importTailCalls && !c.referenceImportTailsFinalized || !slices.Equal(*opts.tailPlans, c.finalizedReferenceImportTails) {
 		return unsupported("closed reference imported-tail finalized directory")
 	}
+	directory, err := newSourceFunctionTypeDirectory(m)
+	if err != nil {
+		return err
+	}
+	primitive := admitPublicPrimitiveReferenceModule(m, vector)
+	types := internalReferenceTypes{decoded: m.Types, sourceDirectory: directory, publicReferences: primitive, decodedSWAR: vector}
 	values := 0
 	for i, p := range *opts.tailPlans {
 		local := int(p.functionIndex) - c.state.importedFunctions
 		if !opts.importTailCalls || opts.tailModule != m || p.site != opts.tailSiteBase+uint32(i) || local < 0 || local >= len(c.functions) || uint64(p.sourcePC) < uint64(m.Code[local].LocalDeclBytes) || uint64(p.sourcePC)-uint64(m.Code[local].LocalDeclBytes) >= uint64(len(m.Code[local].BodyBytes)) {
 			return unsupported("closed reference tail source identity")
 		}
-		source := &m.Types[m.FuncTypes[local].Index].SubTypes[0].Comp
+		source, ok := directory.function(m.FuncTypes[local].Index)
+		if m.FuncTypes[local].Rec || !ok {
+			return unsupported("closed reference tail source signature")
+		}
 		var target *wasm.CompType
 		opcode, immediate := byte(0x12), p.importIndex
 		switch p.kind {
@@ -127,24 +185,32 @@ func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wa
 				return unsupported("closed reference imported-tail target binding")
 			}
 		case enc.NativeTailIndirect:
-			if !opts.dynamicTailCalls || !opts.indirectTailInstructions || p.importIndex != 0 || len(m.Tables) != 1 && !admitOwnedTwoTable64IndirectTail(m, true, true) && !admitMixedTable64ActiveIndirectTail(m, true, true) && !admitImportedTable64IndirectTail(m, true, true) || uint64(p.typeIndex) >= uint64(len(m.Types)) {
+			if !opts.dynamicTailCalls || !opts.indirectTailInstructions || p.importIndex != 0 || !primitive && len(m.Tables) != 1 && !admitOwnedTwoTable64IndirectTail(m, true, true) && !admitMixedTable64ActiveIndirectTail(m, true, true) && !admitImportedTable64IndirectTail(m, true, true) {
 				return unsupported("closed reference numeric indirect-tail binding")
 			}
-			target = &m.Types[p.typeIndex].SubTypes[0].Comp
+			target, ok = directory.function(p.typeIndex)
+			if !ok {
+				return unsupported("closed reference tail target signature")
+			}
 			opcode, immediate = 0x13, p.typeIndex
 		case enc.NativeTailReference:
-			if !opts.dynamicTailCalls || !opts.referenceTailInstructions || p.importIndex != 0 || uint64(p.typeIndex) >= uint64(len(m.Types)) {
+			if !opts.dynamicTailCalls || !opts.referenceTailInstructions || p.importIndex != 0 {
 				return unsupported("closed reference numeric reference-tail binding")
 			}
-			target = &m.Types[p.typeIndex].SubTypes[0].Comp
+			target, ok = directory.function(p.typeIndex)
+			if !ok {
+				return unsupported("closed reference tail target signature")
+			}
 			opcode, immediate = 0x15, p.typeIndex
 		default:
 			return unsupported("closed reference tail kind")
 		}
-		if err := admitReferenceTailResults(source, target); err != nil {
+		if err := admitReferenceTailResults(source, target, primitive); err != nil {
 			return err
 		}
-		if vector {
+		if primitive && primitiveReferenceTargetWithTypes(target, types, vector) {
+			// Full source validation preserves each reference type and carrier.
+		} else if vector {
 			if err := swarImportSignature(target); err != nil {
 				publicReferenceTail := p.kind == enc.NativeTailReference && admitMutableFunctionGlobalReferenceCarrierCall(m) && p.typeIndex == 0
 				if !publicReferenceTail || !publicReferenceVectorCarrierTarget(target) {
@@ -173,7 +239,15 @@ func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wa
 		}
 		if p.kind == enc.NativeTailIndirect {
 			tableIndex, err := r.U32()
-			if err != nil || tableIndex != 0 && !admitOwnedTwoTable64IndirectTail(m, true, true) && !admitMixedTable64ActiveIndirectTail(m, true, true) && !admitImportedTable64IndirectTail(m, true, true) {
+			if err != nil {
+				return unsupported("closed reference tail source table immediate")
+			}
+			if primitive {
+				table, valid := m.TableType(tableIndex)
+				if !valid || !types.publicFunctionReference(wasm.RefVal(table.Ref)) || table.Ref.Heap().Kind() == wasm.HeapAbs && table.Ref.Heap().Abs() != wasm.HeapFunc && table.Ref.Heap().Abs() != wasm.HeapNoFunc {
+					return unsupported("closed reference tail source function table")
+				}
+			} else if tableIndex != 0 && !admitOwnedTwoTable64IndirectTail(m, true, true) && !admitMixedTable64ActiveIndirectTail(m, true, true) && !admitImportedTable64IndirectTail(m, true, true) {
 				return unsupported("closed reference tail source table immediate")
 			}
 		}

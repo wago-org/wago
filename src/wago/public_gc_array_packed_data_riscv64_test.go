@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -88,7 +88,7 @@ func TestRV64PublicGCArrayPackedDataExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCArrayPackedDataCompile(t, artifact)
 			view := compiled.executionView()
-			if err := railshotValidateCompiled(view); !rv64GCArrayPackedData(view) || !rv64GCArrayPackedDataExecutionCode(view) || err != nil {
+			if err := railshotValidateCompiled(view); !rv64ArtifactContractValid(view) || err != nil {
 				t.Fatalf("missing packed data witness: %v", err)
 			}
 			for _, profile := range []struct {
@@ -96,7 +96,7 @@ func TestRV64PublicGCArrayPackedDataExecutionAndArtifact(t *testing.T) {
 				config GCConfig
 			}{{name: "default"}, {name: "stress", config: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}}} {
 				t.Run(profile.name, func(t *testing.T) {
-					rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+					rt := NewRuntime()
 					defer rt.Close()
 					mod, err := rt.Module(compiled)
 					if err != nil {
@@ -191,14 +191,18 @@ func TestRV64PublicGCArrayPackedDataAdmissionIsExact(t *testing.T) {
 		"feature": func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			mutate(candidate)
-			if rv64GCArrayPackedData(candidate) {
+			if rv64ArtifactContractValid(candidate) {
 				t.Fatal("hostile mutation retained packed witness")
 			}
 			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile mutation admitted", err)
+			}
+			if !candidate.requiredFeatures.IsEnabled(CoreFeatureGC) {
+				rv64RequireRestoredGCFeature(t, candidate)
+			} else {
+				rv64RequireRejectedArtifact(t, candidate)
 			}
 		})
 	}

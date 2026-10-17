@@ -18,6 +18,11 @@ func (c *Collector) scanRememberedCards(h uint32) {
 	if e.young() || (e.space != spaceOld && e.space != spaceLarge) {
 		return
 	}
+	if c.objectEdgeCount(makeObjRef(h)) != 0 {
+		// External ownership edges have no physical payload card address.
+		c.scanObjectRefs(h, c.markNurseryRef)
+		return
+	}
 	if c.cardFallback || e.cardSlot == 0 {
 		// Metadata growth failure is fail-safe: remembered membership remains
 		// authoritative and falls back to complete object scans until evacuation

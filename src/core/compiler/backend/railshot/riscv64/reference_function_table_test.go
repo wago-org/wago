@@ -3,7 +3,6 @@
 package riscv64
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
@@ -108,9 +107,14 @@ func TestReferenceFunctionOwnedTableConfinement(t *testing.T) {
 				mutate(m)
 				o := closedReferenceProductionOptions(true, true)
 				o.ImportBindings = hostImportBindings(3)
+				switch name {
+				case "private-zero-init", "import-table", "capacity", "private-declarative", "export-table", "two-tables", "inactive-max", "private-active":
+					checkPublicPrimitiveModule(t, m, o)
+					return
+				}
 				pressure := 0
 				o.MemoryPressure = func() { pressure++ }
-				if image, err := CompileModuleWith(m, o); image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+				if image, err := CompileModuleWith(m, o); image != nil || err == nil || pressure != 0 {
 					t.Fatal("unproven table reached publication", err, pressure)
 				}
 			})

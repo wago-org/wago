@@ -7,9 +7,14 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+func railshotPrimitiveReferenceDeclarations(*Compiled) bool { return false }
+func railshotPrimitiveReferenceContract(*Compiled) bool     { return false }
+
 func railshotAdmitSource([]byte, *wasm.Module) error                                    { return nil }
 func railshotI31CoreSource([]byte) bool                                                 { return false }
 func railshotConfigureI31Core(bool, *railshotCompileOptions)                            {}
+func railshotGeneralI31Module(*wasm.Module) bool                                        { return false }
+func railshotConfigureGeneralI31(bool, *railshotCompileOptions)                         {}
 func railshotGCRefEqSource([]byte) bool                                                 { return false }
 func railshotConfigureGCRefEq(bool, *railshotCompileOptions)                            {}
 func railshotGCRefTestTableSource([]byte) bool                                          { return false }
@@ -124,7 +129,7 @@ func railshotGCArrayCopySource([]byte) bool                                     
 func railshotConfigureGCArrayCopy(bool, *railshotCompileOptions)                        {}
 func railshotValidateCompiled(*Compiled) error                                          { return nil }
 func railshotValidateResolvedImports(*Compiled, resolvedImports, *referenceStore) error { return nil }
-func railshotNeedsImportContextHeader(int) bool                                         { return false }
+func railshotNeedsImportContextHeader(*Compiled) bool                                   { return false }
 
 func railshotPublishConstructedTableProducer(*Table, *Instance) *Instance { return nil }
 
@@ -137,3 +142,5 @@ func railshotValidateReferenceCalls(c *Compiled) error {
 	}
 	return nil
 }
+
+func railshotFunctionSubtypeHelpers(*wasm.Module) bool { return false }

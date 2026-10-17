@@ -62,11 +62,11 @@ func TestProductionEmptySupportedSections(t *testing.T) {
 
 func TestProductionEmptySectionsPreserveBounds(t *testing.T) {
 	for _, id := range []byte{2, 4, 9} {
-		limit := uint32(MaxProductionImports)
+		limit := uint32(MaxPublicImports)
 		if id == 4 {
-			limit = 2
+			limit = MaxPublicCodeBytes / 16
 		} else if id == 9 {
-			limit = MaxOwnedElementSegments
+			limit = MaxPublicElementSegments
 		}
 		for _, payload := range [][]byte{nil, {0x80}, uleb(nil, limit+1)} {
 			if err := AdmitProductionSource(wasmtest.Module(wasmtest.Section(id, payload))); !errors.Is(err, ErrUnsupported) {

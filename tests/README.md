@@ -31,6 +31,67 @@ just test fuzz 30s                # bounded fuzzing gates
 just test all                     # all of the above
 ```
 
+## Linux RISC-V64 sprint
+
+Linux/RISC-V64 is supported by the ordinary build. The acceptance set covers
+spec conformance, runtime and host APIs, artifacts and compiler-free loading,
+snapshots, GC, threads, guard pages, plugins, and profiling.
+
+Run `scripts/bootstrap-riscv64-tools.sh` from the repository root. The script
+uses the versions in `mise.toml`, installs missing Debian system packages,
+checks out the recorded spec commits without forcing local changes, verifies
+WABT 1.0.41 and the official Core 3 interpreter, and prepares the RV64 fixtures.
+It also installs Clang/LLVM, RISC-V binutils, `perf`, and pinned `benchstat`.
+
+Run the tools through `mise exec --` or activate `mise` in your shell. The
+configuration adds the verified WABT binaries to `PATH` after bootstrap.
+
+```sh
+scripts/test-riscv64.sh --ci smoke
+scripts/test-riscv64.sh --ci supported
+scripts/test-riscv64.sh --ci public
+scripts/test-riscv64.sh --ci artifacts
+scripts/test-riscv64.sh --spec 1
+scripts/test-riscv64.sh --spec 2
+scripts/test-riscv64.sh --spec 3
+WAGO_RV64_TEST_TAGS=wago_regalloccheck scripts/test-riscv64.sh --spec 3
+scripts/test-riscv64.sh -json -run '^TestRV64Rooted' ./src/wago
+```
+
+These commands cross-compile with Go's `rva20u64` target and run under QEMU
+with optional bit-manipulation and vector extensions disabled. The spec command
+requires zero module or assertion gaps. Core 1 discovers every top-level pinned
+`.wast` file; the normal historical Core 1 recipe keeps its curated file list.
+Core 2 and Core 3 use the full discovered suites. Do not set `WAGO_SPEC_FILES`
+when collecting a full-suite result.
+
+The public CI command runs ordinary and register-checking builds, then prepares
+and loads the RV64 artifacts in a compiler-free executable. The `artifacts`
+command runs the prepare/load checks without the wider public API set. QEMU uses
+a 15-minute default per-command timeout; native CI timeouts stay unchanged.
+
+Record the commit, local diff, tool versions, corpus pins, test tags, raw test
+output, failures, and skips for each result. Keep captures in `.validation/`.
+Use `-benchmem` for allocation checks and raw repeated samples for performance
+comparisons. QEMU times measure emulation; native RV64 hardware must establish
+runtime performance and cache behavior. `scripts/ci-riscv64.sh` still requires
+a native RV64 host unless the QEMU runner is selected explicitly.
+
+Full support requires the ordinary Linux/RV64 build, public Wago APIs, all pinned
+Core 1/2/3 tests, and runtime and artifact tests to pass. Valid feature
+combinations must execute; rejection tests alone do not establish support. The
+`smoke`, `supported`, `guards`, `public`, and `artifacts` CI modes define the
+runtime acceptance set. Each full spec run requires zero module and assertion
+gaps.
+
+Native RV64 measurements must cover runtime, code size, compiler cost,
+allocations and memory use. An emulated timing result cannot establish native
+runtime speed. The detailed source audit and raw results are in
+`.validation/rv64-sprint/`; this directory is local evidence, not a release
+support claim.
+
+## Runtime benchmark corpus
+
 The runtime benchmark corpus is repository-level data in `corpus/`; it is not
 duplicated under tests. Regression artifacts remain under `tests/corpus`
 because they are narrow bug reproductions, not performance workloads.
@@ -547,7 +608,7 @@ The Linux ARM64 execution tests also exercise aliased in-place shuffles and
 movemask operands, checking lane results and preservation of the source vector.
 Portable byte checks alone do not qualify native execution.
 
-### Experimental RV64 factorial and call conformance
+### RV64 factorial and call conformance
 
 `scripts/prepare-riscv64-numeric-spec.py --profile fac` and `--profile call`
 prepare complete files from the pinned Release 2 checkout using WABT 1.0.41.
@@ -558,7 +619,7 @@ and `WAGO_RV64_CALL_SPEC_JSON_DIR` to the resulting directories.
 
 Run `TestRV64PublicPinnedFacSpecExecution` and
 `TestRV64PublicPinnedCallSpecExecution` in Linux/RV64 test binaries built with
-`wago_rv64_experimental`, both with and without `wago_regalloccheck`.
+ordinary builds, both with and without `wago_regalloccheck`.
 The source and trusted-artifact paths each account for all 99 commands:
 two modules, 75 returns, one ordinary trap, three stack-exhaustion assertions,
 and 18 invalid binaries. Exhaustion requires the exact typed stack-fence trap

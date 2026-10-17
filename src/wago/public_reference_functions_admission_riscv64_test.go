@@ -1,100 +1,83 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 	"testing"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-func TestRV64PublicReferenceFunctionsEmptyRows(t *testing.T) {
+func rv64RequirePublishedLocalFunction(t *testing.T, in *Instance, index int) {
+	t.Helper()
+	descriptor, ok := in.localFuncrefDescriptor(index)
+	if !ok {
+		t.Fatal("local function descriptor", index)
+	}
+	function, ok := in.funcrefDescriptorIndex(descriptor)
+	if !ok || function != in.c.NumImports+index {
+		t.Fatal("function descriptor index", index, function)
+	}
+	identity, ok := in.funcrefFunctionIdentity(descriptor)
+	if !ok || identity.instance != in || identity.localIdx != index {
+		t.Fatal("function descriptor identity", index, identity)
+	}
+	if _, ok := rv64PublishedDescriptor(in, descriptor); !ok {
+		t.Fatal("function descriptor publication", index)
+	}
+}
+
+func TestRV64PublicReferenceFunctionsCorruptRows(t *testing.T) {
 	c := rv64NativeTailCompile(t, "reference-functions-rows", rv64ClosedReferenceSource(false, false, false, true), false)
 	rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 	defer rt.Close()
 	for _, field := range []string{"code", "key", "home", "slot", "context", "tail", "both"} {
 		t.Run(field, func(t *testing.T) {
 			in := rv64NativeTokenInstantiate(t, rt, c, NewImports())
+			defer in.Close()
+			const index = 2
+			rv64RequirePublishedLocalFunction(t, in, index)
+			row := in.funcRefDescs[(index+1)*coreruntime.FuncRefDescBytes : (index+2)*coreruntime.FuncRefDescBytes]
 			state := &in.pluginState.Load().railshotInvocation
-			if state.definedTailOwner != nil || state.tailGenerationBudget.count != 0 {
-				t.Fatal("fixture already cached an owner")
+			tail := state.tailTargets[abi.RV64TailTargetsHeaderBytes+index*abi.RV64TailTargetsRowBytes : abi.RV64TailTargetsHeaderBytes+(index+1)*abi.RV64TailTargetsRowBytes]
+			savedRow, savedTail := bytes.Clone(row), bytes.Clone(tail)
+			if field == "tail" || field == "both" {
+				tail[0] ^= 1
 			}
-			const hole = 2
-			row := in.funcRefDescs[(hole+1)*coreruntime.FuncRefDescBytes : (hole+2)*coreruntime.FuncRefDescBytes]
-			tail := state.tailTargets[abi.RV64TailTargetsHeaderBytes+hole*abi.RV64TailTargetsRowBytes : abi.RV64TailTargetsHeaderBytes+(hole+1)*abi.RV64TailTargetsRowBytes]
-			switch field {
-			case "tail":
-				tail[0] = 1
-			case "both":
-				numeric := in.funcRefDescs[2*coreruntime.FuncRefDescBytes : 3*coreruntime.FuncRefDescBytes]
-				copy(row, numeric)
-				binary.LittleEndian.PutUint64(row[coreruntime.TableEntryCodePtrOffset:], uint64(in.base)+uint64(in.c.Entry[hole]))
-				binary.LittleEndian.PutUint64(row[coreruntime.TableEntrySigKeyOffset:], in.c.funcTypeKey(hole))
-				binary.LittleEndian.PutUint64(row[coreruntime.TableEntryRefSlotOffset:], uint64(offHeapSlicePtr(row)))
-				binary.LittleEndian.PutUint64(tail, uint64(in.base)+uint64(in.c.Entry[hole]))
-				binary.LittleEndian.PutUint64(tail[8:], uint64(in.jm.LinMemBase()))
-				binary.LittleEndian.PutUint64(tail[16:], uint64(in.nativeContext))
-			default:
-				offset := map[string]int{"code": 0, "key": 8, "home": 16, "slot": 24, "context": 32}[field]
-				row[offset] = 1
+			if field != "tail" {
+				offset := map[string]int{"code": 0, "key": 8, "home": 16, "slot": 24, "context": 32, "both": 0}[field]
+				row[offset] ^= 1
+				descriptor := uint64(offHeapSlicePtr(row))
+				if _, ok := rv64PublishedDescriptor(in, descriptor); ok {
+					t.Fatal("corrupt descriptor published")
+				}
+				in.refStore.mu.Lock()
+				_, _, canonical := in.refStore.canonicalFuncrefOwnerLocked(in, descriptor)
+				in.refStore.mu.Unlock()
+				if canonical {
+					t.Fatal("corrupt descriptor acquired canonical owner")
+				}
 			}
-			descriptor := uint64(offHeapSlicePtr(row))
-			if _, ok := in.funcrefDescriptorIndex(descriptor); ok {
-				t.Fatal("internal row acquired an index identity")
-			}
-			if _, ok := in.localFuncrefDescriptor(hole); ok {
-				t.Fatal("internal row acquired local identity")
-			}
-			if _, ok := in.funcrefFunctionIdentity(descriptor); ok {
-				t.Fatal("internal row acquired function identity")
-			}
-			if _, ok := rv64PublishedDescriptor(in, descriptor); ok {
-				t.Fatal("internal row published")
-			}
-			in.refStore.mu.Lock()
-			_, _, canonical := in.refStore.canonicalFuncrefOwnerLocked(in, descriptor)
-			in.refStore.mu.Unlock()
-			if canonical {
-				t.Fatal("internal row acquired canonical owner")
-			}
-			if !in.retainResourceRoot() {
-				t.Fatal("owner lease")
-			}
-			nativeExecutionMu.Lock()
-			_, _, _, valid := rv64QualifiedNativeTailTarget(&InstanceExport{inst: in, localIdx: hole})
-			nativeExecutionMu.Unlock()
-			in.releaseResourceRoot()
-			if valid {
-				t.Fatal("internal function acquired qualified target")
-			}
-			// Ordinary entry has no dynamic generation or cached owner. Its live
-			// directory validation must independently reject either nonempty row.
-			if _, err := in.Invoke("run", 1, 0x7ff0000000000001); err == nil || !strings.Contains(err.Error(), "internal reference descriptor and tail rows") {
-				t.Fatal("entry accepted internal descriptor state", err)
+			if field == "tail" || field == "both" {
+				if _, err := in.Invoke("run", 1, 0x7ff0000000000001); err == nil {
+					t.Fatal("entry accepted corrupt tail row")
+				}
 			}
 			if state.definedTailOwner != nil || state.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
 				t.Fatal("failed entry retained owner state")
 			}
-			clear(row)
-			clear(tail)
+			copy(row, savedRow)
+			copy(tail, savedTail)
 			if got, err := in.Invoke("run", 1, 0x7ff0000000000001); err != nil || !slices.Equal(got, []uint64{0x7ff0000000000001, 6, 0}) {
 				t.Fatal("restored instance reuse", got, err)
 			}
-			for _, index := range []int{1, 4} {
-				pointer, ok := in.localFuncrefDescriptor(index)
-				if !ok {
-					t.Fatal("neighbor identity", index)
-				}
-				if _, valid := rv64PublishedDescriptor(in, pointer); !valid {
-					t.Fatal("neighbor publication", index)
-				}
+			for index := range c.Funcs {
+				rv64RequirePublishedLocalFunction(t, in, index)
 			}
 		})
 	}
@@ -153,7 +136,7 @@ func TestRV64PublicReferenceFunctionsRetainedAdmission(t *testing.T) {
 		}
 		for name, mutate := range mutations {
 			t.Run(fmt.Sprintf("vector%t-%s", vector, name), func(t *testing.T) {
-				copy := *c.executionView()
+				copy := *rv64ReferenceImportTailCopy(c)
 				copy.Types = cloneDefinedTypeDescriptors(copy.Types)
 				copy.Funcs = slices.Clone(copy.Funcs)
 				for i := range copy.Funcs {
@@ -163,6 +146,10 @@ func TestRV64PublicReferenceFunctionsRetainedAdmission(t *testing.T) {
 				copy.Exports = maps.Clone(copy.Exports)
 				copy.passiveElems = slices.Clone(copy.passiveElems)
 				mutate(&copy)
+				if name == "inactive-table-type" || name == "inactive-describes" || name == "inactive-descriptor" {
+					rv64RequireTableArtifactMetadata(t, &copy)
+					return
+				}
 				if err := copy.validate(); err == nil {
 					t.Fatal("malformed closed metadata accepted")
 				}
@@ -173,7 +160,7 @@ func TestRV64PublicReferenceFunctionsRetainedAdmission(t *testing.T) {
 		// directly above instead of assuming the codec preserves them.
 		for _, name := range []string{"missing-witness", "missing-control-witness", "missing-frame", "missing-context", "missing-table-context", "missing-table-reference", "reference-call-without-context", "bad-type-index", "wrong-binding", "wrong-abi-carrier", "bad-export", "dynamic-imports", "dynamic-escape", "start", "imported-memory", "table", "value-pool", "type-fields", "type-array", "recursive-group", "recursive-heap", "exact-reference", "passive-element", "element-values"} {
 			t.Run(fmt.Sprintf("vector%t-codec-%s", vector, name), func(t *testing.T) {
-				copy := *c.executionView()
+				copy := *rv64ReferenceImportTailCopy(c)
 				copy.Types = cloneDefinedTypeDescriptors(copy.Types)
 				copy.Funcs = slices.Clone(copy.Funcs)
 				for i := range copy.Funcs {
@@ -198,7 +185,7 @@ func TestRV64PublicReferenceFunctionsRetainedAdmission(t *testing.T) {
 		}
 	}
 	c := rv64NativeTailCompile(t, "reference-functions-spurious", rv64PublicNativeIdentityModule(nil), false)
-	copy := *c.executionView()
+	copy := *rv64ReferenceImportTailCopy(c)
 	copy.nativeReferenceFunctionABI = true
 	copy.requiredFeatures |= CoreFeatureReferenceTypes
 	plainReference, ok := valueTypeDescriptorFromValType(ValFuncRef)
@@ -220,19 +207,50 @@ func TestRV64PublicReferenceFunctionsRetainedAdmission(t *testing.T) {
 			t.Fatal("reference-global-only artifact manufactured a closed function witness")
 		}
 	}
-	// No additional directory or body bytes are serialized with the new bit.
-	witnessOnly := *c.executionView()
-	witnessOnly.nativeReferenceFunctionABI = true
-	witnessOnly.requiredFeatures |= CoreFeatureReferenceTypes
-	plain, err := marshalCompiledMetadata(c)
+}
+
+func rv64RequireCachedValidationNoAllocations(t *testing.T, c *Compiled) {
+	t.Helper()
+	view := c.executionView()
+	if err := view.validateCached(); err != nil {
+		t.Fatal(err)
+	}
+	if count := testing.AllocsPerRun(10, func() {
+		if err := view.validateCached(); err != nil {
+			panic(err)
+		}
+	}); count != 0 {
+		t.Fatal("cached execution validation allocations", count)
+	}
+}
+
+func rv64RequireRejectedArtifact(t *testing.T, c *Compiled) {
+	t.Helper()
+	blob, err := marshalCompiled(c)
+	if err != nil {
+		return
+	}
+	loaded, err := LoadTrustedArtifact(blob)
+	if loaded != nil {
+		loaded.Close()
+	}
+	if err == nil {
+		t.Fatal("invalid execution artifact loaded")
+	}
+}
+
+func rv64RequireRestoredGCFeature(t *testing.T, c *Compiled) {
+	t.Helper()
+	blob, err := marshalCompiled(c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	flagged, err := marshalCompiledMetadata(&witnessOnly)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plain) != len(flagged) || bytes.Equal(plain, flagged) {
-		t.Fatal("closed witness footprint")
+	defer loaded.Close()
+	if !loaded.requiredFeatures.IsEnabled(CoreFeatureGC) {
+		t.Fatal("codec did not restore the inferred GC feature")
 	}
 }

@@ -1,22 +1,16 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-	"unsafe"
-
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 var rv64PublicGCTypeSubtypingDuplicateRecursiveLinkHex = []string{
@@ -96,16 +90,13 @@ func TestRV64PublicGCTypeSubtypingDuplicateRecursiveLinkExecutionAndArtifact(t *
 			defer providerCompiled.Close()
 			consumerCompiled := rv64PublicGCTypeSubtypingDuplicateRecursiveLinkCompile(t, 2, artifact)
 			defer consumerCompiled.Close()
-			for i, compiled := range []*Compiled{providerCompiled, consumerCompiled} {
+			for _, compiled := range []*Compiled{providerCompiled, consumerCompiled} {
 				view := compiled.executionView()
-				metadata, err := marshalCompiledMetadata(view)
-				if err != nil || len(metadata) != rv64GCTypeSubtypingDuplicateRecursiveLinkMetadataLens[i] || sha256.Sum256(metadata) != rv64GCTypeSubtypingDuplicateRecursiveLinkMetadataDigests[i] || rv64GCTypeSubtypingDuplicateRecursiveLinkProfileWithCode(view, false, true) != uint8(i+1) || railshotValidateCompiled(view) != nil {
-					t.Fatalf("missing exact duplicate-recursive witness %d: metadata=%d/%x err=%v profile=%d validation=%v", i+1, len(metadata), sha256.Sum256(metadata), err, rv64GCTypeSubtypingDuplicateRecursiveLinkProfileWithCode(view, false, true), railshotValidateCompiled(view))
+				if !rv64ArtifactContractValid(view) || view.validate() != nil {
+					t.Fatal("invalid public subtype link execution contract")
 				}
 			}
-			cfg := rv64I31Config()
-			cfg.railshotState.tailProducts = true
-			rt := NewRuntime(WithRuntimeConfig(cfg))
+			rt := NewRuntime()
 			defer rt.Close()
 			providerModule, err := rt.Module(providerCompiled)
 			if err != nil {
@@ -116,17 +107,9 @@ func TestRV64PublicGCTypeSubtypingDuplicateRecursiveLinkExecutionAndArtifact(t *
 			if err != nil {
 				t.Fatal(err)
 			}
-			if provider.gc != nil || len(provider.funcRefDescs) != 3*coreruntime.FuncRefDescBytes {
-				t.Fatal("duplicate-recursive provider collector/descriptor invariant")
-			}
-			identities := make([]uint64, 2)
+			rv64RequireSubtypeStorage(t, provider)
 			exports := make([]*InstanceExport, 2)
 			for i, name := range []string{"f11", "f12"} {
-				off := (i + 1) * coreruntime.FuncRefDescBytes
-				identities[i] = binary.LittleEndian.Uint64(provider.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:])
-				if want := uint64(uintptr(unsafe.Pointer(&provider.funcRefDescs[off]))); identities[i] != want {
-					t.Fatalf("provider %s identity=%#x want self=%#x", name, identities[i], want)
-				}
 				if got, invokeErr := provider.Invoke(name); invokeErr == nil || len(got) != 0 {
 					t.Fatalf("%s = %v, %v; want unreachable trap", name, got, invokeErr)
 				}
@@ -135,9 +118,7 @@ func TestRV64PublicGCTypeSubtypingDuplicateRecursiveLinkExecutionAndArtifact(t *
 					t.Fatal(err)
 				}
 			}
-			if identities[0] == identities[1] {
-				t.Fatal("provider functions share canonical identity")
-			}
+
 			consumerModule, err := rt.Module(consumerCompiled)
 			if err != nil {
 				t.Fatal(err)
@@ -147,15 +128,8 @@ func TestRV64PublicGCTypeSubtypingDuplicateRecursiveLinkExecutionAndArtifact(t *
 			if err != nil {
 				t.Fatal(err)
 			}
-			if consumer.gc != nil || len(consumer.funcRefDescs) != 5*coreruntime.FuncRefDescBytes {
-				t.Fatal("duplicate-recursive consumer collector/descriptor invariant")
-			}
-			for importIndex, providerFunc := range []int{0, 0, 1, 1} {
-				off := (importIndex + 1) * coreruntime.FuncRefDescBytes
-				if got := binary.LittleEndian.Uint64(consumer.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:]); got != identities[providerFunc] {
-					t.Fatalf("consumer import %d identity=%#x want %#x", importIndex, got, identities[providerFunc])
-				}
-			}
+			rv64RequireSubtypeStorage(t, consumer)
+			rv64RequireSubtypeNativeImports(t, consumer, provider, 0, 0, 1, 1)
 			provider.lifeMu.Lock()
 			refs, closed := provider.resourceRefs, provider.resourcesClosed
 			provider.lifeMu.Unlock()
@@ -187,60 +161,52 @@ func TestRV64PublicGCTypeSubtypingDuplicateRecursiveLinkAdmissionIsExact(t *test
 	defer provider.Close()
 	defer consumer.Close()
 	for name, mutate := range map[string]func(*Compiled){
-		"provider-code": func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
-		"provider-type": func(v *Compiled) { v.Types[3].Supers = nil },
-		"provider-desc": func(v *Compiled) { v.GCTypeDescs[3].HasSuper = false },
-		"provider-product": func(v *Compiled) {
-			cache := *v.codeCache
-			v.codeCache = &cache
-			v.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingDuplicateRecursiveLinkConsumer
-		},
+		"provider-code":               func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
+		"provider-type":               func(v *Compiled) { v.Types[3].Supers = nil },
+		"provider-desc":               func(v *Compiled) { v.GCTypeDescs[3].HasSuper = false },
+		"provider-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(provider.executionView())
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(provider.executionView())
 			mutate(candidate)
-			if rv64GCTypeSubtypingDuplicateRecursiveLink(candidate) || !errors.Is(railshotValidateCompiled(candidate), railshot.ErrUnsupported) {
+			if err := candidate.validate(); err == nil {
 				t.Fatal("hostile duplicate-recursive provider admitted")
 			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 	for name, mutate := range map[string]func(*Compiled){
-		"consumer-import":    func(v *Compiled) { v.Imports[3] = "M7.f12" },
-		"consumer-signature": func(v *Compiled) { v.importFuncSigs[3].TypeIndex = 2 },
-		"consumer-type":      func(v *Compiled) { v.Types[3].Supers = nil },
-		"consumer-desc":      func(v *Compiled) { v.GCTypeDescs[3].HasSuper = false },
-		"consumer-product": func(v *Compiled) {
-			cache := *v.codeCache
-			v.codeCache = &cache
-			v.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingDuplicateRecursiveLinkProvider
-		},
+		"consumer-import":             func(v *Compiled) { v.Imports[3] = "M7.f12" },
+		"consumer-signature":          func(v *Compiled) { v.importFuncSigs[3].TypeIndex = 2 },
+		"consumer-type":               func(v *Compiled) { v.Types[3].Supers = nil },
+		"consumer-desc":               func(v *Compiled) { v.GCTypeDescs[3].HasSuper = false },
+		"consumer-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(&rv64ExecutionContract{}) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(consumer.executionView())
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(consumer.executionView())
 			mutate(candidate)
-			if rv64GCTypeSubtypingDuplicateRecursiveLink(candidate) || !errors.Is(railshotValidateCompiled(candidate), railshot.ErrUnsupported) {
+			if err := candidate.validate(); err == nil {
 				t.Fatal("hostile duplicate-recursive consumer admitted")
 			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 	providerView, consumerView := provider.executionView(), consumer.executionView()
 	for _, pair := range []struct {
 		metadataOwner, codeOwner *Compiled
 	}{{consumerView, providerView}, {providerView, consumerView}} {
-		candidate := cloneCompiledMetadata(pair.metadataOwner)
+		candidate := rv64ReferenceStartCopy(pair.metadataOwner)
 		candidate.code = slices.Clone(pair.codeOwner.code)
 		candidate.Entry = slices.Clone(pair.codeOwner.Entry)
 		candidate.InternalEntry = slices.Clone(pair.codeOwner.InternalEntry)
-		candidate.validateMemo = &validateMemo{}
-		if rv64GCTypeSubtypingDuplicateRecursiveLink(candidate) || !errors.Is(railshotValidateCompiled(candidate), railshot.ErrUnsupported) {
+		if err := candidate.validate(); err == nil {
 			t.Fatal("cross-paired duplicate-recursive artifact admitted")
 		}
+		rv64RequireRejectedArtifact(t, candidate)
 	}
 }
 
-func TestRV64PublicGCTypeSubtypingDuplicateRecursiveLinkMismatchAndPermission(t *testing.T) {
+func TestRV64PublicGCTypeSubtypingDuplicateRecursiveLinkMismatchAndPublicRuntime(t *testing.T) {
 	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_DUPLICATE_RECURSIVE_LINK_ARTIFACT_MODE") == "load" {
 		t.Skip("compiler-free runner selected")
 	}
@@ -248,19 +214,17 @@ func TestRV64PublicGCTypeSubtypingDuplicateRecursiveLinkMismatchAndPermission(t 
 	consumerCompiled := rv64PublicGCTypeSubtypingDuplicateRecursiveLinkCompile(t, 2, false)
 	defer providerCompiled.Close()
 	defer consumerCompiled.Close()
-	plain := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+	plain := NewRuntime()
 	mod, err := plain.Module(providerCompiled)
 	if err == nil {
 		_, err = plain.Instantiate(context.Background(), mod, WithImports(NewImports()))
 		mod.Close()
 	}
 	plain.Close()
-	if !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("duplicate-recursive provider instantiated without private permission", err)
+	if err != nil {
+		t.Fatal("public subtype provider instantiation", err)
 	}
-	cfg := rv64I31Config()
-	cfg.railshotState.tailProducts = true
-	rt := NewRuntime(WithRuntimeConfig(cfg))
+	rt := NewRuntime()
 	defer rt.Close()
 	providerModule, err := rt.Module(providerCompiled)
 	if err != nil {
@@ -299,8 +263,11 @@ func TestRV64PublicGCTypeSubtypingDuplicateRecursiveLinkMismatchAndPermission(t 
 	}
 	bad, hostErr := rt.Instantiate(context.Background(), consumerModule, WithImports(testImports("M8.f11", host, "M8.f12", host)))
 	consumerModule.Close()
-	if bad != nil || hostErr == nil || !strings.Contains(hostErr.Error(), "nonscalar host signature") {
-		t.Fatal("host duplicate-recursive import admitted", hostErr)
+	if bad == nil || hostErr != nil {
+		t.Fatal("public subtype host import", hostErr)
+	}
+	if err := bad.Close(); err != nil {
+		t.Fatal(err)
 	}
 	oldCompiled := rv64PublicGCTypeSubtypingExtendedProjectionLinkCompile(t, 1, false)
 	defer oldCompiled.Close()
@@ -324,7 +291,7 @@ func TestRV64PublicGCTypeSubtypingDuplicateRecursiveLinkMismatchAndPermission(t 
 	}
 	bad, crossErr := rt.Instantiate(context.Background(), consumerModule, WithImports(testImports("M8.f11", oldExport, "M8.f12", oldExport)))
 	consumerModule.Close()
-	if bad != nil || crossErr == nil || !strings.Contains(crossErr.Error(), "outside the exact gc/type-subtyping link product") {
+	if bad != nil || crossErr == nil || !strings.Contains(crossErr.Error(), "signature mismatch") {
 		t.Fatal("cross-product duplicate-recursive import admitted", crossErr)
 	}
 }

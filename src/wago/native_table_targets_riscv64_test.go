@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -207,16 +207,17 @@ func TestRV64PrivateTableTargetsAuthenticateBeforeUnknownPointerReads(t *testing
 func TestRV64PrivateTableTargetOwnerLimit(t *testing.T) {
 	var targets rv64NativeTableTargets
 	defer targets.release()
-	for i := 0; i < len(targets.owners); i++ {
-		if err := targets.add(&Instance{}); err != nil {
+	compiled := &Compiled{}
+	for i := 0; i <= rv64MaxTableLeaseEdges; i++ {
+		if err := targets.add(&Instance{c: compiled}); err != nil {
 			t.Fatal("bounded owner slot", i, err)
 		}
 	}
-	extra := new(Instance)
+	extra := &Instance{c: compiled}
 	if err := targets.add(extra); err == nil || extra.resourceRefs != 0 {
 		t.Fatal("overflow acquired an unauthenticated physical root")
 	}
-	if err := targets.add(targets.owners[0]); err != nil || targets.count != len(targets.owners) {
+	if err := targets.add(targets.owners[0]); err != nil || targets.count != rv64MaxTableLeaseEdges+1 {
 		t.Fatal("duplicate consumes owner budget", err)
 	}
 	targets.release()

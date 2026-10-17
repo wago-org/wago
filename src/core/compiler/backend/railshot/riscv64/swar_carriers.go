@@ -4,7 +4,7 @@ package riscv64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
-type swarClass uint8
+type swarClass uint16
 
 const (
 	swarI32 swarClass = iota
@@ -13,8 +13,9 @@ const (
 	swarF64
 	swarV128
 	swarInvalid
-	swarUnknown // Stack-polymorphic operand only; never a declared carrier.
-	swarFuncRef // Private owned-table local/control value; never a numeric carrier.
+	swarUnknown    // Stack-polymorphic operand only; never a declared carrier.
+	swarFuncRef    // Private owned-table local/control value; never a numeric carrier.
+	swarCustomBase // Add built-in classes before this registered custom type range.
 )
 
 func swarClassOf(typ wasm.ValType) swarClass {

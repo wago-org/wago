@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -6,13 +6,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 )
 
 const rv64PublicGCTypeSubtypingRuntimeTypedTableCallHex = "0061736d01000000019580808000045000600000500100600000500101600000600000038680808000050102030303048680808000016301010202079780808000030372756e0002056661696c310003056661696c320004098f8080800001060041000b630102d2000bd2010b0ac780808000058280808000000b8280808000000b9b8080800000410011000041011100004100110100410111010041011102000b87808080000041001102000b87808080000041001103000b"
@@ -83,12 +80,9 @@ func TestRV64PublicGCTypeSubtypingRuntimeTypedTableCallExecutionAndArtifact(t *t
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCTypeSubtypingRuntimeTypedTableCallCompile(t, artifact)
 			view := compiled.executionView()
-			metadata, metadataErr := marshalCompiledMetadata(view)
-			validation := railshotValidateCompiled(view)
-			if metadataErr != nil || len(metadata) != rv64GCTypeSubtypingRuntimeTypedTableCallMetadataLen || sha256.Sum256(metadata) != rv64GCTypeSubtypingRuntimeTypedTableCallMetadataDigest ||
-				!rv64GCTypeSubtypingRuntimeTypedTableCall(view) || view.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingRuntimeTypedTableCall || validation != nil {
+			if !rv64ArtifactContractValid(view) || view.validate() != nil {
 				compiled.Close()
-				t.Fatalf("missing exact runtime typed-table witness: metadata=%d/%x err=%v exact=%t product=%v validation=%v code=%d/%x entries=%v/%v", len(metadata), sha256.Sum256(metadata), metadataErr, rv64GCTypeSubtypingRuntimeTypedTableCall(view), view.stagedGCTypeSubtypingProduct(), validation, len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry)
+				t.Fatal("missing public subtype execution contract")
 			}
 			cache := compiled.loadCodeCache()
 			if cache == nil || !artifact && (cache.base != 0 || len(cache.mem) != 0 || cache.sealed || cache.flags&compiledCacheWritableCode != 0) ||
@@ -96,9 +90,7 @@ func TestRV64PublicGCTypeSubtypingRuntimeTypedTableCallExecutionAndArtifact(t *t
 				compiled.Close()
 				t.Fatalf("runtime typed-table unpublished mapping state: artifact=%t base=%#x mem=%d sealed=%t writable=%t refs=%d", artifact, cache.base, len(cache.mem), cache.sealed, cache.flags&compiledCacheWritableCode != 0, cache.refs)
 			}
-			cfg := rv64I31Config()
-			cfg.railshotState.tailProducts = true
-			rt := NewRuntime(WithRuntimeConfig(cfg))
+			rt := NewRuntime()
 			mod, err := rt.Module(compiled)
 			if err != nil {
 				compiled.Close()
@@ -172,31 +164,32 @@ func TestRV64PublicGCTypeSubtypingRuntimeTypedTableCallAdmissionIsExact(t *testi
 		"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 		"escape":     func(v *Compiled) { v.dynamicFuncrefEscape = true },
 		"function-abi": func(v *Compiled) {
-			v.nativeReferenceFunctionABI = false
+			v.nativeReferenceFunctionABI = !v.nativeReferenceFunctionABI
 		},
-		"product": func(v *Compiled) { v.codeCache.gcTypeSubtypingProduct = 0 },
+		"missing-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(nil) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			mutate(candidate)
-			if rv64GCTypeSubtypingRuntimeTypedTableCall(candidate) {
-				t.Fatal("hostile retained mutation kept runtime typed-table witness")
-			}
-			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
+			if err := candidate.validate(); err == nil {
 				t.Fatal("hostile retained runtime typed-table mutation admitted", err)
+			}
+			if name == "feature" {
+				rv64RequireRestoredGCFeature(t, candidate)
+			} else {
+				rv64RequireRejectedArtifact(t, candidate)
 			}
 		})
 	}
 }
 
-func TestRV64PublicGCTypeSubtypingRuntimeTypedTableCallRequiresPrivateRuntimePermission(t *testing.T) {
+func TestRV64PublicGCTypeSubtypingRuntimeTypedTableCallPublicRuntime(t *testing.T) {
 	if os.Getenv("WAGO_RV64_GC_TYPE_SUBTYPING_RUNTIME_TYPED_TABLE_CALL_ARTIFACT_MODE") == "load" {
 		t.Skip("compiler-free runner selected")
 	}
 	compiled := rv64PublicGCTypeSubtypingRuntimeTypedTableCallCompile(t, false)
 	defer compiled.Close()
-	rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+	rt := NewRuntime()
 	defer rt.Close()
 	mod, err := rt.Module(compiled)
 	if err != nil {
@@ -207,7 +200,7 @@ func TestRV64PublicGCTypeSubtypingRuntimeTypedTableCallRequiresPrivateRuntimePer
 	if in != nil {
 		_ = in.Close()
 	}
-	if !errors.Is(err, railshot.ErrUnsupported) {
+	if err != nil {
 		t.Fatal("runtime typed-table call instantiated without private Runtime permission", err)
 	}
 }

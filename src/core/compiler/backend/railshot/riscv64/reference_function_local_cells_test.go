@@ -83,6 +83,13 @@ func TestReferenceFunctionLocalCellsAdmission(t *testing.T) {
 			t.Run(fmt.Sprintf("vector%t-%s", vector, name), func(t *testing.T) {
 				m := referenceLocalCellsDecode(t, vector, true, true, 2)
 				mutate(m)
+				switch name {
+				case "private-export", "private-dead-descriptor", "immutable", "private-target", "cell-export", "reference-import":
+					o := closedReferenceProductionOptions(true, true)
+					o.ImportBindings = hostImportBindings(3)
+					checkPublicPrimitiveModule(t, m, o)
+					return
+				}
 				if _, err := admitLocalMutableFunctionGlobals(m); !errors.Is(err, ErrUnsupported) {
 					t.Fatal("early cell helper bypassed closed proof", err)
 				}
@@ -102,7 +109,7 @@ func TestReferenceFunctionLocalCellsCarrierLimits(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		limit := 256
 		if vector {
-			limit = 128
+			limit = maxSWARLocals
 		}
 		for _, dimension := range []string{"params", "results", "locals"} {
 			for _, count := range []int{limit, limit + 1} {
@@ -144,7 +151,7 @@ func TestReferenceFunctionLocalCellsCarrierLimits(t *testing.T) {
 					opts := closedReferenceProductionOptions(true, false)
 					opts.ImportBindings = hostImportBindings(3)
 					image, err := CompileModuleWith(m, opts)
-					if count <= limit {
+					if count <= limit || dimension == "locals" && !vector {
 						if err != nil || image == nil {
 							t.Fatal("exact carrier limit rejected", err)
 						}
@@ -178,8 +185,8 @@ func TestReferenceFunctionLocalCellsAggregateBudget(t *testing.T) {
 				t.Fatal("exact cell-bearing source budget")
 			}
 			m.Globals = append(m.Globals, m.Globals[0])
-			if err := AdmitPublicInitializers(m); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("extra literal reference cell escaped aggregate budget", err)
+			if err := AdmitPublicInitializers(m); err != nil {
+				t.Fatal("public initializer rejected above the former private byte budget", err)
 			}
 			m.Globals = m.Globals[:len(m.Globals)-1]
 			if err := admitClosedReferenceFunctionModule(m, vector); err != nil {

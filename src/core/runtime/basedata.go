@@ -264,6 +264,9 @@ func (j *JobMemory) LinMemBase() uintptr {
 // guard ([linMem - 72]).
 func (j *JobMemory) SetStackFence(v uintptr) { j.putU64(offStackFence, uint64(v)) }
 
+// StackFence returns the currently bound native stack's low address.
+func (j *JobMemory) StackFence() uintptr { return uintptr(j.getU64(offStackFence)) }
+
 // BindTrapCell installs the stable trap-buffer pointer used by native trap
 // stubs and establishes the zero-on-entry invariant required by
 // Engine.CallPrepared. Native trap stubs write through byte 23, so the caller

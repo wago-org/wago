@@ -34,7 +34,7 @@ func (f tailRAFunction) validate(caller bool) error {
 	if err := f.validateFrame(caller); err != nil {
 		return err
 	}
-	if err := tailRASignature(f.signature); err != nil {
+	if err := tailRASignatureMode(f.signature, f.info.mode.invocationContext); err != nil {
 		return err
 	}
 	if f.info.Params != swarSignatureSlots(f.signature.Params) || f.info.Results != swarSignatureSlots(f.signature.Results) {
@@ -53,7 +53,8 @@ func (f tailRAFunction) validateFrame(caller bool) error {
 	if caller {
 		minimum = tailRAContextBytes
 	}
-	if f.codeBase() == 0 || f.codeBase()&15 != 0 || f.job == nil || f.job.LinMemBase() == 0 || len(f.snapshot) == 0 || len(f.snapshot) > MaxCodeBytes || !bytes.Equal(f.codeBytes(), f.snapshot) || len(f.context) < minimum || tailRAPointer(f.context)&7 != 0 || len(f.directory) < 40 || tailRAPointer(f.directory)&7 != 0 {
+	contextOnly := f.published != nil && len(f.directory) == 0
+	if f.codeBase() == 0 || f.codeBase()&15 != 0 || f.job == nil || f.job.LinMemBase() == 0 || len(f.snapshot) == 0 || len(f.snapshot) > MaxCodeBytes || !bytes.Equal(f.codeBytes(), f.snapshot) || len(f.context) < minimum || tailRAPointer(f.context)&7 != 0 || !contextOnly && len(f.directory) < 40 || tailRAPointer(f.directory)&7 != 0 {
 		return unsupported("private tail frozen code/context/owner")
 	}
 	i := f.info
@@ -66,7 +67,14 @@ func (f tailRAFunction) validateFrame(caller bool) error {
 			return unsupported("native tail published frame metadata")
 		}
 	}
-	if binary.LittleEndian.Uint64(f.context[16:]) != uint64(tailRAPointer(f.directory)) || binary.LittleEndian.Uint64(f.directory[32:]) != uint64(tailRAPointer(f.context)) {
+	if contextOnly {
+		if binary.LittleEndian.Uint64(f.context[16:]) != 0 {
+			return unsupported("native tail context-only target has a descriptor anchor")
+		}
+		if err := f.published.validateContext(f.job, f.context); err != nil {
+			return err
+		}
+	} else if binary.LittleEndian.Uint64(f.context[16:]) != uint64(tailRAPointer(f.directory)) || binary.LittleEndian.Uint64(f.directory[32:]) != uint64(tailRAPointer(f.context)) {
 		return unsupported("private tail canonical context anchor")
 	}
 	// Existing production framing begins with the authoritative fence load.

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -6,14 +6,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	nativegc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
@@ -88,7 +86,7 @@ func TestRV64PublicGCStructNumericGlobalsExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCStructNumericGlobalsCompile(t, artifact)
 			view := compiled.executionView()
-			if err := railshotValidateCompiled(view); !rv64GCStructNumericGlobals(view) || err != nil {
+			if err := railshotValidateCompiled(view); !rv64ArtifactContractValid(view) || err != nil {
 				t.Fatalf("missing exact numeric struct globals witness: validation=%v product=%v staged=%v required=%v code=%d entries=%v/%v globals=%+v types=%+v descs=%+v flags=%t/%t/%t/%t/%t", err, view.stagedGCStructProduct(), view.stagedFeatures(), view.requiredFeatures, len(view.code), view.Entry, view.InternalEntry, view.Globals, view.Types, view.GCTypeDescs, view.nativeContextTrapABI, view.nativeTableContextABI, view.nativeTableReferenceABI, view.registerABIDisabled, view.needsFuncRefContextHeader)
 			}
 			for _, profile := range []struct {
@@ -111,12 +109,19 @@ func TestRV64PublicGCStructNumericGlobalsExecutionAndArtifact(t *testing.T) {
 					if in.gc == nil {
 						t.Fatal("numeric struct globals runtime has no collector")
 					}
+					var roots []gcGlobalRootMapping
 					state := in.pluginState.Load()
-					if state == nil || state.gcGlobalRootCount != 2 || len(state.gcGlobalRoots) != 2 {
-						t.Fatalf("numeric struct global root mapping = %#v", state)
+					if state != nil {
+						roots = append(roots, state.gcGlobalRoots[:state.gcGlobalRootCount]...)
+					}
+					stagedRoots := len(roots)
+					public := in.publicGCState()
+					roots = append(roots, public.globalRoots...)
+					if len(roots) != 2 || in.c.needsRuntimeGCCollectorDomain() && stagedRoots != 0 {
+						t.Fatalf("numeric struct global roots staged/generic=%d/%d, want two slots", stagedRoots, len(public.globalRoots))
 					}
 					var seen [2]bool
-					for _, mapping := range state.gcGlobalRoots {
+					for _, mapping := range roots {
 						if mapping.GlobalIndex >= uint32(len(seen)) || seen[mapping.GlobalIndex] {
 							t.Fatalf("duplicate/out-of-range global root %+v", mapping)
 						}
@@ -140,7 +145,7 @@ func TestRV64PublicGCStructNumericGlobalsExecutionAndArtifact(t *testing.T) {
 					if stats := in.gc.Stats(); stats.LiveObjects != 2 {
 						t.Fatalf("post-collection stats=%+v, want two rooted objects", stats)
 					}
-					for _, mapping := range state.gcGlobalRoots {
+					for _, mapping := range roots {
 						rooted, err := in.gc.CheckedGlobalSlot(mapping.SlotIndex)
 						if err != nil || !rooted.IsObj() {
 							t.Fatalf("post-collection global %d root=%v,%v", mapping.GlobalIndex, rooted, err)
@@ -157,8 +162,15 @@ func TestRV64PublicGCStructNumericGlobalsExecutionAndArtifact(t *testing.T) {
 						if got, err := in.Global(name); got != 0 || err == nil || !strings.Contains(err.Error(), "reference type") {
 							t.Fatalf("Global(%q)=%d,%v want opaque reference rejection", name, got, err)
 						}
-						if _, err := in.GlobalValue(name); err == nil || !strings.Contains(err.Error(), "public GC/exception reference egress is unsupported") {
-							t.Fatalf("GlobalValue(%q)=%v want explicit GC egress rejection", name, err)
+						value, err := in.GlobalValue(name)
+						if err != nil || value.Type() != ValAnyRef || value.GCRef().IsNull() {
+							t.Fatalf("GlobalValue(%q)=%v,%v, want a non-null owned reference", name, value, err)
+						}
+						if err := in.gc.CollectFull(nativegc.EmptyRoots{}); err != nil {
+							t.Fatal(err)
+						}
+						if err := in.ReleaseGCRef(value.GCRef()); err != nil {
+							t.Fatal(err)
 						}
 					}
 				})
@@ -177,17 +189,21 @@ func TestRV64PublicGCStructNumericGlobalsAdmissionIsExact(t *testing.T) {
 		"type-field":     func(v *Compiled) { v.Types[0].Fields[1].Mutable = false },
 		"descriptor":     func(v *Compiled) { v.GCTypeDescs[0].Fields[1].Offset++ },
 		"global":         func(v *Compiled) { v.Globals[1].ValueTypeIndex++ },
-		"initializer":    func(v *Compiled) { v.memoryDir.gcStructGlobals[1].Bits[1]-- },
+		"initializer":    func(v *Compiled) { v.Globals[1].InitExpr = []byte{0xff, 0x0b} },
 		"global-export":  func(v *Compiled) { delete(v.GlobalExports, "g0"); v.GlobalExports["global"] = 0 },
 		"feature":        func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 		"inactive-start": func(v *Compiled) { v.StartLocalFunc = 1 },
-		"extra-table":    func(v *Compiled) { v.extraTables = []tableDef{{}} },
-		"table-export":   func(v *Compiled) { v.tableExports = map[string]int{"table": 0} },
-		"table-init":     func(v *Compiled) { v.HasTableInitFunc = true },
-		"compact-data":   func(v *Compiled) { v.compactData = &compactActiveData{} },
+		"extra-table": func(v *Compiled) {
+			v.HasTable = true
+			v.extraTables = []tableDef{{}}
+			v.tableExports = map[string]int{"bad": 9}
+		},
+		"table-export": func(v *Compiled) { v.tableExports = map[string]int{"table": 0} },
+		"table-init":   func(v *Compiled) { v.HasTableInitFunc = true; v.HasTable = true },
+		"compact-data": func(v *Compiled) { v.compactData = &compactActiveData{}; v.HasStart = true },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
+			candidate := rv64ReferenceStartCopy(base)
 			if base.memoryDir != nil {
 				d := *base.memoryDir
 				d.gcStructGlobals = slices.Clone(base.memoryDir.gcStructGlobals)
@@ -196,14 +212,14 @@ func TestRV64PublicGCStructNumericGlobalsAdmissionIsExact(t *testing.T) {
 				}
 				candidate.memoryDir = &d
 			}
-			candidate.validateMemo = &validateMemo{}
 			mutate(candidate)
-			if rv64GCStructNumericGlobals(candidate) {
-				t.Fatal("hostile retained mutation kept numeric struct globals witness")
+			if err := candidate.validate(); err == nil {
+				t.Fatal("hostile numeric struct globals mutation admitted")
 			}
-			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("hostile numeric struct globals mutation admitted", err)
+			if name == "inactive-start" || name == "compact-data" {
+				return // Writers canonicalize these inactive fields.
 			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 }

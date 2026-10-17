@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -210,30 +210,20 @@ func TestRV64PublicTableFunctionImportsArtifactKeys(t *testing.T) {
 		}
 		c := rv64PublicStartCompile(t, rv64TableFunctionImportModule(types, false, false, nil), false)
 		for _, index := range []int{0, 1, len(c.FuncTypeID) - 1} {
-			v := *c.executionView()
+			v := rv64ReferenceStartCopy(c.executionView())
 			v.FuncTypeID = slices.Clone(v.FuncTypeID)
 			v.FuncTypeID[index] ^= 1
-			if err := railshotValidateCompiled(&v); !errors.Is(err, railshot.ErrUnsupported) {
+			if err := v.validate(); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("corrupt imported/defined key admitted", index, err)
 			}
-			blob, err := marshalCompiled(&v)
-			if err != nil {
-				t.Fatal(err)
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				loaded.Close()
-			}
-			if err == nil {
-				t.Fatal("corrupt key artifact admitted", index)
-			}
+			rv64RequireRejectedArtifact(t, v)
 		}
 		for _, index := range []uint32{uint32(c.NumImports + len(c.Funcs))} {
-			v := *c.executionView()
+			v := rv64ReferenceStartCopy(c.executionView())
 			v.Elems = slices.Clone(v.Elems)
 			v.Elems[0].Values = slices.Clone(v.Elems[0].Values)
 			v.Elems[0].Values[0].FuncIndex = index
-			if err := railshotValidateCompiled(&v); !errors.Is(err, railshot.ErrUnsupported) {
+			if err := v.validate(); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("out-of-bounds element admitted", index, err)
 			}
 		}
@@ -655,28 +645,27 @@ func rv64TableFunctionImportsAggregateBoundary(t *testing.T, importedReference b
 			})
 		}
 	}
-	// The total and independent global caps reject before code publication.
-	for _, vector := range []bool{false, true} {
-		types := []wasm.ValType{wasm.I32}
-		if vector {
-			types = append(types, wasm.V128)
-		}
-		// The total budget now includes up to 100 memories. A wire count
-		// below that aggregate ceiling cannot identify an excessive global
-		// count; decoded admission separately enforces the 256-global cap.
-		tooManyGlobals := railshot.MaxProductionImports - 256 - 1 - 1 + 1
-		source := rv64TableFunctionImportBoundaryModule(types, tooManyGlobals)
-		if err := railshot.AdmitProductionSource(source); !errors.Is(err, railshot.ErrUnsupported) {
-			t.Fatal("aggregate import count admitted", err)
-		}
-		if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") != "load" {
-			c, err := Compile(nil, rv64TableFunctionImportBoundaryModule(types, 257))
-			if c != nil {
-				c.Close()
+	// Reject the real wire-count ceiling without allocating its declared entries.
+	oversized := wasmtest.Module(wasmtest.Section(2, wasmtest.ULEB(uint32(railshot.MaxPublicImports+1))))
+	if err := railshot.AdmitProductionSource(oversized); !errors.Is(err, railshot.ErrUnsupported) {
+		t.Fatal("oversized public import directory admitted", err)
+	}
+	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") != "load" {
+		for _, vector := range []bool{false, true} {
+			types := []wasm.ValType{wasm.I32}
+			if vector {
+				types = append(types, wasm.V128)
 			}
-			if c != nil || !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("independent global import count admitted", err)
+			compiled, err := Compile(nil, rv64TableFunctionImportBoundaryModule(types, 257))
+			if err != nil {
+				t.Fatal("257 global imports rejected", err)
 			}
+			loaded := publicArtifactRoundTrip(t, compiled)
+			if len(loaded.GlobalImports) != 257 || len(compiled.GlobalImports) != 257 {
+				t.Fatal("wide global import directory changed across codec")
+			}
+			loaded.Close()
+			compiled.Close()
 		}
 	}
 }

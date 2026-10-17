@@ -76,14 +76,17 @@ func admitSWARLocalTailSignature(caller, callee *wasm.CompType) error {
 	return nil
 }
 
-// Only the private same-image function mode uses this check, after both
-// signatures have passed its bounded directory admission. Preserve exact heap
-// and nullability identity even though all function refs share one carrier.
-func admitReferenceTailResults(caller, callee *wasm.CompType) error {
+// Private probes preserve exact result types. A validated public primitive
+// module has already passed the frontend's subtype checks; its tail transport
+// only needs the same physical result carriers.
+func admitReferenceTailResults(caller, callee *wasm.CompType, publicPrimitive ...bool) error {
 	if caller == nil || callee == nil || caller.Kind != wasm.CompFunc || callee.Kind != wasm.CompFunc || len(caller.Results) > 256 || len(caller.Results) != len(callee.Results) {
 		return unsupported("private reference tail result shape/bound")
 	}
 	for i, typ := range caller.Results {
+		if len(publicPrimitive) != 0 && publicPrimitive[0] && typ.Kind() == wasm.ValRef && callee.Results[i].Kind() == wasm.ValRef {
+			continue
+		}
 		if !wasm.EqualValType(typ, callee.Results[i]) {
 			return unsupported("private reference tail exact results required")
 		}
@@ -141,6 +144,10 @@ func (f *integerEmitter) localTailJump(index uint32) {
 // bounds/type/context guards finish before compact arenas are overwritten.
 // The target survives marshalling in X28; no reserved Go register is used.
 func (f *integerEmitter) localIndirectTailCall(sig *wasm.CompType, key uint64, base, indexSlot int, spill func(int) int32) {
+	f.localIndirectTailCallAt(sig, key, base, indexSlot, false, 0, spill)
+}
+
+func (f *integerEmitter) localIndirectTailCallAt(sig *wasm.CompType, key uint64, base, indexSlot int, indexWide bool, tableIndex uint32, spill func(int) int32) {
 	if !f.admitLocalTailFrame() {
 		return
 	}
@@ -148,8 +155,8 @@ func (f *integerEmitter) localIndirectTailCall(sig *wasm.CompType, key uint64, b
 		f.err = unsupported("owned indirect tail requires local framed target")
 		return
 	}
-	f.Load(5, spill(indexSlot), false)
-	f.ownedIndirectTarget(key)
+	f.Load(5, spill(indexSlot), indexWide)
+	f.ownedIndirectTargetAt(key, tableIndex)
 	f.a.Constant64(enc.X5, 15)
 	f.a.And(enc.X5, enc.X28, enc.X5)
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.NE, enc.X5, enc.Zero))

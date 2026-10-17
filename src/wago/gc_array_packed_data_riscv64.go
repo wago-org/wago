@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -81,9 +81,9 @@ func rv64GCArrayPackedData(c *Compiled) bool {
 			return false
 		}
 	}
-	wantDescs := []nativegc.TypeDesc{{ID: 0, Kind: corergc.KindArray, Elem: corergc.StorageI8, ElemSize: 1, Align: 1, Final: true}, {ID: 1, Kind: corergc.KindArray, Elem: corergc.StorageI8, ElemSize: 1, Align: 1, Final: true}}
+	wantDescs := [10]nativegc.TypeDesc{{ID: 0, Kind: corergc.KindArray, Elem: corergc.StorageI8, ElemSize: 1, Align: 1, Final: true}, {ID: 1, Kind: corergc.KindArray, Elem: corergc.StorageI8, ElemSize: 1, Align: 1, Final: true}}
 	for i := 2; i < 10; i++ {
-		wantDescs = append(wantDescs, nativegc.TypeDesc{ID: nativegc.TypeID(i), Kind: corergc.KindFunc, Final: true})
+		wantDescs[i] = nativegc.TypeDesc{ID: nativegc.TypeID(i), Kind: corergc.KindFunc, Final: true}
 	}
 	if len(c.GCTypeDescs) != len(wantDescs) {
 		return false

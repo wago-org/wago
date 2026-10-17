@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -90,6 +90,7 @@ func rv64NativeDefinedTailOwnerCounts(in *Instance) (int, int, error) {
 	}
 	values := 0
 	publicReferenceCarriers := rv64PublicReferenceCallBoundary(in.c) && rv64PublicReferenceCarrierTarget(in.c, 0)
+	primitiveReferences := rv64PrimitiveReferenceContract(in.c)
 	mutableVariant := rv64MutableFuncrefGlobalLocalCallCodeVariant(in.c)
 	mutableReferenceCarriers := mutableVariant >= 19 && mutableVariant <= 28
 	for i, sig := range in.c.Funcs[:n] {
@@ -107,8 +108,13 @@ func rv64NativeDefinedTailOwnerCounts(in *Instance) (int, int, error) {
 					cells++
 				case ValV128:
 					cells += 2
+				case ValAnyRef, ValI31Ref, ValExnRef:
+					if !rv64FreshRootedGC(in.c) {
+						return 0, 0, rv64TailGenerationError("defined collector tail signature proof")
+					}
+					cells++
 				case ValFuncRef, ValExternRef:
-					if !(publicReferenceCarriers && i == 0) && !(mutableReferenceCarriers && i <= 1) {
+					if !primitiveReferences && !(publicReferenceCarriers && i == 0) && !(mutableReferenceCarriers && i <= 1) {
 						return 0, 0, fmt.Errorf("%w: RV64 defined tail signature type", railshot.ErrUnsupported)
 					}
 					cells++
@@ -116,7 +122,7 @@ func rv64NativeDefinedTailOwnerCounts(in *Instance) (int, int, error) {
 					return 0, 0, fmt.Errorf("%w: RV64 defined tail signature type", railshot.ErrUnsupported)
 				}
 			}
-			if cells > 256 {
+			if cells > railshot.MaxNativeCallSlots {
 				return 0, 0, fmt.Errorf("%w: RV64 defined tail physical signature bound", railshot.ErrUnsupported)
 			}
 			values += len(list)

@@ -13,7 +13,10 @@ import (
 // contract, never a native-pointer owner lookup or a guest memory address.
 // X29/X30/X31 are clobbered; the view cursor must be a different register.
 func nativeInvocationViewGuards(a *enc.Asm, view enc.Reg, aboveSP int) []int {
-	var bad []int
+	return nativeInvocationViewGuardsInto(a, view, aboveSP, nil)
+}
+
+func nativeInvocationViewGuardsInto(a *enc.Asm, view enc.Reg, aboveSP int, bad []int) []int {
 	guard := func(c enc.Cond, l, r enc.Reg) { bad = append(bad, a.BranchLong(c, l, r)) }
 	a.Addi(enc.Scratch0, enc.Zero, 7)
 	a.And(enc.Scratch0, view, enc.Scratch0)
@@ -57,6 +60,22 @@ func (f *target) initializeNativeInvocation(frame int, info FunctionInfo) []int 
 	a := &f.a
 	a.Ld(enc.X9, enc.X25, -abi.RV64InvocationViewOffset)
 	bad := nativeInvocationViewGuards(a, enc.X9, frame)
+	// A narrow entry may call a wider local function using this same view.
+	// Check the module's complete shared transport before any call can stage
+	// beyond a retained foreign activation's buffers.
+	for _, direction := range []struct {
+		capacity int32
+		slots    uint16
+	}{
+		{abi.RV64InvocationArgumentBytesOffset, f.mode.moduleArgumentSlots},
+		{abi.RV64InvocationResultBytesOffset, f.mode.moduleResultSlots},
+	} {
+		if direction.slots > 256 {
+			a.Ld(enc.X29, enc.X9, direction.capacity)
+			a.Constant64(enc.Scratch0, int64(direction.slots)*8)
+			bad = append(bad, a.BranchLong(enc.LTU, enc.X29, enc.Scratch0))
+		}
+	}
 	a.Ld(enc.X29, enc.X9, abi.RV64InvocationFirstRAOffset)
 	initialized := a.BranchLong(enc.NE, enc.X29, enc.Zero)
 	guard := func(c enc.Cond, l, r enc.Reg) { bad = append(bad, a.BranchLong(c, l, r)) }
@@ -82,7 +101,7 @@ func (f *target) initializeNativeInvocation(frame int, info FunctionInfo) []int 
 // The caller has already authenticated the parent view and checked this full
 // activation's descent. The new view owns only its actual transport; all storage
 // and code lifetime obligations stay with the root execution lease.
-func nativeInvocationActivation(a *enc.Asm, parent enc.Reg, viewOffset, argsOffset, resultsOffset int) {
+func nativeInvocationActivation(a *enc.Asm, parent enc.Reg, viewOffset, argsOffset, resultsOffset, transportBytes int) {
 	tailRAAddress(a, enc.X9, enc.SP, viewOffset)
 	a.Constant64(enc.Scratch0, int64(abi.RV64InvocationMagic))
 	a.Sd(enc.Scratch0, enc.X9, 0)
@@ -94,7 +113,7 @@ func nativeInvocationActivation(a *enc.Asm, parent enc.Reg, viewOffset, argsOffs
 	a.Sd(enc.Scratch0, enc.X9, abi.RV64InvocationArgumentsOffset)
 	tailRAAddress(a, enc.Scratch0, enc.SP, resultsOffset)
 	a.Sd(enc.Scratch0, enc.X9, abi.RV64InvocationResultsOffset)
-	a.Constant64(enc.Scratch0, nativeImportTransportBytes)
+	a.Constant64(enc.Scratch0, int64(transportBytes))
 	a.Sd(enc.Scratch0, enc.X9, abi.RV64InvocationArgumentBytesOffset)
 	a.Sd(enc.Scratch0, enc.X9, abi.RV64InvocationResultBytesOffset)
 	a.Sd(enc.Zero, enc.X9, abi.RV64InvocationFirstRAOffset)

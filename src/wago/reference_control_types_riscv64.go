@@ -1,8 +1,12 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
-import "fmt"
+import (
+	"fmt"
+
+	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+)
 
 // A declared function type can describe an internal block/loop instead of a
 // callable function. Actual FuncSig bindings and native call/tail sites retain
@@ -31,6 +35,9 @@ func rv64DeclaredControlSignatureProfile(c *Compiled, typ *DefinedTypeDescriptor
 				continue
 			}
 			if v.Kind != ValueTypeReference || v.Ref.Exact || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+				if v.Kind == ValueTypeReference && v.Ref.Exact {
+					return false, false, fmt.Errorf("%w: RV64 internal declared reference carrier", railshot.ErrUnsupported)
+				}
 				return false, false, fmt.Errorf("RV64 internal declared reference carrier")
 			}
 			reference = true
@@ -44,6 +51,7 @@ func rv64DeclaredControlSignatureProfile(c *Compiled, typ *DefinedTypeDescriptor
 			if !heap.Defined {
 				mutableVariant := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
 				mutableCarrier := mutableVariant >= 19 && mutableVariant <= 28 && len(c.Funcs) == 6 && rv64MutableReferenceCarrierTarget(c, 0)
+				primitiveExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes)
 				executionExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && (rv64Core3RefIsNullExecution(c) || rv64Core3RefIsNullExecutionCodecPrefix(c))
 				declarationExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && (rv64Core3RefDeclarationMetadata(c) || rv64Core3ReferenceDeclarationMetadata(c))
 				declarationNonNullExtern := heap.Abstract == AbstractHeapExtern && !v.Ref.Nullable && (rv64Core3RefDeclarationMetadata(c) || rv64Core3RefAsNonNullDeclarationMetadata(c) || rv64Core3RefIsNullDeclarationMetadata(c))
@@ -51,7 +59,7 @@ func rv64DeclaredControlSignatureProfile(c *Compiled, typ *DefinedTypeDescriptor
 				publicHostExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64PublicHostReferenceBoundaryWithPlan(c, false)
 				publicDynamicHostExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64PublicDynamicHostReferenceBoundaryWithPlan(c, false)
 				mutableExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && mutableCarrier
-				if heap.TypeIndex != 0 || heap.Abstract != AbstractHeapFunc && !executionExtern && !declarationExtern && !declarationNonNullExtern && !publicCallExtern && !publicHostExtern && !publicDynamicHostExtern && !mutableExtern {
+				if heap.TypeIndex != 0 || heap.Abstract != AbstractHeapFunc && !primitiveExtern && !executionExtern && !declarationExtern && !declarationNonNullExtern && !publicCallExtern && !publicHostExtern && !publicDynamicHostExtern && !mutableExtern {
 					return false, false, fmt.Errorf("RV64 internal abstract function reference required")
 				}
 				continue
@@ -81,15 +89,18 @@ func rv64DeclaredControlSignatureProfile(c *Compiled, typ *DefinedTypeDescriptor
 }
 
 func rv64ValidateDeclaredControlTypes(c *Compiled) error {
+	if compiledFunctionOnlyTypeGraph(c) {
+		return nil
+	}
+	if rv64PrimitiveReferenceContract(c) {
+		return nil // Every exact function carrier was checked as one bounded graph.
+	}
 	for i := range c.Types {
 		// GC aggregate declarations share the module type index space with
 		// callable declarations. They are validated by the rooted-GC receipt;
 		// only function declarations participate in the call/control ABI.
 		if c.Types[i].Kind != CompositeTypeFunction {
 			continue
-		}
-		if i > 0 && c.Types[i-1].RecGroup == c.Types[i].RecGroup || i+1 < len(c.Types) && c.Types[i+1].RecGroup == c.Types[i].RecGroup {
-			return fmt.Errorf("RV64 recursive control type group is unsupported")
 		}
 		if _, err := rv64DeclaredControlSignature(c, &c.Types[i]); err != nil {
 			return err
@@ -99,13 +110,16 @@ func rv64ValidateDeclaredControlTypes(c *Compiled) error {
 }
 
 func rv64ValidateDeclarativeControlTypes(c *Compiled) (bool, error) {
+	if compiledFunctionOnlyTypeGraph(c) || rv64PrimitiveReferenceDeclarations(c) {
+		return rv64PrimitiveUsesTypedSignatures(c), nil
+	}
 	typed := false
 	for i := range c.Types {
 		if c.Types[i].Kind != CompositeTypeFunction {
+			if (c.Types[i].Kind != CompositeTypeStruct && c.Types[i].Kind != CompositeTypeArray) || !c.requiredFeatures.IsEnabled(CoreFeatureGC) {
+				return false, fmt.Errorf("RV64 declared aggregate type requires its GC feature")
+			}
 			continue
-		}
-		if i > 0 && c.Types[i-1].RecGroup == c.Types[i].RecGroup || i+1 < len(c.Types) && c.Types[i+1].RecGroup == c.Types[i].RecGroup {
-			return false, fmt.Errorf("RV64 recursive control type group is unsupported")
 		}
 		_, witness, err := rv64DeclaredControlSignatureProfile(c, &c.Types[i], true)
 		if err != nil {

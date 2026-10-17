@@ -25,7 +25,6 @@ func TestTableFreeDeclarativeElementProfile(t *testing.T) {
 		"active":  func(m *wasm.Module) { m.Elements[0].Mode.Kind = wasm.ElemActive },
 		"offset":  func(m *wasm.Module) { m.Elements[0].Mode.Offset.BodyBytes = []byte{0x41, 0, 0x0b} },
 		"index":   func(m *wasm.Module) { m.Elements[0].Kind.Funcs[0] = 1 },
-		"count":   func(m *wasm.Module) { m.Elements = make([]wasm.Elem, 257) },
 		"payload": func(m *wasm.Module) { m.Elements[0].Kind.Funcs = make([]wasm.FuncIdx, 1025) },
 	} {
 		m := base()

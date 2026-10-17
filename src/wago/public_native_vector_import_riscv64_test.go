@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -261,10 +261,31 @@ func TestRV64PublicNativeVectorImportsRejectOtherProtocolsAndExactTypesBeforePub
 			defer memory.Close()
 			flag := NewGlobalI32(0, true)
 			defer flag.Close()
+			bindings := []any{func() {}, ref, (*HostFuncRef)(nil)}
+			if types[0] == wasm.V128 {
+				bindings = append(bindings, HostCallFunc(func(HostCall) {}), CallerHostCallFunc(func(Caller, HostCall) {}))
+			} else {
+				for _, callback := range []any{
+					HostCallFunc(func(call HostCall) { copy(call.ResultSlots(), call.ParamSlots()) }),
+					CallerHostCallFunc(func(_ Caller, call HostCall) { copy(call.ResultSlots(), call.ParamSlots()) }),
+				} {
+					imports := NewImports().Global("env", "flag", flag).Memory("env", "memory", memory).Function("env", "f0", callback)
+					in, err := Instantiate(c, imports)
+					if err != nil {
+						t.Fatal("wide scalar slot callback", err)
+					}
+					input, want := rv64NativeVectorInputs(types)
+					got, invokeErr := in.Invoke("call", input...)
+					closeErr := in.Close()
+					if invokeErr != nil || closeErr != nil || !slices.Equal(got, want) {
+						t.Fatal("wide scalar slot transport", got, invokeErr, closeErr)
+					}
+				}
+			}
 			beforeBase, beforeSealed, beforeRefs := c.codeCache.base, c.codeCache.sealed, c.codeCache.refs
-			for _, binding := range []any{HostCallFunc(func(HostCall) {}), CallerHostCallFunc(func(Caller, HostCall) {}), func() {}, ref, (*HostFuncRef)(nil)} {
+			for _, binding := range bindings {
 				imports := NewImports().Global("env", "flag", flag).Memory("env", "memory", memory).Function("env", "f0", binding)
-				if in, err := Instantiate(c, imports); in != nil || !errors.Is(err, railshot.ErrUnsupported) || c.codeCache.base != beforeBase || c.codeCache.sealed != beforeSealed || c.codeCache.refs != beforeRefs || ref.importers != 0 {
+				if in, err := Instantiate(c, imports); in != nil || err == nil || c.codeCache.base != beforeBase || c.codeCache.sealed != beforeSealed || c.codeCache.refs != beforeRefs || ref.importers != 0 {
 					t.Fatal("vector/wide host protocol published", binding, err)
 				}
 			}
@@ -324,7 +345,7 @@ func TestRV64PublicNativeVectorImportLastOrdinalCapacityAndQuota(t *testing.T) {
 		if err := view.validateCached(); err != nil {
 			t.Fatal(err)
 		}
-		if view.syncHostSlots != 256 || railshotNativeImportArenaBytes(view, imports.bindings) != nativeCount*4096 {
+		if view.syncHostSlots != 256 || railshotNativeImportArenaBytes(view, imports.bindings) != 0 {
 			t.Fatal("full vector exchange/edge footprint")
 		}
 		need := view.arenaNeedForImports(imports.bindings, true)
@@ -369,13 +390,13 @@ func TestRV64PublicNativeVectorImportLastOrdinalCapacityAndQuota(t *testing.T) {
 }
 
 func TestRV64PublicNativeVectorImportSourceArtifactFeatureAndArityGates(t *testing.T) {
-	types := make([]wasm.ValType, 129)
+	types := make([]wasm.ValType, 257)
 	for index := range types {
 		types[index] = wasm.V128
 	}
 	for _, pair := range [][2][]wasm.ValType{{types, nil}, {nil, types}} {
 		if c, err := Compile(nil, rv64PublicHostModule(pair[0], pair[1])); c != nil || !errors.Is(err, railshot.ErrUnsupported) {
-			t.Fatal("vector129 import bound", c, err)
+			t.Fatal("vector257 import bound", c, err)
 		}
 	}
 	// An unused vector import still requires the feature and binding protocol.
@@ -392,7 +413,7 @@ func TestRV64PublicNativeVectorImportSourceArtifactFeatureAndArityGates(t *testi
 	for _, artifact := range []bool{false, true} {
 		c := rv64PublicStartCompile(t, source, artifact)
 		beforeBase, beforeSealed, beforeRefs := c.codeCache.base, c.codeCache.sealed, c.codeCache.refs
-		if in, err := Instantiate(c, testImports("env.host", HostCallFunc(func(HostCall) {}))); in != nil || !errors.Is(err, railshot.ErrUnsupported) || c.codeCache.base != beforeBase || c.codeCache.sealed != beforeSealed || c.codeCache.refs != beforeRefs {
+		if in, err := Instantiate(c, testImports("env.host", HostCallFunc(func(HostCall) {}))); in != nil || err == nil || c.codeCache.base != beforeBase || c.codeCache.sealed != beforeSealed || c.codeCache.refs != beforeRefs {
 			t.Fatal("unused vector host imported", err)
 		}
 		view := *c.executionView()

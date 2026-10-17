@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -31,7 +31,7 @@ func TestRV64ReferenceCallsIgnoreAggregateTypeDeclarations(t *testing.T) {
 
 	c.Types[2].Final = true
 	c.Types[2].RecGroup = 0
-	if err := railshotValidateReferenceCalls(c); err == nil {
-		t.Fatal("function declaration in a recursive group retained the call/control witness")
+	if err := railshotValidateReferenceCalls(c); err != nil {
+		t.Fatal("function declaration in a mixed recursive group was rejected", err)
 	}
 }

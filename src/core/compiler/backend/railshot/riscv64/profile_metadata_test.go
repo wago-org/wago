@@ -79,7 +79,7 @@ func TestProfileMetadataFinalCoordinatesAndGaps(t *testing.T) {
 
 func TestProfileMetadataRejectsMalformedLayoutsTransactionally(t *testing.T) {
 	for name, mutate := range map[string]func([]profileFunctionLayout){
-		"function-index":             func(f []profileFunctionLayout) { f[1].Function = MaxFunctions },
+		"function-index":             func(f []profileFunctionLayout) { f[1].Function = maxProfileFunctionIndex },
 		"function-order":             func(f []profileFunctionLayout) { f[1].Function = 2 },
 		"entry-overlap":              func(f []profileFunctionLayout) { f[1].Entry = 32 },
 		"entry-gap":                  func(f []profileFunctionLayout) { f[1].Entry = 64 },
@@ -201,5 +201,23 @@ func TestProfileSourceRecorderOriginsBoundsAndReuse(t *testing.T) {
 	}
 	if ranges, err := absent.finish(0); err != nil || ranges != nil {
 		t.Fatal("nil recorder created metadata")
+	}
+}
+
+func TestProfilePublicCoordinatesExceedPrivatePilot(t *testing.T) {
+	functions := profileMetadataFixture()
+	for i := range functions {
+		functions[i].Function += 65536
+		for j := range functions[i].Sources {
+			functions[i].Sources[j].Function += 65536
+		}
+	}
+	if _, _, err := finalizeProfileMetadata(functions, 72); err != nil {
+		t.Fatal("large function identity", err)
+	}
+	size := MaxCodeBytes + 4
+	large := profileFunctionLayout{Function: 65536, Entry: 0, CodeBytes: size, PrefixBytes: 4, BodyBytes: size - 8, EpilogueBytes: 4, BodySourceStart: 4, WasmBodyBytes: 1, BodyRegions: []profileBodyRegion{{Offset: 0, Size: size - 8, Kind: profileGuestBody}}}
+	if _, _, err := finalizeProfileMetadata([]profileFunctionLayout{large}, size); err != nil {
+		t.Fatal("large native coordinate", err)
 	}
 }

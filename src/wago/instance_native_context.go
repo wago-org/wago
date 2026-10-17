@@ -329,7 +329,10 @@ func (in *Instance) bindAndValidateNativeContext() error {
 
 func (in *Instance) bindNativeContext() error {
 	in.invalidateNativeContext()
-	ctx := unsafe.Slice((*byte)(offHeapPtr(in.nativeContext)), wruntime.InstanceContextBytes)
+	ctx := nativeInstanceContextView(in)
+	if len(ctx) != wruntime.InstanceContextBytes {
+		return fmt.Errorf("native instance context is outside its retained arena")
+	}
 	in.jm.BindInstanceContextBytes(ctx)
 	railshotSetNativeContextIdentity(in.jm, in.nativeContext)
 	primary := in.jm.LinMemBase()

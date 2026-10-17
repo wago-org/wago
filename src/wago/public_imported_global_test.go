@@ -1,11 +1,10 @@
-//go:build linux && (amd64 || arm64 || (riscv64 && wago_rv64_experimental)) && !tinygo && !wago_target_tinygo
+//go:build linux && (amd64 || arm64 || riscv64) && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"encoding/binary"
 	"math"
-	"runtime"
 	"slices"
 	"testing"
 
@@ -338,13 +337,18 @@ func TestPublicImportedGlobalBoundaryAndDuplicateAliasRoot(t *testing.T) {
 	}
 	importedGlobalInvoke(t, in, "get", []uint64{42})
 	for _, data := range [][]byte{publicGlobalBoundaryModule(257, false), publicGlobalBoundaryModule(256, true)} {
-		c, err := Compile(nil, data)
-		if runtime.GOARCH == "riscv64" && (c != nil || err == nil) {
-			t.Fatal("aggregate global count beyond 256 admitted")
+		compiled, err := Compile(nil, data)
+		if err != nil {
+			t.Fatal("global declarations above 256", err)
 		}
-		if c != nil {
-			_ = c.Close()
+		instance, err := Instantiate(compiled, NewImports().Global("env", "shared", g))
+		if err != nil {
+			compiled.Close()
+			t.Fatal("global declarations above 256", err)
 		}
+		importedGlobalInvoke(t, instance, "get", []uint64{42})
+		instance.Close()
+		compiled.Close()
 	}
 	if err := in.Close(); err != nil {
 		t.Fatal(err)

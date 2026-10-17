@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && wago_profile && !wago_precompiled && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && wago_profile && !wago_precompiled && !tinygo && !wago_target_tinygo
 
 package wago
 

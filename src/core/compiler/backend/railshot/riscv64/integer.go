@@ -41,12 +41,17 @@ type integerTrap struct {
 	sourcePC   uint32
 }
 type integerEmitter struct {
+	customSpillOffsets []int32
 	target
-	traps        []integerTrap
-	calls        []directCall
-	propagate    []int
-	frameBytes   int
-	gcFrameRoots *shared.GCFrameRootPlan
+	traps                          []integerTrap
+	calls                          []directCall
+	propagate                      []int
+	frameBytes                     int
+	gcFrameRoots                   *shared.GCFrameRootPlan
+	gcOperandRoots                 *wasm.CollectorOperandRoots
+	gcOperandStride                int
+	gcDeadAllocations, gcDeadCalls uint32
+	exception                      *exceptionFrame
 }
 
 // recordGCFrameCallsite publishes the caller-frame roots visible while a
@@ -70,26 +75,21 @@ func (f *integerEmitter) recordGCFrameCallsiteAdjusted(returnOffset int, stackAd
 		plan.Exact = false
 		return
 	}
-	offsets := make([]uint32, 0, len(plan.Locals)+len(hiddenRefs))
+	offsets := make([]uint32, 0, len(plan.Locals)+len(hiddenRefs)+len(plan.FixedOffsets()))
+	offsets = append(offsets, plan.FixedOffsets()...)
 	if !plan.VisitLiveLocals(site, true, func(root int) {
 		offsets = append(offsets, plan.Locals[root].Offset)
 	}) {
 		plan.Exact = false
 		return
 	}
-	for slot, root := range hiddenRefs {
-		if root {
-			off := f.SpillOffset(slot)
-			if off < 0 {
-				plan.Exact = false
-				return
-			}
-			offsets = append(offsets, uint32(off))
-		}
+	if !f.referenceOperandOffsets(hiddenRefs, f.sourcePC, func(off uint32) { offsets = append(offsets, off) }) {
+		plan.Exact = false
+		return
 	}
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
 	for i, off := range offsets {
-		if off%8 != 0 || f.frameBytes < 8 || uint64(off) > uint64(f.frameBytes-8) || i != 0 && off == offsets[i-1] {
+		if off%8 != 0 || f.frameBytes < 8 || uint64(shared.GCFrameRootOffset(off)) > uint64(f.frameBytes-8) || i != 0 && off == offsets[i-1] {
 			plan.Exact = false
 			return
 		}
@@ -102,6 +102,10 @@ func (f *integerEmitter) recordGCFrameCallsiteAdjusted(returnOffset int, stackAd
 // already keeps every local and operand in its canonical frame home, so unlike
 // the register backends it does not need a materialization pass here.
 func (f *integerEmitter) recordGCFrameSafepoint(hiddenRefs []bool) uint32 {
+	return f.recordGCFrameSafepointAt(hiddenRefs, f.sourcePC)
+}
+
+func (f *integerEmitter) recordGCFrameSafepointAt(hiddenRefs []bool, pc uint32) uint32 {
 	plan := f.gcFrameRoots
 	if plan == nil || !plan.Candidate {
 		return 0
@@ -124,16 +128,10 @@ func (f *integerEmitter) recordGCFrameSafepoint(hiddenRefs []bool) uint32 {
 		plan.Exact = false
 		return id
 	}
-	for slot, root := range hiddenRefs {
-		if root {
-			off := f.SpillOffset(slot)
-			if off < 0 {
-				builder.Abort()
-				plan.Exact = false
-				return id
-			}
-			builder.AppendOffset(uint32(off))
-		}
+	if !f.referenceOperandOffsets(hiddenRefs, pc, func(off uint32) { builder.AppendOffset(off) }) {
+		builder.Abort()
+		plan.Exact = false
+		return id
 	}
 	for _, off := range plan.FixedOffsets() {
 		builder.AppendOffset(off)
@@ -146,7 +144,7 @@ func (f *integerEmitter) recordGCFrameSafepoint(hiddenRefs []bool) uint32 {
 	}
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
 	for _, off := range offsets {
-		if off%8 != 0 || f.frameBytes < 8 || uint64(off) > uint64(f.frameBytes-8) {
+		if off%8 != 0 || f.frameBytes < 8 || uint64(shared.GCFrameRootOffset(off)) > uint64(f.frameBytes-8) {
 			builder.Abort()
 			plan.Exact = false
 			return id
@@ -174,17 +172,23 @@ func (f *integerEmitter) recordGCFrameSafepoint(hiddenRefs []bool) uint32 {
 // performs complete pre-emission admission and then lowering of the same bytes.
 func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *integerEmitter) (integerSummary, error) {
 	floating := state != nil && state.production
+	exceptionMode := state != nil && state.exceptionModule != nil
 	if fn == nil {
 		return integerSummary{}, unsupported("missing integer function")
 	}
 	profile := memoryProfile{}
 	referenceTypes := internalReferenceTypes{}
 	if state != nil {
-		if len(state.types) > MaxFunctions {
+		referenceTypes.exception = exceptionMode
+		if len(state.types) > MaxFunctions && !(state.production && state.foreignTableCalls) {
 			return integerSummary{}, unsupported("integer control type directory bound")
 		}
 		profile = makeMemoryProfile(state.memories, state.indexedMemories)
+		referenceTypes.publicReferences = state.publicReferences
 		referenceTypes.scalar = state.types
+		if state.sourceFunctions != nil {
+			referenceTypes.sourceDirectory = *state.sourceFunctions
+		}
 		referenceTypes.rootedDirectory = state.recTypeDir
 		referenceTypes.declarationExtern = state.declarationExternRefs
 		referenceTypes.executionExtern = state.core3RefIsNullExecution
@@ -215,10 +219,18 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		referenceTypes.gcTypeSubtypingDuplicateRecursive = state.gcTypeSubtypingDuplicateRecursive
 		referenceTypes.gcRootedScalar = state.gcRootedScalar
 	}
-	var locals [256]bool
-	var localRefs [256]bool
-	privateRefs := floating && (state.ownedTable || state.importReferences || state.gcRootedScalar || state.i31Core || state.gcTypeSubtypingRefFuncGlobals || state.gcTypeSubtypingRefTestSingle || state.gcTypeSubtypingDuplicateRecursive)
-	functionRefs := state != nil && state.referenceFunctions
+	localCount, err := integerLocalCount(fn, ft, state != nil && state.production && state.foreignTableCalls)
+	if err != nil {
+		return integerSummary{}, err
+	}
+	var localStorage [512]bool
+	locals, localRefs := localStorage[:256], localStorage[256:]
+	if localCount > 256 {
+		storage := make([]bool, 2*localCount)
+		locals, localRefs = storage[:localCount], storage[localCount:]
+	}
+	privateRefs := floating && (exceptionMode || state.ownedTable || state.importReferences || state.gcRootedScalar || state.i31Core || state.gcTypeSubtypingRefFuncGlobals || state.gcTypeSubtypingRefTestSingle || state.gcTypeSubtypingDuplicateRecursive)
+	functionRefs := state != nil && (state.referenceFunctions || exceptionMode)
 	i31Refs := state != nil && state.i31Core
 	if functionRefs {
 		typedFunctionRefs := state.referenceCalls || state.gcTypeSubtypingRefFuncGlobals || state.gcTypeSubtypingRefTestSingle && (state.gcTypeSubtypingRefTestVariant == 6 || state.gcTypeSubtypingRefTestVariant == 7) || state.gcTypeSubtypingDuplicateRecursive
@@ -229,7 +241,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			return integerSummary{}, unsupported("private reference function directory bound")
 		}
 		for i, sig := range state.functions {
-			if i < state.importedFunctions && !(state.publicReferenceCarriers && publicReferenceCarrierTarget(sig.signature)) {
+			if i < state.importedFunctions && !state.publicReferences && !(state.publicReferenceCarriers && publicReferenceCarrierTarget(sig.signature)) {
 				if err := integerNumericSignature(sig.signature, floating); err != nil {
 					return integerSummary{}, err
 				}
@@ -241,7 +253,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		if _, _, err := admitDeclaredControlSignature(ft, referenceTypes, true, typedFunctionRefs, false); err != nil {
 			return integerSummary{}, err
 		}
-	} else if i31Refs {
+	} else if i31Refs || exceptionMode {
 		if _, _, err := admitDeclaredControlSignature(ft, referenceTypes, true, true, false); err != nil {
 			return integerSummary{}, err
 		}
@@ -254,7 +266,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	descriptorRefs := privateRefs
 	nlocals := len(ft.Params)
 	for i, t := range ft.Params {
-		localRefs[i] = (functionRefs || i31Refs) && t.Kind() == wasm.ValRef
+		localRefs[i] = (functionRefs || i31Refs || exceptionMode) && t.Kind() == wasm.ValRef
 		locals[i] = scalarWide(t) || localRefs[i]
 	}
 	for _, run := range fn.Locals.Runs {
@@ -262,7 +274,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		if run.Count != 0 && !scalarType(run.Type, floating) && !(privateRefs && internalFunctionReferenceWithTypes(run.Type, state.referenceCalls, referenceTypes)) && !arrayLocalRef {
 			return integerSummary{}, unsupported("noninteger local")
 		}
-		if int(run.Count) > 256-nlocals {
+		if int(run.Count) > len(locals)-nlocals {
 			return integerSummary{}, unsupported("local bound")
 		}
 		for i := uint32(0); i < run.Count; i++ {
@@ -279,10 +291,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	// Unreachable untyped selects may produce a value whose carrier class is
 	// still polymorphic. Keep it distinct from a known i32 until a typed use.
 	var stackUnknown [512]bool
-	var ctrl [1 + maxControlNesting]integerControl
-	var rootResults, rootRefs [256]bool
+	var ctrlStorage [1 + maxControlNesting]integerControl
+	ctrl := ctrlStorage[:]
+	var rootTypes [512]bool
+	rootResults, rootRefs := rootTypes[:256:256], rootTypes[256:]
 	for j, t := range ft.Results {
-		rootRefs[j] = (functionRefs || i31Refs) && t.Kind() == wasm.ValRef
+		rootRefs[j] = (functionRefs || i31Refs || exceptionMode) && t.Kind() == wasm.ValRef
 		rootResults[j] = scalarWide(t) || rootRefs[j]
 	}
 	var inlineResults = [2][1]bool{{false}, {true}}
@@ -295,6 +309,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	refTestCount := 0
 	tableBridgeBytes := 0
 	importTails := 0
+	var exceptionControls map[int]*exceptionControl
+	nextExceptionRoot := 0
+	if exceptionMode {
+		exceptionControls = make(map[int]*exceptionControl)
+	}
 	popAny := func() (bool, bool, error) {
 		if h <= ctrl[depth-1].base {
 			if !live {
@@ -421,6 +440,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 		}
 		if emit != nil {
+			emit.restoreExceptionHandlers(depth - 1 - int(label))
 			site := emit.Jump()
 			if fr.kind == 0x03 {
 				if err := patch(site, fr.start); err != nil {
@@ -445,6 +465,40 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		if err != nil {
 			return integerSummary{}, err
 		}
+		if !live && emit != nil && emit.gcFrameRoots != nil {
+			// Source masks are conservative and include syntactic dead sites.
+			// Account for those sites explicitly; every remaining site must
+			// publish a native map. Operand roots still use the exact live PC.
+			probe := r
+			var dead wasm.InstructionImmediate
+			if err := profile.classifier.ClassifyInto(&probe, op, &dead); err != nil {
+				return integerSummary{}, err
+			}
+			if !emit.gcFrameRoots.Conservative {
+				return integerSummary{}, unsupported("dead GC sites require conservative local masks")
+			}
+			switch dead.Kind {
+			case wasm.InstrCall:
+				inline := false
+				if emit.mode.customInstructions != nil {
+					_, inline = emit.mode.customInstructions.instructions[dead.Index]
+				}
+				if !inline {
+					emit.gcDeadCalls++
+				}
+			case wasm.InstrCallRef, wasm.InstrCallIndirect:
+				emit.gcDeadCalls++
+			}
+			if op == 0xfb {
+				switch dead.Subopcode {
+				case 0, 1, 6, 7, 8, 9, 10, 26, 27:
+					emit.gcDeadAllocations++
+				}
+			}
+			if wasm.OpaqueStorageMutation(emit.mode.tableModuleSource, dead.Kind, dead.Index, dead.Index2) {
+				emit.gcDeadAllocations++
+			}
+		}
 		budget++
 		if budget > integerBudget {
 			return integerSummary{}, unsupported("integer instruction/label budget")
@@ -458,7 +512,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			ctrl[depth-1].unreachable = true
 			h = ctrl[depth-1].base
 		case 0x01:
-		case 0x02, 0x03, 0x04:
+		case 0x02, 0x03, 0x04, 0x1f:
+			if op == 0x1f && !exceptionMode {
+				return integerSummary{}, unsupported("try_table without EH source proof")
+			}
 			bt, e := internalReferenceBlockType(&r, privateRefs && state.referenceCalls, referenceTypes)
 			if e != nil {
 				return integerSummary{}, e
@@ -500,7 +557,13 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("integer control signature budget")
 			}
 			if depth == len(ctrl) {
-				return integerSummary{}, unsupported("integer control bound")
+				if len(ctrl) >= integerBudget+1 {
+					return integerSummary{}, unsupported("integer control bound")
+				}
+				n := min(len(ctrl)*2, integerBudget+1)
+				grown := make([]integerControl, n)
+				copy(grown, ctrl)
+				ctrl = grown
 			}
 			if op == 0x04 {
 				if e = condition(); e != nil {
@@ -515,6 +578,48 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			h -= len(params)
 			fr := integerControl{base: h, kind: op, params: params, results: results, paramRefs: paramRefs, resultRefs: resultRefs, entry: live, start: position(), falseSite: -1}
+			if op == 0x1f {
+				control, e := parseExceptionCatches(&r, state.exceptionModule, depth, &nextExceptionRoot)
+				if e != nil {
+					return integerSummary{}, e
+				}
+				for _, clause := range control.clauses {
+					target := &ctrl[clause.target]
+					values, references := target.results, target.resultRefs
+					if target.kind == 0x03 {
+						values, references = target.params, target.paramRefs
+					}
+					arity := len(clause.payload)
+					if clause.root >= 0 {
+						arity++
+					}
+					if arity != len(values) {
+						return integerSummary{}, unsupported("exception catch payload arity")
+					}
+					for i, typ := range clause.payload {
+						ref := typ.Kind() == wasm.ValRef
+						if values[i] != (scalarWide(typ) || ref) || (len(references) != 0 && references[i]) != ref {
+							return integerSummary{}, unsupported("exception catch payload carrier")
+						}
+					}
+					if clause.root >= 0 && (!values[arity-1] || len(references) == 0 || !references[arity-1]) {
+						return integerSummary{}, unsupported("exception catch_ref carrier")
+					}
+					if live && target.kind != 0x03 {
+						target.incoming = true
+					}
+				}
+				if live && emit != nil && emit.mode.ownedExceptionReferences {
+					for i := range control.clauses {
+						control.clauses[i].hiddenRefs = append([]bool(nil), stackRefs[:h]...)
+						control.clauses[i].collectorPC = emit.sourcePC
+					}
+				}
+				exceptionControls[depth] = control
+				if live && emit != nil {
+					emit.beginExceptionHandler(control, depth)
+				}
+			}
 			if op == 0x03 && live && emit != nil {
 				emit.emitProductionInterruptPoll()
 			}
@@ -564,6 +669,38 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if err = match(fr.results, fr.resultRefs, true, true); err != nil {
 				return integerSummary{}, err
 			}
+			if fr.kind == 0x1f {
+				control := exceptionControls[depth-1]
+				if emit != nil && control.active {
+					skip := -1
+					if live || fr.incoming {
+						emit.restoreExceptionHandlers(depth - 1)
+						skip = emit.Jump()
+					}
+					emit.exception.active = emit.exception.active[:len(emit.exception.active)-1]
+					if err := emit.emitExceptionHandler(control, func(clause *exceptionCatch) error {
+						target := &ctrl[clause.target]
+						emit.copyExceptionPayload(clause, target.base, 1)
+						emit.restoreExceptionHandlers(clause.target)
+						site := emit.Jump()
+						if target.kind == 0x03 {
+							return patch(site, target.start)
+						}
+						target.sites = append(target.sites, site)
+						return nil
+					}); err != nil {
+						return integerSummary{}, err
+					}
+					if skip >= 0 {
+						if err := patch(skip, position()); err != nil {
+							return integerSummary{}, err
+						}
+					}
+				} else if emit != nil {
+					emit.emitInactiveExceptionCopies(control)
+				}
+				delete(exceptionControls, depth-1)
+			}
 			if emit != nil {
 				for _, site := range fr.sites {
 					if err = patch(site, position()); err != nil {
@@ -598,6 +735,42 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					emit.Constant(10, 0, true)
 				}
 			}
+		case 0x08, 0x0a:
+			if !exceptionMode {
+				return integerSummary{}, unsupported("throw without EH source proof")
+			}
+			if op == 0x08 {
+				tag, err := r.U32()
+				if err != nil {
+					return integerSummary{}, err
+				}
+				sig, err := exceptionTagSignature(state.exceptionModule, tag)
+				if err != nil {
+					return integerSummary{}, err
+				}
+				var values, references [shared.MaxEHTagPayloadWords]bool
+				for i, typ := range sig.Params {
+					references[i] = typ.Kind() == wasm.ValRef
+					values[i] = scalarWide(typ) || references[i]
+				}
+				if err := match(values[:len(sig.Params)], references[:len(sig.Params)], false, true); err != nil {
+					return integerSummary{}, err
+				}
+				h -= len(sig.Params)
+				if live && emit != nil {
+					emit.throwException(tag, sig.Params, h, 1)
+				}
+			} else {
+				if _, err := popClass(true); err != nil {
+					return integerSummary{}, err
+				}
+				if live && emit != nil {
+					emit.throwExceptionReference(h)
+				}
+			}
+			live = false
+			ctrl[depth-1].unreachable = true
+			h = ctrl[depth-1].base
 		case 0x0c, 0x0d:
 			label, e := r.U32()
 			if e != nil {
@@ -719,7 +892,91 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if e != nil {
 				return integerSummary{}, e
 			}
-			if n > maxTableEntries || int(n) > integerBudget-budget {
+			if n > maxTableEntries {
+				// Large tables use one byte per target, rather than duplicating
+				// a comparison and payload transfer for every repeated label.
+				// The module byte limit bounds data; control depth and the usual
+				// transfer budget independently bound executable dispatch code.
+				if n >= MaxModuleBytes || uint64(n)+1 > uint64(r.BytesLeft()) {
+					return integerSummary{}, unsupported("branch table bound")
+				}
+				if e = condition(); e != nil {
+					return integerSummary{}, e
+				}
+				var targetStorage [1 + maxControlNesting]bool
+				targets := targetStorage[:]
+				if depth > len(targets) {
+					targets = make([]bool, depth)
+				}
+				signatureArity := -1
+				dataSkip := -1
+				if live && emit != nil {
+					emit.Load(5, emit.SpillOffset(h), false)
+					dataSkip, e = emit.beginBranchTable(n)
+					if e != nil {
+						return integerSummary{}, e
+					}
+				}
+				for i := uint32(0); i <= n; i++ {
+					label, e := r.U32()
+					if e != nil {
+						return integerSummary{}, e
+					}
+					if uint64(label) >= uint64(depth) {
+						return integerSummary{}, unsupported("integer branch table label")
+					}
+					if !targets[label] {
+						fr := &ctrl[depth-1-int(label)]
+						values, references := fr.results, fr.resultRefs
+						if fr.kind == 0x03 {
+							values, references = fr.params, fr.paramRefs
+						}
+						if signatureArity < 0 {
+							signatureArity = len(values)
+						} else if signatureArity != len(values) {
+							return integerSummary{}, unsupported("integer branch table arity")
+						}
+						if e = match(values, references, false, false); e != nil {
+							return integerSummary{}, e
+						}
+						targets[label] = true
+					}
+					if live && emit != nil {
+						emit.a.B = append(emit.a.B, byte(label))
+					}
+				}
+				if live && emit != nil {
+					for emit.Position()&3 != 0 {
+						emit.a.B = append(emit.a.B, 0)
+					}
+					if e = patch(dataSkip, position()); e != nil {
+						return integerSummary{}, e
+					}
+				}
+				for label, seen := range targets {
+					if !seen {
+						continue
+					}
+					skip := -1
+					if live && emit != nil {
+						emit.Constant(6, int64(label), false)
+						skip = emit.a.BranchLong(enc.NE, enc.X5, enc.X6)
+					}
+					if e = branch(uint32(label), false); e != nil {
+						return integerSummary{}, e
+					}
+					if live && emit != nil {
+						if e = patch(skip, position()); e != nil {
+							return integerSummary{}, e
+						}
+					}
+				}
+				live = false
+				ctrl[depth-1].unreachable = true
+				h = ctrl[depth-1].base
+				break
+			}
+			if int(n) > integerBudget-budget {
 				return integerSummary{}, unsupported("branch table bound")
 			}
 			budget += int(n)
@@ -905,12 +1162,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				genericRootedNull := state.gcRootedScalar && (heap >= 0 && (referenceTypes.rootedStruct(uint32(heap)) || referenceTypes.rootedArray(uint32(heap))) || rootedAbstractObjectHeapS33(heap) || heap == -20)
-				if state.gcRootedScalar && !genericRootedNull {
+				genericRootedNull := state.gcRootedScalar && (heap >= 0 && (referenceTypes.rootedStruct(uint32(heap)) || referenceTypes.rootedArray(uint32(heap)) || referenceTypes.function(uint32(heap))) || rootedAbstractObjectHeapS33(heap) || heap == -20 || heap == -16 || heap == -13 || heap == -17 || heap == -14)
+				exceptionNull := exceptionMode && (heap == -23 || heap == -12 || heap == -16 || heap == -13 || heap == -17 || heap == -14 || heap >= 0 && referenceTypes.function(uint32(heap)))
+				if state.gcRootedScalar && !genericRootedNull && !exceptionNull {
 					return integerSummary{}, unsupported("generic rooted scalar ref.null heap")
 				}
 				abstractNull := state.gcRefTestAbstract && (heap == -13 || heap == -14 || heap == -15 || heap == -16 || heap == -17 || heap == -18 || heap == -21 || heap == -22)
-				if heap != -16 && !genericRootedNull && !abstractNull && !(state.i31Core && heap == -20) && !(state.i31RefTest && heap == -18) && !(state.i31RefEq && heap == -19) && !(state.core3RefIsNullExecution && heap == -17) && !(state.gcRefTestConcrete && (heap == -21 || heap >= 0 && heap < 8)) && !(state.gcTypeSubtypingRuntimeCallCast && heap >= 0 && heap < 3) && !(state.gcTypeSubtypingLink == rv64GCTypeSubtypingLinkProviderVariant && heap >= 0 && heap < 3) && !(state.gcArrayInitElem && heap == 2) && !(state.gcArrayInitData && heap == 1) && !(state.gcArrayFill && heap == 1) && !(state.gcArrayCopy && (heap == 0 || heap == 1)) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
+				publicNull := referenceTypes.publicReferences && (rootedAbstractObjectHeapS33(heap) || heap == -20 || heap == -17 || heap == -13 || heap == -14 || heap >= 0 && referenceTypes.function(uint32(heap)))
+				if heap != -16 && !publicNull && !exceptionNull && !genericRootedNull && !abstractNull && !(state.i31Core && heap == -20) && !(state.i31RefTest && heap == -18) && !(state.i31RefEq && heap == -19) && !(state.core3RefIsNullExecution && heap == -17) && !(state.gcRefTestConcrete && (heap == -21 || heap >= 0 && heap < 8)) && !(state.gcTypeSubtypingRuntimeCallCast && heap >= 0 && heap < 3) && !(state.gcTypeSubtypingLink == rv64GCTypeSubtypingLinkProviderVariant && heap >= 0 && heap < 3) && !(state.gcArrayInitElem && heap == 2) && !(state.gcArrayInitData && heap == 1) && !(state.gcArrayFill && heap == 1) && !(state.gcArrayCopy && (heap == 0 || heap == 1)) && (!(state.dynamicTailCalls && !functionRefs || state.referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return integerSummary{}, unsupported("private abstract funcref null only")
 				}
 				if live && emit != nil {
@@ -1031,10 +1290,16 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if err != nil {
 					return integerSummary{}, err
 				}
+				gcTableSet := op == 0x26 && (state.gcRootedScalar && compactReference || state.gcRefTestTable || state.gcRefTestConcrete || state.gcRefTestAbstract && idx != 1)
+				if gcTableSet {
+					callCount++
+					if callCount > maxDirectCalls {
+						return integerSummary{}, unsupported("GC table store helper count")
+					}
+				}
 				if live && emit != nil {
-					gcTableSet := op == 0x26 && (state.gcRootedScalar && compactReference || state.gcRefTestTable || state.gcRefTestConcrete || state.gcRefTestAbstract && idx != 1)
 					if gcTableSet {
-						emit.gcObjectTableSet(h, idx)
+						emit.gcObjectTableSet(h, idx, emit.externPersistentRoots(wasm.InstrTableSet, idx, 0, stackRefs[:h+2])...)
 					} else {
 						emit.Load(5, emit.SpillOffset(h), tableWide)
 						emit.privateTableEntry(idx, compactReference)
@@ -1126,7 +1391,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if functionRefs || i31Refs {
 				// The private directory already admits both signatures. Carrier
 				// classes alone cannot establish exact heap/nullability results.
-				if err = admitReferenceTailResults(ft, sig.signature); err != nil {
+				if err = admitReferenceTailResults(ft, sig.signature, state.publicReferences || state.gcRootedScalar); err != nil {
 					return integerSummary{}, err
 				}
 				var paramRefs []bool
@@ -1156,6 +1421,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 			if live && emit != nil {
+				emit.restoreExceptionHandlers(0)
 				if importedTail {
 					emit.importTailCall(idx, sig.signature, h, emit.SpillOffset, 8)
 				} else {
@@ -1181,7 +1447,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			referenceCarriers := false
 			if err = integerCallable(sig, floating); err != nil {
 				rootedReferenceCall := state.gcRootedScalar && sig.signature != nil
-				if !rootedReferenceCall && (!state.publicReferenceCarrierType(typeIndex) || sig.signature == nil || !publicReferenceCarrierTarget(sig.signature)) {
+				if !rootedReferenceCall && !state.publicReferences && (!state.publicReferenceCarrierType(typeIndex) || sig.signature == nil || !publicReferenceCarrierTarget(sig.signature)) {
 					return integerSummary{}, err
 				}
 				callParams, callResults, callParamRefs, callResultRefs, err = integerControlSignature(sig, referenceTypes, true, true, floating, &budget)
@@ -1221,7 +1487,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 			if live && emit != nil {
-				emit.referenceCall(sig.signature, sig.key, h, referenceSlot, emit.SpillOffset, 8, stackRefs[:h])
+				emit.referenceCall(sig.signature, sig.key, h, referenceSlot, emit.SpillOffset, 8, stackRefs[:h], typeIndex)
 			}
 			for i, wide := range callResults {
 				if len(callResultRefs) != 0 && callResultRefs[i] {
@@ -1247,7 +1513,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			callParamRefs := []bool(nil)
 			referenceCarriers := false
 			if err = integerCallable(sig, floating); err != nil {
-				if !state.publicReferenceCarrierType(typeIndex) || sig.signature == nil || !publicReferenceCarrierTarget(sig.signature) {
+				publicCarrier := state.gcRootedScalar || state.publicReferences && primitiveReferenceTargetWithTypes(sig.signature, referenceTypes, false)
+				if !publicCarrier && (!state.publicReferenceCarrierType(typeIndex) || sig.signature == nil || !publicReferenceCarrierTarget(sig.signature)) {
 					return integerSummary{}, err
 				}
 				callParams, _, callParamRefs, _, err = integerControlSignature(sig, referenceTypes, true, true, floating, &budget)
@@ -1256,8 +1523,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				referenceCarriers = true
 			}
-			if functionRefs {
-				err = admitReferenceTailResults(ft, sig.signature)
+			if functionRefs || i31Refs {
+				err = admitReferenceTailResults(ft, sig.signature, state.publicReferences || state.gcRootedScalar)
 			} else {
 				err = admitLocalTailSignature(ft, sig.signature)
 			}
@@ -1273,7 +1540,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if callCount > maxDirectCalls || budget > integerBudget {
 				return integerSummary{}, unsupported("typed reference tail count/slot budget")
 			}
-			if functionRefs {
+			if functionRefs || i31Refs {
 				if err = match(inlineResults[1][:], inlineReference[:], false, true); err != nil {
 					return integerSummary{}, err
 				}
@@ -1282,7 +1549,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, err
 			}
 			referenceSlot := h
-			if functionRefs {
+			if functionRefs || i31Refs {
 				if err = match(callParams, callParamRefs, false, true); err != nil {
 					return integerSummary{}, err
 				}
@@ -1295,6 +1562,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 			if live && emit != nil {
+				emit.restoreExceptionHandlers(0)
 				emit.dynamicReferenceTailCall(typeIndex, sig.signature, h, referenceSlot, emit.SpillOffset, 8)
 			}
 			live = false
@@ -1318,7 +1586,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			sig := state.types[typeIndex]
 			var paramRefs, resultRefs []bool
-			subtypeCall := state.gcTypeSubtypingRuntimeCallCast && typeIndex < 3
+			subtypeCall := state.gcRootedScalar || state.gcTypeSubtypingRuntimeCallCast && typeIndex < 3 || state.publicReferences && primitiveReferenceTargetWithTypes(sig.signature, referenceTypes, false)
 			if subtypeCall {
 				sig.params, sig.results, paramRefs, resultRefs, err = integerControlSignature(sig, referenceTypes, true, true, floating, &budget)
 			} else {
@@ -1337,8 +1605,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if !state.localTailCalls || state.dynamicTailCalls && (!state.importTailCalls || !state.foreignTableCalls) || !state.dynamicTailCalls && (state.foreignTableCalls || state.importedFunctions != 0) {
 					return integerSummary{}, unsupported("owned defined indirect tail profile required")
 				}
-				if functionRefs {
-					err = admitReferenceTailResults(ft, sig.signature)
+				if functionRefs || i31Refs {
+					err = admitReferenceTailResults(ft, sig.signature, state.publicReferences || state.gcRootedScalar)
 				} else {
 					err = admitLocalTailSignature(ft, sig.signature)
 				}
@@ -1358,7 +1626,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if callCount > maxDirectCalls || budget > integerBudget {
 				return integerSummary{}, unsupported("indirect call count/slot budget")
 			}
-			if functionRefs {
+			if functionRefs || i31Refs {
 				if tableWide {
 					err = popWidth(true)
 				} else {
@@ -1375,7 +1643,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, err
 			}
 			indexSlot := h
-			if functionRefs {
+			if functionRefs || i31Refs {
 				if err = match(sig.params, paramRefs, false, true); err != nil {
 					return integerSummary{}, err
 				}
@@ -1394,6 +1662,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			if live && emit != nil {
 				if tail {
+					emit.restoreExceptionHandlers(0)
 					if state.dynamicTailCalls {
 						emit.dynamicIndirectTailCall(typeIndex, sig.signature, sig.key, h, indexSlot, tableWide, tableIndex, emit.SpillOffset, 8)
 					} else {
@@ -1402,12 +1671,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				} else {
 					if subtypeCall {
 						keys := []uint64{sig.key}
-						if !state.gcTypeSubtypingFinalityCallCast {
-							for subtype := typeIndex + 1; subtype < 3; subtype++ {
-								keys = append(keys, state.types[subtype].key)
+						if state.sourceFunctions != nil {
+							var ok bool
+							keys, ok = state.sourceFunctions.subtypeKeys(typeIndex)
+							if !ok {
+								return integerSummary{}, unsupported("indirect function subtype key bound")
 							}
 						}
-						emit.indirectCallKeys(sig, keys, h, indexSlot, tableWide, tableIndex, stackRefs[:h])
+						emit.indirectCallKeys(sig, keys, h, indexSlot, tableWide, tableIndex, stackRefs[:h], typeIndex)
 					} else {
 						emit.indirectCall(sig, h, indexSlot, tableWide, tableIndex, stackRefs[:h])
 					}
@@ -1446,13 +1717,22 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if _, err = popClass(reference); err != nil {
 					return integerSummary{}, err
 				}
-				parkedGlobalStore := state.mutableFuncrefGlobalClear || state.mutableFuncrefGlobalSetSelf || state.mutableFuncrefGlobalCopy || state.mutableFuncrefGlobalMove || state.mutableFuncrefGlobalBidirectionalCopy || state.mutableFuncrefGlobalLocalCopy || state.mutableFuncrefGlobalLocalPublish && idx == 0 || state.mutableFuncrefGlobalLocalTransfer || state.mutableFuncrefGlobalLocalExport || state.mutableFuncrefGlobalLocalObserve || state.mutableFuncrefGlobalLocalCall
-				if parkedGlobalStore {
+				functionCarrier := g.typ.Kind() == wasm.ValRef && (g.typ.Ref().Heap().Kind() == wasm.HeapTypeIndex || g.typ.Ref().Heap() == wasm.AbsHeap(wasm.HeapFunc) || g.typ.Ref().Heap() == wasm.AbsHeap(wasm.HeapNoFunc))
+				parkedGlobalStore := state.publicReferenceStores && functionCarrier || state.mutableFuncrefGlobalClear || state.mutableFuncrefGlobalSetSelf || state.mutableFuncrefGlobalCopy || state.mutableFuncrefGlobalMove || state.mutableFuncrefGlobalBidirectionalCopy || state.mutableFuncrefGlobalLocalCopy || state.mutableFuncrefGlobalLocalPublish && idx == 0 || state.mutableFuncrefGlobalLocalTransfer || state.mutableFuncrefGlobalLocalExport || state.mutableFuncrefGlobalLocalObserve || state.mutableFuncrefGlobalLocalCall
+				if state.gcRootedScalar && wasm.ExternReferenceType(g.typ) {
+					callCount++
+					if callCount > maxDirectCalls {
+						return integerSummary{}, unsupported("extern global helper count")
+					}
+					if live && emit != nil {
+						emit.storeExternGlobal(emit.SpillOffset(h), idx, emit.externPersistentRoots(wasm.InstrGlobalSet, idx, 0, stackRefs[:h+1])...)
+					}
+				} else if parkedGlobalStore {
 					want := uint32(0)
 					if state.mutableFuncrefGlobalCopy || (state.mutableFuncrefGlobalMove && idx == 1) {
 						want = 1
 					}
-					indexedStore := state.mutableFuncrefGlobalBidirectionalCopy || state.mutableFuncrefGlobalLocalTransfer
+					indexedStore := state.publicReferenceStores || state.mutableFuncrefGlobalBidirectionalCopy || state.mutableFuncrefGlobalLocalTransfer
 					if (!indexedStore && idx != want) || state.mutableFuncrefGlobalLocalTransfer && idx != 1 && idx != 2 || !reference {
 						return integerSummary{}, unsupported("mutable funcref store target")
 					}
@@ -1461,7 +1741,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						return integerSummary{}, unsupported("mutable funcref store helper count")
 					}
 					if live && emit != nil {
-						if state.mutableFuncrefGlobalClear || (state.mutableFuncrefGlobalMove && idx == 0) {
+						if !state.publicReferenceStores && (state.mutableFuncrefGlobalClear || (state.mutableFuncrefGlobalMove && idx == 0)) {
 							emit.clearGuestGlobal()
 						} else if indexedStore {
 							emit.storeGuestGlobalIndexed(h, idx)
@@ -1596,7 +1876,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						}
 					}
 					if live && emit != nil && state.gcRootedScalar && compactReference {
-						emit.gcObjectTableInit(h, imm.Index, imm.Index2)
+						emit.gcObjectTableInit(h, imm.Index, imm.Index2, emit.externPersistentRoots(imm.Kind, imm.Index, imm.Index2, stackRefs[:h+3])...)
 					} else if live && emit != nil {
 						emit.privateTableInitAt(imm.Index, imm.Index2, compactReference)
 					}
@@ -1606,6 +1886,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy || imm.Kind == wasm.InstrTableGrow {
 				tableIndex, tableWide := uint32(0), state.table64
 				sourceTableIndex := uint32(0)
+				sourceTableWide := tableWide
 				compactReference := false
 				if imm.Kind == wasm.InstrTableGrow || imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy {
 					tableIndex = imm.Index
@@ -1622,8 +1903,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					if imm.Kind == wasm.InstrTableCopy {
 						sourceTableIndex = imm.Index2
 						sourceWide, sourceOK := state.tableWidth(sourceTableIndex)
+						sourceTableWide = sourceWide
 						sourceCompact, sourceCompactOK := state.tableCompactReference(sourceTableIndex)
-						if !sourceOK || sourceWide != tableWide || !sourceCompactOK || sourceCompact != compactReference {
+						if !sourceOK || !sourceCompactOK || sourceCompact != compactReference {
 							return integerSummary{}, unsupported("cross-table private copy width")
 						}
 					}
@@ -1638,14 +1920,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						n, widths[0], widths[1], references[0] = 2, true, tableWide, true
 					} else if imm.Kind == wasm.InstrTableFill {
 						widths[0], widths[1], widths[2], references[1] = tableWide, true, tableWide, true
-					} else if imm.Kind == wasm.InstrTableCopy && tableWide {
-						widths = [3]bool{true, true, true}
+					} else if imm.Kind == wasm.InstrTableCopy {
+						widths = [3]bool{tableWide, sourceTableWide, tableWide && sourceTableWide}
 					}
 					if err = match(widths[:n], references[:n], false, true); err != nil {
 						return integerSummary{}, err
 					}
 				}
-				wideCount := tableWide && (imm.Kind == wasm.InstrTableGrow || imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy)
+				wideCount := tableWide && (imm.Kind != wasm.InstrTableCopy || sourceTableWide)
 				if err = popWidth(wideCount); err != nil {
 					return integerSummary{}, err
 				}
@@ -1653,7 +1935,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if live && emit != nil {
 					emit.Load(5, emit.SpillOffset(h), wideCount)
 				}
-				wideSource := imm.Kind == wasm.InstrTableCopy && tableWide
+				wideSource := imm.Kind == wasm.InstrTableCopy && sourceTableWide
 				if imm.Kind == wasm.InstrTableCopy {
 					err = popWidth(wideSource)
 				} else {
@@ -1684,11 +1966,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					if state.gcRootedScalar && compactReference {
 						switch imm.Kind {
 						case wasm.InstrTableCopy:
-							emit.gcObjectTableCopy(h, tableIndex, sourceTableIndex)
+							emit.gcObjectTableCopy(h, tableIndex, sourceTableIndex, emit.externPersistentRoots(imm.Kind, tableIndex, sourceTableIndex, stackRefs[:h+3])...)
 						case wasm.InstrTableFill:
-							emit.gcObjectTableFill(h, tableIndex)
+							emit.gcObjectTableFill(h, tableIndex, emit.externPersistentRoots(imm.Kind, tableIndex, 0, stackRefs[:h+3])...)
 						case wasm.InstrTableGrow:
-							emit.gcObjectTableGrow(h, tableIndex)
+							emit.gcObjectTableGrow(h, tableIndex, emit.externPersistentRoots(imm.Kind, tableIndex, 0, stackRefs[:h+2])...)
 						}
 					} else {
 						switch imm.Kind {
@@ -1771,7 +2053,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if err = profile.classifier.ClassifyInto(&r, op, &imm); err != nil {
 				return integerSummary{}, err
 			}
-			if state == nil || !state.i31Core && !state.gcTypeSubtypingRuntimeCallCast && !state.gcTypeSubtypingRefTestSingle {
+			primitiveFunctionTest := state != nil && state.publicReferences && state.sourceFunctions != nil && (imm.Kind == wasm.InstrRefTest || imm.Kind == wasm.InstrRefCast)
+			if state == nil || !state.i31Core && !state.gcTypeSubtypingRuntimeCallCast && !state.gcTypeSubtypingRefTestSingle && !primitiveFunctionTest {
 				return integerSummary{}, unsupported("GC instruction outside exact i31 profile")
 			}
 			switch imm.Kind {
@@ -2008,7 +2291,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcStructSetScalar(h, imm.Index, imm.Index2, genericWide)
+					if emit.functionMutation(imm.Kind, imm.Index, imm.Index2) {
+						emit.gcStructSetScalar(h, imm.Index, imm.Index2, genericWide, stackRefs[:h+2])
+					} else {
+						emit.gcStructSetScalar(h, imm.Index, imm.Index2, genericWide)
+					}
 				}
 			case wasm.InstrArrayNew:
 				genericStorage, _, genericArray := referenceTypes.rootedArrayStorage(imm.Index)
@@ -2160,7 +2447,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcArrayInitializeElements(h, imm.Index, imm.Index2)
+					if emit.functionMutation(imm.Kind, imm.Index, imm.Index2) {
+						emit.gcArrayInitializeElements(h, imm.Index, imm.Index2, stackRefs[:h+4])
+					} else {
+						emit.gcArrayInitializeElements(h, imm.Index, imm.Index2)
+					}
 				}
 			case wasm.InstrArrayInitData:
 				_, genericMutable, genericArray := referenceTypes.rootedArrayStorage(imm.Index)
@@ -2215,7 +2506,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
 				}
 				if live && emit != nil {
-					emit.gcArrayFillScalar(h, imm.Index, genericWide)
+					if emit.functionMutation(imm.Kind, imm.Index, imm.Index2) {
+						emit.gcArrayFillScalar(h, imm.Index, genericWide, stackRefs[:h+4])
+					} else {
+						emit.gcArrayFillScalar(h, imm.Index, genericWide)
+					}
 				}
 			case wasm.InstrArrayCopy:
 				destinationStorage, destinationMutable, destinationArray := referenceTypes.rootedArrayStorage(imm.Index)
@@ -2319,9 +2614,17 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				if live && emit != nil {
 					if referenceSet {
-						emit.gcArraySetRef(h, imm.Index)
+						if emit.functionMutation(imm.Kind, imm.Index, imm.Index2) {
+							emit.gcArraySetRef(h, imm.Index, stackRefs[:h+3])
+						} else {
+							emit.gcArraySetRef(h, imm.Index)
+						}
 					} else {
-						emit.gcArraySetScalar(h, imm.Index, genericWide)
+						if emit.functionMutation(imm.Kind, imm.Index, imm.Index2) {
+							emit.gcArraySetScalar(h, imm.Index, genericWide, stackRefs[:h+3])
+						} else {
+							emit.gcArraySetScalar(h, imm.Index, genericWide)
+						}
 					}
 				}
 			case wasm.InstrArrayLen:
@@ -2366,9 +2669,21 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
-				if !state.gcRefTestAbstract {
+				if state.i31Core && !state.gcRootedScalar && !state.gcRefTestAbstract {
+					// Source proof excludes incoming/escaping extern values and
+					// collector objects. Internal null/i31 conversions preserve bits.
+					if _, err = popClass(true); err != nil {
+						return integerSummary{}, err
+					}
+					if err = pushReference(); err != nil {
+						return integerSummary{}, err
+					}
+					break
+				}
+				if !state.gcRefTestAbstract && !state.gcRootedScalar {
 					return integerSummary{}, unsupported("reference conversion outside exact abstract ref.test profile")
 				}
+				before := h
 				if _, err = popClass(true); err != nil {
 					return integerSummary{}, err
 				}
@@ -2381,12 +2696,37 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					if imm.Kind == wasm.InstrExternConvertAny {
 						helper = gcExternConvertAny
 					}
-					emit.gcObjectConversion(h, helper)
+					emit.gcObjectConversion(h, helper, stackRefs[:before])
 				}
 				if err = pushReference(); err != nil {
 					return integerSummary{}, err
 				}
 			case wasm.InstrRefTest:
+				if (state.publicReferences || state.gcRootedScalar) && state.sourceFunctions != nil && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec {
+					target := imm.HeapType.Type().Index
+					if signature, ok := state.sourceFunctions.function(target); ok && primitiveReferenceTargetWithTypes(signature, referenceTypes, false) {
+						if state.sourceFunctions.needsSubtypeHelper(target) {
+							callCount++
+							if callCount > maxDirectCalls {
+								return integerSummary{}, unsupported("function subtype helper count")
+							}
+						}
+						if _, err = popClass(true); err != nil {
+							return integerSummary{}, err
+						}
+						if live && emit != nil {
+							keys, ok := state.sourceFunctions.subtypeKeys(target)
+							if !ok {
+								return integerSummary{}, unsupported("function reference subtype key bound")
+							}
+							emit.functionReferenceTest(h, keys, imm.Subopcode == 21, target)
+						}
+						if err = push(false); err != nil {
+							return integerSummary{}, err
+						}
+						break
+					}
+				}
 				if state.gcTypeSubtypingRefTestSingle {
 					if !imm.HasHeapType || imm.HeapType.Kind() != wasm.HeapTypeIndex || imm.HeapType.Type().Rec {
 						return integerSummary{}, unsupported("bounded function ref.test type relation")
@@ -2432,15 +2772,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 						return integerSummary{}, err
 					}
 					if live && emit != nil {
-						if variant == 6 || variant == 7 {
-							functionIndex := uint32(refTestCount / 2)
-							if variant == 7 {
-								functionIndex &= 1
-							}
-							emit.functionReferenceIdentityTest(h, functionIndex, imm.Subopcode == 21)
-						} else {
-							emit.functionReferenceTest(h, []uint64{state.types[accepted].key}, imm.Subopcode == 21)
+						if state.sourceFunctions == nil {
+							return integerSummary{}, unsupported("function ref.test requires its source type graph")
 						}
+						keys, ok := state.sourceFunctions.subtypeKeys(target)
+						if !ok {
+							return integerSummary{}, unsupported("function ref.test subtype key bound")
+						}
+						emit.functionReferenceTest(h, keys, imm.Subopcode == 21, target)
 					}
 					refTestCount++
 					if err = push(false); err != nil {
@@ -2455,7 +2794,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				genericAbstractHeap := state.gcRootedScalar && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapAbs
 				if genericAbstractHeap {
 					switch imm.HeapType.Abs() {
-					case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
+					case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone, wasm.HeapFunc, wasm.HeapNoFunc, wasm.HeapExtern, wasm.HeapNoExtern:
 					default:
 						genericAbstractHeap = false
 					}
@@ -2518,11 +2857,11 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 					break
 				}
-				if !state.i31RefTest || !imm.HasHeapType || imm.HeapType.Kind() != wasm.HeapAbs {
+				if !state.i31Core || !imm.HasHeapType || imm.HeapType.Kind() != wasm.HeapAbs {
 					return integerSummary{}, unsupported("ref.test outside exact i31 profile")
 				}
 				heap := imm.HeapType.Abs()
-				if heap != wasm.HeapAny && heap != wasm.HeapEq && heap != wasm.HeapI31 && heap != wasm.HeapStruct && heap != wasm.HeapArray {
+				if heap != wasm.HeapAny && heap != wasm.HeapEq && heap != wasm.HeapI31 && heap != wasm.HeapStruct && heap != wasm.HeapArray && heap != wasm.HeapNone {
 					return integerSummary{}, unsupported("ref.test heap outside exact i31 profile")
 				}
 				if _, err = popClass(true); err != nil {
@@ -2537,6 +2876,31 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case wasm.InstrRefCast:
+				if (state.publicReferences || state.gcRootedScalar) && state.sourceFunctions != nil && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec {
+					target := imm.HeapType.Type().Index
+					if signature, ok := state.sourceFunctions.function(target); ok && primitiveReferenceTargetWithTypes(signature, referenceTypes, false) {
+						if state.sourceFunctions.needsSubtypeHelper(target) {
+							callCount++
+							if callCount > maxDirectCalls {
+								return integerSummary{}, unsupported("function subtype helper count")
+							}
+						}
+						if _, err = popClass(true); err != nil {
+							return integerSummary{}, err
+						}
+						if live && emit != nil {
+							keys, ok := state.sourceFunctions.subtypeKeys(target)
+							if !ok {
+								return integerSummary{}, unsupported("function reference subtype key bound")
+							}
+							emit.functionReferenceCast(h, keys, imm.Subopcode == 23, target)
+						}
+						if err = pushReference(); err != nil {
+							return integerSummary{}, err
+						}
+						break
+					}
+				}
 				if state.gcTypeSubtypingRuntimeCallCast && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec && imm.HeapType.Type().Index < 3 {
 					if _, err = popClass(true); err != nil {
 						return integerSummary{}, err
@@ -2544,12 +2908,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					target := imm.HeapType.Type().Index
 					if live && emit != nil {
 						keys := []uint64{state.types[target].key}
-						if !imm.Cast.SourceNullable && !state.gcTypeSubtypingFinalityCallCast {
-							for subtype := target + 1; subtype < 3; subtype++ {
-								keys = append(keys, state.types[subtype].key)
+						if state.sourceFunctions != nil {
+							var ok bool
+							keys, ok = state.sourceFunctions.subtypeKeys(target)
+							if !ok {
+								return integerSummary{}, unsupported("function ref.cast subtype key bound")
 							}
 						}
-						emit.functionReferenceCast(h, keys, imm.Subopcode == 23)
+						emit.functionReferenceCast(h, keys, imm.Subopcode == 23, target)
 					}
 					if err = pushReference(); err != nil {
 						return integerSummary{}, err
@@ -2624,7 +2990,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				if live && emit != nil {
 					emit.Load(5, emit.SpillOffset(h), true)
-					emit.i31Cast(imm.Subopcode == 23)
+					emit.i31CastHeap(imm.Subopcode == 23, imm.HeapType.Abs())
 					emit.Store(emit.SpillOffset(h), 5, true)
 				}
 				if err = pushReference(); err != nil {
@@ -2632,6 +2998,62 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			default:
 				return integerSummary{}, unsupported("unsupported GC instruction in exact i31 profile")
+			}
+		case 0xfe:
+			d, e := shared.DecodeAtomic(&r)
+			if e != nil {
+				return integerSummary{}, e
+			}
+			if state == nil || !state.production {
+				return integerSummary{}, unsupported("atomics require production memory ABI")
+			}
+			if d.Class == shared.AtomicFence {
+				if live && emit != nil {
+					emit.atomicFence()
+				}
+				break
+			}
+			if state.memoryCount != 1 || len(state.memories) != 1 || state.memories[0].Limits.Addr64 || d.MemoryIndex != 0 || uint32(d.Size) != uint32(1)<<d.Align {
+				return integerSummary{}, unsupported("atomic memory32 index/alignment profile")
+			}
+			var operands [3]bool
+			count := 1
+			switch d.Class {
+			case shared.AtomicStore, shared.AtomicRMW:
+				count = 2
+				operands[1] = d.ResultSize == 8
+			case shared.AtomicCmpxchg:
+				count = 3
+				operands[1], operands[2] = d.ResultSize == 8, d.ResultSize == 8
+			case shared.AtomicNotify:
+				count = 2
+			case shared.AtomicWait:
+				count = 3
+				operands[1], operands[2] = d.Size == 8, true
+			}
+			if e = match(operands[:count], nil, false, true); e != nil {
+				return integerSummary{}, e
+			}
+			h -= count
+			contextUsed = true
+			if d.Class == shared.AtomicNotify || d.Class == shared.AtomicWait {
+				if !state.foreignTableCalls {
+					return integerSummary{}, unsupported("atomic wait requires cooperative host bridge")
+				}
+				callCount++
+				if callCount > maxDirectCalls {
+					return integerSummary{}, unsupported("atomic helper call count bound")
+				}
+				if live && emit != nil {
+					emit.atomicWaitCall(d, h, emit.SpillOffset)
+				}
+			} else if live && emit != nil {
+				emit.atomicMemory(d, h, emit.SpillOffset)
+			}
+			if d.Class != shared.AtomicStore {
+				if e = push(d.ResultSize == 8); e != nil {
+					return integerSummary{}, e
+				}
 			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x38, 0x39, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40:
 			if !floating && (op == 0x2a || op == 0x2b || op == 0x38 || op == 0x39) {
@@ -2657,6 +3079,15 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if op == 0x40 {
 					if err = popWidth(address64); err != nil {
 						return integerSummary{}, err
+					}
+				}
+				if op == 0x40 && state.memories[memoryIndex].Shared {
+					if !state.foreignTableCalls {
+						return integerSummary{}, unsupported("shared grow requires cooperative host bridge")
+					}
+					callCount++
+					if callCount > maxDirectCalls {
+						return integerSummary{}, unsupported("shared grow helper call bound")
 					}
 				}
 				if live && emit != nil {
@@ -2983,10 +3414,23 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	if mode.foreignTableCalls && summary.tableBridgeBytes > MaxCodeBytes-(64<<10) {
 		return nil, FunctionInfo{}, nil, unsupported("foreign table bridge admission bound")
 	}
-	var widths [256]bool
+	localCount, err := integerLocalCount(fn, ft, mode.production && mode.foreignTableCalls)
+	if err != nil {
+		return nil, FunctionInfo{}, nil, err
+	}
+	var localWidths [256]bool
+	widths := localWidths[:]
+	if localCount > len(widths) {
+		widths = make([]bool, localCount)
+	}
 	referenceTypes := internalReferenceTypes{}
 	if state != nil {
+		referenceTypes.exception = state.exceptionModule != nil
+		referenceTypes.publicReferences = state.publicReferences
 		referenceTypes.scalar = state.types
+		if state.sourceFunctions != nil {
+			referenceTypes.sourceDirectory = *state.sourceFunctions
+		}
 		referenceTypes.rootedDirectory = state.recTypeDir
 		referenceTypes.declarationExtern = state.declarationExternRefs
 		referenceTypes.executionExtern = state.core3RefIsNullExecution
@@ -3017,7 +3461,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	}
 	n := len(ft.Params)
 	for i, t := range ft.Params {
-		widths[i] = scalarWide(t) || (functionRefs || state.gcRootedScalar || state.i31Core) && t.Kind() == wasm.ValRef
+		widths[i] = scalarWide(t) || (functionRefs || state.gcRootedScalar || state.i31Core || state.exceptionModule != nil) && t.Kind() == wasm.ValRef
 	}
 	for _, run := range fn.Locals.Runs {
 		for i := uint32(0); i < run.Count; i++ {
@@ -3032,7 +3476,28 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	if summary.calls != 0 {
 		f.header = callFrameHeader
 	}
-	frame, err := checkedFrameBytes(f.frameHeader(), n, summary.maxStack)
+	reservedSlots := summary.maxStack
+	if state != nil && state.exceptionModule != nil {
+		if !mode.production || !mode.invocationContext {
+			return nil, FunctionInfo{}, nil, unsupported("EH requires the invocation context ABI")
+		}
+		f.header = callFrameHeader
+		var err error
+		f.exception, err = newExceptionFrame(state.exceptionModule, fn, f.LocalOffset(n))
+		if err != nil {
+			return nil, FunctionInfo{}, nil, err
+		}
+		reservedSlots += f.exception.slots()
+		f.spillPrefix = int32(f.exception.slots() * 8)
+	}
+	collectorModule := mode.tableModuleSource
+	if collectorModule == nil {
+		collectorModule = mode.exceptionModule
+	}
+	if err := f.prepareCollectorOperands(collectorModule, fn, false); err != nil {
+		return nil, FunctionInfo{}, nil, err
+	}
+	frame, err := checkedFrameBytes(f.frameHeader(), n, reservedSlots)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -3046,13 +3511,14 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		}
 		previous := uint32(0)
 		for i, root := range f.gcFrameRoots.Locals {
-			if uint64(root.Index) >= uint64(n) || i != 0 && root.Index <= previous || root.Offset != uint32(f.LocalOffset(int(root.Index))) || uint64(root.Offset) > uint64(frame-8) {
+			if uint64(root.Index) >= uint64(n) || i != 0 && root.Index <= previous || shared.GCFrameRootOffset(root.Offset) != uint32(f.LocalOffset(int(root.Index))) || uint64(shared.GCFrameRootOffset(root.Offset)) > uint64(frame-8) || root.Offset&shared.GCFrameFuncRefRootFlag != 0 && !mode.functionEnvironmentRoots() || root.Offset&shared.GCFrameExternRefRootFlag != 0 && !mode.opaqueExternRoots() {
 				f.gcFrameRoots.Exact = false
 				return nil, FunctionInfo{}, nil, unsupported("invalid GC frame-root local home")
 			}
 			previous = root.Index
 		}
 	}
+	f.initializeExceptionRoots()
 	actual, err := walkInteger(fn, ft, state, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
@@ -3060,8 +3526,11 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	if actual != summary {
 		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: integer admission changed")
 	}
-	if f.gcFrameRoots != nil && (!f.gcFrameRoots.Exact || f.gcFrameRoots.SafepointCount() != f.gcFrameRoots.AllocationMaskCount() || f.gcFrameRoots.CallsiteCount() != f.gcFrameRoots.CallMaskCount()) {
+	if f.gcFrameRoots != nil && (!f.gcFrameRoots.Exact || f.gcFrameRoots.SafepointCount()+int(f.gcDeadAllocations) != f.gcFrameRoots.AllocationMaskCount() || f.gcFrameRoots.CallsiteCount()+int(f.gcDeadCalls) != f.gcFrameRoots.CallMaskCount()) {
 		return nil, FunctionInfo{}, nil, unsupported("incomplete GC frame-root safepoints")
+	}
+	if !finalizeGCFrameRootMasks(f.gcFrameRoots, f.gcDeadAllocations, f.gcDeadCalls) {
+		return nil, FunctionInfo{}, nil, unsupported("invalid dead GC frame-root masks")
 	}
 	f.profileUnknown()
 	exits := []int{f.Jump()}
@@ -3117,12 +3586,12 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	if err := f.finishProfileBody(); err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
-	info := FunctionInfo{Params: len(ft.Params), Results: len(ft.Results), SpillSlots: summary.maxStack, Result64: len(ft.Results) == 1 && (scalarWide(ft.Results[0]) || (functionRefs || state.gcRootedScalar || state.i31Core) && ft.Results[0].Kind() == wasm.ValRef), Fallback: true, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls), mode: mode}
+	info := FunctionInfo{Params: len(ft.Params), Results: len(ft.Results), SpillSlots: summary.maxStack, Result64: len(ft.Results) == 1 && (scalarWide(ft.Results[0]) || (functionRefs || state.gcRootedScalar || state.i31Core || state.exceptionModule != nil) && ft.Results[0].Kind() == wasm.ValRef), Fallback: true, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls), mode: mode}
 	contextOffset := -1
 	if summary.context {
 		contextOffset = -8
 	}
-	code, info, err := frameFunctionCalls(f.a.B, widths[:n], len(ft.Params), summary.maxStack, true, contextOffset, info, f.calls)
+	code, info, err := frameFunctionCalls(f.a.B, widths[:n], len(ft.Params), reservedSlots, true, contextOffset, info, f.calls)
 	if err == nil && info.FrameBytes != f.frameBytes {
 		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: tail frame layout changed")
 	}

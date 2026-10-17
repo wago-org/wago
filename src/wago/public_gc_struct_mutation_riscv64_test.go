@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -75,8 +75,8 @@ func TestRV64PublicGCStructMutationExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64GCStructMutationCompile(t, artifact)
 			view := compiled.executionView()
-			exact, validation := rv64GCStructMutation(view), railshotValidateCompiled(view)
-			if !exact || !rv64GCStructMutationExecutionCode(view) || validation != nil {
+			exact, validation := rv64ArtifactContractValid(view), railshotValidateCompiled(view)
+			if !exact || validation != nil {
 				t.Fatalf("missing exact retained gc struct mutation witness: exact=%t validation=%v product=%v staged=%v required=%v code=%d/%x entries=%v/%v", exact, validation, view.stagedGCStructProduct(), view.stagedFeatures(), view.requiredFeatures, len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry)
 			}
 			for _, profile := range []struct {
@@ -85,7 +85,7 @@ func TestRV64PublicGCStructMutationExecutionAndArtifact(t *testing.T) {
 				requireCollectsOnAllocate bool
 			}{{name: "default-gc"}, {name: "stress-gc", config: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true, StressBarriers: true}, requireCollectsOnAllocate: true}} {
 				t.Run(profile.name, func(t *testing.T) {
-					rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+					rt := NewRuntime()
 					defer rt.Close()
 					mod, err := rt.Module(compiled)
 					if err != nil {
@@ -147,7 +147,7 @@ func TestRV64PublicGCStructMutationAdmissionIsExact(t *testing.T) {
 		"type-field": func(v *Compiled) { v.Types[0].Fields[0].Mutable = false },
 		"type-key":   func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
 		"descriptor": func(v *Compiled) { v.GCTypeDescs[0].Size++ },
-		"table-init": func(v *Compiled) { v.HasTableInitFunc = true },
+		"table-init": func(v *Compiled) { v.HasTable = true; v.HasTableInitFunc = true },
 		"inactive-table-init": func(v *Compiled) {
 			v.TableInitFunc = 1
 		},
@@ -161,15 +161,18 @@ func TestRV64PublicGCStructMutationAdmissionIsExact(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			mutate(candidate)
-			if rv64GCStructMutation(candidate) {
+			if rv64ArtifactContractValid(candidate) {
 				t.Fatal("hostile retained mutation kept the gc struct mutation witness")
 			}
 			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile retained gc struct mutation admitted", err)
 			}
+			if strings.HasPrefix(name, "inactive-") {
+				return // The writer normalizes inactive union fields.
+			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 }

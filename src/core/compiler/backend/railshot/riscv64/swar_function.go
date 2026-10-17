@@ -5,19 +5,30 @@ package riscv64
 import (
 	"encoding/binary"
 	"fmt"
+	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
 
-const maxSWARLocals = 128
+const MaxVectorFunctionValues = 256
+const maxSWARLocals = MaxVectorFunctionValues
+const maxSWAROperands = MaxVectorFunctionValues + 1 // full indirect arguments plus table index
 
 type swarSummary struct {
 	locals, peak, codeBound, calls int
+	spillOffsets                   [maxSWAROperands + 1]int32
 	allocations, importTails       int
 	usesFP, usesTraps              bool
 	usesLoops                      bool
+}
+
+func (s *swarSummary) spillSlots() int {
+	if s.spillOffsets[s.peak] != 0 {
+		return int(s.spillOffsets[s.peak] / 8)
+	}
+	return s.peak * 2
 }
 
 // This private whole-function pilot consumes a frontend-validated function.
@@ -111,6 +122,43 @@ func walkSWARPairsWithReferenceFunctionMode(fn *wasm.Func, ft *wasm.CompType, pr
 }
 
 func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals, gcRootedScalar bool, rootedDirectory internalReferenceTypeDirectory, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithExceptionMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals, gcRootedScalar, rootedDirectory, nil, emit)
+}
+
+func walkSWARPairsWithExceptionMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals, gcRootedScalar bool, rootedDirectory internalReferenceTypeDirectory, exceptionModule *wasm.Module, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithPluginMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals, gcRootedScalar, rootedDirectory, exceptionModule, nil, emit)
+}
+
+func walkSWARPairsWithPluginMode(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals, gcRootedScalar bool, rootedDirectory internalReferenceTypeDirectory, exceptionModule *wasm.Module, plugins *pluginInstructionDirectory, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithTableModule(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals, gcRootedScalar, rootedDirectory, exceptionModule, plugins, nil, emit)
+}
+
+func walkSWARPairsWithTableModule(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals, gcRootedScalar bool, rootedDirectory internalReferenceTypeDirectory, exceptionModule *wasm.Module, plugins *pluginInstructionDirectory, tableModule *wasm.Module, emit *integerEmitter) (swarSummary, error) {
+	return walkSWARPairsWithOwnedExceptions(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals, gcRootedScalar, rootedDirectory, exceptionModule, plugins, tableModule, false, emit)
+}
+
+func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals, gcRootedScalar bool, rootedDirectory internalReferenceTypeDirectory, exceptionModule *wasm.Module, plugins *pluginInstructionDirectory, tableModule *wasm.Module, ownedExceptions bool, emit *integerEmitter, primitiveTypes ...*sourceFunctionTypeDirectory) (swarSummary, error) {
+	primitive := len(primitiveTypes) != 0 && primitiveTypes[0] != nil
+	mutationModule := tableModule
+	if mutationModule == nil {
+		mutationModule = exceptionModule
+	}
+
+	resolveTable := func(index uint32) (wasm.TableType, bool) {
+		if foreignTableCalls && tableModule != nil {
+			return tableModule.TableType(index)
+		}
+		if index == 0 && table != nil {
+			return *table, true
+		}
+		return wasm.TableType{}, false
+	}
+	tableClass := func(typ wasm.TableType) swarClass {
+		if typ.Limits.Addr64 {
+			return swarI64
+		}
+		return swarI32
+	}
 	if dynamicTailCalls && (!importTailCalls || !foreignTableCalls || !localTailCalls) {
 		return swarSummary{}, unsupported("private dynamic tail walker contract")
 	}
@@ -122,33 +170,39 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 	if elementCount < 0 || elementCount > MaxOwnedElementSegments || elementCount != 0 && table == nil && !foreignTableCalls {
 		return swarSummary{}, unsupported("SWAR owned element directory bound/table")
 	}
-	if typeKeys != nil && (table == nil || len(typeKeys) != len(types) || len(types) == 0 || len(functions) == 0) {
+	if typeKeys != nil && (table == nil && !gcRootedScalar || len(typeKeys) != len(types) || len(types) == 0 || len(functions) == 0) {
 		return swarSummary{}, unsupported("SWAR indirect type identity directory/owner")
 	}
-	if err := swarOwnedTableType(table); err != nil {
-		return swarSummary{}, err
+	if !foreignTableCalls {
+		if err := swarOwnedTableType(table); err != nil {
+			return swarSummary{}, err
+		}
 	}
-	privateRefs := table != nil || foreignTableCalls || gcRootedScalar
+	privateRefs := table != nil || foreignTableCalls || gcRootedScalar || exceptionModule != nil || plugins.hasCustom()
 	if referenceFunctions && !privateRefs {
 		return swarSummary{}, unsupported("private reference functions require same-image direct calls")
 	}
 	publicReferenceCarriers := parkedMutableReferenceGlobals && len(types) != 0 && publicReferenceVectorCarrierTarget(types[0])
-	referenceTypes := internalReferenceTypes{swar: types, rootedDirectory: rootedDirectory, gcRootedScalar: gcRootedScalar, publicReferenceCarriers: publicReferenceCarriers}
+	publicPrimitiveGlobals := foreignTableCalls && tableModule != nil && admitPublicPrimitiveReferenceModule(tableModule, true)
+	referenceTypes := internalReferenceTypes{sourceDirectory: sourceFunctionTypeDirectory{module: tableModule}, exception: exceptionModule != nil, publicReferences: referenceFunctions || publicPrimitiveGlobals, swar: types, rootedDirectory: rootedDirectory, gcRootedScalar: gcRootedScalar, publicReferenceCarriers: publicReferenceCarriers}
 	functionClass := func(typ wasm.ValType) swarClass {
-		if referenceFunctions || gcRootedScalar {
+		if referenceFunctions || gcRootedScalar || exceptionModule != nil {
 			return swarControlClass(typ, referenceTypes, true, referenceCalls)
+		}
+		if plugins.hasCustom() && (wasm.EqualValType(typ, wasm.FuncRef) || wasm.EqualValType(typ, wasm.ExternRef)) {
+			return swarFuncRef
 		}
 		return swarClassOf(typ)
 	}
 	globalReference := func(global wasm.GlobalType) bool {
-		return foreignTableCalls && (!global.Mutable || localMutableReferences) && internalFunctionReferenceWithTypes(global.Type, referenceCalls, referenceTypes)
+		return gcRootedScalar && wasm.ExternReferenceType(global.Type) || foreignTableCalls && (!global.Mutable || localMutableReferences || publicPrimitiveGlobals) && internalFunctionReferenceWithTypes(global.Type, referenceCalls, referenceTypes)
 	}
 
 	descriptorRefs := privateRefs
 	if dataCount < 0 || dataCount > 256 {
 		return swarSummary{}, unsupported("SWAR passive data directory bound")
 	}
-	if len(globals) > 256 {
+	if len(globals) > productionGlobalLimit(tableModule != nil && foreignTableCalls) {
 		return swarSummary{}, unsupported("SWAR global directory bound")
 	}
 	for _, global := range globals {
@@ -160,7 +214,12 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 		return swarSummary{}, unsupported("SWAR function directory bound")
 	}
 	for i, typ := range functions {
-		if referenceFunctions || gcRootedScalar {
+		if plugins != nil {
+			if _, custom := plugins.instructions[uint32(i)]; custom {
+				continue
+			}
+		}
+		if referenceFunctions || gcRootedScalar || exceptionModule != nil {
 			if err := admitSWARControlSignature(typ, referenceTypes, true, referenceCalls); err != nil {
 				return swarSummary{}, err
 			}
@@ -168,7 +227,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			return swarSummary{}, err
 		}
 		if i < importedFunctions {
-			if err := swarImportSignature(typ); err != nil {
+			if err := swarImportSignature(typ); err != nil && !((gcRootedScalar || publicPrimitiveGlobals) && admitSWARControlSignature(typ, referenceTypes, true, referenceCalls) == nil) {
 				return swarSummary{}, err
 			}
 		}
@@ -177,10 +236,10 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 		return swarSummary{}, unsupported("SWAR control type bound")
 	}
 	for _, typ := range types {
-		if typ == nil && gcRootedScalar {
+		if typ == nil && (gcRootedScalar || primitive) {
 			continue
 		}
-		if err := admitSWARControlSignature(typ, referenceTypes, privateRefs, privateRefs && referenceCalls); err != nil {
+		if err := admitSWARControlSignature(typ, referenceTypes, privateRefs, privateRefs && referenceCalls); err != nil && !plugins.physicalSignature(typ) {
 			return swarSummary{}, err
 		}
 	}
@@ -243,31 +302,70 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 	}
 	left, right, mask := swarPair{enc.X5, enc.X6}, swarPair{enc.X7, enc.X9}, swarPair{enc.X10, enc.X11}
 	local := func(i int) int32 { return int32(header + 16*i) }
-	spill := func(i int) int32 { return int32(header + 16*nlocals + 16*i) }
-	var stackClasses [256]swarClass
-	hiddenRefs := func(base int) []bool {
-		if !gcRootedScalar || base == 0 {
+	ehBytes := 0
+	if exceptionModule != nil {
+		classifier := wasm.NewModuleInstructionClassifier(exceptionModule, true)
+		shape, err := shared.ScanEHFrameShape(&classifier, fn.BodyBytes)
+		if err != nil {
+			return swarSummary{}, err
+		}
+		ehBytes = shape.TryRecords*exceptionRecordBytes + shape.RootRecords*exceptionRootBytes
+		if ownedExceptions {
+			allocations += shape.RootRecords
+		}
+	}
+	var homeWidths [maxSWAROperands]int32
+	var physicalOffsets []int32
+	if emit != nil {
+		physicalOffsets = emit.customSpillOffsets
+	}
+	spillBytes := func(i int) int32 {
+		if physicalOffsets != nil {
+			return physicalOffsets[i]
+		}
+		return int32(16 * i)
+	}
+	spill := func(i int) int32 { return int32(header+16*nlocals+ehBytes) + spillBytes(i) }
+	helperBase := func(i int) int { return int(spillBytes(i) / 8) }
+	var stackClasses [maxSWAROperands]swarClass
+	liveRefs := func(base int) []bool {
+		if base == 0 {
 			return nil
 		}
-		roots := make([]bool, base*2)
+		roots := make([]bool, helperBase(base))
 		for i := 0; i < base; i++ {
-			roots[i*2] = stackClasses[i] == swarFuncRef
+			roots[helperBase(i)] = stackClasses[i] == swarFuncRef
 		}
 		return roots
 	}
+	hiddenRefs := func(base int) []bool {
+		if !gcRootedScalar {
+			return nil
+		}
+		return liveRefs(base)
+	}
 	var flow swarFlow
+	recordHome := func(index int, class swarClass) {
+		if custom, ok := plugins.customType(class); ok {
+			homeWidths[index] = max(homeWidths[index], custom.Size())
+		}
+	}
 	push := func(class swarClass) error {
-		if h >= 256 {
+		if h >= maxSWAROperands {
 			return unsupported("SWAR operand bound")
 		}
 		stackClasses[h] = class
+		if flow.live {
+			recordHome(h, class)
+		}
 		h++
 		if flow.live {
 			peak = max(peak, h)
 		}
 		return nil
 	}
-	flow = swarFlow{depth: 1, live: true, h: &h, peak: &peak, budget: &budget, classes: &stackClasses, spill: spill, reserve: reserve, emit: emit, types: types, referenceTypes: referenceTypes, privateRefs: privateRefs, typedRefs: referenceCalls}
+	flow = swarFlow{recordHome: recordHome, helperBase: helperBase, hiddenRefs: liveRefs, ownedExceptions: ownedExceptions, plugins: plugins, depth: 1, live: true, h: &h, peak: &peak, budget: &budget, classes: &stackClasses, spill: spill, reserve: reserve, emit: emit, types: types, referenceTypes: referenceTypes, privateRefs: privateRefs, typedRefs: referenceCalls, exceptionModule: exceptionModule}
+	flow.frames = flow.frameStorage[:]
 	flow.frames[0] = swarControl{kind: 0xff, entry: true}
 	for _, typ := range ft.Results {
 		flow.frames[0].results = append(flow.frames[0].results, functionClass(typ))
@@ -322,6 +420,16 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				return swarSummary{}, err
 			}
 		}
+		if op != 0xfb && (gcRootedScalar || ownedExceptions) && (op == 0x24 || op == 0x26 || op == 0xfc) {
+			probe := r
+			var imm wasm.InstructionImmediate
+			if err := profile.classifier.ClassifyInto(&probe, op, &imm); err != nil {
+				return swarSummary{}, err
+			}
+			if wasm.ExternPersistentMutation(mutationModule, imm.Kind, imm.Index, imm.Index2) {
+				allocations++
+			}
+		}
 		switch op {
 		case 0x01: // nop
 		case 0xd5, 0xd6:
@@ -335,7 +443,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			if err := flow.referenceBranch(label, op == 0xd6); err != nil {
 				return swarSummary{}, err
 			}
-		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f:
+		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x08, 0x0a, 0x1f, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f:
 			done, trap, err := flow.instruction(op, &r)
 			if err != nil {
 				return swarSummary{}, err
@@ -361,15 +469,27 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 						emit.NormalizeI32(5)
 					}
 					emit.a.Ld(enc.Scratch1, enc.SP, 8)
-					emit.a.Sd(left.low, enc.Scratch1, out)
+					baseRegister, byteOffset := emit.addressAt(enc.Scratch1, out, enc.Scratch0)
+					emit.a.Sd(left.low, baseRegister, byteOffset)
 					out += 8
 					if stackClasses[j] == swarV128 {
-						emit.a.Sd(left.high, enc.Scratch1, out)
+						baseRegister, byteOffset := emit.addressAt(enc.Scratch1, out, enc.Scratch0)
+						emit.a.Sd(left.high, baseRegister, byteOffset)
 						out += 8
 					}
 				}
 			}
-			return swarSummary{locals: nlocals, peak: peak, codeBound: codeBound, calls: calls, allocations: allocations, importTails: importTails, usesFP: usesFP, usesTraps: usesTraps, usesLoops: flow.usesLoops}, nil
+			summary := swarSummary{locals: nlocals, peak: peak, codeBound: codeBound, calls: calls, allocations: allocations, importTails: importTails, usesFP: usesFP, usesTraps: usesTraps, usesLoops: flow.usesLoops}
+			if plugins.hasCustom() {
+				for i := 0; i < peak; i++ {
+					width := max(int32(16), homeWidths[i])
+					if int64(summary.spillOffsets[i])+int64(width) > MaxFrameBytes {
+						return swarSummary{}, unsupported("SWAR custom frame bound")
+					}
+					summary.spillOffsets[i+1] = summary.spillOffsets[i] + width
+				}
+			}
+			return summary, nil
 		case 0x10:
 			index, err := r.U32()
 			if err != nil {
@@ -392,9 +512,17 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			if err := reserve(128*(len(sig.Params)+len(sig.Results)) + callBound); err != nil {
 				return swarSummary{}, err
 			}
+			var customCall bool
+			var custom railcore.CustomInstruction
+			if plugins != nil {
+				custom, customCall = plugins.instructions[index]
+			}
 			params := make([]swarClass, len(sig.Params))
 			for i, typ := range sig.Params {
 				params[i] = functionClass(typ)
+				if customCall && len(custom.CustomInputs) != 0 && !custom.CustomInputs[i].IsZero() {
+					params[i] = plugins.classes[custom.CustomInputs[i]]
+				}
 			}
 			if err := flow.prepareDead(params...); err != nil {
 				return swarSummary{}, err
@@ -405,6 +533,9 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			}
 			for i, class := range params {
 				if stackClasses[base+i] != class {
+					if stackClasses[base+i] >= swarCustomBase || class >= swarCustomBase {
+						return swarSummary{}, fmt.Errorf("rv64: incompatible custom type at input %d", i)
+					}
 					return swarSummary{}, unsupported("SWAR direct call carrier class")
 				}
 			}
@@ -420,7 +551,11 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			}
 			h = base
 			for _, typ := range sig.Results {
-				if err := push(functionClass(typ)); err != nil {
+				class := functionClass(typ)
+				if customCall && custom.CustomOutput != nil {
+					class = plugins.classes[*custom.CustomOutput]
+				}
+				if err := push(class); err != nil {
 					return swarSummary{}, err
 				}
 			}
@@ -441,7 +576,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 			}
 			if referenceFunctions || gcRootedScalar {
-				if err := admitReferenceTailResults(ft, sig); err != nil {
+				if err := admitReferenceTailResults(ft, sig, primitive || gcRootedScalar); err != nil {
 					return swarSummary{}, err
 				}
 			} else if err := admitSWARLocalTailSignature(ft, sig); err != nil {
@@ -473,6 +608,9 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 			}
 			if emit != nil && (!importedTail || flow.live) {
+				if flow.live {
+					emit.restoreExceptionHandlers(0)
+				}
 				if importedTail {
 					emit.importTailCall(index, sig, base, spill, 16)
 				} else {
@@ -496,13 +634,14 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			}
 			sig := types[typeIndex]
 			referenceCarrierCall := publicReferenceCarriers && typeIndex == 0 && publicReferenceVectorCarrierTarget(sig) ||
-				!tail && gcRootedScalar && referenceCallCarriesCollector(sig)
+				gcRootedScalar && referenceCallCarriesCollector(sig) ||
+				primitive && primitiveReferenceTargetWithTypes(sig, referenceTypes, true)
 			if tail {
-				if referenceFunctions {
+				if referenceFunctions || gcRootedScalar {
 					if err := swarCallSignature(sig); err != nil && !referenceCarrierCall {
 						return swarSummary{}, err
 					}
-					if err := admitReferenceTailResults(ft, sig); err != nil {
+					if err := admitReferenceTailResults(ft, sig, primitive || gcRootedScalar); err != nil {
 						return swarSummary{}, err
 					}
 				} else if err := admitSWARLocalTailSignature(ft, sig); err != nil {
@@ -549,9 +688,14 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			usesTraps = true
 			if emit != nil && flow.live {
 				if tail {
+					emit.restoreExceptionHandlers(0)
 					emit.dynamicReferenceTailCall(typeIndex, sig, base, h-1, spill, 16)
 				} else {
-					emit.referenceCall(sig, wasm.StructuralFuncTypeKey(sig), base, h-1, spill, 16, hiddenRefs(base))
+					key := wasm.StructuralFuncTypeKey(sig)
+					if gcRootedScalar && uint64(typeIndex) < uint64(len(typeKeys)) {
+						key = typeKeys[typeIndex]
+					}
+					emit.referenceCall(sig, key, base, h-1, spill, 16, hiddenRefs(base), typeIndex)
 				}
 			}
 			if tail {
@@ -576,11 +720,12 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			if err != nil {
 				return swarSummary{}, err
 			}
-			if table == nil || typeKeys == nil || uint64(typeIndex) >= uint64(len(types)) || tableIndex != 0 {
+			resolvedTable, tableOK := resolveTable(tableIndex)
+			if !tableOK || typeKeys == nil || uint64(typeIndex) >= uint64(len(types)) {
 				return swarSummary{}, unsupported("SWAR indirect signature/table identity")
 			}
 			sig := types[typeIndex]
-			if err := swarCallSignature(sig); err != nil {
+			if err := swarCallSignature(sig); err != nil && !(gcRootedScalar && referenceCallCarriesCollector(sig)) && !(primitive && primitiveReferenceTargetWithTypes(sig, referenceTypes, true)) {
 				return swarSummary{}, err
 			}
 			tail := op == 0x13
@@ -588,8 +733,8 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				if !localTailCalls || !dynamicTailCalls && (foreignTableCalls || importedFunctions != 0) {
 					return swarSummary{}, unsupported("SWAR owned defined indirect tail profile required")
 				}
-				if referenceFunctions {
-					err = admitReferenceTailResults(ft, sig)
+				if referenceFunctions || gcRootedScalar {
+					err = admitReferenceTailResults(ft, sig, primitive || gcRootedScalar)
 				} else {
 					err = admitSWARLocalTailSignature(ft, sig)
 				}
@@ -620,9 +765,9 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			var operandStorage [maxSWARLocals + 1]swarClass
 			operands := operandStorage[:len(sig.Params)+1]
 			for i, typ := range sig.Params {
-				operands[i] = swarClassOf(typ)
+				operands[i] = functionClass(typ)
 			}
-			operands[len(sig.Params)] = swarI32
+			operands[len(sig.Params)] = tableClass(resolvedTable)
 			if err := flow.prepareDead(operands...); err != nil {
 				return swarSummary{}, err
 			}
@@ -639,12 +784,12 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			if emit != nil {
 				if tail {
 					if dynamicTailCalls && flow.live {
-						emit.dynamicIndirectTailCall(typeIndex, sig, typeKeys[typeIndex], base, h-1, false, 0, spill, 16)
+						emit.dynamicIndirectTailCall(typeIndex, sig, typeKeys[typeIndex], base, h-1, resolvedTable.Limits.Addr64, tableIndex, spill, 16)
 					} else if !dynamicTailCalls {
 						emit.localIndirectTailCall(sig, typeKeys[typeIndex], base, h-1, spill)
 					}
 				} else {
-					emit.swarIndirectCall(sig, typeKeys[typeIndex], base, h-1, spill, hiddenRefs(base))
+					emit.swarIndirectCallAt(sig, typeKeys[typeIndex], base, h-1, resolvedTable.Limits.Addr64, tableIndex, spill, hiddenRefs(base), typeIndex)
 				}
 			}
 			if tail {
@@ -685,7 +830,10 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 					return swarSummary{}, unsupported("SWAR global write carrier/underflow")
 				}
 				h--
-				parkedGlobalStore := reference && parkedMutableReferenceGlobals && index == 0
+				functionGlobal := global.Type.Kind() == wasm.ValRef && (global.Type.Ref().Heap().Kind() == wasm.HeapTypeIndex || global.Type.Ref().Heap() == wasm.AbsHeap(wasm.HeapFunc) || global.Type.Ref().Heap() == wasm.AbsHeap(wasm.HeapNoFunc))
+				indexedGlobalStore := reference && publicPrimitiveGlobals && functionGlobal
+				externGlobalStore := gcRootedScalar && wasm.ExternReferenceType(global.Type)
+				parkedGlobalStore := externGlobalStore || indexedGlobalStore || reference && parkedMutableReferenceGlobals && index == 0
 				if parkedGlobalStore {
 					calls++
 					if calls > maxDirectCalls {
@@ -697,7 +845,13 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				if emit != nil && flow.live {
 					if parkedGlobalStore {
-						emit.storeGuestGlobalAt(spill(h))
+						if externGlobalStore {
+							emit.storeExternGlobal(spill(h), index, emit.externPersistentRoots(wasm.InstrGlobalSet, index, 0, hiddenRefs(h+1))...)
+						} else if indexedGlobalStore {
+							emit.storeGuestGlobalIndexedAt(spill(h), index)
+						} else {
+							emit.storeGuestGlobalAt(spill(h))
+						}
 						continue
 					}
 					emit.Load(5, spill(h), !class.narrow())
@@ -748,6 +902,15 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 						return swarSummary{}, unsupported("SWAR memory grow delta carrier")
 					}
 					h--
+				}
+				if op == 0x40 && profile.shared {
+					if !foreignTableCalls {
+						return swarSummary{}, unsupported("SWAR shared grow requires cooperative bridge")
+					}
+					calls++
+					if calls > maxDirectCalls {
+						return swarSummary{}, unsupported("SWAR shared grow helper count")
+					}
 				}
 				if err := push(addressClass); err != nil {
 					return swarSummary{}, err
@@ -903,7 +1066,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 					return swarSummary{}, err
 				}
 				class = swarByteClass(typ)
-				if privateRefs && typ == 0x70 {
+				if privateRefs && (typ == 0x70 || plugins.hasCustom() && typ == 0x6f) {
 					class = swarFuncRef
 				}
 				if class == swarInvalid {
@@ -933,8 +1096,27 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 					return swarSummary{}, unsupported("SWAR untyped select carrier")
 				}
 			}
+			if op == 0x1c && stackClasses[h-3] >= swarCustomBase && plugins.physicalClass(stackClasses[h-3]) == class {
+				class = stackClasses[h-3]
+			}
 			if stackClasses[h-3] != class || stackClasses[h-2] != class {
 				return swarSummary{}, unsupported("SWAR select carrier class/underflow")
+			}
+			if custom, ok := plugins.customType(class); ok {
+				if emit != nil {
+					emit.Load(28, spill(h-1), false)
+					keep := emit.a.BranchLong(enc.NE, enc.X28, enc.Zero)
+					for cell := int32(0); cell < custom.Size(); cell += 8 {
+						emit.Load(5, spill(h-2)+cell, true)
+						emit.Store(spill(h-3)+cell, 5, true)
+					}
+					if err := emit.Patch(keep, emit.Position()); err != nil {
+						return swarSummary{}, err
+					}
+				}
+				stackClasses[h-3] = class
+				h -= 2
+				continue
 			}
 			if emit != nil {
 				emit.Load(28, spill(h-1), false)
@@ -964,8 +1146,10 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				if err != nil {
 					return swarSummary{}, err
 				}
-				genericRootedNull := gcRootedScalar && (heap >= 0 && (referenceTypes.rootedStruct(uint32(heap)) || referenceTypes.rootedArray(uint32(heap))) || rootedAbstractObjectHeapS33(heap) || heap == -20)
-				if heap != -16 && !genericRootedNull && (!(dynamicTailCalls && !referenceFunctions || referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
+				genericRootedNull := gcRootedScalar && (heap >= 0 && (referenceTypes.rootedStruct(uint32(heap)) || referenceTypes.rootedArray(uint32(heap)) || referenceTypes.function(uint32(heap))) || rootedAbstractObjectHeapS33(heap) || heap == -20 || heap == -16 || heap == -13 || heap == -17 || heap == -14)
+				exceptionNull := exceptionModule != nil && (heap == -23 || heap == -12 || heap == -16 || heap == -13 || heap == -17 || heap == -14 || heap >= 0 && referenceTypes.function(uint32(heap)))
+				primitiveNull := foreignTableCalls && (rootedAbstractObjectHeapS33(heap) || heap == -20) || publicPrimitiveGlobals && (heap == -13 || heap == -17 || heap == -14)
+				if heap != -16 && !primitiveNull && !genericRootedNull && !exceptionNull && (!(dynamicTailCalls && !referenceFunctions || referenceCalls) || heap < 0 || !referenceTypes.function(uint32(heap))) {
 					return swarSummary{}, unsupported("SWAR private nullable abstract funcref only")
 				}
 				if err := push(swarFuncRef); err != nil {
@@ -1048,11 +1232,12 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				if err != nil {
 					return swarSummary{}, err
 				}
-				if table == nil || index != 0 {
+				resolvedTable, tableOK := resolveTable(index)
+				if !tableOK {
 					return swarSummary{}, unsupported("SWAR owned table index")
 				}
 				arity := 1
-				operands := [2]swarClass{swarI32, swarFuncRef}
+				operands := [2]swarClass{tableClass(resolvedTable), swarFuncRef}
 				if op == 0x26 {
 					arity = 2
 				}
@@ -1060,22 +1245,42 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 					return swarSummary{}, err
 				}
 				base := h - arity
-				if base < flow.floor() || stackClasses[base] != swarI32 || arity == 2 && stackClasses[base+1] != swarFuncRef {
+				if base < flow.floor() || stackClasses[base] != tableClass(resolvedTable) || arity == 2 && stackClasses[base+1] != swarFuncRef {
 					return swarSummary{}, unsupported("SWAR table operand class/underflow")
 				}
 				usesTraps = true
-				if emit != nil {
-					if arity == 2 {
-						emit.Load(28, spill(base+1), true)
+				collectorTable := gcRootedScalar && (rv64CollectorFrameRefType(tableModule, wasm.RefVal(resolvedTable.Ref)) || wasm.ExternReferenceType(wasm.RefVal(resolvedTable.Ref))) || ownedExceptions && exceptionReferenceType(wasm.RefVal(resolvedTable.Ref))
+				if arity == 2 && collectorTable {
+					calls++
+					if calls > maxDirectCalls {
+						return swarSummary{}, unsupported("SWAR GC table store helper count")
 					}
-					emit.Load(5, spill(base), false)
-					emit.privateTableEntry(0, false)
-					if arity == 1 {
-						emit.a.Ld(enc.X5, enc.X6, 24)
-						emit.Store(spill(base), 5, true)
-						emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+				if emit != nil {
+					if arity == 2 && collectorTable {
+						emit.gcObjectTableSetAt(spill(base), spill(base+1), index, emit.externPersistentRoots(wasm.InstrTableSet, index, 0, hiddenRefs(h))...)
 					} else {
-						emit.storePrivateReference()
+						if arity == 2 {
+							emit.Load(28, spill(base+1), true)
+						}
+						emit.Load(5, spill(base), resolvedTable.Limits.Addr64)
+						compact := collectorTable || wasm.EqualValType(wasm.RefVal(resolvedTable.Ref), wasm.ExternRef)
+						emit.privateTableEntry(index, compact)
+						if arity == 1 {
+							offset := int32(24)
+							if compact {
+								offset = 0
+							}
+							emit.a.Ld(enc.X5, enc.X6, offset)
+							emit.Store(spill(base), 5, true)
+							emit.Store(spill(base)+8, uint8(enc.Zero), true)
+						} else {
+							if compact {
+								emit.a.Sd(enc.X28, enc.X6, 0)
+							} else {
+								emit.storePrivateReference()
+							}
+						}
 					}
 				}
 				h = base
@@ -1103,8 +1308,19 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 					if err := reserve(512); err != nil {
 						return swarSummary{}, err
 					}
+					collectorElement := gcRootedScalar && tableModule != nil && uint64(index) < uint64(len(tableModule.Elements)) && tableModule.Elements[index].Kind.Kind == wasm.ElemTypedExprs && (rv64CollectorFrameRefType(tableModule, wasm.RefVal(tableModule.Elements[index].Kind.Ref)) || wasm.ExternReferenceType(wasm.RefVal(tableModule.Elements[index].Kind.Ref)))
+					if collectorElement {
+						calls++
+						if calls > maxDirectCalls {
+							return swarSummary{}, unsupported("SWAR elem.drop helper count")
+						}
+					}
 					if emit != nil {
-						emit.privateElementDrop(index)
+						if collectorElement {
+							emit.gcObjectElementDrop(index)
+						} else {
+							emit.privateElementDrop(index)
+						}
 					}
 					continue
 				}
@@ -1112,13 +1328,14 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				if err != nil {
 					return swarSummary{}, err
 				}
-				if tableIndex != 0 {
+				resolvedTable, tableOK := resolveTable(tableIndex)
+				if !tableOK {
 					return swarSummary{}, unsupported("SWAR table.init table index")
 				}
 				if err := reserve(1024); err != nil {
 					return swarSummary{}, err
 				}
-				if err := flow.prepareRepeatedDead(swarI32, 3); err != nil {
+				if err := flow.prepareDead(tableClass(resolvedTable), swarI32, swarI32); err != nil {
 					return swarSummary{}, err
 				}
 				base := h - 3
@@ -1126,48 +1343,77 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 					return swarSummary{}, unsupported("SWAR table.init operand underflow")
 				}
 				for i := 0; i < 3; i++ {
-					if stackClasses[base+i] != swarI32 {
+					want := swarI32
+					if i == 0 {
+						want = tableClass(resolvedTable)
+					}
+					if stackClasses[base+i] != want {
 						return swarSummary{}, unsupported("SWAR table.init carrier class")
 					}
 				}
 				flow.usesLoops = true
+				collectorTable := gcRootedScalar && (rv64CollectorFrameRefType(tableModule, wasm.RefVal(resolvedTable.Ref)) || wasm.ExternReferenceType(wasm.RefVal(resolvedTable.Ref)))
+				if collectorTable {
+					calls++
+					if calls > maxDirectCalls {
+						return swarSummary{}, unsupported("SWAR table.init helper count")
+					}
+				}
 				if emit != nil {
-					emit.Load(6, spill(base), false)
-					emit.Load(7, spill(base+1), false)
-					emit.Load(5, spill(base+2), false)
-					emit.privateTableInit(index)
+					if collectorTable {
+						emit.swarCompactGCArguments(base, 3, spill)
+						emit.gcObjectTableInit(helperBase(base), index, tableIndex, emit.externPersistentRoots(wasm.InstrTableInit, index, tableIndex, hiddenRefs(h))...)
+					} else {
+						emit.Load(6, spill(base), resolvedTable.Limits.Addr64)
+						emit.Load(7, spill(base+1), false)
+						emit.Load(5, spill(base+2), false)
+						emit.privateTableInitAt(index, tableIndex, wasm.EqualValType(wasm.RefVal(resolvedTable.Ref), wasm.ExternRef))
+					}
 				}
 				h = base
 				continue
 			}
 			if sub >= 14 && sub <= 17 {
-				if table == nil || sub == 15 && !borrowedTable && !table.Limits.HasMax && table.Limits.Min > MaxOwnedTableEntries/2 {
+				index, err := r.U32()
+				if err != nil {
+					return swarSummary{}, err
+				}
+				resolvedTable, tableOK := resolveTable(index)
+				if !tableOK || sub == 15 && !foreignTableCalls && !borrowedTable && !resolvedTable.Limits.HasMax && resolvedTable.Limits.Min > MaxOwnedTableEntries/2 {
 					return swarSummary{}, unsupported("SWAR owned table mutation/reserve")
 				}
-				indices := 1
+				sourceIndex, sourceTable := index, resolvedTable
 				if sub == 14 {
-					indices = 2
-				}
-				for i := 0; i < indices; i++ {
-					index, err := r.U32()
+					sourceIndex, err = r.U32()
 					if err != nil {
 						return swarSummary{}, err
 					}
-					if index != 0 {
+					sourceTable, tableOK = resolveTable(sourceIndex)
+					if !tableOK {
 						return swarSummary{}, unsupported("SWAR bulk table index")
 					}
 				}
 				if err := reserve(1024); err != nil {
 					return swarSummary{}, err
 				}
-				var operands []swarClass
+				wide, sourceWide := resolvedTable.Limits.Addr64, sourceTable.Limits.Addr64
+				compact := wasm.EqualValType(wasm.RefVal(resolvedTable.Ref), wasm.ExternRef)
+				if compact != wasm.EqualValType(wasm.RefVal(sourceTable.Ref), wasm.ExternRef) {
+					return swarSummary{}, unsupported("SWAR copy reference layout")
+				}
+				countClass := tableClass(resolvedTable)
+				if sub == 14 && !sourceWide {
+					countClass = swarI32
+				}
+				var operandStorage [3]swarClass
+				operands := operandStorage[:0]
 				switch sub {
 				case 14:
-					operands = []swarClass{swarI32, swarI32, swarI32}
+					operands = append(operands, tableClass(resolvedTable), tableClass(sourceTable), countClass)
 				case 15:
-					operands = []swarClass{swarFuncRef, swarI32}
+					operands = append(operands, swarFuncRef, countClass)
 				case 17:
-					operands = []swarClass{swarI32, swarFuncRef, swarI32}
+					operands = append(operands, tableClass(resolvedTable), swarFuncRef, countClass)
 				}
 				if err := flow.prepareDead(operands...); err != nil {
 					return swarSummary{}, err
@@ -1183,23 +1429,53 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				usesTraps = true
 				flow.usesLoops = flow.usesLoops || sub != 16
+				collectorTable := gcRootedScalar && (rv64CollectorFrameRefType(tableModule, wasm.RefVal(resolvedTable.Ref)) || wasm.ExternReferenceType(wasm.RefVal(resolvedTable.Ref)))
+				if collectorTable && sub != 16 {
+					calls++
+					if calls > maxDirectCalls {
+						return swarSummary{}, unsupported("SWAR bulk table helper count")
+					}
+				}
+				if collectorTable && sub != 16 {
+					if emit != nil {
+						emit.swarCompactGCArguments(base, len(operands), spill)
+						switch sub {
+						case 14:
+							emit.gcObjectTableCopy(helperBase(base), index, sourceIndex, emit.externPersistentRoots(wasm.InstrTableCopy, index, sourceIndex, hiddenRefs(h))...)
+						case 15:
+							emit.gcObjectTableGrow(helperBase(base), index, emit.externPersistentRoots(wasm.InstrTableGrow, index, 0, hiddenRefs(h))...)
+						case 17:
+							emit.gcObjectTableFill(helperBase(base), index, emit.externPersistentRoots(wasm.InstrTableFill, index, 0, hiddenRefs(h))...)
+						}
+						if sub == 15 {
+							emit.Store(spill(base)+8, uint8(enc.Zero), true)
+						}
+					}
+					h = base
+					if sub == 15 {
+						if err := push(tableClass(resolvedTable)); err != nil {
+							return swarSummary{}, err
+						}
+					}
+					continue
+				}
 				if emit != nil {
 					switch sub {
 					case 14, 17:
-						emit.Load(6, spill(base), false)
-						emit.Load(7, spill(base+1), sub == 17)
-						emit.Load(5, spill(base+2), false)
+						emit.Load(6, spill(base), wide)
+						emit.Load(7, spill(base+1), sub == 17 || sourceWide)
+						emit.Load(5, spill(base+2), countClass == swarI64)
 						if sub == 14 {
-							emit.privateTableCopy()
+							emit.privateTableCopyBetween(index, sourceIndex, compact)
 						} else {
-							emit.privateTableFill()
+							emit.privateTableFillAt(index, compact)
 						}
 					case 15:
 						emit.Load(7, spill(base), true)
-						emit.Load(5, spill(base+1), false)
-						emit.privateTableGrowAt(spill(base+1), false, 0, false)
+						emit.Load(5, spill(base+1), wide)
+						emit.privateTableGrowAt(spill(base+1), wide, index, compact)
 					case 16:
-						emit.a.Ld(enc.X6, enc.X25, -80)
+						emit.privateTableDescriptor(enc.X6, index)
 						emit.trap(trapTableBounds, emit.a.BranchLong(enc.EQ, enc.X6, enc.Zero))
 						emit.a.Lwu(enc.X5, enc.X6, 0)
 					}
@@ -1210,7 +1486,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				h = base
 				if sub == 15 || sub == 16 {
-					if err := push(swarI32); err != nil {
+					if err := push(tableClass(resolvedTable)); err != nil {
 						return swarSummary{}, err
 					}
 				}
@@ -1319,9 +1595,13 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 			if err := profile.classifier.ClassifyInto(&r, op, &imm); err != nil {
 				return swarSummary{}, err
 			}
-			if !gcRootedScalar {
+			if !gcRootedScalar && !(primitive && (imm.Kind == wasm.InstrRefTest || imm.Kind == wasm.InstrRefCast)) {
 				return swarSummary{}, unsupported("SWAR GC instruction outside generic rooted profile")
 			}
+			if (gcRootedScalar || ownedExceptions) && wasm.OpaqueStorageMutation(mutationModule, imm.Kind, imm.Index, imm.Index2) {
+				allocations++
+			}
+
 			switch imm.Kind {
 			case wasm.InstrBrOnCast, wasm.InstrBrOnCastFail:
 				if !imm.HasHeapType || !imm.HasHeapType2 || uint64(imm.Index) >= uint64(flow.depth) {
@@ -1370,7 +1650,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 					return swarSummary{}, err
 				}
 				if emit != nil {
-					emit.gcObjectRefTestBranch(h*2, heap, imm.Cast.TargetNullable)
+					emit.gcObjectRefTestBranch(helperBase(h), heap, imm.Cast.TargetNullable)
 				}
 				if err := push(swarFuncRef); err != nil {
 					return swarSummary{}, err
@@ -1430,7 +1710,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				if emit != nil {
 					emit.swarCompactGCArguments(base, len(fields), spill)
-					emit.gcStructAllocation(base*2, imm.Index, len(fields), fields, hiddenRefs(base))
+					emit.gcStructAllocation(helperBase(base), imm.Index, len(fields), fields, hiddenRefs(base))
 					emit.Store(spill(base)+8, uint8(enc.Zero), true)
 				}
 				h = base
@@ -1451,7 +1731,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				base := h
 				if emit != nil {
-					emit.gcDefaultAllocation(gcStructAllocDefault, base*2, false, imm.Index, hiddenRefs(base))
+					emit.gcDefaultAllocation(gcStructAllocDefault, helperBase(base), false, imm.Index, hiddenRefs(base))
 					emit.Store(spill(base)+8, uint8(enc.Zero), true)
 				}
 				if err := push(swarFuncRef); err != nil {
@@ -1495,7 +1775,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				if emit != nil {
 					emit.swarCompactGCArguments(base, 1, spill)
-					emit.gcStructGetScalar(base*2, imm.Index, imm.Index2, helper, wide)
+					emit.gcStructGetScalar(helperBase(base), imm.Index, imm.Index2, helper, wide)
 					if !wide {
 						emit.Load(5, spill(base), false)
 						emit.Store(spill(base), 5, true)
@@ -1536,7 +1816,11 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				if emit != nil {
 					emit.swarCompactGCArguments(base, 2, spill)
-					emit.gcStructSetScalar(base*2, imm.Index, imm.Index2, wide)
+					if emit.functionMutation(imm.Kind, imm.Index, imm.Index2) {
+						emit.gcStructSetScalar(helperBase(base), imm.Index, imm.Index2, wide, hiddenRefs(h))
+					} else {
+						emit.gcStructSetScalar(helperBase(base), imm.Index, imm.Index2, wide)
+					}
 				}
 				h = base
 			case wasm.InstrArrayNew:
@@ -1571,7 +1855,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				if emit != nil {
 					emit.swarCompactGCArguments(base, 2, spill)
-					emit.gcUniformArrayAllocation(base*2, imm.Index, wide, hiddenRefs(base))
+					emit.gcUniformArrayAllocation(helperBase(base), imm.Index, wide, hiddenRefs(base))
 					emit.Store(spill(base)+8, uint8(enc.Zero), true)
 				}
 				h = base
@@ -1620,7 +1904,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				if emit != nil {
 					emit.swarCompactGCArguments(base, count, spill)
-					emit.gcFixedArrayAllocation(base*2, imm.Index, imm.Index2, wide, hiddenRefs(base))
+					emit.gcFixedArrayAllocation(helperBase(base), imm.Index, imm.Index2, wide, hiddenRefs(base))
 					emit.Store(spill(base)+8, uint8(enc.Zero), true)
 				}
 				h = base
@@ -1649,7 +1933,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				if emit != nil {
 					emit.swarCompactGCArguments(base, 1, spill)
-					emit.gcDefaultAllocation(gcArrayAllocDefault, base*2, true, imm.Index, hiddenRefs(base))
+					emit.gcDefaultAllocation(gcArrayAllocDefault, helperBase(base), true, imm.Index, hiddenRefs(base))
 					emit.Store(spill(base)+8, uint8(enc.Zero), true)
 				}
 				h = base
@@ -1682,9 +1966,9 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				if emit != nil {
 					emit.swarCompactGCArguments(base, 2, spill)
 					if data {
-						emit.gcDataArrayAllocation(base*2, imm.Index, imm.Index2, hiddenRefs(base))
+						emit.gcDataArrayAllocation(helperBase(base), imm.Index, imm.Index2, hiddenRefs(base))
 					} else {
-						emit.gcElementArrayAllocation(base*2, imm.Index, imm.Index2, hiddenRefs(base))
+						emit.gcElementArrayAllocation(helperBase(base), imm.Index, imm.Index2, hiddenRefs(base))
 					}
 					emit.Store(spill(base)+8, uint8(enc.Zero), true)
 				}
@@ -1729,7 +2013,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				if emit != nil {
 					emit.swarCompactGCArguments(base, 2, spill)
-					emit.gcArrayGetScalar(base*2, imm.Index, helper, wide)
+					emit.gcArrayGetScalar(helperBase(base), imm.Index, helper, wide)
 					if !wide {
 						emit.Load(5, spill(base), false)
 						emit.Store(spill(base), 5, true)
@@ -1770,7 +2054,11 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				if emit != nil {
 					emit.swarCompactGCArguments(base, 3, spill)
-					emit.gcArraySetScalar(base*2, imm.Index, wide)
+					if emit.functionMutation(imm.Kind, imm.Index, imm.Index2) {
+						emit.gcArraySetScalar(helperBase(base), imm.Index, wide, hiddenRefs(h))
+					} else {
+						emit.gcArraySetScalar(helperBase(base), imm.Index, wide)
+					}
 				}
 				h = base
 			case wasm.InstrArrayFill:
@@ -1803,7 +2091,11 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				if emit != nil {
 					emit.swarCompactGCArguments(base, 4, spill)
-					emit.gcArrayFillScalar(base*2, imm.Index, wide)
+					if emit.functionMutation(imm.Kind, imm.Index, imm.Index2) {
+						emit.gcArrayFillScalar(helperBase(base), imm.Index, wide, hiddenRefs(h))
+					} else {
+						emit.gcArrayFillScalar(helperBase(base), imm.Index, wide)
+					}
 				}
 				h = base
 			case wasm.InstrArrayCopy:
@@ -1828,7 +2120,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				if emit != nil {
 					emit.swarCompactGCArguments(base, 5, spill)
-					emit.gcArrayCopyScalar(base*2, imm.Index, imm.Index2)
+					emit.gcArrayCopyScalar(helperBase(base), imm.Index, imm.Index2)
 				}
 				h = base
 			case wasm.InstrArrayInitData, wasm.InstrArrayInitElem:
@@ -1855,9 +2147,13 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				if emit != nil {
 					emit.swarCompactGCArguments(base, 4, spill)
 					if data {
-						emit.gcArrayInitializeData(base*2, imm.Index, imm.Index2)
+						emit.gcArrayInitializeData(helperBase(base), imm.Index, imm.Index2)
 					} else {
-						emit.gcArrayInitializeElements(base*2, imm.Index, imm.Index2)
+						if emit.functionMutation(imm.Kind, imm.Index, imm.Index2) {
+							emit.gcArrayInitializeElements(helperBase(base), imm.Index, imm.Index2, hiddenRefs(h))
+						} else {
+							emit.gcArrayInitializeElements(helperBase(base), imm.Index, imm.Index2)
+						}
 					}
 				}
 				h = base
@@ -1878,7 +2174,7 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				if emit != nil {
 					emit.swarCompactGCArguments(base, 1, spill)
-					emit.gcArrayLength(base * 2)
+					emit.gcArrayLength(helperBase(base))
 					emit.Load(5, spill(base), false)
 					emit.Store(spill(base), 5, true)
 					emit.Store(spill(base)+8, uint8(enc.Zero), true)
@@ -1888,6 +2184,43 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 					return swarSummary{}, err
 				}
 			case wasm.InstrRefTest, wasm.InstrRefCast:
+				if primitive && imm.HasHeapType && imm.HeapType.Kind() == wasm.HeapTypeIndex && !imm.HeapType.Type().Rec {
+					target := imm.HeapType.Type().Index
+					if signature, ok := primitiveTypes[0].function(target); ok && primitiveReferenceTargetWithTypes(signature, referenceTypes, true) {
+						if primitiveTypes[0].needsSubtypeHelper(target) {
+							calls++
+							if calls > maxDirectCalls {
+								return swarSummary{}, unsupported("SWAR function subtype helper count")
+							}
+						}
+						if err := flow.prepareDead(swarFuncRef); err != nil {
+							return swarSummary{}, err
+						}
+						base := h - 1
+						if base < flow.floor() || stackClasses[base] != swarFuncRef {
+							return swarSummary{}, unsupported("SWAR function reference test/cast operand")
+						}
+						keys, ok := primitiveTypes[0].subtypeKeys(target)
+						if !ok {
+							return swarSummary{}, unsupported("SWAR function reference subtype key bound")
+						}
+						if err := reserve(1024 + 48*len(keys)); err != nil {
+							return swarSummary{}, err
+						}
+						if emit != nil && flow.live {
+							if imm.Kind == wasm.InstrRefTest {
+								emit.functionReferenceTestAt(base, keys, imm.Subopcode == 21, spill, target)
+							} else {
+								emit.functionReferenceCastAt(base, keys, imm.Subopcode == 23, spill, target)
+							}
+							emit.Store(spill(base)+8, uint8(enc.Zero), true)
+						}
+						if imm.Kind == wasm.InstrRefTest {
+							stackClasses[base] = swarI32
+						}
+						break
+					}
+				}
 				if !imm.HasHeapType {
 					return swarSummary{}, unsupported("SWAR reference test/cast heap")
 				}
@@ -1915,16 +2248,41 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				if emit != nil {
 					emit.swarCompactGCArguments(base, 1, spill)
 					if imm.Kind == wasm.InstrRefTest {
-						emit.gcObjectRefTest(base*2, heap, imm.Subopcode == 21)
+						emit.gcObjectRefTest(helperBase(base), heap, imm.Subopcode == 21)
 						emit.Load(5, spill(base), false)
 						emit.Store(spill(base), 5, true)
 					} else {
-						emit.gcObjectRefCast(base*2, heap, imm.Subopcode == 23, imm.Cast.SourceNullable)
+						emit.gcObjectRefCast(helperBase(base), heap, imm.Subopcode == 23, imm.Cast.SourceNullable)
 					}
 					emit.Store(spill(base)+8, uint8(enc.Zero), true)
 				}
 				if imm.Kind == wasm.InstrRefTest {
 					stackClasses[base] = swarI32
+				}
+			case wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
+				if err := flow.prepareDead(swarFuncRef); err != nil {
+					return swarSummary{}, err
+				}
+				base := h - 1
+				if base < flow.floor() || stackClasses[base] != swarFuncRef {
+					return swarSummary{}, unsupported("SWAR extern conversion reference carrier")
+				}
+				calls++
+				allocations++
+				if calls > maxDirectCalls {
+					return swarSummary{}, unsupported("SWAR extern conversion helper count")
+				}
+				if err := reserve(1024); err != nil {
+					return swarSummary{}, err
+				}
+				if emit != nil {
+					emit.swarCompactGCArguments(base, 1, spill)
+					helper := uint32(gcAnyConvertExtern)
+					if imm.Kind == wasm.InstrExternConvertAny {
+						helper = gcExternConvertAny
+					}
+					emit.gcObjectConversion(helperBase(base), helper, hiddenRefs(h))
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
 				}
 			case wasm.InstrRefI31:
 				if err := flow.prepareDead(swarI32); err != nil {
@@ -1959,6 +2317,88 @@ func walkSWARPairsWithParkedReferenceMode(fn *wasm.Func, ft *wasm.CompType, prof
 				stackClasses[base] = swarI32
 			default:
 				return swarSummary{}, unsupported("SWAR GC opcode lowering is pending")
+			}
+		case 0xfe:
+			d, err := shared.DecodeAtomic(&r)
+			if err != nil {
+				return swarSummary{}, err
+			}
+			if !foreignTableCalls || !indexedMemories {
+				return swarSummary{}, unsupported("SWAR atomics require the public production ABI")
+			}
+			if d.Class == shared.AtomicFence {
+				if emit != nil {
+					emit.atomicFence()
+				}
+				continue
+			}
+			if memoryCount != 1 || profile.wide(0) || d.MemoryIndex != 0 || uint32(d.Size) != uint32(1)<<d.Align {
+				return swarSummary{}, unsupported("SWAR atomic memory32 index/alignment")
+			}
+			var inputs [3]swarClass
+			inputs[0] = swarI32
+			count := 1
+			result := swarI32
+			if d.ResultSize == 8 {
+				result = swarI64
+			}
+			switch d.Class {
+			case shared.AtomicStore, shared.AtomicRMW:
+				count = 2
+				inputs[1] = result
+			case shared.AtomicCmpxchg:
+				count = 3
+				inputs[1], inputs[2] = result, result
+			case shared.AtomicNotify:
+				count = 2
+				inputs[1] = swarI32
+			case shared.AtomicWait:
+				count = 3
+				inputs[1], inputs[2] = swarI32, swarI64
+				if d.Size == 8 {
+					inputs[1] = swarI64
+				}
+			}
+			if err = flow.prepareDead(inputs[:count]...); err != nil {
+				return swarSummary{}, err
+			}
+			base := h - count
+			if base < flow.floor() {
+				return swarSummary{}, unsupported("SWAR atomic operand underflow")
+			}
+			for i, input := range inputs[:count] {
+				if stackClasses[base+i] != input {
+					return swarSummary{}, unsupported("SWAR atomic operand carrier")
+				}
+			}
+			usesTraps = true
+			wait := d.Class == shared.AtomicNotify || d.Class == shared.AtomicWait
+			if wait {
+				calls++
+				if calls > maxDirectCalls {
+					return swarSummary{}, unsupported("SWAR atomic helper count")
+				}
+			}
+			if err = reserve(1024); err != nil {
+				return swarSummary{}, err
+			}
+			if emit != nil {
+				if wait {
+					emit.atomicWaitCall(d, base, spill)
+				} else {
+					emit.atomicMemory(d, base, spill)
+				}
+				if d.Class != shared.AtomicStore {
+					emit.Load(5, spill(base), d.ResultSize == 8)
+					emit.Store(spill(base), 5, true)
+					emit.Store(spill(base)+8, uint8(enc.Zero), true)
+				}
+			}
+			h = base
+			if d.Class != shared.AtomicStore {
+				if err = push(result); err != nil {
+					return swarSummary{}, err
+				}
 			}
 		case 0xfd:
 			immediateReader := r
@@ -2763,7 +3203,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 	if mode.gcRootedDirectory != nil {
 		rootedDirectory = *mode.gcRootedDirectory
 	}
-	summary, err := walkSWARPairsWithParkedReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, nil)
+	summary, err := walkSWARPairsWithOwnedExceptions(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, mode.exceptionModule, mode.customInstructions, mode.tableModuleSource, mode.ownedExceptionReferences, nil, mode.primitiveTailTypes)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -2778,10 +3218,29 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		return nil, FunctionInfo{}, nil, unsupported("SWAR traps require production trap bridge")
 	}
 	f := integerEmitter{target: target{nlocals: summary.locals * 2, mode: mode}, gcFrameRoots: mode.gcFrameRoots}
+	if mode.customInstructions.hasCustom() {
+		f.customSpillOffsets = append([]int32(nil), summary.spillOffsets[:summary.peak+1]...)
+	}
 	if len(functions) != 0 {
 		f.header = callFrameHeader
 	}
-	frame, err := checkedFrameBytes(f.frameHeader(), summary.locals*2, summary.peak*2)
+	f.exception, err = newExceptionFrame(mode.exceptionModule, fn, f.LocalOffset(summary.locals*2))
+	if err != nil {
+		return nil, FunctionInfo{}, nil, err
+	}
+	collectorModule := mode.tableModuleSource
+	if collectorModule == nil {
+		collectorModule = mode.exceptionModule
+	}
+	if err := f.prepareCollectorOperands(collectorModule, fn, true); err != nil {
+		return nil, FunctionInfo{}, nil, err
+	}
+	ehSlots := 0
+	if f.exception != nil {
+		ehSlots = f.exception.slots()
+		f.spillPrefix = int32(ehSlots * 8)
+	}
+	frame, err := checkedFrameBytes(f.frameHeader(), summary.locals*2, summary.spillSlots()+ehSlots)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -2799,14 +3258,15 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		previous := uint32(0)
 		for i, root := range f.gcFrameRoots.Locals {
 			offset := uint32(f.LocalOffset(int(root.Index) * 2))
-			if uint64(root.Index) >= uint64(summary.locals) || i != 0 && root.Index <= previous || root.Offset != offset || uint64(root.Offset) > uint64(frame-8) {
+			if uint64(root.Index) >= uint64(summary.locals) || i != 0 && root.Index <= previous || shared.GCFrameRootOffset(root.Offset) != offset || uint64(shared.GCFrameRootOffset(root.Offset)) > uint64(frame-8) || root.Offset&shared.GCFrameFuncRefRootFlag != 0 && !mode.functionEnvironmentRoots() || root.Offset&shared.GCFrameExternRefRootFlag != 0 && !mode.opaqueExternRoots() {
 				f.gcFrameRoots.Exact = false
 				return nil, FunctionInfo{}, nil, unsupported("invalid SWAR GC frame-root local home")
 			}
 			previous = root.Index
 		}
 	}
-	actual, err := walkSWARPairsWithParkedReferenceMode(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, &f)
+	f.initializeExceptionRoots()
+	actual, err := walkSWARPairsWithOwnedExceptions(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, mode.exceptionModule, mode.customInstructions, mode.tableModuleSource, mode.ownedExceptionReferences, &f, mode.primitiveTailTypes)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
@@ -2844,8 +3304,8 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		widths[i] = true
 	}
 	params, results := swarSignatureSlots(ft.Params), swarSignatureSlots(ft.Results)
-	info := FunctionInfo{Params: params, Results: results, SpillSlots: summary.peak * 2, FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls), Fallback: true, mode: mode}
-	code, info, err := frameFunctionCalls(f.a.B, widths, params, summary.peak*2, true, -1, info, f.calls)
+	info := FunctionInfo{Params: params, Results: results, SpillSlots: summary.spillSlots(), FrameHeaderBytes: f.frameHeader(), DirectCalls: len(f.calls), Fallback: true, mode: mode}
+	code, info, err := frameFunctionCalls(f.a.B, widths, params, summary.spillSlots()+ehSlots, true, -1, info, f.calls)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}

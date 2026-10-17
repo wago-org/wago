@@ -251,8 +251,8 @@ func TestSWARDeadKnownTypesNestedTypingAndCapabilityGates(t *testing.T) {
 			t.Fatal("valid nonexecuted nested/control/select", tail, err)
 		}
 	}
-	body := append([]byte{0x20, 0, 0x0f}, bytes.Repeat([]byte{0x20, 0}, 257)...)
-	body = append(body, bytes.Repeat([]byte{0x1a}, 257)...)
+	body := append([]byte{0x20, 0, 0x0f}, bytes.Repeat([]byte{0x20, 0}, maxSWAROperands+1)...)
+	body = append(body, bytes.Repeat([]byte{0x1a}, maxSWAROperands+1)...)
 	body = append(body, 0x0b)
 	fn, ft := swarValidatedFunction(t, fixtureFunc{params: []byte{0x7b}, result: 0x7b, body: body})
 	if code, _, err := compileSWARPairs(fn, ft, emissionMode{production: true}); code != nil || err == nil {

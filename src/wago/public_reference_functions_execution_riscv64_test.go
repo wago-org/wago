@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -153,7 +153,7 @@ func TestRV64PublicReferenceFunctionsSparseGenerationQuota(t *testing.T) {
 					for i, owner := range g.owners {
 						if owner == producer {
 							counts, _, err := rv64NativeTailOwnerCounts(owner)
-							if err != nil || counts.Functions != 4 || counts.MaskSlots != 4 || counts.NonCallable != 2 || counts.Values != 2 {
+							if err != nil || counts.Functions != 4 || counts.MaskSlots != 4 || counts.NonCallable != 0 || counts.Values != 70 {
 								t.Fatal("actual sparse generation counts", counts, err)
 							}
 							if i >= len(g.snapshots) || g.snapshots[i] == nil || g.snapshots[i].Validate() != nil {

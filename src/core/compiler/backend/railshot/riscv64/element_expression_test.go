@@ -58,7 +58,7 @@ func TestPublicElementExpressionsAdmission(t *testing.T) {
 	}
 }
 
-func TestPublicElementExpressionsRejectBeforeStaging(t *testing.T) {
+func TestPublicElementExpressionsValidateBeforeStaging(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for _, tc := range []struct {
 			name   string
@@ -91,11 +91,7 @@ func TestPublicElementExpressionsRejectBeforeStaging(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				m := expressionElementModule(t, vector, wasm.ElemDeclarative, 2)
 				tc.mutate(m)
-				pressure := 0
-				image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, ImportBindings: hostImportBindings(1), MemoryPressure: func() { pressure++ }})
-				if image != nil || err == nil || pressure != 0 {
-					t.Fatal("unsupported expression staged", vector, err, pressure)
-				}
+				checkPublicPrimitiveModule(t, m, CompileOptions{Interruptible: true, ForeignTableCalls: true, ImportBindings: hostImportBindings(1)})
 			})
 		}
 	}

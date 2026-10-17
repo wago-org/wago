@@ -482,7 +482,7 @@ func (r *CallerResolver) InvocationContext(caller HostModule) (context.Context, 
 	if rt == nil || !ok || !h.valid() || h.in == nil || h.in.rt != rt || h.scope == nil {
 		return nil, fmt.Errorf("wago: invocation context requires an active host call from the owning runtime: %w", ErrPermissionDenied)
 	}
-	ctx, ok := h.scope.invocationContext(h.generation, activeHostInvocationContext(h.in).parent)
+	ctx, ok := h.scope.invocationContext(h.generation, h.scope.invocationParent(activeHostInvocationContext(h.in).parent))
 	if !ok {
 		return nil, fmt.Errorf("wago: invocation context requires an active host call from the owning runtime: %w", ErrPermissionDenied)
 	}
@@ -508,6 +508,7 @@ func (r *CallerResolver) InvocationMayCancel(caller HostModule) (bool, error) {
 
 // hostCallScope authorizes one synchronous use of an instanceHostModule.
 type hostCallScope struct {
+	railshotHostScopeParent
 	active   atomic.Uint64
 	sequence atomic.Uint64 // never restored when an outer callback resumes
 	state    atomic.Pointer[hostCallState]
@@ -763,6 +764,9 @@ func (s *hostCallScope) beginGeneration(parentContext context.Context) (generati
 
 func (s *hostCallScope) end(generation, parent uint64) {
 	active := s.active.CompareAndSwap(generation, parent)
+	if active {
+		s.releaseInvocationParent()
+	}
 	state := s.state.Load()
 	if state != nil {
 		s.expireInvocationContext(state, generation)
@@ -1393,9 +1397,9 @@ func (h instanceHostModule) CollectGC() error {
 	if h.in.ownsGCInvocation(h.invocationID) {
 		return h.in.collectGC()
 	}
-	lease := h.in.lockGCInvocation(h.invocationID)
+	lease := h.in.lockManagedFunctionCollectionInvocation(h.invocationID)
 	defer lease.unlock()
-	return h.in.collectGC()
+	return h.in.collectGCWithJoint(lease.dynamic)
 }
 func (h instanceHostModule) NewExternRef(value any) (ExternRef, error) {
 	if !h.valid() {
@@ -1419,6 +1423,12 @@ func (h instanceHostModule) ReleaseExternRef(ref ExternRef) bool {
 // bindHostImport resolves the private native slot representation without
 // reflection. Public callbacks are normalized by bindSyncHostImport.
 func bindHostImport(v any, sig FuncSig) (slotHostFunc, error) {
+	if custom, ok := v.(nativeCustomInstructionBinding); ok {
+		if err := custom.validate(sig); err != nil {
+			return nil, err
+		}
+		return custom.fn, nil
+	}
 	switch f := v.(type) {
 	case slotHostFunc:
 		if f == nil {
@@ -1626,6 +1636,13 @@ func inspectHostFuncSignature(value any) (params, results []ValType, inferred, s
 }
 
 func gateHostImport(value any, gate *pluginCallGate) (any, error) {
+	if custom, ok := value.(nativeCustomInstructionBinding); ok {
+		if custom.fn == nil {
+			return nil, fmt.Errorf("native custom instruction callback is nil")
+		}
+		custom.fn = gate.wrap(custom.fn)
+		return custom, nil
+	}
 	switch fn := value.(type) {
 	case slotHostFunc:
 		if fn == nil {
@@ -1830,6 +1847,12 @@ func (b *syncHostBinding) callBoundUnchecked(caller instanceHostModule, args, re
 }
 
 func bindSyncHostImport(value any, sig FuncSig) (syncHostBinding, error) {
+	if custom, ok := value.(nativeCustomInstructionBinding); ok {
+		if err := custom.validate(sig); err != nil {
+			return syncHostBinding{}, err
+		}
+		return syncHostBinding{fn: custom.fn, sig: &sig}, nil
+	}
 	if hasValType(sig.Params, ValV128) || hasValType(sig.Results, ValV128) {
 		return syncHostBinding{}, fmt.Errorf("v128 host callbacks are not supported")
 	}
@@ -2280,7 +2303,11 @@ func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, ctrl uintptr, bi
 		})
 		return
 	}
-	scope = railshotCallbackHostScope(in, ctrl, scope)
+	if invocation.callbackScope != nil {
+		scope = invocation.callbackScope
+	} else {
+		scope = railshotCallbackHostScope(in, ctrl, scope, invocation.parent)
+	}
 	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
 	caller.exact = binding.exact
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
@@ -2300,20 +2327,24 @@ func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr,
 	if exact != nil {
 		exactParams, exactResults = exact.Params, exact.Results
 	}
+	if invocation.callbackScope != nil {
+		scope = invocation.callbackScope
+	} else {
+		scope = railshotCallbackHostScope(in, ctrl, scope, invocation.parent)
+	}
+	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
+	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	var gcTemps gcHostTempTokens
-	if err := in.translateHostReferenceArgs(args, sig.Params, exactParams, exactTypes, &gcTemps); err != nil {
+	if err := in.translateHostReferenceArgsMode(args, sig.Params, exactParams, exactTypes, &gcTemps, &caller); err != nil {
 		gcTemps.release(in)
 		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 	}
 	defer gcTemps.release(in)
-	scope = railshotCallbackHostScope(in, ctrl, scope)
-	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
 	caller.exact = exact
 	var gcResultTemps gcHostTempTokens
 	gcResultTemps.exactTypes = exactTypesPtr
 	caller.ephemeralGCResults = &gcResultTemps
 	defer gcResultTemps.release(in)
-	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	binding.callBoundUnchecked(caller, args, results)
 	if err := in.translateHostReferenceResults(ctrl, results, sig.Results, exactResults, exactTypes); err != nil {
 		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
@@ -2403,6 +2434,10 @@ func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, resul
 }
 
 func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType, exact []ValueTypeDescriptor, exactTypes []DefinedTypeDescriptor, gcTemps *gcHostTempTokens) error {
+	return in.translateHostReferenceArgsMode(values, types, exact, exactTypes, gcTemps, nil)
+}
+
+func (in *Instance) translateHostReferenceArgsMode(values []uint64, types []ValType, exact []ValueTypeDescriptor, exactTypes []DefinedTypeDescriptor, gcTemps *gcHostTempTokens, caller *instanceHostModule) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -2441,14 +2476,17 @@ func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType,
 				values[slot] = token
 			}
 		case ValExternRef:
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok || required.Ref.Heap.Defined || required.Ref.Heap.Abstract != AbstractHeapExtern && required.Ref.Heap.Abstract != AbstractHeapNoExtern {
+				return fmt.Errorf("missing exact externref type for argument %d", i)
+			}
+			if values[slot] == 0 && !required.Ref.Nullable || values[slot] != 0 && required.Ref.Heap.Abstract == AbstractHeapNoExtern {
+				return fmt.Errorf("externref argument %d does not match its exact structural type", i)
+			}
 			if values[slot] != 0 && !in.validExternrefToken(values[slot]) {
 				return fmt.Errorf("invalid externref token for argument %d", i)
 			}
-		case ValExnRef:
-			if values[slot] != 0 {
-				return fmt.Errorf("non-null exception reference argument %d cannot cross the host boundary", i)
-			}
-		case ValAnyRef, ValI31Ref:
+		case ValAnyRef, ValI31Ref, ValExnRef:
 			required, ok := exactReferenceType(exact, i, typ)
 			if !ok {
 				return fmt.Errorf("missing exact GC reference type for argument %d", i)
@@ -2467,7 +2505,13 @@ func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType,
 			if ref.IsI31() {
 				break
 			}
-			token, err := in.refStore.issueGCRef(in, ref, required)
+			var token uint64
+			var err error
+			if caller != nil {
+				token, err = in.refStore.issueCallbackGCRef(*caller, ref, required)
+			} else {
+				token, err = in.refStore.issueGCRef(in, ref, required)
+			}
 			if err != nil {
 				return fmt.Errorf("GC reference argument %d: %w", i, err)
 			}
@@ -2520,14 +2564,17 @@ func (in *Instance) translateHostReferenceResults(ctrl uintptr, values []uint64,
 				values[slot] = descriptor
 			}
 		case ValExternRef:
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok || required.Ref.Heap.Defined || required.Ref.Heap.Abstract != AbstractHeapExtern && required.Ref.Heap.Abstract != AbstractHeapNoExtern {
+				return fmt.Errorf("missing exact externref type for result %d", i)
+			}
+			if values[slot] == 0 && !required.Ref.Nullable || values[slot] != 0 && required.Ref.Heap.Abstract == AbstractHeapNoExtern {
+				return fmt.Errorf("externref result %d does not match its exact structural type", i)
+			}
 			if values[slot] != 0 && !in.validExternrefToken(values[slot]) {
 				return fmt.Errorf("invalid externref token for result %d", i)
 			}
-		case ValExnRef:
-			if values[slot] != 0 {
-				return fmt.Errorf("non-null exception reference result %d cannot cross the host boundary", i)
-			}
-		case ValAnyRef, ValI31Ref:
+		case ValAnyRef, ValI31Ref, ValExnRef:
 			required, ok := exactReferenceType(exact, i, typ)
 			if !ok {
 				return fmt.Errorf("missing exact GC reference type for result %d", i)

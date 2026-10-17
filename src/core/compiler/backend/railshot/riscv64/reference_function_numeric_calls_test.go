@@ -54,6 +54,10 @@ func TestReferenceFunctionNumericCallsSource(t *testing.T) {
 								case "foreign":
 									broken.ForeignTableCalls = false
 								}
+								if missing == "function" {
+									checkPublicPrimitiveModule(t, m, broken)
+									continue
+								}
 								pressure := 0
 								broken.MemoryPressure = func() { pressure++ }
 								if got, err := CompileModuleWith(m, broken); got != nil || err == nil || pressure != 0 {
@@ -82,7 +86,7 @@ func TestReferenceFunctionNumericCallsConfinement(t *testing.T) {
 				o.ImportBindings = hostImportBindings(3)
 				pressure := 0
 				o.MemoryPressure = func() { pressure++ }
-				if image, err := CompileModuleWith(m, o); image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+				if image, err := CompileModuleWith(m, o); image != nil || err == nil || pressure != 0 {
 					t.Fatal("unconfined dead target reached allocation", err, pressure)
 				}
 			})

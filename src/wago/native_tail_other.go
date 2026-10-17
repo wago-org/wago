@@ -2,6 +2,8 @@
 
 package wago
 
+func railshotNativeTailSource() bool { return false }
+
 type railshotRuntimeConfigState struct{}
 type railshotTailCompiledState struct{}
 
@@ -35,3 +37,7 @@ func railshotValidateReferenceFunctionInstance(c *Compiled, _ InstantiateOptions
 	return railshotValidateReferenceCalls(c)
 }
 func railshotNonCallableFunction(*Compiled, int) bool { return false }
+
+func railshotNativeLeafAllowed(*Compiled) bool { return false }
+
+func railshotValidateDecodedNativeTail(*Compiled) error { return nil }

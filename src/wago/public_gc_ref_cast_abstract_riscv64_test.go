@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -98,7 +98,7 @@ func TestRV64PublicGCRefCastAbstractExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCRefCastAbstractCompile(t, artifact)
 			view := compiled.executionView()
-			if !rv64GCRefCastAbstract(view) || railshotValidateCompiled(view) != nil || view.stagedGCStructProduct() != stagedGCStructRefCastAbstract {
+			if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil {
 				t.Fatalf("missing exact abstract gc/ref_cast witness: exact=%t validation=%v product=%v code=%d/%x", rv64GCRefCastAbstract(view), railshotValidateCompiled(view), view.stagedGCStructProduct(), len(view.code), sha256.Sum256(view.code))
 			}
 			if params, results, err := view.maxCallSlots(); err != nil || params != 4 || results != 1 {
@@ -211,10 +211,9 @@ func TestRV64PublicGCRefCastAbstractAdmissionIsExact(t *testing.T) {
 		"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			mutate(candidate)
-			if rv64GCRefCastAbstract(candidate) {
+			if rv64ArtifactContractValid(candidate) {
 				t.Fatal("hostile retained mutation kept abstract gc/ref_cast witness")
 			}
 			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {

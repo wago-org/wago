@@ -44,8 +44,10 @@ func TestGCCollectFrameRootsUsesCurrentArchitecture(t *testing.T) {
 }
 
 func TestGCNativeFrameRootsRISCV64SavedRAWalk(t *testing.T) {
-	frame := make([]byte, 128)
-	code := make([]byte, 256)
+	frame, releaseFrame := newGCNativeTestFrame(t, 128)
+	defer releaseFrame()
+	code, releaseCode := newGCNativeTestFrame(t, 256)
+	defer releaseCode()
 	base := uintptr(unsafe.Pointer(&frame[0]))
 	codeBase := uintptr(unsafe.Pointer(&code[0]))
 
@@ -94,8 +96,10 @@ func TestGCNativeFrameRootsRISCV64SavedRAWalk(t *testing.T) {
 }
 
 func TestGCNativeFrameRootsRISCV64ForeignBridgeStackAdjustment(t *testing.T) {
-	frame := make([]byte, 256)
-	code := make([]byte, 256)
+	frame, releaseFrame := newGCNativeTestFrame(t, 256)
+	defer releaseFrame()
+	code, releaseCode := newGCNativeTestFrame(t, 256)
+	defer releaseCode()
 	base := uintptr(unsafe.Pointer(&frame[0]))
 	codeBase := uintptr(unsafe.Pointer(&code[0]))
 

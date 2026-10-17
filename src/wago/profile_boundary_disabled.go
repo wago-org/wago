@@ -14,7 +14,7 @@ func (*hostLoopActivation) beginProfileActivation() (jitprofile.SpanToken, func(
 	return jitprofile.SpanToken{}, nil
 }
 func finishProfileBoundary(jitprofile.SpanToken, *error, ...*bool) {}
-func (*hostLoopActivation) callProfiledHost(*Instance, uintptr, uint32, []uint64, []uint64, hostInvocationContext) {
+func (*hostLoopActivation) callProfiledHost(*Instance, uintptr, uint32, []uint64, []uint64, hostInvocationContext, *Instance) {
 }
 func profileScalarFallback(uintptr, uint32, uint32, uint64, uint64) (uint64, bool) { return 0, false }
 

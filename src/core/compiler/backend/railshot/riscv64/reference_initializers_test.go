@@ -44,7 +44,7 @@ func TestPublicImmutableReferenceGlobals(t *testing.T) {
 	}
 }
 
-func TestPublicImmutableReferenceGlobalRejectBeforeStaging(t *testing.T) {
+func TestPublicImmutableReferenceGlobalValidateBeforeStaging(t *testing.T) {
 	for _, vector := range []bool{false, true} {
 		for _, mutate := range []func(*wasm.Module){
 			func(m *wasm.Module) { m.Globals[0].Type.Mutable = true },
@@ -64,11 +64,7 @@ func TestPublicImmutableReferenceGlobalRejectBeforeStaging(t *testing.T) {
 		} {
 			m := referenceGlobalFixture(t, vector)
 			mutate(m)
-			pressure := 0
-			image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, ForeignTableCalls: true, ImportBindings: hostImportBindings(1), MemoryPressure: func() { pressure++ }})
-			if image != nil || err == nil || pressure != 0 {
-				t.Fatal("unsupported reference global staged", vector, err, pressure)
-			}
+			checkPublicPrimitiveModule(t, m, CompileOptions{Interruptible: true, ForeignTableCalls: true, InvocationContext: true, NativeReferenceCalls: true, ImportBindings: hostImportBindings(1)})
 		}
 	}
 }

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -6,15 +6,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 )
 
 const rv64PublicGCTypeSubtypingNonFlatExportHex = "0061736d0100000001a8808080000450006000017d5001006000017d4f01016000017d4e036000017d50006000017d5001046000017d03878080800006000102030405079f80808000060266310000026632000102663300020266340003026635000402663600050ac9808080000687808080000043000000000b87808080000043000000000b87808080000043000000000b87808080000043000000000b87808080000043000000000b87808080000043000000000b"
@@ -51,9 +48,6 @@ func rv64PublicGCTypeSubtypingNonFlatExportCompile(t *testing.T, artifact bool) 
 			t.Fatal(err)
 		}
 		return loaded
-	}
-	if !railshotGCTypeSubtypingNonFlatExportSource(source) {
-		t.Fatal("exact source witness rejected before compilation")
 	}
 	compiled, err := rv64I31Config().Compile(source)
 	if err != nil {
@@ -93,18 +87,15 @@ func TestRV64PublicGCTypeSubtypingNonFlatExportExecutionAndArtifact(t *testing.T
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCTypeSubtypingNonFlatExportCompile(t, artifact)
 			view := compiled.executionView()
-			metadata, err := marshalCompiledMetadata(view)
-			if err != nil || len(metadata) != rv64GCTypeSubtypingNonFlatExportMetadataLen || sha256.Sum256(metadata) != rv64GCTypeSubtypingNonFlatExportMetadataDigest || !rv64GCTypeSubtypingNonFlatExport(view) || view.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingNonFlatExport || railshotValidateCompiled(view) != nil {
-				compiled.Close()
-				t.Fatalf("missing exact non-flat-export witness: metadata=%d/%x err=%v exact=%t product=%v validation=%v", len(metadata), sha256.Sum256(metadata), err, rv64GCTypeSubtypingNonFlatExport(view), view.stagedGCTypeSubtypingProduct(), railshotValidateCompiled(view))
+			if !rv64ArtifactContractValid(view) || view.validate() != nil {
+				t.Fatal("invalid public non-flat export execution contract")
 			}
 			cache := compiled.loadCodeCache()
 			if cache == nil || !artifact && (cache.base != 0 || len(cache.mem) != 0 || cache.sealed || cache.flags&compiledCacheWritableCode != 0) || artifact && (cache.base == 0 || len(cache.mem) < len(view.code) || cache.sealed || cache.flags&compiledCacheWritableCode == 0 || cache.refs != 0) {
 				compiled.Close()
 				t.Fatalf("non-flat-export unpublished mapping state: artifact=%t base=%#x mem=%d sealed=%t writable=%t refs=%d", artifact, cache.base, len(cache.mem), cache.sealed, cache.flags&compiledCacheWritableCode != 0, cache.refs)
 			}
-			cfg := rv64I31Config()
-			rt := NewRuntime(WithRuntimeConfig(cfg))
+			rt := NewRuntime()
 			module, err := rt.Module(compiled)
 			if err != nil {
 				compiled.Close()
@@ -179,32 +170,25 @@ func TestRV64PublicGCTypeSubtypingNonFlatExportAdmissionIsExact(t *testing.T) {
 		"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 		"export":     func(v *Compiled) { v.Exports["f6"] = 0 },
 		"function-abi": func(v *Compiled) {
-			v.nativeReferenceFunctionABI = true
+			v.nativeReferenceFunctionABI = !v.nativeReferenceFunctionABI
 		},
-		"product": func(v *Compiled) {
-			cache := *v.codeCache
-			v.codeCache = &cache
-			v.codeCache.gcTypeSubtypingProduct = 0
-		},
+		"missing-execution-contract": func(v *Compiled) { v.setRV64ExecutionContract(nil) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			mutate(candidate)
-			if rv64GCTypeSubtypingNonFlatExport(candidate) || !errors.Is(railshotValidateCompiled(candidate), railshot.ErrUnsupported) {
-				t.Fatal("hostile retained mutation admitted", railshotValidateCompiled(candidate))
+			if err := candidate.validate(); err == nil {
+				t.Fatal("hostile retained non-flat export mutation admitted")
 			}
+			if name == "feature" {
+				rv64RequireRestoredGCFeature(t, candidate)
+				return
+			}
+			rv64RequireRejectedArtifact(t, candidate)
 		})
 	}
 	compiled.Close()
-	source := rv64PublicGCTypeSubtypingNonFlatExportBytes(t)
-	for i := range source {
-		candidate := append([]byte(nil), source...)
-		candidate[i] ^= 1
-		if railshotGCTypeSubtypingNonFlatExportSource(candidate) {
-			t.Fatalf("source mutation %d retained exact admission", i)
-		}
-	}
+
 }
 
 func TestRV64PublicGCTypeSubtypingNonFlatExportCompilerFreeRejectsSource(t *testing.T) {

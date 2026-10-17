@@ -65,10 +65,7 @@ func railshotAdoptFunctionDependencies(*Instance, bool) error                   
 func railshotFunctionDependencyCleanupCompleted(*Instance)                      {}
 func railshotAdoptClosedContainerDependencies(*Instance)                        {}
 func railshotClosedContainerAdoptionReady(*Instance) bool                       { return false }
-func railshotDependencyComponentCollectionPermitValid(*dependencyComponentCollectionPermit) bool {
-	return false
-}
-func railshotDependencyComponentCollectionPrepared(*Instance) bool { return false }
+func railshotDependencyComponentCollectionPrepared(*Instance) bool              { return false }
 func railshotTerminalClosedDependencyCollectionEnabled(*Instance, *instanceCloseState) bool {
 	return false
 }
@@ -79,6 +76,7 @@ func railshotCompleteClosingDependencyCollection(*Instance, *instanceCloseState)
 }
 func railshotRetryClosedDependencyComponent(*Instance) error     { return nil }
 func railshotRequestClosedContainerDependencyAdoption(*Instance) {}
+func railshotReconcileClosedReferenceProxies(*Instance)          {}
 func railshotTerminalClosedContainerDependencyAdoption(*Instance, *instanceCloseState) {
 }
 func railshotPublishClosedContainerAdoptionResult(*Instance, *instanceCloseState, error) {}

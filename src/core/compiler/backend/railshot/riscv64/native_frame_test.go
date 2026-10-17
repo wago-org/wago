@@ -102,3 +102,24 @@ func TestNativeFrameBytesRejectsMalformedPrewritePackets(t *testing.T) {
 		t.Fatal("unaligned frame constant accepted", err)
 	}
 }
+
+func TestNativeFrameBytesPublicLargeCodeSpan(t *testing.T) {
+	packet := nativeFramePacketForTest(t, 48)
+	entry := MaxCodeBytes + 16
+	image := make([]byte, entry+len(packet))
+	copy(image[entry:], packet)
+	if frame, err := NativeFrameBytes(image, entry); err != nil || frame != 48 {
+		t.Fatalf("public large code frame=%d,%v", frame, err)
+	}
+	if allocations := testing.AllocsPerRun(4, func() {
+		if frame, err := NativeFrameBytes(image, entry); err != nil || frame != 48 {
+			panic("public frame read failed")
+		}
+	}); allocations != 0 {
+		t.Fatal("large-span warm frame allocations", allocations)
+	}
+	image[entry] ^= 1
+	if _, err := NativeFrameBytes(image, entry); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("large image bypassed guard validation", err)
+	}
+}

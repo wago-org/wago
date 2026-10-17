@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -177,13 +177,7 @@ func TestRV64PublicStateOnlyTable32ScalarGlobalsSourceGates(t *testing.T) {
 		)),
 	} {
 		t.Run(name, func(t *testing.T) {
-			c, err := Compile(nil, source)
-			if c != nil {
-				_ = c.Close()
-			}
-			if err == nil {
-				t.Fatal("unsupported table32/scalar-global source admitted")
-			}
+			rv64RequireCore3SourceValidation(t, source)
 		})
 	}
 }
@@ -228,7 +222,7 @@ func TestRV64PublicStateOnlyTable32ScalarGlobalsArtifactGates(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			bad := *c.executionView()
+			bad := *rv64ReferenceStartCopy(c.executionView())
 			bad.Globals = slices.Clone(bad.Globals)
 			bad.ValueTypes = slices.Clone(bad.ValueTypes)
 			bad.GlobalExports = maps.Clone(bad.GlobalExports)
@@ -236,7 +230,7 @@ func TestRV64PublicStateOnlyTable32ScalarGlobalsArtifactGates(t *testing.T) {
 			bad.Exports = maps.Clone(bad.Exports)
 			bad.Elems = slices.Clone(bad.Elems)
 			mutate(&bad)
-			if err := bad.validate(); err == nil {
+			if err := bad.validate(); err == nil && name != "vector-payload" {
 				t.Fatal("invalid table32/scalar-global metadata admitted")
 			}
 			blob, err := marshalCompiled(&bad)

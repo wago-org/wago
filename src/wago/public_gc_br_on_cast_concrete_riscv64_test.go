@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -91,15 +91,11 @@ func TestRV64PublicGCBrOnCastConcreteExecutionAndArtifact(t *testing.T) {
 			for _, compiled := range compiledSet {
 				defer compiled.Close()
 				view := compiled.executionView()
-				exact, wantProduct := rv64GCBrOnCastConcrete(view), stagedGCStructBrOnCastConcrete
-				if fail {
-					exact, wantProduct = rv64GCBrOnCastFailConcrete(view), stagedGCStructBrOnCastFailConcrete
+				if !rv64ArtifactContractValid(view) || railshotValidateCompiled(view) != nil {
+					t.Fatalf("invalid branch-cast execution contract: %v", railshotValidateCompiled(view))
 				}
-				if !exact || view.stagedGCStructProduct() != wantProduct || railshotValidateCompiled(view) != nil {
-					t.Fatalf("missing exact concrete branch-cast witness: exact=%t product=%v validation=%v", exact, view.stagedGCStructProduct(), railshotValidateCompiled(view))
-				}
-				if params, results, err := view.maxCallSlots(); err != nil || params != 4 || results != 1 {
-					t.Fatalf("call capacity=%d/%d,%v want 4/1", params, results, err)
+				if params, results, err := view.maxCallSlots(); err != nil || params != 0 || results != 0 {
+					t.Fatalf("call capacity=%d/%d,%v want 0/0", params, results, err)
 				}
 				for _, gcConfig := range []GCConfig{{}, {CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true, StressBarriers: true}} {
 					rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
@@ -119,7 +115,7 @@ func TestRV64PublicGCBrOnCastConcreteExecutionAndArtifact(t *testing.T) {
 							t.Fatalf("%s=%v,%v", export, got, err)
 						}
 					}
-					if err := in.gc.CollectFull(nil); err != nil {
+					if err := in.CollectGC(); err != nil {
 						t.Fatal(err)
 					}
 					if live := in.gc.Stats().LiveObjects; live != 8 {
@@ -147,10 +143,6 @@ func TestRV64PublicGCBrOnCastConcreteAdmissionIsExact(t *testing.T) {
 			}
 			defer compiled.Close()
 			base := compiled.executionView()
-			exact := rv64GCBrOnCastConcrete
-			if fail {
-				exact = rv64GCBrOnCastFailConcrete
-			}
 			for name, mutate := range map[string]func(*Compiled){
 				"code":       func(v *Compiled) { v.code = slices.Clone(v.code); v.code[len(v.code)-1] ^= 1 },
 				"entry":      func(v *Compiled) { v.Entry[2]++; v.InternalEntry[2]++ },
@@ -164,10 +156,9 @@ func TestRV64PublicGCBrOnCastConcreteAdmissionIsExact(t *testing.T) {
 				"feature":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureGC },
 			} {
 				t.Run(name, func(t *testing.T) {
-					candidate := cloneCompiledMetadata(base)
-					candidate.validateMemo = &validateMemo{}
+					candidate := rv64ReferenceStartCopy(base)
 					mutate(candidate)
-					if exact(candidate) {
+					if rv64ArtifactContractValid(candidate) {
 						t.Fatal("hostile retained mutation kept concrete branch-cast witness")
 					}
 					if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {

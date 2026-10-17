@@ -4,7 +4,6 @@ package riscv64
 
 import (
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -104,12 +103,7 @@ func TestCore3BrOnNullDeclarationsConfinement(t *testing.T) {
 			if admitCore3BrOnNullDeclarations(m) {
 				t.Fatal("nearby shape inherited the exact declaration profile")
 			}
-			pressure := 0
-			opts := closedReferenceProductionOptions(false, true)
-			opts.MemoryPressure = func() { pressure++ }
-			if image, err := CompileModuleWith(m, opts); image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
-				t.Fatal("nearby declaration shape published", err, pressure)
-			}
+			checkGeneralDeclarationModule(t, m)
 		})
 	}
 }

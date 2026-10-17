@@ -403,10 +403,11 @@ func TestPublicReferenceCallBoundaryReferenceArgumentAdmission(t *testing.T) {
 	}
 	externWireMutation := bytes.Clone(publicReferenceArgumentCallBoundarySource(wasm.ExternRef))
 	externWireMutation[len(externWireMutation)-2] = 1
-	if admitPublicReferenceCallBoundaryWire(externWireMutation) || AdmitProductionSource(externWireMutation) == nil {
+	if admitPublicReferenceCallBoundaryWire(externWireMutation) {
 		t.Fatal("nearby public externref call_ref wire inherited admission")
 	}
 
+	checkGeneralDeclarationWire(t, externWireMutation)
 	for _, tc := range []struct {
 		name   string
 		mutate func(*wasm.Module)
@@ -492,20 +493,24 @@ func TestPublicReferenceCallBoundaryReferenceCarrierAdmission(t *testing.T) {
 
 	wireMutation := bytes.Clone(source)
 	wireMutation[len(wireMutation)-2] = 1
-	if admitPublicReferenceCallBoundaryWire(wireMutation) || AdmitProductionSource(wireMutation) == nil {
+	if admitPublicReferenceCallBoundaryWire(wireMutation) {
 		t.Fatal("nearby mixed reference carrier wire inherited admission")
 	}
 
+	checkGeneralDeclarationWire(t, wireMutation)
+
 	// The candidate filter retains canonical wire provenance before invoking
-	// the bounded semantic decoder. A non-minimal section length and a hostile
-	// type count must both fail without reaching allocation-heavy decoding.
+	// the bounded semantic decoder. The exact recognizer rejects a non-minimal
+	// section length; general source admission accepts that valid Wasm encoding.
+	// Hostile type counts must fail the candidate filter without allocations.
 	noncanonical := append([]byte(nil), source[:10]...)
 	noncanonical[9] |= 0x80
 	noncanonical = append(noncanonical, 0)
 	noncanonical = append(noncanonical, source[10:]...)
-	if admitPublicReferenceCallBoundaryWire(noncanonical) || AdmitProductionSource(noncanonical) == nil {
+	if admitPublicReferenceCallBoundaryWire(noncanonical) {
 		t.Fatal("noncanonical public reference carrier wire inherited admission")
 	}
+	checkGeneralDeclarationWire(t, noncanonical)
 	hostileCount := bytes.Clone(source)
 	hostileCount[10] = 0xff
 	if allocations := testing.AllocsPerRun(100, func() {
@@ -601,15 +606,17 @@ func TestReferenceFunctionModulePrivatePipeline(t *testing.T) {
 						if image, err := compileSWARModule(closedReferenceSource(vector, tails, indexed, nullable), closedReferenceMode(tails)); image != nil || !errors.Is(err, ErrUnsupported) {
 							t.Fatal("private SWAR byte-source compiler", err)
 						}
-						if image, err := CompileModuleWith(m, opts); image != nil || !errors.Is(err, ErrUnsupported) {
+						if image, err := CompileModuleWith(m, opts); image != nil || err == nil {
 							t.Fatal("private public compiler option", err)
 						}
 						if image, err := CompileWithOptions(closedReferenceSource(vector, tails, indexed, nullable), opts); image != nil || !errors.Is(err, ErrUnsupported) {
 							t.Fatal("private byte-source compiler", err)
 						}
 						opts.referenceFunctions = false
-						if image, err := CompileModuleWith(m, opts); image != nil || !errors.Is(err, ErrUnsupported) {
-							t.Fatal("ordinary source callable gate", err)
+						if !tails {
+							checkPublicPrimitiveModule(t, m, opts)
+						} else if image, err := CompileModuleWith(m, opts); image != nil || err == nil {
+							t.Fatal("private tail option reached public staging", err)
 						}
 					})
 				}
@@ -661,8 +668,25 @@ func TestReferenceFunctionModuleClosedEscapeAndShape(t *testing.T) {
 				if err := admitClosedReferenceFunctionModule(m, vector); !errors.Is(err, ErrUnsupported) {
 					t.Fatal("closed shape/escape admitted", err)
 				}
-				if c, err := closedReferenceCompile(m, vector, false); c != nil || !errors.Is(err, ErrUnsupported) {
-					t.Fatal("closed adapter staged shape/escape", err)
+				switch tc.name {
+				case "inactive-fields":
+					if vector {
+						if image, err := CompileModuleWith(m, closedReferenceProductionOptions(false, true)); image != nil || err == nil {
+							t.Fatal("SWAR inactive type metadata reached publication", err)
+						}
+					} else {
+						checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(false, true))
+					}
+				case "element-ref", "compact-import", "empty-hints", "inactive-array":
+					checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(false, true))
+				case "hint-custom":
+					if image, err := CompileModuleWith(m, closedReferenceProductionOptions(false, true)); image != nil || err == nil {
+						t.Fatal("unmatched raw branch hints reached publication", err)
+					}
+				default:
+					if c, err := closedReferenceCompile(m, vector, false); c != nil || err == nil {
+						t.Fatal("closed adapter staged shape/escape", err)
+					}
 				}
 			})
 		}
@@ -833,7 +857,7 @@ func TestReferenceFunctionModuleDirectoryAndLocalBounds(t *testing.T) {
 		}
 		limit := 256
 		if vector {
-			limit = 128
+			limit = maxSWARLocals
 		}
 		for _, n := range []int{limit, limit + 1} {
 			m := closedReferenceDecode(t, vector, false, false, true)
@@ -914,7 +938,7 @@ func TestReferenceFunctionModuleUnderstatedLocalBytes(t *testing.T) {
 		m := closedReferenceDecode(t, vector, false, false, true)
 		limit := 256
 		if vector {
-			limit = 128
+			limit = maxSWARLocals
 		}
 		runs := make([]wasm.LocalRun, limit)
 		// Zero-count runs still occupy declaration metadata. Include reference

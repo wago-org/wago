@@ -1,9 +1,8 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -24,8 +23,7 @@ func rv64ReferenceImportedStartRows(in *Instance) bool {
 		return false
 	}
 	for _, index := range []int{4, 7} {
-		row := in.funcRefDescs[(index+1)*40 : (index+2)*40]
-		if !railshotNonCallableFunction(in.c, index) || !bytes.Equal(row, make([]byte, 40)) {
+		if !rv64ReferenceTargetRowValid(in, index) {
 			return false
 		}
 	}

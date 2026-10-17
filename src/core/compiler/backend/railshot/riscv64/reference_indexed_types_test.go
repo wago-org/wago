@@ -139,6 +139,37 @@ func TestReferenceIndexedTypesDirectory(t *testing.T) {
 			})
 		}
 	}
+	decoded := []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}}}
+	rooted, ok := newInternalReferenceTypeDirectory(decoded)
+	if !ok {
+		t.Fatal("rooted function directory")
+	}
+	types := internalReferenceTypes{decoded: decoded, rootedDirectory: rooted, gcRootedScalar: true}
+	indexed := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{}), false))
+	if !internalFunctionReferenceWithTypes(indexed, true, types) {
+		t.Fatal("rooted indexed function carrier was rejected")
+	}
+	exact := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{}), true))
+	if internalFunctionReferenceWithTypes(exact, true, types) {
+		t.Fatal("exact rooted indexed function carrier was admitted")
+	}
+	subtyped := &wasm.Module{Types: []wasm.RecType{
+		{SubTypes: []wasm.SubType{{HasPrefix: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}},
+		{SubTypes: []wasm.SubType{{HasPrefix: true, Final: true, Supers: []wasm.TypeIdx{{Index: 0}}, Comp: wasm.CompType{Kind: wasm.CompFunc}}}},
+	}}
+	source, err := newSourceFunctionTypeDirectory(subtyped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rooted, ok = newInternalReferenceTypeDirectory(subtyped.Types)
+	if !ok {
+		t.Fatal("rooted function subtype directory")
+	}
+	types = internalReferenceTypes{decoded: subtyped.Types, rootedDirectory: rooted, sourceDirectory: source, gcRootedScalar: true}
+	child := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 1}), false))
+	if !internalFunctionReferenceWithTypes(child, true, types) {
+		t.Fatal("rooted indexed function subtype carrier was rejected")
+	}
 }
 
 func TestReferenceIndexedTypesFrontendProofs(t *testing.T) {
@@ -283,6 +314,10 @@ func TestReferenceIndexedTypesDecodedMetadata(t *testing.T) {
 			t.Run(fmt.Sprintf("vector%t-%s", vector, tc.name), func(t *testing.T) {
 				m := referenceIndexedTypesModule(t, vector, 0x63, "local", 0)
 				tc.mutate(&m.Types[64])
+				if tc.name == "prefix" {
+					checkPublicPrimitiveModule(t, m, closedReferenceProductionOptions(false, true))
+					return
+				}
 				if (internalReferenceTypes{decoded: m.Types, decodedSWAR: vector}).function(64) {
 					t.Fatal("unsupported decoded reference type", tc.name)
 				}

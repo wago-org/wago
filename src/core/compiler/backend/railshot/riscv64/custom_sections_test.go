@@ -102,15 +102,15 @@ func TestProductionCustomSectionBoundsAndSemanticGates(t *testing.T) {
 					}
 					tc.mutate(m)
 					staged := false
-					image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, MemoryPressure: func() { staged = true }})
+					image, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true, Interruptible: true, MaxModuleBytes: MaxModuleBytes, MemoryPressure: func() { staged = true }})
 					if image != nil || !errors.Is(err, ErrUnsupported) || staged {
 						t.Fatal("unsupported metadata reached image staging", err)
 					}
 				})
 			}
 			oversized := rv64CustomSectionSource(base, "opaque", make([]byte, MaxModuleBytes))
-			if err := AdmitProductionSource(oversized); !errors.Is(err, ErrUnsupported) {
-				t.Fatal("oversized wire payload admitted", err)
+			if err := AdmitProductionSource(oversized); err != nil {
+				t.Fatal("valid wire payload inherited the private byte limit", err)
 			}
 			branch := rv64CustomSectionSource(base, "metadata.code.branch_hint", []byte{0})
 			m, err := wasm.DecodeModule(branch)

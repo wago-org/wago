@@ -21,6 +21,9 @@ mulw x5,x6,x7
 sllw x5,x6,x7
 srlw x5,x6,x7
 sraw x5,x6,x7
+andi x5,x6,-4
+lhu x5,12(x6)
+sh x5,12(x6)
 addi x5,x6,-2048
 addi x31,x30,2047
 addiw x5,x6,-1

@@ -159,11 +159,11 @@ func TestReferenceFunctionTableBulkConfinementAndReservation(t *testing.T) {
 				pressure := 0
 				o.MemoryPressure = func() { pressure++ }
 				image, err := CompileModuleWith(m, o)
-				if tc.valid {
+				if tc.valid || tc.name == "passive-private" || tc.name == "no-max513-dead-grow" {
 					if image == nil || err != nil || pressure != 1 {
 						t.Fatal("valid bounded source", err, pressure)
 					}
-				} else if image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+				} else if image != nil || err == nil || pressure != 0 {
 					t.Fatal("invalid source reached publication", err, pressure)
 				}
 			})

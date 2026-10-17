@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -221,7 +221,9 @@ func TestRV64PublicHostTailReentryColdReuse(t *testing.T) {
 						if depth == 0 {
 							pointer := railshotParkedNativeInvocation(leaf)
 							view := rv64InvocationViewForTest(leaf)
-							if pointer < root.eng.StackLimit() || pointer+64 > root.eng.RV64InvocationViewPointer() || binary.LittleEndian.Uint64(view) != abi.RV64InvocationMagic || binary.LittleEndian.Uint64(view[24:]) != uint64(pointer-4096) || binary.LittleEndian.Uint64(view[40:]) != uint64(pointer-2048) || binary.LittleEndian.Uint64(view[56:]) == 0 {
+							const transportBytes = railshot.MaxNativeCallSlots * 8
+							const maskBytes = (railshot.MaxNativeCallSlots + 63) / 64 * 8
+							if pointer < root.eng.StackLimit() || pointer+64 > root.eng.RV64InvocationViewPointer() || binary.LittleEndian.Uint64(view) != abi.RV64InvocationMagic || binary.LittleEndian.Uint64(view[24:]) != uint64(pointer-2*transportBytes-maskBytes) || binary.LittleEndian.Uint64(view[40:]) != uint64(pointer-transportBytes-maskBytes) || binary.LittleEndian.Uint64(view[32:]) != transportBytes || binary.LittleEndian.Uint64(view[48:]) != transportBytes || binary.LittleEndian.Uint64(view[56:]) == 0 {
 								panic("host tail record view")
 							}
 							before := bytes.Clone(view)
@@ -432,12 +434,12 @@ func TestRV64PublicHostTailUnsupportedBeforePublication(t *testing.T) {
 			}
 		})
 	}
-	types := make([]wasm.ValType, 65)
+	types := make([]wasm.ValType, railshot.MaxVectorFunctionValues+1)
 	for i := range types {
 		types[i] = wasm.I32
 	}
 	if c, err := rv64NativeTailConfig().Compile(rv64PublicTailModule(types, false)); c != nil || !errors.Is(err, railshot.ErrUnsupported) {
-		t.Fatal("unqualified wide65 source", err)
+		t.Fatal("unqualified over-limit source", err)
 	}
 }
 

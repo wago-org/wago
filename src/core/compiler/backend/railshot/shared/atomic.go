@@ -38,6 +38,7 @@ const (
 	AtomicHelperNotify uint32 = iota
 	AtomicHelperWait32
 	AtomicHelperWait64
+	AtomicHelperMemoryGrow
 )
 
 // Atomic describes exactly the architecture-neutral facts needed by direct

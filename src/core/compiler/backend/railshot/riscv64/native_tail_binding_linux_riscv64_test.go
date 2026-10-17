@@ -11,6 +11,55 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+func TestTailTypedFactoryRebindingExactDeclaredKey(t *testing.T) {
+	sig := wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.F32}}
+	f := tailRAProofFunctionFixture(t, &sig, abi.RV64InstanceContextBytes)
+	o := tailDynamicOwnerForTest(t, []tailRAFunction{f})
+	f, _ = tailPublishedFunctionForTest(t, o.functions[0])
+	key := wasm.StructuralFuncTypeKey(&sig) ^ 0x9e3779b97f4a7c15
+	binary.LittleEndian.PutUint64(o.descriptors[48:], key)
+	provider := &tailFunctionKeyOwnerForTest{NativeTailCodeOwner: f.published.owner, key: key, job: f.job, context: f.context}
+	image, err := NewNativeTailCodeImage(provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := NewNativeTailDefinedOwner(image, f.job, f.context, o.descriptors, o.directory, []int{0}, []wasm.CompType{sig})
+	if err != nil {
+		t.Fatal(err)
+	}
+	site := tailDynamicSiteForTest(t, f, nil, f.info.FrameBytes-8)
+	site.dynamic = nil
+	site, err = NativeTailDefinedTypedSite(site, f.info.FrameBytes-8, []*NativeTailDefinedOwner{owner}, image, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	factory := tailDynamicBindForTest(t, site, len(f.snapshot))
+	if err := factory.Detach(); err != nil {
+		t.Fatal(err)
+	}
+	binding := f.context[abi.RV64TailCapabilityOffset:]
+	provider.key ^= 8
+	if err := factory.Bind(owner); !errors.Is(err, ErrUnsupported) || binary.LittleEndian.Uint64(binding) != 0 {
+		t.Fatal("changed declared key rebound", err)
+	}
+	provider.key = key
+	provider.err = errors.New("declared metadata retired")
+	if err := factory.Bind(owner); !errors.Is(err, provider.err) || binary.LittleEndian.Uint64(binding) != 0 {
+		t.Fatal("unavailable declared metadata rebound", err)
+	}
+	provider.err = nil
+	if n := testing.AllocsPerRun(20, func() {
+		if err := factory.Bind(owner); err != nil {
+			panic(err)
+		}
+		if err := factory.Detach(); err != nil {
+			panic(err)
+		}
+	}); n != 0 {
+		t.Fatal("warm typed rebinding allocated", n)
+	}
+}
+
 func TestTailInvocationFactoryRebindingOwnership(t *testing.T) {
 	sig := wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32, wasm.F64}, Results: []wasm.ValType{wasm.V128}}
 	makeOwner := func() (tailRAFunction, *NativeTailDefinedOwner, *tailPublishedOwnerForTest) {

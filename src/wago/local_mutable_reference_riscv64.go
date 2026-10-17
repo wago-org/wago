@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -7,6 +7,9 @@ import "fmt"
 // Compiled admission repeats the local-cell source profile before executable
 // publication. No local mutable reference cell may reach a public global handle.
 func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
+	if rv64PrimitiveReferenceContract(c) {
+		return true, nil
+	}
 	if rv64StateOnlyMutableFuncrefImport(c) {
 		return false, nil // The sole mutable cell is imported, not local executable state.
 	}

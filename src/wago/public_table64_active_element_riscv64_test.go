@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -9,7 +9,6 @@ import (
 	"slices"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -44,7 +43,7 @@ func TestRV64PublicTable64ActiveElement(t *testing.T) {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c := rv64TableStageCompile(t, "table64-active-element", rv64Table64ActiveElementSource(1), artifact)
 			defer c.Close()
-			if !rv64OwnedTable64ActiveElement(c.executionView()) {
+			if !rv64ArtifactContractValid(c.executionView()) {
 				t.Fatal("table64 active-element metadata contract")
 			}
 			in, err := Instantiate(c)
@@ -73,7 +72,7 @@ func TestRV64PublicTable64ActiveElementIndirectLifetime(t *testing.T) {
 			producerCode := rv64TableStageCompile(t, "table64-active-callable-producer", rv64Table64ActiveCallableElementSource(1), artifact)
 			consumerCode := rv64TableStageCompile(t, "table64-active-callable-consumer", rv64ImportedTable64IndirectInstructionSource(), artifact)
 			defer consumerCode.Close()
-			if !rv64OwnedTable64ActiveElement(producerCode.executionView()) || !rv64ImportedTable64Indirect(consumerCode.executionView()) {
+			if !rv64ArtifactContractValid(producerCode.executionView()) || !rv64ArtifactContractValid(consumerCode.executionView()) {
 				t.Fatal("table64 active call composition metadata contract")
 			}
 			producer, err := Instantiate(producerCode)
@@ -129,11 +128,19 @@ func TestRV64PublicTable64ActiveElementSourceGates(t *testing.T) {
 	for name, source := range mutations {
 		t.Run(name, func(t *testing.T) {
 			c, err := Compile(nil, source)
-			if c != nil {
-				c.Close()
-			}
-			if err == nil {
-				t.Fatal("nearby table64 active-element source admitted")
+			if name != "body" {
+				if err != nil {
+					t.Fatal("valid table variant", err)
+				}
+				defer c.Close()
+				rv64RequireTableArtifactMetadata(t, c)
+			} else {
+				if c != nil {
+					c.Close()
+				}
+				if err == nil {
+					t.Fatal("invalid table index width admitted")
+				}
 			}
 		})
 	}
@@ -160,16 +167,15 @@ func TestRV64PublicTable64ActiveCallableElementArtifactGates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			base := rv64TableStageCompile(t, "table64-active-callable-gates", rv64Table64ActiveCallableElementSource(1), false)
 			defer base.Close()
-			bad := cloneCompiledMetadata(base.executionView())
+			bad := rv64ReferenceImportTailCopy(base)
 			bad.Funcs = slices.Clone(bad.Funcs)
 			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
 			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
 			bad.Elems = slices.Clone(bad.Elems)
 			bad.Elems[0].Values = slices.Clone(bad.Elems[0].Values)
 			bad.Elems[0].Offset.Expr = bytes.Clone(bad.Elems[0].Offset.Expr)
-			bad.validateMemo, bad.codeCache = &validateMemo{}, nil
 			mutate(bad)
-			if rv64OwnedTable64ActiveElement(bad) || !errors.Is(railshotValidateCompiled(bad), railshot.ErrUnsupported) {
+			if bad.validate() == nil {
 				t.Fatal("hostile callable table64 active-element metadata admitted")
 			}
 			blob, err := marshalCompiled(bad)
@@ -206,13 +212,12 @@ func TestRV64PublicTable64ActiveElementArtifactGates(t *testing.T) {
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
 			base := rv64TableStageCompile(t, "table64-active-element-gates", rv64Table64ActiveElementSource(1), false)
-			bad := cloneCompiledMetadata(base.executionView())
+			bad := rv64ReferenceImportTailCopy(base)
 			bad.Elems = slices.Clone(bad.Elems)
 			bad.Elems[0].Values = slices.Clone(bad.Elems[0].Values)
 			bad.Elems[0].Offset.Expr = bytes.Clone(bad.Elems[0].Offset.Expr)
-			bad.validateMemo, bad.codeCache = &validateMemo{}, nil
 			mutate(bad)
-			if rv64OwnedTable64ActiveElement(bad) || !errors.Is(railshotValidateCompiled(bad), railshot.ErrUnsupported) {
+			if bad.validate() == nil {
 				t.Fatal("hostile table64 active-element metadata admitted")
 			}
 			blob, err := marshalCompiled(bad)
@@ -221,7 +226,7 @@ func TestRV64PublicTable64ActiveElementArtifactGates(t *testing.T) {
 			}
 			loaded, err := LoadTrustedArtifact(blob)
 			if name == "feature" {
-				if err != nil || loaded == nil || !rv64OwnedTable64ActiveElement(loaded.executionView()) || !loaded.requiredFeatures.IsEnabled(CoreFeatureTable64) {
+				if err != nil || loaded == nil || !rv64ArtifactContractValid(loaded.executionView()) || !loaded.requiredFeatures.IsEnabled(CoreFeatureTable64) {
 					t.Fatal("serialized table64 structural feature was not restored", err)
 				}
 				loaded.Close()

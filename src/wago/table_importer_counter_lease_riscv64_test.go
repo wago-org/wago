@@ -1,10 +1,12 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestRV64TableImporterCounterParkedEntryStillOwnsStorageLease(t *testing.T) {
@@ -13,7 +15,9 @@ func TestRV64TableImporterCounterParkedEntryStillOwnsStorageLease(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer table.Close()
-	c, err := Compile(ownedTableConfig().WithIndependentInstanceExecution(false), tableCounterModule(true))
+	// The entry must use table storage; an unused declaration needs no native lease.
+	source := rv64ExpressionReplaceSection(t, tableCounterModule(true), 10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 16, 0, 0x0b})))
+	c, err := Compile(ownedTableConfig().WithIndependentInstanceExecution(false), source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +57,7 @@ func TestRV64TableImporterCounterParkedEntryStillOwnsStorageLease(t *testing.T) 
 		}
 	}()
 	if table.owner.nativeLeases != 1 || table.owner.importers != 1 || entry.tables.targets == nil {
-		t.Fatal("fixture did not acquire real importer and native storage units")
+		t.Fatalf("fixture importer/native units: importers=%d leases=%d scope=%t", table.owner.importers, table.owner.nativeLeases, entry.tables.targets != nil)
 	}
 	if err := consumer.Close(); err != nil || consumer.resourcesClosed {
 		t.Fatal("parked entry lost its real consumer lifetime", err)

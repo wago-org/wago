@@ -56,6 +56,7 @@ type Features struct {
 	MultiMemory             bool // internal staged gate for bounded indexed memory execution
 	Memory64                bool // internal staged gate for bounded local 64-bit-address memory execution
 	Table64                 bool // internal staged gate for bounded local 64-bit-index table execution
+	GenericTable64          bool // retained RV64 table directory; common byte quotas bound storage
 	Threads                 bool // shared memory and core linear-memory atomic instructions
 	ExceptionHandling       bool // internal staged gate for bounded local scalar tag/throw/try_table execution
 	ExceptionReferences     bool // internal staged gate for fixed rooted exn values and throw_ref/reference catches
@@ -142,7 +143,7 @@ type ModuleFacts struct {
 	TableExported  []bool
 	MemoryGrowUsed []bool
 	MemoryExported []bool
-	UsesRefFunc    bool // executable/materialized ref.func demand; excludes legacy declarative payloads
+	UsesRefFunc    bool // executable/materialized ref.func demand; excludes declarative payloads
 	UsesCallRef    bool
 }
 
@@ -195,7 +196,7 @@ func StagedTable64Max() uint64 { return stagedTable64Max }
 // per-function descriptor arena. Funcref tables need it; externref-only tables do
 // not. Table-free modules pay for it only when a global initializer or executable
 // body contains ref.func, or an element payload materializes function references.
-// Legacy declarative payloads only declare targets and need no descriptors.
+// Declarative payloads only declare targets and need no descriptors.
 func RequiresFuncRefDescriptors(m *wasm.Module) bool {
 	facts, err := AnalyzeModuleFacts(m)
 	if err != nil {
@@ -400,7 +401,12 @@ func AnalyzeModuleFacts(m *wasm.Module) (*ModuleFacts, error) {
 	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
-		facts.UsesRefFunc = facts.UsesRefFunc || (e.Mode.Kind != wasm.ElemDeclarative && e.Kind.Kind == wasm.ElemFuncs && len(e.Kind.Funcs) != 0)
+		// Declarative segments authorize ref.func instructions but never
+		// materialize either function-index or expression payloads.
+		if e.Mode.Kind == wasm.ElemDeclarative {
+			continue
+		}
+		facts.UsesRefFunc = facts.UsesRefFunc || (e.Kind.Kind == wasm.ElemFuncs && len(e.Kind.Funcs) != 0)
 		for j := range e.Kind.Exprs {
 			facts.UsesRefFunc = facts.UsesRefFunc || exprUsesRefFunc(e.Kind.Exprs[j])
 		}
@@ -719,10 +725,10 @@ func (p supportPass) imports() error {
 				if !p.feat.Table64 {
 					return p.unsupported("import", "64-bit table (table64 disabled)", ctx)
 				}
-				if table.Limits.Min > stagedTable64Max {
+				if !p.feat.GenericTable64 && table.Limits.Min > stagedTable64Max {
 					return p.implementation("imported table64", fmt.Sprintf("minimum %d entries exceeds executable capacity", table.Limits.Min), stagedTable64Max)
 				}
-				if table.Limits.HasMax && table.Limits.Max > stagedTable64Max {
+				if !p.feat.GenericTable64 && table.Limits.HasMax && table.Limits.Max > stagedTable64Max {
 					return p.implementation("imported table64", fmt.Sprintf("maximum %d entries exceeds executable capacity", table.Limits.Max), stagedTable64Max)
 				}
 			}
@@ -761,10 +767,10 @@ func (p supportPass) tables() error {
 			if !p.feat.Table64 {
 				return p.unsupported("table", "64-bit limits (table64 disabled)", ctx)
 			}
-			if t.Type.Limits.Min > stagedTable64Max {
+			if !p.feat.GenericTable64 && t.Type.Limits.Min > stagedTable64Max {
 				return p.implementation("table64", fmt.Sprintf("table %d minimum %d entries exceeds executable capacity", tableIndex, t.Type.Limits.Min), stagedTable64Max)
 			}
-			if t.Type.Limits.HasMax && t.Type.Limits.Max > stagedTable64Max && !inertOversizedLocalTable64(p.m, i) {
+			if !p.feat.GenericTable64 && t.Type.Limits.HasMax && t.Type.Limits.Max > stagedTable64Max && !inertOversizedLocalTable64(p.m, i) {
 				return p.implementation("table64", fmt.Sprintf("table %d maximum %d entries exceeds executable capacity", tableIndex, t.Type.Limits.Max), stagedTable64Max)
 			}
 		}

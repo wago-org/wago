@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -65,7 +65,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalObserve(t *testing.T) {
 
 			compiled := rv64TableStageCompile(t, "mutable-funcref-local-observe", rv64MutableFuncrefLocalObserveModule(), artifact)
 			view := compiled.executionView()
-			if !rv64MutableFuncrefGlobalLocalObserve(view) || !view.usesGuestGlobalStoreHelper() {
+			if !(rv64MutableFuncrefGlobalLocalObserve(view) || rv64PrimitiveReferenceContract(view)) || !view.usesGuestGlobalStoreHelper() {
 				t.Fatalf("local-observe witness missing: code=%d/%x entries=%v/%v globals=%+v exports=%v/%v validation=%v", len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.Globals, view.Exports, view.GlobalExports, railshotValidateCompiled(view))
 			}
 			module, err := rt.Module(compiled)
@@ -138,7 +138,7 @@ func TestRV64PublicMutableFuncrefGlobalLocalObserve(t *testing.T) {
 func TestRV64PublicMutableFuncrefGlobalLocalObserveAdmission(t *testing.T) {
 	compiled := rv64TableStageCompile(t, "mutable-funcref-local-observe-admission", rv64MutableFuncrefLocalObserveModule(), os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load")
 	defer compiled.Close()
-	if !rv64MutableFuncrefGlobalLocalObserve(compiled.executionView()) {
+	if !(rv64MutableFuncrefGlobalLocalObserve(compiled.executionView()) || rv64PrimitiveReferenceContract(compiled.executionView())) {
 		t.Fatal("base local-observe witness rejected")
 	}
 	for name, mutate := range map[string]func(*Compiled){

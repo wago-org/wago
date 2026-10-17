@@ -1,8 +1,10 @@
 package wago
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sync"
+	"unsafe"
 )
 
 // Tag is the identity-bearing handle for an instance-exported exception tag.
@@ -182,7 +184,7 @@ func (in *Instance) ExportedTag(name string) (*Tag, error) {
 	if state.tagIdentityBase == 0 {
 		return nil, fmt.Errorf("tag owner instance has no native identity directory")
 	}
-	tag := &Tag{owner: in, index: index, typeIndex: def.TypeIndex, identity: uint64(state.tagIdentityBase + uintptr(index*8))}
+	tag := &Tag{owner: in, index: index, typeIndex: def.TypeIndex, identity: binary.LittleEndian.Uint64(unsafe.Slice((*byte)(unsafe.Pointer(state.tagIdentityBase+uintptr(index*8))), 8))}
 	state.tagExports[index] = tag
 	return tag, nil
 }

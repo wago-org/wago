@@ -100,6 +100,13 @@ func TestRefFuncGlobalHostImportEgressFailsClosed(t *testing.T) {
 	defer in.Close()
 
 	got, err := in.Invoke("get")
+	if compiledArchitecture == 4 {
+		if err != nil || len(got) != 1 {
+			t.Fatal("owned host-imported global egress", got, err)
+		}
+		requireOwnedImportedFuncrefCall(t, rt, in, got[0])
+		return
+	}
 	if err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
 		t.Fatalf("host-imported global get = %v, %v; want fail-closed egress", got, err)
 	}
@@ -267,8 +274,14 @@ func TestInstantiateRejectsUnsupportedReferenceGlobalMetadata(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := Instantiate(tc.c); err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("Instantiate error = %v, want %q", err, tc.want)
+			if err := tc.c.validateMetadata(); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("global metadata error = %v, want %q", err, tc.want)
+			}
+			if instance, err := Instantiate(tc.c); err == nil || instance != nil {
+				if instance != nil {
+					instance.Close()
+				}
+				t.Fatalf("invalid global metadata acquired an instance: %v", err)
 			}
 		})
 	}

@@ -199,7 +199,10 @@ func TestTailDynamicRV64RejectsBeforeArgumentPublication(t *testing.T) {
 func TestTailDynamicRV64FrozenSignatureAuthentication(t *testing.T) {
 	tailDynamicRV64RejectsBeforeArgumentPublication(t, true)
 }
-func tailDynamicRV64RejectsBeforeArgumentPublication(t *testing.T, frozen bool) {
+func TestTailDynamicRV64SameTransportDifferentCanonicalType(t *testing.T) {
+	tailDynamicRV64RejectsBeforeArgumentPublication(t, true, true)
+}
+func tailDynamicRV64RejectsBeforeArgumentPublication(t *testing.T, frozen bool, exact ...bool) {
 	sig := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}
 	f, view := tailInvocationFixtureForTest(t, false, 1, 1)
 	a := tailRANativeFrameInvocation(t, sig, f.a, f.ca, f.da, 0, true, func(e *integerEmitter) {
@@ -208,6 +211,9 @@ func tailDynamicRV64RejectsBeforeArgumentPublication(t *testing.T, frozen bool) 
 	})
 	b := tailRANativeFrameInvocation(t, sig, f.b, f.cb, f.db, 0, true, func(e *integerEmitter) { tailRANativeSerialize(e, sig.Results, 0) })
 	wrongSig := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.F32}, Results: []wasm.ValType{wasm.I32}}
+	if len(exact) != 0 && exact[0] {
+		wrongSig = sig
+	}
 	wrong := tailRANativeFrameInvocation(t, wrongSig, f.b, f.cb, f.db, 1, true, func(e *integerEmitter) { tailRANativeSerialize(e, wrongSig.Results, 0) })
 	oa := tailDynamicOwnerForTest(t, []tailRAFunction{a})
 	ob := tailDynamicOwnerForTest(t, []tailRAFunction{b, wrong})
@@ -220,6 +226,10 @@ func tailDynamicRV64RejectsBeforeArgumentPublication(t *testing.T, frozen bool) 
 	}
 	if frozen {
 		ob.signatureKeys = []uint64{wasm.StructuralFuncTypeKey(sig), wasm.StructuralFuncTypeKey(wrongSig)}
+		if len(exact) != 0 && exact[0] {
+			ob.signatureKeys[1] ^= 0x9e3779b97f4a7c15
+			binary.LittleEndian.PutUint64(ob.descriptors[88:], ob.signatureKeys[1])
+		}
 	}
 	tailDynamicBindForTest(t, tailDynamicSiteForTest(t, a, []tailRADynamicOwner{ob}, a.info.FrameBytes-8), len(a.snapshot)+len(b.snapshot)+len(wrong.snapshot))
 	desc, dir, ctx := bytes.Clone(ob.descriptors), bytes.Clone(ob.directory), bytes.Clone(ob.context)

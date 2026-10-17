@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -89,18 +89,18 @@ func TestRV64PublicGCArrayInitDataExecutionAndArtifact(t *testing.T) {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCArrayInitDataCompile(t, artifact)
 			view := compiled.executionView()
-			if err := railshotValidateCompiled(view); !rv64GCArrayInitData(view) || !rv64GCArrayInitDataExecutionCode(view) || err != nil {
+			if err := railshotValidateCompiled(view); !rv64ArtifactContractValid(view) || err != nil {
 				t.Fatalf("missing exact array.init_data witness: validation=%v product=%v code=%d/%x entries=%v/%v globals=%#v", err, view.stagedGCArrayProduct(), len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.memoryDir.gcArrayGlobals)
 			}
-			if params, results, err := railshotImportedCallSlots(view, 3, 0); err != nil || params != 6 || results != 0 {
-				t.Fatalf("array.init_data call arena=%d/%d,%v, want 6/0", params, results, err)
+			if params, results, err := railshotImportedCallSlots(view, 3, 0); err != nil || params != 3 || results != 0 {
+				t.Fatalf("array.init_data call arena=%d/%d,%v, want 3/0", params, results, err)
 			}
 			for _, profile := range []struct {
 				name   string
 				config GCConfig
 			}{{name: "default-gc"}, {name: "stress-gc", config: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 224, ForceMajorEveryMinor: true, VerifyAfterCollect: true, StressBarriers: true}}} {
 				t.Run(profile.name, func(t *testing.T) {
-					rt := NewRuntime(WithRuntimeConfig(rv64I31Config()))
+					rt := NewRuntime()
 					defer rt.Close()
 					mod, err := rt.Module(compiled)
 					if err != nil {
@@ -112,8 +112,8 @@ func TestRV64PublicGCArrayInitDataExecutionAndArtifact(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer in.Close()
-					if len(in.serArgs) < 6*8 {
-						t.Fatalf("array.init_data argument arena=%d bytes, want at least 48", len(in.serArgs))
+					if len(in.serArgs) < 3*8 {
+						t.Fatalf("array.init_data argument arena=%d bytes, want at least 24", len(in.serArgs))
 					}
 					if len(in.passiveDataDesc) != 16 || binary.LittleEndian.Uint32(in.passiveDataDesc[8:]) != 12 {
 						t.Fatalf("passive descriptor=%x", in.passiveDataDesc)
@@ -215,13 +215,12 @@ func TestRV64PublicGCArrayInitDataAdmissionIsExact(t *testing.T) {
 			v.PassiveData[0].Bytes = slices.Clone(v.PassiveData[0].Bytes)
 			v.PassiveData[0].Bytes[2] ^= 1
 		},
-		"initializer": func(v *Compiled) { v.memoryDir.gcArrayGlobals[0].Bits[0]++ },
+		"initializer": func(v *Compiled) { v.Globals[0].InitExpr[0] ^= 1 },
 		"export":      func(v *Compiled) { delete(v.Exports, "array_init_data"); v.Exports["init"] = 3 },
 		"feature":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
 	} {
 		t.Run(name, func(t *testing.T) {
-			candidate := cloneCompiledMetadata(base)
-			candidate.validateMemo = &validateMemo{}
+			candidate := rv64ReferenceStartCopy(base)
 			if candidate.memoryDir != nil {
 				dir := *candidate.memoryDir
 				dir.gcArrayGlobals = slices.Clone(dir.gcArrayGlobals)
@@ -231,11 +230,16 @@ func TestRV64PublicGCArrayInitDataAdmissionIsExact(t *testing.T) {
 				candidate.memoryDir = &dir
 			}
 			mutate(candidate)
-			if rv64GCArrayInitData(candidate) {
+			if rv64ArtifactContractValid(candidate) {
 				t.Fatal("hostile mutation retained array.init_data witness")
 			}
 			if err := railshotValidateCompiled(candidate); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile mutation admitted", err)
+			}
+			if !candidate.requiredFeatures.IsEnabled(CoreFeatureGC) {
+				rv64RequireRestoredGCFeature(t, candidate)
+			} else {
+				rv64RequireRejectedArtifact(t, candidate)
 			}
 		})
 	}

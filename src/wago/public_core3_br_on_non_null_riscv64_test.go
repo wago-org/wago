@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -198,13 +198,7 @@ func TestRV64Core3BrOnNonNullPinnedSourceGates(t *testing.T) {
 	}
 	for name, source := range tests {
 		t.Run(name, func(t *testing.T) {
-			c, err := rv64NativeTailConfig().Compile(source)
-			if c != nil {
-				c.Close()
-			}
-			if err == nil {
-				t.Fatal("out-of-scope Core 3 br_on_non_null source admitted")
-			}
+			rv64RequireCore3SourceValidation(t, source)
 		})
 	}
 }
@@ -229,8 +223,7 @@ func TestRV64Core3BrOnNonNullPinnedArtifactGates(t *testing.T) {
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
-			bad := cloneCompiledMetadata(base.executionView())
-			bad.validateMemo, bad.codeCache = &validateMemo{}, nil
+			bad := rv64ReferenceStartCopy(base.executionView())
 			mutate(bad)
 			if err := railshotValidateCompiled(bad); !errors.Is(err, railshot.ErrUnsupported) {
 				t.Fatal("hostile retained br_on_non_null metadata admitted", err)

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -10,7 +10,6 @@ import (
 	"slices"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -63,7 +62,7 @@ func TestRV64PublicMixedTable64DualActiveElements(t *testing.T) {
 				producerCode := rv64TableStageCompile(t, "mixed-table64-dual-active-imported-producer", rv64MixedTable64DualActiveElementsSource(), artifact)
 				readerCode := rv64TableStageCompile(t, "mixed-table64-dual-active-imported-reader", rv64ImportedTable64IndirectInstructionSource(), artifact)
 				defer readerCode.Close()
-				if !rv64MixedTable64DualActiveElements(producerCode.executionView()) {
+				if !rv64ArtifactContractValid(producerCode.executionView()) {
 					t.Fatal("mixed table64 dual-active metadata contract")
 				}
 				imported := rv64MixedSizeTestTable(t, true, 3, 3)
@@ -187,11 +186,19 @@ func TestRV64PublicMixedTable64DualActiveElementsSourceGates(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			c, err := Compile(nil, source)
-			if c != nil {
-				c.Close()
-			}
-			if err == nil {
-				t.Fatal("nearby mixed dual-active source admitted")
+			if name != "import-table32" && name != "local-table32" {
+				if err != nil {
+					t.Fatal("valid mixed table source", err)
+				}
+				defer c.Close()
+				rv64RequireTableArtifactMetadata(t, c)
+			} else {
+				if c != nil {
+					c.Close()
+				}
+				if err == nil {
+					t.Fatal("invalid table width or malformed source admitted")
+				}
 			}
 		})
 	}
@@ -221,7 +228,7 @@ func TestRV64PublicMixedTable64DualActiveElementsArtifactGates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			base := rv64TableStageCompile(t, "mixed-table64-dual-active-gates", rv64MixedTable64DualActiveElementsSource(), false)
 			defer base.Close()
-			bad := cloneCompiledMetadata(base.executionView())
+			bad := rv64ReferenceImportTailCopy(base)
 			bad.extraTables = slices.Clone(bad.extraTables)
 			bad.Funcs = slices.Clone(bad.Funcs)
 			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
@@ -232,9 +239,8 @@ func TestRV64PublicMixedTable64DualActiveElementsArtifactGates(t *testing.T) {
 				bad.Elems[i].Offset.Expr = bytes.Clone(bad.Elems[i].Offset.Expr)
 				bad.Elems[i].Values = slices.Clone(bad.Elems[i].Values)
 			}
-			bad.validateMemo, bad.codeCache = &validateMemo{}, nil
 			mutate(bad)
-			if rv64MixedTable64DualActiveElements(bad) || !errors.Is(railshotValidateCompiled(bad), railshot.ErrUnsupported) {
+			if bad.validate() == nil {
 				t.Fatal("hostile mixed dual-active metadata admitted")
 			}
 			blob, err := marshalCompiled(bad)

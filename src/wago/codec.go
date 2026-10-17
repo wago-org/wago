@@ -15,11 +15,12 @@ import (
 )
 
 const (
-	compiledSectionCode          = 1
-	compiledSectionMetadata      = 2
-	compiledSectionCount         = 2
-	compiledHeader               = compiledArchitecture<<4 | compiledSectionCount
-	_                       byte = 15 - compiledSectionCount
+	compiledSectionCode                  = 1
+	compiledSectionMetadata              = 2
+	compiledSectionCount                 = 2
+	compiledHeader                       = compiledArchitecture<<4 | compiledSectionCount
+	_                             byte   = 15 - compiledSectionCount
+	compiledCore1SegmentPreflight uint64 = 1 << 31
 
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
@@ -31,6 +32,9 @@ const (
 	// any CPU-requirement alias. Bit 50
 	// originally witnessed ref.as_non_null. Branches share its retained
 	// internal-carrier ABI; old non-null artifacts keep the same bit and layout.
+	compiledRV64FunctionEnvironmentFrames  uint64 = 1 << 33
+	compiledRV64OpaqueExternFrames         uint64 = 1 << 34
+	compiledRV64OwnedExceptionReferences   uint64 = 1 << 35
 	compiledRV64Table64ImportedInitDropABI uint64 = 1 << 36
 	compiledRV64Table64ImportedCopyABI     uint64 = 1 << 37
 	compiledRV64Table64ImportedFillABI     uint64 = 1 << 38
@@ -329,6 +333,52 @@ func measureCompiledMetadata(c *Compiled) (ArtifactSectionSizes, error) {
 }
 
 func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, ArtifactSectionSizes, error) {
+	metadata, sizes, err := encodeCompiledMetadataBody(c, countOnly, true)
+	if err != nil || compiledArchitecture != 4 || !hasRV64ExecutionContract(c) {
+		return metadata, sizes, err
+	}
+	if !rv64ArtifactContractSource(c) {
+		return nil, sizes, fmt.Errorf("RV64 native execution contract lacks admitted source or artifact metadata")
+	}
+	capacities := c.rv64ExecutionTableCapacities()
+	if len(capacities) > maxRV64ExecutionTables || len(capacities) != 0 && len(capacities) != c.tableCount() {
+		return nil, sizes, fmt.Errorf("invalid RV64 execution table capacity count")
+	}
+	sizes.GC += int64(rv64ExecutionContractSize(c))
+	sizes.Metadata += int64(rv64ExecutionContractSize(c))
+	if !countOnly {
+		storageFree := rv64StorageFreeProof(c)
+		digest := rv64ExecutionDigestProof(c.code, metadata, c.syncHostSlots, storageFree, capacities...)
+		metadata = append(metadata, rv64ExecutionContractMarker[:]...)
+		version := byte(1)
+		if len(capacities) != 0 {
+			version = 2
+		}
+		if storageFree {
+			version += 2
+		}
+		metadata = append(metadata, version)
+		if storageFree {
+			metadata = append(metadata, 1)
+		}
+		metadata = append(metadata, byte(c.syncHostSlots), byte(c.syncHostSlots>>8))
+		if len(capacities) != 0 {
+			metadata = binary.LittleEndian.AppendUint32(metadata, uint32(len(capacities)))
+			for _, capacity := range capacities {
+				metadata = binary.LittleEndian.AppendUint32(metadata, capacity)
+			}
+		}
+		metadata = append(metadata, digest[:]...)
+	}
+	return metadata, sizes, nil
+}
+
+// Contract verification serializes the same canonical execution metadata without
+// its trailer or recursive root admission. All field codecs still validate.
+func encodeCompiledMetadataBody(c *Compiled, countOnly, checkRoots bool) ([]byte, ArtifactSectionSizes, error) {
+	if err := c.validateCompactData(); err != nil {
+		return nil, ArtifactSectionSizes{}, err
+	}
 	// CPU requirements must never alias the architecture execution markers.
 	if c.nativeTable64ABI > nativeTable64ImportedInitDropABI {
 		return nil, ArtifactSectionSizes{}, fmt.Errorf("unknown RV64 table64 compiler witness")
@@ -336,7 +386,7 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	if uint64(c.requiredAMD64Features)&^(compiledCPUFeatures>>32) != 0 {
 		return nil, ArtifactSectionSizes{}, fmt.Errorf("AMD64 CPU requirements exceed the encoded feature field")
 	}
-	if compiledArchitecture == 4 && uint64(c.requiredAMD64Features)&((compiledRV64Table64ImportedInitDropABI|compiledRV64Table64ImportedCopyABI|compiledRV64Table64ImportedFillABI|compiledRV64Table64ImportedGrowABI|compiledRV64Table64ImportedGetSetABI|compiledRV64Table64ImportedSizeABI|compiledRV64Table64InitDropABI|compiledRV64Table64CopyABI|compiledRV64Table64FillABI|compiledRV64Table64IndirectABI|compiledRV64Table64GetSetABI|compiledRV64Table64GrowABI|compiledRV64Table64SizeABI)>>32) != 0 {
+	if compiledArchitecture == 4 && uint64(c.requiredAMD64Features)&((compiledRV64OwnedExceptionReferences|compiledRV64Table64ImportedInitDropABI|compiledRV64Table64ImportedCopyABI|compiledRV64Table64ImportedFillABI|compiledRV64Table64ImportedGrowABI|compiledRV64Table64ImportedGetSetABI|compiledRV64Table64ImportedSizeABI|compiledRV64Table64InitDropABI|compiledRV64Table64CopyABI|compiledRV64Table64FillABI|compiledRV64Table64IndirectABI|compiledRV64Table64GetSetABI|compiledRV64Table64GrowABI|compiledRV64Table64SizeABI)>>32) != 0 {
 		return nil, ArtifactSectionSizes{}, fmt.Errorf("AMD64 CPU requirement aliases an RV64 table64 compiler witness")
 	}
 	w := compiledWriter{countOnly: countOnly}
@@ -415,6 +465,12 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	w.tags(c)
 	mark(&sizes.Tags)
 	required := uint64(compiledStructuralRequiredFeatures(c))
+	if c.needsOwnedExceptionReferences() {
+		required |= compiledRV64OwnedExceptionReferences
+	}
+	if c.core1SegmentPreflight {
+		required |= compiledCore1SegmentPreflight
+	}
 	if c.nativeReferenceFunctionABI {
 		required |= compiledRV64ReferenceFunctionABI
 	}
@@ -545,6 +601,12 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 		}
 		required |= compiledStartFunction
 	}
+	if c.hasOpaqueExternFrames() {
+		required |= compiledRV64OpaqueExternFrames
+	}
+	if c.hasFunctionEnvironmentFrames() {
+		required |= compiledRV64FunctionEnvironmentFrames
+	}
 	w.u64(required)
 	if c.HasStart {
 		w.u32(startIndex)
@@ -554,12 +616,14 @@ func encodeCompiledMetadataMeasured(c *Compiled, countOnly bool) ([]byte, Artifa
 	}
 	sizes.Features += w.length() - start
 	start = w.length()
-	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 || c.hasCollectorReferenceCallBoundary() {
+	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 || c.hasCollectorReferenceCallBoundary() || c.needsOwnedExceptionReferences() || c.hasInternalCollectorReferenceFunctions() || c.hasOpaqueExternFrames() || c.hasFunctionEnvironmentFrames() {
 		w.u32(c.nativeGCABIRequirement())
 	}
 	w.gcTypeDescs(c.GCTypeDescs)
-	if err := validateCompiledGCFrameRoots(c, c.genericGCFrameRoots()); err != nil {
-		return nil, sizes, err
+	if checkRoots {
+		if err := validateCompiledGCFrameRoots(c, c.genericGCFrameRoots()); err != nil {
+			return nil, sizes, err
+		}
 	}
 	if rootMap := c.genericGCFrameRoots(); rootMap != nil {
 		w.gcFrameRoots(rootMap)
@@ -1192,6 +1256,7 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	if err != nil {
 		return err
 	}
+	c.hasTableExportMetadata = true
 	c.FuncTypeID, err = r.u64Slice()
 	if err != nil {
 		return err
@@ -1226,6 +1291,7 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	if err != nil {
 		return err
 	}
+	c.memoryDir.exactExports = true
 	c.dynamicImports, err = r.bool()
 	if err != nil {
 		return err
@@ -1238,6 +1304,9 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 		return err
 	}
 	gcExecution := required & compiledGCExecutionMask
+	if compiledArchitecture == 4 {
+		c.setOwnedExceptionReferences(required&compiledRV64OwnedExceptionReferences != 0)
+	}
 	c.nativeReferenceFunctionABI = required&compiledRV64ReferenceFunctionABI != 0
 	c.nativeReferenceControlABI = required&compiledRV64ReferenceControlABI != 0
 	c.nativeReferenceCallABI = required&compiledRV64ReferenceCallABI != 0
@@ -1291,7 +1360,7 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	if c.nativeReferenceFunctionABI && (compiledArchitecture != 4 || !c.nativeTableReferenceABI || !c.nativeTableContextABI || !c.nativeContextTrapABI || required&compiledRegisterABIDisabled == 0 || required&uint64(CoreFeatureReferenceTypes) == 0) {
 		return fmt.Errorf("RV64 closed reference function ABI requires framed retained reference contexts")
 	}
-	if (c.nativeReferenceCallABI || c.nativeReferenceControlABI) && (compiledArchitecture != 4 || !c.nativeTableReferenceABI || !c.nativeTableContextABI || !c.nativeContextTrapABI || required&uint64(CoreFeatureTypedFunctionReferences) == 0) {
+	if (c.nativeReferenceCallABI || c.nativeReferenceControlABI) && (compiledArchitecture != 4 || !c.nativeTableReferenceABI || !c.nativeTableContextABI || !c.nativeContextTrapABI || required&uint64(CoreFeatureTypedFunctionReferences|CoreFeatureGC) == 0) {
 		return fmt.Errorf("RV64 typed-reference ABI requires typed retained native reference contexts")
 	}
 	if c.nativeTableReferenceABI && (compiledArchitecture != 4 || !c.nativeTableContextABI || !c.nativeContextTrapABI) {
@@ -1305,7 +1374,7 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	}
 	cpuRequirements := required & compiledCPUFeatures
 	if compiledArchitecture == 4 {
-		cpuRequirements &^= compiledRV64Table64ImportedInitDropABI | compiledRV64Table64ImportedCopyABI | compiledRV64Table64ImportedFillABI | compiledRV64Table64ImportedGrowABI | compiledRV64Table64ImportedGetSetABI | compiledRV64Table64ImportedSizeABI | compiledRV64Table64InitDropABI | compiledRV64Table64CopyABI | compiledRV64Table64FillABI | compiledRV64Table64IndirectABI | compiledRV64Table64GetSetABI | compiledRV64Table64GrowABI | compiledRV64Table64SizeABI
+		cpuRequirements &^= compiledRV64FunctionEnvironmentFrames | compiledRV64OpaqueExternFrames | compiledRV64OwnedExceptionReferences | compiledRV64Table64ImportedInitDropABI | compiledRV64Table64ImportedCopyABI | compiledRV64Table64ImportedFillABI | compiledRV64Table64ImportedGrowABI | compiledRV64Table64ImportedGetSetABI | compiledRV64Table64ImportedSizeABI | compiledRV64Table64InitDropABI | compiledRV64Table64CopyABI | compiledRV64Table64FillABI | compiledRV64Table64IndirectABI | compiledRV64Table64GetSetABI | compiledRV64Table64GrowABI | compiledRV64Table64SizeABI
 	}
 	c.requiredAMD64Features = shared.AMD64Features(cpuRequirements >> 32)
 	if c.requiredAMD64Features&^shared.AMD64KnownFeatures != 0 {
@@ -1313,10 +1382,8 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	}
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledRV64Table64ImportedInitDropABI | compiledRV64Table64ImportedCopyABI | compiledRV64Table64ImportedFillABI | compiledRV64Table64ImportedGrowABI | compiledRV64Table64ImportedGetSetABI | compiledRV64Table64ImportedSizeABI | compiledRV64Table64InitDropABI | compiledRV64Table64CopyABI | compiledRV64Table64FillABI | compiledRV64Table64IndirectABI | compiledRV64Table64GetSetABI | compiledRV64Table64GrowABI | compiledRV64Table64SizeABI | compiledRV64ReferenceFunctionABI | compiledRV64ReferenceControlABI | compiledRV64ReferenceCallABI | compiledRV64TableReferenceABI | compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
-	if err := railshotValidateReferenceCalls(c); err != nil {
-		return err
-	}
+	c.core1SegmentPreflight = required&compiledCore1SegmentPreflight != 0
+	c.requiredFeatures = CoreFeatures(required &^ (compiledCore1SegmentPreflight | compiledRV64OwnedExceptionReferences | compiledRV64Table64ImportedInitDropABI | compiledRV64Table64ImportedCopyABI | compiledRV64Table64ImportedFillABI | compiledRV64Table64ImportedGrowABI | compiledRV64Table64ImportedGetSetABI | compiledRV64Table64ImportedSizeABI | compiledRV64Table64InitDropABI | compiledRV64Table64CopyABI | compiledRV64Table64FillABI | compiledRV64Table64IndirectABI | compiledRV64Table64GetSetABI | compiledRV64Table64GrowABI | compiledRV64Table64SizeABI | compiledRV64ReferenceFunctionABI | compiledRV64ReferenceControlABI | compiledRV64ReferenceCallABI | compiledRV64TableReferenceABI | compiledRV64TableContextABI | compiledRV64ContextTrapABI | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledStartFunction | compiledGCExecutionMask | compiledCPUFeatures))
 	if c.nativeReferenceCallABI || c.nativeReferenceControlABI {
 		c.ensureCodeCache()
 		c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
@@ -1346,9 +1413,17 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	// requirement from authoritative feature metadata as well as the redundant
 	// bit before footprint validation, so a sparse producer cannot create native
 	// code with a missing context anchor.
-	c.needsFuncRefContextHeader = required&compiledFuncRefContextHeader != 0 || c.nativeContextTrapABI && c.NumImports+len(c.Funcs) > 0 || c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling)
+	c.needsFuncRefContextHeader = required&compiledFuncRefContextHeader != 0 || compiledArchitecture == 4 && required&compiledAtomicWaitExecution != 0 || c.nativeContextTrapABI && railshotNeedsImportContextHeader(c) || c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling)
+	if compiledArchitecture == 4 && required&compiledRV64FunctionEnvironmentFrames != 0 {
+		c.ensureCodeCache()
+		c.codeCache.gcMetadataFlags |= compiledGCMetadataFunctionFrames
+	}
+	if compiledArchitecture == 4 && required&compiledRV64OpaqueExternFrames != 0 {
+		c.ensureCodeCache()
+		c.codeCache.gcMetadataFlags |= compiledGCMetadataOpaqueExternFrames
+	}
 	genericNativeGC := gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0
-	if genericNativeGC || c.hasCollectorReferenceCallBoundary() {
+	if genericNativeGC || c.hasCollectorReferenceCallBoundary() || c.needsOwnedExceptionReferences() || c.hasInternalCollectorReferenceFunctions() || c.hasOpaqueExternFrames() || c.hasFunctionEnvironmentFrames() {
 		label := "native GC call-boundary"
 		if genericNativeGC {
 			label = "generic GC native"
@@ -1368,14 +1443,18 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 		return err
 	}
 	var gcFrameRoots *compiledGCFrameRoots
-	if len(r.data) != 0 {
+	if len(r.data) != 0 && !rv64ExecutionContractTrailer(r.data) {
 		gcFrameRoots, err = r.gcFrameRoots()
 		if err != nil {
 			return err
 		}
 	}
 	if gcExecution&compiledGCExecutionDynamicFuncRefTest != 0 {
-		if !c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) || len(c.FuncTypeID) == 0 || !c.needsFuncRefDescs() {
+		// A nonfinal function type also requires GC type declarations when its
+		// only use is call_indirect. Such an image still needs the owner-backed
+		// subtype helper, without a typed-function instruction or GC allocation.
+		functionTypeMetadata := c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) || compiledArchitecture == 4 && c.requiredFeatures.IsEnabled(CoreFeatureGC)
+		if !functionTypeMetadata || len(c.FuncTypeID) == 0 || !c.needsFuncRefDescs() {
 			return fmt.Errorf("dynamic indexed-function ref.test execution flag requires typed function descriptor metadata")
 		}
 		c.ensureCodeCache()
@@ -1399,7 +1478,11 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 	}
 	genericGCExecution := gcExecution & (compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray)
 	if genericGCExecution != 0 {
-		if !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !gc.HasHeapObjectTypes(c.GCTypeDescs) {
+		// i31 ref.test may use the reference helper without allocating a heap
+		// object. Its separate execution bit and exact function-only graph are
+		// persisted; ordinary generic heap helpers still need object descriptors.
+		i31ReferenceHelper := c.stagedGCI31Product() != 0 && compiledFunctionOnlyTypeGraph(c)
+		if !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !gc.HasHeapObjectTypes(c.GCTypeDescs) && !i31ReferenceHelper {
 			return fmt.Errorf("generic GC execution flags %#x require recorded GC heap metadata", genericGCExecution)
 		}
 		hasStruct, hasArray := false, false
@@ -1407,7 +1490,7 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 			hasStruct = hasStruct || desc.Kind == gc.KindStruct
 			hasArray = hasArray || desc.Kind == gc.KindArray
 		}
-		if genericGCExecution&compiledGCExecutionGenericStruct != 0 && !hasStruct && !hasArray {
+		if genericGCExecution&compiledGCExecutionGenericStruct != 0 && !hasStruct && !hasArray && !i31ReferenceHelper {
 			return fmt.Errorf("generic GC reference-helper execution flag has no struct or array descriptor")
 		}
 		if genericGCExecution&compiledGCExecutionGenericArray != 0 && !hasArray {
@@ -1427,7 +1510,26 @@ func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactD
 			c.validateMemo = &validateMemo{}
 		}
 		c.validateMemo.gcFrameRoots = gcFrameRoots
+	}
+	if len(r.data) != 0 {
+		if c.validateMemo == nil {
+			c.validateMemo = &validateMemo{}
+		}
+		if err := readRV64ExecutionContract(c, r.data, data[:len(data)-len(r.data)]); err != nil {
+			return err
+		}
+		r.data = nil
+	}
+	if gcFrameRoots != nil {
 		if err := validateCompiledGCFrameRoots(c, gcFrameRoots); err != nil {
+			return err
+		}
+	}
+	if err := railshotValidateDecodedNativeTail(c); err != nil {
+		return err
+	}
+	if !rv64StructuralCodecMetadata(c) && !rv64ArtifactRootedContract(c) {
+		if err := railshotValidateReferenceCalls(c); err != nil {
 			return err
 		}
 	}
@@ -2618,9 +2720,6 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 	callCount, err := r.countElements("GC frame callsites", 13, unsafe.Sizeof(compiledGCFrameCallsite{})+internerEntryBytes)
 	if err != nil {
 		return nil, err
-	}
-	if n == 0 && callCount == 0 {
-		return nil, fmt.Errorf("GC frame metadata has no safepoints or callsites")
 	}
 	rootMap.callsites = make([]compiledGCFrameCallsite, callCount)
 	for i := range rootMap.callsites {

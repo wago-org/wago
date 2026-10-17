@@ -102,9 +102,14 @@ func TestReferenceFunctionExpressionElementsConfinement(t *testing.T) {
 				mutate(m)
 				o := closedReferenceProductionOptions(true, true)
 				o.ImportBindings = hostImportBindings(3)
+				switch name {
+				case "empty-indexed-type", "nofunc-null", "implicit-ref", "typed-nonnull", "private-active", "private-unused-passive", "private-declared":
+					checkPublicPrimitiveModule(t, m, o)
+					return
+				}
 				pressure := 0
 				o.MemoryPressure = func() { pressure++ }
-				if image, err := CompileModuleWith(m, o); image != nil || !errors.Is(err, ErrUnsupported) || pressure != 0 {
+				if image, err := CompileModuleWith(m, o); image != nil || err == nil || pressure != 0 {
 					t.Fatal("unproven literal published", err, pressure)
 				}
 			})

@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64) && !tinygo
+//go:build (((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64)) && !tinygo
 
 // This spec-suite harness uses t.Skip/t.Fatal and shells out to wast2json, none
 // of which work under TinyGo, so it is excluded there.
@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -50,6 +51,14 @@ var coreFiles1_0 = []string{
 // Release 2.0 and 3.0 use spectest.DiscoverRelease2/3 instead.
 func specFilesForVersion(version, dir string) []string {
 	if version == "1.0" {
+		if os.Getenv("WAGO_SPEC_ALL_FILES") == "1" {
+			var out []string
+			for _, name := range wastNames(dir) {
+				out = append(out, strings.TrimSuffix(name, ".wast"))
+			}
+			sort.Strings(out)
+			return out
+		}
 		return coreFiles1_0
 	}
 	if version == "simd" {
@@ -1561,6 +1570,27 @@ func firstLine(b []byte) string {
 	return s
 }
 
+// Core 1 used a bare table index before an active element segment's offset.
+// Current WABT treats a bare identifier as the element segment's own name.
+// Expand only legacy active-element headers, retaining all assertion commands.
+var legacyElementTableHeader = regexp.MustCompile(`(?m)^([\t ]*\(elem)[\t ]+(\$[^\s()]+|0x[0-9a-fA-F]+|[0-9]+)([\t ]+\((?:offset|i32\.const|global\.get)\b)`)
+
+func normalizeLegacyElementTables(source []byte) []byte {
+	return legacyElementTableHeader.ReplaceAll(source, []byte("$1 (table $2)$3"))
+}
+
+func TestNormalizeLegacyElementTables(t *testing.T) {
+	legacy := []byte("  (elem $t (i32.const 0) $f)\n(elem 0x0 (offset (i32.const 0)))\n")
+	want := "  (elem (table $t) (i32.const 0) $f)\n(elem (table 0x0) (offset (i32.const 0)))\n"
+	if got := string(normalizeLegacyElementTables(legacy)); got != want {
+		t.Fatalf("legacy element table conversion: %q", got)
+	}
+	untouched := []byte("(elem $segment (table $t) (i32.const 0) func $f)\n(elem (table $t) (i32.const 0) func $f)\n;; (elem $t (i32.const 0))\n\"(elem $t (i32.const 0))\"\n")
+	if got := normalizeLegacyElementTables(untouched); !bytes.Equal(got, untouched) {
+		t.Fatalf("changed nonlegacy headers or text: %q", got)
+	}
+}
+
 func runSpecExec(t *testing.T, wast2json, interpreter, dir, version string, files []string) {
 	tmp := t.TempDir()
 	if len(files) == 0 {
@@ -1577,6 +1607,18 @@ func runSpecExec(t *testing.T, wast2json, interpreter, dir, version string, file
 		// wast2json output name so all .json/.wasm land in tmp's root.
 		name := strings.ReplaceAll(base, string(filepath.Separator), "_")
 		jsonPath := filepath.Join(tmp, name+".json")
+		if version == "1.0" {
+			source, err := os.ReadFile(wast)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if normalized := normalizeLegacyElementTables(source); !bytes.Equal(source, normalized) {
+				wast = filepath.Join(tmp, name+".legacy.wast")
+				if err := os.WriteFile(wast, normalized, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
 		args := []string{wast, "-o", jsonPath}
 		if version == "3.0" {
 			args = append([]string{"--enable-all"}, args...)
@@ -1613,7 +1655,15 @@ func runSpecExec(t *testing.T, wast2json, interpreter, dir, version string, file
 		}
 
 		cfg := wago.NewRuntimeConfig()
-		if version == "3.0" {
+		switch version {
+		case "1.0":
+			// This pinned legacy corpus includes post-MVP sign-extension and
+			// non-trapping conversions. Keep bulk memory disabled so its active
+			// segments still use Core 1's atomic bounds-failure semantics.
+			cfg = cfg.WithCoreFeatures(wago.CoreFeaturesV1 | wago.CoreFeatureSignExtensionOps | wago.CoreFeatureNonTrappingFloatToIntConversion)
+		case "2.0":
+			cfg = cfg.WithCoreFeatures(wago.CoreFeaturesV2)
+		case "3.0":
 			cfg = cfg.WithCoreFeatures(wago.CoreFeaturesV3)
 		}
 		stats := runSpecExecFileWithConfig(t, base, tmp, sf, cfg)
@@ -1631,7 +1681,7 @@ func runSpecExec(t *testing.T, wast2json, interpreter, dir, version string, file
 	if total.assertionsPassed+total.assertionsSkipped+total.assertionsFailed == 0 {
 		t.Errorf("no execution assertions were accounted — harness or corpus misconfigured")
 	}
-	if (version == "2.0" || version == "3.0") && (total.modulesSkipped != 0 || total.assertionsSkipped != 0) {
+	if (version == "2.0" || version == "3.0" || os.Getenv("WAGO_SPEC_REQUIRE_ZERO_GAPS") == "1") && (total.modulesSkipped != 0 || total.assertionsSkipped != 0) {
 		t.Errorf("WebAssembly %s execution must have zero feature-related skips: modules=%d assertions=%d gaps %s",
 			version, total.modulesSkipped, total.assertionsSkipped, total.gapSummary())
 	}
@@ -2369,9 +2419,9 @@ func specTrapMatches(err error, want string) (bool, string) {
 	case "null reference", "null array reference", "null i31 reference", "null structure reference":
 		ok = matches(wago.TrapNullReference)
 	case "null function reference":
-		// The native table-call ABI represents a null function entry with the
-		// same trap code as an uninitialized indirect-call target.
-		ok = matches(wago.TrapIndirectOutOfBounds)
+		// call_ref reports a null reference. The table-call ABI represents an
+		// uninitialized function entry as an indirect-call target trap.
+		ok = matches(wago.TrapNullReference, wago.TrapIndirectOutOfBounds)
 	case "cast", "cast failure":
 		ok = matches(wago.TrapCastFailure)
 	case "unhandled exception":

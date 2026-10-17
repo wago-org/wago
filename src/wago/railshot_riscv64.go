@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
 
 package wago
 
@@ -8,7 +8,6 @@ import (
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 type railshotImportBinding = railshot.ImportBinding
@@ -35,17 +34,11 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	// newGCFrameRootPlan. The backend still authenticates the bounded source
 	// product and every plan count before emitting a callable image.
 	opts.GCFrameRootsSource = opts.GCFrameRoots != nil
-	maxImportArity := coreruntime.MaxHostArity
-	vectorProfile := false
+	maxImportArity := railshot.MaxVectorFunctionValues
 	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 && opts.GCTypeSubtypingRefFuncGlobalsSource == 0 && !opts.GCTypeSubtypingRuntimeCallCastSource && !opts.GCTypeSubtypingRuntimeFinalityCallCastSource && !opts.GCTypeSubtypingRuntimeTypedTableCallSource && opts.GCTypeSubtypingRefTestSingleSource == 0 && opts.GCTypeSubtypingLinkSource == 0 && opts.GCTypeSubtypingFinalityLinkSource == 0 && opts.GCTypeSubtypingStructLinkSource == 0 && opts.GCTypeSubtypingStructProjectionSource == 0 && opts.GCTypeSubtypingStructMismatchSource == 0 && opts.GCTypeSubtypingIndependentStructSource == 0 && opts.GCTypeSubtypingExtendedProjectionSource == 0 && opts.GCTypeSubtypingDuplicateRecursiveSource == 0 && opts.GCTypeSubtypingExtendedRecursiveSource == 0 && opts.GCTypeSubtypingCrossGroupMismatchSource == 0 && opts.GCTypeSubtypingTransitiveMismatchSource == 0 && !opts.GCTypeSubtypingNonFlatExportSource {
-		var err error
-		vectorProfile, err = railshot.UsesSWAR(m)
-		if err != nil {
+		if _, err := railshot.UsesSWAR(m); err != nil {
 			return nil, err
 		}
-	}
-	if vectorProfile {
-		maxImportArity = 128
 	}
 	for i, im := range m.Imports {
 		if im.Type.Kind == wasm.ExternFunc {
@@ -60,6 +53,8 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	opts.Interruptible = true
 	opts.ForeignTableCalls = true
 	opts.InvocationContext = true
+	opts.ExceptionHandlingSource = railshot.AdmitExceptionHandlingModule(m)
+	opts.OwnedExceptionReferences = opts.ExceptionHandlingSource && railshot.ManagedExceptionReferences(m)
 	return railshot.CompileModuleWith(m, opts)
 }
 
@@ -75,8 +70,8 @@ func railshotGCNativeCodeTelemetry(stats *railshotModuleStats) GCNativeCodeTelem
 	return out
 }
 
-// Deferred events retain pre-publication gates.
-func railshotHostIndirectThunk(uint32) []byte { return nil }
+// Deferred event wrappers use the bounded per-instance replay log.
+func railshotHostIndirectThunk(index uint32) []byte { return railshot.HostIndirectThunk(index) }
 func railshotHostIndirectSyncThunk(index uint32, params, results int) []byte {
 	return railshot.HostIndirectSyncThunk(index, params, results)
 }
@@ -88,7 +83,18 @@ func railshotAdmitSource(data []byte, m *wasm.Module) error {
 	if err := railshot.AdmitProductionSource(data); err != nil {
 		return err
 	}
+	if railshot.AdmitExceptionHandlingModule(m) {
+		return railshot.AdmitExceptionHandlingInitializers(m)
+	}
 	return railshot.AdmitPublicInitializers(m)
+}
+
+func railshotManagedExceptionReferences(m *wasm.Module) bool {
+	return railshot.AdmitExceptionHandlingModule(m) && railshot.ManagedExceptionReferences(m)
+}
+
+func railshotExceptionHandlingSource(m *wasm.Module) bool {
+	return railshot.AdmitExceptionHandlingModule(m)
 }
 
 func railshotI31CoreSource(data []byte) bool { return railshot.AdmitI31CoreSource(data) }
@@ -279,6 +285,14 @@ func railshotGCArrayCopySource(data []byte) bool {
 
 func railshotConfigureI31Core(exactSource bool, opts *railshotCompileOptions) {
 	opts.I31CoreSource = exactSource
+}
+
+func railshotGeneralI31Module(m *wasm.Module) bool {
+	return railshot.AdmitGeneralI31Module(m)
+}
+
+func railshotConfigureGeneralI31(source bool, opts *railshotCompileOptions) {
+	opts.GeneralI31Source = source
 }
 
 func railshotConfigureGCRefEq(exactSource bool, opts *railshotCompileOptions) {
@@ -546,4 +560,8 @@ func railshotConfigureGCArrayFill(exactSource bool, opts *railshotCompileOptions
 
 func railshotConfigureGCArrayCopy(exactSource bool, opts *railshotCompileOptions) {
 	opts.GCArrayCopySource = exactSource
+}
+
+func railshotFunctionSubtypeHelpers(m *wasm.Module) bool {
+	return railshot.NeedsFunctionSubtypeHelpers(m)
 }

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -11,6 +11,7 @@ import (
 	"slices"
 	"testing"
 
+	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -284,19 +285,22 @@ func TestRV64PublicImportedCallCapacityDirectionsAndBounds(t *testing.T) {
 		} else {
 			sig.Results = wide
 		}
-		c := Compiled{NumImports: 1, importFuncSigs: []FuncSig{sig}, Funcs: []FuncSig{{Params: []ValType{ValI32, ValI32, ValI32}, Results: []ValType{ValI32}}}}
+		c := Compiled{nativeContextTrapABI: true, NumImports: 1, importFuncSigs: []FuncSig{sig}, Funcs: []FuncSig{{Params: []ValType{ValI32, ValI32, ValI32}, Results: []ValType{ValI32}}}}
 		params, results, err := c.maxCallSlots()
 		if err != nil || params != wantParams || results != wantResults {
 			t.Fatal("independent imported capacities", params, results, err)
 		}
 	}
-	tooWide := append(slices.Clone(wide), ValV128)
+	tooWide := make([]ValType, railshot.MaxNativeCallSlots/2+1)
+	for i := range tooWide {
+		tooWide[i] = ValV128
+	}
 	for _, c := range []*Compiled{
-		{NumImports: -1},
-		{NumImports: 1},
-		{importFuncSigs: []FuncSig{{}}},
-		{NumImports: 1, importFuncSigs: []FuncSig{{Params: tooWide}}},
-		{NumImports: 1, importFuncSigs: []FuncSig{{Results: tooWide}}},
+		{nativeContextTrapABI: true, NumImports: -1},
+		{nativeContextTrapABI: true, NumImports: 1},
+		{nativeContextTrapABI: true, importFuncSigs: []FuncSig{{}}},
+		{nativeContextTrapABI: true, NumImports: 1, importFuncSigs: []FuncSig{{Params: tooWide}}},
+		{nativeContextTrapABI: true, NumImports: 1, importFuncSigs: []FuncSig{{Results: tooWide}}},
 	} {
 		if _, _, err := c.maxCallSlots(); err == nil {
 			t.Fatal("invalid imported capacity accepted")
@@ -362,7 +366,7 @@ func TestRV64PublicIndirectTypeCallCapacityBounds(t *testing.T) {
 		if paramsWide {
 			typ.Params, typ.Results, wantParams, wantResults = wide, []ValueTypeDescriptor{{Kind: ValueTypeI64}}, 256, 1
 		}
-		c := Compiled{HasTable: true, requiredFeatures: CoreFeatureSIMD, Types: []DefinedTypeDescriptor{typ}, Funcs: []FuncSig{{Params: []ValType{ValI32, ValI32, ValI32}, Results: []ValType{ValI32}}}}
+		c := Compiled{nativeContextTrapABI: true, HasTable: true, requiredFeatures: CoreFeatureSIMD, Types: []DefinedTypeDescriptor{typ}, Funcs: []FuncSig{{Params: []ValType{ValI32, ValI32, ValI32}, Results: []ValType{ValI32}}}}
 		params, results, err := c.maxCallSlots()
 		if err != nil || params != wantParams || results != wantResults {
 			t.Fatal("indirect physical capacities", params, results, err)
@@ -375,7 +379,7 @@ func TestRV64PublicIndirectTypeCallCapacityBounds(t *testing.T) {
 		{Kind: CompositeTypeStruct},
 		{Kind: CompositeTypeFunction, Final: true, Params: []ValueTypeDescriptor{{Kind: ValueTypeReference}}},
 	} {
-		c := Compiled{HasTable: true, requiredFeatures: CoreFeatureSIMD, Types: []DefinedTypeDescriptor{typ}}
+		c := Compiled{nativeContextTrapABI: true, HasTable: true, requiredFeatures: CoreFeatureSIMD, Types: []DefinedTypeDescriptor{typ}}
 		if _, _, err := c.maxCallSlots(); err == nil {
 			t.Fatal("invalid unused indirect signature admitted", typ.Kind)
 		}
@@ -387,13 +391,13 @@ func TestRV64PublicIndirectTypeCallCapacityBounds(t *testing.T) {
 			types[i].Final = true
 			types[i].RecGroup = uint32(i)
 		}
-		c := Compiled{HasTable: true, Types: types}
+		c := Compiled{nativeContextTrapABI: true, HasTable: true, Types: types}
 		_, _, err := c.maxCallSlots()
 		if (err != nil) != (count > 1024) {
 			t.Fatal("indirect type directory limit", count, err)
 		}
 	}
-	c := Compiled{Types: []DefinedTypeDescriptor{{Kind: CompositeTypeFunction, Params: tooWide}}, Funcs: []FuncSig{{Results: []ValType{ValI32}}}}
+	c := Compiled{nativeContextTrapABI: true, Types: []DefinedTypeDescriptor{{Kind: CompositeTypeFunction, Params: tooWide}}, Funcs: []FuncSig{{Results: []ValType{ValI32}}}}
 	if params, results, err := c.maxCallSlots(); err != nil || params != 0 || results != 1 {
 		t.Fatal("direct-only capacity changed", params, results, err)
 	}

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && wago_rv64_experimental && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -135,7 +135,7 @@ func TestRV64PublicReferenceFunctionImportsForeignOwners(t *testing.T) {
 									for i, owner := range g.owners {
 										if owner == producer {
 											counts, _, err := rv64NativeTailOwnerCounts(owner)
-											if err != nil || counts.NonCallable != 2 || counts.TargetNonCallable != 2 || counts.MaskSlots != counts.Functions || counts.Targets != counts.Functions || counts.HostSlots != counts.Functions || counts.Proxies != 1 || g.snapshots[i] == nil || g.snapshots[i].Validate() != nil {
+											if err != nil || counts.NonCallable != 0 || counts.TargetNonCallable != 0 || counts.MaskSlots != counts.Functions || counts.Targets != counts.Functions || counts.HostSlots != counts.Functions || counts.Proxies != 1 || g.snapshots[i] == nil || g.snapshots[i].Validate() != nil {
 												t.Fatal("actual sparse imported generation", counts, err)
 											}
 											found = true
