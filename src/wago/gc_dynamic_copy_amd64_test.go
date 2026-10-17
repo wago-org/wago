@@ -156,10 +156,6 @@ func testGCDynamicNumericCopy(t *testing.T) {
 	}
 }
 
-func gcDynamicCopyPressureModule() []byte {
-	return gcDynamicCopyPressureModuleSites(1)
-}
-
 func gcDynamicCopyPressureModuleSites(sites int) []byte {
 	values := make([]wasm.ValType, 32)
 	for i := range values {
