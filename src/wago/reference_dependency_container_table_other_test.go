@@ -1,4 +1,4 @@
-//go:build !riscv64
+//go:build !riscv64 && !tinygo
 
 package wago
 

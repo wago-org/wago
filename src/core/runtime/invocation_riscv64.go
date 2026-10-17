@@ -36,3 +36,5 @@ func (e *Engine) resetNativeInvocation() {
 	clear(e.stack[len(e.stack)-abi.RV64InvocationViewBytes:])
 	e.stackTop = e.StackTop()
 }
+
+func (e *Engine) nativeResumeStackTop() uintptr { return e.stackTop }

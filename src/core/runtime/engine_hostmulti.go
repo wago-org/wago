@@ -47,7 +47,8 @@ func (e *Engine) CallWithHostBaseMultiViewBounded(access runtimebridge.HostScala
 	args := unsafe.Slice((*uint64)(unsafe.Pointer(&ctrl[hcArgs])), maxHostArity)
 	values := unsafe.Slice((*uint64)(unsafe.Pointer(&ctrl[hcResults])), maxHostArity)
 	root := slicePtr(ctrl)
-	e.enterNativeBounded(code, serArgs, linMemBase, trap, results)
+	e.prepareNativeInvocation(serArgs, results)
+	enterNativeBounded(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 	for {
 		switch tc := loadTrap(trap); {
 		case tc == hostCallPending:
@@ -68,7 +69,7 @@ func (e *Engine) CallWithHostBaseMultiViewBounded(access runtimebridge.HostScala
 		if TrapCode(loadTrap(trap)) == TrapInterrupted {
 			return trapErrorFromBuffer(TrapInterrupted, trap)
 		}
-		stackTop := e.stackTop
+		stackTop := e.nativeResumeStackTop()
 		prepareHostResume(ctrl, trap, stackTop, e.StackLimit())
 		resumeNativeBounded(root, stackTop)
 	}

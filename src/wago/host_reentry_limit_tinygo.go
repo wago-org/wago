@@ -2,5 +2,6 @@
 
 package wago
 
-// TinyGo's smaller fixed task stack needs the original conservative limit.
-const maxHostReentryDepth = 4
+// Keep the RV64 PR's conservative task-stack bound. Reject the fourth nested
+// reentry before saved callers and native boundary frames reach the canary.
+const maxHostReentryDepth = 3

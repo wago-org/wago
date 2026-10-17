@@ -216,7 +216,8 @@ func (e *Engine) CallGuarded(code uintptr, serArgs []byte, linMemBase uintptr, t
 	}
 	clearTrapUnlessInterrupted(trap)
 	j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
-	e.enterNative(code, serArgs, linMemBase, trap, results)
+	e.prepareNativeInvocation(serArgs, results)
+	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 	goruntime.KeepAlive(serArgs)
 	goruntime.KeepAlive(trap)
 	goruntime.KeepAlive(results)

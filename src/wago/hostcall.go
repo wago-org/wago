@@ -31,7 +31,7 @@ type HostModule interface {
 // identity. If that call chain re-enters a parked Instance, Wago supplies an
 // isolated native stack and call buffers for the nested activation. One
 // invocation may have at most 32 active InvokeFromHost calls under standard Go
-// or four under TinyGo. Exceeding that limit returns an error wrapping
+// or three under TinyGo. Exceeding that limit returns an error wrapping
 // ErrPermissionDenied. Retained or unrelated HostModule values fail closed.
 func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, export string, args ...uint64) (results []uint64, err error) {
 	var active *Instance
