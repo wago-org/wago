@@ -1198,7 +1198,14 @@ func (a *Asm) RepStosb() {
 		a.regallocGPWrite(1<<RCX | 1<<RDI)
 	}
 	a.emit(0xF3, 0xAA)
-}                   // rep stos byte [RDI] <- AL, RCX times
+} // rep stos byte [RDI] <- AL, RCX times
+// RepStosq stores RAX in RCX consecutive 8-byte elements at RDI.
+func (a *Asm) RepStosq() {
+	if regallocCheckEnabled {
+		a.regallocGPWrite(1<<RCX | 1<<RDI)
+	}
+	a.emit(0xF3, 0x48, 0xAB)
+}
 func (a *Asm) Std() { a.emit(0xFD) } // set direction flag (decrement)
 func (a *Asm) Cld() { a.emit(0xFC) } // clear direction flag (increment)
 

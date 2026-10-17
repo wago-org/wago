@@ -188,6 +188,7 @@ func TestGPWritesImplicitDestinations(t *testing.T) {
 		{"xchg-self", func(a *Asm) { a.Xchg64(R13, R13) }, 1 << R13},
 		{"rep-movsb", func(a *Asm) { a.RepMovsb() }, 1<<RCX | 1<<RSI | 1<<RDI},
 		{"rep-stosb", func(a *Asm) { a.RepStosb() }, 1<<RCX | 1<<RDI},
+		{"rep-stosq", func(a *Asm) { a.RepStosq() }, 1<<RCX | 1<<RDI},
 		{"call-relative", func(a *Asm) { a.CallRel32() }, 0xffff},
 		{"call-register", func(a *Asm) { a.CallReg(R13) }, 0xffff},
 		{"call-memory", func(a *Asm) { a.CallMem(R13, 8) }, 0xffff},
