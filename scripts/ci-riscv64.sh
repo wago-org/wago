@@ -32,7 +32,7 @@ go_test() {
 }
 test "$(go env GOOS)/$(go env GOARCH)" = linux/riscv64
 go version
-go env GOOS GOARCH GORISCV64 CGO_ENABLED GOMAXPROCS
+go env GOOS GOARCH GORISCV64 CGO_ENABLED GOMAXPROCS GOFLAGS
 mode=${1:-}
 case "$mode" in
   smoke)
