@@ -68,6 +68,7 @@ case "$mode" in
     artifact_dir=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/wago-rv64-public.XXXXXX")
     trap 'rm -rf -- "$artifact_dir"' EXIT
     unset WAGO_RV64_TABLE_STAGE_ARTIFACT_DIR WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE \
+      WAGO_RV64_CALL_STAGE_ARTIFACT_DIR WAGO_RV64_CALL_STAGE_ARTIFACT_MODE \
       WAGO_RV64_PORTABLE_FEATURE_DIR WAGO_RV64_PORTABLE_FEATURE_MODE \
       WAGO_RV64_CUSTOM_ARTIFACT_DIR WAGO_RV64_CUSTOM_ARTIFACT_MODE \
       WAGO_RV64_CORE3_REF_ARTIFACT_DIR WAGO_RV64_CORE3_REF_ARTIFACT_MODE \
@@ -164,6 +165,15 @@ case "$mode" in
         WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE=load \
         go_test -tags="$tags,wago_precompiled" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
           -run '^TestRV64(PortableFeatureArtifacts|CustomWideDataSourceArtifact|HostEventCompilerFreeArtifact|HostEventCancelCloseAndReentry)$'
+      mkdir -p "$artifact_dir/$check/call-spec"
+      WAGO_RV64_CALL_STAGE_ARTIFACT_DIR="$artifact_dir/$check/call-spec" \
+        WAGO_RV64_CALL_STAGE_ARTIFACT_MODE=prepare \
+        go_test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
+          -run '^TestRV64PublicPinnedCallSpecPreparedArtifacts$'
+      WAGO_RV64_CALL_STAGE_ARTIFACT_DIR="$artifact_dir/$check/call-spec" \
+        WAGO_RV64_CALL_STAGE_ARTIFACT_MODE=load \
+        go_test -tags="$tags,wago_precompiled" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
+          -run '^TestRV64PublicPinnedCallSpecPreparedArtifacts$'
       WAGO_RV64_CORE3_REF_ARTIFACT_DIR="$artifact_dir/$check/core3-ref" \
         WAGO_RV64_CORE3_REF_ARTIFACT_MODE=prepare \
         WAGO_RV64_CORE3_REF_IS_NULL_ARTIFACT_DIR="$artifact_dir/$check/core3-ref-is-null" \

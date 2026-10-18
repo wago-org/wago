@@ -7,6 +7,9 @@ on:
       - ".github/workflows/riscv64.yml"
       - "scripts/ci-riscv64.sh"
       - "scripts/test-riscv64.sh"
+      - "scripts/bootstrap-wabt.sh"
+      - "scripts/prepare-riscv64-numeric-spec.py"
+      - "scripts/prepare-riscv64-simd-spec.py"
       - "src/core/compiler/backend/railshot/riscv64/**"
       - "src/core/compiler/backend/railshot/shared/**"
       - "src/core/compiler/wasm/**"
@@ -28,8 +31,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  fixtures:
+    name: Prepare pinned specification fixtures
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          submodules: true
+      - name: Prepare pinned fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixtures="$RUNNER_TEMP/wago-rv64-fixtures"
+          wabt=$(scripts/bootstrap-wabt.sh --print-path)
+          python3 scripts/prepare-riscv64-simd-spec.py \
+            tests/conformance/spec-v2 "$fixtures/simd"
+          python3 scripts/prepare-riscv64-simd-spec.py --relaxed \
+            tests/conformance/spec-v3 "$fixtures/relaxed-simd"
+          for profile in numeric float memory control multimemory memory64 fac call; do
+            suite=spec-v2
+            if [[ $profile == multimemory || $profile == memory64 ]]; then
+              suite=spec-v3
+            fi
+            python3 scripts/prepare-riscv64-numeric-spec.py --profile "$profile" \
+              "tests/conformance/$suite" "$fixtures/$profile" "$wabt"
+          done
+      - name: Upload pinned fixtures
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: wago-rv64-fixtures
+          path: ${{ runner.temp }}/wago-rv64-fixtures
+          if-no-files-found: error
+          retention-days: 1
+
   native:
     name: JIT / native Linux RISC-V64
+    needs: fixtures
     # RISE requires exactly this single label; adding self-hosted breaks routing.
     # Org owner must install the RISE App and permit this repository first.
     runs-on: ubuntu-24.04-riscv
@@ -78,6 +117,29 @@ jobs:
           echo "$tools_dir/go/bin" >> "$GITHUB_PATH"
           echo "GOCACHE=$RUNNER_TEMP/wago-rv64-go-cache" >> "$GITHUB_ENV"
           echo "GOMODCACHE=$RUNNER_TEMP/wago-rv64-module-cache" >> "$GITHUB_ENV"
+      - name: Download pinned fixtures
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: wago-rv64-fixtures
+          path: ${{ runner.temp }}/wago-rv64-fixtures
+      - name: Verify native tools and fixture paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixtures="$RUNNER_TEMP/wago-rv64-fixtures"
+          test -f "$fixtures/simd/rv64-simd-manifest.json"
+          test -f "$fixtures/relaxed-simd/rv64-simd-manifest.json"
+          for profile in numeric float memory control multimemory memory64 fac call; do
+            test -f "$fixtures/$profile/rv64-$profile-manifest.json"
+            variable="WAGO_RV64_${profile^^}_SPEC_JSON_DIR"
+            echo "$variable=$fixtures/$profile" >> "$GITHUB_ENV"
+          done
+          echo "WAGO_RV64_SPEC_JSON_DIR=$fixtures/simd" >> "$GITHUB_ENV"
+          echo "WAGO_RV64_RELAXED_SPEC_JSON_DIR=$fixtures/relaxed-simd" >> "$GITHUB_ENV"
+          clang=$(command -v clang)
+          "$clang" --target=riscv64 -c -x assembler /dev/null \
+            -o "$RUNNER_TEMP/wago-rv64-clang-check.o"
+          echo "WAGO_RV64_CLANG=$clang" >> "$GITHUB_ENV"
       - name: Native runtime and JIT smoke
         run: scripts/ci-riscv64.sh smoke
       - name: Compiler and runtime correctness

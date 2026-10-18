@@ -893,7 +893,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, e
 			}
 			if n > maxTableEntries {
-				// Large tables use one byte per target, rather than duplicating
+				// Large tables use one byte or halfword per target, rather than duplicating
 				// a comparison and payload transfer for every repeated label.
 				// The module byte limit bounds data; control depth and the usual
 				// transfer budget independently bound executable dispatch code.
@@ -910,9 +910,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				signatureArity := -1
 				dataSkip := -1
+				wideLabels := depth > 256
 				if live && emit != nil {
 					emit.Load(5, emit.SpillOffset(h), false)
-					dataSkip, e = emit.beginBranchTable(n)
+					dataSkip, e = emit.beginBranchTable(n, wideLabels)
 					if e != nil {
 						return integerSummary{}, e
 					}
@@ -943,6 +944,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					}
 					if live && emit != nil {
 						emit.a.B = append(emit.a.B, byte(label))
+						if wideLabels {
+							emit.a.B = append(emit.a.B, byte(label>>8))
+						}
 					}
 				}
 				if live && emit != nil {
