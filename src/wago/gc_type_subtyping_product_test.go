@@ -1538,6 +1538,7 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterInventory(t *testi
 }
 
 func TestStagedGCTypeSubtypingProductPlatformAndBoundsGate(t *testing.T) {
+	stagedRV64 := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64"
 	pins := make([]stagedGCTypeSubtypingProductPin, 0, 12)
 	for _, pinIndex := range []int{8, 14, 18, 21, 23, 24, 25, 26, 27} {
 		pins = append(pins, stagedGCTypeSubtypingProductPins[pinIndex])
@@ -1551,6 +1552,10 @@ func TestStagedGCTypeSubtypingProductPlatformAndBoundsGate(t *testing.T) {
 	pins = append(pins, stagedGCTypeSubtypingIndependentStructLinkProviderPin, stagedGCTypeSubtypingIndependentStructLinkConsumerPin)
 	pins = append(pins, stagedGCTypeSubtypingExtendedProjectionLinkProviderPin, stagedGCTypeSubtypingExtendedProjectionLinkConsumerPin)
 	pins = append(pins, stagedGCTypeSubtypingDuplicateRecursiveLinkProviderPin, stagedGCTypeSubtypingDuplicateRecursiveLinkConsumerPin)
+	pins = append(pins, stagedGCTypeSubtypingExtendedRecursiveLinkProviderPin, stagedGCTypeSubtypingExtendedRecursiveLinkConsumerPin)
+	pins = append(pins, stagedGCTypeSubtypingCrossGroupMismatchLinkProviderPin, stagedGCTypeSubtypingCrossGroupMismatchLinkConsumerPin)
+	pins = append(pins, stagedGCTypeSubtypingTransitiveMismatchLinkProviderPin, stagedGCTypeSubtypingTransitiveMismatchLinkConsumerPin)
+	pins = append(pins, stagedGCTypeSubtypingNonFlatExportPin)
 	for _, pin := range pins {
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
@@ -1564,7 +1569,7 @@ func TestStagedGCTypeSubtypingProductPlatformAndBoundsGate(t *testing.T) {
 			features.TypedFunctionReferences = true
 			features.GCTypeSubtypingProducts = true
 			c, err := compileWithFrontendFeatures(cfg, data, features)
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !stagedRV64 {
 				if err == nil || !strings.Contains(err.Error(), "unsupported gc/type-subtyping product staged execution on") {
 					t.Fatalf("platform compile = %v, want explicit platform rejection", err)
 				}

@@ -27,6 +27,7 @@ func (in *Instance) CollectGC() error {
 		return err
 	}
 	defer in.endInvocation()
+	defer func() { drainManagedFunctionStoreReclaims(in.refStore) }()
 	if in == nil || in.gc == nil || in.c == nil {
 		return fmt.Errorf("wago: instance has no live WasmGC collector")
 	}
@@ -36,12 +37,16 @@ func (in *Instance) CollectGC() error {
 	// Public collection is an independent operation, not a callback-scoped
 	// re-entry. Use a fresh identity instead of racing the instance's active
 	// invocation ID; GCHostModule.CollectGC handles lease ownership explicitly.
-	invocation := in.lockGCInvocation(newInvocationID())
+	invocation := in.lockManagedFunctionCollectionInvocation(newInvocationID())
 	defer invocation.unlock()
-	return in.collectGC()
+	return in.collectGCWithJoint(invocation.dynamic)
 }
 
 func (in *Instance) collectGC() error {
+	return in.collectGCWithJoint(in.executionFlags.Load()&executionFlagDynamicGCDomain != 0)
+}
+
+func (in *Instance) collectGCWithJoint(topologyLeased bool) error {
 	public := in.existingPublicGCState()
 	if public == nil {
 		return errGenericGCRootState
@@ -56,6 +61,10 @@ func (in *Instance) collectGC() error {
 	}
 	nativeMu.Lock()
 	defer nativeMu.Unlock()
+	defer drainExceptionReclaims(in.gc)
+	if handled, err := collectManagedFunctionGraph(in, public, topologyLeased); handled {
+		return err
+	}
 	lockedDomain := in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
 	public.mu.Lock()

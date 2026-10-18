@@ -17,7 +17,7 @@ import (
 // supports liveness-exact collector locals, hidden operand spills, direct and
 // recursive calls, direct host re-entry, same-domain foreign calls,
 // mutable/shared GC globals and collector tables, and fixed EH payload roots.
-func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
+func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
 	if diagnostic != nil {
 		*diagnostic = ""
 	}

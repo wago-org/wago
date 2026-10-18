@@ -61,11 +61,15 @@ func (c *Collector) markRoots(roots RootSet) {
 	} else if roots != nil && !rangeRootRefs(roots, func(r Ref) bool { c.markRef(r); return true }) {
 		roots.RangeRoots(func(s RootSlot) bool { c.markRef(s.GetRef()); return true })
 	}
-	for _, r := range c.globalSlots {
-		c.markRef(r)
+	for i, r := range c.globalSlots {
+		if c.persistentRootIsStrong(SlotGlobal, uint32(i)) {
+			c.markRef(r)
+		}
 	}
-	for _, r := range c.tableSlots {
-		c.markRef(r)
+	for i, r := range c.tableSlots {
+		if c.persistentRootIsStrong(SlotTable, uint32(i)) {
+			c.markRef(r)
+		}
 	}
 	c.drainMarkStack()
 }
@@ -108,11 +112,15 @@ func (c *Collector) markDirtyPersistentRoots() {
 }
 
 func (c *Collector) markPersistentRoots(mode uint8) {
-	for _, r := range c.globalSlots {
-		c.markRootForMode(r, mode)
+	for i, r := range c.globalSlots {
+		if mode == rootMarkNursery || c.persistentRootIsStrong(SlotGlobal, uint32(i)) {
+			c.markRootForMode(r, mode)
+		}
 	}
-	for _, r := range c.tableSlots {
-		c.markRootForMode(r, mode)
+	for i, r := range c.tableSlots {
+		if mode == rootMarkNursery || c.persistentRootIsStrong(SlotTable, uint32(i)) {
+			c.markRootForMode(r, mode)
+		}
 	}
 }
 

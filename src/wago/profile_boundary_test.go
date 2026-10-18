@@ -4,10 +4,17 @@ package wago
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"os"
+	goruntime "runtime"
+	"strings"
 	"sync"
 	"testing"
 
 	profilereport "github.com/wago-org/wago/profile"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestProfileBoundaryCrossInstanceReentry(t *testing.T) {
@@ -87,10 +94,17 @@ func TestProfileBoundaryCrossInstanceReentry(t *testing.T) {
 }
 
 func TestProfileBoundaryPanicAndExitComplete(t *testing.T) {
-	for _, tc := range []struct {
+	cases := []struct {
 		name, outcome string
 		value         any
-	}{{"panic", "panic", "host panic"}, {"exit", "host-exit", HostExit{Code: 7}}, {"cancel", "cancelled", HostTrap{Err: context.Canceled}}} {
+	}{{"panic", "panic", "host panic"}, {"exit", "host-exit", HostExit{Code: 7}}, {"cancel", "cancelled", HostTrap{Err: context.Canceled}}}
+	if os.Getenv("WAGO_PROFILE_NIL_PANIC") == "1" {
+		cases = append(cases, struct {
+			name, outcome string
+			value         any
+		}{"nil-panic", "panic", nil})
+	}
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			session := NewCodeProfile(CodeProfileOptions{TraceBoundaries: true})
 			defer session.Close()
@@ -99,20 +113,36 @@ func TestProfileBoundaryPanicAndExitComplete(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer compiled.Close()
-			in, err := Instantiate(compiled, testImports("env.f", slotHostFunc(func(HostModule, []uint64, []uint64) { panic(tc.value) })))
+			fail := true
+			in, err := Instantiate(compiled, testImports("env.f", slotHostFunc(func(_ HostModule, args, results []uint64) {
+				if fail {
+					panic(tc.value)
+				}
+				results[0] = args[0] + 1
+			})))
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer in.Close()
+			var got []uint64
+			var recovered any
+			panicked := false
 			func() {
+				returned := false
 				defer func() {
-					r := recover()
-					if tc.name == "panic" && r != tc.value {
-						t.Fatalf("panic changed: %v", r)
-					}
+					recovered = recover()
+					panicked = !returned
 				}()
-				_, err = in.Invoke("g", 1)
+				got, err = in.Invoke("g", 1)
+				returned = true
 			}()
+			wantPanic := tc.outcome == "panic"
+			if panicked != wantPanic || wantPanic && recovered != tc.value {
+				t.Fatalf("panic = (%v, %#v), want (%v, %#v)", panicked, recovered, wantPanic, tc.value)
+			}
+			if wantPanic && got != nil {
+				t.Fatalf("guest continued after host panic: %v", got)
+			}
 			spans := session.Spans()
 			if len(spans) != 3 {
 				t.Fatal(spans)
@@ -124,6 +154,15 @@ func TestProfileBoundaryPanicAndExitComplete(t *testing.T) {
 			}
 			if activeHostInvocationContext(in).traceSession != nil {
 				t.Fatal("trace context leaked")
+			}
+			state := in.ensurePluginState()
+			if state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
+				t.Fatalf("invocation authority leaked: gate=%#x identity=%d state=%#x", state.invokeMu.state.Load(), state.invocationID, in.invocationState.Load())
+			}
+			fail = false
+			got, err = in.Invoke("g", 1)
+			if err != nil || len(got) != 1 || got[0] != 2 {
+				t.Fatalf("instance not reusable after %s: %v, %v", tc.name, got, err)
 			}
 		})
 	}
@@ -159,6 +198,381 @@ func TestProfileBoundaryPreparedCalls(t *testing.T) {
 	if report, err := profilereport.AnalyzeTimeline(spans, session.Status()); err != nil || !report.Complete {
 		t.Fatal(report, err)
 	}
+}
+
+func TestProfileBoundaryPreparedNilPanicComplete(t *testing.T) {
+	if os.Getenv("WAGO_PROFILE_NIL_PANIC") != "1" {
+		t.Skip("requires GODEBUG=panicnil=1")
+	}
+	for _, tc := range []struct {
+		name    string
+		session bool
+		invoke  func(*WasmFunc, *PreparedSession) ([]uint64, error)
+	}{
+		{"function", false, func(fn *WasmFunc, _ *PreparedSession) ([]uint64, error) { return fn.Invoke(1) }},
+		{"session-fixed", true, func(_ *WasmFunc, s *PreparedSession) ([]uint64, error) { return s.Invoke1(1) }},
+		{"session-slice", true, func(_ *WasmFunc, s *PreparedSession) ([]uint64, error) { return s.invokeArgs([]uint64{1}) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			session := NewCodeProfile(CodeProfileOptions{TraceBoundaries: true})
+			defer session.Close()
+			compiled, err := Compile(NewRuntimeConfig().WithCodeProfile(session), benchReturningImportModule())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			fail := true
+			in, err := Instantiate(compiled, testImports("env.f", slotHostFunc(func(_ HostModule, args, results []uint64) {
+				if fail {
+					panic(nil)
+				}
+				results[0] = args[0] + 1
+			})))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			fn, err := in.WasmFunc("g")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var prepared *PreparedSession
+			if tc.session {
+				prepared, err = fn.OpenSession()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer prepared.Close()
+			}
+			got, callErr, panicked, recovered := invokeProfilePanic(tc.invoke, fn, prepared)
+			if !panicked || recovered != nil || got != nil || callErr != nil {
+				t.Fatalf("legacy nil panic = (%v, %#v, %v, %v)", panicked, recovered, got, callErr)
+			}
+			spans := session.Spans()
+			if len(spans) != 3 {
+				t.Fatal(spans)
+			}
+			for _, span := range spans {
+				if span.End == 0 || span.Outcome != "panic" {
+					t.Fatalf("unfinished/wrong prepared span: %+v", span)
+				}
+			}
+			state := in.ensurePluginState()
+			if activeHostInvocationContext(in).traceSession != nil {
+				t.Fatal("trace context leaked after prepared panic")
+			}
+			if tc.session {
+				if prepared.state.active.Load() || state.invokeMu.state.Load()&invocationGateHeld == 0 || state.invocationID == 0 || in.invocationState.Load()&instanceInvocationCount != 1 {
+					t.Fatalf("prepared call leaked or lost its reservation: active=%v gate=%#x identity=%d state=%#x", prepared.state.active.Load(), state.invokeMu.state.Load(), state.invocationID, in.invocationState.Load())
+				}
+			} else if state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
+				t.Fatalf("prepared function authority leaked: gate=%#x identity=%d state=%#x", state.invokeMu.state.Load(), state.invocationID, in.invocationState.Load())
+			}
+			fail = false
+			got, err = tc.invoke(fn, prepared)
+			if err != nil || len(got) != 1 || got[0] != 2 {
+				t.Fatalf("prepared route not reusable: %v, %v", got, err)
+			}
+			if prepared != nil {
+				prepared.Close()
+			}
+			if state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
+				t.Fatalf("prepared reservation did not drain: gate=%#x identity=%d state=%#x", state.invokeMu.state.Load(), state.invocationID, in.invocationState.Load())
+			}
+		})
+	}
+}
+
+func TestProfileBoundaryPreparedTypedHostNilPanicComplete(t *testing.T) {
+	if os.Getenv("WAGO_PROFILE_NIL_PANIC") != "1" {
+		t.Skip("requires GODEBUG=panicnil=1")
+	}
+	session := NewCodeProfile(CodeProfileOptions{TraceBoundaries: true})
+	defer session.Close()
+	compiled, err := Compile(NewRuntimeConfig().WithCodeProfile(session), benchReturningImportModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	fail := true
+	imports := NewImports()
+	imports.HostFunc("env", "f", func(value int32) int32 {
+		if fail {
+			panic(nil)
+		}
+		return value + 1
+	})
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.WasmFunc("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := fn.OpenSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prepared.Close()
+	if !prepared.state.host || prepared.state.hostCall == nil {
+		t.Fatal("typed host session did not select its reserved prepared call")
+	}
+	got, callErr, panicked, recovered := invokeProfilePanic(func(*WasmFunc, *PreparedSession) ([]uint64, error) {
+		return prepared.Invoke1(I32(1))
+	}, nil, nil)
+	if !panicked || recovered != nil || got != nil || callErr != nil {
+		t.Fatalf("typed prepared nil panic = (%v, %#v, %v, %v)", panicked, recovered, got, callErr)
+	}
+	spans := session.Spans()
+	if len(spans) != 3 {
+		t.Fatal(spans)
+	}
+	for _, span := range spans {
+		if span.End == 0 || span.Outcome != "panic" {
+			t.Fatalf("unfinished/wrong typed prepared span: %+v", span)
+		}
+	}
+	state := in.ensurePluginState()
+	if activeHostInvocationContext(in).traceSession != nil || prepared.state.active.Load() || state.invokeMu.state.Load()&invocationGateHeld == 0 || state.invocationID == 0 || in.invocationState.Load()&instanceInvocationCount != 1 {
+		t.Fatalf("typed prepared call leaked or lost its reservation: trace=%v active=%v gate=%#x identity=%d state=%#x", activeHostInvocationContext(in).traceSession != nil, prepared.state.active.Load(), state.invokeMu.state.Load(), state.invocationID, in.invocationState.Load())
+	}
+	fail = false
+	got, err = prepared.Invoke1(I32(1))
+	if err != nil || len(got) != 1 || AsI32(got[0]) != 2 {
+		t.Fatalf("typed prepared route not reusable: %v, %v", got, err)
+	}
+	prepared.Close()
+	if state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
+		t.Fatalf("typed prepared reservation did not drain: gate=%#x identity=%d state=%#x", state.invokeMu.state.Load(), state.invocationID, in.invocationState.Load())
+	}
+}
+
+func TestProfileBoundaryDirectHostReexportComplete(t *testing.T) {
+	if goruntime.GOARCH == "riscv64" {
+		t.Skip("RV64 rejects direct Go host reexports before publication")
+	}
+	cases := []struct {
+		name, outcome string
+		value         any
+	}{{"panic", "panic", "host panic"}, {"exit", "host-exit", HostExit{Code: 7}}, {"cancel", "cancelled", HostTrap{Err: context.Canceled}}}
+	if os.Getenv("WAGO_PROFILE_NIL_PANIC") == "1" {
+		cases = append(cases, struct {
+			name, outcome string
+			value         any
+		}{"nil-panic", "panic", nil})
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			session := NewCodeProfile(CodeProfileOptions{TraceBoundaries: true})
+			defer session.Close()
+			compiled, err := Compile(NewRuntimeConfig().WithCodeProfile(session), directHostReexportModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			fail := true
+			in, err := Instantiate(compiled, testImports("env.f", func(value int32) int32 {
+				if fail {
+					panic(tc.value)
+				}
+				return value + 1
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			got, callErr, panicked, recovered := invokeProfilePanic(func(*WasmFunc, *PreparedSession) ([]uint64, error) {
+				return in.Invoke("f", I32(1))
+			}, nil, nil)
+			wantPanic := tc.outcome == "panic"
+			if panicked != wantPanic || wantPanic && recovered != tc.value || wantPanic && got != nil {
+				t.Fatalf("direct reexport panic = (%v, %#v, %v), want (%v, %#v)", panicked, recovered, got, wantPanic, tc.value)
+			}
+			spans := session.Spans()
+			if len(spans) != 2 {
+				t.Fatal(spans)
+			}
+			for _, span := range spans {
+				if span.End == 0 || span.Outcome != tc.outcome {
+					t.Fatalf("unfinished/wrong direct reexport span: %+v, err %v", span, callErr)
+				}
+			}
+			state := in.ensurePluginState()
+			if activeHostInvocationContext(in).traceSession != nil || state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
+				t.Fatalf("direct reexport authority leaked: trace=%v gate=%#x identity=%d state=%#x", activeHostInvocationContext(in).traceSession != nil, state.invokeMu.state.Load(), state.invocationID, in.invocationState.Load())
+			}
+			fail = false
+			got, err = in.Invoke("f", I32(1))
+			if err != nil || len(got) != 1 || AsI32(got[0]) != 2 {
+				t.Fatalf("direct reexport not reusable: %v, %v", got, err)
+			}
+		})
+	}
+}
+
+func TestProfileBoundaryDeferredHostEventComplete(t *testing.T) {
+	if goruntime.GOARCH == "riscv64" {
+		t.Skip("RV64 rejects deferred host events before publication")
+	}
+	cases := []struct {
+		name, outcome string
+		value         any
+	}{{"panic", "panic", "event panic"}, {"exit", "host-exit", HostExit{Code: 7}}, {"cancel", "cancelled", HostTrap{Err: context.Canceled}}}
+	if os.Getenv("WAGO_PROFILE_NIL_PANIC") == "1" {
+		cases = append(cases, struct {
+			name, outcome string
+			value         any
+		}{"nil-panic", "panic", nil})
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			session := NewCodeProfile(CodeProfileOptions{TraceBoundaries: true})
+			defer session.Close()
+			compiled, err := Compile(NewRuntimeConfig().WithCodeProfile(session), profileDeferredHostEventModule())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			fail := true
+			calls := 0
+			in, err := Instantiate(compiled, testImports("env.event", I32HostEvent(func(int32) {
+				calls++
+				if fail {
+					panic(tc.value)
+				}
+			})))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			got, callErr, panicked, recovered := invokeProfilePanic(func(*WasmFunc, *PreparedSession) ([]uint64, error) {
+				return in.Invoke("run", I32(2))
+			}, nil, nil)
+			wantPanic := tc.outcome == "panic"
+			if panicked != wantPanic || wantPanic && recovered != tc.value || wantPanic && got != nil {
+				t.Fatalf("deferred event panic = (%v, %#v, %v), want (%v, %#v)", panicked, recovered, got, wantPanic, tc.value)
+			}
+			if calls != 1 {
+				t.Fatalf("event replay continued after failure: calls=%d", calls)
+			}
+			spans := session.Spans()
+			if len(spans) != 1 || spans[0].End == 0 || spans[0].Outcome != tc.outcome {
+				t.Fatalf("unfinished/wrong deferred event span: %+v, err %v", spans, callErr)
+			}
+			state := in.ensurePluginState()
+			if activeHostInvocationContext(in).traceSession != nil || state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
+				t.Fatalf("deferred event authority leaked: trace=%v gate=%#x identity=%d state=%#x", activeHostInvocationContext(in).traceSession != nil, state.invokeMu.state.Load(), state.invocationID, in.invocationState.Load())
+			}
+			fail = false
+			calls = 0
+			got, err = in.Invoke("run", I32(0))
+			if err != nil || len(got) != 0 || calls != 0 {
+				t.Fatalf("undelivered event was retried: %v, %v, calls=%d", got, err, calls)
+			}
+			got, err = in.Invoke("run", I32(2))
+			if err != nil || len(got) != 0 || calls != 2 {
+				t.Fatalf("deferred event path not reusable: %v, %v, calls=%d", got, err, calls)
+			}
+		})
+	}
+}
+
+func profileDeferredHostEventModule() []byte {
+	typeEvent := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
+	importEvent := append(wasmtest.Name("env"), wasmtest.Name("event")...)
+	importEvent = append(importEvent, 0, 0)
+	body := []byte{
+		0x02, 0x40, 0x03, 0x40,
+		0x20, 0x00, 0x45, 0x0d, 0x01,
+		0x20, 0x00, 0x10, 0x00,
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00,
+		0x0c, 0x00, 0x0b, 0x0b,
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(typeEvent)),
+		wasmtest.Section(2, wasmtest.Vec(importEvent)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func TestProfileBoundaryReentryNilPanicComplete(t *testing.T) {
+	if os.Getenv("WAGO_PROFILE_NIL_PANIC") != "1" {
+		t.Skip("requires GODEBUG=panicnil=1")
+	}
+	session := NewCodeProfile(CodeProfileOptions{TraceBoundaries: true})
+	defer session.Close()
+	compiled, err := Compile(NewRuntimeConfig().WithCodeProfile(session), benchReturningImportModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	var a, b *Instance
+	fail := true
+	a, err = Instantiate(compiled, testImports("env.f", slotHostFunc(func(mod HostModule, _ []uint64, results []uint64) {
+		out, callErr := b.InvokeFromHost(context.Background(), mod, "g", 0)
+		if callErr != nil {
+			panic(callErr)
+		}
+		results[0] = out[0] + 1
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	b, err = Instantiate(compiled, testImports("env.f", slotHostFunc(func(_ HostModule, _ []uint64, results []uint64) {
+		if fail {
+			panic(nil)
+		}
+		results[0] = 10
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	got, callErr, panicked, recovered := invokeProfilePanic(func(*WasmFunc, *PreparedSession) ([]uint64, error) {
+		return a.Invoke("g", 1)
+	}, nil, nil)
+	if !panicked || recovered != nil || got != nil || callErr != nil {
+		t.Fatalf("legacy nil reentry panic = (%v, %#v, %v, %v)", panicked, recovered, got, callErr)
+	}
+	spans := session.Spans()
+	if len(spans) != 6 {
+		t.Fatal(spans)
+	}
+	for _, span := range spans {
+		if span.End == 0 || span.Outcome != "panic" {
+			t.Fatalf("unfinished/wrong reentry span: %+v", span)
+		}
+	}
+	for _, in := range []*Instance{a, b} {
+		state := in.ensurePluginState()
+		if activeHostInvocationContext(in).traceSession != nil || state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0 || in.invocationState.Load()&instanceInvocationCount != 0 {
+			t.Fatalf("reentry authority leaked: trace=%v gate=%#x identity=%d state=%#x", activeHostInvocationContext(in).traceSession != nil, state.invokeMu.state.Load(), state.invocationID, in.invocationState.Load())
+		}
+	}
+	fail = false
+	got, err = a.Invoke("g", 1)
+	if err != nil || len(got) != 1 || got[0] != 11 {
+		t.Fatalf("reentry path not reusable: %v, %v", got, err)
+	}
+}
+
+func invokeProfilePanic(invoke func(*WasmFunc, *PreparedSession) ([]uint64, error), fn *WasmFunc, session *PreparedSession) (got []uint64, err error, panicked bool, recovered any) {
+	func() {
+		returned := false
+		defer func() {
+			recovered = recover()
+			panicked = !returned
+		}()
+		got, err = invoke(fn, session)
+		returned = true
+	}()
+	return got, err, panicked, recovered
 }
 
 func TestProfileBoundaryDirectGuestEntries(t *testing.T) {
@@ -468,23 +882,86 @@ func TestProfileLifecycleFailedInitialization(t *testing.T) {
 		t.Fatal("start trap accepted", in, err)
 	}
 	spans := trace.Spans()
-	if len(spans) != 4 {
+	// This start calls the host successfully before trapping. Boundary tracing
+	// also records that activation/callback and both failed-instance cleanup
+	// phases; cleanup must not inherit the failed guest's call ancestry.
+	wantKinds := []string{"instantiate", "initialize-guest", "guest-activation", "host-callback", "logical-close", "physical-release"}
+	if len(spans) != len(wantKinds) {
 		t.Fatal(spans)
 	}
+	wantParents := []uint64{0, spans[0].ID, spans[1].ID, spans[2].ID, 0, 0}
 	for i, span := range spans {
 		want := "trap"
-		if i == 3 {
+		if i >= 3 {
 			want = "return"
 		}
-		if span.Outcome != want || span.End == 0 {
+		if span.Kind != wantKinds[i] || span.ParentID != wantParents[i] || span.Outcome != want || span.End == 0 || span.InstanceID != spans[0].InstanceID {
 			t.Fatal(span)
 		}
 	}
-	if spans[1].ParentID != spans[0].ID {
-		t.Fatal(spans)
-	}
 	if r, err := profilereport.AnalyzeTimeline(spans, trace.Status()); err != nil || !r.Complete {
 		t.Fatal(r, err)
+	}
+}
+
+func TestProfileLifecycleDefinedInitializationPanicComplete(t *testing.T) {
+	cases := []struct {
+		name  string
+		value any
+	}{{name: "value", value: "defined start panic"}}
+	if os.Getenv("WAGO_DEFINED_START_NIL_PANIC") == "1" {
+		cases = append(cases, struct {
+			name  string
+			value any
+		}{name: "nil", value: nil})
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			trace := NewCodeProfile(CodeProfileOptions{TraceLifecycle: true})
+			defer trace.Close()
+			compiled, err := Compile(NewRuntimeConfig().WithCodeProfile(trace), hostImportStartModule())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			calls := 0
+			var captured *Instance
+			var callerToken Caller
+			imports := NewImports().Function("env", "f", CallerHostCallFunc(func(caller Caller, _ HostCall) {
+				calls++
+				captured = caller.in
+				callerToken = caller
+				panic(tc.value)
+			}))
+			in, err := Instantiate(compiled, imports)
+			if in != nil {
+				defer in.Close()
+			}
+			if in != nil || err == nil || calls != 1 {
+				t.Fatalf("failed defined start = (%p, %v, calls=%d)", in, err, calls)
+			}
+			spans := trace.Spans()
+			wantKinds := []string{"instantiate", "initialize-guest", "guest-activation", "host-callback", "logical-close", "physical-release"}
+			if len(spans) != len(wantKinds) {
+				t.Fatal(spans)
+			}
+			wantParents := []uint64{0, spans[0].ID, spans[1].ID, spans[2].ID, 0, 0}
+			wantOutcomes := []string{"error", "panic", "panic", "panic", "return", "return"}
+			for i, span := range spans {
+				if span.Kind != wantKinds[i] || span.ParentID != wantParents[i] || span.Outcome != wantOutcomes[i] || span.End == 0 || span.InstanceID != spans[0].InstanceID {
+					t.Fatalf("wrong defined-start span %d: %+v", i, span)
+				}
+			}
+			if captured == nil || callerToken.valid() || !captured.resourcesClosed || captured.constructionIsActive() || captured.invocationState.Load()&instanceInvocationCount != 0 || compiled.codeCache.refs != 0 {
+				t.Fatal("failed defined start retained callback or instance lifetime")
+			}
+			if state := captured.pluginState.Load(); state != nil && (state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0) {
+				t.Fatal("failed defined start retained invocation gate")
+			}
+			if report, err := profilereport.AnalyzeTimeline(spans, trace.Status()); err != nil || !report.Complete {
+				t.Fatal(report, err)
+			}
+		})
 	}
 }
 
@@ -505,5 +982,116 @@ func TestProfileLifecycleImportedInitialization(t *testing.T) {
 	spans := trace.Spans()
 	if !called || len(spans) != 2 || spans[1].Kind != "initialize-host" || spans[1].Function != 0 || spans[1].ParentID != spans[0].ID || spans[1].Outcome != "return" {
 		t.Fatal(called, spans)
+	}
+}
+
+func TestProfileLifecycleImportedInitializationPanicComplete(t *testing.T) {
+	cases := []struct {
+		name, outcome string
+		value         any
+	}{{"panic", "error", "start panic"}, {"exit", "host-exit", HostExit{Code: 7}}, {"cancel", "cancelled", HostTrap{Err: context.Canceled}}}
+	if os.Getenv("WAGO_PROFILE_NIL_PANIC") == "1" {
+		cases = append(cases, struct {
+			name, outcome string
+			value         any
+		}{"nil-panic", "error", nil})
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			trace := NewCodeProfile(CodeProfileOptions{TraceLifecycle: true})
+			defer trace.Close()
+			compiled, err := Compile(NewRuntimeConfig().WithCodeProfile(trace), invocationContextImportedStartModule())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			fail := true
+			calls := 0
+			var captured *Instance
+			var callerToken Caller
+			imports := NewImports()
+			imports.Function("env", "outer", CallerHostCallFunc(func(caller Caller, _ HostCall) {
+				calls++
+				captured = caller.in
+				callerToken = caller
+				if fail {
+					panic(tc.value)
+				}
+			}))
+			in, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
+			if in != nil || err == nil || calls != 1 {
+				if in != nil {
+					in.Close()
+				}
+				t.Fatalf("failing imported start = (%p, %v, calls=%d)", in, err, calls)
+			}
+			switch tc.outcome {
+			case "host-exit":
+				var exit *ExitError
+				if !errors.As(err, &exit) || exit.Code != 7 {
+					t.Fatalf("host exit changed: %v", err)
+				}
+			case "cancelled":
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("cancellation changed: %v", err)
+				}
+			default:
+				want := fmt.Sprint(tc.value)
+				if !strings.Contains(err.Error(), "host start panicked") || !strings.Contains(err.Error(), want) {
+					t.Fatalf("start panic changed: %v", err)
+				}
+			}
+			spans := trace.Spans()
+			wantKinds := []string{"instantiate", "initialize-host", "logical-close", "physical-release"}
+			if len(spans) != len(wantKinds) {
+				t.Fatal(spans)
+			}
+			for i, span := range spans {
+				wantOutcome := tc.outcome
+				wantParent := uint64(0)
+				if i == 1 {
+					wantParent = spans[0].ID
+				}
+				if i >= 2 {
+					wantOutcome = "return"
+				}
+				if span.Kind != wantKinds[i] || span.ParentID != wantParent || span.Outcome != wantOutcome || span.End == 0 || span.InstanceID != spans[0].InstanceID {
+					t.Fatalf("wrong imported-start span %d: %+v", i, span)
+				}
+			}
+			if compiled.codeCache.refs != 0 {
+				t.Fatalf("failed imported start retained code: refs=%d", compiled.codeCache.refs)
+			}
+			if captured == nil {
+				t.Fatal("imported start did not expose its constructing instance")
+			}
+			if callerToken.valid() || !captured.resourcesClosed || captured.constructionIsActive() || captured.invocationState.Load()&instanceInvocationCount != 0 {
+				t.Fatalf("failed imported start retained lifetime: caller=%t resources=%t construction=%t invocations=%d", callerToken.valid(), captured.resourcesClosed, captured.constructionIsActive(), captured.invocationState.Load()&instanceInvocationCount)
+			}
+			if state := captured.pluginState.Load(); state != nil && (state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0) {
+				t.Fatalf("failed imported start retained gate: state=%#x id=%d", state.invokeMu.state.Load(), state.invocationID)
+			}
+			fail = false
+			calls = 0
+			in, err = Instantiate(compiled, InstantiateOptions{Imports: imports})
+			retry := in
+			if retry != nil {
+				t.Cleanup(func() {
+					if retry != nil {
+						_ = retry.Close()
+					}
+				})
+			}
+			if err != nil || in == nil || calls != 1 {
+				t.Fatalf("reuse after imported-start failure = (%v, %v, calls=%d)", in, err, calls)
+			}
+			if err := in.Close(); err != nil {
+				t.Fatal(err)
+			}
+			retry = nil
+			if report, err := profilereport.AnalyzeTimeline(trace.Spans(), trace.Status()); err != nil || !report.Complete {
+				t.Fatal(report, err)
+			}
+		})
 	}
 }

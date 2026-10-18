@@ -1,6 +1,9 @@
 package optimization
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestCatalogRegistrationIsUniqueAndArchitectureScoped(t *testing.T) {
 	seen := map[string]bool{}
@@ -386,9 +389,12 @@ func TestCatalogArchitectureSlicesAreOwnedByCaller(t *testing.T) {
 			for i := range definitions {
 				definitions[i].Architectures[0] = "changed"
 			}
-			for _, optimization := range []string{"reg-abi", "inline"} {
+			for optimization, wantArchitectures := range map[string][]string{
+				"reg-abi": {"amd64", "arm64", "riscv64"},
+				"inline":  {"amd64", "arm64"},
+			} {
 				d, ok := Lookup("amd64", optimization)
-				if !ok || len(d.Architectures) != 2 || d.Architectures[0] != "amd64" || d.Architectures[1] != "arm64" {
+				if !ok || !slices.Equal(d.Architectures, wantArchitectures) {
 					t.Fatalf("catalog changed after caller mutation: %#v", d)
 				}
 			}
