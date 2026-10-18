@@ -82,6 +82,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			f.vectorRegionBoundary(op)
 		}
 		f.prepareStoreForward(op)
+		if op == 0x04 && f.gcResolved.valid {
+			f.prepareGCPureIf(r, op, minCtrl)
+		}
 		f.prepareGCResolvedObject(op)
 		f.prepareGCFreshStructFact(op)
 		switch op {
