@@ -9,6 +9,21 @@ import (
 	"unsafe"
 )
 
+// gcDeadGroupNativeWord keeps Go pointer provenance for inline collector fields
+// exposed as native addresses. The instance owns the collector until Close.
+func gcDeadGroupNativeWord(t *testing.T, collector *gc.Collector, address, offset uintptr) *uint32 {
+	t.Helper()
+	base, size := uintptr(unsafe.Pointer(collector)), unsafe.Sizeof(*collector)
+	if address < base {
+		t.Fatal("native field address precedes collector")
+	}
+	field := address - base
+	if field > size || offset > size-field || unsafe.Sizeof(uint32(0)) > size-field-offset {
+		t.Fatal("native field extends beyond collector")
+	}
+	return (*uint32)(unsafe.Add(unsafe.Pointer(collector), field+offset))
+}
+
 func TestGCDeadDefaultGroupNativeBoundaries(t *testing.T) {
 	for _, n := range []int{2, 3, 4} {
 		for _, kind := range []string{"room", "exact", "short", "mixed-room", "mixed-exact", "mixed-short"} {
@@ -28,9 +43,9 @@ func TestGCDeadDefaultGroupNativeBoundaries(t *testing.T) {
 				t.Fatalf("warm%v,%v", got, err)
 			}
 			view := in.gc.NativeView()
-			bump := (*uint32)(unsafe.Pointer(view.NurseryBump))
-			cursor := (*uint32)(unsafe.Pointer(view.StructAllocState + gc.NativeStructAllocCursorOffset))
-			count := (*uint32)(unsafe.Pointer(view.StructAllocState + gc.NativeStructAllocCountOffset))
+			bump := gcDeadGroupNativeWord(t, in.gc, view.NurseryBump, 0)
+			cursor := gcDeadGroupNativeWord(t, in.gc, view.StructAllocState, gc.NativeStructAllocCursorOffset)
+			count := gcDeadGroupNativeWord(t, in.gc, view.StructAllocState, gc.NativeStructAllocCountOffset)
 			if *count == 0 {
 				t.Fatal("warmup did not prepare native batch")
 			}
@@ -94,7 +109,7 @@ func TestGCDeadDefaultGroupSingleReservation(t *testing.T) {
 		t.Fatal(err)
 	}
 	view := in.gc.NativeView()
-	count := (*uint32)(unsafe.Pointer(view.StructAllocState + gc.NativeStructAllocCountOffset))
+	count := gcDeadGroupNativeWord(t, in.gc, view.StructAllocState, gc.NativeStructAllocCountOffset)
 	if *count != 1 {
 		t.Fatalf("dead helper reserved%d handles want1", *count)
 	}
@@ -105,11 +120,11 @@ func TestGCDeadDefaultGroupSingleReservation(t *testing.T) {
 	if *count != 32 {
 		t.Fatalf("array count%d want32", *count)
 	}
-	end := (*uint32)(unsafe.Pointer(view.StructAllocState + gc.NativeStructAllocChunkEndOffset))
+	end := gcDeadGroupNativeWord(t, in.gc, view.StructAllocState, gc.NativeStructAllocChunkEndOffset)
 	if *end == 0 {
 		t.Fatal("array transition did not reserve a chunk")
 	}
-	bump := (*uint32)(unsafe.Pointer(view.NurseryBump))
+	bump := gcDeadGroupNativeWord(t, in.gc, view.NurseryBump, 0)
 	beforeBump, generation := *bump, view.RefreshGeneration
 	before := in.gc.Stats().Allocations
 	if _, err := in.Invoke("leaf"); err != nil {
