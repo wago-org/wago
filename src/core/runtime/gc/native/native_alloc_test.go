@@ -608,3 +608,36 @@ func TestNativeHandleBatchMatchesGeneralAllocator(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeReservationRefreshesDeadNurseryCycle(t *testing.T) {
+	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{desc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.stats.MinorCollections = 1 << 32
+	c.stats.FullCollections = 3
+	c.stats.LiveObjects = 7
+	c.nativeView.setDeadNurseryCycle(0)
+	if !c.PrepareNativeStructAllocation(24) {
+		t.Fatal("reservation unavailable")
+	}
+	if c.nativeView.deadNurseryCycle() != (1<<32)+3 || c.stats.LiveObjects != 0 || c.nativeStructAlloc.Count == 0 {
+		t.Fatalf("new reservation retained stale accounting: cycle=%d pending=%d count=%d", c.nativeView.deadNurseryCycle(), c.stats.LiveObjects, c.nativeStructAlloc.Count)
+	}
+	c.stats.LiveObjects = 2
+	if !c.PrepareNativeStructAllocation(24) {
+		t.Fatal("active reservation unavailable")
+	}
+	c.CancelNativeAllocationBatch()
+	if !c.PrepareNativeStructAllocation(24) {
+		t.Fatal("replacement reservation unavailable")
+	}
+	if c.stats.LiveObjects != 2 {
+		t.Fatalf("same-cycle reservation lost %d pending charges", c.stats.LiveObjects)
+	}
+}

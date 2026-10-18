@@ -431,16 +431,25 @@ type fn struct {
 	// host call in the module uses the synchronous control frame (callHostSync)
 	// rather than the async log — the two share offCustomCtx and must not both be
 	// live. Computed once per module in compileFunc.
-	syncHostCalls          bool
-	dynamicHostFast        bool
-	syncHostSlots          int
-	gcTypeSubtypingRefTest bool
-	gcStructHelpers        bool
-	gcArrayHelpers         bool
-	gcFrameRoots           *shared.GCFrameRootPlan
-	gcCallsiteIndex        int
-	moduleEH               bool // reserve the handler register and fixed EH frame area
-	compactFrameHeader     bool // register ABI: no wrapper results-pointer header
+	syncHostCalls             bool
+	dynamicHostFast           bool
+	syncHostSlots             int
+	gcTypeSubtypingRefTest    bool
+	nativeDeadArrayBytes      uint32
+	nativeArrayHelper         uint32
+	nativeArrayType           uint32
+	nativeDeadStructType      uint32
+	nativeDeadStructBatchType uint32
+	nativeDeadArrayBatchBytes uint32
+	gcReducedBounded          bool
+	gcDeadBatchLayout         uint64
+	gcI31Induction            bool
+	gcStructHelpers           bool
+	gcArrayHelpers            bool
+	gcFrameRoots              *shared.GCFrameRootPlan
+	gcCallsiteIndex           int
+	moduleEH                  bool // reserve the handler register and fixed EH frame area
+	compactFrameHeader        bool // register ABI: no wrapper results-pointer header
 
 	// stats collects per-function codegen counters. nil
 	// unless the caller requested collection, in which case every counter method
@@ -1063,29 +1072,33 @@ func (sc *scratch) finishStackWorker() {
 // arena is append-only until all workers join. Results retain offsets into it,
 // never slices, because a later append may reallocate the arena.
 type workerState struct {
-	scratch      *scratch
-	scratchStats shared.WorkerScratchStats
-	arena        []byte
-	relocs       []callReloc
+	// Sparse capabilities avoid enlarging every parallel function result.
+	gcDeadBatchLayouts map[int]uint64
+	gcI31Inductions    map[int]bool
+	scratch            *scratch
+	scratchStats       shared.WorkerScratchStats
+	arena              []byte
+	relocs             []callReloc
 }
 
 // funcResult is one independently compiled local function. worker/start/end
 // identify its owned bytes after the worker pool joins. relocStart/relocEnd name
 // the function's records in its worker's append-only relocation arena.
 type funcResult struct {
-	worker      uint32
-	start       uint32
-	end         uint32
-	relocStart  uint32
-	relocEnd    uint32
-	bodyBytes   uint32
-	internalOff uint32
-	adapterOff  uint32 // shared-adapter call or adapter-tail return offset
-	adapterEnd  uint32
-	trapBody    sharedTrapBodyInfo
-	requiresLSE bool
-	layoutFlags uint8
-	scopedFloat bool
+	worker           uint32
+	start            uint32
+	end              uint32
+	relocStart       uint32
+	relocEnd         uint32
+	bodyBytes        uint32
+	internalOff      uint32
+	adapterOff       uint32 // shared-adapter call or adapter-tail return offset
+	adapterEnd       uint32
+	trapBody         sharedTrapBodyInfo
+	requiresLSE      bool
+	layoutFlags      uint8
+	scopedFloat      bool
+	gcReducedBounded bool
 }
 
 func compactFuncResultRange(start, size int) (uint32, uint32, bool) {
@@ -1817,7 +1830,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			shared.SetSourceWorkerContext(&sc.scalar, codegen.SourceContextFor(opts.Codegen, m), 0, 1)
 		}
 		pressureDone := false
-		var directPrepared, directPreparedLight, directPreparedBounded []uint64
+		var directPrepared, directPreparedLight, directPreparedBounded, gcReducedBounded, gcI31Inductions []uint64
+		var gcDeadBatchLayouts []uint64
 		var adapterTails []adapterTailInfo
 		var adapters []sharedAdapterInfo
 		if policy.CompactNative {
@@ -1889,6 +1903,18 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			if sc.directPreparedLight {
 				directPreparedLight = markDirectPrepared(directPreparedLight, n, i)
 			}
+			if sc.fnState.gcDeadBatchLayout != 0 {
+				if gcDeadBatchLayouts == nil {
+					gcDeadBatchLayouts = make([]uint64, n)
+				}
+				gcDeadBatchLayouts[i] = sc.fnState.gcDeadBatchLayout
+			}
+			if sc.fnState.gcI31Induction {
+				gcI31Inductions = markDirectPrepared(gcI31Inductions, n, i)
+			}
+			if sc.fnState.gcReducedBounded {
+				gcReducedBounded = markDirectPrepared(gcReducedBounded, n, i)
+			}
 			if sc.directPreparedBounded {
 				directPreparedBounded = markDirectPrepared(directPreparedBounded, n, i)
 			}
@@ -1932,7 +1958,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		if err := patchCallRelocs(code, entry, internalEntry, &relocs); err != nil {
 			return nil, err
 		}
-		directPreparedBounded = resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTable)
+		directPreparedBounded = mergeGCReducedBounds(resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTable), gcReducedBounded)
 		ms.setNodeScratchStats(sc)
 		ms.finalizeCompileResourceStats()
 		if diagnosticsEnabled && explainEnabled && ms != nil {
@@ -1943,10 +1969,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			if err != nil {
 				return nil, fmt.Errorf("arm64: transfer heap code image: %w", err)
 			}
-			return &a64.CompiledModule{RequiresARM64LSE: requiresLSE, Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
+			return &a64.CompiledModule{GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, RequiresARM64LSE: requiresLSE, Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
 		}
 		keepCodeBuffer = true
-		return &a64.CompiledModule{RequiresARM64LSE: requiresLSE, Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
+		return &a64.CompiledModule{GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, RequiresARM64LSE: requiresLSE, Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, importedFuncs)
@@ -2068,7 +2094,19 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			layoutFlags |= boolFlag(ws.scratch.directPreparedLight, layoutDirectPreparedLight)
 			layoutFlags |= boolFlag(ws.scratch.directPreparedBounded, layoutDirectPreparedBounded)
 			ws.arena = append(ws.arena, fnCode...)
-			result := funcResult{requiresLSE: ws.scratch.fnState.requiresLSE, worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, bodyBytes: bodyBytes, layoutFlags: layoutFlags, internalOff: compactInternalOff, scopedFloat: scopedFloatFunctionLayout(allHints[i], policy)}
+			if ws.scratch.fnState.gcI31Induction {
+				if ws.gcI31Inductions == nil {
+					ws.gcI31Inductions = make(map[int]bool)
+				}
+				ws.gcI31Inductions[i] = true
+			}
+			if layout := ws.scratch.fnState.gcDeadBatchLayout; layout != 0 {
+				if ws.gcDeadBatchLayouts == nil {
+					ws.gcDeadBatchLayouts = make(map[int]uint64)
+				}
+				ws.gcDeadBatchLayouts[i] = layout
+			}
+			result := funcResult{gcReducedBounded: ws.scratch.fnState.gcReducedBounded, requiresLSE: ws.scratch.fnState.requiresLSE, worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, bodyBytes: bodyBytes, layoutFlags: layoutFlags, internalOff: compactInternalOff, scopedFloat: scopedFloatFunctionLayout(allHints[i], policy)}
 			if policy.CompactNative {
 				if policy.EnabledOption(optSharedAdapters) {
 					info := ws.scratch.fnState.sharedAdapterInfo()
@@ -2110,7 +2148,8 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		codeCap = shared.JoinedModuleCodeCapacity(codeCap, joinedBytes, n)
 	}
 	code := make([]byte, 0, codeCap)
-	var directPrepared, directPreparedLight, directPreparedBounded []uint64
+	var directPrepared, directPreparedLight, directPreparedBounded, gcReducedBounded, gcI31Inductions []uint64
+	var gcDeadBatchLayouts []uint64
 	var adapterTails []adapterTailInfo
 	var adapters []sharedAdapterInfo
 	if policy.CompactNative {
@@ -2137,6 +2176,18 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}
 		if r.layoutFlags&layoutDirectPreparedLight != 0 {
 			directPreparedLight = markDirectPrepared(directPreparedLight, n, i)
+		}
+		if layout := states[r.worker].gcDeadBatchLayouts[i]; layout != 0 {
+			if gcDeadBatchLayouts == nil {
+				gcDeadBatchLayouts = make([]uint64, n)
+			}
+			gcDeadBatchLayouts[i] = layout
+		}
+		if states[r.worker].gcI31Inductions[i] {
+			gcI31Inductions = markDirectPrepared(gcI31Inductions, n, i)
+		}
+		if r.gcReducedBounded {
+			gcReducedBounded = markDirectPrepared(gcReducedBounded, n, i)
 		}
 		if r.layoutFlags&layoutDirectPreparedBounded != 0 {
 			directPreparedBounded = markDirectPrepared(directPreparedBounded, n, i)
@@ -2184,7 +2235,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if err := patchCallRelocs(code, entry, internalEntry, &relocs); err != nil {
 		return nil, err
 	}
-	directPreparedBounded = resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTable)
+	directPreparedBounded = mergeGCReducedBounds(resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTable), gcReducedBounded)
 	finalizeModuleNativeSize(ms, len(code), moduleOther, 0)
 	if profileEnabled && opts.Profile {
 		recordProfileRegions(ms, entry, importedFuncs, len(code), len(code)-moduleOther, moduleOther)
@@ -2198,7 +2249,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if diagnosticsEnabled && explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
-	return &a64.CompiledModule{RequiresARM64LSE: requiresLSE, Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
+	return &a64.CompiledModule{GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, RequiresARM64LSE: requiresLSE, Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
 }
 
 // finalizeOmittedInlineEntries closes the module-layout seam for standalone

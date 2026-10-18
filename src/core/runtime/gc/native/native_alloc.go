@@ -2,6 +2,10 @@ package gc
 
 import "slices"
 
+// NativeDeadBatchSupported keeps injected allocation failures on the checked
+// per-object path. Release builds may charge proven-dead batches natively.
+const NativeDeadBatchSupported = !failureInjectionEnabled
+
 // Native allocation reserves bounded identity batches. AMD64 struct allocation
 // uses a larger local batch to reduce Go refills; arrays retain the measured
 // 32-handle batch. Array refills also reserve a bounded nursery chunk so
@@ -110,6 +114,14 @@ func (c *Collector) reserveNativeHandles(batch int) {
 	// Reserved free handles participate in this dense list before activation.
 	// Collection ignores spaceFree entries and compacts them after cancellation.
 	c.nurseryHandles = append(c.nurseryHandles, s.Handles[:batch]...)
+	// A published reservation cannot survive a collection. Normalize pending
+	// dead-object accounting once here so a nonempty reservation also proves
+	// that its counters belong to the current full-width collection cycle.
+	cycle := c.collectionCycle()
+	if c.nativeView.deadNurseryCycle() != cycle {
+		c.stats.LiveObjects = 0
+		c.nativeView.setDeadNurseryCycle(cycle)
+	}
 	s.Count = uint32(batch)
 	base := s.Handles[0]
 	contiguous := base != 0

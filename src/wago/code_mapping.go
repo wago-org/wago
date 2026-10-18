@@ -61,6 +61,8 @@ type compiledHostThunkCache struct {
 // compiledCacheIndexes holds cold compile/runtime indexes separately from the
 // fixed code-mapping header. It is allocated only when a module needs them.
 type compiledCacheIndexes struct {
+	// Compiler-owned immutable arithmetic proofs; never restored from the codec.
+	gcI31Inductions    []uint64
 	valueTypeIndex     map[ValueTypeDescriptor]uint32
 	gcTypeMapping      *gcTypeMappingCacheEntry
 	funcrefImportState atomic.Uint32 // 0 unknown, 1 no imported funcref containers, 2 at least one
@@ -390,6 +392,8 @@ type compiledGCFrameCallsite struct {
 }
 
 type compiledGCFrameRoots struct {
+	// Fresh whole-function induction proofs only; omitted from the codec.
+	deadInductionLayouts []uint64
 	adapterReturnOffsets []uint32
 	safepoints           []compiledGCFrameSafepoint
 	callsites            []compiledGCFrameCallsite

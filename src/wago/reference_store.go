@@ -1333,10 +1333,16 @@ func (in *Instance) gcInvocationDomains() gcInvocationDomainView {
 	return domains
 }
 
+// mayNeedGCInvocationLease reads current ownership: a reference store or
+// dynamic GC domain can be published after a prepared handle is created.
+func (in *Instance) mayNeedGCInvocationLease() bool {
+	return in != nil && in.refStore != nil && (in.gc != nil || in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain) != 0)
+}
+
 func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
 	// Ordinary scalar calls still acquire the invocation gate, but modules with
 	// no collector or imported/dynamic GC domain have nothing to lock here.
-	if in == nil || in.refStore == nil || in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain) == 0 {
+	if !in.mayNeedGCInvocationLease() {
 		return gcInvocationLease{}
 	}
 	lease, _ := in.lockGCInvocationContext(context.Background(), owner)
@@ -3388,6 +3394,7 @@ func (in *Instance) FuncRefMatchesFunction(ref FuncRef, index uint32) bool {
 }
 
 func (in *Instance) referenceStoreForBoundary() (*referenceStore, error) {
+	in.revokePrivateGCEntry()
 	in.lifeMu.Lock()
 	defer in.lifeMu.Unlock()
 	if in.closed {

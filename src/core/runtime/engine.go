@@ -321,16 +321,17 @@ func (e *Engine) CallWithHostBaseScalar(code uintptr, serArgs []byte, linMemBase
 // Keeping them behind this opaque handle prevents the hot path from accepting
 // unchecked pointers or short control/trap buffers on every invocation.
 type PreparedHostScalarCall struct {
-	engine          *Engine
-	code            uintptr
-	serArgs         []byte
-	linMemBase      uintptr
-	trap            []byte
-	results         []byte
-	ctrl            []byte
-	fixedSlots      uint32
-	fixed           bool
-	boundedSegments bool
+	engine             *Engine
+	code               uintptr
+	serArgs            []byte
+	linMemBase         uintptr
+	trap               []byte
+	results            []byte
+	ctrl               []byte
+	fixedSlots         uint32
+	fixed              bool
+	boundedSegments    bool
+	boundedHelperFrame bool
 }
 
 // PrepareHostScalarCall validates and binds a reservation-held scalar host

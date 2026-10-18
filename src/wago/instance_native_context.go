@@ -275,11 +275,18 @@ func (fn *WasmFunc) beginNativeEntry() (executionLease, bool, error) {
 			// memory, a changed base also forces a full bind and re-preparation.
 			reuse := version != 0 && in.memoryDir == nil &&
 				in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) == 0 &&
-				in.canReuseParkedNativeContextWithState(version, state) &&
+				(in.canReuseParkedNativeContextWithState(version, state) || fn.gcPrivateContext && version != ^uint64(0) && !in.threadedMemoryZero) &&
 				fn.hostContextVersion == version &&
 				fn.hostMemBase == in.jm.LinMemBase()
 			if !reuse {
 				if err := in.bindAndValidateNativeContext(); err != nil {
+					mu.Unlock()
+					return executionLease{}, false, err
+				}
+			}
+			if reuse && fn.gcPrivateContext {
+				// Reuse only the binding, never the mutable collector validation.
+				if err := validateNativeGCEntry(in); err != nil {
 					mu.Unlock()
 					return executionLease{}, false, err
 				}
@@ -499,6 +506,7 @@ func (in *Instance) lockInstanceNativeStateForHostAccess() func() {
 }
 
 func (in *Instance) acquireInstanceNativeStateForHostAccess() *sync.Mutex {
+	in.revokePrivateGCEntry()
 	mu := &nativeExecutionMu
 	if in.usesIndependentExecution() {
 		mu = in.independentNativeExecutionMu()

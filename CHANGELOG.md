@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Unify ARM64 and AMD64 GC helper dispatch without overlapping helper IDs;
+  cached native GC artifacts require recompilation for ABI version 9.
+
 - Recycle zero-live AMD64 nursery identities in one batch while preserving
   cleanup for owned storage and exact-capacity free lists.
 
@@ -20,6 +23,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 - Require recompilation of cached native WasmGC artifacts after the native GC
   ABI update to version 8.
+
+- Accelerate ARM64 WasmGC scalar constructor reads, small numeric array
+  allocation and access, array fills, i31 round trips, and proven nonescaping
+  scalar-struct, uniform-array, and unsigned i31 induction sums. Preserve
+  allocation accounting, collection policies, and checked helper fallbacks.
 
 - Accelerate AMD64 WasmGC allocation, array operations, subtype casts, and
   i31 round trips with specialized generated paths, bounded native-handle

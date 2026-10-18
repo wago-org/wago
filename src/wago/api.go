@@ -1467,6 +1467,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		return nil, err
 	}
 	compiled := installCompilerCompiledFinalizer(c)
+	if len(cm.GCI31Inductions) != 0 {
+		compiled.ensureCompileIndexes().gcI31Inductions = cm.GCI31Inductions
+	}
 	compiled.codeCache.setNativeGCABIVersion(nativeGCABIVersion)
 	if cm.CodeImage != nil {
 		mapping, base, err := cm.CodeImage.Take()
@@ -1498,7 +1501,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		compiled.setGCRootAdmissionFailure(diagnostic)
 	}
 	if validGCFrameRoots {
-		rootMap := &compiledGCFrameRoots{}
+		rootMap := &compiledGCFrameRoots{deadInductionLayouts: cm.GCDeadInductionLayouts}
 		var offsetInterner gcFrameOffsetInterner
 		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
 			plan := gcFrameRoots.Function(function)

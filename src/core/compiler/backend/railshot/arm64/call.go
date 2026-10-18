@@ -1358,6 +1358,16 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 // around the call: the host may read or write the instance's globals through
 // their cells.
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
+	nativeDeadStructType := f.nativeDeadStructType
+	f.nativeDeadStructType = 0
+	nativeDeadArrayBatchBytes := f.nativeDeadArrayBatchBytes
+	f.nativeDeadArrayBatchBytes = 0
+	nativeDeadStructBatchType := f.nativeDeadStructBatchType
+	f.nativeDeadStructBatchType = 0
+	nativeArrayHelper, nativeArrayType := f.nativeArrayHelper, f.nativeArrayType
+	f.nativeArrayHelper = 0
+	nativeDeadArrayBytes := f.nativeDeadArrayBytes
+	f.nativeDeadArrayBytes = 0
 	f.stats.call(callKindHostSync)
 	// Blocking waits use the complete host frame and GC callsite maps. Other
 	// atomic helpers retain the compact internal transition.
@@ -1431,6 +1441,27 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		f.storeModuleGlobals(X9)
 	}
 
+	gcDone := -1
+	if nativeDeadArrayBatchBytes != 0 && !wide {
+		gcDone = f.deadObjectCountShortcut(nativeDeadArrayBatchBytes, 8, int(slotOf[d-p]))
+	}
+	if nativeDeadStructBatchType != 0 && !wide {
+		gcDone = f.deadStructBatchShortcut(nativeDeadStructBatchType-1, int(slotOf[d-p]))
+	}
+	if nativeDeadStructType != 0 && !wide {
+		gcDone = f.deadStructShortcut(nativeDeadStructType - 1)
+	}
+
+	if nativeArrayHelper != 0 && !wide {
+		if nativeDeadArrayBytes != 0 {
+			gcDone = f.deadObjectShortcut(nativeDeadArrayBytes, 8)
+		} else if nativeArrayHelper == gcArrayAllocUniform || nativeArrayHelper == gcArrayAllocDefault {
+			gcDone = f.arrayAllocationShortcut(nativeArrayHelper, nativeArrayType, int(slotOf[d-p]))
+		} else {
+			gcDone = f.arrayScalarShortcut(nativeArrayHelper, nativeArrayType, int(slotOf[d-p]))
+		}
+	}
+
 	// Marshal params into the control frame as wrapper-ABI slots. A v128 occupies
 	// two adjacent little-endian uint64 slots, exactly like Invoke and cross-
 	// instance wrapper calls.
@@ -1485,6 +1516,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.a.Blr(X16)
 	if recordRoots {
 		f.gcFrameRoots.RecordCallsite(uint32(f.a.Len()), 0, rootOffsets)
+	}
+	if gcDone >= 0 {
+		f.patchBranch26(gcDone, f.a.Len())
 	}
 	if notifyDone >= 0 {
 		f.patchBranch26(notifyDone, f.a.Len())

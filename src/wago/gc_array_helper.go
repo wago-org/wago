@@ -58,7 +58,7 @@ func (in *Instance) dispatchGCHelperParked(ctrl uintptr, helper, safepoint uint3
 }
 
 func (in *Instance) dispatchGCHelperParkedOnStack(ctrl uintptr, helper, safepoint uint32, args, results []uint64, stack *coreruntime.Engine) {
-	if helper < gcArrayAllocDefault || helper == gcStructReserveDeadNative {
+	if helper < gcArrayAllocDefault || helper == gcStructReserveDeadNative || helper == gcStructReserveDeadBatch || helper == gcArrayReserveDeadBatch {
 		in.dispatchGCStructHelperParked(ctrl, helper, safepoint, args, results, stack)
 		return
 	}

@@ -8,6 +8,13 @@ import "github.com/wago-org/wago/src/core/codeimage"
 // wasm→native code generator lives in backend/railshot/arm64 and returns a
 // *CompiledModule. Mirrors encoder/amd64.CompiledModule.
 type CompiledModule struct {
+	// GCDeadInductionLayouts proves the complete function charges max(n,1)
+	// nonescaping pointer-free objects and returns i32(n*(n-1)/2).
+	// Low/high words hold object size/alignment. Zero means no proof.
+	// Compiler-private capability: excluded from serialized compiled artifacts.
+	GCDeadInductionLayouts []uint64
+	// GCI31Inductions marks compiler-proven whole unsigned i31 induction sums.
+	GCI31Inductions []uint64
 	// RequiredAMD64Features records optional instructions emitted by the AMD64 backend.
 	RequiredAMD64Features uint32
 	RequiresARM64LSE      bool // optional LSE instructions emitted by the arm64 backend
@@ -20,8 +27,8 @@ type CompiledModule struct {
 	// DirectPreparedLight marks direct entries whose compiler proof limits
 	// clobbers to caller-saved registers, allowing a smaller Go boundary thunk.
 	DirectPreparedLight []uint64
-	// DirectPreparedBounded is the stricter loop/call/custom-free subset whose
-	// native duration is statically bounded and needs no scheduler release.
+	// DirectPreparedBounded marks statically bounded native segments. Entries
+	// with GC helpers require the checked helper-yielding host loop, not direct entry.
 	DirectPreparedBounded []uint64
 	// PreparedIsolatedTables reports that every table is local, unexported,
 	// never mutated, and contains only local function descriptors. Runtime entry

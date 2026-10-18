@@ -33,6 +33,7 @@ func (in *Instance) CollectGC() error {
 	if in.guestStorageBorrowed() {
 		return fmt.Errorf("wago: collection is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}
+	in.revokePrivateGCEntry()
 	// Public collection is an independent operation, not a callback-scoped
 	// re-entry. Use a fresh identity instead of racing the instance's active
 	// invocation ID; GCHostModule.CollectGC handles lease ownership explicitly.
