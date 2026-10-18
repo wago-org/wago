@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Recycle zero-live AMD64 nursery identities in one batch while preserving
+  cleanup for owned storage and exact-capacity free lists.
+
 - Retain a checked AMD64 WasmGC object address across selected reads of other
   objects, using a bounded compiler scan and the existing safety checks.
 

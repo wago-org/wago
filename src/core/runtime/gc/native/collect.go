@@ -273,19 +273,33 @@ func (c *Collector) finishDeadNurseryEvacuation() bool {
 	if runtime.GOARCH != "amd64" || c.cfg.PoisonFreed {
 		return false
 	}
-	for _, h := range c.nurseryHandles {
-		if h == 0 || int(h) >= len(c.handles) {
-			continue
+	nursery := c.nurseryHandles
+	freeStart := len(c.freeHandles)
+	c.freeHandles = append(c.freeHandles, nursery...)
+	freeEnd := len(c.freeHandles)
+	// Descending traversal keeps unread identities in place while removing
+	// exceptional entries from the copied suffix.
+	for i := len(nursery) - 1; i >= 0; i-- {
+		h := nursery[i]
+		if h != 0 && int(h) < len(c.handles) {
+			e := &c.handles[h]
+			if e.space == spaceNursery && e.cardSlot == 0 {
+				e.space = spaceFree
+				continue
+			} else if e.young() {
+				// Reuse this identity's copied slot for releaseHandle's append.
+				// This needs no temporary N+1 capacity or extra backing array.
+				end := len(c.freeHandles)
+				c.freeHandles = c.freeHandles[:freeStart+i]
+				c.free(h)
+				c.freeHandles = c.freeHandles[:end]
+				continue
+			}
 		}
-		e := &c.handles[h]
-		if e.space == spaceNursery && e.cardSlot == 0 {
-			// Reuse overwrites every field before it republishes this identity.
-			e.space = spaceFree
-			c.freeHandles = append(c.freeHandles, h)
-		} else if e.young() {
-			c.free(h)
-		}
+		freeEnd--
+		c.freeHandles[freeStart+i] = c.freeHandles[freeEnd]
 	}
+	c.freeHandles = c.freeHandles[:freeEnd]
 	// This specialization executes only on AMD64. Its stale uint32 tail is
 	// outside the slice length and cannot retain Go memory.
 	c.nurseryHandles = c.nurseryHandles[:0]
