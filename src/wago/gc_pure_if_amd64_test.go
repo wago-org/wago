@@ -63,6 +63,12 @@ func TestGCPureIf(t *testing.T) {
 					c = publicArtifactRoundTrip(t, c)
 					defer c.Close()
 				}
+				iterations := 100
+				if kind == "call" {
+					// Every allocation triggers heap verification. Keep this case small
+					// because promoted objects accumulate across the loop.
+					iterations = 4
+				}
 				for _, profile := range []GCProfile{GCProfileThroughput, GCProfileTiny} {
 					cfg := GCConfig{Profile: profile, NurseryBytes: 4096, VerifyAfterCollect: true}
 					if kind == "call" {
@@ -78,10 +84,10 @@ func TestGCPureIf(t *testing.T) {
 							t.Fatal(err)
 						}
 						before := in.gc.Stats()
-						got, err := in.Invoke("run", 100, cond)
-						want := uint64(100 * 4 * regions * 7)
+						got, err := in.Invoke("run", uint64(iterations), cond)
+						want := uint64(iterations * 4 * regions * 7)
 						if kind == "assign" && cond != 0 {
-							want = uint64(100 * 4 * regions * 11)
+							want = uint64(iterations * 4 * regions * 11)
 						}
 						if err != nil || len(got) != 1 || got[0] != want {
 							t.Fatalf("profile%d cond%d: %v,%v want%d", profile, cond, got, err, want)
