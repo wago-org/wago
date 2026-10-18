@@ -29,6 +29,7 @@ const (
 	gcStructFinalCastArrayLen        = 13
 	gcFuncRefTest                    = 14
 	gcStructReserveDead              = 15
+	gcStructReserveDeadNative        = 40 // dead reservation followed by native batch preparation
 )
 
 type gcStructHelperError struct{ err error }
@@ -53,7 +54,7 @@ func (in *Instance) gcObjectTypeMatches(actual gc.TypeID, want uint32) bool {
 
 func gcHelperMayAllocate(helper uint32) bool {
 	switch helper {
-	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead,
+	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead, gcStructReserveDeadNative,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
 		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill,
 		gcArrayAllocDefaultNative, gcArrayAllocUniformNative, gcArrayAllocFixedNative,
@@ -114,7 +115,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		} else {
 			results[0] = 0
 		}
-	case gcStructReserveDead:
+	case gcStructReserveDead, gcStructReserveDeadNative:
 		if len(args) != 1 {
 			panic(gcHelperFailuref("gc struct dead reservation helper arity = %d, want 1", len(args)))
 		}
@@ -124,6 +125,9 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		}
 		if len(results) != 0 {
 			results[0] = uint64(ref)
+		}
+		if helper == gcStructReserveDeadNative {
+			in.prepareNativeDeadStructHandle(uint32(args[0]))
 		}
 	case gcStructAllocDefault:
 		if len(args) != 1 || len(results) < 1 {

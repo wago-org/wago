@@ -11,6 +11,14 @@ import (
 var nativeStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "1"
 
 func (in *Instance) prepareNativeStructHandles(typeID uint32) {
+	in.prepareNativeStructHandlesMode(typeID, false)
+}
+
+func (in *Instance) prepareNativeDeadStructHandle(typeID uint32) {
+	in.prepareNativeStructHandlesMode(typeID, true)
+}
+
+func (in *Instance) prepareNativeStructHandlesMode(typeID uint32, dead bool) {
 	if !nativeStructAllocEnabled || in == nil || in.gc == nil || in.c == nil || int(typeID) >= len(in.c.Types) || int(typeID) >= len(in.c.GCTypeDescs) {
 		return
 	}
@@ -44,7 +52,11 @@ func (in *Instance) prepareNativeStructHandles(typeID uint32) {
 	}
 	size, err := gc.StructSize(d)
 	if err == nil {
-		in.gc.PrepareNativeStructAllocation(size)
+		if dead {
+			in.gc.PrepareNativeDeadStructAllocation(size)
+		} else {
+			in.gc.PrepareNativeStructAllocation(size)
+		}
 	}
 }
 

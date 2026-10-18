@@ -11,7 +11,8 @@ import (
 // contract while reloading every mutable backing pointer/count they consume. The
 // view is refreshed in place whenever growable backing can relocate, and callers
 // must still serialize access with collector mutation.
-const NativeABIVersion uint32 = 7
+// Version 8 also gates the dead-reservation/native-preparation helper dispatch.
+const NativeABIVersion uint32 = 8
 
 // Native allocation-stat offsets are relative to the AllocationCount pointer
 // in NativeCollectorView. Generated AMD64 dead charges use these counters to

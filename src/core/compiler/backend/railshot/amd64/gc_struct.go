@@ -32,6 +32,7 @@ const (
 	gcStructFinalCastArrayLen        = 13
 	gcFuncRefTest                    = 14
 	gcStructReserveDead              = 15
+	gcStructReserveDeadNative        = 40 // dead reservation followed by native batch preparation
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
@@ -179,6 +180,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	case 1: // struct.new_default typeidx
 		typeIndex, err := r.U32()
 		if err != nil {
+			return err
+		}
+		if grouped, err := f.tryDeadGCDefaultGroup(r, typeIndex); grouped || err != nil {
 			return err
 		}
 		if _, ok := f.stagedStructType(typeIndex); !ok {
@@ -1196,7 +1200,7 @@ func (f *fn) gcFrameLocal(index int) bool {
 
 func gcHelperMayAllocate(helper uint32) bool {
 	switch helper {
-	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead,
+	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead, gcStructReserveDeadNative,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
 		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill,
 		gcArrayAllocDefaultNative, gcArrayAllocUniformNative, gcArrayAllocFixedNative,

@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Require recompilation of cached native WasmGC artifacts after the native GC
+  ABI update to version 8.
+
 - Accelerate AMD64 WasmGC allocation, array operations, subtype casts, and
   i31 round trips with specialized generated paths, bounded native-handle
   batches, and survivor-aware nursery management. Preserve the existing Go

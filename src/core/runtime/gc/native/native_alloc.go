@@ -136,6 +136,16 @@ func (c *Collector) reserveNativeHandles(batch int) {
 // path. Array chunks therefore add no cursor checks or reserved-byte gaps to the
 // established native struct hot path.
 func (c *Collector) PrepareNativeStructAllocation(minObjectBytes uint32) bool {
+	return c.prepareNativeStructAllocation(minObjectBytes, nativeStructHandleBatchSize)
+}
+
+// Dead charges consume no identity. One reserved handle supplies the existing
+// cancellation/configuration proof without growing a full live-object batch.
+func (c *Collector) PrepareNativeDeadStructAllocation(minObjectBytes uint32) bool {
+	return c.prepareNativeStructAllocation(minObjectBytes, 1)
+}
+
+func (c *Collector) prepareNativeStructAllocation(minObjectBytes uint32, batch int) bool {
 	if !c.nativeAllocationAllowed(minObjectBytes) {
 		return false
 	}
@@ -144,7 +154,7 @@ func (c *Collector) PrepareNativeStructAllocation(minObjectBytes uint32) bool {
 		return true
 	}
 	c.discardNativeStructHandles()
-	c.reserveNativeHandles(nativeStructHandleBatchSize)
+	c.reserveNativeHandles(batch)
 	return true
 }
 
