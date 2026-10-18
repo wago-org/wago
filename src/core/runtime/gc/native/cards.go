@@ -22,7 +22,7 @@ func (c *Collector) scanRememberedCards(h uint32) {
 		// Metadata growth failure is fail-safe: remembered membership remains
 		// authoritative and falls back to complete object scans until evacuation
 		// clears the young generation.
-		c.scanObjectRefs(h, c.markNurseryRef)
+		c.scanNurseryObject(h)
 		return
 	}
 	if len(c.objectCards) >= 16 && c.hasSixteenObjectCardRanges(e.cardSlot) && c.scanStructCardRanges(h) {
@@ -57,7 +57,7 @@ func (c *Collector) scanRememberedCards(h uint32) {
 		c.lastCardBounds = objectCardBounds{}
 		e.cardSlot = 0
 		c.cardFallback = true
-		c.scanObjectRefs(h, c.markNurseryRef)
+		c.scanNurseryObject(h)
 		return
 	}
 }

@@ -501,6 +501,27 @@ func directGCResolverInstruction(m *wasm.Module, gcTypeLayouts []codegen.GCTypeL
 	}
 }
 
+// Count only constant numeric fills that lowering can turn into native stores.
+// Dynamic and helper-only fills must not force a shared resolver island.
+func directGCArrayFillResolver(m *wasm.Module, layouts []codegen.GCTypeLayout, typeIndex uint32, count int32) bool {
+	var scalar directGCScalar
+	var final, ok bool
+	if int(typeIndex) < len(layouts) && layouts[typeIndex].Type != nil {
+		t := layouts[typeIndex].Type
+		if t.Comp.Kind != wasm.CompArray {
+			return false
+		}
+		scalar, ok = directGCScalarStorage(t.Comp.Array.Storage())
+		final = t.Final
+	} else {
+		if m == nil {
+			return false
+		}
+		scalar, final, ok = directGCArrayLayout(m, typeIndex)
+	}
+	return ok && final && directGCArrayFillCount(uint32(count), scalar.size)
+}
+
 // scanBody performs the AST pre-scan walk. selfIdx is the function's global
 // function index (for callsSelf).
 func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHintView {
@@ -657,6 +678,10 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 				}
 			case wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen:
 				if directGCResolverInstruction(m, gcTypeLayouts, in.Kind, in.Index, in.Index2) {
+					h.addGCResolverSite()
+				}
+			case wasm.InstrArrayFill:
+				if i > 0 && instrs[i-1].Kind == wasm.InstrI32Const && directGCArrayFillResolver(m, gcTypeLayouts, in.Index, instrs[i-1].I32) {
 					h.addGCResolverSite()
 				}
 			case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
@@ -1000,6 +1025,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 	}
 	subHasCall := false
 	var prevOp byte
+	var prevI32 int32
 	var variableShiftDepth uint8
 	for {
 		op, err := s.r.byte()
@@ -1176,6 +1202,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					return true, 0, err
 				}
 				bits, typ = int64(v), 1
+				prevI32 = v
 			} else {
 				v, err := s.r.Reader.I64()
 				if err != nil {
@@ -1245,6 +1272,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if op == 0xfb {
 				switch imm.Kind {
+				case wasm.InstrArrayFill:
+					if prevOp == 0x41 && directGCArrayFillResolver(s.m, s.gcTypeLayouts, imm.Index, prevI32) {
+						s.h.addGCResolverSite()
+					}
 				case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet,
 					wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen:
 					if directGCResolverInstruction(s.m, s.gcTypeLayouts, imm.Kind, imm.Index, imm.Index2) {

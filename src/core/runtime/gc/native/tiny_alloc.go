@@ -70,6 +70,9 @@ func newTinyCollector(config Config, types []TypeDesc) (*Collector, error) {
 		return nil, fmt.Errorf("gc: tiny block size %d is smaller than required object alignment %d", config.TinyBlockBytes, objectAlign)
 	}
 	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), objectAlign: objectAlign, handles: []handleEntry{{}}}
+	for i := range c.types {
+		c.types[i].checkScanPlan()
+	}
 
 	if err := c.initSubtypeIntervals(); err != nil {
 		return nil, err

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/binary"
 	"errors"
+	"runtime"
 	"slices"
 	"time"
 )
@@ -13,6 +14,7 @@ func (c *Collector) CollectFull(roots RootSet) error {
 		return err
 	}
 	c.discardNativeStructHandles()
+	c.discardNativeLargeArrayAllocation()
 	defer c.refreshNativeView()
 	if c.cfg.Profile == ProfileTiny {
 		if err := c.tinyCollectFull(roots); err != nil {
@@ -39,7 +41,9 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
+	youngObjects := uint32(min(uint64(len(c.nurseryHandles)), uint64(^uint32(0))))
 	c.discardNativeStructHandles()
+	c.discardNativeLargeArrayAllocation()
 	defer c.refreshNativeView()
 	c.stats.MinorCollections++
 	if c.cfg.Profile == ProfileTiny {
@@ -55,10 +59,16 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	if c.cfg.MinorPauseTargetMicros != 0 {
 		policyStart = time.Now()
 	}
-	c.clearNurseryMarks()
+	// A successful minor collection clears every young mark while it compacts
+	// nurseryHandles. Only a full collection leaves live young marks set.
+	if len(c.mark) < len(c.handles) || c.stats.FullCollections != c.lastFullCollections {
+		c.clearNurseryMarks()
+	}
 	c.markNurseryRoots(roots)
 	if c.cfg.VerifyAfterCollect {
 		if err := c.verifyRememberedShadow(); err != nil {
+			c.clearNurseryMarks()
+			c.restoreDeadNurseryAccounting()
 			return err
 		}
 	}
@@ -69,21 +79,44 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		}
 	}
 	var copiedBytes, promotedBytes uint64
-	if survivors := c.drainNurseryMarkStack(); survivors != 0 {
+	finishedEvacuation := false
+	var scanned uint64
+	capturedPromotion := runtime.GOARCH == "amd64" && !(c.survivorBytes == 0 && c.tenuringThreshold == 1)
+	if runtime.GOARCH != "amd64" || len(c.markStack) != 0 {
+		if capturedPromotion {
+			scanned = c.drainNurseryMarkStackForPromotion()
+		} else {
+			scanned = c.drainNurseryMarkStack()
+		}
+	}
+	if scanned != 0 {
 		var err error
-		copiedBytes, promotedBytes, err = c.promoteMarkedNursery()
+		if capturedPromotion && scanned < uint64(len(c.nurseryHandles)) {
+			copiedBytes, promotedBytes, finishedEvacuation, err = c.promoteCapturedNursery()
+		} else {
+			copiedBytes, promotedBytes, finishedEvacuation, err = c.promoteMarkedNursery()
+		}
 		if err != nil {
 			c.clearNurseryMarks()
+			c.restoreDeadNurseryAccounting()
 			return err
 		}
 	}
-	c.finishMinorEvacuation()
+	if !finishedEvacuation {
+		if scanned != 0 || !c.finishDeadNurseryEvacuation() {
+			c.finishMinorEvacuation(scanned)
+		}
+	}
 	c.finishMinorCardMetadata()
 	pauseNS := uint64(0)
 	if !policyStart.IsZero() {
 		pauseNS = uint64(time.Since(policyStart))
 	}
 	c.adaptTenuring(copiedBytes, promotedBytes, pauseNS)
+	if runtime.GOARCH == "amd64" && c.cfg.NurseryBytes < c.nurseryGrowthLimit &&
+		(copiedBytes != 0 || c.nurseryGrowthSurvived != 0) {
+		c.growDefaultNursery(copiedBytes, youngObjects)
+	}
 	if c.cfg.VerifyAfterCollect {
 		if err := c.verifyNurseryEvacuated(); err != nil {
 			return err
@@ -110,47 +143,157 @@ func (c *Collector) finishFullCardMetadata() {
 }
 
 func (c *Collector) sweepAll() {
-	for h := uint32(1); int(h) < len(c.handles); h++ {
-		if c.handles[h].space != spaceFree && !c.mark[h] {
-			if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
-				c.deferThroughputFree(h)
-			} else {
-				c.free(h)
+	// A refilled table uses the original sweep before spending work indexing
+	// its young ledger. If that sweep makes it sparse again, retain the dirty
+	// ledger until the next indexed sweep (or reset it when disabling the map).
+	if runtime.GOARCH == "amd64" && len(c.majorBlocks) != 0 && len(c.freeHandles) >= len(c.handles)/2 {
+		if c.majorYoungDirty {
+			c.noteMajorHandles(c.nurseryHandles)
+			c.majorYoungDirty = false
+		}
+		c.sweepMajorBlocks()
+	} else {
+		for h := uint32(1); int(h) < len(c.handles); h++ {
+			if c.handles[h].space != spaceFree && !c.mark[h] {
+				if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
+					c.deferThroughputFree(h)
+				} else {
+					c.free(h)
+				}
 			}
 		}
+		c.compactNurseryHandles()
 	}
-	c.compactNurseryHandles()
+	if runtime.GOARCH == "amd64" {
+		c.prepareMajorBlocks()
+	}
 }
 
 // finishMinorEvacuation reclaims dead young handles and retains only live
 // survivor/large-young handles. promoteMarkedNursery has already copied or
 // tenured every marked object transactionally.
 
-func (c *Collector) finishMinorEvacuation() {
+func (c *Collector) finishMinorEvacuation(liveCount uint64) {
+	if runtime.GOARCH == "amd64" && !c.cfg.PoisonFreed && liveCount <= uint64(len(c.nurseryHandles))/8 {
+		c.finishSparseMinorEvacuation()
+		return
+	}
 	out := c.nurseryHandles[:0]
 	for _, h := range c.nurseryHandles {
 		if h == 0 || int(h) >= len(c.handles) {
 			continue
 		}
 		live := c.mark[h]
-		c.mark[h] = false
 		if live {
+			c.mark[h] = false
 			if c.handles[h].young() {
 				out = append(out, h)
 			}
 			continue
 		}
-		if c.handles[h].young() {
+		e := &c.handles[h]
+		if runtime.GOARCH == "amd64" && e.space == spaceNursery && !c.cfg.PoisonFreed && e.cardSlot == 0 {
+			// Nursery payload has no individual allocator ownership to release.
+			// The space byte invalidates the identity. Both native and Go reuse
+			// overwrite the complete entry before publishing it again; leave the
+			// other scalar fields stale to avoid clearing 20 bytes per dead object.
+			c.lastCardBounds = objectCardBounds{}
+			e.space = spaceFree
+			c.freeHandles = append(c.freeHandles, h)
+		} else if e.young() {
 			c.free(h)
 		}
 	}
-	clear(c.nurseryHandles[len(out):])
+	// Discarded uint32 identities retain no Go objects, and later appends
+	// overwrite this tail. Avoid clearing it on the measured AMD64 path.
+	if runtime.GOARCH != "amd64" {
+		clear(c.nurseryHandles[len(out):])
+	}
 	c.nurseryHandles = out
 	c.nurseryBump = 0
 	if len(out) == 0 {
 		c.survivorBump = 0
 		c.survivorFrom ^= 1
 	}
+}
+
+// finishSparseMinorEvacuation bulk-copies the mostly-dead nursery identities.
+// Remove exceptional entries by swapping from the end of that copy, avoiding
+// writes to every dead identity after the first survivor.
+func (c *Collector) finishSparseMinorEvacuation() {
+	nursery := c.nurseryHandles
+	freeStart := len(c.freeHandles)
+	c.freeHandles = append(c.freeHandles, nursery...)
+	freeEnd := len(c.freeHandles)
+	youngStart := len(nursery)
+	// Descending traversal leaves every unread free-list and nursery entry in
+	// place. Retained young identities occupy the already-read nursery suffix.
+	for i := len(nursery) - 1; i >= 0; i-- {
+		h := nursery[i]
+		if h != 0 && int(h) < len(c.handles) {
+			if c.mark[h] {
+				c.mark[h] = false
+				if c.handles[h].young() {
+					youngStart--
+					nursery[youngStart] = h
+				}
+			} else {
+				e := &c.handles[h]
+				if e.space == spaceNursery && e.cardSlot == 0 {
+					e.space = spaceFree
+					continue
+				} else if e.young() {
+					// The bulk copy already contains the recycled identity.
+					end := len(c.freeHandles)
+					c.free(h)
+					c.freeHandles = c.freeHandles[:end]
+					continue
+				}
+			}
+		}
+		freeEnd--
+		c.freeHandles[freeStart+i] = c.freeHandles[freeEnd]
+	}
+	c.freeHandles = c.freeHandles[:freeEnd]
+	n := copy(nursery, nursery[youngStart:])
+	c.nurseryHandles = nursery[:n]
+	c.lastCardBounds = objectCardBounds{}
+	c.nurseryBump = 0
+	if n == 0 {
+		c.survivorBump = 0
+		c.survivorFrom ^= 1
+	}
+}
+
+// finishDeadNurseryEvacuation specializes the AMD64 no-live-object case. The
+// completed mark-stack drain proves that every young handle is dead, so the
+// common card-free nursery case can recycle identities without repeating
+// liveness and generation tests for every object.
+func (c *Collector) finishDeadNurseryEvacuation() bool {
+	if runtime.GOARCH != "amd64" || c.cfg.PoisonFreed {
+		return false
+	}
+	for _, h := range c.nurseryHandles {
+		if h == 0 || int(h) >= len(c.handles) {
+			continue
+		}
+		e := &c.handles[h]
+		if e.space == spaceNursery && e.cardSlot == 0 {
+			// Reuse overwrites every field before it republishes this identity.
+			e.space = spaceFree
+			c.freeHandles = append(c.freeHandles, h)
+		} else if e.young() {
+			c.free(h)
+		}
+	}
+	// This specialization executes only on AMD64. Its stale uint32 tail is
+	// outside the slice length and cannot retain Go memory.
+	c.nurseryHandles = c.nurseryHandles[:0]
+	c.lastCardBounds = objectCardBounds{}
+	c.nurseryBump = 0
+	c.survivorBump = 0
+	c.survivorFrom ^= 1
+	return true
 }
 
 type plannedPromotion struct {
@@ -162,11 +305,23 @@ type plannedPromotion struct {
 // in-place large-object aging before publishing any handle location. Inactive
 // survivor bytes are written only after destination and commit failure points
 // have all passed, so rollback leaves the complete observable heap unchanged.
-func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, err error) {
+func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, finishedEvacuation bool, err error) {
+	return c.promoteNursery(false)
+}
+
+func (c *Collector) promoteCapturedNursery() (copiedBytes, promotedBytes uint64, finishedEvacuation bool, err error) {
+	return c.promoteNursery(true)
+}
+
+func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes uint64, finishedEvacuation bool, err error) {
 	if c.survivorBytes == 0 && c.tenuringThreshold == 1 {
-		return c.promoteMarkedNurseryImmediate()
+		copiedBytes, promotedBytes, err = c.promoteMarkedNurseryImmediate()
+		return copiedBytes, promotedBytes, false, err
 	}
 	plans := c.promotionScratch[:0]
+	if captured {
+		plans = c.promotionScratch
+	}
 	needsOldAllocation := false
 	toSpace := c.survivorFrom ^ 1
 	toBase := c.survivorBase(toSpace)
@@ -175,35 +330,70 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 		clear(plans)
 		c.promotionScratch = plans[:0]
 	}
-	for _, h := range c.nurseryHandles {
-		if !c.isYoungHandle(h) || !c.mark[h] {
-			continue
-		}
-		if err = injectFailure(c, failPromotionPlan); err != nil {
-			finish()
-			return 0, 0, err
-		}
-		src := c.handles[h]
-		age := src.age() + 1
-		plan := plannedPromotion{handle: h}
-		switch {
-		case src.space == spaceLarge:
-			plan.entry = src
-			if age >= c.tenuringThreshold {
-				plan.entry.clearYoungAge()
-			} else {
-				plan.entry.setYoungAge(age)
+	if captured {
+		// The drain already selected every live handle. Fill those scratch entries
+		// directly instead of scanning the mostly-dead nursery a second time.
+		for i := range plans {
+			h := plans[i].handle
+			if err = injectFailure(c, failPromotionPlan); err != nil {
+				finish()
+				return 0, 0, false, err
 			}
-		case age < c.tenuringThreshold && c.survivorBytes != 0:
-			off := align(toBump, max(srcAlignment(c, h), uint32(8)))
-			if off <= c.survivorBytes && src.size <= c.survivorBytes-off {
-				plan.entry = handleEntry{off: toBase + off, size: src.size, allocSize: src.size, space: spaceNursery}
-				plan.entry.setYoungAge(age)
-				toBump = off + src.size
+			src := c.handles[h]
+			age := src.age() + 1
+			plan := plannedPromotion{handle: h}
+			switch {
+			case src.space == spaceLarge:
+				plan.entry = src
+				if age >= c.tenuringThreshold {
+					plan.entry.clearYoungAge()
+				} else {
+					plan.entry.setYoungAge(age)
+				}
+			case age < c.tenuringThreshold && c.survivorBytes != 0:
+				off := align(toBump, max(srcAlignment(c, h), uint32(8)))
+				if off <= c.survivorBytes && src.size <= c.survivorBytes-off {
+					plan.entry = handleEntry{off: toBase + off, size: src.size, space: spaceNursery}
+					plan.entry.setYoungAge(age)
+					toBump = off + src.size
+				}
 			}
+			plans[i] = plan
+			needsOldAllocation = needsOldAllocation || plan.entry.space == spaceFree
 		}
-		plans = append(plans, plan)
-		needsOldAllocation = needsOldAllocation || plan.entry.space == spaceFree
+	} else {
+		for _, h := range c.nurseryHandles {
+			// CollectMinor canceled native reservations before marking, so the dense
+			// nursery list contains only valid young handles at this point.
+			if !c.mark[h] {
+				continue
+			}
+			if err = injectFailure(c, failPromotionPlan); err != nil {
+				finish()
+				return 0, 0, false, err
+			}
+			src := c.handles[h]
+			age := src.age() + 1
+			plan := plannedPromotion{handle: h}
+			switch {
+			case src.space == spaceLarge:
+				plan.entry = src
+				if age >= c.tenuringThreshold {
+					plan.entry.clearYoungAge()
+				} else {
+					plan.entry.setYoungAge(age)
+				}
+			case age < c.tenuringThreshold && c.survivorBytes != 0:
+				off := align(toBump, max(srcAlignment(c, h), uint32(8)))
+				if off <= c.survivorBytes && src.size <= c.survivorBytes-off {
+					plan.entry = handleEntry{off: toBase + off, size: src.size, space: spaceNursery}
+					plan.entry.setYoungAge(age)
+					toBump = off + src.size
+				}
+			}
+			plans = append(plans, plan)
+			needsOldAllocation = needsOldAllocation || plan.entry.space == spaceFree
+		}
 	}
 	if needsOldAllocation && len(plans) > 1 && !c.promotionPlansSorted(plans) {
 		slices.SortStableFunc(plans, func(a, b plannedPromotion) int {
@@ -224,20 +414,20 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 		for range plans {
 			if err = injectFailure(c, failPromotionDestination); err != nil {
 				finish()
-				return 0, 0, err
+				return 0, 0, false, err
 			}
 		}
 		for range plans {
 			if err = injectFailure(c, failPromotionCommit); err != nil {
 				finish()
-				return 0, 0, err
+				return 0, 0, false, err
 			}
 		}
 		return c.commitPromotionPlans(plans, toSpace, toBump)
 	}
 	if err = c.throughput.sweepAllPending(); err != nil {
 		finish()
-		return 0, 0, err
+		return 0, 0, false, err
 	}
 	tx := c.throughput.beginAllocTransaction()
 	rollback := func(current *handleEntry) {
@@ -256,7 +446,7 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 		if plans[i].entry.space != spaceFree {
 			if err = injectFailure(c, failPromotionDestination); err != nil {
 				rollback(nil)
-				return 0, 0, err
+				return 0, 0, false, err
 			}
 			i++
 			continue
@@ -268,20 +458,19 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 		}
 		if run, ok, runErr := c.throughput.tryAllocRun(size, j-i, spaceOld); runErr != nil {
 			rollback(nil)
-			return 0, 0, runErr
+			return 0, 0, false, runErr
 		} else if ok {
 			for k := i; k < j; k++ {
-				allocSize, class := run.allocSize, run.class
+				class := run.class
 				if k == j-1 && run.lastAllocSize != run.allocSize {
-					allocSize = run.lastAllocSize
-					class = uint16(len(throughputClassSizes))
+					class |= handleAbsorbedTailBit
 				}
-				plans[k].entry = handleEntry{off: run.off + uint32(k-i)*run.allocSize, size: size, allocSize: allocSize, class: class, space: spaceOld}
+				plans[k].entry = handleEntry{off: run.off + uint32(k-i)*run.allocSize, size: size, class: class, space: spaceOld}
 			}
 			for k := i; k < j; k++ {
 				if err = injectFailure(c, failPromotionDestination); err != nil {
 					rollback(nil)
-					return 0, 0, err
+					return 0, 0, false, err
 				}
 			}
 			i = j
@@ -290,11 +479,11 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 		e, allocErr := c.throughput.alloc(size, spaceOld)
 		if allocErr != nil {
 			rollback(nil)
-			return 0, 0, allocErr
+			return 0, 0, false, allocErr
 		}
 		if err = injectFailure(c, failPromotionDestination); err != nil {
 			rollback(&e)
-			return 0, 0, err
+			return 0, 0, false, err
 		}
 		plans[i].entry = e
 		i++
@@ -302,13 +491,23 @@ func (c *Collector) promoteMarkedNursery() (copiedBytes, promotedBytes uint64, e
 	for range plans {
 		if err = injectFailure(c, failPromotionCommit); err != nil {
 			rollback(nil)
-			return 0, 0, err
+			return 0, 0, false, err
 		}
 	}
 	return c.commitPromotionPlans(plans, toSpace, toBump)
 }
 
-func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8, toBump uint32) (copiedBytes, promotedBytes uint64, err error) {
+func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8, toBump uint32) (copiedBytes, promotedBytes uint64, finishedEvacuation bool, err error) {
+	// Like V8's scavenger, merge copying and final young-list publication when
+	// every young handle survived. On the measured pure-survivor path, the last
+	// plan represents the most recent allocation run; limit this AMD64 path to
+	// its measured small-object case. Sorted promotion plans may reject the path.
+	dense := runtime.GOARCH == "amd64" && len(plans) != 0 && len(plans) == len(c.nurseryHandles) &&
+		c.handles[plans[len(plans)-1].handle].size <= throughputClassSizes[0]
+	var young []uint32
+	if dense {
+		young = c.nurseryHandles[:0]
+	}
 	hasYoung, hasTenured := false, false
 	for _, p := range plans {
 		src := c.handles[p.handle]
@@ -334,8 +533,14 @@ func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8
 		}
 		if c.handles[p.handle].young() {
 			hasYoung = true
+			if dense {
+				young = append(young, p.handle)
+			}
 		} else {
 			hasTenured = true
+		}
+		if dense {
+			c.mark[p.handle] = false
 		}
 	}
 	// A parent can be older than a child. Once all handle locations and ages are
@@ -352,11 +557,20 @@ func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8
 	}
 	c.survivorFrom = toSpace
 	c.survivorBump = toBump
+	if dense {
+		clear(c.nurseryHandles[len(young):])
+		c.nurseryHandles = young
+		c.nurseryBump = 0
+		if len(young) == 0 {
+			c.survivorBump = 0
+			c.survivorFrom ^= 1
+		}
+	}
 	c.stats.YoungBytesCopied += copiedBytes
 	c.stats.PromotedBytes += promotedBytes
 	clear(plans)
 	c.promotionScratch = plans[:0]
-	return copiedBytes, promotedBytes, nil
+	return copiedBytes, promotedBytes, dense, nil
 }
 
 func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes uint64, err error) {
@@ -369,7 +583,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 	previousKind := -1
 	var previousSize uint32
 	for _, h := range c.nurseryHandles {
-		if !c.isYoungHandle(h) || !c.mark[h] {
+		if !c.mark[h] {
 			continue
 		}
 		if err = injectFailure(c, failPromotionPlan); err != nil {
@@ -436,12 +650,11 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 			return 0, 0, runErr
 		} else if ok {
 			for k := i; k < j; k++ {
-				allocSize, class := run.allocSize, run.class
+				class := run.class
 				if k == j-1 && run.lastAllocSize != run.allocSize {
-					allocSize = run.lastAllocSize
-					class = uint16(len(throughputClassSizes))
+					class |= handleAbsorbedTailBit
 				}
-				plans[k].entry = handleEntry{off: run.off + uint32(k-i)*run.allocSize, size: size, allocSize: allocSize, class: class, space: spaceOld}
+				plans[k].entry = handleEntry{off: run.off + uint32(k-i)*run.allocSize, size: size, class: class, space: spaceOld}
 			}
 			for k := i; k < j; k++ {
 				if err = injectFailure(c, failPromotionDestination); err != nil {
@@ -552,6 +765,11 @@ func (c *Collector) promoteHandle(h uint32) error {
 }
 
 func (c *Collector) promoteHandleTo(h uint32, oldEntry handleEntry) {
+	// Native nursery objects may not be indexed yet. Cover a survivor before
+	// promotion removes it from the dense nursery ledger used by the next major.
+	if runtime.GOARCH == "amd64" && c.majorYoungDirty {
+		c.noteMajorHandle(h)
+	}
 	e := &c.handles[h]
 	src := c.nursery[e.off : e.off+e.size]
 	dst := c.throughput.bytes(oldEntry)
@@ -610,7 +828,7 @@ func (c *Collector) releaseHandle(h uint32, lazyThroughput, poisonTiny bool) {
 				c.nursery[e.off+uint32(i)] = 0xdd
 			}
 		case spaceOld, spaceLarge:
-			end := e.off + e.allocSize
+			end := e.off + c.throughput.handleAllocSize(*e)
 			if end > uint32(len(c.throughput.mem)) {
 				end = uint32(len(c.throughput.mem))
 			}

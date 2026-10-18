@@ -149,18 +149,36 @@ func (h *throughputHeap) alloc(size uint32, sp spaceKind) (handleEntry, error) {
 			if !ok {
 				return handleEntry{}, errors.New("gc: throughput free-span index changed during allocation")
 			}
-			allocSize = span.size
-			class = uint16(len(throughputClassSizes))
+			if span.size != allocSize {
+				class |= handleAbsorbedTailBit
+			}
 			h.releaseSpanNode(reusable)
 		}
-		return handleEntry{off: span.off, size: size, allocSize: allocSize, class: class, space: sp}, nil
+		return handleEntry{off: span.off, size: size, class: class, space: sp}, nil
 	}
 
 	off, err := h.grow(allocSize)
 	if err != nil {
 		return handleEntry{}, err
 	}
-	return handleEntry{off: off, size: size, allocSize: allocSize, class: class, space: sp}, nil
+	return handleEntry{off: off, size: size, class: class, space: sp}, nil
+}
+
+func (h *throughputHeap) handleAllocSize(e handleEntry) uint32 {
+	var allocSize uint32
+	if e.space != spaceLarge {
+		class := int(e.class & handleClassMask)
+		if class < len(throughputClassSizes) && throughputClassSizes[class] <= h.classLimit {
+			allocSize = throughputClassSizes[class]
+		}
+	}
+	if allocSize == 0 {
+		allocSize = Align16(e.size)
+	}
+	if e.class&handleAbsorbedTailBit != 0 {
+		allocSize += 16
+	}
+	return allocSize
 }
 
 func (h *throughputHeap) beginAllocTransaction() throughputAllocTransaction {
@@ -187,18 +205,20 @@ func (h *throughputHeap) rollbackSuccessfulAlloc(e handleEntry, initialBump uint
 }
 
 func (h *throughputHeap) free(e handleEntry) error {
-	if e.allocSize == 0 || e.off%16 != 0 || e.off+e.allocSize < e.off || e.off+e.allocSize > h.bump {
+	allocSize := h.handleAllocSize(e)
+	if allocSize == 0 || e.off%16 != 0 || e.off+allocSize < e.off || e.off+allocSize > h.bump {
 		return errors.New("gc: invalid throughput free span")
 	}
-	return h.insertFreeSpan(throughputFreeSpan{off: e.off, size: e.allocSize})
+	return h.insertFreeSpan(throughputFreeSpan{off: e.off, size: allocSize})
 }
 
 func (h *throughputHeap) deferFree(e handleEntry) error {
-	if e.allocSize == 0 || e.off%16 != 0 || e.off+e.allocSize < e.off || e.off+e.allocSize > h.bump {
+	allocSize := h.handleAllocSize(e)
+	if allocSize == 0 || e.off%16 != 0 || e.off+allocSize < e.off || e.off+allocSize > h.bump {
 		return errors.New("gc: invalid deferred throughput free span")
 	}
-	h.pendingFree = append(h.pendingFree, throughputFreeSpan{off: e.off, size: e.allocSize})
-	h.pendingBytes += uint64(e.allocSize)
+	h.pendingFree = append(h.pendingFree, throughputFreeSpan{off: e.off, size: allocSize})
+	h.pendingBytes += uint64(allocSize)
 	return nil
 }
 
@@ -779,15 +799,16 @@ func (h *throughputHeap) verify(handles []handleEntry) error {
 		if e.space != spaceOld && e.space != spaceLarge {
 			return fmt.Errorf("gc: invalid throughput space for handle %d", i)
 		}
-		if e.allocSize == 0 || e.size > e.allocSize || e.off%16 != 0 || e.off+e.allocSize < e.off || e.off+e.allocSize > h.bump {
+		allocSize := h.handleAllocSize(e)
+		if allocSize == 0 || e.size > allocSize || e.off%16 != 0 || e.off+allocSize < e.off || e.off+allocSize > h.bump {
 			return fmt.Errorf("gc: throughput handle %d out of bounds", i)
 		}
 		for _, s := range live {
-			if spansOverlap(e.off, e.allocSize, s.off, s.size) {
+			if spansOverlap(e.off, allocSize, s.off, s.size) {
 				return fmt.Errorf("gc: throughput live span overlap at handle %d", i)
 			}
 		}
-		live = append(live, throughputFreeSpan{off: e.off, size: e.allocSize})
+		live = append(live, throughputFreeSpan{off: e.off, size: allocSize})
 	}
 
 	seen := make([]uint8, len(h.spanNodes))

@@ -242,19 +242,22 @@ func (e *elem) isDeferred() bool { return e.st.kind == deferredStorageKind }
 // can be reused at proven-empty top-level reader checkpoints; other node
 // pointers remain stable until the function finishes.
 type stack struct {
-	chunks           [][]elem
-	cold             []elemCold
-	cur              int
-	head             *elem
-	logicalDepth     uint32
-	canonicalSlots   bool
-	hasGCRoots       bool
-	nextChunkCap     uint16
-	nextGeometricCap uint16
-	spillExtentValid bool
-	pendingEffects   uint8
-	spillExtent      uint32
-	spilledPrefix    *elem
+	chunks             [][]elem
+	cold               []elemCold
+	cur                int
+	head               *elem
+	logicalDepth       uint32
+	canonicalSlots     bool
+	hasGCRoots         bool
+	nextChunkCap       uint16
+	nextGeometricCap   uint16
+	spillExtentValid   bool
+	pendingEffects     uint8
+	pendingPrefixLoads bool
+	spillExtent        uint32
+	spilledPrefix      *elem
+	// Last node of a prefix checked by a full pending-effect barrier.
+	pendingPrefix *elem
 }
 
 const (
@@ -330,6 +333,7 @@ func (s *stack) initSentinel() {
 	s.canonicalSlots = true
 	s.hasGCRoots = false
 	s.pendingEffects = 0
+	s.pendingPrefix, s.pendingPrefixLoads = nil, false
 	s.spillExtent, s.spillExtentValid, s.spilledPrefix = 0, true, nil
 }
 
@@ -535,6 +539,9 @@ func (s *stack) back() *elem {
 // erase unlinks e from the physical list (used when a node is condensed away or
 // consumed). It does not touch parent/sibling links.
 func (s *stack) erase(e *elem) {
+	if s.pendingPrefix == e {
+		s.pendingPrefix = e.prev
+	}
 	s.forgetSpill(e)
 	s.canonicalSlots = false
 	if e.st.hasLogicalRoot() {

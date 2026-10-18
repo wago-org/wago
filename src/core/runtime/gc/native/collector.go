@@ -2,6 +2,8 @@ package gc
 
 import (
 	"errors"
+	"os"
+	"runtime"
 )
 
 // Profile selects a supported allocator/runtime preset.
@@ -33,6 +35,8 @@ const (
 )
 
 type Config struct {
+	// NurseryBytes fixes Eden capacity when nonzero. On AMD64 the default starts
+	// at 64 KiB and can grow to 2 MiB after sustained survival pressure.
 	NurseryBytes uint32
 	// SurvivorBytes is the capacity of each of two bounded Throughput survivor
 	// semispaces. Zero selects half the normalized Eden capacity. It is ignored
@@ -88,10 +92,14 @@ type Stats struct {
 	FullCollections        uint64
 	MinorObjectsScanned    uint64
 	MinorRememberedScanned uint64
-	YoungBytesCopied       uint64
-	PromotedBytes          uint64
-	LiveObjects            uint32
-	TenuringThreshold      uint8
+	// YoungBytesCopied includes evacuation and nursery-growth relocation copies.
+	YoungBytesCopied uint64
+	PromotedBytes    uint64
+	// LiveObjects is computed when Stats returns a snapshot. Internally, this
+	// slot counts compiler-proven unreachable objects whose native allocation
+	// charged nursery bytes without publishing a handle.
+	LiveObjects       uint32
+	TenuringThreshold uint8
 }
 
 type spaceKind uint8
@@ -106,7 +114,6 @@ const (
 
 type handleEntry struct {
 	off, size  uint32
-	allocSize  uint32
 	cardSlot   uint32 // one-based index in Collector.objectCards
 	class      uint16
 	space      spaceKind
@@ -114,50 +121,59 @@ type handleEntry struct {
 }
 
 type Collector struct {
-	cfg                 Config
-	nativeView          *NativeCollectorView
-	nativeStructAlloc   nativeStructAllocState
-	nativeAllocEpoch    uint32
-	arraySlow           uint8
-	types               []TypeDesc
-	subtypeIntervals    []uint64 // packed DFS [pre, post] interval by canonical TypeID
-	objectAlign         uint32
-	nursery             []byte // Eden followed by two survivor semispaces.
-	nurseryBump         uint32
-	survivorBytes       uint32
-	survivorBump        uint32
-	survivorFrom        uint8
-	tenuringThreshold   uint8
-	lastFullCollections uint64
-	tiny                tinyHeap
-	tinyGC              tinyGC
-	throughput          throughputHeap
-	handles             []handleEntry // index 0 is never used; Ref stores index<<1.
-	freeHandles         []uint32
-	nurseryHandles      []uint32 // dense live nursery set; minor collection never scans all old handles
-	mark                []bool
-	markStack           []uint32 // Throughput tracing stack; Tiny transient-root staging buffer.
-	promotionScratch    []plannedPromotion
-	remembered          []uint32
-	objectCards         []objectCard
-	cardBytes           uint32
-	freeObjectCardSlot  uint32 // one-based tombstone free-list head; links use objectCard.next
-	slotCards           []slotCard
-	globalCardBits      []uint64
-	tableCardBits       []uint64
-	cardFallback        bool // shared full remembered-object/persistent-root scan
-	globalSlots         []Ref
-	tableSlots          []Ref
-	stats               Stats
-	rootMarkMode        uint8
-	closed              bool
-	checkedHandles      *[]uint64
+	cfg                   Config
+	nativeView            *NativeCollectorView
+	nativeStructAlloc     nativeStructAllocState
+	nativeLargeArrayAlloc nativeLargeArrayAllocState
+	nativeAllocEpoch      uint32
+	nativeLargeArrayEpoch uint32
+	nurseryGrowthSurvived uint32 // occupies existing padding before types
+	types                 []TypeDesc
+	subtypeIntervals      []uint64 // packed DFS [pre, post] interval by canonical TypeID
+	objectAlign           uint32
+	nurseryGrowthLimit    uint32 // occupies existing padding before nursery
+	nursery               []byte // Eden followed by two survivor semispaces.
+	nurseryBump           uint32
+	survivorBytes         uint32
+	survivorBump          uint32
+	survivorFrom          uint8
+	tenuringThreshold     uint8
+	arraySlow             uint8 // occupies existing padding before lastFullCollections
+	nurseryGrowthQuiet    uint8
+	lastFullCollections   uint64
+	tiny                  tinyHeap
+	tinyGC                tinyGC
+	throughput            throughputHeap
+	handles               []handleEntry // index 0 is never used; Ref stores index<<1.
+	freeHandles           []uint32
+	nurseryHandles        []uint32 // dense live nursery set; minor collection never scans all old handles
+	mark                  []bool
+	markStack             []uint32 // Throughput tracing stack; Tiny transient-root staging buffer.
+	promotionScratch      []plannedPromotion
+	remembered            []uint32
+	objectCards           []objectCard
+	cardBytes             uint32
+	freeObjectCardSlot    uint32 // one-based tombstone free-list head; links use objectCard.next
+	slotCards             []slotCard
+	globalCardBits        []uint64
+	tableCardBits         []uint64
+	cardFallback          bool // shared full remembered-object/persistent-root scan
+	globalSlots           []Ref
+	tableSlots            []Ref
+	stats                 Stats
+	rootMarkMode          uint8
+	closed                bool
+	majorYoungDirty       bool // uses padding before checkedHandles
+	checkedHandles        *[]uint64
 	// Keep optional proof state last so existing collector field offsets stay fixed.
 	lastCardBounds objectCardBounds
+	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
 }
 
 const defaultNursery = 64 << 10
 const defaultLarge = 32 << 10
+
+var denseNurseryPregrowEnabled = runtime.GOARCH == "amd64" && os.Getenv("WAGO_AMD64_NO_DENSE_NURSERY_PREGROW") != "1"
 
 var errCollectorClosed = errors.New("gc: collector closed")
 
@@ -165,6 +181,10 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err := ValidateNativeABI(); err != nil {
 		return nil, err
 	}
+	autoNursery := runtime.GOARCH == "amd64" && config.Profile == ProfileThroughput &&
+		config.NurseryBytes == 0 && config.SurvivorBytes == 0 && config.StressNurseryBytes == 0 &&
+		config.ThroughputHeapBytes == 0 && config.LargeObjectBytes == 0 && config.MinorPauseTargetMicros == 0 &&
+		!config.DisableCollection && !config.DisableMovingNursery && !config.CollectEveryAlloc && !config.ForceMajorEveryMinor
 	var err error
 	config, err = normalizeConfig(config)
 	if err != nil {
@@ -193,8 +213,14 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 		nursery: makeAlignedBytes(nurseryBackingBytes, uintptr(objectAlign)), survivorBytes: config.SurvivorBytes,
 		tenuringThreshold: defaultTenuringThreshold, handles: []handleEntry{{}}, cardBytes: defaultThroughputCardBytes,
 	}
+	for i := range c.types {
+		c.types[i].checkScanPlan()
+	}
 	if config.DisableMovingNursery || config.SurvivorBytes == 0 {
 		c.tenuringThreshold = 1
+	}
+	if autoNursery {
+		c.nurseryGrowthLimit = 2 << 20
 	}
 
 	if err := c.initSubtypeIntervals(); err != nil {
@@ -212,6 +238,8 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 // counters, while unchecked root-slot reads return null after slots are released.
 func (c *Collector) Close() {
 	c.discardNativeStructHandles()
+	c.discardNativeLargeArrayAllocation()
+	c.stats.LiveObjects = 0
 	c.closed = true
 	c.nursery = nil
 	c.tiny.Close()
@@ -221,6 +249,8 @@ func (c *Collector) Close() {
 	c.freeHandles = nil
 	c.nurseryHandles = nil
 	c.mark = nil
+	c.majorBlocks = nil
+	c.majorYoungDirty = false
 	c.markStack = nil
 	c.subtypeIntervals = nil
 	c.promotionScratch = nil
@@ -264,6 +294,9 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 		return errors.New("gc: appended type alignment exceeds tiny block size")
 	}
 	oldTypes, oldIntervals := c.types, c.subtypeIntervals
+	for i := len(c.types); i < len(combined); i++ {
+		combined[i].checkScanPlan()
+	}
 	c.types = combined
 	if err := c.initSubtypeIntervals(); err != nil {
 		c.types, c.subtypeIntervals = oldTypes, oldIntervals
@@ -298,7 +331,39 @@ func (c *Collector) errIfClosed() error {
 // the handle table.
 func (c *Collector) Stats() Stats {
 	s := c.stats
+	if c.nativeStructAlloc.ChunkEnd == 0 {
+		used := min(c.nativeStructAlloc.Cursor, c.nativeStructAlloc.Count, uint32(len(c.nativeStructAlloc.Handles)))
+		s.Allocations += uint64(used)
+	}
 	s.LiveObjects = c.liveCount()
+	if c.nativeView != nil && c.nativeView.deadNurseryCycle() == c.collectionCycle() {
+		s.LiveObjects += c.stats.LiveObjects
+	}
 	s.TenuringThreshold = c.tenuringThreshold
 	return s
+}
+
+func (c *Collector) collectionCycle() uint64 {
+	return c.stats.MinorCollections + c.stats.FullCollections
+}
+
+func (c *Collector) hasPendingDeadNurseryObjects() bool {
+	return c.stats.LiveObjects != 0 && c.nativeView != nil && c.nativeView.deadNurseryCycle() == c.collectionCycle()
+}
+
+// restoreDeadNurseryAccounting keeps pending charges visible when a collection
+// fails before reclaiming nursery bytes. It is called only on cold error paths.
+func (c *Collector) restoreDeadNurseryAccounting() {
+	cycle := c.collectionCycle()
+	if c.nativeView != nil && c.nativeView.deadNurseryCycle() == cycle-1 {
+		c.nativeView.setDeadNurseryCycle(cycle)
+	}
+}
+
+func (v *NativeCollectorView) deadNurseryCycle() uint64 {
+	return v.DeadNurseryCycle
+}
+
+func (v *NativeCollectorView) setDeadNurseryCycle(cycle uint64) {
+	v.DeadNurseryCycle = cycle
 }

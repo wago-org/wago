@@ -47,6 +47,11 @@ func (f *fn) replaceStorage(e *elem, st storage) {
 	}
 	e.st = st
 	if e.prev != nil && e.next != nil {
+		if st.kind == stMemRef {
+			// A replacement can introduce a guard-backed load inside the
+			// previously checked prefix. Appended values need no reset.
+			f.s.pendingPrefix = nil
+		}
 		f.s.recordStorageEffects(st)
 		f.s.noteSpill(st)
 	}

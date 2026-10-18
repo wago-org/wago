@@ -1243,8 +1243,11 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		(uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait32 || uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait64)
 	internalGC := uint32(importIdx)&gcStructDispatchBit != 0 || uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 && !atomicWait
 	nativeStructType := f.nativeStructAllocType
+	nativeStructDead := f.nativeStructAllocDead
 	nativeArray := f.nativeArrayAlloc
 	f.nativeStructAllocType = 0
+	f.nativeStructAllocDead = false
+	f.nativeStructDirectUsed = false
 	f.nativeArrayAlloc = gcArrayAllocStubSite{}
 	p, rN := len(ft.Params), len(ft.Results)
 	notifyIndex := uint32(0)
@@ -1305,7 +1308,13 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 
-	f.flush()                   // operands to canonical slot-width slots
+	f.flush() // operands to canonical slot-width slots
+	if nativeStructType != 0 && nativeGCStructDirectSlotsEnabled {
+		if localStates, ok := f.snapshotLocalStates(); ok {
+			f.nativeStructDirectUsed = true
+			return f.callNativeStructDirectSlots(importIdx, ft, nativeStructType-1, nativeStructDead, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates)
+		}
+	}
 	f.storePinnedGlobals(false) // coherence/preservation for value-pinned caller-saved globals
 	if !internalGC {
 		// Arbitrary host code may read or mutate module-global cells. Internal GC
@@ -1357,8 +1366,12 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		site := f.a.CallRel32()
-		f.sc.gcStructAllocStubSites = append(f.sc.gcStructAllocStubSites, gcStructAllocStubSite{typeIndex: typeIndex, site: site})
+		if nativeGCStructInlineEnabled {
+			f.emitNativeStructAllocStub(typeIndex, nativeStructDead, true)
+		} else {
+			site := f.a.CallRel32()
+			f.sc.gcStructAllocStubSites = append(f.sc.gcStructAllocStubSites, gcStructAllocStubSite{typeIndex: typeIndex, dead: nativeStructDead, site: site})
+		}
 		f.stats.call("gcnative")
 		nativeAllocDone = f.a.JccPlaceholder(condNE) // stub returns ZF=0 on success
 	} else if nativeArray.mode != gcArrayNativeNone {
@@ -1502,6 +1515,80 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// memory. Reload after reconstructing the operand stack so the continuation
 	// cannot retain the parked activation's pre-call size.
 	f.refreshCachedMemoryBoundAfterExternalCall()
+	return nil
+}
+
+// callNativeStructDirectSlots keeps the ordinary allocation path entirely in
+// generated code. Constructor fields stay in canonical operand slots until the
+// native reservation succeeds or the cold Go-helper fallback marshals them.
+func (f *fn) callNativeStructDirectSlots(importIdx int, ft *wasm.CompType, typeIndex uint32, dead bool, paramSlots, resultSlots int, slotOf []uint32, depth, paramCount int, belowTypes []machineType, belowGCRoots []bool, localStates localStateSnapshot) error {
+	if len(ft.Results) != 1 || paramCount == 0 {
+		return fmt.Errorf("native struct helper has %d parameter(s), %d result(s)", paramCount, len(ft.Results))
+	}
+	argSlot := int(slotOf[depth-paramCount])
+	resultSlot := argSlot
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
+	f.emitNativeStructAllocSlots(typeIndex, dead, argSlot, resultSlot)
+	f.stats.call("gcnative")
+	nativeDone := f.a.JccPlaceholder(condNE)
+
+	// The native reservation failed. Publish the state that the parked Go
+	// helper may inspect, then use the existing synchronous control frame.
+	f.storePinnedGlobals(false)
+	f.a.Load64(R8, RBX, -offCustomCtx)
+	argSlotCursor, ctrlSlot := argSlot, 0
+	for i := 0; i < paramCount; i++ {
+		mt := mtOf(ft.Params[i])
+		if mt.isV128() {
+			x := f.allocFReg(0)
+			f.mov128LoadDisp(x, RSP, f.spillOff(argSlotCursor))
+			f.mov128StoreDisp(R8, hcArgs+int32(ctrlSlot)*8, x)
+			f.releaseF(x)
+		} else if mt.is64() {
+			f.a.Load64(RAX, RSP, f.spillOff(argSlotCursor))
+			f.a.Store64(R8, hcArgs+int32(ctrlSlot)*8, RAX)
+		} else {
+			f.a.Load32(RAX, RSP, f.spillOff(argSlotCursor))
+			f.a.Store64(R8, hcArgs+int32(ctrlSlot)*8, RAX)
+		}
+		argSlotCursor += mt.stackSlots()
+		ctrlSlot += mt.stackSlots()
+	}
+	f.materializeGCFrameRootLocalsForCall(importIdx)
+	f.spillLocalsForCall()
+	f.a.StoreImm32Mem(R8, hcImportIdx, int32(importIdx))
+	f.a.StoreImm32Mem(R8, hcNArgs, int32(paramSlots|resultSlots<<16))
+	if regallocCheckEnabled {
+		f.checkCallClobber()
+	}
+	f.a.CallMem(R8, hcTrampoline)
+	f.a.Load64(R8, RBX, -offCustomCtx)
+	f.a.Load64(RAX, R8, hcResults)
+	f.a.Store64(RSP, f.spillOff(resultSlot), RAX)
+
+	// The success path retained these registers. Restore the same physical
+	// state after the rare helper call so both branches share one compiler state.
+	f.derivePinnedGlobals()
+	for _, local := range f.pinnedLocals {
+		switch localStates[local] {
+		case lsReg, lsStackReg:
+			f.loadLocalReg(local, f.locals[local].reg, f.locals[local].isFloat)
+		}
+	}
+	f.restoreLocalStates(localStates)
+	f.a.PatchRel32(nativeDone, f.a.Len())
+
+	finalTypes := f.tmpTypes[:0]
+	finalTypes = append(finalTypes, belowTypes...)
+	finalTypes = append(finalTypes, mtOf(ft.Results[0]))
+	f.tmpTypes = finalTypes
+	finalRoots := f.tmpGCRoots[:0]
+	finalRoots = append(finalRoots, belowGCRoots...)
+	finalRoots = append(finalRoots, gcFrameRefType(f.m, ft.Results[0]))
+	f.tmpGCRoots = finalRoots
+	f.setDepthTypesWithGCRoots(finalTypes, finalRoots)
 	return nil
 }
 

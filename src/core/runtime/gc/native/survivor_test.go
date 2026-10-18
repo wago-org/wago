@@ -1,6 +1,7 @@
 package gc
 
 import (
+	"runtime"
 	"testing"
 )
 
@@ -317,5 +318,120 @@ func TestThroughputFullCollectionHandlesActiveSurvivor(t *testing.T) {
 	}
 	if c.validObjectRef(ref) || len(c.nurseryHandles) != 0 {
 		t.Fatal("full collection retained unreachable survivor")
+	}
+}
+
+func TestDenseMinorEvacuationFinishesDuringCommit(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("dense small-object evacuation is AMD64-specific")
+	}
+	c := newTestCollector(t, Config{NurseryBytes: 4096, SurvivorBytes: 4096})
+	roots := make([]Root, 2)
+	for i := range roots {
+		ref, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		roots[i] = Root(ref)
+	}
+	slots := stressRootSlots(roots)
+
+	for collection := 0; collection < 2; collection++ {
+		c.clearNurseryMarks()
+		c.markNurseryRoots(slots)
+		if got := c.drainNurseryMarkStack(); got != uint64(len(roots)) {
+			t.Fatalf("collection %d marked %d objects, want %d", collection, got, len(roots))
+		}
+		_, _, finished, err := c.promoteMarkedNursery()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !finished {
+			t.Fatalf("collection %d did not finish dense evacuation during commit", collection)
+		}
+		for i, root := range roots {
+			ref := Ref(root)
+			if !c.validObjectRef(ref) || c.mark[handleOf(ref)] {
+				t.Fatalf("collection %d root %d is invalid or remains marked", collection, i)
+			}
+		}
+	}
+
+	if len(c.nurseryHandles) != 0 || c.nurseryBump != 0 || c.survivorBump != 0 {
+		t.Fatalf("promoted dense nursery retained young state: handles=%v nursery=%d survivor=%d", c.nurseryHandles, c.nurseryBump, c.survivorBump)
+	}
+	for i, root := range roots {
+		if got := c.entry(Ref(root)).space; got != spaceOld {
+			t.Fatalf("root %d space=%v, want old", i, got)
+		}
+	}
+	if err := c.Verify(slots); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMinorMarkClearRepairsLazyMarksAndFullCollectionState(t *testing.T) {
+	c := newTestCollector(t, Config{NurseryBytes: 4096, SurvivorBytes: 4096})
+	ref, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := Root(ref)
+	slots := Slots{&root}
+	if len(c.mark) >= len(c.handles) {
+		t.Fatalf("initial mark length=%d, want less than %d handles", len(c.mark), len(c.handles))
+	}
+	if err := c.CollectMinor(slots); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.mark) != len(c.handles) || c.mark[handleOf(ref)] {
+		t.Fatalf("first minor marks=%v handles=%d", c.mark, len(c.handles))
+	}
+	if err := c.CollectFull(slots); err != nil {
+		t.Fatal(err)
+	}
+	if !c.mark[handleOf(ref)] || c.stats.FullCollections == c.lastFullCollections {
+		t.Fatal("full collection did not leave detectable live nursery marks")
+	}
+	if err := c.CollectMinor(slots); err != nil {
+		t.Fatal(err)
+	}
+	if c.mark[handleOf(ref)] || c.stats.FullCollections != c.lastFullCollections {
+		t.Fatal("minor collection did not clear full-collection nursery marks")
+	}
+	if err := c.Verify(slots); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDeadNurseryEvacuationRecyclesNurseryAndLargeObjects(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("dead nursery evacuation is AMD64-specific")
+	}
+	c := newTestCollector(t, Config{NurseryBytes: 4096, SurvivorBytes: 2048, LargeObjectBytes: 64})
+	small, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	large, err := c.NewArrayDefault(2, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.entry(small).space != spaceNursery || c.entry(large).space != spaceLarge || !c.entry(large).young() {
+		t.Fatalf("initial spaces small=%+v large=%+v", *c.entry(small), *c.entry(large))
+	}
+	c.clearNurseryMarks()
+	from := c.survivorFrom
+	if !c.finishDeadNurseryEvacuation() {
+		t.Fatal("AMD64 dead nursery evacuation was not selected")
+	}
+	if c.validObjectRef(small) || c.validObjectRef(large) {
+		t.Fatal("dead nursery evacuation retained an object")
+	}
+	if len(c.nurseryHandles) != 0 || c.nurseryBump != 0 || c.survivorBump != 0 || c.survivorFrom != from^1 {
+		t.Fatalf("dead nursery state handles=%v nursery=%d survivor=%d from=%d", c.nurseryHandles, c.nurseryBump, c.survivorBump, c.survivorFrom)
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatal(err)
 	}
 }

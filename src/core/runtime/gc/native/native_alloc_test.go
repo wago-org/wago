@@ -1,6 +1,9 @@
 package gc
 
 import (
+	"fmt"
+	"reflect"
+	"slices"
 	"testing"
 	"unsafe"
 )
@@ -20,6 +23,126 @@ func TestNativeStructAllocStateLayout(t *testing.T) {
 		t.Fatalf("native allocation state layout changed: size=%d epoch=%d cursor=%d count=%d base=%d chunk=%d/%d/%d bump=%d handles=%d",
 			unsafe.Sizeof(s), unsafe.Offsetof(s.Epoch), unsafe.Offsetof(s.Cursor), unsafe.Offsetof(s.Count), unsafe.Offsetof(s.HandleBase),
 			unsafe.Offsetof(s.ChunkStart), unsafe.Offsetof(s.ChunkCursor), unsafe.Offsetof(s.ChunkEnd), unsafe.Offsetof(s.ChunkBump), unsafe.Offsetof(s.Handles))
+	}
+}
+
+func TestReserveNativeHandlesHonorsRequestedBatch(t *testing.T) {
+	if nativeStructHandleBatch <= nativeArrayHandleBatch {
+		return
+	}
+	c, err := NewCollector(Config{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.reserveNativeHandles(nativeArrayHandleBatch)
+	for i, h := range c.nativeStructAlloc.Handles[nativeArrayHandleBatch:] {
+		if h != 0 {
+			t.Fatalf("unused handle %d = %d, want zero", nativeArrayHandleBatch+i, h)
+		}
+	}
+}
+
+func TestNativeLargeArrayAllocStateLayout(t *testing.T) {
+	var s nativeLargeArrayAllocState
+	if unsafe.Sizeof(s) != NativeLargeArrayAllocStateSize ||
+		unsafe.Offsetof(s.Epoch) != NativeStructAllocEpochOffset ||
+		unsafe.Offsetof(s.Cursor) != NativeStructAllocCursorOffset ||
+		unsafe.Offsetof(s.Count) != NativeStructAllocCountOffset ||
+		unsafe.Offsetof(s.HandleBase) != NativeStructAllocHandleBaseOffset ||
+		unsafe.Offsetof(s.ChunkStart) != NativeStructAllocChunkStartOffset ||
+		unsafe.Offsetof(s.ChunkCursor) != NativeStructAllocChunkCursorOffset ||
+		unsafe.Offsetof(s.ChunkEnd) != NativeStructAllocChunkEndOffset ||
+		unsafe.Offsetof(s.ChunkBump) != NativeStructAllocChunkBumpOffset ||
+		unsafe.Offsetof(s.Handle) != NativeStructAllocHandlesOffset || unsafe.Offsetof(s.Rewind) != 36 {
+		t.Fatalf("native large-array state layout changed: size=%d state=%+v", unsafe.Sizeof(s), s)
+	}
+}
+
+func TestNativeLargeArrayAllocationSurvivesStructRefill(t *testing.T) {
+	array, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	strct, err := NewStructDesc(1, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{array, strct})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	const bytes = 16 << 10
+	if !c.PrepareNativeArrayAllocation(bytes) {
+		t.Fatal("large array reservation was not prepared")
+	}
+	want := c.nativeLargeArrayAlloc
+	if want.Count != 1 || want.HandleBase == 0 || want.ChunkEnd-want.ChunkStart != bytes {
+		t.Fatalf("large array state = %+v", want)
+	}
+	if !c.PrepareNativeStructAllocation(24) {
+		t.Fatal("struct batch was not prepared")
+	}
+	if c.nativeLargeArrayAlloc != want {
+		t.Fatalf("struct refill changed large array state: got %+v want %+v", c.nativeLargeArrayAlloc, want)
+	}
+	if c.nurseryBump != want.ChunkEnd {
+		t.Fatalf("nursery bump = %d, want %d", c.nurseryBump, want.ChunkEnd)
+	}
+}
+
+func TestNativeLargeArrayAllocationCanceledAtCollection(t *testing.T) {
+	array, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{array})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if !c.PrepareNativeArrayAllocation(16 << 10) {
+		t.Fatal("large array reservation was not prepared")
+	}
+	h := c.nativeLargeArrayAlloc.Handle
+	epoch := c.nativeLargeArrayEpoch
+	if err := c.CollectMinor(EmptyRoots{}); err != nil {
+		t.Fatal(err)
+	}
+	if c.nativeLargeArrayAlloc.Count != 0 || c.nativeLargeArrayEpoch == epoch || c.nurseryBump != 0 || len(c.nurseryHandles) != 0 {
+		t.Fatalf("post-collection state = %+v epoch=%d nursery bump=%d nursery=%v", c.nativeLargeArrayAlloc, c.nativeLargeArrayEpoch, c.nurseryBump, c.nurseryHandles)
+	}
+	if len(c.freeHandles) == 0 || c.freeHandles[len(c.freeHandles)-1] != h {
+		t.Fatalf("reserved handle %d was not recycled: %v", h, c.freeHandles)
+	}
+}
+
+func TestNativeThroughputArrayReservationCanceledAtCollection(t *testing.T) {
+	array, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{array})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	const bytes = 40 << 10
+	if !c.PrepareNativeArrayAllocation(bytes) {
+		t.Fatal("throughput array reservation was not prepared")
+	}
+	if space := spaceKind((c.nativeLargeArrayAlloc.ChunkBump >> 16) & 0xff); space != spaceLarge {
+		t.Fatalf("reserved space = %d, want large", space)
+	}
+	if c.throughput.bump < bytes {
+		t.Fatalf("throughput bump = %d, want at least %d", c.throughput.bump, bytes)
+	}
+	if err := c.CollectMinor(EmptyRoots{}); err != nil {
+		t.Fatal(err)
+	}
+	if c.throughput.bump != 0 || c.nativeLargeArrayAlloc.Count != 0 || len(c.nurseryHandles) != 0 {
+		t.Fatalf("canceled throughput reservation = state %+v bump %d nursery %v", c.nativeLargeArrayAlloc, c.throughput.bump, c.nurseryHandles)
 	}
 }
 
@@ -59,11 +182,13 @@ func TestNativeStructHandleBatchReservationAndCollection(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := s.Handles[0]
-	c.handles[h] = handleEntry{size: sz, allocSize: sz, space: spaceNursery}
+	c.handles[h] = handleEntry{size: sz, space: spaceNursery}
 	c.writeHeader(makeObjRef(h), ObjHeader{TypeID: uint32(desc.ID), Size: sz, Flags: FlagPointerFree})
 	s.ChunkCursor = sz
 	s.Cursor = 1
-	c.stats.Allocations++
+	if got := c.Stats().Allocations; got != 1 || c.stats.Allocations != 0 {
+		t.Fatalf("active batch allocations = %d stored %d, want 1 stored 0", got, c.stats.Allocations)
+	}
 	epoch := c.nativeAllocEpoch
 	if err := c.CollectMinor(EmptyRoots{}); err != nil {
 		t.Fatal(err)
@@ -73,6 +198,9 @@ func TestNativeStructHandleBatchReservationAndCollection(t *testing.T) {
 	}
 	if len(c.freeHandles) != nativeStructHandleBatch {
 		t.Fatalf("recycled handles = %d, want %d", len(c.freeHandles), nativeStructHandleBatch)
+	}
+	if got := c.Stats().Allocations; got != 1 || c.stats.Allocations != 1 {
+		t.Fatalf("committed batch allocations = %d stored %d, want 1", got, c.stats.Allocations)
 	}
 	if !c.PrepareNativeStructHandles() || len(c.handles) != startHandles {
 		t.Fatalf("reused batch grew handle table: %d -> %d", startHandles, len(c.handles))
@@ -89,7 +217,7 @@ func TestNativeAllocationUnusedAlignedChunkRestoresExactBump(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	h := c.newHandle(handleEntry{off: 0, size: 24, allocSize: 24, space: spaceNursery})
+	h := c.newHandle(handleEntry{off: 0, size: 24, space: spaceNursery})
 	c.nurseryHandles = append(c.nurseryHandles, h)
 	c.nurseryBump = 24
 	if !c.PrepareNativeAllocation(24) {
@@ -126,7 +254,7 @@ func TestNativeArrayAllocationPrimesBeforeReserving(t *testing.T) {
 	if !c.PrepareNativeArrayAllocation(24) {
 		t.Fatalf("array allocation %d did not reserve a native batch", nativeArrayGenericRefillThreshold)
 	}
-	if c.nativeStructAlloc.Count != nativeStructHandleBatch || c.nativeStructAlloc.ChunkEnd == 0 {
+	if c.nativeStructAlloc.Count != nativeArrayHandleBatch || c.nativeStructAlloc.ChunkEnd == 0 {
 		t.Fatal("second array allocation left no usable native batch")
 	}
 	c.discardNativeStructHandles()
@@ -156,6 +284,45 @@ func TestNativeAllocationRejectsOversizedChunk(t *testing.T) {
 	}
 }
 
+func TestNativeArrayAllocationKeepsPrimingAcrossRefills(t *testing.T) {
+	desc, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{desc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	for i := uint8(1); i < nativeArrayGenericRefillThreshold; i++ {
+		if c.PrepareNativeArrayAllocation(80) {
+			t.Fatalf("cold allocation %d reserved a batch", i)
+		}
+	}
+	for refill := 0; refill < 4; refill++ {
+		if !c.PrepareNativeArrayAllocation(80) {
+			t.Fatalf("primed refill %d repeated the cold delay", refill)
+		}
+		c.CancelNativeAllocationBatch()
+		if _, err := c.NewArray(0, 16, I32Value(int32(refill))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, collect := range []func(RootSet) error{c.CollectMinor, c.CollectFull} {
+		if err := collect(EmptyRoots{}); err != nil {
+			t.Fatal(err)
+		}
+		for i := uint8(1); i < nativeArrayGenericRefillThreshold; i++ {
+			if c.PrepareNativeArrayAllocation(80) {
+				t.Fatalf("post-collection allocation %d bypassed the cold delay", i)
+			}
+		}
+		if !c.PrepareNativeArrayAllocation(80) {
+			t.Fatal("post-collection priming did not reserve a batch")
+		}
+	}
+}
+
 func TestNativeAllocationChunkCanceledBeforeGoAllocation(t *testing.T) {
 	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
 	if err != nil {
@@ -171,7 +338,7 @@ func TestNativeAllocationChunkCanceledBeforeGoAllocation(t *testing.T) {
 	}
 	s := &c.nativeStructAlloc
 	first := s.HandleBase
-	c.handles[first] = handleEntry{off: 0, size: 24, allocSize: 24, space: spaceNursery}
+	c.handles[first] = handleEntry{off: 0, size: 24, space: spaceNursery}
 	c.writeHeader(makeObjRef(first), ObjHeader{TypeID: uint32(desc.ID), Size: 24, Flags: FlagPointerFree})
 	s.Cursor = 1
 	s.ChunkCursor = 24
@@ -206,7 +373,7 @@ func TestNativeStructHandleCancellationCannotDuplicateNurserySet(t *testing.T) {
 	if len(c.nurseryHandles) != 0 {
 		t.Fatalf("canceled nursery set retains %d handles", len(c.nurseryHandles))
 	}
-	h := c.newHandle(handleEntry{size: 24, allocSize: 24, space: spaceNursery})
+	h := c.newHandle(handleEntry{size: 24, space: spaceNursery})
 	c.nurseryHandles = append(c.nurseryHandles, h)
 	count := 0
 	for _, candidate := range c.nurseryHandles {
@@ -232,7 +399,7 @@ func TestNativeStructHandleCancellationPreservesDenseNurseryPrefix(t *testing.T)
 	const prefixCount = 4096
 	prefix := make([]uint32, 0, prefixCount)
 	for range prefixCount {
-		h := c.newHandle(handleEntry{size: 16, allocSize: 16, space: spaceNursery})
+		h := c.newHandle(handleEntry{size: 16, space: spaceNursery})
 		c.nurseryHandles = append(c.nurseryHandles, h)
 		prefix = append(prefix, h)
 	}
@@ -241,7 +408,7 @@ func TestNativeStructHandleCancellationPreservesDenseNurseryPrefix(t *testing.T)
 	}
 	s := &c.nativeStructAlloc
 	consumed := s.Handles[0]
-	c.handles[consumed] = handleEntry{size: 16, allocSize: 16, space: spaceNursery}
+	c.handles[consumed] = handleEntry{size: 16, space: spaceNursery}
 	s.Cursor = 1
 	c.CancelNativeAllocationBatch()
 	if len(c.nurseryHandles) != prefixCount+1 {
@@ -257,6 +424,72 @@ func TestNativeStructHandleCancellationPreservesDenseNurseryPrefix(t *testing.T)
 	}
 }
 
+func TestNativeStructHandleCancellationPreservesDeadChargesAfterPromotion(t *testing.T) {
+	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{desc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if !c.PrepareNativeStructHandles() {
+		t.Fatal("native handle batch was not prepared")
+	}
+
+	size, err := StructSize(desc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &c.nativeStructAlloc
+	h := s.Handles[0]
+	c.handles[h] = handleEntry{size: size, space: spaceNursery}
+	c.writeHeader(makeObjRef(h), ObjHeader{TypeID: uint32(desc.ID), Size: size, Flags: FlagPointerFree})
+	s.Cursor = 1
+	c.nurseryBump = 4 * size
+	c.stats.Allocations = 4
+	c.stats.LiveObjects = 3
+	if err := c.ForcePromote(makeObjRef(h)); err != nil {
+		t.Fatal(err)
+	}
+
+	before := c.nurseryBump
+	c.CancelNativeAllocationBatch()
+	if c.nurseryBump != before {
+		t.Fatalf("cancel discarded dead allocation charge: bump %d -> %d", before, c.nurseryBump)
+	}
+	if got := c.Stats().LiveObjects; got != 4 {
+		t.Fatalf("live objects after cancel = %d, want 4", got)
+	}
+	if err := c.CollectMinor(EmptyRoots{}); err != nil {
+		t.Fatal(err)
+	}
+	if c.nurseryBump != 0 || c.Stats().LiveObjects != 1 {
+		t.Fatalf("minor collection state = bump %d live %d, want 0/1", c.nurseryBump, c.Stats().LiveObjects)
+	}
+}
+
+func TestDeadNurseryAccountingDoesNotAliasAfterUint32CollectionCycle(t *testing.T) {
+	c, err := NewCollector(Config{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.stats.LiveObjects = 3
+	c.nativeView.setDeadNurseryCycle(0)
+	if got := c.Stats().LiveObjects; got != 3 {
+		t.Fatalf("initial live objects = %d, want 3", got)
+	}
+	c.stats.MinorCollections = 1 << 32
+	if got := c.Stats().LiveObjects; got != 0 {
+		t.Fatalf("stale live objects after 2^32 collections = %d, want 0", got)
+	}
+	if c.hasPendingDeadNurseryObjects() {
+		t.Fatal("stale dead nursery accounting remained pending after 2^32 collections")
+	}
+}
+
 func BenchmarkNativeAllocationBatchCancelDenseNursery(b *testing.B) {
 	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
 	if err != nil {
@@ -268,7 +501,7 @@ func BenchmarkNativeAllocationBatchCancelDenseNursery(b *testing.B) {
 	}
 	defer c.Close()
 	for range 1 << 16 {
-		h := c.newHandle(handleEntry{size: 16, allocSize: 16, space: spaceNursery})
+		h := c.newHandle(handleEntry{size: 16, space: spaceNursery})
 		c.nurseryHandles = append(c.nurseryHandles, h)
 	}
 	b.ReportAllocs()
@@ -295,5 +528,83 @@ func TestNativeStructHandleBatchRejectedProfiles(t *testing.T) {
 			t.Fatalf("prepared native handles for config %+v", cfg)
 		}
 		c.Close()
+	}
+}
+
+// The native batch must preserve the general allocator's reuse order and all
+// parallel state, including checked identities that retire on exhaustion.
+func TestNativeHandleBatchMatchesGeneralAllocator(t *testing.T) {
+	for _, checked := range []bool{false, true} {
+		for _, freeCount := range []int{0, 7, 31, 32, 47} {
+			t.Run(fmt.Sprintf("checked=%t/free=%d", checked, freeCount), func(t *testing.T) {
+				makeCollector := func() *Collector {
+					c, err := NewCollector(Config{}, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(c.Close)
+					if checked {
+						if err := c.EnableCheckedHandles(); err != nil {
+							t.Fatal(err)
+						}
+					}
+					for range 64 {
+						c.newHandle(handleEntry{})
+					}
+					// Spare capacity may retain old data. Fresh identities must clear
+					// it while reused identities retain their existing side-table state.
+					entries, marks, colors := len(c.handles), len(c.mark), len(c.tinyGC.color)
+					c.handles = slices.Grow(c.handles, 32)[:entries+32]
+					for i := entries; i < len(c.handles); i++ {
+						c.handles[i] = handleEntry{space: spaceOld, size: 80}
+					}
+					c.handles = c.handles[:entries]
+					c.mark = slices.Grow(c.mark, 32)[:marks+32]
+					for i := range c.mark {
+						c.mark[i] = true
+					}
+					c.mark = c.mark[:marks]
+					c.tinyGC.color = slices.Grow(c.tinyGC.color, 32)[:colors+32]
+					for i := range c.tinyGC.color {
+						c.tinyGC.color[i] = 37
+					}
+					c.tinyGC.color = c.tinyGC.color[:colors]
+					for i := range freeCount {
+						c.freeHandles = append(c.freeHandles, uint32(1+(i*17)%64))
+					}
+					if checked && freeCount != 0 {
+						generations := *c.checkedHandles
+						generations[c.freeHandles[freeCount-1]] = ^uint64(0)
+						if freeCount > 1 {
+							generations[c.freeHandles[freeCount-2]] = ^uint64(0) - 1
+						}
+					}
+					return c
+				}
+				got, want := makeCollector(), makeCollector()
+				var expected [nativeStructHandleBatch]uint32
+				for i := range expected {
+					expected[i] = want.newHandle(handleEntry{})
+				}
+				got.reserveNativeHandles(nativeStructHandleBatch)
+				if got.nativeStructAlloc.Handles != expected {
+					t.Fatalf("batch = %v, want %v", got.nativeStructAlloc.Handles, expected)
+				}
+				for name, pair := range map[string][2]any{
+					"entries":     {got.handles, want.handles},
+					"free":        {got.freeHandles, want.freeHandles},
+					"marks":       {got.mark, want.mark},
+					"colors":      {got.tinyGC.color, want.tinyGC.color},
+					"generations": {got.checkedHandles, want.checkedHandles},
+				} {
+					if !reflect.DeepEqual(pair[0], pair[1]) {
+						t.Fatalf("%s differ: got %v want %v", name, pair[0], pair[1])
+					}
+				}
+				if !reflect.DeepEqual(got.nurseryHandles, expected[:]) {
+					t.Fatalf("dense nursery = %v, want %v", got.nurseryHandles, expected)
+				}
+			})
+		}
 	}
 }

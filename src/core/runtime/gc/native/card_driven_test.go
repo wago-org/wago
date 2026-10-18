@@ -460,8 +460,8 @@ func TestCardMetadataFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(tinyGC{}); got != 88 {
 		t.Fatalf("tinyGC size=%d, want 88 with unbounded transient-root accounting", got)
 	}
-	// The bounds proof adds eight fixed bytes, without per-card growth.
-	wantCollector := uintptr(1120) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{})
+	// Bounds and lazy major-block state have fixed descriptor costs.
+	wantCollector := uintptr(1168) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil))
 	if got := unsafe.Sizeof(Collector{}); got != wantCollector {
 		t.Fatalf("Collector size=%d, want %d", got, wantCollector)
 	}

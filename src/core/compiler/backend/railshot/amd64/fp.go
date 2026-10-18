@@ -862,12 +862,10 @@ func (f *fn) f2iTrunc(dstWide, srcF64, signed bool) {
 	f.fpinned = f.fpinned.add(x)
 
 	minBits, maxBits := truncLimitBits(signed, srcF64, dstWide)
-	f.a.Ucomis(x, x, srcF64)
-	f.trapIf(condP, trapTruncOverflow) // NaN
 	lo := f.loadFConstBits(minBits, srcF64)
 	f.a.Ucomis(x, lo, srcF64)
 	f.releaseF(lo)
-	f.trapIf(condBE, trapTruncOverflow) // x <= lower-exclusive limit
+	f.trapIf(condBE, trapTruncOverflow) // NaN or x <= lower-exclusive limit
 	hi := f.loadFConstBits(maxBits, srcF64)
 	f.a.Ucomis(x, hi, srcF64)
 	f.releaseF(hi)

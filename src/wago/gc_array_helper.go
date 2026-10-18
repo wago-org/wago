@@ -3,6 +3,7 @@ package wago
 import (
 	"encoding/binary"
 	"errors"
+	goruntime "runtime"
 	"strings"
 	"unsafe"
 
@@ -463,11 +464,17 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if end > uint64(len(data)) {
 			panic(gcHelperFailuref("gc array.new_data segment %d descriptor length %d exceeds retained bytes %d", dataIndex, segmentLen, len(data)))
 		}
-		ref, err := in.gc.NewArrayDefaultWithRoots(in.requireGCDomainType(typeID), length, frameRoots)
-		if err != nil {
-			panic(gcHelperFailure(err))
+		var ref gc.Ref
+		var err error
+		if goruntime.GOARCH == "amd64" {
+			ref, err = in.gc.NewArrayDataWithRoots(in.requireGCDomainType(typeID), length, data[:segmentLen], source, frameRoots)
+		} else {
+			ref, err = in.gc.NewArrayDefaultWithRoots(in.requireGCDomainType(typeID), length, frameRoots)
+			if err == nil {
+				err = in.gc.ArrayInitData(ref, 0, data[:segmentLen], source, length)
+			}
 		}
-		if err := in.gc.ArrayInitData(ref, 0, data[:segmentLen], source, length); err != nil {
+		if err != nil {
 			panic(gcHelperFailure(err))
 		}
 		results[0] = uint64(ref)
@@ -526,7 +533,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		}
 		results[0] = uint64(ref)
 		if helper == gcArrayAllocDefaultNative {
-			in.prepareNativeArrayAllocation(uint32(args[1]), uint32(args[0]))
+			in.prepareNativeDefaultArrayAllocation(uint32(args[1]), uint32(args[0]))
 		}
 	case gcArrayGet, gcArrayGetS, gcArrayGetU:
 		if len(args) != 3 || len(results) < 1 {

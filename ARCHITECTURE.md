@@ -183,7 +183,7 @@ new target identity, and rejects non-null opaque store-owned payloads. Direct
 cross-Runtime compact-handle sharing remains impossible. The codec persists helper
 admission, the required native-GC ABI version, and the 16-byte `v128` storage
 contract, but never compact handles. AMD64 final scalar struct/array accesses and initialized final-struct
-allocation use collector native ABI version 1. Artifact loading validates the Go/native
+allocation use collector native ABI version 2. Artifact loading validates the Go/native
 layout and the codec records the required ABI; instantiation validates the immutable
 instance view, local canonical-type map, collector identity, collector version, and
 handle stride before publishing basedata offset 280. Native accesses then trust those

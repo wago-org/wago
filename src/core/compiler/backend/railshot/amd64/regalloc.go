@@ -484,17 +484,29 @@ func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
 	}
 	// The physical stack is in postfix/bytecode order. Visit individual trapping
 	// nodes so pure ancestors stay deferred and nested traps cannot be reordered.
-	for e := f.s.head.next; e != limit; e = e.next {
+	start := f.s.head.next
+	// Only full barriers can skip a proved prefix. A partial limit may lie
+	// before the cursor, and a load barrier is stronger than a trap-only one.
+	if limit == f.s.head && f.s.pendingPrefix != nil && (!loads || f.s.pendingPrefixLoads) {
+		start = f.s.pendingPrefix.next
+	}
+	allLoadsClear := loads || start == f.s.head.next || f.s.pendingPrefixLoads
+	for e := start; e != limit; e = e.next {
 		if e.isDeferred() && isDivRem(e.deferredOp()) {
 			f.materialize(e)
-		} else if loads && e.elemKind() == ekValue && e.st.kind == stMemRef {
-			f.stats.addForcedLoad()
-			f.materializeByType(e)
+		} else if e.elemKind() == ekValue && e.st.kind == stMemRef {
+			if loads {
+				f.stats.addForcedLoad()
+				f.materializeByType(e)
+			} else {
+				allLoadsClear = false
+			}
 		}
 	}
 	// A partial barrier can leave relevant effects above its limit.
 	if limit == f.s.head {
 		f.s.pendingEffects &^= mask
+		f.s.pendingPrefix, f.s.pendingPrefixLoads = f.s.head.prev, allLoadsClear
 	}
 
 }

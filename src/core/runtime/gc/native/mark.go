@@ -1,5 +1,7 @@
 package gc
 
+import "runtime"
+
 func (c *Collector) clearMarks() {
 	if len(c.mark) < len(c.handles) {
 		c.mark = make([]bool, len(c.handles))
@@ -137,7 +139,41 @@ func (c *Collector) drainNurseryMarkStack() uint64 {
 		c.markStack = c.markStack[:n]
 		c.stats.MinorObjectsScanned++
 		scanned++
-		c.scanObjectRefs(h, c.markNurseryRef)
+		// The mark stack contains validated live handles. Scalar payloads carry
+		// this flag from construction, so they need no descriptor or ref walk.
+		if runtime.GOARCH == "amd64" && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
+			continue
+		}
+		c.scanNurseryObject(h)
+	}
+	return scanned
+}
+
+func (c *Collector) drainNurseryMarkStackForPromotion() uint64 {
+	// Keep this hot loop separate from the general drain. A capture-mode branch
+	// per live object costs more than the duplicated control flow on AMD64.
+	c.promotionScratch = c.promotionScratch[:0]
+	var scanned uint64
+	for len(c.markStack) > 0 {
+		n := len(c.markStack) - 1
+		h := c.markStack[n]
+		c.markStack = c.markStack[:n]
+		c.stats.MinorObjectsScanned++
+		scanned++
+		plan := len(c.promotionScratch)
+		if plan == cap(c.promotionScratch) {
+			c.promotionScratch = append(c.promotionScratch, plannedPromotion{})
+		} else {
+			c.promotionScratch = c.promotionScratch[:plan+1]
+		}
+		// Successful and failed promotion both clear every used entry. Planning
+		// overwrites the complete entry before reading it, so publish only the
+		// handle into this already-zero scratch slot.
+		c.promotionScratch[plan].handle = h
+		if runtime.GOARCH == "amd64" && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
+			continue
+		}
+		c.scanNurseryObject(h)
 	}
 	return scanned
 }
@@ -176,6 +212,20 @@ func (c *Collector) markRef(r Ref) {
 	c.mark[h] = true
 	c.markStack = append(c.markStack, h)
 }
-func (c *Collector) scanObject(h uint32) { c.scanObjectRefs(h, c.markRef) }
+func (c *Collector) scanObject(h uint32) {
+	if runtime.GOARCH == "amd64" {
+		c.scanObjectMark(h)
+		return
+	}
+	c.scanObjectRefs(h, c.markRef)
+}
+
+func (c *Collector) scanNurseryObject(h uint32) {
+	if runtime.GOARCH == "amd64" {
+		c.scanObjectNursery(h)
+		return
+	}
+	c.scanObjectRefs(h, c.markNurseryRef)
+}
 
 func (c *Collector) VisitClassifiedRootRef(_ RootClass, r Ref) bool { return c.VisitRootRef(r) }

@@ -77,6 +77,19 @@ var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
 // collection/refill path. Keep one differential kill switch for qualification.
 var nativeGCStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "1"
 
+// Keep array-register comparisons in one executable so Go code placement is
+// identical on both sides. This switch changes compilation, not generated checks.
+var nativeGCArrayScratchEnabled = os.Getenv("WAGO_AMD64_NO_GC_ARRAY_SCRATCH") != "1"
+
+// Struct allocation is hot enough to spend code bytes on a site-local fast
+// path. The switch keeps shared-stub and inline measurements in one executable.
+var nativeGCStructInlineEnabled = os.Getenv("WAGO_AMD64_NO_GC_STRUCT_INLINE") != "1"
+
+// Native struct allocation consumes canonical operand slots directly. Only a
+// failed reservation prepares the synchronous Go-helper frame. The switch keeps
+// the former eager marshaling path available for differential qualification.
+var nativeGCStructDirectSlotsEnabled = os.Getenv("WAGO_AMD64_NO_GC_STRUCT_DIRECT_SLOTS") != "1"
+
 // gcSharedStubsEnabled moves the common noncollecting compact-handle resolver
 // into one module-owned leaf stub. The local call edge retains exact trap/source
 // attribution. WAGO_AMD64_NO_GC_SHARED_STUBS=1 restores fully inline resolution
@@ -317,12 +330,18 @@ type fn struct {
 	nParams             int
 	nLocals             int           // params + declared locals
 	localType           []machineType // per-local machine type
+	gcLocalTypes        []uint64      // collector reference types, independent of local liveness
 	localSlot           []uint32      // low 24 bits: byte offset; high 8 bits: bounded local-reference count
 	gcOpcodeBarrier     bool          // current 0xfb opcode emits real barrier work
 	gcResolved          gcResolvedObject
 	gcSharedResolver    bool
 	gcDeferResolver     bool
+	gcDynamicCopySites  uint8 // bounded native-copy expansion within this function
+	gcPureIfSites       uint8 // bounded raw-address preservation attempts
+	gcPureIfEndPC       uint32
 	gcHandleResolutions int
+	gcSubtypeProofs     [4]gcSubtypeProof
+	gcSubtypeProofN     uint8
 	nLocalSlots         int // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
@@ -554,6 +573,8 @@ type fn struct {
 	gcCallsiteIndex        int
 	compactFrameHeader     bool   // register ABI: no wrapper results-pointer header
 	nativeStructAllocType  uint32 // type index + 1 for the next gcStructAllocOne call
+	nativeStructAllocDead  bool   // next native struct allocation may omit unreachable scalar payload stores
+	nativeStructDirectUsed bool   // preceding struct helper retained pinned registers
 	nativeArrayAlloc       gcArrayAllocStubSite
 
 	// stats collects per-function codegen counters. nil
@@ -742,6 +763,17 @@ func asmCapForBody(bodyLen int) int {
 	return capHint
 }
 
+func asmTailCapacityAMD64(bodyLen int, policy CodegenPolicy) int {
+	capacity := asmCapForBody(bodyLen)
+	if compactNativePolicy(policy) {
+		capacity += amd64.Rel32ScratchSize(finalizerRel32Limit(policy))
+	}
+	if symbolicLocalSlotPackingPolicy(policy) {
+		capacity += amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
+	}
+	return capacity
+}
+
 func moduleCodeCapacityAMD64(bodyBytes, functions int, policy CodegenPolicy) int {
 	largeExpansionEighths := 37
 	if policy.CompactNative {
@@ -757,6 +789,7 @@ func moduleCodeCapacityAMD64(bodyBytes, functions int, policy CodegenPolicy) int
 // Compile is sequential, so a single scratch is shared safely.
 type gcStructAllocStubSite struct {
 	typeIndex uint32
+	dead      bool
 	site      int
 }
 
@@ -774,6 +807,8 @@ type gcArrayAllocStubSite struct {
 	count     uint32
 	site      int
 	mode      gcArrayAllocMode
+	dynamic   bool
+	large     bool
 }
 
 type jumpTableFragmentKind uint8
@@ -1150,6 +1185,7 @@ func (sc *scratch) finishStackWorker() {
 	sc.stack.cold = nil
 	sc.stack.chunks = nil
 	sc.stack.head = nil
+	sc.stack.pendingPrefix, sc.stack.pendingPrefixLoads = nil, false
 	sc.stack.cur = 0
 }
 
@@ -1927,7 +1963,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// A one-worker join pays for a second arena and copy. It wins for large bodies,
 	// while serial heap staging is cheaper for modules made mostly of small
 	// functions.
-	serialHeap := opts.DeferCodeMapping && (len(m.Code) == 1 && totalBody < 2<<10 ||
+	serialHeap := opts.DeferCodeMapping && ((len(m.Code) == 1 || len(m.Code) == 2 && !compactNativePolicy(policy)) && totalBody < 4<<10 ||
 		len(m.Code) >= 32 && totalBody/len(m.Code) < 2<<10)
 	if workers <= 1 && (!opts.DeferCodeMapping || serialHeap) {
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
@@ -1947,6 +1983,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		var err error
 		if opts.DeferCodeMapping {
 			capacity := codeCap
+			if n == 1 && totalBody >= 2<<10 {
+				capacity = min(capacity, asmTailCapacityAMD64(totalBody, policy))
+			}
 			if capacity >= 256<<10 {
 				capacity -= capacity / 4
 			}
@@ -2004,13 +2043,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 			code := codeBuffer.Bytes()
 			entry[i] = len(code)
-			tailCap := asmCapForBody(len(m.Code[i].BodyBytes))
-			if compactNativePolicy(policy) {
-				tailCap += amd64.Rel32ScratchSize(finalizerRel32Limit(policy))
-			}
-			if symbolicLocalSlotPackingPolicy(policy) {
-				tailCap += amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
-			}
+			tailCap := asmTailCapacityAMD64(len(m.Code[i].BodyBytes), policy)
 			tail, err := codeBuffer.AppendTail(tailCap)
 			if err != nil {
 				return nil, fmt.Errorf("amd64: grow code image: %w", err)
@@ -2110,7 +2143,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 			if diagnosticsEnabled && ms != nil {
 				ms.GCSharedStubBytes = len(stubCode)
-				ms.GCSharedStubs = 1
+				ms.GCSharedStubs = countGCSharedStubBodies(stubOffsets)
 				ms.GCSharedStubCallSites = countGCSharedStubRelocs(relocs)
 			}
 		}
@@ -2127,16 +2160,27 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		}
 		directPreparedBounded = resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTables)
 		directPrepared = retainResolvedPreparedCallers(directPrepared, directPreparedBounded, allHints)
+		if opts.DeferCodeMapping {
+			capacity := len(codeBuffer.Mapping())
+			code, err = codeBuffer.TakeHeap()
+			if err != nil {
+				return nil, fmt.Errorf("amd64: transfer heap code image: %w", err)
+			}
+			// Release unused staging space once a medium single-function image is final.
+			if n == 1 && totalBody >= 2<<10 && len(code) < capacity/2 {
+				code = append([]byte(nil), code...)
+				if diagnosticsEnabled && ms != nil {
+					// The copied image no longer owns the direct lowering arena.
+					ms.NativeSize.SetExecutableMapping(len(code), 0)
+				}
+			}
+		}
 		ms.setNodeScratchStats(sc)
 		ms.finalizeCompileResourceStats()
 		if diagnosticsEnabled && explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
 		if opts.DeferCodeMapping {
-			code, err = codeBuffer.TakeHeap()
-			if err != nil {
-				return nil, fmt.Errorf("amd64: transfer heap code image: %w", err)
-			}
 			return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: usedAMD64Features.Has(shared.AMD64AVX512)}, nil
 		}
 		keepCodeBuffer = true
@@ -2423,7 +2467,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		code = append(code, stubCode...)
 		if diagnosticsEnabled && ms != nil {
 			ms.GCSharedStubBytes = len(stubCode)
-			ms.GCSharedStubs = 1
+			ms.GCSharedStubs = countGCSharedStubBodies(stubOffsets)
 			ms.GCSharedStubCallSites = countGCSharedStubRelocs(relocs)
 		}
 	}
@@ -3522,7 +3566,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if optsFeatures := sc.amd64Features; !optsFeatures.Has(shared.AMD64BMI2) {
 		bmi2Rorx = false
 	}
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, moduleGlobalRegionalLease: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), moduleHasSIMD: moduleHasSIMD, compactLoopAlign32: policy.EnabledOption(optCompactLoopAlign32) && len(c.BodyBytes) <= 64, bmi2Rorx: bmi2Rorx, gcSharedResolver: hints.flags.has(hintGCSharedResolver), gcDeferResolver: hints.flags.has(hintGCDeferredResolver), classifier: sc.classifier}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, gcLocalTypes: f.gcLocalTypes, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, moduleGlobalRegionalLease: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), moduleHasSIMD: moduleHasSIMD, compactLoopAlign32: policy.EnabledOption(optCompactLoopAlign32) && len(c.BodyBytes) <= 64, bmi2Rorx: bmi2Rorx, gcSharedResolver: hints.flags.has(hintGCSharedResolver), gcDeferResolver: hints.flags.has(hintGCDeferredResolver), classifier: sc.classifier}
 	// Transfer pointer scratch ownership to the active function. Cached slice
 	// headers must not keep detached backings alive when these buffers grow.
 	sc.transient.tmpRoots = nil
@@ -3586,17 +3630,51 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	} else {
 		f.localType = f.localType[:nLocals]
 	}
+	// A dead local can still supply a live operand-stack reference. Preserve
+	// its declared reference type independently of the compacted frame roots.
+	f.gcLocalTypes = f.gcLocalTypes[:0]
+	if gcFrameRoots != nil {
+		words := (nLocals + 63) / 64
+		if cap(f.gcLocalTypes) < words {
+			f.gcLocalTypes = make([]uint64, words)
+		} else {
+			f.gcLocalTypes = f.gcLocalTypes[:words]
+			clear(f.gcLocalTypes)
+		}
+	}
+	isGCType := func(typ wasm.ValType) bool {
+		if gcFrameRoots == nil || typ.Kind() != wasm.ValRef {
+			return false
+		}
+		heap := typ.Ref().Heap()
+		if heap.Kind() == wasm.HeapTypeIndex {
+			index := heap.Type().Index
+			if int(index) < len(gcTypeLayouts) && gcTypeLayouts[index].Type != nil {
+				kind := gcTypeLayouts[index].Type.Comp.Kind
+				return kind == wasm.CompStruct || kind == wasm.CompArray
+			}
+		}
+		return gcFrameRefType(m, typ)
+	}
 	i := 0
 	for _, p := range ft.Params {
+		if isGCType(p) {
+			f.gcLocalTypes[i/64] |= uint64(1) << uint(i%64)
+		}
 		f.localType[i] = mtOf(p)
 		i++
 	}
 	for _, run := range c.Locals.Runs {
+		gcRef := isGCType(run.Type)
 		for k := 0; k < int(run.Count); k++ {
+			if gcRef {
+				f.gcLocalTypes[i/64] |= uint64(1) << uint(i%64)
+			}
 			f.localType[i] = mtOf(run.Type)
 			i++
 		}
 	}
+
 	if cap(f.localSlot) < nLocals {
 		f.localSlot = make([]uint32, nLocals)
 	} else {
