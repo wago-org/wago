@@ -22,6 +22,8 @@ type NativeTailModule struct{ Plans []NativeTailPlan }
 // CompiledModule carries a production native image and its function entries.
 // RV64G emits fixed-width instructions; optional extensions are not selected.
 type CompiledModule struct {
+	GCDeadInductionLayouts                                     []uint64
+	GCI31Inductions                                            []uint64
 	NativeReferenceCalls                                       bool
 	NativeReferenceControl                                     bool
 	NativeReferenceFunctions                                   bool

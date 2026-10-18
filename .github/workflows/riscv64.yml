@@ -98,6 +98,10 @@ jobs:
       GORISCV64: rva20u64
       CGO_ENABLED: "0"
       GOMAXPROCS: "2"
+      # Go 1.27.1 can corrupt the compiler's DWARF mutex while compiling the
+      # large src/wago test package concurrently on native RISC-V. Keep job
+      # and test parallelism, but serialize functions within each compiler.
+      GOFLAGS: "-gcflags=-c=1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
