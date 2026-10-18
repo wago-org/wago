@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Retain a checked AMD64 WasmGC object address across selected reads of other
+  objects, using a bounded compiler scan and the existing safety checks.
+
 - Keep ordinary AMD64 GC constructor selection and individual dead allocations
   in the lean TinyGo build to meet the CLI size limit. Other builds retain the
   specialized paths.

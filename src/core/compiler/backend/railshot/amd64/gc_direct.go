@@ -523,20 +523,20 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded bool) {
 }
 
 func (f *fn) emitDirectGCObject(object *elem, localType, requiredBytes uint32, local int, hasLocal bool) (obj Reg, done func()) {
-	return f.emitDirectGCObjectWithStub(object, localType, requiredBytes, local, hasLocal, gcSharedStubNone)
+	return f.emitDirectGCObjectWithStub(object, localType, requiredBytes, local, hasLocal, gcSharedStubNone, false)
 }
 
-func (f *fn) emitDirectGCObjectWithSubtype(object *elem, localType, requiredBytes uint32, local int, hasLocal, subtype bool) (obj Reg, done func()) {
+func (f *fn) emitDirectGCObjectWithSubtype(object *elem, localType, requiredBytes uint32, local int, hasLocal, subtype, retain bool) (obj Reg, done func()) {
 	kind := gcSharedStubNone
 	if subtype {
 		kind = gcSharedStubResolveSubtypeObject
 	}
-	return f.emitDirectGCObjectWithStub(object, localType, requiredBytes, local, hasLocal, kind)
+	return f.emitDirectGCObjectWithStub(object, localType, requiredBytes, local, hasLocal, kind, retain)
 }
 
 // A nonzero kind selects a shared leaf without changing the ordinary exact
 // resolver's crossover counts. Both paths can reuse the same extent proof.
-func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes uint32, local int, hasLocal bool, kind gcSharedStubKind) (obj Reg, done func()) {
+func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes uint32, local int, hasLocal bool, kind gcSharedStubKind, retain bool) (obj Reg, done func()) {
 	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid &&
 		f.gcResolved.local == local && f.gcResolved.typeIndex == localType &&
 		requiredBytes <= f.gcResolved.requiredBytes {
@@ -548,7 +548,10 @@ func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes u
 		f.stats.peep("gc-resolve-reuse")
 		return f.gcResolved.reg, func() {}
 	}
-	f.invalidateGCResolvedObject()
+	f.gcPureIfEndPC = 0
+	if !retain {
+		f.invalidateGCResolvedObject()
+	}
 	if kind == gcSharedStubNone && f.gcDeferResolver && f.gcHandleResolutions != 0 {
 		f.gcSharedResolver = true
 		f.gcDeferResolver = false
@@ -564,7 +567,7 @@ func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes u
 		f.gcHandleResolutions++
 	}
 	f.stats.addGCHandleResolution()
-	if !gcResolveReuseEnabled || !hasLocal {
+	if retain || !gcResolveReuseEnabled || !hasLocal {
 		return obj, done
 	}
 	cacheReg := f.gcResolvedRegister()
@@ -2574,7 +2577,7 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	a.Ret()
 }
 
-func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) bool {
+func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex uint32, helper uint32) bool {
 	off, scalar, final, ok := f.directGCStructLayout(typeIndex, fieldIndex)
 	if !ok || (!final && !gcSharedStubsEnabled) {
 		return false
@@ -2597,7 +2600,7 @@ func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) 
 		f.flush()
 		f.spillFloor = f.curSpillSlot()
 		object := f.popValue()
-		obj, done = f.emitDirectGCObjectWithSubtype(object, typeIndex, required, local, hasLocal, !final)
+		obj, done = f.emitDirectGCObjectWithSubtype(object, typeIndex, required, local, hasLocal, !final, f.retainGCResolvedAddress(reader, local, hasLocal))
 	}
 	disp := int32(gc.PayloadOffset + off)
 	if scalar.typ.isFloat() {
@@ -2630,7 +2633,7 @@ func (f *fn) emitDirectGCStructSet(typeIndex, fieldIndex uint32) bool {
 	value := f.popValue()
 	object := f.popValue()
 	required := gc.PayloadOffset + off + uint32(scalar.size)
-	obj, done := f.emitDirectGCObjectWithSubtype(object, typeIndex, required, local, hasLocal, !final)
+	obj, done := f.emitDirectGCObjectWithSubtype(object, typeIndex, required, local, hasLocal, !final, false)
 	disp := int32(gc.PayloadOffset + off)
 	if scalar.typ.isFloat() {
 		x := f.materializeF(value)
@@ -2666,7 +2669,7 @@ func (f *fn) emitDirectGCArrayLen(typeIndex uint32) bool {
 	oldFloor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
 	object := f.popValue()
-	obj, done := f.emitDirectGCObjectWithStub(object, typeIndex, gc.HeaderSize, local, hasLocal, kind)
+	obj, done := f.emitDirectGCObjectWithStub(object, typeIndex, gc.HeaderSize, local, hasLocal, kind, false)
 	result := f.allocReg(maskOf(obj))
 	f.a.Load32(result, obj, 8)
 	done()

@@ -233,7 +233,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if sub == 2 && f.tryForwardGCFreshStructGet(typeIndex, fieldIndex) {
 			return nil
 		}
-		if f.emitDirectGCStructGet(typeIndex, fieldIndex, helper) {
+		if f.emitDirectGCStructGet(r, typeIndex, fieldIndex, helper) {
 			return nil
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
