@@ -43,7 +43,6 @@ func (f *fn) tryDeadGCDefaultGroup(r *wasm.Reader, firstType uint32) (bool, erro
 		}
 		sites[n] = gcDeadDefaultGroupSite{typeIndex: typeIndex, pc: pc, layout: plan}
 		n++
-		look = next
 		if n == len(sites) {
 			break
 		}
