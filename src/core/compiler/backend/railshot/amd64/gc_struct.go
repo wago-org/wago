@@ -119,7 +119,14 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		forward, forwardReader, forwardOK := f.tryForwardGCConstructorGet(r, typeIndex, st)
 		_, native := f.nativeGCStructAllocLayout(typeIndex)
-		scalarReplacement := native && forwardOK && f.opt(optDeadGCNew) && gcStructHasOnlyDirectScalars(st)
+		canReplace := native && f.opt(optDeadGCNew)
+		var selection [3]storage
+		var selectionReader wasm.Reader
+		selectionOK := false
+		if canReplace {
+			selection, selectionReader, selectionOK = f.tryForwardGCConstructorIf(r, typeIndex, st)
+		}
+		scalarReplacement := canReplace && (forwardOK || selectionOK) && gcStructHasOnlyDirectScalars(st)
 		freshValue, freshOK := f.gcFreshStructCandidate(st)
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		params = append(params, wasm.I32)
@@ -138,7 +145,21 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			}
 		}
 		f.markTopGCReference()
-		if forwardOK {
+		if selectionOK {
+			f.dropValue()
+			for _, value := range selection {
+				if value.kind == stLocalRef {
+					if reg, _, pinned := f.pinReg(int(value.idx)); pinned {
+						f.recoverLocal(int(value.idx))
+						value.kind, value.reg = stLocalReg, reg
+					}
+				}
+				f.pushValue(value)
+			}
+			f.emitSelect()
+			*r = selectionReader
+			f.stats.peep("gc-constructor-if-scalar-replace")
+		} else if forwardOK {
 			f.dropValue()
 			f.pushValue(forward)
 			*r = forwardReader
