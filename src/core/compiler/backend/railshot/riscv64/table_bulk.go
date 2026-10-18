@@ -149,9 +149,8 @@ func (f *integerEmitter) privateTableCopyBetween(destinationIndex, sourceIndex u
 	f.trap(trapTableBounds, f.a.BranchLong(enc.LTU, enc.X29, enc.X30))
 	f.privateTableDescriptor(enc.X28, destinationIndex)
 	shift := uint8(5)
-	step := int32(32)
 	if compactReference {
-		shift, step = 3, 8
+		shift = 3
 	}
 	f.a.Slli(enc.X6, enc.X6, shift)
 	f.a.Add(enc.X6, enc.X6, enc.X28)
@@ -160,12 +159,9 @@ func (f *integerEmitter) privateTableCopyBetween(destinationIndex, sourceIndex u
 	f.a.Slli(enc.X7, enc.X7, shift)
 	f.a.Add(enc.X7, enc.X7, enc.X28)
 	f.a.Addi(enc.X7, enc.X7, 8)
-	// Distinct descriptors cannot overlap, so forward movement is sufficient.
-	done := f.a.BranchLong(enc.EQ, enc.X5, enc.Zero)
-	f.privateCopyEntries(step, compactReference)
-	if err := f.Patch(done, f.Position()); err != nil {
-		f.err = err
-	}
+	// Separate imports can resolve to the same host table. Preserve memmove
+	// semantics even when the descriptor indices differ.
+	f.privateCopyEntriesOverlapSafe(compactReference)
 }
 
 func (f *integerEmitter) privateCopyEntriesOverlapSafe(compactReference bool) {

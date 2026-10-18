@@ -105,6 +105,30 @@ func TestLargeBranchTableMaximumLabel(t *testing.T) {
 	}
 }
 
+func TestNativeLargeBranchTableWideLabel(t *testing.T) {
+	const depth = 257
+	f := fixtureFunc{params: []byte{0x7f}, result: 0x7f}
+	for range depth {
+		f.body = append(f.body, 2, 0x7f)
+	}
+	f.body = append(f.body, 0x41, 7, 0x20, 0, 0x0e)
+	f.body = uleb(f.body, maxTableEntries+1)
+	f.body = uleb(f.body, 0)
+	for range maxTableEntries + 1 {
+		f.body = uleb(f.body, depth-1)
+	}
+	for range depth {
+		f.body = append(f.body, 0x0b, 0x41, 1, 0x6a)
+	}
+	f.body = append(f.body, 0x0b)
+
+	i := integerInstance(t, f, true)
+	expectInteger(t, i, 264, 0, 0)
+	for _, selector := range []uint64{1, maxTableEntries, maxTableEntries + 1, 0xffffffff} {
+		expectInteger(t, i, 8, 0, selector)
+	}
+}
+
 func BenchmarkLargeBranchTableCompile(b *testing.B) {
 	for _, count := range []int{1024, 1025, 24615, 32768} {
 		data := binaryModule(largeBranchTableFixture(count, false))

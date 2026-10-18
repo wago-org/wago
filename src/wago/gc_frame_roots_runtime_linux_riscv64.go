@@ -33,7 +33,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 		// before the next helper. Preserve its persistent-domain root publication
 		// until it migrates to exact frame maps.
 		if state != nil && rv64OfficialGCRefEq(in.c) {
-			state.frameRoots = gcCollectFrameRoots(in, state, gcNativeFrameLayoutRISCV64, true)
+			state.frameRoots = in.gcCollectFrameRoots(state)
 			return &state.frameRoots
 		}
 		return gc.EmptyRoots{}
@@ -99,6 +99,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	state.frameRoots.adapterReturnOffsets = plan.adapterReturnOffsets
 	state.frameRoots.callsites = plan.callsites
 	state.frameRoots.suspended = state
+	state.frameRoots.domainHostRoots = true
 	return &state.frameRoots
 }
 
