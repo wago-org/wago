@@ -170,7 +170,10 @@ func TestGCResolverAcrossCollectingCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{StressNurseryBytes: 64, CollectEveryAlloc: true, VerifyAfterCollect: true}})
+	// Each object occupies 24 bytes: the second allocation must evacuate the
+	// first from a 32-byte nursery. CollectEveryAlloc deliberately mixes minor
+	// and full collections in debug builds and cannot guarantee movement.
+	in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{StressNurseryBytes: 32, SurvivorBytes: 32, VerifyAfterCollect: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
