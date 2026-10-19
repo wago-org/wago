@@ -4,7 +4,11 @@ This archive records the 2026-10-19 native AMD64 comparison described in
 [the profile](../../integer-join-pressure.md#current-main-comparison-and-arm64-checks-2026-10-19).
 It belongs to the pinned builds in `identity.json`, not later test-binary builds.
 
-- `measure.py` is the exact pairing and summary script used for those samples.
+- `measure-original.py` is the exact pairing and summary script used for those
+  samples. Its absolute path records the original evidence location.
+- `measure.py` is a portable replay of the same pairing, timing, environment,
+  parsing, and summary procedure. It accepts the evidence directory as an
+  argument and checks that both test binaries exist before it starts.
 - `identity.json` records source revisions, tool versions, selected environment,
   fixture/native hashes, and test-binary hashes. It does not record CPU governor,
   frequency, or continuous host load; those were not isolated.
@@ -27,10 +31,14 @@ go test -c -o /chosen/evidence/pr-amd64.test ./src/core/compiler/backend/railsho
 ```
 
 Run the first command in the baseline checkout and the second in the measured
-candidate checkout. The archived script contains the original absolute evidence
-path. For a rerun, copy the script and change its `root` assignment to the chosen
-evidence directory. Keep both binary names and the timing controls unchanged;
-run with no concurrent builds or tests. The script removes inherited `WAGO_*`
+candidate checkout. Then run the portable replay script from this directory:
+
+```sh
+python3 measure.py /chosen/evidence
+```
+
+Keep both binary names unchanged and run with no concurrent builds or tests.
+The script removes inherited `WAGO_*`
 variables, sets one Go thread, pins CPU 4, alternates eight pairs, and checks for
 12 rows per process. Its explicit bounds environment matches the session;
 the backend compile options set bounds directly, so that variable does not

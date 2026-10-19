@@ -156,7 +156,8 @@ The main and candidate AMD64 test binary SHA-256 values are, respectively,
 Use the build/run commands in the historical record below, with these pinned
 revisions and `-test.cpu=1`, and remove other `WAGO_*` variables from both runs.
 The [committed measurement archive](evidence/integer-join-pressure-20261019/README.md)
-retains the exact pairing script, identity manifest, all 16 stdout/stderr/exit
+retains the exact original pairing script, a portable replay script, the identity
+manifest, all 16 stdout/stderr/exit
 records, and summary. The local evidence directory also retains correctness
 logs. Later observer, diagnostic, CI, and documentation changes leave the
 compiler, generated Wasm, oracles, inputs, and benchmark bodies unchanged.
@@ -245,6 +246,7 @@ GOMAXPROCS=1 WAGO_BOUNDS=explicit taskset -c 4 /absolute/path/join-bench.test \
 
 Alternate the two binaries for eight pairs and retain every raw stdout, stderr,
 exit status, pair order, and environment record. The local review packet retains
-the raw 16 process logs, all 192 rows, the pairing script, summaries, correctness
+the raw 16 process logs, all 192 rows, the original and portable pairing scripts,
+summaries, correctness
 logs, and exact source/build identities. This documentation follow-up changes
 no measured source or harness.

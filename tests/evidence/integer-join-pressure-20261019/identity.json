@@ -20,7 +20,8 @@
     "arm64-normal.test": "f79b6688bf1f9798deea09c1a95626a6b46824aa3c1e40626b7bab4328dc416d",
     "arm64-wago_regalloccheck.test": "22106895b60e6c049192e4a2a1fe6bf62b574c40e149e04aa0b3d5d976dd8501",
     "arm64-wago_codegenstats.test": "47795f39c27c0f7997ea36809e728981bc012e027999999187a6c3fd4d124342",
-    "measure.py": "b9e05921cac1c159004c4eef760334a4808a0cef8473a96ba2234fd5d138d861",
+    "measure-original.py": "b9e05921cac1c159004c4eef760334a4808a0cef8473a96ba2234fd5d138d861",
+    "measure.py": "3c9a3d1d172cbe630f2f8e7f5a310cceadb8d29c1e2104913d40d0ef21cc7409",
     "src/core/compiler/backend/railshot/amd64/integer_join_pressure_test.go": "651110c52e9202e5204e419e8e0181f6eb0380ad48be491ff7a2c6f6cc1ad315",
     "src/core/compiler/backend/railshot/arm64/integer_join_pressure_test.go": "4308ba73c4a76f1532d981d9ca2207bd1eedb0cbc896830ed60f654144499704",
     "main-arm64.test": "2699830fd8bef92acf9847eb91268e7efd9f5ce322eed59b1465b4ba3168aaec"
