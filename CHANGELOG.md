@@ -67,8 +67,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Added
 
-- Add Linux ARM64 integer conditional-join regression profiles with independent
-  result checks, A64 placement controls, and compile/execution benchmarks.
+- Add Linux AMD64 and ARM64 integer conditional-join regression profiles with
+  independent result checks, native placement controls, and compile/execution
+  benchmarks.
   ([#881](https://github.com/wago-org/wago/pull/881))
 
 ## [v0.1.0-beta.13] - 2026-10-15
@@ -246,9 +247,6 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   [#912](https://github.com/wago-org/wago/pull/912),
   [#949](https://github.com/wago-org/wago/pull/949),
   [#861](https://github.com/wago-org/wago/pull/861))
-
-- Add bounded AMD64 integer conditional-join regression profiles with independent
-  result checks, native placement controls, and compile/execution benchmarks.
 
 ### Fixed
 
