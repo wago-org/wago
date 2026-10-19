@@ -68,6 +68,13 @@ sample because its reference registry grows until `Runtime.Close`. Both
 versions use 449 B/op and six allocations/op. The probe was removed after
 building measurement binaries. The fix changes no retained data structure.
 
+The committed records retain the measurement policy, fixture and source
+hashes, launch medians, allocation samples, and native-code identities. The
+historical driver source, process-level raw batch output, measurement binaries,
+and removed owner-probe source were not retained. The exact historical run
+therefore cannot be replayed from repository files alone. These records support
+only the explicitly historical, descriptive claims in this document.
+
 The original PR adds one pointer to each `HostFuncRef` (128 to 136 bytes on
 amd64). Numeric dynamic imports retain both direct and reference thunks:
 the lifecycle test reports 60 bytes of shared reference-thunk code in a
