@@ -181,7 +181,7 @@ func TestGCConstructorNativeChargeComparesFullCollectionCycle(t *testing.T) {
 	view.DeadNurseryCycle = 0
 	// A real collection invalidates the old reservation before a new charge.
 	instance.gc.CancelNativeAllocationBatch()
-	instance.prepareNativeStructHandles(1)
+	instance.prepareNativeDeadStructHandle(1)
 	ordinaryLive := instance.gc.Stats().LiveObjects
 
 	if got, err := instance.Invoke("run", 41); err != nil || len(got) != 1 || got[0] != 41 {
@@ -383,8 +383,8 @@ func TestGCConstructorScalarReplacementUsesNativeReservation(t *testing.T) {
 			}
 			view := instance.gc.NativeView()
 			state := unsafe.Slice((*byte)(offHeapPtr(view.StructAllocState)), corergc.NativeStructAllocStateSize)
-			if count := binary.LittleEndian.Uint32(state[corergc.NativeStructAllocCountOffset:]); count == 0 {
-				t.Fatal("native reservation count is zero")
+			if count := binary.LittleEndian.Uint32(state[corergc.NativeStructAllocCountOffset:]); count != 1 {
+				t.Fatalf("dead reservation count = %d, want one identity", count)
 			}
 			if cursor := binary.LittleEndian.Uint32(state[corergc.NativeStructAllocCursorOffset:]); cursor != 0 {
 				t.Fatalf("dead native reservation consumed %d handles", cursor)

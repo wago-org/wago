@@ -9,7 +9,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 ### Changed
 
 - Prepare native reservations only when the active backend has a matching
-  consumer, avoiding unused ARM64 live-struct and large-array batches.
+  consumer, avoiding unused ARM64 live-struct and large-array batches. Retain
+  one reserved identity for proven-dead ARM64 scalar constructors.
 
 - Preserve invocation cancellation between reduced GC allocation batches and
   slow per-object allocations.

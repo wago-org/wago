@@ -14,6 +14,7 @@ import (
 // GC helpers share the synchronous parked-host dispatch ABI with amd64. Keep
 // these values stable: src/wago dispatches them before ordinary imports.
 const (
+	gcStructReserveDeadNative  uint32 = 40
 	gcStructReserveDeadBatch   uint32 = 42
 	gcArrayReserveDeadBatch    uint32 = 43
 	gcStructDispatchBit        uint32 = 1 << 30
@@ -256,15 +257,24 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			}
 			params = append(params, valueType)
 		}
-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
-		params = append(params, wasm.I32)
-		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		helper := gcStructAllocOne
 		if forwardOK {
 			if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); ok && layout.NativeAlloc && layout.PointerFree {
+				// Evaluate every initializer before discarding its payload. The
+				// helper reserves only a dead identity and cannot observe it.
+				f.flush()
+				for range st.Comp.Fields {
+					f.dropValue()
+				}
+				params = params[:0]
+				helper = gcStructReserveDeadNative
 				f.nativeDeadStructType = typeIndex + 1
 			}
 		}
-		if err := f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result}); err != nil {
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+		params = append(params, wasm.I32)
+		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		if err := f.callGCStructHelper(helper, params, []wasm.ValType{result}); err != nil {
 			return err
 		}
 		if forwardOK {
@@ -1013,7 +1023,7 @@ func (f *fn) gcFrameLocal(index int) bool {
 
 func arm64GCHelperMayAllocate(helper uint32) bool {
 	switch helper {
-	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDeadBatch, gcArrayReserveDeadBatch,
+	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDeadNative, gcStructReserveDeadBatch, gcArrayReserveDeadBatch,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
 		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill:
 		return true
