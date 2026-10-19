@@ -125,3 +125,55 @@ func TestPreparedDeadAllocationBatchPolicy(t *testing.T) {
 		c.Close()
 	}
 }
+
+// Synthetic capacity values exercise the widened charge arithmetic without
+// allocating a multi-gigabyte nursery. Dead charges do not dereference payloads.
+func TestPreparedDeadBatchEndBounds(t *testing.T) {
+	if !NativeDeadBatchSupported {
+		t.Skip("injected failures use ordinary allocation")
+	}
+	d, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if !c.PrepareNativeDeadStructAllocation(16) {
+		t.Fatal("no reservation")
+	}
+	originalCfg, originalBump, originalStats := c.cfg, c.nurseryBump, c.stats
+	defer func() { c.cfg, c.nurseryBump, c.stats = originalCfg, originalBump, originalStats }()
+	for _, tc := range []struct {
+		name                                string
+		bump, limit, count, size, alignment uint32
+		want                                bool
+		end                                 uint32
+	}{
+		{"last-byte", 0xfffffff0, 0xffffffff, 1, 15, 16, true, 0xffffffff},
+		{"end-crosses-u32", 0xfffffff0, 0xffffffff, 1, 16, 16, false, 0},
+		{"alignment-crosses-u32", 0xfffffff1, 0xffffffff, 1, 1, 16, false, 0},
+		{"wide-count-product", 0, 0xffffffff, 0xffffffff, 16, 16, false, 0},
+		{"aligned-tail", 4095, 4097, 1, 1, 8, true, 4097},
+		{"alignment-exhaustion", 4095, 4096, 1, 1, 8, false, 0},
+		{"padded-stride", 0, 4097, 2, 1, 4096, true, 4097},
+		{"padded-stride-exhaustion", 0, 4096, 2, 1, 4096, false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c.cfg.NurseryBytes, c.nurseryBump, c.stats = tc.limit, tc.bump, originalStats
+			batch := c.PrepareDeadAllocationBatch(tc.size, tc.alignment)
+			if got := batch.TryReserve(tc.count); got != tc.want {
+				t.Fatalf("admission=%v want %v", got, tc.want)
+			}
+			if tc.want {
+				if c.nurseryBump != tc.end || c.stats.Allocations-originalStats.Allocations != uint64(tc.count) {
+					t.Fatalf("charge bump=%#x allocations=%d", c.nurseryBump, c.stats.Allocations-originalStats.Allocations)
+				}
+			} else if c.nurseryBump != tc.bump || c.stats != originalStats {
+				t.Fatal("rejected charge changed state")
+			}
+		})
+	}
+}
