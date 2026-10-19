@@ -138,6 +138,18 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	w := node.valueType().is64()
 	left := node.arg0
 	right := node.arg1
+	// A target hint may also hold a pending RHS load's address. Compute through
+	// the ordinary allocator before writing that target, keeping both memory
+	// reads in their original order and the RHS address live until it is used.
+	if dest != regNone && right.isValue() && right.st.kind == stMemRef && right.st.reg == dest {
+		result := f.condenseBinary(node, regNone)
+		if result != dest {
+			f.moveInt(dest, result, node.st.typ)
+			f.release(result)
+			f.occupy(node, dest)
+		}
+		return dest
+	}
 	// Keep trapping children in bytecode order. The tracked left value stays
 	// spillable while the right subtree claims fixed registers.
 	if right.isDeferred() && !treeReorderSafe(right) && !treeReorderSafe(left) {
