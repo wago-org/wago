@@ -325,7 +325,7 @@ func TestJoinPressureObserverControls(t *testing.T) {
 		reject(category)
 		e.memory.LinearMemory()[offset] ^= 1
 	}
-	// Execute real wrong-arm work; an expected false arm must reject it.
+	// Compare the completed then-arm run with the else-arm result expectation.
 	falseInput := in
 	falseInput[3] = 0
 	if err := e.check(p, in, p.expected(falseInput), 1); err == nil || !strings.Contains(err.Error(), "slot 24") {
@@ -483,30 +483,36 @@ func joinPressureNativeEvidence(disassembly string, start, end, live int) error 
 func TestJoinPressureNativeEvidence(t *testing.T) {
 	tool, err := exec.LookPath("objdump")
 	if err != nil {
+		if os.Getenv("WAGO_JOIN_NATIVE_REQUIRED") == "1" {
+			t.Fatal("GNU objdump unavailable: native join qualification required")
+		}
 		t.Skip("GNU objdump unavailable: native join qualification not run")
 	}
 	version, err := exec.Command(tool, "--version").Output()
 	if err != nil || !strings.Contains(string(version), "GNU objdump") {
+		if os.Getenv("WAGO_JOIN_NATIVE_REQUIRED") == "1" {
+			t.Fatal("GNU objdump required for native join qualification")
+		}
 		t.Skip("GNU objdump required for native join qualification")
 	}
 	path := filepath.Join(t.TempDir(), "join.bin")
-	disassemble := func(p joinPressureCase) (*enc.CompiledModule, string) {
+	disassemble := func(t *testing.T, code []byte) string {
 		t.Helper()
-		cm := compileJoinPressure(t, p.raw(), nil)
-		if err := os.WriteFile(path, cm.Code, 0600); err != nil {
+		if err := os.WriteFile(path, code, 0600); err != nil {
 			t.Fatal(err)
 		}
 		out, err := exec.Command(tool, "-D", "--no-show-raw-insn", "-b", "binary", "-m", "i386:x86-64", path).Output()
 		if err != nil {
 			t.Fatal(err)
 		}
-		return cm, string(out)
+		return string(out)
 	}
 	for _, width := range []int{32, 64} {
 		for _, live := range []int{1, 8, 24} {
 			for seed := 0; seed < 2; seed++ {
 				p := joinPressureCase{width: width, live: live, seed: seed}
-				cm, out := disassemble(p)
+				cm := compileJoinPressure(t, p.raw(), nil)
+				out := disassemble(t, cm.Code)
 				if err := joinPressureNativeEvidence(out, cm.InternalEntry[0], len(cm.Code), live); err != nil {
 					t.Fatalf("i%d/live=%d/seed=%d: %v\n%s", width, live, seed, err, out)
 				}
@@ -514,8 +520,65 @@ func TestJoinPressureNativeEvidence(t *testing.T) {
 			}
 		}
 	}
+	t.Run("conditional NOP control", func(t *testing.T) {
+		p := joinPressureCase{width: 64, live: 24, seed: 1}
+		cm := compileJoinPressure(t, p.raw(), nil)
+		out := disassemble(t, cm.Code)
+		if err := joinPressureNativeEvidence(out, cm.InternalEntry[0], len(cm.Code), p.live); err != nil {
+			t.Fatal(err)
+		}
+		// Use decoded instruction boundaries between the prefix and then markers.
+		// Same-length NOPs preserve every marker and all existing branch targets.
+		inRegion := false
+		branchAt, branchEnd, branches := -1, -1, 0
+		for _, line := range strings.Split(out, "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 || !strings.HasSuffix(fields[0], ":") {
+				continue
+			}
+			address, err := strconv.ParseUint(strings.TrimSuffix(fields[0], ":"), 16, 64)
+			if err != nil || int(address) < cm.InternalEntry[0] || int(address) >= len(cm.Code) {
+				continue
+			}
+			if branchAt >= 0 && branchEnd < 0 {
+				branchEnd = int(address)
+			}
+			args := strings.Join(fields[2:], "")
+			if strings.HasPrefix(fields[1], "mov") {
+				if strings.HasPrefix(args, "$0x1a2b3c4d,") {
+					inRegion = true
+				}
+				if strings.HasPrefix(args, "$0x2b3c4d5e,") {
+					inRegion = false
+				}
+			}
+			if inRegion && strings.HasPrefix(fields[1], "j") && fields[1] != "jmp" {
+				branchAt = int(address)
+				branches++
+			}
+		}
+		if branches != 1 || branchEnd <= branchAt {
+			t.Fatalf("join conditional range [%d,%d), count=%d", branchAt, branchEnd, branches)
+		}
+		for at := branchAt; at < branchEnd; at++ {
+			cm.Code[at] = 0x90 // NOP
+		}
+		e := prepareJoinPressure(t, cm, p.live)
+		in := [4]uint64{0x8123456789abcdef, 7, 3, 1}
+		e.input(in)
+		if err := e.call(); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.check(p, in, p.expected(in), 1); err != nil {
+			t.Fatal(err)
+		}
+		if err := joinPressureNativeEvidence(disassemble(t, cm.Code), cm.InternalEntry[0], len(cm.Code), p.live); err == nil || err.Error() != "native conditional count 0 want 1" {
+			t.Fatalf("conditional NOP control: %v", err)
+		}
+	})
 	p := joinPressureCase{width: 64, live: 24, seed: 1, straight: true}
-	cm, out := disassemble(p)
+	cm := compileJoinPressure(t, p.raw(), nil)
+	out := disassemble(t, cm.Code)
 	e := prepareJoinPressure(t, cm, p.live)
 	in := [4]uint64{0x8123456789abcdef, 7, 3, 1}
 	e.input(in)

@@ -523,13 +523,16 @@ jobs:
           WAGO_SHARED_SCALAR: "1"
         run: go test -count=1 -tags wago_codegenstats -run '^Test(SharedScalar|ScalarIncoming|ScalarRawIncoming|ScalarValueBounds)' ./src/core/compiler/backend/railshot/... ./src/wago
 
-      - name: Native ARM64 integer join-pressure controls
-        if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'arm64'
+      - name: Native integer join-pressure controls
+        if: matrix.runtime && matrix.goos == 'linux' && (matrix.goarch == 'amd64' || matrix.goarch == 'arm64')
+        env:
+          WAGO_SHARED_SCALAR: "0"
+          WAGO_JOIN_NATIVE_REQUIRED: "1"
         run: |
           for tags in '' wago_regalloccheck wago_codegenstats; do
-            go test -v -count=1 -tags="$tags" -run '^Test(IntegerLiveAcrossJoin|JoinPressure)' ./src/core/compiler/backend/railshot/arm64
+            go test -v -count=1 -tags="$tags" -run '^Test(IntegerLiveAcrossJoin|JoinPressure)' ./src/core/compiler/backend/railshot/${{ matrix.goarch }}
           done
-          go test -run '^$' -bench '^BenchmarkIntegerLiveAcrossJoin$' -benchtime=1x -benchmem ./src/core/compiler/backend/railshot/arm64
+          go test -run '^$' -bench '^BenchmarkIntegerLiveAcrossJoin$' -benchtime=1x -benchmem ./src/core/compiler/backend/railshot/${{ matrix.goarch }}
 
       - name: Profiling metadata and capture tests
         if: matrix.runtime

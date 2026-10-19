@@ -19,11 +19,11 @@ Each module runs 160 bounded inputs (1,920 executions total), including signed
 boundaries, shift counts at/beyond the type width, deterministic generated
 values, and i32 conditions 0, 1, 0xffffffff, and 0x100000000. The last condition
 must truncate to zero. Divisors are +3 or -3; this profile does not test divide
-traps. Host expectations use Go integer semantics and the existing independent
-shift/division test oracles. Checks also cover unchanged arguments, guarded
+traps. Host expectations use Go integer semantics. The ARM64 oracles are copies of
+the existing independent AMD64 shift/division helpers. Checks also cover unchanged arguments, guarded
 result storage, prefix/arm/end markers, and completed work. Corrupted slots,
-guards, inputs, markers and counts reject for their expected reason. A real
-wrong-arm invocation and an omitted invocation must also reject.
+guards, inputs, markers and counts reject for their expected reason. The completed then-arm run is also checked against an else-arm result
+expectation and must reject. An omitted invocation must reject too.
 
 The compile configuration uses one worker, explicit memory bounds, and the
 baseline AMD64 feature mask (0). ARM64 uses its baseline scalar instructions.
@@ -34,9 +34,10 @@ not qualify other public API paths. Ordinary numerical tests run without
 compiler diagnostics. With `wago_codegenstats`, the test reports selected
 shared/fallback path, code/frame size, and spill/reload counts, and requires
 pressure spills at 24 live values. AMD64 also requires reload activity; ARM64
-requires at least 24 spill slots because its final-result loads do not increment
-the reload counter. Whole-function counters do not locate individual spill
-lifetimes.
+also checks capacity for at least 24 spill slots because its final-result loads
+do not increment the reload counter. Spill count supplies pressure evidence;
+slot capacity alone does not. ARM64 logs the slot capacity and flushed-root
+count. Whole-function counters do not locate individual spill lifetimes.
 
 A separate native-code gate checks every shape's native body. AMD64 uses GNU
 objdump. ARM64 reads aligned little-endian A64 words directly: matching
@@ -47,12 +48,16 @@ relevant conditional and alternate arm. It requires exactly N divide and N
 variable shift/rotate instructions before that conditional, with none later. The
 conditional reaches an instruction word at or before the alternate arm marker;
 the arm exit skips that marker and reaches an instruction word at or before
-the end marker. A numerically valid straight-line substitute rejects because it
-lacks the conditional shape. Observer controls check missing, extra, late or out-of-range arithmetic,
+the end marker. A numerically valid straight-line substitute rejects for its
+missing else marker. A second real-code control replaces only the conditional
+with same-length NOPs while preserving all four marker sequences. It executes
+the then-arm input correctly but must reject specifically for a missing
+conditional branch. Observer controls check missing, extra, late or out-of-range arithmetic,
 incorrect targets, missing exits, calls and duplicate markers. AMD64 also checks
 interior targets. This is a bounded placement/shape observation, not a complete
 control-flow, original-source, or register-transport proof. GNU objdump absence
-produces an explicit skip for the AMD64 gate. ARM64 controls also check signed
+produces an explicit local skip for the AMD64 gate. CI sets
+`WAGO_JOIN_NATIVE_REQUIRED=1`, which makes a missing or non-GNU objdump fatal. ARM64 controls also check signed
 backward branch offsets, invalid instruction ranges, mismatched marker
 registers/widths/halfwords, and both direct and indirect calls. All A64 branch
 targets are four-byte aligned by their instruction encoding.
@@ -87,8 +92,9 @@ control, not an optimization or evidence that unchanged sources guarantee
 identical performance. Synthetic pressure results do not establish application
 speedups.
 
-The named Linux ARM64 CI step runs all three control builds and each benchmark
-row once (`-benchtime=1x`); this checks the harness, not performance.
+The named Linux AMD64/ARM64 CI step pins `WAGO_SHARED_SCALAR=0`, runs all three
+control builds verbosely, and runs each benchmark row once (`-benchtime=1x`).
+This checks the harness, not performance.
 
 Native ARM64 qualification must run on that runner; cross-builds
 and QEMU execution do not establish native timing or native runtime
@@ -142,16 +148,19 @@ builds. Generated code size and compile allocation traffic match in every sample
 
 This measures Go allocation traffic and generated guest code. Release size,
 native allocation traffic, retained memory, and RSS were not measured.
-The unchanged AMD64 test file has SHA-256
+The AMD64 test file at the measured candidate has SHA-256
 `651110c52e9202e5204e419e8e0181f6eb0380ad48be491ff7a2c6f6cc1ad315`.
 The main and candidate AMD64 test binary SHA-256 values are, respectively,
 `30f7165dd1dba91de6c52cbc8fe666264a1f142f1ed7adda7ecaf9ca5737da92` and
 `5fe4836e5b1a317430da26c3274b071ba3ed1bba821ad5604d8bf20e54c2c72c`.
 Use the build/run commands in the historical record below, with these pinned
 revisions and `-test.cpu=1`, and remove other `WAGO_*` variables from both runs.
-The local evidence directory retains the pairing script, identity manifest,
-all 16 stdout/stderr/exit records, summaries, and correctness logs. Later changes
-to this record and its CSV do not change the measured compiler or AMD64 harness.
+The [committed measurement archive](evidence/integer-join-pressure-20261019/README.md)
+retains the exact pairing script, identity manifest, all 16 stdout/stderr/exit
+records, and summary. The local evidence directory also retains correctness
+logs. Later observer, diagnostic, CI, and documentation changes leave the
+compiler, generated Wasm, oracles, inputs, and benchmark bodies unchanged.
+The numbers qualify the pinned builds above; later test binaries were not timed.
 
 ARM64 was cross-built with Go 1.27.2 (`GOOS=linux GOARCH=arm64 CGO_ENABLED=0`)
 and executed under QEMU 10.0.13 on this AMD64 host. All 12 modules (1,920 inputs)

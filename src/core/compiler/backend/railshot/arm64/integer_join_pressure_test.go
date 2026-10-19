@@ -260,10 +260,11 @@ func TestIntegerLiveAcrossJoinPressure(t *testing.T) {
 							}
 						}
 						// ARM64 result-slot loads do not increment the reload counter.
+						// MaxSpillSlots checks capacity; Spills supplies pressure evidence.
 						if live == 24 && (f.Spills == 0 || f.MaxSpillSlots < live) {
 							t.Fatalf("high-pressure fixture did not spill/reserve result slots: %+v", f)
 						}
-						t.Logf("shared=%t code=%d frame=%d spills=%d reloads=%d", f.SharedScalar, f.CodeBytes, f.FrameBytes, f.Spills, f.Reloads)
+						t.Logf("shared=%t code=%d frame=%d spills=%d reloads=%d max-spill-slots=%d flush-roots=%d", f.SharedScalar, f.CodeBytes, f.FrameBytes, f.Spills, f.Reloads, f.MaxSpillSlots, f.FlushRoots)
 					} else {
 						t.Log("pressure/path diagnostics unavailable; no transport-proof claim")
 					}
@@ -323,7 +324,7 @@ func TestJoinPressureObserverControls(t *testing.T) {
 		reject(category)
 		e.memory.LinearMemory()[offset] ^= 1
 	}
-	// Execute real wrong-arm work; an expected false arm must reject it.
+	// Compare the completed then-arm run with the else-arm result expectation.
 	falseInput := in
 	falseInput[3] = 0
 	if err := e.check(p, in, p.expected(falseInput), 1); err == nil || !strings.Contains(err.Error(), "slot 24") {
@@ -438,6 +439,29 @@ func divideResult(width, op int, x, y uint64) uint64 {
 	}
 }
 
+func joinPressureNativeMarker(code []byte, at, end int) (uint32, bool) {
+	w := binary.LittleEndian.Uint32(code[at:])
+	if at+8 > end || w&0x7fe00000 != 0x52800000 { // MOVZ W/X, low halfword
+		return 0, false
+	}
+	next := binary.LittleEndian.Uint32(code[at+4:])
+	if next&0x7fe00000 != 0x72a00000 || (w^next)&0x8000001f != 0 { // MOVK, same register/width, LSL #16
+		return 0, false
+	}
+	return (w>>5)&0xffff | ((next>>5)&0xffff)<<16, true
+}
+
+func joinPressureNativeBranch(code []byte, at int) (target int, conditional, branch bool) {
+	w := binary.LittleEndian.Uint32(code[at:])
+	if w&0xfc000000 == 0x14000000 { // B, signed imm26 scaled by four
+		return at + int(int32(w<<6)>>4), false, true
+	}
+	if w&0x7e000000 == 0x34000000 || w&0xff000010 == 0x54000000 { // CBZ/CBNZ, B.cond
+		return at + int(int32(w<<8)>>11), true, true
+	}
+	return 0, false, false
+}
+
 // This bounded A64 observer checks placement and branch shape, not individual
 // spill lifetimes or the independent source/transport proofs tracked by #807.
 // A64 instructions are aligned four-byte words; no external disassembler is needed.
@@ -453,14 +477,10 @@ func joinPressureNativeEvidence(code []byte, start, end, live int) error {
 		if w&0xfc000000 == 0x94000000 || w&0xfffffc1f == 0xd63f0000 { // BL, BLR
 			return fmt.Errorf("unexpected native call")
 		}
-		if at+8 > end || w&0x7fe00000 != 0x52800000 { // MOVZ W/X, low halfword
+		value, ok := joinPressureNativeMarker(code, at, end)
+		if !ok {
 			continue
 		}
-		next := word(at + 4)
-		if next&0x7fe00000 != 0x72a00000 || (w^next)&0x8000001f != 0 { // MOVK, same register/width, LSL #16
-			continue
-		}
-		value := (w>>5)&0xffff | ((next>>5)&0xffff)<<16
 		for i, marker := range markers {
 			if value == marker {
 				if positions[i] >= 0 {
@@ -475,21 +495,11 @@ func joinPressureNativeEvidence(code []byte, start, end, live int) error {
 			return fmt.Errorf("missing or reordered native marker %d", i)
 		}
 	}
-	branchTarget := func(at int) (target int, conditional, branch bool) {
-		w := word(at)
-		if w&0xfc000000 == 0x14000000 { // B, signed imm26 scaled by four
-			return at + int(int32(w<<6)>>4), false, true
-		}
-		if w&0x7e000000 == 0x34000000 || w&0xff000010 == 0x54000000 { // CBZ/CBNZ, B.cond
-			return at + int(int32(w<<8)>>11), true, true
-		}
-		return 0, false, false
-	}
 	// The then exit must skip the else marker and reach a complete instruction
 	// at or before the end marker. This is not a complete control-flow proof.
 	skip := -1
 	for at := positions[1] + 8; at < positions[2]; at += 4 {
-		dest, conditional, branch := branchTarget(at)
+		dest, conditional, branch := joinPressureNativeBranch(code, at)
 		if branch && !conditional && dest > positions[2] && dest <= positions[3] {
 			if skip >= 0 {
 				return fmt.Errorf("ambiguous arm exit")
@@ -502,7 +512,7 @@ func joinPressureNativeEvidence(code []byte, start, end, live int) error {
 	}
 	branches, branchAt := 0, -1
 	for at := positions[0] + 8; at < positions[1]; at += 4 {
-		dest, conditional, branch := branchTarget(at)
+		dest, conditional, branch := joinPressureNativeBranch(code, at)
 		if branch && conditional && dest > skip && dest <= positions[2] {
 			branches++
 			branchAt = at
@@ -545,6 +555,48 @@ func TestJoinPressureNativeEvidence(t *testing.T) {
 			}
 		}
 	}
+	t.Run("conditional NOP control", func(t *testing.T) {
+		p := joinPressureCase{width: 64, live: 24, seed: 1}
+		cm := compileJoinPressure(t, p.raw(), nil)
+		if err := joinPressureNativeEvidence(cm.Code, cm.InternalEntry[0], len(cm.Code), p.live); err != nil {
+			t.Fatal(err)
+		}
+		// Only the conditional between the prefix and then markers is replaced.
+		// A four-byte NOP preserves every marker and all existing branch targets.
+		inRegion := false
+		branchAt, branches := -1, 0
+		for at := cm.InternalEntry[0]; at < len(cm.Code); at += 4 {
+			if marker, ok := joinPressureNativeMarker(cm.Code, at, len(cm.Code)); ok {
+				if marker == joinPrefixMarker {
+					inRegion = true
+				}
+				if marker == joinThenMarker {
+					inRegion = false
+				}
+			}
+			_, conditional, branch := joinPressureNativeBranch(cm.Code, at)
+			if inRegion && branch && conditional {
+				branchAt = at
+				branches++
+			}
+		}
+		if branches != 1 {
+			t.Fatalf("join conditional count=%d", branches)
+		}
+		binary.LittleEndian.PutUint32(cm.Code[branchAt:], 0xd503201f) // NOP
+		e := prepareJoinPressure(t, cm, p.live)
+		in := [4]uint64{0x8123456789abcdef, 7, 3, 1}
+		e.input(in)
+		if err := e.call(); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.check(p, in, p.expected(in), 1); err != nil {
+			t.Fatal(err)
+		}
+		if err := joinPressureNativeEvidence(cm.Code, cm.InternalEntry[0], len(cm.Code), p.live); err == nil || err.Error() != "native conditional count 0 want 1" {
+			t.Fatalf("conditional NOP control: %v", err)
+		}
+	})
 	p := joinPressureCase{width: 64, live: 24, seed: 1, straight: true}
 	cm := compileJoinPressure(t, p.raw(), nil)
 	e := prepareJoinPressure(t, cm, p.live)
