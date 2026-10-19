@@ -8,6 +8,9 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
+// Only AMD64 currently publishes live structs from a reserved native batch.
+const nativeLiveStructAllocSupported = false
+
 var nativeStructAllocEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_ALLOC") != "1"
 
 func (in *Instance) prepareNativeDefaultArrayAllocation(typeID, length uint32) {
@@ -30,7 +33,8 @@ func (in *Instance) prepareNativeArrayAllocation(typeID, length uint32) {
 		return
 	}
 	size, err := gc.ArraySize(d, length)
-	if err != nil {
+	if err != nil || size > gc.NativeArrayAllocMaxBytes {
+		// ARM64 consumes only the shared small-array state.
 		return
 	}
 	if in.c.genericGCBoundaryCollectionSafe() {

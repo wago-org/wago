@@ -8,6 +8,9 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
+// Only AMD64 currently publishes live structs from a reserved native batch.
+const nativeLiveStructAllocSupported = true
+
 var nativeStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "1"
 
 func (in *Instance) prepareNativeArrayAllocation(typeID, length uint32) {
