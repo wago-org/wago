@@ -101,7 +101,8 @@ func TestMajorBlocksReservationWordRevisits(t *testing.T) {
 }
 
 func TestMajorBlocksFlagUsesExistingPadding(t *testing.T) {
-	if unsafe.Offsetof(Collector{}.checkedHandles) != 3088 || unsafe.Offsetof(Collector{}.majorBlocks) != 3104 || unsafe.Sizeof(Collector{}) != 3128 {
+	const batchBytes = (512 - nativeStructHandleBatch) * 4
+	if unsafe.Offsetof(Collector{}.checkedHandles) != 3088-batchBytes || unsafe.Offsetof(Collector{}.majorBlocks) != 3104-batchBytes || unsafe.Sizeof(Collector{}) != 3128-batchBytes {
 		t.Fatal("native index changed existing collector offsets or grew beyond the slice descriptor")
 	}
 	if unsafe.Offsetof(Collector{}.majorYoungDirty) >= unsafe.Offsetof(Collector{}.checkedHandles) {
@@ -111,15 +112,21 @@ func TestMajorBlocksFlagUsesExistingPadding(t *testing.T) {
 
 func publishMajorBlocksNative(c *Collector, count int) RefSliceRoots {
 	roots := make(RefSliceRoots, count)
-	off := c.nurseryBump
 	for i := range roots {
-		h := c.nativeStructAlloc.Handles[i]
-		c.handles[h] = handleEntry{off: off + uint32(i)*16, size: 16, space: spaceNursery}
+		if c.nativeStructAlloc.Cursor >= c.nativeStructAlloc.Count {
+			if !c.PrepareNativeStructHandles() {
+				panic("native refill failed")
+			}
+		}
+		cursor := c.nativeStructAlloc.Cursor
+		h := c.nativeStructAlloc.Handles[cursor]
+		off := c.nurseryBump
+		c.handles[h] = handleEntry{off: off, size: 16, space: spaceNursery}
 		roots[i] = makeObjRef(h)
 		c.writeHeader(roots[i], ObjHeader{TypeID: 0, Size: 16, Flags: FlagPointerFree})
+		c.nurseryBump = off + 16
+		c.nativeStructAlloc.Cursor = cursor + 1
 	}
-	c.nurseryBump = off + uint32(count)*16
-	c.nativeStructAlloc.Cursor = uint32(count)
 	return roots
 }
 

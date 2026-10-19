@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Retain per-backend live-object refill sizes while sharing GC algorithms,
+  avoiding ARM64 constructor regressions from unused large handle batches.
+
 - Prepare one checked native identity for proven-dead GC batches on both
   backends, avoiding unused live-object handle refills at collection.
 

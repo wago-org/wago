@@ -128,15 +128,22 @@ func BenchmarkMajorBlocksNativePublishFullCycle(b *testing.B) {
 				if !c.PrepareNativeStructHandles() {
 					b.Fatal("native reservation failed")
 				}
-				off := c.nurseryBump
+
 				for j := 0; j < batch; j++ {
-					h := c.nativeStructAlloc.Handles[j]
-					c.handles[h] = handleEntry{off: off + uint32(j)*16, size: 16, space: spaceNursery}
+					if c.nativeStructAlloc.Cursor >= c.nativeStructAlloc.Count {
+						if !c.PrepareNativeStructHandles() {
+							b.Fatal("native refill failed")
+						}
+					}
+					cursor := c.nativeStructAlloc.Cursor
+					h := c.nativeStructAlloc.Handles[cursor]
+					off := c.nurseryBump
+					c.handles[h] = handleEntry{off: off, size: 16, space: spaceNursery}
 					roots[0] = makeObjRef(h)
 					c.writeHeader(roots[0], ObjHeader{TypeID: 0, Size: 16, Flags: FlagPointerFree})
+					c.nurseryBump = off + 16
+					c.nativeStructAlloc.Cursor = cursor + 1
 				}
-				c.nurseryBump = off + uint32(batch)*16
-				c.nativeStructAlloc.Cursor = uint32(batch)
 				if err := c.CollectFull(roots); err != nil {
 					b.Fatal(err)
 				}
@@ -162,15 +169,16 @@ func BenchmarkMajorBlocksNativeDenseTransition(b *testing.B) {
 				b.Fatal("native refill failed")
 			}
 			off := c.nurseryBump
-			for j := 0; j < 512; j++ {
+			batch := int(c.nativeStructAlloc.Count)
+			for j := 0; j < batch; j++ {
 				h := c.nativeStructAlloc.Handles[j]
 				c.handles[h] = handleEntry{off: off + uint32(j)*16, size: 16, space: spaceNursery}
 				ref := makeObjRef(h)
 				roots = append(roots, ref)
 				c.writeHeader(ref, ObjHeader{TypeID: 0, Size: 16, Flags: FlagPointerFree})
 			}
-			c.nurseryBump = off + 512*16
-			c.nativeStructAlloc.Cursor = 512
+			c.nurseryBump = off + uint32(batch)*16
+			c.nativeStructAlloc.Cursor = uint32(batch)
 		}
 		b.StartTimer()
 		if err := c.CollectFull(roots); err != nil {
