@@ -68,10 +68,14 @@ func (c *Collector) growDefaultNursery(copiedBytes uint64, youngObjects uint32) 
 		}
 	}
 	nextEden := eden * 2
-	if denseNurseryPregrowEnabled && uint64(youngObjects)*denseNurseryChargeBytes >= uint64(eden) {
+	if denseNurseryPregrowEnabled && eden < denseNurseryPregrowBytes && uint64(youngObjects)*denseNurseryChargeBytes >= uint64(eden) {
 		nextEden = min(c.nurseryGrowthLimit, denseNurseryPregrowBytes)
 	}
-	eden = min(nextEden, c.nurseryGrowthLimit)
+	nextEden = min(nextEden, c.nurseryGrowthLimit)
+	if nextEden <= eden {
+		return
+	}
+	eden = nextEden
 	survivor := min(eden/2, uint32(512<<10))
 	backing := makeAlignedBytes(eden+2*survivor, uintptr(c.objectAlign))
 	newBase := eden + uint32(c.survivorFrom&1)*survivor

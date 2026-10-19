@@ -1211,6 +1211,24 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	a.Sub32(RAX, R15)
 	a.Cmp32(RAX, sizeReg)
 	addFallback(a.JccPlaceholder(condB))
+	// A large reservation has one owning handle. Publishing a smaller extent
+	// would strand its tail, since reclamation derives ownership from that handle.
+	if site.dynamic {
+		a.AluRI(cmpDigit, RDI, 1, false)
+		smallReservation := a.JccPlaceholder(condNE)
+		a.MovRegReg32(RDX, sizeReg)
+		a.AluRI(0, RDX, 15, false)
+		a.AluRI(4, RDX, -16, false)
+		a.Cmp32(RAX, RDX)
+		addFallback(a.JccPlaceholder(condNE))
+		a.PatchRel32(smallReservation, a.Len())
+	} else if site.large {
+		a.MovRegReg32(RDX, sizeReg)
+		a.AluRI(0, RDX, 15, false)
+		a.AluRI(4, RDX, -16, false)
+		a.Cmp32(RAX, RDX)
+		addFallback(a.JccPlaceholder(condNE))
+	}
 	largeState := site.large
 	if site.dynamic {
 		a.MovImm32(RDX, int32(gc.NativeSpaceNursery))
@@ -1659,6 +1677,15 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 	a.AluRI(0, RDX, 1, false)
 	a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
 	a.Store32(R10, gc.NativeStructAllocCursorOffset, RDX)
+	// Struct-only batches defer counting to reconciliation. Array batches count
+	// their publications immediately, including structs using their identities.
+	a.CmpImm32Mem(R10, gc.NativeStructAllocChunkEndOffset, 0)
+	deferredCount := a.JccPlaceholder(condE)
+	a.Load64(R10, R8, gc.NativeViewAllocationCountOffset)
+	a.Load64(RAX, R10, 0)
+	a.AluRI(0, RAX, 1, true)
+	a.Store64(R10, 0, RAX)
+	a.PatchRel32(deferredCount, a.Len())
 	a.MovRegReg32(RAX, RSI)
 	a.ShiftImm(4, RAX, 1, false)
 	if directSlots {

@@ -280,3 +280,25 @@ func TestDefaultNurseryGrowthRelocatesLiveSurvivors(t *testing.T) {
 		})
 	}
 }
+
+func TestDenseNurseryPregrowthProgresses(t *testing.T) {
+	if !denseNurseryPregrowEnabled {
+		t.Skip("dense pregrowth disabled")
+	}
+	c, err := NewCollector(Config{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.nurseryGrowthSurvived = c.cfg.NurseryBytes
+	c.growDefaultNursery(uint64(c.cfg.NurseryBytes), 80000)
+	if c.cfg.NurseryBytes != denseNurseryPregrowBytes {
+		t.Fatalf("pregrowth=%d", c.cfg.NurseryBytes)
+	}
+	for range 2 {
+		c.growDefaultNursery(uint64(c.cfg.NurseryBytes), 80000)
+	}
+	if c.cfg.NurseryBytes != c.nurseryGrowthLimit {
+		t.Fatalf("dense nursery stuck at %d; limit %d", c.cfg.NurseryBytes, c.nurseryGrowthLimit)
+	}
+}

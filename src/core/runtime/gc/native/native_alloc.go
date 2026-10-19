@@ -247,7 +247,9 @@ func (c *Collector) prepareNativeLargeArrayAllocation(objectBytes uint32) bool {
 		return false
 	}
 	s := &c.nativeLargeArrayAlloc
-	if s.Cursor < s.Count && s.ChunkEnd-s.ChunkCursor >= objectBytes {
+	// Reclamation derives the physical extent from the published handle size.
+	// A single-handle reservation must not leave an unowned tail.
+	if s.Cursor < s.Count && s.ChunkCursor <= s.ChunkEnd && s.ChunkEnd-s.ChunkCursor == Align16(objectBytes) {
 		return true
 	}
 	c.discardNativeLargeArrayAllocation()

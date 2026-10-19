@@ -641,3 +641,24 @@ func TestNativeReservationRefreshesDeadNurseryCycle(t *testing.T) {
 		t.Fatalf("same-cycle reservation lost %d pending charges", c.stats.LiveObjects)
 	}
 }
+
+func TestNativeLargeArrayReservationMatchesPhysicalExtent(t *testing.T) {
+	c, err := NewCollector(Config{ThroughputHeapBytes: 256 << 10, ThroughputPageBytes: 4096}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	for _, bytes := range []uint32{60 << 10, (60 << 10) - 8, 40 << 10, (40 << 10) - 8, 60 << 10, 40 << 10} {
+		if !c.PrepareNativeArrayAllocationImmediate(bytes) {
+			t.Fatalf("prepare %d", bytes)
+		}
+		s := c.nativeLargeArrayAlloc
+		if got := s.ChunkEnd - s.ChunkCursor; got != Align16(bytes) {
+			t.Fatalf("reservation extent = %d, want %d", got, Align16(bytes))
+		}
+	}
+	c.discardNativeLargeArrayAllocation()
+	if _, err := c.throughput.alloc(200<<10, spaceLarge); err != nil {
+		t.Fatalf("canceled reservations leaked: %v", err)
+	}
+}

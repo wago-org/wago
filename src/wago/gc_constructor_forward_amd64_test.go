@@ -5,6 +5,7 @@ package wago
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"unsafe"
@@ -712,5 +713,43 @@ func TestGCFreshArrayRootStoreTrap(t *testing.T) {
 	var trap *TrapError
 	if !errors.As(err, &trap) || trap.Code != TrapBuiltin {
 		t.Fatalf("run = %v, %v; want root-store bounds trap", got, err)
+	}
+}
+
+// Both forwarding forms must observe dirty register-pinned parameters on the
+// second invocation, when allocation can use a prepared native reservation.
+func TestGCStructForwardDirtyPinnedLocal(t *testing.T) {
+	for _, cast := range []bool{false, true} {
+		t.Run(fmt.Sprint("cast=", cast), func(t *testing.T) {
+			fields := []byte{0x5f, 0x01, 0x7f, 0x01}
+			body := []byte{0x01, 0x01, 0x63, 0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x21, 0x00, 0x20, 0x00}
+			if cast {
+				fields = []byte{0x5f, 0x02, 0x7f, 0x01, 0x6e, 0x01}
+				body = append(body, 0xd0, 0x6e)
+			}
+			body = append(body, 0xfb, 0x00, 0x00)
+			if cast {
+				body = append(body, 0xfb, 0x16, 0x00)
+			} else {
+				body = append(body, 0x21, 0x01, 0x20, 0x01)
+			}
+			body = append(body, 0xfb, 0x02, 0x00, 0x00, 0x0b)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcInstructionBenchmarkModuleWithTypes([][]byte{fields}, body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			in, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			for x := uint64(37); x < 45; x++ {
+				got, err := in.Invoke("run", x)
+				if err != nil || len(got) != 1 || got[0] != x+1 {
+					t.Fatalf("run(%d)=%v,%v; want %d", x, got, err, x+1)
+				}
+			}
+		})
 	}
 }

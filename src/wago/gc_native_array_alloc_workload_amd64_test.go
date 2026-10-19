@@ -205,3 +205,47 @@ func TestGCNativeArrayAllocPreservesAllocationCount(t *testing.T) {
 		t.Fatalf("semantic allocations = %d, want %d", got, allocations)
 	}
 }
+
+func TestGCNativeLargeArrayReservationRetainsCapacity(t *testing.T) {
+	array := []byte{0x5e, 0x7f, 0x01}
+	ft := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
+	alloc := []byte{0x00, 0x20, 0x00, 0xfb, 0x07, 0x00, 0x24, 0x00, 0x0b}
+	clear := []byte{0x00, 0xd0, 0x00, 0x24, 0x00, 0x0b}
+	code := func(b []byte) []byte { return append(wasmtest.ULEB(uint32(len(b))), b...) }
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(array, ft, wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0x00, 0x01, 0xd0, 0x00, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("alloc", 0, 0), wasmtest.ExportEntry("clear", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(code(alloc), code(clear))))
+	for _, native := range []bool{false, true} {
+		t.Run(fmt.Sprint("native=", native), func(t *testing.T) {
+			c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("gc-native-alloc", native), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{ThroughputHeapBytes: 256 << 10, ThroughputPageBytes: 4096, VerifyAfterCollect: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			for i := 0; i < 3; i++ {
+				for _, bytes := range []uint64{60 << 10, 40 << 10} {
+					if _, err := in.Invoke("alloc", (bytes-16)/4); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if _, err := in.Invoke("clear"); err != nil {
+					t.Fatal(err)
+				}
+				if err := in.CollectGC(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := in.Invoke("alloc", ((200<<10)-16)/4); err != nil {
+				t.Fatalf("allocation after reclaim: %v; stats=%+v", err, in.gc.Stats())
+			}
+		})
+	}
+}
