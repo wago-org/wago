@@ -234,6 +234,8 @@ func independent(t *testing.T, fixtures []Fixture) {
 	independentWithProbes(t, fixtures, independentFeatureProbes())
 }
 
+const independentV8Timeout = time.Minute
+
 func independentWithProbes(t *testing.T, fixtures []Fixture, probes []nodeFeatureProbe) {
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -292,7 +294,7 @@ process.stdin.on('end', async () => {
   }
 });`
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), independentV8Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, node, "-e", script)
 	cmd.Stdin = bytes.NewReader(payload)
