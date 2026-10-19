@@ -9,7 +9,7 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // allocation remains observable. The narrow whole-function proof excludes
 // escaping identities, changed roots, interrupts, traps and intermediate stores.
 func (f *fn) gcStructReduction(code []byte) (uint32, bool) {
-	if !f.gcStructHelpers || f.interruptible || f.localBase != 0 || f.nParams != 1 || len(f.ft.Results) != 1 || f.ft.Results[0] != wasm.I32 || f.ft.Params[0] != wasm.I32 {
+	if !f.gcStructHelpers || len(f.customInstructions) != 0 || f.interruptible || f.localBase != 0 || f.nParams != 1 || len(f.ft.Results) != 1 || f.ft.Results[0] != wasm.I32 || f.ft.Params[0] != wasm.I32 {
 		return 0, false
 	}
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {

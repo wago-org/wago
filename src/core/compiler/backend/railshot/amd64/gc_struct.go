@@ -33,6 +33,8 @@ const (
 	gcFuncRefTest                    = 14
 	gcStructReserveDead              = 15
 	gcStructReserveDeadNative        = 40 // dead reservation followed by native batch preparation
+	gcStructReserveDeadBatch         = 42
+	gcArrayReserveDeadBatch          = 43
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
@@ -1200,7 +1202,7 @@ func (f *fn) gcFrameLocal(index int) bool {
 
 func gcHelperMayAllocate(helper uint32) bool {
 	switch helper {
-	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead, gcStructReserveDeadNative,
+	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDead, gcStructReserveDeadNative, gcStructReserveDeadBatch, gcArrayReserveDeadBatch,
 		gcArrayAllocDefault, gcArrayAllocFixed, gcArrayAllocUniform,
 		gcArrayAllocData, gcArrayAllocElem, gcArrayAllocFixedV128Spill,
 		gcArrayAllocDefaultNative, gcArrayAllocUniformNative, gcArrayAllocFixedNative,

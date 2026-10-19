@@ -276,7 +276,7 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 		gcMaintenance:       in.gc != nil && (in.c.genericGCBoundaryCollectionSafe() || in.c.hasGCRefGlobals()),
 		gcBoundarySafe:      in.c.genericGCBoundaryCollectionSafe(),
 		gcHasRefGlobals:     in.c.hasGCRefGlobals(),
-		gcPrepared:          goruntime.GOARCH == "arm64" && in.gc != nil && scalarFast && in.c.NumImports == 0 && !in.c.usesAtomicWaitHelpers(),
+		gcPrepared:          (goruntime.GOARCH == "arm64" || goruntime.GOARCH == "amd64") && in.gc != nil && scalarFast && in.c.NumImports == 0 && !in.c.usesAtomicWaitHelpers(),
 		resultWide:          resultWide,
 		boundedWrapper:      in.c.directPreparedBoundedAt(ic.li) || in.isolatedNativeScalarLeaf(),
 	}

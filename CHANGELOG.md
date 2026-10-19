@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Port checked GC induction reductions and prepared invocation paths to AMD64,
+  sharing allocation accounting and admission checks with ARM64.
+
 - Share sparse scans, occupied-block major collection, survivor-aware nursery
   policies, zero-live recycling, and bounded native handle batches across
   AMD64 and ARM64. Use exact local roots on both backends outside EH paths.

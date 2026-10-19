@@ -4,6 +4,7 @@ package arm64
 
 import (
 	"bytes"
+	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
@@ -124,5 +125,22 @@ func TestGCStructReductionBoundedMetadata(t *testing.T) {
 				cm.CodeImage.Close()
 			}
 		}
+	}
+}
+
+// A custom recipe can change an imported call's effects; a whole-body proof
+// must decline that compilation context before treating source effects as fixed.
+func TestGCStructReductionRejectsCustomInstructionContext(t *testing.T) {
+	m, err := wasm.DecodeModule(gcReductionModuleBytes(false, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := fn{m: m, ft: &wasm.CompType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}, nParams: 1, localType: []machineType{mtI32, mtI32, mtI32}, gcStructHelpers: true}
+	if _, ok := f.gcStructReduction(m.Code[0].BodyBytes); !ok {
+		t.Fatal("positive control did not prove reduction")
+	}
+	f.customInstructions = map[uint32]railcore.CustomInstruction{0: {}}
+	if _, ok := f.gcStructReduction(m.Code[0].BodyBytes); ok {
+		t.Fatal("custom compilation context admitted reduction")
 	}
 }

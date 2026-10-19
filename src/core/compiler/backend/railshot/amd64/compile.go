@@ -308,7 +308,10 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
-	scalarSummary shared.ScalarSummary
+	gcReducedBounded  bool
+	gcDeadBatchLayout uint64
+	gcI31Induction    bool
+	scalarSummary     shared.ScalarSummary
 
 	//lint:ignore U1000 debug-only fields; the ordinary placeholder is empty
 	regallocFnState
@@ -1193,33 +1196,36 @@ func (sc *scratch) finishStackWorker() {
 // arena is append-only until all workers join. Results retain offsets into it,
 // never slices, because a later append may reallocate the arena.
 type workerState struct {
-	scratch           *scratch
-	scratchStats      shared.WorkerScratchStats
-	arena             []byte
-	relocs            []callReloc
-	literals          []uint64
-	usesBMI2          bool
-	usesBitCount      uint8
-	usedAMD64Features shared.AMD64Features
+	gcDeadBatchLayouts map[int]uint64
+	gcI31Inductions    map[int]bool
+	scratch            *scratch
+	scratchStats       shared.WorkerScratchStats
+	arena              []byte
+	relocs             []callReloc
+	literals           []uint64
+	usesBMI2           bool
+	usesBitCount       uint8
+	usedAMD64Features  shared.AMD64Features
 }
 
 // funcResult is one independently compiled local function. worker/start/end
 // identify its owned bytes after the worker pool joins. relocStart/relocEnd name
 // the function's records in its worker's append-only relocation arena.
 type funcResult struct {
-	worker       uint32
-	start        uint32
-	end          uint32
-	relocStart   uint32
-	relocEnd     uint32
-	internalOff  uint32
-	bodyBytes    uint32
-	literalStart uint32
-	literalEnd   uint32
-	adapterOff   uint32 // shared-adapter displacement or adapter-tail return offset
-	adapterEnd   uint32
-	trapBody     sharedTrapBodyInfoAMD64
-	layoutFlags  uint8
+	gcReducedBounded bool
+	worker           uint32
+	start            uint32
+	end              uint32
+	relocStart       uint32
+	relocEnd         uint32
+	internalOff      uint32
+	bodyBytes        uint32
+	literalStart     uint32
+	literalEnd       uint32
+	adapterOff       uint32 // shared-adapter displacement or adapter-tail return offset
+	adapterEnd       uint32
+	trapBody         sharedTrapBodyInfoAMD64
+	layoutFlags      uint8
 }
 
 func compactFuncResultRange(start, size int) (uint32, uint32, bool) {
@@ -2007,7 +2013,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		}
 		pressureDone := false
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
-		var directPrepared, directPreparedBounded []uint64
+		var directPrepared, directPreparedBounded, gcReducedBounded, gcI31Inductions []uint64
+		var gcDeadBatchLayouts []uint64
 		var adapterTails []adapterTailInfo
 		var adapters []sharedAdapterInfo
 		if policy.CompactNative {
@@ -2076,6 +2083,19 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 			if sc.directPrepared {
 				directPrepared = markDirectPrepared(directPrepared, n, i)
+			}
+
+			if sc.fnState.gcDeadBatchLayout != 0 {
+				if gcDeadBatchLayouts == nil {
+					gcDeadBatchLayouts = make([]uint64, n)
+				}
+				gcDeadBatchLayouts[i] = sc.fnState.gcDeadBatchLayout
+			}
+			if sc.fnState.gcI31Induction {
+				gcI31Inductions = markDirectPrepared(gcI31Inductions, n, i)
+			}
+			if sc.fnState.gcReducedBounded {
+				gcReducedBounded = markDirectPrepared(gcReducedBounded, n, i)
 			}
 			if sc.directPreparedBounded {
 				directPreparedBounded = markDirectPrepared(directPreparedBounded, n, i)
@@ -2158,7 +2178,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if err := patchModuleLiteralRelocs(code, entry, literalWords, literalOffsets, literalBase, moduleLiterals); err != nil {
 			return nil, err
 		}
-		directPreparedBounded = resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTables)
+		directPreparedBounded = mergeGCReducedBounds(resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTables), gcReducedBounded)
 		directPrepared = retainResolvedPreparedCallers(directPrepared, directPreparedBounded, allHints)
 		if opts.DeferCodeMapping {
 			capacity := len(codeBuffer.Mapping())
@@ -2181,10 +2201,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			fmt.Fprint(os.Stderr, ms.String())
 		}
 		if opts.DeferCodeMapping {
-			return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: usedAMD64Features.Has(shared.AMD64AVX512)}, nil
+			return &amd64.CompiledModule{GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: usedAMD64Features.Has(shared.AMD64AVX512)}, nil
 		}
 		keepCodeBuffer = true
-		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: usedAMD64Features.Has(shared.AMD64AVX512)}, nil
+		return &amd64.CompiledModule{GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: usedAMD64Features.Has(shared.AMD64AVX512)}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, hintSidecar, immutableTables, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, moduleHasSIMD, importedFuncs)
@@ -2333,7 +2353,20 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) |
 				boolFlag(ws.scratch.directPrepared, layoutDirectPrepared) | boolFlag(ws.scratch.directPreparedBounded, layoutDirectPreparedBounded)
 			ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
-			result := funcResult{worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, internalOff: compactInternalOff, bodyBytes: bodyBytes, layoutFlags: flags, literalStart: compactLiteralStart, literalEnd: compactLiteralEnd}
+
+			if ws.scratch.fnState.gcI31Induction {
+				if ws.gcI31Inductions == nil {
+					ws.gcI31Inductions = make(map[int]bool)
+				}
+				ws.gcI31Inductions[i] = true
+			}
+			if layout := ws.scratch.fnState.gcDeadBatchLayout; layout != 0 {
+				if ws.gcDeadBatchLayouts == nil {
+					ws.gcDeadBatchLayouts = make(map[int]uint64)
+				}
+				ws.gcDeadBatchLayouts[i] = layout
+			}
+			result := funcResult{gcReducedBounded: ws.scratch.fnState.gcReducedBounded, worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, internalOff: compactInternalOff, bodyBytes: bodyBytes, layoutFlags: flags, literalStart: compactLiteralStart, literalEnd: compactLiteralEnd}
 			if policy.CompactNative {
 				if policy.EnabledOption(optSharedAdapters) {
 					info := ws.scratch.fnState.sharedAdapterInfo()
@@ -2379,7 +2412,8 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	code := make([]byte, 0, codeCap)
 	var literalWords []uint64
-	var directPrepared, directPreparedBounded []uint64
+	var directPrepared, directPreparedBounded, gcReducedBounded, gcI31Inductions []uint64
+	var gcDeadBatchLayouts []uint64
 	var adapterTails []adapterTailInfo
 	var adapters []sharedAdapterInfo
 	if policy.CompactNative {
@@ -2405,6 +2439,19 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		internalEntry[i] = len(code) + int(r.internalOff)
 		if r.layoutFlags&layoutDirectPrepared != 0 {
 			directPrepared = markDirectPrepared(directPrepared, n, i)
+		}
+
+		if layout := states[r.worker].gcDeadBatchLayouts[i]; layout != 0 {
+			if gcDeadBatchLayouts == nil {
+				gcDeadBatchLayouts = make([]uint64, n)
+			}
+			gcDeadBatchLayouts[i] = layout
+		}
+		if states[r.worker].gcI31Inductions[i] {
+			gcI31Inductions = markDirectPrepared(gcI31Inductions, n, i)
+		}
+		if r.gcReducedBounded {
+			gcReducedBounded = markDirectPrepared(gcReducedBounded, n, i)
 		}
 		if r.layoutFlags&layoutDirectPreparedBounded != 0 {
 			directPreparedBounded = markDirectPrepared(directPreparedBounded, n, i)
@@ -2477,7 +2524,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if err := patchModuleLiteralRelocs(code, entry, literalWords, literalOffsets, literalBase, moduleLiterals); err != nil {
 		return nil, err
 	}
-	directPreparedBounded = resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTables)
+	directPreparedBounded = mergeGCReducedBounds(resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTables), gcReducedBounded)
 	directPrepared = retainResolvedPreparedCallers(directPrepared, directPreparedBounded, allHints)
 	finalizeModuleNativeSizeAMD64(ms, len(code), functionsEnd, len(literalCode), 0)
 	if profileEnabled && opts.Profile {
@@ -2500,7 +2547,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		requiresBitCount |= states[i].usesBitCount
 		usedAMD64Features |= states[i].usedAMD64Features
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: usedAMD64Features.Has(shared.AMD64AVX512)}, nil
+	return &amd64.CompiledModule{GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: usedAMD64Features.Has(shared.AMD64AVX512)}, nil
 }
 
 func allTablesPreparedIsolated(tables []immutableTableHint) bool {

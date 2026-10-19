@@ -1,4 +1,4 @@
-//go:build (linux || darwin) && arm64 && !tinygo && !wago_guardpage
+//go:build (linux || darwin) && (amd64 || arm64) && !tinygo && !wago_guardpage
 
 package wago
 
@@ -9,13 +9,15 @@ import (
 	"testing"
 )
 
-func gcArrayReductionBytes(ordinary bool) []byte {
-	body := []byte{1, 2, 0x7f}
+func gcArrayFillReductionBytes(ordinary bool) []byte {
+	body := []byte{2, 2, 0x7f, 1, 0x63, 0}
 	if ordinary {
 		body = append(body, 1)
 	}
-	body = append(body, 0x03, 0x40, 0x20, 2, 0x20, 1, 0x41, 16, 0xfb, 6, 0,
-		0x20, 1, 0x41, 15, 0x71, 0xfb, 11, 0, 0x6a, 0x21, 2,
+	body = append(body, 0x03, 0x40, 0x20, 2, 0x02, 0x7f,
+		0x41, 0, 0x41, 16, 0xfb, 6, 0, 0x21, 3,
+		0x20, 3, 0x41, 0, 0x20, 1, 0x41, 16, 0xfb, 16, 0,
+		0x20, 3, 0x20, 1, 0x41, 15, 0x71, 0xfb, 11, 0, 0x0b, 0x6a, 0x21, 2,
 		0x20, 1, 0x41, 1, 0x6a, 0x21, 1, 0x20, 1, 0x20, 0, 0x49, 0x0d, 0, 0x0b, 0x20, 2, 0x0b)
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
@@ -24,13 +26,13 @@ func gcArrayReductionBytes(ordinary bool) []byte {
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))))
 }
 
-func TestGCArrayReductionRepeatedCharges(t *testing.T) {
-	fast, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcArrayReductionBytes(false))
+func TestGCArrayFillReductionRepeatedCharges(t *testing.T) {
+	fast, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcArrayFillReductionBytes(false))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer fast.Close()
-	slow, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcArrayReductionBytes(true))
+	slow, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcArrayFillReductionBytes(true))
 	if err != nil {
 		t.Fatal(err)
 	}
