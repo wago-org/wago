@@ -34,9 +34,8 @@ const maxGCFrameLivenessWorkWords = maxGCFrameLivenessArenaBytes / 8
 // exact root plan instead of publishing a partial fixed point.
 const maxGCFrameLivenessCumulativeWork = maxGCFrameLivenessWorkWords * 8
 
-// ARM64 uses four conservative local roots and a 512 root-byte budget to bound
-// additional guest retention and serialized offsets while avoiding a pointer-rich
-// CFG and backwards dataflow. AMD64 computes exact liveness for functions without EH.
+// Both native backends compute exact local liveness for functions without EH.
+// The historical conservative limits remain available for admission comparisons.
 // A root-free collecting function has no retention cost and always uses the
 // cheap site-counting path.
 // Fixed EH payload roots are accounted independently and remain always live.

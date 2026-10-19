@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"encoding/binary"
 	"errors"
-	"runtime"
 	"slices"
 	"time"
 )
@@ -81,8 +80,8 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	var copiedBytes, promotedBytes uint64
 	finishedEvacuation := false
 	var scanned uint64
-	capturedPromotion := runtime.GOARCH == "amd64" && !(c.survivorBytes == 0 && c.tenuringThreshold == 1)
-	if runtime.GOARCH != "amd64" || len(c.markStack) != 0 {
+	capturedPromotion := nativeCollectorFastPaths && !(c.survivorBytes == 0 && c.tenuringThreshold == 1)
+	if !nativeCollectorFastPaths || len(c.markStack) != 0 {
 		if capturedPromotion {
 			scanned = c.drainNurseryMarkStackForPromotion()
 		} else {
@@ -113,7 +112,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		pauseNS = uint64(time.Since(policyStart))
 	}
 	c.adaptTenuring(copiedBytes, promotedBytes, pauseNS)
-	if runtime.GOARCH == "amd64" && c.cfg.NurseryBytes < c.nurseryGrowthLimit &&
+	if nativeCollectorFastPaths && c.cfg.NurseryBytes < c.nurseryGrowthLimit &&
 		(copiedBytes != 0 || c.nurseryGrowthSurvived != 0) {
 		c.growDefaultNursery(copiedBytes, youngObjects)
 	}
@@ -146,7 +145,7 @@ func (c *Collector) sweepAll() {
 	// A refilled table uses the original sweep before spending work indexing
 	// its young ledger. If that sweep makes it sparse again, retain the dirty
 	// ledger until the next indexed sweep (or reset it when disabling the map).
-	if runtime.GOARCH == "amd64" && len(c.majorBlocks) != 0 && len(c.freeHandles) >= len(c.handles)/2 {
+	if nativeCollectorFastPaths && len(c.majorBlocks) != 0 && len(c.freeHandles) >= len(c.handles)/2 {
 		if c.majorYoungDirty {
 			c.noteMajorHandles(c.nurseryHandles)
 			c.majorYoungDirty = false
@@ -164,7 +163,7 @@ func (c *Collector) sweepAll() {
 		}
 		c.compactNurseryHandles()
 	}
-	if runtime.GOARCH == "amd64" {
+	if nativeCollectorFastPaths {
 		c.prepareMajorBlocks()
 	}
 }
@@ -174,7 +173,7 @@ func (c *Collector) sweepAll() {
 // tenured every marked object transactionally.
 
 func (c *Collector) finishMinorEvacuation(liveCount uint64) {
-	if runtime.GOARCH == "amd64" && !c.cfg.PoisonFreed && liveCount <= uint64(len(c.nurseryHandles))/8 {
+	if nativeCollectorFastPaths && !c.cfg.PoisonFreed && liveCount <= uint64(len(c.nurseryHandles))/8 {
 		c.finishSparseMinorEvacuation()
 		return
 	}
@@ -192,7 +191,7 @@ func (c *Collector) finishMinorEvacuation(liveCount uint64) {
 			continue
 		}
 		e := &c.handles[h]
-		if runtime.GOARCH == "amd64" && e.space == spaceNursery && !c.cfg.PoisonFreed && e.cardSlot == 0 {
+		if nativeCollectorFastPaths && e.space == spaceNursery && !c.cfg.PoisonFreed && e.cardSlot == 0 {
 			// Nursery payload has no individual allocator ownership to release.
 			// The space byte invalidates the identity. Both native and Go reuse
 			// overwrite the complete entry before publishing it again; leave the
@@ -206,7 +205,7 @@ func (c *Collector) finishMinorEvacuation(liveCount uint64) {
 	}
 	// Discarded uint32 identities retain no Go objects, and later appends
 	// overwrite this tail. Avoid clearing it on the measured AMD64 path.
-	if runtime.GOARCH != "amd64" {
+	if !nativeCollectorFastPaths {
 		clear(c.nurseryHandles[len(out):])
 	}
 	c.nurseryHandles = out
@@ -270,7 +269,7 @@ func (c *Collector) finishSparseMinorEvacuation() {
 // common card-free nursery case can recycle identities without repeating
 // liveness and generation tests for every object.
 func (c *Collector) finishDeadNurseryEvacuation() bool {
-	if runtime.GOARCH != "amd64" || c.cfg.PoisonFreed {
+	if !nativeCollectorFastPaths || c.cfg.PoisonFreed {
 		return false
 	}
 	nursery := c.nurseryHandles
@@ -516,7 +515,7 @@ func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8
 	// every young handle survived. On the measured pure-survivor path, the last
 	// plan represents the most recent allocation run; limit this AMD64 path to
 	// its measured small-object case. Sorted promotion plans may reject the path.
-	dense := runtime.GOARCH == "amd64" && len(plans) != 0 && len(plans) == len(c.nurseryHandles) &&
+	dense := nativeCollectorFastPaths && len(plans) != 0 && len(plans) == len(c.nurseryHandles) &&
 		c.handles[plans[len(plans)-1].handle].size <= throughputClassSizes[0]
 	var young []uint32
 	if dense {
@@ -781,7 +780,7 @@ func (c *Collector) promoteHandle(h uint32) error {
 func (c *Collector) promoteHandleTo(h uint32, oldEntry handleEntry) {
 	// Native nursery objects may not be indexed yet. Cover a survivor before
 	// promotion removes it from the dense nursery ledger used by the next major.
-	if runtime.GOARCH == "amd64" && c.majorYoungDirty {
+	if nativeCollectorFastPaths && c.majorYoungDirty {
 		c.noteMajorHandle(h)
 	}
 	e := &c.handles[h]

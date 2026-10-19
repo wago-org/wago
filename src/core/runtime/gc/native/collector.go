@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"runtime"
+	"strings"
 )
 
 // Profile selects a supported allocator/runtime preset.
@@ -173,7 +174,7 @@ type Collector struct {
 const defaultNursery = 64 << 10
 const defaultLarge = 32 << 10
 
-var denseNurseryPregrowEnabled = runtime.GOARCH == "amd64" && os.Getenv("WAGO_AMD64_NO_DENSE_NURSERY_PREGROW") != "1"
+var denseNurseryPregrowEnabled = nativeCollectorFastPaths && os.Getenv("WAGO_"+strings.ToUpper(runtime.GOARCH)+"_NO_DENSE_NURSERY_PREGROW") != "1"
 
 var errCollectorClosed = errors.New("gc: collector closed")
 
@@ -181,7 +182,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err := ValidateNativeABI(); err != nil {
 		return nil, err
 	}
-	autoNursery := runtime.GOARCH == "amd64" && config.Profile == ProfileThroughput &&
+	autoNursery := nativeCollectorFastPaths && config.Profile == ProfileThroughput &&
 		config.NurseryBytes == 0 && config.SurvivorBytes == 0 && config.StressNurseryBytes == 0 &&
 		config.ThroughputHeapBytes == 0 && config.LargeObjectBytes == 0 && config.MinorPauseTargetMicros == 0 &&
 		!config.DisableCollection && !config.DisableMovingNursery && !config.CollectEveryAlloc && !config.ForceMajorEveryMinor

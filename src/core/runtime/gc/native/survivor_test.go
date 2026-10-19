@@ -1,7 +1,6 @@
 package gc
 
 import (
-	"runtime"
 	"testing"
 )
 
@@ -322,7 +321,7 @@ func TestThroughputFullCollectionHandlesActiveSurvivor(t *testing.T) {
 }
 
 func TestDenseMinorEvacuationFinishesDuringCommit(t *testing.T) {
-	if runtime.GOARCH != "amd64" {
+	if !nativeCollectorFastPaths {
 		t.Skip("dense small-object evacuation is AMD64-specific")
 	}
 	c := newTestCollector(t, Config{NurseryBytes: 4096, SurvivorBytes: 4096})
@@ -405,7 +404,7 @@ func TestMinorMarkClearRepairsLazyMarksAndFullCollectionState(t *testing.T) {
 }
 
 func TestDeadNurseryEvacuationRecyclesNurseryAndLargeObjects(t *testing.T) {
-	if runtime.GOARCH != "amd64" {
+	if !nativeCollectorFastPaths {
 		t.Skip("dead nursery evacuation is AMD64-specific")
 	}
 	c := newTestCollector(t, Config{NurseryBytes: 4096, SurvivorBytes: 2048, LargeObjectBytes: 64})

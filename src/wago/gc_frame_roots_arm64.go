@@ -144,7 +144,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string, ana
 			return reject("function %d contains an unsupported native call or frame shape", function)
 		}
 		var liveMasks gcFrameLiveMasks
-		plan.Conservative = arm64BodyUsesEH(m.Code[function].BodyBytes, &classifier) || gcFramePreferConservativeMasks(len(plan.Locals), len(m.Code[function].BodyBytes))
+		plan.Conservative = arm64BodyUsesEH(m.Code[function].BodyBytes, &classifier) || len(plan.Locals) == 0
 		if plan.Conservative {
 			liveMasks, err = arm64GCFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.Locals), &classifier)
 		} else {

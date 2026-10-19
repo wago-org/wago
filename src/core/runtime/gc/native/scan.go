@@ -2,7 +2,6 @@ package gc
 
 import (
 	"encoding/binary"
-	"runtime"
 )
 
 // objectScanCursor is the next descriptor entry or array element to examine.
@@ -206,7 +205,7 @@ func (c *Collector) scanObjectRefs(h uint32, visit func(Ref)) {
 	hdr := c.header(r)
 	b := c.bytes(r)
 	if d.Kind == KindStruct {
-		if runtime.GOARCH == "amd64" && d.firstRef != 0 {
+		if nativeCollectorFastPaths && d.firstRef != 0 {
 			for index := uint32(d.firstRef); index != 0; {
 				field := d.Fields[index-1]
 				visit(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+field.Offset:])))

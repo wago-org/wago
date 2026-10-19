@@ -5,12 +5,11 @@ package gc
 import (
 	"errors"
 	"fmt"
-	"runtime"
 	"testing"
 )
 
 func TestNurseryGrowthWaitsForSuccessfulPromotion(t *testing.T) {
-	if runtime.GOARCH != "amd64" {
+	if !nativeCollectorFastPaths {
 		t.Skip("automatic nursery sizing is measured on AMD64")
 	}
 	for _, point := range []failurePoint{failPromotionPlan, failPromotionDestination, failPromotionCommit} {

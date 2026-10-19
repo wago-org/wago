@@ -2,7 +2,6 @@ package gc
 
 import (
 	"fmt"
-	"runtime"
 )
 
 type TypeID uint32
@@ -244,7 +243,7 @@ func addChecked(v, n uint32) (uint32, error) {
 // large structs retain the linear scanner. This cache is not part of the ABI.
 func (d *TypeDesc) PrepareScanPlan() {
 	d.firstRef = 0
-	if runtime.GOARCH != "amd64" || d.Kind != KindStruct || !d.HasRefs || len(d.Fields) < 8 || len(d.Fields) > 65535 {
+	if !nativeCollectorFastPaths || d.Kind != KindStruct || !d.HasRefs || len(d.Fields) < 8 || len(d.Fields) > 65535 {
 		return
 	}
 	count, previous := 0, -1

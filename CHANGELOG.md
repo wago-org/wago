@@ -8,6 +8,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Share sparse scans, occupied-block major collection, survivor-aware nursery
+  policies, zero-live recycling, and bounded native handle batches across
+  AMD64 and ARM64. Use exact local roots on both backends outside EH paths.
+
 - Unify ARM64 and AMD64 GC helper dispatch without overlapping helper IDs;
   cached native GC artifacts require recompilation for ABI version 9.
 

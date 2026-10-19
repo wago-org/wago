@@ -2,7 +2,6 @@ package gc
 
 import (
 	"encoding/binary"
-	"runtime"
 )
 
 // scanObjectMark uses a direct marking call for each reference.
@@ -17,7 +16,7 @@ func (c *Collector) scanObjectMark(h uint32) {
 	hdr := c.header(r)
 	b := c.bytes(r)
 	if d.Kind == KindStruct {
-		if runtime.GOARCH == "amd64" && d.firstRef != 0 {
+		if nativeCollectorFastPaths && d.firstRef != 0 {
 			for index := uint32(d.firstRef); index != 0; {
 				field := d.Fields[index-1]
 				c.markRef(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+field.Offset:])))
@@ -50,7 +49,7 @@ func (c *Collector) scanObjectNursery(h uint32) {
 	hdr := c.header(r)
 	b := c.bytes(r)
 	if d.Kind == KindStruct {
-		if runtime.GOARCH == "amd64" && d.firstRef != 0 {
+		if nativeCollectorFastPaths && d.firstRef != 0 {
 			for index := uint32(d.firstRef); index != 0; {
 				field := d.Fields[index-1]
 				c.markNurseryRef(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+field.Offset:])))

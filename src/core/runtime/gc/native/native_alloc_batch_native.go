@@ -1,11 +1,17 @@
+//go:build amd64 || arm64
+
 package gc
 
-import "os"
+import (
+	"os"
+	"runtime"
+	"strings"
+)
 
 const nativeStructHandleBatch = 512
 
 var nativeStructHandleBatchSize = func() int {
-	switch os.Getenv("WAGO_AMD64_GC_STRUCT_BATCH") {
+	switch os.Getenv("WAGO_" + strings.ToUpper(runtime.GOARCH) + "_GC_STRUCT_BATCH") {
 	case "32":
 		return 32
 	case "64":

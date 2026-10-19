@@ -4,7 +4,6 @@ package wago
 
 import (
 	"reflect"
-	"runtime"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -137,13 +136,8 @@ func TestGCFrameRootPlanSmallLocalPolicy(t *testing.T) {
 	}
 
 	narrow := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit), true, nil, nil).Function(0)
-	if runtime.GOARCH == "amd64" {
-		if narrow == nil || narrow.Conservative || len(narrow.Locals) != 0 || narrow.AllocationMaskCount() != 1 {
-			t.Fatalf("small AMD64 root plan = %+v, want exact compaction of dead locals", narrow)
-		}
-	} else if narrow == nil || !narrow.Conservative || len(narrow.Locals) != gcFrameConservativeLocalLimit ||
-		narrow.AllocationMaskCount() != 1 || !narrow.LocalLiveAt(0, gcFrameConservativeLocalLimit-1) {
-		t.Fatalf("narrow root plan = %+v, want %d conservative roots", narrow, gcFrameConservativeLocalLimit)
+	if narrow == nil || narrow.Conservative || len(narrow.Locals) != 0 || narrow.AllocationMaskCount() != 1 {
+		t.Fatalf("small native root plan = %+v, want exact compaction of dead locals", narrow)
 	}
 
 	wide := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit+1), true, nil, nil).Function(0)

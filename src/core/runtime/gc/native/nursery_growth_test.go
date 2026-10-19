@@ -2,7 +2,6 @@ package gc
 
 import (
 	"fmt"
-	"runtime"
 	"testing"
 )
 
@@ -15,7 +14,7 @@ func TestDefaultNurseryGrowsForRollingLiveGraph(t *testing.T) {
 }
 
 func testDefaultNurseryRollingGraph(t *testing.T, replaceRoot bool) {
-	if runtime.GOARCH != "amd64" {
+	if !nativeCollectorFastPaths {
 		t.Skip("automatic nursery sizing is measured on AMD64")
 	}
 	values, err := NewArrayDesc(0, StorageI32)
@@ -80,7 +79,7 @@ func testDefaultNurseryRollingGraph(t *testing.T, replaceRoot bool) {
 }
 
 func TestNurseryGrowthClearsOldPressureAfterQuietPeriod(t *testing.T) {
-	if runtime.GOARCH != "amd64" {
+	if !nativeCollectorFastPaths {
 		t.Skip("automatic nursery sizing is measured on AMD64")
 	}
 	desc, err := NewArrayDesc(0, StorageI32)

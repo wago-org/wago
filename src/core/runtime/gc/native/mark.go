@@ -1,7 +1,5 @@
 package gc
 
-import "runtime"
-
 func (c *Collector) clearMarks() {
 	if len(c.mark) < len(c.handles) {
 		c.mark = make([]bool, len(c.handles))
@@ -141,7 +139,7 @@ func (c *Collector) drainNurseryMarkStack() uint64 {
 		scanned++
 		// The mark stack contains validated live handles. Scalar payloads carry
 		// this flag from construction, so they need no descriptor or ref walk.
-		if runtime.GOARCH == "amd64" && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
+		if nativeCollectorFastPaths && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
 			continue
 		}
 		c.scanNurseryObject(h)
@@ -170,7 +168,7 @@ func (c *Collector) drainNurseryMarkStackForPromotion() uint64 {
 		// overwrites the complete entry before reading it, so publish only the
 		// handle into this already-zero scratch slot.
 		c.promotionScratch[plan].handle = h
-		if runtime.GOARCH == "amd64" && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
+		if nativeCollectorFastPaths && c.header(makeObjRef(h)).Flags&FlagPointerFree != 0 {
 			continue
 		}
 		c.scanNurseryObject(h)
@@ -213,7 +211,7 @@ func (c *Collector) markRef(r Ref) {
 	c.markStack = append(c.markStack, h)
 }
 func (c *Collector) scanObject(h uint32) {
-	if runtime.GOARCH == "amd64" {
+	if nativeCollectorFastPaths {
 		c.scanObjectMark(h)
 		return
 	}
@@ -221,7 +219,7 @@ func (c *Collector) scanObject(h uint32) {
 }
 
 func (c *Collector) scanNurseryObject(h uint32) {
-	if runtime.GOARCH == "amd64" {
+	if nativeCollectorFastPaths {
 		c.scanObjectNursery(h)
 		return
 	}
