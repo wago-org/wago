@@ -20,17 +20,19 @@ var teeSlotPredicateEnabled = os.Getenv("WAGO_AMD64_TEE_SLOT_PREDICATE") != "0"
 // Frontend.cpp parseCodeSection opcode switch. Phase 0 covers the integer const/
 // local/ALU subset needed to prove the pipeline end-to-end.
 func (f *fn) body(code []byte) error {
-	if f.gcI31Reduction(code) {
-		return f.emitGCI31Reduction()
-	}
-	if typ, ok := f.gcStructReduction(code); ok {
-		return f.emitGCStructReduction(typ)
-	}
-	if typ, length, ok := f.gcArrayReduction(code); ok {
-		return f.emitGCArrayReduction(typ, length)
-	}
-	if typ, length, ok := f.gcArrayFillReduction(code); ok {
-		return f.emitGCArrayReduction(typ, length)
+	if gcInductionReductionsEnabled {
+		if f.gcI31Reduction(code) {
+			return f.emitGCI31Reduction()
+		}
+		if typ, ok := f.gcStructReduction(code); ok {
+			return f.emitGCStructReduction(typ)
+		}
+		if typ, length, ok := f.gcArrayReduction(code); ok {
+			return f.emitGCArrayReduction(typ, length)
+		}
+		if typ, length, ok := f.gcArrayFillReduction(code); ok {
+			return f.emitGCArrayReduction(typ, length)
+		}
 	}
 	r := wasm.ReaderFrom(code)
 	return f.bodyLoop(&r, 0)

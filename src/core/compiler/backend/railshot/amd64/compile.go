@@ -2085,16 +2085,16 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				directPrepared = markDirectPrepared(directPrepared, n, i)
 			}
 
-			if sc.fnState.gcDeadBatchLayout != 0 {
+			if gcInductionReductionsEnabled && sc.fnState.gcDeadBatchLayout != 0 {
 				if gcDeadBatchLayouts == nil {
 					gcDeadBatchLayouts = make([]uint64, n)
 				}
 				gcDeadBatchLayouts[i] = sc.fnState.gcDeadBatchLayout
 			}
-			if sc.fnState.gcI31Induction {
+			if gcInductionReductionsEnabled && sc.fnState.gcI31Induction {
 				gcI31Inductions = markDirectPrepared(gcI31Inductions, n, i)
 			}
-			if sc.fnState.gcReducedBounded {
+			if gcInductionReductionsEnabled && sc.fnState.gcReducedBounded {
 				gcReducedBounded = markDirectPrepared(gcReducedBounded, n, i)
 			}
 			if sc.directPreparedBounded {
@@ -2178,7 +2178,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if err := patchModuleLiteralRelocs(code, entry, literalWords, literalOffsets, literalBase, moduleLiterals); err != nil {
 			return nil, err
 		}
-		directPreparedBounded = mergeGCReducedBounds(resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTables), gcReducedBounded)
+		directPreparedBounded = resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTables)
+		if gcInductionReductionsEnabled {
+			directPreparedBounded = mergeGCReducedBounds(directPreparedBounded, gcReducedBounded)
+		}
 		directPrepared = retainResolvedPreparedCallers(directPrepared, directPreparedBounded, allHints)
 		if opts.DeferCodeMapping {
 			capacity := len(codeBuffer.Mapping())
@@ -2354,19 +2357,19 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				boolFlag(ws.scratch.directPrepared, layoutDirectPrepared) | boolFlag(ws.scratch.directPreparedBounded, layoutDirectPreparedBounded)
 			ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
 
-			if ws.scratch.fnState.gcI31Induction {
+			if gcInductionReductionsEnabled && ws.scratch.fnState.gcI31Induction {
 				if ws.gcI31Inductions == nil {
 					ws.gcI31Inductions = make(map[int]bool)
 				}
 				ws.gcI31Inductions[i] = true
 			}
-			if layout := ws.scratch.fnState.gcDeadBatchLayout; layout != 0 {
+			if layout := ws.scratch.fnState.gcDeadBatchLayout; gcInductionReductionsEnabled && layout != 0 {
 				if ws.gcDeadBatchLayouts == nil {
 					ws.gcDeadBatchLayouts = make(map[int]uint64)
 				}
 				ws.gcDeadBatchLayouts[i] = layout
 			}
-			result := funcResult{gcReducedBounded: ws.scratch.fnState.gcReducedBounded, worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, internalOff: compactInternalOff, bodyBytes: bodyBytes, layoutFlags: flags, literalStart: compactLiteralStart, literalEnd: compactLiteralEnd}
+			result := funcResult{gcReducedBounded: gcInductionReductionsEnabled && ws.scratch.fnState.gcReducedBounded, worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, internalOff: compactInternalOff, bodyBytes: bodyBytes, layoutFlags: flags, literalStart: compactLiteralStart, literalEnd: compactLiteralEnd}
 			if policy.CompactNative {
 				if policy.EnabledOption(optSharedAdapters) {
 					info := ws.scratch.fnState.sharedAdapterInfo()
@@ -2441,16 +2444,16 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			directPrepared = markDirectPrepared(directPrepared, n, i)
 		}
 
-		if layout := states[r.worker].gcDeadBatchLayouts[i]; layout != 0 {
+		if layout := states[r.worker].gcDeadBatchLayouts[i]; gcInductionReductionsEnabled && layout != 0 {
 			if gcDeadBatchLayouts == nil {
 				gcDeadBatchLayouts = make([]uint64, n)
 			}
 			gcDeadBatchLayouts[i] = layout
 		}
-		if states[r.worker].gcI31Inductions[i] {
+		if gcInductionReductionsEnabled && states[r.worker].gcI31Inductions[i] {
 			gcI31Inductions = markDirectPrepared(gcI31Inductions, n, i)
 		}
-		if r.gcReducedBounded {
+		if gcInductionReductionsEnabled && r.gcReducedBounded {
 			gcReducedBounded = markDirectPrepared(gcReducedBounded, n, i)
 		}
 		if r.layoutFlags&layoutDirectPreparedBounded != 0 {
@@ -2524,7 +2527,10 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if err := patchModuleLiteralRelocs(code, entry, literalWords, literalOffsets, literalBase, moduleLiterals); err != nil {
 		return nil, err
 	}
-	directPreparedBounded = mergeGCReducedBounds(resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTables), gcReducedBounded)
+	directPreparedBounded = resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTables)
+	if gcInductionReductionsEnabled {
+		directPreparedBounded = mergeGCReducedBounds(directPreparedBounded, gcReducedBounded)
+	}
 	directPrepared = retainResolvedPreparedCallers(directPrepared, directPreparedBounded, allHints)
 	finalizeModuleNativeSizeAMD64(ms, len(code), functionsEnd, len(literalCode), 0)
 	if profileEnabled && opts.Profile {

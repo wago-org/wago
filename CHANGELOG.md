@@ -8,8 +8,15 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
-- Retain per-backend live-object refill sizes while sharing GC algorithms,
-  avoiding ARM64 constructor regressions from unused large handle batches.
+- Prepare native reservations only when the active backend has a matching
+  consumer, avoiding unused ARM64 live-struct and large-array batches.
+
+- Preserve invocation cancellation between reduced GC allocation batches and
+  slow per-object allocations.
+
+- Keep ordinary complete-loop and constructor/fill GC lowering, plus checked
+  helper-based dynamic array copies, in the lean TinyGo runtime to meet its
+  existing size budget.
 
 - Prepare one checked native identity for proven-dead GC batches on both
   backends, avoiding unused live-object handle refills at collection.
