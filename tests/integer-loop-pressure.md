@@ -76,3 +76,39 @@ comparison measures repeatability; unchanged source is not evidence of timing
 equivalence. These synthetic stress profiles do not establish application wins.
 Native ARM64, other value types and independent transport proofs remain separate
 qualification work.
+
+## Native Windows qualification record
+
+The original Windows AMD64 checked-suite failure at
+`963065314d40338d88c1a48796694eec4c308ac5` remains under the historical
+correctness hold. The [failed job](https://github.com/wago-org/wago/actions/runs/37921241870/job/113789755423)
+used Go 1.27.1 on Windows Server 2025. The runtime reported 496 contiguous
+16-byte span slots before `found pointer to free object`; detection occurred
+while `TestMemoryCopyPatchScratchDoesNotAllocate` entered `AllocsPerRun`.
+This signature is consistent with [Go issue #81238](https://github.com/golang/go/issues/81238),
+which reports corruption after recovered hardware faults on affected Windows
+hosts. The original job did not record its CPU or a memory-write witness, so
+the signature does not prove that cause.
+
+The PR head `904f97db0ac80a58ff82d9dcebff6a0ed461ea6e` already includes
+[merged #949](https://github.com/wago-org/wago/pull/949), commit
+`300a2ca9c0e1b88a19d03b4cceeaede7031e8f22`. That change replaces three
+fault-based recovery fixtures with Go bounds panics and checks their cause.
+The two files below are in `src/core/compiler/backend/railshot/amd64/`.
+Their Git blob identities match exactly across the stated revisions:
+
+| File | Original failed head and #949 parent `8097344a` | #949 merge, PR head `904f97db`, and main `1a6d91a8` |
+| --- | --- | --- |
+| `internal_error_test.go` | `ec0b86b0b9fb068cffc4eaa0f289adacff87548b` | `2ea2d67db11cf7927f5a52a05f1490f1bff4e316` |
+| `source_context_enabled_test.go` | `517e3a0a9d4ba926265499f718a29031725e4941` | `a5ece2d03ab16db2da1f644e1b3cf5758b83d4ba` |
+
+The latest [Windows AMD64 job for PR head `904f97db`](https://github.com/wago-org/wago/actions/runs/38457446922/job/115522368426)
+passed the checked compiler, ordinary, diagnostic, profile, and guard-page
+tests with Go 1.27.1. It tested merge
+`ba08b3381e1318d12a18902ae3a4d536a242b20f`, with main parent
+`069a26ea07bdd312b672d4fc56b989aa55e89e98`; it does not qualify a merge
+with newer main. The #949 diagnostic record reports no AMX runner, so
+qualification on an affected AMX host remains absent. These source and CI
+facts support the fixture repair already present. They do not establish the
+original corruption event or clear its historical hold. The #947 mapping
+cleanup and passing retries also do not prove its cause or correction.
