@@ -1,7 +1,8 @@
 # Integer values across a conditional join
 
-`src/core/compiler/backend/railshot/amd64/integer_join_pressure_test.go`
-adds bounded AMD64 regression profiles for the structured-control part of
+The `integer_join_pressure_test.go` files in
+`src/core/compiler/backend/railshot/{amd64,arm64}` add bounded Linux AMD64 and
+ARM64 regression profiles for the structured-control part of
 [#810](https://github.com/wago-org/wago/issues/810). It does not change the
 compiler. Current main already produces correct results for these profiles.
 
@@ -25,34 +26,46 @@ guards, inputs, markers and counts reject for their expected reason. A real
 wrong-arm invocation and an omitted invocation must also reject.
 
 The compile configuration uses one worker, explicit memory bounds, and the
-baseline AMD64 feature mask (0). Code mapping is deferred, then the test maps
-and compares the exact native bytes before calling the entry adapter through
-`Engine.CallPrepared`. The adapter calls the internal function; the generated
-Wasm body itself is call-free. This does not qualify other public API paths.
-Ordinary numerical tests run without compiler diagnostics. With
-`wago_codegenstats`, the test reports selected shared/fallback path, code/frame
-size, and spill/reload counts, and requires spill/reload activity at 24 live
-values. Whole-function counters do not locate individual spill lifetimes.
+baseline AMD64 feature mask (0). ARM64 uses its baseline scalar instructions.
+Code mapping is deferred, then the test maps and compares the exact native bytes
+before calling `Engine.CallPrepared`. AMD64 uses an entry adapter; ARM64 can
+enter the body directly. The generated Wasm body itself is call-free. This does
+not qualify other public API paths. Ordinary numerical tests run without
+compiler diagnostics. With `wago_codegenstats`, the test reports selected
+shared/fallback path, code/frame size, and spill/reload counts, and requires
+pressure spills at 24 live values. AMD64 also requires reload activity; ARM64
+requires at least 24 spill slots because its final-result loads do not increment
+the reload counter. Whole-function counters do not locate individual spill
+lifetimes.
 
-A separate GNU objdump gate checks every shape's native body. Unique markers
-bound the relevant conditional and alternate arm. It requires exactly N divide
-and N variable shift/rotate instructions before that conditional, with none
-later. The conditional reaches a decoded instruction at or before the alternate arm
-marker; the arm exit skips that marker and reaches a decoded instruction at or before
-the end marker. A numerically valid straight-line substitute rejects because
-it lacks the conditional shape. Decoder-output controls check missing, extra,
-late or out-of-range arithmetic, incorrect/interior targets, missing exits,
-calls and duplicate markers. This is a bounded placement/shape observation,
-not a complete control-flow, original-source, or register-transport proof.
-GNU objdump absence produces an explicit skip for this gate.
+A separate native-code gate checks every shape's native body. AMD64 uses GNU
+objdump. ARM64 reads aligned little-endian A64 words directly: matching
+MOVZ/MOVK pairs identify markers, signed PC-relative B/CBZ/CBNZ/B.cond offsets
+identify branch targets, and SDIV/UDIV plus LSLV/LSRV/ASRV/RORV identify the
+arithmetic. The ARM64 gate needs no external tool. Unique markers bound the
+relevant conditional and alternate arm. It requires exactly N divide and N
+variable shift/rotate instructions before that conditional, with none later. The
+conditional reaches an instruction word at or before the alternate arm marker;
+the arm exit skips that marker and reaches an instruction word at or before
+the end marker. A numerically valid straight-line substitute rejects because it
+lacks the conditional shape. Decoder-output controls check missing, extra, late
+or out-of-range arithmetic, incorrect/interior targets, missing exits, calls and
+duplicate markers. This is a bounded placement/shape observation, not a complete
+control-flow, original-source, or register-transport proof. GNU objdump absence
+produces an explicit skip for the AMD64 gate. ARM64 controls also check signed
+backward branch offsets, invalid instruction ranges, mismatched marker
+registers/widths/halfwords, and both direct and indirect calls. All A64 branch
+targets are four-byte aligned by their instruction encoding.
 
-Run from the repository root:
+Run from the repository root on a native Linux host, with `backend` set to
+`amd64` or `arm64` for that host:
 
 ```sh
-go test ./src/core/compiler/backend/railshot/amd64 -run 'Test(IntegerLiveAcrossJoin|JoinPressure)' -count=1
-go test -tags=wago_regalloccheck ./src/core/compiler/backend/railshot/amd64 -run 'Test(IntegerLiveAcrossJoin|JoinPressure)' -count=1
-go test -tags=wago_codegenstats ./src/core/compiler/backend/railshot/amd64 -run 'Test(IntegerLiveAcrossJoin|JoinPressure)' -count=1 -v
-go test ./src/core/compiler/backend/railshot/amd64 -run '^$' -bench '^BenchmarkIntegerLiveAcrossJoin$' -benchtime=100ms -benchmem
+backend=arm64 # use amd64 on an AMD64 host
+go test ./src/core/compiler/backend/railshot/"$backend" -run 'Test(IntegerLiveAcrossJoin|JoinPressure)' -count=1
+go test -tags=wago_regalloccheck ./src/core/compiler/backend/railshot/"$backend" -run 'Test(IntegerLiveAcrossJoin|JoinPressure)' -count=1
+go test -tags=wago_codegenstats ./src/core/compiler/backend/railshot/"$backend" -run 'Test(IntegerLiveAcrossJoin|JoinPressure)' -count=1 -v
+go test ./src/core/compiler/backend/railshot/"$backend" -run '^$' -bench '^BenchmarkIntegerLiveAcrossJoin$' -benchtime=100ms -benchmem
 ```
 
 The benchmark uses schedule 1 at low/high pressure, with separate compile rows
@@ -65,22 +78,27 @@ subbenchmark cleanup. Allocation numbers are Go allocation traffic, not native
 mapping size or retained memory. `native-B` is generated guest code size, not
 release binary size.
 
-For comparisons, transplant the exact test file onto a pinned main checkout and
-use the same compiler, inputs, CPU and build tags on both sides. Alternate short
-baseline/candidate pairs and report medians, full ranges and variance, including
-outliers. Run ordinary timing separately from diagnostic and checked builds.
-This tests-only addition supplies a repeatability control, not an optimization
-or evidence that unchanged sources guarantee identical performance. Synthetic
-pressure results do not establish application speedups.
+For comparisons, transplant the exact architecture-specific test file onto a
+pinned main checkout and use the same compiler, inputs, CPU and build tags on
+both sides. Alternate short baseline/candidate pairs and report medians, full
+ranges and variance, including outliers. Run ordinary timing separately from
+diagnostic and checked builds. This tests-only addition supplies a repeatability
+control, not an optimization or evidence that unchanged sources guarantee
+identical performance. Synthetic pressure results do not establish application
+speedups.
 
-Native ARM64, FP/SIMD/reference profiles, loops, parallel-copy algorithm
-qualification and independent source/transport verification remain separate.
-The broader issue stays open.
+The named Linux ARM64 CI step runs all three control builds and each benchmark
+row once (`-benchtime=1x`); this checks the harness, not performance.
 
+Native ARM64 qualification must run on that runner; cross-builds
+and QEMU execution do not establish native timing or native runtime
+qualification. FP/SIMD/reference profiles, loops, parallel-copy algorithm
+qualification and independent source/transport verification remain separate. The
+broader issue stays open.
 
-## Native comparison with current main (2026-10-13)
+## Historical native comparison (2026-10-13)
 
-Fresh main is `069a26ea07bdd312b672d4fc56b989aa55e89e98`; measured PR
+The main revision for this historical record is `069a26ea07bdd312b672d4fc56b989aa55e89e98`; measured PR
 head is `1bf37fe458728f2053dd3b677c38572beeacb4c4`. The earlier merge
 already includes this main revision. Their production sources match; the PR
 adds the test and documentation. The baseline uses that exact main with only
