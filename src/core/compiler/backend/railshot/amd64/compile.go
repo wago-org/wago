@@ -1212,7 +1212,6 @@ type workerState struct {
 // identify its owned bytes after the worker pool joins. relocStart/relocEnd name
 // the function's records in its worker's append-only relocation arena.
 type funcResult struct {
-	gcReducedBounded bool
 	worker           uint32
 	start            uint32
 	end              uint32
@@ -1226,6 +1225,7 @@ type funcResult struct {
 	adapterEnd       uint32
 	trapBody         sharedTrapBodyInfoAMD64
 	layoutFlags      uint8
+	gcReducedBounded bool // uses existing tail padding in the compact result record
 }
 
 func compactFuncResultRange(start, size int) (uint32, uint32, bool) {
