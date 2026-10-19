@@ -9,6 +9,12 @@ import "errors"
 // The caller must prove that the removed initializers and consumers have no
 // effects or traps, and that the root set stays unchanged throughout the batch.
 func (c *Collector) ReserveDeadArrayAllocations(typeID TypeID, length, count uint32, roots RootSet) error {
+	return c.ReserveDeadArrayAllocationsWithPoll(typeID, length, count, roots, nil)
+}
+
+// ReserveDeadArrayAllocationsWithPoll polls before each nursery batch and
+// slow allocation. The caller may abort from poll by unwinding its invocation.
+func (c *Collector) ReserveDeadArrayAllocationsWithPoll(typeID TypeID, length, count uint32, roots RootSet, poll func()) error {
 	d, err := c.desc(typeID)
 	if err != nil {
 		return err
@@ -30,6 +36,9 @@ func (c *Collector) ReserveDeadArrayAllocations(typeID TypeID, length, count uin
 	alignment := max(d.Align, uint32(8))
 	stride := align(size, alignment)
 	for count != 0 {
+		if poll != nil {
+			poll()
+		}
 		if !failureInjectionEnabled && c.nativeAllocationAllowed(size) && !c.shouldAllocateLarge(size) {
 			start := align(c.nurseryBump, alignment)
 			limit := c.edenBytes()

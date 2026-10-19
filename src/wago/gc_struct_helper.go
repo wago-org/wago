@@ -122,7 +122,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcHelperFailuref("gc array batch reservation arity = %d/%d, want 2/0", len(args), len(results)))
 		}
 		typeID, length, count := uint32(args[1]>>32), uint32(args[1]), uint32(args[0])
-		if err := in.gc.ReserveDeadArrayAllocations(in.requireGCDomainType(typeID), length, count, frameRoots); err != nil {
+		if err := in.gc.ReserveDeadArrayAllocationsWithPoll(in.requireGCDomainType(typeID), length, count, frameRoots, in.pollGCBatchInterrupt); err != nil {
 			panic(gcHelperFailure(err))
 		}
 		if gc.NativeDeadBatchSupported {
@@ -132,7 +132,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if len(args) != 2 || len(results) != 0 {
 			panic(gcHelperFailuref("gc struct batch reservation arity = %d/%d, want 2/0", len(args), len(results)))
 		}
-		if err := in.gc.ReserveDeadStructAllocations(in.requireGCDomainType(uint32(args[1])), uint32(args[0]), frameRoots); err != nil {
+		if err := in.gc.ReserveDeadStructAllocationsWithPoll(in.requireGCDomainType(uint32(args[1])), uint32(args[0]), frameRoots, in.pollGCBatchInterrupt); err != nil {
 			panic(gcHelperFailure(err))
 		}
 		if gc.NativeDeadBatchSupported {
@@ -664,4 +664,12 @@ func (in *Instance) gcStructValueKnown(typeID, fieldID uint32, kind gc.StorageKi
 func (in *Instance) gcStructValue(typeID, fieldID uint32, words []uint64) gc.Value {
 	kind := in.gcStructFieldKind(typeID, fieldID)
 	return in.gcStructValueKnown(typeID, fieldID, kind, in.c.Types[typeID].Fields[fieldID].Storage.Value, words)
+}
+
+// Reduced loops remain in Go across collecting boundaries, so native interrupt
+// delivery must be observed here before charging the next allocation batch.
+func (in *Instance) pollGCBatchInterrupt() {
+	if coreruntime.PreparedIntTrapCode(in.trap) == coreruntime.TrapInterrupted {
+		panic(gcHelperTrap(coreruntime.TrapInterrupted))
+	}
 }
