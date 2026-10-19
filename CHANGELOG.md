@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Prepare one checked native identity for proven-dead GC batches on both
+  backends, avoiding unused live-object handle refills at collection.
+
 - Port checked GC induction reductions and prepared invocation paths to AMD64,
   sharing allocation accounting and admission checks with ARM64.
 

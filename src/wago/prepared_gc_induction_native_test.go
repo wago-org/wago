@@ -3,12 +3,14 @@
 package wago
 
 import (
+	"encoding/binary"
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	rt "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
+	"unsafe"
 )
 
 func TestGCDeadInductionEntry(t *testing.T) {
@@ -346,5 +348,36 @@ func TestGCDeadInductionWithoutCachedNativeContext(t *testing.T) {
 	}
 	if cold.hostPrepared == nil {
 		t.Fatal("fallback did not prepare native context")
+	}
+}
+
+func TestGCDeadInductionPreparesOnlyOneIdentity(t *testing.T) {
+	if codeProfileEnabled || !gc.NativeDeadBatchSupported || !nativeStructAllocEnabled {
+		t.Skip("native dead batches unavailable")
+	}
+	for _, data := range [][]byte{gcStructReductionBytes(false, false), gcArrayReductionBytes(false), gcArrayFillReductionBytes(false)} {
+		c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := Instantiate(c)
+		if err != nil {
+			c.Close()
+			t.Fatal(err)
+		}
+		fn, err := in.WasmFunc("run")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = fn.Invoke(1); err != nil {
+			t.Fatal(err)
+		}
+		state := in.gc.NativeView().StructAllocState
+		got := binary.LittleEndian.Uint32(unsafe.Slice((*byte)(offHeapPtr(state+gc.NativeStructAllocCountOffset)), 4))
+		if got != 1 {
+			t.Fatalf("dead batch reserved %d identities, want one cancellation/policy witness", got)
+		}
+		in.Close()
+		c.Close()
 	}
 }

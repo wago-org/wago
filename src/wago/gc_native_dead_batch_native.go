@@ -20,7 +20,7 @@ func (in *Instance) prepareNativeDeadStructBatch(typeID, count uint32) {
 	if stride == 0 || uint64(count)*stride > uint64(gc.NativeAllocationChunkBytes) {
 		return
 	}
-	in.prepareNativeStructHandles(typeID)
+	in.prepareNativeDeadStructHandle(typeID)
 }
 
 // Dead array batches need handles but no reserved array payload chunk: the
@@ -34,5 +34,5 @@ func (in *Instance) prepareNativeDeadArrayBatch(typeID, length, count uint32) {
 	if err != nil || !d.PointerFree() || length > 64 || uint64(count)*uint64(size) > uint64(gc.NativeAllocationChunkBytes) {
 		return
 	}
-	in.gc.PrepareNativeStructAllocation(size)
+	in.gc.PrepareNativeDeadStructAllocation(size)
 }
