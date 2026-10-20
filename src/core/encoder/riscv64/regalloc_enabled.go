@@ -8,6 +8,7 @@ const regallocCheckEnabled = true
 
 type regallocState struct {
 	gpWriteObserver  func(uint32)
+	fpWriteObserver  func(uint32)
 	regallocObserver func(regalloccheck.Effect)
 }
 
@@ -23,7 +24,19 @@ func (a *Asm) ObserveGPWrites(fn func(uint32)) func(uint32) {
 	return old
 }
 
+// ObserveFPWrites is independent of GP lifetime and symbolic transfer observers.
+// Every typed FP definition reports its full physical register before emission;
+// a call with a nonzero link register conservatively reports all FP registers.
+func (a *Asm) ObserveFPWrites(fn func(uint32)) func(uint32) {
+	old := a.fpWriteObserver
+	a.fpWriteObserver = fn
+	return old
+}
+
 func (a *Asm) regallocWrite(dst Reg, call bool) {
+	if call && a.fpWriteObserver != nil {
+		a.fpWriteObserver(^uint32(0))
+	}
 	if a.gpWriteObserver == nil {
 		return
 	}
@@ -63,6 +76,9 @@ func (a *Asm) regallocDefinition(dst Reg, call bool) {
 }
 
 func (a *Asm) regallocFloatDefinition(dst FReg) {
+	if a.fpWriteObserver != nil {
+		a.fpWriteObserver(uint32(1) << dst)
+	}
 	if a.regallocObserver != nil {
 		a.regallocObserver(regalloccheck.Effect{Kind: regalloccheck.Kill,
 			Dst: regalloccheck.Register(regalloccheck.FP, uint8(dst)), Size: 8})

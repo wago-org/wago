@@ -9,6 +9,7 @@ const regallocCheckEnabled = false
 // Leading empty compatibility state preserves the ordinary Asm layout.
 type regallocState struct{}
 
+func (*Asm) ObserveFPWrites(func(uint32)) func(uint32)                             { return nil }
 func (*Asm) ObserveGPWrites(func(uint32)) func(uint32)                             { return nil }
 func (*Asm) ObserveRegalloc(func(regalloccheck.Effect)) func(regalloccheck.Effect) { return nil }
 func (*Asm) regallocDefinition(Reg, bool)                                          {}
