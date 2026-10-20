@@ -8,10 +8,24 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Allow up to 32 nested synchronous host calls under standard Go so component
+  adapter chains can cross more than four boundaries. TinyGo retains its
+  four-call limit for fixed host stacks. Size parked GC callback and root storage
+  for the outer callback plus every permitted reentry.
 - Preserve deferred load addresses derived from pinned mutable globals on
   AMD64, including Go-style exported function stack wrappers.
 
+- Preserve deferred memory-load addresses when AMD64 binary operations write
+  directly into a hinted register, fixing incorrect results in inlined C++
+  wrappers with stack-based arguments.
+
 ### Changed
+
+- Detect writes to live deferred-load address registers, cached global-cell
+  pointers, and forwarded store values in the AMD64 and ARM64 compilers when
+  `wago_regalloccheck` is enabled. Also guard inputs during address preparation
+  in the common scalar store path and during second-input preparation in `fbin`
+  and `fbinInto`.
 
 - Prepare native reservations only when the active backend has a matching
   consumer, avoiding unused ARM64 live-struct and large-array batches. Retain
@@ -63,6 +77,14 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Return from AMD64 and ARM64 atomic wait mismatches and empty notify calls
   before the Go-call argument setup. Preserve memory ordering for zero-count
   notify and keep matching dynamic waits on the synchronized helper path.
+
+
+### Added
+
+- Add Linux AMD64 and ARM64 integer conditional-join regression profiles with
+  independent result checks, native placement controls, and compile/execution
+  benchmarks.
+  ([#881](https://github.com/wago-org/wago/pull/881))
 
 ## [v0.1.0-beta.13] - 2026-10-15
 

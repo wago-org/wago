@@ -449,6 +449,10 @@ func (f *fn) fbin(memOp byte, f64 bool) {
 	}
 	s1, o1 := f.operandRegF(a)
 	f.fpinned = f.fpinned.add(s1)
+	var read regallocReadMask
+	if regallocCheckEnabled {
+		read = checkProtectRead(f, s1, true, f64)
+	}
 	s2, o2 := f.operandRegF(b)
 	// Destination: reuse an owned operand's register in place (it is being
 	// consumed), else a fresh register so a borrowed pinned local isn't clobbered.
@@ -464,6 +468,9 @@ func (f *fn) fbin(memOp byte, f64 bool) {
 		dst = f.allocFReg(0)
 	}
 	f.fpinned = f.fpinned.remove(s1)
+	if regallocCheckEnabled {
+		checkRestoreRead(f, read)
+	}
 	f.scalarBinary(memOp, dst, s1, s2, f64)
 	if o1 && dst != s1 {
 		f.releaseF(s1)
@@ -487,8 +494,15 @@ func (f *fn) fbinInto(dst Reg, memOp byte, f64 bool) {
 	}
 	s1, o1 := f.operandRegF(a)
 	f.fpinned = f.fpinned.add(s1)
+	var read regallocReadMask
+	if regallocCheckEnabled {
+		read = checkProtectRead(f, s1, true, f64)
+	}
 	s2, o2 := f.operandRegF(b)
 	f.fpinned = f.fpinned.remove(s1)
+	if regallocCheckEnabled {
+		checkRestoreRead(f, read)
+	}
 	f.scalarBinary(memOp, dst, s1, s2, f64)
 	if o1 && dst != s1 {
 		f.releaseF(s1)
@@ -508,6 +522,9 @@ func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 			f.a.FMov(dst, src, f64)
 		}
 	}
+	if regallocCheckEnabled {
+		f.checkConsumeMemRef(b)
+	}
 	f.emitFloatMemSource(dst, src, b.st, memOp, f64, useVEX)
 	f.pushFReg(dst, mtOf2(f64))
 }
@@ -517,6 +534,9 @@ func (f *fn) fbinMemRightInto(dst Reg, a, b *elem, memOp byte, f64 bool) {
 	useVEX := f.opt(optVEXFloatMem) && f.cpuHas(shared.AMD64AVX)
 	if !useVEX && dst != src {
 		f.a.FMov(dst, src, f64)
+	}
+	if regallocCheckEnabled {
+		f.checkConsumeMemRef(b)
 	}
 	f.emitFloatMemSource(dst, src, b.st, memOp, f64, useVEX)
 	if owned && dst != src {
@@ -1127,6 +1147,9 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 // helpers
 
 func (f *fn) loadFMemRef(dst Reg, e *elem) {
+	if regallocCheckEnabled {
+		f.checkConsumeMemRef(e)
+	}
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		previous := f.enterProfileNode(e)
 		defer f.switchProfileOrigin(previous)

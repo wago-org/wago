@@ -480,6 +480,17 @@ state before later emission. AMD64 legacy scratch borrowing excludes immutable
 caches while retaining save/restore for other live values. SIMD helpers use
 saved GP temporaries outside the integer-cache candidate set.
 
+On AMD64 and ARM64, the write observer also protects live deferred-load addresses.
+It uses a register mask and existing operand-node metadata, including detached
+and borrowed addresses. A load retires its address before the consuming
+instruction, so that instruction can reuse the address register as its result.
+The same observers protect cached global-cell pointers and forwarded store values
+until cache retirement. Short read guards protect the value in the common scalar
+store path during address preparation, and the first FP input in `fbin` and
+`fbinInto` during second-input preparation. These guards end before the consuming
+instruction. Known address normalization can preserve a guarded i32 input, but
+cannot truncate a guarded i64 input.
+
 The ordinary build retains no checker state or observer work. Transfer windows
 assume correct incoming values. The lifetime observers classify destinations,
 not arithmetic semantics; unknown generic effects conservatively report possible
@@ -742,7 +753,11 @@ entry/resume protocols are still required.
 invocation context, and authorized synchronous re-entry. `Caller` wraps a
 private immutable token and expires when the callback returns. All host
 functions use flat `(module, name)` registration and retain normal plugin gate
-and reservation checks.
+and reservation checks. A synchronous invocation permits up to 32 active
+`InvokeFromHost` calls under standard Go, whose host stack grows. TinyGo keeps
+a four-call limit for its smaller fixed task stack. Both builds reject deeper
+chains before allocating another native activation. Parked GC callback and root
+storage accommodates the outer callback plus every permitted reentry.
 
 ---
 

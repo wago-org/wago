@@ -702,7 +702,9 @@ type gcHostActivation struct {
 	savedControl gcHostSavedControl
 }
 
-const gcHostActivationLimit = 8
+// Include the outer callback as well as every permitted nested host reentry.
+// Preserve the existing capacity for builds with a lower reentry limit.
+const gcHostActivationLimit = max(8, maxHostReentryDepth+1)
 
 func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 	r.walk(fn, nil)

@@ -82,6 +82,9 @@ func (f *fn) tryMemoryCompareToFlags(node *elem) (Cond, bool) {
 	}
 	// Address preparation already enforced the original access's bounds. Keep
 	// that exact address and width, and consume the address owner only once.
+	if regallocCheckEnabled {
+		f.checkConsumeMemRef(left)
+	}
 	f.a.CmpImmIdx(RBX, left.st.reg, left.st.memDisp(), imm, left.st.memSize())
 	f.releaseMemRef(left.st)
 	f.consumeBlockBelow(node)
