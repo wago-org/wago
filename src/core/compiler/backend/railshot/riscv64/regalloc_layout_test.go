@@ -14,6 +14,9 @@ func TestRegallocOrdinaryTargetLayout(t *testing.T) {
 	if unsafe.Offsetof(f.regallocFnState) != 0 {
 		t.Fatal("ordinary placeholder must lead target")
 	}
+	f.a.ObserveFPWrites(func(uint32) { t.Fatal("ordinary target retained FP observer") })
+	f.a.FmvDX(enc.F0, enc.X5)
+	f.checkRestoreRead(f.checkProtectRead(uint8(enc.F0), true))
 	f.a.ObserveGPWrites(func(uint32) { t.Fatal("ordinary target retained observer") })
 	f.a.Constant64(enc.X9, 42)
 	f.checkImmutable(enc.X9)
@@ -30,7 +33,7 @@ func TestRegallocOrdinaryTargetLayout(t *testing.T) {
 		fields = append(fields, f)
 	}
 	bare := reflect.StructOf(fields)
-	if typ.Size() != bare.Size() || typ.Align() != bare.Align() || unsafe.Sizeof(regallocFnState{}) != 0 || unsafe.Sizeof(regallocGPWriteMask{}) != 0 {
+	if typ.Size() != bare.Size() || typ.Align() != bare.Align() || unsafe.Sizeof(regallocFnState{}) != 0 || unsafe.Sizeof(regallocGPWriteMask{}) != 0 || unsafe.Sizeof(regallocReadMask{}) != 0 {
 		t.Fatal("ordinary target/mask layout grew")
 	}
 	for i := 1; i < typ.NumField(); i++ {
