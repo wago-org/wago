@@ -18,9 +18,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 ### Changed
 
 - Detect writes to live deferred-load address registers, cached global-cell
-  pointers, forwarded store values, and inputs during store-address and FP binary
-  operand preparation in the AMD64 and ARM64 compilers when
-  `wago_regalloccheck` is enabled.
+  pointers, and forwarded store values in the AMD64 and ARM64 compilers when
+  `wago_regalloccheck` is enabled. Also guard inputs during address preparation
+  in the common scalar store path and during second-input preparation in `fbin`
+  and `fbinInto`.
 
 - Prepare native reservations only when the active backend has a matching
   consumer, avoiding unused ARM64 live-struct and large-array batches. Retain
