@@ -14,12 +14,7 @@ func (f *fn) emitNativeDefaultStruct(typeIndex uint32, st wasm.SubType) (bool, e
 	var params [5]wasm.ValType
 	for i, field := range st.Comp.Fields {
 		typ := field.Storage().Val()
-		if field.Storage().Packed() {
-			return false, nil
-		}
-		switch mtOf(typ) {
-		case mtI32, mtI64, mtF32, mtF64:
-		default:
+		if field.Storage().Packed() || typ.Kind() != wasm.ValNum {
 			return false, nil
 		}
 		params[i] = typ
