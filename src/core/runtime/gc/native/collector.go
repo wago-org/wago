@@ -284,13 +284,18 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 	oldCount := len(c.types)
 	combined := append(c.types, types...)
 	if err := validateTypeDescsFrom(combined, oldCount); err != nil {
+		// append may reuse the collector's backing array. Rejected fields must
+		// not remain reachable through its unused capacity.
+		clear(combined[oldCount:])
 		return err
 	}
 	requiredAlign := requiredObjectAlignment(types)
 	if requiredAlign > c.objectAlign {
+		clear(combined[oldCount:])
 		return errors.New("gc: appended type alignment exceeds collector backing alignment")
 	}
 	if c.cfg.Profile == ProfileTiny && requiredAlign > c.tiny.blockBytes {
+		clear(combined[oldCount:])
 		return errors.New("gc: appended type alignment exceeds tiny block size")
 	}
 	oldTypes, oldIntervals := c.types, c.subtypeIntervals
@@ -315,6 +320,7 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 	} else {
 		if err := c.initSubtypeIntervals(); err != nil {
 			c.types, c.subtypeIntervals = oldTypes, oldIntervals
+			clear(combined[oldCount:])
 			return err
 		}
 	}
