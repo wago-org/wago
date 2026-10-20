@@ -18,7 +18,7 @@ import (
 )
 
 func TestGCExternLocalSharedCodeCallerOwner(t *testing.T) {
-	for _, kind := range []string{"direct", "ref", "indirect", "wide"} {
+	for _, kind := range []string{"direct", "ref", "indirect", "wide", "compact"} {
 		for _, differentImage := range []bool{false, true} {
 			for _, closedProducer := range []bool{false, true} {
 				name := fmt.Sprintf("%s/differentImage=%t/closedProducer=%t", kind, differentImage, closedProducer)
@@ -31,7 +31,7 @@ func TestGCExternLocalSharedCodeCallerOwner(t *testing.T) {
 func gcExternSharedCodeCallerOwner(t *testing.T, kind string, differentImage, closedProducer bool, inspect func(a, b *Instance)) {
 	// The stack ABI exposes the caller frame below the callee wrapper. Both
 	// instances share code, so a return PC alone cannot identify its owner.
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", kind == "wide")
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", kind == "wide" || kind == "compact")
 	rt := NewRuntime(WithRuntimeConfig(cfg))
 	defer rt.Close()
 	settings := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
@@ -70,13 +70,16 @@ func gcExternSharedCodeCallerOwner(t *testing.T, kind string, differentImage, cl
 		t.Fatal(err)
 	}
 	run := []byte{1, 1, 0x6e, 0x20, 0, 0xfb, 26, 0x21, 1}
+	if kind == "compact" {
+		run = []byte{2, 1, 0x6e, 1, 0x63, 0, 0x20, 0, 0xfb, 26, 0x21, 1, 0x41, 0xc9, 0, 0xfb, 0, 0, 0x21, 2}
+	}
 	if kind == "wide" {
 		for i := 0; i < 17; i++ {
 			run = append(run, 0x41, byte(i))
 		}
 	}
 	switch kind {
-	case "direct", "wide":
+	case "direct", "wide", "compact":
 		run = append(run, 0x10, 0)
 	case "ref":
 		run = append(run, 0xd2, 0, 0x14, 2)
@@ -84,6 +87,9 @@ func gcExternSharedCodeCallerOwner(t *testing.T, kind string, differentImage, cl
 		run = append(run, 0x41, 0, 0x11, 2, 0)
 	default:
 		t.Fatalf("unknown call kind %q", kind)
+	}
+	if kind == "compact" {
+		run = append(run, 0x20, 2, 0xfb, 2, 0, 0, 0x41, 0xc9, 0, 0x47, 0x04, 0x40, 0x00, 0x0b)
 	}
 	run = append(run, 0x20, 1, 0xfb, 27, 0x0b)
 	run = append(wasmtest.ULEB(uint32(len(run))), run...)
