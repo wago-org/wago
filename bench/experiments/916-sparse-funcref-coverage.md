@@ -28,3 +28,9 @@ Recommendation: the completed static survey is ready for review. Do not enable s
 Review correction: descriptor-page coverage now includes both the first and last byte of each 40-byte descriptor. The descriptor at byte 4080 crosses a 4 KiB page boundary; a focused test fails with first-page-only counting and passes with the corrected span. The earlier span-only recheck left all eight module counts unchanged. Page-aligned placement remains an explicit estimate, with no production descriptor change.
 
 Passive-element correction: the scan now includes retained passive payloads as well as active initializers. The GC array init fixture has one simple `ref.func 0` target and touches one descriptor page; the other seven survey rows are unchanged. `TestSparseFuncRefPassiveElementCoverage` fails with active-only counting and passes with the shared active/passive target set. This correction does not change the stop result for the five larger applications.
+
+Repeat-marker correction: a table initializer can retain an expression once and
+fill later slots with `RepeatPrevious` markers. These markers have no independent
+function index and are excluded from the simple-target count. A focused regression
+checks that the expression and its repeat marker do not invent a function-zero
+target. This changes no production representation or materialization path.

@@ -132,7 +132,7 @@ func simpleElemFuncRefTargets(c *Compiled) (refs int, referenced []bool) {
 				continue
 			}
 			for _, value := range segment.Values {
-				if value.Null || value.HasGlobal || value.Expr != nil || int(value.FuncIndex) >= len(referenced) {
+				if value.Null || value.HasGlobal || value.Expr != nil || value.RepeatPrevious || int(value.FuncIndex) >= len(referenced) {
 					continue
 				}
 				refs++
@@ -171,5 +171,19 @@ func TestSparseFuncRefPassiveElementCoverage(t *testing.T) {
 	}
 	if refs != 1 || unique != 1 || !referenced[0] || len(pages) != 1 {
 		t.Fatalf("element_refs=%d unique_targets=%d target0=%v pages=%d; want 1, 1, true, 1", refs, unique, referenced[0], len(pages))
+	}
+}
+
+func TestSparseFuncRefRepeatedExpressionIsNotSimpleTarget(t *testing.T) {
+	c := &Compiled{
+		FuncTypeID: make([]uint64, 2),
+		Elems: []ElemInit{{RefType: ValFuncRef, Values: []RefInit{
+			{Expr: []byte{0xd2, 1, 0x0b}},
+			{RepeatPrevious: true},
+		}}},
+	}
+	refs, referenced := simpleElemFuncRefTargets(c)
+	if refs != 0 || referenced[0] || referenced[1] {
+		t.Fatalf("expression and repeat marker counted as simple targets: refs=%d targets=%v", refs, referenced)
 	}
 }
