@@ -112,7 +112,7 @@ func TestGCNativeNullExternIdentityAndClose(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := global.SetValue(ValueExternRef(NullExternRef)); err != nil {
+		if err := global.SetValue(ValueExternRef(NullExternRef())); err != nil {
 			t.Fatal(err)
 		}
 		if err := in.Close(); err != nil {
