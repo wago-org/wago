@@ -22,6 +22,7 @@ const (
 	gcSharedStubResolveObject
 	gcSharedStubResolveSubtypeObject
 	gcSharedStubResolveBoundedObject
+	gcSharedStubNullI31Classifier
 	gcSharedStubMax
 )
 
@@ -373,14 +374,18 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 	for i := range offsets {
 		offsets[i] = -1
 	}
-	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] {
+	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] && !used[gcSharedStubNullI31Classifier] {
 		return nil, offsets
 	}
 	a := &x64.Asm{}
-	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject} {
+	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject, gcSharedStubNullI31Classifier} {
 		if used[kind] {
 			offsets[kind] = a.Len()
-			emitModuleGCResolveObjectStub(a, kind == gcSharedStubResolveSubtypeObject, kind == gcSharedStubResolveBoundedObject)
+			if kind == gcSharedStubNullI31Classifier {
+				emitModuleNullI31Classifier(a)
+			} else {
+				emitModuleGCResolveObjectStub(a, kind == gcSharedStubResolveSubtypeObject, kind == gcSharedStubResolveBoundedObject)
+			}
 		}
 	}
 	return a.B, offsets
