@@ -8,6 +8,11 @@ const regallocCheckEnabled = false
 // First in fn so the empty ordinary-build state does not change its layout.
 type regallocFnState struct{}
 
+func (*fn) checkObserveGPWrites()      {}
+func (*fn) checkTrackMemRef(*elem)     {}
+func (*fn) checkConsumeMemRef(*elem)   {}
+func (*fn) checkZeroExtendMemAddr(Reg) {}
+
 func (*fn) checkBeginFlush([]*elem) bool         { return false }
 func (*fn) checkEndFlush()                       {}
 func (*fn) checkUse(*elem)                       {}

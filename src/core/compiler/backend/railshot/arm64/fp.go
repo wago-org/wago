@@ -973,6 +973,9 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 // helpers
 
 func (f *fn) loadFMemRef(dst Reg, e *elem) {
+	if regallocCheckEnabled {
+		f.checkConsumeMemRef(e)
+	}
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		previous := f.enterProfileNode(e)
 		defer f.switchProfileOrigin(previous)

@@ -23,6 +23,7 @@ type regallocFnState struct {
 	immutableValues    []allocationGoal
 	immutableGPMask    uint32
 	immutableFPMask    uint32
+	deferredGPMask     uint32
 	fpObserverActive   bool
 	fpObserverPrevious func(uint32)
 	gpObserverActive   bool
@@ -256,17 +257,7 @@ func (f *fn) checkImmutable(reg Reg, fp bool, size int) {
 	f.immutableValues = append(f.immutableValues, allocationGoal{loc, value})
 	if !fp {
 		f.immutableGPMask |= uint32(1) << uint8(reg)
-		if !f.gpObserverActive && f.a != nil {
-			f.gpObserverActive = true
-			f.gpObserverPrevious = f.a.ObserveGPWrites(func(mask uint32) {
-				if mask&f.immutableGPMask != 0 {
-					panic(fmt.Sprintf("regalloccheck: function %d pc %d: immutable GP reservation overwritten (mask %#x)", f.traceFuncIdx, f.wasmPC, mask&f.immutableGPMask))
-				}
-				if f.gpObserverPrevious != nil {
-					f.gpObserverPrevious(mask)
-				}
-			})
-		}
+		f.checkObserveGPWrites()
 	} else {
 		f.immutableFPMask |= uint32(1) << uint8(reg)
 		if !f.fpObserverActive && f.a != nil {
@@ -281,6 +272,70 @@ func (f *fn) checkImmutable(reg Reg, fp bool, size int) {
 			})
 		}
 	}
+}
+
+func (f *fn) checkObserveGPWrites() {
+	if f.gpObserverActive || f.a == nil {
+		return
+	}
+	f.gpObserverActive = true
+	f.gpObserverPrevious = f.a.ObserveGPWrites(func(mask uint32) {
+		if mask&f.immutableGPMask != 0 {
+			panic(fmt.Sprintf("regalloccheck: function %d pc %d: immutable GP reservation overwritten (mask %#x)", f.traceFuncIdx, f.wasmPC, mask&f.immutableGPMask))
+		}
+		if mask&f.deferredGPMask != 0 {
+			f.checkDeferredGPWrites(mask)
+		}
+		if f.gpObserverPrevious != nil {
+			f.gpObserverPrevious(mask)
+		}
+	})
+}
+
+// Use a spare storage metadata bit without enlarging ordinary stack nodes.
+// Popped nodes remain in the arena and keep this bit until consumed.
+const checkMemRefLive uint8 = 1 << 5
+
+func (f *fn) checkTrackMemRef(e *elem) {
+	if e.elemKind() == ekValue && e.st.kind == stMemRef {
+		e.st.meta |= checkMemRefLive
+		f.deferredGPMask |= uint32(1) << uint8(e.st.reg)
+		f.checkObserveGPWrites()
+	}
+}
+
+// Retire only this load, before the instruction that reads its address. Other
+// loads can still borrow the same register and must retain their protection.
+func (f *fn) checkConsumeMemRef(e *elem) {
+	e.st.meta &^= checkMemRefLive
+}
+
+// An earlier memory32 load already zero-extended this address. Repeating that
+// normalization preserves every pending address on the same register.
+func (f *fn) checkZeroExtendMemAddr(reg Reg) {
+	saved := f.deferredGPMask
+	f.deferredGPMask &^= uint32(1) << uint8(reg)
+	defer func() { f.deferredGPMask = saved }()
+	f.a.MovReg32(reg, reg)
+}
+
+func (f *fn) checkDeferredGPWrites(mask uint32) {
+	var live uint32
+	for _, chunk := range f.s.chunks[:int(f.s.cur)+1] {
+		for i := range chunk {
+			e := &chunk[i]
+			if e.elemKind() != ekValue || e.st.kind != stMemRef || e.st.meta&checkMemRefLive == 0 {
+				continue
+			}
+			bit := uint32(1) << uint8(e.st.reg)
+			live |= bit
+			if mask&bit != 0 {
+				panic(fmt.Sprintf("regalloccheck: function %d pc %d: deferred load address register %d overwritten at code offset %d (load size %d, displacement %d, borrowed local %d)", f.traceFuncIdx, f.wasmPC, e.st.reg, f.a.Len(), e.st.memSize(), e.st.memDisp(), e.st.memBorrow()))
+			}
+		}
+	}
+	// Retired loads can leave stale mask bits; prune them on a candidate write.
+	f.deferredGPMask = live
 }
 
 // Invoke at every physical call in a cache-bearing function, including helper
@@ -354,6 +409,8 @@ func (f *fn) checkHostSyncHomes() {
 // A reservation forbids every physical write until its lifetime ends. This
 // path-independent rule cannot be repaired by copying a value from another arm.
 func (f *fn) checkEndLifetimes() {
+	// Close nested observers before restoring the enclosing write observers.
+	checkSourceClose(f)
 	if f.gpObserverActive {
 		f.a.ObserveGPWrites(f.gpObserverPrevious)
 		f.gpObserverPrevious = nil
@@ -366,21 +423,23 @@ func (f *fn) checkEndLifetimes() {
 	}
 	f.immutableGPMask = 0
 	f.immutableFPMask = 0
-	checkSourceClose(f)
+	f.deferredGPMask = 0
 }
 
 // Returns and trap stubs are terminal edges and cannot reach a body-cache use.
 // Restore body reservations before emitting other control-flow arms.
-type regallocWriteMask struct{ gp, fp uint32 }
+type regallocWriteMask struct{ gp, fp, deferred uint32 }
 
 func (f *fn) checkTerminalWrites() regallocWriteMask {
-	saved := regallocWriteMask{f.immutableGPMask, f.immutableFPMask}
+	saved := regallocWriteMask{f.immutableGPMask, f.immutableFPMask, f.deferredGPMask}
 	f.immutableGPMask = 0
 	f.immutableFPMask = 0
+	f.deferredGPMask = 0
 	return saved
 }
 func (f *fn) checkRestoreWrites(saved regallocWriteMask) {
 	f.immutableGPMask, f.immutableFPMask = saved.gp, saved.fp
+	f.deferredGPMask = saved.deferred
 }
 
 func (f *fn) checkReleaseImmutableGP(reg Reg) {
