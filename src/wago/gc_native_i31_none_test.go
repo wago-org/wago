@@ -3,11 +3,14 @@
 package wago
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -111,8 +114,124 @@ func TestGCNativeI31None(t *testing.T) {
 	}
 }
 
+func TestGCNativeI31NoneHighBitsAndHandles(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcNativeI31NoneModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	// Inject words after host admission to check the native boundary directly.
+	// No allocation or collection occurs while the table contains a forged word.
+	table := unsafe.Slice((*byte)(offHeapPtr(in.tableDescPtr)), in.tableDescLen)
+	for _, word := range []uint64{1, 0xffffffff, 0x100000000, 0x100000001, 0xffffffff00000000, 0xffffffffffffffff, 0xfffffffe} {
+		binary.LittleEndian.PutUint64(table[8:], word)
+		for _, heap := range []byte{0x6c, 0x71} {
+			kind := gc.RefTestI31
+			if heap == 0x71 {
+				kind = gc.RefTestNone
+			}
+			for _, op := range []byte{20, 21, 22, 23} {
+				target := gc.RefTestTarget{Kind: kind, Nullable: op&1 != 0}
+				match, helperErr := in.gc.RefTest(gc.Ref(uint32(word)), target)
+				if state := in.existingGCRefTestTableState(); state != nil {
+					match, helperErr = state.refTest(in.gc, word, target)
+				}
+				got, err := in.Invoke(fmt.Sprintf("op%d_%x", op, heap), 0)
+				if helperErr != nil {
+					if err == nil {
+						t.Fatalf("word%x op%d heap%x: helper error was hidden: %v", word, op, heap, got)
+					}
+				} else if op >= 22 && !match {
+					var trap *TrapError
+					if !errors.As(err, &trap) || trap.Code != TrapCastFailure {
+						t.Fatalf("word%x op%d heap%x: %v; want cast failure", word, op, heap, err)
+					}
+				} else {
+					want := uint64(0)
+					if op < 22 && match || op >= 22 && uint32(word) == 0 {
+						want = 1
+					}
+					if err != nil || len(got) != 1 || got[0] != want {
+						t.Fatalf("word%x op%d heap%x: %v,%v; want %d", word, op, heap, got, err, want)
+					}
+				}
+			}
+		}
+		binary.LittleEndian.PutUint64(table[8:], 0)
+	}
+}
+
+func TestGCNativeI31NoneTrapOrderAndLivePrefix(t *testing.T) {
+	for _, op := range []byte{20, 21, 22, 23} {
+		params := make([]wasm.ValType, 17)
+		results := make([]wasm.ValType, 17)
+		body := []byte{0x41, 1, 0x20, 0, 0x6e} // division remains the first trap
+		for i := range params {
+			params[i], results[i] = wasm.I32, wasm.I32
+		}
+		for i := 1; i < len(params); i++ {
+			body = append(body, 0x20, byte(i))
+		}
+		body = append(body, 0x23, 0, 0xfb, op, 0x6c, 0x1a, 0x0b)
+		data := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 0}, wasmtest.FuncType(params, results))),
+			wasmtest.Section(3, wasmtest.Vec([]byte{1})),
+			wasmtest.Section(6, wasmtest.Vec([]byte{0x6e, 1, 0xd0, 0x6e, 0x0b})),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		)
+		c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := Instantiate(c, InstantiateOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		args := make([]uint64, len(params))
+		for i := 1; i < len(args); i++ {
+			args[i] = uint64(100 + i)
+		}
+		_, err = in.Invoke("run", args...)
+		var trap *TrapError
+		if !errors.As(err, &trap) || trap.Code != TrapDivZero {
+			t.Fatalf("op%d: %v; want division trap", op, err)
+		}
+		args[0] = 1
+		got, err := in.Invoke("run", args...)
+		if op == 22 {
+			if !errors.As(err, &trap) || trap.Code != TrapCastFailure {
+				t.Fatalf("op%d: %v; want cast failure", op, err)
+			}
+		} else {
+			if err != nil || len(got) != len(args) {
+				t.Fatalf("op%d prefix: %v,%v", op, got, err)
+			}
+			for i := range args {
+				if got[i] != args[i] {
+					t.Fatalf("op%d prefix%d: %d; want %d", op, i, got[i], args[i])
+				}
+			}
+		}
+		in.Close()
+		c.Close()
+	}
+}
+
 func gcNativeI31NoneLoop(op, heap byte, mixed bool) []byte {
+	return gcNativeI31NoneLoopValue(op, heap, mixed, false)
+}
+
+func gcNativeI31NoneLoopValue(op, heap byte, mixed, object bool) []byte {
 	global := []byte{0x6e, 1, 0x41, 7, 0xfb, 28, 0x0b}
+	if object {
+		global = []byte{0x6e, 1, 0xfb, 1, 0, 0x0b}
+	}
 	if heap == 0x71 {
 		global = []byte{0x6e, 1, 0xd0, 0x6e, 0x0b}
 	}
@@ -153,5 +272,11 @@ func BenchmarkGCNativeI31NoneCompile(b *testing.B) {
 		}
 		b.ReportMetric(float64(c.CodeSize()), "native-B")
 		c.Close()
+	}
+}
+
+func BenchmarkGCNativeI31NoneObject(b *testing.B) {
+	for _, mixed := range []bool{false, true} {
+		b.Run(fmt.Sprintf("mixed-%v", mixed), func(b *testing.B) { benchmarkGCInstructionLoop(b, gcNativeI31NoneLoopValue(21, 0x6c, mixed, true), 1) })
 	}
 }
