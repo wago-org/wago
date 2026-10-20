@@ -176,7 +176,8 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if grouped, err := f.tryDeadGCDefaultGroup(r, typeIndex); grouped || err != nil {
 			return err
 		}
-		if _, ok := f.stagedStructType(typeIndex); !ok {
+		st, ok := f.stagedStructType(typeIndex)
+		if !ok {
 			return fmt.Errorf("amd64: struct.new_default type %d is unavailable", typeIndex)
 		}
 		if deadUse := f.checkedDeadGCConstructorUse(r, true); deadUse != checkedDeadGCNone {
@@ -185,6 +186,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			}
 			f.finishCheckedDeadGCConstructor(r, deadUse)
 			return nil
+		}
+		if native, err := f.emitNativeDefaultStruct(typeIndex, st); native || err != nil {
+			return err
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
