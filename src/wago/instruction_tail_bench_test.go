@@ -4,6 +4,7 @@ package wago
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -100,6 +101,34 @@ func BenchmarkInstructionTailCompile(b *testing.B) {
 			var calls uint64
 			rt := checksumRuntime(b, &calls)
 			module := instructionTailChecksumModule(mode)
+			var size int
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				mod, err := rt.Compile(module)
+				if err != nil {
+					b.Fatal(err)
+				}
+				size = mod.Compiled().CodeSize()
+				mod.Close()
+			}
+			b.StopTimer()
+			b.ReportMetric(float64(size), "code-B")
+		})
+	}
+}
+
+func BenchmarkInstructionTailBudgetCompile(b *testing.B) {
+	for _, steps := range []int{1, 4, 8, 12} {
+		b.Run(fmt.Sprintf("shared%d", steps), func(b *testing.B) {
+			calls := 0
+			ext := sharedInstructionRecipe(steps, &calls)
+			rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
+			defer rt.Close()
+			if err := rt.Use(ext); err != nil {
+				b.Fatal(err)
+			}
+			module := instructionTailModule("wago:instr/recipe", ext.name, 1, true, false)
 			var size int
 			b.ReportAllocs()
 			b.ResetTimer()
