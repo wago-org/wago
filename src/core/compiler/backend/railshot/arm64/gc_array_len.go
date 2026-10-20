@@ -15,13 +15,15 @@ func (f *fn) arrayLenShortcut(argSlot int) int {
 	f.ld64(X16, SP, f.spillOff(argSlot))
 	f.a.MovImm32(X11, int32(gc.HeaderSize))
 	site := f.a.Bl()
-	f.relocs = append(f.relocs, callReloc{at: f.compactCallRelocField(site), gcObject: true})
 	fallback := f.a.Cbnz64(X17)
 	f.ld32(X16, X10, 8)
 	f.ld64(X11, linMemReg, -int32(offCustomCtx))
 	f.st64(X11, hcResults, X16)
 	done := f.a.Branch()
 	f.patchBranch19(fallback, f.a.Len())
+	// Prefix compaction moves the call and helper together. Keep their distance
+	// so module finalization can retain the helper if the leaf is out of BL range.
+	f.relocs = append(f.relocs, callReloc{at: f.compactCallRelocField(site), target: f.compactCallRelocField(f.a.Len() - site), gcObject: true})
 	f.stats.peep("gc-array-len-native")
 	return done
 }

@@ -47,7 +47,7 @@ var noStackReg = os.Getenv("WAGO_ARM64_NOSTACKREG") == "1"
 // target local function's entry once the module is laid out.
 type callReloc struct {
 	at       uint32 // byte offset of the BL instruction within this function's code
-	target   uint32 // target local-function index (into m.Code)
+	target   uint32 // target function index; gcObject uses the positive helper-fallback byte delta
 	internal bool   // target the callee's register-ABI internal entry (else offset 0)
 	gcObject bool   // target the module checked-object leaf (not a local function)
 }

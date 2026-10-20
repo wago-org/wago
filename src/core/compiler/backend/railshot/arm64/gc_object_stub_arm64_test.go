@@ -48,7 +48,15 @@ func TestGCObjectStubPhysicalGuards(t *testing.T) {
 	var header [gc.HeaderSize]byte
 	var basedata [abi.GCNativeViewPtrOffset + 8]byte
 	collector := gc.NativeCollectorView{}
-	instance := gc.NativeInstanceView{Collector: uintptr(unsafe.Pointer(&collector))}
+	var instance gc.NativeInstanceView
+	// t.Run can grow the parent Go stack. Published uintptr fields must point
+	// to stable objects, just like the collector views used by real instances.
+	var pinned runtime.Pinner
+	for _, object := range []any{&handles, &header, &basedata, &collector, &instance} {
+		pinned.Pin(object)
+	}
+	defer pinned.Unpin()
+	instance.Collector = uintptr(unsafe.Pointer(&collector))
 	binary.LittleEndian.PutUint64(basedata[:], uint64(uintptr(unsafe.Pointer(&instance))))
 	handle := handles[gc.NativeHandleStride:]
 	for _, name := range []string{"nursery", "old", "large", "tiny", "null", "i31", "high bits", "count", "free", "unknown space", "offset", "size", "short handle", "short header", "long header", "space bytes"} {

@@ -6,6 +6,8 @@ import (
 	"encoding/binary"
 	"strings"
 	"testing"
+
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
 func testCallRelocTable(t testing.TB, functions ...[]callReloc) *callRelocTable {
@@ -21,6 +23,37 @@ func testCallRelocTable(t testing.TB, functions ...[]callReloc) *callRelocTable 
 		}
 	}
 	return &table
+}
+
+func TestGCObjectStubFarCallUsesHelper(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		site, stub int
+		delta      uint32
+		want       uint32
+	}{
+		{"last BL displacement", 0, (1 << 27) - 4, 4, 0x95ffffff},
+		{"first far displacement", 0, 1 << 27, 4, 0x14000001},
+		{"moved function prefix", 8, 8 + 1<<27, 8, 0x14000002},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			a := a64.Asm{B: make([]byte, 20)}
+			binary.LittleEndian.PutUint32(a.B[test.site:], 0x94000000)
+			if !patchGCObjectCall(&a, test.site, test.stub, test.delta) {
+				t.Fatal("valid native or helper branch rejected")
+			}
+			if got := binary.LittleEndian.Uint32(a.B[test.site:]); got != test.want {
+				t.Fatalf("branch=%#x, want%#x", got, test.want)
+			}
+		})
+	}
+	for _, delta := range []uint32{0, 2, 8, invalidCallRelocField} {
+		a := a64.Asm{B: make([]byte, 8)}
+		binary.LittleEndian.PutUint32(a.B, 0x94000000)
+		if patchGCObjectCall(&a, 0, 1<<27, delta) {
+			t.Fatalf("accepted invalid helper delta%d", delta)
+		}
+	}
 }
 
 func TestPatchCallRelocsRangeChecks(t *testing.T) {
