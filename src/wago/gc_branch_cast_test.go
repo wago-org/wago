@@ -67,8 +67,8 @@ func branchCastModule(sub byte, target []byte, nullable bool, depth int, collect
 		probe = append(probe, 0x0b)
 	}
 	if collect {
-		// Only the selected stack reference is live at this allocation. Read its
-		// payload after collection to detect a lost root or stale handle.
+		// The selected stack reference must remain usable after this allocation.
+		// The caller also retains the loop input across probe calls.
 		probe = append(probe, 0xfb, 22, 0, 0xfb, 1, 0, 0x1a, 0xfb, 2, 0, 0, 0x6a, 0x0b)
 	} else {
 		probe = append(probe, 0x20, 0, 0xd3, 0x41, 16, 0x6c, 0x6a, 0x0b)
@@ -285,7 +285,9 @@ func TestGCBranchCastLargeTypeIndex(t *testing.T) {
 				types[i] = []byte{0x5f, 0}
 			}
 			types[target+1] = wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
-			body := []byte{0x02, 0x6d, 0xd0, 0x6d, 0xfb, 24, 3, 0, 0x6d}
+			body := []byte{0x02, 0x6d, 0xfb, 1}
+			body = append(body, wasmtest.ULEB(target)...)
+			body = append(body, 0xfb, 24, 3, 0, 0x6d)
 			body = append(body, wasmtest.SLEB32(int32(target))...)
 			body = append(body, 0x0b, 0x1a, 0x41, 1, 0x0b)
 			data := wasmtest.Module(
@@ -359,6 +361,59 @@ func TestGCBranchCastForeignReference(t *testing.T) {
 						if err != nil || len(got) != 2 || got[0] != token || got[1] != wantFlag {
 							t.Fatalf("input%d: %v, %v; want [%d %d]", i, got, err, token, wantFlag)
 						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestGCBranchCastOnlyStackRoot(t *testing.T) {
+	for _, sub := range []byte{24, 25} {
+		for _, target := range []byte{0, 2, 0x6c, 0x71} {
+			for _, profile := range []GCProfile{GCProfileThroughput, GCProfileTiny} {
+				t.Run(fmt.Sprintf("op%d/target%x/profile%d", sub, target, profile), func(t *testing.T) {
+					// run has only an i32 parameter and no locals or Wasm caller.
+					// The branch result is the object's sole root at the next allocation.
+					body := []byte{0x02, 0x6d,
+						0x20, 0, 0x20, 0, 0xfb, 0, 1,
+						0xfb, sub, 1, 0, 0x6d, target, 0x0b,
+						0xfb, 1, 0, 0x1a,
+						0xfb, 22, 0, 0xfb, 2, 0, 0, 0x0b}
+					data := wasmtest.Module(
+						wasmtest.Section(1, wasmtest.Vec(
+							[]byte{0x50, 0, 0x5f, 1, 0x7f, 0},
+							[]byte{0x4f, 1, 0, 0x5f, 2, 0x7f, 0, 0x7f, 0},
+							[]byte{0x5e, 0x7f, 1},
+							wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+						)),
+						wasmtest.Section(3, wasmtest.Vec([]byte{3})),
+						wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+						wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+					)
+					c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer c.Close()
+					in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: profile, CollectEveryAlloc: true, TinyCollectEveryAlloc: true, VerifyAfterCollect: true, StressNurseryBytes: 64, TinyHeapBytes: 64, TinyBlockBytes: 16}})
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer in.Close()
+					for value := uint64(1); value <= 32; value++ {
+						if got, err := in.Invoke("run", value); err != nil || len(got) != 1 || got[0] != value {
+							t.Fatalf("run(%d) = %v, %v", value, got, err)
+						}
+					}
+					if s := in.gc.Stats(); s.MinorCollections+s.FullCollections == 0 {
+						t.Fatal("no collections")
+					}
+					if err := in.CollectGC(); err != nil {
+						t.Fatal(err)
+					}
+					if live := in.gc.Stats().LiveObjects; live != 0 {
+						t.Fatalf("retained %d objects", live)
 					}
 				})
 			}
