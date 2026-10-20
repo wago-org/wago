@@ -10,6 +10,7 @@ import (
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Qualification only. Public feature defaults and SupportedFeatures stay
@@ -264,7 +265,7 @@ func rv64NativeTailPlanSignature(c *Compiled, p encoder.NativeTailPlan) (rv64Tai
 // execution receipt validates tail metadata too, so it cannot call the full
 // receipt verifier recursively. Publication separately requires FreshRootedGC.
 func rv64CollectorTailMetadata(c *Compiled) bool {
-	return c != nil && c.nativeGCABIRequirement() == 1 && c.genericGCFrameRoots() != nil && c.requiredFeatures.IsEnabled(CoreFeatureGC)
+	return c != nil && c.nativeGCABIRequirement() == gc.NativeABIVersion && c.genericGCFrameRoots() != nil && c.requiredFeatures.IsEnabled(CoreFeatureGC)
 }
 
 func rv64CollectorTailDeclaredCarrier(c *Compiled, value ValueTypeDescriptor) bool {
