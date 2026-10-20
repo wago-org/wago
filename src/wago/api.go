@@ -1522,16 +1522,20 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			if plan == nil {
 				continue
 			}
+			functionProof, err := gcFrameFunctionProof(compiled, function)
+			if err != nil {
+				return nil, err
+			}
 			functionBase := uint32(compiled.Entry[function])
 			if plan.AdapterReturnOffset != 0 {
 				rootMap.adapterReturnOffsets = append(rootMap.adapterReturnOffsets, functionBase+plan.AdapterReturnOffset)
 			}
 			_ = plan.VisitSafepoints(func(i int, offsets []uint32) bool {
-				rootMap.safepoints = append(rootMap.safepoints, compiledGCFrameSafepoint{id: plan.SafepointBase + uint32(i) + 1, frameBytes: plan.FrameBytes, offsets: offsetInterner.intern(offsets, true)})
+				rootMap.safepoints = append(rootMap.safepoints, compiledGCFrameSafepoint{id: plan.SafepointBase + uint32(i) + 1, frameBytes: plan.FrameBytes, functionProof: functionProof, offsets: offsetInterner.intern(offsets, true)})
 				return true
 			})
 			_ = plan.VisitCallsites(func(_ int, callsite shared.GCFrameCallsite) bool {
-				rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{returnOffset: functionBase + callsite.ReturnOffset(), frameBytes: plan.FrameBytes, stackAdjust: callsite.StackAdjust(), offsets: offsetInterner.intern(callsite.Offsets(), true)})
+				rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{returnOffset: functionBase + callsite.ReturnOffset(), frameBytes: plan.FrameBytes, stackAdjust: callsite.StackAdjust(), functionProof: functionProof, offsets: offsetInterner.intern(callsite.Offsets(), true)})
 				return true
 			})
 		}

@@ -5,7 +5,6 @@ package wago
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -135,8 +134,6 @@ func gcScalarAdapterProofModule() []byte {
 	)
 }
 
-// Reflection lets the tests-first commit compile before the new proof word is
-// introduced. A missing word is a failed eligibility property, not a skip.
 func TestGCScalarAdapterLogicalFunctionProof(t *testing.T) {
 	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcScalarAdapterProofModule())
 	if err != nil {
@@ -149,11 +146,7 @@ func TestGCScalarAdapterLogicalFunctionProof(t *testing.T) {
 	}
 	seen := [3]bool{}
 	for _, point := range roots.safepoints {
-		proof := reflect.ValueOf(point).FieldByName("functionProof")
-		if !proof.IsValid() || proof.Kind() != reflect.Uint32 {
-			t.Fatal("safepoint lacks its logical function-signature proof")
-		}
-		word := uint32(proof.Uint())
+		word := point.functionProof
 		function, scalar := word>>1, word&1 != 0
 		if function >= uint32(len(seen)) || scalar != (function == 0) {
 			t.Fatalf("function proof %#x admits a collector-bearing signature", word)
@@ -206,6 +199,75 @@ func TestGCScalarAdapterAllocOnlyCallee(t *testing.T) {
 				got, err := caller.Invoke("run")
 				if err != nil || len(got) != 1 || got[0] != 73 {
 					t.Fatalf("caller root across alloc-only callee = %v, %v; want [73], nil", got, err)
+				}
+			}
+		})
+	}
+}
+
+// Scalar edges can revisit the collecting domain through a mutable funcref
+// table. The outer frame still owns a root even though the intervening relay
+// transfers no objects and has an incompatible private collector.
+func TestGCScalarAdapterRevisitedDomain(t *testing.T) {
+	for _, registerABI := range []bool{false, true} {
+		t.Run(fmt.Sprintf("register=%t", registerABI), func(t *testing.T) {
+			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", registerABI)
+			rt := NewRuntime(WithRuntimeConfig(cfg))
+			defer rt.Close()
+			settings := GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true}
+			table, err := NewTable(1, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer table.Close()
+			tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 1, 1, 1)
+			aCode, err := rt.Compile(wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(2, wasmtest.Vec(tableImport)),
+				wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{1})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("outer", 0, 0), wasmtest.ExportEntry("inner", 0, 1))),
+				wasmtest.Section(10, wasmtest.Vec(
+					append([]byte{25}, []byte{1, 1, 0x63, 0, 0x41, 0xc9, 0, 0xfb, 0, 0, 0x21, 0, 0x41, 0, 0x11, 1, 0, 0x1a, 0x20, 0, 0xfb, 2, 0, 0, 0x0b}...),
+					wasmtest.Code([]byte{0xfb, 1, 0, 0x1a, 0x41, 7, 0x0b}),
+				)),
+			))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer aCode.Close()
+			a, err := rt.Instantiate(context.Background(), aCode, WithGC(settings), WithImports(testImports("env.table", table)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer a.Close()
+			inner, err := a.ExportedFunc("inner")
+			if err != nil {
+				t.Fatal(err)
+			}
+			innerImport := append(append(wasmtest.Name("env"), wasmtest.Name("inner")...), 0, 1)
+			bCode, err := rt.Compile(wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7e, 1}, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(2, wasmtest.Vec(innerImport, tableImport)),
+				wasmtest.Section(3, wasmtest.Vec([]byte{1})),
+				wasmtest.Section(9, wasmtest.Vec([]byte{0, 0x41, 0, 0x0b, 1, 1})),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfb, 1, 0, 0x1a, 0x10, 0, 0x0b}))),
+			))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer bCode.Close()
+			b, err := rt.Instantiate(context.Background(), bCode, WithGC(settings), WithImports(testImports("env.inner", inner, "env.table", table)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer b.Close()
+			if a.gc == nil || b.gc == nil || a.gc == b.gc {
+				t.Fatal("fixture requires different live collectors")
+			}
+			for i := 0; i < 3; i++ {
+				got, err := a.Invoke("outer")
+				if err != nil || len(got) != 1 || got[0] != 73 {
+					t.Fatalf("revisited collecting domain = %v, %v; want [73], nil", got, err)
 				}
 			}
 		})

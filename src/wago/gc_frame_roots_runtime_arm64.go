@@ -57,6 +57,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	state.frameRoots.base = base
 	state.frameRoots.offsets = offsets
 	state.frameRoots.frameBytes = frameBytes
+	state.frameRoots.scalarFrame = safepoint.functionProof&1 != 0
 	state.frameRoots.frameLayout = gcNativeFrameLayoutARM64 | gcNativeFrameSyncGlobalRoots // saved LR follows saved FP above the frame reserve
 	state.frameRoots.allowExternalReturn = true                                            // non-register public entries return directly to enterNative
 	state.frameRoots.codeBase = in.base

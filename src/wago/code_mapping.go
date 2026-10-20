@@ -381,14 +381,18 @@ func (c *compiledCodeCache) setNativeGCABIVersion(version uint32) {
 type compiledGCFrameSafepoint struct {
 	id         uint32
 	frameBytes uint32
-	offsets    []uint32
+	// functionProof identifies the logical local function and whether its exact
+	// signature transfers no collector objects. Physical adapters may be shared.
+	functionProof uint32
+	offsets       []uint32
 }
 
 type compiledGCFrameCallsite struct {
-	returnOffset uint32
-	frameBytes   uint32
-	stackAdjust  uint32
-	offsets      []uint32
+	returnOffset  uint32
+	frameBytes    uint32
+	stackAdjust   uint32
+	functionProof uint32
+	offsets       []uint32
 }
 
 type compiledGCFrameRoots struct {

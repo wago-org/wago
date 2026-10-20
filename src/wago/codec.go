@@ -870,7 +870,16 @@ func (w *compiledWriter) globalImports(v []GlobalImportDef, c *Compiled) error {
 	}
 	return nil
 }
+
+// An impossible legacy adapter count distinguishes versioned root records from
+// old artifacts before interpreting any new per-record fields. Only GC-root
+// payloads change: native calling conventions and non-GC files are unchanged.
+const gcFrameRootsFormatMarker uint64 = ^uint64(0)
+const gcFrameRootsFormatVersion uint64 = 1
+
 func (w *compiledWriter) gcFrameRoots(rootMap *compiledGCFrameRoots) {
+	w.uvar(gcFrameRootsFormatMarker)
+	w.uvar(gcFrameRootsFormatVersion)
 	w.uvar(uint64(len(rootMap.adapterReturnOffsets)))
 	for _, off := range rootMap.adapterReturnOffsets {
 		w.u32(off)
@@ -879,6 +888,7 @@ func (w *compiledWriter) gcFrameRoots(rootMap *compiledGCFrameRoots) {
 	for i := range rootMap.safepoints {
 		w.u32(rootMap.safepoints[i].id)
 		w.u32(rootMap.safepoints[i].frameBytes)
+		w.u32(rootMap.safepoints[i].functionProof)
 		w.uvar(uint64(len(rootMap.safepoints[i].offsets)))
 		for _, off := range rootMap.safepoints[i].offsets {
 			w.u32(off)
@@ -889,6 +899,7 @@ func (w *compiledWriter) gcFrameRoots(rootMap *compiledGCFrameRoots) {
 		w.u32(rootMap.callsites[i].returnOffset)
 		w.u32(rootMap.callsites[i].frameBytes)
 		w.u32(rootMap.callsites[i].stackAdjust)
+		w.u32(rootMap.callsites[i].functionProof)
 		w.uvar(uint64(len(rootMap.callsites[i].offsets)))
 		for _, off := range rootMap.callsites[i].offsets {
 			w.u32(off)
@@ -2329,6 +2340,14 @@ func (r *compiledReader) gcTypeDescs() ([]gc.TypeDesc, error) {
 }
 
 func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
+	marker, err := r.uvar()
+	if err != nil || marker != gcFrameRootsFormatMarker {
+		return nil, fmt.Errorf("GC frame-root metadata has an older or invalid format; recompile the module")
+	}
+	version, err := r.uvar()
+	if err != nil || version != gcFrameRootsFormatVersion {
+		return nil, fmt.Errorf("GC frame-root metadata version %d is unsupported; recompile the module", version)
+	}
 	// Each distinct vector can add a hash key, slice header, and map-bucket
 	// overhead to the offset interner, independently of the vector's payload.
 	const internerEntryBytes = unsafe.Sizeof(uint64(0)) + unsafe.Sizeof([]uint32(nil)) + 16
@@ -2344,7 +2363,7 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 			return nil, err
 		}
 	}
-	n, err := r.countElements("GC frame safepoints", 9, unsafe.Sizeof(compiledGCFrameSafepoint{})+internerEntryBytes)
+	n, err := r.countElements("GC frame safepoints", 13, unsafe.Sizeof(compiledGCFrameSafepoint{})+internerEntryBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -2361,6 +2380,10 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 		if err != nil {
 			return nil, err
 		}
+		rootMap.safepoints[i].functionProof, err = r.u32()
+		if err != nil {
+			return nil, err
+		}
 		count, err := r.countElements("GC frame root offsets", 4, unsafe.Sizeof(uint32(0)))
 		if err != nil {
 			return nil, err
@@ -2374,7 +2397,7 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 		}
 		rootMap.safepoints[i].offsets = offsetInterner.intern(rootMap.safepoints[i].offsets, false)
 	}
-	callCount, err := r.countElements("GC frame callsites", 13, unsafe.Sizeof(compiledGCFrameCallsite{})+internerEntryBytes)
+	callCount, err := r.countElements("GC frame callsites", 17, unsafe.Sizeof(compiledGCFrameCallsite{})+internerEntryBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -2392,6 +2415,10 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 			return nil, err
 		}
 		rootMap.callsites[i].stackAdjust, err = r.u32()
+		if err != nil {
+			return nil, err
+		}
+		rootMap.callsites[i].functionProof, err = r.u32()
 		if err != nil {
 			return nil, err
 		}

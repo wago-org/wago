@@ -553,6 +553,16 @@ serialized before host or instance targets are known; live addresses and store
 identity are installed only during instantiation. See the codec-version comment
 at the top of this file for the current wire version.
 
+Exact native GC root records retain the logical local-function index and a
+validated classification of its exact parameter/result types. A shared physical
+adapter cannot supply this classification: scalar and collector-reference
+functions may use the same machine representation. The GC-root metadata payload
+has its own version marker; older or unsupported root payloads are rejected with
+a request to recompile the module. This changes GC artifact admission without
+changing the machine calling convention, native GC ABI version, or non-GC
+artifact bytes. Each safepoint/callsite adds a four-byte proof on disk; in memory,
+safepoints add eight bytes while callsites use existing padding.
+
 ---
 
 ## 7. Runtime (`src/core/runtime`)

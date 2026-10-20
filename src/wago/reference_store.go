@@ -687,6 +687,7 @@ type gcNativeFrameRoots struct {
 	frameBytes           uint32
 	frameLayout          uint8
 	allowExternalReturn  bool
+	scalarFrame          bool
 	codeBase             uintptr
 	codeBytes            uintptr
 	adapterReturnOffsets []uint32
@@ -757,6 +758,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 				base:                 activation.base,
 				offsets:              callsite.offsets,
 				frameBytes:           callsite.frameBytes,
+				scalarFrame:          callsite.functionProof&1 != 0,
 				frameLayout:          r.frameLayout,
 				allowExternalReturn:  r.allowExternalReturn,
 				codeBase:             state.hostCodeBase,
@@ -809,6 +811,7 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 				base:                 activation.base,
 				offsets:              callsite.offsets,
 				frameBytes:           callsite.frameBytes,
+				scalarFrame:          callsite.functionProof&1 != 0,
 				frameLayout:          r.frameLayout,
 				allowExternalReturn:  r.allowExternalReturn,
 				codeBase:             state.hostCodeBase,
@@ -942,6 +945,7 @@ func gcNativeFrameFitsStack(base uintptr, frameBytes uint32, stack *coreruntime.
 func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootRefSink, stack *coreruntime.Engine) bool {
 	owner := r.owner
 	base, offsets, frameBytes := r.base, r.offsets, r.frameBytes
+	scalarFrame := r.scalarFrame
 	codeBase, codeBytes := r.codeBase, r.codeBytes
 	adapterReturnOffsets, callsites := r.adapterReturnOffsets, r.callsites
 	// Parked host activations carry their physical stack bounds because reentry
@@ -984,7 +988,9 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 				return false
 			}
 		}
-		if len(callsites) == 0 {
+		// Synthetic root-only enumerations have no native image or return word.
+		// A real leaf image still returns into callers whose roots must be read.
+		if codeBytes == 0 && len(callsites) == 0 {
 			return true
 		}
 		returnPCBias, callerFrameBias := uintptr(0), uintptr(abi.AMD64CallReturnAddressBytes)
@@ -1023,18 +1029,16 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 				}
 				foreign := owner.refStore.gcFrameOwner(retPC, owner.gc)
 				if foreign == nil {
-					// A scalar relay can call into a separately owned GC domain.
-					// Its validated adapter and saved context identify a retained
-					// caller with no roots in this domain; other domains are suspended
-					// independently by the invocation lease. Never scan its frame
-					// as though its compact words belonged to this collector.
-					if adapterRead && returnBase%8 == 0 && returnBase <= stackTop && stackTop-returnBase >= 64 {
+					// The logical callee signature and saved wrapper context
+					// identify a scalar boundary to a retained different domain.
+					// Never interpret its compact words as this collector's roots.
+					if scalarFrame && returnBase%8 == 0 && returnBase <= stackTop && stackTop-returnBase >= 64 {
 						contextOffset := uintptr(8)
 						if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutARM64 {
 							contextOffset = 0
 						}
 						context := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(returnBase+contextOffset)), 8)))
-						if owner.refStore.gcFrameScalarBoundary(retPC, owner.gc, context) {
+						if owner.refStore.gcFrameScalarBoundary(retPC, owner.gc, context, scalarFrame) {
 							return true
 						}
 					}
@@ -1099,6 +1103,7 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 		callsite := &callsites[callsiteIndex]
 		offsets = callsite.offsets
 		frameBytes = callsite.frameBytes
+		scalarFrame = callsite.functionProof&1 != 0
 		stackAdjust := callsite.stackAdjust
 		if returnBase > ^uintptr(0)-uintptr(stackAdjust) {
 			panic(gcHelperFailuref("generic GC caller stack adjustment overflows"))
@@ -1667,20 +1672,18 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
 	return s.gcFrameContextOwner(pc, collector, 0)
 }
 
-// gcFrameScalarBoundary proves that a retained caller cannot receive objects
-// from this collector. Scalar imports keep its own GC domain separate and the
-// invocation lease suspends each domain independently. The adapter established
-// the wrapper shape; matching its context and code image lets this domain stop
-// without reading another domain's frames or interpreting its compact roots.
-// Dynamic function-reference containers and boundaries need a separate proof.
-func (s *referenceStore) gcFrameScalarBoundary(pc uintptr, collector *gc.Collector, context uintptr) bool {
-	if s == nil || context == 0 {
+// gcFrameScalarBoundary matches the saved wrapper identity to a retained
+// different-domain caller. The active logical callee's signature, rather than
+// unrelated caller types or containers, proves no collector object crosses this
+// call. No compact words from the other domain are interpreted here.
+func (s *referenceStore) gcFrameScalarBoundary(pc uintptr, collector *gc.Collector, context uintptr, scalarFrame bool) bool {
+	if s == nil || context == 0 || !scalarFrame {
 		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for candidate, state := range s.instances {
-		if state == nil || state.resourcesReleased || candidate == nil || candidate.refStore != s || candidate.c == nil || candidate.gc == collector || candidate.c.hasCollectorReferenceCallBoundary() || compiledHasDynamicFuncrefReachability(candidate.c) {
+		if state == nil || state.resourcesReleased || candidate == nil || candidate.refStore != s || candidate.c == nil || candidate.gc == collector {
 			continue
 		}
 		if candidate.nativeContext == context && pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code)) {

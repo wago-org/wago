@@ -231,7 +231,7 @@ func (c *Compiled) GCNativeRootAdmission() GCNativeRootAdmission {
 	status.Exact = true
 	status.Safepoints = uint32(len(rootMap.safepoints))
 	status.Callsites = uint32(len(rootMap.callsites))
-	status.MetadataBytes = uint64(compiledUvarintLen(uint64(len(rootMap.adapterReturnOffsets)))+len(rootMap.adapterReturnOffsets)*4) +
+	status.MetadataBytes = uint64(compiledUvarintLen(gcFrameRootsFormatMarker)+compiledUvarintLen(gcFrameRootsFormatVersion)) + uint64(compiledUvarintLen(uint64(len(rootMap.adapterReturnOffsets)))+len(rootMap.adapterReturnOffsets)*4) +
 		uint64(compiledUvarintLen(uint64(len(rootMap.safepoints)))) +
 		uint64(compiledUvarintLen(uint64(len(rootMap.callsites))))
 	for i := range rootMap.safepoints {
@@ -239,14 +239,14 @@ func (c *Compiled) GCNativeRootAdmission() GCNativeRootAdmission {
 		if roots > int(status.MaximumRoots) {
 			status.MaximumRoots = uint32(roots)
 		}
-		status.MetadataBytes += uint64(8 + compiledUvarintLen(uint64(roots)) + roots*4)
+		status.MetadataBytes += uint64(12 + compiledUvarintLen(uint64(roots)) + roots*4)
 	}
 	for i := range rootMap.callsites {
 		roots := len(rootMap.callsites[i].offsets)
 		if roots > int(status.MaximumRoots) {
 			status.MaximumRoots = uint32(roots)
 		}
-		status.MetadataBytes += uint64(12 + compiledUvarintLen(uint64(roots)) + roots*4)
+		status.MetadataBytes += uint64(16 + compiledUvarintLen(uint64(roots)) + roots*4)
 	}
 	return status
 }
@@ -317,6 +317,44 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 	return totalSafepoints != 0 || totalCallsites != 0
 }
 
+// gcFrameFunctionProof uses the logical Wasm function, never its potentially
+// shared physical adapter. The low bit proves that neither arguments nor results
+// can transfer compact collector objects; the remaining bits identify the local.
+func gcFrameFunctionProof(c *Compiled, function int) (uint32, error) {
+	if c == nil || function < 0 || function >= len(c.Funcs) || uint64(function) >= 1<<31 {
+		return 0, fmt.Errorf("GC frame-root function index %d is invalid", function)
+	}
+	sig := c.Funcs[function]
+	if err := validateFuncSignature(sig, c.Types); err != nil {
+		return 0, fmt.Errorf("GC frame-root function %d signature: %w", function, err)
+	}
+	params, results, _ := exactFuncSignatureView(sig, c.Types)
+	scalar := true
+	if sig.HasTypeIndex {
+		for _, values := range [][]ValueTypeDescriptor{params, results} {
+			for _, value := range values {
+				if valueTypeTransfersCollectorObject(value, c.Types) {
+					scalar = false
+				}
+			}
+		}
+	} else {
+		for _, values := range [][]ValType{sig.Params, sig.Results} {
+			for _, value := range values {
+				descriptor, _ := valueTypeDescriptorFromValType(value)
+				if valueTypeTransfersCollectorObject(descriptor, c.Types) {
+					scalar = false
+				}
+			}
+		}
+	}
+	proof := uint32(function) << 1
+	if scalar {
+		proof |= 1
+	}
+	return proof, nil
+}
+
 func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) error {
 	if rootMap == nil {
 		return nil
@@ -361,9 +399,32 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 		}
 		previousAdapter = off
 	}
+	// Classify each signature once, so repeated records cannot multiply a wide
+	// signature's validation cost. Small modules keep the bitmap on the stack.
+	var inline [1]uint64
+	scalarFunctions := inline[:]
+	if len(c.Funcs) > 64 {
+		scalarFunctions = make([]uint64, (len(c.Funcs)+63)/64)
+	}
+	for function := range c.Funcs {
+		proof, err := gcFrameFunctionProof(c, function)
+		if err != nil {
+			return err
+		}
+		if proof&1 != 0 {
+			scalarFunctions[function/64] |= uint64(1) << (uint(function) % 64)
+		}
+	}
+	validProof := func(proof uint32) bool {
+		function := proof >> 1
+		return uint64(function) < uint64(len(c.Funcs)) && proof&1 == uint32((scalarFunctions[function/64]>>(function%64))&1)
+	}
 	var previousReturn uint32
 	for i := range rootMap.callsites {
 		callsite := &rootMap.callsites[i]
+		if !validProof(callsite.functionProof) {
+			return fmt.Errorf("GC frame-root callsite %d has invalid function-signature proof", callsite.returnOffset)
+		}
 		if callsite.frameBytes < 8 || callsite.frameBytes > 1<<31-1 || callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.code)) || (i != 0 && callsite.returnOffset <= previousReturn) || callsite.stackAdjust%8 != 0 || callsite.stackAdjust > 1<<20 || !validGCFrameOffsets(callsite.offsets, callsite.frameBytes) {
 			return fmt.Errorf("GC frame-root callsite %d is malformed", callsite.returnOffset)
 		}
@@ -372,6 +433,9 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	var previousID uint32
 	for i := range rootMap.safepoints {
 		safepoint := &rootMap.safepoints[i]
+		if !validProof(safepoint.functionProof) {
+			return fmt.Errorf("GC frame-root safepoint %d has invalid function-signature proof", safepoint.id)
+		}
 		if safepoint.frameBytes < 8 || safepoint.frameBytes > 1<<31-1 || safepoint.id == 0 || safepoint.id > shared.GCSafepointIDMax || (i != 0 && safepoint.id <= previousID) || !validGCFrameOffsets(safepoint.offsets, safepoint.frameBytes) {
 			return fmt.Errorf("GC frame-root safepoint %d is malformed", safepoint.id)
 		}

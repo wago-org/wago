@@ -456,13 +456,13 @@ func TestGCNativeScalarDomainBoundary(t *testing.T) {
 		{"other-store", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) { in.refStore = new(referenceStore) }, false},
 		{"dynamic-global", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) {
 			in.c.Globals = []GlobalDef{{Type: ValFuncRef}}
-		}, false},
+		}, true},
 		{"collector-argument", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) {
 			in.c.importFuncSigs = []FuncSig{{Params: []ValType{ValAnyRef}}}
-		}, false},
+		}, true},
 		{"collector-result", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) {
 			in.c.importFuncSigs = []FuncSig{{Results: []ValType{ValAnyRef}}}
-		}, false},
+		}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := new(referenceStore)
@@ -472,7 +472,10 @@ func TestGCNativeScalarDomainBoundary(t *testing.T) {
 			if tc.change != nil {
 				tc.change(caller, state)
 			}
-			if got := store.gcFrameScalarBoundary(tc.pc, collecting, tc.context); got != tc.want {
+			if store.gcFrameScalarBoundary(tc.pc, collecting, tc.context, false) {
+				t.Fatal("unknown or collector-bearing active callee admitted")
+			}
+			if got := store.gcFrameScalarBoundary(tc.pc, collecting, tc.context, true); got != tc.want {
 				t.Fatalf("boundary = %t, want %t", got, tc.want)
 			}
 		})
