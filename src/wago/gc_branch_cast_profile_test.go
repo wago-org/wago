@@ -23,7 +23,7 @@ func TestGCBranchCastHelperEntries(t *testing.T) {
 				session := NewCodeProfile(CodeProfileOptions{TraceBoundaries: true})
 				defer session.Close()
 				config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithCodeProfile(session)
-				c, err := Compile(config, branchCastModule(sub, []byte{tc.heap}, true, 2, false))
+				c, err := Compile(config, branchCastModule(sub, []byte{tc.heap}, true, 2, false, false))
 				if err != nil {
 					t.Fatal(err)
 				}

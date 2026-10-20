@@ -770,7 +770,6 @@ func (f *fn) emitNativeDefinedTest(typeIndex uint32, nullable bool) error {
 	} else {
 		f.a.MovImm32(RCX, 0)
 	}
-	f.a.MovImm32(RSI, 0) // ref.test does not admit exact heap markers
 	if regallocCheckEnabled {
 		f.checkCallClobber()
 	}
@@ -2040,12 +2039,15 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 
 	// Exact casts compare canonical IDs. Ordinary casts/tests use DFS interval
 	// containment: required.pre <= actual.pre && actual.post <= required.post.
-	a.TestSelf(RSI, false)
-	nonExact := a.JccPlaceholder(condE)
-	a.Cmp32(RCX, RDX)
-	failIf(condNE)
-	exactDone := a.JmpPlaceholder()
-	a.PatchRel32(nonExact, a.Len())
+	exactDone := -1
+	if !test {
+		a.TestSelf(RSI, false)
+		nonExact := a.JccPlaceholder(condE)
+		a.Cmp32(RCX, RDX)
+		failIf(condNE)
+		exactDone = a.JmpPlaceholder()
+		a.PatchRel32(nonExact, a.Len())
+	}
 
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
@@ -2074,7 +2076,9 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	failIf(condA)
 
 	successAt := a.Len()
-	a.PatchRel32(exactDone, successAt)
+	if exactDone >= 0 {
+		a.PatchRel32(exactDone, successAt)
+	}
 	if test {
 		a.MovImm32(RAX, 1)
 	} else {

@@ -16,6 +16,9 @@ var branchCastBenchCases = []struct {
 	{"fail-subtype", 25, []byte{0}, 3},
 	{"fail-miss", 25, []byte{0}, 4},
 	{"i31", 24, []byte{0x6c}, 1},
+	{"i31-fail", 25, []byte{0x6c}, 2},
+	{"none", 24, []byte{0x71}, 0},
+	{"none-fail", 25, []byte{0x71}, 3},
 	{"null", 25, []byte{0}, 0},
 	{"fallback-struct", 24, []byte{0x6b}, 3},
 }
@@ -25,7 +28,7 @@ func BenchmarkGCBranchCast(b *testing.B) {
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
 	for _, tc := range branchCastBenchCases {
 		b.Run(tc.name, func(b *testing.B) {
-			c, err := Compile(config, branchCastModule(tc.sub, tc.heap, false, 0, false))
+			c, err := Compile(config, branchCastModule(tc.sub, tc.heap, false, 0, false, false))
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -53,7 +56,7 @@ func BenchmarkGCBranchCastCompile(b *testing.B) {
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
 	for _, tc := range branchCastBenchCases {
 		b.Run(tc.name, func(b *testing.B) {
-			data := branchCastModule(tc.sub, tc.heap, false, 0, false)
+			data := branchCastModule(tc.sub, tc.heap, false, 0, false, false)
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
@@ -73,8 +76,8 @@ func BenchmarkGCBranchCastMixed(b *testing.B) {
 	const iterations = 512
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
 	instances := make([]*Instance, 2)
-	for i, heap := range [][]byte{{0}, {0x6b}} {
-		c, err := Compile(config, branchCastModule(24, heap, false, 0, false))
+	for i, heap := range [][]byte{{0x6c}, {0x6b}} {
+		c, err := Compile(config, branchCastModule(24, heap, false, 0, false, false))
 		if err != nil {
 			b.Fatal(err)
 		}
