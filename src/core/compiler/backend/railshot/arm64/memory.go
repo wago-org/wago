@@ -2013,6 +2013,43 @@ func (f *fn) sharedMemoryGrow(memoryIndex uint32) error {
 }
 
 // memorySize pushes the current linear-memory size in pages.
+// A request above the declaration's maximum minus minimum cannot succeed:
+// current >= minimum, and the effective maximum cannot exceed the declaration.
+// The caller homes all live values. Failure still acquire-reads the authoritative
+// size, as required by shared memory.grow, before returning the typed -1.
+func (f *fn) emitSharedMemoryGrowFailureFastPath(slot int, memoryIndex uint32, room uint64) int {
+	memory64 := f.memoryAddr64(memoryIndex)
+	if memory64 {
+		f.ld64(X9, SP, f.spillOff(slot))
+	} else {
+		f.ld32(X9, SP, f.spillOff(slot))
+	}
+	if room <= 4095 {
+		f.a.CmpImm64(X9, uint32(room))
+	} else {
+		f.a.MovImm64(X10, room)
+		f.cmpRR(X9, X10, true)
+	}
+	slow := f.a.Bcond(condBE)
+	if base := f.cachedSharedMemoryBase(); memoryIndex == 0 && base != regNone {
+		f.loadSharedMemoryBytes(X9, base)
+	} else {
+		f.ld64(X10, linMemReg, -int32(offMemoryDirPtr))
+		f.ld64(X10, X10, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+		f.loadSharedMemoryBytes(X9, X10)
+	}
+	failure := uint64(0xffffffff)
+	if memory64 {
+		failure = ^uint64(0)
+	}
+	f.a.MovImm64(X9, failure)
+	f.ld64(X11, linMemReg, -int32(offCustomCtx))
+	f.st64(X11, hcResults, X9)
+	done := f.a.Branch()
+	f.patchBranch19(slow, f.a.Len())
+	return done
+}
+
 func (f *fn) memorySize(r *wasm.Reader) error {
 	memoryIndex, err := r.U32()
 	if err != nil {
