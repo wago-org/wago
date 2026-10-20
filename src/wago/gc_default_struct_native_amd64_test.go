@@ -3,11 +3,15 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
+	"errors"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	rt "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -132,6 +136,57 @@ func TestGCDefaultStructFallbackAndCollection(t *testing.T) {
 				compiled.Close()
 			}
 		}
+	}
+}
+
+func TestGCDefaultStructInterruptAndRecovery(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcDefaultStructLoopBytes(true, 4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := Instantiate(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("run", 12); err != nil {
+		t.Fatal(err)
+	}
+	before := in.gc.Stats()
+	rt.RequestInterrupt(in.trap)
+	_, err = in.Invoke("run", 7)
+	requireInterruptedTrap(t, err)
+	if after := in.gc.Stats(); after != before {
+		t.Fatalf("interrupted entry changed allocation stats: %+v -> %+v", before, after)
+	}
+	if out, err := in.Invoke("run", 7); err != nil || len(out) != 1 || out[0] != 0 {
+		t.Fatalf("recovery: %v, %v", out, err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, err = in.InvokeContext(ctx, "run", 0x7fffffff)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("long allocation loop cancellation: %v", err)
+	}
+	if err := in.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	allocations := in.gc.Stats().Allocations
+	if out, err := in.Invoke("run", 64); err != nil || len(out) != 1 || out[0] != 0 {
+		t.Fatalf("post-cancellation recovery: %v, %v", out, err)
+	}
+	if got := in.gc.Stats().Allocations - allocations; got != 64 {
+		t.Fatalf("recovery allocations=%d, want64", got)
+	}
+	if _, err := in.Invoke("clear"); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	if live := in.gc.Stats().LiveObjects; live != 0 {
+		t.Fatalf("cancellation retained%d objects", live)
 	}
 }
 
