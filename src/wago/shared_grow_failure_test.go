@@ -191,6 +191,44 @@ func TestSharedGrowImpossibleImportedCurrentSizeAndQuota(t *testing.T) {
 	}
 }
 
+func TestSharedGrowImpossibleCacheAndRegisterABI(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		for _, index := range []byte{0, 1} {
+			for _, cache := range []bool{false, true} {
+				for _, regABI := range []bool{false, true} {
+					t.Run(fmt.Sprintf("wide=%t/index=%d/cache=%t/regABI=%t", wide, index, cache, regABI), func(t *testing.T) {
+						cfg := sharedGrowFailureConfig().WithOptimization("shared-memory-base", cache).WithOptimization("reg-abi", regABI)
+						c, err := cfg.Compile(sharedGrowFailureModule(wide, index, 1, 1, 1))
+						if err != nil {
+							t.Fatal(err)
+						}
+						defer c.Close()
+						loaded := publicArtifactRoundTrip(t, c)
+						defer loaded.Close()
+						failure := ^uint64(0)
+						if !wide {
+							failure = uint64(^uint32(0))
+						}
+						for _, compiled := range []*Compiled{c, loaded} {
+							in, err := Instantiate(compiled)
+							if err != nil {
+								t.Fatal(err)
+							}
+							defer in.Close()
+							for _, name := range []string{"constant", "dynamic"} {
+								got, err := in.Invoke(name, 1, 9)
+								if err != nil || len(got) != 3 || got[0] != 11 || got[1] != failure || got[2] != 10 {
+									t.Fatalf("%s: %v,%v", name, got, err)
+								}
+							}
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
 func BenchmarkSharedGrowImpossibleLoop(b *testing.B) {
 	const iterations = 1024
 	for _, wide := range []bool{false, true} {
