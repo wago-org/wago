@@ -21,6 +21,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Read scalar numeric struct fields in native ARM64 code through the shared
+  checked-object resolver, with the existing typed helper fallback.
+
 - Compile general array length reads to checked AMD64 and ARM64 instructions,
   with the existing helper for invalid handles and exact traps.
 
