@@ -21,6 +21,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Compile portable scalar plugin recipes to ARM64 instructions, preserving exact
+  import identity and the portable fallback for wider or unsupported contracts.
+
 - Detect writes to live deferred-load address registers, cached global-cell
   pointers, and forwarded store values in the AMD64 and ARM64 compilers when
   `wago_regalloccheck` is enabled. Also guard inputs during address preparation
