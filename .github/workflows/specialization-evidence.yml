@@ -1,0 +1,26 @@
+name: Specialization runtime evidence
+on:
+  push:
+    branches: [campaign/amd64-ref-02-20261020200452]
+permissions:
+  contents: read
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Measure fixed baseline and candidate
+        run: bash .campaign/native-bench.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: native-arm64-evidence
+          path: ${{ runner.temp }}/specialization-evidence
+          if-no-files-found: error
