@@ -36,10 +36,11 @@ follow a module from compilation through execution and public API ownership.
 
 ## Platform and artifact rules
 
-<!-- architecture:targets linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 -->
-Railshot compilation and the native runtime support Linux, macOS, and Windows
-on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
-guard-page bounds checks; all six targets support explicit bounds checks and
+<!-- architecture:targets linux/amd64 linux/arm64 linux/riscv64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 -->
+Railshot compilation and the native runtime support Linux on amd64, arm64, and
+riscv64, plus macOS and Windows on amd64 and arm64. Linux and Darwin/arm64
+additionally support signal-backed guard-page bounds checks; all seven targets
+support explicit bounds checks and
 cooperative cancellation safepoints.
 
 <!-- artifact:codec-version 6 -->
@@ -1005,15 +1006,16 @@ pinned specification suites. See [tests/README.md](tests/README.md) for prerequi
 
 - Wago has no interpreter tier: supported modules execute as native code. Wasm
   can be compiled in-process, serialized as a native `.wago` artifact, or
-  embedded in a standalone executable that compiles it at startup.
-- Linux, macOS, and Windows on amd64 and arm64 execute the native JIT and are
-  required CI and release targets. Signal-backed guard pages remain specific to
-  Linux/amd64, Linux/arm64, and Darwin/arm64; other targets use explicit bounds.
+  embedded in a compiler-free standalone executable.
+- Linux on amd64, arm64, and riscv64, plus macOS and Windows on amd64 and arm64,
+  execute the native JIT and are required release targets. Signal-backed guard pages remain specific to
+  Linux/amd64, Linux/arm64, Linux/riscv64, and Darwin/arm64; other targets use
+  explicit bounds.
 - WebAssembly 1.0, the documented WebAssembly 2.0 feature set, and the default
   WebAssembly Core 3.0 feature families on complete backends (tail calls, typed
   references, WasmGC, exception handling, multi-memory, memory64, table64,
   extended constants, and relaxed SIMD) are complete on linux/amd64,
-  linux/arm64, and darwin/arm64. Threads & atomics are available as the bounded
+  linux/arm64, linux/riscv64, and darwin/arm64. Threads & atomics are available as the bounded
   experimental explicit-bounds product documented in [FEATURES.md](FEATURES.md), which is the
   source of truth for per-feature status.
 - The off-path `src/core/compiler/ir` package is a research/debug oracle, not an
@@ -1035,8 +1037,16 @@ statistics and static WasmGC native-code attribution remain available to the
 new profiler.
 The removal contract is checked by `scripts/check-diagnostic-dce.sh`, which
 inspects unstripped manager, standard-runtime, minimal-runtime, and embedding binaries for
-both architectures on Linux, macOS, and Windows. Profiling must add no generated
-guest instrumentation or steady-state recording to ordinary builds.
+AMD64 and ARM64 on Linux, macOS, and Windows, plus RV64 on Linux. It also
+rejects foreign backend and encoder implementations. An artifact-loading embedding
+build with `wago_precompiled` must discard source decoding, frontend lowering,
+and function compilation even when it references `Compile`. Source requests fail
+before decoding. Artifact metadata validation
+and runtime thunk generation remain required.
+`scripts/check-riscv64-diagnostics.sh` compares ordinary and checked guest bytes
+and audits a force-linked RV64 compiler harness. Both scripts run in CI.
+Profiling must add no generated guest instrumentation or steady-state recording
+to ordinary builds.
 
 ### Build contract
 

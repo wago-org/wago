@@ -489,6 +489,9 @@ func installRunnerPayload(ref string, profile wagopaths.Profile, build wagopaths
 }
 
 func installRunnerPayloadContext(ctx context.Context, ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, sourceOnly bool, progress *managerprogress.Progress) error {
+	if err := build.ValidatePlatform(runtime.GOOS, runtime.GOARCH); err != nil {
+		return err
+	}
 	if _, _, canaryArtifact := canaryArtifactReference(ref); canaryArtifact {
 		err := downloadCanaryArtifactContext(ctx, ref, versionAsset(profile, build), dest, progress)
 		if err == nil {

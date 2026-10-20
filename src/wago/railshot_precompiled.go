@@ -11,6 +11,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/optimization"
 )
 
+// Reject source before decoding so artifact-only callers also discard the frontend.
+const sourceCompilationEnabled = false
+
 // These lightweight compile-contract definitions keep the public package
 // type-correct while allowing whole-program builds to discard source codegen.
 // railshotCompileModuleWith is unreachable in a wago_precompiled executable.
