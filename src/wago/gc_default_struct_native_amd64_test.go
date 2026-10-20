@@ -192,6 +192,57 @@ func TestGCDefaultStructInterruptAndRecovery(t *testing.T) {
 	}
 }
 
+func TestGCDefaultStructUnsupportedFields(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		storage byte
+		read    []byte
+		want    uint64
+	}{
+		{"i8", 0x78, []byte{0xfb, 4, 0, 0}, 0},
+		{"i16", 0x77, []byte{0xfb, 4, 0, 0}, 0},
+		{"v128", 0x7b, []byte{0xfb, 2, 0, 0, 0xfd, 0x53}, 0},
+		{"anyref", 0x6e, []byte{0xfb, 2, 0, 0, 0xd1}, 1},
+		{"eqref", 0x6d, []byte{0xfb, 2, 0, 0, 0xd1}, 1},
+		{"funcref", 0x70, []byte{0xfb, 2, 0, 0, 0xd1}, 1},
+		{"externref", 0x6f, []byte{0xfb, 2, 0, 0, 0xd1}, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0xfb, 1, 0, 0x24, 0, 0x23, 0}
+			body = append(body, tc.read...)
+			body = append(body, 0x0b)
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, tc.storage, 1}, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(3, wasmtest.Vec([]byte{1})),
+				wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{VerifyAfterCollect: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			for range 2 {
+				if out, err := in.Invoke("run"); err != nil || len(out) != 1 || out[0] != tc.want {
+					t.Fatalf("default field: %v, %v;want%d", out, err, tc.want)
+				}
+				if cursor := defaultStructReservationCursor(in); cursor != 0 {
+					t.Fatalf("unsupported field consumed native cursor%d", cursor)
+				}
+				if err := in.CollectGC(); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkGCDefaultStructInvoke(b *testing.B) {
 	for _, mode := range []string{"fast", "fallback", "mixed"} {
 		b.Run(mode, func(b *testing.B) {
