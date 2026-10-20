@@ -99,10 +99,6 @@ func TestGCScalarStructSetSources(t *testing.T) {
 					if err != nil || !matched || child.Ref.IsNull() {
 						t.Fatalf("reference field fixture: %v,%v,%v", child, matched, err)
 					}
-					childID, err := in.gc.CheckedIdentity(child.Ref)
-					if err != nil {
-						t.Fatal(err)
-					}
 					for _, bits := range []uint64{0, 0x80000000, 0xffffffff, 0x7fc12345, 0x8000000000000000, 0x7ff8123456789abc, ^uint64(0)} {
 						want := bits
 						if storage == 0x7f || storage == 0x7d {
@@ -128,9 +124,9 @@ func TestGCScalarStructSetSources(t *testing.T) {
 								t.Fatal(err)
 							}
 							stored, _, matched, err := in.gc.StructGetTyped(parent, in.requireGCDomainType(0), false, uint32(shape.vectors+1))
-							identity, identityErr := in.gc.CheckedIdentity(stored.Ref)
-							if err != nil || !matched || stored.Ref != child.Ref || identityErr != nil || identity != childID {
-								t.Fatalf("numeric store lost reference field: %v,%v,%v identity%d,%v", stored, matched, err, identity, identityErr)
+							childMatched, childErr := in.gc.RefTest(stored.Ref, gc.RefTestTarget{Kind: gc.RefTestDefined, Type: in.requireGCDomainType(1), Exact: true})
+							if err != nil || !matched || stored.Ref != child.Ref || !childMatched || childErr != nil {
+								t.Fatalf("numeric store lost reference field: %v,%v,%v child%v,%v", stored, matched, err, childMatched, childErr)
 							}
 						}
 						for _, name := range []string{"null", "param"} {
