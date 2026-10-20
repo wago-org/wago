@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const rv64RootedMaxHostFunctionImports = 256
@@ -203,7 +204,7 @@ func rv64RootedImportDigest(c *Compiled) ([32]byte, bool) {
 		_, _ = h.Write(word[:])
 
 		sig := &c.importFuncSigs[i]
-		if !sig.HasTypeIndex || sig.unsafeCrossTail && !(compiledArchitecture == 4 && c.nativeGCABIRequirement() == 1 && c.genericGCFrameRoots() != nil && railshotNativeTailImport(c, i)) || uint64(sig.TypeIndex) >= uint64(len(c.Types)) || len(sig.Params) > coreruntime.MaxHostArity || len(sig.Results) > coreruntime.MaxHostArity {
+		if !sig.HasTypeIndex || sig.unsafeCrossTail && !(compiledArchitecture == 4 && c.nativeGCABIRequirement() == gc.NativeABIVersion && c.genericGCFrameRoots() != nil && railshotNativeTailImport(c, i)) || uint64(sig.TypeIndex) >= uint64(len(c.Types)) || len(sig.Params) > coreruntime.MaxHostArity || len(sig.Results) > coreruntime.MaxHostArity {
 			return [32]byte{}, false
 		}
 		typ := &c.Types[sig.TypeIndex]

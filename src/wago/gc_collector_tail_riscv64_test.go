@@ -314,3 +314,46 @@ func TestRV64CollectorTailDeclaredSubtype(t *testing.T) {
 		}
 	}
 }
+
+func TestRV64CollectorTailRequiresCurrentGCABI(t *testing.T) {
+	compiled, err := NewRuntimeConfig().Compile(rv64CollectorTailSource("import", false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	view := compiled.executionView()
+	if len(view.importFuncSigs) != 1 || !view.importFuncSigs[0].unsafeCrossTail || !railshotNativeTailImport(view, 0) {
+		t.Fatal("fixture must exercise a collector-bearing tail import")
+	}
+	if !rv64CollectorTailMetadata(view) {
+		t.Fatal("current collector ABI did not admit tail metadata")
+	}
+	if _, valid := rv64RootedImportDigest(view); !valid {
+		t.Fatal("current collector ABI did not admit the rooted tail import")
+	}
+	seen := make(map[uint32]bool)
+	for _, version := range []uint32{0, 1, gc.NativeABIVersion - 1, gc.NativeABIVersion + 1} {
+		if version == gc.NativeABIVersion || seen[version] {
+			continue
+		}
+		seen[version] = true
+		t.Run(fmt.Sprintf("ABI%d", version), func(t *testing.T) {
+			candidateCompiled, err := NewRuntimeConfig().Compile(rv64CollectorTailSource("import", false))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer candidateCompiled.Close()
+			candidate := candidateCompiled.executionView()
+			candidate.codeCache.setNativeGCABIVersion(version)
+			if rv64CollectorTailMetadata(candidate) {
+				t.Fatal("unsupported collector ABI admitted tail metadata")
+			}
+			if _, valid := rv64RootedImportDigest(candidate); valid {
+				t.Fatal("unsupported collector ABI admitted rooted tail import")
+			}
+			if rv64FreshRootedGC(candidate) {
+				t.Fatal("unsupported collector ABI retained a rooted execution receipt")
+			}
+		})
+	}
+}
