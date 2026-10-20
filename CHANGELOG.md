@@ -21,6 +21,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Run GC `ref.test` and `ref.cast` checks for null and compact i31 values
+  directly on AMD64 and ARM64 for i31 and none targets. Preserve checked
+  helper paths for object and foreign reference values.
+
 - Detect writes to live deferred-load address registers, cached global-cell
   pointers, and forwarded store values in the AMD64 and ARM64 compilers when
   `wago_regalloccheck` is enabled. Also guard inputs during address preparation
