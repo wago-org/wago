@@ -2012,6 +2012,27 @@ func (f *fn) sharedMemoryGrow(memoryIndex uint32) error {
 	return f.callHostSync(int(shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow), ft)
 }
 
+// Zero growth only acquires the authoritative size. The caller has homed all
+// live values; nonzero deltas keep the existing synchronized helper path.
+func (f *fn) emitSharedMemoryGrowZeroFastPath(slot int, memoryIndex uint32) int {
+	memory64 := f.memoryAddr64(memoryIndex)
+	if memory64 {
+		f.ld64(X9, SP, f.spillOff(slot))
+	} else {
+		f.ld32(X9, SP, f.spillOff(slot))
+	}
+	slow := f.zeroBranch(X9, memory64, false)
+	f.ld64(X10, linMemReg, -int32(offMemoryDirPtr))
+	f.ld64(X10, X10, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+	f.loadSharedMemoryBytes(X9, X10)
+	f.a.LsrImm(X9, X9, 16, false)
+	f.ld64(X11, linMemReg, -int32(offCustomCtx))
+	f.st64(X11, hcResults, X9)
+	done := f.a.Branch()
+	f.patchBranch19(slow, f.a.Len())
+	return done
+}
+
 // memorySize pushes the current linear-memory size in pages.
 func (f *fn) memorySize(r *wasm.Reader) error {
 	memoryIndex, err := r.U32()

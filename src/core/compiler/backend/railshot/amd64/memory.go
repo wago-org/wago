@@ -1816,6 +1816,29 @@ func (f *fn) sharedMemoryGrow(memoryIndex uint32) error {
 	return f.callHostSync(int(shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow), ft)
 }
 
+// Zero growth only acquires the authoritative size. The caller has homed all
+// live values; nonzero deltas keep the existing synchronized helper path.
+func (f *fn) emitSharedMemoryGrowZeroFastPath(slot int, memoryIndex uint32) int {
+	memory64 := f.memoryAddr64(memoryIndex)
+	if memory64 {
+		f.a.Load64(RAX, RSP, f.spillOff(slot))
+	} else {
+		f.a.Load32(RAX, RSP, f.spillOff(slot))
+	}
+	f.a.TestSelf(RAX, memory64)
+	slow := f.a.JccPlaceholder(condNE)
+	f.a.Load64(RAX, RBX, -offMemoryDirPtr)
+	f.a.Load64(RAX, RAX, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+	// An aligned u64 MOV is an atomic acquire on AMD64, as in memory.size.
+	f.a.Load64(RAX, RAX, -bdCurBytes)
+	f.a.ShiftImm(5, RAX, 16, true)
+	f.a.Load64(R8, RBX, -offCustomCtx)
+	f.a.Store64(R8, hcResults, RAX)
+	done := f.a.JmpPlaceholder()
+	f.a.PatchRel32(slow, f.a.Len())
+	return done
+}
+
 func (f *fn) memorySize(r *wasm.Reader) error {
 	memoryIndex, err := r.U32()
 	if err != nil {
