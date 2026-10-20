@@ -22,14 +22,28 @@ jobs:
           go version
           go env GOOS GOARCH CGO_ENABLED
           uname -a
-      - name: Run verbose native backend and spike controls
+      - name: Bootstrap exact native unit prerequisites
+        shell: bash
+        run: |
+          scripts/bootstrap-wabt.sh --verify
+          dirname "$(scripts/bootstrap-wabt.sh --print-path)" >> "$GITHUB_PATH"
+      - name: Build ordinary native packages
+        run: |
+          go build ./...
+          go build -tags wago_runtime ./cli/...
+      - name: Run verbose ordinary full unit scope
         shell: bash
         run: |
           set -o pipefail
-          go test -v -count=5 -timeout=10m ./src/core/compiler/backend/railshot/arm64 ./src/core/runtime/arm64spike 2>&1 | tee "$RUNNER_TEMP/arm64-backend.log"
+          go test -v -count=1 ./... 2>&1 | tee "$RUNNER_TEMP/allpackages-ordinary.log"
+      - name: Run verbose checked full unit scope
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -tags=wago_regalloccheck -v -count=1 ./... 2>&1 | tee "$RUNNER_TEMP/allpackages-checked.log"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: pr942-darwin-arm64-diagnosis
-          path: ${{ runner.temp }}/arm64-backend.log
+          path: ${{ runner.temp }}/allpackages-*.log
           if-no-files-found: warn
