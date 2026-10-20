@@ -1324,7 +1324,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	genericGCExecution := gcStructProduct == stagedGCStructGeneric || gcArrayProduct == stagedGCArrayProductNewData || gcArrayProduct == stagedGCArrayProductNewElem || gcArrayProduct == stagedGCArrayProductGeneric
 	collectorReferenceCallBoundary := moduleHasCollectorReferenceCallBoundary(m)
 	gcAllocationSites := moduleHasGCAllocationSitesWithValidation(m, &validationAnalysis)
-	exactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary
+	// The extern identity bridge can coexist with allocating Wasm instructions.
+	// Its native locals need the same exact roots as generic GC execution.
+	exactNativeGCRoots := genericGCExecution || gcStructProduct == stagedGCStructExtern || collectorReferenceCallBoundary
 	var gcFrameRootDiagnostic string
 	gcFrameRoots := newGCFrameRootPlan(m, exactNativeGCRoots, &gcFrameRootDiagnostic, &validationAnalysis)
 	indexedFunctionRefTest, indexedFunctionRefCast := requirements.indexedFuncRefTest, requirements.indexedFuncRefCast
@@ -1485,6 +1487,18 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		compiled.codeCache.flags |= compiledCacheGuardMemory
 	}
 	validGCFrameRoots := validGCModuleFrameRootPlan(gcFrameRoots)
+	// A complete RootNone graph needs no parked frame slots. Keep an exact
+	// empty plan for non-allocating extern modules rather than changing their
+	// collector profile merely because no safepoint vector was needed.
+	if !validGCFrameRoots && gcStructProduct == stagedGCStructExtern && !gcAllocationSites && importedFuncs == 0 && gcFrameRoots != nil && len(m.Code) != 0 && gcFrameRoots.FunctionCount() == len(m.Code) {
+		validGCFrameRoots = true
+		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
+			if gcFrameRoots.FunctionPending(function) || gcFrameRoots.Function(function) != nil {
+				validGCFrameRoots = false
+				break
+			}
+		}
+	}
 	if validGCFrameRoots && (gcAllocationSites || genericGCExecution && !collectorReferenceCallBoundary) {
 		hasAllocationSafepoint := false
 		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {

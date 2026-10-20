@@ -346,7 +346,9 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 			return fmt.Errorf("GC frame-root metadata rejects import %d signature", i)
 		}
 	}
-	if len(rootMap.safepoints) == 0 && len(rootMap.callsites) == 0 {
+	// Source extern modules may have a complete, proven RootNone graph. Their
+	// bridge admission is not persisted, so decoded artifacts still reject.
+	if len(rootMap.safepoints) == 0 && len(rootMap.callsites) == 0 && c.stagedGCStructProduct() != stagedGCStructExtern {
 		return fmt.Errorf("GC frame-root metadata has no safepoints or callsites")
 	}
 	if len(rootMap.safepoints) == 0 && c.usesGenericGCExecution() && !c.hasCollectorReferenceCallBoundary() {
@@ -426,7 +428,7 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 				}
 				continue
 			}
-			if !isGCRefValType(refType) || !value.Null {
+			if (!isGCRefValType(refType) && refType != ValExternRef) || !value.Null {
 				return false
 			}
 		}
@@ -434,7 +436,16 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 	}
 	for tableIndex := 0; tableIndex < c.tableCount(); tableIndex++ {
 		typ := c.tableElementType(tableIndex)
-		if typ != ValFuncRef && !isGCRefValType(typ) {
+		if typ == ValExternRef && c.stagedGCStructProduct() == stagedGCStructExtern {
+			if _, imported := c.tableImportAt(tableIndex); imported {
+				return false
+			}
+			for _, exported := range c.tableExports {
+				if exported == tableIndex {
+					return false
+				}
+			}
+		} else if typ != ValFuncRef && !isGCRefValType(typ) {
 			return false
 		}
 		if tableIndex == 0 {

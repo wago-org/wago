@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -344,6 +345,9 @@ func TestGCExternConversionWithoutHeapKeepsTinyProfile(t *testing.T) {
 	if in.gc.Profile() != GCProfileTiny {
 		t.Fatalf("object-free bridge changed collector profile:%v", in.gc.Profile())
 	}
+	if roots := c.GCNativeRootAdmission(); !roots.Required || !roots.Exact || roots.Safepoints != 0 || roots.Callsites != 0 || roots.MaximumRoots != 0 {
+		t.Fatalf("noncollecting bridge lacks an exact empty graph: %+v", roots)
+	}
 	for i := 0; i < 3; i++ {
 		got, err := in.Invoke("run", 0)
 		if err != nil || len(got) != 1 || got[0] != 0 {
@@ -507,5 +511,86 @@ func BenchmarkGCExternForeignRoots(b *testing.B) {
 				}
 			})
 		}
+	}
+}
+
+func TestGCExternConversionVoidImportCannotUseEmptyRoots(t *testing.T) {
+	producerData := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 2, 0x7f, 1, 0x7e, 1}, wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x6e, 1, 0xd0, 0x6e, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("tick", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfb, 1, 0, 0x24, 0, 0xfb, 1, 0, 0x24, 0, 0xfb, 1, 0, 0x24, 0, 0x0b}))),
+	)
+	receiverBody := []byte{1, 1, 0x6e, 0x20, 0, 0xfb, 26, 0x21, 1, 0x10, 0, 0x20, 1, 0xfb, 27, 0x0b}
+	receiverBody = append(wasmtest.ULEB(uint32(len(receiverBody))), receiverBody...)
+	receiverData := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("env"), wasmtest.Name("tick")...), 0, 1))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(receiverBody)),
+	)
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	rt := NewRuntime(WithRuntimeConfig(cfg))
+	defer rt.Close()
+	pc, err := Compile(cfg, producerData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pc.Close()
+	pm, err := rt.Module(pc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pm.Close()
+	producer, err := rt.Instantiate(context.Background(), pm, WithGC(GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	tick, err := producer.ExportedFunc("tick")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc, err := Compile(cfg, receiverData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rc.Close()
+	rm, err := rt.Module(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rm.Close()
+	receiver, err := rt.Instantiate(context.Background(), rm, WithImports(testImports("env.tick", tick)), WithGC(GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 16}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer receiver.Close()
+	admission := rc.GCNativeRootAdmission()
+	if !admission.Required {
+		t.Fatal("void import removed the broad extern root requirement")
+	}
+	if admission.Exact && admission.Callsites == 0 {
+		t.Fatalf("collecting imported function received an empty graph:%+v", admission)
+	}
+	if !admission.Exact && receiver.gc.CollectsOnAllocation() {
+		t.Fatal("unproven imported call permits native collection")
+	}
+	foreign, err := receiver.NewExternRef("live across void GC call")
+	if err != nil {
+		t.Fatal(err)
+	}
+	word := ValueExternRef(foreign).Bits()
+	before := producer.gc.Stats().FullCollections
+	for i := 0; i < 3; i++ {
+		got, err := receiver.Invoke("run", word)
+		if err != nil || len(got) != 1 || got[0] != word {
+			t.Fatalf("foreign local across collecting import:%x,%v", got, err)
+		}
+	}
+	if producer.gc.Stats().FullCollections <= before {
+		t.Fatal("void import did not collect")
 	}
 }

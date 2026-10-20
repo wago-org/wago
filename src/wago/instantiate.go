@@ -278,8 +278,8 @@ func (b *instanceBuilder) prepareCollector() error {
 		return nil
 	}
 	gcConfig := b.opts.GC
-	if b.c.usesGenericGCExecution() && b.c.genericGCFrameRoots() == nil {
-		// Generic products outside the validated native root-map slice still do
+	if b.c.needsExactNativeGCRoots() && b.c.genericGCFrameRoots() == nil {
+		// Products outside the validated native root-map slice still do
 		// not publish every native reference at allocating helper safepoints. Keep
 		// them stable and bounded rather than scanning an incomplete frame.
 		gcConfig.Profile = gc.ProfileThroughput
