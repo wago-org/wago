@@ -96,9 +96,18 @@ func TestCopyBuildSecurityDescriptorStopsAtGuardPage(t *testing.T) {
 }
 
 func TestGetBuildSecurityInfoPreservesError(t *testing.T) {
-	_, want := windows.GetSecurityInfo(windows.InvalidHandle, windows.SE_FILE_OBJECT, windows.LABEL_SECURITY_INFORMATION)
-	_, got := getBuildSecurityInfo(windows.InvalidHandle, windows.SE_FILE_OBJECT, windows.LABEL_SECURITY_INFORMATION)
-	if want == nil || got != want {
-		t.Fatalf("invalid handle error=%v, want %v", got, want)
+	// InvalidHandle is also the current-process pseudo handle, so Windows can
+	// accept it. A null handle cannot name an object whose owner or DACL is read.
+	const information = windows.OWNER_SECURITY_INFORMATION | windows.GROUP_SECURITY_INFORMATION | windows.DACL_SECURITY_INFORMATION
+	_, want := windows.GetSecurityInfo(0, windows.SE_FILE_OBJECT, information)
+	if want != windows.ERROR_INVALID_HANDLE {
+		t.Fatalf("reference null handle error=%v, want %v", want, windows.ERROR_INVALID_HANDLE)
+	}
+	descriptor, got := getBuildSecurityInfo(0, windows.SE_FILE_OBJECT, information)
+	if got != want {
+		t.Fatalf("null handle error=%v, want %v", got, want)
+	}
+	if descriptor != nil {
+		t.Fatal("failed security query returned a descriptor")
 	}
 }
