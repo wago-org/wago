@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Mask narrow AMD64 plugin recipe results when a recipe returns its input
+  directly, preserving the declared logical bit width.
+
 - Allow up to 32 nested synchronous host calls under standard Go so component
   adapter chains can cross more than four boundaries. TinyGo retains its
   four-call limit for fixed host stacks. Size parked GC callback and root storage
