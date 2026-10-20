@@ -21,6 +21,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Return native shared-memory growth failure on AMD64 and ARM64 when a
+  runtime request exceeds the declared maximum minus minimum. Keep the required
+  atomic size read and use the Go helper for all other runtime requests.
+
 - Detect writes to live deferred-load address registers, cached global-cell
   pointers, and forwarded store values in the AMD64 and ARM64 compilers when
   `wago_regalloccheck` is enabled. Also guard inputs during address preparation

@@ -49,7 +49,10 @@ func sharedGrowDynamicFailureModuleWithMaximum(wide bool, index byte, imported b
 		and, or, add = 0x83, 0x84, 0x7c
 	}
 	loop = append(loop, 0x20, 2, and, 0x20, 1, or, 0x40, index, add, 0x21, 4, 0x20, 3, 0x41, 1, 0x6a, 0x21, 3, 0x0c, 0, 0x0b, 0x0b, 0x20, 4, 0x0b)
-	spin := []byte{constant, 4, 0x41, 1, 0xfe, 0x17, 0x42, index, 0, 0x03, 0x40, 0x20, 0, 0x40, index, 0x1a, 0x0c, 0, 0x0b, 0x0b}
+	// The host can release this loop after an interruption failure. This keeps
+	// failed cancellation tests from retaining a native execution indefinitely.
+	spin := []byte{constant, 4, 0x41, 1, 0xfe, 0x17, 0x42, index, 0, 0x03, 0x40, 0x20, 0, 0x40, index, 0x1a,
+		constant, 4, 0xfe, 0x10, 0x42, index, 0, 0x41, 1, 0x46, 0x0d, 0, 0x0b, 0x0b}
 	trap := []byte{1, 1, 0x7e, constant, 0x7f, 0x28, 0x42, index, 0, 0x1a}
 	trap = append(trap, run[3:]...)
 	vector := []byte{0xfd, 12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0x20, 0, 0x40, index, 0x0b}
@@ -249,6 +252,13 @@ func TestSharedGrowDynamicFailureCancellation(t *testing.T) {
 						t.Fatalf("cancel:%v", err)
 					}
 				case <-time.After(5 * time.Second):
+					atomic.StoreUint32(flag, 2)
+					select {
+					case <-done:
+						in.Close()
+					case <-time.After(5 * time.Second):
+						t.Fatal("native loop ignored cancellation and the stop flag")
+					}
 					t.Fatal("native loop ignored cancellation")
 				}
 			})
