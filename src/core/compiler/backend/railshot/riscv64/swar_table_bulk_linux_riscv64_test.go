@@ -12,7 +12,9 @@ import (
 	"time"
 	"unsafe"
 
+	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 func swarBulkTableExecutionRV64(t *testing.T, j *coreruntime.JobMemory, f fixtureFunc) (uintptr, []byte, []byte, uint32) {
@@ -336,146 +338,151 @@ func TestSWARRV64BulkTableActiveFillInterruptCompleteRowsAndReuse(t *testing.T) 
 	}
 }
 
+// swarBulkTableInterruptGateRV64 pauses only before the second row's real
+// interrupt poll. The appended test gate uses the poll's scratch registers and
+// leaves its load, fence and conditional trap intact. No production code changes.
+func swarBulkTableInterruptGateRV64(t *testing.T, code []byte, ready uintptr, remaining int, wantPolls int) []byte {
+	t.Helper()
+	var poll enc.Asm
+	poll.Ld(enc.X28, enc.X25, -abi.TrapCellPtrOffset)
+	poll.Lwu(enc.X29, enc.X28, 0)
+	poll.Fence(enc.FenceRead, enc.FenceRead|enc.FenceWrite)
+	var sites []int
+	for at := 0; at+len(poll.B) <= len(code); at += 4 {
+		if bytes.Equal(code[at:at+len(poll.B)], poll.B) {
+			sites = append(sites, at)
+		}
+	}
+	// The first poll belongs to function entry; the remaining polls belong to
+	// the two copy directions or the single grow initialization loop.
+	if len(sites) != wantPolls+1 {
+		t.Fatalf("generated interrupt polls = %d, want entry plus %d bulk polls", len(sites), wantPolls)
+	}
+	for _, site := range sites[1:] {
+		var gate enc.Asm
+		gate.Constant64(enc.X29, int64(ready))
+		gate.Ld(enc.X28, enc.X29, 0)
+		already := gate.Len()
+		gate.Branch(enc.NE, enc.X28, enc.Zero, 0)
+		gate.Addi(enc.X28, enc.Zero, int32(remaining))
+		otherRow := gate.Len()
+		gate.Branch(enc.NE, enc.X5, enc.X28, 0)
+		// Publish the first complete row before notifying the Go observer.
+		gate.Fence(enc.FenceRead|enc.FenceWrite, enc.FenceRead|enc.FenceWrite)
+		gate.Sd(enc.X5, enc.X29, 0)
+		gate.Ld(enc.X28, enc.X25, -abi.TrapCellPtrOffset)
+		gate.Lwu(enc.X29, enc.X28, 0)
+		gate.Branch(enc.EQ, enc.X29, enc.Zero, -4)
+		resume := gate.Len()
+		gate.Ld(enc.X28, enc.X25, -abi.TrapCellPtrOffset) // replaced original load
+		gate.Jalr(enc.Zero, enc.Scratch1, 0)
+		for _, branch := range []int{already, otherRow} {
+			var patch enc.Asm
+			patch.Branch(enc.NE, enc.X28, enc.Zero, int32(resume-branch))
+			if branch == otherRow {
+				patch = enc.Asm{}
+				patch.Branch(enc.NE, enc.X5, enc.X28, int32(resume-branch))
+			}
+			copy(gate.B[branch:], patch.B)
+		}
+		var jump enc.Asm
+		jump.Jal(enc.Scratch1, int32(len(code)-site))
+		if gate.Err() != nil || jump.Err() != nil {
+			t.Fatal("test interrupt gate", gate.Err(), jump.Err())
+		}
+		copy(code[site:], jump.B)
+		code = append(code, gate.B...)
+	}
+	return code
+}
+
 func TestSWARRV64BulkTableActiveCopyGrowInterruptAndRetry(t *testing.T) {
-	// A ready second P observes a test-only marker before the bulk instruction.
-	// A straight-line delay leaves enough time to publish the request without
-	// adding another safepoint. The target bulk instruction must therefore
-	// report its own source PC.
-	previous := goruntime.GOMAXPROCS(2)
-	defer goruntime.GOMAXPROCS(previous)
 	for _, sub := range []byte{14, 15} {
 		e, j, args, results, trap, _ := thunkFixtureRV64(t, 256)
 		f := swarBulkTableFixture(sub)
-		marker := []byte{0x41, 0, 0xd0, 0x70, 0x26, 0}
-		for range 3000 {
-			marker = append(marker, 0x41, 0, 0x1a)
+		fn, ft, functions, tableType := swarValidatedBulkTableFunction(t, f)
+		code, _, _, err := compileSWARPairsWithTable(fn, ft, nil, nil, functions, nil, 0, tableType, emissionMode{production: true, interruptible: true, entryPC: fn.LocalDeclBytes})
+		if err != nil {
+			t.Fatal(err)
 		}
-		marker = append(marker, 0x41, 0, 0xd2, 1, 0x26, 0)
-		for range 3000 {
-			marker = append(marker, 0x41, 0, 0x1a)
+		arena, err := coreruntime.NewArena(8)
+		if err != nil {
+			t.Fatal(err)
 		}
-		f.body = append(append(f.body[:2:2], marker...), f.body[2:]...)
-		entry, table, directory, pcBase := swarBulkTableExecutionRV64(t, j, f)
-		pc := pcBase + uint32(bytes.Index(f.body, []byte{0xfc, sub}))
-		observed := false
-		for attempt := 0; attempt < 8; attempt++ {
-			clear(trap)
-			for i := 0; i < 1024; i++ {
-				copy(table[8+i*32:8+(i+1)*32], directory[40:72])
+		t.Cleanup(func() { _ = arena.Close() })
+		ready := arena.Alloc(8)
+		remaining, polls := 511, 2
+		if sub == 15 {
+			remaining, polls = 1020, 1
+		}
+		code = swarBulkTableInterruptGateRV64(t, code, thunkPointerRV64(ready), remaining, polls)
+		entry := thunkImageRV64(t, code)
+		table, directory := swarOwnedTableFixtureRV64(t, j, entry, f)
+		binary.LittleEndian.PutUint32(table[4:], 1024)
+		for i := 0; i < 1024; i++ {
+			copy(table[8+i*32:8+(i+1)*32], directory[40:72])
+		}
+		start, changed, untouched := 512, 1023, 512
+		wantLength := uint32(1024)
+		if sub == 14 {
+			binary.LittleEndian.PutUint32(table, 1024)
+			for i := 0; i < 512; i++ {
+				copy(table[8+i*32:8+(i+1)*32], directory[80:112])
 			}
-			watchIndex := 0
-			if sub == 14 {
-				binary.LittleEndian.PutUint32(table, 1024)
-				for i := 0; i < 512; i++ {
-					copy(table[8+i*32:8+(i+1)*32], directory[80:112])
-				}
-				swarTableInputsRV64(args, 512, 0, 512)
-			} else {
-				binary.LittleEndian.PutUint32(table, 3)
-				swarTableInputsRV64(args, 1021, 1)
+			swarTableInputsRV64(args, 512, 0, 512)
+		} else {
+			binary.LittleEndian.PutUint32(table, 3)
+			swarTableInputsRV64(args, 1021, 1)
+			start, changed, untouched, wantLength = 3, 3, 1023, 3
+		}
+		beforeArgs := bytes.Clone(args)
+		for i := range results {
+			results[i] = 0xa5
+		}
+		done := make(chan error, 1)
+		go func() { done <- e.CallPrepared(entry, args, j.LinMemBase(), trap, results) }()
+		deadline := time.Now().Add(2 * time.Second)
+		for atomic.LoadUint64((*uint64)(unsafe.Pointer(&ready[0]))) == 0 && time.Now().Before(deadline) {
+			time.Sleep(100 * time.Microsecond)
+		}
+		started := atomic.LoadUint64((*uint64)(unsafe.Pointer(&ready[0]))) == uint64(remaining)
+		coreruntime.RequestInterrupt(trap) // also releases the gate on timeout
+		err = <-done                       // Join before any owned native mapping can be released.
+		var tr *coreruntime.TrapError
+		pc := fn.LocalDeclBytes + uint32(bytes.Index(f.body, []byte{0xfc, sub}))
+		if !started || !errors.As(err, &tr) || tr.Code != coreruntime.TrapInterrupted || binary.LittleEndian.Uint64(trap[16:]) != uint64(pc)<<32|1 {
+			t.Fatal("active bulk poll/source", sub, started, err, trap[16:24])
+		}
+		if !bytes.Equal(args, beforeArgs) || !bytes.Equal(results, bytes.Repeat([]byte{0xa5}, len(results))) || binary.LittleEndian.Uint32(table[4:]) != 1024 {
+			t.Fatal("active mutation arena/header writes", sub)
+		}
+		if binary.LittleEndian.Uint32(table) != wantLength || !bytes.Equal(table[8+changed*32:8+(changed+1)*32], directory[80:112]) || !bytes.Equal(table[8+untouched*32:8+(untouched+1)*32], directory[40:72]) {
+			t.Fatal("active mutation progress/hidden spare length/unfinished edge", sub)
+		}
+		for i := start; i < 1024; i++ {
+			row := table[8+i*32 : 8+(i+1)*32]
+			if !bytes.Equal(row, directory[40:72]) && !bytes.Equal(row, directory[80:112]) {
+				t.Fatal("active mutation split32B row", sub, i)
 			}
-			word := (*uint64)(unsafe.Pointer(&table[8+watchIndex*32]))
-			beforeArgs := bytes.Clone(args)
-			for i := range results {
-				results[i] = 0xa5
-			}
-			ready, finished, joined := make(chan struct{}), make(chan struct{}), make(chan struct{})
-			go func() {
-				// Keep the ready observer on its current OS thread. Yielding its P
-				// can leave a finite native mutation without an observer for its
-				// entire duration. This bounded spin ends when the call joins;
-				// it is test synchronization, not a guest/compiler timing change.
-				goruntime.LockOSThread()
-				defer goruntime.UnlockOSThread()
-				defer close(joined)
-				close(ready)
-				cleared := false
-				for {
-					select {
-					case <-finished:
-						return
-					default:
-					}
-					current := atomic.LoadUint64(word)
-					if !cleared {
-						cleared = current == 0
-						continue
-					}
-					if current != 0 {
-						coreruntime.RequestInterrupt(trap)
-						return
-					}
-				}
-			}()
-			<-ready
-			err := e.CallPrepared(entry, args, j.LinMemBase(), trap, results)
-			close(finished)
-			<-joined // No late publication can race clear or retry.
-			var tr *coreruntime.TrapError
-			if !errors.As(err, &tr) || tr.Code != coreruntime.TrapInterrupted || binary.LittleEndian.Uint64(trap[16:]) != uint64(pc)<<32|1 {
-				// A completed operation may have a late cooperative request without a
-				// generated cold trap. Its full length/rows must still be consistent.
-				if err != nil && (!errors.As(err, &tr) || tr.Code != coreruntime.TrapInterrupted) {
-					t.Fatal("active finite mutation", sub, err)
-				}
-				if binary.LittleEndian.Uint32(table) != 1024 {
-					t.Fatal("late mutation incomplete length", sub)
-				}
-				start := 512
-				if sub == 15 {
-					start = 3
-				}
-				for i := start; i < 1024; i++ {
-					if !bytes.Equal(table[8+i*32:8+(i+1)*32], directory[80:112]) {
-						t.Fatal("late mutation incomplete row", sub, i)
-					}
-				}
-				continue
-			}
-			observed = true
-			if !bytes.Equal(args, beforeArgs) || !bytes.Equal(results, bytes.Repeat([]byte{0xa5}, len(results))) || binary.LittleEndian.Uint32(table[4:]) != 1024 {
-				t.Fatal("active mutation arena/header writes", sub)
-			}
-			wantLength := uint32(1024)
-			start := 512
-			untouchedIndex := 512
+		}
+		clear(trap)
+		if sub == 15 {
+			swarTableInputsRV64(args, 1021, 0)
+		} // Null retry overwrites all hidden initialized rows.
+		if err := e.CallPrepared(entry, args, j.LinMemBase(), trap, results); err != nil || binary.LittleEndian.Uint32(table) != 1024 || !bytes.Equal(results[:16], beforeArgs[:16]) {
+			t.Fatal("active mutation retry", sub, err)
+		}
+		for i := start; i < 1024; i++ {
+			want := directory[80:112]
 			if sub == 15 {
-				wantLength = 3
-				start = 3
-				untouchedIndex = 1023
+				want = make([]byte, 32)
 			}
-			if binary.LittleEndian.Uint32(table) != wantLength || !bytes.Equal(table[8+watchIndex*32:8+(watchIndex+1)*32], directory[80:112]) || !bytes.Equal(table[8+untouchedIndex*32:8+(untouchedIndex+1)*32], directory[40:72]) {
-				t.Fatal("active mutation progress/hidden spare length/unfinished edge", sub)
+			if !bytes.Equal(table[8+i*32:8+(i+1)*32], want) {
+				t.Fatal("retry stale initialized row", sub, i)
 			}
-			for i := start; i < 1024; i++ {
-				row := table[8+i*32 : 8+(i+1)*32]
-				if !bytes.Equal(row, directory[40:72]) && !bytes.Equal(row, directory[80:112]) {
-					t.Fatal("active mutation split32B row", sub, i)
-				}
-			}
-			clear(trap)
-			if sub == 15 {
-				swarTableInputsRV64(args, 1021, 0)
-			} // Null retry overwrites all hidden initialized rows.
-			if err := e.CallPrepared(entry, args, j.LinMemBase(), trap, results); err != nil || binary.LittleEndian.Uint32(table) != 1024 || !bytes.Equal(results[:16], beforeArgs[:16]) {
-				t.Fatal("active mutation retry", sub, err)
-			}
-			for i := start; i < 1024; i++ {
-				want := directory[80:112]
-				if sub == 15 {
-					want = make([]byte, 32)
-				}
-				if !bytes.Equal(table[8+i*32:8+(i+1)*32], want) {
-					t.Fatal("retry stale initialized row", sub, i)
-				}
-			}
-			if sub == 15 && (binary.LittleEndian.Uint64(results[16:]) != 3 || binary.LittleEndian.Uint64(results[24:]) != 1024) {
-				t.Fatal("retry grow normalization", results[:32])
-			}
-			break
 		}
-		if !observed {
-			t.Fatal("no genuine active table safepoint reached within bounded retries", sub)
+		if sub == 15 && (binary.LittleEndian.Uint64(results[16:]) != 3 || binary.LittleEndian.Uint64(results[24:]) != 1024) {
+			t.Fatal("retry grow normalization", results[:32])
 		}
 	}
 }

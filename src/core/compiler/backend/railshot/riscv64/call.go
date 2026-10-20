@@ -52,11 +52,12 @@ const (
 	gcArrayCopy          uint32 = 28
 	gcArrayInitData      uint32 = 29
 	gcArrayInitElem      uint32 = 30
-	gcTableFill          uint32 = 40
-	gcTableCopy          uint32 = 41
-	gcTableGrow          uint32 = 42
-	gcTableInit          uint32 = 43
-	gcTableElemDrop      uint32 = 44
+	// 40, 42 and 43 are dead-allocation helpers; 45..47 are RV64 host helpers.
+	gcTableFill     uint32 = 48
+	gcTableCopy     uint32 = 49
+	gcTableGrow     uint32 = 50
+	gcTableInit     uint32 = 51
+	gcTableElemDrop uint32 = 52
 	// guestGlobalClear is an internal relocation key, not a GC helper ID.
 	guestGlobalClear        uint32 = ^uint32(0)
 	guestGlobalStore        uint32 = ^uint32(0) - 1

@@ -36,11 +36,12 @@ const (
 	gcArrayCheckUniform        uint32 = 37
 	gcArrayCheckData           uint32 = 38
 	gcArrayCheckFixed          uint32 = 39
-	gcTableFill                uint32 = 40
-	gcTableCopy                uint32 = 41
-	gcTableGrow                uint32 = 42
-	gcTableInit                uint32 = 43
-	gcTableElemDrop            uint32 = 44
+	// 40, 42 and 43 are dead-allocation helpers; 45..47 are RV64 host helpers.
+	gcTableFill     uint32 = 48
+	gcTableCopy     uint32 = 49
+	gcTableGrow     uint32 = 50
+	gcTableInit     uint32 = 51
+	gcTableElemDrop uint32 = 52
 )
 
 func gcArrayElementStorage(kind gc.StorageKind) bool {
