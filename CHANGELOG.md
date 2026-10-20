@@ -21,6 +21,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Read ARM64 signed and unsigned packed struct fields through the checked
+  native object leaf, with the existing typed helper on failed checks.
+
 - Compile general array length reads to checked AMD64 and ARM64 instructions,
   with the existing helper for invalid handles and exact traps.
 
