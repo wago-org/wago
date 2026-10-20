@@ -2012,7 +2012,6 @@ func (f *fn) sharedMemoryGrow(memoryIndex uint32) error {
 	return f.callHostSync(int(shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow), ft)
 }
 
-// memorySize pushes the current linear-memory size in pages.
 // A request above the declaration's maximum minus minimum cannot succeed:
 // current >= minimum, and the effective maximum cannot exceed the declaration.
 // The caller homes all live values. Failure still acquire-reads the authoritative
@@ -2050,6 +2049,7 @@ func (f *fn) emitSharedMemoryGrowFailureFastPath(slot int, memoryIndex uint32, r
 	return done
 }
 
+// memorySize pushes the current linear-memory size in pages.
 func (f *fn) memorySize(r *wasm.Reader) error {
 	memoryIndex, err := r.U32()
 	if err != nil {

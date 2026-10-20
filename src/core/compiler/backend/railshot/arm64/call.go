@@ -1440,7 +1440,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	growRoom := uint64(0)
 	if growFailureFast {
 		memory, ok := f.memoryType(growIndex)
-		growFailureFast = ok && memory.Shared && memory.Limits.HasMax && memory.Limits.Min <= memory.Limits.Max
+		// Keep the helper when the selected entry exceeds scaled LDR64.
+		growFailureFast = ok && memory.Shared && memory.Limits.HasMax && memory.Limits.Min <= memory.Limits.Max &&
+			uint64(growIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset <= 0xfff*8
 		if growFailureFast {
 			growRoom = memory.Limits.Max - memory.Limits.Min
 			// Omit an unreachable guard when every canonical delta fits this bound.
