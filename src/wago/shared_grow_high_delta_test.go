@@ -226,3 +226,20 @@ func BenchmarkSharedGrowHighDelta(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkSharedGrowHighDeltaCompile(b *testing.B) {
+	for _, index := range []byte{0, 1} {
+		b.Run(fmt.Sprintf("index%d", index), func(b *testing.B) {
+			cfg, module := sharedGrowHighDeltaConfig(), sharedGrowHighDeltaModule(index, false)
+			b.ReportAllocs()
+			for range b.N {
+				c, err := cfg.Compile(module)
+				if err != nil {
+					b.Fatal(err)
+				}
+				b.ReportMetric(float64(c.CodeSize()), "native-B")
+				c.Close()
+			}
+		})
+	}
+}
