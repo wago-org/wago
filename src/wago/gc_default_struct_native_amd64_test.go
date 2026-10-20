@@ -11,7 +11,6 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	rt "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -154,9 +153,12 @@ func TestGCDefaultStructInterruptAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := in.gc.Stats()
-	rt.RequestInterrupt(in.trap)
-	_, err = in.Invoke("run", 7)
-	requireInterruptedTrap(t, err)
+	canceled, cancelEntry := context.WithCancel(context.Background())
+	cancelEntry()
+	_, err = in.InvokeContext(canceled, "run", 7)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled entry: %v", err)
+	}
 	if after := in.gc.Stats(); after != before {
 		t.Fatalf("interrupted entry changed allocation stats: %+v -> %+v", before, after)
 	}
