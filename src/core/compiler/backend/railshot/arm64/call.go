@@ -353,7 +353,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	imported := f.importedFunctionCount()
 	if int(idx) < imported && f.customInstructions != nil {
-		if custom, ok := f.customInstructions[idx]; ok && (pluginARM64Lowering(custom) != nil || len(custom.Nodes) != 0) {
+		if custom, ok := f.customInstructions[idx]; ok && (pluginARM64Lowering(custom) != nil || instructionRecipeEligible(custom)) {
 			return f.emitCustomInstruction(custom, ft)
 		}
 	}
