@@ -8,8 +8,9 @@ on modern hosts. Native artifact format 3 records optional CPU requirements;
 older artifacts must be rebuilt. Optional native plugins can require newer CPU
 extensions even when ordinary Wasm code can use the baseline.
 Portable plugin recipes with inputs up to 32 bits and one output up to 32 bits
-compile to scalar instructions on AMD64 and ARM64. Wider logical values and
-unsupported recipe contracts retain the portable handler.
+compile to scalar instructions on AMD64 and ARM64. ARM64 bounds the recipe's
+node count, depth, and expanded expression work. Larger ARM64 recipes, wider
+logical values, and unsupported contracts retain the portable handler.
 
 This is the feature-support matrix for Wago's pure-Go, no-cgo engine. Wago
 supports Linux, macOS, and Windows on amd64 and arm64. For planned work, see
