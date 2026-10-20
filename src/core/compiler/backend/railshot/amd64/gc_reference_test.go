@@ -50,7 +50,9 @@ func TestModuleSharedNullI31Classifier(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer cm.CodeImage.Close()
+				if cm.CodeImage != nil {
+					defer cm.CodeImage.Close()
+				}
 				t.Logf("code=%d stub-bodies=%d stub-sites=%d stub-bytes=%d", len(cm.Code), stats.GCSharedStubs, stats.GCSharedStubCallSites, stats.GCSharedStubBytes)
 				if workers == 1 {
 					serial = append([]byte(nil), cm.Code...)
