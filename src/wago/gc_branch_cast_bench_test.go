@@ -24,6 +24,7 @@ var branchCastBenchCases = []struct {
 }
 
 func BenchmarkGCBranchCast(b *testing.B) {
+	requireCompleteCore3Backend(b)
 	const iterations = 1024
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
 	for _, tc := range branchCastBenchCases {
@@ -53,6 +54,7 @@ func BenchmarkGCBranchCast(b *testing.B) {
 }
 
 func BenchmarkGCBranchCastCompile(b *testing.B) {
+	requireCompleteCore3Backend(b)
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
 	for _, tc := range branchCastBenchCases {
 		b.Run(tc.name, func(b *testing.B) {
@@ -73,6 +75,7 @@ func BenchmarkGCBranchCastCompile(b *testing.B) {
 }
 
 func BenchmarkGCBranchCastMixed(b *testing.B) {
+	requireCompleteCore3Backend(b)
 	const iterations = 512
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
 	instances := make([]*Instance, 2)

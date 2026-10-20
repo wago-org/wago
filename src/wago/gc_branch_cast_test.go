@@ -92,6 +92,7 @@ func branchCastModule(sub byte, target []byte, nullable bool, depth int, collect
 }
 
 func TestGCBranchCast(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	for _, sub := range []byte{24, 25} {
 		for _, target := range []struct {
 			name    string
@@ -140,6 +141,7 @@ func TestGCBranchCast(t *testing.T) {
 }
 
 func TestGCBranchCastCollection(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	for _, sub := range []byte{24, 25} {
 		for _, target := range []byte{0, 2, 0x6c, 0x71} {
 			for _, profile := range []GCProfile{GCProfileThroughput, GCProfileTiny} {
@@ -175,6 +177,7 @@ func TestGCBranchCastCollection(t *testing.T) {
 
 // Deferred shifts and loads must not overwrite the match register at the join.
 func TestGCBranchCastDeferredPrefix(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	for n := 0; n < 12; n++ {
 		for _, sub := range []byte{24, 25} {
 			for _, target := range []byte{0x71, 0x6c} {
@@ -232,6 +235,7 @@ func branchCastPressureCode(body []byte) []byte {
 }
 
 func TestGCBranchCastNonNullableSource(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	for _, sub := range []byte{24, 25} {
 		for _, target := range []byte{0, 1, 2, 0x6c, 0x71} {
 			for _, nullable := range []bool{false, true} {
@@ -278,6 +282,7 @@ func TestGCBranchCastNonNullableSource(t *testing.T) {
 }
 
 func TestGCBranchCastLargeTypeIndex(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	for _, target := range []uint32{4095, 4096} {
 		t.Run(fmt.Sprint(target), func(t *testing.T) {
 			types := make([][]byte, target+2)
@@ -314,6 +319,7 @@ func TestGCBranchCastLargeTypeIndex(t *testing.T) {
 }
 
 func TestGCBranchCastForeignReference(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	for _, sub := range []byte{24, 25} {
 		for _, target := range []byte{0, 0x6c, 0x71} {
 			for _, nullable := range []bool{false, true} {
@@ -369,6 +375,7 @@ func TestGCBranchCastForeignReference(t *testing.T) {
 }
 
 func TestGCBranchCastOnlyStackRoot(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	for _, sub := range []byte{24, 25} {
 		for _, target := range []byte{0, 2, 0x6c, 0x71} {
 			for _, profile := range []GCProfile{GCProfileThroughput, GCProfileTiny} {

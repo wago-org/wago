@@ -10,6 +10,7 @@ import (
 // Count completed Go helper entries, independently of generated call-site
 // statistics. Timing benchmarks use an ordinary build without boundary tracing.
 func TestGCBranchCastHelperEntries(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	for _, sub := range []byte{24, 25} {
 		for _, tc := range []struct {
 			name   string
