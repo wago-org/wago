@@ -21,6 +21,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Use native custom plugin lowerings for imported `return_call` on AMD64 and
+  ARM64, with the existing handler fallback and return-frame rules.
+
 - Compile bounded portable scalar plugin recipes to ARM64 instructions, preserving
   exact import identity and the portable fallback for larger or unsupported contracts.
 
