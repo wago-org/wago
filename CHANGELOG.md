@@ -30,6 +30,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Add opt-in pure integer select branches through `WAGO_AMD64_PURE_SELECT=1`;
   keep them disabled by default because unpredictable conditions can regress.
   ([#895](https://github.com/wago-org/wago/pull/895))
+- Return dynamic shared atomic-wait mismatches in native AMD64 and ARM64 code
+  for indexed memories and memory64. Preserve overflow/alignment/bounds traps
+  and use the synchronized queue helper for matching values.
+
 - Detect writes to live deferred-load address registers, cached global-cell
   pointers, and forwarded store values in the AMD64 and ARM64 compilers when
   `wago_regalloccheck` is enabled. Also guard inputs during address preparation

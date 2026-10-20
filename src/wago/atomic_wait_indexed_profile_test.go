@@ -48,11 +48,78 @@ func TestIndexedAtomicWaitHelperEntries(t *testing.T) {
 							}
 						}
 						t.Logf("wait helper entries = %d / %d", count, iterations)
-						if count != path.want {
-							t.Fatalf("wait helper entries%d,want%d", count, path.want)
+						want := path.want
+						if count != want {
+							t.Fatalf("wait helper entries%d,want%d", count, want)
 						}
 					})
 				}
+			}
+		}
+	}
+}
+
+func TestIndexedAtomicWaitImportedHelperEntries(t *testing.T) {
+	for _, address64 := range []bool{false, true} {
+		for _, index := range []byte{0, 1} {
+			for _, sub := range []byte{1, 2} {
+				t.Run(fmt.Sprintf("addr64=%t/index=%d/op=%d", address64, index, sub), func(t *testing.T) {
+					providerCode, err := indexedWaitConfig().Compile(indexedWaitModule(address64, index, sub, 0, false))
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer providerCode.Close()
+					provider, err := Instantiate(providerCode)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer provider.Close()
+					imports := NewImports()
+					for n := 0; n < 2; n++ {
+						name := fmt.Sprintf("memory%d", n)
+						memory, err := provider.ExportedMemory(name)
+						if err != nil {
+							t.Fatal(err)
+						}
+						imports.Memory("env", name, memory)
+					}
+					trace := NewCodeProfile(CodeProfileOptions{TraceBoundaries: true})
+					defer trace.Close()
+					c, err := indexedWaitConfig().WithCodeProfile(trace).Compile(indexedWaitModule(address64, index, sub, 0, true))
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer c.Close()
+					in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer in.Close()
+					provider.Close()
+					count := func() int {
+						n := 0
+						for _, span := range trace.Spans() {
+							if span.Kind == "atomic-wait-helper" {
+								n++
+							}
+						}
+						return n
+					}
+					for _, value := range []uint64{1, 0} {
+						before := count()
+						got, err := in.Invoke("vector", 0, value, 0)
+						if err != nil || len(got) != 3 || got[0] != 0x0706050403020100 || got[1] != 0x0f0e0d0c0b0a0908 || got[2] != 2-value {
+							t.Fatalf("value%d: %x,%v", value, got, err)
+						}
+						want := 0
+						if value == 0 {
+							want = 1
+						}
+						if entries := count() - before; entries != want {
+							t.Fatalf("imported helper entries%d,want%d", entries, want)
+						}
+					}
+				})
 			}
 		}
 	}
