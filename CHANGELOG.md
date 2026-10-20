@@ -21,6 +21,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Write packed i8/i16 struct fields through the checked native object path on
+  ARM64, retaining typed helpers for unsupported or unresolved objects.
+
 - Compile general array length reads to checked AMD64 and ARM64 instructions,
   with the existing helper for invalid handles and exact traps.
 
