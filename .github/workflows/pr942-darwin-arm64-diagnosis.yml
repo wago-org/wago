@@ -1,0 +1,35 @@
+name: PR 942 Darwin ARM64 diagnosis
+on:
+  push:
+    branches: [diagnostic/pr942-darwin-arm64-20261020]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 1bf8b427bbfcab021234d8b78a499053dc6cf287
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.1'
+          cache: true
+      - name: Record immutable source and native machine
+        run: |
+          git rev-parse HEAD
+          go version
+          go env GOOS GOARCH CGO_ENABLED
+          uname -a
+      - name: Run verbose native backend and spike controls
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -v -count=5 -timeout=10m ./src/core/compiler/backend/railshot/arm64 ./src/core/runtime/arm64spike 2>&1 | tee "$RUNNER_TEMP/arm64-backend.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pr942-darwin-arm64-diagnosis
+          path: ${{ runner.temp }}/arm64-backend.log
+          if-no-files-found: warn
