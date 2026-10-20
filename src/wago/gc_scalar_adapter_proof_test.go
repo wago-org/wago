@@ -164,3 +164,50 @@ func TestGCScalarAdapterLogicalFunctionProof(t *testing.T) {
 		t.Fatalf("missing logical function classifications: %v", seen)
 	}
 }
+
+func TestGCScalarAdapterAllocOnlyCallee(t *testing.T) {
+	for _, registerABI := range []bool{false, true} {
+		t.Run(fmt.Sprintf("register=%t", registerABI), func(t *testing.T) {
+			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", registerABI)
+			rt := NewRuntime(WithRuntimeConfig(cfg))
+			defer rt.Close()
+			producerCode, err := rt.Compile(gcAllocatingScalarProducerModule())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer producerCode.Close()
+			settings := GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true}
+			producer, err := rt.Instantiate(context.Background(), producerCode, WithGC(settings))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer producer.Close()
+			if roots := producer.c.genericGCFrameRoots(); roots == nil || len(roots.callsites) != 0 {
+				t.Fatal("fixture must allocate without any module-local callsites")
+			}
+			target, err := producer.ExportedFunc("allocate")
+			if err != nil {
+				t.Fatal(err)
+			}
+			callerCode, err := rt.Compile(gcScalarAdapterCallerModule("direct", true, false))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer callerCode.Close()
+			caller, err := rt.Instantiate(context.Background(), callerCode, WithGC(settings), WithImports(testImports("env.call", target)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer caller.Close()
+			if caller.gc == nil || caller.gc != producer.gc {
+				t.Fatal("fixture must retain caller objects in the collecting domain")
+			}
+			for i := 0; i < 3; i++ {
+				got, err := caller.Invoke("run")
+				if err != nil || len(got) != 1 || got[0] != 73 {
+					t.Fatalf("caller root across alloc-only callee = %v, %v; want [73], nil", got, err)
+				}
+			}
+		})
+	}
+}
