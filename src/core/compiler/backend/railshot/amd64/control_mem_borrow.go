@@ -39,6 +39,9 @@ func (f *fn) detachControlIntervalAddresses() regMask {
 	f.moveInt(dst, src, mtI64)
 	borrowed.st.reg = dst
 	borrowed.st.cval = 0 // memBorrow() == -1: the load now owns its carrier.
+	if regallocCheckEnabled {
+		f.checkTrackMemRef(borrowed)
+	}
 	f.regUser[dst] = borrowed
 	f.stats.peep("interval-address-detach")
 	return maskOf(dst)

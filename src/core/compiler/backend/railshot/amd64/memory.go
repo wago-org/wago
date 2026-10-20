@@ -460,6 +460,8 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	// memory32 consuming-side invariant before any native-width arithmetic.
 	if cleanAddress {
 		f.stats.peep("addr-zext-elim")
+	} else if regallocCheckEnabled {
+		f.checkZeroExtendMemAddr(ea)
 	} else {
 		f.a.MovRegReg32(ea, ea)
 	}

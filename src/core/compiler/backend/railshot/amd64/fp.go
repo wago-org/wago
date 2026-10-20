@@ -508,6 +508,9 @@ func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 			f.a.FMov(dst, src, f64)
 		}
 	}
+	if regallocCheckEnabled {
+		f.checkConsumeMemRef(b)
+	}
 	f.emitFloatMemSource(dst, src, b.st, memOp, f64, useVEX)
 	f.pushFReg(dst, mtOf2(f64))
 }
@@ -517,6 +520,9 @@ func (f *fn) fbinMemRightInto(dst Reg, a, b *elem, memOp byte, f64 bool) {
 	useVEX := f.opt(optVEXFloatMem) && f.cpuHas(shared.AMD64AVX)
 	if !useVEX && dst != src {
 		f.a.FMov(dst, src, f64)
+	}
+	if regallocCheckEnabled {
+		f.checkConsumeMemRef(b)
 	}
 	f.emitFloatMemSource(dst, src, b.st, memOp, f64, useVEX)
 	if owned && dst != src {
@@ -1127,6 +1133,9 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 // helpers
 
 func (f *fn) loadFMemRef(dst Reg, e *elem) {
+	if regallocCheckEnabled {
+		f.checkConsumeMemRef(e)
+	}
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		previous := f.enterProfileNode(e)
 		defer f.switchProfileOrigin(previous)

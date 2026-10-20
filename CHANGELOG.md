@@ -17,6 +17,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Detect writes to live deferred-load address registers in the AMD64 compiler
+  when `wago_regalloccheck` is enabled.
+
 - Prepare native reservations only when the active backend has a matching
   consumer, avoiding unused ARM64 live-struct and large-array batches. Retain
   one reserved identity for proven-dead ARM64 scalar constructors.

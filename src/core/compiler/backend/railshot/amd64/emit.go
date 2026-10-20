@@ -828,6 +828,9 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 			f.a.AluRM(cmpRMcode, L, RSP, f.localAddr(right.st.index()), w)
 		case stMemRef:
 			if memRefFoldable(right.st, w) {
+				if regallocCheckEnabled {
+					f.checkConsumeMemRef(right)
+				}
 				f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)
 			} else {
 				// A narrow/wide mismatch needs a register value. Preserve a pinned
@@ -1195,6 +1198,9 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 		f.a.AluRM(enc.rm, dest, RSP, f.localAddr(right.st.index()), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
+			if regallocCheckEnabled {
+				f.checkConsumeMemRef(right)
+			}
 			f.a.AluIdx(enc.rm, dest, RBX, right.st.reg, right.st.memDisp(), w) // op dest, [mem]
 			f.releaseMemRef(right.st)
 		} else {
@@ -1280,6 +1286,9 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 		f.a.ImulRM(dest, RSP, f.localAddr(right.st.index()), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
+			if regallocCheckEnabled {
+				f.checkConsumeMemRef(right)
+			}
 			f.a.ImulIdx(dest, RBX, right.st.reg, right.st.memDisp(), w)
 			f.releaseMemRef(right.st)
 		} else {

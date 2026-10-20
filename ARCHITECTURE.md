@@ -480,6 +480,11 @@ state before later emission. AMD64 legacy scratch borrowing excludes immutable
 caches while retaining save/restore for other live values. SIMD helpers use
 saved GP temporaries outside the integer-cache candidate set.
 
+On AMD64, the write observer also protects live deferred-load address registers.
+It uses a register mask and existing operand-node metadata, including detached
+and borrowed addresses. A load retires its address before the consuming
+instruction, so that instruction can reuse the address register as its result.
+
 The ordinary build retains no checker state or observer work. Transfer windows
 assume correct incoming values. The lifetime observers classify destinations,
 not arithmetic semantics; unknown generic effects conservatively report possible
