@@ -24,6 +24,9 @@ type regallocFnState struct {
 	immutableGPMask    uint32
 	immutableFPMask    uint32
 	deferredGPMask     uint32
+	readCheck          regallocReadMask
+	globalCellCheck    bool
+	terminalWrites     bool
 	fpObserverActive   bool
 	fpObserverPrevious func(uint32)
 	gpObserverActive   bool
@@ -260,18 +263,56 @@ func (f *fn) checkImmutable(reg Reg, fp bool, size int) {
 		f.checkObserveGPWrites()
 	} else {
 		f.immutableFPMask |= uint32(1) << uint8(reg)
-		if !f.fpObserverActive && f.a != nil {
-			f.fpObserverActive = true
-			f.fpObserverPrevious = f.a.ObserveFPWrites(func(mask uint32) {
-				if mask&f.immutableFPMask != 0 {
-					panic(fmt.Sprintf("regalloccheck: function %d pc %d: immutable FP reservation may be overwritten (mask %#x)", f.traceFuncIdx, f.wasmPC, mask&f.immutableFPMask))
-				}
-				if f.fpObserverPrevious != nil {
-					f.fpObserverPrevious(mask)
-				}
-			})
-		}
+		f.checkObserveFPWrites()
 	}
+}
+
+// Read guards cover operand preparation, ending before the consumer writes.
+type regallocReadMask struct{ gp, gp32, fp uint32 }
+
+func checkProtectRead(f *fn, reg Reg, fp, wide bool) regallocReadMask {
+	saved := f.readCheck
+	bit := uint32(1) << uint8(reg)
+	if fp {
+		f.readCheck.fp |= bit
+		f.checkObserveFPWrites()
+	} else {
+		if wide {
+			f.readCheck.gp |= bit
+		} else {
+			f.readCheck.gp32 |= bit
+		}
+		f.checkObserveGPWrites()
+	}
+	return saved
+}
+
+func checkRestoreRead(f *fn, saved regallocReadMask) { f.readCheck = saved }
+
+// Enable only after a real cache definition; zero-value test functions have reg 0.
+func checkGlobalCell(f *fn) {
+	f.globalCellCheck = f.globalCellReg != regNone
+	if f.globalCellCheck {
+		f.checkObserveGPWrites()
+	}
+}
+
+func (f *fn) checkObserveFPWrites() {
+	if f.fpObserverActive || f.a == nil {
+		return
+	}
+	f.fpObserverActive = true
+	f.fpObserverPrevious = f.a.ObserveFPWrites(func(mask uint32) {
+		if mask&f.immutableFPMask != 0 {
+			panic(fmt.Sprintf("regalloccheck: function %d pc %d: immutable FP reservation may be overwritten (mask %#x)", f.traceFuncIdx, f.wasmPC, mask&f.immutableFPMask))
+		}
+		if hit := mask & f.readCheck.fp; hit != 0 {
+			panic(fmt.Sprintf("regalloccheck: function %d pc %d: read-only FP input overwritten (mask %#x)", f.traceFuncIdx, f.wasmPC, hit))
+		}
+		if f.fpObserverPrevious != nil {
+			f.fpObserverPrevious(mask)
+		}
+	})
 }
 
 func (f *fn) checkObserveGPWrites() {
@@ -282,6 +323,17 @@ func (f *fn) checkObserveGPWrites() {
 	f.gpObserverPrevious = f.a.ObserveGPWrites(func(mask uint32) {
 		if mask&f.immutableGPMask != 0 {
 			panic(fmt.Sprintf("regalloccheck: function %d pc %d: immutable GP reservation overwritten (mask %#x)", f.traceFuncIdx, f.wasmPC, mask&f.immutableGPMask))
+		}
+		if hit := mask & (f.readCheck.gp | f.readCheck.gp32); hit != 0 {
+			panic(fmt.Sprintf("regalloccheck: function %d pc %d: read-only GP input overwritten (mask %#x)", f.traceFuncIdx, f.wasmPC, hit))
+		}
+		if !f.terminalWrites {
+			if f.globalCellCheck && mask&(uint32(1)<<uint8(f.globalCellReg)) != 0 {
+				panic(fmt.Sprintf("regalloccheck: function %d pc %d: global-cell pointer overwritten (register %d, global %d)", f.traceFuncIdx, f.wasmPC, f.globalCellReg, f.globalCellIdx))
+			}
+			if c := f.storeFwd; c.valid && mask&(uint32(1)<<uint8(c.reg)) != 0 {
+				panic(fmt.Sprintf("regalloccheck: function %d pc %d: store-forward value overwritten (register %d, local %d, offset %d, size %d)", f.traceFuncIdx, f.wasmPC, c.reg, c.local, c.offset, c.size))
+			}
 		}
 		if mask&f.deferredGPMask != 0 {
 			f.checkDeferredGPWrites(mask)
@@ -314,8 +366,10 @@ func (f *fn) checkConsumeMemRef(e *elem) {
 // normalization preserves every pending address on the same register.
 func (f *fn) checkZeroExtendMemAddr(reg Reg) {
 	saved := f.deferredGPMask
+	saved32 := f.readCheck.gp32
+	f.readCheck.gp32 &^= uint32(1) << uint8(reg)
 	f.deferredGPMask &^= uint32(1) << uint8(reg)
-	defer func() { f.deferredGPMask = saved }()
+	defer func() { f.deferredGPMask = saved; f.readCheck.gp32 = saved32 }()
 	f.a.MovReg32(reg, reg)
 }
 
@@ -424,22 +478,31 @@ func (f *fn) checkEndLifetimes() {
 	f.immutableGPMask = 0
 	f.immutableFPMask = 0
 	f.deferredGPMask = 0
+	f.readCheck = regallocReadMask{}
+	f.globalCellCheck, f.terminalWrites = false, false
 }
 
 // Returns and trap stubs are terminal edges and cannot reach a body-cache use.
 // Restore body reservations before emitting other control-flow arms.
-type regallocWriteMask struct{ gp, fp, deferred uint32 }
+type regallocWriteMask struct {
+	gp, fp, deferred uint32
+	reads            regallocReadMask
+	terminal         bool
+}
 
 func (f *fn) checkTerminalWrites() regallocWriteMask {
-	saved := regallocWriteMask{f.immutableGPMask, f.immutableFPMask, f.deferredGPMask}
+	saved := regallocWriteMask{f.immutableGPMask, f.immutableFPMask, f.deferredGPMask, f.readCheck, f.terminalWrites}
 	f.immutableGPMask = 0
 	f.immutableFPMask = 0
 	f.deferredGPMask = 0
+	f.readCheck = regallocReadMask{}
+	f.terminalWrites = true
 	return saved
 }
 func (f *fn) checkRestoreWrites(saved regallocWriteMask) {
 	f.immutableGPMask, f.immutableFPMask = saved.gp, saved.fp
 	f.deferredGPMask = saved.deferred
+	f.readCheck, f.terminalWrites = saved.reads, saved.terminal
 }
 
 func (f *fn) checkReleaseImmutableGP(reg Reg) {

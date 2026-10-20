@@ -38,3 +38,10 @@ func (*fn) checkRestoreWrites(regallocWriteMask)   {}
 func (*fn) checkReleaseImmutableGP(Reg) {}
 
 func (*fn) checkReleaseImmutableFP(Reg) {}
+
+// Ordinary input scopes retain no masks or argument setup.
+type regallocReadMask struct{}
+
+func checkProtectRead(*fn, Reg, bool, bool) regallocReadMask { return regallocReadMask{} }
+func checkRestoreRead(*fn, regallocReadMask)                 {}
+func checkGlobalCell(*fn)                                    {}

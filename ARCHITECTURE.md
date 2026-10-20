@@ -484,6 +484,11 @@ On AMD64 and ARM64, the write observer also protects live deferred-load addresse
 It uses a register mask and existing operand-node metadata, including detached
 and borrowed addresses. A load retires its address before the consuming
 instruction, so that instruction can reuse the address register as its result.
+The same observers protect cached global-cell pointers and forwarded store values
+until cache retirement. Short read guards protect a store value during address
+preparation and the first FP binary input during second-input preparation. These
+guards end before the consuming instruction. Known address normalization can
+preserve a guarded i32 input, but cannot truncate a guarded i64 input.
 
 The ordinary build retains no checker state or observer work. Transfer windows
 assume correct incoming values. The lifetime observers classify destinations,

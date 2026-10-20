@@ -1182,10 +1182,17 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	vtyp := value.st.typ
 	vreg, vOwned := f.materializeRead(value)
 	f.pinned = f.pinned.add(vreg)
+	var read regallocReadMask
+	if regallocCheckEnabled {
+		read = checkProtectRead(f, vreg, false, vtyp.is64())
+	}
 	addrLocal, addrOK := localAddressKey(f.s.back())
 	ea, eaOwned, _, disp := f.memAddr(off, size, true, 0, guard)
 	f.pinned = f.pinned.add(ea)
 	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
+	if regallocCheckEnabled {
+		checkRestoreRead(f, read)
+	}
 	f.a.StoreIdx(linMemReg, ea, vreg, disp, size)
 	f.pinned = f.pinned.remove(ea)
 	f.pinned = f.pinned.remove(vreg)
@@ -1196,6 +1203,9 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		((size == 8 && vtyp == mtI64) || (size == 4 && vtyp == mtI32)) &&
 		f.nextLoadMatchesStore(r, addrLocal, off, size, vtyp) {
 		f.storeFwd = storeForward{valid: true, reg: vreg, typ: vtyp, local: addrLocal, offset: off, size: size}
+		if regallocCheckEnabled {
+			f.checkObserveGPWrites()
+		}
 		f.pinned = f.pinned.add(vreg)
 	} else if vOwned {
 		f.release(vreg)
