@@ -31,7 +31,10 @@ func TestGCExternLocalSharedCodeCallerOwner(t *testing.T) {
 func gcExternSharedCodeCallerOwner(t *testing.T, kind string, differentImage, closedProducer bool, inspect func(a, b *Instance)) {
 	// The stack ABI exposes the caller frame below the callee wrapper. Both
 	// instances share code, so a return PC alone cannot identify its owner.
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", kind == "wide" || kind == "compact")
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	if kind != "wide" && kind != "compact" {
+		cfg = cfg.WithOptimization("reg-abi", false)
+	}
 	rt := NewRuntime(WithRuntimeConfig(cfg))
 	defer rt.Close()
 	settings := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
@@ -216,8 +219,10 @@ func TestGCExternFrameCallerContext(t *testing.T) {
 					binary.LittleEndian.PutUint64(frame[32+returnBias:], uint64(a.base+80))
 					binary.LittleEndian.PutUint64(frame[32+recordBytes+contextBias:], uint64(tc.context))
 					binary.LittleEndian.PutUint64(frame[callerBase+16:], tc.root)
-					binary.LittleEndian.PutUint64(frame[callerBase+32+returnBias:], uint64(a.base+200))
-					roots := gcNativeFrameRoots{owner: a, base: base, offsets: []uint32{16}, frameBytes: 32, frameLayout: layout, codeBase: a.base, codeBytes: uintptr(len(a.c.code)), adapterReturnOffsets: []uint32{200}, callsites: []compiledGCFrameCallsite{{returnOffset: 80, frameBytes: 32, stackAdjust: 64, offsets: []uint32{16}}}}
+					// End this synthetic chain outside native code; adapter spans have
+					// separate tests with an actual bounded Engine stack.
+					binary.LittleEndian.PutUint64(frame[callerBase+32+returnBias:], 0)
+					roots := gcNativeFrameRoots{owner: a, allowExternalReturn: true, base: base, offsets: []uint32{16}, frameBytes: 32, frameLayout: layout, codeBase: a.base, codeBytes: uintptr(len(a.c.code)), adapterReturnOffsets: []uint32{200}, callsites: []compiledGCFrameCallsite{{returnOffset: 80, frameBytes: 32, stackAdjust: 64, offsets: []uint32{16}}}}
 					seen := 0
 					var failure any
 					func() {
@@ -367,4 +372,63 @@ func TestGCExternForeignTailUsesBoundedFallback(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGCExternNativeAdapterRecordBounds(t *testing.T) {
+	gcExternSharedCodeCallerOwner(t, "direct", false, false, func(a, b *Instance) {
+		for _, layout := range []uint8{gcNativeFrameLayoutAMD64, gcNativeFrameLayoutARM64} {
+			for _, kind := range []string{"caller", "short", "unknown", "nested", "unaligned", "unbounded"} {
+				t.Run(fmt.Sprintf("layout=%d/%s", layout, kind), func(t *testing.T) {
+					returnBias, callerBias, outerReturnOffset, contextOffset := 0, 8, 8, 8
+					if layout == gcNativeFrameLayoutARM64 {
+						returnBias, callerBias, outerReturnOffset, contextOffset = 8, 16, 0, 0
+					}
+					top := b.eng.StackTop()
+					base := top - 256
+					if kind == "unaligned" {
+						base--
+					}
+					if kind == "short" {
+						base = top - uintptr(32+callerBias+8)
+					}
+					frame := unsafe.Slice((*byte)(offHeapPtr(base)), int(top-base))
+					clear(frame)
+					binary.LittleEndian.PutUint64(frame[16:], uint64(gc.I31New(3)))
+					binary.LittleEndian.PutUint64(frame[32+returnBias:], uint64(a.base+200))
+					if kind != "short" {
+						outerPC := a.base + 80
+						if kind == "unknown" {
+							outerPC = 1
+						}
+						if kind == "nested" {
+							outerPC = a.base + 200
+						}
+						binary.LittleEndian.PutUint64(frame[32+callerBias+outerReturnOffset:], uint64(outerPC))
+						wrapperBase := 32 + callerBias + 16
+						binary.LittleEndian.PutUint64(frame[wrapperBase+contextOffset:], uint64(b.nativeContext))
+						binary.LittleEndian.PutUint64(frame[wrapperBase+64+16:], uint64(gc.I31New(9)))
+					}
+					roots := gcNativeFrameRoots{owner: a, physicalStack: b.eng, base: base, offsets: []uint32{16}, frameBytes: 32, frameLayout: layout, codeBase: a.base, codeBytes: uintptr(len(a.c.code)), adapterReturnOffsets: []uint32{200}, callsites: []compiledGCFrameCallsite{{returnOffset: 80, frameBytes: 32, stackAdjust: 64, offsets: []uint32{16}}}}
+					physicalStack := b.eng
+					if kind == "unbounded" {
+						roots.owner = &Instance{c: a.c}
+						physicalStack = nil
+					}
+					seen := 0
+					var failure any
+					func() {
+						defer func() { failure = recover() }()
+						roots.rangeChain(func(gc.RootSlot) bool { seen++; return seen < 2 }, nil, physicalStack)
+					}()
+					if kind == "caller" {
+						if failure != nil || seen != 2 {
+							t.Fatalf("caller roots=%d,%v; want2", seen, failure)
+						}
+					} else if failure == nil {
+						t.Fatal("accepted invalid adapter record")
+					}
+				})
+			}
+		}
+	})
 }
