@@ -276,6 +276,9 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		f.a.AluRM(cmpRMcode, L, RSP, f.localAddr(right.st.index()), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
+			if regallocCheckEnabled {
+				f.checkConsumeMemRef(right)
+			}
 			f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)
 		} else {
 			r := f.memRefValue(right)

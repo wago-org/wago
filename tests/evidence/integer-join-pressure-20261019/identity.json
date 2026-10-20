@@ -1,0 +1,130 @@
+{
+  "baseline": "1a6d91a8e293348cf89be59a8ff23a605ade7444",
+  "candidate": "7e8829b9bab3d5d9a9e29f8dfb59acdeebf3e46b",
+  "host": "Linux t3 6.12.111+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.111-1 (2026-09-28) x86_64 GNU/Linux",
+  "go": "go version go1.27.2 linux/amd64",
+  "qemu": "qemu-aarch64 version 10.0.13 (Debian 1:10.0.13+ds-0+deb13u1)",
+  "controls": {
+    "GOMAXPROCS": 1,
+    "WAGO_BOUNDS": "explicit",
+    "CPU": 4,
+    "benchtime": "100ms",
+    "pairs": 8,
+    "timing": "native AMD64 only; no ARM64 timing claim",
+    "external_host_work": "not isolated",
+    "WAGO_environment": "remove inherited WAGO_*; set WAGO_BOUNDS=explicit"
+  },
+  "hashes": {
+    "main-amd64.test": "30f7165dd1dba91de6c52cbc8fe666264a1f142f1ed7adda7ecaf9ca5737da92",
+    "pr-amd64.test": "5fe4836e5b1a317430da26c3274b071ba3ed1bba821ad5604d8bf20e54c2c72c",
+    "arm64-normal.test": "f79b6688bf1f9798deea09c1a95626a6b46824aa3c1e40626b7bab4328dc416d",
+    "arm64-wago_regalloccheck.test": "22106895b60e6c049192e4a2a1fe6bf62b574c40e149e04aa0b3d5d976dd8501",
+    "arm64-wago_codegenstats.test": "47795f39c27c0f7997ea36809e728981bc012e027999999187a6c3fd4d124342",
+    "measure-original.py": "b9e05921cac1c159004c4eef760334a4808a0cef8473a96ba2234fd5d138d861",
+    "measure.py": "3c9a3d1d172cbe630f2f8e7f5a310cceadb8d29c1e2104913d40d0ef21cc7409",
+    "src/core/compiler/backend/railshot/amd64/integer_join_pressure_test.go": "651110c52e9202e5204e419e8e0181f6eb0380ad48be491ff7a2c6f6cc1ad315",
+    "src/core/compiler/backend/railshot/arm64/integer_join_pressure_test.go": "4308ba73c4a76f1532d981d9ca2207bd1eedb0cbc896830ed60f654144499704",
+    "main-arm64.test": "2699830fd8bef92acf9847eb91268e7efd9f5ce322eed59b1465b4ba3168aaec"
+  },
+  "amd64_fixture_hash_pairs": [
+    [
+      "24b2d0fe72c163576a868996274af740afa4cf50c73a3f7fdb6e69f60120c9ea",
+      "153d02de8deadcc80d3ff94f7798571b43b0f568c605031024b001abdcb5414b"
+    ],
+    [
+      "e6217ae4bfcc30ba56825e40764ff6fbe5fd48e9db297201a7c7b590a594ceda",
+      "a8cbbb1ed7dab128ad066297b3cbd8b1e2ae975c61c2c767fc1c1633ecd6a4e2"
+    ],
+    [
+      "a40735184948a25e7ef652438a9fafd22cfa61fc9879cc015b12a12f48ab4390",
+      "12c1fc8ffb929045816c70d776e9a25f6d12a7027e124e61db4c340442d5512b"
+    ],
+    [
+      "111017d2ec4d52454db1cac09e5024d8f00a46c8dcba8ab194bd432e300c9928",
+      "699c116b0f41c00145e9b2306e9ac5f34cf4ff8730c7a9dbd50854ac90d434bf"
+    ],
+    [
+      "0ff6bed31410b2c605bb8c789b21bc0af007ae50c650bcee744197a964ef8f43",
+      "59e25d573f22afc060b2842389c8dfed2d7206155e4640afb2760ef789a3ba5b"
+    ],
+    [
+      "7137f40e9b13f9c61d9c8156779bd08fe00ebef597c1da6c81ed3accf6daeb2c",
+      "fe72af8bcccf1ec5d41f008c500d729593ab6a4020005d133112acc9a43154e5"
+    ],
+    [
+      "0c18e9e2db3810fe992f80785fd0e3e03e0bdbc659a77b5d114df8ff3b9db522",
+      "7dbade4c50a4f040b5c75592872fa4f08e47a2e2697d2ab06b412c01110261ce"
+    ],
+    [
+      "00600df69514b375b87b1e7232946c50ff4f8703e9e4ac8de27355a987618c2c",
+      "ac1a2dd86baeb61a24ccefbcb4cdef21387034a754b963a013ba61ba2a02b346"
+    ],
+    [
+      "cf9bcd4b83b9885ff463276fb6a4a9d2d0707d888839ded83f83212f1c0ad45c",
+      "590d3fa2e4a32bc73ea85c3265d4163c872bfaf4f5152c367ddc05e2d282ef56"
+    ],
+    [
+      "cbffd4a81640b6c6a51829749279b18d0d0f3d419de1a7dbaf19989a4565795c",
+      "79d17e8c1ad7c307f66adbbca5a30ba66695f3fd3fbf02b1d79ba6d287badb02"
+    ],
+    [
+      "1a60328b5d6aec8b511a11ef00832f31edcaef3b42af58c631747e90d182329a",
+      "bfb1f788c5c3f26f037d5538db93c3639706eec77582172fda4c83bbd65a0969"
+    ],
+    [
+      "e4c86d97e3a5af0a9fe04d635a794cb1562d4bc2ab181da428417181d8647c2f",
+      "26b2eea4cfda75bdb969f462f4075ddc9a4feb3e0c59ede2734aa39c599abc47"
+    ]
+  ],
+  "arm64_fixture_hash_pairs": [
+    [
+      "24b2d0fe72c163576a868996274af740afa4cf50c73a3f7fdb6e69f60120c9ea",
+      "8f9286bc56f5355794bad8c4062cc1d54bde6e0117ad86e6f3873c7683d86c4c"
+    ],
+    [
+      "e6217ae4bfcc30ba56825e40764ff6fbe5fd48e9db297201a7c7b590a594ceda",
+      "2f968195f0dfb3a354d563c032204200181d6bdaa0014a56c17b8e41cad0ea4d"
+    ],
+    [
+      "a40735184948a25e7ef652438a9fafd22cfa61fc9879cc015b12a12f48ab4390",
+      "d4d406cce0bddbcc5732a1872543d661e45f728bc5f69298451a23531673f967"
+    ],
+    [
+      "111017d2ec4d52454db1cac09e5024d8f00a46c8dcba8ab194bd432e300c9928",
+      "8a61b32fdb588632577c3533486f98305fade43fd683a569ae70f498a0aac26c"
+    ],
+    [
+      "0ff6bed31410b2c605bb8c789b21bc0af007ae50c650bcee744197a964ef8f43",
+      "1bf7ccee61b7ddb037249f3f060557976e5af9cca3e89105a4eafcd03a1961ac"
+    ],
+    [
+      "7137f40e9b13f9c61d9c8156779bd08fe00ebef597c1da6c81ed3accf6daeb2c",
+      "221167bab1ad9b8aaca952892e9983f2c7d638e59eefcabfda30437c765dbde8"
+    ],
+    [
+      "0c18e9e2db3810fe992f80785fd0e3e03e0bdbc659a77b5d114df8ff3b9db522",
+      "9c479da9fa4a38860df6c950974083da46ab809bf658de04393d55d116f428ef"
+    ],
+    [
+      "00600df69514b375b87b1e7232946c50ff4f8703e9e4ac8de27355a987618c2c",
+      "74545a2806ea95555655114c302280d68fb9c9043f394cec155a75a312383e3d"
+    ],
+    [
+      "cf9bcd4b83b9885ff463276fb6a4a9d2d0707d888839ded83f83212f1c0ad45c",
+      "045401c116392407a71c80242eeb14289c22a3ff162b652afeb8f6fd938776df"
+    ],
+    [
+      "cbffd4a81640b6c6a51829749279b18d0d0f3d419de1a7dbaf19989a4565795c",
+      "784f5457b347ac5dc72ef2481c9144f4af660e2127332f349b1c7439503b5cda"
+    ],
+    [
+      "1a60328b5d6aec8b511a11ef00832f31edcaef3b42af58c631747e90d182329a",
+      "5972cb5439002ed6dd2571bda17e5b3e4fed24d02f40d2af7fa212ceb96ca29c"
+    ],
+    [
+      "e4c86d97e3a5af0a9fe04d635a794cb1562d4bc2ab181da428417181d8647c2f",
+      "cdbe98c3b96c4f5c33f180ee46287ad895e7d6ba32da88bf9257ad03ea06279e"
+    ]
+  ],
+  "review_candidate": "16b375f5ab4a2207fa187be91eea5c1c80b8708f"
+}

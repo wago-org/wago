@@ -525,6 +525,10 @@ func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64, poolRHS 
 	a := f.popValue()
 	s1, o1 := f.operandRegF(a)
 	f.fpinned = f.fpinned.add(s1)
+	var read regallocReadMask
+	if regallocCheckEnabled {
+		read = checkProtectRead(f, s1, true, f64)
+	}
 	oldSuppress := f.suppressFloatLiteral
 	f.suppressFloatLiteral = !poolRHS
 	s2, o2 := f.operandRegF(b)
@@ -543,6 +547,9 @@ func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64, poolRHS 
 		dst = f.allocFReg(0)
 	}
 	f.fpinned = f.fpinned.remove(s1)
+	if regallocCheckEnabled {
+		checkRestoreRead(f, read)
+	}
 	vop(dst, s1, s2, f64)
 	if o1 && dst != s1 {
 		f.releaseF(s1)
@@ -558,8 +565,15 @@ func (f *fn) fbinInto(dst Reg, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, 
 	a := f.popValue()
 	s1, o1 := f.operandRegF(a)
 	f.fpinned = f.fpinned.add(s1)
+	var read regallocReadMask
+	if regallocCheckEnabled {
+		read = checkProtectRead(f, s1, true, f64)
+	}
 	s2, o2 := f.operandRegF(b)
 	f.fpinned = f.fpinned.remove(s1)
+	if regallocCheckEnabled {
+		checkRestoreRead(f, read)
+	}
 	vop(dst, s1, s2, f64)
 	if o1 && dst != s1 {
 		f.releaseF(s1)
@@ -973,6 +987,9 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 // helpers
 
 func (f *fn) loadFMemRef(dst Reg, e *elem) {
+	if regallocCheckEnabled {
+		f.checkConsumeMemRef(e)
+	}
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		previous := f.enterProfileNode(e)
 		defer f.switchProfileOrigin(previous)

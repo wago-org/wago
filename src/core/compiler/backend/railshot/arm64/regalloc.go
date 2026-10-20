@@ -417,6 +417,9 @@ func (f *fn) releaseMemRef(st storage) {
 // width's sign/zero extension (LDRB/LDRH/LDR zero-extend; signed uses the
 // LDRSB/LDRSH/LDRSW forms).
 func (f *fn) loadMemRef(dst Reg, e *elem) {
+	if regallocCheckEnabled {
+		f.checkConsumeMemRef(e)
+	}
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		previous := f.enterProfileNode(e)
 		defer f.switchProfileOrigin(previous)
