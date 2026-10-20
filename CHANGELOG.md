@@ -21,6 +21,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Store ARM64 numeric scalar struct fields through the checked native object
+  leaf, preserving the typed helper for unsupported fields and failed checks.
+
 - Compile general array length reads to checked AMD64 and ARM64 instructions,
   with the existing helper for invalid handles and exact traps.
 
