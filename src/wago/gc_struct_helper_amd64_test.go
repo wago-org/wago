@@ -320,7 +320,10 @@ func TestStagedGCStructHelperFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}) - unsafe.Sizeof(profileCacheState{}); got != 64 {
 		t.Fatalf("compiledCodeCache non-profiling size = %d, want 64", got)
 	}
-	const wantGCState = 7864 + (gcHostActivationLimit-8)*unsafe.Sizeof(gcHostActivation{})
+	// Raising the activation bound from 8 to 33 adds 25 records (96 bytes
+	// each), two 64-entry root-slot arrays and four tracking bytes per level,
+	// plus four bytes of final alignment: 7864 + 25*(96+512+4) + 4.
+	const wantGCState = 23168
 	if got := unsafe.Sizeof(gcPublicState{}); got != wantGCState {
 		t.Fatalf("gcPublicState size = %d, want %d with RV64 roots and full-depth host activation storage", got, wantGCState)
 	}

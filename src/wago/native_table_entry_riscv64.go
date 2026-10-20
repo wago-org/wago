@@ -42,7 +42,8 @@ func rv64NativeFunctionAttachment(owner *Instance, index int) (*InstanceExport, 
 
 // Scope storage is reused after a complete entry. Separate bounded slots retain
 // an outer activation's targets while a parked callback recursively reenters.
-const rv64MaxTableEntryDepth = 32
+// The initial public invocation also needs a slot, before any host reentry.
+const rv64MaxTableEntryDepth = maxHostReentryDepth + 1
 
 const rv64MaxInvocationArgumentOwners = 256
 

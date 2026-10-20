@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -235,6 +236,9 @@ func TestRV64TableEntryDepthBoundAndPartialFailureRelease(t *testing.T) {
 	state := root.lockInvocation(0)
 	defer state.unlockInvocation()
 	var leases [rv64MaxTableEntryDepth]railshotTableEntryLease
+	if len(leases) != maxHostReentryDepth+1 || len(state.railshotInvocation.argumentOwners) != len(leases) {
+		t.Fatal("entry storage must fit the root and every permitted host reentry")
+	}
 	nativeExecutionMu.Lock()
 	for i := range leases {
 		lease, err := railshotAcquireNativeTableTargets(root)
@@ -246,8 +250,8 @@ func TestRV64TableEntryDepthBoundAndPartialFailureRelease(t *testing.T) {
 	}
 	extra, err := railshotAcquireNativeTableTargets(root)
 	nativeExecutionMu.Unlock()
-	if err == nil || extra.targets != nil {
-		t.Fatal("entry depth overflow acquired roots")
+	if err == nil || extra.targets != nil || state.railshotInvocation.tableDepth != len(leases) {
+		t.Fatal("entry depth overflow acquired roots or changed the active depth")
 	}
 	for i := len(leases) - 1; i >= 0; i-- {
 		railshotReleaseNativeTableTargets(leases[i])
@@ -283,4 +287,21 @@ func TestRV64TableEntryDepthBoundAndPartialFailureRelease(t *testing.T) {
 	} else {
 		root.unlockNativeEntry(lease)
 	}
+}
+
+func TestRV64ReferenceArgumentDepthFitsHostReentry(t *testing.T) {
+	in := &Instance{c: &Compiled{nativeReferenceCallABI: true}}
+	pool := &in.ensurePluginState().railshotInvocation
+	// The original invocation occupies slot zero; its last permitted reentry
+	// must still have a separate argument-owner scope.
+	pool.tableDepth = maxHostReentryDepth
+	scope, err := railshotBeginPublicFuncrefArguments(in)
+	if err != nil || scope.slot != maxHostReentryDepth || scope.scope == nil || !scope.scope.active {
+		t.Fatal("last permitted reference argument scope", scope, err)
+	}
+	railshotReleasePublicFuncrefArguments(scope)
+	if scope.scope.active || scope.scope.count != 0 || scope.scope.externrefCount != 0 || pool.tableDepth != maxHostReentryDepth {
+		t.Fatal("last permitted reference argument scope did not release cleanly")
+	}
+	t.Logf("RV64 entry depth=%d; invocation state=%d bytes; target/argument pointer slots=%d bytes", len(pool.tableTargets), unsafe.Sizeof(*pool), unsafe.Sizeof(pool.tableTargets)+unsafe.Sizeof(pool.argumentOwners))
 }
