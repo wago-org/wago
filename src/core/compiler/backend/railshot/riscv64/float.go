@@ -80,11 +80,22 @@ func saturatingFloatKind(kind wasm.InstrKind) (byte, bool) {
 // Only caller-saved f0..f2 are scratch. All live guest values, including raw NaN
 // payloads, reside in canonical GP/stack slots across calls and control joins.
 func (f *integerEmitter) floatInput(dst enc.FReg, src enc.Reg, wide bool) {
+	if regallocCheckEnabled {
+		saved := f.checkProtectRead(uint8(src), false)
+		defer f.checkRestoreRead(saved)
+	}
 	if wide {
 		f.a.FmvDX(dst, src)
 	} else {
 		f.a.FmvWX(dst, src)
 	}
+}
+func (f *integerEmitter) floatSecondInput(wide bool) {
+	if regallocCheckEnabled {
+		saved := f.checkProtectRead(uint8(enc.F0), true)
+		defer f.checkRestoreRead(saved)
+	}
+	f.floatInput(enc.F1, enc.X6, wide)
 }
 func (f *integerEmitter) floatOutput(src enc.FReg, wide bool) {
 	if wide {
@@ -139,7 +150,7 @@ func (f *integerEmitter) floatOperation(op byte) {
 	}
 	if op >= 0x5b && op <= 0x66 {
 		f.floatInput(enc.F0, enc.X5, wide)
-		f.floatInput(enc.F1, enc.X6, wide)
+		f.floatSecondInput(wide)
 		n := op - 0x5b
 		if wide {
 			n = op - 0x61
@@ -201,7 +212,7 @@ func (f *integerEmitter) floatOperation(op byte) {
 		return
 	}
 	if n >= 7 {
-		f.floatInput(enc.F1, enc.X6, wide)
+		f.floatSecondInput(wide)
 	}
 	if n == 11 || n == 12 {
 		f.floatMinMax(wide, n == 12)

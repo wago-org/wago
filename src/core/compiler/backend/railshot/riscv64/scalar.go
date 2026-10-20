@@ -110,6 +110,10 @@ func (f *target) addressAt(base enc.Reg, off int32, temporary enc.Reg) (enc.Reg,
 	if off >= -2048 && off <= 2047 {
 		return base, off
 	}
+	if regallocCheckEnabled {
+		saved := f.checkProtectRead(uint8(base), false)
+		defer f.checkRestoreRead(saved)
+	}
 	f.a.Constant64(temporary, int64(off))
 	f.a.Add(temporary, base, temporary)
 	return temporary, 0
@@ -123,6 +127,10 @@ func (f *target) Load(r uint8, off int32, w bool) {
 	}
 }
 func (f *target) Store(off int32, r uint8, w bool) {
+	if regallocCheckEnabled {
+		saved := f.checkProtectRead(r, false)
+		defer f.checkRestoreRead(saved)
+	}
 	base, off := f.address(off)
 	if w {
 		f.a.Sd(enc.Reg(r), base, off)
@@ -140,11 +148,26 @@ func (*target) ScaledAdd(bool, uint8, uint8, uint8, uint8) bool { return false }
 // and raw input upper bits. Signed low-word comparisons use ADDIW sign extension.
 func (f *target) compareOperands(op shared.IntOp, w bool, l, r enc.Reg) (enc.Reg, enc.Reg) {
 	if !w {
+		var saved regallocReadMask
+		if regallocCheckEnabled {
+			saved = f.checkProtectRead(uint8(r), false)
+			defer f.checkRestoreRead(saved)
+		}
 		if op == shared.IntLtS || op == shared.IntGtS || op == shared.IntLeS || op == shared.IntGeS {
 			f.a.Addiw(enc.Scratch0, l, 0)
+			if regallocCheckEnabled {
+				f.checkRestoreRead(saved) // The next normalization consumes the right input.
+				prepared := f.checkProtectRead(uint8(enc.Scratch0), false)
+				defer f.checkRestoreRead(prepared)
+			}
 			f.a.Addiw(enc.Scratch1, r, 0)
 		} else {
 			f.a.ZeroExtend32(enc.Scratch0, l)
+			if regallocCheckEnabled {
+				f.checkRestoreRead(saved) // The next normalization consumes the right input.
+				prepared := f.checkProtectRead(uint8(enc.Scratch0), false)
+				defer f.checkRestoreRead(prepared)
+			}
 			f.a.ZeroExtend32(enc.Scratch1, r)
 		}
 		return enc.Scratch0, enc.Scratch1

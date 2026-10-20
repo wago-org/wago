@@ -617,6 +617,15 @@ scalar result uses; it cannot be seeded, semantically defined, or read back into
 registers. This vocabulary does not activate RV64 graph verification, which still
 requires complete body-byte and final framing/relocation authentication.
 
+RV64 checked builds use separate GP and FP write observers to protect inputs
+while preparing large addresses, stores, compare operands, and paired floating
+inputs. A nonzero-link call invalidates both register banks. Guards end before
+consumers can overwrite their inputs, and compiler cleanup restores enclosing
+observers. The current RV64 backend has no deferred-load address, global-cell,
+or store-forward cache to guard. These checks add no ordinary-build state and
+must preserve ordinary generated code and compile allocations.
+
+
 The production compiler path is still single-pass: there is no separate
 register-allocation pass on the hot load path; Valent-Block is the compiler's
 middle and back end in one pass.
