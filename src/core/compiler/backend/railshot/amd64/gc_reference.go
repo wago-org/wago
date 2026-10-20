@@ -6,7 +6,9 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 // emitNullI31Reference handles only null and compact i31 words. Objects retain
 // the helper's handle validation; high-bit words retain foreign-owner checks.
+// Only successful casts bypass Go, so failures need no extra native trap stub.
 func (f *fn) emitNullI31Reference(sub uint32, heap int64) error {
+	// Both edges need the same stack and pin homes before a conditional call.
 	f.flush()
 	f.spillLocalsForCall()
 	f.storePinnedGlobals(false)
@@ -14,17 +16,25 @@ func (f *fn) emitNullI31Reference(sub uint32, heap int64) error {
 	ref := f.allocReg(0)
 	tag := f.allocReg(maskOf(ref))
 	f.a.Load64(ref, RSP, f.spillOff(slot))
-	f.a.MovReg64(tag, ref)
-	f.a.ShiftImm(5, tag, 32, true)
-	f.a.TestSelf(tag, true)
-	foreign := f.a.JccPlaceholder(condNE)
-	f.a.MovRegReg32(tag, ref)
-	f.a.AluRI(4, tag, 1, false)
-	f.a.TestSelf(tag, false)
-	i31 := f.a.JccPlaceholder(condNE)
-	f.a.TestSelf(ref, true)
-	object := f.a.JccPlaceholder(condNE)
-	f.a.PatchRel32(i31, f.a.Len())
+	foreign := -1
+	var object int
+	if heap == -15 && sub == 23 { // only null can pass a nullable none cast
+		f.a.TestSelf(ref, true)
+		object = f.a.JccPlaceholder(condNE)
+	} else {
+		f.a.MovRegReg32(tag, ref)
+		f.a.Cmp64(tag, ref)
+		foreign = f.a.JccPlaceholder(condNE)
+		f.a.AluRI(4, tag, 1, false)
+		if sub == 22 { // only compact i31 can pass the non-nullable cast
+			object = f.a.JccPlaceholder(condE)
+		} else {
+			i31 := f.a.JccPlaceholder(condNE)
+			f.a.TestSelf(ref, true)
+			object = f.a.JccPlaceholder(condNE)
+			f.a.PatchRel32(i31, f.a.Len())
+		}
+	}
 	if sub < 22 {
 		if heap == -15 {
 			f.a.MovImm32(tag, 0)
@@ -34,25 +44,16 @@ func (f *fn) emitNullI31Reference(sub uint32, heap int64) error {
 			f.a.SetccReg(condE, ref)
 			f.a.AluRR(aluTable[opOr].rr, tag, ref, false)
 		}
-		f.a.Store64(RSP, f.spillOff(slot), tag)
-	} else {
-		if heap == -15 {
-			f.a.TestSelf(ref, true)
-			if sub == 23 {
-				f.trapIf(condNE, trapCastFailure)
-			} else {
-				f.trapAlways(trapCastFailure)
-			}
-		} else if sub == 22 {
-			f.a.TestSelf(ref, true)
-			f.trapIf(condE, trapCastFailure)
-		}
-		// A successful cast retains the original null/i31 slot unchanged.
+		f.a.MovRegReg32(RAX, tag)
+	} else if ref != RAX {
+		f.a.MovReg64(RAX, ref)
 	}
 	done := f.a.JmpPlaceholder()
 	f.release(tag)
 	f.release(ref)
-	f.a.PatchRel32(foreign, f.a.Len())
+	if foreign >= 0 {
+		f.a.PatchRel32(foreign, f.a.Len())
+	}
 	f.a.PatchRel32(object, f.a.Len())
 	f.pushValue(storage{kind: stConst, typ: mtI64, cval: heap})
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(sub & 1)})
@@ -65,7 +66,18 @@ func (f *fn) emitNullI31Reference(sub uint32, heap int64) error {
 	if err := f.callGCStructHelper(helper, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
 		return err
 	}
-	f.flush()
+	output := f.popValue()
+	gcRoot := output.st.hasGCRoot()
+	value := f.materialize(output)
+	if value != RAX {
+		if sub < 22 {
+			f.a.MovRegReg32(RAX, value)
+		} else {
+			f.a.MovReg64(RAX, value)
+		}
+	}
+	f.release(value)
+	f.setStackGCRoot(f.pushReg(RAX, mtOf(result)), gcRoot)
 	f.a.PatchRel32(done, f.a.Len())
 	f.stats.peep("gc-null-i31-ref")
 	return nil

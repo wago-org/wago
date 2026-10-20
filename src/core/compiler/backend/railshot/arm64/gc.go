@@ -148,7 +148,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				return nil
 			}
 		}
-		if f.gcStructHelpers && (heap == -20 || heap == -15) {
+		if f.gcStructHelpers && (heap == -20 || heap == -15 && sub == 23) {
 			return f.emitNullI31Reference(sub, heap)
 		}
 		if !moduleHasCollectorTypes(f.m) {
