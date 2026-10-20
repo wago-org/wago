@@ -1435,7 +1435,10 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		}
 		offset := roots[offsetSlot].st
 		atomicOffset = uint64(offset.cval)
+		// The selected directory entry must fit one scaled LDR64. Larger
+		// indexes retain the existing helper path.
 		atomicFast = atomicFast && offset.kind == stConst && f.memoryShared(atomicIndex) &&
+			uint64(atomicIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset <= 0xfff*8 &&
 			(atomicWait || atomicOffset <= 0xffffffff)
 	}
 	belowTypes := f.tmpTypes2[:0]
