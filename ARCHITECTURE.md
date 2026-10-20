@@ -880,7 +880,7 @@ private immutable token and expires when the callback returns. All host
 functions use flat `(module, name)` registration and retain normal plugin gate
 and reservation checks. A synchronous invocation permits up to 32 active
 `InvokeFromHost` calls under standard Go, whose host stack grows. TinyGo keeps
-a four-call limit for its smaller fixed task stack. Both builds reject deeper
+a three-call limit for its smaller fixed task stack. Both builds reject deeper
 chains before allocating another native activation. Parked GC callback and root
 storage accommodates the outer callback plus every permitted reentry.
 
