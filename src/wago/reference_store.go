@@ -1002,47 +1002,72 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 		retWord := unsafe.Slice((*byte)(offHeapPtr(retAddr)), 8)
 		retPC := uintptr(binary.LittleEndian.Uint64(retWord))
 		calleeOwner := owner
-		if retPC < codeBase || retPC-codeBase >= codeBytes {
-			// A stack-ABI public entry has no register adapter. Its top return
-			// word is exactly the entry's existing trap landing slot. An unknown
-			// PC elsewhere in the stack must still fail ownership validation.
-			if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutAMD64 && stack != nil && owner != nil && owner.jm != nil {
-				landing := r.entryReturnSlot
-				if landing%8 == 0 && landing == retAddr && stackTop >= uintptr(stack.StackBytes()) && landing >= stackTop-uintptr(stack.StackBytes()) && landing < stackTop && stackTop-landing >= 8 {
-					return true
-				}
-			}
-			if owner == nil || owner.refStore == nil || !owner.refStore.ownsGCCollector(owner.gc) {
-				return true
-			}
-			foreign := owner.refStore.gcFrameOwner(retPC, owner.gc)
-			if foreign == nil {
-				if r.allowExternalReturn {
-					return true
-				}
-				panic(gcHelperFailuref("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC))
-			}
-			owner = foreign
-			plan := foreign.c.genericGCFrameRoots()
-			codeBase, codeBytes = foreign.base, uintptr(len(foreign.c.code))
-			adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
-		}
-		rel := uint32(retPC - codeBase)
-		adapterIndex := 0
-		if len(adapterReturnOffsets) <= 8 {
-			for adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] < rel {
-				adapterIndex++
-			}
-		} else {
-			adapterIndex = sort.Search(len(adapterReturnOffsets), func(i int) bool { return adapterReturnOffsets[i] >= rel })
-		}
-		if adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] == rel {
-			return true
-		}
 		if base > ^uintptr(0)-uintptr(frameBytes)-callerFrameBias {
 			panic(gcHelperFailuref("generic GC caller frame address overflows"))
 		}
 		returnBase := base + uintptr(frameBytes) + callerFrameBias
+		adapterRead := false
+		for {
+			if retPC < codeBase || retPC-codeBase >= codeBytes {
+				// A stack-ABI public entry has no register adapter. Its top return
+				// word is exactly the entry's existing trap landing slot. An unknown
+				// PC elsewhere in the stack must still fail ownership validation.
+				if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutAMD64 && stack != nil && owner != nil && owner.jm != nil {
+					landing := r.entryReturnSlot
+					if landing%8 == 0 && landing == retAddr && stackTop >= uintptr(stack.StackBytes()) && landing >= stackTop-uintptr(stack.StackBytes()) && landing < stackTop && stackTop-landing >= 8 {
+						return true
+					}
+				}
+				if owner == nil || owner.refStore == nil || !owner.refStore.ownsGCCollector(owner.gc) {
+					return true
+				}
+				foreign := owner.refStore.gcFrameOwner(retPC, owner.gc)
+				if foreign == nil {
+					if r.allowExternalReturn {
+						return true
+					}
+					panic(gcHelperFailuref("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC))
+				}
+				owner = foreign
+				plan := foreign.c.genericGCFrameRoots()
+				codeBase, codeBytes = foreign.base, uintptr(len(foreign.c.code))
+				adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
+			}
+			rel := uint32(retPC - codeBase)
+			adapterIndex := 0
+			if len(adapterReturnOffsets) <= 8 {
+				for adapterIndex < len(adapterReturnOffsets) && adapterReturnOffsets[adapterIndex] < rel {
+					adapterIndex++
+				}
+			} else {
+				adapterIndex = sort.Search(len(adapterReturnOffsets), func(i int) bool { return adapterReturnOffsets[i] >= rel })
+			}
+			if adapterIndex == len(adapterReturnOffsets) || adapterReturnOffsets[adapterIndex] != rel {
+				break
+			}
+			if owner == nil || owner.c == nil {
+				return true // This chain has no retained compiled wrapper.
+			}
+			if adapterRead {
+				panic(gcHelperFailuref("generic GC native return crosses nested adapters"))
+			}
+			// The validated register adapter saves one results-pointer word on
+			// AMD64, or an LR/results pair on ARM64. Neither is the end of a
+			// native cross-instance call: its caller can still own live roots.
+			// Include AMD64's outer CALL return word in the same 16-byte span.
+			if returnBase%8 != 0 || returnBase > ^uintptr(0)-16 || stackTop == 0 || returnBase > stackTop || stackTop-returnBase < 16 {
+				panic(gcHelperFailuref("generic GC native adapter record exceeds stack bounds"))
+			}
+			outerReturnOffset := uintptr(8)
+			if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutARM64 {
+				outerReturnOffset = 0
+			}
+			retAddr = returnBase + outerReturnOffset
+			retPC = uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(retAddr)), 8)))
+			returnBase += 16
+			adapterRead = true
+		}
+		rel := uint32(retPC - codeBase)
 		// Tiny sorted tables beat binary-search setup; larger tables retain
 		// logarithmic lookup. The measured crossover is between 8 and 16.
 		callsiteIndex := 0
