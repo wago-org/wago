@@ -43,11 +43,15 @@ func waitForDarwinGroupExit(pid int, signalErr error, deadline time.Time, now fu
 		if queryErr != nil {
 			return errors.Join(signalErr, fmt.Errorf("inspect Go process group %d: %w", pid, queryErr))
 		}
-		if !now().Before(deadline) {
-			return signalErr
-		}
+		// The deadline bounds further polling, not the validity of a completed
+		// inspection. A slow sysctl or a descheduled caller can cross it even
+		// though this pinned group is already inert. Use that evidence before
+		// deciding whether another transition poll is allowed.
 		if !darwinGroupHasLiveMembers(members) {
 			return nil
+		}
+		if !now().Before(deadline) {
+			return signalErr
 		}
 		if darwinGroupHasRunningMembers(members) {
 			return signalErr
