@@ -108,6 +108,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Reuse ARM64 variable-shift source and count registers in ordinary scalar
   lowering.
 
+- Read borrowed ARM64 scalar float-select operands directly and reuse an owned result register.
+
 - Use ARM64 scalar floating-point conditional selection for suitable integer
   comparison conditions while preserving selected result bits.
 
