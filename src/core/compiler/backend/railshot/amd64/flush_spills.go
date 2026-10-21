@@ -63,6 +63,8 @@ func (f *fn) stageFlushSpills(belowSlots int, belowRoots []*elem) {
 			}
 		}
 	}
+	// Staging moved live homes after curSpillSlot cached their old extent.
+	f.s.spillExtentValid = false
 	f.release(scratch)
 	if nextSlot > f.maxSpill {
 		f.maxSpill = nextSlot
