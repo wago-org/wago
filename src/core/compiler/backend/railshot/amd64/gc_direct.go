@@ -2037,16 +2037,15 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0) // actual canonical type ID
 
-	// Exact casts compare canonical IDs. Ordinary casts/tests use DFS interval
-	// containment: required.pre <= actual.pre && actual.post <= required.post.
-	exactDone := -1
+	// Canonical identity proves every defined cast/test, including ordinary
+	// casts to final types. Only unequal identities need the cold interval table.
+	// The handle and object extent checks above still run on both paths.
+	a.Cmp32(RCX, RDX)
+	identityDone := a.JccPlaceholder(condE)
 	if !test {
+		// Identity already failed, so an exact cast cannot match a proper subtype.
 		a.TestSelf(RSI, false)
-		nonExact := a.JccPlaceholder(condE)
-		a.Cmp32(RCX, RDX)
 		failIf(condNE)
-		exactDone = a.JmpPlaceholder()
-		a.PatchRel32(nonExact, a.Len())
 	}
 
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
@@ -2076,9 +2075,7 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	failIf(condA)
 
 	successAt := a.Len()
-	if exactDone >= 0 {
-		a.PatchRel32(exactDone, successAt)
-	}
+	a.PatchRel32(identityDone, successAt)
 	if test {
 		a.MovImm32(RAX, 1)
 	} else {

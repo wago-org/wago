@@ -13,6 +13,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Accept equal canonical GC type IDs before loading subtype intervals in AMD64
+  native casts, tests, and branch casts.
+
 - Execute branch casts to defined struct/array types, i31, and none in native
   AMD64 and ARM64 code. Preserve reference identity and helper fallbacks.
 
