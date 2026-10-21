@@ -1338,7 +1338,7 @@ jobs:
   # skipped jobs are accepted only when the profile did not expect them.
   ci-ok:
     name: CI
-    if: always()
+    if: always() && !cancelled()
     needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size]
     runs-on: ubuntu-latest
     steps:
