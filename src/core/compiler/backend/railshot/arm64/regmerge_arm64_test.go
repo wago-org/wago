@@ -5,10 +5,8 @@ package arm64
 import (
 	"math"
 	"testing"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/arm64spike"
 )
 
 func runArm64Internal2(t *testing.T, m *wasm.Module, a0, a1 uintptr) uintptr {
@@ -17,11 +15,14 @@ func runArm64Internal2(t *testing.T, m *wasm.Module, a0, a1 uintptr) uintptr {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	code, err := arm64spike.MapExec(cm.Code)
-	if err != nil {
-		t.Fatalf("map: %v", err)
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
 	}
-	return arm64spike.Call2(uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]])), a0, a1)
+	got, err := runArm64CompiledWrapper(t, cm, uint64(a0), uint64(a1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return uintptr(got)
 }
 
 func TestRegMergeBlockResultArm64(t *testing.T) {

@@ -4,10 +4,8 @@ package arm64
 
 import (
 	"testing"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/arm64spike"
 )
 
 func callFreeLoopExitModule(t testing.TB) *wasm.Module {
@@ -70,13 +68,15 @@ func TestCallFreeLoopExitExecArm64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := arm64spike.MapExec(cm.Code)
-	if err != nil {
-		t.Fatal(err)
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
 	}
-	entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
 	for _, n := range []uintptr{0, 1, 2, 17, 255} {
-		if got := arm64spike.Call2(entry, n, 0); uint32(got) != uint32(n) {
+		got, err := runArm64CompiledWrapper(t, cm, uint64(n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint32(got) != uint32(n) {
 			t.Fatalf("f(%d) = %d, want %d", n, uint32(got), n)
 		}
 	}
