@@ -432,3 +432,49 @@ func TestGCExternNativeAdapterRecordBounds(t *testing.T) {
 		}
 	})
 }
+
+func TestGCNativeScalarDomainBoundary(t *testing.T) {
+	collecting := new(gc.Collector)
+	for _, tc := range []struct {
+		name    string
+		pc      uintptr
+		context uintptr
+		change  func(*Instance, *referenceStoreInstance)
+		want    bool
+	}{
+		{"scalar", 0x10040, 0x20000, nil, true},
+		// No frame is read at this boundary. Even an interior image address
+		// cannot conceal roots belonging to the collecting domain.
+		{"interior-pc", 0x10001, 0x20000, nil, true},
+		{"other-collector", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) { in.gc = new(gc.Collector) }, true},
+		{"same-collector", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) { in.gc = collecting }, false},
+		{"unknown-pc", 0x30040, 0x20000, nil, false},
+		{"end-pc", 0x10080, 0x20000, nil, false},
+		{"wrong-context", 0x10040, 0x20001, nil, false},
+		{"zero-context", 0x10040, 0, nil, false},
+		{"released", 0x10040, 0x20000, func(_ *Instance, state *referenceStoreInstance) { state.resourcesReleased = true }, false},
+		{"other-store", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) { in.refStore = new(referenceStore) }, false},
+		{"dynamic-global", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) {
+			in.c.Globals = []GlobalDef{{Type: ValFuncRef}}
+		}, false},
+		{"collector-argument", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) {
+			in.c.importFuncSigs = []FuncSig{{Params: []ValType{ValAnyRef}}}
+		}, false},
+		{"collector-result", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) {
+			in.c.importFuncSigs = []FuncSig{{Results: []ValType{ValAnyRef}}}
+		}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := new(referenceStore)
+			caller := &Instance{refStore: store, c: &Compiled{code: make([]byte, 128)}, base: 0x10000, nativeContext: 0x20000}
+			state := new(referenceStoreInstance)
+			store.instances = map[*Instance]*referenceStoreInstance{caller: state}
+			if tc.change != nil {
+				tc.change(caller, state)
+			}
+			if got := store.gcFrameScalarBoundary(tc.pc, collecting, tc.context); got != tc.want {
+				t.Fatalf("boundary = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
