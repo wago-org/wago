@@ -99,6 +99,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *c
 	activation := &state.hostActivations[index]
 	activation.ctrl = ctrl
 	activation.stack = stack
+	activation.entryReturnSlot = in.jm.TrapStackReentry()
 	activation.noFrame = callsite < 0
 	activation.base = base
 	if callsite >= 0 {

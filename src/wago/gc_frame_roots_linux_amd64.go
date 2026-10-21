@@ -40,6 +40,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 		return reject("table or element ownership is outside the exact native-root model")
 	}
 	collectorBoundary := moduleHasCollectorReferenceCallBoundary(m)
+	externBridge := moduleUsesGCExternConversion(m)
 	funcImport := uint32(0)
 	for i := range m.Imports {
 		switch m.Imports[i].Type.Kind {
@@ -99,7 +100,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 		if hasFixedRoots {
 			fixedOffsets = gcFrameFixedOffsets(&ehMaps[ehMapIndex-1])
 		}
-		if bodyHasUnsupportedNativeFrames(m, m.Code[function].BodyBytes, importedFunctions, len(m.Code), &classifier) {
+		if bodyHasUnsupportedNativeFrames(m, m.Code[function].BodyBytes, importedFunctions, len(m.Code), &classifier, externBridge) {
 			return reject("function %d contains an unsupported native call or frame shape", function)
 		}
 		ft, ok := m.LocalFuncType(function)
@@ -274,7 +275,7 @@ func gcFrameTablesSafe(m *wasm.Module) bool {
 }
 
 //go:noinline
-func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctions, localFunctions int, classifier *wasm.ModuleInstructionClassifier) bool {
+func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctions, localFunctions int, classifier *wasm.ModuleInstructionClassifier, externBridge bool) bool {
 	r := wasm.NewReader(body)
 	var imm wasm.InstructionImmediate
 	for r.HasNext() {
@@ -283,6 +284,12 @@ func bodyHasUnsupportedNativeFrames(m *wasm.Module, body []byte, importedFunctio
 			return true
 		}
 		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+			return true
+		}
+		// A foreign proper tail can insert an unmapped context-restoration
+		// trampoline. Keep the extern bridge collection-disabled for those
+		// shapes; a direct known-local tail retains the ordinary caller record.
+		if externBridge && (op == 0x13 || op == 0x15 || op == 0x12 && int(imm.Index) < m.ImportedFuncCount()) {
 			return true
 		}
 		if (op == 0x10 || op == 0x12) && int(imm.Index) >= importedFunctions+localFunctions {
