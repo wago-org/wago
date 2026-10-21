@@ -108,7 +108,7 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Reuse ARM64 variable-shift source and count registers in ordinary scalar
   lowering.
 
-- Keep sparse two-target tables on existing dispatch and use ARM64 bit-test branches for bounded void default edges.
+- Keep sparse two-target tables on existing dispatch and use ARM64 mask-and-branch selection with the standard branch range.
 
 - Use bounded bitset dispatch for dispersed small branch tables with one
   nondefault target on AMD64 and ARM64.

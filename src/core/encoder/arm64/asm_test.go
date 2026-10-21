@@ -513,34 +513,3 @@ func TestStoreImmIdxDenseFallbackMaterializesValueOnce(t *testing.T) {
 		})
 	}
 }
-
-func TestTbnzEncodingAndRange(t *testing.T) {
-	for _, tc := range []struct {
-		r      Reg
-		bit    uint8
-		target int
-		want   uint32
-	}{
-		{X16, 0, 8, 0x37000050}, {X9, 31, -4, 0x37ffffe9}, {X15, 32, 4, 0xb700002f}, {X30, 63, -4, 0xb7fffffe},
-	} {
-		var a Asm
-		at := a.Tbnz(tc.r, tc.bit)
-		if !a.PatchBranch14(at, tc.target) || a.wordAt(at) != tc.want {
-			t.Fatalf("bit=%d target=%d word=%08x want=%08x", tc.bit, tc.target, a.wordAt(at), tc.want)
-		}
-	}
-	for _, target := range []int{-32768, 32764} {
-		var a Asm
-		if !a.PatchBranch14(a.Tbnz(X16, 0), target) {
-			t.Fatalf("valid displacement %d rejected", target)
-		}
-	}
-	for _, target := range []int{-32772, 32768, 1} {
-		var a Asm
-		at := a.Tbnz(X16, 0)
-		before := a.wordAt(at)
-		if a.PatchBranch14(at, target) || a.wordAt(at) != before {
-			t.Fatalf("invalid displacement %d accepted or modified", target)
-		}
-	}
-}
