@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -110,6 +111,9 @@ func TestGCNativeNullExternIdentityAndClose(t *testing.T) {
 			if err := in.CollectGC(); err != nil {
 				t.Fatal(err)
 			}
+		}
+		if err := global.SetValue(ValueExternRef(NullExternRef)); err != nil {
+			t.Fatal(err)
 		}
 		if err := in.Close(); err != nil {
 			t.Fatal(err)
@@ -298,6 +302,79 @@ func TestGCNativeNullExternTrapOrderAndLivePrefix(t *testing.T) {
 			}
 		}
 		in.Close()
+		c.Close()
+	}
+}
+
+func TestGCNativeNullExternVectorAndCollectorLocal(t *testing.T) {
+	payload := []byte{1, 0x82, 3, 0xf4, 5, 0xa6, 7, 0xe8, 9, 0xba, 11, 0xdc, 13, 0xfe, 15, 0x90}
+	for _, op := range []byte{26, 27} {
+		typ := wasm.ExternRef
+		if op == 27 {
+			typ = wasm.AnyRef
+		}
+		body := []byte{2, 1, 0x63, 0, 1, 0x7b, 0x41, 0xc9, 0, 0xfb, 0, 0, 0x21, 1, 0xfd, 0x0c}
+		body = append(body, payload...)
+		body = append(body, 0x20, 0, 0xfb, op, 0xd1, 0x1a, 0x21, 2)
+		// The GC-aware import requests exact frame-root metadata.
+		// Every new object escapes to a global. Repeated Tiny collections must retain
+		// local1 while the vector was a two-slot operand below the conversion.
+		for round := 0; round < 3; round++ {
+			body = append(body, 0xfb, 1, 0, 0x24, 0)
+		}
+		body = append(body, 0x20, 2, 0xfd, 0x1d, 0, 0x20, 2, 0xfd, 0x1d, 1, 0x20, 1, 0xfb, 2, 0, 0, 0x0b)
+		body = append(wasmtest.ULEB(uint32(len(body))), body...)
+		module := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{typ}, []wasm.ValType{wasm.I64, wasm.I64, wasm.I32}), wasmtest.FuncType([]wasm.ValType{wasm.AnyRef}, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.AnyRef}))),
+			wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("env"), wasmtest.Name("keep")...), 0, 2))),
+			wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{3})),
+			wasmtest.Section(6, wasmtest.Vec([]byte{0x6e, 1, 0xd0, 0x6e, 0x0b})),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1), wasmtest.ExportEntry("make", 0, 2))),
+			wasmtest.Section(10, wasmtest.Vec(body, wasmtest.Code([]byte{0x41, 7, 0xfb, 28, 0x0b}))),
+		)
+		c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), module)
+		if err != nil {
+			t.Fatal(err)
+		}
+		admission := c.GCNativeRootAdmission()
+		if !admission.Required || !admission.Exact {
+			t.Fatalf("op%d lacks exact roots: %+v", op, admission)
+		}
+		rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
+		owner, err := rt.NewGCHostFuncRef(slotHostFunc(func(_ HostModule, _ []uint64, _ []uint64) {}), FuncSig{Params: []ValType{ValAnyRef}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		linked, err := rt.Module(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := rt.Instantiate(context.Background(), linked, WithImports(testImports("env.keep", owner)), WithGC(GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 256, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		foreign, err := in.NewExternRef("live-prefix")
+		if err != nil {
+			t.Fatal(err)
+		}
+		fallback := ValueExternRef(foreign).Bits()
+		if op == 27 {
+			made, err := in.Invoke("make")
+			if err != nil || len(made) != 1 {
+				t.Fatalf("make i31: %x,%v", made, err)
+			}
+			fallback = made[0]
+		}
+		for _, word := range []uint64{0, fallback, 0} {
+			got, err := in.Invoke("run", word)
+			if err != nil || len(got) != 3 || got[0] != binary.LittleEndian.Uint64(payload) || got[1] != binary.LittleEndian.Uint64(payload[8:]) || got[2] != 73 {
+				t.Fatalf("op%d vector/root: %x,%v", op, got, err)
+			}
+		}
+		in.Close()
+		linked.Close()
+		owner.Close()
+		rt.Close()
 		c.Close()
 	}
 }
