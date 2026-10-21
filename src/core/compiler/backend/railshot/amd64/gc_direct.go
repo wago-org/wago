@@ -2274,7 +2274,7 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 			a.Pop(R9 + Reg(i))
 		}
 	}
-	f.trapAlways(trapCastFailure)
+	f.trapAlwaysUnknownPC(trapCastFailure)
 }
 
 // emitNativeFinalArrayRefGetStub loads one collector reference from a final
@@ -2465,7 +2465,7 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 				a.Pop(R9 + Reg(i))
 			}
 		}
-		f.trapAlways(failure.code)
+		f.trapAlwaysUnknownPC(failure.code)
 	}
 }
 

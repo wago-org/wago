@@ -115,6 +115,10 @@ func TestGCDefinedTrapPreservesGlobalPins(t *testing.T) {
 						if !errors.As(err, &trap) || trap.Code != TrapCastFailure {
 							t.Fatalf("trap=%v want cast failure", err)
 						}
+						if len(trap.Frames) != 1 || trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != ^uint32(0) {
+							t.Errorf("deferred resolver trap falsely claims exact source PC: %+v", trap.Frames)
+						}
+
 					}
 					for g := 0; g < 8; g++ {
 						if got := readGlobalObject(in.globalCells[g], in.c.Globals[g].Type); got != uint64(g+1) {
