@@ -634,6 +634,11 @@ AMD64 defined GC casts and tests accept equal canonical type IDs after checked
 object resolution. Unequal ordinary types use subtype intervals; unequal exact
 casts fail. See [identity measurements](docs/research/canonical-identity-shortcut.md).
 
+AMD64 final `v128` arrays use the scalar checked resolver and bounds path with
+16-byte SSE2 or AVX loads and stores. This access layout is separate from scalar
+fill and copy admission. See the
+[vector array measurements](docs/research/native-vector-array-access.md).
+
 ### Off-heap allocation
 
 `Arena` hands out stable, off-heap, 8-byte-aligned buffers for everything native
