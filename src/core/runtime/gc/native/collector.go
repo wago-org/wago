@@ -310,12 +310,17 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 			break
 		}
 	}
-	if independentRoots && uint64(len(combined))*2 <= uint64(^uint32(0)) {
-		// The old DFS clock ended at twice the old type count. New roots
-		// follow every old tree, so no existing interval changes.
+	if independentRoots && uint64(len(combined))*4 <= uint64(^uint32(0)) {
+		// Each type consumes two DFS ticks, doubled to reserve the entry's
+		// low bit for array kind. New roots follow every old tree, so no
+		// existing interval changes.
 		for i := oldCount; i < len(combined); i++ {
-			clock := uint64(i) * 2
-			c.subtypeIntervals = append(c.subtypeIntervals, (clock+1)<<32|(clock+2))
+			clock := uint64(i) * 4
+			pre := clock + 2
+			if combined[i].Kind == KindArray {
+				pre |= uint64(NativeSubtypeArrayKindBit)
+			}
+			c.subtypeIntervals = append(c.subtypeIntervals, pre<<32|(clock+4))
 		}
 	} else {
 		if err := c.initSubtypeIntervals(); err != nil {
