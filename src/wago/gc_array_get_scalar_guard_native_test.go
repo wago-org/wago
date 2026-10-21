@@ -31,11 +31,15 @@ func TestGCGeneralScalarArrayGetExtentFallback(t *testing.T) {
 	}
 	view := in.gc.NativeView()
 	saved := *view
+	var pinned runtime.Pinner
+	defer pinned.Unpin()
 	defer func() { *view = saved }()
 	index := uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)) >> 1
 	handles := append([]byte(nil), unsafe.Slice((*byte)(offHeapPtr(view.Handles)), int(view.HandleCount)*gc.NativeHandleStride)...)
 	handle := handles[int(index)*gc.NativeHandleStride:][:gc.NativeHandleStride]
 	object := make([]byte, gc.PayloadOffset+32)
+	pinned.Pin(&handles[0])
+	pinned.Pin(&object[0])
 	for _, mode := range []string{"element extent", "length", "large index"} {
 		*view = saved
 		view.Handles = uintptr(unsafe.Pointer(&handles[0]))
