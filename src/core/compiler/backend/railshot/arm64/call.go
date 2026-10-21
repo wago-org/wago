@@ -529,7 +529,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			f.ld64(intArgRegs[gp], SP, f.spillOff(slot))
 			gp++
 		}
-		srcSlot += mtOf(typ).stackSlots()
+		srcSlot += mt.stackSlots()
 	}
 	f.emitTailFrameRelease()
 	emitJump()
@@ -556,7 +556,7 @@ func (f *fn) emitTailWrapperToRegisterJump(ft *wasm.CompType, emitJump func()) {
 			f.ld64(intArgRegs[gp], SP, f.spillOff(slot))
 			gp++
 		}
-		srcSlot += mtOf(typ).stackSlots()
+		srcSlot += mt.stackSlots()
 	}
 	f.ld64(X12, SP, frResultsOff)
 	f.emitTailFrameRelease()
@@ -624,7 +624,7 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, emitJump func()) {
 			f.st64(X0, int32((dstSlot+j)*8), X16)
 		}
 		dstSlot += n
-		srcSlot += mtOf(typ).stackSlots()
+		srcSlot += n
 	}
 	f.ld64(X2, linMemReg, -int32(abi.TrapCellPtrOffset))
 	f.a.MovReg64(X1, linMemReg)
@@ -723,7 +723,7 @@ func (f *fn) emitTailDynamicImportJump(ft *wasm.CompType, b ImportBinding) error
 			f.st64(X0, int32((dstSlot+j)*8), X16)
 		}
 		dstSlot += n
-		srcSlot += mtOf(typ).stackSlots()
+		srcSlot += n
 	}
 	for _, reg := range []Reg{X10, X11, X12, X17} {
 		f.pinned = f.pinned.remove(reg)
@@ -975,7 +975,7 @@ func (f *fn) emitTailDescriptorWrapperJump(ft *wasm.CompType) {
 			f.st64(X0, int32((dstSlot+j)*8), X16)
 		}
 		dstSlot += n
-		srcSlot += mtOf(typ).stackSlots()
+		srcSlot += n
 	}
 
 	transfer := func() {
@@ -3755,9 +3755,13 @@ func nativeSharedArgPrefixSafe(roots []*elem) bool {
 
 // Compute the argument prefix before flush reuses the operand-root scratch.
 func tailArgumentStartSlot(roots []*elem, params int) int {
-	slot := 0
-	for _, root := range roots[:len(roots)-params] {
-		slot += rootMachineType(root).stackSlots()
+	prefix := roots[:len(roots)-params]
+	// Every operand occupies one slot; v128 occupies one additional slot.
+	slot := len(prefix)
+	for _, root := range prefix {
+		if rootMachineType(root) == mtV128 {
+			slot++
+		}
 	}
 	return slot
 }
