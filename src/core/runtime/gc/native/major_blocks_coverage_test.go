@@ -102,8 +102,8 @@ func TestMajorBlocksReservationWordRevisits(t *testing.T) {
 
 func TestMajorBlocksFlagUsesExistingPadding(t *testing.T) {
 	const batchBytes = (512 - nativeStructHandleBatch) * 4
-	if unsafe.Offsetof(Collector{}.checkedHandles) != 3088-batchBytes || unsafe.Offsetof(Collector{}.majorBlocks) != 3104-batchBytes || unsafe.Sizeof(Collector{}) != 3128-batchBytes {
-		t.Fatal("native index changed existing collector offsets or grew beyond the slice descriptor")
+	if unsafe.Offsetof(Collector{}.checkedHandles) != 3088-batchBytes || unsafe.Offsetof(Collector{}.majorBlocks) != 3104-batchBytes || unsafe.Offsetof(Collector{}.promotionSortScratch) != 3128-batchBytes || unsafe.Sizeof(Collector{}) != 3128-batchBytes+unsafe.Sizeof([]plannedPromotion(nil)) {
+		t.Fatal("native index changed existing collector offsets or promotion sorting added more than its slice descriptor")
 	}
 	if unsafe.Offsetof(Collector{}.majorYoungDirty) >= unsafe.Offsetof(Collector{}.checkedHandles) {
 		t.Fatal("flag does not use existing padding")

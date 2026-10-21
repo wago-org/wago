@@ -167,8 +167,9 @@ type Collector struct {
 	majorYoungDirty       bool // uses padding before checkedHandles
 	checkedHandles        *[]uint64
 	// Keep optional proof state last so existing collector field offsets stay fixed.
-	lastCardBounds objectCardBounds
-	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
+	lastCardBounds       objectCardBounds
+	majorBlocks          []uint64           // lazy AMD64 full-collection occupancy; one bit per256handles
+	promotionSortScratch []plannedPromotion // bounded stable counting-sort workspace
 }
 
 const defaultNursery = 64 << 10
@@ -255,6 +256,7 @@ func (c *Collector) Close() {
 	c.markStack = nil
 	c.subtypeIntervals = nil
 	c.promotionScratch = nil
+	c.promotionSortScratch = nil
 	c.remembered = nil
 	c.lastCardBounds = objectCardBounds{}
 	c.objectCards = nil
