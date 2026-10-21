@@ -58,9 +58,9 @@ func TestGCGeneralScalarArrayGetVectorCodecJoins(t *testing.T) {
 
 func BenchmarkGCGeneralScalarArrayGet(b *testing.B) {
 	for _, shape := range []struct {
-		name string
-		open bool
-	}{{"old-open", true}, {"nursery-final", false}} {
+		name          string
+		open, promote bool
+	}{{"old-open", true, true}, {"nursery-final", false, false}, {"old-final", false, true}} {
 		b.Run(shape.name, func(b *testing.B) {
 			data := gcGeneralScalarArrayGetModule(0x7f, true, shape.open, false)
 			b.Run("compile", func(b *testing.B) {
@@ -89,7 +89,7 @@ func BenchmarkGCGeneralScalarArrayGet(b *testing.B) {
 			if _, err := in.Invoke("init", 17, 23); err != nil {
 				b.Fatal(err)
 			}
-			if shape.open {
+			if shape.promote {
 				if err := in.CollectGC(); err != nil {
 					b.Fatal(err)
 				}
@@ -102,7 +102,7 @@ func BenchmarkGCGeneralScalarArrayGet(b *testing.B) {
 			handles := unsafe.Slice((*byte)(offHeapPtr(view.Handles)), int(view.HandleCount)*gc.NativeHandleStride)
 			space := handles[int(ref)*gc.NativeHandleStride+gc.NativeHandleSpaceOffset]
 			wantSpace := gc.NativeSpaceNursery
-			if shape.open {
+			if shape.promote {
 				wantSpace = gc.NativeSpaceOld
 			}
 			if space != wantSpace {
