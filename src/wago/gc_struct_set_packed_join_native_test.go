@@ -80,7 +80,7 @@ func TestGCPackedStructSetCodec(t *testing.T) {
 	if _, err := in.Invoke("init", 0); err != nil {
 		t.Fatal(err)
 	}
-	const bits = uint64(0x7ff8123456789abc)
+	bits := uint64(0x7ff8123456789abc)
 	for _, name := range []string{"global", "local"} {
 		if _, err := in.Invoke(name, bits); err != nil {
 			t.Fatal(err)
