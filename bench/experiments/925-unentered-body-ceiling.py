@@ -37,8 +37,12 @@ def main():
                     suppress = match is not None and int(match.group(1)) not in entered
                     if suppress:
                         omitted += 1
-                        if line.count("(") == line.count(")"):
-                            out.write(line.rstrip("\n")[:-1] + "\n    unreachable)\n")
+                        closing = line.count(")") - line.count("(")
+                        if closing >= 0:
+                            out.write(line.rstrip("\n")[:-(1 + closing)] + "\n    unreachable)\n")
+                            if closing:
+                                out.write(")\n")
+                            suppress = False
                         else:
                             out.write(line)
                             out.write("    unreachable)\n")
@@ -51,7 +55,8 @@ def main():
                 if not last_input.rstrip("\n").endswith("))"):
                     raise ValueError("unexpected suppressed final field")
                 out.write(")\n")
-        subprocess.run(["wat2wasm", "--enable-all", str(changed), "-o", str(args.output)], check=True)
+        # Preserve custom sections and the surveyed commands' import encoding.
+        subprocess.run(["wat2wasm", "--enable-annotations", str(changed), "-o", str(args.output)], check=True)
     print(f"replaced {omitted} unentered local bodies (input-specific ceiling only)")
 
 

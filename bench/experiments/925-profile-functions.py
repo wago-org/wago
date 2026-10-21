@@ -37,11 +37,15 @@ def main():
                     inserted = pending is None
                     if pending is not None:
                         functions.append(pending)
-                        if line.count("(") == line.count(")"):
-                            # WABT represents an empty function on one line.
-                            line = line.rstrip("\n")[:-1] + (
+                        closing = line.count(")") - line.count("(")
+                        if closing >= 0:
+                            # An empty function can share its line with the
+                            # module's closing parenthesis.
+                            line = line.rstrip("\n")[:-(1 + closing)] + (
                                 f"\n    i32.const 1\n    global.set $wago_visited_{pending}\n  )\n"
                             )
+                            if closing:
+                                line += ")\n"
                             inserted = True
                 if pending is not None and not inserted and not FUNC.match(line) and not line.lstrip().startswith("(local "):
                     output.write(f"    i32.const 1\n    global.set $wago_visited_{pending}\n")
@@ -59,7 +63,9 @@ def main():
                 output.write(f"\n  (global ${name} (mut i32) (i32.const 0))")
                 output.write(f'\n  (export "__{name}" (global ${name}))')
             output.write("\n)\n")
-        subprocess.run(["wat2wasm", "--enable-all", str(rewritten), "-o", str(args.output)], check=True)
+        # Preserve custom sections without enabling new binary encodings such
+        # as compact imports in newer WABT releases.
+        subprocess.run(["wat2wasm", "--enable-annotations", str(rewritten), "-o", str(args.output)], check=True)
     args.output.with_suffix(".functions.json").write_text(json.dumps(functions) + "\n")
 
 

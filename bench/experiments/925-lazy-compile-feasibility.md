@@ -164,3 +164,18 @@ ceiling compiles also pin explicit bounds. Test logs state the selected bounds
 mode, and the accounting test logs its selected features. Native platform CI
 checks correctness; these controls add no new performance result. Historical
 tables above have not been remeasured against the current head.
+## Review controls for WABT rewriting
+
+The rewriters preserve custom-section annotations and use the surveyed
+commands' default instruction features for output. They do not enable all WABT
+proposals: that option lets WABT 1.0.41 rewrite imports into a compact format
+that this Wago baseline does not decode. A one-line empty function at the end
+of a module must also preserve its separate function and module closing
+parentheses, both during entry instrumentation and body replacement.
+
+Regression checks cover empty and nonempty terminal functions, imports, and
+custom sections:
+
+```sh
+python3 -m unittest discover -s bench/experiments -p 'test_925_wasm_scripts.py' -v
+```
