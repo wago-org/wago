@@ -22,7 +22,7 @@ func TestVariableShiftAvoidsLiveCountSpill(t *testing.T) {
 		for k := byte(0); k < 3; k++ {
 			body := []byte{1, 24, localType, 0x3f, 0, 0x1a}
 			for i := byte(0); i < 24; i++ {
-				body = append(body, 0x20, 2, c, i+1, add, 0x22, i+3)
+				body = append(body, 0x20, 0, c, i+1, add, 0x20, 1, add, 0x22, i+3)
 			}
 			body = append(body, 0x20, 0, 0x20, 1, shift+k)
 			for range 24 {
@@ -60,7 +60,7 @@ func TestVariableShiftAvoidsLiveCountSpill(t *testing.T) {
 						want = v >> n
 					}
 					for i := uint64(1); i <= 24; i++ {
-						want ^= 7 + i
+						want ^= x + count + i
 					}
 					if !wide {
 						want = uint64(uint32(want))

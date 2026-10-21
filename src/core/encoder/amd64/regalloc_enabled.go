@@ -246,7 +246,8 @@ func (a *Asm) regallocGPVEX(opcodeMap, pp, op byte, reg, rm Reg, memory bool) {
 		a.regallocGPWrite(0xffff)
 		return
 	}
-	if opcodeMap == vexMap0F3A && pp == 3 && op == 0xf0 { // RORX
+	if opcodeMap == vexMap0F3A && pp == 3 && op == 0xf0 ||
+		opcodeMap == vexMap0F38 && pp >= 1 && pp <= 3 && op == 0xf7 { // RORX, BMI2 shifts
 		a.regallocGPWrite(regallocGPRegMask(reg))
 		return
 	}
