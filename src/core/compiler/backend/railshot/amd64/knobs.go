@@ -10,6 +10,7 @@ import (
 // The binding inventory is checked against the amd64 Optimization Definitions
 // during package initialization. Public sense is always "on = enabled".
 var optimizationBindings = optimization.NewBindings("amd64",
+	optimization.Bind("direct-forwarder", &directForwarderEnabled),
 	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
 	optimization.Bind("shared-memory-base", &sharedMemoryBaseEnabled),
 	optimization.Bind("atomic-notify-empty", &atomicNotifyEmptyEnabled),
@@ -147,6 +148,7 @@ var (
 	optImmutableTable          = optimizationBindings.Option("immutable-table")
 	optImmutableTableType      = optimizationBindings.Option("immutable-table-type")
 	optInlineCallFree          = optimizationBindings.Option("inline-callfree")
+	optDirectForwarder         = optimizationBindings.Option("direct-forwarder")
 	optStoreForward            = optimizationBindings.Option("store-forward")
 	optFrameElide              = optimizationBindings.Option("frame-elide")
 	optCompactI32Frame         = optimizationBindings.Option("compact-i32-frame")
