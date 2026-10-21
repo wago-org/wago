@@ -21,10 +21,13 @@ func TestVariableShiftDeferredPressure(t *testing.T) {
 						if wide {
 							typ, constant, add, mul, shift = wasm.I64, 0x42, 0x7c, 0x7e, 0x86
 						}
-						body := []byte{0, 0x3f, 0, 0x1a} // Use ordinary scalar lowering.
+						body := []byte{1, 1, byte(0x7f), 0x3f, 0, 0x1a} // Use ordinary scalar lowering.
+						if wide {
+							body[2] = 0x7e
+						}
 						const live = 32
 						for i := byte(1); i <= live; i++ {
-							body = append(body, 0x20, 0, constant, i, add)
+							body = append(body, 0x20, 0, constant, i, add, 0x22, 2)
 						}
 						body = append(body, 0x20, 0, constant, 2, mul) // Deferred left operand.
 						countLocal := byte(1)
@@ -88,7 +91,7 @@ func TestVariableShiftDeferredPressure(t *testing.T) {
 							}
 							if diagnosticsEnabled {
 								s := stats.Funcs[0]
-								if s.Peephole["variable-shift-three-operand"] != 1 || (depth == 32 && s.Spills == 0) {
+								if s.Peephole["variable-shift-three-operand"] != 1 || s.Spills == 0 {
 									t.Fatalf("path/pressure not active: %+v", s)
 								}
 								t.Logf("code=%d spills=%d reloads=%d selected=%d", s.CodeBytes, s.Spills, s.Reloads, s.Peephole["variable-shift-three-operand"])
@@ -104,27 +107,28 @@ func TestVariableShiftDeferredPressure(t *testing.T) {
 func TestVariableShiftTrapOrder(t *testing.T) {
 	for _, wide := range []bool{false, true} {
 		typ, div, load, shift, align := wasm.I32, byte(0x6d), byte(0x28), byte(0x74), byte(2)
+		min, minusOne := uint64(1<<31), uint64(0xffffffff)
 		if wide {
 			typ, div, load, shift, align = wasm.I64, 0x7f, 0x29, 0x86, 3
+			min, minusOne = 1<<63, ^uint64(0)
 		}
 		body := []byte{0, 0x20, 0, 0x20, 1, div, 0x20, 2, load, align, 0, shift, 0x0b}
 		m := modMem(t, 1, []wasm.ValType{typ, typ, wasm.I32}, []wasm.ValType{typ}, body)
 		if err := wasm.ValidateModule(m); err != nil {
 			t.Fatal(err)
 		}
-		for _, bounds := range []bool{false} {
-			for _, test := range []struct {
-				n, d uint64
-				want rt.TrapCode
-			}{{1, 0, rt.TrapDivZero}, {12, 3, rt.TrapLinMemOutOfBounds}} {
-				t.Run(fmt.Sprintf("wide%v/bounds%v/divisor%d", wide, bounds, test.d), func(t *testing.T) {
-					_, err := runArm64WrapperWithOptions(t, m, CompileOptions{ElideBoundsChecks: bounds}, test.n, test.d, 65536)
-					var trap *rt.TrapError
-					if !errors.As(err, &trap) || trap.Code != test.want {
-						t.Fatalf("got %v want %v", err, test.want)
-					}
-				})
-			}
+		for _, test := range []struct {
+			n, d uint64
+			want rt.TrapCode
+		}{{1, 0, rt.TrapDivZero}, {min, minusOne, rt.TrapDivOverflow}, {12, 3, rt.TrapLinMemOutOfBounds}} {
+			t.Run(fmt.Sprintf("wide%v/divisor%x", wide, test.d), func(t *testing.T) {
+				// Explicit bounds checks use the ordinary wrapper and memory helper.
+				_, err := runArm64Wrapper(t, m, test.n, test.d, 65536)
+				var trap *rt.TrapError
+				if !errors.As(err, &trap) || trap.Code != test.want {
+					t.Fatalf("got %v want %v", err, test.want)
+				}
+			})
 		}
 	}
 }
