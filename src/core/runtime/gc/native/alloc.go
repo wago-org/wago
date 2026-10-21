@@ -243,7 +243,24 @@ func (c *Collector) refDesc(r Ref) (TypeDesc, error) {
 	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
 		return TypeDesc{}, errors.New("gc: invalid object ref")
 	}
-	return c.desc(TypeID(c.header(r).TypeID))
+	entry := &c.handles[h]
+	var span []byte
+	switch entry.space {
+	case spaceNursery:
+		span = c.nursery
+	case spaceOld, spaceLarge:
+		span = c.throughput.mem
+	case spaceTiny:
+		span = c.tiny.mem
+	default:
+		return TypeDesc{}, errors.New("gc: invalid object ref")
+	}
+	// Failed native resolution can reach this Go path with malformed metadata.
+	// Validate the complete physical extent before reading the dynamic type.
+	if entry.size < HeaderSize || uint64(entry.off)+uint64(entry.size) > uint64(len(span)) {
+		return TypeDesc{}, errors.New("gc: invalid object ref")
+	}
+	return c.desc(TypeID(binary.LittleEndian.Uint32(span[entry.off:])))
 }
 func (c *Collector) validObjectRef(r Ref) bool {
 	if !r.IsObj() {

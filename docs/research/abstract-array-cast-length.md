@@ -135,3 +135,27 @@ disabled, and requires zero shared stubs/calls in disabled mode. It failed on
 the prior code (one fused path while disabled). Normal and checked focused
 backend/collector/public-runtime tests pass in 15.986/15.529 seconds. The
 runtime tests also cover the independent-root type-growth repair above.
+
+## Malformed metadata fallback safety
+
+A fresh regression corrupts an array handle's space byte. The native abstract
+array leaf rejects space5, but its original Go cast fallback then called
+refDesc/header and panicked while slicing an empty object span. The first
+baseline test also recorded the existing space0 invalid-object diagnostic;
+the second baseline records the actual space5 panic and stack. Both failures
+remain in the results directory.
+
+refDesc now selects a supported physical space, requires a complete header,
+and checks the full offset+size extent with uint64 arithmetic before reading
+the type ID. Invalid metadata returns the existing invalid-object-ref error.
+This preserves closed/null/i31/foreign and descriptor/type checks. It affects
+ordinary Go access and GC scans as well as the native fallback; no cold-only
+cost claim or speed claim is made.
+
+Tests cover all252 invalid space bytes, short/empty headers, oversized spans,
+offset overflow, nonzero adjacent metadata bytes, fresh and saved native code,
+nursery, an explicitly moved survivor, old, large and Tiny heaps. They restore
+all metadata before collection and teardown. Read-only review confirms storage
+selection matches bytes() and owner/generation checks stay outside refDesc.
+Final focused checked native/API tests pass in11.317 seconds. The full checks
+for this safety fix and the separately bounded byte-load follow-up follow.

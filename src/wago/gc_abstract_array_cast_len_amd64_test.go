@@ -5,6 +5,7 @@ package wago
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"os"
 	"testing"
@@ -173,5 +174,101 @@ func BenchmarkGCAbstractArrayCastLen(b *testing.B) {
 				invoke()
 			}
 		})
+	}
+}
+
+func TestGCAbstractArrayCastLenSpaceByte(t *testing.T) {
+	if !hostSupportsSIMD() {
+		t.Skip("host SIMD unavailable")
+	}
+	c := abstractArrayCastLenModule(t)
+	if status := c.GCNativeRootAdmission(); !status.Required || !status.Exact {
+		t.Fatalf("fixture requires exact root admission: %+v", status)
+	}
+	loaded := publicArtifactRoundTrip(t, c)
+	defer loaded.Close()
+	for artifactIndex, artifact := range []*Compiled{c, loaded} {
+		for _, tc := range []struct {
+			space byte
+			cfg   GCConfig
+		}{
+			{gc.NativeSpaceNursery, GCConfig{NurseryBytes: 1 << 20}},
+			{gc.NativeSpaceOld, GCConfig{NurseryBytes: 1 << 20}},
+			{gc.NativeSpaceLarge, GCConfig{LargeObjectBytes: 16}},
+			{gc.NativeSpaceTiny, GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 1 << 20, TinyBlockBytes: 16}},
+		} {
+			t.Run(fmt.Sprintf("saved%d/space%d", artifactIndex, tc.space), func(t *testing.T) {
+				in, err := Instantiate(artifact, InstantiateOptions{GC: tc.cfg})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer in.Close()
+				if in.c.genericGCFrameRoots() == nil || !in.gc.CollectsOnAllocation() {
+					t.Fatal("fixture must reach the requested collector without boundary collection")
+				}
+				if _, err := in.Invoke("init", 64); err != nil {
+					t.Fatal(err)
+				}
+				ref := uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type))
+				if tc.space == gc.NativeSpaceOld {
+					if err := in.gc.ForcePromote(gc.Ref(ref)); err != nil {
+						t.Fatal(err)
+					}
+				}
+				view := in.gc.NativeView()
+				entry := unsafe.Slice((*byte)(offHeapPtr(view.Handles+uintptr(ref>>1)*gc.NativeHandleStride)), gc.NativeHandleStride)
+				saved := append([]byte(nil), entry...)
+				defer copy(entry, saved)
+				if entry[gc.NativeHandleSpaceOffset] != tc.space {
+					t.Fatalf("fixture space=%d, want %d", entry[gc.NativeHandleSpaceOffset], tc.space)
+				}
+				check := func(name string, invalid bool) {
+					t.Helper()
+					got, err := in.Invoke(name)
+					if invalid {
+						if err == nil || err.Error() != "wago: WasmGC struct helper: gc: invalid object ref" {
+							t.Fatalf("entry=%x %s=%v,%v; want diagnostic invalid object ref", entry, name, got, err)
+						}
+					} else if err != nil || len(got) != 1 || got[0] != 64 {
+						t.Fatalf("space=%d %s=%v,%v; want64", entry[gc.NativeHandleSpaceOffset], name, got, err)
+					}
+				}
+				// The surrounding class and remembered bytes are not part of the index.
+				entry[12], entry[13], entry[15] = 0xff, 0x80, 0xff
+				check("length", false)
+				check("nullable-length", false)
+				if tc.space == gc.NativeSpaceNursery {
+					for space := 0; space <= 255; space++ {
+						if space >= 1 && space <= 4 {
+							continue
+						}
+						entry[gc.NativeHandleSpaceOffset] = byte(space)
+						check("length", true)
+						check("nullable-length", true)
+					}
+				}
+				if tc.space == gc.NativeSpaceNursery {
+					for _, bad := range []struct {
+						offset int
+						value  uint32
+					}{
+						{gc.NativeHandleSizeOffset, gc.HeaderSize - 1},
+						{gc.NativeHandleSizeOffset, ^uint32(0)},
+						{gc.NativeHandleOffsetOffset, ^uint32(0)},
+					} {
+						copy(entry, saved)
+						binary.LittleEndian.PutUint32(entry[bad.offset:], bad.value)
+						check("length", true)
+						check("nullable-length", true)
+					}
+				}
+				copy(entry, saved)
+				check("length", false)
+				if err := in.CollectGC(); err != nil {
+					t.Fatal(err)
+				}
+				check("nullable-length", false)
+			})
+		}
 	}
 }

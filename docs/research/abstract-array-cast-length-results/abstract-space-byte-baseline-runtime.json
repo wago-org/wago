@@ -1,0 +1,15 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-tags=wago_regalloccheck",
+    "./src/wago",
+    "-run",
+    "^TestGCAbstractArrayCastLenSpaceByte$",
+    "-count=1"
+  ],
+  "seconds": 16.38432445000217,
+  "exit": 1,
+  "stdout": "--- FAIL: TestGCAbstractArrayCastLenSpaceByte (0.00s)\n    --- FAIL: TestGCAbstractArrayCastLenSpaceByte/saved0/space1 (0.00s)\n        gc_abstract_array_cast_len_amd64_test.go:247: space=0 length=[],wago: WasmGC struct helper: gc: invalid object ref; want cast failure\n    --- FAIL: TestGCAbstractArrayCastLenSpaceByte/saved1/space1 (0.00s)\n        gc_abstract_array_cast_len_amd64_test.go:247: space=0 length=[],wago: WasmGC struct helper: gc: invalid object ref; want cast failure\nFAIL\nFAIL\tgithub.com/wago-org/wago/src/wago\t0.006s\nFAIL\n",
+  "stderr": ""
+}
