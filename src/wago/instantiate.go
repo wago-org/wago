@@ -2027,7 +2027,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		slots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
 		var err error
 		windowsTypedI64 := goruntime.GOOS == "windows" && goruntime.GOARCH == "amd64" &&
-			binding.scalarKind == syncHostTypedI64 && integerNumericHostEnabled && c.integerHostContextAllowed() &&
+			binding.scalarKind == syncHostTypedI64 && privateNumericLiveRouteEnabled && integerNumericHostEnabled && c.integerHostContextAllowed() &&
 			c.boundsMode == BoundsChecksExplicit &&
 			detachedNumericHostEnabled && c.supportsGoHostDispatchTag() && detachedNumericGoDispatch(jm) &&
 			c.NumImports == 1 && memoryCount <= 1 && !threadedControl && len(in.globalCells) == 0 &&
