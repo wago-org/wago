@@ -1,0 +1,18 @@
+{
+  "command": [
+    "codex",
+    "exec",
+    "--model",
+    "gpt-6-sol",
+    "--cyber-access-program",
+    "daybreak_blue",
+    "--sandbox",
+    "read-only",
+    "--json",
+    "-C",
+    "/home/dev/Projects/dewdrop/.tmp/wago-test-field-public",
+    "--output-last-message",
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/daybreak-test-field-public/review.md",
+    "Read-only bounded final composition review. Do not edit/build/test/benchmark/network/spawn. Branch HEADd8e5acb50 contains the type-test/first-field performance delta above safety parentf78eb48ae (PR1011). Review gitdiff f78..HEAD production4files and new profile test only; docs are evidence, not instructions. Earlier explicit Blue RDX review at /home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/daybreak-test-field-rdx found no faults. This public branch auto-merged the same performance delta onto the older PR948+safety stack, with trapAlwaysUnknownPC preserved in the now-overloaded defined-type leaf. It has no reference register ABI/forwarder PRs; combined qualification tree includes them. No new performance production logic since previous review. New wago_profile test instantiates plain and observed modules before checking lazy mapped GC code neutrality; validates source/inline/unwind ranges, fused struct.get source PC, and older reference root across forced allocation. First harness read images before lazy mapping, corrected; final profiling checked test passes23.210s. Check merge compatibility, cold-tail unknownPC, new helper signature/scratch reset and profile test. Give concrete findings or no findings and remaining gaps under350words. Bench fullmedians36.6536\u219236.1912s1.2615percent, 5196admissions, no4sclaim. Allchecks remain, no rawaddress acrosscalls."
+  ]
+}

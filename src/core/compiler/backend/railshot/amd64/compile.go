@@ -348,6 +348,7 @@ type fn struct {
 	gcSubtypeProofs     [4]gcSubtypeProof
 	gcSubtypeProofN     uint8
 	gcGuardSites        uint8 // bounded prefix-match attempts; shares existing padding
+	gcTestFieldSites    uint8 // bounded successful test/field prefixes
 	nLocalSlots         int   // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
@@ -872,6 +873,7 @@ type scratch struct {
 	gcArrayLenStubSites     []int
 	gcFinalCastStubSites    []int
 	gcDefinedTestStubSites  []int
+	gcTestFieldStubSites    []int
 	gcArrayRefGetSites      []int
 	gcCastArrayGetSites     [5][]int
 	gcStructRefGetStubSites []int
@@ -1140,6 +1142,7 @@ func (sc *scratch) reset() {
 	sc.gcArrayLenStubSites = sc.gcArrayLenStubSites[:0]
 	sc.gcFinalCastStubSites = sc.gcFinalCastStubSites[:0]
 	sc.gcDefinedTestStubSites = sc.gcDefinedTestStubSites[:0]
+	sc.gcTestFieldStubSites = sc.gcTestFieldStubSites[:0]
 	sc.gcArrayRefGetSites = sc.gcArrayRefGetSites[:0]
 	for i := range sc.gcCastArrayGetSites {
 		sc.gcCastArrayGetSites[i] = sc.gcCastArrayGetSites[i][:0]
