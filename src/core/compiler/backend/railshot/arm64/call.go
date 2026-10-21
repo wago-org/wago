@@ -1464,6 +1464,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 
 	gcDone := -1
+	gcNurseryDone := -1
 	if nativeDeadArrayBatchBytes != 0 && !wide {
 		gcDone = f.deadObjectCountShortcut(nativeDeadArrayBatchBytes, 8, int(slotOf[d-p]))
 	}
@@ -1480,6 +1481,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		} else if nativeArrayHelper == gcArrayAllocUniform || nativeArrayHelper == gcArrayAllocDefault {
 			gcDone = f.arrayAllocationShortcut(nativeArrayHelper, nativeArrayType, int(slotOf[d-p]))
 		} else if nativeArrayHelper == gcArrayGet {
+			// Keep the established final-nursery path before trying the general
+			// checked leaf. Both success branches use the original result join.
+			gcNurseryDone = f.arrayScalarShortcut(nativeArrayHelper, nativeArrayType, int(slotOf[d-p]))
 			gcDone = f.scalarArrayGetShortcut(nativeArrayType, int(slotOf[d-p]))
 		} else {
 			gcDone = f.arrayScalarShortcut(nativeArrayHelper, nativeArrayType, int(slotOf[d-p]))
@@ -1547,6 +1551,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	if gcDone >= 0 {
 		f.patchBranch26(gcDone, f.a.Len())
+	}
+	if gcNurseryDone >= 0 {
+		f.patchBranch26(gcNurseryDone, f.a.Len())
 	}
 	if notifyDone >= 0 {
 		f.patchBranch26(notifyDone, f.a.Len())
