@@ -4,6 +4,7 @@ package wago
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"runtime"
 	"sync/atomic"
@@ -102,7 +103,9 @@ func TestSharedGrowDynamicZeroWidthsAndLiveValues(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+						loaded := publicArtifactRoundTrip(t, c)
+						defer loaded.Close()
+						for _, compiled := range []*Compiled{c, loaded} {
 							in, err := Instantiate(compiled, InstantiateOptions{memoryLimitPages: 2})
 							if err != nil {
 								t.Fatal(err)
@@ -182,6 +185,125 @@ func TestSharedGrowDynamicZeroObservesConcurrentGrowth(t *testing.T) {
 				}
 				if err := <-done; err != nil {
 					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
+
+func TestSharedGrowDynamicZeroPreservesVectorPrefix(t *testing.T) {
+	payload := []byte{1, 0x82, 3, 0xf4, 5, 0xa6, 7, 0xe8, 9, 0xba, 11, 0xdc, 13, 0xfe, 15, 0x90}
+	for _, address64 := range []bool{false, true} {
+		for _, index := range []byte{0, 1} {
+			for _, regABI := range []bool{false, true} {
+				t.Run(fmt.Sprintf("i64=%t/index=%d/regabi=%t", address64, index, regABI), func(t *testing.T) {
+					typ, limits, wireType := wasm.I32, byte(3), byte(0x7f)
+					if address64 {
+						typ, limits, wireType = wasm.I64, 7, 0x7e
+					}
+					memories := [][]byte{{limits, 1, 2}, {1, 0, 1}}
+					if index != 0 {
+						memories[0], memories[1] = memories[1], memories[0]
+					}
+					// v128 is a two-slot live prefix below the grow operand. Retain
+					// both halves after the common zero/nonzero result join.
+					body := append([]byte{2, 1, 0x7b, 1, wireType, 0xfd, 0x0c}, payload...)
+					body = append(body, 0x20, 0, 0x40, index, 0x21, 2, 0x22, 1,
+						0xfd, 0x1d, 0, 0x20, 1, 0xfd, 0x1d, 1, 0x20, 2, 0x0b)
+					body = append(wasmtest.ULEB(uint32(len(body))), body...)
+					module := wasmtest.Module(
+						wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{typ}, []wasm.ValType{wasm.I64, wasm.I64, typ}))),
+						wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+						wasmtest.Section(5, wasmtest.Vec(memories...)),
+						wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+						wasmtest.Section(10, wasmtest.Vec(body)),
+					)
+					c, err := sharedGrowZeroConfig().WithOptimization("reg-abi", regABI).Compile(module)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer c.Close()
+					loaded := publicArtifactRoundTrip(t, c)
+					defer loaded.Close()
+					for _, compiled := range []*Compiled{c, loaded} {
+						in, err := Instantiate(compiled)
+						if err != nil {
+							t.Fatal(err)
+						}
+						defer in.Close()
+						for n, delta := range []uint64{0, 1, 0, 1 << 32, 0} {
+							want := uint64(2)
+							if n < 2 {
+								want = 1
+							} else if n == 3 && address64 {
+								want = ^uint64(0)
+							}
+							got, err := in.Invoke("run", delta)
+							if err != nil || len(got) != 3 || got[0] != binary.LittleEndian.Uint64(payload) || got[1] != binary.LittleEndian.Uint64(payload[8:]) || got[2] != want {
+								t.Fatalf("grow(%x): vector/results %x, %v; want grow %x", delta, got, err, want)
+							}
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestSharedGrowDynamicZeroPreservesCollectorLocal(t *testing.T) {
+	requireNativeTestFeatures(t, CoreFeatureGC)
+	for _, address64 := range []bool{false, true} {
+		for _, index := range []byte{0, 1} {
+			t.Run(fmt.Sprintf("i64=%t/index=%d", address64, index), func(t *testing.T) {
+				typ, limits, wireType := wasm.I32, byte(3), byte(0x7f)
+				if address64 {
+					typ, limits, wireType = wasm.I64, 7, 0x7e
+				}
+				memories := [][]byte{{limits, 1, 2}, {1, 0, 1}}
+				if index != 0 {
+					memories[0], memories[1] = memories[1], memories[0]
+				}
+				body := []byte{2, 1, 0x63, 0, 1, wireType,
+					0x41, 0xc9, 0, 0xfb, 0, 0, 0x21, 1,
+					0x20, 0, 0x40, index, 0x21, 2,
+					0xfb, 1, 0, 0x1a, 0xfb, 1, 0, 0x1a, 0xfb, 1, 0, 0x1a,
+					0x20, 1, 0xfb, 2, 0, 0, 0x20, 2, 0x0b}
+				body = append(wasmtest.ULEB(uint32(len(body))), body...)
+				module := wasmtest.Module(
+					wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1},
+						wasmtest.FuncType([]wasm.ValType{typ}, []wasm.ValType{wasm.I32, typ}))),
+					wasmtest.Section(3, wasmtest.Vec([]byte{1})),
+					wasmtest.Section(5, wasmtest.Vec(memories...)),
+					wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+					wasmtest.Section(10, wasmtest.Vec(body)),
+				)
+				c, err := sharedGrowZeroConfig().Compile(module)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer c.Close()
+				admission := c.GCNativeRootAdmission()
+				if !admission.Required || !admission.Exact {
+					t.Fatalf("collector local was not admitted to exact roots: %+v", admission)
+				}
+				in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny,
+					TinyHeapBytes: 64, TinyBlockBytes: 16, TinyCollectEveryAlloc: true,
+					TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer in.Close()
+				for n, delta := range []uint64{0, 1, 0, 1 << 32, 0} {
+					want := uint64(2)
+					if n < 2 {
+						want = 1
+					} else if n == 3 && address64 {
+						want = ^uint64(0)
+					}
+					got, err := in.Invoke("run", delta)
+					if err != nil || len(got) != 2 || got[0] != 73 || got[1] != want {
+						t.Fatalf("grow(%x) then collect: %v, %v; want [73 %x]", delta, got, err, want)
+					}
 				}
 			})
 		}
