@@ -142,8 +142,8 @@ CI validates documentation for every change. Changes limited to Markdown,
 changes run both documentation validation and the full matrix.
 
 The required `CI` check verifies every expected job even when an earlier job
-fails. Cancelled workflow runs skip that aggregate so superseded runs can
-release their concurrency slot for the latest commit.
+fails. Cancelled workflow runs skip the aggregate and corpus-verification jobs
+so superseded runs can release their concurrency slot for the latest commit.
 
 For CLI changes, also build and run these checks:
 
