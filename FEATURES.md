@@ -3,6 +3,10 @@
 WebAssembly features follow the phase groups and row order on
 [webassembly.org/features](https://webassembly.org/features/)
 
+Portable plugin recipes with inputs up to 32 bits and one output up to 32 bits
+compile to scalar instructions on AMD64 and ARM64. Wider logical values and
+unsupported recipe contracts retain the portable handler.
+
 Wago supports Linux, macOS, and Windows on amd64 and arm64, plus Linux on
 RISC-V64. Linux/RV64 is supported in ordinary builds without an experimental
 build tag and covers Core 1, Core 2, and Core 3, plus Wago's threads, guard-page,
