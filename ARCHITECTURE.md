@@ -634,6 +634,13 @@ AMD64 defined GC casts and tests accept equal canonical type IDs after checked
 object resolution. Unequal ordinary types use subtype intervals; unequal exact
 casts fail. See [identity measurements](docs/research/canonical-identity-shortcut.md).
 
+Large-array reservations retain their nursery-list position in one private Go
+`int` at the end of `Collector`. Cancellation checks the saved index and handle
+identity before deleting that entry; if compaction moved or removed it, the
+existing forward search remains the fallback. This avoids scanning the live
+nursery prefix for an unchanged reservation without changing the 40-byte native
+reservation state, prior collector field offsets, or the native ABI.
+
 ### Off-heap allocation
 
 `Arena` hands out stable, off-heap, 8-byte-aligned buffers for everything native
