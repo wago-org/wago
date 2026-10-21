@@ -1,0 +1,43 @@
+=== RUN   TestGCValueCheckHomesPreserveLocalPacking
+--- PASS: TestGCValueCheckHomesPreserveLocalPacking (0.00s)
+=== RUN   TestGCValueChecksFinalIntervalTransfer
+--- PASS: TestGCValueChecksFinalIntervalTransfer (0.00s)
+=== RUN   TestGCValueChecksUseValueVersions
+--- PASS: TestGCValueChecksUseValueVersions (0.00s)
+=== RUN   TestGCValueCheckPlan
+    gc_value_checks_test.go:143: plan=map[5:true 14:true 24:true 34:true]
+--- PASS: TestGCValueCheckPlan (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.002s
+=== RUN   TestGCValueChecks
+--- PASS: TestGCValueChecks (0.00s)
+=== RUN   TestGCValueChecksExtentAndChild
+=== RUN   TestGCValueChecksExtentAndChild/header
+=== RUN   TestGCValueChecksExtentAndChild/handle
+=== RUN   TestGCValueChecksExtentAndChild/child
+=== RUN   TestGCValueChecksExtentAndChild/header#01
+=== RUN   TestGCValueChecksExtentAndChild/handle#01
+=== RUN   TestGCValueChecksExtentAndChild/child#01
+--- PASS: TestGCValueChecksExtentAndChild (0.00s)
+    --- PASS: TestGCValueChecksExtentAndChild/header (0.00s)
+    --- PASS: TestGCValueChecksExtentAndChild/handle (0.00s)
+    --- PASS: TestGCValueChecksExtentAndChild/child (0.00s)
+    --- PASS: TestGCValueChecksExtentAndChild/header#01 (0.00s)
+    --- PASS: TestGCValueChecksExtentAndChild/handle#01 (0.00s)
+    --- PASS: TestGCValueChecksExtentAndChild/child#01 (0.00s)
+=== RUN   TestGCValueChecksAdmission
+    gc_value_checks_stats_amd64_test.go:51: mix all=map[commute-mem-left:5 final-cast-scalar-get-fuse:6 gc-value-check-extend:2 gc-value-check-input:6 gc-value-check-plan:1 gc-value-check-reuse:4 gc-value-check-save:2] reuse=4 save=2 extend=2 frame=184
+    gc_value_checks_stats_amd64_test.go:51: copy all=map[commute-mem-left:1 final-cast-scalar-get-fuse:2 frame-header-elide:1 gc-value-check-extend:1 gc-value-check-input:2 gc-value-check-plan:1 gc-value-check-reuse:1 gc-value-check-save:1] reuse=1 save=1 extend=1 frame=168
+    gc_value_checks_stats_amd64_test.go:51: children all=map[commute-mem-left:3 final-cast-scalar-get-fuse:4 final-cast-struct-get-fuse:4 frame-header-elide:1 gc-value-check-extend:3 gc-value-check-input:8 gc-value-check-plan:1 gc-value-check-reuse:5 gc-value-check-save:3] reuse=5 save=3 extend=3 frame=168
+    gc_value_checks_stats_amd64_test.go:51: typed-children all=map[commute-mem-left:1 final-cast-scalar-get-fuse:2 frame-header-elide:1 gc-shared-resolve-call:2 gc-value-check-extend:1 gc-value-check-input:2 gc-value-check-plan:1 gc-value-check-reuse:1 gc-value-check-save:1] reuse=1 save=1 extend=1 frame=168
+    gc_value_checks_stats_amd64_test.go:51: test-read all=map[commute-mem-left:2 final-cast-scalar-get-fuse:2 frame-header-elide:1 gc-test-field-fuse:1 gc-value-check-extend:1 gc-value-check-input:2 gc-value-check-plan:1 gc-value-check-reuse:2 gc-value-check-save:1 lone-predicate:1] reuse=2 save=1 extend=1 frame=168
+    gc_value_checks_stats_amd64_test.go:51: snapshot all=map[commute-mem-left:1 final-cast-scalar-get-fuse:4 frame-header-elide:1 gc-value-check-input:4 gc-value-check-plan:1 gc-value-check-reuse:2 gc-value-check-save:1] reuse=2 save=1 extend=0 frame=168
+    gc_value_checks_stats_amd64_test.go:51: later all=map[commute-mem-left:1 compact-i32-frame:1 final-cast-scalar-get-fuse:2 frame-header-elide:1 gc-value-check-extend:1 gc-value-check-input:2 gc-value-check-plan:1 gc-value-check-reuse:1 gc-value-check-save:1] reuse=1 save=1 extend=1 frame=168
+    gc_value_checks_stats_amd64_test.go:51: after-call all=map[commute-mem-left:1 final-cast-scalar-get-fuse:4 frame-header-elide:1 gc-value-check-input:4 gc-value-check-plan:1 gc-value-check-reuse:1 gc-value-check-save:1] reuse=1 save=1 extend=0 frame=168
+    gc_value_checks_stats_amd64_test.go:51: branch all=map[compact-i32-frame:1 final-cast-scalar-get-fuse:3 frame-header-elide:1 gc-value-check-input:3 gc-value-check-plan:1 gc-value-check-reuse:1 gc-value-check-save:1] reuse=1 save=1 extend=0 frame=168
+    gc_value_checks_stats_amd64_test.go:51: write all=map[final-cast-scalar-get-fuse:3 final-cast-struct-get-fuse:3 frame-header-elide:1 gc-barrier-slow:1 gc-value-check-input:6 gc-value-check-plan:1 gc-value-check-reuse:2 gc-value-check-save:2] reuse=2 save=2 extend=0 frame=200
+    gc_value_checks_stats_amd64_test.go:51: small all=map[commute-mem-left:1 final-cast-scalar-get-fuse:2 frame-header-elide:1 gc-value-check-input:2 gc-value-check-plan:1 gc-value-check-reuse:1 gc-value-check-save:1] reuse=1 save=1 extend=0 frame=168
+    gc_value_checks_stats_amd64_test.go:51: pressure all=map[commute-mem-left:3 compact-i32-frame:1 final-cast-scalar-get-fuse:3 gc-test-field-fuse:1 gc-value-check-extend:2 gc-value-check-input:3 gc-value-check-plan:1 gc-value-check-reuse:2 gc-value-check-save:2 late-frame-commute:1 tree-order:5 tree-order-candidate:5] reuse=2 save=2 extend=2 frame=232
+--- PASS: TestGCValueChecksAdmission (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.008s

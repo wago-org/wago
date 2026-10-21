@@ -1,0 +1,7 @@
+panic: open ../../tests/fixtures/wasm/fib.wasm: no such file or directory
+
+goroutine 1 [running]:
+github.com/wago-org/wago/src/wago.testdata({0x167979a?, 0x331d091951a0?})
+	/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks/src/wago/wago_test.go:27 +0xb7
+github.com/wago-org/wago/src/wago.init()
+	/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks/src/wago/wago_test.go:36 +0x1afe

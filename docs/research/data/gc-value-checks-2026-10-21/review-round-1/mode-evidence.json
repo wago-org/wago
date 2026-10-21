@@ -1,0 +1,9 @@
+{
+  "thread": "01a15f98-465e-7332-b588-383ddae2d97c",
+  "turn_contexts": [
+    {
+      "model": "gpt-6-sol",
+      "cyber_access_program": "daybreak_blue"
+    }
+  ]
+}

@@ -439,6 +439,7 @@ func (f *fn) emitGCReadRegionGroup(r *wasm.Reader) error {
 		f.stats.peep("gc-read-region-array")
 		return f.emitNativeFinalCastArrayGet(g.typ, g.nullable, g.scalar, g.ref, g.signed)
 	}
+	parentID := f.gcValueID(f.s.back())
 	_ = r.JumpTo(g.end)
 	local := -1
 	if g.sourceLocal >= 0 {
@@ -498,7 +499,11 @@ func (f *fn) emitGCReadRegionGroup(r *wasm.Reader) error {
 	}
 	if g.ref {
 		f.a.Load32(out, address, int32(gc.PayloadOffset+g.offset))
-		f.setStackGCRoot(f.pushReg(out, mtI64), true)
+		result := f.pushReg(out, mtI64)
+		f.setStackGCRoot(result, true)
+		if f.gcValues != nil {
+			f.setGCValueID(result, f.gcValues.fieldValue(parentID, g.typ, g.offset))
+		}
 	} else {
 		f.a.LoadIdx(out, address, RSP, int32(gc.PayloadOffset+g.offset), g.scalar.size, g.signed, g.scalar.typ == mtI64)
 		f.pushReg(out, g.scalar.typ)

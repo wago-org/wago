@@ -216,6 +216,7 @@ func (f *fn) tryGCTrappingGuard(typeIndex uint32, nullable bool, r *wasm.Reader)
 	// Ordinary first-read materialization flushes the stack and clears transient
 	// pins. Establish the certificate and its lease together after that flush
 	// and the full resolver have returned, before any later instruction.
+	parentID := f.gcValueID(f.s.back())
 	if err := f.emitNativeFinalCastStructFieldAddress(typeIndex, p.firstOffset, 4, nullable); err != nil {
 		return true, err
 	}
@@ -287,7 +288,11 @@ func (f *fn) tryGCTrappingGuard(typeIndex uint32, nullable bool, r *wasm.Reader)
 	out := f.allocReg(maskOf(p.cache))
 	if p.secondRef {
 		f.a.Load32(out, p.cache, int32(gc.PayloadOffset+p.secondOffset))
-		f.setStackGCRoot(f.pushReg(out, mtI64), true)
+		result := f.pushReg(out, mtI64)
+		f.setStackGCRoot(result, true)
+		if f.gcValues != nil {
+			f.setGCValueID(result, f.gcValues.fieldValue(parentID, typeIndex, p.secondOffset))
+		}
 	} else {
 		scalar := p.secondScalar
 		f.a.LoadIdx(out, p.cache, RSP, int32(gc.PayloadOffset+p.secondOffset), scalar.size, p.secondSigned, scalar.typ == mtI64)

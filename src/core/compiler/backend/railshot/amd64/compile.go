@@ -336,6 +336,7 @@ type fn struct {
 	gcLocalTypes        []uint64      // collector reference types, independent of local liveness
 	localSlot           []uint32      // low 24 bits: byte offset; high 8 bits: bounded local-reference count
 	gcOpcodeBarrier     bool          // current 0xfb opcode emits real barrier work
+	gcValues            *gcValueChecks
 	gcResolved          gcResolvedObject
 	gcReadRegion        *gcReadRegionState
 	gcReadRegionSites   int
@@ -860,6 +861,7 @@ type scratch struct {
 	policy                CodegenPolicy
 	classifier            wasm.ModuleInstructionClassifier
 	moduleTypes           moduleTypeCache
+	gcValueScratch        gcValueChecks
 	fnState               fn // per-function compiler state, reused across the module
 	relocs                []callReloc
 
@@ -876,6 +878,8 @@ type scratch struct {
 	gcTestFieldStubSites    []int
 	gcArrayRefGetSites      []int
 	gcCastArrayGetSites     [5][]int
+	gcValueStructStubSites  []int
+	gcValueTestStubSites    []int
 	gcStructRefGetStubSites []int
 	gcStructRefSetStubSites []int
 	gcArrayRefSetStubSites  []int
@@ -1147,6 +1151,8 @@ func (sc *scratch) reset() {
 	for i := range sc.gcCastArrayGetSites {
 		sc.gcCastArrayGetSites[i] = sc.gcCastArrayGetSites[i][:0]
 	}
+	sc.gcValueStructStubSites = sc.gcValueStructStubSites[:0]
+	sc.gcValueTestStubSites = sc.gcValueTestStubSites[:0]
 	sc.gcStructRefGetStubSites = sc.gcStructRefGetStubSites[:0]
 	sc.gcStructRefSetStubSites = sc.gcStructRefSetStubSites[:0]
 	sc.gcArrayRefSetStubSites = sc.gcArrayRefSetStubSites[:0]
@@ -4050,6 +4056,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// caller's own locals only). Extends the frame's local arrays with unpinned
 	// scratch; the splice at each call site binds/zeroes them.
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
+	if err := f.reserveGCValueChecks(c.BodyBytes, c.LocalDeclBytes); err != nil {
+		return nil, nil, 0, err
+	}
 	if uint64(f.nLocalSlots)*8 > uint64(localSlotOffsetMask) {
 		return nil, nil, 0, fmt.Errorf("amd64: local frame %d bytes exceeds packed offset range %d", 8*f.nLocalSlots, localSlotOffsetMask)
 	}

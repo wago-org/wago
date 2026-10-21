@@ -46,6 +46,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.prepareGCValueFB(sub)
 	f.prepareGCResolvedFB(sub)
 	f.prepareGCFreshStructFB(sub)
 	f.gcOpcodeBarrier = false
@@ -1125,6 +1126,7 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 	// Every parked helper may run collector work, so the transient raw resolver
 	// certificate does not survive it.
 	f.invalidateGCResolvedObject()
+	f.clearGCValueChecks()
 	before := f.a.Len()
 	defer func() {
 		n := f.a.Len() - before

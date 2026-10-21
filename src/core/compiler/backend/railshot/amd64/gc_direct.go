@@ -753,6 +753,7 @@ func (f *fn) emitNativeFinalCastArrayLen(typeIndex uint32, nullable bool) error 
 }
 
 func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact bool) error {
+	valueID := f.gcValueID(f.s.back())
 	object := f.popValue()
 	f.flush()
 	ref := f.materialize(object)
@@ -779,6 +780,7 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact bool) error
 	f.stats.call("gcnative")
 	result := f.pushReg(RAX, mtI64)
 	f.setStackGCRoot(result, true)
+	f.setGCValueID(result, valueID)
 	return nil
 }
 
@@ -807,6 +809,13 @@ func (f *fn) emitNativeDefinedTest(typeIndex uint32, nullable bool) error {
 }
 
 func (f *fn) emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, fieldBytes uint32, nullable bool) error {
+	valueID := f.gcValueID(f.s.back())
+	if f.gcValues != nil {
+		f.stats.peep("gc-value-check-input")
+		if valueID == 0 {
+			f.stats.peep("gc-value-check-unknown-input")
+		}
+	}
 	object := f.popValue()
 	f.flush()
 	ref := f.materialize(object)
@@ -817,6 +826,9 @@ func (f *fn) emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, field
 	required := uint64(gc.PayloadOffset) + uint64(fieldOffset) + uint64(fieldBytes)
 	if required > math.MaxInt32 {
 		return fmt.Errorf("amd64: final struct field extent %d exceeds native immediate", required)
+	}
+	if f.reuseGCValueCheck(valueID, typeIndex, uint32(required)) {
+		return nil
 	}
 	f.a.MovImm32(RDX, int32(typeIndex))
 	f.a.MovImm32(RCX, int32(required))
@@ -829,18 +841,30 @@ func (f *fn) emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, field
 		f.checkCallClobber()
 	}
 	site := f.a.CallRel32()
-	f.sc.gcStructRefGetStubSites = append(f.sc.gcStructRefGetStubSites, site)
+	cache := f.gcValues != nil && valueID != 0 && f.inlineDepth == 0 && f.gcValues.producers[f.wasmPC]
+	if cache {
+		f.sc.gcValueStructStubSites = append(f.sc.gcValueStructStubSites, site)
+	} else {
+		f.sc.gcStructRefGetStubSites = append(f.sc.gcStructRefGetStubSites, site)
+	}
+	if cache {
+		f.recordGCValueCheck(valueID, typeIndex, uint32(required), RAX, RDX)
+	}
 	f.stats.call("gcnative")
 	return nil
 }
 
 func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, nullable bool) error {
+	parentID := f.gcValueID(f.s.back())
 	if err := f.emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, 4, nullable); err != nil {
 		return err
 	}
 	f.a.Load32(RAX, RAX, int32(gc.PayloadOffset+fieldOffset))
 	result := f.pushReg(RAX, mtI64)
 	f.setStackGCRoot(result, true)
+	if f.gcValues != nil {
+		f.setGCValueID(result, f.gcValues.fieldValue(parentID, typeIndex, fieldOffset))
+	}
 	return nil
 }
 
@@ -1090,6 +1114,20 @@ func (f *fn) emitNativeGCStubs() {
 		stub := f.a.Len()
 		f.emitNativeFinalArrayRefGetStub()
 		for _, site := range f.sc.gcArrayRefGetSites {
+			f.a.PatchRel32(site, stub)
+		}
+	}
+	if len(f.sc.gcValueStructStubSites) != 0 {
+		stub := f.a.Len()
+		f.emitNativeFinalCastStructRefResolverStub(true)
+		for _, site := range f.sc.gcValueStructStubSites {
+			f.a.PatchRel32(site, stub)
+		}
+	}
+	if len(f.sc.gcValueTestStubSites) != 0 {
+		stub := f.a.Len()
+		f.emitNativeDefinedTypeCheckStub(true, true, true)
+		for _, site := range f.sc.gcValueTestStubSites {
 			f.a.PatchRel32(site, stub)
 		}
 	}
@@ -2159,7 +2197,8 @@ func (f *fn) emitNativeDefinedTestStub() { f.emitNativeDefinedTypeCheckStub(true
 // field extent in field-test mode. Test mode returns zero/one in EAX; field-test
 // mode also returns the checked object address in RDX on success. Cast mode
 // returns the original compact reference.
-func (f *fn) emitNativeDefinedTypeCheckStub(test, field bool) {
+func (f *fn) emitNativeDefinedTypeCheckStub(test, field bool, returnLimit ...bool) {
+	limit := len(returnLimit) != 0 && returnLimit[0]
 	if field && !test {
 		panic("amd64: field test leaf requires test mode")
 	}
@@ -2308,6 +2347,9 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test, field bool) {
 			a.Load32(RAX, R11, 4)
 			a.Cmp32(RAX, RSI)
 			castFailure(condB)
+			if limit {
+				emitGCValueLimit(f, RDI, RAX, RCX)
+			}
 			a.MovReg64(RDX, R11)
 		}
 		a.MovImm32(RAX, 1)
@@ -2440,7 +2482,8 @@ func (f *fn) emitNativeFinalArrayRefGetStub() {
 // EDX=module-local final struct type, ECX=minimum object extent, and
 // ESI=cast-null flag. The call site immediately performs one constant-offset
 // field load before any safepoint can relocate the object.
-func (f *fn) emitNativeFinalCastStructRefResolverStub() {
+func (f *fn) emitNativeFinalCastStructRefResolverStub(returnLimit ...bool) {
+	limit := len(returnLimit) != 0 && returnLimit[0]
 	a := f.a
 	var castFailures []int
 	castFailure := func(cond Cond) {
@@ -2506,6 +2549,9 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 	castFailure(condA)
 	a.Cmp32(RCX, RDI)
 	castFailure(condB)
+	if limit {
+		a.MovRegReg32(RSI, RCX)
+	}
 
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0)
@@ -2514,6 +2560,9 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 	a.Load32(RCX, R11, 4)
 	a.Cmp32(RCX, RDI)
 	castFailure(condB)
+	if limit {
+		emitGCValueLimit(f, RSI, RCX, RDX)
+	}
 	a.MovReg64(RSI, R11)
 	for i := len(preserve) - 1; i >= 0; i-- {
 		if preserve[i] {
@@ -2889,6 +2938,7 @@ func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex ui
 	if !ok || (!final && !gcSharedStubsEnabled) {
 		return false
 	}
+	parentID := f.gcValueID(f.s.back())
 	local, hasLocal := gcLocalProvenance(f.s.back())
 	oldFloor := f.spillFloor
 	required := gc.PayloadOffset + off + uint32(scalar.size)
@@ -2923,11 +2973,14 @@ func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex ui
 	f.a.LoadIdx(result, obj, RSP, disp, scalar.size, signed, scalar.typ == mtI64 && !collectorRef)
 	done()
 	f.spillFloor = oldFloor
-	f.pushReg(result, scalar.typ)
+	value := f.pushReg(result, scalar.typ)
 	if collectorRef {
 		// Publish the loaded compact child as a root, without assigning it the
 		// parent's local provenance or retaining its raw address as a value.
 		f.markTopGCReference()
+		if f.gcValues != nil {
+			f.setGCValueID(value, f.gcValues.fieldValue(parentID, typeIndex, off))
+		}
 	}
 	return true
 }

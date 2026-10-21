@@ -11,12 +11,12 @@ import (
 )
 
 type gcTestFieldPlan struct {
-	ifPC, fieldPC, end int
-	local              int
-	offset, required   uint32
-	scalar             directGCScalar
-	ref, signed        bool
-	cache              Reg
+	ifPC, castPC, fieldPC, end int
+	local                      int
+	offset, required           uint32
+	scalar                     directGCScalar
+	ref, signed                bool
+	cache                      Reg
 }
 
 // Own only test; if; same-local final cast/get. The address is consumed at
@@ -56,6 +56,7 @@ func (f *fn) planGCTestField(typeIndex uint32, reader *wasm.Reader) (p gcTestFie
 		return p, false
 	}
 	again, err := r.U32()
+	p.castPC = reader.Offset() + r.Offset()
 	if err != nil || int(again) != local || !byteIs(0xfb) {
 		return p, false
 	}
@@ -112,6 +113,8 @@ func (f *fn) tryGCTestField(typeIndex uint32, r *wasm.Reader) (bool, error) {
 	if !ok {
 		return false, nil
 	}
+	valueID := f.gcValueID(f.s.back())
+	cache := f.gcValues != nil && valueID != 0 && f.gcValues.producers[f.tracePCBase+uint32(p.castPC)]
 	f.gcTestFieldSites++
 	object := f.popValue()
 	f.flush()
@@ -127,7 +130,11 @@ func (f *fn) tryGCTestField(typeIndex uint32, r *wasm.Reader) (bool, error) {
 		f.checkCallClobber()
 	}
 	site := f.a.CallRel32()
-	f.sc.gcTestFieldStubSites = append(f.sc.gcTestFieldStubSites, site)
+	if cache {
+		f.sc.gcValueTestStubSites = append(f.sc.gcValueTestStubSites, site)
+	} else {
+		f.sc.gcTestFieldStubSites = append(f.sc.gcTestFieldStubSites, site)
+	}
 	f.stats.call("gcnative")
 	// The full test/conditional extent validation has returned EAX=boolean and
 	// RDX=address (zero on false). No raw address crosses a call or safepoint.
@@ -164,6 +171,12 @@ func (f *fn) tryGCTestField(typeIndex uint32, r *wasm.Reader) (bool, error) {
 	if !f.gcResolved.valid || f.gcResolved.reg != p.cache || !f.pinned.has(p.cache) {
 		return true, fmt.Errorf("amd64: test/field lost address register %d at if entry", p.cache)
 	}
+	if cache {
+		savedPC := f.wasmPC
+		f.wasmPC = f.tracePCBase + uint32(p.castPC)
+		f.recordGCValueCheck(valueID, typeIndex, p.required, p.cache, RCX)
+		f.wasmPC = savedPC
+	}
 	f.wasmPC = f.tracePCBase + uint32(p.fieldPC)
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		previous = f.enterProfileInstruction()
@@ -171,7 +184,11 @@ func (f *fn) tryGCTestField(typeIndex uint32, r *wasm.Reader) (bool, error) {
 	out := f.allocReg(maskOf(p.cache))
 	if p.ref {
 		f.a.Load32(out, p.cache, int32(gc.PayloadOffset+p.offset))
-		f.setStackGCRoot(f.pushReg(out, mtI64), true)
+		result := f.pushReg(out, mtI64)
+		f.setStackGCRoot(result, true)
+		if f.gcValues != nil {
+			f.setGCValueID(result, f.gcValues.fieldValue(valueID, typeIndex, p.offset))
+		}
 	} else {
 		f.a.LoadIdx(out, p.cache, RSP, int32(gc.PayloadOffset+p.offset), p.scalar.size, p.signed, p.scalar.typ == mtI64)
 		f.pushReg(out, p.scalar.typ)

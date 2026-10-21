@@ -1,0 +1,7 @@
+{
+  "Replace": {
+    "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks/src/wago/api.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/value-checks/admission/api.go.txt",
+    "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks/src/wago/real_shared_getter_capture.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/value-checks/admission/hook.go.txt",
+    "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks/src/wago/real_shared_getter_capture_test.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/value-checks/admission/capture_test.go.txt"
+  }
+}

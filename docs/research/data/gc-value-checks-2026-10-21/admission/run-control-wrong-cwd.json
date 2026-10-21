@@ -1,0 +1,29 @@
+{
+  "label": "run-control",
+  "command": [
+    "taskset",
+    "-c",
+    "12,14",
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/value-checks/admission/control.test",
+    "-test.run=^TestRealSharedGetterStaticAdmission$",
+    "-test.count=1",
+    "-test.v"
+  ],
+  "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks",
+  "seconds": 0.004770395011291839,
+  "user_seconds": 0.0008139999999999999,
+  "system_seconds": 0.0016439999999999998,
+  "peak_rss_kib": 18340,
+  "exit": 2,
+  "timeout": false,
+  "load_start": [
+    2.21044921875,
+    2.4384765625,
+    1.85986328125
+  ],
+  "load_end": [
+    2.21044921875,
+    2.4384765625,
+    1.85986328125
+  ]
+}
