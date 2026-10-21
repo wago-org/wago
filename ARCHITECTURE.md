@@ -634,6 +634,10 @@ AMD64 defined GC casts and tests accept equal canonical type IDs after checked
 object resolution. Unequal ordinary types use subtype intervals; unequal exact
 casts fail. See [identity measurements](docs/research/canonical-identity-shortcut.md).
 
+AMD64 prefix spill relocation uses an allocator-owned scratch register. It
+respects pending load addresses and pinned inputs without temporarily borrowing
+RAX; newly spilled sources remain outside the destination range.
+
 ### Off-heap allocation
 
 `Arena` hands out stable, off-heap, 8-byte-aligned buffers for everything native
