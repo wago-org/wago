@@ -43,6 +43,13 @@ func TestGCGeneralScalarArrayGetEligibility(t *testing.T) {
 			if got := stats.Funcs[0].Peephole["gc-array-general-scalar-get-native"]; got != want {
 				t.Errorf("storage%x open%v: general native sites%d,want%d", storage, open, got, want)
 			}
+			wantNursery := 0
+			if !open && want != 0 {
+				wantNursery = 1
+			}
+			if got := stats.Funcs[0].Peephole["gc-array-scalar-native"]; got != wantNursery {
+				t.Errorf("storage%x open%v: retained nursery sites%d,want%d", storage, open, got, wantNursery)
+			}
 		}
 	}
 }
