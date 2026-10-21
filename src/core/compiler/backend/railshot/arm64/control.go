@@ -3156,27 +3156,13 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		outside := f.a.Bcond(condAE)
 		f.a.MovImm64(X16, mask)
 		f.a.Lsrv64(X16, X16, ireg)
-		// A void default edge without EH emits only its branch. Its local
-		// membership branch is therefore safely in TB(N)Z's shorter range.
-		defaultFrame := &f.ctrl[len(f.ctrl)-1-int(def)]
-		shortBit := !f.moduleEH && defaultFrame.branchArity() == 0
-		var member int
-		if shortBit {
-			member = f.a.Tbnz(X16, 0)
-		} else {
-			f.a.AndImm64(X16, X16, 1)
-			member = f.a.Cbnz64(X16)
-		}
+		// Use the established long membership edge even for a void default.
+		// Its range must not depend on the default edge staying one instruction.
+		f.a.AndImm64(X16, X16, 1)
+		member := f.a.Cbnz64(X16)
 		f.patchBranch19(outside, f.a.Len())
 		emitCase(def)
-		if shortBit {
-			if !f.a.PatchBranch14(member, f.a.Len()) {
-				return fmt.Errorf("arm64: short bitset edge exceeded branch range")
-			}
-			f.stats.peep("br-table-bitset-test-bit")
-		} else {
-			f.patchBranch19(member, f.a.Len())
-		}
+		f.patchBranch19(member, f.a.Len())
 		emitCase(target)
 		f.stats.peep("br-table-bitset")
 		f.unreachable = true
