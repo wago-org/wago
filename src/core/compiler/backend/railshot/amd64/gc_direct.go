@@ -1055,6 +1055,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	if !ok || site.mode == gcArrayNativeNone {
 		panic("amd64: invalid native array allocation layout")
 	}
+	dynamicLarge := site.dynamic && site.mode == gcArrayNativeDefault
 	a := f.a
 	controlReg, countReg, sizeReg := R12, R13, R14
 	callee := [...]Reg{R12, R13, R14, R15}
@@ -1097,7 +1098,11 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 
 	emitSize := func() {
 		if site.dynamic {
-			a.Load32(countReg, controlReg, hcArgs)
+			countOffset := int32(hcArgs)
+			if site.mode == gcArrayNativeUniform {
+				countOffset += int32(layout.valueSlots * 8)
+			}
+			a.Load32(countReg, controlReg, countOffset)
 		} else {
 			a.MovImm32(countReg, int32(site.count))
 		}
@@ -1123,6 +1128,10 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	}
 	if site.dynamic {
 		emitSize()
+		if !dynamicLarge {
+			a.AluRI(cmpDigit, sizeReg, int32(gc.NativeArrayAllocMaxBytes), false)
+			addFallback(a.JccPlaceholder(condA))
+		}
 	}
 
 	stateOffset := int32(gc.NativeViewStructAllocStateOffset)
@@ -1133,7 +1142,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		epochOffset = gc.NativeViewLargeArrayAllocEpochOffset
 		handleCapacity = 1
 	}
-	if site.dynamic {
+	if dynamicLarge {
 		a.AluRI(cmpDigit, sizeReg, int32(gc.NativeArrayAllocMaxBytes), false)
 		smallState := a.JccPlaceholder(condBE)
 		a.AluRI(cmpDigit, sizeReg, int32(gc.NativeLargeArrayAllocMaxBytes), false)
@@ -1161,7 +1170,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	addFallback(a.JccPlaceholder(condNE))
 	a.Load32(RCX, R10, gc.NativeStructAllocCursorOffset)
 	a.Load32(RAX, R10, gc.NativeStructAllocCountOffset)
-	if site.dynamic {
+	if dynamicLarge {
 		a.Cmp32(RAX, RDI)
 	} else {
 		a.AluRI(cmpDigit, RAX, handleCapacity, false)
@@ -1209,7 +1218,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	directReady := -1
 	var useChunk []int
 	if !site.large {
-		if site.dynamic {
+		if dynamicLarge {
 			a.AluRI(cmpDigit, RDI, 1, false)
 			useChunk = append(useChunk, a.JccPlaceholder(condE))
 		}
@@ -1242,7 +1251,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	addFallback(a.JccPlaceholder(condB))
 	// A large reservation has one owning handle. Publishing a smaller extent
 	// would strand its tail, since reclamation derives ownership from that handle.
-	if site.dynamic {
+	if dynamicLarge {
 		a.AluRI(cmpDigit, RDI, 1, false)
 		smallReservation := a.JccPlaceholder(condNE)
 		a.MovRegReg32(RDX, sizeReg)
@@ -1259,7 +1268,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		addFallback(a.JccPlaceholder(condNE))
 	}
 	largeState := site.large
-	if site.dynamic {
+	if dynamicLarge {
 		a.MovImm32(RDX, int32(gc.NativeSpaceNursery))
 		a.AluRI(cmpDigit, RDI, 1, false)
 		smallState := a.JccPlaceholder(condNE)
@@ -1272,7 +1281,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		a.ShiftImm(5, RDX, 16, false)
 		a.AluRI(4, RDX, 0xff, false)
 	}
-	if site.dynamic || largeState {
+	if dynamicLarge || largeState {
 		a.AluRI(cmpDigit, RDX, int32(gc.NativeSpaceLarge), false)
 		throughputBase := a.JccPlaceholder(condE)
 		a.Load64(R11, R8, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceNursery*gc.NativeViewSpaceStride+gc.NativeSpaceBaseOffset))
@@ -1344,7 +1353,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	if layout.pointerFree {
 		flags = int32(gc.FlagPointerFree)
 	}
-	if site.dynamic || largeState {
+	if dynamicLarge || largeState {
 		a.AluRI(cmpDigit, RDX, int32(gc.NativeSpaceLarge), false)
 		largeFlags := a.JccPlaceholder(condE)
 		a.StoreImm32Mem(R11, 12, flags)
@@ -1352,7 +1361,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		a.PatchRel32(largeFlags, a.Len())
 		a.StoreImm32Mem(R11, 12, flags|int32(gc.FlagLarge))
 		a.PatchRel32(flagsReady, a.Len())
-		if site.dynamic {
+		if dynamicLarge {
 			a.AluRI(cmpDigit, RDI, 1, false)
 			smallMetadata := a.JccPlaceholder(condNE)
 			a.Load32(countReg, R10, gc.NativeStructAllocChunkBumpOffset)

@@ -637,7 +637,9 @@ casts fail. See [identity measurements](docs/research/canonical-identity-shortcu
 On AMD64, small arrays can also consume a chunk-free struct reservation. They
 advance the nursery bump after initializing the payload and publish the handle
 last. These batches account for both constructor kinds from their consumed
-cursor. Private array chunks and exact-size large reservations retain their own
+cursor. Uniform arrays with run-time lengths use this path only when their
+checked object size is at most 256 bytes; larger uniform arrays use the helper.
+Private array chunks and exact-size large reservations retain their own
 cursor and immediate accounting. See the
 [native array path measurements](docs/research/native-array-paths.md).
 
