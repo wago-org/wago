@@ -76,8 +76,14 @@ func TestBitsetIndexAfterPinRelinquishment(t *testing.T) {
 			}
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(index)})
+		var physicalWrites uint32
+		oldObserver := f.a.ObserveGPWrites(func(mask uint32) { physicalWrites |= mask })
 		if err := f.opBrTable(wasm.NewReader([]byte{8, 0, 1, 0, 1, 0, 1, 0, 1, 0})); err != nil {
 			t.Fatal(err)
+		}
+		f.a.ObserveGPWrites(oldObserver)
+		if regallocCheckEnabled && physicalWrites&(1<<uint(RDX)) == 0 {
+			t.Fatal("checked encoder observer did not observe the RDX index write")
 		}
 		if !f.pinRelinquished || f.locals[0].state != lsReg {
 			t.Fatal("fixture did not borrow and restore the local pin")
@@ -123,12 +129,20 @@ func TestBitsetBrTableTypedMerge(t *testing.T) {
 	body := []byte{0, 0x02, 0x7e, 0x02, 0x7e, 0x20, 1, 0x20, 0, 0x0e, 8, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0x0b, 0x42, 7, 0x7c, 0x0b, 0x0b}
 	m := mod1(t, []wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64}, body)
 	for _, compact := range []bool{false, true} {
-		cm, e := CompileModuleWith(m, CompileOptions{CompactNative: compact})
+		var stats ModuleStats
+		opts := CompileOptions{CompactNative: compact}
+		if diagnosticsEnabled {
+			opts.Stats = &stats
+		}
+		cm, e := CompileModuleWith(m, opts)
 		if e != nil {
 			t.Fatal(e)
 		}
 		if cm.CodeImage != nil {
 			defer cm.CodeImage.Close()
+		}
+		if diagnosticsEnabled && stats.Funcs[0].Peephole["br-table-bitset"] != 1 {
+			t.Fatalf("typed dispatch lacks active bitset counter: %v", stats.Funcs[0].Peephole)
 		}
 		for _, value := range []uint64{0, 1, 0x8000000000000000, ^uint64(0)} {
 			for _, index := range []uint64{0, 1, 7, 8, 63, 64, 0xffffffff} {
