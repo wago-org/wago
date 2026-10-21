@@ -79,3 +79,61 @@ func TestSubtypeIntervalsRejectUnknownPair(t *testing.T) {
 		t.Fatal("unknown required type accepted")
 	}
 }
+
+func TestSubtypeIntervalsCarryArrayKindWithoutChangingContainment(t *testing.T) {
+	types := make([]TypeDesc, 32)
+	for i := range types {
+		var err error
+		if i < 16 {
+			types[i], err = NewStructDesc(TypeID(i), []StorageKind{StorageI32})
+		} else {
+			types[i], err = NewArrayDesc(TypeID(i), StorageI32)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		types[i].Final = false
+		if i != 0 && i != 16 {
+			types[i].HasSuper = true
+			types[i].Super = TypeID(i - 1)
+		}
+	}
+	c := newTestCollectorWithTypes(t, Config{}, types)
+	for i, d := range types {
+		pre := uint32(c.subtypeIntervals[i] >> 32)
+		if array := pre&1 != 0; array != (d.Kind == KindArray) {
+			t.Fatalf("type %d kind bit=%v, kind=%v", i, array, d.Kind)
+		}
+	}
+	for actual := range types {
+		for required := range types {
+			want := false
+			for cur := actual; ; cur = int(types[cur].Super) {
+				if cur == required {
+					want = true
+					break
+				}
+				if !types[cur].HasSuper {
+					break
+				}
+			}
+			a, r := c.subtypeIntervals[actual], c.subtypeIntervals[required]
+			got := uint32(r>>32) <= uint32(a>>32) && uint32(a) <= uint32(r)
+			if got != want {
+				t.Fatalf("packed containment %d<:%d=%v, want %v", actual, required, got, want)
+			}
+		}
+	}
+	appended, err := NewArrayDesc(32, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appended.HasSuper = true
+	appended.Super = 16
+	if err := c.AddTypes([]TypeDesc{appended}); err != nil {
+		t.Fatal(err)
+	}
+	if uint32(c.subtypeIntervals[32]>>32)&1 == 0 {
+		t.Fatal("appended array lost its kind bit")
+	}
+}

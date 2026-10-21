@@ -1,0 +1,41 @@
+[
+  {
+    "name": "checked-plugin-rerun",
+    "command": [
+      "go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./cli/manager/internal/plugin",
+      "-count=1"
+    ],
+    "seconds": 18.30116773899863,
+    "exit": 0,
+    "stdout": "ok  \tgithub.com/wago-org/wago/cli/manager/internal/plugin\t18.033s\n",
+    "stderr": ""
+  },
+  {
+    "name": "bench",
+    "command": [
+      "go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./..."
+    ],
+    "seconds": 34.934305672002665,
+    "exit": 0,
+    "stdout": "?   \tgithub.com/wago-org/wago/bench/chart\t[no test files]\nok  \tgithub.com/wago-org/wago/bench/cmd/benchpub\t0.003s\nok  \tgithub.com/wago-org/wago/bench/cmd/corpus-shard\t0.012s\n?   \tgithub.com/wago-org/wago/bench/cmd/explain\t[no test files]\nok  \tgithub.com/wago-org/wago/bench/cmd/validatestats\t0.015s\n?   \tgithub.com/wago-org/wago/bench/cmd/wagoprof\t[no test files]\nok  \tgithub.com/wago-org/wago/bench/internal/corpusplan\t0.002s\nok  \tgithub.com/wago-org/wago/bench/internal/semanticcorpus\t0.390s\nok  \tgithub.com/wago-org/wago/bench/suite\t33.962s\n",
+    "stderr": ""
+  },
+  {
+    "name": "docs",
+    "command": [
+      "go",
+      "run",
+      "./tests/tools/docs-check"
+    ],
+    "seconds": 0.12273210800049128,
+    "exit": 0,
+    "stdout": "docs-check: validated 83 Markdown files\n",
+    "stderr": ""
+  }
+]

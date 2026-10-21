@@ -12,12 +12,17 @@ var gcSubtypeIntervalsEnabled = os.Getenv("WAGO_GC_SUBTYPE_INTERVALS") != "0"
 // buildSubtypeIntervals assigns one DFS interval to every validated descriptor.
 // TypeDesc admits at most one declared supertype, so the descriptor graph is a
 // forest and actual is a subtype of required exactly when actual's interval is
-// contained by required's interval. The packed table costs eight bytes per type
+// contained by required's interval. Entry timestamps use even ticks plus an
+// array-kind bit; exit timestamps use even ticks. Their ordering is unchanged.
+// The packed table costs eight bytes per type
 // and replaces unbounded parent-chain walks on dynamic cast/test hot paths.
 func buildSubtypeIntervals(types []TypeDesc) ([]uint64, error) {
 	n := len(types)
 	if n == 0 {
 		return nil, nil
+	}
+	if uint64(n) > uint64(^uint32(0))/4 {
+		return nil, fmt.Errorf("gc: too many types for packed subtype intervals: %d", n)
 	}
 	head := make([]int32, n)
 	next := make([]int32, n)
@@ -50,7 +55,11 @@ func buildSubtypeIntervals(types []TypeDesc) ([]uint64, error) {
 			continue
 		}
 		clock++
-		intervals[root] = uint64(clock) << 32
+		pre := clock << 1
+		if d.Kind == KindArray {
+			pre |= NativeSubtypeArrayKindBit
+		}
+		intervals[root] = uint64(pre) << 32
 		stack = append(stack[:0], frame{node: int32(root), child: head[root]})
 		for len(stack) != 0 {
 			top := &stack[len(stack)-1]
@@ -58,12 +67,16 @@ func buildSubtypeIntervals(types []TypeDesc) ([]uint64, error) {
 				child := top.child
 				top.child = next[child]
 				clock++
-				intervals[child] = uint64(clock) << 32
+				pre := clock << 1
+				if types[child].Kind == KindArray {
+					pre |= NativeSubtypeArrayKindBit
+				}
+				intervals[child] = uint64(pre) << 32
 				stack = append(stack, frame{node: child, child: head[child]})
 				continue
 			}
 			clock++
-			intervals[top.node] |= uint64(clock)
+			intervals[top.node] |= uint64(clock << 1)
 			stack = stack[:len(stack)-1]
 		}
 	}

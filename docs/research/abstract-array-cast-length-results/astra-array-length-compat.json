@@ -1,0 +1,97 @@
+[
+  {
+    "name": "build-new",
+    "command": [
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/astra-array-length-combined-runtime",
+      "build",
+      "--bare",
+      "--offline",
+      "--no-input",
+      "--output",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/astra-array-length-new.wago",
+      "/home/dev/Projects/wago-gc-abstract-array-length-pr/tests/fixtures/wasm/gc-abstract-array-cast-len.wasm"
+    ],
+    "seconds": 0.03947103400059859,
+    "exit": 0,
+    "stdout": "\u2713 built /home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/astra-array-length-new.wago\n",
+    "stderr": ""
+  },
+  {
+    "name": "build-old",
+    "command": [
+      "/home/dev/.local/share/wago/versions/local-gc-69c165ace/standard/normal/wago-runtime",
+      "build",
+      "--bare",
+      "--offline",
+      "--no-input",
+      "--output",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/astra-array-length-old.wago",
+      "/home/dev/Projects/wago-gc-abstract-array-length-pr/tests/fixtures/wasm/gc-abstract-array-cast-len.wasm"
+    ],
+    "seconds": 0.005385321997891879,
+    "exit": 0,
+    "stdout": "\u2713 built /home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/astra-array-length-old.wago\n",
+    "stderr": ""
+  },
+  {
+    "name": "new-native-on-old-runtime",
+    "command": [
+      "/home/dev/.local/share/wago/versions/local-gc-69c165ace/standard/normal/wago-runtime",
+      "run",
+      "--bare",
+      "--offline",
+      "--no-input",
+      "--allow-native-artifact",
+      "--invoke",
+      "init",
+      "--invoke",
+      "length",
+      "--invoke",
+      "pressure",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/astra-array-length-new.wago",
+      "73",
+      "17"
+    ],
+    "seconds": 0.004063856998982374,
+    "exit": 0,
+    "stdout": "73\n757\n",
+    "stderr": ""
+  },
+  {
+    "name": "old-native-on-new-runtime",
+    "command": [
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/astra-array-length-combined-runtime",
+      "run",
+      "--bare",
+      "--offline",
+      "--no-input",
+      "--allow-native-artifact",
+      "--invoke",
+      "init",
+      "--invoke",
+      "length",
+      "--invoke",
+      "pressure",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/astra-array-length-old.wago",
+      "73",
+      "17"
+    ],
+    "seconds": 0.004975670999556314,
+    "exit": 0,
+    "stdout": "73\n757\n",
+    "stderr": ""
+  },
+  {
+    "name": "arm64-intervals",
+    "command": [
+      "qemu-aarch64",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/astra-array-length-arm64-native.test",
+      "-test.run=Test.*Subtype|TestNativeSubtypeKind|TestNativeCollectorViewLayout",
+      "-test.count=1"
+    ],
+    "seconds": 0.5356192639992514,
+    "exit": 0,
+    "stdout": "PASS\n",
+    "stderr": ""
+  }
+]

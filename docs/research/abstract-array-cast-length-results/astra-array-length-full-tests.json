@@ -1,0 +1,27 @@
+[
+  {
+    "name": "normal",
+    "command": [
+      "go",
+      "test",
+      "./..."
+    ],
+    "cwd": "/home/dev/Projects/wago-gc-abstract-array-length-pr",
+    "seconds": 162.6772071760024,
+    "exit": 0,
+    "log": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/astra-array-length-normal.log"
+  },
+  {
+    "name": "checked",
+    "command": [
+      "go",
+      "test",
+      "-tags=wago_regalloccheck",
+      "./..."
+    ],
+    "cwd": "/home/dev/Projects/wago-gc-abstract-array-length-pr",
+    "seconds": 137.8225123179982,
+    "exit": 1,
+    "log": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/astra-array-length-checked.log"
+  }
+]

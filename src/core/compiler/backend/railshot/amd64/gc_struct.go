@@ -642,6 +642,11 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 			finalTarget = true
 		}
 	}
+	if f.gcStructHelpers && heap == -22 {
+		if fused, err := f.tryFuseAbstractArrayCastLen(sub == 23, r); fused || err != nil {
+			return err
+		}
+	}
 	if f.gcStructHelpers && heap >= 0 {
 		if fused, err := f.tryFuseFinalCastStructGet(uint32(heap), sub == 23, r); fused || err != nil {
 			return err

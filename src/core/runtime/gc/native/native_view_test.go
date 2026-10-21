@@ -199,3 +199,31 @@ func TestNativeInstanceViewPublishesImmutableTypeMap(t *testing.T) {
 		t.Fatal("closed collector native view validated")
 	}
 }
+
+func TestNativeSubtypeKindEncodingUsesExistingPadding(t *testing.T) {
+	d, err := NewArrayDesc(0, StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{}, []TypeDesc{d})
+	view := c.NativeView()
+	if got := unsafe.Offsetof(view.SubtypeEncoding); got != 20 {
+		t.Fatalf("encoding offset=%d, want reserved offset 20", got)
+	}
+	if got := unsafe.Sizeof(*view); got != 200 {
+		t.Fatalf("collector view grew to %d bytes, want 200", got)
+	}
+	instance := NewNativeInstanceView(c, []TypeID{0})
+	if view.SubtypeEncoding != NativeSubtypeEncodingKindBit {
+		t.Fatalf("new view encoding=%d", view.SubtypeEncoding)
+	}
+	view.SubtypeEncoding = 0
+	if err := ValidateNativeInstanceView(instance, c, 1); err != nil {
+		t.Fatalf("legacy optional encoding rejected: %v", err)
+	}
+	view.SubtypeEncoding = 2
+	if err := ValidateNativeInstanceView(instance, c, 1); err == nil {
+		t.Fatal("unknown subtype encoding accepted")
+	}
+	view.SubtypeEncoding = NativeSubtypeEncodingKindBit
+}
