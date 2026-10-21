@@ -1,4 +1,4 @@
-//go:build wago_profile && (linux || darwin) && (amd64 || arm64) && !tinygo
+//go:build wago_profile && ((linux && (amd64 || arm64)) || (darwin && arm64)) && !tinygo
 
 package wago
 
