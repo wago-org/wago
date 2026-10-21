@@ -36,7 +36,7 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   in the common scalar store path and during second-input preparation in `fbin`
   and `fbinInto`.
 
-- Keep sparse two-target tables on existing dispatch and use ARM64 bit-test branches for bounded void default edges.
+- Keep sparse two-target tables on existing dispatch and use ARM64 mask-and-branch selection with the standard branch range.
 
 - Use bounded bitset dispatch for dispersed small branch tables with one
   nondefault target on AMD64 and ARM64.
