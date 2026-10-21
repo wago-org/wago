@@ -17,27 +17,12 @@ jobs:
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 1
       matrix:
         include:
-          - pr: 986
-            os: Linux
-            runner: ubuntu-24.04-arm
-            source: 715da6612d72095266fbae4d6d46de1761038790
-            selector: '^(TestSharedGrowDynamicFailure|TestSharedGrowLargeMemoryIndex)'
-          - pr: 986
-            os: Darwin
-            runner: macos-15
-            source: 715da6612d72095266fbae4d6d46de1761038790
-            selector: '^(TestSharedGrowDynamicFailure|TestSharedGrowLargeMemoryIndex)'
           - pr: 995
             os: Linux
             runner: ubuntu-24.04-arm
-            source: 12e41e0fda71b46e874130aa4a7a96509d8bf930
-            selector: '^(TestIndexedAtomicWait|TestAtomicWaitFast)'
-          - pr: 995
-            os: Darwin
-            runner: macos-15
             source: 12e41e0fda71b46e874130aa4a7a96509d8bf930
             selector: '^(TestIndexedAtomicWait|TestAtomicWaitFast)'
     env:
