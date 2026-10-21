@@ -6,6 +6,7 @@ import "unsafe"
 
 // The prepared numeric owner uses these static ABIInternal entries. The
 // generic bounded callers retain their ordinary Windows fallback.
+//
 //go:noescape
 func inlineHostContextEnter(fn FixedScalarHostContextCall, context unsafe.Pointer, code, args, linMem, trap, results, stack, ctrl uintptr, slots uint32) uint64
 

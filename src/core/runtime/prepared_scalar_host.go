@@ -20,7 +20,7 @@ type PreparedScalarHost struct {
 	staged, bridge            uintptr
 	mode                      uint8
 	detached                  []byte
-	windowsI64               bool
+	windowsI64                bool
 }
 
 // PrepareScalarHost validates immutable buffers before publishing a live bridge.
