@@ -746,6 +746,30 @@ func (a *Asm) Cbnz32(rt Reg) int { at := a.Len(); a.word(0x35000000 | r(rt)); re
 func (a *Asm) Cbz64(rt Reg) int  { at := a.Len(); a.word(0xB4000000 | r(rt)); return at }
 func (a *Asm) Cbnz64(rt Reg) int { at := a.Len(); a.word(0xB5000000 | r(rt)); return at }
 
+// Tbnz tests one register bit without an intermediate mask instruction.
+func (a *Asm) Tbnz(rt Reg, bit uint8) int {
+	if bit >= 64 {
+		panic("arm64: invalid test bit")
+	}
+	at := a.Len()
+	a.word(0x37000000 | uint32(bit&32)<<26 | uint32(bit&31)<<19 | r(rt))
+	return at
+}
+
+// PatchBranch14 patches a TBZ/TBNZ displacement. The target must be aligned
+// and within the signed 14-bit word displacement.
+func (a *Asm) PatchBranch14(at, target int) bool {
+	if (target-at)%4 != 0 {
+		return false
+	}
+	d := (target - at) / 4
+	if d < -(1<<13) || d >= 1<<13 {
+		return false
+	}
+	a.patchWord(at, (uint32(d)&0x3fff)<<5)
+	return true
+}
+
 // PatchBranch26 fills the imm26 field of the B at byte offset `at` to jump to
 // byte offset `target`. Returns false if the (word) displacement is out of the
 // ±128 MiB range.

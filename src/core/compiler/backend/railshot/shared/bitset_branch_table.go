@@ -8,7 +8,7 @@ func BitsetBranchTable(labels []uint32, def uint32) (mask uint64, target uint32,
 		return 0, 0, false
 	}
 	found, inside := false, false
-	runs := 0
+	runs, members := 0, 0
 	for i, label := range labels {
 		if label == def {
 			inside = false
@@ -18,13 +18,14 @@ func BitsetBranchTable(labels []uint32, def uint32) (mask uint64, target uint32,
 			return 0, 0, false
 		}
 		found, target = true, label
+		members++
 		mask |= uint64(1) << uint(i)
 		if !inside {
 			runs++
 		}
 		inside = true
 	}
-	if runs < 3 {
+	if runs < 3 || members*4 < len(labels) {
 		return 0, 0, false
 	}
 	return mask, target, true
