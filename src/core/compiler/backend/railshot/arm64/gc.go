@@ -202,7 +202,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return fmt.Errorf("arm64: extern conversion requires GC helpers")
 		}
 		if sub == 26 {
-			return f.callGCStructHelper(gcAnyConvertExtern, []wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.AnyRef})
+			return f.emitNullExternConversion(sub)
 		}
 		if next, ok := r.Peek(); ok && next == 0x1a {
 			// The result has no observer. Preserve operand traps and effects,
@@ -213,7 +213,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			f.stats.peep("gc-dead-extern-convert")
 			return nil
 		}
-		return f.callGCStructHelper(gcExternConvertAny, []wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.ExternRef})
+		return f.emitNullExternConversion(sub)
 	}
 	if sub == 28 && f.tryFuseI31RoundTrip(r) {
 		return nil
