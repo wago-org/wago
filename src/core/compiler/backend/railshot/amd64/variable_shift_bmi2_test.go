@@ -6,8 +6,77 @@ import (
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"golang.org/x/sys/cpu"
 	"testing"
 )
+
+func TestVariableShiftAvoidsLiveCountSpill(t *testing.T) {
+	if !cpu.X86.HasBMI2 {
+		t.Skip("BMI2 required for execution")
+	}
+	for _, wide := range []bool{false, true} {
+		typ, localType, c, add, shift, xor := wasm.I32, byte(0x7f), byte(0x41), byte(0x6a), byte(0x74), byte(0x73)
+		if wide {
+			typ, localType, c, add, shift, xor = wasm.I64, 0x7e, 0x42, 0x7c, 0x86, 0x85
+		}
+		for k := byte(0); k < 3; k++ {
+			body := []byte{1, 24, localType, 0x3f, 0, 0x1a}
+			for i := byte(0); i < 24; i++ {
+				body = append(body, 0x20, 2, c, i+1, add, 0x22, i+3)
+			}
+			body = append(body, 0x20, 0, 0x20, 1, shift+k)
+			for range 24 {
+				body = append(body, xor)
+			}
+			body = append(body, 0x0b)
+			m := mod1(t, []wasm.ValType{typ, typ, typ}, []wasm.ValType{typ}, body)
+			m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+			cm, err := CompileModuleWith(m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: shared.AMD64BMI2})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cm.CodeImage != nil {
+				defer cm.CodeImage.Close()
+			}
+			if !cm.RequiresBMI2 {
+				t.Fatalf("wide=%v op=%d: live RCX spill retained", wide, k)
+			}
+			for _, x := range []uint64{0, 1, 0x80000000, 0x8000000000000000, ^uint64(0)} {
+				for _, count := range []uint64{0, 1, 31, 32, 63, 64, ^uint64(0)} {
+					n := count & 63
+					v := x
+					if !wide {
+						n &= 31
+						v = uint64(uint32(v))
+					}
+					want := v << n
+					if k == 1 {
+						if wide {
+							want = uint64(int64(v) >> n)
+						} else {
+							want = uint64(uint32(int32(v) >> n))
+						}
+					} else if k == 2 {
+						want = v >> n
+					}
+					for i := uint64(1); i <= 24; i++ {
+						want ^= 7 + i
+					}
+					if !wide {
+						want = uint64(uint32(want))
+					}
+					got := runCompiledAmd64u(t, cm, x, count, 7)
+					if !wide {
+						got = uint64(uint32(got))
+					}
+					if got != want {
+						t.Fatalf("wide=%v op=%d x=%x count=%x got=%x want=%x", wide, k, x, count, got, want)
+					}
+				}
+			}
+		}
+	}
+}
 
 func TestVariableShiftRegisterMeasurement(t *testing.T) {
 	old := sharedScalarEnabled
