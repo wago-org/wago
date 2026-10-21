@@ -40,7 +40,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 		return reject("table or element ownership is outside the exact native-root model")
 	}
 	collectorBoundary := moduleHasCollectorReferenceCallBoundary(m)
-	externBridge := moduleUsesGCExternConversion(m)
+	externBridge := false
+	if !analysis.ValidFor(m) || analysis.Flags()&wasm.ValidatedFuncHasTailCall != 0 {
+		externBridge = moduleUsesGCExternConversion(m)
+	}
 	funcImport := uint32(0)
 	for i := range m.Imports {
 		switch m.Imports[i].Type.Kind {
