@@ -1,0 +1,16 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-run",
+    "^Test(GCDefinedTrapPreservesGlobalPins|GCFinalResolverTrapPreservesGlobalPins|GCResolverSelectedSpaceDescriptor|GCTrappingGuard)",
+    "-count=1",
+    "./src/wago"
+  ],
+  "seconds": 0.31208298099954845,
+  "exit": 1,
+  "stdout": "FAIL\tgithub.com/wago-org/wago/src/wago [build failed]\nFAIL\n",
+  "stderr": "# github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64\nsrc/core/compiler/backend/railshot/amd64/gc_direct.go:2235:22: too many arguments in call to castFailure\n\thave (Cond, number)\n\twant (Cond)\nsrc/core/compiler/backend/railshot/amd64/gc_direct.go:2246:22: too many arguments in call to castFailure\n\thave (\"github.com/wago-org/wago/src/core/encoder/amd64\".Cond, number)\n\twant (Cond)\nsrc/core/compiler/backend/railshot/amd64/gc_direct.go:2269:22: too many arguments in call to castFailure\n\thave (\"github.com/wago-org/wago/src/core/encoder/amd64\".Cond, number)\n\twant (Cond)\nsrc/core/compiler/backend/railshot/amd64/gc_direct.go:2276:21: too many arguments in call to castFailure\n\thave (\"github.com/wago-org/wago/src/core/encoder/amd64\".Cond, number)\n\twant (Cond)\nsrc/core/compiler/backend/railshot/amd64/gc_direct.go:2278:21: too many arguments in call to castFailure\n\thave (\"github.com/wago-org/wago/src/core/encoder/amd64\".Cond, number)\n\twant (Cond)\nsrc/core/compiler/backend/railshot/amd64/gc_direct.go:2282:21: too many arguments in call to castFailure\n\thave (\"github.com/wago-org/wago/src/core/encoder/amd64\".Cond, number)\n\twant (Cond)\nsrc/core/compiler/backend/railshot/amd64/gc_direct.go:2286:21: too many arguments in call to castFailure\n\thave (\"github.com/wago-org/wago/src/core/encoder/amd64\".Cond, number)\n\twant (Cond)\nsrc/core/compiler/backend/railshot/amd64/gc_direct.go:2288:21: too many arguments in call to castFailure\n\thave (\"github.com/wago-org/wago/src/core/encoder/amd64\".Cond, number)\n\twant (Cond)\nsrc/core/compiler/backend/railshot/amd64/gc_direct.go:2308:22: too many arguments in call to castFailure\n\thave (\"github.com/wago-org/wago/src/core/encoder/amd64\".Cond, number)\n\twant (Cond)\nsrc/core/compiler/backend/railshot/amd64/gc_direct.go:2311:22: too many arguments in call to castFailure\n\thave (\"github.com/wago-org/wago/src/core/encoder/amd64\".Cond, number)\n\twant (Cond)\nsrc/core/compiler/backend/railshot/amd64/gc_direct.go:2311:22: too many errors\n"
+}

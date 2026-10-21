@@ -2136,12 +2136,15 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 		}
 	}
 
+	castFailures := make([]int, 0, 16)
+	castFailure := func(cond Cond) { castFailures = append(castFailures, a.JccPlaceholder(cond)) }
+
 	mismatches := make([]int, 0, 3)
 	failIf := func(cond Cond) {
 		if test {
 			mismatches = append(mismatches, a.JccPlaceholder(cond))
 		} else {
-			f.trapIf(cond, trapCastFailure)
+			castFailure(cond)
 		}
 	}
 
@@ -2152,7 +2155,7 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 		a.MovRegReg32(RAX, RCX)
 	} else {
 		a.TestSelf(RCX, false)
-		f.trapIf(condE, trapCastFailure)
+		castFailure(condE)
 	}
 	nullDone := a.JmpPlaceholder()
 	a.PatchRel32(nonNull, a.Len())
@@ -2175,26 +2178,26 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
-	f.trapIf(condAE, trapCastFailure)
+	castFailure(condAE)
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
 
 	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.TestSelf(R10, false)
-	f.trapIf(condE, trapCastFailure)
+	castFailure(condE)
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
-	f.trapIf(condA, trapCastFailure)
+	castFailure(condA)
 	emitGCSelectIndexedSpace(a)
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 	a.Cmp32(RAX, R8)
-	f.trapIf(condA, trapCastFailure)
+	castFailure(condA)
 	a.Sub32(R8, RAX)
 	a.Load32(RCX, R9, gc.NativeHandleSizeOffset)
 	a.Cmp32(RCX, R8)
-	f.trapIf(condA, trapCastFailure)
+	castFailure(condA)
 	a.AluRI(cmpDigit, RCX, int32(gc.HeaderSize), false)
-	f.trapIf(condB, trapCastFailure)
+	castFailure(condB)
 
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0) // actual canonical type ID
@@ -2214,13 +2217,13 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 	a.MovRegReg32(RAX, RCX)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
-	f.trapIf(condAE, trapCastFailure)
+	castFailure(condAE)
 	a.MovRegReg32(RAX, RDX)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
-	f.trapIf(condAE, trapCastFailure)
+	castFailure(condAE)
 	a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
 	a.TestSelf(R10, true)
-	f.trapIf(condE, trapCastFailure)
+	castFailure(condE)
 	a.MovRegReg32(RAX, RCX)
 	a.ImulRI(RAX, 8, true)
 	a.LoadIdx(R9, R10, RAX, 0, 8, false, true)
@@ -2260,6 +2263,18 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 		}
 	}
 	a.Ret()
+
+	// The trap tail publishes dirty global pins. Restore saved values before
+	// entering it; resolver scratch must never become observable global state.
+	for _, site := range castFailures {
+		a.PatchRel32(site, a.Len())
+	}
+	for i := len(preserve) - 1; i >= 0; i-- {
+		if preserve[i] {
+			a.Pop(R9 + Reg(i))
+		}
+	}
+	f.trapAlways(trapCastFailure)
 }
 
 // emitNativeFinalArrayRefGetStub loads one collector reference from a final
