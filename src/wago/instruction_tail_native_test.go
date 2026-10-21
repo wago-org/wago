@@ -207,3 +207,73 @@ func TestCustomImportedTailRecipeBudgetFallback(t *testing.T) {
 		t.Fatalf("handler calls=%d, want %d", calls, wantCalls)
 	}
 }
+
+func TestCustomImportedTailPreservesExactImportIdentity(t *testing.T) {
+	scope := AuthorityScope{Modules: []string{"a.b"}}
+	definition := PluginDefinition{ID: "example.com/tail-exact", Version: "1.0.0",
+		Provenance:  PluginProvenance{Repository: "https://example.com/tail-exact", License: "MIT"},
+		Authorities: []AuthorityRequest{{Name: AuthorityCompilerInstructionDefine, Mode: AuthorityRequired, Reason: "test", Scope: scope}},
+	}
+	digest, err := DefinitionDigest(definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := PluginSet{
+		Providers: []PluginProvider{{Definition: definition, New: func() Plugin { return exactInstructionPlugin{} }}},
+		Selections: []PluginSelection{{ID: definition.ID, DefinitionDigest: digest, Direct: true,
+			Grants: []AuthorityGrant{{Name: AuthorityCompilerInstructionDefine, Scope: scope}}}},
+	}
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
+	defer rt.Close()
+	if err := rt.LoadPlugins(context.Background(), set); err != nil {
+		t.Fatal(err)
+	}
+	mod, err := rt.Compile(instructionTailModule("a", "b.c", 1, true, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	calls := 0
+	imports := NewImports()
+	imports.HostFunc("a", "b.c", func(int32) int32 { calls++; return 99 })
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if out, err := in.Invoke("run", I32(7)); err != nil || len(out) != 1 || out[0] != 99 || calls != 1 {
+		t.Fatalf("result=%v, %v; host calls=%d; want99/one call", out, err, calls)
+	}
+}
+
+func TestCustomImportedTailDiscardsGCFrame(t *testing.T) {
+	calls := 0
+	ext := instructionRecipeExt{name: "tail-gc", input: []int32{32}, output: 32, portableCalls: &calls,
+		lower: func(c LoweringContext) error { c.Output(0, c.Add(c.Input(0), c.Const(32, 1))); return nil },
+		eval:  func(v []uint32) uint32 { return v[0] + 1 },
+	}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 0}, wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(instructionFuncImport("wago:instr/recipe", ext.name, 1))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		// The allocated object is a discarded operand prefix at the proper tail.
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfb, 1, 0, 0x20, 0, 0x12, 0, 0x0b}))),
+	)
+	in := instantiateTailInstruction(t, ext, module)
+	for i := uint64(0); i < 64; i++ {
+		out, err := in.Invoke("run", i)
+		if err != nil || len(out) != 1 || out[0] != i+1 {
+			t.Fatalf("iteration%d: %v, %v", i, out, err)
+		}
+		if err := in.CollectGC(); err != nil {
+			t.Fatal(err)
+		}
+		if live := in.gc.Stats().LiveObjects; live != 0 {
+			t.Fatalf("tail frame retained %d objects", live)
+		}
+	}
+	if calls != 0 || in.gc.Stats().Allocations != 64 {
+		t.Fatalf("handler calls=%d, GC allocations=%d; want0/64", calls, in.gc.Stats().Allocations)
+	}
+}
