@@ -1,62 +1,51 @@
-name: Native Darwin fixed exit cleanup validation
-
+name: Native Darwin host GC progress comparison
 on:
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
-  group: native-fixed-exit-${{ github.ref }}
+  group: sweep-host-gc-${{ github.ref }}
   cancel-in-progress: false
-
 jobs:
   native:
-    name: Native Darwin ${{ matrix.arch }} / fixed exit cleanup
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 25
+    name: Host GC progress / ${{ matrix.label }}
+    runs-on: macos-15
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
         include:
-          - arch: amd64
-            runner: macos-15-intel
-          - arch: arm64
-            runner: macos-15
+          - label: pr980-original
+            source: 5f4014d4a2a23a840d722067c7bcc4cc1d98bb30
+          - label: main
+            source: cd029409bd8985ab51d30e5f68714d13d00192fa
     env:
-      CGO_ENABLED: '1'
+      CGO_ENABLED: '0'
       GOMAXPROCS: '4'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: 4fd2bf3fd441e8bc6d646afc5acb9d21687b1787
+          ref: ${{ matrix.source }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.27.1'
           cache: true
-      - name: Verify exact native source and architecture
+      - name: Verify native source and architecture
         shell: bash
         run: |
-          test "$RUNNER_OS" = macOS
-          test "$(go env GOOS)" = darwin
-          test "$(go env GOARCH)" = '${{ matrix.arch }}'
-          test "$(git rev-parse HEAD)" = 4fd2bf3fd441e8bc6d646afc5acb9d21687b1787
+          test "$RUNNER_ARCH" = ARM64
+          test "$(git rev-parse HEAD)" = '${{ matrix.source }}'
           uname -m
           go version
           git rev-parse HEAD
-      - name: Repeated native deadline and immediate-exit regressions
+      - name: Repeat original guarded GC and cancellation regression
         shell: bash
-        run: go test -v -count=20 -timeout=10m -run '^TestDarwin(GroupSignal|ExitObserver)' ./cli/manager/internal/plugin/gocommand | tee native-regressions.log
-      - name: Native race detector and lifecycle package
-        shell: bash
-        run: go test -race -v -count=3 -timeout=10m ./cli/manager/internal/plugin/gocommand | tee native-package-race.log
-      - name: Upload exact-source native logs
+        run: go test -v -count=20 -timeout=8m -tags=wago_regalloccheck,wago_guardpage -run '^TestBoundedHostYieldAllowsGCAndCancellationWithOneP$' ./src/wago | tee guarded-host-gc.log
+      - name: Upload exact-source logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: pr991-fixed-darwin-${{ matrix.arch }}
-          path: |
-            native-regressions.log
-            native-package-race.log
+          name: host-gc-${{ matrix.label }}
+          path: guarded-host-gc.log
           if-no-files-found: warn
