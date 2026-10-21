@@ -144,7 +144,9 @@ func TestGCGeneralArrayLenNativeGuardFallback(t *testing.T) {
 	fake := append([]byte(nil), unsafe.Slice((*byte)(offHeapPtr(view.Handles)), int(view.HandleCount)*gc.NativeHandleStride)...)
 	entry := fake[int(index)*gc.NativeHandleStride:][:gc.NativeHandleStride]
 	original := append([]byte(nil), entry...)
-	for _, name := range []string{"count", "free", "unknown space", "offset", "size", "short handle", "space bytes"} {
+	originalRef := readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)
+	var falseHeader [gc.HeaderSize]byte
+	for _, name := range []string{"count", "free", "unknown space", "offset", "size", "short handle", "space bytes", "short header", "long header", "high bits"} {
 		t.Run(name, func(t *testing.T) {
 			*view = saved
 			copy(entry, original)
@@ -164,11 +166,34 @@ func TestGCGeneralArrayLenNativeGuardFallback(t *testing.T) {
 				binary.LittleEndian.PutUint32(entry[gc.NativeHandleSizeOffset:], gc.HeaderSize-1)
 			case "space bytes":
 				view.Spaces[entry[gc.NativeHandleSpaceOffset]].Bytes = 0
+			case "short header", "long header", "high bits":
+				binary.LittleEndian.PutUint32(entry[gc.NativeHandleOffsetOffset:], 0)
+				binary.LittleEndian.PutUint32(entry[gc.NativeHandleSizeOffset:], gc.HeaderSize)
+				space := &view.Spaces[entry[gc.NativeHandleSpaceOffset]]
+				space.Base = uintptr(unsafe.Pointer(&falseHeader[0]))
+				space.Bytes = gc.HeaderSize
+				size := gc.HeaderSize
+				if name == "short header" {
+					size--
+				} else if name == "long header" {
+					size++
+				} else {
+					// Public boundary checks must reject this non-compact reference.
+					writeGlobalObject(in.globalCells[0], in.c.Globals[0].Type, originalRef|uint64(1)<<40)
+				}
+				binary.LittleEndian.PutUint32(falseHeader[4:], size)
+				binary.LittleEndian.PutUint32(falseHeader[8:], 777)
 			}
 			got, err := in.Invoke("global")
 			*view = saved
+			writeGlobalObject(in.globalCells[0], in.c.Globals[0].Type, originalRef)
 			goruntime.KeepAlive(fake)
-			if err != nil || len(got) != 1 || got[0] != 17 {
+			goruntime.KeepAlive(falseHeader)
+			if name == "high bits" {
+				if err == nil {
+					t.Fatalf("public GC boundary accepted non-compact reference: %v", got)
+				}
+			} else if err != nil || len(got) != 1 || got[0] != 17 {
 				t.Fatalf("fallback: %v, %v", got, err)
 			}
 		})
@@ -257,5 +282,70 @@ func BenchmarkGCGeneralArrayLen(b *testing.B) {
 				}
 			})
 		}
+	}
+}
+
+func TestGCGeneralArrayLenCodec(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcGeneralArrayLenModule(0x7f))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	loaded := publicArtifactRoundTrip(t, c)
+	defer loaded.Close()
+	in, err := Instantiate(loaded, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("init", 17); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"global", "local", "field", "nested", "cast"} {
+		if got, err := in.Invoke(name); err != nil || len(got) != 1 || got[0] != 17 {
+			t.Fatalf("reloaded %s: %v, %v", name, got, err)
+		}
+	}
+}
+
+func TestGCGeneralArrayLenLiveVectorJoin(t *testing.T) {
+	vector := []byte{0xfd, 12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	body := append(vector, 0x20, 0, 0x04, 0x40,
+		0x23, 0, 0xfb, 15, 0x1a, 0x05, 0x23, 0, 0xfb, 15, 0x1a, 0x0b, 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 1},
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x6a, 1, 0xd0, 0x6a, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("init", 0, 0), wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xfb, 7, 0, 0x24, 0, 0x0b}), wasmtest.Code(body))),
+	)
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("init", 17); err != nil {
+		t.Fatal(err)
+	}
+	for _, fallback := range []bool{false, true} {
+		view := in.gc.NativeView()
+		saved := view.HandleCount
+		if fallback {
+			view.HandleCount = 0
+		}
+		for _, branch := range []uint64{0, 1} {
+			got, err := in.Invoke("run", branch)
+			if err != nil || len(got) != 2 || got[0] != 0x0706050403020100 || got[1] != 0x0f0e0d0c0b0a0908 {
+				t.Fatalf("fallback%v branch%d: %x, %v", fallback, branch, got, err)
+			}
+		}
+		view.HandleCount = saved
 	}
 }

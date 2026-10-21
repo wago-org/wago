@@ -107,3 +107,26 @@ func TestCallRelocTableRequiresFunctionOrder(t *testing.T) {
 		t.Fatal("accepted duplicate function")
 	}
 }
+
+func TestGCObjectStubRelocation(t *testing.T) {
+	code := make([]byte, 8)
+	binary.LittleEndian.PutUint32(code, 0x94000000)
+	table := testCallRelocTable(t, []callReloc{{at: 0, target: invalidCallRelocField, gcObject: true}})
+	if !needsGCObjectStub(table) {
+		t.Fatal("missing checked-object leaf")
+	}
+	if err := patchCallRelocs(code, []int{0}, []int{0}, table); err == nil {
+		t.Fatal("accepted missing checked-object leaf")
+	}
+	table.gcObjectEntry = len(code)
+	code = emitGCObjectStub(code)
+	if len(code)-table.gcObjectEntry > 256 {
+		t.Fatal("checked-object leaf exceeds reserved tail")
+	}
+	if err := patchCallRelocs(code, []int{0}, []int{0}, table); err != nil {
+		t.Fatal(err)
+	}
+	if got := binary.LittleEndian.Uint32(code); got != 0x94000002 {
+		t.Fatalf("checked-object BL = %#x, want %#x", got, uint32(0x94000002))
+	}
+}

@@ -378,6 +378,11 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 		return nil, offsets
 	}
 	a := &x64.Asm{}
+	if used[gcSharedStubResolveArrayObject] {
+		// The array-only leaf fits here. Avoid repeated byte-buffer growth for
+		// modules that previously needed no shared resolver island.
+		a.B = make([]byte, 0, 256)
+	}
 	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject, gcSharedStubResolveArrayObject} {
 		if used[kind] {
 			offsets[kind] = a.Len()
