@@ -217,18 +217,26 @@ func TestSharedGrowDynamicZeroRetainsClosedProducer(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer consumerCode.Close()
-				consumer, err := Instantiate(consumerCode, imports)
+				consumer, err := Instantiate(consumerCode, InstantiateOptions{Imports: imports, memoryLimitPages: 1})
 				if err != nil {
 					t.Fatal(err)
 				}
 				defer consumer.Close()
+				// A different importer can grow beyond this consumer's quota. Zero
+				// must still report the authoritative size after the owner closes.
+				if got, err := provider.Invoke("run", 1, 9); err != nil || len(got) != 3 || got[1] != 1 {
+					t.Fatalf("producer grow = %v, %v", got, err)
+				}
 				if err := provider.Close(); err != nil {
 					t.Fatal(err)
 				}
-				for n, delta := range []uint64{0, 1, 0} {
-					want := uint64(1)
-					if n == 2 {
-						want = 2
+				for _, delta := range []uint64{0, 1, 0} {
+					want := uint64(2)
+					if delta != 0 {
+						want = uint64(^uint32(0))
+						if address64 {
+							want = ^uint64(0)
+						}
 					}
 					got, err := consumer.Invoke("run", delta, 9)
 					if err != nil || len(got) != 3 || got[0] != 11 || got[1] != want || got[2] != 10 {
