@@ -2026,7 +2026,17 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		binding := &syncHosts[0]
 		slots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
 		var err error
-		if binding.scalarKind == syncHostScalar {
+		windowsTypedI64 := goruntime.GOOS == "windows" && goruntime.GOARCH == "amd64" &&
+			binding.scalarKind == syncHostTypedI64 && integerNumericHostEnabled && c.integerHostContextAllowed() &&
+			c.boundsMode == BoundsChecksExplicit &&
+			detachedNumericHostEnabled && c.supportsGoHostDispatchTag() && detachedNumericGoDispatch(jm) &&
+			c.NumImports == 1 && memoryCount <= 1 && !threadedControl && len(in.globalCells) == 0 &&
+			in.tableDescPtr == 0 && in.gc == nil && !c.needsFuncRefContext() && len(in.hostLog) == 0 && binding.gate == nil
+		if windowsTypedI64 {
+			_, err = eng.PrepareWindowsTypedI64Host(runtimebridge.GrantHostScalarCall(), in.serArgs, in.trap, in.results, in.ctrl, slots)
+		} else if goruntime.GOOS == "windows" {
+			// All other signatures keep the established parked host loop.
+		} else if binding.scalarKind == syncHostScalar {
 			_, err = eng.PrepareScalarHostView(runtimebridge.GrantHostScalarCall(), in.serArgs, in.trap, in.results, in.ctrl, slots)
 		} else {
 			_, err = eng.PrepareScalarHost(runtimebridge.GrantHostScalarCall(), in.serArgs, in.trap, in.results, in.ctrl, slots)
