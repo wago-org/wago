@@ -14,13 +14,21 @@ import (
 
 func TestCaptureExplicitBoundsOverrideEnvironment(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "signals")
-	for _, mode := range []string{"public", "prepared", "application"} {
-		t.Run(mode, func(t *testing.T) {
+	for _, tc := range []struct {
+		name, mode, bounds string
+		config             *wago.RuntimeConfig
+	}{
+		{name: "public", mode: "public", bounds: "explicit"},
+		{name: "prepared", mode: "prepared", bounds: "explicit"},
+		{name: "application", mode: "application", bounds: "explicit"},
+		{name: "supplied configuration", mode: "application", bounds: "signals", config: wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			out := filepath.Join(t.TempDir(), "capture")
-			o := Options{Out: out, Backend: "none", Phase: "execute", Mode: mode, Iterations: 1, Bounds: "explicit", Rate: 99}
+			o := Options{Out: out, Backend: "none", Phase: "execute", Mode: tc.mode, Iterations: 1, Bounds: tc.bounds, Rate: 99}
 			var err error
-			if mode == "application" {
-				err = RunWithHarness(o, Harness{ID: "test", Contract: "identity37", WorkUnit: "call", Wasm: fixtureModule(), Execute: func(in *wago.Instance) error {
+			if tc.mode == "application" {
+				err = RunWithHarness(o, Harness{ID: "test", Contract: "identity37", WorkUnit: "call", Wasm: fixtureModule(), RuntimeConfig: tc.config, Execute: func(in *wago.Instance) error {
 					result, err := in.Invoke("identity", 37)
 					if err != nil || len(result) != 1 || result[0] != 37 {
 						return fmt.Errorf("identity(37): %v, %v", result, err)

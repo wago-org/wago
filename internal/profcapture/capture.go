@@ -450,6 +450,8 @@ func run(o Options, w Workload, wasm []byte, h *Harness) (result error) {
 		cfg = h.RuntimeConfig
 	} else if o.Bounds == "signals" {
 		cfg = cfg.WithBoundsChecks(wago.BoundsChecksSignalsBased)
+	} else {
+		cfg = cfg.WithBoundsChecks(wago.BoundsChecksExplicit)
 	}
 	cfg = cfg.WithCodeProfile(session)
 	m.Config = map[string]any{"bounds": cfg.BoundsChecks().String(), "features": cfg.CoreFeatures(), "native_stack_bytes": cfg.NativeStackBytes(), "optimizations": cfg.OptimizationInfos(), "result_validation": "every invocation", "import_environment": "env.abort traps; all other imports must be supplied by module"}
