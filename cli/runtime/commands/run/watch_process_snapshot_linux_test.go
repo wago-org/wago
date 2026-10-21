@@ -576,13 +576,39 @@ func recordWatchSignalCount(t *testing.T, readyPath, logPath string) {
 	}
 }
 
+func TestWaitForWatchFilesWaitsForWrittenData(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "signal.log")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	written := make(chan error, 1)
+	go func() {
+		// os.WriteFile creates the file before the contents become visible.
+		// Hold that state long enough for the waiter to observe it.
+		time.Sleep(50 * time.Millisecond)
+		written <- os.WriteFile(path, []byte("1"), 0o600)
+	}()
+	t.Cleanup(func() {
+		if err := <-written; err != nil {
+			t.Error(err)
+		}
+	})
+	waitForWatchFiles(t, path)
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "1" {
+		t.Fatalf("wait returned before file data was ready: data=%q err=%v", data, err)
+	}
+}
+
 func waitForWatchFiles(t *testing.T, paths ...string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		ready := true
 		for _, path := range paths {
-			if _, err := os.Stat(path); err != nil {
+			// A writer can create the file before its first write completes.
+			// Read readiness and signal data only after contents are visible.
+			if data, err := os.ReadFile(path); err != nil || len(data) == 0 {
 				ready = false
 				break
 			}
@@ -592,7 +618,7 @@ func waitForWatchFiles(t *testing.T, paths ...string) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("timed out waiting for files: %v", paths)
+	t.Fatalf("timed out waiting for nonempty files: %v", paths)
 }
 
 func TestWatchedProcessDescendantsScansEveryThread(t *testing.T) {
