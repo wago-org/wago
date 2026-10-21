@@ -524,35 +524,41 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 
 	// f32 comparisons
 	case 0x5b:
-		f.fcmp(opEq, false)
+		f.fcmpNext(r, opEq, false)
 	case 0x5c:
-		f.fcmp(opNe, false)
+		f.fcmpNext(r, opNe, false)
 	case 0x5d:
-		f.fcmp(opLtS, false)
+		f.fcmpNext(r, opLtS, false)
 	case 0x5e:
-		f.fcmp(opGtS, false)
+		f.fcmpNext(r, opGtS, false)
 	case 0x5f:
-		f.fcmp(opLeS, false)
+		f.fcmpNext(r, opLeS, false)
 	case 0x60:
-		f.fcmp(opGeS, false)
+		f.fcmpNext(r, opGeS, false)
 	// f64 comparisons
 	case 0x61:
-		f.fcmp(opEq, true)
+		f.fcmpNext(r, opEq, true)
 	case 0x62:
-		f.fcmp(opNe, true)
+		f.fcmpNext(r, opNe, true)
 	case 0x63:
-		f.fcmp(opLtS, true)
+		f.fcmpNext(r, opLtS, true)
 	case 0x64:
-		f.fcmp(opGtS, true)
+		f.fcmpNext(r, opGtS, true)
 	case 0x65:
-		f.fcmp(opLeS, true)
+		f.fcmpNext(r, opLeS, true)
 	case 0x66:
-		f.fcmp(opGeS, true)
+		f.fcmpNext(r, opGeS, true)
 
 	// f32 unary/binary
 	case 0x8b:
+		if done, err := f.tryFsignLocalSet(r, false, false); done || err != nil {
+			return err
+		}
 		f.fabs(false)
 	case 0x8c:
+		if done, err := f.tryFsignLocalSet(r, false, true); done || err != nil {
+			return err
+		}
 		f.fneg(false)
 	case 0x8d:
 		f.fround(false, roundCeil)
@@ -600,8 +606,14 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		f.fcopysign(false)
 	// f64 unary/binary
 	case 0x99:
+		if done, err := f.tryFsignLocalSet(r, true, false); done || err != nil {
+			return err
+		}
 		f.fabs(true)
 	case 0x9a:
+		if done, err := f.tryFsignLocalSet(r, true, true); done || err != nil {
+			return err
+		}
 		f.fneg(true)
 	case 0x9b:
 		f.fround(true, roundCeil)
@@ -1022,11 +1034,24 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool)
 	return true, nil
 }
 
-// tryFminmaxLocalSet is the min/max companion to tryFbinLocalSet. The scalar
-// helper retains the full wasm NaN and signed-zero sequence, but can use the
-// destination local's V register directly instead of copying the result through
-// a scratch V register on every loop iteration.
+// Scalar operations can write a pinned local directly. Realize older
+// references before the write, while leaving the current inputs available to
+// read in place, including when an input aliases the destination.
 func (f *fn) tryFminmaxLocalSet(r *wasm.Reader, f64, isMax bool) (bool, error) {
+	return f.tryFscalarLocalSet(r, f64, 2, func(dst Reg) {
+		f.fminmaxInto(dst, f64, isMax)
+		f.stats.peep("float-minmax-local-sink")
+	})
+}
+
+func (f *fn) tryFsignLocalSet(r *wasm.Reader, f64, neg bool) (bool, error) {
+	return f.tryFscalarLocalSet(r, f64, 1, func(dst Reg) {
+		f.fsignInto(dst, f64, neg)
+		f.stats.peep("float-sign-local-sink")
+	})
+}
+
+func (f *fn) tryFscalarLocalSet(r *wasm.Reader, f64 bool, arity int, emit func(Reg)) (bool, error) {
 	save := r.Offset()
 	op, ok := r.Peek()
 	if !ok || (op != 0x21 && op != 0x22) {
@@ -1047,19 +1072,20 @@ func (f *fn) tryFminmaxLocalSet(r *wasm.Reader, f64, isMax bool) (bool, error) {
 		}
 		return false, nil
 	}
-	f.invalidateBoundsCertFor(1, uint32(x))
-	right := f.s.back()
-	if right == nil {
+	first := f.s.back()
+	if first == nil {
 		if err := r.JumpTo(save); err != nil {
 			return false, err
 		}
 		return false, nil
 	}
-	left := f.s.prev(f.s.baseOfValentBlock(right))
-	f.realizeLocalRefs(x, left)
-	f.fminmaxInto(pr, f64, isMax)
+	if arity == 2 {
+		first = f.s.prev(f.s.baseOfValentBlock(first))
+	}
+	f.invalidateBoundsCertFor(1, uint32(x))
+	f.realizeLocalRefs(x, first)
+	emit(pr)
 	f.markLocalDirty(x)
-	f.stats.peep("float-minmax-local-sink")
 	result := f.s.back()
 	if op == 0x22 {
 		f.replaceStorage(result, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
