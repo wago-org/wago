@@ -1,0 +1,55 @@
+//go:build (linux || darwin) && (amd64 || arm64) && !tinygo
+
+package wago
+
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
+)
+
+func TestGCGeneralScalarArraySetVectorCodecJoins(t *testing.T) {
+	body := []byte{1, 1, 0x7e, 0x42, 55, 0x21, 2, 0xfd, 12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0x42, 42, 0x20, 1, 0x04, 0x40,
+		0x23, 0, 0x20, 0, 0x42, 23, 0xfb, 14, 0, 0x05, 0x23, 0, 0x20, 0, 0x42, 23, 0xfb, 14, 0, 0x0b, 0x23, 0, 0x20, 0, 0xfb, 11, 0, 0x20, 2, 0x0b}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x50, 0, 0x5e, 0x7e, 1}, wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, nil), wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.V128, wasm.I64, wasm.I64, wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("init", 0, 0), wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 1, 0x20, 0, 0xfb, 6, 0, 0x24, 0, 0x0b}), append(wasmtest.ULEB(uint32(len(body))), body...))))
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	loaded := publicArtifactRoundTrip(t, c)
+	defer loaded.Close()
+	for _, compiled := range []*Compiled{c, loaded} {
+		in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 256, VerifyAfterCollect: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer in.Close()
+		const bits = uint64(0x7ff8123456789abc)
+		if _, err := in.Invoke("init", 17, bits); err != nil {
+			t.Fatal(err)
+		}
+		if err := in.CollectGC(); err != nil {
+			t.Fatal(err)
+		}
+		view := in.gc.NativeView()
+		count := view.HandleCount
+		for _, fallback := range []bool{false, true} {
+			for _, branch := range []uint64{0, 1} {
+				if fallback {
+					view.HandleCount = 0
+				}
+				got, err := in.Invoke("run", 16, branch)
+				view.HandleCount = count
+				if err != nil || len(got) != 5 || got[0] != 0x0706050403020100 || got[1] != 0x0f0e0d0c0b0a0908 || got[2] != 42 || got[3] != 23 || got[4] != 55 {
+					t.Fatalf("fallback%v branch%d:%x,%v", fallback, branch, got, err)
+				}
+			}
+		}
+	}
+}
