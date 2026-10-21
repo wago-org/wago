@@ -561,6 +561,10 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) 
 	if err := emit(custom.Output); err != nil {
 		return err
 	}
+	if custom.StackCompatible && custom.Nodes[custom.Output].Op == CustomInstructionInput {
+		// A bare input retains its physical i32 bits; normalize the logical result.
+		maskTop(custom.ResultWidth)
+	}
 	if !custom.StackCompatible {
 		result := f.popValue()
 		for _, arg := range args {
