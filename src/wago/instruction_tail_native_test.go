@@ -122,13 +122,13 @@ func TestCustomImportedTailPreservesPrefixTrap(t *testing.T) {
 	}
 }
 
-func tailMachineLowering(result bool) codegen.Lowering {
+func tailMachineLowering(result bool, input int) codegen.Lowering {
 	if runtime.GOARCH == "amd64" {
 		return &x64.Lowering{Compatibility: x64.CompatibilityManaged, Managed: func(c x64.ManagedContext) error {
 			if !result {
 				return nil
 			}
-			value, err := c.InputI32(0)
+			value, err := c.InputI32(input)
 			if err != nil {
 				return err
 			}
@@ -139,7 +139,7 @@ func tailMachineLowering(result bool) codegen.Lowering {
 		if !result {
 			return nil
 		}
-		value, err := c.InputI32(0)
+		value, err := c.InputI32(input)
 		if err != nil {
 			return err
 		}
@@ -155,7 +155,7 @@ func TestCustomImportedTailMachineABI(t *testing.T) {
 			}
 			t.Run(fmt.Sprintf("arity%d/result%t", arity, result), func(t *testing.T) {
 				calls := 0
-				ext := instructionMachineExt{name: "tail-machine", input: make([]int32, arity), portableCalls: &calls, lowering: tailMachineLowering(result)}
+				ext := instructionMachineExt{name: "tail-machine", input: make([]int32, arity), portableCalls: &calls, lowering: tailMachineLowering(result, arity-1)}
 				for i := range ext.input {
 					ext.input[i] = 32
 				}
@@ -173,7 +173,7 @@ func TestCustomImportedTailMachineABI(t *testing.T) {
 						t.Fatal(err)
 					}
 					if result {
-						want := uint64(35)
+						want := uint64(35 + arity - 1)
 						if export == "nested" {
 							want += 7
 						}
@@ -275,5 +275,30 @@ func TestCustomImportedTailDiscardsGCFrame(t *testing.T) {
 	}
 	if calls != 0 || in.gc.Stats().Allocations != 64 {
 		t.Fatalf("handler calls=%d, GC allocations=%d; want0/64", calls, in.gc.Stats().Allocations)
+	}
+}
+
+// A custom value stays in plugin vector registers until the consumer removes it.
+// A proper tail to that consumer must not spill it as its erased scalar carrier.
+func TestCustomImportedTailConsumesCustomValue(t *testing.T) {
+	if !customCodegenAvailable() {
+		t.Skip("custom vector plugin requires an optional CPU tier")
+	}
+	for i, carrier := range []byte{0x7f, 0x7e, 0x7d, 0x7c, 0x7b, 0x70, 0x6f} {
+		if carrier == 0x7b {
+			continue
+		} // v128 host callback import is not supported
+		t.Run(fmt.Sprintf("carrier-%x", carrier), func(t *testing.T) {
+			name := fmt.Sprintf("test.value.%d", i)
+			module := customCarrierModule(name, carrier)
+			if module[len(module)-3] != 0x10 {
+				t.Fatal("unexpected consumer call encoding")
+			}
+			module[len(module)-3] = 0x12 // return_call consumer, with the same immediate
+			in := instantiateTailInstruction(t, customCarrierExtension{}, module)
+			if out, err := in.Invoke("run"); err != nil || len(out) != 0 {
+				t.Fatalf("custom consumer tail: %v, %v", out, err)
+			}
+		})
 	}
 }
