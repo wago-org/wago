@@ -341,3 +341,30 @@ func TestCustomImportedTailConsumesCustomValue(t *testing.T) {
 		})
 	}
 }
+
+func TestCustomImportedTailNarrowIdentity(t *testing.T) {
+	for _, width := range []int32{1, 3, 5, 31, 32} {
+		t.Run(fmt.Sprintf("width%d", width), func(t *testing.T) {
+			calls := 0
+			ext := instructionRecipeExt{name: "tail-narrow", input: []int32{width}, output: width, portableCalls: &calls,
+				lower: func(c LoweringContext) error { c.Output(0, c.Input(0)); return nil }, eval: func(v []uint32) uint32 { return v[0] }}
+			in := instantiateTailInstruction(t, ext, instructionTailModule("wago:instr/recipe", ext.name, 1, true, false))
+			mask := uint32((uint64(1) << uint(width)) - 1)
+			for _, export := range []string{"run", "nested"} {
+				for _, value := range []uint32{0, 1, 31, 32, 0x7fffffff, 0xffffffff} {
+					want := value & mask
+					if export == "nested" {
+						want += 7
+					}
+					out, err := in.Invoke(export, uint64(value))
+					if err != nil || len(out) != 1 || uint32(out[0]) != want {
+						t.Fatalf("%s(%x): %v,%v; want%x", export, value, out, err, want)
+					}
+				}
+			}
+			if calls != 0 {
+				t.Fatalf("handler calls=%d,want0", calls)
+			}
+		})
+	}
+}
