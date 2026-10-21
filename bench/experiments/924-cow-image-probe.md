@@ -53,12 +53,13 @@ GOOS=linux GOARCH=arm64 GOCACHE=/tmp/wago-go-cache go test -c -o /tmp/wago-924-l
 GOOS=darwin GOARCH=arm64 GOCACHE=/tmp/wago-go-cache go test -c -o /tmp/wago-924-darwin-arm64.test ./src/wago
 ```
 
-The focused tests, race check, and cross-builds pass. A full opt-in
-`go test ./src/wago ./src/core/runtime -count=1` passes core/runtime and fails
-only the staged official `src/wago` tests because the pinned
-`tests/conformance/spec-v3/test/core` fixture is absent in this checkout; the
-test log is `/tmp/wago-924-full-tests.log` on this machine. `go vet` and
-`git diff --check` pass. The code-cache hot header remains 64 bytes, as
+The focused tests, race check, and cross-builds pass. An initial full opt-in
+run lacked the pinned spec-v3 fixture. After `git submodule update --init
+--depth=1 tests/conformance/spec-v3` restored revision
+`9d36019973201a19f9c9ebb0f10828b2fe2374aa` and the repository-pinned
+WABT 1.0.41 was put on PATH, `WAGO_EXPERIMENT_COW_IMAGE=1 go test ./src/wago
+./src/core/runtime -count=1 -timeout=180s` passed both packages (20.833s and
+0.444s). `go vet` and `git diff --check` pass. The code-cache hot header remains 64 bytes, as
 required by its footprint test; the optional descriptor lives in a cold
 sidecar.
 
