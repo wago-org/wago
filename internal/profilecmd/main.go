@@ -13,13 +13,15 @@ import (
 
 func Run(args []string, prefix []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: wagoprof record|top|annotate|diff|timeline [options]")
+		return fmt.Errorf("usage: wagoprof record|top|annotate|diff|experiment|timeline [options]")
 	}
 	switch args[0] {
 	case "record", "capture":
 		return record(args[0], args[1:], prefix)
 	case "timeline":
 		return timelineReport(args[1:])
+	case "experiment":
+		return experiment(args[1:])
 	case "top", "annotate", "diff":
 		return report(args[0], args[1:])
 	default:

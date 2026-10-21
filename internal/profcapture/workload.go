@@ -18,6 +18,7 @@ type Call struct {
 	Want   []uint64 `json:"want"`
 }
 type Workload struct {
+	Contract     string          `json:"contract,omitempty"`
 	ID           string          `json:"id"`
 	Artifact     string          `json:"artifact"`
 	Hash         string          `json:"artifact_sha256"`

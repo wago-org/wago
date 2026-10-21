@@ -4,14 +4,14 @@ package profcapture
 
 import (
 	"encoding/json"
-	"github.com/wago-org/wago"
-	"github.com/wago-org/wago/profile"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/profile"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -191,8 +191,11 @@ func TestArtifactReloadCapture(t *testing.T) {
 				if err := json.Unmarshal(raw, &m); err != nil {
 					t.Fatal(err)
 				}
-				if !m.Complete || !m.ReloadArtifact || len(m.ArtifactHash) != 64 || m.ArtifactBytes == 0 || m.Iterations != 3 || m.Invocations != 3 || m.SourceMaps || m.CompilerSites || m.SiteCoverage != "" || m.UnwindMaps || !m.UnwindMapsRequested || m.UnwindCoverage != "unavailable" || m.Status.Dropped != 0 {
+				if !m.Complete || !m.ReloadArtifact || !m.DiagnosticSidecar || len(m.ArtifactHash) != 64 || m.ArtifactBytes == 0 || m.Iterations != 3 || m.Invocations != 3 || !m.UnwindMapsRequested || m.Status.Dropped != 0 {
 					t.Fatalf("invalid reload capture: %+v", m)
+				}
+				if _, err := os.Stat(filepath.Join(out, "artifact.profile.json")); err != nil {
+					t.Fatal(err)
 				}
 				want := []string{"compile", "artifact-prepare", "reload", "instantiate", "initialize", "warmup", "execute", "close"}
 				if len(m.Phases) != len(want) {
@@ -215,8 +218,8 @@ func TestArtifactReloadCapture(t *testing.T) {
 					t.Fatal(events)
 				}
 				image := events[0].Image
-				if image == nil || image.ModuleID != "" || len(image.Regions) != 1 || image.Regions[0].Kind != "unknown" || len(image.Code) == 0 {
-					t.Fatalf("invented metadata or lost artifact image: %+v", image)
+				if image == nil || image.ModuleID == "" || len(image.Regions) == 0 || image.Regions[0].Kind == "unknown" || len(image.Functions) == 0 || len(image.Code) == 0 {
+					t.Fatalf("sidecar metadata or artifact image lost: %+v", image)
 				}
 			})
 		}
