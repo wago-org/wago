@@ -64,7 +64,8 @@ func TestCOWImageCoverage(t *testing.T) {
 					priorEnd = span.end
 				}
 			}
-			t.Logf("owned_unshared_memory32=%v active_segments=%d constant_offset_segments=%d source_payload_bytes=%d touched_4k_pages=%d overlap_intervals=%d image_end=%d", eligibleMemory, c.activeDataCount(), constantSegments, payload, len(pages), overlaps, priorEnd)
+			initial, max := c.memorySizeBytes()
+			t.Logf("owned_unshared_memory32=%v initial_bytes=%d max_bytes=%d function_imports=%d has_start=%v active_segments=%d constant_offset_segments=%d source_payload_bytes=%d touched_4k_pages=%d overlap_intervals=%d image_end=%d", eligibleMemory, initial, max, len(c.Imports), c.HasStart, c.activeDataCount(), constantSegments, payload, len(pages), overlaps, priorEnd)
 		})
 	}
 }
