@@ -32,6 +32,9 @@ func bitfieldSequenceFixture(t testing.TB, wide, cached bool, family string) (*w
 		body = append(body, wasmtest.SLEB64(mask)...)
 		body = append(body, mul, 0x21, 1)
 	}
+	if family == "register-mask" {
+		body = append(body, c, 31, 0x21, 1)
+	}
 	body = append(body, 0x20, 0)
 	switch family {
 	case "extract", "extract-local-sink":
@@ -39,6 +42,8 @@ func bitfieldSequenceFixture(t testing.TB, wide, cached bool, family string) (*w
 			body = append(body, c, 1, sub)
 		}
 		body = append(body, c, 11, shr, c, 31, and)
+	case "register-mask":
+		body = append(body, c, 11, shr, 0x20, 1, and)
 	case "insert":
 		body = append(body, c, 31, and, c, 8, shl)
 	case "signed":
@@ -69,7 +74,7 @@ func bitfieldSequenceFixture(t testing.TB, wide, cached bool, family string) (*w
 func TestBitfieldSequenceShapeAndValues(t *testing.T) {
 	for _, wide := range []bool{false, true} {
 		for _, cached := range []bool{false, true} {
-			for _, family := range []string{"extract", "extract-local-sink", "insert", "signed", "unsigned", "mask-before-shift", "fallback-hole", "fallback-zero"} {
+			for _, family := range []string{"extract", "extract-local-sink", "insert", "signed", "unsigned", "mask-before-shift", "fallback-hole", "fallback-zero", "register-mask"} {
 				t.Run(fmt.Sprintf("%s/wide=%v/cached=%v", family, wide, cached), func(t *testing.T) {
 					m, _ := bitfieldSequenceFixture(t, wide, cached, family)
 					var stats ModuleStats
@@ -117,11 +122,23 @@ func TestBitfieldSequenceShapeAndValues(t *testing.T) {
 						}
 					}
 					wantPairs := 1
-					if family == "fallback-hole" || family == "fallback-zero" {
+					if family == "fallback-hole" || family == "fallback-zero" || family == "register-mask" {
 						wantPairs = 0
 					}
 					if found != wantPairs {
 						t.Fatalf("bounded bitfield count=%d, want %d", found, wantPairs)
+					}
+					if family == "register-mask" {
+						folded := 0
+						for at := 0; at+4 <= len(cm.Code); at += 4 {
+							word := binary.LittleEndian.Uint32(cm.Code[at:])
+							if word&0x7f200000 == 0x0a000000 && word>>22&3 == 1 && word>>10&63 == 11 {
+								folded++
+							}
+						}
+						if folded != 1 {
+							t.Fatalf("register-mask shifted AND count=%d, want 1", folded)
+						}
 					}
 					if diagnosticsEnabled {
 						s := stats.Funcs[0]
@@ -145,7 +162,7 @@ func TestBitfieldSequenceShapeAndValues(t *testing.T) {
 								v = uint64(uint32(v))
 							}
 							fallthrough
-						case "extract":
+						case "extract", "register-mask":
 							want = v >> 11 & 31
 						case "insert":
 							want = (v & 31) << 8
