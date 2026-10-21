@@ -723,9 +723,6 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	// Keep the left operand spillable while evaluating the count.
 	f.materialize(left)
 	cnt := f.materialize(right)
-	if (digit == 4 || digit == 5 || digit == 7) && f.shiftXAvoidsLiveCountSpill(node, dest) {
-		return f.condenseShiftX(node, dest, digit, w)
-	}
 	if cnt != RCX {
 		f.spillIfUsed(RCX)
 		f.moveInt(RCX, cnt, node.valueType())
@@ -746,37 +743,6 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	f.occupy(node, result)
 	node.setDeferredOp(opNone)
 	return result
-}
-
-func (f *fn) condenseShiftX(node *elem, dest Reg, digit byte, wide bool) Reg {
-	// Admission guarantees register leaves, so neither read allocates or
-	// changes the unrelated live RCX value.
-	saved := f.pinned
-	src, srcOwned := f.materializeRead(node.arg0)
-	count, countOwned := f.materializeRead(node.arg1)
-	f.pinned = saved.add(src).add(count)
-	if dest == regNone {
-		if srcOwned {
-			dest = src
-		} else if countOwned {
-			dest = count
-		} else {
-			dest = f.allocReg(maskOf(src, count))
-		}
-	}
-	f.a.ShiftX(digit, dest, src, count, wide)
-	f.stats.peep("bmi2-variable-shift-spill")
-	f.pinned = saved
-	if srcOwned && src != dest {
-		f.release(src)
-	}
-	if countOwned && count != dest && count != src {
-		f.release(count)
-	}
-	f.consumeBlockBelow(node)
-	f.occupy(node, dest)
-	node.setDeferredOp(opNone)
-	return dest
 }
 
 // condenseCompare lowers the relational ops and eqz to a CMP/TEST + SETcc,
