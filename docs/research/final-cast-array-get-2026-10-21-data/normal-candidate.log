@@ -1,0 +1,16 @@
+=== RUN   TestGCFinalCastArrayGet
+--- PASS: TestGCFinalCastArrayGet (0.00s)
+=== RUN   TestGCFinalCastArrayGetColdPins
+    gc_final_cast_array_get_amd64_test.go:164: new leaf saves actual value pins R9,R10,R11; cold exits checked against all8 globals
+=== RUN   TestGCFinalCastArrayGetColdPins/null
+=== RUN   TestGCFinalCastArrayGetColdPins/i31
+=== RUN   TestGCFinalCastArrayGetColdPins/bounds
+=== RUN   TestGCFinalCastArrayGetColdPins/extent
+=== RUN   TestGCFinalCastArrayGetColdPins/success
+--- PASS: TestGCFinalCastArrayGetColdPins (0.00s)
+    --- PASS: TestGCFinalCastArrayGetColdPins/null (0.00s)
+    --- PASS: TestGCFinalCastArrayGetColdPins/i31 (0.00s)
+    --- PASS: TestGCFinalCastArrayGetColdPins/bounds (0.00s)
+    --- PASS: TestGCFinalCastArrayGetColdPins/extent (0.00s)
+    --- PASS: TestGCFinalCastArrayGetColdPins/success (0.00s)
+PASS

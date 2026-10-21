@@ -42,7 +42,7 @@ on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
 guard-page bounds checks; all six targets support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 6 -->
+<!-- artifact:codec-version 7 -->
 
 Compiled artifacts use a strict ordered section stream. It has a fixed
 header with a native-architecture ID and section count, followed by length-delimited native-code and metadata
@@ -58,9 +58,11 @@ dotted flat-key collisions from crossing module authority boundaries. Artifact
 decoding also caps the expanded function-import directory at 64 MiB, so compact
 empty names cannot produce an unbounded slice allocation. Version 2 replaced the
 initial version 1 format when generated `memory.grow` code and the native instance
-context gained a runtime memory-page quota. The current format is version 6,
-which rejects foreign-architecture native code before allocating an executable
-mapping. Version 5 rejected version-4 native code compiled with the former EH
+context gained a runtime memory-page quota. The current format is version 7.
+It records and validates local and imported start functions. Version 6 artifacts
+omitted their initialization and must be rebuilt. Version 6 added foreign-architecture
+rejection before executable mapping allocation. Version 5 rejected version-4 native
+code compiled with the former EH
 tag-directory basedata offset. Version 4 records optional CPU requirements and exact
 native GC metadata. Wago rejects all earlier versions; there is no compatibility
 decoder or dual-format ambiguity.
@@ -147,7 +149,12 @@ module-local GC globals, private immutable local-function tables, one private
 collector-reference table, direct recursion, and no start/tag/EH state. A
 structured-CFG dataflow pass computes exact local liveness per allocation and
 callsite; amd64 adds hidden operand spill offsets, compact safepoint IDs, frame
-size, adapter return, and recursive call return-PC maps. The synchronous helper
+size, adapter return, and recursive call return-PC maps. The compiler retains
+each collector-reference local's type after frame-liveness compaction:
+`local.get` can move a reference to the operand stack before a later allocation,
+even when that local itself is dead at the allocation. The stack value then
+receives its own exact root offset.
+The synchronous helper
 control frame publishes parked RSP, and Go exposes validated off-heap slots from
 each walked frame directly as mutable collector roots. Throughput/Tiny stress
 collection and the root walker remain zero-allocation after warm-up. The current codec
@@ -182,7 +189,8 @@ structurally equivalent target types, preserves cycles/internal sharing, assigns
 new target identity, and rejects non-null opaque store-owned payloads. Direct
 cross-Runtime compact-handle sharing remains impossible. The codec persists helper
 admission, the required native-GC ABI version, and the 16-byte `v128` storage
-contract, but never compact handles. AMD64 final scalar struct/array accesses and initialized final-struct
+contract, but never compact handles. AMD64 final scalar struct/array accesses,
+scalar and compact collector-reference reads from final or open structs, and initialized final-struct
 allocation use collector native ABI version 2. Artifact loading validates the Go/native
 layout and the codec records the required ABI; instantiation validates the immutable
 instance view, local canonical-type map, collector identity, collector version, and
@@ -190,7 +198,12 @@ handle stride before publishing basedata offset 280. Native accesses then trust 
 immutable facts while reloading and validating mutable handle ranges/liveness, heap
 space and backing extents, object extents and canonical types, array bounds,
 remembered membership, any existing object-card interval, and the transactional
-native-allocation epoch. A module-owned 229-byte noncollecting resolver leaf replaces
+native-allocation epoch.
+Final struct constructors also use the native batch when their collector-reference
+fields name final or open struct/array types. Before publishing the object, the
+native path checks each live handle, object extent, and canonical type; open
+targets use subtype intervals. A failed check falls back to the rooted helper.
+A module-owned 229-byte noncollecting resolver leaf replaces
 repeated inline resolver bodies at modules with at least two candidate scalar sites;
 one-site modules retain inline code. A single-function module with reuse enabled is
 lowered inline first and adds the island only when at least two actual resolutions
@@ -198,7 +211,15 @@ remain, so one-object repeated runs avoid the fixed leaf while distinct objects 
 sharing. Bounded straight-line reuse may retain one derived object address only while
 its unchanged compact local remains the root and no call,
 allocation, collection, host transition, control/EH edge, local mutation, or other
-invalidating opcode can intervene. Final abstract
+invalidating opcode can intervene. Stack canonicalization retains the pin on a
+valid address certificate so operand allocation cannot overwrite it. Final struct
+reference reads load a zero-extended four-byte compact handle and mark the result
+as a root for later calls and allocation. They use the same checked parent resolver
+as scalar reads; they change no edge and require no write barrier. Open struct
+reads use a separate shared resolver that checks the declared type against the
+actual canonical subtype interval before loading the field. Loaded collector
+references remain roots across later calls and collection. Function and external
+reference fields retain the getter helper. Final abstract
 reference stores may bypass helpers only when no metadata growth is required;
 vector, non-final, bulk, cardless/unremembered, and Tiny barrier paths remain
 helper-bound. Arm64 builds lower struct/array/i31 and dynamic cast/test helpers
@@ -633,6 +654,11 @@ only; collection cancels unused reservations before tracing.
 AMD64 defined GC casts and tests accept equal canonical type IDs after checked
 object resolution. Unequal ordinary types use subtype intervals; unequal exact
 casts fail. See [identity measurements](docs/research/canonical-identity-shortcut.md).
+
+On AMD64, an adjacent final cast and struct field read share one checked native
+object resolution for collector references, integers, packed integers, floats,
+and vectors. The raw address is consumed by the field load before any safepoint.
+See [cast/field-read measurements](docs/research/cast-field-read-fusion.md).
 
 ### Off-heap allocation
 
@@ -1152,3 +1178,18 @@ additional steady-state allocations or meaningful throughput regression, and
 shared-module metadata must scale with executable images rather than instances.
 No viewer, protobuf encoder, symbolizer, or cgo requirement may enter the ordinary
 runtime dependency graph as a consequence of profiling.
+
+### Exact roots at synchronous host calls
+
+Direct host imports use the synchronous 64-slot ABI, including external reference
+parameters and results. External tokens are not managed collector roots. Dynamic
+reference calls retain their separate register-ABI limits. Non-EH bodies with
+terminating control transfers use CFG reachability for allocation and call masks;
+dead calls after a non-fallthrough loop do not consume an emitted callsite.
+Collection remains disabled when complete validated root maps are unavailable.
+
+Host activation finds a validated return address with a binary lookup for tables
+larger than eight entries. The table remains strictly sorted and exact-match-only.
+Reference callbacks with scalar results use no result-token scratch for ordinary
+imports. Separately owned host-function type contexts and reference results keep
+per-dispatch scratch and the existing callback-expiry checks.

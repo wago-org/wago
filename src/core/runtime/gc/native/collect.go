@@ -311,7 +311,9 @@ func (c *Collector) finishDeadNurseryEvacuation() bool {
 
 type plannedPromotion struct {
 	handle uint32
-	entry  handleEntry
+	// Before destination allocation, a spaceFree entry retains its rounded
+	// allocation size as the stable-sort key. Allocation replaces the entry.
+	entry handleEntry
 }
 
 // promoteMarkedNursery plans survivor-space copies, old-space promotions, and
@@ -415,7 +417,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 				return cmp.Compare(ak, bk)
 			}
 			if ak == 1 {
-				return cmp.Compare(c.throughput.promotionAllocSize(c.handles[a.handle].size), c.throughput.promotionAllocSize(c.handles[b.handle].size))
+				return cmp.Compare(a.entry.size, b.entry.size)
 			}
 			return 0
 		})
@@ -592,9 +594,6 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 		clear(plans)
 		c.promotionScratch = plans[:0]
 	}
-	plansSorted := true
-	previousKind := -1
-	var previousSize uint32
 	for _, h := range c.nurseryHandles {
 		if !c.mark[h] {
 			continue
@@ -608,21 +607,16 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 			plan.entry = c.handles[h]
 			plan.entry.clearYoungAge()
 		}
-		kind, size := promotionPlanKind(plan.entry), c.handles[h].size
-		if previousKind >= 0 && (kind < previousKind || (kind == 1 && previousKind == 1 && size < previousSize)) {
-			plansSorted = false
-		}
-		previousKind, previousSize = kind, size
 		plans = append(plans, plan)
 	}
-	if len(plans) > 1 && !plansSorted {
+	if len(plans) > 1 && !c.promotionPlansSorted(plans) {
 		slices.SortStableFunc(plans, func(a, b plannedPromotion) int {
 			ak, bk := promotionPlanKind(a.entry), promotionPlanKind(b.entry)
 			if ak != bk {
 				return cmp.Compare(ak, bk)
 			}
 			if ak == 1 {
-				return cmp.Compare(c.throughput.promotionAllocSize(c.handles[a.handle].size), c.throughput.promotionAllocSize(c.handles[b.handle].size))
+				return cmp.Compare(a.entry.size, b.entry.size)
 			}
 			return 0
 		})
@@ -716,17 +710,24 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 }
 
 func (c *Collector) promotionPlansSorted(plans []plannedPromotion) bool {
-	previousKind := promotionPlanKind(plans[0].entry)
-	previousSize := c.handles[plans[0].handle].size
-	for _, plan := range plans[1:] {
+	// Fill every key even after finding an inversion: the stable comparator
+	// uses this complete cache instead of revisiting handle metadata.
+	sorted := true
+	previousKind := -1
+	var previousSize uint32
+	for i := range plans {
+		plan := &plans[i]
+		if plan.entry.space == spaceFree {
+			plan.entry.size = c.throughput.promotionAllocSize(c.handles[plan.handle].size)
+		}
 		kind := promotionPlanKind(plan.entry)
-		size := c.handles[plan.handle].size
-		if kind < previousKind || (kind == 1 && previousKind == 1 && size < previousSize) {
-			return false
+		size := plan.entry.size
+		if previousKind >= 0 && (kind < previousKind || (kind == 1 && previousKind == 1 && size < previousSize)) {
+			sorted = false
 		}
 		previousKind, previousSize = kind, size
 	}
-	return true
+	return sorted
 }
 
 func promotionPlanKind(e handleEntry) int {

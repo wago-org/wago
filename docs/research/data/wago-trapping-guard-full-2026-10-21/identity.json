@@ -1,0 +1,53 @@
+{
+  "common_stack_commit": "dc961197a73698e7bbf3583769f8979fe3072fef",
+  "candidate_production_commits": [
+    "46a9e4e99"
+  ],
+  "net_production_delta": "bounded trapping-guard certificate only; checked resolver, no raw pointer across calls/GC",
+  "combined_qualification_commit": "59f785143d7ed810f305bce435d1bef6768adf25",
+  "compiler_sha256": "c64fcf044b72cb7356ad598a35670045931337cfa7a6bb9d5916cd304b23fba6",
+  "request_sha256": "077b0ff0271706cc3034f3e06c7a228f227c49aeec7786d21373b2072af89c72",
+  "control_build": {
+    "source_commit": "a13816b55a4551fbb25b53cb44df9262b771da90",
+    "command": [
+      "go",
+      "build",
+      "-mod=mod",
+      "-ldflags=-X main.runtimePatchIdentity=cast-array-a13816b55 -X main.workerPluginIdentity=cast-array-a13816b55",
+      "-o",
+      "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/cast-array-candidate-host",
+      "."
+    ],
+    "build_seconds": 7.710507255003904,
+    "total_prepare_seconds": 9.166527355999278,
+    "exit": 0,
+    "stdout": "",
+    "stderr": "",
+    "managed_patch_sha256": "3f016f6442cc891cf982b5edf6f4de9952e7cb03b634c5c40f5c4e7f8842ec87",
+    "binary_sha256": "14785d66eb2ebc1515f8d4c29ee6c415490b47fc4d9d8d37742c26903930b17c"
+  },
+  "candidate_build": {
+    "source_commit": "59f785143d7ed810f305bce435d1bef6768adf25",
+    "command": [
+      "go",
+      "build",
+      "-mod=mod",
+      "-ldflags=-X main.runtimePatchIdentity=trapping-guard-59f785143 -X main.workerPluginIdentity=trapping-guard-59f785143",
+      "-o",
+      "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/trapping-guard-candidate-host",
+      "."
+    ],
+    "build_seconds": 8.162258361997374,
+    "total_prepare_seconds": 9.670906847000879,
+    "exit": 0,
+    "stdout": "",
+    "stderr": "",
+    "managed_patch_sha256": "3f016f6442cc891cf982b5edf6f4de9952e7cb03b634c5c40f5c4e7f8842ec87",
+    "binary_sha256": "3a12c39b2d865064e5086ff6db18a91c0f08cffa9d53793b6cd79885e3c05807"
+  },
+  "affinity": "12,14",
+  "GOMAXPROCS": 2,
+  "v8_reference_seconds": 4.0,
+  "v8_reference": "Known default V8 result; no new V8 timing at user request.",
+  "method": "Three serial balanced rounds: control/candidate; candidate/control; control/candidate. Identical compiler/request, fresh native/result caches; output hashes/main42 and exact roots required. Both Wago variants include the installed fused-array improvement and all pushed safety fixes including GuestStorage copying. Control reuses its exact already-qualified binary; all four production paths equal installed source. No held type-fact, collector, getter or diagnostic code. No task-owned tests/builds overlap."
+}

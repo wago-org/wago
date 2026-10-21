@@ -1,0 +1,15 @@
+{
+  "seconds": 4.640570805000607,
+  "returncode": 1,
+  "expected_failure": true,
+  "cmd": [
+    "go",
+    "test",
+    "-overlay",
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/fold-only/old-overlay.json",
+    "./src/core/compiler/backend/railshot/amd64",
+    "-run",
+    "^TestGCResolversLoadSpaceByte$",
+    "-count=1"
+  ]
+}

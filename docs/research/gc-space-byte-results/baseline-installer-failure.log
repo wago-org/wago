@@ -1,0 +1,7 @@
+--- FAIL: TestGoInstallBuildsNamedInstallerCommand (0.01s)
+    install_test.go:298: go install wago-installer: exit status 1
+        missing go.sum entry needed to verify package github.com/wago-org/wago/cli/wago-installer is provided by exactly one module; to add:
+                go mod download github.com/wago-org/wago
+FAIL
+FAIL    github.com/wago-org/wago        0.011s
+FAIL

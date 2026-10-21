@@ -1,0 +1,17 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-c",
+    "-o",
+    "/tmp/wago-final-cast-array-get-candidate.test",
+    "./src/wago"
+  ],
+  "cwd": "/home/dev/Projects/wago-gc-final-cast-array-get-pr",
+  "seconds": 22.868592183003784,
+  "exit_code": 0,
+  "GOMAXPROCS": "2",
+  "GOWORK": null
+}

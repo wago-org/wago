@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestCompiledCodecVersion6Contract(t *testing.T) {
+func TestCompiledCodecVersion7Contract(t *testing.T) {
 	blob, err := (&Compiled{}).MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
@@ -49,7 +49,7 @@ func TestCompiledCodecVersion6Contract(t *testing.T) {
 		})
 	}
 
-	for _, version := range []byte{0, 1, 2, 3, 4, 5, 22, 35} {
+	for _, version := range []byte{0, 1, 2, 3, 4, 5, 6, 22, 35} {
 		for _, loader := range loaders {
 			t.Run(fmt.Sprintf("%s/reject-version-%d", loader.name, version), func(t *testing.T) {
 				unsupported := append([]byte(nil), blob...)
@@ -61,10 +61,10 @@ func TestCompiledCodecVersion6Contract(t *testing.T) {
 			})
 		}
 	}
-	// Version 6 rejects artifacts before foreign-ISA native instructions can be
-	// mapped. Version 5 remains incompatible after the header gained a target ID.
-	if wagoVersion != 6 {
-		t.Fatalf("wagoVersion = %d, want 6 after adding artifact architecture identity", wagoVersion)
+	// Version 7 retains start functions. Version 6 is rejected because its
+	// metadata omits initialization; earlier native artifact ABIs remain incompatible.
+	if wagoVersion != 7 {
+		t.Fatalf("wagoVersion = %d, want 7 after adding start function metadata", wagoVersion)
 	}
 }
 
@@ -346,4 +346,27 @@ func structuralReferenceCodecFixture() *Compiled {
 			{RefType: ValFuncRef, Mode: ElemModeDeclarative},
 		},
 	})
+}
+
+func TestCompiledCodecRejectsInvalidStartMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mut  func(*Compiled)
+	}{
+		{"absent start", func(c *Compiled) { c.StartIsImport = true }},
+		{"negative local", func(c *Compiled) { c.HasStart = true; c.StartLocalFunc = -1 }},
+		{"missing local", func(c *Compiled) { c.HasStart = true; c.StartLocalFunc = len(c.Funcs) }},
+		{"missing import", func(c *Compiled) { c.HasStart = true; c.StartIsImport = true }},
+		{"nonvoid signature", func(c *Compiled) { c.HasStart = true }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			original := MustCompile(benchAddOneModule())
+			defer original.Close()
+			c := mutableCompiledFixture(original)
+			tc.mut(c)
+			if _, err := c.MarshalBinary(); err == nil {
+				t.Fatal("accepted invalid start metadata")
+			}
+		})
+	}
 }

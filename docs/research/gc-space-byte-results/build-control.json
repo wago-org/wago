@@ -1,0 +1,13 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-overlay=/tmp/wago-gc-space-byte/baseline-overlay.json",
+    "-c",
+    "-o",
+    "/tmp/wago-gc-space-byte/control.test",
+    "./src/wago"
+  ],
+  "seconds": 17.179534835002414,
+  "returncode": 0
+}
