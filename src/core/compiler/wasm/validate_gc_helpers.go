@@ -111,7 +111,6 @@ func (v *moduleValidator) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int,
 
 func (v *moduleValidator) validateSubtypeMetadata() error {
 	flat := v.flattenedSubTypeRefs()
-	hasSuper := false
 	for flatIdx, cur := range flat {
 		member := flatIdx - v.typeGroupBases[cur.recGroup]
 		// Most modules have no custom descriptors. Keep their validation path to
@@ -122,7 +121,6 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 			}
 		}
 		for _, supIdx := range cur.st.Supers {
-			hasSuper = true
 			supFlat, ok := v.flatTypeIdxInRecGroup(supIdx, cur.recGroup)
 			if !ok {
 				return v.err(ErrUnknownType, "supertype")
@@ -145,16 +143,21 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 			}
 		}
 	}
+	// Encode completed depth in the existing cycle states, capped at the
+	// minimum useful chain depth. Shallow graphs need no ancestry arrays.
+	const ancestryDepth = uint8(32)
 	state := make([]uint8, len(flat))
+	hasDeepSuper := false
 	var visit func(int) error
 	visit = func(i int) error {
-		switch state[i] {
-		case 1:
+		if state[i] == 1 {
 			return v.err(ErrTypeMismatch, "cyclic supertype chain")
-		case 2:
+		}
+		if state[i] >= 2 {
 			return nil
 		}
 		state[i] = 1
+		var depth uint8
 		for _, supIdx := range flat[i].st.Supers {
 			sup, ok := v.flatTypeIdxInRecGroup(supIdx, flat[i].recGroup)
 			if !ok {
@@ -163,8 +166,16 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 			if err := visit(sup); err != nil {
 				return err
 			}
+			parentDepth := state[sup] - 2
+			if parentDepth < ancestryDepth {
+				parentDepth++
+			}
+			if parentDepth > depth {
+				depth = parentDepth
+			}
 		}
-		state[i] = 2
+		state[i] = depth + 2
+		hasDeepSuper = hasDeepSuper || depth == ancestryDepth
 		return nil
 	}
 	for i := range flat {
@@ -172,7 +183,7 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 			return err
 		}
 	}
-	if hasSuper && len(flat) >= 64 && uint64(len(flat)) <= uint64(^uint32(0)) && len(flat) <= int(^uint(0)>>1)/3 {
+	if hasDeepSuper && len(flat) >= 64 && uint64(len(flat)) <= uint64(^uint32(0)) && len(flat) <= int(^uint(0)>>1)/3 {
 		v.buildSupertypeAncestry(flat)
 	}
 	return nil
