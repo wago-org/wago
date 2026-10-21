@@ -94,7 +94,7 @@ func (f *fn) Store(off int32, r uint8, w bool) {
 	}
 }
 func (f *fn) Clobbers(op shared.IntOp) uint64 {
-	if op == shared.IntShl || op == shared.IntShrS || op == shared.IntShrU {
+	if (op == shared.IntShl || op == shared.IntShrS || op == shared.IntShrU) && (f.sc == nil || !f.sc.amd64Features.Has(shared.AMD64BMI2)) {
 		return 1 << RCX
 	}
 	return 0
@@ -126,6 +126,22 @@ func (f *fn) scalarCmp(op shared.IntOp, w bool, l Reg, r shared.ScalarOperand) {
 }
 func (f *fn) Binary(op shared.IntOp, w bool, d, l uint8, r shared.ScalarOperand) {
 	dst, left := Reg(d), Reg(l)
+	if r.Kind == shared.ScalarRegister && f.sc != nil && f.sc.amd64Features.Has(shared.AMD64BMI2) &&
+		(op == shared.IntShl || op == shared.IntShrS || op == shared.IntShrU) {
+		digit := byte(4)
+		if op == shared.IntShrS {
+			digit = 7
+		} else if op == shared.IntShrU {
+			digit = 5
+		}
+		if Reg(r.Reg) == RCX && dst == left {
+			f.a.ShiftCL(digit, dst, w)
+		} else {
+			f.a.ShiftX(digit, dst, left, Reg(r.Reg), w)
+			f.stats.peep("bmi2-variable-shift")
+		}
+		return
+	}
 	if op >= shared.IntEq && op <= shared.IntGeU {
 		f.scalarCmp(op, w, left, r)
 		f.a.SetccReg(scalarCondition(op), dst)

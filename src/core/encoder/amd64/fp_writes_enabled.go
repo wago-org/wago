@@ -120,9 +120,10 @@ func (a *Asm) regallocFPVEX(opcodeMap, pp, op byte, reg, vvvv, rm Reg, memory bo
 		a.regallocFPWrite(0xffff)
 		return
 	}
-	if opcodeMap == vexMap0F3A && pp == 3 && op == 0xf0 {
+	if opcodeMap == vexMap0F3A && pp == 3 && op == 0xf0 ||
+		opcodeMap == vexMap0F38 && pp >= 1 && pp <= 3 && op == 0xf7 {
 		return
-	} // RORX writes GP
+	} // RORX and BMI2 shifts write GP.
 	if opcodeMap == vexMap0F && pp == 1 && regallocFPShiftGroup(op, byte(reg)&7) && !memory {
 		a.regallocFPWrite(uint32(1) << (vvvv & 15))
 		return

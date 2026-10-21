@@ -950,6 +950,10 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 		return dest
 	}
 
+	if digit == shLSL || digit == shLSR || digit == shASR {
+		return f.condenseVariableShift(node, dest, digit, w)
+	}
+
 	// Variable count. AArch64's shift-by-register ops are fully orthogonal, so any
 	// register can hold the value and any register the count — no fixed-register
 	// scratch avoidance is needed (unlike x86's RAX/RDX/RCX constraints). A pinned
