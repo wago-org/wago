@@ -595,7 +595,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	}
 	imported := f.importedFunctionCount()
 	if int(idx) < imported {
-		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || len(custom.Nodes) != 0) {
+		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || tailInstructionRecipeEligible(custom)) {
 			if err := f.emitCustomInstruction(custom, ft); err != nil {
 				return err
 			}
