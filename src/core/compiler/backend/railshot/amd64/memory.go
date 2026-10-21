@@ -1856,10 +1856,14 @@ func (f *fn) emitSharedMemoryGrowZeroFastPath(slot int, memoryIndex uint32) int 
 	}
 	f.a.TestSelf(RAX, memory64)
 	slow := f.a.JccPlaceholder(condNE)
-	f.a.Load64(RAX, RBX, -offMemoryDirPtr)
-	f.a.Load64(RAX, RAX, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
 	// An aligned u64 MOV is an atomic acquire on AMD64, as in memory.size.
-	f.a.Load64(RAX, RAX, -bdCurBytes)
+	if base := f.cachedSharedMemoryBase(); memoryIndex == 0 && base != regNone {
+		f.a.Load64(RAX, base, -bdCurBytes)
+	} else {
+		f.a.Load64(RAX, RBX, -offMemoryDirPtr)
+		f.a.Load64(RAX, RAX, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+		f.a.Load64(RAX, RAX, -bdCurBytes)
+	}
 	f.a.ShiftImm(5, RAX, 16, true)
 	f.a.Load64(R8, RBX, -offCustomCtx)
 	f.a.Store64(R8, hcResults, RAX)
