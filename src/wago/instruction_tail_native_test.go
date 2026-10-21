@@ -193,18 +193,57 @@ func TestCustomImportedTailMachineABI(t *testing.T) {
 }
 
 func TestCustomImportedTailRecipeBudgetFallback(t *testing.T) {
-	calls := 0
-	ext := sharedInstructionRecipe(8, &calls)
-	in := instantiateTailInstruction(t, ext, instructionTailModule("wago:instr/recipe", ext.name, 1, true, false))
-	if out, err := in.Invoke("run", I32(3)); err != nil || len(out) != 1 || out[0] != 768 {
-		t.Fatalf("result %v, %v; want 768", out, err)
+	for _, steps := range []int{1, 4, 7, 8, 12} {
+		t.Run(fmt.Sprintf("shared%d", steps), func(t *testing.T) {
+			calls := 0
+			ext := sharedInstructionRecipe(steps, &calls)
+			in := instantiateTailInstruction(t, ext, instructionTailModule("wago:instr/recipe", ext.name, 1, true, false))
+			if out, err := in.Invoke("run", I32(3)); err != nil || len(out) != 1 || out[0] != uint64(3<<uint(steps)) {
+				t.Fatalf("result %v,%v", out, err)
+			}
+			wantCalls := 0
+			if steps >= 8 {
+				wantCalls = 1
+			}
+			if calls != wantCalls {
+				t.Fatalf("handler calls=%d,want%d", calls, wantCalls)
+			}
+			t.Logf("code=%d bytes,handler calls=%d", in.c.CodeSize(), calls)
+		})
 	}
-	wantCalls := 0
-	if runtime.GOARCH == "arm64" {
-		wantCalls = 1
-	}
-	if calls != wantCalls {
-		t.Fatalf("handler calls=%d, want %d", calls, wantCalls)
+	for _, shape := range []string{"depth", "nodes"} {
+		t.Run(shape, func(t *testing.T) {
+			calls := 0
+			ext := instructionRecipeExt{name: "tail-budget-" + shape, input: []int32{32}, output: 32, portableCalls: &calls}
+			ext.lower = func(c LoweringContext) error {
+				value := c.Input(0)
+				if shape == "depth" {
+					for range 40 {
+						value = c.Add(value, c.Const(32, 1))
+					}
+				} else {
+					for range 128 {
+						c.Const(32, 0)
+					}
+				}
+				c.Output(0, value)
+				return nil
+			}
+			ext.eval = func(v []uint32) uint32 {
+				if shape == "depth" {
+					return v[0] + 40
+				}
+				return v[0]
+			}
+			in := instantiateTailInstruction(t, ext, instructionTailModule("wago:instr/recipe", ext.name, 1, true, false))
+			want := ext.eval([]uint32{0xffffffff})
+			if out, err := in.Invoke("run", I32(-1)); err != nil || len(out) != 1 || uint32(out[0]) != want {
+				t.Fatalf("result %v,%v,want%x", out, err, want)
+			}
+			if calls != 1 {
+				t.Fatalf("handler calls=%d,want1", calls)
+			}
+		})
 	}
 }
 
