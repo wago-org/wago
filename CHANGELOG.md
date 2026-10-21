@@ -108,6 +108,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Reuse ARM64 variable-shift source and count registers in ordinary scalar
   lowering.
 
+- Use bounded bitset dispatch for dispersed small branch tables with one
+  nondefault target on AMD64 and ARM64.
+
 - Prepare native reservations only when the active backend has a matching
   consumer, avoiding unused ARM64 live-struct and large-array batches. Retain
   one reserved identity for proven-dead ARM64 scalar constructors.
