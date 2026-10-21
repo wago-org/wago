@@ -2352,6 +2352,10 @@ func (f *fn) emitNativeFinalArrayRefGetStub() {
 // field load before any safepoint can relocate the object.
 func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 	a := f.a
+	var castFailures []int
+	castFailure := func(cond Cond) {
+		castFailures = append(castFailures, a.JccPlaceholder(cond))
+	}
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
 		if reg := f.locals[local].reg; reg >= R9 && reg <= R11 {
@@ -2371,18 +2375,18 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 		}
 	}
 	a.MovRegReg32(RDI, RCX) // preserve required extent
-	f.rejectForeignAnyref(func(cond Cond) { f.trapIf(cond, trapCastFailure) })
+	f.rejectForeignAnyref(castFailure)
 	a.TestSelf(RAX, false)
 	nonNull := a.JccPlaceholder(condNE)
 	a.TestSelf(RSI, false)
-	f.trapIf(condE, trapCastFailure)
-	f.trapAlways(trapNullReference)
+	castFailure(condE)
+	nullFailure := a.JmpPlaceholder()
 	a.PatchRel32(nonNull, a.Len())
 
 	a.MovRegReg32(R10, RAX)
 	a.AluRI(4, R10, 1, false)
 	a.TestSelf(R10, false)
-	f.trapIf(condNE, trapCastFailure)
+	castFailure(condNE)
 
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
 	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
@@ -2392,7 +2396,7 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
-	f.trapIf(condAE, trapCastFailure)
+	castFailure(condAE)
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
@@ -2401,9 +2405,9 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 	a.ShiftImm(5, R10, 16, false)
 	a.AluRI(4, R10, 0xff, false)
 	a.TestSelf(R10, false)
-	f.trapIf(condE, trapCastFailure)
+	castFailure(condE)
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
-	f.trapIf(condA, trapCastFailure)
+	castFailure(condA)
 	a.ImulRI(R10, gc.NativeViewSpaceStride, true)
 	a.LeaDisp(R8, R8, gc.NativeViewSpacesOffset)
 	a.Add64(R8, R10)
@@ -2411,21 +2415,21 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 	a.Load32(R8, R8, gc.NativeSpaceBytesOffset)
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 	a.Cmp32(RAX, R8)
-	f.trapIf(condA, trapCastFailure)
+	castFailure(condA)
 	a.Sub32(R8, RAX)
 	a.Load32(RCX, R9, gc.NativeHandleSizeOffset)
 	a.Cmp32(RCX, R8)
-	f.trapIf(condA, trapCastFailure)
+	castFailure(condA)
 	a.Cmp32(RCX, RDI)
-	f.trapIf(condB, trapCastFailure)
+	castFailure(condB)
 
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0)
 	a.Cmp32(RCX, RDX)
-	f.trapIf(condNE, trapCastFailure)
+	castFailure(condNE)
 	a.Load32(RCX, R11, 4)
 	a.Cmp32(RCX, RDI)
-	f.trapIf(condB, trapCastFailure)
+	castFailure(condB)
 	a.MovReg64(RSI, R11)
 	for i := len(preserve) - 1; i >= 0; i-- {
 		if preserve[i] {
@@ -2434,6 +2438,25 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 	}
 	a.MovReg64(RAX, RSI)
 	a.Ret()
+
+	// The function's trap tail writes dirty global pins back to their cells.
+	// Restore this leaf's saved registers before entering that tail: R9-R11
+	// now contain resolver scratch, including native addresses. Keep failure
+	// restores after Ret so the successful instruction sequence stays unchanged.
+	for _, failure := range []struct {
+		sites []int
+		code  uint32
+	}{{castFailures, trapCastFailure}, {[]int{nullFailure}, trapNullReference}} {
+		for _, site := range failure.sites {
+			a.PatchRel32(site, a.Len())
+		}
+		for i := len(preserve) - 1; i >= 0; i-- {
+			if preserve[i] {
+				a.Pop(R9 + Reg(i))
+			}
+		}
+		f.trapAlways(failure.code)
+	}
 }
 
 // emitNativeBarrierSafeStructRefSetStub resolves an exact final struct in
