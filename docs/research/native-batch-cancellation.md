@@ -62,6 +62,8 @@ Linux/AMD64, Ryzen 7 8845HS, Go 1.27.1, 2026-10-20. Compare runtime code from
 Five alternating baseline/fixed pairs, 150 ms per sample, `GOMAXPROCS=1`, CPU 15.
 Times below are medians. Execution times are per 8192 guest iterations;
 collector times include one reservation/cancellation cycle and periodic GC.
+Use the standard ns/op metric for comparison. The optional ns/iteration field
+in the saved samples was removed because TinyGo's testing API lacks Elapsed.
 Other programs were active; treat the small control delta as noise, not a gain.
 
 | Workload | Baseline | Fixed | Time delta | Speedup |

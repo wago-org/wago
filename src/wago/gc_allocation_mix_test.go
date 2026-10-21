@@ -93,7 +93,6 @@ func BenchmarkGCAllocationMix(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				invoke()
 			}
-			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*iterations), "ns/iteration")
 		})
 	}
 }
