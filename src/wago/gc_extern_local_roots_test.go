@@ -5,8 +5,12 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	goruntime "runtime"
+	"slices"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -318,4 +322,190 @@ func TestGCExternConversionArtifactRootAdmission(t *testing.T) {
 		t.Fatalf("unexpected artifact rejection:%v", err)
 	}
 	t.Logf("extern bridge artifact stays fail-closed:%v", err)
+}
+
+func TestGCExternConversionWithoutHeapKeepsTinyProfile(t *testing.T) {
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xfb, 26, 0xfb, 27, 0x0b}))),
+	)
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 16}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if in.gc.Profile() != GCProfileTiny {
+		t.Fatalf("object-free bridge changed collector profile:%v", in.gc.Profile())
+	}
+	for i := 0; i < 3; i++ {
+		got, err := in.Invoke("run", 0)
+		if err != nil || len(got) != 1 || got[0] != 0 {
+			t.Fatalf("null bridge:%v,%v", got, err)
+		}
+	}
+}
+
+func TestGCExternConversionRejectsForgedFrameWords(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcExternLocalRootsModule(26))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	other, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	foreign, err := in.NewExternRef("owned-frame")
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := ValueExternRef(foreign).Bits()
+	known, err := in.existingGCRefTestTableState().Conversion.anyFromExtern(public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	visit := func(owner *Instance, word uint64) (refs []gc.Ref, panicValue any) {
+		frame := []uint64{word}
+		roots := gcNativeFrameRoots{owner: owner, base: uintptr(unsafe.Pointer(&frame[0])), offsets: []uint32{0}, frameBytes: 8}
+		defer func() { panicValue = recover(); goruntime.KeepAlive(frame) }()
+		roots.RangeRoots(func(slot gc.RootSlot) bool { refs = append(refs, slot.GetRef()); return true })
+		return
+	}
+	if refs, p := visit(in, known); p != nil || len(refs) != 0 {
+		t.Fatalf("owned foreign value exposed to collector:%x,%v", refs, p)
+	}
+	if refs, p := visit(in, uint64(gc.I31New(7))); p != nil || len(refs) != 1 || refs[0] != gc.I31New(7) {
+		t.Fatalf("compact root:%x,%v", refs, p)
+	}
+	for _, word := range []uint64{1 << 32, 1<<32 | 1, ^uint64(0), public} {
+		if _, p := visit(in, word); p == nil {
+			t.Fatalf("accepted unknown frame word:%x", word)
+		}
+	}
+	if _, p := visit(other, known); p == nil {
+		t.Fatal("accepted another instance's foreign frame identity")
+	}
+}
+
+func gcExternForeignRootModule(localsN int, dataRoundtrip bool) []byte {
+	params := make([]wasm.ValType, localsN)
+	for i := range params {
+		params[i] = wasm.ExternRef
+	}
+	body := append([]byte{1}, wasmtest.ULEB(uint32(localsN))...)
+	body = append(body, 0x6e)
+	for i := 0; i < localsN; i++ {
+		body = append(body, 0x20)
+		body = append(body, wasmtest.ULEB(uint32(i))...)
+		body = append(body, 0xfb, 26, 0x21)
+		body = append(body, wasmtest.ULEB(uint32(localsN+i))...)
+	}
+	if dataRoundtrip {
+		body = append(body, 0xfb, 1, 0, 0xfb, 27, 0xfb, 26, 0x1a)
+	}
+	for i := 0; i < 3; i++ {
+		body = append(body, 0xfb, 1, 0, 0x24, 0)
+	}
+	for i := 0; i < localsN; i++ {
+		body = append(body, 0x20)
+		body = append(body, wasmtest.ULEB(uint32(localsN+i))...)
+		body = append(body, 0xfb, 27)
+	}
+	body = append(body, 0x0b)
+	body = append(wasmtest.ULEB(uint32(len(body))), body...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType(params, params), wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x6e, 1, 0xd0, 0x6e, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("bridge", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(body, wasmtest.Code([]byte{0x20, 0, 0xfb, 26, 0xfb, 27, 0x0b}))),
+	)
+}
+
+func gcExternForeignRootInputs(t testing.TB, in *Instance, entries, localsN int) []uint64 {
+	t.Helper()
+	words := make([]uint64, entries)
+	for i := range words {
+		ref, err := in.NewExternRef(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		words[i] = ValueExternRef(ref).Bits()
+		got, err := in.Invoke("bridge", words[i])
+		if err != nil || len(got) != 1 || got[0] != words[i] {
+			t.Fatalf("bridge:%x,%v", got, err)
+		}
+	}
+	return words[entries-localsN:]
+}
+
+func TestGCExternConversionManyForeignLocals(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcExternForeignRootModule(8, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	args := gcExternForeignRootInputs(t, in, 32, 8)
+	if roots := c.GCNativeRootAdmission(); !roots.Exact || roots.MaximumRoots < 8 {
+		t.Fatalf("multiple live roots not admitted:%+v", roots)
+	}
+	for i := 0; i < 3; i++ {
+		got, err := in.Invoke("run", args...)
+		if err != nil || !slices.Equal(got, args) {
+			t.Fatalf("foreign locals:%x,%v; want%x", got, err, args)
+		}
+		if err := in.CollectGC(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkGCExternForeignRoots(b *testing.B) {
+	for _, localsN := range []int{1, 8} {
+		for _, entries := range []int{8, 256} {
+			b.Run(fmt.Sprintf("locals=%d/entries=%d", localsN, entries), func(b *testing.B) {
+				c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcExternForeignRootModule(localsN, false))
+				if err != nil {
+					b.Fatal(err)
+				}
+				defer c.Close()
+				in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
+				if err != nil {
+					b.Fatal(err)
+				}
+				defer in.Close()
+				args := gcExternForeignRootInputs(b, in, entries, localsN)
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					got, err := in.Invoke("run", args...)
+					if err != nil || !slices.Equal(got, args) {
+						b.Fatalf("run:%x,%v", got, err)
+					}
+				}
+				b.StopTimer()
+				if count := in.existingGCRefTestTableState().Conversion.count; count != uint32(entries) {
+					b.Fatalf("entry count changed:%d", count)
+				}
+			})
+		}
+	}
 }
