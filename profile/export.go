@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -59,17 +60,26 @@ func (p *PerfMap) Write(events []jitprofile.Event) error {
 			p.err = fmt.Errorf("profile image address overflow")
 			return p.err
 		}
-		for _, old := range p.spans {
-			if im.Base < old[1] && old[0] < im.Base+im.Size {
-				p.err = fmt.Errorf("perf-map cannot represent reused address %#x; use jitdump", im.Base)
+		if im.Size == 0 {
+			p.err = jitprofile.ValidateRegions(im.Regions, im.Size)
+			if p.err != nil {
 				return p.err
 			}
+			continue
+		}
+		at := sort.Search(len(p.spans), func(i int) bool { return p.spans[i][0] >= im.Base })
+		if at > 0 && p.spans[at-1][1] > im.Base ||
+			at < len(p.spans) && p.spans[at][0] < im.Base+im.Size {
+			p.err = fmt.Errorf("perf-map cannot represent reused address %#x; use jitdump", im.Base)
+			return p.err
 		}
 		if err := jitprofile.ValidateRegions(im.Regions, im.Size); err != nil {
 			p.err = err
 			return err
 		}
-		p.spans = append(p.spans, [2]uint64{im.Base, im.Base + im.Size})
+		p.spans = append(p.spans, [2]uint64{})
+		copy(p.spans[at+1:], p.spans[at:])
+		p.spans[at] = [2]uint64{im.Base, im.Base + im.Size}
 		for _, r := range im.Regions {
 			if executable(r) {
 				p.err = writeAll(p.w, []byte(fmt.Sprintf("%x %x %s\n", im.Base+r.Offset, r.Size, Symbol(*im, r))))
