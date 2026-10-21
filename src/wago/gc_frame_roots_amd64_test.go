@@ -565,40 +565,6 @@ func TestGCGlobalGetPreservesHiddenStackRoot(t *testing.T) {
 	}
 }
 
-func gcHostReentryFrameRootModule() []byte {
-	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
-	hostType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
-	outerType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
-	outerLocals := []byte{0x01, 0x01, 0x63, 0x00}
-	outer := append([]byte(nil), outerLocals...)
-	outer = append(outer,
-		0x20, 0x00, 0xfb, 0x00, 0x00, 0x21, 0x01,
-		0x10, 0x00, 0x1a,
-		0x20, 0x01, 0xfb, 0x02, 0x00, 0x00, 0x0b,
-	)
-	innerLocals := []byte{0x01, 0x01, 0x7f}
-	inner := append([]byte(nil), innerLocals...)
-	inner = append(inner,
-		0x02, 0x40, 0x03, 0x40,
-		0x20, 0x00, 0x41, 0xe8, 0x07, 0x4f, 0x0d, 0x01,
-		0xfb, 0x01, 0x00, 0xd1, 0x1a,
-		0x20, 0x00, 0x41, 0x01, 0x6a, 0x21, 0x00, 0x0c, 0x00,
-		0x0b, 0x0b, 0x41, 0x00, 0x0b,
-	)
-	imp := append(append(wasmtest.Name("env"), wasmtest.Name("reenter")...), 0x00)
-	imp = append(imp, wasmtest.ULEB(1)...)
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(structType, hostType, outerType)),
-		wasmtest.Section(2, wasmtest.Vec(imp)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(1))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("outer", 0, 1), wasmtest.ExportEntry("inner", 0, 2))),
-		wasmtest.Section(10, wasmtest.Vec(
-			append(wasmtest.ULEB(uint32(len(outer))), outer...),
-			append(wasmtest.ULEB(uint32(len(inner))), inner...),
-		)),
-	)
-}
-
 func TestGCHostReentryNativeFrameRoots(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcHostReentryFrameRootModule())
 	if err != nil {

@@ -520,7 +520,11 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	// the canonicalization when the producer already guarantees a zero upper
 	// half (notably every ARM64-backed Wasm i32 local).
 	if !upper32Zero || loadDefinedLocal {
-		f.a.MovReg32(ea, ea)
+		if regallocCheckEnabled {
+			f.checkZeroExtendMemAddr(ea)
+		} else {
+			f.a.MovReg32(ea, ea)
+		}
 		if loadDefinedLocal && upper32Zero {
 			f.stats.peep("memory-address-load-rename")
 		}
@@ -1057,6 +1061,9 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 			if !eaOwned || dst2 == dst {
 				dst2 = f.allocReg(avoid)
 			}
+			if regallocCheckEnabled {
+				f.checkConsumeMemRef(first)
+			}
 			if f.a.LoadPairIdx(dst, dst2, linMemReg, ea, first.st.memDisp(), size) {
 				if first.st.memBorrow() < 0 && first.st.reg != dst {
 					f.release(first.st.reg)
@@ -1071,6 +1078,10 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 				}
 				f.stats.peep("load-pair")
 				return nil
+			}
+			if regallocCheckEnabled {
+				// A rejected pair emitted nothing; the first load is still pending.
+				f.checkTrackMemRef(first)
 			}
 			if first.st.memBorrow() >= 0 {
 				f.release(dst)
@@ -1171,10 +1182,17 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	vtyp := value.st.typ
 	vreg, vOwned := f.materializeRead(value)
 	f.pinned = f.pinned.add(vreg)
+	var read regallocReadMask
+	if regallocCheckEnabled {
+		read = checkProtectRead(f, vreg, false, vtyp.is64())
+	}
 	addrLocal, addrOK := localAddressKey(f.s.back())
 	ea, eaOwned, _, disp := f.memAddr(off, size, true, 0, guard)
 	f.pinned = f.pinned.add(ea)
 	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
+	if regallocCheckEnabled {
+		checkRestoreRead(f, read)
+	}
 	f.a.StoreIdx(linMemReg, ea, vreg, disp, size)
 	f.pinned = f.pinned.remove(ea)
 	f.pinned = f.pinned.remove(vreg)
@@ -1185,6 +1203,9 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		((size == 8 && vtyp == mtI64) || (size == 4 && vtyp == mtI32)) &&
 		f.nextLoadMatchesStore(r, addrLocal, off, size, vtyp) {
 		f.storeFwd = storeForward{valid: true, reg: vreg, typ: vtyp, local: addrLocal, offset: off, size: size}
+		if regallocCheckEnabled {
+			f.checkObserveGPWrites()
+		}
 		f.pinned = f.pinned.add(vreg)
 	} else if vOwned {
 		f.release(vreg)

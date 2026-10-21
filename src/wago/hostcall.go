@@ -30,9 +30,9 @@ type HostModule interface {
 // callback. The HostModule carries an unforgeable, callback-scoped invocation
 // identity. If that call chain re-enters a parked Instance, Wago supplies an
 // isolated native stack and call buffers for the nested activation. One
-// invocation may have at most four active InvokeFromHost calls; a fifth call
-// returns an error wrapping ErrPermissionDenied. Retained or unrelated
-// HostModule values fail closed.
+// invocation may have at most 32 active InvokeFromHost calls under standard Go
+// or four under TinyGo. Exceeding that limit returns an error wrapping
+// ErrPermissionDenied. Retained or unrelated HostModule values fail closed.
 func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, export string, args ...uint64) (results []uint64, err error) {
 	var active *Instance
 	var id invocationID
@@ -119,14 +119,8 @@ func releaseHostReentryDepth(id invocationID) {
 	}
 }
 
-// Every re-entry level owns another native stack, control frame, and call
-// buffers. Four remains useful for component cycles while rejecting before
-// TinyGo's smaller host stack can corrupt its task-stack canary on supported
-// low-footprint targets.
-const (
-	maxHostReentryDepth          = 4
-	maxRetainedHostReentryChains = 64
-)
+// Bound retained accounting separately from each build's active call depth.
+const maxRetainedHostReentryChains = 64
 
 // ExternRefHostModule is the optional reference-store surface implemented by the
 // HostModule value wago passes to callbacks. Keeping it separate preserves the

@@ -675,6 +675,9 @@ func (f *fn) i8x16Swizzle() {
 func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
 	bElem := f.popValue()
 	aElem := f.popValue()
+	if f.tryV128AlignShuffle(aElem, bElem, lanes) {
+		return
+	}
 	var native simdBinaryOp
 	switch lanes {
 	case [16]byte{0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23}:

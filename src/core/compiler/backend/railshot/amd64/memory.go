@@ -460,6 +460,8 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	// memory32 consuming-side invariant before any native-width arithmetic.
 	if cleanAddress {
 		f.stats.peep("addr-zext-elim")
+	} else if regallocCheckEnabled {
+		f.checkZeroExtendMemAddr(ea)
 	} else {
 		f.a.MovRegReg32(ea, ea)
 	}
@@ -1113,8 +1115,15 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	vtyp := value.st.typ
 	vreg, vOwned := f.materializeRead(value)
 	f.pinned = f.pinned.add(vreg)
+	var read regallocReadMask
+	if regallocCheckEnabled {
+		read = checkProtectRead(f, vreg, false, vtyp.is64())
+	}
 	addrLocal, addrOK := localAddressKey(f.s.back())
 	ea, eaOwned, _, disp := f.memAddr(off32, size, true, 0)
+	if regallocCheckEnabled {
+		checkRestoreRead(f, read)
+	}
 	f.a.StoreIdx(RBX, ea, vreg, disp, size)
 	f.pinned = f.pinned.remove(vreg)
 	if eaOwned {
@@ -1127,6 +1136,9 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		((size == 8 && vtyp == mtI64) || (size == 4 && vtyp == mtI32)) &&
 		f.nextLoadMatchesStore(r, addrLocal, off32, size, vtyp) {
 		f.storeFwd = storeForward{valid: true, reg: vreg, typ: vtyp, local: addrLocal, offset: off32, size: size}
+		if regallocCheckEnabled {
+			f.checkObserveGPWrites()
+		}
 		f.pinned = f.pinned.add(vreg)
 	} else if vOwned {
 		f.release(vreg)
