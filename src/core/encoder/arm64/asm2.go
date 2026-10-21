@@ -428,6 +428,14 @@ func (a *Asm) FmovToGpr(rd, rn Reg, f64 bool) {
 	}
 }
 
+// Fcsel copies the selected scalar bits without floating-point arithmetic.
+func (a *Asm) Fcsel(rd, rn, rm Reg, c Cond, f64 bool) {
+	a.word(fbase(f64, 0x1E200C00, 0x1E600C00) | r(rm)<<16 | uint32(c)<<12 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(rd))
+	}
+}
+
 // Fcmp sets NZCV from Rn ? Rm.
 func (a *Asm) Fcmp(rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E202000, 0x1E602000) | r(rm)<<16 | r(rn)<<5)
