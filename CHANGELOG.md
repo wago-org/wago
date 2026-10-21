@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Keep the required atomic length read when an oversized memory64 shared grow
+  request fails in the Go helper.
+
 - Allow up to 32 nested synchronous host calls under standard Go so component
   adapter chains can cross more than four boundaries. TinyGo retains its
   four-call limit for fixed host stacks. Size parked GC callback and root storage
