@@ -195,3 +195,25 @@ setup attempt is also retained locally. Use `go test -p 2 ./...`, not `-p2`.
 
 Raw byte benchmarks, exact source/binary hashes, regression results, and final
 full-check results are in [the saved results](abstract-array-cast-length-results/byte-summary.json).
+
+
+## Tests with the combined GC optimizations
+
+The combined stack found two test-scope assumptions, without a runtime code
+failure. Abstract any/eq tests can classify a live compact handle without
+reading an object header. The malformed-span regression now requests a struct
+test, which must enter refDesc and read the descriptor. All invalid spaces and
+extent cases remain mandatory, with the same exact diagnostic.
+
+The general native array.len fallback can add a second space-byte decoder to
+the compiled module. The encoding test now identifies the complete selected
+abstract leaf in the emitted module, then requires exactly one byte load and
+no old shift/mask within that leaf. An unused helper or a byte load only in
+another resolver cannot pass this test.
+
+Normal and checked public focused tests pass in6.138/6.819 seconds. The combined
+statistics/register-checker matrix passes in6.888 seconds, including call ABI,
+forwarder, all eight optimization-switch combinations, fresh/saved code,
+forced collection and Tiny. The first combined failure and corrected result
+remain in the results directory. Production code and timing results are
+unchanged by this test-only follow-up.

@@ -1,0 +1,17 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-tags=wago_codegenstats,wago_regalloccheck",
+    "./src/wago",
+    "./src/core/compiler/backend/railshot/amd64",
+    "./src/core/runtime/gc/native",
+    "-run",
+    "^Test(CombinedReferenceABI|GCAbstractArrayCastLen|RefDescRejectsInvalidObjectExtent|GCResolversLoadSpaceByte|GCResolverSpaceByte|DirectForwarder|DirectReferenceABI)",
+    "-count=1"
+  ],
+  "seconds": 6.8882233070035,
+  "exit": 0
+}

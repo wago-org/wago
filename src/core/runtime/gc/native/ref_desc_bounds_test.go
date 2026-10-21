@@ -41,9 +41,11 @@ func TestRefDescRejectsInvalidObjectExtent(t *testing.T) {
 			if saved.space != tc.space {
 				t.Fatalf("fixture space=%d, want%d", saved.space, tc.space)
 			}
+			// A struct test must read refDesc; any/eq tests can classify a live
+			// compact handle without touching its object header.
 			check := func(name string) {
 				t.Helper()
-				ok, err := c.RefTest(ref, RefTestTarget{Kind: RefTestAny})
+				ok, err := c.RefTest(ref, RefTestTarget{Kind: RefTestStruct})
 				if ok || err == nil || err.Error() != "gc: invalid object ref" {
 					t.Fatalf("%s space=%d offset=%d size=%d: %v,%v; want diagnostic invalid object ref", name, c.handles[h].space, c.handles[h].off, c.handles[h].size, ok, err)
 				}
@@ -69,7 +71,7 @@ func TestRefDescRejectsInvalidObjectExtent(t *testing.T) {
 				check(bad.name)
 			}
 			c.handles[h] = saved
-			ok, err := c.RefTest(ref, RefTestTarget{Kind: RefTestAny})
+			ok, err := c.RefTest(ref, RefTestTarget{Kind: RefTestStruct})
 			if err != nil || !ok {
 				t.Fatalf("restored ref=%v,%v", ok, err)
 			}

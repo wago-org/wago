@@ -5,6 +5,7 @@ package amd64
 import (
 	"bytes"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
 )
@@ -76,10 +77,17 @@ func TestGCAbstractArrayCastLenLoadsSpaceByte(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer cm.CodeImage.Close()
-		if got := bytes.Count(cm.Code, direct); got != 1 {
+		// General array.len can also emit its own space decoder in the cold
+		// fallback. Identify the selected abstract leaf before checking its bytes.
+		leaf := &x64.Asm{}
+		emitModuleGCAbstractArrayCastLen(leaf)
+		if bytes.Count(cm.Code, leaf.B) != 1 {
+			t.Fatalf("cast %d: abstract array leaf was not selected exactly once", cast)
+		}
+		if got := bytes.Count(leaf.B, direct); got != 1 {
 			t.Fatalf("cast %d: selected space byte loads=%d, want1", cast, got)
 		}
-		if bytes.Contains(cm.Code, old) {
+		if bytes.Contains(leaf.B, old) {
 			t.Fatalf("cast %d: old metadata shift/mask remains", cast)
 		}
 	}
