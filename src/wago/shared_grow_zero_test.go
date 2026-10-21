@@ -3,8 +3,13 @@
 package wago
 
 import (
+	"context"
 	"fmt"
+	"runtime"
+	"sync/atomic"
 	"testing"
+	"time"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -13,6 +18,10 @@ import (
 // Both memories are shared. The selected memory has the requested address
 // width; the other memory has the opposite width and a different initial size.
 func sharedGrowZeroModule(address64 bool, index byte, maximum byte) []byte {
+	return sharedGrowZeroModuleWithImports(address64, index, maximum, false)
+}
+
+func sharedGrowZeroModuleWithImports(address64 bool, index byte, maximum byte, imported bool) []byte {
 	typ, limits := wasm.I32, byte(3)
 	if address64 {
 		typ, limits = wasm.I64, 7
@@ -40,17 +49,41 @@ func sharedGrowZeroModule(address64 bool, index byte, maximum byte) []byte {
 		0x20, 3, 0x41, 1, 0x6a, 0x21, 3, 0x0c, 0,
 		0x0b, 0x0b, 0x3f, index, 0x0b)
 	loop = append(wasmtest.ULEB(uint32(len(loop))), loop...)
-	return wasmtest.Module(
+	constant, less := byte(0x41), byte(0x49)
+	if address64 {
+		constant, less = 0x42, 0x54
+	}
+	// Signal native entry, poll grow(dynamic zero), then read the new page.
+	observe := []byte{constant, 4, 0x41, 1, 0xfe, 0x17, 0x42, index, 0,
+		0x03, 0x40, 0x20, 0, 0x40, index, constant, 2, less, 0x0d, 0, 0x0b,
+		constant, 0x80, 0x80, 4, 0x28, 0x42, index, 0, 0x0b}
+	sections := [][]byte{
 		wasmtest.Section(1, wasmtest.Vec(
 			wasmtest.FuncType([]wasm.ValType{typ, wasm.I64}, []wasm.ValType{wasm.I64, typ, wasm.I64}),
 			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{typ}),
+			wasmtest.FuncType([]wasm.ValType{typ}, []wasm.ValType{wasm.I32}),
 		)),
-		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1})),
-		wasmtest.Section(5, wasmtest.Vec(memories...)),
+	}
+	if imported {
+		var entries [][]byte
+		for i, memory := range memories {
+			entry := append(wasmtest.Name("env"), wasmtest.Name(fmt.Sprintf("memory%d", i))...)
+			entry = append(entry, 2)
+			entries = append(entries, append(entry, memory...))
+		}
+		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(entries...)))
+	}
+	sections = append(sections, wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1}, []byte{2})))
+	if !imported {
+		sections = append(sections, wasmtest.Section(5, wasmtest.Vec(memories...)))
+	}
+	sections = append(sections,
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("loop", 0, 1),
-			wasmtest.ExportEntry("memory", 2, uint32(index)))),
-		wasmtest.Section(10, wasmtest.Vec(run, loop)),
+			wasmtest.ExportEntry("memory", 2, uint32(index)), wasmtest.ExportEntry("memory0", 2, 0),
+			wasmtest.ExportEntry("memory1", 2, 1), wasmtest.ExportEntry("observe", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(run, loop, wasmtest.Code(observe))),
 	)
+	return wasmtest.Module(sections...)
 }
 
 func sharedGrowZeroConfig() *RuntimeConfig {
@@ -98,6 +131,111 @@ func TestSharedGrowDynamicZeroWidthsAndLiveValues(t *testing.T) {
 					})
 				}
 			}
+		}
+	}
+}
+
+func TestSharedGrowDynamicZeroObservesConcurrentGrowth(t *testing.T) {
+	for _, address64 := range []bool{false, true} {
+		for _, index := range []byte{0, 1} {
+			t.Run(fmt.Sprintf("i64=%t/index=%d", address64, index), func(t *testing.T) {
+				c, err := sharedGrowZeroConfig().Compile(sharedGrowZeroModule(address64, index, 3))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer c.Close()
+				in, err := Instantiate(c)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer in.Close()
+				memory, err := in.ExportedMemory("memory")
+				if err != nil {
+					t.Fatal(err)
+				}
+				flag := (*uint32)(unsafe.Pointer(&memory.UnsafeBytes()[4]))
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				timer := time.AfterFunc(5*time.Second, cancel)
+				defer timer.Stop()
+				done := make(chan error, 1)
+				go func() {
+					got, err := in.InvokeContext(ctx, "observe", 0)
+					if err == nil && (len(got) != 1 || got[0] != 0) {
+						err = fmt.Errorf("new page = %v", got)
+					}
+					done <- err
+				}()
+				for atomic.LoadUint32(flag) == 0 {
+					select {
+					case err := <-done:
+						t.Fatalf("native observer returned before growth: %v", err)
+					case <-ctx.Done():
+						t.Fatal(ctx.Err())
+					default:
+						runtime.Gosched()
+					}
+				}
+				// The directory was published at one page when this activation began.
+				if got := memory.growShared(1, 0); got != 1 {
+					t.Errorf("growShared = %d, want 1", got)
+				}
+				if err := <-done; err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
+
+func TestSharedGrowDynamicZeroRetainsClosedProducer(t *testing.T) {
+	for _, address64 := range []bool{false, true} {
+		for _, index := range []byte{0, 1} {
+			t.Run(fmt.Sprintf("i64=%t/index=%d", address64, index), func(t *testing.T) {
+				cfg := sharedGrowZeroConfig()
+				c, err := cfg.Compile(sharedGrowZeroModule(address64, index, 3))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer c.Close()
+				provider, err := Instantiate(c)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer provider.Close()
+				imports := NewImports()
+				for n := 0; n < 2; n++ {
+					name := fmt.Sprintf("memory%d", n)
+					memory, err := provider.ExportedMemory(name)
+					if err != nil {
+						t.Fatal(err)
+					}
+					imports.Memory("env", name, memory)
+				}
+				consumerCode, err := cfg.Compile(sharedGrowZeroModuleWithImports(address64, index, 3, true))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer consumerCode.Close()
+				consumer, err := Instantiate(consumerCode, imports)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer consumer.Close()
+				if err := provider.Close(); err != nil {
+					t.Fatal(err)
+				}
+				for n, delta := range []uint64{0, 1, 0} {
+					want := uint64(1)
+					if n == 2 {
+						want = 2
+					}
+					got, err := consumer.Invoke("run", delta, 9)
+					if err != nil || len(got) != 3 || got[0] != 11 || got[1] != want || got[2] != 10 {
+						t.Fatalf("grow(%d) after close = %v, %v", delta, got, err)
+					}
+				}
+			})
 		}
 	}
 }
