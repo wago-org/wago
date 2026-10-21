@@ -76,8 +76,17 @@ func sharedGrowFailureModuleWithImports(wide bool, index, min, max byte, delta u
 	return wasmtest.Module(sections...)
 
 }
-func sharedGrowFailureConfig() *RuntimeConfig {
-	return NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+func sharedGrowFailureConfig(t testing.TB, wide bool) *RuntimeConfig {
+	t.Helper()
+	// These fixtures declare two memories even when the selected index is zero.
+	features := CoreFeaturesV2 | CoreFeatureThreads | CoreFeatureMultiMemory
+	if wide {
+		features |= CoreFeatureMemory64
+	}
+	if !platformCoreFeatures().IsEnabled(features) {
+		t.Skipf("module features %v are unavailable on this backend", features)
+	}
+	return NewRuntimeConfig().WithCoreFeatures(features).WithBoundsChecks(BoundsChecksExplicit)
 }
 func TestSharedGrowImpossibleUnsignedAndLiveValues(t *testing.T) {
 	for _, wide := range []bool{false, true} {
@@ -87,7 +96,7 @@ func TestSharedGrowImpossibleUnsignedAndLiveValues(t *testing.T) {
 				room := uint64(max - min)
 				for _, delta := range []uint64{0, 1, room, room + 1, uint64(^uint32(0)), 1 << 32, ^uint64(0)} {
 					t.Run(fmt.Sprintf("wide=%t/index=%d/min=%d/max=%d/delta=%x", wide, index, min, max, delta), func(t *testing.T) {
-						c, err := sharedGrowFailureConfig().Compile(sharedGrowFailureModule(wide, index, min, max, delta))
+						c, err := sharedGrowFailureConfig(t, wide).Compile(sharedGrowFailureModule(wide, index, min, max, delta))
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -137,7 +146,7 @@ func TestSharedGrowImpossibleImportedCurrentSizeAndQuota(t *testing.T) {
 	for _, wide := range []bool{false, true} {
 		for _, index := range []byte{0, 1} {
 			t.Run(fmt.Sprintf("wide=%t/index=%d", wide, index), func(t *testing.T) {
-				cfg := sharedGrowFailureConfig()
+				cfg := sharedGrowFailureConfig(t, wide)
 				code, err := cfg.Compile(sharedGrowFailureModule(wide, index, 1, 3, 3))
 				if err != nil {
 					t.Fatal(err)
@@ -197,7 +206,7 @@ func TestSharedGrowImpossibleCacheAndRegisterABI(t *testing.T) {
 			for _, cache := range []bool{false, true} {
 				for _, regABI := range []bool{false, true} {
 					t.Run(fmt.Sprintf("wide=%t/index=%d/cache=%t/regABI=%t", wide, index, cache, regABI), func(t *testing.T) {
-						cfg := sharedGrowFailureConfig().WithOptimization("shared-memory-base", cache).WithOptimization("reg-abi", regABI)
+						cfg := sharedGrowFailureConfig(t, wide).WithOptimization("shared-memory-base", cache).WithOptimization("reg-abi", regABI)
 						c, err := cfg.Compile(sharedGrowFailureModule(wide, index, 1, 1, 1))
 						if err != nil {
 							t.Fatal(err)
@@ -235,7 +244,7 @@ func BenchmarkSharedGrowImpossibleLoop(b *testing.B) {
 		for _, index := range []byte{0, 1} {
 			for mode, name := range []string{"constant-fail", "fallback", "mixed"} {
 				b.Run(fmt.Sprintf("wide=%t/index=%d/%s", wide, index, name), func(b *testing.B) {
-					c, err := sharedGrowFailureConfig().Compile(sharedGrowFailureModule(wide, index, 1, 1, 1))
+					c, err := sharedGrowFailureConfig(b, wide).Compile(sharedGrowFailureModule(wide, index, 1, 1, 1))
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -268,7 +277,7 @@ func BenchmarkSharedGrowImpossibleCompile(b *testing.B) {
 	for _, wide := range []bool{false, true} {
 		for _, index := range []byte{0, 1} {
 			b.Run(fmt.Sprintf("wide=%t/index=%d", wide, index), func(b *testing.B) {
-				cfg, module := sharedGrowFailureConfig(), sharedGrowFailureModule(wide, index, 1, 1, 1)
+				cfg, module := sharedGrowFailureConfig(b, wide), sharedGrowFailureModule(wide, index, 1, 1, 1)
 				b.ReportAllocs()
 				b.ResetTimer()
 				for n := 0; n < b.N; n++ {

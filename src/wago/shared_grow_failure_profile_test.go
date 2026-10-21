@@ -21,7 +21,7 @@ func TestSharedGrowImpossibleHelperEntries(t *testing.T) {
 				t.Run(fmt.Sprintf("i64=%t/index=%d/%s", address64, index, path.name), func(t *testing.T) {
 					trace := NewCodeProfile(CodeProfileOptions{TraceBoundaries: true})
 					defer trace.Close()
-					c, err := sharedGrowFailureConfig().WithCodeProfile(trace).Compile(sharedGrowFailureModule(address64, index, 1, 1, 1))
+					c, err := sharedGrowFailureConfig(t, address64).WithCodeProfile(trace).Compile(sharedGrowFailureModule(address64, index, 1, 1, 1))
 					if err != nil {
 						t.Fatal(err)
 					}

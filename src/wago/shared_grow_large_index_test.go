@@ -11,8 +11,9 @@ import (
 
 const sharedGrowLargeIndexPath = "constant"
 
-func sharedGrowLargeIndexConfig() *RuntimeConfig {
-	return NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit).WithMaxMemoriesPerModule(MaxMemoriesPerModuleLimit)
+func sharedGrowLargeIndexConfig(t testing.TB, wide bool) *RuntimeConfig {
+	t.Helper()
+	return sharedGrowFailureConfig(t, wide).WithMaxMemoriesPerModule(MaxMemoriesPerModuleLimit)
 }
 
 // Repeated imported indexes alias one empty backing. Only the selected shared
@@ -109,7 +110,7 @@ func TestSharedGrowLargeMemoryIndexCompile(t *testing.T) {
 	for _, index := range []uint32{1365, 1366, 4095} {
 		for _, wide := range []bool{false, true} {
 			t.Run(fmt.Sprintf("index%d/wide%t", index, wide), func(t *testing.T) {
-				c, err := sharedGrowLargeIndexConfig().Compile(sharedGrowLargeIndexModule(wide, index, false))
+				c, err := sharedGrowLargeIndexConfig(t, wide).Compile(sharedGrowLargeIndexModule(wide, index, false))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -122,7 +123,7 @@ func TestSharedGrowLargeMemoryIndexImportedResults(t *testing.T) {
 	for _, index := range []uint32{1365, 1366, 4095} {
 		for _, wide := range []bool{false, true} {
 			t.Run(fmt.Sprintf("index%d/wide%t", index, wide), func(t *testing.T) {
-				cfg := sharedGrowLargeIndexConfig()
+				cfg := sharedGrowLargeIndexConfig(t, wide)
 				c, err := cfg.Compile(sharedGrowLargeIndexModule(wide, index, true))
 				if err != nil {
 					t.Fatal(err)

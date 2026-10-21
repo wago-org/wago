@@ -15,7 +15,7 @@ func TestSharedGrowLargeMemoryIndexHelperEntries(t *testing.T) {
 			t.Run(fmt.Sprintf("index%d/wide%t", index, wide), func(t *testing.T) {
 				trace := NewCodeProfile(CodeProfileOptions{TraceBoundaries: true})
 				t.Cleanup(func() { trace.Close() })
-				cfg := sharedGrowLargeIndexConfig()
+				cfg := sharedGrowLargeIndexConfig(t, wide)
 				c, err := cfg.WithCodeProfile(trace).Compile(sharedGrowLargeIndexModule(wide, index, true))
 				if err != nil {
 					t.Fatal(err)
