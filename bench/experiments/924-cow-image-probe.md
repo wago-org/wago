@@ -269,6 +269,80 @@ eight read-only instances, PSS is **67,164 KiB** deferred versus
 workload. Execution remains expensive at **31.76 / 34.41 ms**, compared with
 about **1.28 ms** for the ordinary write control above.
 
+## First-use plus command qualification of eager versus deferred admission
+
+To account for first use alongside actual command execution, twelve
+fresh processes ran **1 or 8** PHP instances with baseline, deferred, and
+eager admission, twice per arm. Each process compiled the same Wasm, retained
+the instances, executed the same pinned PHP command, validated its output,
+and hashed all linear-memory bytes. Within each instance count, all arms have
+identical full-memory SHA-256 (**`561eb0a008a9…`** for one instance,
+**`eabe80f5196c…`** for eight); native code is **30,164,957 B** throughout.
+The sum below is separately timed aggregate `Instantiate` plus `Invoke`; compilation,
+host scratch/import construction, output validation, hashing, and memory
+scans are excluded. Compile samples range **667.9–758.9 ms** across the
+eight-instance arms, without a directional compilation claim.
+
+| Live PHP instances / path | Aggregate instantiate ms | Aggregate command ms | Setup + command ms | Executed PSS KiB |
+| --- | ---: | ---: | ---: | ---: |
+| 1 / ordinary | 7.732 / 7.285 | 2.564 / 2.567 | 10.296 / 9.852 | 176,373 / 177,305 |
+| 1 / deferred | 7.293 / 7.469 | 2.726 / 2.677 | 10.019 / 10.146 | 176,375 / 176,298 |
+| 1 / eager | 12.656 / 11.741 | 4.658 / 4.631 | 17.314 / 16.372 | 166,797 / 163,270 |
+| 8 / ordinary | 29.350 / 27.303 | 19.550 / 23.587 | 48.900 / 50.890 | 296,086 / 298,562 |
+| 8 / deferred | 24.220 / 25.016 | 34.524 / 33.435 | 58.744 / 58.451 | 221,457 / 219,777 |
+| 8 / eager | 24.531 / 23.570 | 37.616 / 36.663 | 62.147 / 60.233 | 208,777 / 210,886 |
+
+Adding separately timed compilation to setup plus command yields **716.798 /
+798.448 ms** ordinary, **777.647 / 817.349 ms** deferred, and **785.686 /
+805.960 ms** eager for eight instances. For the first single instance, these
+compile-inclusive sums are **694.902 / 693.703**, **704.773 / 733.964**, and
+**715.830 / 727.455 ms** respectively. Compilation noise is larger than the
+mode difference in these short samples; this is not a compilation-lifecycle
+speed claim. Exact one-instance memory SHA-256 is
+`561eb0a008a94bb1dd22c01d1b264ef4cd5b7ea6a8d009144dc6a0c8960f3e7b`.
+At the executed checkpoint, process-lifetime maximum RSS (`getrusage`,
+including compilation and setup) is **297,624 / 300,120 KiB** ordinary,
+**231,036 / 229,760 KiB** deferred, and **220,776 / 222,856 KiB** eager
+for eight instances. At one instance it is **177,880 / 178,900**,
+**177,932 / 177,916**, and **169,116 / 165,680 KiB** respectively. These
+are high-water marks through execution, not phase-local peaks.
+
+```sh
+# Run each arm twice in its own process; use INSTANCES=1 and 8.
+PATH=/home/jtenner/.local/share/mise/installs/github-web-assembly-wabt/1.0.41/bin:$PATH \
+WAGO_924_POSTEXEC_MODE=baseline WAGO_924_POSTEXEC_INSTANCES=8 \
+GOCACHE=/tmp/wago-go-cache GOPROXY=off go test ./bench/suite \
+  -run '^TestCowPHPPostExecutionMemory$' -count=1 -v -args -wago.corpus=php-buckets
+# For deferred: MODE=cow, WAGO_924_EAGER=0; for eager: MODE=cow, WAGO_924_EAGER=1.
+```
+
+The eight-instance deferred process saves **74,629 / 78,785 KiB PSS** against
+the paired ordinary process; eager saves **87,309 / 87,676 KiB PSS**. Its
+owning image has **13,108 KiB** resident backing after execution in every
+CoW arm, measured separately with `mincore`. As a deliberately conservative
+illustration, charging *all* of that backing as additional to process PSS
+still leaves about **60–64 MiB** deferred or **72–73 MiB** eager difference.
+Some backing pages are already represented in mapped PSS, so adding the two
+double-counts them. This adjustment supports the direction of physical
+savings for this paired workload; it is not a precise system-wide total.
+The eight eager mappings have **27,800 KiB private dirty** after execution,
+compared with **24,276 / 24,360 KiB** for seven deferred mappings. This is
+an observed write footprint, not a page-level first-write fraction for every
+operation. The single-instance eager path has a smaller PSS difference and
+adds **6–7 ms** to first setup plus command; deferred behaves like ordinary
+at one instance. Its roughly **9–14 MiB** process PSS reduction may be
+smaller than uncharged backing residency, so these data do not establish a
+single-instance system-RAM saving.
+
+A defensible opt-in contract is therefore a **retained, multi-instance,
+memory-constrained, mostly read-heavy module** with large constant active
+data and tolerance for roughly **8–13 ms** extra setup-plus-command time per
+eight PHP commands on this host. The 100-instance read-only control exposes
+scaling potential, but it does not establish that 100 real PHP interpreters
+will behave similarly. Fully dirtying the pages erases the benefit. The
+contract needs application-specific measurement; the 1,024-segment/1-MiB
+gate alone cannot predict guest write behavior.
+
 Two further cost leads were measured and rejected:
 
 * Linux `MADV_POPULATE_READ` over each initial mapping before execution costs
@@ -285,6 +359,12 @@ Two further cost leads were measured and rejected:
   dominated by the writes/page faults, not the FD duplication or eligibility
   scan. Retaining another fully materialized payload to avoid that work would
   undermine the low-memory goal and is not part of this branch.
+
+These are the two measured overhead leads for a small follow-up: warming
+pages merely shifts fault work and raises resident memory, while fresh image
+scatter dominates first-use creation. Neither yielded a bounded, low-risk
+improvement on this input, so there is no further implementation change in
+this experiment.
 
 ## Verification and decision
 
@@ -314,5 +394,10 @@ PSS is credible and warm instance setup is faster. `eager` gains additional
 memory at a first-use cost. Execution is directionally slower; write-heavy
 instances lose the memory benefit. The gate is empirical and based only on
 real module size and active segment count, not predicted runtime writes.
-Default enablement would need broader real-program evidence. No merge is
-proposed.
+Promotion to ready for review would need Josh to accept this explicit
+memory-versus-latency contract for a target application, or another real
+workload showing material memory savings at an acceptable full-command and
+first-write cost. The current PHP result is a credible opt-in memory win,
+but its measured execution penalty and unknown application tolerance do not
+qualify an unscoped ready-for-review claim. Default enablement would need
+broader real-program evidence. No merge is proposed.
