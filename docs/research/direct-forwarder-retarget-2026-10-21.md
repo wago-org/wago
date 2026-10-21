@@ -154,3 +154,10 @@ optimization regression failed before this fix in0.242 seconds with an
 unknown-setting diagnostic. Complete project/settings packages pass after
 the repair in9.954 seconds. Raw red/green results are in the data folder.
 The fix changes configuration admission only; it has no speed claim.
+
+## Compact body omission follow-up
+
+The retarget pass now preserves wrapper calls when their terminal leaf is an
+inline body eligible for compact omission. See the [regression and safety
+proof](direct-forwarder-compact-followup.md) for serial/parallel execution,
+unchanged linker guards, and focused normal/checked results.

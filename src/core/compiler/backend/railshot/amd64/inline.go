@@ -809,10 +809,12 @@ func pruneNestedSizeInlineTargets(m *wasm.Module, targets *inlineTargetTable) {
 // region — inlined bodies never overlap (a straight-line leaf fully completes
 // before the next splice), so the region is safely reused.
 func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTable) {
+	// Retargeted calls also need the module's body-omission facts, even when
+	// this caller has no original inline sites and reserves no inline locals.
+	f.inlineTargets = targets
 	if len(callees) == 0 {
 		return
 	}
-	f.inlineTargets = targets
 	if len(callees) <= maxRetainedInlineBases {
 		clear(f.inlineBasePool)
 		if f.inlineBasePool == nil {

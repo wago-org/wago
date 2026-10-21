@@ -134,3 +134,98 @@ func TestDirectForwarderStopsAtImport(t *testing.T) {
 		}
 	}
 }
+
+// A leaf's sole source call is inside the last wrapper, so compact layout can
+// omit its standalone body. Calls to earlier wrappers must not acquire a real
+// relocation to that omitted entry after inline planning has already finished.
+func TestDirectForwarderCompactOmittedLeaf(t *testing.T) {
+	before := inlineDeadBodyEnabled
+	inlineDeadBodyEnabled = true
+	t.Cleanup(func() { inlineDeadBodyEnabled = before })
+	for _, leaf := range []struct {
+		name string
+		body []byte
+		want uint32
+	}{
+		{"identity", []byte{0, 0x20, 0, 0x0b}, 5},
+		{"add-constant", []byte{0, 0x20, 0, 0x41, 1, 0x6a, 0x0b}, 6},
+	} {
+		for _, hops := range []int{1, maxDirectForwarderHops} {
+			for _, workers := range []int{1, 2} {
+				t.Run(fmt.Sprintf("%s/hops%d/workers%d", leaf.name, hops, workers), func(t *testing.T) {
+					defs := []funcDef{{results: []wasm.ValType{wasm.I32}, body: []byte{0, 0x41, 5, 0x10, 1, 0x0b}}}
+					for i := 1; i <= hops; i++ {
+						defs = append(defs, funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0, 0x20, 0, 0x10, byte(i + 1), 0x0b}})
+					}
+					defs = append(defs, funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: leaf.body})
+					m := modFuncs(t, defs...)
+					if err := wasm.ValidateModule(m); err != nil {
+						t.Fatal(err)
+					}
+					var stats ModuleStats
+					cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: workers, Stats: optionalTestStats(&stats), Optimizations: map[string]bool{"inline": true, "direct-forwarder": true}})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if cm.CodeImage != nil {
+						defer cm.CodeImage.Close()
+					}
+					last := len(defs) - 1
+					if cm.Entry[last] != cm.InternalEntry[0] || cm.InternalEntry[last] != cm.InternalEntry[0] {
+						t.Fatalf("fixture must omit leaf body: entry=%v internal=%v", cm.Entry, cm.InternalEntry)
+					}
+					if diagnosticsEnabled {
+						if stats.Funcs[last].Peephole["inline-dead-body"] != 1 || stats.Funcs[last].CodeBytes != 0 || stats.Funcs[hops].Calls["inline"] != 1 {
+							t.Fatalf("leaf omission/inline proof changed: leaf=%+v wrapper=%+v", stats.Funcs[last], stats.Funcs[hops])
+						}
+						for i := 0; i < hops; i++ {
+							if got := stats.Funcs[i].Peephole["direct-forwarder-retarget"]; got != 0 {
+								t.Fatalf("caller %d retargeted %d calls to omitted leaf", i, got)
+							}
+						}
+					}
+					if got := uint32(runCompiledAmd64u(t, cm)); got != leaf.want {
+						t.Fatalf("result=%d, want %d", got, leaf.want)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestDirectForwarderRetainsNormalInlineTargetLowering(t *testing.T) {
+	before := inlineDeadBodyEnabled
+	t.Cleanup(func() { inlineDeadBodyEnabled = before })
+	for _, compact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("compact%t", compact), func(t *testing.T) {
+			// Ordinary mode never omits this leaf; compact rollback must also
+			// retain the existing retarget when omission is explicitly disabled.
+			inlineDeadBodyEnabled = !compact
+			m := modFuncs(t,
+				funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0, 0x41, 5, 0x10, 1, 0x0b}},
+				funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0, 0x20, 0, 0x10, 2, 0x0b}},
+				funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0, 0x20, 0, 0x41, 1, 0x6a, 0x0b}},
+			)
+			if err := wasm.ValidateModule(m); err != nil {
+				t.Fatal(err)
+			}
+			var stats ModuleStats
+			cm, err := CompileModuleWith(m, CompileOptions{CompactNative: compact, Workers: 1, Stats: optionalTestStats(&stats), Optimizations: map[string]bool{"inline": true, "direct-forwarder": true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cm.CodeImage != nil {
+				defer cm.CodeImage.Close()
+			}
+			if cm.InternalEntry[2] == cm.InternalEntry[0] {
+				t.Fatal("leaf body was omitted")
+			}
+			if diagnosticsEnabled && stats.Funcs[0].Peephole["direct-forwarder-retarget"] != 1 {
+				t.Fatalf("retained leaf must still be a direct target: %+v", stats.Funcs[0])
+			}
+			if got := uint32(runCompiledAmd64u(t, cm)); got != 6 {
+				t.Fatalf("result=%d, want 6", got)
+			}
+		})
+	}
+}

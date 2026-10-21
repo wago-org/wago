@@ -377,7 +377,10 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	// Keep one real call and one original source root mask. This runs after
 	// inlining so it needs no new inline-local reservation or mask consumption.
 	if f.opt(optDirectForwarder) {
-		if target, ok := directForwarderTarget(f.m, imported, idx); ok {
+		// Compact layout can omit the terminal leaf after its original caller
+		// inlines it. Keep the wrapper edge rather than create a relocation to
+		// that leaf; this caller has no reserved inline locals for the new target.
+		if target, ok := directForwarderTarget(f.m, imported, idx); ok && !f.inlineTargets.omitStandaloneBody(int(target)-imported, false) {
 			targetType, valid := f.functionSignature(target)
 			if !valid || !equalForwarderTypes(ft.Params, targetType.Params) || !equalForwarderTypes(ft.Results, targetType.Results) {
 				return fmt.Errorf("direct-forwarder: signature proof failed for call %d -> %d", idx, target)
