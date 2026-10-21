@@ -86,6 +86,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   struct batches canceled by array allocation helpers.
 - Keep AMD64 `v128` array loads and stores in native code with checked handles,
   type identity, bounds, and object extents. Add a visible V8 timing comparison.
+- Read ARM64 scalar numeric array elements through checked native object
+  resolution, preserving the typed helper for failed bounds and extent checks.
+
 - Compile general array length reads to checked AMD64 and ARM64 instructions,
   with the existing helper for invalid handles and exact traps.
 

@@ -1479,6 +1479,8 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 			gcDone = f.deadObjectShortcut(nativeDeadArrayBytes, 8)
 		} else if nativeArrayHelper == gcArrayAllocUniform || nativeArrayHelper == gcArrayAllocDefault {
 			gcDone = f.arrayAllocationShortcut(nativeArrayHelper, nativeArrayType, int(slotOf[d-p]))
+		} else if nativeArrayHelper == gcArrayGet {
+			gcDone = f.scalarArrayGetShortcut(nativeArrayType, int(slotOf[d-p]))
 		} else {
 			gcDone = f.arrayScalarShortcut(nativeArrayHelper, nativeArrayType, int(slotOf[d-p]))
 		}
