@@ -30,8 +30,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Add opt-in pure integer select branches through `WAGO_AMD64_PURE_SELECT=1`;
   keep them disabled by default because unpredictable conditions can regress.
   ([#895](https://github.com/wago-org/wago/pull/895))
-- Compile portable scalar plugin recipes to ARM64 instructions, preserving exact
-  import identity and the portable fallback for wider or unsupported contracts.
+- Compile bounded portable scalar plugin recipes to ARM64 instructions, preserving
+  exact import identity and the portable fallback for larger or unsupported contracts.
 
 - Detect writes to live deferred-load address registers, cached global-cell
   pointers, and forwarded store values in the AMD64 and ARM64 compilers when
