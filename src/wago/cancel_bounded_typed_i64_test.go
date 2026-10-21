@@ -1,22 +1,76 @@
-//go:build (linux || darwin) && (amd64 || arm64) && !tinygo
+//go:build (linux || darwin || windows) && (amd64 || arm64) && !tinygo
 
 package wago
 
 import (
 	"context"
+	_ "embed"
 	"errors"
+	goruntime "runtime"
 	"testing"
 )
+
+//go:embed testdata/cancel_bounded_typed_i64_single.wasm
+var cancelBoundedTypedI64Single []byte
+
+//go:embed testdata/cancel_bounded_typed_i64_loop.wasm
+var cancelBoundedTypedI64Loop []byte
+
+//go:embed testdata/cancel_bounded_typed_i64_bench.wasm
+var cancelBoundedTypedI64Bench []byte
+
+func growTypedI64CallbackStack(depth int) {
+	var frame [1024]byte
+	frame[0] = byte(depth)
+	if depth != 0 {
+		growTypedI64CallbackStack(depth - 1)
+	}
+	goruntime.KeepAlive(&frame)
+}
+
+func TestInvokeContextBoundedTypedI64StackGrowth(t *testing.T) {
+	if codeProfileEnabled || !detachedNumericHostEnabled || !privateNumericLiveRouteEnabled || !integerNumericHostEnabled {
+		t.Skip("private integer host bridge disabled")
+	}
+	c, err := Compile(goHostSegmentConfig().WithBoundsChecks(BoundsChecksExplicit), cancelBoundedTypedI64Single)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	imports := NewImports()
+	imports.HostFunc("env", "step", func(v int64) int64 {
+		growTypedI64CallbackStack(64)
+		goruntime.GC()
+		return v + 1
+	}).Params(ValI64).Results(ValI64)
+	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	ic, err := in.fillInvokeCache("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !in.contextBoundedTypedI64Eligible(ic) {
+		t.Fatal("private integer context route unavailable")
+	}
+	// The expanded callback is removed so this exercises the live prepared owner.
+	in.syncHosts[0].fn = nil
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for range 8 {
+		if got, err := in.InvokeContext(ctx, "run", 41); err != nil || len(got) != 1 || got[0] != 42 {
+			t.Fatalf("context callback after stack growth and GC: %v, %v", got, err)
+		}
+	}
+}
 
 func TestInvokeContextBoundedTypedI64(t *testing.T) {
 	if codeProfileEnabled || !detachedNumericHostEnabled || !privateNumericLiveRouteEnabled || !integerNumericHostEnabled {
 		t.Skip("private integer host bridge disabled")
 	}
-	c, err := Compile(goHostSegmentConfig(), watToWasm(t, `(module
- (import "env" "step" (func $step (param i64) (result i64)))
- (memory (export "memory") 1 2)
- (func (export "run") (param i64) (result i64)
-  local.get 0 call $step))`))
+	c, err := Compile(goHostSegmentConfig().WithBoundsChecks(BoundsChecksExplicit), cancelBoundedTypedI64Single)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,13 +174,7 @@ func TestInvokeContextBoundedTypedI64HostLoopCancellation(t *testing.T) {
 	if codeProfileEnabled || !detachedNumericHostEnabled || !privateNumericLiveRouteEnabled || !integerNumericHostEnabled {
 		t.Skip("private integer host bridge disabled")
 	}
-	c, err := Compile(goHostSegmentConfig(), watToWasm(t, `(module
- (import "env" "step" (func $step (param i64) (result i64)))
- (func (export "run") (param i64) (result i64)
-  (loop $repeat
-   local.get 0 call $step drop
-   br $repeat)
-  i64.const 0))`))
+	c, err := Compile(goHostSegmentConfig().WithBoundsChecks(BoundsChecksExplicit), cancelBoundedTypedI64Loop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,10 +212,7 @@ func TestInvokeContextBoundedTypedI64HostLoopCancellation(t *testing.T) {
 }
 
 func BenchmarkInvokeContextBoundedTypedI64(b *testing.B) {
-	c, err := Compile(goHostSegmentConfig(), watToWasm(b, `(module
- (import "env" "step" (func $step (param i64) (result i64)))
- (func (export "run") (param i64) (result i64)
-  local.get 0 call $step))`))
+	c, err := Compile(goHostSegmentConfig().WithBoundsChecks(BoundsChecksExplicit), cancelBoundedTypedI64Bench)
 	if err != nil {
 		b.Fatal(err)
 	}
