@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"runtime"
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -17,7 +18,7 @@ import (
 )
 
 func TestGCExternLocalSharedCodeCallerOwner(t *testing.T) {
-	for _, kind := range []string{"direct", "ref", "indirect"} {
+	for _, kind := range []string{"direct", "ref", "indirect", "wide"} {
 		for _, differentImage := range []bool{false, true} {
 			for _, closedProducer := range []bool{false, true} {
 				name := fmt.Sprintf("%s/differentImage=%t/closedProducer=%t", kind, differentImage, closedProducer)
@@ -30,12 +31,19 @@ func TestGCExternLocalSharedCodeCallerOwner(t *testing.T) {
 func gcExternSharedCodeCallerOwner(t *testing.T, kind string, differentImage, closedProducer bool, inspect func(a, b *Instance)) {
 	// The stack ABI exposes the caller frame below the callee wrapper. Both
 	// instances share code, so a return PC alone cannot identify its owner.
-	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", false)
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", kind == "wide")
 	rt := NewRuntime(WithRuntimeConfig(cfg))
 	defer rt.Close()
 	settings := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
+	var callParams []wasm.ValType
+	if kind == "wide" {
+		callParams = make([]wasm.ValType, 17)
+		for i := range callParams {
+			callParams[i] = wasm.I32
+		}
+	}
 	noopData := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType(nil, nil), wasmtest.FuncType([]wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.AnyRef}))), wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})),
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType(callParams, nil), wasmtest.FuncType([]wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.AnyRef}))), wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("noop", 0, 0), wasmtest.ExportEntry("marker", 0, 1))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfb, 1, 0, 0x1a, 0x0b}), wasmtest.Code([]byte{0x20, 0, 0x0b}))),
 	)
 	nc, err := Compile(cfg, noopData)
@@ -62,8 +70,13 @@ func gcExternSharedCodeCallerOwner(t *testing.T, kind string, differentImage, cl
 		t.Fatal(err)
 	}
 	run := []byte{1, 1, 0x6e, 0x20, 0, 0xfb, 26, 0x21, 1}
+	if kind == "wide" {
+		for i := 0; i < 17; i++ {
+			run = append(run, 0x41, byte(i))
+		}
+	}
 	switch kind {
-	case "direct":
+	case "direct", "wide":
 		run = append(run, 0x10, 0)
 	case "ref":
 		run = append(run, 0xd2, 0, 0x14, 2)
@@ -76,7 +89,7 @@ func gcExternSharedCodeCallerOwner(t *testing.T, kind string, differentImage, cl
 	run = append(wasmtest.ULEB(uint32(len(run))), run...)
 	tick := []byte{0xfb, 1, 0, 0x24, 0, 0xfb, 1, 0, 0x24, 0, 0xfb, 1, 0, 0x24, 0, 0x0b}
 	data := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}), wasmtest.FuncType(nil, nil), wasmtest.FuncType([]wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.AnyRef}))),
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}), wasmtest.FuncType(callParams, nil), wasmtest.FuncType([]wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.AnyRef}))),
 		wasmtest.Section(2, wasmtest.Vec(instructionFuncImport("env", "tick", 2), instructionFuncImport("env", "marker", 3))),
 		wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2}, []byte{3})),
 		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0, 1})),
@@ -157,6 +170,18 @@ func TestGCExternFrameCallerContext(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		var otherImage uintptr
+		a.refStore.mu.Lock()
+		for candidate := range a.refStore.instances {
+			if candidate.gc == a.gc && candidate.base != a.base {
+				otherImage = candidate.nativeContext
+				break
+			}
+		}
+		a.refStore.mu.Unlock()
+		if otherImage == 0 {
+			t.Fatal("fixture lacks another code image")
+		}
 		// Exercise both persisted native frame layouts on the current host.
 		for _, layout := range []uint8{gcNativeFrameLayoutAMD64, gcNativeFrameLayoutARM64} {
 			for _, tc := range []struct {
@@ -168,6 +193,8 @@ func TestGCExternFrameCallerContext(t *testing.T) {
 				{"caller", b.nativeContext, word, false},
 				{"callee", a.nativeContext, word, true},
 				{"unknown", b.nativeContext | 1, word, true},
+				{"other-image", otherImage, word, true},
+				{"zero", 0, uint64(gc.I31New(9)), layout != gcNativeFrameLayoutARM64},
 				{"compact", b.nativeContext, uint64(gc.I31New(9)), false},
 				{"forged-root", b.nativeContext, 1<<32 | 1, true},
 			} {
@@ -196,7 +223,7 @@ func TestGCExternFrameCallerContext(t *testing.T) {
 					}
 					if !tc.reject {
 						want := 1
-						if tc.name == "compact" {
+						if tc.root == uint64(gc.I31New(9)) {
 							want = 2
 						}
 						if seen != want {
@@ -208,4 +235,130 @@ func TestGCExternFrameCallerContext(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestGCExternFrameExternalReturnSlot(t *testing.T) {
+	gcExternSharedCodeCallerOwner(t, "direct", false, false, func(a, b *Instance) {
+		// AMD64's basedata trap landing word is part of the existing native
+		// entry ABI. Change only this test-owned inactive instance's control.
+		control := unsafe.Slice((*byte)(offHeapPtr(b.jm.LinMemBase()-24)), 8)
+		old := binary.LittleEndian.Uint64(control)
+		defer binary.LittleEndian.PutUint64(control, old)
+		base := b.eng.StackTop() - 256
+		frame := unsafe.Slice((*byte)(offHeapPtr(base)), 64)
+		binary.LittleEndian.PutUint64(frame[16:], uint64(gc.I31New(3)))
+		binary.LittleEndian.PutUint64(frame[32:], 1) // no Runtime-owned code
+		for _, tc := range []struct {
+			name    string
+			landing uintptr
+			reject  bool
+		}{
+			{"public-return", base + 32, false},
+			{"zero", 0, true},
+			{"other-slot", base + 40, true},
+			{"unaligned", base + 33, true},
+			{"outside-stack", b.eng.StackTop() + 8, true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				binary.LittleEndian.PutUint64(control, uint64(tc.landing))
+				roots := gcNativeFrameRoots{owner: b, base: base, offsets: []uint32{16}, frameBytes: 32, frameLayout: gcNativeFrameLayoutAMD64, codeBase: b.base, codeBytes: uintptr(len(b.c.code)), callsites: []compiledGCFrameCallsite{{returnOffset: 80, frameBytes: 32}}}
+				var failure any
+				func() {
+					defer func() { failure = recover() }()
+					roots.rangeChain(func(gc.RootSlot) bool { return true }, nil, b.eng)
+				}()
+				if (failure != nil) != tc.reject {
+					t.Fatalf("failure=%v, want reject=%t", failure, tc.reject)
+				}
+			})
+		}
+	})
+}
+
+func gcExternTailFrameModule(kind string) []byte {
+	forward := []byte{0x12, 1, 0x0b} // known-local allocation target
+	if kind == "ref" {
+		forward = []byte{0xd2, 1, 0x15, 2, 0x0b}
+	}
+	if kind == "indirect" {
+		forward = []byte{0x41, 0, 0x13, 2, 0, 0x0b}
+	}
+	run := []byte{1, 1, 0x6e, 0x20, 0, 0xfb, 26, 0x21, 1, 0x10, 2, 0x20, 1, 0xfb, 27, 0x0b}
+	run = append(wasmtest.ULEB(uint32(len(run))), run...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2}, []byte{2})),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0, 1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0, 0x41, 0, 0x0b, 1, 1})),
+		wasmtest.Section(10, wasmtest.Vec(run, wasmtest.Code([]byte{0xfb, 1, 0, 0x1a, 0x0b}), wasmtest.Code(forward))),
+	)
+}
+
+func TestGCExternForeignTailUsesBoundedFallback(t *testing.T) {
+	for _, kind := range []string{"ref", "indirect", "local"} {
+		t.Run(kind, func(t *testing.T) {
+			c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", kind == "indirect"), gcExternTailFrameModule(kind))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			admission := c.GCNativeRootAdmission()
+			if !admission.Required || admission.Exact != (kind == "local") {
+				t.Fatalf("root admission=%+v", admission)
+			}
+			if kind != "local" && !strings.Contains(admission.Reason, "unsupported native call or frame shape") {
+				t.Fatalf("missing fail-closed reason:%+v", admission)
+			}
+			in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 512, TinyBlockBytes: 16, TinyCollectEveryAlloc: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096, NurseryBytes: 4096}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			if in.gc.CollectsOnAllocation() != (kind == "local") {
+				t.Fatal("collector does not match root admission")
+			}
+			foreign, err := in.NewExternRef("tail-local")
+			if err != nil {
+				t.Fatal(err)
+			}
+			word := ValueExternRef(foreign).Bits()
+			for i := 0; i < 8; i++ {
+				got, err := in.Invoke("run", word)
+				if err != nil || len(got) != 1 || got[0] != word {
+					t.Fatalf("identity at%d:%x,%v", i, got, err)
+				}
+			}
+			if kind == "local" {
+				if in.gc.Stats().FullCollections == 0 {
+					t.Fatal("known local tail did not collect")
+				}
+				return
+			}
+			if stats := in.gc.Stats(); stats.MinorCollections != 0 || stats.FullCollections != 0 || stats.Allocations != 8 {
+				t.Fatalf("fallback stats=%+v", stats)
+			}
+			// Collection-disabled execution retains objects until its configured
+			// heap is full. This bounded capacity cost is deliberate and visible.
+			exhausted := false
+			for i := 8; i < 4096; i++ {
+				_, err := in.Invoke("run", word)
+				if err != nil {
+					if !strings.Contains(err.Error(), "heap exhausted") {
+						t.Fatal(err)
+					}
+					exhausted = true
+					break
+				}
+			}
+			if !exhausted {
+				t.Fatal("fallback exceeded its bounded heap capacity")
+			}
+			conversion := in.existingGCExternConversionState()
+			in.Close()
+			if conversion != nil && !conversion.closed {
+				t.Fatal("conversion owner survived final close")
+			}
+		})
+	}
 }
