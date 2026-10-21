@@ -261,7 +261,7 @@ func TestGCExternFrameExternalReturnSlot(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				binary.LittleEndian.PutUint64(control, uint64(tc.landing))
-				roots := gcNativeFrameRoots{owner: b, base: base, offsets: []uint32{16}, frameBytes: 32, frameLayout: gcNativeFrameLayoutAMD64, codeBase: b.base, codeBytes: uintptr(len(b.c.code)), callsites: []compiledGCFrameCallsite{{returnOffset: 80, frameBytes: 32}}}
+				roots := gcNativeFrameRoots{owner: b, entryReturnSlot: tc.landing, base: base, offsets: []uint32{16}, frameBytes: 32, frameLayout: gcNativeFrameLayoutAMD64, codeBase: b.base, codeBytes: uintptr(len(b.c.code)), callsites: []compiledGCFrameCallsite{{returnOffset: 80, frameBytes: 32}}}
 				var failure any
 				func() {
 					defer func() { failure = recover() }()

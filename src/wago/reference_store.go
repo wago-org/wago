@@ -681,6 +681,7 @@ const (
 type gcNativeFrameRoots struct {
 	owner                *Instance
 	physicalStack        *coreruntime.Engine
+	entryReturnSlot      uintptr
 	base                 uintptr
 	offsets              []uint32
 	frameBytes           uint32
@@ -694,12 +695,13 @@ type gcNativeFrameRoots struct {
 }
 
 type gcHostActivation struct {
-	base         uintptr
-	ctrl         uintptr
-	stack        *coreruntime.Engine
-	callsite     uint32
-	noFrame      bool
-	savedControl gcHostSavedControl
+	base            uintptr
+	ctrl            uintptr
+	stack           *coreruntime.Engine
+	entryReturnSlot uintptr
+	callsite        uint32
+	noFrame         bool
+	savedControl    gcHostSavedControl
 }
 
 // Include the outer callback as well as every permitted nested host reentry.
@@ -751,6 +753,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 			callsite := &state.hostRootPlan.callsites[activation.callsite]
 			chain := gcNativeFrameRoots{
 				owner:                r.owner,
+				entryReturnSlot:      activation.entryReturnSlot,
 				base:                 activation.base,
 				offsets:              callsite.offsets,
 				frameBytes:           callsite.frameBytes,
@@ -802,6 +805,7 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 			callsite := &state.hostRootPlan.callsites[activation.callsite]
 			chain := gcNativeFrameRoots{
 				owner:                r.owner,
+				entryReturnSlot:      activation.entryReturnSlot,
 				base:                 activation.base,
 				offsets:              callsite.offsets,
 				frameBytes:           callsite.frameBytes,
@@ -997,7 +1001,17 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 		}
 		retWord := unsafe.Slice((*byte)(offHeapPtr(retAddr)), 8)
 		retPC := uintptr(binary.LittleEndian.Uint64(retWord))
+		calleeOwner := owner
 		if retPC < codeBase || retPC-codeBase >= codeBytes {
+			// A stack-ABI public entry has no register adapter. Its top return
+			// word is exactly the entry's existing trap landing slot. An unknown
+			// PC elsewhere in the stack must still fail ownership validation.
+			if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutAMD64 && stack != nil && owner != nil && owner.jm != nil {
+				landing := r.entryReturnSlot
+				if landing%8 == 0 && landing == retAddr && stackTop >= uintptr(stack.StackBytes()) && landing >= stackTop-uintptr(stack.StackBytes()) && landing < stackTop && stackTop-landing >= 8 {
+					return true
+				}
+			}
 			if owner == nil || owner.refStore == nil || !owner.refStore.ownsGCCollector(owner.gc) {
 				return true
 			}
@@ -1048,6 +1062,34 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 		stackAdjust := callsite.stackAdjust
 		if returnBase > ^uintptr(0)-uintptr(stackAdjust) {
 			panic(gcHelperFailuref("generic GC caller stack adjustment overflows"))
+		}
+		// Every production 64-byte wrapper is a dynamic import or a
+		// home-aware indirect/ref call. Both preserve the caller's immutable
+		// native-context pointer: AMD64 at record+8, ARM64 at record+0.
+		// Code can be shared by instances, so its representative owner only
+		// selects the immutable plan; this saved identity selects the roots.
+		if stackAdjust == 64 && owner != nil && owner.refStore != nil {
+			if returnBase > ^uintptr(0)-64 || stackTop != 0 && (returnBase > stackTop || stackTop-returnBase < 64) {
+				panic(gcHelperFailuref("generic GC caller context record exceeds stack bounds"))
+			}
+			contextOffset := uintptr(8)
+			arm64 := r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutARM64
+			if arm64 {
+				contextOffset = 0
+			}
+			context := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(returnBase+contextOffset)), 8)))
+			// ARM64 writes zero only when no context switch occurred.
+			if context == 0 && arm64 && owner == calleeOwner {
+				// Keep the current exact instance identity.
+			} else if context == 0 {
+				panic(gcHelperFailuref("generic GC caller context is unavailable"))
+			} else if context != owner.nativeContext {
+				caller := owner.refStore.gcFrameContextOwner(retPC, owner.gc, context)
+				if caller == nil {
+					panic(gcHelperFailuref("generic GC caller context %#x has no Runtime GC-domain code owner", context))
+				}
+				owner = caller
+			}
 		}
 		base = returnBase + uintptr(stackAdjust)
 	}
@@ -1582,6 +1624,10 @@ func (s *referenceStore) rangeGCDomainPersistentRootsClassified(collector *gc.Co
 }
 
 func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Instance {
+	return s.gcFrameContextOwner(pc, collector, 0)
+}
+
+func (s *referenceStore) gcFrameContextOwner(pc uintptr, collector *gc.Collector, context uintptr) *Instance {
 	if s == nil || collector == nil {
 		return nil
 	}
@@ -1589,7 +1635,7 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
 	defer s.mu.Unlock()
 	if topology := s.gcDomains; topology != nil && topology.singleCodeOwner != nil {
 		owner := topology.singleCodeOwner
-		if owner.gc == collector && pc >= owner.base && pc-owner.base < uintptr(len(owner.c.code)) {
+		if owner.gc == collector && (context == 0 || owner.nativeContext == context) && pc >= owner.base && pc-owner.base < uintptr(len(owner.c.code)) {
 			return owner
 		}
 		return nil
@@ -1598,7 +1644,14 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
 		if ranges := topology.codeRanges.byCollector[collector]; ranges != nil {
 			for _, image := range ranges.byPage[pc>>gcFrameCodeRangePageShift] {
 				if pc >= image.key.base && pc-image.key.base < image.bytes {
-					return image.owner
+					if context == 0 {
+						return image.owner
+					}
+					for link := image.owners; link != nil; link = link.next {
+						if candidate := link.instance; candidate.nativeContext == context {
+							return candidate
+						}
+					}
 				}
 			}
 		}
@@ -1608,7 +1661,7 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
 		if state == nil || state.resourcesReleased || candidate == nil || candidate.gc != collector || candidate.c == nil || candidate.c.genericGCFrameRoots() == nil {
 			continue
 		}
-		if pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code)) {
+		if (context == 0 || candidate.nativeContext == context) && pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code)) {
 			return candidate
 		}
 	}

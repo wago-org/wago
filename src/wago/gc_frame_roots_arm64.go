@@ -40,6 +40,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string, ana
 		return reject("table or element ownership is outside the exact native-root model")
 	}
 	collectorBoundary := moduleHasCollectorReferenceCallBoundary(m)
+	externBridge := moduleUsesGCExternConversion(m)
 	funcImport := uint32(0)
 	for i := range m.Imports {
 		switch m.Imports[i].Type.Kind {
@@ -140,7 +141,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string, ana
 				}
 			}
 		}
-		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, &classifier, collectorBoundary) {
+		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, &classifier, collectorBoundary, externBridge) {
 			return reject("function %d contains an unsupported native call or frame shape", function)
 		}
 		var liveMasks gcFrameLiveMasks
@@ -268,7 +269,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 	return true
 }
 
-func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier, collectorBoundary bool) bool {
+func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier, collectorBoundary, externBridge bool) bool {
 	r := wasm.NewReader(body)
 	var imm wasm.InstructionImmediate
 	for r.HasNext() {
@@ -277,6 +278,12 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
 			return false
 		}
 		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+			return false
+		}
+		// A foreign proper tail can insert an unmapped context-restoration
+		// trampoline. Keep the extern bridge collection-disabled for those
+		// shapes; a direct known-local tail retains the ordinary caller record.
+		if externBridge && (op == 0x13 || op == 0x15 || op == 0x12 && int(imm.Index) < m.ImportedFuncCount()) {
 			return false
 		}
 		switch op {
