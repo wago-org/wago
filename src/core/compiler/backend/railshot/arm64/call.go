@@ -426,6 +426,12 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	}
 	imported := f.importedFunctionCount()
 	if int(idx) < imported {
+		if custom, ok := f.customInstructions[idx]; ok && (pluginARM64Lowering(custom) != nil || instructionRecipeEligible(custom)) {
+			if err := f.emitCustomInstruction(custom, ft); err != nil {
+				return err
+			}
+			return f.opReturn()
+		}
 		if f.importBindings != nil && int(idx) < len(f.importBindings) {
 			binding := f.importBindings[idx]
 			if binding.Dynamic || binding.CrossInstance {
