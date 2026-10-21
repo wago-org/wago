@@ -35,7 +35,7 @@ func TestSourceContextSurvivesEarlyFunctionStateFailure(t *testing.T) {
 			false, false, false, false, false,
 			nil, hints, nil, nil, false, 0,
 			false, false, false, false,
-			nil, nil, nil, false, inlineTargetTable{}, sc)
+			nil, nil, nil, false, inlineTargetTable{}, sc, nil)
 		if err == nil || (index == 0 && !strings.Contains(err.Error(), "internal compiler error")) {
 			t.Fatalf("expected early failure, got %v", err)
 		}
