@@ -27,8 +27,10 @@ func allocationMixWant(name string, n uint64) uint64 {
 		return uint64(uint32(n * n))
 	case "alternating-fill":
 		return uint64(uint32(n * (n - 1)))
-	default:
+	case "scalar-structs", "structs", "alternating-default":
 		return uint64(uint32(n * (n - 1) / 2))
+	default:
+		panic("unknown allocation-mix export: " + name)
 	}
 }
 

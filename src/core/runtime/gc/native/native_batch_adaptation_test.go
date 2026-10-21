@@ -38,16 +38,19 @@ func TestNativeStructBatchAdaptsAndRecovers(t *testing.T) {
 	if !c.PrepareNativeStructHandles() || c.nativeStructAlloc.Count != 8 {
 		t.Fatalf("mixed allocation batch = %d, want 8", c.nativeStructAlloc.Count)
 	}
-	for want := uint32(8); ; want = min(want*2, uint32(nativeStructHandleBatchSize)) {
+	for want := uint32(8); want < uint32(nativeStructHandleBatchSize); {
+		for refill := 0; refill < 64 && c.nativeStructAlloc.Count == want; refill++ {
+			publishBatchTestStructs(c, want)
+			if !c.PrepareNativeStructHandles() {
+				t.Fatal("could not refill the full batch")
+			}
+			if refill < 8 && c.nativeStructAlloc.Count != want {
+				t.Fatalf("short struct burst regrew batch: count=%d, want %d", c.nativeStructAlloc.Count, want)
+			}
+		}
+		want = min(want*2, uint32(nativeStructHandleBatchSize))
 		if c.nativeStructAlloc.Count != want {
-			t.Fatalf("recovering batch count = %d, want %d", c.nativeStructAlloc.Count, want)
-		}
-		publishBatchTestStructs(c, want)
-		if !c.PrepareNativeStructHandles() {
-			t.Fatal("could not refill the full batch")
-		}
-		if want == uint32(nativeStructHandleBatchSize) {
-			break
+			t.Fatalf("sustained struct allocation did not recover: count=%d, want %d", c.nativeStructAlloc.Count, want)
 		}
 	}
 	c.CancelNativeAllocationBatch()
@@ -80,6 +83,31 @@ func TestNativeStructBatchFeedbackIsLocalAndIgnoresArrayChunks(t *testing.T) {
 	}
 	if !other.PrepareNativeStructHandles() || other.nativeStructAlloc.Count != uint32(nativeStructHandleBatchSize) {
 		t.Fatalf("another collector inherited feedback: count=%d", other.nativeStructAlloc.Count)
+	}
+}
+
+func TestNativeStructBatchShortBurstsStaySmall(t *testing.T) {
+	c := batchTestCollector(t)
+	if !c.PrepareNativeStructHandles() {
+		t.Fatal("could not reserve struct handles")
+	}
+	publishBatchTestStructs(c, 1)
+	c.CancelNativeAllocationBatch()
+	for phase := 0; phase < 16; phase++ {
+		if !c.PrepareNativeStructHandles() || c.nativeStructAlloc.Count != 8 {
+			t.Fatalf("mixed phase %d batch count=%d, want 8", phase, c.nativeStructAlloc.Count)
+		}
+		for range 4 {
+			publishBatchTestStructs(c, 8)
+			if !c.PrepareNativeStructHandles() || c.nativeStructAlloc.Count != 8 {
+				t.Fatalf("short burst regrew batch in phase %d: count=%d", phase, c.nativeStructAlloc.Count)
+			}
+		}
+		publishBatchTestStructs(c, 1)
+		c.CancelNativeAllocationBatch()
+	}
+	if err := c.CollectMinor(EmptyRoots{}); err != nil {
+		t.Fatal(err)
 	}
 }
 

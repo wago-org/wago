@@ -164,7 +164,9 @@ type Collector struct {
 	stats                 Stats
 	rootMarkMode          uint8
 	closed                bool
-	majorYoungDirty       bool // uses padding before checkedHandles
+	majorYoungDirty       bool   // uses padding before checkedHandles
+	structBatch           uint16 // next live-struct batch; uses existing padding; zero selects maximum
+	structBatchFull       uint8  // consecutive full batches before increasing the reservation
 	checkedHandles        *[]uint64
 	// Keep optional proof state last so existing collector field offsets stay fixed.
 	lastCardBounds objectCardBounds
