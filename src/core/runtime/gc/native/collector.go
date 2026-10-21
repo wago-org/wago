@@ -281,17 +281,21 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 	if len(types) == 0 {
 		return nil
 	}
-	combined := make([]TypeDesc, 0, len(c.types)+len(types))
-	combined = append(combined, c.types...)
-	combined = append(combined, types...)
-	if err := ValidateTypeDescs(combined); err != nil {
+	oldCount := len(c.types)
+	combined := append(c.types, types...)
+	if err := validateTypeDescsFrom(combined, oldCount); err != nil {
+		// append may reuse the collector's backing array. Rejected fields must
+		// not remain reachable through its unused capacity.
+		clear(combined[oldCount:])
 		return err
 	}
-	requiredAlign := requiredObjectAlignment(combined)
+	requiredAlign := requiredObjectAlignment(types)
 	if requiredAlign > c.objectAlign {
+		clear(combined[oldCount:])
 		return errors.New("gc: appended type alignment exceeds collector backing alignment")
 	}
 	if c.cfg.Profile == ProfileTiny && requiredAlign > c.tiny.blockBytes {
+		clear(combined[oldCount:])
 		return errors.New("gc: appended type alignment exceeds tiny block size")
 	}
 	oldTypes, oldIntervals := c.types, c.subtypeIntervals
@@ -299,9 +303,26 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 		combined[i].checkScanPlan()
 	}
 	c.types = combined
-	if err := c.initSubtypeIntervals(); err != nil {
-		c.types, c.subtypeIntervals = oldTypes, oldIntervals
-		return err
+	independentRoots := true
+	for _, typ := range types {
+		if typ.HasSuper {
+			independentRoots = false
+			break
+		}
+	}
+	if independentRoots && uint64(len(combined))*2 <= uint64(^uint32(0)) {
+		// The old DFS clock ended at twice the old type count. New roots
+		// follow every old tree, so no existing interval changes.
+		for i := oldCount; i < len(combined); i++ {
+			clock := uint64(i) * 2
+			c.subtypeIntervals = append(c.subtypeIntervals, (clock+1)<<32|(clock+2))
+		}
+	} else {
+		if err := c.initSubtypeIntervals(); err != nil {
+			c.types, c.subtypeIntervals = oldTypes, oldIntervals
+			clear(combined[oldCount:])
+			return err
+		}
 	}
 	c.refreshNativeView()
 	return nil

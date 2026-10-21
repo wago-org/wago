@@ -2,6 +2,7 @@ package compilerpair
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -11,6 +12,20 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestIndependentV8FailureReportsDeadline(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	processErr := errors.New("exit status 1")
+	err := independentV8Failure(ctx, processErr, nil)
+	if !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, processErr) {
+		t.Fatalf("deadline and process errors must remain available: %v", err)
+	}
+	if got := err.Error(); !strings.Contains(got, "independent V8 context: context deadline exceeded") ||
+		!strings.Contains(got, "process: exit status 1") {
+		t.Fatalf("timeout diagnostic: %s", got)
+	}
+}
 
 func TestIndependentFeatureProbes(t *testing.T) {
 	for _, probe := range independentFeatureProbes() {

@@ -1,0 +1,332 @@
+{
+  "before": "11802f9867e7b46a3a21b68444ac377b6616782b",
+  "after": "f7a3506b0abf79d702f71d7a18746ec55ced5fca",
+  "environment": {
+    "os": "linux",
+    "arch": "amd64",
+    "cpu": "AMD Ryzen 7 8845HS",
+    "go": "1.27.1",
+    "gomaxprocs": 1,
+    "affinity_cpu": 2,
+    "samples": 6,
+    "ordering": "alternating before/after",
+    "runtime_benchtime": "200ms",
+    "owner_benchtime": "10000x",
+    "compilation_concurrent": false
+  },
+  "samples": {
+    "BenchmarkInvokeHostFuncDirect": {
+      "before": [
+        {
+          "iterations": 1905082,
+          "ns_per_op": 127.7,
+          "bytes_per_op": 64,
+          "allocs_per_op": 1
+        },
+        {
+          "iterations": 1825286,
+          "ns_per_op": 129.8,
+          "bytes_per_op": 64,
+          "allocs_per_op": 1
+        },
+        {
+          "iterations": 1841264,
+          "ns_per_op": 134.7,
+          "bytes_per_op": 64,
+          "allocs_per_op": 1
+        },
+        {
+          "iterations": 1884340,
+          "ns_per_op": 128.7,
+          "bytes_per_op": 64,
+          "allocs_per_op": 1
+        },
+        {
+          "iterations": 1793071,
+          "ns_per_op": 128.6,
+          "bytes_per_op": 64,
+          "allocs_per_op": 1
+        },
+        {
+          "iterations": 1880209,
+          "ns_per_op": 128.8,
+          "bytes_per_op": 64,
+          "allocs_per_op": 1
+        }
+      ],
+      "fixed": [
+        {
+          "iterations": 1738454,
+          "ns_per_op": 133.6,
+          "bytes_per_op": 64,
+          "allocs_per_op": 1
+        },
+        {
+          "iterations": 1883797,
+          "ns_per_op": 141.2,
+          "bytes_per_op": 64,
+          "allocs_per_op": 1
+        },
+        {
+          "iterations": 1857162,
+          "ns_per_op": 129.7,
+          "bytes_per_op": 64,
+          "allocs_per_op": 1
+        },
+        {
+          "iterations": 1834075,
+          "ns_per_op": 130.5,
+          "bytes_per_op": 64,
+          "allocs_per_op": 1
+        },
+        {
+          "iterations": 1708982,
+          "ns_per_op": 133.9,
+          "bytes_per_op": 64,
+          "allocs_per_op": 1
+        },
+        {
+          "iterations": 1712293,
+          "ns_per_op": 144.5,
+          "bytes_per_op": 64,
+          "allocs_per_op": 1
+        }
+      ]
+    },
+    "BenchmarkRuntimeInstantiateOwnedHostFuncref": {
+      "before": [
+        {
+          "iterations": 16808,
+          "ns_per_op": 16231.0,
+          "bytes_per_op": 3328,
+          "allocs_per_op": 41
+        },
+        {
+          "iterations": 16230,
+          "ns_per_op": 14400.0,
+          "bytes_per_op": 3328,
+          "allocs_per_op": 41
+        },
+        {
+          "iterations": 16908,
+          "ns_per_op": 13961.0,
+          "bytes_per_op": 3328,
+          "allocs_per_op": 41
+        },
+        {
+          "iterations": 17012,
+          "ns_per_op": 14710.0,
+          "bytes_per_op": 3328,
+          "allocs_per_op": 41
+        },
+        {
+          "iterations": 13978,
+          "ns_per_op": 16948.0,
+          "bytes_per_op": 3328,
+          "allocs_per_op": 41
+        },
+        {
+          "iterations": 15678,
+          "ns_per_op": 15517.0,
+          "bytes_per_op": 3328,
+          "allocs_per_op": 41
+        }
+      ],
+      "fixed": [
+        {
+          "iterations": 14701,
+          "ns_per_op": 15605.0,
+          "bytes_per_op": 3328,
+          "allocs_per_op": 41
+        },
+        {
+          "iterations": 15643,
+          "ns_per_op": 15338.0,
+          "bytes_per_op": 3328,
+          "allocs_per_op": 41
+        },
+        {
+          "iterations": 17239,
+          "ns_per_op": 13992.0,
+          "bytes_per_op": 3328,
+          "allocs_per_op": 41
+        },
+        {
+          "iterations": 17229,
+          "ns_per_op": 14469.0,
+          "bytes_per_op": 3328,
+          "allocs_per_op": 41
+        },
+        {
+          "iterations": 17341,
+          "ns_per_op": 13866.0,
+          "bytes_per_op": 3328,
+          "allocs_per_op": 41
+        },
+        {
+          "iterations": 16647,
+          "ns_per_op": 14515.0,
+          "bytes_per_op": 3328,
+          "allocs_per_op": 41
+        }
+      ]
+    },
+    "BenchmarkHostFuncRefNumericImport": {
+      "before": [
+        {
+          "iterations": 1730208,
+          "ns_per_op": 137.4,
+          "bytes_per_op": 0,
+          "allocs_per_op": 0
+        },
+        {
+          "iterations": 1761463,
+          "ns_per_op": 137.1,
+          "bytes_per_op": 0,
+          "allocs_per_op": 0
+        },
+        {
+          "iterations": 1751606,
+          "ns_per_op": 137.7,
+          "bytes_per_op": 0,
+          "allocs_per_op": 0
+        },
+        {
+          "iterations": 1761405,
+          "ns_per_op": 135.2,
+          "bytes_per_op": 0,
+          "allocs_per_op": 0
+        },
+        {
+          "iterations": 1681813,
+          "ns_per_op": 139.2,
+          "bytes_per_op": 0,
+          "allocs_per_op": 0
+        },
+        {
+          "iterations": 1713975,
+          "ns_per_op": 136.3,
+          "bytes_per_op": 0,
+          "allocs_per_op": 0
+        }
+      ],
+      "fixed": [
+        {
+          "iterations": 1780814,
+          "ns_per_op": 133.3,
+          "bytes_per_op": 0,
+          "allocs_per_op": 0
+        },
+        {
+          "iterations": 1783294,
+          "ns_per_op": 133.4,
+          "bytes_per_op": 0,
+          "allocs_per_op": 0
+        },
+        {
+          "iterations": 1694263,
+          "ns_per_op": 132.6,
+          "bytes_per_op": 0,
+          "allocs_per_op": 0
+        },
+        {
+          "iterations": 1782559,
+          "ns_per_op": 132.9,
+          "bytes_per_op": 0,
+          "allocs_per_op": 0
+        },
+        {
+          "iterations": 1788613,
+          "ns_per_op": 133.8,
+          "bytes_per_op": 0,
+          "allocs_per_op": 0
+        },
+        {
+          "iterations": 1784211,
+          "ns_per_op": 138.5,
+          "bytes_per_op": 0,
+          "allocs_per_op": 0
+        }
+      ]
+    },
+    "BenchmarkReviewHostOwnerLifecycle": {
+      "before": [
+        {
+          "iterations": 10000,
+          "ns_per_op": 213.0,
+          "bytes_per_op": 449,
+          "allocs_per_op": 6
+        },
+        {
+          "iterations": 10000,
+          "ns_per_op": 209.3,
+          "bytes_per_op": 449,
+          "allocs_per_op": 6
+        },
+        {
+          "iterations": 10000,
+          "ns_per_op": 197.5,
+          "bytes_per_op": 449,
+          "allocs_per_op": 6
+        },
+        {
+          "iterations": 10000,
+          "ns_per_op": 229.5,
+          "bytes_per_op": 449,
+          "allocs_per_op": 6
+        },
+        {
+          "iterations": 10000,
+          "ns_per_op": 203.8,
+          "bytes_per_op": 449,
+          "allocs_per_op": 6
+        },
+        {
+          "iterations": 10000,
+          "ns_per_op": 193.4,
+          "bytes_per_op": 449,
+          "allocs_per_op": 6
+        }
+      ],
+      "fixed": [
+        {
+          "iterations": 10000,
+          "ns_per_op": 200.9,
+          "bytes_per_op": 449,
+          "allocs_per_op": 6
+        },
+        {
+          "iterations": 10000,
+          "ns_per_op": 197.2,
+          "bytes_per_op": 449,
+          "allocs_per_op": 6
+        },
+        {
+          "iterations": 10000,
+          "ns_per_op": 194.7,
+          "bytes_per_op": 449,
+          "allocs_per_op": 6
+        },
+        {
+          "iterations": 10000,
+          "ns_per_op": 196.4,
+          "bytes_per_op": 449,
+          "allocs_per_op": 6
+        },
+        {
+          "iterations": 10000,
+          "ns_per_op": 195.8,
+          "bytes_per_op": 449,
+          "allocs_per_op": 6
+        },
+        {
+          "iterations": 10000,
+          "ns_per_op": 281.2,
+          "bytes_per_op": 449,
+          "allocs_per_op": 6
+        }
+      ]
+    }
+  },
+  "interpretation": "Short local samples, no statistical claim of a runtime speed change. Allocation counts are unchanged. Owner lifecycle uses a matched fixed iteration count because the reference registry grows until Runtime.Close."
+}

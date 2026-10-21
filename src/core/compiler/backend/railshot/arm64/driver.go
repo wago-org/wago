@@ -965,6 +965,11 @@ func (f *fn) popValue() *elem {
 			}
 		}
 	}
+	// A detached deferred load keeps its address live until its consumer emits.
+	if regallocCheckEnabled && e.st.kind == stMemRef {
+		f.s.erase(e)
+		return e
+	}
 	f.erase(e)
 	return e
 }

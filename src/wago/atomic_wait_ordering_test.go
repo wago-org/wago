@@ -116,7 +116,10 @@ func TestAtomicWaitFastZeroOrdering(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer b.Close()
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			// Bound stalled workers, not the speed of 100,000 guest/host rounds
+			// on a loaded runner. Every round still checks the ordering outcome.
+			const stallTimeout = 10 * time.Second
+			ctx, cancel := context.WithCancel(context.Background())
 			done := make(chan error, 2)
 			remaining := 2
 			// Cancel and join both invocations before the instance/memory defers,
@@ -147,6 +150,7 @@ func TestAtomicWaitFastZeroOrdering(t *testing.T) {
 			cell := func(off int) *uint32 { return (*uint32)(unsafe.Pointer(&memory[off])) }
 			bothZero := 0
 			for epoch := uint32(1); epoch <= iterations; epoch++ {
+				deadline := time.Now().Add(stallTimeout)
 				// Completion of both workers orders these resets after their prior
 				// accesses. Publishing the epoch orders the resets before this round.
 				atomic.StoreUint32(cell(atomicWaitOrderingDataA), 0)
@@ -155,8 +159,8 @@ func TestAtomicWaitFastZeroOrdering(t *testing.T) {
 				for spin := 0; atomic.LoadUint32(cell(atomicWaitOrderingDoneA)) != epoch || atomic.LoadUint32(cell(atomicWaitOrderingDoneB)) != epoch; spin++ {
 					if spin&255 == 0 {
 						runtime.Gosched()
-						if err := ctx.Err(); err != nil {
-							t.Fatalf("epoch %d: %v", epoch, err)
+						if time.Now().After(deadline) {
+							t.Fatalf("epoch %d: workers did not complete within %s", epoch, stallTimeout)
 						}
 					}
 				}
@@ -164,6 +168,8 @@ func TestAtomicWaitFastZeroOrdering(t *testing.T) {
 					bothZero++
 				}
 			}
+			completion := time.NewTimer(stallTimeout)
+			defer completion.Stop()
 			for remaining > 0 {
 				select {
 				case err := <-done:
@@ -171,8 +177,8 @@ func TestAtomicWaitFastZeroOrdering(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-				case <-ctx.Done():
-					t.Fatal(ctx.Err())
+				case <-completion.C:
+					t.Fatal("workers did not return after the final epoch")
 				}
 			}
 			t.Logf("both-zero outcomes = %d / %d", bothZero, iterations)

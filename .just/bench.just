@@ -93,3 +93,11 @@ publish input=env('BENCH_RUN', 'bench/.bench-run.txt'):
 # Publish regenerated charts to wago-org/docs.
 publish-charts:
     scripts/publish-charts.sh
+
+# Capture a trusted bounded Wasm module with source anchors (native AMD64 + objdump).
+native-capture input output:
+    GOMAXPROCS=1 go run -p=1 -tags=wago_nativecompare,wago_profile -ldflags "-X main.compiledRevision={{ head }}+recipe-build" ./tests/tools/native-compare capture '{{ input }}' '{{ output }}'
+
+# Compare supplied regions; JSON stdout, coverage summary stderr, incomplete tool exit 3 (go run wraps as exit 1).
+native-compare before after:
+    GOMAXPROCS=1 go run -p=1 -tags=wago_nativecompare ./tests/tools/native-compare compare '{{ before }}' '{{ after }}'
