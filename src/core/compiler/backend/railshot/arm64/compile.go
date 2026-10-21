@@ -2328,7 +2328,7 @@ func patchCallRelocs(code []byte, entry, internalEntry []int, relocs *callRelocT
 				return fmt.Errorf("arm64: invalid relocation site %#x in function %d for %d-byte code image", rl.at, i, len(code))
 			}
 			if rl.gcObject {
-				if relocs.gcObjectEntry <= 0 || relocs.gcObjectEntry >= len(code) || !asm.PatchBranch26(base+int(rl.at), relocs.gcObjectEntry) {
+				if relocs.gcObjectEntry <= 0 || relocs.gcObjectEntry >= len(code) || !patchGCObjectCall(asm, base+int(rl.at), relocs.gcObjectEntry, rl.target) {
 					return fmt.Errorf("arm64: invalid checked-object leaf relocation in function %d", i)
 				}
 				continue

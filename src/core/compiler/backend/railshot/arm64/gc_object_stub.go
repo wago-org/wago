@@ -3,10 +3,26 @@
 package arm64
 
 import (
+	"encoding/binary"
+
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
+
+// patchGCObjectCall keeps the original helper path when a large module places
+// its shared leaf outside BL range. The local fallback skips the status check
+// and native load; it does not set LR or require an extra instruction at a site.
+func patchGCObjectCall(a *a64.Asm, site, stub int, helperDelta uint32) bool {
+	if a.PatchBranch26(site, stub) {
+		return true
+	}
+	if helperDelta == 0 || helperDelta%4 != 0 || site < 0 || site > len(a.B)-4 || uint64(helperDelta) > uint64(len(a.B)-site-4) {
+		return false
+	}
+	binary.LittleEndian.PutUint32(a.B[site:], 0x14000000) // B, preserving the saved caller LR
+	return a.PatchBranch26(site, site+int(helperDelta))
+}
 
 func needsGCObjectStub(relocs *callRelocTable) bool {
 	for i := 0; i < relocs.functions(); i++ {
