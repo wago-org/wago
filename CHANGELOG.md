@@ -30,6 +30,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Add opt-in pure integer select branches through `WAGO_AMD64_PURE_SELECT=1`;
   keep them disabled by default because unpredictable conditions can regress.
   ([#895](https://github.com/wago-org/wago/pull/895))
+- Compile general array length reads to checked AMD64 and ARM64 instructions,
+  with the existing helper for invalid handles and exact traps.
+
 - Detect writes to live deferred-load address registers, cached global-cell
   pointers, and forwarded store values in the AMD64 and ARM64 compilers when
   `wago_regalloccheck` is enabled. Also guard inputs during address preparation

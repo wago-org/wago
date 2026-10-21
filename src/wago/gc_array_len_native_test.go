@@ -3,11 +3,15 @@
 package wago
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
+	goruntime "runtime"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -119,17 +123,107 @@ func TestGCGeneralArrayLenSourcesAndCollection(t *testing.T) {
 	}
 }
 
+func TestGCGeneralArrayLenNativeGuardFallback(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcGeneralArrayLenModule(0x7f))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{DisableCollection: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("init", 17); err != nil {
+		t.Fatal(err)
+	}
+	view := in.gc.NativeView()
+	saved := *view
+	ref := uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type))
+	index := ref >> 1
+	fake := append([]byte(nil), unsafe.Slice((*byte)(offHeapPtr(view.Handles)), int(view.HandleCount)*gc.NativeHandleStride)...)
+	entry := fake[int(index)*gc.NativeHandleStride:][:gc.NativeHandleStride]
+	original := append([]byte(nil), entry...)
+	for _, name := range []string{"count", "free", "unknown space", "offset", "size", "short handle", "space bytes"} {
+		t.Run(name, func(t *testing.T) {
+			*view = saved
+			copy(entry, original)
+			view.Handles = uintptr(unsafe.Pointer(&fake[0]))
+			switch name {
+			case "count":
+				view.HandleCount = index
+			case "free":
+				entry[gc.NativeHandleSpaceOffset] = gc.NativeSpaceFree
+			case "unknown space":
+				entry[gc.NativeHandleSpaceOffset] = 255
+			case "offset":
+				binary.LittleEndian.PutUint32(entry[gc.NativeHandleOffsetOffset:], ^uint32(0))
+			case "size":
+				binary.LittleEndian.PutUint32(entry[gc.NativeHandleSizeOffset:], ^uint32(0))
+			case "short handle":
+				binary.LittleEndian.PutUint32(entry[gc.NativeHandleSizeOffset:], gc.HeaderSize-1)
+			case "space bytes":
+				view.Spaces[entry[gc.NativeHandleSpaceOffset]].Bytes = 0
+			}
+			got, err := in.Invoke("global")
+			*view = saved
+			goruntime.KeepAlive(fake)
+			if err != nil || len(got) != 1 || got[0] != 17 {
+				t.Fatalf("fallback: %v, %v", got, err)
+			}
+		})
+	}
+}
+
+func TestGCGeneralArrayLenInvalidReferences(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcGeneralArrayLenModule(0x7f))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("init", 17); err != nil {
+		t.Fatal(err)
+	}
+	stale := readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)
+	if _, err := in.Invoke("init", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.gc.ArrayLen(gc.Ref(uint32(stale))); err == nil {
+		t.Fatal("fixture retained stale object")
+	}
+	saved := readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)
+	for _, ref := range []uint64{stale, 3, 0xfffffffe} {
+		writeGlobalObject(in.globalCells[0], in.c.Globals[0].Type, ref)
+		_, err := in.Invoke("global")
+		writeGlobalObject(in.globalCells[0], in.c.Globals[0].Type, saved)
+		if err == nil {
+			t.Fatalf("invalid reference %#x accepted", ref)
+		}
+	}
+}
+
 func BenchmarkGCGeneralArrayLen(b *testing.B) {
 	data := gcGeneralArrayLenModule(0x7f)
 	b.Run("compile", func(b *testing.B) {
 		b.ReportAllocs()
+		codeBytes := 0
 		for i := 0; i < b.N; i++ {
 			c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
 			if err != nil {
 				b.Fatal(err)
 			}
+			codeBytes = c.CodeSize()
 			c.Close()
 		}
+		b.ReportMetric(float64(codeBytes), "native-B")
 	})
 	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
 	if err != nil {
@@ -144,15 +238,24 @@ func BenchmarkGCGeneralArrayLen(b *testing.B) {
 	if _, err := in.Invoke("init", 17); err != nil {
 		b.Fatal(err)
 	}
-	for _, count := range []uint64{1, 1000} {
-		b.Run(fmt.Sprintf("loop%d", count), func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				got, err := in.Invoke("loop", count)
-				if err != nil || len(got) != 1 || got[0] != 17*count {
-					b.Fatalf("loop: %v, %v", got, err)
+	for _, mode := range []string{"fast", "fallback", "mixed"} {
+		for _, count := range []uint64{1, 1000} {
+			b.Run(fmt.Sprintf("%s/loop%d", mode, count), func(b *testing.B) {
+				view := in.gc.NativeView()
+				handleCount := view.HandleCount
+				defer func() { view.HandleCount = handleCount }()
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					view.HandleCount = handleCount
+					if mode == "fallback" || mode == "mixed" && i&1 != 0 {
+						view.HandleCount = 0
+					}
+					got, err := in.Invoke("loop", count)
+					if err != nil || len(got) != 1 || got[0] != 17*count {
+						b.Fatalf("loop: %v, %v", got, err)
+					}
 				}
-			}
-		})
+			})
+		}
 	}
 }

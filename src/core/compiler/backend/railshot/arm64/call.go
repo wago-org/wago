@@ -1483,6 +1483,10 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		}
 	}
 
+	if uint32(importIdx) == gcStructDispatchBit|gcArrayLen {
+		gcDone = f.arrayLenShortcut(int(slotOf[d-p]))
+	}
+
 	// Marshal params into the control frame as wrapper-ABI slots. A v128 occupies
 	// two adjacent little-endian uint64 slots, exactly like Invoke and cross-
 	// instance wrapper calls.
