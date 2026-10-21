@@ -159,3 +159,39 @@ all metadata before collection and teardown. Read-only review confirms storage
 selection matches bytes() and owner/generation checks stay outside refDesc.
 Final focused checked native/API tests pass in11.317 seconds. The full checks
 for this safety fix and the separately bounded byte-load follow-up follow.
+
+
+## Read the handle space byte directly
+
+The abstract array leaf now reads the existing space byte with MOVZX. It
+replaces a 32-bit load, a shift and a mask. The space test, both space branches,
+span and type checks, and fallback register restores remain unchanged. This
+saves two instructions and nine bytes at this decoder. It does not change the
+metadata layout or remove a check.
+
+A complete-module code test covers both cast forms. It requires the exact
+six-byte load and rejects the old fifteen-byte decoder. It failed before the
+change in 5.173 seconds and passes with the focused statistics/checker tests
+in 14.842 seconds. The runtime metadata tests pass for both frozen benchmark
+binaries.
+
+The isolated benchmark uses two compiled test binaries above the same safety
+commit. Only this emitter file differs. CPU15, GOMAXPROCS=1; process order is
+baseline/candidate/candidate/baseline, three 200ms samples per case/process.
+Each operation is one Invoke of 8,192 guest iterations, including the host
+call. The cast/length median falls from33,634.5 to32,630.5 ns/Invoke (2.99%).
+The allocating case changes from103,465.5 to103,369.5 ns/Invoke (0.09%); its
+late baseline outliers169,553 and170,043 remain in the data. No useful speed
+improvement is claimed for that allocating case or the full compiler here.
+
+Required full checks for the metadata safety fix and byte decoder pass:
+normal root126.263 seconds, checked root126.021 seconds, checked bench31.766
+seconds. The root runs leave GOWORK unset so Go selects this worktree's
+workspace and lets standalone tests select their generated child modules.
+Earlier root runs with an inherited explicit GOWORK path failed only when
+those standalone child modules were outside that workspace (90.771/92.507
+seconds); those failed results remain saved. An earlier malformed -p2 flag
+setup attempt is also retained locally. Use `go test -p 2 ./...`, not `-p2`.
+
+Raw byte benchmarks, exact source/binary hashes, regression results, and final
+full-check results are in [the saved results](abstract-array-cast-length-results/byte-summary.json).

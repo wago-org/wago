@@ -1,0 +1,20 @@
+{
+  "base": "d7b8ac6ef1daf28a0bdd16747ec9ab1fbfba9e21",
+  "file": "src/core/compiler/backend/railshot/amd64/gc_abstract_array_len.go",
+  "baseline_source_sha256": "f7df5da57414a9d9c042162b6ac413c798bb05a0b355ebf30c42c048cb84feda",
+  "candidate_source_sha256": "99fdcfcad393cf044ccd161691f4d864f2cf9e80b136e83e4ad13f12036543ae",
+  "GOMAXPROCS": 1,
+  "cpu": 15,
+  "samples_per_process": 3,
+  "benchtime": "200ms",
+  "order": [
+    "baseline",
+    "candidate",
+    "candidate",
+    "baseline"
+  ],
+  "benchmark_unit": "one Invoke of 8192 guest-loop iterations; includes host call",
+  "runtime_test_sha256": "c5d454b1108f35e60852b5d4abdb1dc906306c8d06c889ea715b493c29dbbf56",
+  "baseline_binary_sha256": "403c171ecace426e2e4d701270d7e8b78afc0020f9c3f1aae07e0bc9d06b79d5",
+  "candidate_binary_sha256": "5c7c16cad4268a62ea1cf63b311dea4423c914348d266cb74fec88d99217021b"
+}

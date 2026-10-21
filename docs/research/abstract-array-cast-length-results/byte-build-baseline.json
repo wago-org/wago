@@ -1,0 +1,14 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-c",
+    "-overlay=/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/abstract-byte-bench/baseline-overlay.json",
+    "-o",
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/abstract-byte-bench/baseline.test",
+    "./src/wago"
+  ],
+  "cwd": "/home/dev/Projects/wago-gc-abstract-array-length-pr",
+  "seconds": 22.91179984200062,
+  "returncode": 0
+}

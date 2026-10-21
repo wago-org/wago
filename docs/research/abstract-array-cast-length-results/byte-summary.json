@@ -1,0 +1,72 @@
+{
+  "loop": {
+    "samples_ns_invoke": {
+      "baseline": [
+        33407.0,
+        34227.0,
+        33298.0,
+        33658.0,
+        33611.0,
+        33833.0
+      ],
+      "candidate": [
+        32466.0,
+        32708.0,
+        32798.0,
+        32531.0,
+        32554.0,
+        32707.0
+      ]
+    },
+    "median_ns_invoke": {
+      "baseline": 33634.5,
+      "candidate": 32630.5
+    },
+    "range_ns_invoke": {
+      "baseline": [
+        33298.0,
+        34227.0
+      ],
+      "candidate": [
+        32466.0,
+        32798.0
+      ]
+    },
+    "candidate_reduction_percent": 2.985030251676102
+  },
+  "allocate-across-length": {
+    "samples_ns_invoke": {
+      "baseline": [
+        103647.0,
+        103284.0,
+        103080.0,
+        102901.0,
+        169553.0,
+        170043.0
+      ],
+      "candidate": [
+        103751.0,
+        103628.0,
+        103011.0,
+        103553.0,
+        103186.0,
+        102692.0
+      ]
+    },
+    "median_ns_invoke": {
+      "baseline": 103465.5,
+      "candidate": 103369.5
+    },
+    "range_ns_invoke": {
+      "baseline": [
+        102901.0,
+        170043.0
+      ],
+      "candidate": [
+        102692.0,
+        103751.0
+      ]
+    },
+    "candidate_reduction_percent": 0.09278455137219366
+  }
+}

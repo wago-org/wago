@@ -1,0 +1,29 @@
+=== RUN   TestGCAbstractArrayCastLen
+--- PASS: TestGCAbstractArrayCastLen (0.01s)
+=== RUN   TestGCAbstractArrayCastLenKeepsAllocationBatch
+=== RUN   TestGCAbstractArrayCastLenKeepsAllocationBatch/empty
+=== RUN   TestGCAbstractArrayCastLenKeepsAllocationBatch/populated
+--- PASS: TestGCAbstractArrayCastLenKeepsAllocationBatch (0.00s)
+    --- PASS: TestGCAbstractArrayCastLenKeepsAllocationBatch/empty (0.00s)
+    --- PASS: TestGCAbstractArrayCastLenKeepsAllocationBatch/populated (0.00s)
+=== RUN   TestGCAbstractArrayCastLenSpaceByte
+=== RUN   TestGCAbstractArrayCastLenSpaceByte/saved0/space1
+=== RUN   TestGCAbstractArrayCastLenSpaceByte/saved0/space2
+=== RUN   TestGCAbstractArrayCastLenSpaceByte/saved0/space3
+=== RUN   TestGCAbstractArrayCastLenSpaceByte/saved0/space4
+=== RUN   TestGCAbstractArrayCastLenSpaceByte/saved1/space1
+=== RUN   TestGCAbstractArrayCastLenSpaceByte/saved1/space2
+=== RUN   TestGCAbstractArrayCastLenSpaceByte/saved1/space3
+=== RUN   TestGCAbstractArrayCastLenSpaceByte/saved1/space4
+--- PASS: TestGCAbstractArrayCastLenSpaceByte (0.00s)
+    --- PASS: TestGCAbstractArrayCastLenSpaceByte/saved0/space1 (0.00s)
+    --- PASS: TestGCAbstractArrayCastLenSpaceByte/saved0/space2 (0.00s)
+    --- PASS: TestGCAbstractArrayCastLenSpaceByte/saved0/space3 (0.00s)
+    --- PASS: TestGCAbstractArrayCastLenSpaceByte/saved0/space4 (0.00s)
+    --- PASS: TestGCAbstractArrayCastLenSpaceByte/saved1/space1 (0.00s)
+    --- PASS: TestGCAbstractArrayCastLenSpaceByte/saved1/space2 (0.00s)
+    --- PASS: TestGCAbstractArrayCastLenSpaceByte/saved1/space3 (0.00s)
+    --- PASS: TestGCAbstractArrayCastLenSpaceByte/saved1/space4 (0.00s)
+=== RUN   TestGCAbstractArrayCastLenIncrementalRuntimeRoots
+--- PASS: TestGCAbstractArrayCastLenIncrementalRuntimeRoots (0.00s)
+PASS

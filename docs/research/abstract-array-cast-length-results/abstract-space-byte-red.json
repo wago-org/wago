@@ -1,0 +1,14 @@
+{
+  "command": [
+    "go",
+    "test",
+    "./src/core/compiler/backend/railshot/amd64",
+    "-run",
+    "^TestGCAbstractArrayCastLenLoadsSpaceByte$",
+    "-count=1"
+  ],
+  "seconds": 5.173428563000925,
+  "exit": 1,
+  "stdout": "--- FAIL: TestGCAbstractArrayCastLenLoadsSpaceByte (0.00s)\n    gc_abstract_array_len_test.go:80: cast 22: selected space byte loads=0, want1\nFAIL\nFAIL\tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/amd64\t0.002s\nFAIL\n",
+  "stderr": ""
+}

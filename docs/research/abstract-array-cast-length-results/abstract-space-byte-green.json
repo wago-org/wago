@@ -1,0 +1,16 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-tags=wago_codegenstats,wago_regalloccheck",
+    "./src/core/compiler/backend/railshot/amd64",
+    "./src/wago",
+    "-run",
+    "^(TestGCAbstractArray|TestRefDescRejectsInvalidObjectExtent)",
+    "-count=1"
+  ],
+  "seconds": 14.841851073997532,
+  "exit": 0,
+  "stdout": "ok  \tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/amd64\t0.003s\nok  \tgithub.com/wago-org/wago/src/wago\t0.016s\n",
+  "stderr": ""
+}

@@ -1,0 +1,11 @@
+{
+  "command": [
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/abstract-byte-bench/candidate.test",
+    "-test.run=^TestGCAbstractArrayCastLen",
+    "-test.count=1",
+    "-test.v"
+  ],
+  "cwd": "/home/dev/Projects/wago-gc-abstract-array-length-pr/src/wago",
+  "seconds": 0.017179720001877286,
+  "returncode": 0
+}
