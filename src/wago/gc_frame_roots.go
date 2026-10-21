@@ -484,6 +484,11 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 		if compiledArchitecture == 4 && memo != nil && memo.rv64FreshRootedGC && memo.rv64RootedNoCollectingBodies && sha256.Sum256(c.code) == memo.rv64FreshRootedGCDigest && len(rootMap.adapterReturnOffsets) == 0 {
 			return nil
 		}
+		// The source-only extern bridge can prove an empty RootNone graph.
+		// This bridge admission is not persisted in saved artifacts.
+		if compiledArchitecture != 4 && c.stagedGCStructProduct() == stagedGCStructExtern {
+			return nil
+		}
 		return fmt.Errorf("GC frame-root metadata has no safepoints or callsites")
 	}
 	if len(rootMap.safepoints) == 0 && c.usesGenericGCExecution() && !c.hasCollectorReferenceCallBoundary() {
@@ -521,6 +526,8 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 	}
 	totalFuncs := c.NumImports + len(c.Funcs)
 	opaqueExtern := c.compactExternFrameRoots()
+	sourceExtern := compiledArchitecture != 4 && c.stagedGCStructProduct() == stagedGCStructExtern
+	allowExternTables := opaqueExtern || sourceExtern
 	validValues := func(refType ValType, values []RefInit) bool {
 		refType = normalizedElemRefType(refType)
 		for k, value := range values {
@@ -564,7 +571,7 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 				}
 				continue
 			}
-			if !isGCRefValType(refType) && (!opaqueExtern || refType != ValExternRef) || !value.Null {
+			if !isGCRefValType(refType) && (!allowExternTables || refType != ValExternRef) || !value.Null {
 				return false
 			}
 		}
@@ -572,7 +579,16 @@ func validCompiledGCFunctionTables(c *Compiled) bool {
 	}
 	for tableIndex := 0; tableIndex < c.tableCount(); tableIndex++ {
 		typ := c.tableElementType(tableIndex)
-		if typ != ValFuncRef && !isGCRefValType(typ) && (!opaqueExtern || typ != ValExternRef) {
+		if typ == ValExternRef && sourceExtern {
+			if _, imported := c.tableImportAt(tableIndex); imported {
+				return false
+			}
+			for _, exported := range c.tableExports {
+				if exported == tableIndex {
+					return false
+				}
+			}
+		} else if typ != ValFuncRef && !isGCRefValType(typ) && (!opaqueExtern || typ != ValExternRef) {
 			return false
 		}
 		if tableIndex == 0 {

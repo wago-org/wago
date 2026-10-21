@@ -1412,7 +1412,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	ownedExceptionReferences := railshotManagedExceptionReferences(m)
 	opaqueExternFrames := compiledArchitecture == 4 && len(m.Code) > 0 && (requiredByModule.IsEnabled(CoreFeatureGC) || moduleHasOpaqueExternTable(m)) && exactGCRootedScalarSource && moduleHasOpaqueExternSignatures(m) && !genericGCExecution && !boundedPersistentGCRoots && !ownedExceptionReferences && !collectorReferenceCallBoundary && !moduleHasInternalCollectorReferenceFunctions(m)
 	rootedReferenceDeclarations := opaqueExternFrames || compiledArchitecture == 4 && exactGCRootedScalarSource && (!metadataOnlyTypes || opaqueExternFrames) && gcStructProduct == 0 && gcArrayProduct == 0 && !gcAllocationSites && (opaqueExternFrames || moduleHasInternalCollectorReferenceFunctions(m) || collectorReferenceCallBoundary)
-	exactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary && !boundedPersistentGCRoots || ownedExceptionReferences || rootedReferenceDeclarations
+	// AMD64 and ARM64 extern bridges also retain live locals across allocation.
+	exactNativeGCRoots := genericGCExecution || compiledArchitecture != 4 && gcStructProduct == stagedGCStructExtern || collectorReferenceCallBoundary && !boundedPersistentGCRoots || ownedExceptionReferences || rootedReferenceDeclarations
 	functionEnvironmentFrames := compiledArchitecture == 4 && exactNativeGCRoots && !ownedExceptionReferences && !wasm.ModuleFunctionReferenceStorage(m) && wasm.ModuleFunctionReferenceCarriers(m)
 	var gcFrameRootDiagnostic string
 	gcFrameRoots := newGCFrameRootPlanWithInstructions(m, exactNativeGCRoots, genericGCExecution, &gcFrameRootDiagnostic, &validationAnalysis, customInstructions)
@@ -1657,6 +1658,18 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	validGCFrameRoots := validGCModuleFrameRootPlanKinds(gcFrameRoots, compiledArchitecture == 4 && (ownedExceptionReferences || functionEnvironmentFrames || genericGCExecution && wasm.ModuleFunctionReferenceStorage(m)), compiledArchitecture == 4)
 	if (ownedExceptionReferences || compiledArchitecture == 4 && (genericGCExecution || collectorReferenceCallBoundary)) && len(m.Code) == 0 && gcFrameRoots != nil && gcFrameRoots.FunctionCount() == 0 {
 		validGCFrameRoots = true // State-only owned values have no native frame or return PC.
+	}
+	// A complete RootNone graph needs no parked frame slots. Keep an exact
+	// empty plan for non-allocating extern modules rather than changing their
+	// collector profile merely because no safepoint vector was needed.
+	if !validGCFrameRoots && compiledArchitecture != 4 && gcStructProduct == stagedGCStructExtern && !gcAllocationSites && importedFuncs == 0 && gcFrameRoots != nil && len(m.Code) != 0 && gcFrameRoots.FunctionCount() == len(m.Code) {
+		validGCFrameRoots = true
+		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
+			if gcFrameRoots.FunctionPending(function) || gcFrameRoots.Function(function) != nil {
+				validGCFrameRoots = false
+				break
+			}
+		}
 	}
 	if validGCFrameRoots && len(m.Code) != 0 && (gcAllocationSites || compiledArchitecture != 4 && genericGCExecution && !collectorReferenceCallBoundary) {
 		hasAllocationSafepoint := false

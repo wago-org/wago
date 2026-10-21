@@ -395,10 +395,10 @@ func (c *Compiled) hasCollectorDeclarationRoots() bool {
 }
 
 // needsExactNativeGCRoots is the compile/artifact predicate. Allocating generic
-// GC instructions and collector-reference host/cross-instance boundaries can
-// both collect while native Wasm frames remain live.
+// GC and extern-conversion products can collect with native Wasm frames live,
+// as can collector-reference host/cross-instance boundaries.
 func (c *Compiled) needsExactNativeGCRoots() bool {
-	return c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary() || c.needsOwnedExceptionReferences() || c.hasCollectorDeclarationRoots())
+	return c != nil && (c.usesGenericGCExecution() || compiledArchitecture != 4 && c.stagedGCStructProduct() == stagedGCStructExtern || c.hasCollectorReferenceCallBoundary() || c.needsOwnedExceptionReferences() || c.hasCollectorDeclarationRoots())
 }
 
 // needsRuntimeGCCollectorDomain is the instantiated-module predicate. A module
