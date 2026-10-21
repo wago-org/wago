@@ -102,6 +102,9 @@ func TestGCGeneralScalarArrayGetSources(t *testing.T) {
 									if err != nil || len(out) != 1 || out[0] != want {
 										t.Fatalf("param:%x,%v", out, err)
 									}
+									if err := in.ReleaseGCRef(GCRef{token: token[0]}); err != nil {
+										t.Fatal(err)
+									}
 									if err := in.CollectGC(); err != nil {
 										t.Fatal(err)
 									}
