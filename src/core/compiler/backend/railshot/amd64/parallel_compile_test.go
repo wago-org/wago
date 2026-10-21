@@ -42,7 +42,7 @@ func TestCompactFuncResultRangeAMD64(t *testing.T) {
 }
 
 func TestInlineTargetSizeAMD64(t *testing.T) {
-	if got, want := unsafe.Sizeof(inlineTarget{}), uintptr(56); got != want {
+	if got, want := unsafe.Sizeof(inlineTarget{}), uintptr(64); got != want {
 		t.Fatalf("inlineTarget size = %d, want %d", got, want)
 	}
 }

@@ -1,0 +1,3 @@
+No concrete bug found in the reservation cap. Source order and duplicate handling can cause conservative missed inlines, but skipped targets fall back to ordinary calls with their original callsite masks. Read-region targets retain standalone bodies, and the plan keeps callers with read-region calls out of the call-free classification.
+
+This was a focused, read-only source review. I did not rerun tests or benchmarks.

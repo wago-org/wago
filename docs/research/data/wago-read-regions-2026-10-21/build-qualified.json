@@ -1,0 +1,81 @@
+[
+  {
+    "variant": "control",
+    "source_commit": "073b2f61880e965d3c33ba83e32f72e9391a845d",
+    "candidate_production_delta": {},
+    "command": [
+      "go",
+      "build",
+      "-mod=mod",
+      "-ldflags=-X main.runtimePatchIdentity=read-regions-v4-control -X main.workerPluginIdentity=read-regions-v4-control",
+      "-o",
+      "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/read-regions-v4-control-host",
+      "."
+    ],
+    "seconds": 7.765240859000187,
+    "total_prepare_seconds": 8.633133083996654,
+    "exit": 0,
+    "stdout": "",
+    "stderr": "",
+    "managed_patch_sha256": "3f016f6442cc891cf982b5edf6f4de9952e7cb03b634c5c40f5c4e7f8842ec87",
+    "binary_sha256": "4887d10dfa9dce5c26ccfd84a7a68bdbd45a5a5fc307fa0f3cdec64cd3082883"
+  },
+  {
+    "variant": "no-stack",
+    "source_commit": "073b2f61880e965d3c33ba83e32f72e9391a845d",
+    "candidate_production_delta": {
+      "src/core/compiler/backend/railshot/amd64/call.go": "680205cff63cb9bf9078c8f6eb649dbe68fa251d2469ffc18fb5a7fa8b9dcf39",
+      "src/core/compiler/backend/railshot/amd64/compile.go": "fd6319892f847fc179b3aafba1805bb46bc929784a3c6ad8a0c6ba31b2e7b0e6",
+      "src/core/compiler/backend/railshot/amd64/driver.go": "df96b1a2175cc22f49fb4cc9c18b1bf1d9ffa9d4c3d986e008fd5b3fc61be694",
+      "src/core/compiler/backend/railshot/amd64/gc_struct.go": "bfc7fec4601fb981ebb9fd7366f94ffa21a4970e9d311cc85ef3b57193330f30",
+      "src/core/compiler/backend/railshot/amd64/inline.go": "d4ae484f8332e2315d9922dcaa0084123d28878d45360ae1a5b63ab1c3201c55",
+      "src/core/compiler/backend/railshot/amd64/gc_cast_array_get.go": "81bb0f04e186a1eb285cc326b6447698636c35b7f1c8e89725884d689c19d225",
+      "src/core/compiler/backend/railshot/amd64/gc_read_region.go": "380234da3b773adf85ef080fb37f1124184c8f2a448710be7e689880df92c73d"
+    },
+    "command": [
+      "go",
+      "build",
+      "-mod=mod",
+      "-ldflags=-X main.runtimePatchIdentity=read-regions-v4-no-stack -X main.workerPluginIdentity=read-regions-v4-no-stack",
+      "-o",
+      "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/read-regions-v4-no-stack-host",
+      "."
+    ],
+    "seconds": 7.652776308001194,
+    "total_prepare_seconds": 8.604229878001206,
+    "exit": 0,
+    "stdout": "",
+    "stderr": "",
+    "managed_patch_sha256": "3f016f6442cc891cf982b5edf6f4de9952e7cb03b634c5c40f5c4e7f8842ec87",
+    "binary_sha256": "d4ff4d5ed5d838324602f750ab4414fc975390d316564d2862c551d3ce53c3da"
+  },
+  {
+    "variant": "candidate",
+    "source_commit": "073b2f61880e965d3c33ba83e32f72e9391a845d",
+    "candidate_production_delta": {
+      "src/core/compiler/backend/railshot/amd64/call.go": "680205cff63cb9bf9078c8f6eb649dbe68fa251d2469ffc18fb5a7fa8b9dcf39",
+      "src/core/compiler/backend/railshot/amd64/compile.go": "fd6319892f847fc179b3aafba1805bb46bc929784a3c6ad8a0c6ba31b2e7b0e6",
+      "src/core/compiler/backend/railshot/amd64/driver.go": "df96b1a2175cc22f49fb4cc9c18b1bf1d9ffa9d4c3d986e008fd5b3fc61be694",
+      "src/core/compiler/backend/railshot/amd64/gc_struct.go": "bfc7fec4601fb981ebb9fd7366f94ffa21a4970e9d311cc85ef3b57193330f30",
+      "src/core/compiler/backend/railshot/amd64/inline.go": "d4ae484f8332e2315d9922dcaa0084123d28878d45360ae1a5b63ab1c3201c55",
+      "src/core/compiler/backend/railshot/amd64/gc_cast_array_get.go": "81bb0f04e186a1eb285cc326b6447698636c35b7f1c8e89725884d689c19d225",
+      "src/core/compiler/backend/railshot/amd64/gc_read_region.go": "379e7e59b48b7f3d4cf7a728c392ebcf5346b3d2979198505550aa64ad087aa3"
+    },
+    "command": [
+      "go",
+      "build",
+      "-mod=mod",
+      "-ldflags=-X main.runtimePatchIdentity=read-regions-v4-candidate -X main.workerPluginIdentity=read-regions-v4-candidate",
+      "-o",
+      "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/read-regions-v4-candidate-host",
+      "."
+    ],
+    "seconds": 7.699236672000552,
+    "total_prepare_seconds": 8.726888723002048,
+    "exit": 0,
+    "stdout": "",
+    "stderr": "",
+    "managed_patch_sha256": "3f016f6442cc891cf982b5edf6f4de9952e7cb03b634c5c40f5c4e7f8842ec87",
+    "binary_sha256": "e134b35c2baa88c26f49f417631be9df1937de20a801a12b171fc8ac52b5f1f7"
+  }
+]

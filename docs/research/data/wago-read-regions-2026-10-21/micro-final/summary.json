@@ -1,0 +1,12 @@
+{
+  "loop": {
+    "control": 69774.0,
+    "candidate": 62162.5,
+    "reduction_percent": 10.908791240290084
+  },
+  "pressure-loop": {
+    "control": 77723.5,
+    "candidate": 68563.5,
+    "reduction_percent": 11.785367359936183
+  }
+}

@@ -1,0 +1,31 @@
+[
+  {
+    "variant": "candidate",
+    "source_commit": "073b2f61880e965d3c33ba83e32f72e9391a845d",
+    "candidate_production_delta": {
+      "src/core/compiler/backend/railshot/amd64/call.go": "680205cff63cb9bf9078c8f6eb649dbe68fa251d2469ffc18fb5a7fa8b9dcf39",
+      "src/core/compiler/backend/railshot/amd64/compile.go": "fd6319892f847fc179b3aafba1805bb46bc929784a3c6ad8a0c6ba31b2e7b0e6",
+      "src/core/compiler/backend/railshot/amd64/driver.go": "df96b1a2175cc22f49fb4cc9c18b1bf1d9ffa9d4c3d986e008fd5b3fc61be694",
+      "src/core/compiler/backend/railshot/amd64/gc_struct.go": "bfc7fec4601fb981ebb9fd7366f94ffa21a4970e9d311cc85ef3b57193330f30",
+      "src/core/compiler/backend/railshot/amd64/inline.go": "6af664aaadab9db9fa6f91944c151cfbd199a4494e88c6daec0f63f10186c42d",
+      "src/core/compiler/backend/railshot/amd64/gc_cast_array_get.go": "81bb0f04e186a1eb285cc326b6447698636c35b7f1c8e89725884d689c19d225",
+      "src/core/compiler/backend/railshot/amd64/gc_read_region.go": "71ca80e3fd60271d6649db84e1afd59da6abcf6e026ad43001753b2f178bd93e"
+    },
+    "command": [
+      "go",
+      "build",
+      "-mod=mod",
+      "-ldflags=-X main.runtimePatchIdentity=read-regions-candidate -X main.workerPluginIdentity=read-regions-candidate",
+      "-o",
+      "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/read-regions-final-counts-candidate-host",
+      "."
+    ],
+    "seconds": 7.721382650997839,
+    "total_prepare_seconds": 8.592662171999109,
+    "exit": 0,
+    "stdout": "",
+    "stderr": "",
+    "managed_patch_sha256": "3f016f6442cc891cf982b5edf6f4de9952e7cb03b634c5c40f5c4e7f8842ec87",
+    "binary_sha256": "29e7ea4f23ff524529dc08e1b1a692bb79108f8c05bf53a488370d1795fcdeab"
+  }
+]

@@ -1,0 +1,27 @@
+[
+  {
+    "command": [
+      "wasm-tools",
+      "parse",
+      "tests/fixtures/wasm/gc-read-regions.wat",
+      "-o",
+      "tests/fixtures/wasm/gc-read-regions.wasm"
+    ],
+    "seconds": 0.011030920999473892,
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "gofmt",
+      "-w",
+      "src/wago/gc_read_regions_amd64_test.go",
+      "src/wago/gc_read_regions_stats_amd64_test.go"
+    ],
+    "seconds": 0.009218003004207276,
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  }
+]

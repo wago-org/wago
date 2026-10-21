@@ -337,6 +337,8 @@ type fn struct {
 	localSlot           []uint32      // low 24 bits: byte offset; high 8 bits: bounded local-reference count
 	gcOpcodeBarrier     bool          // current 0xfb opcode emits real barrier work
 	gcResolved          gcResolvedObject
+	gcReadRegion        *gcReadRegionState
+	gcReadRegionSites   int
 	gcSharedResolver    bool
 	gcDeferResolver     bool
 	gcDynamicCopySites  uint8 // bounded native-copy expansion within this function
@@ -1952,6 +1954,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	inlineTargets := buildInlineTargets(m, allHints, policy)
 	if opts.GCFrameRoots != nil {
 		restrictGCNumericInlineTargets(m, &inlineTargets)
+		if opts.GCStructHelpers && (len(allHints) == 0 || !allHints[0].flags.has(hintModuleEH)) && len(opts.CustomInstructions) == 0 {
+			addGCReadRegionTargets(m, &inlineTargets, opts.Codegen.Module.GCTypeLayouts, opts.GCArrayHelpers, policy)
+		}
 	}
 	requiresBMI2 := false
 	var requiresBitCount uint8

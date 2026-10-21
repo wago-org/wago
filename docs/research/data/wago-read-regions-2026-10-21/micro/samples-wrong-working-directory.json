@@ -1,0 +1,19 @@
+[
+  {
+    "variant": "control",
+    "command": [
+      "taskset",
+      "-c",
+      "15",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/read-regions/micro/control.test",
+      "-test.run=^TestGCReadRegions",
+      "-test.bench=^BenchmarkGCReadRegions$",
+      "-test.benchtime=200ms",
+      "-test.count=1"
+    ],
+    "seconds": 0.004784812001162209,
+    "exit": 2,
+    "stdout": "",
+    "stderr": "panic: open ../../tests/fixtures/wasm/fib.wasm: no such file or directory\n\ngoroutine 1 [running]:\ngithub.com/wago-org/wago/src/wago.testdata({0x164872c?, 0x3794637ef1a0?})\n\t/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions/src/wago/wago_test.go:27 +0xb7\ngithub.com/wago-org/wago/src/wago.init()\n\t/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions/src/wago/wago_test.go:36 +0x1afe\n"
+  }
+]

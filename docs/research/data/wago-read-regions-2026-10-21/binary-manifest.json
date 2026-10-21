@@ -1,0 +1,27 @@
+{
+  "read-regions-counts-candidate-host": {
+    "path": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/read-regions-counts-candidate-host",
+    "bytes": 17165982,
+    "sha256": "66d5f723f25b5ef9783e2920fdb1fd6fc11f0b1b20c6f5655862e41d51a2a803"
+  },
+  "read-regions-final-counts-candidate-host": {
+    "path": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/read-regions-final-counts-candidate-host",
+    "bytes": 17173772,
+    "sha256": "29e7ea4f23ff524529dc08e1b1a692bb79108f8c05bf53a488370d1795fcdeab"
+  },
+  "read-regions-v4-control-host": {
+    "path": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/read-regions-v4-control-host",
+    "bytes": 17110849,
+    "sha256": "4887d10dfa9dce5c26ccfd84a7a68bdbd45a5a5fc307fa0f3cdec64cd3082883"
+  },
+  "read-regions-v4-no-stack-host": {
+    "path": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/read-regions-v4-no-stack-host",
+    "bytes": 17159017,
+    "sha256": "d4ff4d5ed5d838324602f750ab4414fc975390d316564d2862c551d3ce53c3da"
+  },
+  "read-regions-v4-candidate-host": {
+    "path": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/read-regions-v4-candidate-host",
+    "bytes": 17163873,
+    "sha256": "e134b35c2baa88c26f49f417631be9df1937de20a801a12b171fc8ac52b5f1f7"
+  }
+}

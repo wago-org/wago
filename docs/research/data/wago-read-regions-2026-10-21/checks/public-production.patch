@@ -1,0 +1,328 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 8a65c73d3..3d457d251 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -342,9 +342,17 @@ func (f *fn) selectedInlineTarget(idx uint32) *inlineTarget {
+ 	}
+ 	t := f.inlineTargets.target(int(idx))
+ 	if t == nil {
++		if target, ok := f.inlineTargets.data.readForward[idx]; ok {
++			t = f.inlineTargets.target(int(target))
++		}
++	}
++	if t == nil {
++		return nil
++	}
++	if t.readRegion != nil && (f.gcFrameRoots == nil || !f.gcFrameRoots.Candidate || f.inlineDepth != 0 || f.gcReadRegionSites >= 16) {
+ 		return nil
+ 	}
+-	_, reserved := f.inlineBase[int(idx)]
++	_, reserved := f.inlineBase[t.globalIdx]
+ 	if (t.isI32AddConst() || reserved) && (!t.recursive() || f.inlineDepth == 0) {
+ 		return t
+ 	}
+@@ -352,6 +360,10 @@ func (f *fn) selectedInlineTarget(idx uint32) *inlineTarget {
+ }
+ 
+ func (f *fn) callOp(r *wasm.Reader) error {
++	if s := f.gcReadRegion; s != nil {
++		return f.emitGCReadRegionNumeric(r)
++	}
++
+ 	idx, err := r.U32()
+ 	if err != nil {
+ 		return err
+@@ -375,7 +387,9 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 		if f.gcFrameRoots != nil {
+ 			// Advance the original source mask even though no native call remains.
+ 			f.consumeGCFrameCallsite()
+-			f.stats.peep("gc-numeric-leaf-inline")
++			if t.readRegion == nil {
++				f.stats.peep("gc-numeric-leaf-inline")
++			}
+ 		}
+ 		return f.inlineCall(t)
+ 	}
+@@ -1179,6 +1193,9 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
+ // synchronous re-entry path instead (callHostSync). The caller (emitCall) routes
+ // by result arity, so ft here always has zero results.
+ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
++	if f.gcReadRegion != nil {
++		return f.gcReadRegionViolation("ordinary call")
++	}
+ 	f.invalidateGCResolvedObject()
+ 	f.stats.call(callKindHost)
+ 	p := len(ft.Params)
+@@ -1272,6 +1289,9 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
+ // globals are also synced around the call: the host may read or write the
+ // instance's globals through their cells.
+ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
++	if f.gcReadRegion != nil {
++		return f.gcReadRegionViolation("ordinary call")
++	}
+ 	f.invalidateGCResolvedObject()
+ 	f.stats.call(callKindHostSync)
+ 	// Blocking waits use the complete host frame and GC callsite maps. Other
+@@ -2218,6 +2238,9 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
+ // callInternal lowers a direct call to another local function. Admitted numeric
+ // and reference signatures use registers; other signatures use wrapper buffers.
+ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
++	if f.gcReadRegion != nil {
++		return f.gcReadRegionViolation("ordinary call")
++	}
+ 	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
+ 	relocBase := len(f.relocs)
+ 	finishRoots := func() {
+@@ -2255,6 +2278,10 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
+ 
+ // Advance the source mask when an inline zero-timeout wait cannot suspend.
+ func (f *fn) consumeGCFrameCallsite() {
++	if f.gcReadRegion != nil {
++		f.gcReadRegion.err = f.gcReadRegionViolation("source mask consumption")
++		return
++	}
+ 	plan := f.gcFrameRoots
+ 	if plan == nil || !plan.Candidate {
+ 		return
+@@ -2267,6 +2294,10 @@ func (f *fn) consumeGCFrameCallsite() {
+ }
+ 
+ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
++	if f.gcReadRegion != nil {
++		f.gcReadRegion.err = f.gcReadRegionViolation("source mask preparation")
++		return nil, false
++	}
+ 	plan := f.gcFrameRoots
+ 	if plan == nil || !plan.Candidate {
+ 		return nil, false
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 45fdbe1b9..779847dcc 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -337,6 +337,8 @@ type fn struct {
+ 	localSlot           []uint32      // low 24 bits: byte offset; high 8 bits: bounded local-reference count
+ 	gcOpcodeBarrier     bool          // current 0xfb opcode emits real barrier work
+ 	gcResolved          gcResolvedObject
++	gcReadRegion        *gcReadRegionState
++	gcReadRegionSites   int
+ 	gcSharedResolver    bool
+ 	gcDeferResolver     bool
+ 	gcDynamicCopySites  uint8 // bounded native-copy expansion within this function
+@@ -1958,6 +1960,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 	inlineTargets := buildInlineTargets(m, allHints, policy)
+ 	if opts.GCFrameRoots != nil {
+ 		restrictGCNumericInlineTargets(m, &inlineTargets)
++		if opts.GCStructHelpers && (len(allHints) == 0 || !allHints[0].flags.has(hintModuleEH)) && len(opts.CustomInstructions) == 0 {
++			addGCReadRegionTargets(m, &inlineTargets, opts.Codegen.Module.GCTypeLayouts, opts.GCArrayHelpers, policy)
++		}
+ 	}
+ 	requiresBMI2 := false
+ 	var requiresBitCount uint8
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index 159a119ba..c44f9eb8c 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -95,6 +95,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 		if f.vectorRegion.enabled {
+ 			f.vectorRegionBoundary(op)
+ 		}
++		if err := f.prepareGCReadRegionControl(op); err != nil {
++			return err
++		}
+ 		f.prepareStoreForward(op)
+ 		if op == 0x04 && f.gcResolved.valid {
+ 			f.prepareGCPureIf(r, op, minCtrl)
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_cast_array_get.go b/src/core/compiler/backend/railshot/amd64/gc_cast_array_get.go
+index 3705502cf..908caba9f 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_cast_array_get.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_cast_array_get.go
+@@ -95,11 +95,22 @@ func (f *fn) emitNativeFinalCastArrayGet(typeIndex uint32, nullable bool, scalar
+ 	default:
+ 		return fmt.Errorf("amd64: fused array width %d is invalid", scalar.size)
+ 	}
+-	f.flush()
++	if f.gcReadRegion != nil {
++		oldFloor := f.spillFloor
++		if err := f.stageGCReadRegionOperands(2); err != nil {
++			return err
++		}
++		defer func() { f.spillFloor = oldFloor }()
++	} else {
++		f.flush()
++	}
+ 	indexValue := f.popValue()
+ 	object := f.popValue()
+ 	ref := f.materialize(object)
+ 	if ref != RAX {
++		// A staged index may still own RAX. Save it before placing the object
++		// there, with spills above both detached operand homes.
++		f.spillIfUsed(RAX)
+ 		f.a.MovReg64(RAX, ref)
+ 	}
+ 	f.release(ref)
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_struct.go b/src/core/compiler/backend/railshot/amd64/gc_struct.go
+index cc864d87a..bec89c934 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_struct.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_struct.go
+@@ -38,6 +38,9 @@ const (
+ )
+ 
+ func (f *fn) emitFB(r *wasm.Reader) error {
++	if f.gcReadRegion != nil {
++		return f.emitGCReadRegionGroup(r)
++	}
+ 	before := f.a.Len()
+ 	sub, err := r.U32()
+ 	if err != nil {
+@@ -1127,6 +1130,9 @@ func (f *fn) emitGCI31(sub uint32) error {
+ }
+ 
+ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) error {
++	if f.gcReadRegion != nil {
++		return f.gcReadRegionViolation("Go GC helper")
++	}
+ 	// Every parked helper may run collector work, so the transient raw resolver
+ 	// certificate does not survive it.
+ 	f.invalidateGCResolvedObject()
+@@ -1158,6 +1164,10 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
+ }
+ 
+ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
++	if f.gcReadRegion != nil {
++		f.gcReadRegion.err = f.gcReadRegionViolation("safepoint")
++		return 0
++	}
+ 	plan := f.gcFrameRoots
+ 	id := plan.SafepointBase + uint32(plan.SafepointCount()+1)
+ 	if id == 0 || id > shared.GCSafepointIDMax {
+diff --git a/src/core/compiler/backend/railshot/amd64/inline.go b/src/core/compiler/backend/railshot/amd64/inline.go
+index 1066f65e7..499c499ee 100644
+--- a/src/core/compiler/backend/railshot/amd64/inline.go
++++ b/src/core/compiler/backend/railshot/amd64/inline.go
+@@ -470,6 +470,7 @@ func envDefaultOn(v string) bool {
+ // inlineTarget is a callee that will be spliced at its call sites: a straight-line
+ // leaf with an int-only register-ABI signature and a small body.
+ type inlineTarget struct {
++	readRegion     *gcReadRegionPlan
+ 	body           []byte // the callee's expression bytecode (ends in the terminating `end`)
+ 	globalIdx      int    // global function index (what a `call` immediate names)
+ 	localDeclBytes uint32
+@@ -501,9 +502,10 @@ func (t *inlineTarget) paramCount() int        { return int(t.params & inlinePar
+ // but few inline targets, so one 32-bit slot per function is materially smaller
+ // than one target (and four slice headers) per function.
+ type inlineTargetData struct {
+-	slots   []uint32 // local function index -> targets index + 1; zero is not admitted
+-	targets []inlineTarget
+-	types   []machineType
++	readForward map[uint32]uint32
++	slots       []uint32 // local function index -> targets index + 1; zero is not admitted
++	targets     []inlineTarget
++	types       []machineType
+ }
+ 
+ // inlineTargetInvalid marks a candidate pruned after construction. Keeping its
+@@ -836,6 +838,24 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
+ 			f.nLocalSlots += lt.stackSlots()
+ 			f.locals = append(f.locals, localDef{reg: regNone, typ: lt, state: lsMem})
+ 		}
++		if t.readRegion != nil {
++			words := (len(f.localType) + 63) / 64
++			for len(f.gcLocalTypes) < words {
++				f.gcLocalTypes = append(f.gcLocalTypes, 0)
++			}
++			for i, typ := range t.readRegion.params {
++				index := base + i
++				f.gcLocalTypes[index/64] &^= uint64(1) << uint(index%64)
++				if gcFrameRefType(f.m, typ) {
++					f.gcLocalTypes[index/64] |= uint64(1) << uint(index%64)
++				}
++			}
++			if t.readRegion.cacheHome {
++				home := base + len(t.readRegion.params)
++				f.gcLocalTypes[home/64] &^= uint64(1) << uint(home%64)
++			}
++			f.skipFence = false
++		}
+ 		f.inlineBase[t.globalIdx] = base
+ 	}
+ }
+@@ -888,11 +908,16 @@ func buildInlineCallerPlan(caller *wasm.Func, targets inlineTargetTable) inlineC
+ 			}
+ 			sawCall = true
+ 			t := targets.target(int(idx))
++			if t == nil {
++				if target, ok := targets.data.readForward[idx]; ok {
++					t = targets.target(int(target))
++				}
++			}
+ 			if t == nil {
+ 				allInline = false
+ 				continue
+ 			}
+-			if t.recursive() {
++			if t.recursive() || t.readRegion != nil {
+ 				allInline = false
+ 			}
+ 			duplicate := false
+@@ -1002,6 +1027,9 @@ func inlinePlanTouchesMemory(callees []*inlineTarget) bool {
+ // on the cheap frameless path; a control-flow callee runs under a synthetic
+ // boundary frame (inlineBodyCtrl).
+ func (f *fn) inlineCall(t *inlineTarget) error {
++	if f.gcReadRegion != nil {
++		return f.gcReadRegionViolation("nested inline emission")
++	}
+ 	f.stats.call(callKindInline)
+ 	start := f.a.Len()
+ 	if t.isI32AddParams() {
+@@ -1052,7 +1080,37 @@ func (f *fn) inlineCall(t *inlineTarget) error {
+ 	oldInlineDepth := f.inlineDepth
+ 	f.inlineDepth++
+ 	var err error
+-	if t.hasCtrl {
++	if t.readRegion != nil {
++		f.gcReadRegionSites++
++		state := gcReadRegionState{plan: t.readRegion, base: base, lease: regNone}
++		previous := f.gcReadRegion
++		callCursor := f.gcCallsiteIndex
++		safepoints := f.gcFrameRoots.SafepointCount()
++		f.gcReadRegion = &state
++		// Control results otherwise write RBP directly, bypassing allocator
++		// reservations. Use canonical result slots while a region may lease
++		// that register for a raw address; the caller's control frames retain
++		// their own merge flags and resume the original policy on exit.
++		oldRegMerge := f.regMerge
++		f.regMerge = false
++		err = f.inlineBodyCtrl(t)
++		f.regMerge = oldRegMerge
++		f.gcReadRegion = previous
++		if state.lease != regNone {
++			f.reserved = f.reserved.remove(state.lease)
++		}
++		if err == nil {
++			err = state.err
++		}
++		if err == nil && (f.gcCallsiteIndex != callCursor || f.gcFrameRoots.SafepointCount() != safepoints) {
++			err = f.gcReadRegionViolation("changed safepoint or mask cursor")
++		}
++		if err == nil {
++			f.setStackGCRoot(f.s.back(), gcFrameRefType(f.m, t.readRegion.result))
++			f.stats.peep("gc-read-region-inline")
++		}
++		f.invalidateGCMutableLoadFacts()
++	} else if t.hasCtrl {
+ 		err = f.inlineBodyCtrl(t)
+ 	} else {
+ 		err = f.inlineBody(t.body)
+@@ -1088,6 +1146,12 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
+ 	for i := params - 1; i >= 0; i-- {
+ 		f.setLocal(nil, base+i, false)
+ 	}
++	// A region's extra local is private scratch, not a declared Wasm local.
++	// Its certificate starts invalid and its checked address is stored before
++	// use; clearing it at every entry would add a redundant hot-path store.
++	if t.readRegion != nil {
++		return
++	}
+ 	if nLocals > params {
+ 		z := f.allocReg(0)
+ 		f.a.XorSelf32(z)

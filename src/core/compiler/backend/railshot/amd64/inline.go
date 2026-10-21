@@ -470,6 +470,7 @@ func envDefaultOn(v string) bool {
 // inlineTarget is a callee that will be spliced at its call sites: a straight-line
 // leaf with an int-only register-ABI signature and a small body.
 type inlineTarget struct {
+	readRegion     *gcReadRegionPlan
 	body           []byte // the callee's expression bytecode (ends in the terminating `end`)
 	globalIdx      int    // global function index (what a `call` immediate names)
 	localDeclBytes uint32
@@ -501,9 +502,10 @@ func (t *inlineTarget) paramCount() int        { return int(t.params & inlinePar
 // but few inline targets, so one 32-bit slot per function is materially smaller
 // than one target (and four slice headers) per function.
 type inlineTargetData struct {
-	slots   []uint32 // local function index -> targets index + 1; zero is not admitted
-	targets []inlineTarget
-	types   []machineType
+	readForward map[uint32]uint32
+	slots       []uint32 // local function index -> targets index + 1; zero is not admitted
+	targets     []inlineTarget
+	types       []machineType
 }
 
 // inlineTargetInvalid marks a candidate pruned after construction. Keeping its
@@ -836,6 +838,24 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 			f.nLocalSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, typ: lt, state: lsMem})
 		}
+		if t.readRegion != nil {
+			words := (len(f.localType) + 63) / 64
+			for len(f.gcLocalTypes) < words {
+				f.gcLocalTypes = append(f.gcLocalTypes, 0)
+			}
+			for i, typ := range t.readRegion.params {
+				index := base + i
+				f.gcLocalTypes[index/64] &^= uint64(1) << uint(index%64)
+				if gcFrameRefType(f.m, typ) {
+					f.gcLocalTypes[index/64] |= uint64(1) << uint(index%64)
+				}
+			}
+			if t.readRegion.cacheHome {
+				home := base + len(t.readRegion.params)
+				f.gcLocalTypes[home/64] &^= uint64(1) << uint(home%64)
+			}
+			f.skipFence = false
+		}
 		f.inlineBase[t.globalIdx] = base
 	}
 }
@@ -866,6 +886,7 @@ func buildInlineCallerPlan(caller *wasm.Func, targets inlineTargetTable) inlineC
 		return inlineCallerPlan{}
 	}
 	var plan inlineCallerPlan
+	readTargets := 0
 	var smallSeen [inlineLinearSeenTargets]int
 	seenN := 0
 	var largeSeen map[int]struct{}
@@ -889,10 +910,15 @@ func buildInlineCallerPlan(caller *wasm.Func, targets inlineTargetTable) inlineC
 			sawCall = true
 			t := targets.target(int(idx))
 			if t == nil {
+				if target, ok := targets.data.readForward[idx]; ok {
+					t = targets.target(int(target))
+				}
+			}
+			if t == nil {
 				allInline = false
 				continue
 			}
-			if t.recursive() {
+			if t.recursive() || t.readRegion != nil {
 				allInline = false
 			}
 			duplicate := false
@@ -908,6 +934,14 @@ func buildInlineCallerPlan(caller *wasm.Func, targets inlineTargetTable) inlineC
 			}
 			if duplicate {
 				continue
+			}
+			// Match the bounded emission policy without reserving a large
+			// unused frame for later ordinary calls to other read targets.
+			if t.readRegion != nil {
+				if readTargets >= 16 {
+					continue
+				}
+				readTargets++
 			}
 			if largeSeen != nil {
 				largeSeen[t.globalIdx] = struct{}{}
@@ -1002,6 +1036,9 @@ func inlinePlanTouchesMemory(callees []*inlineTarget) bool {
 // on the cheap frameless path; a control-flow callee runs under a synthetic
 // boundary frame (inlineBodyCtrl).
 func (f *fn) inlineCall(t *inlineTarget) error {
+	if f.gcReadRegion != nil {
+		return f.gcReadRegionViolation("nested inline emission")
+	}
 	f.stats.call(callKindInline)
 	start := f.a.Len()
 	if t.isI32AddParams() {
@@ -1052,7 +1089,37 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	oldInlineDepth := f.inlineDepth
 	f.inlineDepth++
 	var err error
-	if t.hasCtrl {
+	if t.readRegion != nil {
+		f.gcReadRegionSites++
+		state := gcReadRegionState{plan: t.readRegion, base: base, lease: regNone}
+		previous := f.gcReadRegion
+		callCursor := f.gcCallsiteIndex
+		safepoints := f.gcFrameRoots.SafepointCount()
+		f.gcReadRegion = &state
+		// Control results otherwise write RBP directly, bypassing allocator
+		// reservations. Use canonical result slots while a region may lease
+		// that register for a raw address; the caller's control frames retain
+		// their own merge flags and resume the original policy on exit.
+		oldRegMerge := f.regMerge
+		f.regMerge = false
+		err = f.inlineBodyCtrl(t)
+		f.regMerge = oldRegMerge
+		f.gcReadRegion = previous
+		if state.lease != regNone {
+			f.reserved = f.reserved.remove(state.lease)
+		}
+		if err == nil {
+			err = state.err
+		}
+		if err == nil && (f.gcCallsiteIndex != callCursor || f.gcFrameRoots.SafepointCount() != safepoints) {
+			err = f.gcReadRegionViolation("changed safepoint or mask cursor")
+		}
+		if err == nil {
+			f.setStackGCRoot(f.s.back(), gcFrameRefType(f.m, t.readRegion.result))
+			f.stats.peep("gc-read-region-inline")
+		}
+		f.invalidateGCMutableLoadFacts()
+	} else if t.hasCtrl {
 		err = f.inlineBodyCtrl(t)
 	} else {
 		err = f.inlineBody(t.body)
@@ -1087,6 +1154,12 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 	// local. setLocal takes the absolute index (localBase is still 0 here).
 	for i := params - 1; i >= 0; i-- {
 		f.setLocal(nil, base+i, false)
+	}
+	// A region's extra local is private scratch, not a declared Wasm local.
+	// Its certificate starts invalid and its checked address is stored before
+	// use; clearing it at every entry would add a redundant hot-path store.
+	if t.readRegion != nil {
+		return
 	}
 	if nLocals > params {
 		z := f.allocReg(0)

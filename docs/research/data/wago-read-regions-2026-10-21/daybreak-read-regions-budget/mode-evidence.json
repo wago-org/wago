@@ -1,0 +1,12 @@
+{
+  "thread": "01a15f60-1d28-7760-979d-caa4557b2d15",
+  "sessions": [
+    "/home/dev/.codex/sessions/2026/10/21/rollout-2026-10-21T16-51-36-01a15f60-1d28-7760-979d-caa4557b2d15.jsonl"
+  ],
+  "turn_contexts": [
+    {
+      "model": "gpt-6-sol",
+      "cyber_access_program": "daybreak_blue"
+    }
+  ]
+}

@@ -342,9 +342,17 @@ func (f *fn) selectedInlineTarget(idx uint32) *inlineTarget {
 	}
 	t := f.inlineTargets.target(int(idx))
 	if t == nil {
+		if target, ok := f.inlineTargets.data.readForward[idx]; ok {
+			t = f.inlineTargets.target(int(target))
+		}
+	}
+	if t == nil {
 		return nil
 	}
-	_, reserved := f.inlineBase[int(idx)]
+	if t.readRegion != nil && (f.gcFrameRoots == nil || !f.gcFrameRoots.Candidate || f.inlineDepth != 0 || f.gcReadRegionSites >= 16) {
+		return nil
+	}
+	_, reserved := f.inlineBase[t.globalIdx]
 	if (t.isI32AddConst() || reserved) && (!t.recursive() || f.inlineDepth == 0) {
 		return t
 	}
@@ -352,6 +360,10 @@ func (f *fn) selectedInlineTarget(idx uint32) *inlineTarget {
 }
 
 func (f *fn) callOp(r *wasm.Reader) error {
+	if s := f.gcReadRegion; s != nil {
+		return f.emitGCReadRegionNumeric(r)
+	}
+
 	idx, err := r.U32()
 	if err != nil {
 		return err
@@ -375,7 +387,9 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		if f.gcFrameRoots != nil {
 			// Advance the original source mask even though no native call remains.
 			f.consumeGCFrameCallsite()
-			f.stats.peep("gc-numeric-leaf-inline")
+			if t.readRegion == nil {
+				f.stats.peep("gc-numeric-leaf-inline")
+			}
 		}
 		return f.inlineCall(t)
 	}
@@ -1176,6 +1190,9 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 // synchronous re-entry path instead (callHostSync). The caller (emitCall) routes
 // by result arity, so ft here always has zero results.
 func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
+	if f.gcReadRegion != nil {
+		return f.gcReadRegionViolation("ordinary call")
+	}
 	f.invalidateGCResolvedObject()
 	f.stats.call(callKindHost)
 	p := len(ft.Params)
@@ -1269,6 +1286,9 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 // globals are also synced around the call: the host may read or write the
 // instance's globals through their cells.
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
+	if f.gcReadRegion != nil {
+		return f.gcReadRegionViolation("ordinary call")
+	}
 	f.invalidateGCResolvedObject()
 	f.stats.call(callKindHostSync)
 	// Blocking waits use the complete host frame and GC callsite maps. Other
@@ -2184,6 +2204,9 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
 // callees use the fast register ABI (args/result in registers); others go
 // through the wrapper (rsp-buffer) ABI.
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
+	if f.gcReadRegion != nil {
+		return f.gcReadRegionViolation("ordinary call")
+	}
 	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
 	relocBase := len(f.relocs)
 	finishRoots := func() {
@@ -2221,6 +2244,10 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 
 // Advance the source mask when an inline zero-timeout wait cannot suspend.
 func (f *fn) consumeGCFrameCallsite() {
+	if f.gcReadRegion != nil {
+		f.gcReadRegion.err = f.gcReadRegionViolation("source mask consumption")
+		return
+	}
 	plan := f.gcFrameRoots
 	if plan == nil || !plan.Candidate {
 		return
@@ -2233,6 +2260,10 @@ func (f *fn) consumeGCFrameCallsite() {
 }
 
 func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
+	if f.gcReadRegion != nil {
+		f.gcReadRegion.err = f.gcReadRegionViolation("source mask preparation")
+		return nil, false
+	}
 	plan := f.gcFrameRoots
 	if plan == nil || !plan.Candidate {
 		return nil, false

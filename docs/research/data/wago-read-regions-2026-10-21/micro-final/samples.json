@@ -1,0 +1,86 @@
+[
+  {
+    "variant": "control",
+    "command": [
+      "taskset",
+      "-c",
+      "15",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/read-regions/micro-final/control.test",
+      "-test.run=^TestGCReadRegions",
+      "-test.bench=^BenchmarkGCReadRegions$",
+      "-test.benchtime=200ms",
+      "-test.count=1"
+    ],
+    "seconds": 0.5209457270029816,
+    "exit": 0,
+    "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     \nBenchmarkGCReadRegions/loop         \t    3633\t     69368 ns/op\t       2 B/op\t       0 allocs/op\nBenchmarkGCReadRegions/pressure-loop         \t    3111\t     77685 ns/op\t       0 B/op\t       0 allocs/op\nPASS\n",
+    "stderr": "",
+    "ns_per_8192_reads": {
+      "loop": 69368.0,
+      "pressure-loop": 77685.0
+    }
+  },
+  {
+    "variant": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "15",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/read-regions/micro-final/candidate.test",
+      "-test.run=^TestGCReadRegions",
+      "-test.bench=^BenchmarkGCReadRegions$",
+      "-test.benchtime=200ms",
+      "-test.count=1"
+    ],
+    "seconds": 0.5379692599963164,
+    "exit": 0,
+    "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     \nBenchmarkGCReadRegions/loop         \t    4155\t     61730 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkGCReadRegions/pressure-loop         \t    3748\t     68315 ns/op\t       0 B/op\t       0 allocs/op\nPASS\n",
+    "stderr": "",
+    "ns_per_8192_reads": {
+      "loop": 61730.0,
+      "pressure-loop": 68315.0
+    }
+  },
+  {
+    "variant": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "15",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/read-regions/micro-final/candidate.test",
+      "-test.run=^TestGCReadRegions",
+      "-test.bench=^BenchmarkGCReadRegions$",
+      "-test.benchtime=200ms",
+      "-test.count=1"
+    ],
+    "seconds": 0.538960843005043,
+    "exit": 0,
+    "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     \nBenchmarkGCReadRegions/loop         \t    4180\t     62595 ns/op\t       1 B/op\t       0 allocs/op\nBenchmarkGCReadRegions/pressure-loop         \t    3663\t     68812 ns/op\t       0 B/op\t       0 allocs/op\nPASS\n",
+    "stderr": "",
+    "ns_per_8192_reads": {
+      "loop": 62595.0,
+      "pressure-loop": 68812.0
+    }
+  },
+  {
+    "variant": "control",
+    "command": [
+      "taskset",
+      "-c",
+      "15",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/read-regions/micro-final/control.test",
+      "-test.run=^TestGCReadRegions",
+      "-test.bench=^BenchmarkGCReadRegions$",
+      "-test.benchtime=200ms",
+      "-test.count=1"
+    ],
+    "seconds": 0.5182910680014174,
+    "exit": 0,
+    "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     \nBenchmarkGCReadRegions/loop         \t    3530\t     70180 ns/op\t       2 B/op\t       0 allocs/op\nBenchmarkGCReadRegions/pressure-loop         \t    3111\t     77762 ns/op\t       0 B/op\t       0 allocs/op\nPASS\n",
+    "stderr": "",
+    "ns_per_8192_reads": {
+      "loop": 70180.0,
+      "pressure-loop": 77762.0
+    }
+  }
+]

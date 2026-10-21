@@ -38,6 +38,9 @@ const (
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
+	if f.gcReadRegion != nil {
+		return f.emitGCReadRegionGroup(r)
+	}
 	before := f.a.Len()
 	sub, err := r.U32()
 	if err != nil {
@@ -1111,6 +1114,9 @@ func (f *fn) emitGCI31(sub uint32) error {
 }
 
 func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) error {
+	if f.gcReadRegion != nil {
+		return f.gcReadRegionViolation("Go GC helper")
+	}
 	// Every parked helper may run collector work, so the transient raw resolver
 	// certificate does not survive it.
 	f.invalidateGCResolvedObject()
@@ -1142,6 +1148,10 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 }
 
 func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
+	if f.gcReadRegion != nil {
+		f.gcReadRegion.err = f.gcReadRegionViolation("safepoint")
+		return 0
+	}
 	plan := f.gcFrameRoots
 	id := plan.SafepointBase + uint32(plan.SafepointCount()+1)
 	if id == 0 || id > shared.GCSafepointIDMax {

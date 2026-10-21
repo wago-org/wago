@@ -1,0 +1,34 @@
+[
+  {
+    "command": [
+      "gofmt",
+      "-w",
+      "src/core/compiler/backend/railshot/amd64/gc_read_region.go",
+      "src/core/compiler/backend/railshot/amd64/inline.go",
+      "src/core/compiler/backend/railshot/amd64/gc_cast_array_get.go"
+    ],
+    "seconds": 0.011398441005439963,
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-tags=wago_codegenstats,wago_regalloccheck,wago_profile",
+      "-run",
+      "^TestGCReadRegion",
+      "-count=1",
+      "-v",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/wago"
+    ],
+    "seconds": 25.623385109000083,
+    "exit": 0,
+    "stdout": "=== RUN   TestGCReadRegionAdmissionBoundary\n=== RUN   TestGCReadRegionAdmissionBoundary/accept\n=== RUN   TestGCReadRegionAdmissionBoundary/arrays-disabled\n=== RUN   TestGCReadRegionAdmissionBoundary/allocation\n=== RUN   TestGCReadRegionAdmissionBoundary/store\n=== RUN   TestGCReadRegionAdmissionBoundary/loop\n=== RUN   TestGCReadRegionAdmissionBoundary/host-call\n=== RUN   TestGCReadRegionAdmissionBoundary/array-len\n=== RUN   TestGCReadRegionAdmissionBoundary/numeric-shape\n=== RUN   TestGCReadRegionAdmissionBoundary/numeric-signature\n=== RUN   TestGCReadRegionAdmissionBoundary/declared-local\n=== RUN   TestGCReadRegionAdmissionBoundary/float-parameter\n=== RUN   TestGCReadRegionAdmissionBoundary/large\n=== RUN   TestGCReadRegionAdmissionBoundary/open-type\n--- PASS: TestGCReadRegionAdmissionBoundary (0.00s)\n    --- PASS: TestGCReadRegionAdmissionBoundary/accept (0.00s)\n    --- PASS: TestGCReadRegionAdmissionBoundary/arrays-disabled (0.00s)\n    --- PASS: TestGCReadRegionAdmissionBoundary/allocation (0.00s)\n    --- PASS: TestGCReadRegionAdmissionBoundary/store (0.00s)\n    --- PASS: TestGCReadRegionAdmissionBoundary/loop (0.00s)\n    --- PASS: TestGCReadRegionAdmissionBoundary/host-call (0.00s)\n    --- PASS: TestGCReadRegionAdmissionBoundary/array-len (0.00s)\n    --- PASS: TestGCReadRegionAdmissionBoundary/numeric-shape (0.00s)\n    --- PASS: TestGCReadRegionAdmissionBoundary/numeric-signature (0.00s)\n    --- PASS: TestGCReadRegionAdmissionBoundary/declared-local (0.00s)\n    --- PASS: TestGCReadRegionAdmissionBoundary/float-parameter (0.00s)\n    --- PASS: TestGCReadRegionAdmissionBoundary/large (0.00s)\n    --- PASS: TestGCReadRegionAdmissionBoundary/open-type (0.00s)\n=== RUN   TestGCReadRegionNativeOnlyGuard\n=== RUN   TestGCReadRegionNativeOnlyGuard/GC_helper\n=== RUN   TestGCReadRegionNativeOnlyGuard/host\n=== RUN   TestGCReadRegionNativeOnlyGuard/sync_host\n=== RUN   TestGCReadRegionNativeOnlyGuard/internal\n--- PASS: TestGCReadRegionNativeOnlyGuard (0.00s)\n    --- PASS: TestGCReadRegionNativeOnlyGuard/GC_helper (0.00s)\n    --- PASS: TestGCReadRegionNativeOnlyGuard/host (0.00s)\n    --- PASS: TestGCReadRegionNativeOnlyGuard/sync_host (0.00s)\n    --- PASS: TestGCReadRegionNativeOnlyGuard/internal (0.00s)\n=== RUN   TestGCReadRegionAddressExcludesMergeRegister\n--- PASS: TestGCReadRegionAddressExcludesMergeRegister (0.00s)\nPASS\nok  \tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/amd64\t0.003s\n=== RUN   TestGCReadRegions\n--- PASS: TestGCReadRegions (0.00s)\n=== RUN   TestGCReadRegionsConditionalExtent\n=== RUN   TestGCReadRegionsConditionalExtent/artifact0/header\n=== RUN   TestGCReadRegionsConditionalExtent/artifact0/handle\n=== RUN   TestGCReadRegionsConditionalExtent/artifact1/header\n=== RUN   TestGCReadRegionsConditionalExtent/artifact1/handle\n--- PASS: TestGCReadRegionsConditionalExtent (0.00s)\n    --- PASS: TestGCReadRegionsConditionalExtent/artifact0/header (0.00s)\n    --- PASS: TestGCReadRegionsConditionalExtent/artifact0/handle (0.00s)\n    --- PASS: TestGCReadRegionsConditionalExtent/artifact1/header (0.00s)\n    --- PASS: TestGCReadRegionsConditionalExtent/artifact1/handle (0.00s)\n=== RUN   TestGCReadRegionsAdmission\n    gc_read_regions_stats_amd64_test.go:53: read regions=1 calls=map[gcnative:2 inline:1] frame=40 spills=1\n    gc_read_regions_stats_amd64_test.go:53: loop regions=1 calls=map[gcnative:2 inline:1] frame=72 spills=2\n    gc_read_regions_stats_amd64_test.go:53: roots regions=5 calls=map[gcnative:8 hostsync:1 inline:5 regabi:2] frame=72 spills=2\n    gc_read_regions_stats_amd64_test.go:53: stack-roots regions=3 calls=map[gcnative:5 hostsync:1 inline:3 regabi:1] frame=56 spills=2\n    gc_read_regions_stats_amd64_test.go:53: branch regions=2 calls=map[gcnative:4 inline:2] frame=56 spills=1\n    gc_read_regions_stats_amd64_test.go:53: forward regions=1 calls=map[gcnative:2 inline:1] frame=40 spills=1\n    gc_read_regions_stats_amd64_test.go:53: arms regions=1 calls=map[gcnative:4 inline:1] frame=40 spills=1\n    gc_read_regions_stats_amd64_test.go:53: late regions=1 calls=map[gcnative:3 inline:1] frame=56 spills=2\n    gc_read_regions_stats_amd64_test.go:53: nested regions=2 calls=map[gcnative:7 inline:2] frame=56 spills=1\n    gc_read_regions_stats_amd64_test.go:53: join regions=1 calls=map[gcnative:1 inline:1] frame=40 spills=1\n--- PASS: TestGCReadRegionsAdmission (0.00s)\nPASS\nok  \tgithub.com/wago-org/wago/src/wago\t0.008s\n",
+    "stderr": ""
+  }
+]

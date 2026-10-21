@@ -95,11 +95,22 @@ func (f *fn) emitNativeFinalCastArrayGet(typeIndex uint32, nullable bool, scalar
 	default:
 		return fmt.Errorf("amd64: fused array width %d is invalid", scalar.size)
 	}
-	f.flush()
+	if f.gcReadRegion != nil {
+		oldFloor := f.spillFloor
+		if err := f.stageGCReadRegionOperands(2); err != nil {
+			return err
+		}
+		defer func() { f.spillFloor = oldFloor }()
+	} else {
+		f.flush()
+	}
 	indexValue := f.popValue()
 	object := f.popValue()
 	ref := f.materialize(object)
 	if ref != RAX {
+		// A staged index may still own RAX. Save it before placing the object
+		// there, with spills above both detached operand homes.
+		f.spillIfUsed(RAX)
 		f.a.MovReg64(RAX, ref)
 	}
 	f.release(ref)
