@@ -1,6 +1,7 @@
 package profcapture
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -255,6 +256,23 @@ func run(o Options, w Workload, wasm []byte, h *Harness) (result error) {
 	defer session.Close()
 	var compiled *wago.Compiled
 	var instance *wago.Instance
+	var applicationRuntime *wago.Runtime
+	var applicationModule *wago.Module
+	closeExecution := func() (err error) {
+		if instance != nil {
+			err = errors.Join(err, instance.Close())
+			instance = nil
+		}
+		if applicationModule != nil {
+			err = errors.Join(err, applicationModule.Close())
+			applicationModule = nil
+		}
+		if applicationRuntime != nil {
+			err = errors.Join(err, applicationRuntime.CloseContext(context.Background()))
+			applicationRuntime = nil
+		}
+		return err
+	}
 	var jit *profile.JITFile
 	var perfMap *profile.PerfMap
 	var mapFile *os.File
@@ -326,9 +344,7 @@ func run(o Options, w Workload, wasm []byte, h *Harness) (result error) {
 			result = errors.Join(result, fmt.Errorf("capture panic: %v", r))
 		}
 		result = errors.Join(result, stop())
-		if instance != nil {
-			result = errors.Join(result, instance.Close())
-		}
+		result = errors.Join(result, closeExecution())
 		if compiled != nil {
 			result = errors.Join(result, compiled.Close())
 		}
@@ -585,6 +601,23 @@ func run(o Options, w Workload, wasm []byte, h *Harness) (result error) {
 	}
 	if err := phase("instantiate", func() error {
 		var err error
+		if h != nil {
+			// Execution policy is not serialized in native artifacts. Bind both
+			// freshly compiled and reloaded application images to the configured
+			// Runtime so their actual stack and resource limits stay identical.
+			instanceConfig := cfg
+			if instOpts.MaxCompiledMetadataBytes != 0 {
+				instanceConfig = instanceConfig.WithMaxCompiledMetadataBytes(instOpts.MaxCompiledMetadataBytes)
+			}
+			applicationRuntime = wago.NewRuntime(wago.WithRuntimeConfig(instanceConfig))
+			applicationModule, err = applicationRuntime.Module(compiled)
+			if err != nil {
+				return err
+			}
+			instance, err = applicationRuntime.Instantiate(context.Background(), applicationModule,
+				wago.WithImports(instOpts.Imports), wago.WithGC(instOpts.GC), wago.WithInvokeCacheSlots(instOpts.InvokeCacheSlots))
+			return err
+		}
 		instance, err = wago.Instantiate(compiled, instOpts)
 		return err
 	}); err != nil {
@@ -678,8 +711,7 @@ func run(o Options, w Workload, wasm []byte, h *Harness) (result error) {
 		return err
 	}
 	if err := phase("close", func() error {
-		err := errors.Join(instance.Close(), compiled.Close())
-		instance = nil
+		err := errors.Join(closeExecution(), compiled.Close())
 		compiled = nil
 		return err
 	}); err != nil {
