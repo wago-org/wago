@@ -599,6 +599,12 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 			if err := f.emitCustomInstruction(custom, ft); err != nil {
 				return err
 			}
+			// The existing stack-compatible input recipe retains the physical
+			// i32 word. Canonicalize its narrow logical result on this new path.
+			if pluginAMD64Lowering(custom) == nil && custom.StackCompatible && custom.ResultWidth < 32 && custom.Nodes[custom.Output].Op == CustomInstructionInput {
+				f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64((uint64(1) << uint(custom.ResultWidth)) - 1)})
+				f.pushBinOp(opAnd, mtI32)
+			}
 			return f.opReturn()
 		}
 		if f.importBindings != nil && int(idx) < len(f.importBindings) {
