@@ -720,9 +720,6 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 		return dest
 	}
 
-	if (digit == 4 || digit == 5 || digit == 7) && f.sc != nil && f.sc.amd64Features.Has(shared.AMD64BMI2) {
-		return f.condenseShiftX(node, dest, digit, w)
-	}
 	// Keep the left operand spillable while evaluating the count.
 	f.materialize(left)
 	cnt := f.materialize(right)
@@ -746,51 +743,6 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	f.occupy(node, result)
 	node.setDeferredOp(opNone)
 	return result
-}
-
-func (f *fn) condenseShiftX(node *elem, dest Reg, digit byte, wide bool) Reg {
-	left, right := node.arg0, node.arg1
-	// Evaluate in Wasm order. The count may use a fixed-register instruction
-	// that spills the source, so recover both registers after it is complete.
-	f.materializeRead(left)
-	saved := f.pinned
-	count, countOwned := f.materializeRead(right)
-	f.pinned = saved.add(count)
-	src, srcOwned := f.materializeRead(left)
-	f.pinned = f.pinned.add(src)
-	if dest == regNone {
-		if srcOwned {
-			dest = src
-		} else if countOwned {
-			dest = count
-		} else {
-			dest = f.allocReg(maskOf(src, count))
-		}
-	}
-	if count == RCX && dest == src {
-		f.a.ShiftCL(digit, dest, wide) // Already optimal two-operand form.
-	} else if !wide && dest == src && src != RCX && src < 8 && count < 8 &&
-		!saved.has(RCX) && !f.reserved.has(RCX) && !f.pinnedLocalMask.has(RCX) && f.regUser[RCX] == nil {
-		// With no live RCX value, the two low-register instructions total
-		// four bytes. Prefer them to the five-byte VEX encoding.
-		f.a.MovRegReg32(RCX, count)
-		f.a.ShiftCL(digit, dest, false)
-		f.stats.peep("variable-shift-shorter-cl")
-	} else {
-		f.a.ShiftX(digit, dest, src, count, wide)
-		f.stats.peep("bmi2-variable-shift")
-	}
-	f.pinned = saved
-	if srcOwned && src != dest {
-		f.release(src)
-	}
-	if countOwned && count != dest && count != src {
-		f.release(count)
-	}
-	f.consumeBlockBelow(node)
-	f.occupy(node, dest)
-	node.setDeferredOp(opNone)
-	return dest
 }
 
 // condenseCompare lowers the relational ops and eqz to a CMP/TEST + SETcc,

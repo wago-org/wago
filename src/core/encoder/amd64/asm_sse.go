@@ -196,19 +196,6 @@ func (a *Asm) Rorx(dst, src Reg, count byte, w bool) {
 	a.emit(count)
 }
 
-// ShiftX emits BMI2 SHLX, SHRX or SARX. The hardware masks the count to
-// five or six bits, as required by the corresponding Wasm shift.
-func (a *Asm) ShiftX(digit byte, dst, src, count Reg, w bool) {
-	pp := byte(1) // SHLX: 66
-	if digit == 5 {
-		pp = 3 // SHRX: F2
-	} else if digit == 7 {
-		pp = 2 // SARX: F3
-	}
-	a.UsesBMI2 = true
-	a.vexRR(vexFormat(vexMap0F38, pp, 0, w), 0xf7, dst, count, src)
-}
-
 func (a *Asm) vex3MemPrefixL(opcodeMap, pp byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, index Reg, indexed bool, l byte) {
 	rBit, xBit, bBit := byte(1), byte(1), byte(1) // inverted REX.R / REX.X / REX.B
 	if reg >= 8 {
