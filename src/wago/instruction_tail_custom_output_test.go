@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -41,5 +42,40 @@ func TestCustomImportedTailRejectsCustomOutput(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestCustomImportedTailPreservesCustomInput(t *testing.T) {
+	if !customCodegenAvailable() {
+		t.Skip("custom producer needs optional native CPU features")
+	}
+	for _, regABI := range []bool{false, true} {
+		t.Run(fmt.Sprintf("regABI%t", regABI), func(t *testing.T) {
+			rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("reg-abi", regABI)))
+			t.Cleanup(func() { rt.Close() })
+			if err := rt.Use(customCarrierExtension{}); err != nil {
+				t.Fatal(err)
+			}
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec([]byte{0x60, 0, 1, 0x7f}, []byte{0x60, 1, 0x7f, 0}, []byte{0x60, 0, 0})),
+				wasmtest.Section(2, wasmtest.Vec(instructionFuncImport("test:custom", "test.value.0", 0), instructionFuncImport("test:custom", "test.value.0.drop", 1))),
+				wasmtest.Section(3, wasmtest.Vec([]byte{2})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 2))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0, 0x12, 1, 0x0b}))),
+			)
+			mod, err := rt.Compile(module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { mod.Close() })
+			in, err := rt.Instantiate(context.Background(), mod)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { in.Close() })
+			if out, err := in.Invoke("run"); err != nil || len(out) != 0 {
+				t.Fatalf("custom-input tail result = %v, %v", out, err)
+			}
+		})
 	}
 }
