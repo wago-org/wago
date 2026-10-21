@@ -117,8 +117,40 @@ func TestLinearMemoryLeaseCloseAndCleanupRetry(t *testing.T) {
 			t.Fatal(err)
 		}
 		base, desc := pointer(m.mem), pointer(m.descriptor)
+		lengths := [2]int{len(m.mem), len(m.descriptor)}
+		failed := 0
+		if failDescriptor {
+			failed = 1
+		}
+		failure := errors.New("injected retirement failure")
+		injectFailure := false
+		var calls, unmapped [2]int
+		unmap := ops.unmap
+		ops.unmap = func(b []byte) error {
+			i := 0
+			if pointer(b) == desc {
+				i = 1
+			} else if pointer(b) != base {
+				t.Fatalf("unmap unexpected address %#x", pointer(b))
+			}
+			if len(b) != lengths[i] {
+				t.Fatalf("unmap length %d, want %d", len(b), lengths[i])
+			}
+			calls[i]++
+			if injectFailure && i == failed {
+				return failure
+			}
+			if err := unmap(b); err != nil {
+				return err
+			}
+			unmapped[i]++
+			return nil
+		}
 		if err = m.Close(); err != nil {
 			t.Fatal(err)
+		}
+		if m.refs != 1 || calls != [2]int{} {
+			t.Fatal("creator close retired live lease", m.refs, calls)
 		}
 		if _, err = m.Lease(); !errors.Is(err, ErrClosed) {
 			t.Fatal("new lease after creator close", err)
@@ -129,23 +161,35 @@ func TestLinearMemoryLeaseCloseAndCleanupRetry(t *testing.T) {
 		if permissions(t, base) == "" || permissions(t, desc) == "" {
 			t.Fatal("retired live lease")
 		}
-		failure := errors.New("injected retirement failure")
-		unmap := ops.unmap
-		ops.unmap = func(b []byte) error {
-			if (pointer(b) == desc) == failDescriptor {
-				return failure
+		injectFailure = true
+		wantCalls, wantUnmapped := [2]int{1, 1}, [2]int{1, 1}
+		wantUnmapped[failed] = 0
+		retained := [2]uintptr{}
+		retained[failed] = [2]uintptr{base, desc}[failed]
+		for attempt := 1; attempt <= 2; attempt++ {
+			if err = l.Close(); !errors.Is(err, failure) || m.refs != 0 || !l.token.closed {
+				t.Fatal("failed cleanup", err, m.refs, l.token.closed)
 			}
-			return unmap(b)
+			wantCalls[failed] = attempt
+			if calls != wantCalls || unmapped != wantUnmapped || [2]uintptr{pointer(m.mem), pointer(m.descriptor)} != retained {
+				t.Fatal("retry ownership", calls, unmapped, pointer(m.mem), pointer(m.descriptor))
+			}
 		}
-		if err = l.Close(); !errors.Is(err, failure) || m.refs != 0 {
-			t.Fatal(err, m.refs)
-		}
-		if err = l.Close(); !errors.Is(err, failure) || m.refs != 0 {
-			t.Fatal("double decrement", err, m.refs)
-		}
-		ops.unmap = unmap
-		if err = l.Close(); err != nil || permissions(t, base) != "" || permissions(t, desc) != "" {
+		injectFailure = false
+		// A successfully unmapped address can be reused before /proc/self/maps
+		// is read. Check exact unmap operations and released ownership instead.
+		if err = l.Close(); err != nil || m.mem != nil || m.descriptor != nil || m.refs != 0 {
 			t.Fatal("retry", err)
+		}
+		wantCalls[failed] = 3
+		if calls != wantCalls || unmapped != [2]int{1, 1} {
+			t.Fatal("cleanup operations", calls, unmapped)
+		}
+		if err = l.Close(); err != nil {
+			t.Fatal("closed lease", err)
+		}
+		if err = m.Close(); err != nil || m.refs != 0 || calls != wantCalls {
+			t.Fatal("repeated cleanup", err, m.refs, calls)
 		}
 	}
 }
