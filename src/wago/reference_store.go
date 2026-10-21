@@ -1023,6 +1023,21 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 				}
 				foreign := owner.refStore.gcFrameOwner(retPC, owner.gc)
 				if foreign == nil {
+					// A scalar relay can call into a separately owned GC domain.
+					// Its validated adapter and saved context identify a retained
+					// caller with no roots in this domain; other domains are suspended
+					// independently by the invocation lease. Never scan its frame
+					// as though its compact words belonged to this collector.
+					if adapterRead && returnBase%8 == 0 && returnBase <= stackTop && stackTop-returnBase >= 64 {
+						contextOffset := uintptr(8)
+						if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutARM64 {
+							contextOffset = 0
+						}
+						context := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(returnBase+contextOffset)), 8)))
+						if owner.refStore.gcFrameScalarBoundary(retPC, owner.gc, context) {
+							return true
+						}
+					}
 					if r.allowExternalReturn {
 						return true
 					}
@@ -1650,6 +1665,29 @@ func (s *referenceStore) rangeGCDomainPersistentRootsClassified(collector *gc.Co
 
 func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Instance {
 	return s.gcFrameContextOwner(pc, collector, 0)
+}
+
+// gcFrameScalarBoundary proves that a retained caller cannot receive objects
+// from this collector. Scalar imports keep its own GC domain separate and the
+// invocation lease suspends each domain independently. The adapter established
+// the wrapper shape; matching its context and code image lets this domain stop
+// without reading another domain's frames or interpreting its compact roots.
+// Dynamic function-reference containers and boundaries need a separate proof.
+func (s *referenceStore) gcFrameScalarBoundary(pc uintptr, collector *gc.Collector, context uintptr) bool {
+	if s == nil || context == 0 {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for candidate, state := range s.instances {
+		if state == nil || state.resourcesReleased || candidate == nil || candidate.refStore != s || candidate.c == nil || candidate.gc == collector || candidate.c.hasCollectorReferenceCallBoundary() || compiledHasDynamicFuncrefReachability(candidate.c) {
+			continue
+		}
+		if candidate.nativeContext == context && pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *referenceStore) gcFrameContextOwner(pc uintptr, collector *gc.Collector, context uintptr) *Instance {
