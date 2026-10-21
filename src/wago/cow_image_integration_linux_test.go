@@ -87,6 +87,15 @@ func assertOrdinaryMapping(t *testing.T, in *Instance) {
 	t.Fatalf("no linear-memory mapping at %s", prefix)
 }
 
+func cowCompileExplicit(tb testing.TB, data []byte) *Compiled {
+	tb.Helper()
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), data)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return c
+}
+
 func processPSSKB(t *testing.T) int {
 	t.Helper()
 	data, err := os.ReadFile("/proc/self/smaps_rollup")
@@ -214,7 +223,7 @@ func TestCOWImageReuseAdmission(t *testing.T) {
 	// The ordinary opt-in keeps small modules and a large module's first use
 	// on the existing path. A second large instance proves actual reuse.
 	t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", "1")
-	small := MustCompile(cowIntegratedModule())
+	small := cowCompileExplicit(t, cowIntegratedModule())
 	defer small.Close()
 	for i := 0; i < 2; i++ {
 		in, err := Instantiate(small)
@@ -226,7 +235,7 @@ func TestCOWImageReuseAdmission(t *testing.T) {
 	if indexes := small.loadCompileIndexes(); indexes != nil && indexes.memoryImage != nil {
 		t.Fatal("small module built a CoW image")
 	}
-	large := MustCompile(cowPHPDataOnlyModule(t))
+	large := cowCompileExplicit(t, cowPHPDataOnlyModule(t))
 	defer large.Close()
 	first, err := Instantiate(large)
 	if err != nil {
@@ -254,7 +263,7 @@ func TestCOWImageEagerAdmission(t *testing.T) {
 	// Memory-oriented opt-in may build on the first large use, but must still
 	// exclude small modules that never repay an image.
 	t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", "eager")
-	small := MustCompile(cowIntegratedModule())
+	small := cowCompileExplicit(t, cowIntegratedModule())
 	defer small.Close()
 	smallInstance, err := Instantiate(small)
 	if err != nil {
@@ -264,7 +273,7 @@ func TestCOWImageEagerAdmission(t *testing.T) {
 	if indexes := small.loadCompileIndexes(); indexes != nil && indexes.memoryImage != nil {
 		t.Fatal("eager admission unexpectedly imaged small module")
 	}
-	large := MustCompile(cowPHPDataOnlyModule(t))
+	large := cowCompileExplicit(t, cowPHPDataOnlyModule(t))
 	defer large.Close()
 	first, err := Instantiate(large)
 	if err != nil {
@@ -277,9 +286,32 @@ func TestCOWImageEagerAdmission(t *testing.T) {
 	assertCOWMapping(t, first)
 }
 
+func TestCOWImageGuardModeKeepsOrdinaryMemory(t *testing.T) {
+	if !guardPageBuilt {
+		t.Skip("signals-based bounds require a guard-page build")
+	}
+	t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", "force")
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased), cowIntegratedModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if indexes := c.loadCompileIndexes(); indexes != nil && indexes.memoryImage != nil {
+		t.Fatal("guard mode built an explicit-bounds CoW image")
+	}
+	if got := in.Memory().UnsafeBytes(); !bytes.Equal(got[:3], []byte("Axy")) || !bytes.Equal(got[65534:65536], []byte("QR")) {
+		t.Fatalf("guard-mode initialization = %q / %q", got[:3], got[65534:65536])
+	}
+}
+
 func TestCOWImageMappingFailureFallsBack(t *testing.T) {
 	t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", "force")
-	c := MustCompile(cowIntegratedModule())
+	c := cowCompileExplicit(t, cowIntegratedModule())
 	defer c.Close()
 	first, err := Instantiate(c)
 	if err != nil {
@@ -381,7 +413,7 @@ func TestCOWImageRealYYJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(data)
+	c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).Compile(data)
 	if err != nil {
 		t.Fatal(err)
 	}
