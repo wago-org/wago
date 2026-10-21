@@ -42,6 +42,14 @@ func BenchmarkCompileTailArgumentPrefix(b *testing.B) {
 			b.Fatal(err)
 		}
 		benchCompiledSink = cm
+		// Close each owned native image outside compilation timing and allocation accounting.
+		b.StopTimer()
+		if cm.CodeImage != nil {
+			if err := cm.CodeImage.Close(); err != nil {
+				b.Fatal(err)
+			}
+		}
+		b.StartTimer()
 	}
 }
 
