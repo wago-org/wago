@@ -19,18 +19,34 @@ func (f *fn) tryScalarFloatSelect(cond *elem) bool {
 		return false
 	}
 	old := f.fpinned
-	xa := f.materializeF(a)
+	xa, xaOwned := f.operandRegF(a)
 	f.fpinned = old.add(xa)
-	xb := f.materializeF(b)
+	xb, xbOwned := f.operandRegF(b)
 	f.fpinned = f.fpinned.add(xb)
+	dest := xa
+	if !xaOwned {
+		if xbOwned {
+			dest = xb
+		} else {
+			dest = f.allocFReg(maskOf(xa, xb))
+		}
+	}
+	// A fresh destination has no owner yet. GP allocation during condition
+	// lowering can realize a pending FP load, so pin it with the sources.
+	f.fpinned = f.fpinned.add(dest)
 	cc := f.condenseToFlags(cond)
 	f.stats.peep("scalar-fcsel-flags")
-	f.a.Fcsel(xa, xa, xb, cc, typ == mtF64)
+	f.a.Fcsel(dest, xa, xb, cc, typ == mtF64)
 	f.fpinned = old
-	f.releaseF(xb)
+	if xaOwned && xa != dest {
+		f.releaseF(xa)
+	}
+	if xbOwned && xb != dest && xb != xa {
+		f.releaseF(xb)
+	}
 	f.erase(b)
 	f.erase(a)
-	f.pushFReg(xa, typ)
+	f.pushFReg(dest, typ)
 	f.stats.peep("scalar-fcsel")
 	return true
 }
