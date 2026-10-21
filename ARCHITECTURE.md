@@ -630,6 +630,10 @@ straight-line region; every may-collect, host-reentry, control/EH, tail, local-w
 or unknown edge invalidates it before lowering. Native allocation reserves identities
 only; collection cancels unused reservations before tracing.
 
+AMD64 prefix spill relocation uses an allocator-owned scratch register. It
+respects pending load addresses and pinned inputs without temporarily borrowing
+RAX; newly spilled sources remain outside the destination range.
+
 ### Off-heap allocation
 
 `Arena` hands out stable, off-heap, 8-byte-aligned buffers for everything native

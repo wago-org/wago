@@ -119,17 +119,15 @@ func TestStageFlushCopiesToCanonicalSlotsBackwards(t *testing.T) {
 			t.Fatalf("root %d storage = %+v, want %+v", i, root.st, want)
 		}
 	}
-	if high.st.slot != 9 || f.regUser[RAX] != live || f.pinned != maskOf(RAX) || f.spillFloor != 5 || f.maxSpill != 11 {
+	if high.st.slot != 9 || f.regUser[RAX] != live || f.pinned != maskOf(RAX) || f.spillFloor != 5 || f.maxSpill != 10 {
 		t.Fatal("direct copy changed live suffix, register ownership, floor, or frame extent")
 	}
 	want := fn{a: &encoder.Asm{}}
-	want.a.Store64(RSP, f.spillOff(10), RAX)
 	// The vector shifts right one slot, so its high half must move first too.
 	for _, move := range [][2]int{{3, 4}, {2, 3}, {1, 2}, {0, 1}} {
-		want.a.Load64(RAX, RSP, f.spillOff(move[0]))
-		want.a.Store64(RSP, f.spillOff(move[1]), RAX)
+		want.a.Load64(RDI, RSP, f.spillOff(move[0]))
+		want.a.Store64(RSP, f.spillOff(move[1]), RDI)
 	}
-	want.a.Load64(RAX, RSP, f.spillOff(10))
 	if !bytes.Equal(f.a.B, want.a.B) {
 		t.Fatalf("direct copy code = %x, want backward moves %x", f.a.B, want.a.B)
 	}
@@ -141,7 +139,7 @@ func TestStageFlushKeepsPermutedSourcesDisjoint(t *testing.T) {
 	right := f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 0})
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
 	f.stageFlushSpills(2, []*elem{left, right})
-	if left.st.slot != 3 || right.st.slot != 3+1 || f.maxSpill != 3+2 {
+	if left.st.slot != 2 || right.st.slot != 2+1 || f.maxSpill != 2+2 {
 		t.Fatalf("permuted sources were not staged disjointly: %d %d max=%d", left.st.slot, right.st.slot, f.maxSpill)
 	}
 }
@@ -154,14 +152,12 @@ func TestStageFlushDirectSkipsSafeSlots(t *testing.T) {
 	high := f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 5})
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
 	f.stageFlushSpills(4, []*elem{canonical, prefix, moving, high})
-	if canonical.st.slot != 0 || moving.st.slot != 2 || high.st.slot != 5 || f.maxSpill != 7 {
+	if canonical.st.slot != 0 || moving.st.slot != 2 || high.st.slot != 5 || f.maxSpill != 6 {
 		t.Fatal("direct copy changed a safe source or staged an unnecessary range")
 	}
 	want := fn{a: &encoder.Asm{}}
-	want.a.Store64(RSP, f.spillOff(6), RAX)
-	want.a.Load64(RAX, RSP, f.spillOff(1))
-	want.a.Store64(RSP, f.spillOff(2), RAX)
-	want.a.Load64(RAX, RSP, f.spillOff(6))
+	want.a.Load64(RDI, RSP, f.spillOff(1))
+	want.a.Store64(RSP, f.spillOff(2), RDI)
 	if !bytes.Equal(f.a.B, want.a.B) {
 		t.Fatalf("copy code = %x, want only the unsafe source copied: %x", f.a.B, want.a.B)
 	}
