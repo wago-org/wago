@@ -5,9 +5,53 @@ package wago
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
 	"testing"
 	"time"
 )
+
+func TestWindowsTypedI64LiveRouteDisableSwitch(t *testing.T) {
+	const childEnv = "WAGO_TEST_WINDOWS_I64_LIVE_DISABLED_CHILD"
+	if os.Getenv(childEnv) != "1" {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestWindowsTypedI64LiveRouteDisableSwitch$")
+		cmd.Env = append(os.Environ(), "WAGO_PRIVATE_NUMERIC_LIVE_ROUTE=0", childEnv+"=1")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("disabled live-route child: %v\n%s", err, output)
+		}
+		return
+	}
+	if privateNumericLiveRouteEnabled {
+		t.Fatal("disabled live-route switch was ignored during initialization")
+	}
+	c, err := Compile(goHostSegmentConfig().WithBoundsChecks(BoundsChecksExplicit), cancelBoundedTypedI64Single)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	imports := NewImports()
+	imports.HostFunc("env", "step", func(v int64) int64 { return v + 1 }).Params(ValI64).Results(ValI64)
+	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if in.eng.PreparedScalarHost() != nil {
+		t.Fatal("disabled live-route switch still prepared the Windows bridge")
+	}
+	ic, err := in.fillInvokeCache("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.contextBoundedTypedI64Eligible(ic) {
+		t.Fatal("disabled live-route switch still selected the Windows bridge")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if got, err := in.InvokeContext(ctx, "run", 41); err != nil || len(got) != 1 || got[0] != 42 {
+		t.Fatalf("disabled live-route parked fallback: %v, %v", got, err)
+	}
+}
 
 func TestWindowsTypedI64LiveAsyncCancellationAndClose(t *testing.T) {
 	if codeProfileEnabled || !detachedNumericHostEnabled || !privateNumericLiveRouteEnabled || !integerNumericHostEnabled {
