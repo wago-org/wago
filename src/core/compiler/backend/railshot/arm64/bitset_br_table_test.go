@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"encoding/binary"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"testing"
 )
@@ -30,6 +31,16 @@ func TestBitsetBrTable(t *testing.T) {
 		}
 		if diagnosticsEnabled && stats.Funcs[0].Peephole["br-table-bitset"] != 1 {
 			t.Fatalf("n=%d missing bitset: %v", n, stats.Funcs[0].Peephole)
+		}
+		bitTest := false
+		for at := 0; at+4 <= len(cm.Code); at += 4 {
+			word := binary.LittleEndian.Uint32(cm.Code[at:])
+			if word&0x7ff80000 == 0x37000000 {
+				bitTest = true
+			}
+		}
+		if !bitTest {
+			t.Fatalf("n=%d: zero-argument dispatch retains dependent AND", n)
 		}
 		for index := uint64(0); index < uint64(n+2); index++ {
 			want := uint64(1000)
