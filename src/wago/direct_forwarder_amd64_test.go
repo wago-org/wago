@@ -10,10 +10,6 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-func directForwarderRootsModule() []byte {
-	return directForwarderRootsModuleFor(false)
-}
-
 func directForwarderRootsModuleFor(numericParam bool) []byte {
 	bodies := [][]byte{wasmtest.Code([]byte{0xfb, 1, 0, 0x1a, 0x20, 0, 0x0b})}
 	forwardType := []byte{0x60, 1, 0x63, 0, 1, 0x63, 0}
