@@ -132,3 +132,51 @@ func TestVariableShiftTrapOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestVariableShiftSameRegisterOperands(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		for kind := byte(0); kind < 3; kind++ {
+			typ, shift, xor := wasm.I32, byte(0x74), byte(0x73)
+			if wide {
+				typ, shift, xor = wasm.I64, 0x86, 0x85
+			}
+			// Both shift inputs borrow the same pinned local. The final XOR reads
+			// that local again, so the destination must preserve the source register.
+			body := []byte{0, 0x3f, 0, 0x1a, 0x20, 0, 0x20, 0, shift + kind, 0x20, 0, xor, 0x0b}
+			m := modMem(t, 1, []wasm.ValType{typ}, []wasm.ValType{typ}, body)
+			for _, input := range []uint64{0, 1, 31, 32, 63, 64, 0x80000001, 0x8000000000000001, ^uint64(0)} {
+				x, count := input, input&63
+				if !wide {
+					x = uint64(uint32(x))
+					count &= 31
+				}
+				want := x << count
+				if kind == 1 {
+					if wide {
+						want = uint64(int64(x) >> count)
+					} else {
+						want = uint64(uint32(int32(x) >> count))
+					}
+				} else if kind == 2 {
+					want = x >> count
+				}
+				want ^= x
+				var stats ModuleStats
+				opts := CompileOptions{}
+				if diagnosticsEnabled {
+					opts.Stats = &stats
+				}
+				got, err := runArm64WrapperWithOptions(t, m, opts, input)
+				if !wide {
+					got, want = uint64(uint32(got)), uint64(uint32(want))
+				}
+				if err != nil || got != want {
+					t.Fatalf("wide=%v kind=%d input=%x got=%x want=%x err=%v", wide, kind, input, got, want, err)
+				}
+				if diagnosticsEnabled && stats.Funcs[0].Peephole["variable-shift-three-operand"] != 1 {
+					t.Fatalf("reuse not active: %v", stats.Funcs[0].Peephole)
+				}
+			}
+		}
+	}
+}
