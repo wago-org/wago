@@ -10,7 +10,7 @@ import (
 )
 
 func (f *fn) tryFuseAbstractArrayCastLen(nullable bool, reader *wasm.Reader) (bool, error) {
-	if !f.gcArrayHelpers {
+	if !gcSharedStubsEnabled || !f.gcArrayHelpers {
 		return false, nil
 	}
 	look := *reader

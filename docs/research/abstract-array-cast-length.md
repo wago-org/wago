@@ -121,3 +121,17 @@ fixture or a result synthesized from the small benchmark.
 
 Raw paired timings and benchmark samples are in
 [the saved results](abstract-array-cast-length-results/summary.json).
+
+## Disabled shared-stub mode
+
+The follow-up safety review of PR980 exposed the same configuration gap in
+this adjacent cast/length path. `WAGO_AMD64_NO_GC_SHARED_STUBS=1` must disable
+this module-shared leaf too. The matcher now checks the existing switch before
+consuming either opcode, so disabled mode uses the original checked helpers.
+Default-mode emitted code is unchanged.
+
+The codegen test covers both cast nullabilities with the switch enabled and
+disabled, and requires zero shared stubs/calls in disabled mode. It failed on
+the prior code (one fused path while disabled). Normal and checked focused
+backend/collector/public-runtime tests pass in 15.986/15.529 seconds. The
+runtime tests also cover the independent-root type-growth repair above.
