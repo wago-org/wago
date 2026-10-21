@@ -144,3 +144,13 @@ on all six Wago artifacts. Generated code and metadata sizes are unchanged:
 27,059,224 code bytes and3,311,043 metadata bytes. Retargeting changes call
 addresses, not instruction counts. Median peak RSS is1,140,828KiB control and
 1,137,932KiB candidate; this small difference is not a claimed memory gain.
+
+## Project manifest switch follow-up
+
+The generated settings schema accepted `direct-forwarder`, but project
+manifest validation had a separate allowed-name list. Add the same option
+there so a project can explicitly disable this pass. The existing catalogued
+optimization regression failed before this fix in0.242 seconds with an
+unknown-setting diagnostic. Complete project/settings packages pass after
+the repair in9.954 seconds. Raw red/green results are in the data folder.
+The fix changes configuration admission only; it has no speed claim.
