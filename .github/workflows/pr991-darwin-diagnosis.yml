@@ -1,0 +1,46 @@
+name: PR 991 Darwin exit diagnosis
+on:
+  push:
+    branches: [diagnostic/pr991-darwin-exit-20261021]
+permissions:
+  contents: read
+jobs:
+  observer:
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.1'
+          cache: true
+      - name: Record exact baseline and native platform
+        run: |
+          git rev-parse HEAD HEAD^
+          go version
+          go env GOOS GOARCH CGO_ENABLED
+          uname -a
+      - name: Unmodified immediate-exit regression
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -v -count=10 -timeout=8m ./cli/manager/internal/plugin/gocommand -run TestDarwinExitObserver 2>&1 | tee "$RUNNER_TEMP/unmodified.log"
+      - name: Install diagnostic-only stage and group snapshot logging
+        run: |
+          python3 .github/diagnose-pr991.py
+          gofmt -w cli/manager/internal/plugin/gocommand/{command,group_signal_darwin}.go
+          git diff --stat
+      - name: Repeat native regression with diagnostics
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -v -count=20 -timeout=10m ./cli/manager/internal/plugin/gocommand -run TestDarwinExitObserver 2>&1 | tee "$RUNNER_TEMP/instrumented.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pr991-native-darwin-exit-diagnosis
+          path: |
+            ${{ runner.temp }}/unmodified.log
+            ${{ runner.temp }}/instrumented.log
+          if-no-files-found: warn

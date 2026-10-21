@@ -1,0 +1,12 @@
+from pathlib import Path
+p = Path("cli/manager/internal/plugin/gocommand/group_signal_darwin.go")
+s = p.read_text().replace('"fmt"', '"fmt"\n "os"')
+s = s.replace('deadline := time.Now().Add(100 * time.Millisecond)', 'fmt.Fprintf(os.Stderr, "PR991 normalize EPERM pid=%d at=%v\\n", pid, time.Now())\n deadline := time.Now().Add(100 * time.Millisecond)')
+s = s.replace('return signalErr', 'fmt.Fprintf(os.Stderr, "PR991 return EPERM pid=%d now=%v deadline=%v\\n", pid, time.Now(), deadline)\n return signalErr')
+s = s.replace('members, queryErr := query()', 'members, queryErr := query()\n fmt.Fprintf(os.Stderr, "PR991 query pid=%d now=%v deadline=%v err=%v count=%d\\n", pid, time.Now(), deadline, queryErr, len(members))\n for _, m := range members { fmt.Fprintf(os.Stderr, "PR991 member pid=%d state=%d flag=%x\\n", m.Proc.P_pid, m.Proc.P_stat, m.Proc.P_flag) }')
+p.write_text(s)
+p=Path("cli/manager/internal/plugin/gocommand/command.go")
+s=p.read_text().replace('"errors"', '"errors"\n "fmt"')
+s=s.replace('if err := command.Start(); err != nil {\n\t\treturn err', 'if err := command.Start(); err != nil {\n\t\treturn fmt.Errorf("diagnostic command Start: %w", err)')
+s=s.replace('return command.Wait()','if err := command.Wait(); err != nil { return fmt.Errorf("diagnostic command Wait: %w", err) }; return nil')
+p.write_text(s)
