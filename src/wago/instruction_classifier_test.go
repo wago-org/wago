@@ -110,3 +110,34 @@ func BenchmarkInstructionClassifierCompile(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkInstructionClassifierInvoke(b *testing.B) {
+	for _, shape := range []string{"normal", "shared", "deep", "unreachable"} {
+		b.Run(shape, func(b *testing.B) {
+			rt := NewRuntime()
+			defer rt.Close()
+			if err := rt.Use(classifierExecutionExtension(shape)); err != nil {
+				b.Fatal(err)
+			}
+			mod, err := rt.Compile(classifierExecutionModule())
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer mod.Close()
+			in, err := rt.Instantiate(context.Background(), mod)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer in.Close()
+			args := make([]uint64, 17)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := range b.N {
+				args[0] = uint64(uint32(n))
+				if _, err := in.Invoke("run", args...); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
