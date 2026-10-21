@@ -10,6 +10,10 @@ artifact, host, plugin, profiling, and wide-arithmetic paths. See
 [tests/README.md](tests/README.md) for acceptance commands. QEMU provides
 functional validation; performance measurements require native RV64 hardware.
 
+The [committed Core 3 baseline](tests/conformance/baselines/spec-v3-baseline.json)
+records **2,226 modules and 58,038 assertions passed** across the pinned 258-file
+suite, with zero failures, skips, or gap categories.
+
 The emoji legend is:
 
 - ✔️ · fully supported
