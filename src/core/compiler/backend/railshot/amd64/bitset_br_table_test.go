@@ -1,9 +1,11 @@
-//go:build linux && amd64
+//go:build (linux || darwin || windows) && amd64
 
 package amd64
 
 import (
+	"bytes"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
 	"testing"
 )
 
@@ -43,6 +45,75 @@ func TestBitsetBrTable(t *testing.T) {
 		for _, index := range []uint64{127, 0x80000000, 0xffffffff} {
 			if got := runCompiledAmd64u(t, cm, index, 1); got != 1000 {
 				t.Fatalf("index=%x wraps into mask: got=%d", index, got)
+			}
+		}
+	}
+}
+
+// Force the existing call-free restoration path to move the table index from
+// a relinquished local register to RDX. Execute the generated edge code as well
+// as checking its shape; the transported value and restored local both survive.
+func TestBitsetIndexAfterPinRelinquishment(t *testing.T) {
+	for _, index := range []uint32{0, 1, 7, 8, 63, 64, 0x80000000, 0xffffffff} {
+		f := callfreeSpilledPin(mtI64)
+		f.locals[0].state, f.pinRelinquished = lsReg, false
+		f.pinnedLocalMask = maskOf(R12)
+		f.ctrl = []ctrlFrame{
+			{kind: cfBlock, resultN: 1, branchN: 1, res0: mtI64},
+			{kind: cfBlock, resultN: 1, branchN: 1, res0: mtI64},
+		}
+		var stats CodegenStats
+		f.stats = &stats
+		f.a.SubRsp(256)
+		f.a.Store64(RSP, 8, RCX) // wrapper result pointer
+		f.a.Load64(R12, RDI, 0)  // value of the local that allocation will borrow
+		f.a.Load64(RAX, RDI, 8)
+		f.a.Store64(RSP, f.spillOff(0), RAX)
+		f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 0})
+		for _, reg := range gpAlloc {
+			if reg != R12 {
+				f.pinned = f.pinned.add(reg)
+			}
+		}
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(index)})
+		if err := f.opBrTable(wasm.NewReader([]byte{8, 0, 1, 0, 1, 0, 1, 0, 1, 0})); err != nil {
+			t.Fatal(err)
+		}
+		if !f.pinRelinquished || f.locals[0].state != lsReg {
+			t.Fatal("fixture did not borrow and restore the local pin")
+		}
+		move, restore, bt := &encoder.Asm{}, &encoder.Asm{}, &encoder.Asm{}
+		move.MovRegReg32(RDX, R12)
+		restore.Load64(R12, RSP, f.localAddr(0))
+		bt.BtReg(RAX, RDX, true)
+		moveAt, restoreAt, btAt := bytes.Index(f.a.B, move.B), bytes.Index(f.a.B, restore.B), bytes.Index(f.a.B, bt.B)
+		if moveAt < 0 || restoreAt < moveAt+len(move.B) || btAt < restoreAt+len(restore.B) {
+			t.Fatalf("index=%x move/restore/BT order=%d/%d/%d", index, moveAt, restoreAt, btAt)
+		}
+		if diagnosticsEnabled && (stats.PinRelinquishments != 1 || stats.Peephole["br-table-bitset"] != 1) {
+			t.Fatalf("inactive pressure/dispatch counters: %+v", stats)
+		}
+		// The default inner-block edge adds seven; the member outer-block edge
+		// skips it. Both preserve the branch payload and the reclaimed local.
+		f.patchFrameEndSites(f.frameEndSites(&f.ctrl[1]))
+		f.a.Load64(RAX, RSP, f.spillOff(0))
+		f.a.AluRI(0, RAX, 7, true)
+		f.a.Store64(RSP, f.spillOff(0), RAX)
+		f.patchFrameEndSites(f.frameEndSites(&f.ctrl[0]))
+		f.a.Load64(RAX, RSP, f.spillOff(0))
+		f.a.AluRR(0x01, RAX, R12, true)
+		f.a.Load64(RCX, RSP, 8)
+		f.a.Store64(RCX, 0, RAX)
+		f.a.AddRsp(256)
+		f.a.Ret()
+		cm := &encoder.CompiledModule{Code: f.a.B, Entry: []int{0}}
+		for _, value := range []uint64{0, 0x8000000000000000, ^uint64(0)} {
+			want := value + 123
+			if index >= 8 || index&1 == 0 {
+				want += 7
+			}
+			if got := runCompiledAmd64u(t, cm, 123, value); got != want {
+				t.Fatalf("index=%x value=%x got=%x want=%x", index, value, got, want)
 			}
 		}
 	}
