@@ -1,8 +1,11 @@
 # #925: lazy validated-function compilation admission
 
-Base: `origin/main` at `209e448c392510a0325d5b282a0d86a776fb379c`.
-This branch adds a repeatable real-module accounting control, **not** a lazy
-compiler. Production compilation is unchanged. Keep the PR draft.
+Current branch parent: `8097344a63a79e96230e09c883b2138232151370`.
+The historical measurements below name older pinned revisions; they do not
+qualify this parent or the current head. This branch adds a real-module
+accounting and entry-profile survey. Production compilation is unchanged.
+The survey can be reviewed on its own; a production lazy compiler remains
+separate work.
 
 ## First evidence
 
@@ -34,7 +37,7 @@ default frontend validation call rejected its exception-handling tag; the
 test's frontend feature choice should be aligned with its Compile feature
 choice before adding that module. We did not infer a backend failure.
 
-An unchanged-code baseline/head check used:
+A historical short-run baseline/head record used:
 
 ```sh
 GOCACHE=/tmp/wago-go-cache go test ./src/wago -run '^$' -bench '^BenchmarkCompileSmallScalar$' -benchtime=80ms -count=2 -benchmem
@@ -45,8 +48,12 @@ GOCACHE=/tmp/wago-go-cache go test ./src/wago -run '^$' -bench '^BenchmarkCompil
 | Base `209e448c` | 11,725 / 11,527 | 15,274 / 15,271 | 72 |
 | Test-only head `b1c0ae10` | 12,011 / 11,898 | 15,272 / 15,271 | 72 |
 
-The 2–4% time difference is ordinary short-run noise; the production code is
-identical. This comparison does not measure a lazy variant. The source bytes,
+These two samples per revision do not establish a timing change or its cause.
+The named `209e448c` baseline is not the current branch parent, and the named
+`b1c0ae10` candidate is not the current head. Raw historical logs and build
+identities were not rechecked for this repair, so this record does not establish
+production-source equivalence or qualify the current revision. The comparison
+does not measure a lazy variant. The source bytes,
 compiled code bytes, and allocations above are an **opportunity ceiling**, not
 a claimed saving. It excludes resident source/decode state, dispatch stubs,
 code-map bookkeeping, instance count, and actual function execution.
@@ -75,9 +82,9 @@ tests. A complete image eager mode remains the comparison and fallback.
 
 ## Decision / next evidence
 
-Do not promote this PR. First instrument native function entry use during
-real startup, one-shot, and long-running workloads, and capture per-function
-native bytes plus total process PSS/RSS. Without executed coverage, a retained
+Before changing production compilation policy, qualify native function entry
+use during real startup, one-shot, and long-running workloads, and capture
+per-function native bytes plus total process PSS/RSS. Without executed coverage, a retained
 source estimate, and a safe publication/lifetime design, neither a memory win
 nor a working lazy prototype is established. If coverage is high, stop. If a
 low-coverage real workload has a compelling **net** resource opportunity,
@@ -110,7 +117,7 @@ The two full passes took 20.80 seconds. Per-function body byte attribution comes
 
 The PHP input now has actual execution coverage, unlike the initial static element/export proxy. Its 27.25 MB of unentered body code makes it the clearest candidate, though another input or longer run may enter many more functions. Instrumentation increases source size (PHP 13,622,978→14,026,672 B) and compiled size (30,164,957→30,428,535 B); use it only to identify entered functions, never to estimate lazy speed or memory. The original command output is unchanged. The unentered byte sum is an upper bound before the costs of retained validated bodies, first-use stubs, synchronization, executable mapping, and serialization; no net retained RSS or compile-time reduction is claimed.
 
-A safe first implementation still needs the fixed-entry and code-publication protocol described above. The profile gives a concrete target for that work and leaves this PR draft pending a working opt-in implementation and concurrency/serialization correctness tests.
+A safe first implementation still needs the fixed-entry and code-publication protocol described above. The profile gives a concrete target for that separate work. This survey does not require a lazy implementation to be reviewed; production changes still need concurrency and serialization correctness tests.
 
 ## Input-specific native-code ceiling (not a lazy module)
 
@@ -137,4 +144,23 @@ The current AMD64 compiler patches every direct call's `rel32` target against th
 
 A sound minimal prototype therefore needs a stable entry stub for **every** potentially unresolved local call target before relocation and table setup; an instance-independent way for that stub to identify the compiled module and function; a bounded per-function `uncompiled/compiling/ready/failed` state with recursion and host reentry handling; publication of separately mapped RX function code and its GC/unwind/source metadata before a stub may jump to it; and code ownership that survives close while any call/instance is active. The current code-image/codec contracts have no such dispatch or publication channel. An incomplete `unreachable` or Go-only invoke stub would change behavior for direct/indirect calls and cannot be treated as the requested prototype.
 
-**Disposition:** the low PHP entry coverage and input-specific ceiling justify a dedicated lazy-code architecture effort, but a safe #925 first-use compiler is not complete in this branch. Keep the PR draft as unfinished research, with exact blocker above. Do not claim a retained-memory win or ready review from the proxy.
+**Disposition:** the low PHP entry coverage and input-specific ceiling support further lazy-code architecture work. This branch is an accounting and instrumentation survey ready for review. A safe #925 first-use compiler is not complete, and the proxy does not establish a retained-memory win or justify a production policy change.
+
+
+## Ownership and portable accounting controls
+
+The public `Compile` contract transfers ownership of its input backing array on
+success. The original command compile, standalone decoder, and later baseline
+compile now receive separate copies of the catalog bytes. Baseline and ceiling
+input copies and configuration setup occur before the compile time and
+allocation snapshots. These host copies are excluded from the compile-only
+samples; they remain a cost of this diagnostic harness.
+
+Artifact-size accounting pins explicit bounds, including in guard-page builds,
+and requests `CoreFeaturesV3 & SupportedFeatures()`. This preserves the artifact
+serialization contract and avoids requesting unsupported proposal families on
+Windows and Darwin AMD64. Original and instrumented command compiles and both
+ceiling compiles also pin explicit bounds. Test logs state the selected bounds
+mode, and the accounting test logs its selected features. Native platform CI
+checks correctness; these controls add no new performance result. Historical
+tables above have not been remeasured against the current head.

@@ -31,6 +31,7 @@ func TestLazyFunctionEntryProfile(t *testing.T) {
 			t.Fatalf("need %s: %v", tool, err)
 		}
 	}
+	cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
 	ids := []string{"fasttree-phylogeny", "jq-json-transform", "quickjs-script", "sqlite3-query", "php-buckets"}
 	available := map[string]corpusModule{}
 	for _, m := range commandCorpus(t) {
@@ -43,7 +44,9 @@ func TestLazyFunctionEntryProfile(t *testing.T) {
 		}
 		t.Run(id, func(t *testing.T) {
 			stdin := commandInput(t, m)
-			original, err := wago.Compile(nil, m.bytes)
+			// Compile owns its input on success; retain the corpus bytes for the
+			// independent decoder and the later baseline compilation.
+			original, err := wago.Compile(cfg, slices.Clone(m.bytes))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -75,7 +78,7 @@ func TestLazyFunctionEntryProfile(t *testing.T) {
 			if len(functions) == 0 {
 				t.Fatal("no local functions")
 			}
-			compiled, err := wago.Compile(nil, wasmBytes)
+			compiled, err := wago.Compile(cfg, wasmBytes)
 			if err != nil {
 				t.Fatalf("compile instrumented: %v", err)
 			}
@@ -97,8 +100,8 @@ func TestLazyFunctionEntryProfile(t *testing.T) {
 				}
 				prior = visited
 			}
-			t.Logf("local_functions=%d entered_functions=%d entered_share=%.2f%% source_bytes=%d profiled_bytes=%d native_bytes=%d profiled_native_bytes=%d", len(functions), len(prior), 100*float64(len(prior))/float64(len(functions)), len(m.bytes), len(wasmBytes), original.CodeSize(), compiled.CodeSize())
-			decoded, err := wasm.DecodeModuleWithFeatures(m.bytes, wasm.ValidationFeatures{})
+			t.Logf("bounds=%s local_functions=%d entered_functions=%d entered_share=%.2f%% source_bytes=%d profiled_bytes=%d native_bytes=%d profiled_native_bytes=%d", cfg.BoundsChecks(), len(functions), len(prior), 100*float64(len(prior))/float64(len(functions)), len(m.bytes), len(wasmBytes), original.CodeSize(), compiled.CodeSize())
+			decoded, err := wasm.DecodeModuleWithFeatures(slices.Clone(m.bytes), wasm.ValidationFeatures{})
 			if err != nil {
 				t.Fatalf("decode for native-size attribution: %v", err)
 			}
@@ -158,10 +161,13 @@ func measureUnenteredBodyCeiling(t *testing.T, m corpusModule, stdin []byte, pla
 	}
 	compile := func(data []byte) (*wago.Compiled, time.Duration, uint64, uint64) {
 		t.Helper()
+		// Keep input copying outside the compile-only time/allocation sample.
+		source := slices.Clone(data)
+		cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
 		start := time.Now()
-		compiled, err := wago.Compile(nil, data)
+		compiled, err := wago.Compile(cfg, source)
 		elapsed := time.Since(start)
 		if err != nil {
 			t.Fatal(err)
@@ -186,7 +192,7 @@ func measureUnenteredBodyCeiling(t *testing.T, m corpusModule, stdin []byte, pla
 	if !slices.Equal(plain.results, got.results) || !bytes.Equal(plain.stdout, got.stdout) || !bytes.Equal(plain.stderr, got.stderr) || !reflect.DeepEqual(plain.files, got.files) {
 		t.Fatal("input-specific ceiling output differs")
 	}
-	t.Logf("input_specific_ceiling original_source_bytes=%d transformed_source_bytes=%d baseline_native_bytes=%d ceiling_native_bytes=%d baseline_compile_ms=%.2f ceiling_compile_ms=%.2f baseline_allocated_bytes=%d ceiling_allocated_bytes=%d baseline_mallocs=%d ceiling_mallocs=%d", len(m.bytes), len(stripped), baseNative, ceiling.CodeSize(), float64(baseTime.Microseconds())/1000, float64(ceilingTime.Microseconds())/1000, baseBytes, ceilingBytes, baseAllocs, ceilingAllocs)
+	t.Logf("input_specific_ceiling bounds=explicit original_source_bytes=%d transformed_source_bytes=%d baseline_native_bytes=%d ceiling_native_bytes=%d baseline_compile_ms=%.2f ceiling_compile_ms=%.2f baseline_allocated_bytes=%d ceiling_allocated_bytes=%d baseline_mallocs=%d ceiling_mallocs=%d", len(m.bytes), len(stripped), baseNative, ceiling.CodeSize(), float64(baseTime.Microseconds())/1000, float64(ceilingTime.Microseconds())/1000, baseBytes, ceilingBytes, baseAllocs, ceilingAllocs)
 }
 
 func runProfiledFunctionCommand(m corpusModule, compiled *wago.Compiled, stdin []byte, functions []int) (commandOutput, []int, error) {

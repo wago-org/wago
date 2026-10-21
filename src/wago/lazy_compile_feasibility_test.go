@@ -34,10 +34,13 @@ func TestLazyCompileFeasibility(t *testing.T) {
 				t.Fatal(err)
 			}
 			validationTime := time.Since(started)
+			// Artifact accounting requires explicit bounds, including in guard-page
+			// builds. Only request features admitted by this target.
+			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3 & SupportedFeatures()).WithBoundsChecks(BoundsChecksExplicit)
 			var before, after runtime.MemStats
 			runtime.ReadMemStats(&before)
 			started = time.Now()
-			c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(data)
+			c, err := cfg.Compile(data)
 			compileTime := time.Since(started)
 			runtime.ReadMemStats(&after)
 			if err != nil {
@@ -56,7 +59,7 @@ func TestLazyCompileFeasibility(t *testing.T) {
 					}
 				}
 			}
-			t.Logf("source_bytes=%d local_functions=%d total_functions=%d exports=%d element_ref_entries=%d native_code_bytes=%d serialized_bytes=%d validate_ms=%.2f compile_ms=%.2f compile_alloc_bytes=%d compile_mallocs=%d", len(data), len(m.Code), len(c.FuncTypeID), len(c.Exports), elemRefs, c.CodeSize(), len(artifact), float64(validationTime.Microseconds())/1000, float64(compileTime.Microseconds())/1000, after.TotalAlloc-before.TotalAlloc, after.Mallocs-before.Mallocs)
+			t.Logf("bounds=%s features=%s source_bytes=%d local_functions=%d total_functions=%d exports=%d element_ref_entries=%d native_code_bytes=%d serialized_bytes=%d validate_ms=%.2f compile_ms=%.2f compile_alloc_bytes=%d compile_mallocs=%d", cfg.BoundsChecks(), cfg.CoreFeatures(), len(data), len(m.Code), len(c.FuncTypeID), len(c.Exports), elemRefs, c.CodeSize(), len(artifact), float64(validationTime.Microseconds())/1000, float64(compileTime.Microseconds())/1000, after.TotalAlloc-before.TotalAlloc, after.Mallocs-before.Mallocs)
 		})
 	}
 }
