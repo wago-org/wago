@@ -96,6 +96,7 @@
               "cset-lineage",
               "dead-gc-new",
               "deep-fp-pins",
+              "direct-forwarder",
               "direct-go-host-import",
               "direct-int-branch-merge",
               "dominated-indexed-base",

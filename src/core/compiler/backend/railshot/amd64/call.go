@@ -374,6 +374,19 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		}
 		return f.callHost(int(idx), ft) // void: async log-and-replay
 	}
+	// Keep one real call and one original source root mask. This runs after
+	// inlining so it needs no new inline-local reservation or mask consumption.
+	if f.opt(optDirectForwarder) {
+		if target, ok := directForwarderTarget(f.m, imported, idx); ok {
+			targetType, valid := f.functionSignature(target)
+			if !valid || !equalForwarderTypes(ft.Params, targetType.Params) || !equalForwarderTypes(ft.Results, targetType.Results) {
+				return fmt.Errorf("direct-forwarder: signature proof failed for call %d -> %d", idx, target)
+			}
+			idx = target
+			ft = targetType
+			f.stats.peep("direct-forwarder-retarget")
+		}
+	}
 	// `call f; local.set x` fusion: an int-only register-ABI call whose single
 	// int result feeds a pinned local moves RAX straight into the local's
 	// register — no intermediate result register, no separate set lowering.

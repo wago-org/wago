@@ -510,6 +510,7 @@ var catalog = []Definition{
 	both("immutable-table", "Immutable tables", "specialize calls through never-written tables"),
 	both("immutable-table-type", "Immutable table types", "skip redundant immutable-table type checks"),
 	both("inline-callfree", "Call-free inline hints", "prioritize call-free functions for inlining"),
+	amd64("direct-forwarder", "Direct forwarding calls", "redirect bounded local forwarding chains with identical Wasm signatures"),
 	both("store-forward", "Store forwarding", "forward straight-line stores into loads"),
 	amd64("frame-elide", "Frame elision", "omit frames for small single-result functions"),
 	amd64("compact-i32-frame", "Compact i32 frames", "pack i32 locals in straight-line call-free functions"),
