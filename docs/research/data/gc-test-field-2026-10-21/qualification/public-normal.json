@@ -1,0 +1,18 @@
+{
+  "label": "public-normal",
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-run",
+    "^Test(GCTestField|GCLeafTrap|GCDefinedTrap|GCTrappingGuard|Trap)",
+    "-count=1",
+    "./src/wago"
+  ],
+  "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-test-field-public",
+  "seconds": 24.929096313004266,
+  "exit": 1,
+  "stdout": "--- FAIL: TestGCTestFieldConditionalExtent (0.00s)\n    --- FAIL: TestGCTestFieldConditionalExtent/artifact0/wrong/interval (0.00s)\n        gc_test_field_amd64_test.go:184: trap=<nil> want cast failure\n    --- FAIL: TestGCTestFieldConditionalExtent/artifact1/wrong/interval (0.00s)\n        gc_test_field_amd64_test.go:184: trap=<nil> want cast failure\nFAIL\nFAIL\tgithub.com/wago-org/wago/src/wago\t0.024s\nFAIL\n",
+  "stderr": ""
+}

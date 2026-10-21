@@ -566,6 +566,11 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 		return f.emitDynamicFunctionSubtypeTest(uint32(heap), nullable)
 	}
 	if f.gcStructHelpers && heap >= 0 {
+		if !nullable {
+			if done, err := f.tryGCTestField(uint32(heap), r); done || err != nil {
+				return err
+			}
+		}
 		if target, ok := f.stagedGCType(uint32(heap)); ok && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
 			return f.emitNativeDefinedTest(uint32(heap), nullable)
 		}

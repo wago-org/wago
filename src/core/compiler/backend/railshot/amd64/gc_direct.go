@@ -1072,6 +1072,13 @@ func (f *fn) emitNativeGCStubs() {
 			f.a.PatchRel32(site, stub)
 		}
 	}
+	if len(f.sc.gcTestFieldStubSites) != 0 {
+		stub := f.a.Len()
+		f.emitNativeDefinedTypeCheckStub(true, true)
+		for _, site := range f.sc.gcTestFieldStubSites {
+			f.a.PatchRel32(site, stub)
+		}
+	}
 	if len(f.sc.gcDefinedTestStubSites) != 0 {
 		stub := f.a.Len()
 		f.emitNativeDefinedTestStub()
@@ -2141,16 +2148,21 @@ func (f *fn) emitNativeFinalCastArrayLenStub() {
 
 // emitNativeDefinedCastStub validates one defined collector cast through exact
 // canonical identity or the collector's immutable subtype interval table.
-func (f *fn) emitNativeDefinedCastStub() { f.emitNativeDefinedTypeCheckStub(false) }
+func (f *fn) emitNativeDefinedCastStub() { f.emitNativeDefinedTypeCheckStub(false, false) }
 
 // emitNativeDefinedTestStub returns the dynamic defined-type test result without
 // entering Go. Invalid compact references remain fail-closed traps.
-func (f *fn) emitNativeDefinedTestStub() { f.emitNativeDefinedTypeCheckStub(true) }
+func (f *fn) emitNativeDefinedTestStub() { f.emitNativeDefinedTypeCheckStub(true, false) }
 
 // emitNativeDefinedTypeCheckStub consumes EAX=compact reference,
-// EDX=module-local target type, ECX=nullable flag, and ESI=exact flag. Test mode
-// returns zero/one in EAX; cast mode returns the original compact reference.
-func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
+// EDX=module-local target type, ECX=nullable flag, and ESI=exact flag or required
+// field extent in field-test mode. Test mode returns zero/one in EAX; field-test
+// mode also returns the checked object address in RDX on success. Cast mode
+// returns the original compact reference.
+func (f *fn) emitNativeDefinedTypeCheckStub(test, field bool) {
+	if field && !test {
+		panic("amd64: field test leaf requires test mode")
+	}
 	a := f.a
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
@@ -2188,6 +2200,9 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	nonNull := a.JccPlaceholder(condNE)
 	if test {
 		a.MovRegReg32(RAX, RCX)
+		if field {
+			a.MovImm32(RDX, 0)
+		}
 	} else {
 		a.TestSelf(RCX, false)
 		castFailure(condE)
@@ -2234,6 +2249,9 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	a.AluRI(cmpDigit, RCX, int32(gc.HeaderSize), false)
 	castFailure(condB)
 
+	if field {
+		a.MovRegReg32(RDI, RCX)
+	} // retain validated handle extent
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0) // actual canonical type ID
 
@@ -2242,6 +2260,8 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	// The handle and object extent checks above still run on both paths.
 	a.Cmp32(RCX, RDX)
 	identityDone := a.JccPlaceholder(condE)
+	// Field-test mode uses RSI for the required field extent; only cast mode
+	// consumes it as an exact flag.
 	if !test {
 		// Identity already failed, so an exact cast cannot match a proper subtype.
 		a.TestSelf(RSI, false)
@@ -2277,6 +2297,19 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	successAt := a.Len()
 	a.PatchRel32(identityDone, successAt)
 	if test {
+		if field {
+			// A malformed subtype interval can report true for unequal final
+			// identities. The original following final cast still rejects it.
+			a.Load32(RAX, R11, 0)
+			a.Cmp32(RAX, RDX)
+			castFailure(condNE)
+			a.Cmp32(RDI, RSI)
+			castFailure(condB)
+			a.Load32(RAX, R11, 4)
+			a.Cmp32(RAX, RSI)
+			castFailure(condB)
+			a.MovReg64(RDX, R11)
+		}
 		a.MovImm32(RAX, 1)
 	} else {
 		a.MovRegReg32(RAX, RDI)
@@ -2285,6 +2318,9 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	if test {
 		mismatchAt := a.Len()
 		a.MovImm32(RAX, 0)
+		if field {
+			a.MovImm32(RDX, 0)
+		}
 		for _, branch := range mismatches {
 			a.PatchRel32(branch, mismatchAt)
 		}
