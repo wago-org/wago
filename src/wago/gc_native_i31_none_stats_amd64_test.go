@@ -24,8 +24,12 @@ func TestGCNativeI31NoneAdmission(t *testing.T) {
 				t.Fatal(err)
 			}
 			c.CodeImage.Close()
-			if stats.Funcs[0].Peephole["gc-null-i31-ref"] != 1 {
-				t.Fatalf("op%d heap%x: no native null/i31 path", op, heap)
+			want := 1
+			if op == 22 && heap == 0x71 {
+				want = 0
+			} // a non-nullable none cast cannot succeed
+			if stats.Funcs[0].Peephole["gc-null-i31-ref"] != want {
+				t.Fatalf("op%d heap%x: native paths %d, want %d", op, heap, stats.Funcs[0].Peephole["gc-null-i31-ref"], want)
 			}
 		}
 	}
