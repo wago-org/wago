@@ -98,6 +98,8 @@ Require `wago_nativecompare` so ordinary builds and install discovery exclude it
   independent result checks, native placement controls, and compile/execution
   benchmarks.
   ([#881](https://github.com/wago-org/wago/pull/881))
+- Add bounded first/second prepared-call lifecycle diagnostics with guest state
+  controls, explicit setup boundaries and consistent per-batch metrics.
 
 ## [v0.1.0-beta.13] - 2026-10-15
 
