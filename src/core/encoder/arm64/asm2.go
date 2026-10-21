@@ -334,14 +334,6 @@ func fbase(f64 bool, baseS, baseD uint32) uint32 {
 	return baseS
 }
 
-// Fcsel copies one scalar source according to the integer condition flags.
-func (a *Asm) Fcsel(rd, rn, rm Reg, cond Cond, f64 bool) {
-	a.word(fbase(f64, 0x1E200C00, 0x1E600C00) | r(rm)<<16 | uint32(cond)<<12 | r(rn)<<5 | r(rd))
-	if regallocCheckEnabled {
-		a.regallocKillFP(rd)
-	}
-}
-
 func (a *Asm) Fadd(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E202800, 0x1E602800) | r(rm)<<16 | r(rn)<<5 | r(rd))
 	if regallocCheckEnabled {
