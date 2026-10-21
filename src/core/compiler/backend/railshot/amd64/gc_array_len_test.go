@@ -34,8 +34,40 @@ func TestGCGeneralArrayLenEligibility(t *testing.T) {
 			t.Fatal(err)
 		}
 		c.CodeImage.Close()
-		if stats.Funcs[0].Peephole["gc-array-len-native"] != 1 {
-			t.Fatalf("local=%v native array.len sites=%d, want 1", local, stats.Funcs[0].Peephole["gc-array-len-native"])
+		want := 0
+		if gcSharedStubsEnabled {
+			want = 1
 		}
+		if stats.Funcs[0].Peephole["gc-array-len-native"] != want {
+			t.Fatalf("local=%v native array.len sites=%d, want %d", local, stats.Funcs[0].Peephole["gc-array-len-native"], want)
+		}
+	}
+}
+
+func TestGCGeneralArrayLenRespectsSharedStubSwitch(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	saved := gcSharedStubsEnabled
+	gcSharedStubsEnabled = false
+	defer func() { gcSharedStubsEnabled = saved }()
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x60, 1, 0x6a, 1, 0x7f})),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xfb, 15, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	var stats ModuleStats
+	c, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, GCArrayHelpers: true, Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CodeImage.Close()
+	if stats.GCSharedStubs != 0 || stats.GCSharedStubCallSites != 0 || stats.Funcs[0].Peephole["gc-array-len-native"] != 0 {
+		t.Fatal("disabled shared stubs still emitted an array.len leaf")
 	}
 }
