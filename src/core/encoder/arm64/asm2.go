@@ -432,7 +432,7 @@ func (a *Asm) FmovToGpr(rd, rn Reg, f64 bool) {
 func (a *Asm) Fcsel(rd, rn, rm Reg, c Cond, f64 bool) {
 	a.word(fbase(f64, 0x1E200C00, 0x1E600C00) | r(rm)<<16 | uint32(c)<<12 | r(rn)<<5 | r(rd))
 	if regallocCheckEnabled {
-		a.regallocFPWrites(uint32(1) << r(rd))
+		a.regallocKillFP(rd)
 	}
 }
 
