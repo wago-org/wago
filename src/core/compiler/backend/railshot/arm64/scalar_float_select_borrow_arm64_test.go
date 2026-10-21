@@ -63,3 +63,39 @@ func TestScalarFloatSelectBorrowedRegisters(t *testing.T) {
 		}
 	}
 }
+
+func TestScalarFloatSelectCachedConstants(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		c, reinterpret, it := byte(0x43), byte(0xbc), wasm.I32
+		a, b := uint64(0x7f812345), uint64(0x80000000)
+		if wide {
+			c, reinterpret, it, a, b = 0x44, 0xbd, wasm.I64, 0x7ff0000000001234, 0x8000000000000000
+		}
+		body := []byte{0}
+		for _, value := range []uint64{a, b} {
+			body = append(body, c)
+			var bits [8]byte
+			binary.LittleEndian.PutUint64(bits[:], value)
+			n := 4
+			if wide {
+				n = 8
+			}
+			body = append(body, bits[:n]...)
+		}
+		body = append(body, 0x20, 0, 0x45, 0x1b, reinterpret, 0x0b)
+		m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{it}, body)
+		for _, condition := range []uint64{0, 1, 1 << 32} {
+			want := b
+			if uint32(condition) == 0 {
+				want = a
+			}
+			got, err := runArm64WrapperWithOptions(t, m, CompileOptions{}, condition)
+			if !wide {
+				got = uint64(uint32(got))
+			}
+			if err != nil || got != want {
+				t.Fatalf("wide=%v condition=%x got=%x want=%x err=%v", wide, condition, got, want, err)
+			}
+		}
+	}
+}

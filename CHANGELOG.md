@@ -36,6 +36,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   in the common scalar store path and during second-input preparation in `fbin`
   and `fbinInto`.
 
+- Read borrowed ARM64 scalar float-select operands directly and reuse an owned result register.
+
 - Use ARM64 scalar floating-point conditional selection for suitable integer
   comparison conditions while preserving selected result bits.
 
