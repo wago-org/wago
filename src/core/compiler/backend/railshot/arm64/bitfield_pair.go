@@ -76,7 +76,18 @@ func (f *fn) tryBitfieldPair(node *elem, dest Reg) Reg {
 		return regNone
 	}
 	saved := f.pinned
-	source, owned := f.materializeRead(src)
+	var source Reg
+	var owned bool
+	if dest != regNone && src.isDeferred() && (src.deferredOp() == opSub || src.deferredOp() == opXor) {
+		// Let the existing arithmetic sink write directly into the local's
+		// destination. Otherwise a borrowed local is copied to scratch first.
+		f.pinned = f.pinned.add(dest)
+		f.condenseInto(src, dest)
+		source, owned = dest, true
+		f.stats.peep("bitfield-source-destination")
+	} else {
+		source, owned = f.materializeRead(src)
+	}
 	f.pinned = f.pinned.add(source)
 	if dest == regNone {
 		if owned {
