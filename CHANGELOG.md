@@ -36,6 +36,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   in the common scalar store path and during second-input preparation in `fbin`
   and `fbinInto`.
 
+- Combine bounded ARM64 scalar shift and mask pairs with existing bitfield
+  encodings.
+
 - Prepare native reservations only when the active backend has a matching
   consumer, avoiding unused ARM64 live-struct and large-array batches. Retain
   one reserved identity for proven-dead ARM64 scalar constructors.

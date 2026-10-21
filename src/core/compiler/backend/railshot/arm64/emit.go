@@ -145,6 +145,11 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	if r := f.tryLinearIntegerTree(node, dest); r != regNone {
 		return r
 	}
+	if node.deferredOp() == opAnd {
+		if r := f.tryBitfieldPair(node, dest); r != regNone {
+			return r
+		}
+	}
 	w := node.st.typ.is64()
 	left := f.s.arg0(node)
 	right := f.s.arg1(node)
@@ -927,6 +932,9 @@ func (f *fn) addDisp(dst, base Reg, disp int32, w bool) {
 // (shift any register by any register, taken mod width) — so none of x86's "force
 // the count into CL / spill RCX / pin RCX" dance is needed.
 func (f *fn) condenseShift(node *elem, dest Reg) Reg {
+	if r := f.tryBitfieldPair(node, dest); r != regNone {
+		return r
+	}
 	w := node.st.typ.is64()
 	digit := shiftDigit(node.deferredOp())
 	left := f.s.arg0(node)
