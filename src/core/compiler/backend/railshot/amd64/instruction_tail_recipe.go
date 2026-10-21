@@ -12,8 +12,8 @@ const (
 
 // tailInstructionRecipeEligible bounds newly native imported tail recipes. The
 // ordinary AMD64 call path keeps its existing admission. This limits the tree
-// emitted from a recipe
-// DAG. Shared parents can otherwise multiply a small recipe into large code.
+// emitted from a recipe DAG. Shared parents can otherwise multiply a small
+// recipe into large code.
 // Prepared nodes are topological; fixed arrays keep this check allocation-free.
 func tailInstructionRecipeEligible(custom railcore.CustomInstruction) bool {
 	if len(custom.Nodes) == 0 || len(custom.Nodes) > maxTailInstructionRecipeNodes || custom.Output < 0 || custom.Output >= len(custom.Nodes) {
