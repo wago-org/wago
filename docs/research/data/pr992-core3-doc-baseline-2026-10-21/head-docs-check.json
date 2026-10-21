@@ -1,0 +1,11 @@
+{
+  "command": [
+    "go",
+    "run",
+    "./tests/tools/docs-check"
+  ],
+  "seconds": 0.14595776199712418,
+  "exit": 0,
+  "stdout": "docs-check: validated 84 Markdown files\n",
+  "stderr": ""
+}

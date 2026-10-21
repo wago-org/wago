@@ -1,0 +1,47 @@
+[
+  {
+    "label": "merge-green",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-count=1",
+      "./tests/conformance/spectest"
+    ],
+    "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-pr992-merge-validation",
+    "seconds": 0.1720439609925961,
+    "exit": 0,
+    "stdout": "ok  \tgithub.com/wago-org/wago/tests/conformance/spectest\t0.036s\n",
+    "stderr": ""
+  },
+  {
+    "label": "head-green",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-count=1",
+      "./tests/conformance/spectest"
+    ],
+    "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-pr992-ci-fix",
+    "seconds": 0.21519258999614976,
+    "exit": 0,
+    "stdout": "ok  \tgithub.com/wago-org/wago/tests/conformance/spectest\t0.037s\n",
+    "stderr": ""
+  },
+  {
+    "label": "docs-check",
+    "command": [
+      "go",
+      "run",
+      "./tests/tools/docs-check"
+    ],
+    "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-pr992-merge-validation",
+    "seconds": 0.13488777600286994,
+    "exit": 0,
+    "stdout": "docs-check: validated 85 Markdown files\n",
+    "stderr": ""
+  }
+]
