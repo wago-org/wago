@@ -1,4 +1,4 @@
-name: Native rebase ARM64 validation
+name: Native Darwin fixed exit cleanup validation
 
 on:
   workflow_dispatch:
@@ -7,54 +7,56 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-rebase-${{ github.ref }}
+  group: native-fixed-exit-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   native:
-    name: Native ARM64 PR${{ matrix.pr }} / ${{ matrix.os }}
+    name: Native Darwin ${{ matrix.arch }} / fixed exit cleanup
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 2
       matrix:
         include:
-          - pr: 995
-            os: Linux
-            runner: ubuntu-24.04-arm
-            source: 12e41e0fda71b46e874130aa4a7a96509d8bf930
-            selector: '^(TestIndexedAtomicWait|TestAtomicWaitFast)'
+          - arch: amd64
+            runner: macos-15-intel
+          - arch: arm64
+            runner: macos-15
     env:
-      CGO_ENABLED: '0'
+      CGO_ENABLED: '1'
       GOMAXPROCS: '4'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ matrix.source }}
+          ref: 4fd2bf3fd441e8bc6d646afc5acb9d21687b1787
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.27.1'
           cache: true
-      - name: Verify native source and architecture
+      - name: Verify exact native source and architecture
         shell: bash
         run: |
-          test "$RUNNER_ARCH" = ARM64
+          test "$RUNNER_OS" = macOS
+          test "$(go env GOOS)" = darwin
+          test "$(go env GOARCH)" = '${{ matrix.arch }}'
+          test "$(git rev-parse HEAD)" = 4fd2bf3fd441e8bc6d646afc5acb9d21687b1787
           uname -m
-          go env GOOS GOARCH
+          go version
           git rev-parse HEAD
-      - name: Ordinary cancellation and ordering correctness
+      - name: Repeated native deadline and immediate-exit regressions
         shell: bash
-        run: go test -v -count=3 -timeout=5m -run '${{ matrix.selector }}' ./src/wago | tee ordinary.log
-      - name: Checked and profiled cancellation and ordering correctness
+        run: go test -v -count=20 -timeout=10m -run '^TestDarwin(GroupSignal|ExitObserver)' ./cli/manager/internal/plugin/gocommand | tee native-regressions.log
+      - name: Native race detector and lifecycle package
         shell: bash
-        run: go test -v -count=3 -timeout=5m -tags=wago_regalloccheck,wago_profile -run '${{ matrix.selector }}' ./src/wago | tee checked-profile.log
-      - name: Upload exact-source logs
+        run: go test -race -v -count=3 -timeout=10m ./cli/manager/internal/plugin/gocommand | tee native-package-race.log
+      - name: Upload exact-source native logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: native-pr${{ matrix.pr }}-${{ matrix.os }}
+          name: pr991-fixed-darwin-${{ matrix.arch }}
           path: |
-            ordinary.log
-            checked-profile.log
+            native-regressions.log
+            native-package-race.log
           if-no-files-found: warn
