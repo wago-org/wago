@@ -65,7 +65,8 @@ func runCorpusChild(t *testing.T, m corpusModule, stage, export, bounds string) 
 	t.Helper()
 	id := m.ID
 	want := corpusExpectedCompletion(t, m, stage, export, bounds)
-	cmd := exec.Command(os.Args[0], "-test.run=^TestCorpusChild$", "-test.v", "-wago.corpus="+*corpusSelector)
+	// The parent validates the full selection; this child loads only its case.
+	cmd := exec.Command(os.Args[0], "-test.run=^TestCorpusChild$", "-test.v", "-wago.corpus="+id)
 	cmd.Env = append(os.Environ(),
 		"WAGO_CORPUS_CHILD=1",
 		"WAGO_CORPUS_ID="+id,
