@@ -185,15 +185,24 @@ func TestStagedGCExternProductBoundaryLifecycle(t *testing.T) {
 	}
 
 	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatal(err)
-	}
+	err = unmarshalCompiled(&loaded, blob[5:])
 	defer loaded.Close()
-	if loaded.stagedGCStructProduct() != 0 || loaded.usesGCStructHelpers() || loaded.usesGCArrayHelpers() {
-		t.Fatal("codec inherited gc/extern admission")
-	}
-	if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
-		t.Fatalf("codec-loaded gc/extern instantiate = %v", err)
+	if c.genericGCFrameRoots() != nil {
+		// Extern bridge admission is deliberately not persisted. Exact roots
+		// must not let the decoded code bypass that ownership requirement.
+		if err == nil || !strings.Contains(err.Error(), "GC frame-root metadata requires exact native GC roots") {
+			t.Fatalf("codec admitted roots without the extern bridge: %v", err)
+		}
+	} else {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.stagedGCStructProduct() != 0 || loaded.usesGCStructHelpers() || loaded.usesGCArrayHelpers() {
+			t.Fatal("codec inherited gc/extern admission")
+		}
+		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
+			t.Fatalf("codec-loaded gc/extern instantiate = %v", err)
+		}
 	}
 
 	t.Logf("gc/extern product: wasm=%d code=%d codec=%d tableState=%d conversionState=%d entry=%d plugin=%d", len(data), len(c.code), len(blob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(gcExternConversionState{}), unsafe.Sizeof(gcExternConversionEntry{}), unsafe.Sizeof(instancePluginState{}))
