@@ -801,7 +801,7 @@ func (f *fn) emitNativeDefinedTest(typeIndex uint32, nullable bool) error {
 	return nil
 }
 
-func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, nullable bool) error {
+func (f *fn) emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, fieldBytes uint32, nullable bool) error {
 	object := f.popValue()
 	f.flush()
 	ref := f.materialize(object)
@@ -809,9 +809,9 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 		f.a.MovReg64(RAX, ref)
 	}
 	f.release(ref)
-	required := uint64(gc.PayloadOffset) + uint64(fieldOffset) + 4
+	required := uint64(gc.PayloadOffset) + uint64(fieldOffset) + uint64(fieldBytes)
 	if required > math.MaxInt32 {
-		return fmt.Errorf("amd64: final struct reference field extent %d exceeds native immediate", required)
+		return fmt.Errorf("amd64: final struct field extent %d exceeds native immediate", required)
 	}
 	f.a.MovImm32(RDX, int32(typeIndex))
 	f.a.MovImm32(RCX, int32(required))
@@ -826,9 +826,37 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 	site := f.a.CallRel32()
 	f.sc.gcStructRefGetStubSites = append(f.sc.gcStructRefGetStubSites, site)
 	f.stats.call("gcnative")
+	return nil
+}
+
+func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, nullable bool) error {
+	if err := f.emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, 4, nullable); err != nil {
+		return err
+	}
 	f.a.Load32(RAX, RAX, int32(gc.PayloadOffset+fieldOffset))
 	result := f.pushReg(RAX, mtI64)
 	f.setStackGCRoot(result, true)
+	return nil
+}
+
+func (f *fn) emitNativeFinalCastStructScalarGet(typeIndex, fieldOffset uint32, scalar directGCScalar, signed, nullable bool) error {
+	if err := f.emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, uint32(scalar.size), nullable); err != nil {
+		return err
+	}
+	disp := int32(gc.PayloadOffset + fieldOffset)
+	switch {
+	case scalar.typ == mtV128:
+		x := f.allocFReg(0)
+		f.mov128LoadDisp(x, RAX, disp)
+		f.pushVReg(x)
+	case scalar.typ.isFloat():
+		x := f.allocFReg(0)
+		f.a.FLoadDisp(x, RAX, disp, scalar.typ == mtF64)
+		f.pushFReg(x, scalar.typ)
+	default:
+		f.a.LoadIdx(RAX, RAX, RSP, disp, scalar.size, signed, scalar.typ == mtI64)
+		f.pushReg(RAX, scalar.typ)
+	}
 	return nil
 }
 
@@ -2321,7 +2349,7 @@ func (f *fn) emitNativeFinalArrayRefGetStub() {
 // the resolved object-header pointer. Inputs are EAX=compact reference,
 // EDX=module-local final struct type, ECX=minimum object extent, and
 // ESI=cast-null flag. The call site immediately performs one constant-offset
-// reference load before any safepoint can relocate the object.
+// field load before any safepoint can relocate the object.
 func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 	a := f.a
 	var preserve [3]bool

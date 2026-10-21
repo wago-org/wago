@@ -1,0 +1,40 @@
+# round 1, 0.562s
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCFinalCastFieldRead/loop-i32         	    4388	     55986 ns/op	       1 B/op	       0 allocs/op
+BenchmarkGCFinalCastFieldRead/loop-v128        	     382	    624936 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 2, 0.565s
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCFinalCastFieldRead/loop-i32         	    4424	     56240 ns/op	       1 B/op	       0 allocs/op
+BenchmarkGCFinalCastFieldRead/loop-v128        	     386	    623027 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 3, 0.558s
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCFinalCastFieldRead/loop-i32         	    4410	     54848 ns/op	       1 B/op	       0 allocs/op
+BenchmarkGCFinalCastFieldRead/loop-v128        	     380	    628564 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 4, 0.687s
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCFinalCastFieldRead/loop-i32         	    4351	     55855 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCFinalCastFieldRead/loop-v128        	     386	    617921 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 5, 0.687s
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCFinalCastFieldRead/loop-i32         	    4309	     55701 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCFinalCastFieldRead/loop-v128        	     385	    619296 ns/op	       0 B/op	       0 allocs/op
+PASS

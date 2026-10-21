@@ -651,6 +651,11 @@ straight-line region; every may-collect, host-reentry, control/EH, tail, local-w
 or unknown edge invalidates it before lowering. Native allocation reserves identities
 only; collection cancels unused reservations before tracing.
 
+On AMD64, an adjacent final cast and struct field read share one checked native
+object resolution for collector references, integers, packed integers, floats,
+and vectors. The raw address is consumed by the field load before any safepoint.
+See [cast/field-read measurements](docs/research/cast-field-read-fusion.md).
+
 ### Off-heap allocation
 
 `Arena` hands out stable, off-heap, 8-byte-aligned buffers for everything native

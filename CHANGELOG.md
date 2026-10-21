@@ -35,6 +35,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   `wago_regalloccheck` is enabled. Also guard inputs during address preparation
   in the common scalar store path and during second-input preparation in `fbin`
   and `fbinInto`.
+- Resolve adjacent final GC casts and numeric, packed, or vector struct field
+  reads once in native AMD64 code. Preserve the original cast and null traps.
 
 - Prepare native reservations only when the active backend has a matching
   consumer, avoiding unused ARM64 live-struct and large-array batches. Retain
