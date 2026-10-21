@@ -55,6 +55,21 @@ func (f *fn) tryBitfieldPair(node *elem, dest Reg) Reg {
 		}
 		immr = shift
 		imms = min(width-1, shift+uint64(n)-1)
+	case op == opShrU && innerOp == opAnd:
+		// Bits below the shift are discarded. The remaining mask must be a
+		// nonzero contiguous low field. Truncate before shifting for i32.
+		mask := uint64(constant.st.cval)
+		if width == 32 {
+			mask = uint64(uint32(mask))
+		}
+		shift := uint64(right.st.cval) & countMask
+		n := lowMaskWidth(int64(mask >> shift))
+		if shift == 0 || n == 0 {
+			return regNone
+		}
+		immr = shift
+		imms = shift + uint64(n) - 1
+		f.stats.peep("bitfield-mask-before-shift")
 	case op == opShl && innerOp == opAnd:
 		n := lowMaskWidth(constant.st.cval)
 		shift := uint64(right.st.cval) & countMask

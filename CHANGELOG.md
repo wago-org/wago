@@ -37,7 +37,7 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   and `fbinInto`.
 
 - Combine bounded ARM64 scalar shift and mask pairs with existing bitfield
-  encodings.
+  encodings, including masks applied before an unsigned right shift.
 
 - Prepare native reservations only when the active backend has a matching
   consumer, avoiding unused ARM64 live-struct and large-array batches. Retain
