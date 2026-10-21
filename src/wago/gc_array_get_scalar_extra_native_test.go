@@ -4,8 +4,10 @@ package wago
 
 import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
+	"unsafe"
 )
 
 func TestGCGeneralScalarArrayGetVectorCodecJoins(t *testing.T) {
@@ -79,7 +81,7 @@ func BenchmarkGCGeneralScalarArrayGet(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer c.Close()
-			in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{DisableCollection: !shape.open}})
+			in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{}})
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -91,6 +93,20 @@ func BenchmarkGCGeneralScalarArrayGet(b *testing.B) {
 				if err := in.CollectGC(); err != nil {
 					b.Fatal(err)
 				}
+				if err := in.gc.ForcePromote(gc.Ref(uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)))); err != nil {
+					b.Fatal(err)
+				}
+			}
+			view := in.gc.NativeView()
+			ref := uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)) >> 1
+			handles := unsafe.Slice((*byte)(offHeapPtr(view.Handles)), int(view.HandleCount)*gc.NativeHandleStride)
+			space := handles[int(ref)*gc.NativeHandleStride+gc.NativeHandleSpaceOffset]
+			wantSpace := gc.NativeSpaceNursery
+			if shape.open {
+				wantSpace = gc.NativeSpaceOld
+			}
+			if space != wantSpace {
+				b.Fatalf("control%s space%d,want%d", shape.name, space, wantSpace)
 			}
 			for _, mode := range []string{"fast", "fallback", "mixed"} {
 				b.Run(mode, func(b *testing.B) {
