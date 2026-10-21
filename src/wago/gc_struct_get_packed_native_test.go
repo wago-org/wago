@@ -5,9 +5,10 @@ package wago
 import (
 	"errors"
 	"fmt"
+	"testing"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
-	"testing"
 )
 
 func gcPackedStructGetModule(storage byte, signed, mutable, open, child bool, vectors int) []byte {
