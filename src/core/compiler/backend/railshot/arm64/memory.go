@@ -2022,9 +2022,13 @@ func (f *fn) emitSharedMemoryGrowZeroFastPath(slot int, memoryIndex uint32) int 
 		f.ld32(X9, SP, f.spillOff(slot))
 	}
 	slow := f.zeroBranch(X9, memory64, false)
-	f.ld64(X10, linMemReg, -int32(offMemoryDirPtr))
-	f.ld64(X10, X10, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
-	f.loadSharedMemoryBytes(X9, X10)
+	if base := f.cachedSharedMemoryBase(); memoryIndex == 0 && base != regNone {
+		f.loadSharedMemoryBytes(X9, base)
+	} else {
+		f.ld64(X10, linMemReg, -int32(offMemoryDirPtr))
+		f.ld64(X10, X10, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+		f.loadSharedMemoryBytes(X9, X10)
+	}
 	f.a.LsrImm(X9, X9, 16, false)
 	f.ld64(X11, linMemReg, -int32(offCustomCtx))
 	f.st64(X11, hcResults, X9)
