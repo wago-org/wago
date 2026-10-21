@@ -368,3 +368,34 @@ func TestCustomImportedTailNarrowIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestCustomImportedTailGeneralRecipeABI(t *testing.T) {
+	for _, arity := range []int{2, 8, 17, 64} {
+		t.Run(fmt.Sprint(arity), func(t *testing.T) {
+			calls := 0
+			ext := instructionRecipeExt{name: "tail-general", input: make([]int32, arity), output: 32, portableCalls: &calls,
+				lower: func(c LoweringContext) error { c.Output(0, c.Add(c.Input(arity-1), c.Input(0))); return nil },
+				eval:  func(v []uint32) uint32 { return v[len(v)-1] + v[0] }}
+			for i := range ext.input {
+				ext.input[i] = 32
+			}
+			in := instantiateTailInstruction(t, ext, instructionTailModule("wago:instr/recipe", ext.name, arity, true, false))
+			args := make([]uint64, arity)
+			for i := range args {
+				args[i] = uint64(35 + i)
+			}
+			for _, export := range []string{"run", "nested"} {
+				want := args[0] + args[len(args)-1]
+				if export == "nested" {
+					want += 7
+				}
+				if out, err := in.Invoke(export, args...); err != nil || len(out) != 1 || out[0] != want {
+					t.Fatalf("%s: %v,%v;want%d", export, out, err, want)
+				}
+			}
+			if calls != 0 {
+				t.Fatalf("handler calls=%d,want0", calls)
+			}
+		})
+	}
+}
