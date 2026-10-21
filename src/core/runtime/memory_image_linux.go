@@ -3,9 +3,14 @@
 package runtime
 
 import (
+	"errors"
 	"fmt"
 	"syscall"
 )
+
+// ErrImageMappingUnavailable identifies a resource failure while mapping an
+// otherwise valid image. Callers may retry with ordinary linear memory.
+var ErrImageMappingUnavailable = errors.New("runtime: image mapping unavailable")
 
 // NewJobMemoryGrowableFromImage maps a prebuilt basedata-plus-linear-memory
 // image privately. The caller retains ownership of fd; it can close fd after
@@ -28,7 +33,7 @@ func NewJobMemoryGrowableFromImage(initialBytes, maxBytes, fd int) (*JobMemory, 
 	mem, err := syscall.Mmap(fd, 0, size, syscall.PROT_READ|syscall.PROT_WRITE,
 		syscall.MAP_PRIVATE|syscall.MAP_NORESERVE)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrImageMappingUnavailable, err)
 	}
 	j := &JobMemory{mem: mem, linOff: basedataSize, linLen: reserveBytes, imageBacked: true}
 	j.reset(initialBytes, maxBytes, reserveBytes, false)

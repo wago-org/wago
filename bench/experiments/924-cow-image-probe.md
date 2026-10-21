@@ -2,7 +2,8 @@
 
 Base: `origin/main` `209e448c392510a0325d5b282a0d86a776fb379c`.
 This branch now has an **opt-in Linux AMD64/ARM64 Wago memory path** selected by
-`WAGO_EXPERIMENT_COW_IMAGE=1`. Default behavior is unchanged. Keep the PR draft.
+`WAGO_EXPERIMENT_COW_IMAGE=1` (deferred image creation) or `eager` (first
+eligible instance). Default behavior is unchanged. Keep the PR draft.
 
 ## Phase-0 OS oracle
 
@@ -29,7 +30,9 @@ For the normal opt-in, only modules with at least 1,024 active data segments
 and at least 1 MiB initial linear memory are considered. Their first instance
 uses the ordinary path, the second builds a sparse Linux memfd, and later
 instances reuse it. This is an empirical cost gate for this experiment, not
-a general break-even theorem. Tests use `WAGO_EXPERIMENT_COW_IMAGE=force` to
+a general break-even theorem. `eager` applies the same size/segment gate but
+builds the first instance's image when the caller prioritizes retained memory
+over first-use latency. Tests use `WAGO_EXPERIMENT_COW_IMAGE=force` to
 exercise the mapping mechanism on small fixtures. The image has Wago's
 ordinary 288-byte basedata prefix followed by ordered
 active data. The file is sized to Wago's **full growable reservation** (up to
@@ -42,6 +45,12 @@ memory32, explicit bounds, constant active offsets, and all segments within
 the initial logical size. Imported/shared/multi-memory, memory64, guard mode,
 dynamic offsets, empty out-of-bounds segments, and other cases use the existing
 path. No artifact format or native code changes.
+
+If memfd setup, descriptor duplication, or a private image mapping fails,
+instantiation retries the ordinary owned-memory path. An injected bad image
+descriptor test confirms the fallback's initialized bytes and isolation while
+an already-mapped sibling remains alive. A logically closed compiled module
+still fails closed; it is not treated as a resource fallback.
 
 The synthetic oracle covers **ordered overlapping segments**, host and guest
 private writes, guest `memory.grow`, a fresh instance after close, a live
@@ -183,10 +192,105 @@ sharing benefit effectively disappears and private-page fault cost dominates.
 The earlier all-eight-CoW version reproduced the same boundary in two
 independent runs per arm; the admission gate makes one instance ordinary.
 
+The same isolated page control was run at **1, 10, and 100** live instances
+in ordinary versus eager mode (separate process per arm). Both arms have
+identical full-memory SHA at each count and each read/write mode. The
+100-instance read result was repeated independently.
+
+| Instances / action | Ordinary executed PSS KiB | Eager CoW executed PSS KiB | Ordinary / CoW aggregate execute ms |
+| --- | ---: | ---: | ---: |
+| 1 / read | 43,224 | 44,908 | 0.13 / 0.95 |
+| 10 / read | 151,736 | 62,228 | 1.44 / 6.25 |
+| 100 / read | 1,231,716 / 1,231,640 | 247,796 / 248,788 | 14.94 / 46.70 (first pair) |
+| 1 / write every page | 43,948 | 44,616 | 0.15 / 6.13 |
+| 10 / write every page | 153,536 | 151,056 | 1.35 / 55.64 |
+| 100 / write every page | 1,231,996 | 1,229,780 | 14.96 / 533.63 |
+
+At 100 read-mostly instances, about **959–961 MiB** of process PSS is saved.
+As an illustrative allowance, subtracting the **14 MiB** backing residency
+observed in the separate eight-instance PHP workload would still leave a
+saving above **945 MiB**. Backing residency was not directly measured in the
+100-instance process, so this is not a system-wide physical-memory bound. RSS is about
+1.23 GiB in both arms because it counts shared mapped pages in every VMA.
+At 100 write-all instances, PSS is effectively equal and execution is far
+slower. The 100-instance control is synthetic execution over real PHP data,
+not 100 independent PHP interpreters. Short timings include only the added
+Wasm function, not compilation or host hashing.
+
+```sh
+WAGO_924_POSTEXEC_MODE=baseline WAGO_924_POSTEXEC_INSTANCES=100 WAGO_924_PAGE_EXERCISE=read GOCACHE=/tmp/wago-go-cache GOPROXY=off go test ./src/wago -run '^TestCOWImagePageReadWriteMemory$' -count=1 -v
+# repeat in its own process with WAGO_924_POSTEXEC_MODE=cow WAGO_924_EAGER=1;
+# repeat both modes with instance counts 1 and 10 and exercise=write
+```
+
+## Follow-up: physical residency and first-use choice
+
+The post-execution harness now reads `/proc/self/smaps` for the actual
+`memfd:wago-cow-image` mappings as well as process rollup. With eight PHP
+instances in deferred mode, seven image mappings have only **28 KiB** PSS
+immediately after initialization: pages have not been faulted into those
+private mappings. After `_start`, their PSS is about **26 MiB**, including
+about **24 MiB private dirty**. Reading all linear-memory bytes from the host
+raises image-mapping PSS to about **35 MiB** and RSS to about **98 MiB**.
+These are mapping subtotals; the compiled module, first ordinary instance,
+Go heap and other mappings appear elsewhere in the process total. A separate
+`mincore` check on the owning memfd finds **9,668 KiB resident backing pages
+after initialization**, **13,108 KiB after execution**, and **14,020 KiB
+after the host reads all memory**. Some backing pages can remain in page
+cache without a resident process mapping and are then absent from process
+PSS. Neither process PSS nor this file-cache count is a complete system-wide
+physical-memory accounting, and the two figures cannot simply be added
+because some backing pages are mapped. The guest's dirty pages must stay
+private to preserve memory semantics.
+The harness also records `getrusage` maximum RSS. That is a process-lifetime
+high-water mark including compilation, not a phase-local peak.
+
+```sh
+WAGO_924_POSTEXEC_MODE=cow WAGO_924_POSTEXEC_INSTANCES=8 WAGO_924_EAGER=0 GOCACHE=/tmp/wago-go-cache GOPROXY=off go test ./bench/suite -run '^TestCowPHPPostExecutionMemory$' -count=1 -v -args -wago.corpus=php-buckets
+# repeat twice with WAGO_924_EAGER=1, separately for one and eight instances
+```
+
+The two eight-instance paired runs use identical PHP input/output oracles,
+full-memory SHA and **30,164,957 B** native code. Deferred mode has
+post-execution PSS **222,639/222,059 KiB**; eager mode has
+**212,739/213,595 KiB**, roughly **8–10 MiB** less observed process PSS.
+The incremental PSS above each run's compiled snapshot is roughly **11 MiB**
+less in eager mode. Aggregate execution is **29.75/27.40 ms** deferred versus
+**31.94/27.92 ms** eager; this short comparison shows no reliable speed gain.
+For a single instance, eager increases setup **6.68/6.93 → 12.52/11.30 ms**
+and execution **2.48/2.46 → 4.66/4.44 ms**. Reading all memory from the
+host largely erases its one-instance PSS benefit. This is why `1` still
+defers image creation; `eager` is an explicit memory preference.
+
+The page control also matches full-memory hashes with eager admission. For
+eight read-only instances, PSS is **67,164 KiB** deferred versus
+**56,232 KiB** eager. For eight instances writing every page, PSS is
+**127,364 / 129,992 KiB**; the extra image does not save memory in that
+workload. Execution remains expensive at **31.76 / 34.41 ms**, compared with
+about **1.28 ms** for the ordinary write control above.
+
+Two further cost leads were measured and rejected:
+
+* Linux `MADV_POPULATE_READ` over each initial mapping before execution costs
+  **2.88–3.16 ms** for eight PHP instances. Execution then takes
+  **28.99–31.67 ms** versus **31.61–32.42 ms** without prefaulting; combined
+  time has no reliable gain. It raises post-execution RSS from roughly
+  **229–231 MiB** to **288–290 MiB** and PSS by several MiB. The opt-in test
+  harness exposes `WAGO_924_PREFETCH_READ=1` to reproduce this result; the
+  runtime does not prefetch.
+* A short first-image build benchmark (`BenchmarkCOWImageBuildParts`, `5x`,
+  three samples) finds descriptor/truncate/map/unmap setup at **8.3–9.6 µs**,
+  ordered scatter into fresh file pages at **4.11–4.55 ms**, and the full
+  create/copy/unmap/close at **5.20–5.33 ms**. The first-use penalty is
+  dominated by the writes/page faults, not the FD duplication or eligibility
+  scan. Retaining another fully materialized payload to avoid that work would
+  undermine the low-memory goal and is not part of this branch.
+
 ## Verification and decision
 
 The ordinary and `-tags=wago_regalloccheck` full `./src/wago
-./src/core/runtime` suites pass with `WAGO_EXPERIMENT_COW_IMAGE=1`, using
+./src/core/runtime` suites pass with both `WAGO_EXPERIMENT_COW_IMAGE=1` and
+`eager`, using
 pinned WABT 1.0.41 and the exact spec-v3 gitlink. The focused image tests
 pass under `-race`. Real PHP command outputs and both full-memory hashes
 agree across modes. These checks cover the measured cases, not arbitrary
@@ -194,16 +298,21 @@ Wasm programs. The cost gate is workload-specific and the post-execution
 measurements use only one PHP input and short runs.
 
 An independent internal review reproduced the eight-instance PHP oracle and
-memory comparison, plus the read/write boundary. It found that a plain
+memory comparison, plus the 100-instance read/write boundary with identical
+full-memory hashes. It found that a plain
 descriptor `Dup` cleared close-on-exec; image FD requests now use
 `F_DUPFD_CLOEXEC`, with a direct regression check. The reviewer also checked
 that execution time measures `Invoke` only, while output validation and
 full-memory hashing happen after that timer. The fresh-command benchmark
 includes instantiation and command execution after verified warmups.
+The review further found that only mapping resource failures should trigger
+ordinary-memory fallback. The runtime now identifies that specific failure;
+size validation, an invalid descriptor and an undersized image remain errors.
 
-Keep this PR **draft** and the feature opt-in. For repeated read-heavy PHP
-instances, the reduced PSS is credible and warm instance setup is faster.
-Execution is directionally slower; write-heavy instances lose the memory
-benefit. Before any default enablement, test more real programs and establish
-an admission policy that accounts for page write behavior. No merge is
+Keep the feature opt-in. For repeated read-heavy PHP instances, the reduced
+PSS is credible and warm instance setup is faster. `eager` gains additional
+memory at a first-use cost. Execution is directionally slower; write-heavy
+instances lose the memory benefit. The gate is empirical and based only on
+real module size and active segment count, not predicted runtime writes.
+Default enablement would need broader real-program evidence. No merge is
 proposed.
