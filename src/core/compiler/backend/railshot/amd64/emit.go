@@ -769,6 +769,13 @@ func (f *fn) condenseShiftX(node *elem, dest Reg, digit byte, wide bool) Reg {
 	}
 	if count == RCX && dest == src {
 		f.a.ShiftCL(digit, dest, wide) // Already optimal two-operand form.
+	} else if !wide && dest == src && src != RCX && src < 8 && count < 8 &&
+		!saved.has(RCX) && !f.reserved.has(RCX) && !f.pinnedLocalMask.has(RCX) && f.regUser[RCX] == nil {
+		// With no live RCX value, the two low-register instructions total
+		// four bytes. Prefer them to the five-byte VEX encoding.
+		f.a.MovRegReg32(RCX, count)
+		f.a.ShiftCL(digit, dest, false)
+		f.stats.peep("variable-shift-shorter-cl")
 	} else {
 		f.a.ShiftX(digit, dest, src, count, wide)
 		f.stats.peep("bmi2-variable-shift")
