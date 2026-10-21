@@ -2,6 +2,41 @@ package gc
 
 import "testing"
 
+func TestAddTypesIndependentRootsPreserveKindEncoding(t *testing.T) {
+	root, _ := NewStructDesc(0, nil)
+	root.Final = false
+	c := newTestCollectorWithTypes(t, Config{}, []TypeDesc{root})
+	for batch := range 3 {
+		id := TypeID(len(c.types))
+		structure, _ := NewStructDesc(id, []StorageKind{StorageI32})
+		array, _ := NewArrayDesc(id+1, StorageI32)
+		if batch == 1 {
+			// A child forces the full DFS rebuild between independent appends.
+			structure, _ = NewStructDesc(id, nil)
+			structure.HasSuper, structure.Super = true, 0
+		}
+		if err := c.AddTypes([]TypeDesc{structure, array}); err != nil {
+			t.Fatal(err)
+		}
+		want, err := buildSubtypeIntervals(c.types)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, word := range c.subtypeIntervals {
+			if word != want[i] {
+				t.Errorf("batch %d type %d interval=%#x, rebuilt=%#x", batch, i, word, want[i])
+			}
+			if array := uint32(word>>32)&NativeSubtypeArrayKindBit != 0; array != (c.types[i].Kind == KindArray) {
+				t.Errorf("batch %d type %d array bit=%t, kind=%v", batch, i, array, c.types[i].Kind)
+			}
+		}
+		view := c.NativeView()
+		if view.SubtypeEncoding != NativeSubtypeEncodingKindBit || view.SubtypeIntervalCount != uint32(len(c.types)) {
+			t.Fatalf("batch %d native encoding/count=%d/%d", batch, view.SubtypeEncoding, view.SubtypeIntervalCount)
+		}
+	}
+}
+
 func TestSubtypeIntervalsCoverForestAndAppendedChildren(t *testing.T) {
 	root, _ := NewStructDesc(0, []StorageKind{StorageI32})
 	root.Final = false
