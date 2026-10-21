@@ -111,6 +111,7 @@ func (v *moduleValidator) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int,
 
 func (v *moduleValidator) validateSubtypeMetadata() error {
 	flat := v.flattenedSubTypeRefs()
+	hasSuper := false
 	for flatIdx, cur := range flat {
 		member := flatIdx - v.typeGroupBases[cur.recGroup]
 		// Most modules have no custom descriptors. Keep their validation path to
@@ -121,6 +122,7 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 			}
 		}
 		for _, supIdx := range cur.st.Supers {
+			hasSuper = true
 			supFlat, ok := v.flatTypeIdxInRecGroup(supIdx, cur.recGroup)
 			if !ok {
 				return v.err(ErrUnknownType, "supertype")
@@ -142,6 +144,10 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 				return v.err(ErrTypeMismatch, "subtype does not match supertype")
 			}
 		}
+	}
+	// No declared edges means no supertype cycle or ancestry index to build.
+	if !hasSuper {
+		return nil
 	}
 	// Encode completed depth in the existing cycle states, capped at the
 	// minimum useful chain depth. Shallow graphs need no ancestry arrays.
