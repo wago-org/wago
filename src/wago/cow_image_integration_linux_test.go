@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -573,8 +574,9 @@ func TestCOWImageFirstUseCost(t *testing.T) {
 		}{{"baseline", "0"}, {"cow", "1"}} {
 			t.Run(item.name+"/"+mode.name, func(t *testing.T) {
 				t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", mode.flag)
+				data := slices.Clone(item.data) // Compile takes ownership; retain the control input.
 				started := time.Now()
-				c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).Compile(item.data)
+				c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).Compile(data)
 				compileTime := time.Since(started)
 				if err != nil {
 					t.Fatal(err)

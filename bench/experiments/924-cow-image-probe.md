@@ -401,3 +401,9 @@ first-write cost. The current PHP result is a credible opt-in memory win,
 but its measured execution penalty and unknown application tolerance do not
 qualify an unscoped ready-for-review claim. Default enablement would need
 broader real-program evidence. No merge is proposed.
+## Review control: input ownership
+
+Repeated PHP command and first-use control compiles receive independent input
+copies, as required by `Compile`'s ownership contract. Copies occur before the
+compile-only timer in the first-use control. This test-harness repair does not
+change the runtime image path or qualify the historical timing tables again.

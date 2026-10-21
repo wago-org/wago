@@ -34,7 +34,7 @@ func TestCowPHPRealCommand(t *testing.T) {
 	for _, mode := range []struct{ name, flag string }{{"baseline", "0"}, {"cow", "1"}} {
 		t.Run(mode.name, func(t *testing.T) {
 			t.Setenv("WAGO_EXPERIMENT_COW_IMAGE", mode.flag)
-			c, err := wago.Compile(wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit), m.bytes)
+			c, err := wago.Compile(wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit), slices.Clone(m.bytes))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -65,7 +65,7 @@ func BenchmarkCowPHPRealCommand(b *testing.B) {
 	for _, mode := range []struct{ name, flag string }{{"baseline", "0"}, {"cow", "1"}} {
 		b.Run(mode.name, func(b *testing.B) {
 			b.Setenv("WAGO_EXPERIMENT_COW_IMAGE", mode.flag)
-			c, err := wago.Compile(wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit), m.bytes)
+			c, err := wago.Compile(wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit), slices.Clone(m.bytes))
 			if err != nil {
 				b.Fatal(err)
 			}
