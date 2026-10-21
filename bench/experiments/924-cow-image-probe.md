@@ -43,7 +43,8 @@ private writes, guest `memory.grow`, a fresh instance after close, a live
 instance after `Compiled.Close`, and 12 concurrent instantiations. Real yyjson and PHP modules instantiate twice
 and agree with their active data bytes. PHP's 43 function imports use no-op
 signature-matching stubs solely for instantiation; PHP's entrypoint is **not
-executed**. Both real modules' mappings are verified in `/proc/self/maps`.
+executed in this initializer test**. The separate real-command followup below
+executes it with genuine WASI imports. Both real modules' mappings are verified in `/proc/self/maps`.
 
 ```sh
 WAGO_EXPERIMENT_COW_IMAGE=1 GOCACHE=/tmp/wago-go-cache go test ./src/wago ./src/core/runtime -run '^(TestCOWImage|TestActiveOffsetsUseLocalImmutableGlobals|TestCompactExecutionData|TestActiveDataSegment|TestImportedMemory|TestMemoryGrowExported|TestMemoryCloseRacingInstantiationFailsClosed|TestAcquireJobMemoryGrowable|TestSerialCompiledCloseBeforeInstantiateReleasesCodeImage)' -count=1
@@ -95,20 +96,56 @@ Whole-process `/proc/self/smaps_rollup` PSS at 10 instances was **266,368 /
 167,820/167,308 KiB and 183,108/182,748 KiB, too close relative to changing
 process heap state to claim a one-instance memory win. The same process runs
 modes sequentially; this is not isolated peak RSS. Pages dirtied by real PHP
-execution may reduce sharing and still need an end-to-end workload test.
+execution may reduce sharing; the real-command followup below tests execution,
+though it does not yet measure dirty-page PSS.
 
 An unchanged, no-active-data instance control was 5,255/5,324 ns/op on base
 and 5,370/5,379 ns/op on head, with **1,368 B/op and 8 allocs/op** on both.
 The 1–2% time gap is short-run noise or a small default-path cost; it needs
 attention before default enablement.
 
+## Real PHP command and end-to-end cost
+
+The bench suite supplies PHP's actual WASI imports, input program, and pinned
+output oracle. `TestCowPHPRealCommand` compiles the **same real PHP Wasm**
+with explicit bounds in default and opt-in modes, executes the entrypoint
+twice per mode, and requires equal results, stdout, stderr, output files, and
+the existing corpus oracle. It passed in 1.53 seconds total. This closes the
+prior correctness gap from inert import stubs; it does not assert all PHP
+semantics or other input programs. Run from `bench`:
+
+```sh
+GOCACHE=/tmp/wago-go-cache go test ./suite -run '^TestCowPHPRealCommand$' -count=1 -v -timeout=120s -args -wago.corpus=all
+GOCACHE=/tmp/wago-go-cache go test ./suite -run '^$' -bench '^BenchmarkCowPHPRealCommand$' -benchtime=5x -count=3 -benchmem -timeout=120s -args -wago.corpus=all
+```
+
+The benchmark excludes Compile, preflights one full oracle per mode, then
+measures each fresh instance through the real PHP command (including private
+page faults and normal execution). Short directional samples on the same
+Linux/AMD64 machine:
+
+| Mode | ns/op (five commands each, three samples) | Go B/op | allocs/op |
+| --- | ---: | ---: | ---: |
+| Default | 6,456,002 / 5,361,740 / 5,231,330 | 77,641 | 961 |
+| CoW opt-in | 6,948,195 / 6,720,054 / 6,518,906 | 77,705–77,718 | 962 |
+
+A second, three-command/two-sample check gave default 4,723,727 /
+4,745,842 ns and CoW 5,437,092 / 5,491,829 ns. The short-run spread and
+sequential mode order limit precision, but **both checks point to an
+end-to-end slowdown** for this PHP input. Faster warm instance creation does
+not translate into faster command completion. Per-operation Go allocation
+changes are small; page fault and kernel mapping work is not captured by
+Go B/op. Production native code bytes remain identical. Whole-process PSS
+was measured on instances before execution, so the earlier 10-instance memory
+result cannot be attributed to completed real PHP commands.
+
 ## Decision
 
-Keep the Linux implementation opt-in and this PR draft. It provides a real
-multi-instance memory win and faster warm PHP instantiation, with a first-use
-cost and a severe regression on small yyjson. Before ready review, exercise
-real PHP initialization and execution with genuine WASI bindings, measure
-dirty-page sharing/total peak RSS and 1/10/100 instance lifecycle in separate
-processes, verify file-descriptor/mapping quotas and failure injection, and
-define an admission threshold that excludes small, short-lived modules. No
+Keep the Linux implementation opt-in and this PR draft. It provides lower PSS for 10 PHP instances before execution and faster warm
+PHP instantiation, but the real PHP command is directionally slower, first use
+costs more, and small yyjson regresses severely. Before ready review, measure
+dirty-page sharing and total peak RSS after real command execution across
+independent processes, verify file-descriptor/mapping quotas and failure
+injection, and define an admission threshold that excludes small or
+short-lived workloads. No
 merge or default enablement is supported by these results.
