@@ -76,10 +76,12 @@ sidecar.
 Linux/AMD64 Ryzen 7 8845HS. All comparisons use the same module and runtime
 configuration; command runs check the same pinned output oracle. The base is
 `209e448c392510a0325d5b282a0d86a776fb379c` and the branch includes the
-prototype plus the admission refinement described above. The original
-prototype rescanned PHP's 63,770 segments and duplicated its image FD at
-**165–180 µs** per warm instance (20x, three samples). The revised cached
-plan and FD duplication take **1.03–1.26 µs** (same benchmark). A standalone
+prototype plus the admission refinement described above. The baseline in
+current head comparisons is that same binary with
+`WAGO_EXPERIMENT_COW_IMAGE=0`, not a separate `origin/main` binary. The
+original prototype rescanned PHP's 63,770 segments and duplicated its image
+FD at **165–180 µs** per warm instance (20x, three samples). The revised cached
+plan and FD duplication take **1.06–1.55 µs** (same benchmark). A standalone
 eligibility traversal is **497–516 µs**; a fresh map/unmap **18.9–21.7 µs**;
 map plus touching 2,480 pages **644–677 µs**. These isolated operations
 exclude imports, PHP execution, and image creation.
@@ -132,10 +134,10 @@ WAGO_924_POSTEXEC_MODE=baseline WAGO_924_POSTEXEC_INSTANCES=8 GOCACHE=/tmp/wago-
 | Aggregate command execution | 25.53 / 25.38 ms | 36.48 / 37.53 ms |
 | Compile time | 820 / 774 ms | 780 / 757 ms |
 
-Thus savings remain after this real program executes: about **70–73 MiB
-PSS** and **61–64 MiB RSS** in these short paired runs, with an **11–12 ms**
+Thus savings remain after this real program executes: about **69–71 MiB
+PSS** and **60–63 MiB RSS** in these short paired runs, with an **11–12 ms**
 aggregate execution penalty. Host hashing faults clean image pages into the
-process, increasing CoW RSS; PSS remains about **60–64 MiB** lower. `HeapAlloc`
+process, increasing CoW RSS; PSS remains about **60–63 MiB** lower. `HeapAlloc`
 is around 72 MiB in both arms, as expected for off-heap mapping. These are
 whole-process snapshots, not peak memory, and the samples are too short for
 precise latency claims. The prior always-admit implementation saved around
@@ -190,6 +192,14 @@ pass under `-race`. Real PHP command outputs and both full-memory hashes
 agree across modes. These checks cover the measured cases, not arbitrary
 Wasm programs. The cost gate is workload-specific and the post-execution
 measurements use only one PHP input and short runs.
+
+An independent internal review reproduced the eight-instance PHP oracle and
+memory comparison, plus the read/write boundary. It found that a plain
+descriptor `Dup` cleared close-on-exec; image FD requests now use
+`F_DUPFD_CLOEXEC`, with a direct regression check. The reviewer also checked
+that execution time measures `Invoke` only, while output validation and
+full-memory hashing happen after that timer. The fresh-command benchmark
+includes instantiation and command execution after verified warmups.
 
 Keep this PR **draft** and the feature opt-in. For repeated read-heavy PHP
 instances, the reduced PSS is credible and warm instance setup is faster.
