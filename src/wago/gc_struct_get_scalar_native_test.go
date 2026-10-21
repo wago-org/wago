@@ -3,11 +3,15 @@
 package wago
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"runtime"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -68,6 +72,57 @@ func gcScalarStructGetModule(storage byte, open, child bool, vectors int) []byte
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("init", 0, 0), wasmtest.ExportEntry("global", 0, 1), wasmtest.ExportEntry("param", 0, 2), wasmtest.ExportEntry("loop", 0, 3), wasmtest.ExportEntry("token", 0, 4), wasmtest.ExportEntry("wrong", 0, 5), wasmtest.ExportEntry("local", 0, 6), wasmtest.ExportEntry("null", 0, 7))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(init), wasmtest.Code(global), wasmtest.Code(param), raw(loop), wasmtest.Code([]byte{0x23, 0, 0x0b}), wasmtest.Code([]byte{0xfb, 1, 1, 0x0b}), raw(local), wasmtest.Code(nullable))),
 	)
+}
+
+func TestGCScalarStructGetExtentFallback(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcScalarStructGetModule(0x7f, true, true, 20))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{DisableCollection: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("init", 17); err != nil {
+		t.Fatal(err)
+	}
+	view := in.gc.NativeView()
+	saved := *view
+	defer func() { *view = saved }()
+	index := uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)) >> 1
+	handles := append([]byte(nil), unsafe.Slice((*byte)(offHeapPtr(view.Handles)), int(view.HandleCount)*gc.NativeHandleStride)...)
+	handle := handles[int(index)*gc.NativeHandleStride:][:gc.NativeHandleStride]
+	offset := gc.PayloadOffset + c.GCTypeDescs[0].Fields[20].Offset
+	required := offset + 4
+	object := make([]byte, required)
+	binary.LittleEndian.PutUint32(object[offset:], 999)
+	for _, mode := range []string{"handle extent", "header extent", "count"} {
+		*view = saved
+		view.Handles = uintptr(unsafe.Pointer(&handles[0]))
+		space := &view.Spaces[handle[gc.NativeHandleSpaceOffset]]
+		space.Base, space.Bytes = uintptr(unsafe.Pointer(&object[0])), required
+		binary.LittleEndian.PutUint32(handle[gc.NativeHandleOffsetOffset:], 0)
+		binary.LittleEndian.PutUint32(handle[gc.NativeHandleSizeOffset:], required)
+		binary.LittleEndian.PutUint32(object[4:], required)
+		switch mode {
+		case "handle extent":
+			binary.LittleEndian.PutUint32(handle[gc.NativeHandleSizeOffset:], required-1)
+			binary.LittleEndian.PutUint32(object[4:], required-1)
+		case "header extent":
+			binary.LittleEndian.PutUint32(object[4:], required-1)
+		case "count":
+			view.HandleCount = index
+		}
+		got, err := in.Invoke("global")
+		*view = saved
+		if err != nil || len(got) != 1 || got[0] != 17 {
+			t.Fatalf("%s: %v, %v; want helper value17", mode, got, err)
+		}
+	}
+	runtime.KeepAlive(handles)
+	runtime.KeepAlive(object)
 }
 
 func TestGCScalarStructGetSources(t *testing.T) {
@@ -191,5 +246,99 @@ func BenchmarkGCScalarStructGet(b *testing.B) {
 			b.StopTimer()
 			b.ReportMetric(1000, "guest-ops/op")
 		})
+	}
+}
+
+func TestGCScalarStructGetStaleReference(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcScalarStructGetModule(0x7f, true, false, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("init", 17); err != nil {
+		t.Fatal(err)
+	}
+	stale := readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)
+	if _, err := in.Invoke("init", 23); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := in.gc.StructGetTyped(gc.Ref(uint32(stale)), in.requireGCDomainType(0), false, 0); err == nil {
+		t.Fatal("fixture retained stale object")
+	}
+	saved := readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)
+	writeGlobalObject(in.globalCells[0], in.c.Globals[0].Type, stale)
+	_, err = in.Invoke("global")
+	writeGlobalObject(in.globalCells[0], in.c.Globals[0].Type, saved)
+	if err == nil {
+		t.Fatal("stale struct reference accepted")
+	}
+}
+
+func TestGCScalarStructGetLargeFieldOffset(t *testing.T) {
+	const fields = 5000
+	structure := append([]byte{0x5f}, wasmtest.ULEB(fields)...)
+	for i := 0; i < fields; i++ {
+		structure = append(structure, 0x7f, 1)
+	}
+	index := wasmtest.ULEB(fields - 1)
+	body := []byte{1, 1, 0x63, 0, 0xfb, 1, 0, 0x22, 0, 0x41, 17, 0xfb, 5, 0}
+	body = append(body, index...)
+	body = append(body, 0x20, 0, 0xfb, 2, 0)
+	body = append(body, index...)
+	body = append(body, 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structure, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("run"); err != nil || len(got) != 1 || got[0] != 17 {
+		t.Fatalf("large field: %v, %v", got, err)
+	}
+}
+
+func TestGCScalarStructGetWithReferenceField(t *testing.T) {
+	body := []byte{1, 1, 0x63, 0,
+		0xfb, 1, 1, 0x41, 17, 0xfb, 0, 0, 0x21, 0,
+		0xfb, 1, 1, 0x1a, // collection must retain the local and its reference field
+		0x20, 0, 0xfb, 2, 0, 1, 0x0b}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 2, 0x6d, 0, 0x7f, 1}, []byte{0x5f, 0}, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{2})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 256, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	for i := 0; i < 3; i++ {
+		if got, err := in.Invoke("run"); err != nil || len(got) != 1 || got[0] != 17 {
+			t.Fatalf("reference field: %v, %v", got, err)
+		}
 	}
 }
