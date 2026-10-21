@@ -1437,6 +1437,8 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		growFast = index.kind == stConst
 		growIndex = uint32(index.cval)
 	}
+	// Keep the helper when the selected directory entry exceeds scaled LDR64.
+	growFast = growFast && uint64(growIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset <= 0xfff*8
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
