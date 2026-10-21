@@ -88,6 +88,29 @@ func TestPartialFlushPreservesLiveSuffix(t *testing.T) {
 	}
 }
 
+func TestPartialFlushLaterSpillPreservesStagedSuffix(t *testing.T) {
+	for _, typ := range []machineType{mtI64, mtV128} {
+		t.Run(fmt.Sprint(typ), func(t *testing.T) {
+			f := fn{a: &encoder.Asm{}, s: newStack(), globalCellReg: regNone}
+			prefix := f.pushValue(storage{kind: stConst, typ: mtI64, cval: 53})
+			suffix := f.pushValue(storage{kind: stSlot, typ: typ, slot: 0})
+			if got := f.flushBelow(suffix); got != 1 {
+				t.Fatalf("flushed %d roots, want 1", got)
+			}
+			if suffix.st.slot == 0 {
+				t.Fatal("suffix was not staged away from the canonical prefix")
+			}
+			f.erase(prefix)
+			later := f.pushReg(R8, mtI64)
+			f.spill(later)
+			end := suffix.st.slotIndex() + typ.stackSlots()
+			if later.st.slotIndex() < end {
+				t.Fatalf("later spill at slot %d overlaps live staged suffix [%d,%d)", later.st.slot, suffix.st.slot, end)
+			}
+		})
+	}
+}
+
 func TestStageFlushCopiesToCanonicalSlotsBackwards(t *testing.T) {
 	f := fn{a: &encoder.Asm{B: make([]byte, 0, 128)}, s: newStack(), spillFloor: 5, maxSpill: 10}
 	prefix := f.pushValue(storage{kind: stConst, typ: mtI64, cval: 53})
