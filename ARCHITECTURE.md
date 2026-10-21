@@ -630,6 +630,10 @@ straight-line region; every may-collect, host-reentry, control/EH, tail, local-w
 or unknown edge invalidates it before lowering. Native allocation reserves identities
 only; collection cancels unused reservations before tracing.
 
+AMD64 defined GC casts and tests accept equal canonical type IDs after checked
+object resolution. Unequal ordinary types use subtype intervals; unequal exact
+casts fail. See [identity measurements](docs/research/canonical-identity-shortcut.md).
+
 ### Off-heap allocation
 
 `Arena` hands out stable, off-heap, 8-byte-aligned buffers for everything native

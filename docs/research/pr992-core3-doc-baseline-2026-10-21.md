@@ -30,3 +30,10 @@ the next hosted ARM64 job must still confirm the result.
 
 Daybreak Blue reviewed the six-line change and saved evidence. It found no
 issue. The new phase layout, test expectations, and baseline stay intact.
+
+The pre-push merge-tree check found a content conflict between the old and new
+feature layouts. The first docs commit was pushed before that failed check
+stopped the command sequence. Merge main `f91caadd3` into the PR and resolve
+the only conflict with the reviewed feature page. This preserves main's
+layout and the restored baseline paragraph. Recheck the resulting merge
+before pushing the merge commit; see `final-merge-validation.json`.

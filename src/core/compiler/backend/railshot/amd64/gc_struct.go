@@ -981,6 +981,7 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.materializePendingTraps()
 	value := f.materialize(f.popValue())
 	copyReg := f.allocReg(maskOf(value))
 	f.a.MovReg64(copyReg, value)
@@ -988,6 +989,44 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 	f.markGCReference(original)
 	copyValue := f.pushReg(copyReg, mtI64) // copied helper operand
 	f.markGCReference(copyValue)
+	if !exactTarget && target >= 0 {
+		if typ, ok := f.stagedGCType(uint32(target)); ok && (typ.Comp.Kind == wasm.CompStruct || typ.Comp.Kind == wasm.CompArray) {
+			if err := f.emitNativeDefinedTest(uint32(target), flags&2 != 0); err != nil {
+				return err
+			}
+			return f.brOnCastResult(depth, sub == 24)
+		}
+	}
+	if target == -20 || target == -15 { // i31 or none
+		// Canonicalize the prefix before the match register leaves the stack.
+		f.flush()
+		ref := f.materialize(f.popValue())
+		if target == -20 {
+			tag := f.allocReg(maskOf(ref))
+			f.a.MovReg64(tag, ref)
+			f.a.ShiftImm(5, tag, 32, true)
+			f.a.TestSelf(tag, true)
+			f.a.SetccReg(condE, tag)
+			f.a.AluRR(aluTable[opAnd].rr, tag, ref, false)
+			f.a.AluRI(4, tag, 1, false)
+			if flags&2 != 0 {
+				f.a.TestSelf(ref, true)
+				f.a.SetccReg(condE, ref)
+				f.a.AluRR(aluTable[opOr].rr, tag, ref, false)
+			}
+			f.release(ref)
+			f.pushReg(tag, mtI32)
+		} else {
+			if flags&2 != 0 {
+				f.a.TestSelf(ref, true)
+				f.a.SetccReg(condE, ref)
+			} else {
+				f.a.MovImm32(ref, 0)
+			}
+			f.pushReg(ref, mtI32)
+		}
+		return f.brOnCastResult(depth, sub == 24)
+	}
 	f.pushValue(storage{kind: stConst, typ: mtI64, cval: target})
 	if flags&2 != 0 {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})

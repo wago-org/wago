@@ -1,11 +1,9 @@
 # Contributing
 
-Thank you for helping with `wago`! Please keep each
+Thank you for helping with wago! Please keep each
 change small, tested, and easy to review.
 
-Run commands from the repository root unless a command says otherwise. Start
-with [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md),
-[FEATURES.md](FEATURES.md), and [ROADMAP.md](ROADMAP.md).
+I'd reccomend starting with [README.md](README.md)
 
 ## Before You Start
 
@@ -75,28 +73,6 @@ git worktree remove .worktrees/<name>
 git worktree prune
 ```
 
-## Find the Code
-
-| Path | Purpose |
-|---|---|
-| `wago.go` | Generated public API facade. It re-exports `src/wago`. |
-| `src/wago` | Public API implementation. |
-| `internal/genfacade` | Generator for `wago.go`. |
-| `cli/wago` | Build-tagged manager and runtime entry point. |
-| `cli/wago-installer` | Installable `wago-installer` command entry point. |
-| `cli/installer` | Shared installer implementation. |
-| `cli/manager` | Manager commands. |
-| `cli/runtime` | Runtime commands. |
-| `cli/internal` | Shared CLI code. |
-| `src/core/compiler/wasm` | WebAssembly decoder and validator. |
-| `src/core/compiler/backend/railshot` | Single-pass amd64 and arm64 code generator. |
-| `src/core/runtime` | Memory maps, foreign stack, and trap code. |
-| `tests` | Test harnesses, fixtures, corpora, and scripts. |
-| `bench` | Runtime-comparison benchmarks. |
-
-`wago.go` is generated. When you add or rename public API in `src/wago`, run
-`go generate ./...` and commit the updated `wago.go`. CI rejects a stale facade.
-
 ## Make a Change
 
 - Prefer the existing design over a new abstraction.
@@ -139,19 +115,7 @@ go test -tags=wago_regalloccheck ./...
 
 CI validates documentation for every change. Changes limited to Markdown,
 `LICENSE`, or `docs/` paths skip the native code matrix; mixed or executable
-changes run both documentation validation and the full matrix.
-
-For CLI changes, also build and run these checks:
-
-```bash
-go build -o wago ./cli/wago
-go build -tags wago_runtime -o wago-runtime ./cli/wago
-./wago-runtime run tests/fixtures/wasm/fib.wasm 30
-./wago-runtime run -e hypot tests/fixtures/wasm/fprog.wasm 3.0 4.0
-./wago-runtime build -o /tmp/fib.wago tests/fixtures/wasm/fib.wasm
-./wago-runtime run /tmp/fib.wago 30
-./wago-runtime validate tests/fixtures/wasm/fib.wasm
-```
+changes run both documentation validation and the full matrix
 
 Use the smallest fixture that proves new behavior. Prefer readable WAT in a
 test or a small checked-in `.wasm` file under `tests/fixtures/wasm`. See
@@ -284,14 +248,8 @@ clearly and that no unrelated formatting, rename, or cleanup is included.
 Keep README examples runnable from a fresh checkout. Keep their fixtures in the
 repository. Describe only supported behavior, not planned behavior.
 
-Every pull request needs:
-
-- a short description of the behavior change;
-- tests, or a clear reason tests are not useful;
-- support-matrix updates when needed; and
-- benchmark numbers for hot-path changes.
-
-Small pull requests are easier to review.
+Every pull request must follow the existing [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md)
+Try to keep the diff as small as reasonably possible. It makes it easier to review.
 
 ## AI-Assisted Work
 
