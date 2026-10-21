@@ -1129,7 +1129,7 @@ func (f *fn) emitSelect() {
 		f.fpinned = f.fpinned.add(aX)
 		bX := f.materializeV128(b)
 		f.pinned = f.pinned.remove(condReg)
-		skip := f.a.Cbnz64(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
+		skip := f.a.Cbnz32(condReg) // i32 condition != 0 → keep a
 		f.a.NeonMov16b(aX, bX)      // cond == 0 → a = b (all 128 bits)
 		f.patchBranch19(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)
