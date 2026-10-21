@@ -634,6 +634,13 @@ AMD64 defined GC casts and tests accept equal canonical type IDs after checked
 object resolution. Unequal ordinary types use subtype intervals; unequal exact
 casts fail. See [identity measurements](docs/research/canonical-identity-shortcut.md).
 
+On AMD64, small arrays can also consume a chunk-free struct reservation. They
+advance the nursery bump after initializing the payload and publish the handle
+last. These batches account for both constructor kinds from their consumed
+cursor. Private array chunks and exact-size large reservations retain their own
+cursor and immediate accounting. See the
+[native array path measurements](docs/research/native-array-paths.md).
+
 ### Off-heap allocation
 
 `Arena` hands out stable, off-heap, 8-byte-aligned buffers for everything native

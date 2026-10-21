@@ -1195,16 +1195,46 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		emitSize()
 	}
 
-	a.Load32(R15, R10, gc.NativeStructAllocChunkCursorOffset)
 	objectAlign := layout.elemAlign
 	if objectAlign < 8 {
 		objectAlign = 8
 	}
-	if objectAlign > 1 {
+	alignCursor := func() {
 		a.AluRI(0, R15, int32(objectAlign-1), false)
 		a.AluRI(4, R15, -int32(objectAlign), false)
 	}
+	// Struct batches own free identities without a private array chunk. Reuse
+	// those identities and the nursery bump instead of canceling the batch at
+	// every struct/array transition. Large arrays keep their exact reservation.
+	directReady := -1
+	var useChunk []int
+	if !site.large {
+		if site.dynamic {
+			a.AluRI(cmpDigit, RDI, 1, false)
+			useChunk = append(useChunk, a.JccPlaceholder(condE))
+		}
+		a.CmpImm32Mem(R10, gc.NativeStructAllocChunkEndOffset, 0)
+		useChunk = append(useChunk, a.JccPlaceholder(condNE))
+		a.Load32(RAX, R8, gc.NativeViewNurseryObjectMaxBytesOffset)
+		a.Cmp32(sizeReg, RAX)
+		addFallback(a.JccPlaceholder(condAE))
+		a.Load64(RAX, R8, gc.NativeViewNurseryBumpOffset)
+		a.TestSelf(RAX, true)
+		addFallback(a.JccPlaceholder(condE))
+		a.Load32(R15, RAX, 0)
+		alignCursor()
+		a.Load32(RAX, R8, gc.NativeViewNurseryAllocBytesOffset)
+		directReady = a.JmpPlaceholder()
+	}
+	for _, branch := range useChunk {
+		a.PatchRel32(branch, a.Len())
+	}
+	a.Load32(R15, R10, gc.NativeStructAllocChunkCursorOffset)
+	alignCursor()
 	a.Load32(RAX, R10, gc.NativeStructAllocChunkEndOffset)
+	if directReady >= 0 {
+		a.PatchRel32(directReady, a.Len())
+	}
 	a.Cmp32(R15, RAX)
 	addFallback(a.JccPlaceholder(condA))
 	a.Sub32(RAX, R15)
@@ -1433,7 +1463,18 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	if site.mode != gcArrayNativeDefault {
 		a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
 	}
-	a.Store32(R10, gc.NativeStructAllocChunkCursorOffset, RAX)
+	if !site.large {
+		a.CmpImm32Mem(R10, gc.NativeStructAllocChunkEndOffset, 0)
+		chunk := a.JccPlaceholder(condNE)
+		a.Load64(RDX, R8, gc.NativeViewNurseryBumpOffset)
+		a.Store32(RDX, 0, RAX)
+		done := a.JmpPlaceholder()
+		a.PatchRel32(chunk, a.Len())
+		a.Store32(R10, gc.NativeStructAllocChunkCursorOffset, RAX)
+		a.PatchRel32(done, a.Len())
+	} else {
+		a.Store32(R10, gc.NativeStructAllocChunkCursorOffset, RAX)
+	}
 	if site.mode == gcArrayNativeDefault && (site.dynamic || site.large) {
 		a.Store32(R9, gc.NativeHandleMetadataOffset, countReg)
 	} else {
@@ -1442,10 +1483,15 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	a.Load32(RDX, R10, gc.NativeStructAllocCursorOffset)
 	a.AluRI(0, RDX, 1, false)
 	a.Store32(R10, gc.NativeStructAllocCursorOffset, RDX)
+	// Chunk-free batches reconcile all publications from Cursor at cancellation.
+	// Updating the statistic here as well would count arrays twice.
+	a.CmpImm32Mem(R10, gc.NativeStructAllocChunkEndOffset, 0)
+	deferredCount := a.JccPlaceholder(condE)
 	a.Load64(R10, R8, gc.NativeViewAllocationCountOffset)
 	a.Load64(RAX, R10, 0)
 	a.AluRI(0, RAX, 1, true)
 	a.Store64(R10, 0, RAX)
+	a.PatchRel32(deferredCount, a.Len())
 	a.MovRegReg32(RAX, RSI)
 	a.ShiftImm(4, RAX, 1, false)
 	a.Store64(controlReg, hcResults, RAX)
