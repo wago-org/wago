@@ -67,12 +67,14 @@ func BenchmarkCowPHPRealCommand(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer c.Close()
-			got, err := runWagoCommand(m, c, stdin, true)
-			if err != nil {
-				b.Fatal(err)
-			}
-			if err := validateCommandOutput(m, got); err != nil {
-				b.Fatal(err)
+			for warmups := 0; warmups < 2; warmups++ {
+				got, err := runWagoCommand(m, c, stdin, true)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if err := validateCommandOutput(m, got); err != nil {
+					b.Fatal(err)
+				}
 			}
 			b.ReportAllocs()
 			b.ResetTimer()

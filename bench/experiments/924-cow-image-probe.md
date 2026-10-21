@@ -25,8 +25,13 @@ The [Wasmtime article](https://bytecodealliance.org/articles/wasmtime-10-perform
 
 ## Integrated path
 
-The compiled module builds one sparse Linux memfd at first eligible
-instantiation, with the ordinary 288-byte basedata prefix followed by ordered
+For the normal opt-in, only modules with at least 1,024 active data segments
+and at least 1 MiB initial linear memory are considered. Their first instance
+uses the ordinary path, the second builds a sparse Linux memfd, and later
+instances reuse it. This is an empirical cost gate for this experiment, not
+a general break-even theorem. Tests use `WAGO_EXPERIMENT_COW_IMAGE=force` to
+exercise the mapping mechanism on small fixtures. The image has Wago's
+ordinary 288-byte basedata prefix followed by ordered
 active data. The file is sized to Wago's **full growable reservation** (up to
 4 GiB memory32), but only written pages consume physical backing. Instances
 map it `MAP_PRIVATE` and retain Wago's stable native memory base and growth
@@ -40,8 +45,11 @@ path. No artifact format or native code changes.
 
 The synthetic oracle covers **ordered overlapping segments**, host and guest
 private writes, guest `memory.grow`, a fresh instance after close, a live
-instance after `Compiled.Close`, and 12 concurrent instantiations. Real yyjson and PHP modules instantiate twice
-and agree with their active data bytes. PHP's 43 function imports use no-op
+instance after `Compiled.Close`, and 12 concurrent instantiations. Configuration
+and quota tests cover changing the memory reservation and a constrained grow.
+Real yyjson uses forced mode for mapping correctness; normal opt-in keeps it
+on the ordinary path. PHP instantiates twice and agrees with its active data
+bytes. PHP's 43 function imports use no-op
 signature-matching stubs solely for instantiation; PHP's entrypoint is **not
 executed in this initializer test**. The separate real-command followup below
 executes it with genuine WASI imports. Both real modules' mappings are verified in `/proc/self/maps`.
@@ -63,98 +71,129 @@ WABT 1.0.41 was put on PATH, `WAGO_EXPERIMENT_COW_IMAGE=1 go test ./src/wago
 required by its footprint test; the optional descriptor lives in a cold
 sidecar.
 
-## Full Wago measurements
+## Repeated instantiation and image costs
 
-Linux/AMD64 Ryzen 7 8845HS. Two short runs each, same compiled modules and
-results. For warm instance throughput, the image is built before timing:
-
-```sh
-GOCACHE=/tmp/wago-go-cache go test ./src/wago -run '^$' -bench '^BenchmarkCOWIntegratedInstantiate$' -benchtime=60ms -count=2 -benchmem
-```
-
-| Workload | Default warm ns/op | CoW warm ns/op | Go B/op / allocs, default → CoW | Native code B |
-| --- | ---: | ---: | ---: | ---: |
-| Real yyjson | 6,130 / 6,044 | 20,847 / 20,927 | 1,096 / 5 → 1,160 / 6 | 298,661 |
-| PHP-derived data-only module | 1,645,788 / 1,787,969 | 913,508 / 917,223 | 1,040 / 3 → 1,104 / 4 | 0 |
-| Real PHP with inert import bindings | 2,594,465 / 2,695,918 | 1,582,802 / 1,575,344 | 28,816 / 482 → 28,880 / 483 | 30,164,957 |
-
-The real PHP instance initializes the complete real module and data, but does
-not run PHP code. The data-only case isolates initialization. The small yyjson
-regression is material; this path should not become universal.
-
-`TestCOWImageFirstUseCost -count=2 -v` includes one-time image creation at
-the first instance. Real PHP Compile is **645.6/656.7 ms default** and
-**644.0/645.1 ms CoW** (image creation occurs later); first instance is
-**7.18/7.24 ms default** versus **11.44/12.46 ms CoW**. The approximately
-4–5 ms first-use penalty is recovered after several warm PHP instantiations
-under this artificial no-entrypoint workload. Native code size is identical.
-
-A later `TestCOWImageFirstUseCost -count=2 -v` recheck reproduced the
-first-instance cost: real PHP default **7.50/7.75 ms** versus CoW
-**11.36/12.53 ms**; the data-only PHP fixture was **2.07/2.44 ms** versus
-**6.40/7.13 ms**. Native code bytes remained 30,164,957 for real PHP.
-This points to first-use image construction rather than native codegen;
-it does not isolate the memfd operations individually. The draft decision
-is unchanged.
-
-`TestCOWImageIntegratedPSS -count=2 -v` holds 1 or 10 **real PHP** instances
-and reads the first byte of every active data segment in every instance.
-Whole-process `/proc/self/smaps_rollup` PSS at 10 instances was **266,368 /
-284,536 KiB default** versus **173,832 / 189,164 KiB CoW**, a directional
-92–95 MiB difference in paired runs. At one instance the paired figures were
-167,820/167,308 KiB and 183,108/182,748 KiB, too close relative to changing
-process heap state to claim a one-instance memory win. The same process runs
-modes sequentially; this is not isolated peak RSS. Pages dirtied by real PHP
-execution may reduce sharing; the real-command followup below tests execution,
-though it does not yet measure dirty-page PSS.
-
-An unchanged, no-active-data instance control was 5,255/5,324 ns/op on base
-and 5,370/5,379 ns/op on head, with **1,368 B/op and 8 allocs/op** on both.
-The 1–2% time gap is short-run noise or a small default-path cost; it needs
-attention before default enablement.
-
-## Real PHP command and end-to-end cost
-
-The bench suite supplies PHP's actual WASI imports, input program, and pinned
-output oracle. `TestCowPHPRealCommand` compiles the **same real PHP Wasm**
-with explicit bounds in default and opt-in modes, executes the entrypoint
-twice per mode, and requires equal results, stdout, stderr, output files, and
-the existing corpus oracle. It passed in 1.53 seconds total. This closes the
-prior correctness gap from inert import stubs; it does not assert all PHP
-semantics or other input programs. Run from `bench`:
+Linux/AMD64 Ryzen 7 8845HS. All comparisons use the same module and runtime
+configuration; command runs check the same pinned output oracle. The base is
+`209e448c392510a0325d5b282a0d86a776fb379c` and the branch includes the
+prototype plus the admission refinement described above. The original
+prototype rescanned PHP's 63,770 segments and duplicated its image FD at
+**165–180 µs** per warm instance (20x, three samples). The revised cached
+plan and FD duplication take **1.03–1.26 µs** (same benchmark). A standalone
+eligibility traversal is **497–516 µs**; a fresh map/unmap **18.9–21.7 µs**;
+map plus touching 2,480 pages **644–677 µs**. These isolated operations
+exclude imports, PHP execution, and image creation.
 
 ```sh
-GOCACHE=/tmp/wago-go-cache go test ./suite -run '^TestCowPHPRealCommand$' -count=1 -v -timeout=120s -args -wago.corpus=all
-GOCACHE=/tmp/wago-go-cache go test ./suite -run '^$' -bench '^BenchmarkCowPHPRealCommand$' -benchtime=5x -count=3 -benchmem -timeout=120s -args -wago.corpus=all
+GOCACHE=/tmp/wago-go-cache GOPROXY=off go test ./src/wago -run '^$' -bench '^BenchmarkCOW(ImageWarmParts|IntegratedInstantiate)$' -benchtime=20x -count=3 -benchmem -cpu=1
 ```
 
-The benchmark excludes Compile, preflights one full oracle per mode, then
-measures each fresh instance through the real PHP command (including private
-page faults and normal execution). Short directional samples on the same
-Linux/AMD64 machine:
+After two warmup instances, real PHP with 43 inert import bindings takes
+**3.14/3.20/3.35 ms** per ordinary instance versus **1.76/1.97/1.82 ms**
+for image instances; Go allocations are **28,816 B / 482** versus
+**28,880 B / 483** per instance. Its native code is **30,164,957 B** in both
+modes. PHP-derived data-only instances take **2.29–2.34 ms** ordinary versus
+**0.82–0.88 ms** CoW. Real yyjson stays ordinary under normal opt-in:
+**6.49–7.02 µs** baseline versus **6.43–8.43 µs** with flag enabled, short-run
+noise; both use **1,096 B / 5** Go allocations and **298,661 B** native code.
+The original always-admit prototype had made yyjson **20.8–20.9 µs** versus
+**6.0–6.1 µs**, motivating the small-module cost gate.
 
-| Mode | ns/op (five commands each, three samples) | Go B/op | allocs/op |
-| --- | ---: | ---: | ---: |
-| Default | 6,456,002 / 5,361,740 / 5,231,330 | 77,641 | 961 |
-| CoW opt-in | 6,948,195 / 6,720,054 / 6,518,906 | 77,705–77,718 | 962 |
+`TestCOWImageFirstUseCost -v` makes three instances: real PHP was
+**7.86 / 2.82 / 2.84 ms** baseline and **8.08 / 7.91 / 1.60 ms** opt-in.
+The second opt-in instance pays image creation; the third reuses it. This
+single run isolates the timing pattern, not a stable break-even count. Compile
+was **777 / 775 ms**, native code unchanged. The earlier always-admit
+prototype had charged its first PHP instance an extra **4–5 ms**.
 
-A second, three-command/two-sample check gave default 4,723,727 /
-4,745,842 ns and CoW 5,437,092 / 5,491,829 ns. The short-run spread and
-sequential mode order limit precision, but **both checks point to an
-end-to-end slowdown** for this PHP input. Faster warm instance creation does
-not translate into faster command completion. Per-operation Go allocation
-changes are small; page fault and kernel mapping work is not captured by
-Go B/op. Production native code bytes remain identical. Whole-process PSS
-was measured on instances before execution, so the earlier 10-instance memory
-result cannot be attributed to completed real PHP commands.
+## Actual PHP command and retained memory after execution
 
-## Decision
+The benchmark supplies PHP's actual WASI imports, input, and pinned output
+oracle. Each measurement process compiles the same real PHP Wasm, retains
+eight instances, executes `_start` in every instance, validates each output,
+then hashes every byte of each 14,352,384-byte linear memory. Baseline and
+opt-in produce the same concatenated memory SHA-256
+`eabe80f5196ca887f0ca9b505a67099bd3a7e47f168f41e9020ce648e78e227d`
+in all four runs. Each compilation emits **30,164,957 B** native code. The
+CoW process has one ordinary instance and seven image instances by design.
 
-Keep the Linux implementation opt-in and this PR draft. It provides lower PSS for 10 PHP instances before execution and faster warm
-PHP instantiation, but the real PHP command is directionally slower, first use
-costs more, and small yyjson regresses severely. Before ready review, measure
-dirty-page sharing and total peak RSS after real command execution across
-independent processes, verify file-descriptor/mapping quotas and failure
-injection, and define an admission threshold that excludes small or
-short-lived workloads. No
-merge or default enablement is supported by these results.
+```sh
+WAGO_924_POSTEXEC_MODE=baseline WAGO_924_POSTEXEC_INSTANCES=8 GOCACHE=/tmp/wago-go-cache GOPROXY=off go test ./bench/suite -run '^TestCowPHPPostExecutionMemory$' -count=1 -v -args -wago.corpus=php-buckets
+# repeat with WAGO_924_POSTEXEC_MODE=cow; run each arm twice in its own process
+```
+
+| Eight real PHP instances | Baseline (two samples) | CoW opt-in (two samples) |
+| --- | ---: | ---: |
+| PSS after initialization | 244,966 / 245,087 KiB | 175,050 / 177,194 KiB |
+| PSS after `_start` | 294,270 / 294,391 KiB | 221,486 / 223,914 KiB |
+| RSS after `_start` | 295,864 / 295,948 KiB | 231,124 / 234,228 KiB |
+| PSS after host reads all memory | 294,270 / 294,395 KiB | 230,482 / 232,630 KiB |
+| Aggregate instantiate time | 28.86 / 27.73 ms | 27.26 / 25.82 ms |
+| Aggregate command execution | 25.53 / 25.38 ms | 36.48 / 37.53 ms |
+| Compile time | 820 / 774 ms | 780 / 757 ms |
+
+Thus savings remain after this real program executes: about **70–73 MiB
+PSS** and **61–64 MiB RSS** in these short paired runs, with an **11–12 ms**
+aggregate execution penalty. Host hashing faults clean image pages into the
+process, increasing CoW RSS; PSS remains about **60–64 MiB** lower. `HeapAlloc`
+is around 72 MiB in both arms, as expected for off-heap mapping. These are
+whole-process snapshots, not peak memory, and the samples are too short for
+precise latency claims. The prior always-admit implementation saved around
+87–90 MiB PSS after execution at eight instances, but also paid the image
+cost on the first instance. The admission gate trades some sharing for a
+cheaper single-instance path.
+
+A separate benchmark warms twice in each mode, then creates a fresh PHP
+instance and executes the same command per iteration:
+
+```sh
+GOCACHE=/tmp/wago-go-cache GOPROXY=off go test ./bench/suite -run '^$' -bench '^BenchmarkCowPHPRealCommand$' -benchtime=10x -count=3 -benchmem -cpu=1 -args -wago.corpus=php-buckets
+```
+
+Baseline samples are **6.23/6.29/7.18 ms** and opt-in samples
+**7.30/7.17/6.96 ms** per command. Go allocation is **77,641–77,652 B / 961**
+versus **77,705 B / 962**. Sample overlap and sequential mode order mean
+this command benchmark does not establish a precise latency difference; the
+retained-instance experiment above isolates a credible execution penalty for
+that input. Neither benchmark includes recurring compilation in its timing.
+
+## Read and write boundary
+
+A controlled Wasm fixture keeps PHP's actual ordered data segments and adds a
+function that visits one byte of each of its **2,480** initial pages. Read mode
+only reads; write mode increments that byte. Eight instances run in separate
+processes per mode. Output checksum and full memory SHA agree across baseline
+and CoW for each workload. The fixture's generated function has **197 B**
+native code; it does not execute the PHP interpreter.
+
+```sh
+WAGO_924_POSTEXEC_MODE=baseline WAGO_924_POSTEXEC_INSTANCES=8 WAGO_924_PAGE_EXERCISE=read GOCACHE=/tmp/wago-go-cache GOPROXY=off go test ./src/wago -run '^TestCOWImagePageReadWriteMemory$' -count=1 -v
+# repeat baseline/cow for read/write in independent processes
+```
+
+For the read fixture, executed PSS is **129,572 KiB** baseline versus
+**67,932 KiB** CoW, while RSS is approximately **129,580 / 127,436 KiB**:
+clean file-backed pages count fully toward process RSS but proportionally
+toward PSS. Aggregate execution is **1.21 / 3.65 ms**. For write-every-page,
+executed PSS is **131,808 / 127,672 KiB**, within process baseline drift;
+aggregate execution is **1.28 / 35.76 ms**. Once every page is dirtied,
+sharing benefit effectively disappears and private-page fault cost dominates.
+The earlier all-eight-CoW version reproduced the same boundary in two
+independent runs per arm; the admission gate makes one instance ordinary.
+
+## Verification and decision
+
+The ordinary and `-tags=wago_regalloccheck` full `./src/wago
+./src/core/runtime` suites pass with `WAGO_EXPERIMENT_COW_IMAGE=1`, using
+pinned WABT 1.0.41 and the exact spec-v3 gitlink. The focused image tests
+pass under `-race`. Real PHP command outputs and both full-memory hashes
+agree across modes. These checks cover the measured cases, not arbitrary
+Wasm programs. The cost gate is workload-specific and the post-execution
+measurements use only one PHP input and short runs.
+
+Keep this PR **draft** and the feature opt-in. For repeated read-heavy PHP
+instances, the reduced PSS is credible and warm instance setup is faster.
+Execution is directionally slower; write-heavy instances lose the memory
+benefit. Before any default enablement, test more real programs and establish
+an admission policy that accounts for page write behavior. No merge is
+proposed.
