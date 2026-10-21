@@ -874,8 +874,14 @@ func (in *Instance) rangeLocalGCTableRoots(fn func(gc.RootSlot) bool, sink gc.Ro
 	if in == nil || in.c == nil {
 		return true
 	}
+	mirrored := in.existingGCRefTestTableState()
 	for tableIndex := 0; tableIndex < in.c.tableCount(); tableIndex++ {
 		if !isGCRefValType(in.c.tableElementType(tableIndex)) {
+			continue
+		}
+		// Staged tables already own checked collector slots. Those slots retain
+		// objects and represent foreign anyref identities as non-collector null.
+		if mirrored != nil && tableIndex < len(mirrored.kinds) && mirrored.kinds[tableIndex] == gcRefTableRoot {
 			continue
 		}
 		desc := in.tableDescriptor(tableIndex)
@@ -955,6 +961,13 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			panic(gcHelperFailuref("generic GC native frame exceeds stack bounds"))
 		}
 		for _, off := range offsets {
+			bits := binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(base+uintptr(off))), 8))
+			if bits != uint64(gc.Ref(uint32(bits))) {
+				if owner == nil || !owner.isForeignAnyref(bits) {
+					panic(gcHelperFailuref("generic GC frame-root offset %d contains non-compact reference %#x", off, bits))
+				}
+				continue
+			}
 			// gc.Ref is the low 32 bits of the validated little-endian native qword.
 			// Expose the actual off-heap word so a moving/reference-rewriting policy
 			// updates the parked frame rather than a copied scratch value.

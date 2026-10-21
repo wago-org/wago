@@ -177,6 +177,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 	}
 	totalFuncs := m.ImportedFuncCount() + len(m.Code)
 	functionIndexOK := func(index uint32) bool { return int(index) < totalFuncs }
+	externBridge := m.TableCount() != 0 && moduleUsesGCExternConversion(m)
 	tableKinds := make([]uint8, m.TableCount())
 	for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
 		tableType, ok := m.TableType(uint32(tableIndex))
@@ -189,6 +190,15 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 			tableKinds[tableIndex] = 1
 		case collectorFrameRefType(m, typ):
 			tableKinds[tableIndex] = 2
+		case typ == wasm.ExternRef && externBridge && tableIndex >= m.ImportedTableCount():
+			// The local conversion owner retains object identities in checked
+			// collector slots. External table aliases need a separate proof.
+			for _, export := range m.Exports {
+				if export.Index.Kind == wasm.ExternTable && export.Index.Index == uint32(tableIndex) {
+					return false
+				}
+			}
+			tableKinds[tableIndex] = 3
 		default:
 			return false
 		}
