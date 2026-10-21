@@ -105,7 +105,8 @@ Release preparation; the comparison below is pinned to the preparation commit.
 
 ### Added
 
-- Support shared memory on AMD64 and ARM64: scalar/SIMD loads and stores, `memory.size`, `memory.grow`, overlap-safe `memory.copy`, `memory.fill`, classic atomics, and
+- Support shared memory on AMD64 and ARM64: scalar/SIMD loads and stores, `memory.size`,
+  `memory.grow`, overlap-safe `memory.copy`, `memory.fill`, classic atomics, and
   wait/notify. Preserve bounds checks, exact float/vector bits, quotas, codec reload,
   and backing ownership across exports and producer close. Growers publish the new
   extent only after pages are accessible; active instances read the live extent. Allow
@@ -416,8 +417,9 @@ Release preparation; the comparison below is pinned to the preparation commit.
 - Tables with no declared maximum can grow past 1,024 entries; a table can now at least
   double from its initial size. ([#770](https://github.com/wago-org/wago/pull/770))
 - GC tables accept Core 3 initializers such as `(ref.null any)`, `ref.i31` and extended
-  constants, and constant expressions accept chains of `any.convert_extern`/`extern.convert_any` on null. An allocating initializer is evaluated once, so every
-  slot holds the same object.
+  constants, and constant expressions accept chains of
+  `any.convert_extern`/`extern.convert_any` on null. An allocating initializer is
+  evaluated once, so every slot holds the same object.
   ([#770](https://github.com/wago-org/wago/pull/770),
   [#771](https://github.com/wago-org/wago/pull/771))
 
@@ -456,8 +458,8 @@ Release preparation; the comparison below is pinned to the preparation commit.
   collection, and an interrupted call is no longer occasionally reported as successful.
   ([#739](https://github.com/wago-org/wago/pull/739))
 - AMD64 no longer skips code after a `try_table` that is exited by a branch to its own
-  end (for example `br 0`), which previously ran the exception handler instead and
-  could return early or report an unhandled exception.
+  end (for example `br 0`), which previously ran the exception handler instead and could
+  return early or report an unhandled exception.
   ([#742](https://github.com/wago-org/wago/pull/742))
 - Full-access AMD64 plugins can declare every optional CPU feature exposed by the
   encoder, and compiled artifacts preserve those admission requirements.
@@ -505,7 +507,8 @@ Release preparation; the comparison below is pinned to the preparation commit.
 
 - Restore `WasmFunc.OpenSession` and `PreparedSession` for repeated calls under one
   instance reservation; `Close` releases the reservation.
-- Add configurable export caching through `InvokeCacheSlots` and `WithInvokeCacheSlots`, with four inline slots by default and 1–255 entries.
+- Add configurable export caching through `InvokeCacheSlots` and `WithInvokeCacheSlots`,
+  with four inline slots by default and 1–255 entries.
 - Add required WebAssembly 1.0 conformance checks and forced-SSE2 coverage.
 
 ### Changed
@@ -599,8 +602,8 @@ Release preparation; the comparison below is pinned to the preparation commit.
   method; numbered `Invoke0` through `Invoke4` methods have been removed.
 - **Breaking:** public prepared sessions and `OpenSession` have been removed. Each
   invocation now performs its own lifecycle admission.
-- **Breaking:** by-name execution is `Invoke` or `InvokeContext`; tagged-value calls
-  use `InvokeValues` instead of `Call`.
+- **Breaking:** by-name execution is `Invoke` or `InvokeContext`; tagged-value calls use
+  `InvokeValues` instead of `Call`.
 - Host/Wasm dispatch, typed callbacks, Railshot-generated execution, branch hints,
   import-range lookup, and prepared-artifact admission are faster while retaining the
   existing ownership and resource checks.
@@ -644,7 +647,6 @@ Release preparation; the comparison below is pinned to the preparation commit.
 - Fix AMD64 corpus miscompiles, ARM64 indexed bulk-memory bounds checks, and incomplete
   typed-select immediate decoding.
 - Fix Beta discovery and retracted legacy tagged Canary module versions.
-
 
 [Unreleased]: https://github.com/wago-org/wago/compare/v0.1.0-beta.12...HEAD
 [v0.1.0-beta.13]: https://github.com/wago-org/wago/compare/v0.1.0-beta.12...46d70c6957a04c94e49330df3612fd185dd9823c
