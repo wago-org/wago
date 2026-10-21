@@ -8,6 +8,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Compile large ARM64 functions whose conditional branches exceed 1 MiB by
+  retrying with space for long branches. Fixes PDFium chromium/8111 compilation
+  ([#1013](https://github.com/wago-org/wago/issues/1013)).
+
 - Allow up to 32 nested synchronous host calls under standard Go so component
   adapter chains can cross more than four boundaries. TinyGo retains its
   four-call limit for fixed host stacks. Size parked GC callback and root storage
