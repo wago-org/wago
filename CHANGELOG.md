@@ -9,7 +9,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 ### Fixed
 
 - Preserve live Wasm GC locals across allocations in modules with extern/any
-  conversions, including modules with no host imports.
+  conversions, including modules with no host imports. Keep older caller roots
+  across scalar native relays, foreign collector frames, and host callbacks,
+  including retained imports through another Runtime.
 
 - Allow up to 32 nested synchronous host calls under standard Go so component
   adapter chains can cross more than four boundaries. TinyGo retains its

@@ -451,12 +451,29 @@ func validGCModuleFrameRootPlanKinds(module *shared.GCModuleFrameRootPlan, allow
 	return totalSafepoints != 0 || totalCallsites != 0 || compiledArchitecture == 4 && noCollectingBodies
 }
 
+// collectorFreeNativeUnwind grants physical traversal only. It cannot admit
+// allocation safepoints, compact object slots, or collector-bearing calls.
+func (c *Compiled) collectorFreeNativeUnwind(plan *compiledGCFrameRoots) bool {
+	if compiledArchitecture == 4 || c == nil || plan == nil || c.nativeGCABIRequirement() != 0 || c.needsExactNativeGCRoots() || gc.HasHeapObjectTypes(c.GCTypeDescs) || len(plan.safepoints) != 0 || c.hasInternalCollectorReferenceFunctions() {
+		return false
+	}
+	for _, site := range plan.callsites {
+		if len(site.offsets) != 0 {
+			return false
+		}
+	}
+	return len(plan.callsites) != 0
+}
+
 func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) error {
 	if rootMap == nil {
 		return nil
 	}
-	if c == nil || !c.needsExactNativeGCRoots() {
-		return fmt.Errorf("GC frame-root metadata requires exact native GC roots")
+	if c == nil {
+		return fmt.Errorf("GC frame-root metadata requires a compiled module")
+	}
+	if !c.needsExactNativeGCRoots() && !c.collectorFreeNativeUnwind(rootMap) {
+		return fmt.Errorf("GC frame-root metadata requires exact native GC roots or collector-free return maps")
 	}
 	ownedState := (c.hasNoFunctionCode() || compiledArchitecture == 4 && len(c.Funcs) == 0 && len(c.code) == 0 && c.NumImports > 0 && c.hasCollectorReferenceCallBoundary()) && (c.needsOwnedExceptionReferences() || compiledArchitecture == 4 && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary()) && c.requiredFeatures.IsEnabled(CoreFeatureGC) && c.nativeGCABIRequirement() == gc.NativeABIVersion)
 	// Import-only plugin calls execute through the public Go boundary. Their

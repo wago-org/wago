@@ -1455,7 +1455,18 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	exactNativeGCRoots := genericGCExecution || compiledArchitecture != 4 && gcStructProduct == stagedGCStructExtern || collectorReferenceCallBoundary && !boundedPersistentGCRoots || ownedExceptionReferences || rootedReferenceDeclarations
 	functionEnvironmentFrames := compiledArchitecture == 4 && exactNativeGCRoots && !ownedExceptionReferences && !wasm.ModuleFunctionReferenceStorage(m) && wasm.ModuleFunctionReferenceCarriers(m)
 	var gcFrameRootDiagnostic string
-	gcFrameRoots := newGCFrameRootPlanWithInstructions(m, exactNativeGCRoots, genericGCExecution, &gcFrameRootDiagnostic, &validationAnalysis, customInstructions)
+	// Collector-free callers still need return maps when a scalar native call
+	// can reenter a collecting domain. These maps never grant a GC execution
+	// product or describe compact object slots.
+	nativeUnwind := !exactNativeGCRoots && (goruntime.GOARCH == "amd64" && goruntime.GOOS == "linux" || goruntime.GOARCH == "arm64" && (goruntime.GOOS == "linux" || goruntime.GOOS == "darwin")) && len(customInstructions) == 0 && !gc.HasHeapObjectTypes(gcDescs) && (importedFuncs != 0 || m.TableCount() != 0)
+	gcFrameRoots := newGCFrameRootPlanWithInstructions(m, exactNativeGCRoots || nativeUnwind, genericGCExecution, &gcFrameRootDiagnostic, &validationAnalysis, customInstructions)
+	if nativeUnwind {
+		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
+			if plan := gcFrameRoots.Function(function); plan != nil {
+				plan.UnwindOnly = true
+			}
+		}
+	}
 	indexedFunctionRefTest, indexedFunctionRefCast := requirements.indexedFuncRefTest, requirements.indexedFuncRefCast
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
 	foreignFunctionSubtypeHelpers := railshotFunctionSubtypeHelpers(m)
@@ -2785,6 +2796,12 @@ func (c *Compiled) validateMetadata() error {
 		staged |= required & CoreFeatureExceptionHandling
 	}
 	staged |= c.stagedFeatures()
+	// Collector-free return maps can retain inert collector type declarations
+	// without selecting a collector execution product. Exact frame validation
+	// still rejects allocation sites, object slots, and collector-bearing calls.
+	if c.collectorFreeNativeUnwind(c.genericGCFrameRoots()) && validateCompiledGCFrameRoots(c, c.genericGCFrameRoots()) == nil {
+		staged |= required & CoreFeatureGC
+	}
 	if required&(CoreFeatureGC|CoreFeatureTypedFunctionReferences) != 0 && (compiledFunctionOnlyTypeGraph(c) || compiledArchitecture == 4 && railshotPrimitiveReferenceDeclarations(c)) {
 		staged |= required & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
 	}

@@ -712,6 +712,9 @@ type gcHostActivation struct {
 // Preserve the existing capacity for builds with a lower reentry limit.
 const gcHostActivationLimit = max(8, maxHostReentryDepth+1)
 
+// Skip foreign parked-chain discovery when AMD64/ARM64 have no parked GC host call.
+var gcNativeHostActivations atomic.Int64
+
 func (r *gcNativeFrameRoots) RangeRoots(fn func(gc.RootSlot) bool) {
 	r.walk(fn, nil)
 }
@@ -747,7 +750,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 	if !r.rangeSuspendedRoots(r.owner, r.suspended, nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
 		return false
 	}
-	if r.domainHostRoots && r.owner != nil && r.owner.refStore != nil && !r.owner.refStore.rangeGCDomainSuspendedRoots(r.owner.gc, r.suspended, r, nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
+	if r.domainHostRoots && (compiledArchitecture == 4 || gcNativeHostActivations.Load() != 0) && r.owner != nil && r.owner.refStore != nil && !r.owner.refStore.rangeGCDomainSuspendedRoots(r.owner.gc, r.suspended, r, nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
 		return false
 	}
 	if r.owner != nil && r.owner.refStore != nil && r.owner.refStore.ownsGCCollector(r.owner.gc) {
@@ -771,7 +774,7 @@ func (r *gcNativeFrameRoots) rangeSuspendedRoots(owner *Instance, state *gcPubli
 			}
 			callsite := &state.hostRootPlan.callsites[activation.callsite]
 			chain := gcNativeFrameRoots{
-				owner:                owner,
+				owner:                r.owner,
 				entryReturnSlot:      activation.entryReturnSlot,
 				base:                 activation.base,
 				offsets:              callsite.offsets,
@@ -783,7 +786,7 @@ func (r *gcNativeFrameRoots) rangeSuspendedRoots(owner *Instance, state *gcPubli
 				adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
 				callsites:            state.hostRootPlan.callsites,
 			}
-			if !chain.rangeChain(fn, sink, activation.stack) {
+			if !chain.rangeChainFrom(owner, fn, sink, activation.stack) {
 				return false
 			}
 		}
@@ -808,7 +811,7 @@ func (r *gcNativeFrameRoots) rangeTransientRoots(fn func(gc.RootSlot) bool, sink
 	if !r.rangeSuspendedRoots(r.owner, r.suspended, fn, sink) {
 		return false
 	}
-	if r.domainHostRoots && r.owner != nil && r.owner.refStore != nil && !r.owner.refStore.rangeGCDomainSuspendedRoots(r.owner.gc, r.suspended, r, fn, sink) {
+	if r.domainHostRoots && (compiledArchitecture == 4 || gcNativeHostActivations.Load() != 0) && r.owner != nil && r.owner.refStore != nil && !r.owner.refStore.rangeGCDomainSuspendedRoots(r.owner.gc, r.suspended, r, fn, sink) {
 		return false
 	}
 
@@ -949,7 +952,10 @@ func gcNativeFrameFitsStack(base uintptr, frameBytes uint32, stack *coreruntime.
 }
 
 func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootRefSink, stack *coreruntime.Engine) bool {
-	owner := r.owner
+	return r.rangeChainFrom(r.owner, fn, sink, stack)
+}
+
+func (r *gcNativeFrameRoots) rangeChainFrom(owner *Instance, fn func(gc.RootSlot) bool, sink gc.RootRefSink, stack *coreruntime.Engine) bool {
 	base, offsets, frameBytes := r.base, r.offsets, r.frameBytes
 	codeBase, codeBytes := r.codeBase, r.codeBytes
 	adapterReturnOffsets, callsites := r.adapterReturnOffsets, r.callsites
@@ -981,7 +987,13 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 		if r.owner != nil && !visitManagedFunctionOwnerFrameRoot(owner, r.owner.gc, fn, sink) {
 			return false
 		}
-		for _, off := range offsets {
+		frameOffsets := offsets
+		if owner != r.owner && r.owner != nil && owner != nil && owner.gc != r.owner.gc {
+			// Compact handles are local to a collector. Traverse a foreign
+			// frame's physical return map, never feed its words to this heap.
+			frameOffsets = nil
+		}
+		for _, off := range frameOffsets {
 			encoded := off
 			off = shared.GCFrameRootOffset(encoded)
 			if encoded&shared.GCFrameExternRefRootFlag != 0 {
@@ -1066,30 +1078,21 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 						return true
 					}
 				}
-				if owner == nil || owner.refStore == nil || !owner.refStore.ownsGCCollector(owner.gc) {
+				if r.owner == nil || r.owner.refStore == nil || !r.owner.refStore.ownsGCCollector(r.owner.gc) {
 					return true
 				}
-				foreign := owner.refStore.gcFrameOwner(retPC, owner.gc)
+				foreign := r.owner.refStore.gcFrameOwner(retPC, owner.gc)
+				if foreign == nil && r.frameLayout&gcNativeFrameLayoutMask != gcNativeFrameLayoutRISCV64 {
+					foreign = r.owner.refStore.gcAnyFrameOwner(retPC, 0)
+				}
 				if foreign == nil {
-					// A scalar relay can call into a separately owned GC domain.
-					// Its validated adapter and saved context identify a retained
-					// caller with no roots in this domain; other domains are suspended
-					// independently by the invocation lease. Never scan its frame
-					// as though its compact words belonged to this collector.
-					if adapterRead && returnBase%8 == 0 && returnBase <= stackTop && stackTop-returnBase >= 64 {
-						contextOffset := uintptr(8)
-						if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutARM64 {
-							contextOffset = 0
-						}
-						context := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(returnBase+contextOffset)), 8)))
-						if owner.refStore.gcFrameScalarBoundary(retPC, owner.gc, context) {
-							return true
-						}
-					}
 					if r.allowExternalReturn {
 						return true
 					}
 					panic(gcHelperFailuref("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC))
+				}
+				if foreign.c.genericGCFrameRoots() == nil {
+					panic(gcHelperFailuref("generic GC foreign return PC %#x has no native unwind map; recompile the caller", retPC))
 				}
 				owner = foreign
 				plan := foreign.c.genericGCFrameRoots()
@@ -1153,6 +1156,9 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 		offsets = callsite.offsets
 		frameBytes = callsite.frameBytes
 		stackAdjust := callsite.stackAdjust
+		if owner != calleeOwner && stackAdjust != 64 && r.frameLayout&gcNativeFrameLayoutMask != gcNativeFrameLayoutRISCV64 && owner != nil && calleeOwner != nil && owner.gc != calleeOwner.gc {
+			panic(gcHelperFailuref("generic GC cross-domain return lacks its saved caller context"))
+		}
 		if returnBase > ^uintptr(0)-uintptr(stackAdjust) {
 			panic(gcHelperFailuref("generic GC caller stack adjustment overflows"))
 		}
@@ -1177,7 +1183,10 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			} else if context == 0 {
 				panic(gcHelperFailuref("generic GC caller context is unavailable"))
 			} else if context != owner.nativeContext {
-				caller := owner.refStore.gcFrameContextOwner(retPC, owner.gc, context)
+				caller := r.owner.refStore.gcFrameContextOwner(retPC, owner.gc, context)
+				if caller == nil {
+					caller = r.owner.refStore.gcAnyFrameOwner(retPC, context)
+				}
 				if caller == nil {
 					panic(gcHelperFailuref("generic GC caller context %#x has no Runtime GC-domain code owner", context))
 				}
@@ -1731,13 +1740,13 @@ func (s *referenceStore) rangeGCDomainSuspendedRoots(collector *gc.Collector, ex
 	}
 	n := 0
 	s.mu.Lock()
-	for owner, registration := range s.instances {
-		if registration == nil || registration.resourcesReleased || owner == nil || owner.gc != collector {
-			continue
+	appendOwner := func(owner *Instance) bool {
+		if compiledArchitecture == 4 && owner.gc != collector {
+			return true
 		}
 		state := owner.existingPublicGCState()
 		if state == nil || state == exclude || state.hostActivationCount == 0 {
-			continue
+			return true
 		}
 		if n < len(owners) {
 			owners[n] = gcSuspendedRootOwner{owner, state}
@@ -1745,6 +1754,16 @@ func (s *referenceStore) rangeGCDomainSuspendedRoots(collector *gc.Collector, ex
 			extra = append(extra, gcSuspendedRootOwner{owner, state})
 		}
 		n++
+		return true
+	}
+	if compiledArchitecture == 4 {
+		for owner, registration := range s.instances {
+			if registration != nil && !registration.resourcesReleased && owner != nil {
+				appendOwner(owner)
+			}
+		}
+	} else {
+		s.rangeRetainedFrameOwnersLocked(appendOwner)
 	}
 	s.mu.Unlock()
 	if roots.suspended != nil {
@@ -1798,27 +1817,92 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
 	return s.gcFrameContextOwner(pc, collector, 0)
 }
 
-// gcFrameScalarBoundary proves that a retained caller cannot receive objects
-// from this collector. Scalar imports keep its own GC domain separate and the
-// invocation lease suspends each domain independently. The adapter established
-// the wrapper shape; matching its context and code image lets this domain stop
-// without reading another domain's frames or interpreting its compact roots.
-// Dynamic function-reference containers and boundaries need a separate proof.
-func (s *referenceStore) gcFrameScalarBoundary(pc uintptr, collector *gc.Collector, context uintptr) bool {
-	if s == nil || context == 0 {
-		return false
+// gcAnyFrameOwner selects an immutable return plan across collector domains.
+// Shared code alone is not instance identity: the caller's saved context is
+// authenticated below before any frame slots are visited.
+func (s *referenceStore) gcAnyFrameOwner(pc, context uintptr) *Instance {
+	if s == nil {
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	matches := func(candidate *Instance) bool {
+		return candidate != nil && candidate.c != nil && (context == 0 || candidate.nativeContext == context) && pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code))
+	}
 	for candidate, state := range s.instances {
-		if state == nil || state.resourcesReleased || candidate == nil || candidate.refStore != s || candidate.c == nil || candidate.gc == collector || candidate.c.hasCollectorReferenceCallBoundary() || compiledHasDynamicFuncrefReachability(candidate.c) {
-			continue
-		}
-		if candidate.nativeContext == context && pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code)) {
-			return true
+		if state != nil && !state.resourcesReleased && candidate != nil && candidate.refStore == s && matches(candidate) {
+			return candidate
 		}
 	}
-	return false
+	var found *Instance
+	s.rangeRetainedFrameOwnersLocked(func(candidate *Instance) bool {
+		if matches(candidate) {
+			found = candidate
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// rangeRetainedFrameOwnersLocked visits each retained local/import owner once.
+// Callers hold s.mu and must not take a foreign store lock in visit.
+func (s *referenceStore) rangeRetainedFrameOwnersLocked(visit func(*Instance) bool) bool {
+	// Scalar imports may leave and reenter a store through an immutable native
+	// relay. The local registration announces ResourcesReleased under s.mu
+	// BEFORE detaching imports. Holding s.mu therefore retains its entire
+	// transitive imported-code/context graph; no foreign store lock is needed.
+	// Owner lookup uses this graph only after its fast local scan fails.
+	// Parked-host discovery also uses it when a GC-capable callback is active.
+	var inlinePending, inlineSeen [32]*Instance
+	pending, seen := inlinePending[:0], inlineSeen[:0]
+	var wideSeen map[*Instance]struct{}
+	add := func(candidate *Instance) {
+		if candidate == nil {
+			return
+		}
+		if wideSeen != nil {
+			if _, exists := wideSeen[candidate]; exists {
+				return
+			}
+			wideSeen[candidate] = struct{}{}
+		} else {
+			for _, previous := range seen {
+				if previous == candidate {
+					return
+				}
+			}
+			if len(seen) < len(inlineSeen) {
+				seen = append(seen, candidate)
+			} else {
+				wideSeen = make(map[*Instance]struct{}, 64)
+				for _, previous := range seen {
+					wideSeen[previous] = struct{}{}
+				}
+				wideSeen[candidate] = struct{}{}
+			}
+		}
+		pending = append(pending, candidate)
+	}
+	for candidate, state := range s.instances {
+		if state != nil && !state.resourcesReleased && candidate != nil && candidate.refStore == s {
+			add(candidate)
+		}
+	}
+	for len(pending) != 0 {
+		last := len(pending) - 1
+		candidate := pending[last]
+		pending = pending[:last]
+		if !visit(candidate) {
+			return false
+		}
+		for _, binding := range candidate.imports {
+			if imported, ok := binding.(*InstanceExport); ok && imported != nil {
+				add(imported.inst)
+			}
+		}
+	}
+	return true
 }
 
 func (s *referenceStore) gcFrameContextOwner(pc uintptr, collector *gc.Collector, context uintptr) *Instance {
