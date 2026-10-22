@@ -89,6 +89,8 @@ type GuestStorage interface {
 
 	ImportParamType(index int) (ValueTypeDescriptor, bool)
 	ImportResultType(index int) (ValueTypeDescriptor, bool)
+	// DefinedType returns a detached descriptor. Its slices can be changed
+	// without changing the guest's types or host-call admission rules.
 	DefinedType(index uint32) (DefinedTypeDescriptor, bool)
 }
 
@@ -400,5 +402,6 @@ func (v *guestStorageView) DefinedType(index uint32) (DefinedTypeDescriptor, boo
 	if v == nil || !v.active.Load() || int(index) >= len(v.types) {
 		return DefinedTypeDescriptor{}, false
 	}
-	return v.types[index], true
+	cloned := cloneDefinedTypeDescriptors(v.types[index : index+1])
+	return cloned[0], true
 }

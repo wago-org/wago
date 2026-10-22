@@ -4,7 +4,9 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -12,7 +14,7 @@ import (
 	"unsafe"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func compileStagedGCTypeSubtypingProductForTest(data []byte) (*Compiled, error) {
@@ -238,7 +240,7 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 		t.Fatalf("compiledCodeCache non-profiling size = %d, want 64 bytes", got)
 	}
 	wantCodeBytes := []int{0, 0, 0, 0, 0, 0, 405, 377, 26, 26, 26, 26, 156, 156, 66, 66, 66, 66, 93, 259, 335, 66, 66, 6216, 1096, 1453, 31, 0, 31, 0}
-	wantCodecBytes := []int{358, 394, 356, 228, 247, 395, 801, 922, 457, 615, 378, 713, 510, 764, 537, 695, 537, 458, 802, 601, 875, 359, 439, 6719, 1402, 1820, 277, 246, 367, 246}
+	wantCodecBytes := []int{354, 390, 352, 224, 243, 391, 797, 918, 453, 611, 374, 709, 506, 760, 533, 691, 533, 454, 798, 597, 871, 355, 435, 6715, 1398, 1816, 273, 242, 363, 242}
 	for i, pin := range stagedGCTypeSubtypingProductPins {
 		t.Run(pin.Filename, func(t *testing.T) {
 			data := stagedGCTypeSubtypingProductData(t, pin)
@@ -412,7 +414,7 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 			}
 			wantCode, wantCodec := 0, 0
 			if pin.Class == stagedGCTypeSubtypingNonFlatExport {
-				wantCode, wantCodec = 370, 800
+				wantCode, wantCodec = 370, 796
 			} else {
 				wantCode, wantCodec = wantCodeBytes[i], wantCodecBytes[i]
 			}
@@ -432,12 +434,34 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 			if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) || !reflect.DeepEqual(loadedMeta.Globals, meta.Globals) || !reflect.DeepEqual(loadedMeta.Tables, meta.Tables) || !reflect.DeepEqual(loadedMeta.ExportedTables, meta.ExportedTables) {
 				t.Fatalf("codec metadata changed\n got: %#v\nwant: %#v", loadedMeta, meta)
 			}
-			if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
-				t.Fatalf("codec-loaded instantiate = %v, want required-feature rejection", err)
-			}
-			var public Compiled
-			if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
-				t.Fatalf("public codec load = %v, want unsupported GC gate", err)
+			if len(loaded.code) == 0 {
+				// A declaration-only artifact needs no executable GC helper contract.
+				instance, err := instantiateCore(&loaded, InstantiateOptions{})
+				if err != nil {
+					t.Fatalf("declaration artifact instantiate: %v", err)
+				}
+				instance.Close()
+				var public Compiled
+				if err := public.UnmarshalBinary(blob); err != nil {
+					t.Fatalf("public declaration artifact load: %v", err)
+				}
+				public.Close()
+			} else {
+				if assertFunctionOnlyPublicReload(t, &loaded, blob) {
+					loaded.Close()
+					return
+				}
+				if instance, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
+					if instance != nil {
+						instance.Close()
+					}
+					t.Fatalf("codec-loaded instantiate = %v, want required-feature rejection", err)
+				}
+				var public Compiled
+				if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
+					public.Close()
+					t.Fatalf("public codec load = %v, want unsupported GC gate", err)
+				}
 			}
 		})
 	}
@@ -470,8 +494,8 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{103, 142, 404, 86, 0, 316} {
-		t.Fatalf("link product wasm/code/codec sizes = %v, want [103 142 404 86 0 316]", got)
+	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{103, 142, 400, 86, 0, 312} {
+		t.Fatalf("link product wasm/code/codec sizes = %v, want [103 142 400 86 0 312]", got)
 	}
 
 	instantiateProvider := func() (*Instance, map[string]*InstanceExport) {
@@ -621,6 +645,10 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterLifecycle(t *testing.T) {
 		if loaded.stagedGCTypeSubtypingProduct() != 0 || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
 			t.Fatalf("private %s reload inherited admission: product=%v features=%v", name, loaded.stagedGCTypeSubtypingProduct(), loaded.stagedFeatures())
 		}
+		if assertFunctionOnlyPublicReload(t, &loaded, blob) {
+			loaded.Close()
+			continue
+		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private %s reload instantiate = %v, want required-feature rejection", name, err)
 		}
@@ -659,8 +687,8 @@ func TestStagedGCTypeSubtypingStructLinkingClusterLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{70, 26, 272, 51, 0, 247} {
-		t.Fatalf("struct link wasm/code/codec sizes = %v, want [70 26 272 51 0 247]", got)
+	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{70, 26, 268, 51, 0, 243} {
+		t.Fatalf("struct link wasm/code/codec sizes = %v, want [70 26 268 51 0 243]", got)
 	}
 
 	resourceState := func(in *Instance) (refs int, closed bool) {
@@ -811,6 +839,10 @@ func TestStagedGCTypeSubtypingStructLinkingClusterLifecycle(t *testing.T) {
 		if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) {
 			t.Fatalf("private %s reload changed type/function metadata", name)
 		}
+		if assertFunctionOnlyPublicReload(t, &loaded, item.blob) {
+			loaded.Close()
+			continue
+		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private %s reload instantiate = %v, want required-feature rejection", name, err)
 		}
@@ -849,8 +881,8 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterLifecycle(t *testing
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{104, 26, 441, 85, 0, 416} {
-		t.Fatalf("struct projection link wasm/code/codec sizes = %v, want [104 26 441 85 0 416]", got)
+	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{104, 26, 437, 85, 0, 412} {
+		t.Fatalf("struct projection link wasm/code/codec sizes = %v, want [104 26 437 85 0 412]", got)
 	}
 
 	resourceState := func(in *Instance) (refs int, closed bool) {
@@ -1001,6 +1033,10 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterLifecycle(t *testing
 		if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) {
 			t.Fatalf("private %s reload changed type/function metadata", name)
 		}
+		if assertFunctionOnlyPublicReload(t, &loaded, item.blob) {
+			loaded.Close()
+			continue
+		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private %s reload instantiate = %v, want required-feature rejection", name, err)
 		}
@@ -1034,8 +1070,8 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 		wasm, code int
 		codec      int
 	}{
-		{m9ProviderCompiled, 136, 156, 638},
-		{m9ConsumerCompiled, 164, 0, 607},
+		{m9ProviderCompiled, 136, 156, 634},
+		{m9ConsumerCompiled, 164, 0, 603},
 	} {
 		blob, err := marshalCompiled(item.c)
 		if err != nil {
@@ -1050,6 +1086,10 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 		}
 		if loaded.stagedGCTypeSubtypingProduct() != 0 || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
 			t.Fatal("M9 private reload inherited admission")
+		}
+		if assertFunctionOnlyPublicReload(t, &loaded, blob) {
+			loaded.Close()
+			continue
 		}
 		_ = loaded.Close()
 		var public Compiled
@@ -1129,8 +1169,8 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 		providerSizes      [3]int
 		consumerSizes      [3]int
 	}{
-		{stagedGCTypeSubtypingCrossGroupMismatchLinkProviderPin, stagedGCTypeSubtypingCrossGroupMismatchLinkConsumerPin, "M10.f", [3]int{74, 26, 263}, [3]int{43, 0, 159}},
-		{stagedGCTypeSubtypingTransitiveMismatchLinkProviderPin, stagedGCTypeSubtypingTransitiveMismatchLinkConsumerPin, "M11.f", [3]int{87, 26, 343}, [3]int{56, 0, 239}},
+		{stagedGCTypeSubtypingCrossGroupMismatchLinkProviderPin, stagedGCTypeSubtypingCrossGroupMismatchLinkConsumerPin, "M10.f", [3]int{74, 26, 259}, [3]int{43, 0, 155}},
+		{stagedGCTypeSubtypingTransitiveMismatchLinkProviderPin, stagedGCTypeSubtypingTransitiveMismatchLinkConsumerPin, "M11.f", [3]int{87, 26, 339}, [3]int{56, 0, 235}},
 	} {
 		pc, cc := compile(tc.provider), compile(tc.consumer)
 		for _, item := range []struct {
@@ -1204,7 +1244,7 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterLifecycle(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{100, 156, 444, 92, 0, 329} {
+	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{100, 156, 440, 92, 0, 325} {
 		t.Fatalf("wasm/code/codec sizes = %v", got)
 	}
 	state := func(in *Instance) (int, bool) {
@@ -1296,6 +1336,10 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterLifecycle(t *testi
 		if loaded.stagedGCTypeSubtypingProduct() != 0 || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
 			t.Fatalf("private %s reload inherited admission", name)
 		}
+		if assertFunctionOnlyPublicReload(t, &loaded, item.blob) {
+			loaded.Close()
+			continue
+		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private %s instantiate = %v", name, err)
 		}
@@ -1334,8 +1378,8 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterLifecycle(t *testi
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{114, 26, 520, 102, 0, 514} {
-		t.Fatalf("extended projection link wasm/code/codec sizes = %v, want [114 26 520 102 0 514]", got)
+	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{114, 26, 516, 102, 0, 510} {
+		t.Fatalf("extended projection link wasm/code/codec sizes = %v, want [114 26 516 102 0 510]", got)
 	}
 
 	resourceState := func(in *Instance) (refs int, closed bool) {
@@ -1485,6 +1529,10 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterLifecycle(t *testi
 		if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) {
 			t.Fatalf("private %s reload changed type/function metadata", name)
 		}
+		if assertFunctionOnlyPublicReload(t, &loaded, item.blob) {
+			loaded.Close()
+			continue
+		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private %s reload instantiate = %v, want required-feature rejection", name, err)
 		}
@@ -1523,8 +1571,8 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterLifecycle(t *testin
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{82, 26, 362, 63, 0, 337} {
-		t.Fatalf("independent struct link wasm/code/codec sizes = %v, want [82 26 362 63 0 337]", got)
+	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{82, 26, 358, 63, 0, 333} {
+		t.Fatalf("independent struct link wasm/code/codec sizes = %v, want [82 26 358 63 0 333]", got)
 	}
 
 	resourceState := func(in *Instance) (refs int, closed bool) {
@@ -1675,6 +1723,10 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterLifecycle(t *testin
 		if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) {
 			t.Fatalf("private %s reload changed type/function metadata", name)
 		}
+		if assertFunctionOnlyPublicReload(t, &loaded, item.blob) {
+			loaded.Close()
+			continue
+		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private %s reload instantiate = %v, want required-feature rejection", name, err)
 		}
@@ -1713,8 +1765,8 @@ func TestStagedGCTypeSubtypingStructMismatchLinkingClusterLifecycle(t *testing.T
 	if err != nil {
 		t.Fatalf("marshal unlinked consumer: %v", err)
 	}
-	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{82, 26, 362, 51, 0, 247} {
-		t.Fatalf("struct mismatch wasm/code/codec sizes = %v, want [82 26 362 51 0 247]", got)
+	if got := [6]int{len(providerData), len(providerCompiled.code), len(providerBlob), len(consumerData), len(consumerCompiled.code), len(consumerBlob)}; got != [6]int{82, 26, 358, 51, 0, 243} {
+		t.Fatalf("struct mismatch wasm/code/codec sizes = %v, want [82 26 358 51 0 243]", got)
 	}
 	if got, want := (len(providerCompiled.FuncTypeID)+1)*coreruntime.FuncRefDescBytes, 2*coreruntime.FuncRefDescBytes; got != want {
 		t.Fatalf("provider descriptor requirement = %d bytes, want %d", got, want)
@@ -1838,6 +1890,10 @@ func TestStagedGCTypeSubtypingStructMismatchLinkingClusterLifecycle(t *testing.T
 		if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) {
 			t.Fatalf("private %s reload changed type/function metadata", name)
 		}
+		if assertFunctionOnlyPublicReload(t, &loaded, item.blob) {
+			loaded.Close()
+			continue
+		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private %s reload instantiate = %v, want required-feature rejection", name, err)
 		}
@@ -1871,8 +1927,8 @@ func TestStagedGCTypeSubtypingFinalityLinkingClusterLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("marshal unlinked %s: %v", pin.Filename, err)
 		}
-		if got := [3]int{pin.Size, len(consumerCompiled[i].code), len(consumerBlobs[i])}; got != [3]int{38, 0, 155} {
-			t.Fatalf("%s wasm/code/codec sizes = %v, want [38 0 155]", pin.Filename, got)
+		if got := [3]int{pin.Size, len(consumerCompiled[i].code), len(consumerBlobs[i])}; got != [3]int{38, 0, 151} {
+			t.Fatalf("%s wasm/code/codec sizes = %v, want [38 0 151]", pin.Filename, got)
 		}
 	}
 	if providerCompiled.stagedGCTypeSubtypingProduct() != stagedGCTypeSubtypingFinalityLinkProvider || !providerCompiled.NeedsFuncRefDescs {
@@ -1882,8 +1938,8 @@ func TestStagedGCTypeSubtypingFinalityLinkingClusterLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal provider: %v", err)
 	}
-	if got := [3]int{len(providerData), len(providerCompiled.code), len(providerBlob)}; got != [3]int{70, 58, 231} {
-		t.Fatalf("provider wasm/code/codec sizes = %v, want [70 58 231]", got)
+	if got := [3]int{len(providerData), len(providerCompiled.code), len(providerBlob)}; got != [3]int{70, 58, 227} {
+		t.Fatalf("provider wasm/code/codec sizes = %v, want [70 58 227]", got)
 	}
 
 	provider, err := instantiateCore(providerCompiled, InstantiateOptions{})
@@ -1980,6 +2036,10 @@ func TestStagedGCTypeSubtypingFinalityLinkingClusterLifecycle(t *testing.T) {
 		if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) {
 			t.Fatalf("private reload %d changed type/function metadata", i)
 		}
+		if assertFunctionOnlyPublicReload(t, &loaded, blob) {
+			loaded.Close()
+			continue
+		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private reload %d instantiate = %v, want required-feature rejection", i, err)
 		}
@@ -1989,4 +2049,50 @@ func TestStagedGCTypeSubtypingFinalityLinkingClusterLifecycle(t *testing.T) {
 			t.Fatalf("public reload %d = %v, want unsupported GC rejection", i, err)
 		}
 	}
+}
+
+func assertFunctionOnlyPublicReload(t *testing.T, c *Compiled, blob []byte) bool {
+	t.Helper()
+	if !compiledFunctionOnlyTypeGraph(c) {
+		return false
+	}
+	assertFunctionOnlyPublicRuntime(t, c)
+	public, err := LoadTrustedArtifact(blob)
+	if err != nil {
+		t.Fatal("public function-only artifact load", err)
+	}
+	defer public.Close()
+	assertFunctionOnlyPublicRuntime(t, public)
+	return true
+}
+
+// A validated function-only graph restores its recorded type features without
+// inheriting a legacy product tag or an allocation-helper capability.
+func assertFunctionOnlyPublicRuntime(t *testing.T, c *Compiled) {
+	t.Helper()
+	if !compiledFunctionOnlyTypeGraph(c) {
+		t.Fatal("expected a function-only type graph")
+	}
+	rt := NewRuntime()
+	defer func() {
+		if err := rt.CloseContext(context.Background()); err != nil {
+			t.Error(err)
+		}
+	}()
+	module, err := rt.Module(c)
+	if err != nil {
+		t.Fatal("public function-only module", err)
+	}
+	defer module.Close()
+	instance, err := rt.Instantiate(context.Background(), module)
+	if len(c.Imports) != 0 || len(c.GlobalImports) != 0 || c.tableImportCount() != 0 || c.memoryImportCount() != 0 {
+		if !errors.Is(err, ErrMissingImport) || instance != nil {
+			t.Fatal("function-only consumer missing imports", err)
+		}
+		return
+	}
+	if err != nil || instance == nil {
+		t.Fatal("public function-only instance", err)
+	}
+	instance.Close()
 }

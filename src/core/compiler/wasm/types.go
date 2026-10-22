@@ -732,6 +732,14 @@ type Module struct {
 
 func (m *Module) ImportedFuncCount() int { return m.importCount(ExternFunc) }
 
+// HasNameMetadata reports whether a decoded or hand-built module carries a
+// parsed or raw name-section view. Compiler backends use this structural bit
+// only to reject metadata from exact, closed module profiles; names never
+// select lowering or optimization paths.
+func (m *Module) HasNameMetadata() bool {
+	return m != nil && (m.NameSec != nil || len(m.RawNameSecPayload) != 0)
+}
+
 // BranchHintsForFunc returns the ordered metadata hints for funcIndex. It does
 // not allocate; most modules have no branch-hint section, and the section's
 // function entries are already required to be sorted.
@@ -1380,7 +1388,7 @@ const (
 	InstrI16x8RelaxedQ15mulrS
 	InstrI16x8RelaxedDotI8x16I7x16S
 	InstrI32x4RelaxedDotI8x16I7x16AddS
-
+	// Wide arithmetic uses low/high pairs of ordinary i64 values.
 	InstrI64Add128
 	InstrI64Sub128
 	InstrI64MulWideS

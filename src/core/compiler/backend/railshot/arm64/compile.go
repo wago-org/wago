@@ -1592,8 +1592,8 @@ type CompileOptions struct {
 	// ordinary timing and resource collection does not add another body walk.
 	CollectInlineReport bool
 
-	// CustomInstructions are currently handled by portable host fallbacks on
-	// arm64; the field keeps the backend-neutral compile contract identical.
+	// CustomInstructions contains validated scalar recipes and native plugin
+	// lowerings keyed by the exact imported function index.
 	CustomInstructions map[uint32]railcore.CustomInstruction
 }
 

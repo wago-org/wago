@@ -50,9 +50,14 @@ func snapshotSlice[T any](b *snapshotBudget, values []T) {
 // quota also bounds all later packed int counts before those sums are made.
 // Strings and private immutable sidecars are shared, not cloned here.
 func snapshotMetadataBytes(c *Compiled, limit uint64) (uint64, error) {
+	if err := c.validateCompactData(); err != nil {
+		return 0, err
+	}
 	limit = normalizeSnapshotLimit(limit)
 	b := snapshotBudget{remaining: limit, limit: limit}
 	b.add(1, unsafe.Sizeof(Compiled{}))
+	b.add(1, railshotExecutionSnapshotCacheBytes(c))
+	b.add(1, railshotTableCapacitySnapshotBytes(c))
 	snapshotSlice(&b, c.Entry)
 	snapshotSlice(&b, c.InternalEntry)
 	snapshotSlice(&b, c.Funcs)

@@ -215,24 +215,6 @@ func stagedExceptionHandlingStartModule() []byte {
 	)
 }
 
-func compileStagedExceptionHandling(t testing.TB, data []byte) *Compiled {
-	return compileStagedExceptionHandlingFeatures(t, data, false)
-}
-
-func compileStagedExceptionHandlingFeatures(t testing.TB, data []byte, exceptionReferences bool) *Compiled {
-	t.Helper()
-	cfg := compatibilityDefaultConfig()
-	features := cfg.frontendFeatures()
-	features.ExceptionHandling = true
-	features.ExceptionReferences = exceptionReferences
-	features.TailCalls = true
-	c, err := compileWithFrontendFeatures(cfg, data, features)
-	if err != nil {
-		t.Fatalf("compile staged exception handling: %v", err)
-	}
-	return c
-}
-
 func TestStagedExceptionHandlingLocalScalarExecution(t *testing.T) {
 	data := stagedExceptionHandlingModule()
 	if _, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2), data); err == nil || !strings.Contains(err.Error(), "exception-handling") {
@@ -379,15 +361,6 @@ func TestStagedExceptionHandlingRootedReferenceNestedCallAndNullTrap(t *testing.
 	}
 }
 
-func compileStagedExceptionHandlingFeaturesForTest(data []byte, exceptionReferences bool) (*Compiled, error) {
-	cfg := compatibilityDefaultConfig()
-	features := cfg.frontendFeatures()
-	features.ExceptionHandling = true
-	features.ExceptionReferences = exceptionReferences
-	features.TailCalls = true
-	return compileWithFrontendFeatures(cfg, data, features)
-}
-
 func TestStagedExceptionReferenceInternalProductCategory(t *testing.T) {
 	c := compileStagedExceptionHandlingFeatures(t, stagedInternalExceptionSignatureModule(false), true)
 	defer c.Close()
@@ -496,7 +469,7 @@ func BenchmarkGCFrameRootPlanSparseExceptionRoots(b *testing.B) {
 	b.ResetTimer()
 	for range b.N {
 		var diagnostic string
-		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, &diagnostic, nil)
+		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, true, &diagnostic, nil)
 		if gcFrameRootPlanSink == nil || diagnostic != "" {
 			b.Fatalf("exact root plan = %+v, diagnostic = %q", gcFrameRootPlanSink, diagnostic)
 		}
