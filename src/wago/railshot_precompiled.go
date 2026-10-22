@@ -11,6 +11,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/optimization"
 )
 
+// Reject source before decoding so artifact-only callers also discard the frontend.
+const sourceCompilationEnabled = false
+
 // These lightweight compile-contract definitions keep the public package
 // type-correct while allowing whole-program builds to discard source codegen.
 // railshotCompileModuleWith is unreachable in a wago_precompiled executable.
@@ -20,30 +23,34 @@ type railshotOptimizationSnapshot = optimization.Snapshot
 type railshotModuleStats struct{}
 
 type railshotCompileOptions struct {
-	SourceMaps             bool
-	UnwindMaps             bool
-	Profile                bool
-	BitCountFeatures       uint8
-	Optimizations          map[string]bool
-	OptimizationSnapshot   railshotOptimizationSnapshot
-	OptimizationDeltas     map[string]bool
-	Workers                int
-	DeferCodeMapping       bool
-	ElideBoundsChecks      bool
-	NoBoundsFacts          bool
-	ImportBindings         []railshotImportBinding
-	SyncHostCalls          bool
-	SyncHostSlots          int
-	Interruptible          bool
-	MemoryPressureAt       int
-	MemoryPressure         func()
-	GCTypeSubtypingRefTest bool
-	GCStructHelpers        bool
-	GCArrayHelpers         bool
-	GCFrameRoots           *shared.GCModuleFrameRootPlan
-	Codegen                codegen.Options
-	Stats                  *railshotModuleStats
-	CustomInstructions     map[uint32]railshot.CustomInstruction
+	NativeTailCalls          bool
+	NativeReferenceCalls     bool
+	NativeReferenceFunctions bool
+	SourceMaps               bool
+	UnwindMaps               bool
+	Profile                  bool
+	BitCountFeatures         uint8
+	Optimizations            map[string]bool
+	OptimizationSnapshot     railshotOptimizationSnapshot
+	OptimizationDeltas       map[string]bool
+	Workers                  int
+	DeferCodeMapping         bool
+	ElideBoundsChecks        bool
+	NoBoundsFacts            bool
+	ImportBindings           []railshotImportBinding
+	SyncHostCalls            bool
+	SyncHostSlots            int
+	Interruptible            bool
+	MemoryPressureAt         int
+	MemoryPressure           func()
+	GCTypeSubtypingRefTest   bool
+	GCStructHelpers          bool
+	GCArrayHelpers           bool
+	GCFrameRoots             *shared.GCModuleFrameRootPlan
+	GeneralI31Source         bool
+	Codegen                  codegen.Options
+	Stats                    *railshotModuleStats
+	CustomInstructions       map[uint32]railshot.CustomInstruction
 }
 
 func railshotOptKnobs() []railshotKnobInfo {

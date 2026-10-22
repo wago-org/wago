@@ -201,6 +201,11 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 		}
 		g := GlobalDef{Type: abiType, ValueTypeIndex: valueTypes.internCompiled(c, exact), HasValueType: true, Mutable: m.Globals[i].Type.Mutable}
 		applyGlobalInit(&g, v.Init())
+		if c.nativeReferenceFunctionABI && len(g.InitExpr) != 0 {
+			// This closed profile retains only the authoritative initializer form.
+			// Numeric evaluation with unresolved globals produces placeholder bits.
+			g.Bits, g.V128 = 0, V128{}
+		}
 		c.Globals = append(c.Globals, g)
 	}
 	for i := range m.Exports {
@@ -282,11 +287,14 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: int(def.Min), Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
 		}
 	}
+	if err := railshotStoreTableCapacities(c, tableShapes); err != nil {
+		return err
+	}
 	// Dynamic call_ref dispatch and cold EH restoration need only descriptor zero:
 	// its arena-stable instance-context cell exists even when the module has no
 	// local ref.func/table descriptor payloads. Key EH to the analyzed required
 	// feature so tag-free try_table/catch_all modules receive the header too.
-	c.needsFuncRefContextHeader = moduleFacts.UsesCallRef || requirements.features.IsEnabled(CoreFeatureExceptionHandling)
+	c.needsFuncRefContextHeader = moduleFacts.UsesCallRef || requirements.features.IsEnabled(CoreFeatureExceptionHandling) || railshotNeedsImportContextHeader(c)
 	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptorsFromFacts(m, moduleFacts) || gcTypeSubtypingProduct.usesLinkFunctionIdentity() || indexedFunctionRefOps
 	for i := range m.Tables {
 		tableIndex := importedTables + i
@@ -453,7 +461,10 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 		}
 		hasValueType := e.Kind.Kind != wasm.ElemFuncs
 		var valueTypeIndex uint32
-		if hasValueType {
+		// Closed RV64 source proof checks even discarded declarative literals.
+		// A final declaration without a drop slot has no retained type binding;
+		// avoid creating an orphan pool entry in that selected profile only.
+		if hasValueType && !(c.nativeReferenceFunctionABI && e.Mode.Kind == wasm.ElemDeclarative && i >= len(c.passiveElems)) {
 			valueTypeIndex = valueTypes.internCompiled(c, exactType)
 		}
 		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, ValueTypeIndex: valueTypeIndex, HasValueType: hasValueType, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}
@@ -545,6 +556,9 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 			}
 		} else {
 			applyDataOffset(&init, off.Init())
+			if c.nativeReferenceFunctionABI && len(init.Offset.Expr) != 0 {
+				init.Offset.Base = 0
+			}
 		}
 		c.Data = append(c.Data, init)
 	}
