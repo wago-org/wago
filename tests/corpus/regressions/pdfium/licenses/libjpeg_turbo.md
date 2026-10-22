@@ -4,7 +4,7 @@ libjpeg-turbo Licenses
 libjpeg-turbo is covered by two compatible BSD-style open source licenses:
 
 - The IJG (Independent JPEG Group) License, which is listed in
-  [README.ijg](README.ijg)
+  [README.ijg](libjpeg_turbo.ijg)
 
   This license applies to the libjpeg API library and associated programs,
   including any code inherited from libjpeg and any modifications to that
