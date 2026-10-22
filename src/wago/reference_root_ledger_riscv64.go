@@ -1,0 +1,62 @@
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+
+package wago
+
+// The shadow phase classifies every physical resource root as anonymous external
+// reachability. It neither collects cycles nor changes lifetime decisions.
+// lifeMu alone protects these counters; this phase does not establish the lock
+// order required by a future dependency graph or component collector.
+type referenceRootLedger struct {
+	external int
+}
+
+// Keep Instance unchanged and allocate the node only on successful acquisition.
+// Reuse its zero-count state so warmed scope/root traffic allocates nothing.
+type referenceRootAccounting struct {
+	ledger       *referenceRootLedger             // protected by the owning Instance's lifeMu
+	dependencies *rv64FunctionDependencyOwnership // cold native-function attachment records
+}
+
+// lifeMu is held. An active component claim freezes both graph-identified and
+// legacy/finalization-only acquisitions until its guard is rolled back or the
+// later collector has drained all outgoing ownership.
+func railshotResourceRootRetainAllowedLocked(in *Instance) bool {
+	if !managedFunctionRetainAllowedLocked(in) {
+		return false
+	}
+	if state := in.importState.Load(); state != nil && state.rootAccounting.dependencies != nil {
+		return !state.rootAccounting.dependencies.member.collecting.Load()
+	}
+	return true
+}
+
+// Called after resourceRefs increments, with lifeMu held.
+func railshotResourceRootAcquiredLocked(in *Instance) {
+	managedFunctionRootEpochLocked(in)
+	accounting := &in.ensureImportState().rootAccounting
+	if accounting.ledger == nil {
+		// Any preexisting roots are conservatively external as well. No source or
+		// descriptor provenance is inferred from this accounting-only snapshot.
+		accounting.ledger = &referenceRootLedger{external: in.resourceRefs}
+		return
+	}
+	accounting.ledger.external++
+}
+
+// Called after a successful resourceRefs decrement, with lifeMu held. A missing
+// node is possible for synthetic/preexisting roots; release stays allocation-free.
+func railshotResourceRootReleasedLocked(in *Instance) {
+	managedFunctionRootEpochLocked(in)
+	if state := in.importState.Load(); state != nil && state.rootAccounting.ledger != nil {
+		state.rootAccounting.ledger.external--
+	}
+}
+
+// The physical journal cannot unregister while collecting is set. Completion
+// clears every component guard first, then retries the durable ownership
+// sidecar's ordinary retirement path outside graph and lifetime locks.
+func railshotDependencyComponentReleaseCompleted(in *Instance) {
+	if ownership := rv64ExistingFunctionDependencyOwnership(in); ownership != nil {
+		rv64RetireFunctionDependencyMember(&ownership.member)
+	}
+}

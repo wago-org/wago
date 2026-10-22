@@ -1,4 +1,4 @@
-//go:build linux && (amd64 || arm64) && wago_guardpage
+//go:build linux && (amd64 || arm64 || (riscv64 && !tinygo && !wago_target_tinygo)) && wago_guardpage
 
 package runtime
 

@@ -31,6 +31,51 @@ func TestGCTypeMappingRejectsConflictingCanonicalTypes(t *testing.T) {
 	}
 }
 
+func TestGCRefMatchesExactDefinedType(t *testing.T) {
+	root, err := gc.NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root.Final = false
+	child, err := gc.NewStructDesc(1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child.HasSuper, child.Super = true, 0
+	collector, err := gc.NewCollector(gc.Config{}, []gc.TypeDesc{root, child})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer collector.Close()
+	rootRef, err := collector.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	childRef, err := collector.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := &Instance{gc: collector, gcTypeMap: &gcTypeMapping{localToDomain: []gc.TypeID{0, 1}}}
+	required := ValueTypeDescriptor{
+		Kind: ValueTypeReference,
+		Ref: ReferenceTypeDescriptor{
+			Nullable: true,
+			Exact:    true,
+			Heap:     HeapTypeDescriptor{Defined: true, TypeIndex: 0},
+		},
+	}
+	if !in.gcRefMatchesValueType(rootRef, required) {
+		t.Fatal("exact root reference did not match its defined type")
+	}
+	if in.gcRefMatchesValueType(childRef, required) {
+		t.Fatal("proper subtype matched exact defined type")
+	}
+	required.Ref.Exact = false
+	if !in.gcRefMatchesValueType(childRef, required) {
+		t.Fatal("proper subtype did not match inexact defined type")
+	}
+}
+
 func TestGCModuleDomainProbeCachesCanonicalPlan(t *testing.T) {
 	compiled := &Compiled{
 		Types:        []DefinedTypeDescriptor{{Kind: CompositeTypeStruct, RecGroup: 0}},

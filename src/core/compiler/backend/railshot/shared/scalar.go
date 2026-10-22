@@ -358,6 +358,7 @@ func (s *ScalarState) add(n scalarNode) scalarID {
 			if scalarGraphChecks {
 				checkGraphAdd(s, id)
 			}
+			s.sourceAdd(id, n.kind)
 			return id
 		}
 	}
@@ -373,6 +374,7 @@ func (s *ScalarState) add(n scalarNode) scalarID {
 	if scalarGraphChecks {
 		checkGraphAdd(s, id)
 	}
+	s.sourceAdd(id, n.kind)
 	return id
 }
 
@@ -450,6 +452,10 @@ func (s *ScalarState) slot() int {
 	return slot
 }
 func (s *ScalarState) spill(id scalarID) {
+	if scalarSourcesEnabled {
+		previous := s.sourceEnterNode(id)
+		defer s.sourceRestore(previous)
+	}
 	n := s.node(id)
 	if n.home != 0 {
 		// The unchanged local home is already a valid backing copy. Eviction
@@ -507,6 +513,10 @@ func (s *ScalarState) evict(mask uint64) {
 	}
 }
 func (s *ScalarState) materialize(id scalarID, avoid uint64) uint8 {
+	if scalarSourcesEnabled {
+		previous := s.sourceEnterNode(id)
+		defer s.sourceRestore(previous)
+	}
 	n := *s.node(id)
 	if n.kind == ScalarRegister && avoid&(1<<n.reg) == 0 {
 		return n.reg
@@ -598,6 +608,10 @@ func (s *ScalarState) operands(n scalarNode, avoid uint64) (uint8, ScalarOperand
 	return left, right
 }
 func (s *ScalarState) expression(id scalarID, avoid uint64) uint8 {
+	if scalarSourcesEnabled {
+		previous := s.sourceEnterNode(id)
+		defer s.sourceRestore(previous)
+	}
 	n := *s.node(id)
 	if n.op == IntAdd {
 		child := *s.node(n.right)
@@ -816,6 +830,10 @@ func (s *ScalarState) restore(depth int) {
 	}
 }
 func (s *ScalarState) condition(id scalarID) int {
+	if scalarSourcesEnabled {
+		previous := s.sourceEnterNode(id)
+		defer s.sourceRestore(previous)
+	}
 	n := *s.node(id)
 	if n.kind == scalarDeferred && scalarCompare(n.op) {
 		left, right := s.operands(n, 0)
@@ -838,6 +856,10 @@ func (s *ScalarState) condition(id scalarID) int {
 // CompileScalar consumes bytecode directly with bounded deferred expression
 // trees. It assumes the caller validated and admitted the same immutable bytes.
 func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWide []bool, nParams int, target ScalarTarget) (int, error) {
+	return s.compileScalar(code, summary, localWide, nParams, target)
+}
+
+func (s *ScalarState) compileScalar(code []byte, summary ScalarSummary, localWide []bool, nParams int, target ScalarTarget) (int, error) {
 	if !summary.Eligible {
 		return 0, fmt.Errorf("shared scalar: unadmitted function")
 	}
@@ -929,6 +951,7 @@ func (s *ScalarState) CompileScalar(code []byte, summary ScalarSummary, localWid
 	r := wasm.ReaderFrom(code)
 	returned := false
 	for {
+		s.sourceInstruction(r.Offset())
 		op, err := r.Byte()
 		if err != nil {
 			return 0, err

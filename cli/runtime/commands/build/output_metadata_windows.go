@@ -119,17 +119,17 @@ func captureBuildOutputMetadata(path string, info os.FileInfo, expected buildFil
 
 func captureWindowsBuildOutputMetadata(handle windows.Handle, path string) (buildOutputMetadata, buildFileIdentity, error) {
 	identity, identityErr := buildFileIdentityFromHandle(handle)
-	descriptor, descriptorErr := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT,
+	descriptor, descriptorErr := getBuildSecurityInfo(handle, windows.SE_FILE_OBJECT,
 		windows.OWNER_SECURITY_INFORMATION|windows.GROUP_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
 	// LABEL_SECURITY_INFORMATION exposes only the mandatory-integrity component
 	// using ordinary READ_CONTROL. Audit-only SACL ACEs require a privilege that
 	// normal builders do not have and do not participate in access authorization.
-	integrityLabelDescriptor, integrityErr := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT,
+	integrityLabelDescriptor, integrityErr := getBuildSecurityInfo(handle, windows.SE_FILE_OBJECT,
 		windows.LABEL_SECURITY_INFORMATION)
 	// Resource-attribute and scoped-policy ACEs live in the SACL, but unlike
 	// audit ACEs they participate in authorization. Capture only those bounded
 	// components rather than requesting the privileged, audit-bearing full SACL.
-	accessPolicyDescriptor, accessPolicyErr := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT,
+	accessPolicyDescriptor, accessPolicyErr := getBuildSecurityInfo(handle, windows.SE_FILE_OBJECT,
 		windows.ATTRIBUTE_SECURITY_INFORMATION|windows.SCOPE_SECURITY_INFORMATION)
 	streamErr := validateWindowsBuildOutputStreams(handle, path)
 	if identityErr != nil || descriptorErr != nil || integrityErr != nil || accessPolicyErr != nil || streamErr != nil {
@@ -246,11 +246,11 @@ func applyBuildOutputMetadata(writer io.Writer, metadata buildOutputMetadata) er
 	if identityErr == nil {
 		identityErr = validateStagedBuildOutputAttributes(stagedIdentity.fileAttributes)
 	}
-	stagedDescriptor, descriptorErr := windows.GetSecurityInfo(stagedHandle, windows.SE_FILE_OBJECT,
+	stagedDescriptor, descriptorErr := getBuildSecurityInfo(stagedHandle, windows.SE_FILE_OBJECT,
 		windows.OWNER_SECURITY_INFORMATION|windows.GROUP_SECURITY_INFORMATION)
-	stagedIntegrityDescriptor, integrityErr := windows.GetSecurityInfo(stagedHandle, windows.SE_FILE_OBJECT,
+	stagedIntegrityDescriptor, integrityErr := getBuildSecurityInfo(stagedHandle, windows.SE_FILE_OBJECT,
 		windows.LABEL_SECURITY_INFORMATION)
-	stagedAccessPolicyDescriptor, accessPolicyErr := windows.GetSecurityInfo(stagedHandle, windows.SE_FILE_OBJECT,
+	stagedAccessPolicyDescriptor, accessPolicyErr := getBuildSecurityInfo(stagedHandle, windows.SE_FILE_OBJECT,
 		windows.ATTRIBUTE_SECURITY_INFORMATION|windows.SCOPE_SECURITY_INFORMATION)
 	if identityErr != nil || descriptorErr != nil || integrityErr != nil || accessPolicyErr != nil {
 		return fmt.Errorf("inspect staged output access metadata: %w", errors.Join(identityErr, descriptorErr, integrityErr, accessPolicyErr))
