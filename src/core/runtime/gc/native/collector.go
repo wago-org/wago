@@ -171,6 +171,8 @@ type Collector struct {
 	// Keep optional proof state last so existing collector field offsets stay fixed.
 	lastCardBounds objectCardBounds
 	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
+	// A validated list-position hint; compaction may move or remove the entry.
+	nativeLargeArrayNurseryIndex int
 }
 
 const defaultNursery = 64 << 10
@@ -240,6 +242,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 // errCollectorClosed. It is idempotent; Stats remains safe for post-close
 // counters, while unchecked root-slot reads return null after slots are released.
 func (c *Collector) Close() {
+	c.notifyCollectorClosed()
 	c.discardNativeStructHandles()
 	c.discardNativeLargeArrayAllocation()
 	c.stats.LiveObjects = 0

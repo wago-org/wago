@@ -114,6 +114,10 @@ func TestFixedSharedHostSegmentsCancellationAndGC(t *testing.T) {
 	if !in.boundedFixedSharedHostPortal() {
 		t.Fatal("cancellation fixture rejected")
 	}
+	// Finish sweeping garbage from earlier tests before starting the busy loop.
+	// On one P, runtime.GC yields between swept spans, letting the guest consume
+	// a scheduling quantum each time even though collection is making progress.
+	runtime.GC()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
