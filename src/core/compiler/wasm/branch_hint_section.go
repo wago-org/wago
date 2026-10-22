@@ -2,6 +2,14 @@ package wasm
 
 const branchHintSectionName = "metadata.code.branch_hint"
 
+// DecodeBranchHintMetadata decodes one metadata.code.branch_hint payload with
+// the caller's metadata allocation limit. It is intended for compilers that
+// accept hand-built Module values and therefore must reconcile the raw custom
+// section with the decoded semantic view.
+func DecodeBranchHintMetadata(payload []byte, limits DecodeLimits) ([]FuncBranchHints, error) {
+	return decodeBranchHintSectionWithBudget(payload, newDecodeBudget(limits))
+}
+
 // decodeBranchHintSectionWithBudget decodes the branch-hint code-metadata payload. The
 // section name has already been consumed. Target validation needs the code
 // section, so it is deliberately performed by validateBranchHints afterwards.
@@ -111,3 +119,7 @@ func validateBranchHints(m *Module) error {
 	}
 	return nil
 }
+
+// ValidateBranchHints checks the semantic branch targets in a decoded or
+// hand-built module. Byte-backed decoding already calls the same validator.
+func ValidateBranchHints(m *Module) error { return validateBranchHints(m) }
