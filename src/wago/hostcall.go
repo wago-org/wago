@@ -31,7 +31,7 @@ type HostModule interface {
 // identity. If that call chain re-enters a parked Instance, Wago supplies an
 // isolated native stack and call buffers for the nested activation. One
 // invocation may have at most 32 active InvokeFromHost calls under standard Go
-// or four under TinyGo. Exceeding that limit returns an error wrapping
+// or three under TinyGo. Exceeding that limit returns an error wrapping
 // ErrPermissionDenied. Retained or unrelated HostModule values fail closed.
 func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, export string, args ...uint64) (results []uint64, err error) {
 	var active *Instance
@@ -58,10 +58,12 @@ func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, expor
 			return nil, err
 		}
 	}
+	profileCompleted := true
 	if codeProfileEnabled && activeHostInvocationContext(active).profileSession() != nil {
 		var span profileSpanToken
 		ctx, span = profileReentryContext(active, in, ctx)
-		defer finishProfileBoundary(span, &err)
+		profileCompleted = false
+		defer finishProfileBoundary(span, &err, &profileCompleted)
 	}
 	contexts := invocationContextSetFor(ctx)
 	if codeProfileEnabled && activeHostInvocationContext(active).profileSession() != nil {
@@ -69,11 +71,14 @@ func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, expor
 	}
 	depth, ok := acquireHostReentryDepth(id)
 	if !ok {
+		profileCompleted = true
 		return nil, fmt.Errorf("wago: host re-entry depth %d exceeds limit %d: %w", depth+1, maxHostReentryDepth, ErrPermissionDenied)
 	}
 	defer releaseHostReentryDepth(id)
 	results, err = in.invokeWithToken(export, args, contexts, id, false, false, reservation)
-	return results, contextInterruptError(ctx, err)
+	err = contextInterruptError(ctx, err)
+	profileCompleted = true
+	return results, err
 }
 
 // hostReentryDepths retains its small map for allocation-free ordinary reuse.
@@ -472,7 +477,7 @@ func (r *CallerResolver) InvocationContext(caller HostModule) (context.Context, 
 	if rt == nil || !ok || !h.valid() || h.in == nil || h.in.rt != rt || h.scope == nil {
 		return nil, fmt.Errorf("wago: invocation context requires an active host call from the owning runtime: %w", ErrPermissionDenied)
 	}
-	ctx, ok := h.scope.invocationContext(h.generation, activeHostInvocationContext(h.in).parent)
+	ctx, ok := h.scope.invocationContext(h.generation, h.scope.invocationParent(activeHostInvocationContext(h.in).parent))
 	if !ok {
 		return nil, fmt.Errorf("wago: invocation context requires an active host call from the owning runtime: %w", ErrPermissionDenied)
 	}
@@ -498,6 +503,7 @@ func (r *CallerResolver) InvocationMayCancel(caller HostModule) (bool, error) {
 
 // hostCallScope authorizes one synchronous use of an instanceHostModule.
 type hostCallScope struct {
+	railshotHostScopeParent
 	active   atomic.Uint64
 	sequence atomic.Uint64 // never restored when an outer callback resumes
 	state    atomic.Pointer[hostCallState]
@@ -670,6 +676,7 @@ type instancePluginState struct {
 	profileState         profileInstanceState
 	hostScope            hostCallScope
 	activations          instanceActivations
+	railshotInvocation   railshotInvocationState
 	nativeContextVersion atomic.Uint64
 	invokeMu             invocationGate // serializes unrelated public calls across parked host callbacks
 	nativeExecutionMu    sync.Mutex     // serializes native entry for an independent instance
@@ -695,20 +702,26 @@ type instancePluginState struct {
 }
 
 type instanceCloseState struct {
-	doneMu           sync.Mutex
-	done             chan struct{}
-	completed        atomic.Bool
-	quiesced         chan struct{}
-	quiescedOnce     sync.Once
-	prepared         atomic.Bool // publishes hook data and completion of all BeforeClose work
-	result           error
-	interruptStop    func()
-	hooks            *hookRegistry
-	event            *InstanceCloseEvent
-	terminalStarted  atomic.Bool
-	terminalComplete atomic.Bool
-	terminalDone     chan struct{} // publishes terminalResult, independently of quiescence
-	terminalResult   error
+	doneMu            sync.Mutex
+	done              chan struct{}
+	completed         atomic.Bool
+	quiesced          chan struct{}
+	quiescedOnce      sync.Once
+	prepared          atomic.Bool // publishes hook data and completion of all BeforeClose work
+	result            error
+	interruptStop     func()
+	hooks             *hookRegistry
+	event             *InstanceCloseEvent
+	terminalStarted   atomic.Bool
+	terminalComplete  atomic.Bool
+	terminalPublished atomic.Bool
+	terminalDone      chan struct{} // publishes terminalResult, independently of quiescence
+	terminalResult    error
+	// terminalCollectionMu pairs logical-result publication with RV64 terminal
+	// eligibility. Exactly one side of that crossing owns the collection try.
+	terminalCollectionMu       sync.Mutex
+	terminalCollectionClaimed  bool
+	terminalCollectionDeferred bool
 }
 
 func (in *Instance) instantiateOrigin() InstantiateOrigin {
@@ -746,6 +759,9 @@ func (s *hostCallScope) beginGeneration(parentContext context.Context) (generati
 
 func (s *hostCallScope) end(generation, parent uint64) {
 	active := s.active.CompareAndSwap(generation, parent)
+	if active {
+		s.releaseInvocationParent()
+	}
 	state := s.state.Load()
 	if state != nil {
 		s.expireInvocationContext(state, generation)
@@ -1279,7 +1295,13 @@ func (h *HostFuncRef) canonicalDescriptor(source *Instance, descriptor uint64, s
 	if h.closed || h.store == nil || source == nil || source.refStore != h.store || h.importers == 0 || !funcSigEqual(h.sig, sig) {
 		return nil, 0, false
 	}
-	if h.source == nil {
+	// Type inspection can select a candidate without issuing a token/root.
+	// A retired unissued candidate must not poison a later live importer.
+	retiredCandidate := h.source != nil && !h.tokenLive && (h.source.isLogicallyClosed() || !h.source.hasPhysicalResources())
+	if h.source == nil || retiredCandidate {
+		if !source.hasPhysicalResources() {
+			return nil, 0, false
+		}
 		h.source = source
 		h.descriptor = descriptor
 		return source, descriptor, true
@@ -1381,9 +1403,9 @@ func (h instanceHostModule) CollectGC() error {
 	if h.in.ownsGCInvocation(h.invocationID) {
 		return h.in.collectGC()
 	}
-	lease := h.in.lockGCInvocation(h.invocationID)
+	lease := h.in.lockManagedFunctionCollectionInvocation(h.invocationID)
 	defer lease.unlock()
-	return h.in.collectGC()
+	return h.in.collectGCWithJoint(lease.dynamic)
 }
 func (h instanceHostModule) NewExternRef(value any) (ExternRef, error) {
 	if !h.valid() {
@@ -1407,6 +1429,12 @@ func (h instanceHostModule) ReleaseExternRef(ref ExternRef) bool {
 // bindHostImport resolves the private native slot representation without
 // reflection. Public callbacks are normalized by bindSyncHostImport.
 func bindHostImport(v any, sig FuncSig) (slotHostFunc, error) {
+	if custom, ok := v.(nativeCustomInstructionBinding); ok {
+		if err := custom.validate(sig); err != nil {
+			return nil, err
+		}
+		return custom.fn, nil
+	}
 	switch f := v.(type) {
 	case slotHostFunc:
 		if f == nil {
@@ -1621,6 +1649,13 @@ func inspectHostFuncSignature(value any) (params, results []ValType, inferred, s
 }
 
 func gateHostImport(value any, gate *pluginCallGate) (any, error) {
+	if custom, ok := value.(nativeCustomInstructionBinding); ok {
+		if custom.fn == nil {
+			return nil, fmt.Errorf("native custom instruction callback is nil")
+		}
+		custom.fn = gate.wrap(custom.fn)
+		return custom, nil
+	}
 	switch fn := value.(type) {
 	case slotHostFunc:
 		if fn == nil {
@@ -1825,6 +1860,12 @@ func (b *syncHostBinding) callBoundUnchecked(caller instanceHostModule, args, re
 }
 
 func bindSyncHostImport(value any, sig FuncSig) (syncHostBinding, error) {
+	if custom, ok := value.(nativeCustomInstructionBinding); ok {
+		if err := custom.validate(sig); err != nil {
+			return syncHostBinding{}, err
+		}
+		return syncHostBinding{fn: custom.fn, sig: &sig}, nil
+	}
 	if hasValType(sig.Params, ValV128) || hasValType(sig.Results, ValV128) {
 		return syncHostBinding{}, fmt.Errorf("v128 host callbacks are not supported")
 	}
@@ -2235,7 +2276,7 @@ func (in *Instance) boundHostFuncRef(dispatch uint32) (boundHostFuncRefCall, boo
 	return binding, true
 }
 
-func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, binding *syncHostBinding, args, results []uint64, invocation hostInvocationContext) {
+func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, ctrl uintptr, binding *syncHostBinding, args, results []uint64, invocation hostInvocationContext) {
 	enteredGate := false
 	if binding.gate != nil && (invocation.reservation == nil || !invocation.reservation.allows(binding.gate)) {
 		if err := binding.gate.enter(); err != nil {
@@ -2282,6 +2323,11 @@ func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, binding *syncHos
 		})
 		return
 	}
+	if invocation.callbackScope != nil {
+		scope = invocation.callbackScope
+	} else {
+		scope = railshotCallbackHostScope(in, ctrl, scope, invocation.parent)
+	}
 	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
 	caller.exact = binding.exact
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
@@ -2306,19 +2352,24 @@ func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr,
 	if exact != nil {
 		exactParams, exactResults = exact.Params, exact.Results
 	}
+	if invocation.callbackScope != nil {
+		scope = invocation.callbackScope
+	} else {
+		scope = railshotCallbackHostScope(in, ctrl, scope, invocation.parent)
+	}
+	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
+	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	var gcTemps gcHostTempTokens
-	if err := in.translateHostReferenceArgs(args, sig.Params, exactParams, exactTypes, &gcTemps); err != nil {
+	if err := in.translateHostReferenceArgsMode(args, sig.Params, exactParams, exactTypes, &gcTemps, &caller); err != nil {
 		gcTemps.release(in)
 		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 	}
 	defer gcTemps.release(in)
-	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
 	caller.exact = exact
 	var gcResultTemps gcHostTempTokens
 	gcResultTemps.exactTypes = exactTypesPtr
 	caller.ephemeralGCResults = &gcResultTemps
 	defer gcResultTemps.release(in)
-	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	if invocation.scope != nil && invocationMayCancel(invocation.parent) {
 		scope.invocationContext(caller.generation, invocation.parent)
 	}
@@ -2400,7 +2451,7 @@ func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, resul
 			exactTypesPtr = &exact.types
 		}
 		if fn.scalarKind >= syncHostTypedI32 && !hasReferenceValType(sig.Params) && !hasReferenceValType(sig.Results) {
-			dispatchSyncHostScalar(in, scope, fn, args, results, invocation)
+			dispatchSyncHostScalar(in, scope, ctrl, fn, args, results, invocation)
 		} else {
 			dispatchSyncHostReference(in, scope, ctrl, importIdx, fn, sig, signature, exactTypes, exactTypesPtr, args, results, invocation)
 		}
@@ -2411,13 +2462,17 @@ func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, resul
 	}
 	binding := &in.syncHosts[importIdx]
 	if binding.scalarKind != syncHostNonScalar {
-		dispatchSyncHostScalar(in, scope, binding, args, results, invocation)
+		dispatchSyncHostScalar(in, scope, ctrl, binding, args, results, invocation)
 	} else {
 		dispatchSyncHostReference(in, scope, ctrl, importIdx, binding, in.c.importFuncSigs[importIdx], binding.exact, in.c.Types, &in.c.Types, args, results, invocation)
 	}
 }
 
 func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType, exact []ValueTypeDescriptor, exactTypes []DefinedTypeDescriptor, gcTemps *gcHostTempTokens) error {
+	return in.translateHostReferenceArgsMode(values, types, exact, exactTypes, gcTemps, nil)
+}
+
+func (in *Instance) translateHostReferenceArgsMode(values []uint64, types []ValType, exact []ValueTypeDescriptor, exactTypes []DefinedTypeDescriptor, gcTemps *gcHostTempTokens, caller *instanceHostModule) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -2456,14 +2511,17 @@ func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType,
 				values[slot] = token
 			}
 		case ValExternRef:
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok || required.Ref.Heap.Defined || required.Ref.Heap.Abstract != AbstractHeapExtern && required.Ref.Heap.Abstract != AbstractHeapNoExtern {
+				return fmt.Errorf("missing exact externref type for argument %d", i)
+			}
+			if values[slot] == 0 && !required.Ref.Nullable || values[slot] != 0 && required.Ref.Heap.Abstract == AbstractHeapNoExtern {
+				return fmt.Errorf("externref argument %d does not match its exact structural type", i)
+			}
 			if values[slot] != 0 && !in.validExternrefToken(values[slot]) {
 				return fmt.Errorf("invalid externref token for argument %d", i)
 			}
-		case ValExnRef:
-			if values[slot] != 0 {
-				return fmt.Errorf("non-null exception reference argument %d cannot cross the host boundary", i)
-			}
-		case ValAnyRef, ValI31Ref:
+		case ValAnyRef, ValI31Ref, ValExnRef:
 			required, ok := exactReferenceType(exact, i, typ)
 			if !ok {
 				return fmt.Errorf("missing exact GC reference type for argument %d", i)
@@ -2482,7 +2540,13 @@ func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType,
 			if ref.IsI31() {
 				break
 			}
-			token, err := in.refStore.issueGCRef(in, ref, required)
+			var token uint64
+			var err error
+			if caller != nil {
+				token, err = in.refStore.issueCallbackGCRef(*caller, ref, required)
+			} else {
+				token, err = in.refStore.issueGCRef(in, ref, required)
+			}
 			if err != nil {
 				return fmt.Errorf("GC reference argument %d: %w", i, err)
 			}
@@ -2535,14 +2599,17 @@ func (in *Instance) translateHostReferenceResults(activation gcHostActivationTok
 				values[slot] = descriptor
 			}
 		case ValExternRef:
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok || required.Ref.Heap.Defined || required.Ref.Heap.Abstract != AbstractHeapExtern && required.Ref.Heap.Abstract != AbstractHeapNoExtern {
+				return fmt.Errorf("missing exact externref type for result %d", i)
+			}
+			if values[slot] == 0 && !required.Ref.Nullable || values[slot] != 0 && required.Ref.Heap.Abstract == AbstractHeapNoExtern {
+				return fmt.Errorf("externref result %d does not match its exact structural type", i)
+			}
 			if values[slot] != 0 && !in.validExternrefToken(values[slot]) {
 				return fmt.Errorf("invalid externref token for result %d", i)
 			}
-		case ValExnRef:
-			if values[slot] != 0 {
-				return fmt.Errorf("non-null exception reference result %d cannot cross the host boundary", i)
-			}
-		case ValAnyRef, ValI31Ref:
+		case ValAnyRef, ValI31Ref, ValExnRef:
 			required, ok := exactReferenceType(exact, i, typ)
 			if !ok {
 				return fmt.Errorf("missing exact GC reference type for result %d", i)
@@ -2611,13 +2678,22 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 	if err != nil {
 		return err
 	}
-	defer in.unlockNativeEntry(locked)
-	// ARM64 benefits from recovering in the unprepared driver itself. Keep
-	// AMD64's existing boundary: paired measurements regressed its view calls.
-	if goruntime.GOARCH == "arm64" {
-		return in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, locked.local)
-	}
-	return in.callNativeSyncAdmitted(entry, activeTrap, waitParent, nil, nil, nil, locked.local)
+	// Native release may reconcile retained table roots and run physical-release
+	// callbacks. Journal it after the admitted body so a later cleanup panic does
+	// not replace an arbitrary host panic, while still completing the release.
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		// ARM64 benefits from recovering in the unprepared driver itself. Keep
+		// AMD64's existing boundary: paired measurements regressed its view calls.
+		if goruntime.GOARCH == "arm64" {
+			err = in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, locked.local)
+		} else {
+			err = in.callNativeSyncAdmitted(entry, activeTrap, waitParent, nil, nil, nil, locked.local)
+		}
+	})
+	cleanup.run(func() { in.unlockNativeEntry(locked) })
+	cleanup.finish()
+	return err
 }
 
 // callNativeSyncAdmitted drives a synchronous host-call activation after native
@@ -2627,23 +2703,38 @@ func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, wai
 		return in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, heldNativeMu)
 	}
 	defer func() { err = in.decorateTrap(err) }()
-	defer recoverNativeSyncPanic(&err)
+	returned := false
+	defer recoverNativeSyncPanicCompletion(&err, &returned)
 	if prepared != nil {
 		if preparedActivation == nil {
-			return fmt.Errorf("wago: prepared host call has no activation")
+			err = fmt.Errorf("wago: prepared host call has no activation")
+			returned = true
+			return err
 		}
 		err = in.callPreparedHostSync(prepared, preparedFixed, preparedActivation)
 		goruntime.KeepAlive(in)
 		goruntime.KeepAlive(in.c)
+		returned = true
 		return err
 	}
-	return in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, heldNativeMu)
+	err = in.callNativeSyncUnpreparedAdmitted(entry, activeTrap, waitParent, heldNativeMu)
+	returned = true
+	return err
 }
 
 // recoverNativeSyncPanic must be deferred directly by the native-call entry so
 // recover observes host panics on that goroutine's active stack.
 func recoverNativeSyncPanic(err *error) {
 	if r := recover(); r != nil {
+		setNativeSyncPanicError(r, err)
+	}
+}
+
+// A legacy panic(nil) makes recover return nil. The explicit normal-completion
+// sentinel keeps that real panic distinct without changing its value.
+func recoverNativeSyncPanicCompletion(err *error, returned *bool) {
+	r := recover()
+	if !*returned || r != nil {
 		setNativeSyncPanicError(r, err)
 	}
 }
@@ -2719,10 +2810,12 @@ func setNativeSyncPanicError(r any, err *error) {
 // generic sync entry's unused unprepared-call dispatch and argument setup.
 func (in *Instance) callPreparedHostSyncAdmitted(prepared *runtime.PreparedHostScalarCall, fixed runtime.FixedScalarHostCall, activation *hostLoopActivation) (err error) {
 	defer func() { err = in.decorateTrap(err) }()
-	defer recoverNativeSyncPanic(&err)
+	returned := false
+	defer recoverNativeSyncPanicCompletion(&err, &returned)
 	err = in.callPreparedHostSync(prepared, fixed, activation)
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
+	returned = true
 	return err
 }
 
@@ -2730,8 +2823,11 @@ func (in *Instance) callPreparedHostSync(prepared *runtime.PreparedHostScalarCal
 	if codeProfileEnabled && in.boundaryProfile() != nil {
 		span, restore := activation.beginProfileActivation()
 		defer restore()
-		defer finishProfileBoundary(span, &err)
-		return prepared.Call(activation.dispatch, profileScalarFallback)
+		completed := false
+		defer finishProfileBoundary(span, &err, &completed)
+		err = prepared.Call(activation.dispatch, profileScalarFallback)
+		completed = true
+		return err
 	}
 	if preparedHostFixedEnabled && fixed != nil && in.boundedFixedSharedHostPortal() && in.syncHosts[0].scalarKind == syncHostTypedI32 {
 		portal := dispatchSingleTypedI32FixedPortalContext
@@ -2875,9 +2971,10 @@ func (in *Instance) callCachedBoundedTypedHostContext(entry uintptr, waitParent 
 }
 
 func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap []byte, waitParent context.Context, heldNativeMu *sync.Mutex) (err error) {
+	returned := false
 	if goruntime.GOARCH == "arm64" {
 		defer func() { err = in.decorateTrap(err) }()
-		defer recoverNativeSyncPanic(&err)
+		defer recoverNativeSyncPanicCompletion(&err, &returned)
 	}
 	// Avoid no-op context cleanup on ARM64; paired AMD64 measurements
 	// favor its original unconditional setup.
@@ -2897,7 +2994,7 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		}
 	}
 	in.jm.SetStackFence(in.eng.StackLimit())
-	if len(in.ctrl) >= runtime.HostCtrlFrameBytes {
+	if len(in.ctrl) > 0 && len(in.ctrl) >= runtime.HostCtrlFrameBytes {
 		in.jm.SetCustomCtx(uintptr(unsafe.Pointer(&in.ctrl[0])))
 	}
 	// Resolve stable root context lazily in this activation, not on the instance.
@@ -2912,8 +3009,10 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 	if codeProfileEnabled && (in.boundaryProfile() != nil || activeHostInvocationContext(in).profileSession() != nil) {
 		span, restore := activation.beginProfileActivation()
 		defer restore()
-		defer finishProfileBoundary(span, &err)
+		completed := false
+		defer finishProfileBoundary(span, &err, &completed)
 		err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch)
+		completed = true
 	} else if in.hasSingleDirectTypedScalarHost() {
 		if in.boundedHostSegments() || in.boundedFixedSharedHostPortal() {
 			rawSlots, _ := in.syncHosts[0].typedScalarSlots()
@@ -2987,5 +3086,6 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
+	returned = true
 	return err
 }

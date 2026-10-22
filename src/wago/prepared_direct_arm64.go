@@ -121,15 +121,29 @@ func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error
 			fn.directGate.Unlock()
 		}
 	}
-	out, err := fn.invokeDirectIntFixedShared(a0, a1, a2, a3)
-	in.endDirectInvocation()
-	return out, err
+	return fn.invokeDirectIntFixedShared(a0, a1, a2, a3)
 }
 
-func (fn *WasmFunc) invokeDirectIntFixedShared(a0, a1, a2, a3 uint64) ([]uint64, error) {
+func (fn *WasmFunc) invokeDirectIntFixedShared(a0, a1, a2, a3 uint64) (result []uint64, resultErr error) {
 	in := fn.in
-	preparedLease := in.lockPreparedInvocation()
-	defer preparedLease.unlock()
+	var preparedLease preparedInvocationLease
+	leaseOwned := false
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		preparedLease = in.lockPreparedInvocation()
+		leaseOwned = true
+		result, resultErr = fn.invokeDirectIntFixedSharedAdmitted(a0, a1, a2, a3)
+	})
+	if leaseOwned {
+		cleanup.run(preparedLease.unlock)
+	}
+	cleanup.run(in.endDirectInvocation)
+	cleanup.finish()
+	return result, resultErr
+}
+
+func (fn *WasmFunc) invokeDirectIntFixedSharedAdmitted(a0, a1, a2, a3 uint64) ([]uint64, error) {
+	in := fn.in
 	switch fn.paramSlots {
 	case 4:
 		if fn.scalarWideMask&8 == 0 {

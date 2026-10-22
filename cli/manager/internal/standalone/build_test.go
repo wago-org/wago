@@ -160,6 +160,7 @@ func assertNoCompilerSymbols(t *testing.T, executable, description string) {
 	}
 	for _, forbidden := range []string{
 		"compiler/backend/railshot/amd64.", "compiler/backend/railshot/arm64.", "CompileArtifact",
+		"compiler/backend/railshot/riscv64.CompileModuleWith", "compiler/backend/railshot/riscv64.compileInteger",
 	} {
 		if strings.Contains(string(names), forbidden) {
 			var matches []string
@@ -249,6 +250,24 @@ func TestGeneratedSourcesBakeFeatures(t *testing.T) {
 	} {
 		if !strings.Contains(string(source), "Features: 0, FeaturesSet: true") {
 			t.Fatalf("generated source lost explicit empty feature mask:\n%s", source)
+		}
+	}
+}
+
+func TestLinuxRISCV64StandaloneTarget(t *testing.T) {
+	target, err := ParseTarget("linux/riscv64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !target.supportsCore3() {
+		t.Fatal("riscv64 Core 3 standalone is disabled")
+	}
+	if target.supportsTinyGo() {
+		t.Fatal("riscv64 TinyGo standalone is enabled")
+	}
+	for _, goos := range []string{"darwin", "windows"} {
+		if _, err := ParseTarget(goos + "/riscv64"); err == nil {
+			t.Fatalf("accepted %s/riscv64", goos)
 		}
 	}
 }

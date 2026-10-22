@@ -1,0 +1,40 @@
+# round 1
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkNativeStructBatchCancellation/one-live         	  145771	      1306 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNativeStructBatchCancellation/eight-live       	  132560	      1352 ns/op	       5 B/op	       0 allocs/op
+PASS
+# round 2
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkNativeStructBatchCancellation/one-live         	  148371	      1287 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNativeStructBatchCancellation/eight-live       	  131938	      1360 ns/op	       5 B/op	       0 allocs/op
+PASS
+# round 3
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkNativeStructBatchCancellation/one-live         	  143685	      1305 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNativeStructBatchCancellation/eight-live       	  132042	      1354 ns/op	       5 B/op	       0 allocs/op
+PASS
+# round 4
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkNativeStructBatchCancellation/one-live         	  146271	      1316 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNativeStructBatchCancellation/eight-live       	  132910	      1356 ns/op	       5 B/op	       0 allocs/op
+PASS
+# round 5
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkNativeStructBatchCancellation/one-live         	  146754	      1312 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNativeStructBatchCancellation/eight-live       	  130705	      1347 ns/op	       5 B/op	       0 allocs/op
+PASS

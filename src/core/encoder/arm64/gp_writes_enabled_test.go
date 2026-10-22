@@ -35,6 +35,8 @@ func TestGPWritesSingleDestination(t *testing.T) {
 		{"Add32", func(a *Asm, d Reg) { a.Add32(d, X6, X7) }, false},
 		{"Sub64", func(a *Asm, d Reg) { a.Sub64(d, X6, X7) }, false},
 		{"Sub32", func(a *Asm, d Reg) { a.Sub32(d, X6, X7) }, false},
+		{"Adc64", func(a *Asm, d Reg) { a.Adc64(d, X6, X7) }, false},
+		{"Sbc64", func(a *Asm, d Reg) { a.Sbc64(d, X6, X7) }, false},
 		{"Adds64", func(a *Asm, d Reg) { a.Adds64(d, X6, X7) }, false},
 		{"Subs64", func(a *Asm, d Reg) { a.Subs64(d, X6, X7) }, false},
 		{"Adds32", func(a *Asm, d Reg) { a.Adds32(d, X6, X7) }, false},
