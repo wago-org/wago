@@ -29,7 +29,7 @@ func TestGCTrappingGuardAdmission(t *testing.T) {
 			t.Fatal(err)
 		}
 		var diagnostic string
-		plan := newGCFrameRootPlan(m, true, &diagnostic, nil)
+		plan := newGCFrameRootPlan(m, true, true, &diagnostic, nil)
 		if plan == nil || diagnostic != "" {
 			t.Fatalf("root plan: %s", diagnostic)
 		}
@@ -126,7 +126,7 @@ func TestGCTrappingGuardImportAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	var diagnostic string
-	plan := newGCFrameRootPlan(m, true, &diagnostic, nil)
+	plan := newGCFrameRootPlan(m, true, true, &diagnostic, nil)
 	if plan == nil || diagnostic != "" {
 		t.Fatalf("roots: %s", diagnostic)
 	}
