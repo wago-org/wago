@@ -170,3 +170,33 @@ does not qualify a broader arbitrary native ABI or claim the four-second target.
 The separate `fd59548a` scalar-boundary prototype is not integrated.
 The PR remains draft pending hosted qualification and review; no independent
 source approval is claimed.
+
+## Main synchronization, 2026-10-22
+
+Merge main `62dff80d2e506fa07c7316f167560bba75d1a021` into the reviewed source
+head `d868ee7fb3fb8c123669a2301154da8bbcd62c8e`. The sole manual conflict is
+`CHANGELOG.md`; retain the root-lifetime entry and both new main fixes. The
+AMD64 input-only recipe mask merges automatically and is inspected separately
+from the caller-root changes. This resolution adds no runtime behavior beyond
+the two parents and keeps the PR draft.
+
+`just test ci-smoke` passes, including formatting, generated files, documentation,
+checked API/GC smoke, CI-policy/script contracts and Actionlint. Focused ordinary
+and register-check runs pass the extern conversion, foreign-frame ownership,
+scalar relay, host collection, artifact, forged-map, plugin-width, oversized
+shared-growth and detached GuestStorage descriptor controls. The first smoke
+attempt stopped before execution because the new worktree's mise config needed
+local trust; its failed setup log is retained.
+
+| Synchronization check | Wall seconds | Peak RSS KiB |
+| --- | ---: | ---: |
+| Draft CI smoke | 67.146 | 2,139,628 |
+| Focused ordinary roots and main regressions | 47.714 | 2,129,148 |
+| Focused register-check roots and main regressions | 1.767 | 286,792 |
+
+The focused test bodies take about 1.13 seconds in each mode; longer totals
+include compilation and remain recorded build-budget faults. Commands, raw
+logs and environment identities are in
+[the synchronization evidence](pr997-main-sync-2026-10-22/identity.json).
+Earlier architecture and independent-review limitations still apply. This
+merge does not claim new native ARM64 qualification or hosted CI completion.

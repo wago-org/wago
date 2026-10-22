@@ -1,0 +1,5 @@
+mise ERROR error parsing config file: /tmp/wago-pr997-main-sync-20261022-r2/mise.toml
+mise ERROR Config files in /tmp/wago-pr997-main-sync-20261022-r2/mise.toml are not trusted.
+Trust them with `mise trust`. See https://mise.jdx.dev/cli/trust.html for more information.
+mise ERROR Version: 2026.10.17 linux-x64 (2026-10-21)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information

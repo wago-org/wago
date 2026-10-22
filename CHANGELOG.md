@@ -12,6 +12,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   conversions, including modules with no host imports. Keep older caller roots
   across scalar native relays, foreign collector frames, and host callbacks,
   including retained imports through another Runtime.
+- Mask narrow AMD64 plugin recipe results when a recipe returns its input
+  directly, preserving the declared logical bit width.
+- Keep the required atomic length read when an oversized memory64 shared grow
+  request fails in the Go helper.
 
 - Allow up to 32 nested synchronous host calls under standard Go so component
   adapter chains can cross more than four boundaries. TinyGo retains its
@@ -47,6 +51,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   `wago_regalloccheck` is enabled. Also guard inputs during address preparation
   in the common scalar store path and during second-input preparation in `fbin`
   and `fbinInto`.
+
+- Combine bounded ARM64 scalar shift and mask pairs with existing bitfield
+  encodings, including masks applied before an unsigned right shift.
+- Reuse ARM64 variable-shift source and count registers in ordinary scalar
+  lowering.
 
 - Prepare native reservations only when the active backend has a matching
   consumer, avoiding unused ARM64 live-struct and large-array batches. Retain
