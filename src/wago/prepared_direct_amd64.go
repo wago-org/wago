@@ -119,12 +119,8 @@ func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error
 			fn.directGate.Unlock()
 		}
 	}
-	lease := in.lockPreparedInvocation()
 	args := [4]uint64{a0, a1, a2, a3}
-	out, err := fn.invokeGeneralAdmitted(args[:fn.paramSlots])
-	lease.unlock()
-	in.endDirectInvocation()
-	return out, err
+	return fn.invokeGeneralAfterDirectAdmission(args[:fn.paramSlots])
 }
 
 func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, resultSlots int, scalarWideMask uint8, scalarResultWide, _, _, bounded bool, a0, a1, a2, a3 uint64) ([]uint64, error) {

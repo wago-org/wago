@@ -14,5 +14,5 @@ func refreshNativeControl(shared bool, eng *wruntime.Engine, jm *wruntime.JobMem
 		return nil
 	}
 	jm.SetStackFence(eng.StackLimit())
-	return jm.BindTrapCell(trap)
+	return jm.RebindTrapCell(trap)
 }

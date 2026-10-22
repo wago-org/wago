@@ -24,6 +24,7 @@ type ScalarGraphTarget interface {
 
 // ScalarState adds function-local graph state only in checked builds.
 type ScalarState struct {
+	scalarSourceState
 	graph                     *scalarGraphRecorder
 	sourceContext             *codegen.SourceContext
 	sourceAttempt             *SourceAttempt
@@ -89,29 +90,45 @@ func checkGraphBegin(s *ScalarState, target ScalarTarget) ScalarTarget {
 	return &scalarGraphTarget{ScalarTarget: target, g: g}
 }
 
-// Graphs and observers are function-local. Restore before checking/reporting,
-// including errors and panics, and preserve a preexisting emission panic.
+// Graphs and observers are function-local. Snapshot checked target failure before
+// restoring its scope; always restore before reporting, including panic paths.
 func checkGraphEnd(s *ScalarState) {
 	failure := recover()
 	g := s.graph
 	if g != nil {
-		g.restoreObservers()
-		s.graph, s.target, s.regs = nil, nil, nil
+		var diagnostic regalloccheck.Result
+		var hasDiagnostic bool
+		var diagnosticPanic any
 		if failure == nil {
-			r := regalloccheck.Result{Verdict: regalloccheck.Inconclusive, Reason: regalloccheck.UnsupportedOperation, Message: "incomplete scalar emission"}
-			if g.failure != nil {
-				r = *g.failure
-			} else if g.complete && g.returned && len(g.pending) == 0 {
-				r = g.model.Verify(g.limits)
-			}
-			if report, ok := g.target.(interface {
-				ScalarGraphResult(regalloccheck.Graph, regalloccheck.Result)
-			}); ok {
-				report.ScalarGraphResult(g.model, r)
-			}
-			if r.Verdict == regalloccheck.Rejected {
-				panic(fmt.Sprintf("regalloccheck: shared scalar graph: block %d operation %d: %s", r.Block, r.Operation, r.Message))
-			}
+			diagnosticPanic = scalarGraphCapturePanic(func() {
+				if target, ok := g.target.(ScalarGraphDiagnosticTarget); ok {
+					diagnostic, hasDiagnostic = target.ScalarGraphDiagnostic()
+				}
+			})
+		}
+		restorePanic := scalarGraphCapturePanic(func() {
+			defer func() { s.graph, s.target, s.regs = nil, nil, nil }()
+			g.restoreObservers()
+		})
+		// A diagnostic or restoration failure cannot replace the original
+		// emission panic. A diagnostic panic similarly survives teardown.
+		if failure != nil {
+			panic(failure)
+		}
+		if diagnosticPanic != nil {
+			panic(diagnosticPanic)
+		}
+		if restorePanic != nil {
+			panic(restorePanic)
+		}
+		r := scalarGraphFinalResult(g, diagnostic, hasDiagnostic)
+		if report, ok := g.target.(interface {
+			ScalarGraphResult(regalloccheck.Graph, regalloccheck.Result)
+		}); ok {
+			report.ScalarGraphResult(g.model, r)
+		}
+		if r.Verdict == regalloccheck.Rejected {
+			panic(fmt.Sprintf("regalloccheck: shared scalar graph: block %d operation %d: %s", r.Block, r.Operation, r.Message))
 		}
 	}
 	if failure != nil {

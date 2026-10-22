@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64) && !tinygo
+//go:build ((linux || darwin || windows) && (amd64 || arm64) && !tinygo) || (linux && riscv64 && !tinygo && !wago_target_tinygo)
 
 package wago
 
@@ -275,13 +275,4 @@ func BenchmarkExternalCallMemoryContinuation(b *testing.B) {
 			b.ReportMetric(float64(tc.calls), "external-calls/op")
 		})
 	}
-}
-
-func mustCompileWat(rt *Runtime, t testing.TB, wat string) *Module {
-	t.Helper()
-	m, err := rt.Compile(watToWasm(t, wat))
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
-	return m
 }

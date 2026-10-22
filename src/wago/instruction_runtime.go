@@ -143,7 +143,11 @@ func instructionImport(ins *registeredInstruction) *registeredImport {
 			result[0] = uint64(in.instructionState.allocPack(out))
 		}
 	})
-	return &registeredImport{module: ins.spec.Module, name: ins.spec.Name, fn: slotHostFunc(fn), params: params, results: results, docs: "custom instruction"}
+	var binding any = slotHostFunc(fn)
+	if ins.spec.Custom != nil {
+		binding = instructionNativeCustomBinding(slotHostFunc(fn), params, results)
+	}
+	return &registeredImport{module: ins.spec.Module, name: ins.spec.Name, fn: binding, params: params, results: results, docs: "custom instruction"}
 }
 
 func instructionABIImports() []*registeredImport {

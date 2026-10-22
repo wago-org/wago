@@ -12,6 +12,10 @@ import (
 // label. It exercises the deferred return-edge layout, which must still route
 // through the regular function epilogue.
 func branchHintReturnModule(withHint bool) []byte {
+	return branchHintReturnModuleDirection(withHint, 0)
+}
+
+func branchHintReturnModuleDirection(withHint bool, direction byte) []byte {
 	body := []byte{
 		0x00,       // no locals
 		0x41, 0x08, // branch result: 8
@@ -26,7 +30,7 @@ func branchHintReturnModule(withHint bool) []byte {
 	if withHint {
 		name := wasmtest.Name("metadata.code.branch_hint")
 		// Function 0, one branch at function-body offset 5, one-byte unlikely payload.
-		payload := append(name, 0x01, 0x00, 0x01, 0x05, 0x01, 0x00)
+		payload := append(name, 0x01, 0x00, 0x01, 0x05, 0x01, direction)
 		sections = append(sections, wasmtest.Section(0, payload))
 	}
 	code := append(wasmtest.ULEB(uint32(len(body))), body...)
@@ -37,6 +41,10 @@ func branchHintReturnModule(withHint bool) []byte {
 // branchHintLoopModule carries a loop parameter over a br_if edge. The edge
 // has real reconciliation work and therefore exercises the cold loop fragment.
 func branchHintLoopModule(withHint bool) []byte {
+	return branchHintLoopModuleDirection(withHint, 0)
+}
+
+func branchHintLoopModuleDirection(withHint bool, direction byte) []byte {
 	body := []byte{
 		0x00,                   // no locals
 		0x20, 0x00, 0x03, 0x00, // initial loop arg; loop type 0: (i32) -> i32
@@ -52,7 +60,7 @@ func branchHintLoopModule(withHint bool) []byte {
 	if withHint {
 		name := wasmtest.Name("metadata.code.branch_hint")
 		// Function 0, br_if at function-body offset 14, unlikely payload.
-		payload := append(name, 0x01, 0x00, 0x01, 0x0e, 0x01, 0x00)
+		payload := append(name, 0x01, 0x00, 0x01, 0x0e, 0x01, direction)
 		sections = append(sections, wasmtest.Section(0, payload))
 	}
 	code := append(wasmtest.ULEB(uint32(len(body))), body...)
