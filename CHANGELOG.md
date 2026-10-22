@@ -10,11 +10,15 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 - Mask narrow AMD64 plugin recipe results when a recipe returns its input
   directly, preserving the declared logical bit width.
+- Keep the required atomic length read when an oversized memory64 shared grow
+  request fails in the Go helper.
 
 - Allow up to 32 nested synchronous host calls under standard Go so component
   adapter chains can cross more than four boundaries. TinyGo retains its
-  four-call limit for fixed host stacks. Size parked GC callback and root storage
+  three-call limit for fixed host stacks. Size parked GC callback and root storage
   for the outer callback plus every permitted reentry.
+- Detect register clobbers during RV64 address, store, compare and paired-FP
+  input preparation in checked builds.
 - Preserve deferred load addresses derived from pinned mutable globals on
   AMD64, including Go-style exported function stack wrappers.
 
@@ -24,6 +28,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Accept equal canonical GC type IDs before loading subtype intervals in AMD64
+  native casts, tests, and branch casts.
+
+- Execute branch casts to defined struct/array types, i31, and none in native
+  AMD64 and ARM64 code. Preserve reference identity and helper fallbacks.
 - Speed up AMD64 constant division/remainder pairs, scalar selects, predicate
   shifts, and contiguous SIMD byte shuffles.
   ([#895](https://github.com/wago-org/wago/pull/895))
@@ -38,6 +47,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   `wago_regalloccheck` is enabled. Also guard inputs during address preparation
   in the common scalar store path and during second-input preparation in `fbin`
   and `fbinInto`.
+
+- Combine bounded ARM64 scalar shift and mask pairs with existing bitfield
+  encodings, including masks applied before an unsigned right shift.
+- Reuse ARM64 variable-shift source and count registers in ordinary scalar
+  lowering.
 
 - Prepare native reservations only when the active backend has a matching
   consumer, avoiding unused ARM64 live-struct and large-array batches. Retain

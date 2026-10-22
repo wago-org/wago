@@ -1,0 +1,9 @@
+--- FAIL: TestGuestStorageDefinedTypeCannotChangeHostResultAdmission (0.00s)
+    guest_storage_type_isolation_amd64_test.go:56: public descriptor mutation changed live host result type: {Kind:5 Ref:{Nullable:false Exact:false Heap:{Defined:true Abstract:0 TypeIndex:1}}}
+    guest_storage_type_isolation_amd64_test.go:59: host result after descriptor mutation = [], wasm trap: cast failure
+            at host (func[3]); want type rejection
+--- FAIL: TestGuestStorageDefinedTypeDetachesAllSlices (0.00s)
+    guest_storage_type_isolation_amd64_test.go:81: descriptor slice mutation reached source: {RecGroup:0 Final:false Supers:[22] HasDescribes:false Describes:0 HasDescriptor:false Descriptor:0 Kind:0 Params:[{Kind:2 Ref:{Nullable:false Exact:false Heap:{Defined:false Abstract:0 TypeIndex:0}}}] Results:[{Kind:3 Ref:{Nullable:false Exact:false Heap:{Defined:false Abstract:0 TypeIndex:0}}}] Fields:[{Storage:{Packed:false PackedType:0 Value:{Kind:0 Ref:{Nullable:false Exact:false Heap:{Defined:false Abstract:0 TypeIndex:0}}}} Mutable:false}] Array:{Storage:{Packed:false PackedType:0 Value:{Kind:0 Ref:{Nullable:false Exact:false Heap:{Defined:false Abstract:0 TypeIndex:0}}}} Mutable:false}}
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.003s
+FAIL

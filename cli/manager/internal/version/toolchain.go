@@ -62,7 +62,7 @@ func (t Toolchain) Switch(name, profileValue, buildValue string) {
 		}
 	}
 	if buildValue != "" {
-		build, err = wagopaths.ParseBuild(buildValue)
+		build, err = requestedBuild(buildValue)
 		if err != nil {
 			fatal("version switch: %v", err)
 		}
@@ -101,7 +101,7 @@ func (t Toolchain) Update(request UpdateRequest) {
 		}
 	}
 	if request.Build != "" {
-		build, err = wagopaths.ParseBuild(request.Build)
+		build, err = requestedBuild(request.Build)
 		if err != nil {
 			fatal("version update: %v", err)
 		}

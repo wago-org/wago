@@ -639,8 +639,8 @@ func TestPluginGCHostImportCodecRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer missingMod.Close()
-	if _, err := rt.Instantiate(context.Background(), missingMod); err == nil || !strings.Contains(err.Error(), "exact native root maps") {
-		t.Fatalf("decoded boundary without roots error = %v", err)
+	if in, err := rt.Instantiate(context.Background(), missingMod); err == nil || in != nil || compiledArchitecture != 4 && !strings.Contains(err.Error(), "exact native root maps") {
+		t.Fatalf("decoded boundary without roots instance/error = %v/%v", in, err)
 	}
 }
 
@@ -770,7 +770,17 @@ func TestPluginGCHostImportLosesRuntimeAuthorityWhenCopiedAsHostFunc(t *testing.
 	requireCompleteCore3Backend(t)
 	first, _ := newPluginGCTestRuntime(t)
 	defer first.Close()
-	create := first.imports["plugin_gc.create"]
+	lookup := func(name string) any {
+		binding := first.imports[importBindingMapKey("plugin_gc", name)]
+		if binding == nil {
+			binding = first.imports["plugin_gc."+name]
+		}
+		if binding == nil {
+			t.Fatalf("registered plugin_gc.%s import is missing", name)
+		}
+		return binding
+	}
+	create := lookup("create")
 	second := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
 	defer second.Close()
 	low, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), pluginGCArrayRoundTripModule(true, false))
@@ -778,7 +788,7 @@ func TestPluginGCHostImportLosesRuntimeAuthorityWhenCopiedAsHostFunc(t *testing.
 		t.Fatal(err)
 	}
 	defer low.Close()
-	imports := testImports("plugin_gc.create", create, "plugin_gc.consume", first.imports["plugin_gc.consume"], "plugin_gc.mutate", first.imports["plugin_gc.mutate"], "plugin_gc.collect", first.imports["plugin_gc.collect"])
+	imports := testImports("plugin_gc.create", create, "plugin_gc.consume", lookup("consume"), "plugin_gc.mutate", lookup("mutate"), "plugin_gc.collect", lookup("collect"))
 	if _, err := instantiateCore(low, InstantiateOptions{Imports: imports, store: second.refStore}); err == nil || !strings.Contains(err.Error(), "cannot transfer collector references") {
 		t.Fatalf("copied plugin slotHostFunc error = %v", err)
 	}

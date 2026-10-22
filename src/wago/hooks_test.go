@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -18,6 +19,7 @@ type hookExt struct {
 	afterClose        func(*InstanceContext)
 	beforeInvoke      func(*InvokeContext) error
 	afterInvoke       func(*InvokeContext, []Value, error)
+	hostInvoke        func(HostModule, []uint64, []uint64)
 }
 
 func (hookExt) Info() ExtensionInfo {
@@ -26,8 +28,12 @@ func (hookExt) Info() ExtensionInfo {
 
 func (e hookExt) Register(reg *Registry) error {
 	// Provide env.f so callsEnvF modules instantiate.
+	hostInvoke := e.hostInvoke
+	if hostInvoke == nil {
+		hostInvoke = func(_ HostModule, p, r []uint64) { r[0] = p[0] }
+	}
 	reg.ImportModule("env").
-		Func("f", func(_ HostModule, p, r []uint64) { r[0] = p[0] }).
+		Func("f", hostInvoke).
 		Params(ValI32).Results(ValI32)
 	if e.afterCompile != nil {
 		reg.Hooks().AfterCompile(func(_ *CompileContext, m *Module) error { e.afterCompile(m); return nil })
@@ -117,6 +123,82 @@ func TestBeforeInvokeVetoAbortsCall(t *testing.T) {
 	}
 	if afterErr != "denied" {
 		t.Fatalf("AfterInvoke saw err %q, want denied", afterErr)
+	}
+}
+
+func TestBeforeInvokePanicVetoCompletes(t *testing.T) {
+	cases := []struct {
+		name  string
+		value any
+	}{{name: "value", value: "before invoke panic"}}
+	if os.Getenv("WAGO_HOOK_NIL_PANIC") == "1" {
+		cases = append(cases, struct {
+			name  string
+			value any
+		}{name: "nil", value: nil})
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fail := true
+			beforeCalls, afterCalls, guestCalls := 0, 0, 0
+			var afterErr error
+			rt := NewRuntime()
+			defer rt.Close()
+			if err := rt.Use(hookExt{
+				hostInvoke: func(_ HostModule, p, r []uint64) {
+					guestCalls++
+					r[0] = p[0]
+				},
+				beforeInvoke: func(*InvokeContext) error {
+					beforeCalls++
+					if fail {
+						panic(tc.value)
+					}
+					return nil
+				},
+				afterInvoke: func(_ *InvokeContext, out []Value, err error) {
+					afterCalls++
+					afterErr = err
+					if fail && len(out) != 0 {
+						t.Fatal("vetoed invocation reported guest results", out)
+					}
+				},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			in, err := rt.Instantiate(context.Background(), callsEnvF(t, rt))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+
+			out, err := in.InvokeValues(context.Background(), "g", ValueI32(41))
+			want := fmt.Sprintf("wago: InstanceInvokeInterceptor hook panicked: %v", tc.value)
+			if len(out) != 0 || err == nil || err.Error() != want || afterErr == nil || afterErr.Error() != want || beforeCalls != 1 || afterCalls != 1 || guestCalls != 0 {
+				t.Fatalf("panicking BeforeInvoke = (out=%v, err=%v, after=%v, before=%d, after-calls=%d, guest=%d), want veto %q", out, err, afterErr, beforeCalls, afterCalls, guestCalls, want)
+			}
+			if state := in.pluginState.Load(); state != nil && (state.invokeMu.state.Load()&invocationGateHeld != 0 || state.invocationID != 0) {
+				t.Fatal("panicking BeforeInvoke retained instance invocation gate")
+			}
+			if in.invocationState.Load()&instanceInvocationCount != 0 {
+				t.Fatal("panicking BeforeInvoke retained instance invocation count")
+			}
+			for _, gate := range rt.loadHooks().operationGates {
+				if state := gate.state.Load(); state&^pluginCallGateClosed != 0 {
+					t.Fatalf("panicking BeforeInvoke retained plugin reservation: state=%#x", state)
+				}
+			}
+
+			fail = false
+			afterErr = errors.New("after hook did not run")
+			out, err = in.InvokeValues(context.Background(), "g", ValueI32(42))
+			if err != nil || len(out) != 1 || out[0].I32() != 42 || afterErr != nil || beforeCalls != 2 || afterCalls != 2 || guestCalls != 1 {
+				t.Fatalf("invoke reuse = (out=%v, err=%v, after=%v, before=%d, after-calls=%d, guest=%d)", out, err, afterErr, beforeCalls, afterCalls, guestCalls)
+			}
+			if in.invocationState.Load()&instanceInvocationCount != 0 {
+				t.Fatal("successful retry retained instance invocation count")
+			}
+		})
 	}
 }
 

@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64)
+//go:build ((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64 && !tinygo && !wago_target_tinygo)
 
 package runtime
 
@@ -19,9 +19,9 @@ import (
 // ACTIVE_STACK_OVERFLOW_CHECK=1, BUILTIN_FUNCTIONS=0, no stacktrace,
 // STACKSIZE_LEFT_BEFORE_NATIVE_CALL=0).
 const (
-	offLinMemWasmSize         = 4                                // u32 (pages)
-	offActualLinMemByteSize   = 8                                // legacy u32 byte-size cache
-	offMaxLinMemPages         = 12                               // u32 (pages); grow ceiling
+	offLinMemWasmSize         = abi.LinMemCurrentPagesOffset     // u32 (pages)
+	offActualLinMemByteSize   = abi.LinMemLegacyBytesOffset      // legacy u32 byte-size cache
+	offMaxLinMemPages         = abi.LinMemMaxPagesOffset         // u32 (pages); grow ceiling
 	offActualLinMemByteSize64 = abi.ActualLinMemByteSize64Offset // authoritative u64 bytes
 	offTrapHandlerPtr         = 16                               // u64
 	offTrapStackReentry       = 24                               // u64
@@ -30,7 +30,7 @@ const (
 	offSpillRegion            = 48                               // 8B scratch
 	offJobMemoryDataPtrPtr    = 56                               // u64
 	offMemoryDirPtr           = abi.MemoryDirPtrOffset           // u64: indexed memory directory
-	offStackFence             = 72                               // u64
+	offStackFence             = abi.StackFenceOffset             // u64
 	offTablePtr               = 80                               // u64: indirect-call table descriptor (wago extension)
 	offFuncRefDescPtr         = abi.FuncRefDescPtrOffset
 	offPassiveElemPtr         = abi.PassiveElemPtrOffset
@@ -305,6 +305,9 @@ func (j *JobMemory) LinMemBase() uintptr {
 // guard ([linMem - 72]).
 func (j *JobMemory) SetStackFence(v uintptr) { j.putU64(offStackFence, uint64(v)) }
 
+// StackFence returns the currently bound native stack's low address.
+func (j *JobMemory) StackFence() uintptr { return uintptr(j.getU64(offStackFence)) }
+
 // BindTrapCell installs the stable trap-buffer pointer used by native trap
 // stubs and establishes the zero-on-entry invariant required by
 // Engine.CallPrepared. Native trap stubs write through byte 23, so the caller
@@ -357,6 +360,8 @@ type InstanceContext struct {
 }
 
 const (
+	// InstanceContextImportDispatchOffset names the immutable dispatch snapshot.
+	InstanceContextImportDispatchOffset = 8 * 8
 	// InstanceContextGCDomainOffset is trailing immutable metadata, not a basedata
 	// pointer field. Native typed-reference tails compare it before transferring
 	// compact GC references across instance contexts. The following three words
@@ -441,7 +446,7 @@ func (j *JobMemory) BindInstanceContextBytes(src []byte) {
 	*(*uint64)(unsafe.Add(base, basedataSize-offPassiveDataPtr)) = binary.LittleEndian.Uint64(src[40:])
 	*(*uint64)(unsafe.Add(base, basedataSize-offTableDirPtr)) = binary.LittleEndian.Uint64(src[48:])
 	*(*uint64)(unsafe.Add(base, basedataSize-offMemoryDirPtr)) = binary.LittleEndian.Uint64(src[56:])
-	*(*uint64)(unsafe.Add(base, basedataSize-offImportDispatchPtr)) = binary.LittleEndian.Uint64(src[64:])
+	*(*uint64)(unsafe.Add(base, basedataSize-offImportDispatchPtr)) = binary.LittleEndian.Uint64(src[InstanceContextImportDispatchOffset:])
 	*(*uint64)(unsafe.Add(base, basedataSize-offGCNativeViewPtr)) = binary.LittleEndian.Uint64(src[InstanceContextGCNativeViewOffset:])
 	*(*uint64)(unsafe.Add(base, basedataSize-offEHTagDirPtr)) = binary.LittleEndian.Uint64(src[InstanceContextEHTagDirOffset:])
 }
