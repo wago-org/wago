@@ -1,4 +1,4 @@
-//go:build ((linux && amd64) || ((linux || darwin) && arm64)) && !tinygo && !wago_guardpage
+//go:build ((linux && (amd64 || riscv64)) || ((linux || darwin) && arm64)) && !tinygo && !wago_guardpage
 
 package wago
 
@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	goruntime "runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -49,9 +50,20 @@ func TestEHHandlerIndexDoesNotWrapAt256(t *testing.T) {
 	}
 	invokeEHIndexModule(t, ehHandlerIndexBoundaryModule(256), 42)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestEHHandlerIndexDoesNotWrapAt256$", "-test.count=1")
+	args := []string{"-test.run=^TestEHHandlerIndexDoesNotWrapAt256$", "-test.count=1"}
+	var cmd *exec.Cmd
+	if goruntime.GOARCH == "riscv64" && os.Getenv("WAGO_RV64_TEST_RUNNER") == "qemu" {
+		qemu := os.Getenv("WAGO_RV64_QEMU")
+		if qemu == "" {
+			qemu = "qemu-riscv64"
+		}
+		qemuArgs := []string{"-cpu", "rv64,zba=false,zbb=false,zbc=false,zbs=false,v=false", os.Args[0]}
+		cmd = exec.CommandContext(ctx, qemu, append(qemuArgs, args...)...)
+	} else {
+		cmd = exec.CommandContext(ctx, os.Args[0], args...)
+	}
 	cmd.Env = append(os.Environ(), child+"=1")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("257 nested handlers: %v\n%s", err, output)

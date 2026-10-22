@@ -1,0 +1,79 @@
+{
+  "engine": "v8",
+  "node": "v24.21.0",
+  "v8": "13.6.233.17-node.53",
+  "module_sha256": "e216e4b5ee2309e7eae12c813157ff16adb2c779f1e9aac886977554a497c6d6",
+  "consumed": "65535",
+  "rows": [
+    {
+      "name": "read",
+      "sample": 0,
+      "calls": 35128,
+      "ns_per_op": 5693.572677066728,
+      "iterations": 8192
+    },
+    {
+      "name": "read",
+      "sample": 1,
+      "calls": 34661,
+      "ns_per_op": 5770.186780531434,
+      "iterations": 8192
+    },
+    {
+      "name": "read",
+      "sample": 2,
+      "calls": 34464,
+      "ns_per_op": 5803.16718895079,
+      "iterations": 8192
+    },
+    {
+      "name": "read",
+      "sample": 3,
+      "calls": 35467,
+      "ns_per_op": 5639.089773592355,
+      "iterations": 8192
+    },
+    {
+      "name": "read",
+      "sample": 4,
+      "calls": 35354,
+      "ns_per_op": 5657.216241443681,
+      "iterations": 8192
+    },
+    {
+      "name": "write",
+      "sample": 0,
+      "calls": 40252,
+      "ns_per_op": 4968.801575077014,
+      "iterations": 8192
+    },
+    {
+      "name": "write",
+      "sample": 1,
+      "calls": 42289,
+      "ns_per_op": 4729.403532833595,
+      "iterations": 8192
+    },
+    {
+      "name": "write",
+      "sample": 2,
+      "calls": 42258,
+      "ns_per_op": 4732.927989966398,
+      "iterations": 8192
+    },
+    {
+      "name": "write",
+      "sample": 3,
+      "calls": 42223,
+      "ns_per_op": 4736.758970229502,
+      "iterations": 8192
+    },
+    {
+      "name": "write",
+      "sample": 4,
+      "calls": 42197,
+      "ns_per_op": 4739.744744887078,
+      "iterations": 8192
+    }
+  ]
+}

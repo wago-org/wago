@@ -304,3 +304,30 @@ func TestGoInstallBuildsNamedInstallerCommand(t *testing.T) {
 		t.Fatalf("installed wago-installer version = %q, %v; want dev", output, err)
 	}
 }
+
+func TestShellBootstrapDownloadsLinuxRISCV64Installer(t *testing.T) {
+	payload := []byte("#!/bin/sh\nprintf 'rv64 installer started\\n'\n")
+	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
+	const asset = "wago-installer-linux-riscv64"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/download/v0.0.0-test.962/" + asset:
+			_, _ = w.Write(payload)
+		case "/download/v0.0.0-test.962/" + asset + ".sha256":
+			_, _ = fmt.Fprintf(w, "%s  %s\n", hash, asset)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "uname"), []byte("#!/bin/sh\ncase \"$1\" in -s) echo Linux;; -m) echo riscv64;; *) exit 1;; esac\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "WAGO_VERSION=v0.0.0-test.962", "WAGO_RELEASE_DOWNLOAD_BASE="+server.URL)
+	output, err := command.CombinedOutput()
+	if err != nil || !strings.Contains(string(output), "rv64 installer started") {
+		t.Fatalf("bootstrap: %v\n%s", err, output)
+	}
+}

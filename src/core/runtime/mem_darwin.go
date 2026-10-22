@@ -45,19 +45,10 @@ func protectCodeRX(mem []byte) error {
 // configurations; the mapping is writable only
 // during the copy and then flipped to RX to preserve W^X at the syscall level.
 func mmapExec(code []byte) ([]byte, error) {
-	mem, err := mmapCodeRW(len(code))
-	if err != nil {
-		return nil, err
-	}
-	copy(mem, code)
-	if err := protectCodeRX(mem); err != nil {
-		_ = syscall.Munmap(mem)
-		return nil, err
-	}
 	// Keep the full page-rounded mapping extent. syscall.Munmap requires the
 	// original mapping length; callers use this slice as the opaque handle passed
 	// back to Unmap, just like the Linux implementation does.
-	return mem, nil
+	return mmapExecWith(code, mmapCodeRW, protectCodeRX, munmap)
 }
 
 func munmap(b []byte) error {

@@ -30,7 +30,7 @@ func TestRelease2MalformedMemoryReservedZeroSites(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	jsonPath := filepath.Join(tmp, "binary.json")
-	out, err := exec.Command(wast2json, "--enable-all", filepath.Join(suite.CoreDir, "binary.wast"), "-o", jsonPath).CombinedOutput()
+	out, err := exec.Command(wast2json, filepath.Join(suite.CoreDir, "binary.wast"), "-o", jsonPath).CombinedOutput()
 	if err != nil {
 		t.Fatalf("wast2json: %v: %s", err, out)
 	}
@@ -47,8 +47,11 @@ func TestRelease2MalformedMemoryReservedZeroSites(t *testing.T) {
 		name   string
 		decode func([]byte) error
 	}{
-		{name: "DecodeModule", decode: func(b []byte) error { _, err := DecodeModule(b); return err }},
-		{name: "DecodeModuleByteBacked", decode: func(b []byte) error { _, err := DecodeModuleByteBacked(b); return err }},
+		{name: "DecodeModuleWithFeatures", decode: func(b []byte) error { _, err := DecodeModuleWithFeatures(b, ValidationFeatures{}); return err }},
+		{name: "DecodeModuleByteBackedWithFeatures", decode: func(b []byte) error {
+			_, err := DecodeModuleByteBackedWithFeatures(b, ValidationFeatures{})
+			return err
+		}},
 	}
 	seen := make(map[int]bool, len(want))
 	for _, c := range sf.Commands {

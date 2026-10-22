@@ -31,6 +31,7 @@ func ParseMode(value string) (Mode, error) {
 func Targets(dirs wagopaths.Dirs, executable string, mode Mode) []string {
 	executable = managedrelease.Launcher(executable)
 	candidates := managedrelease.RemovalTargets(executable)
+	customRoot := resolvedCleanupPath(customWagoRoot())
 	switch mode {
 	case Full:
 		if root := selectedWagoRoot(dirs, executable); root != "" {
@@ -52,7 +53,7 @@ func Targets(dirs wagopaths.Dirs, executable string, mode Mode) []string {
 	var targets []string
 	for _, candidate := range candidates {
 		candidate = filepath.Clean(candidate)
-		if !safeManagedPath(candidate) {
+		if !safeManagedPath(candidate) || customRoot != "" && resolvedCleanupPath(candidate) == customRoot {
 			continue
 		}
 		covered := false
@@ -75,8 +76,8 @@ func Targets(dirs wagopaths.Dirs, executable string, mode Mode) []string {
 }
 
 func selectedWagoRoot(dirs wagopaths.Dirs, executable string) string {
-	if root := strings.TrimSpace(os.Getenv("WAGO_HOME")); root != "" {
-		return root
+	if customWagoRoot() != "" {
+		return ""
 	}
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
@@ -91,6 +92,8 @@ func selectedWagoRoot(dirs wagopaths.Dirs, executable string) string {
 	}
 	return ""
 }
+
+func customWagoRoot() string { return strings.TrimSpace(os.Getenv("WAGO_HOME")) }
 
 func InstalledSourcePath() string {
 	if source := managedrelease.Source(); source != "" {
