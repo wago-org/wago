@@ -1,0 +1,32 @@
+{
+  "baseline_host": {
+    "path": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/stack-host",
+    "sha256": "6fe5b6c089fdefdac326ab168ecc35bf37fab271e9a4f6fe29f98f7c48292cae"
+  },
+  "fixed_host": {
+    "path": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/adaptive-sustained-host",
+    "sha256": "e195bef769e6174793697a3c3cb4e33c89185764645178683f30b1b567d2c4a1"
+  },
+  "compiler": {
+    "path": "/home/dev/Projects/dewdrop/.tmp/transform-workers/run-rvr6ozve/compiler.wasm",
+    "sha256": "c64fcf044b72cb7356ad598a35670045931337cfa7a6bb9d5916cd304b23fba6"
+  },
+  "request": {
+    "path": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/request.bin",
+    "sha256": "077b0ff0271706cc3034f3e06c7a228f227c49aeec7786d21373b2072af89c72"
+  },
+  "fix": {
+    "path": "/home/dev/Projects/dewdrop/.tmp/wago-batch-cancel-full/fix.patch",
+    "sha256": "9eca6c59efe71ca87fb54aab3d265259cd9af3e71c2d7c824eae0f946d23a72e"
+  },
+  "go": "go version go1.27.1 linux/amd64",
+  "platform": "Linux-7.2.8-9-omarchy-x86_64-with-glibc2.41",
+  "cpu": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
+  "stack": "e2fe43ffc83d31b16c7d82e66dc5a97782db942d",
+  "upstream_base": "ed76fd17957fd472b92a69d2fa3f5f63680f2cd5",
+  "source_proof": "TestNativeStructBatch* passed in the private dependency source before building the host",
+  "source_files": {
+    ".tmp/wago-batch-cancel-full/source/src/core/runtime/gc/native/collector.go": "a5f92742733e752cd4617f33b320993f524b2561fd8bedb4ee52a899cbc83f38",
+    ".tmp/wago-batch-cancel-full/source/src/core/runtime/gc/native/native_alloc.go": "bfe7f4ad13b9294b29084f2ccd25cf3c1545b59f3921b9337043a3b985b68cc1"
+  }
+}

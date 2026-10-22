@@ -38,6 +38,7 @@ func (c *Collector) WriteBarrierObject(parent Ref, child Ref) {
 	if !parent.IsObj() || !child.IsObj() || !c.validObjectRef(parent) || !c.validObjectRef(child) {
 		return
 	}
+	c.objectEdgesMutated(parent)
 	if c.cfg.Profile == ProfileTiny {
 		c.tinyWriteBarrierObject(parent, child)
 		return
@@ -59,6 +60,7 @@ func (c *Collector) WriteBarrierObject(parent Ref, child Ref) {
 // payload-byte interval. Collection is synchronous, so publishing the store
 // before its card cannot race a collector.
 func (c *Collector) writeBarrierObjectRange(parent Ref, child Ref, start, end uint32) {
+	c.objectEdgesMutated(parent)
 	// Typed callers have already resolved the parent and validated the stored
 	// child. Check parent generation before decoding the child so ordinary
 	// nursery initialization exits with no duplicate handle-table work.
@@ -96,7 +98,11 @@ func (c *Collector) writeBarrierObjectRange(parent Ref, child Ref, start, end ui
 // During sweep, the source graph must have remained in the exact roots until the
 // store; a one-pass sweep cannot resurrect descendants reclaimed earlier.
 func (c *Collector) WriteBarrierRoot(child Ref) {
-	if !child.IsObj() || !c.validObjectRef(child) || c.cfg.Profile != ProfileTiny {
+	if !child.IsObj() || !c.validObjectRef(child) {
+		return
+	}
+	c.objectRootPublished(child)
+	if c.cfg.Profile != ProfileTiny {
 		return
 	}
 	switch c.tinyGC.state {
@@ -128,6 +134,7 @@ func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
 	default:
 		return
 	}
+	c.objectRootPublished(child)
 	if c.cfg.Profile == ProfileTiny {
 		switch c.tinyGC.state {
 		case tinyMark, tinyRemark:
@@ -145,6 +152,7 @@ func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
 	}
 }
 func (c *Collector) CardMarkArray(array Ref, elementIndex uint32) {
+	c.objectEdgesMutated(array)
 	if c.cfg.Profile == ProfileTiny || !array.IsObj() || !c.validObjectRef(array) {
 		return
 	}
@@ -180,6 +188,7 @@ func (c *Collector) PostBulkWriteBarrier(dst Ref, start, length uint32) {
 	if !dst.IsObj() || !c.validObjectRef(dst) || length == 0 {
 		return
 	}
+	c.objectEdgesMutated(dst)
 	if c.cfg.Profile == ProfileTiny {
 		d, err := c.refDesc(dst)
 		if err != nil || d.Kind != KindArray || !isCollectorRefKind(d.Elem) {

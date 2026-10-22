@@ -342,3 +342,11 @@ func (in *Instance) reconcileGCGlobalRoots() error {
 	}
 	return nil
 }
+
+// reconcileGCGlobalRootsAfter publishes guest global writes even when native
+// execution traps or is interrupted. A trap unwinds the native frame, so the
+// global cell is the only remaining owner of a reference stored before failure.
+// Keep the execution failure first when root maintenance also fails.
+func (in *Instance) reconcileGCGlobalRootsAfter(primary error) error {
+	return joinPrimary(primary, in.reconcileGCGlobalRoots())
+}
