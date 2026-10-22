@@ -53,9 +53,30 @@ func TestValidateSIMDMemoryImmediatesDoNotAllocatePerOpcode(t *testing.T) {
 	}
 }
 
+func TestValidateSIMDShuffleImmediatesDoNotAllocatePerOpcode(t *testing.T) {
+	moduleWithShuffles := func(count int) *Module {
+		body := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+		for range count {
+			body = append(body, 0xfd, 0x0c)
+			body = append(body, make([]byte, 16)...)
+			body = append(body, 0xfd, 0x0d)
+			body = append(body, make([]byte, 16)...)
+		}
+		body = append(body, 0x1a, 0x0b)
+		m := simdMemargModule(t, 0)
+		m.Code[0].BodyBytes = body
+		return m
+	}
+	one := validationAllocs(t, moduleWithShuffles(1))
+	many := validationAllocs(t, moduleWithShuffles(96))
+	t.Logf("ValidateModule allocations: one SIMD shuffle=%.0f, 96 SIMD shuffles=%.0f", one, many)
+	if delta := many - one; delta > 2 {
+		t.Fatalf("shuffle lane validation allocations grew by %.0f, want bounded validation scratch", delta)
+	}
+}
+
 func TestValidateSIMDImmediateStrictness(t *testing.T) {
-	invalidShuffle := append([]byte{0xfd, 0x0d}, make([]byte, 15)...)
-	invalidShuffle = append(invalidShuffle, 32, 0x0b)
+	truncatedShuffle := append([]byte{0xfd, 0x0d}, make([]byte, 15)...)
 	tests := []struct {
 		name   string
 		body   []byte
@@ -69,9 +90,9 @@ func TestValidateSIMDImmediateStrictness(t *testing.T) {
 			offset: 17,
 		},
 		{
-			name:   "invalid i8x16.shuffle lane",
-			body:   invalidShuffle,
-			code:   ErrInvalidInstruction,
+			name:   "truncated i8x16.shuffle lanes",
+			body:   truncatedShuffle,
+			code:   ErrIndexOutOfBounds,
 			offset: 17,
 		},
 		{
@@ -91,5 +112,59 @@ func TestValidateSIMDImmediateStrictness(t *testing.T) {
 				t.Fatalf("ValidateModule error = %#v / %v, want code %v at offset %d", de, err, tc.code, tc.offset)
 			}
 		})
+	}
+}
+
+func TestValidateShuffleLaneBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		lane  byte
+		valid bool
+	}{
+		{"last-valid", 31, true},
+		{"first-invalid", 32, false},
+		{"largest-byte", 255, false},
+	} {
+		for _, dead := range []bool{false, true} {
+			name := tc.name
+			if dead {
+				name += "-unreachable"
+			}
+			t.Run(name, func(t *testing.T) {
+				var body []byte
+				if dead {
+					body = append(body, 0x00)
+				} else {
+					for range 2 {
+						body = append(body, 0xfd, 0x0c)
+						body = append(body, make([]byte, 16)...)
+					}
+				}
+				body = append(body, 0xfd, 0x0d)
+				body = append(body, make([]byte, 15)...)
+				body = append(body, tc.lane, 0x1a, 0x0b)
+				expr, err := decodeExpr(newReader(body), 0)
+				if err != nil {
+					t.Fatalf("syntactically valid shuffle must decode: %v", err)
+				}
+				m := simdMemargModule(t, 0)
+				m.Code[0].BodyBytes = body
+				byteErr := ValidateModule(m)
+				m.Code[0] = Func{Body: expr}
+				treeErr := ValidateModule(m)
+				for _, err := range []error{byteErr, treeErr} {
+					if tc.valid {
+						if err != nil {
+							t.Fatal(err)
+						}
+						continue
+					}
+					var ve *ValidationError
+					if !errors.As(err, &ve) || ve.Code != ErrTypeMismatch || ve.Detail != "simd lane out of range" {
+						t.Fatalf("shuffle lane must fail validation: %v", err)
+					}
+				}
+			})
+		}
 	}
 }

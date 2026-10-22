@@ -43,7 +43,7 @@ func TestDarwinGroupSignalExitTransitionPolling(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			err := waitForDarwinGroupExit(123, syscall.EPERM, time.Now().Add(time.Minute), func() ([]unix.KinfoProc, error) {
+			err := waitForDarwinGroupExit(123, syscall.EPERM, time.Now().Add(time.Minute), time.Now, func() ([]unix.KinfoProc, error) {
 				calls++
 				if calls == 1 {
 					return []unix.KinfoProc{exiting}, nil
@@ -62,21 +62,50 @@ func TestDarwinGroupSignalExitTransitionPolling(t *testing.T) {
 
 func TestDarwinGroupSignalExitTransitionDeadline(t *testing.T) {
 	// An already-expired budget cannot start another inspection.
-	err := waitForDarwinGroupExit(123, syscall.EPERM, time.Now().Add(-time.Second), func() ([]unix.KinfoProc, error) {
+	err := waitForDarwinGroupExit(123, syscall.EPERM, time.Now().Add(-time.Second), time.Now, func() ([]unix.KinfoProc, error) {
 		t.Fatal("queried a group after the transition deadline")
 		return nil, nil
 	})
 	if err != syscall.EPERM {
 		t.Fatalf("expired transition returned %v, want EPERM", err)
 	}
-	// A slow query returning an inert snapshot must not extend the budget.
-	deadline := time.Now().Add(10 * time.Millisecond)
-	err = waitForDarwinGroupExit(123, syscall.EPERM, deadline, func() ([]unix.KinfoProc, error) {
-		time.Sleep(time.Until(deadline) + time.Millisecond)
-		return nil, nil
-	})
-	if err != syscall.EPERM {
-		t.Fatalf("snapshot after deadline returned %v, want EPERM", err)
+}
+
+func TestDarwinGroupSignalSnapshotCrossingDeadline(t *testing.T) {
+	exiting := unix.KinfoProc{Proc: unix.ExternProc{P_stat: 2, P_flag: darwinProcessExiting}}
+	zombie := unix.KinfoProc{Proc: unix.ExternProc{P_stat: darwinZombieProcessState}}
+	running := unix.KinfoProc{Proc: unix.ExternProc{P_stat: 2}}
+	for _, tc := range []struct {
+		name     string
+		members  []unix.KinfoProc
+		queryErr error
+		wantErr  error
+	}{
+		{name: "empty"},
+		{name: "zombie only", members: []unix.KinfoProc{zombie}},
+		{name: "exiting", members: []unix.KinfoProc{exiting}, wantErr: syscall.EPERM},
+		{name: "live descendant", members: []unix.KinfoProc{zombie, running}, wantErr: syscall.EPERM},
+		{name: "exiting descendant", members: []unix.KinfoProc{zombie, exiting}, wantErr: syscall.EPERM},
+		{name: "query failure", queryErr: syscall.EIO, wantErr: syscall.EIO},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Unix(123, 0)
+			deadline := now.Add(100 * time.Millisecond)
+			calls := 0
+			err := waitForDarwinGroupExit(123, syscall.EPERM, deadline, func() time.Time { return now }, func() ([]unix.KinfoProc, error) {
+				calls++
+				// Model the caller resuming after its budget while sysctl
+				// has already produced a snapshot. No real sleep is needed.
+				now = deadline.Add(time.Millisecond)
+				return tc.members, tc.queryErr
+			})
+			if calls != 1 || !errors.Is(err, tc.wantErr) {
+				t.Fatalf("late snapshot returned %v after %d queries, want %v after one query", err, calls, tc.wantErr)
+			}
+			if tc.queryErr != nil && !errors.Is(err, syscall.EPERM) {
+				t.Fatalf("inspection failure lost the original signal error: %v", err)
+			}
+		})
 	}
 }
 

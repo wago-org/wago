@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"fmt"
 	"unsafe"
 )
@@ -18,6 +19,42 @@ type CodeBuffer struct {
 	sealed     bool
 	registered bool
 	closed     bool
+	// A failed growth retirement can leave both mappings owned. The buffer
+	// rejects further use and Close retries their release independently.
+	retired []byte
+	ops     *codeBufferOps
+}
+
+// Per-owner fault injection avoids changing process-wide mapping operations.
+// The ordinary path uses the platform functions directly.
+type codeBufferOps struct {
+	mapRW func(int) ([]byte, error)
+	unmap func([]byte) error
+	seal  func([]byte) error
+}
+
+func (b *CodeBuffer) mapRW(n int) ([]byte, error) {
+	if b.ops != nil && b.ops.mapRW != nil {
+		return b.ops.mapRW(n)
+	}
+	return mmapCodeRW(n)
+}
+
+func (b *CodeBuffer) unmap(mem []byte) error {
+	if len(mem) == 0 {
+		return nil
+	}
+	if b.ops != nil && b.ops.unmap != nil {
+		return b.ops.unmap(mem)
+	}
+	return munmap(mem)
+}
+
+func (b *CodeBuffer) seal(mem []byte) error {
+	if b.ops != nil && b.ops.seal != nil {
+		return b.ops.seal(mem)
+	}
+	return SealCode(mem)
 }
 
 // NewHeapCodeBuffer creates a staging image whose address need not remain
@@ -204,12 +241,12 @@ func (b *CodeBuffer) Seal() error {
 	if b.heap {
 		return fmt.Errorf("jit: heap code buffer cannot be sealed")
 	}
-	if err := SealCode(b.mem); err != nil {
-		_ = munmap(b.mem)
-		b.mem = nil
-		b.n = 0
+	if err := b.seal(b.mem); err != nil {
+		// Sealing may already have made this mapping RX. Never reopen it for
+		// writes or transfer it after failure; keep ownership if cleanup fails.
+		unregisterExecutableCode(b.mem)
 		b.closed = true
-		return err
+		return errors.Join(err, b.Close())
 	}
 	b.sealed = true
 	b.registered = true
@@ -256,23 +293,31 @@ func (b *CodeBuffer) TakeHeap() ([]byte, error) {
 	return mem, nil
 }
 
-// Close releases the mapping. Callers must ensure no instance can still enter
-// the image.
+// Close releases all owned mappings, retaining failed releases for another
+// Close attempt. Callers must ensure no instance can still enter the image.
 func (b *CodeBuffer) Close() error {
-	if b == nil || b.closed {
+	if b == nil {
 		return nil
 	}
 	if b.registered {
 		unregisterExecutableCode(b.mem)
+		b.registered = false
 	}
-	mem := b.mem
-	b.mem = nil
 	b.n = 0
 	b.closed = true
 	if b.heap {
+		b.mem = nil
 		return nil
 	}
-	return munmap(mem)
+	currentErr := b.unmap(b.mem)
+	if currentErr == nil {
+		b.mem = nil
+	}
+	retiredErr := b.unmap(b.retired)
+	if retiredErr == nil {
+		b.retired = nil
+	}
+	return errors.Join(currentErr, retiredErr)
 }
 
 func (b *CodeBuffer) grow(extra int) error {
@@ -305,7 +350,7 @@ func (b *CodeBuffer) growPreserving(extra, preserveEnd int) error {
 		mem = make([]byte, capacity)
 	} else {
 		var err error
-		mem, err = mmapCodeRW(capacity)
+		mem, err = b.mapRW(capacity)
 		if err != nil {
 			return err
 		}
@@ -317,12 +362,15 @@ func (b *CodeBuffer) growPreserving(extra, preserveEnd int) error {
 	if b.heap {
 		return nil
 	}
-	if err := munmap(old); err != nil {
-		_ = munmap(mem)
-		b.mem = nil
+	if err := b.unmap(old); err != nil {
+		b.retired = old
 		b.n = 0
 		b.closed = true
-		return err
+		cleanup := b.unmap(mem)
+		if cleanup == nil {
+			b.mem = nil
+		}
+		return errors.Join(err, cleanup)
 	}
 	return nil
 }

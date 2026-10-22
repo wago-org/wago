@@ -305,18 +305,23 @@ func callHookSafely(phase string, fn func()) (err error) {
 }
 
 func callShutdownSafely(label string, fn func()) (err error) {
+	returned := false
 	defer func() {
-		if recover() != nil {
+		recovered := recover()
+		if !returned || recovered != nil {
 			err = fmt.Errorf("wago: %s: %w", label, ErrCallbackPanic)
 		}
 	}()
 	fn()
+	returned = true
 	return nil
 }
 
 func callSafely(label string, fn func()) (err error) {
+	returned := false
 	defer func() {
-		if recovered := recover(); recovered != nil {
+		recovered := recover()
+		if !returned || recovered != nil {
 			if panicErr, ok := recovered.(error); ok {
 				err = fmt.Errorf("wago: %s panicked: %w", label, panicErr)
 			} else {
@@ -325,8 +330,10 @@ func callSafely(label string, fn func()) (err error) {
 		}
 	}()
 	fn()
+	returned = true
 	return nil
 }
+
 func joinPrimary(primary error, additional ...error) error {
 	joined := make([]error, 0, len(additional)+1)
 	if primary != nil {

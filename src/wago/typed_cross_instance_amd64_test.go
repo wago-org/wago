@@ -3,7 +3,6 @@
 package wago
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -358,9 +357,13 @@ func TestStagedTypedCodecRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("marshal typed module: %v", err)
 			}
-			if _, err := LoadTrustedArtifact(blob); err == nil || !strings.Contains(err.Error(), "required feature") {
-				t.Fatalf("public load of staged typed artifact = %v, want fail-closed required-feature error", err)
+			public, err := LoadTrustedArtifact(blob)
+			if err != nil {
+				t.Fatal("public typed function artifact", err)
 			}
+			assertFunctionOnlyPublicRuntime(t, public)
+			public.Close()
+
 			var loaded Compiled
 			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
 				t.Fatalf("reload typed module: %v", err)

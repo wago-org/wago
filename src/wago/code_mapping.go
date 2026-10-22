@@ -28,8 +28,10 @@ const (
 const (
 	compiledGCMetadataCollectorFreeStructural compiledGCMetadataFlags = 1 << iota
 	compiledGCMetadataCollectorFreeArray
-	compiledGCMetadataNativeABIShift = 2
-	compiledGCMetadataNativeABIMask  = compiledGCMetadataFlags(0xfc)
+	compiledGCMetadataNativeABIShift                             = 2
+	compiledGCMetadataNativeABIMask                              = compiledGCMetadataFlags(0x3c)
+	compiledGCMetadataFunctionFrames     compiledGCMetadataFlags = 0x40
+	compiledGCMetadataOpaqueExternFrames compiledGCMetadataFlags = 0x80
 )
 
 type compiledCodeCache struct {
@@ -53,6 +55,7 @@ type compiledCodeCache struct {
 }
 
 type compiledHostThunkCache struct {
+	railshotHostThunkConstruction
 	mem     []byte
 	base    uintptr
 	offsets []int
@@ -61,11 +64,18 @@ type compiledHostThunkCache struct {
 // compiledCacheIndexes holds cold compile/runtime indexes separately from the
 // fixed code-mapping header. It is allocated only when a module needs them.
 type compiledCacheIndexes struct {
+	railshotTail railshotTailCompiledState
 	// Compiler-owned immutable arithmetic proofs; never restored from the codec.
 	gcI31Inductions    []uint64
 	valueTypeIndex     map[ValueTypeDescriptor]uint32
 	gcTypeMapping      *gcTypeMappingCacheEntry
 	funcrefImportState atomic.Uint32 // 0 unknown, 1 no imported funcref containers, 2 at least one
+	// Cold failure ownership only; guarded by codeCache.mu. New mappings are
+	// blocked until retry succeeds, bounding retained publication failures.
+	failedMappings [][]byte
+	unmapCode      func([]byte) error // per-owner fault injection; nil normally
+	mapThunkCode   func([]byte) ([]byte, uintptr, error)
+	sealCode       func([]byte) error
 }
 
 // compilerCompiledState groups the fixed private state owned for the complete
@@ -88,6 +98,9 @@ type compilerCompiledOwner struct {
 }
 
 func newCompilerCompiled(initial Compiled) *Compiled {
+	initial.nativeContextTrapABI = railshotNativeContextTrapABI()
+	initial.nativeTableContextABI = railshotNativeContextTrapABI()
+	initial.nativeTableReferenceABI = railshotNativeContextTrapABI()
 	owner := &compilerCompiledOwner{Compiled: initial}
 	owner.Compiled.codeCache = &owner.state.codeCache
 	owner.Compiled.validateMemo = &owner.state.validateMemo
@@ -118,12 +131,14 @@ func installCompiledFinalizer(c *Compiled) *Compiled {
 	var gcFrameRoots *compiledGCFrameRoots
 	var importModuleEnds []uint64
 	var snapshotLimit uint64
+	var indexes *compiledCacheIndexes
 	if c.validateMemo != nil {
+		indexes = c.loadCompileIndexes()
 		gcFrameRoots = c.validateMemo.gcFrameRoots
 		importModuleEnds = c.validateMemo.importModuleEnds
 		snapshotLimit = c.validateMemo.snapshotLimit
 	}
-	c.validateMemo = &validateMemo{gcFrameRoots: gcFrameRoots, importModuleEnds: importModuleEnds, snapshotLimit: snapshotLimit}
+	c.validateMemo = &validateMemo{gcFrameRoots: gcFrameRoots, importModuleEnds: importModuleEnds, snapshotLimit: snapshotLimit, compileIndexes: indexes}
 	goruntime.SetFinalizer(c, func(c *Compiled) {
 		_ = c.Close()
 	})
@@ -204,6 +219,10 @@ func (c *Compiled) usesAtomicWaitHelpers() bool {
 	return cc != nil && cc.flags&compiledCacheAtomicWaitHelpers != 0
 }
 
+func (c *Compiled) usesGuestGlobalStoreHelper() bool {
+	return railshotUsesGuestGlobalStoreHelper(c)
+}
+
 func (c *Compiled) prefersGuardMemory() bool {
 	cc := c.loadCodeCache()
 	return cc != nil && cc.flags&compiledCacheGuardMemory != 0
@@ -236,7 +255,17 @@ func (c *Compiled) nativeStackBytes() uint64 {
 
 func (c *Compiled) collectorFreeStructuralMetadata() bool {
 	cc := c.loadCodeCache()
-	return cc != nil && cc.gcMetadataFlags&compiledGCMetadataCollectorFreeStructural != 0
+	return cc != nil && (cc.gcMetadataFlags&compiledGCMetadataCollectorFreeStructural != 0 || railshotPrimitiveReferenceContract(c) || c.collectorFreeTypeDeclarations())
+}
+
+// Unused type declarations contain no object that a collector must trace.
+// This grants no code or artifact admission; those checks run independently.
+func (c *Compiled) collectorFreeTypeDeclarations() bool {
+	return compiledArchitecture == 4 && c.hasNoFunctionCode() && c.NumImports == 0 && len(c.Imports) == 0 &&
+		len(c.Globals) == 0 && len(c.GlobalImports) == 0 && c.tableCount() == 0 && c.memoryCount() == 0 &&
+		(c.memoryDir == nil || len(c.memoryDir.ehTags) == 0) && c.activeDataCount() == 0 && len(c.PassiveData) == 0 &&
+		len(c.Elems) == 0 && len(c.passiveElems) == 0 && !c.HasStart && c.nativeGCABIRequirement() == 0 &&
+		c.genericGCFrameRoots() == nil && !c.usesGCStructHelpers() && !c.usesGCArrayHelpers()
 }
 
 func (c *Compiled) stagedGCTypeSubtypingProduct() stagedGCTypeSubtypingProduct {
@@ -307,7 +336,10 @@ func (c *Compiled) importTransfersCollectorObjects(index int) bool {
 	if c == nil || index < 0 || index >= len(c.importFuncSigs) {
 		return false
 	}
-	sig := c.importFuncSigs[index]
+	return c.signatureTransfersCollectorObjects(c.importFuncSigs[index])
+}
+
+func (c *Compiled) signatureTransfersCollectorObjects(sig FuncSig) bool {
 	params, results, err := exactFuncSignatureView(sig, c.Types)
 	if err != nil || !sig.HasTypeIndex {
 		return funcSigHasGCRefs(sig)
@@ -325,9 +357,9 @@ func (c *Compiled) importTransfersCollectorObjects(index int) bool {
 	return false
 }
 
-// hasCollectorReferenceCallBoundary reports whether an imported function can
-// transfer collector objects. Exact descriptors resolve indexed and recursive
-// heap types in the importing module; raw module-local indexes are never used as
+// hasCollectorReferenceCallBoundary reports whether an imported function or
+// an RV64 exported function can transfer collector objects. Exact descriptors
+// resolve indexed and recursive heap types; raw module-local indexes are never used as
 // cross-module identities.
 func (c *Compiled) hasCollectorReferenceCallBoundary() bool {
 	if c == nil {
@@ -338,21 +370,65 @@ func (c *Compiled) hasCollectorReferenceCallBoundary() bool {
 			return true
 		}
 	}
+	if compiledArchitecture == 4 && c.requiredFeatures.IsEnabled(CoreFeatureGC) {
+		for _, index := range c.Exports {
+			local := index - c.NumImports
+			if local >= 0 && local < len(c.Funcs) && c.signatureTransfersCollectorObjects(c.Funcs[local]) {
+				return true
+			}
+		}
+	}
 	return false
+}
+
+// Internal collector carriers can have no public call boundary and no GC
+// instruction. Source proof still gives these native functions exact empty
+// maps. This classification grants no native code or artifact authority.
+func (c *Compiled) hasInternalCollectorReferenceFunctions() bool {
+	if compiledArchitecture != 4 || c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureGC) {
+		return false
+	}
+	for _, sig := range c.Funcs {
+		if c.signatureTransfersCollectorObjects(sig) {
+			return true
+		}
+	}
+	// The persisted escape flag records collector-bearing dynamic results,
+	// including validated dead calls whose target type has no local binding.
+	if c.dynamicFuncrefEscape {
+		for _, typ := range c.Types {
+			if typ.Kind != CompositeTypeFunction {
+				continue
+			}
+			for _, list := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
+				for _, value := range list {
+					if valueTypeTransfersCollectorObject(value, c.Types) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (c *Compiled) hasCollectorDeclarationRoots() bool {
+	return c != nil && c.stagedGCStructProduct() == 0 && c.stagedGCArrayProduct() == 0 &&
+		c.nativeGCABIRequirement() != 0 && c.genericGCFrameRoots() != nil && (c.hasFunctionEnvironmentFrames() || c.hasOpaqueExternFrames() || c.hasInternalCollectorReferenceFunctions() || c.hasCollectorReferenceCallBoundary())
 }
 
 // needsExactNativeGCRoots is the compile/artifact predicate. Allocating generic
 // GC instructions and collector-reference host/cross-instance boundaries can
 // both collect while native Wasm frames remain live.
 func (c *Compiled) needsExactNativeGCRoots() bool {
-	return c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary())
+	return c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary() || c.needsOwnedExceptionReferences() || c.hasCollectorDeclarationRoots())
 }
 
 // needsRuntimeGCCollectorDomain is the instantiated-module predicate. A module
 // may need a collector solely because a Runtime-owned host import allocates or
 // inspects values selected by the caller's exact GC types.
 func (c *Compiled) needsRuntimeGCCollectorDomain() bool {
-	return c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary())
+	return c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary() || c.needsOwnedExceptionReferences() || c.opaqueExternHelperSlots() != 0 || c.hasCollectorDeclarationRoots() && (len(c.genericGCFrameRoots().safepoints) != 0 || len(c.genericGCFrameRoots().callsites) != 0))
 }
 
 func (c *Compiled) needsNativeGCABI() bool {
@@ -364,14 +440,22 @@ func (c *Compiled) nativeGCABIRequirement() uint32 {
 	if cc == nil {
 		return 0
 	}
-	return uint32(cc.gcMetadataFlags&compiledGCMetadataNativeABIMask) >> compiledGCMetadataNativeABIShift
+	return uint32(cc.gcMetadataFlags&nativeGCMetadataABIMask()) >> compiledGCMetadataNativeABIShift
+}
+
+func nativeGCMetadataABIMask() compiledGCMetadataFlags {
+	if compiledArchitecture == 4 {
+		return compiledGCMetadataNativeABIMask
+	}
+	return 0xfc
 }
 
 func (c *compiledCodeCache) setNativeGCABIVersion(version uint32) {
-	if c == nil || version > uint32(compiledGCMetadataNativeABIMask>>compiledGCMetadataNativeABIShift) {
+	mask := nativeGCMetadataABIMask()
+	if c == nil || version > uint32(mask>>compiledGCMetadataNativeABIShift) {
 		panic("wago: native GC ABI version exceeds compact metadata field")
 	}
-	c.gcMetadataFlags = c.gcMetadataFlags&^compiledGCMetadataNativeABIMask |
+	c.gcMetadataFlags = c.gcMetadataFlags&^mask |
 		compiledGCMetadataFlags(version<<compiledGCMetadataNativeABIShift)
 }
 
@@ -521,7 +605,7 @@ func (c *Compiled) sharedGCPersistentDomainSafe() bool {
 	}
 	for i := 0; i < c.tableCount(); i++ {
 		typ := c.tableElementType(i)
-		if !isGCRefValType(typ) && typ != ValFuncRef {
+		if !isGCRefValType(typ) && typ != ValFuncRef && !(typ == ValExternRef && c.compactExternFrameRoots()) {
 			return false
 		}
 	}
@@ -619,11 +703,20 @@ func (c *Compiled) checkOpen() error {
 	return nil
 }
 
+// hasNoFunctionCode identifies state-only modules. Imported-function modules
+// retain their existing mapping and thunk lifetime even without defined code.
+func (c *Compiled) hasNoFunctionCode() bool {
+	return c.NumImports == 0 && len(c.Funcs) == 0 && len(c.code) == 0 && len(c.Entry) == 0 && len(c.InternalEntry) == 0
+}
+
 // mapCodeLocked installs one exact-length readable view. Callers hold the cache
 // lock; the compiler also calls this before publishing either metadata view.
 func (c *Compiled) mapCodeLocked() error {
 	cc := c.codeCache
 	if cc.mem != nil {
+		return nil
+	}
+	if c.hasNoFunctionCode() {
 		return nil
 	}
 	codeLen := len(c.code)
@@ -640,6 +733,7 @@ func (c *Compiled) mapCodeLocked() error {
 		return err
 	}
 	cc.mem, cc.base = mem, base
+	railshotRecordMappedCodeBytes(c, codeLen)
 	// The mapping can be page-rounded; code and artifact sizes must stay exact.
 	c.code = mem[:codeLen:codeLen]
 	// Compiler publication freezes an execution snapshot before code is mapped.
@@ -701,11 +795,24 @@ func (c *Compiled) acquireCode() (uintptr, error) {
 	if cc.closed {
 		return 0, fmt.Errorf("compiled module is closed")
 	}
+	if err := c.releaseFailedPublicationMappingsLocked(); err != nil {
+		return 0, fmt.Errorf("release failed executable mappings: %w", err)
+	}
 	if err := c.mapCodeLocked(); err != nil {
 		return 0, err
 	}
+	if cc.mem == nil && c.hasNoFunctionCode() {
+		// Instance ownership must still keep metadata and attached resources
+		// alive through Close, but there is no code to seal or register.
+		cc.refs++
+		return 0, nil
+	}
 	if !cc.sealed {
-		if err := coreruntime.SealCode(cc.mem); err != nil {
+		if err := c.sealCode(cc.mem); err != nil {
+			// RX protection may already have succeeded. Keep cleanup ownership
+			// but close this module before any retry can treat it as writable.
+			cc.closed, cc.base = true, 0
+			c.clearCodeViewsLocked()
 			return 0, err
 		}
 		cc.sealed = true
@@ -727,11 +834,14 @@ func (c *Compiled) releaseCode() {
 	}
 	if cc.refs == 0 && cc.closed {
 		if cc.mem != nil {
-			_ = c.unmapProfileCode(cc.mem)
-			cc.mem = nil
+			if c.unmapProfileCode(cc.mem) == nil {
+				cc.mem = nil
+			}
 			cc.base = 0
 		}
-		c.releaseHostThunksLocked()
+		_ = c.releaseHostThunksLocked()
+		_ = c.releaseFailedMappingsLocked()
+		_ = railshotRetryNativeTail(c)
 		c.clearCodeViewsLocked()
 		if c.validateMemo != nil {
 			c.validateMemo.structuralCallIdentities.Store(nil)
@@ -739,28 +849,123 @@ func (c *Compiled) releaseCode() {
 	}
 }
 
-func (c *Compiled) releaseHostThunksLocked() {
+func (c *Compiled) releaseHostThunksLocked() error {
 	memo := c.loadValidateMemo()
 	if memo == nil {
-		return
+		return nil
 	}
+	var err error
 	for i := range memo.hostThunks {
 		cache := &memo.hostThunks[i]
 		if cache.mem != nil {
-			_ = c.unmapProfileCode(cache.mem)
-			*cache = compiledHostThunkCache{}
+			if cleanup := c.unmapProfileCode(cache.mem); cleanup != nil {
+				err = errors.Join(err, cleanup)
+				cache.base, cache.offsets = 0, nil
+			} else {
+				*cache = compiledHostThunkCache{}
+			}
 		}
 	}
+	return err
 }
 
-func (c *Compiled) takeHostThunksLocked() [2]compiledHostThunkCache {
-	memo := c.loadValidateMemo()
-	if memo == nil {
-		return [2]compiledHostThunkCache{}
+// retainUnpublishedMapping receives explicit rollback ownership before an
+// error escapes the thunk builder. It never installs a callable address.
+func (c *Compiled) retainUnpublishedMapping(mem []byte) {
+	if len(mem) == 0 {
+		return
 	}
-	hostThunks := memo.hostThunks
-	memo.hostThunks = [2]compiledHostThunkCache{}
-	return hostThunks
+	cc := c.loadCodeCache()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	c.retainUnpublishedMappingLocked(mem)
+}
+
+func (c *Compiled) retainUnpublishedMappingLocked(mem []byte) {
+	if len(mem) == 0 {
+		return
+	}
+	indexes := c.ensureCompileIndexes()
+	indexes.failedMappings = append(indexes.failedMappings, mem)
+}
+
+func (c *Compiled) mapThunkCode(code []byte) ([]byte, uintptr, error) {
+	if indexes := c.loadCompileIndexes(); indexes != nil && indexes.mapThunkCode != nil {
+		return indexes.mapThunkCode(code)
+	}
+	return coreruntime.MapCode(code)
+}
+
+func (c *Compiled) sealCode(mem []byte) error {
+	if indexes := c.loadCompileIndexes(); indexes != nil && indexes.sealCode != nil {
+		return indexes.sealCode(mem)
+	}
+	return coreruntime.SealCode(mem)
+}
+
+// Private and shared thunk publication use the same lock and cleanup gate.
+// Retain a failed mapping before releasing the lock to another builder.
+func (c *Compiled) mapPrivateThunkCode(code []byte) ([]byte, uintptr, error) {
+	cc := c.loadCodeCache()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	if err := c.releaseFailedPublicationMappingsLocked(); err != nil {
+		return nil, 0, err
+	}
+	mem, base, err := c.mapThunkCode(code)
+	if err != nil {
+		c.retainUnpublishedMappingLocked(mem)
+		return nil, 0, err
+	}
+	return mem, base, nil
+}
+
+func (c *Compiled) releaseFailedPublicationMappingsLocked() error {
+	err := c.releaseFailedMappingsLocked()
+	err = errors.Join(err, railshotRetryNativeTail(c))
+	if memo := c.loadValidateMemo(); memo != nil {
+		for i := range memo.hostThunks {
+			cache := &memo.hostThunks[i]
+			if cache.mem == nil || cache.base != 0 {
+				continue
+			}
+			if cleanup := c.unmapProfileCode(cache.mem); cleanup != nil {
+				err = errors.Join(err, cleanup)
+			} else {
+				*cache = compiledHostThunkCache{}
+			}
+		}
+	}
+	return err
+}
+
+func (c *Compiled) releaseOwnedCodeMapping(mem []byte) error {
+	cc := c.loadCodeCache()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	if err := c.unmapProfileCode(mem); err != nil {
+		c.retainUnpublishedMappingLocked(mem)
+		return err
+	}
+	return nil
+}
+
+func (c *Compiled) releaseFailedMappingsLocked() error {
+	indexes := c.loadCompileIndexes()
+	if indexes == nil || len(indexes.failedMappings) == 0 {
+		return nil
+	}
+	var err error
+	retained := indexes.failedMappings[:0]
+	for _, mem := range indexes.failedMappings {
+		if cleanup := c.unmapProfileCode(mem); cleanup != nil {
+			err = errors.Join(err, cleanup)
+			retained = append(retained, mem)
+		}
+	}
+	clear(indexes.failedMappings[len(retained):])
+	indexes.failedMappings = retained
+	return err
 }
 
 // clearCodeViewsLocked drops every slice header that can retain the staged or
@@ -784,23 +989,20 @@ func (c *Compiled) replaceDecoded(decoded Compiled, snapshotLimit uint64) error 
 			cc.mu.Unlock()
 			return fmt.Errorf("wago: cannot replace compiled module with %d live instance(s)", cc.refs)
 		}
-		mem := cc.mem
-		cc.mem = nil
 		cc.base = 0
-		hostThunks := c.takeHostThunksLocked()
 		cc.closed = true
-		c.code = nil
-		cc.mu.Unlock()
-		goruntime.SetFinalizer(c, nil)
+		c.clearCodeViewsLocked()
 		var releaseErr error
-		if mem != nil {
-			releaseErr = errors.Join(releaseErr, c.unmapProfileCode(mem))
-		}
-		for i := range hostThunks {
-			if hostThunks[i].mem != nil {
-				releaseErr = errors.Join(releaseErr, c.unmapProfileCode(hostThunks[i].mem))
+		if cc.mem != nil {
+			if cleanup := c.unmapProfileCode(cc.mem); cleanup != nil {
+				releaseErr = errors.Join(releaseErr, cleanup)
+			} else {
+				cc.mem = nil
 			}
 		}
+		releaseErr = errors.Join(releaseErr, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked(), railshotRetryNativeTail(c))
+		cc.mu.Unlock()
+		goruntime.SetFinalizer(c, nil)
 		if releaseErr != nil {
 			return fmt.Errorf("release replaced compiled mappings: %w", releaseErr)
 		}
@@ -836,20 +1038,45 @@ func (c *Compiled) Close() error {
 	if c.validateMemo != nil {
 		c.validateMemo.structuralCallIdentities.Store(nil)
 	}
-	if cc.mem == nil {
-		// Preserve compiler-produced metadata so a later Instantiate reaches the
-		// authoritative closed check instead of failing earlier as malformed.
-		return nil
-	}
-	mem := cc.mem
-	cc.mem = nil
 	cc.base = 0
-	hostThunks := c.takeHostThunksLocked()
-	err := c.unmapProfileCode(mem)
-	for i := range hostThunks {
-		if hostThunks[i].mem != nil {
-			err = errors.Join(err, c.unmapProfileCode(hostThunks[i].mem))
+	var err error
+	if cc.mem != nil {
+		if cleanup := c.unmapProfileCode(cc.mem); cleanup != nil {
+			err = cleanup
+		} else {
+			cc.mem = nil
 		}
 	}
-	return err
+	return errors.Join(err, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked(), railshotRetryNativeTail(c))
+}
+
+func (c *Compiled) hasOpaqueExternFrames() bool {
+	return compiledArchitecture == 4 && c != nil && c.codeCache != nil && c.codeCache.gcMetadataFlags&compiledGCMetadataOpaqueExternFrames != 0
+}
+
+// This persisted RV64 mode gives raw function frame slots a managed producer
+// environment. Native ABI, exact map geometry and the source contract are
+// independently checked before execution.
+func (c *Compiled) hasFunctionEnvironmentFrames() bool {
+	return compiledArchitecture == 4 && c != nil && c.codeCache != nil && c.codeCache.gcMetadataFlags&compiledGCMetadataFunctionFrames != 0
+}
+
+// Persistent extern storage can retain converted collector references even
+// when the module has no allocating instruction of its own. The return value
+// is the largest internal helper arity needed by that storage.
+func (c *Compiled) opaqueExternHelperSlots() int {
+	if !c.hasOpaqueExternFrames() {
+		return 0
+	}
+	for i := 0; i < c.tableCount(); i++ {
+		if c.tableElementType(i) == ValExternRef {
+			return 5
+		}
+	}
+	for _, global := range c.Globals {
+		if global.Type == ValExternRef && global.Mutable {
+			return 2
+		}
+	}
+	return 0
 }

@@ -107,12 +107,12 @@ func main() {
 	defer arena.Close()
 	args, results, trap := arena.Alloc(256), arena.Alloc(256), arena.Alloc(runtime.TrapBufferBytes)
 	memory, base, err := runtime.MapCode(cm.Code)
-	must(err)
 	defer func() {
 		if memory != nil {
 			must(runtime.Unmap(memory))
 		}
 	}()
+	must(err)
 	session := jitprofile.New(jitprofile.Options{IncludeCode: true, UnwindMaps: maps})
 	defer session.Close()
 	moduleID := fmt.Sprintf("%x", sha256.Sum256(wasmBytes))

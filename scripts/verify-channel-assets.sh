@@ -38,8 +38,15 @@ for manager in "${managers[@]}"; do
   # TinyGo supports the subprocesses needed by Standard on Linux. Other
   # hosts still publish every Tiny profile their TinyGo port can build (notably
   # Minimal) without sacrificing the complete Normal set.
-  if [[ "$target" == linux-* ]]; then
+  if [[ "$target" == linux-amd64 || "$target" == linux-arm64 ]]; then
     assets+=("${tiny_assets[@]}")
+  elif [[ "$target" == linux-riscv64 ]]; then
+    for asset in "${tiny_assets[@]}"; do
+      if [[ -e "$asset" || -e "$asset.sha256" ]]; then
+        echo "unsupported riscv64 TinyGo release asset: $asset" >&2
+        exit 1
+      fi
+    done
   else
     for asset in "${tiny_assets[@]}"; do
       if [[ -s "$asset" ]]; then

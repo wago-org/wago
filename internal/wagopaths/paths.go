@@ -55,6 +55,14 @@ func ParseBuild(value string) (Build, error) {
 	return "", fmt.Errorf("unknown build %q (want: normal or tiny)", value)
 }
 
+// ValidatePlatform rejects runtime builds without an implementation on the host.
+func (b Build) ValidatePlatform(goos, goarch string) error {
+	if b == BuildTiny && goos == "linux" && goarch == "riscv64" {
+		return fmt.Errorf("TinyGo runtimes are not supported on linux/riscv64; use --build normal")
+	}
+	return nil
+}
+
 func (b Build) Description() string {
 	switch b {
 	case BuildNormal:
