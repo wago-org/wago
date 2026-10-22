@@ -1,4 +1,4 @@
-//go:build !(linux && amd64) && !((linux || darwin) && arm64)
+//go:build !(linux && amd64) && !((linux || darwin) && arm64) && !(linux && riscv64 && !wago_precompiled)
 
 package wago
 
@@ -7,7 +7,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func newGCFrameRootPlan(_ *wasm.Module, exactRoots bool, diagnostic *string, _ *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
+func newGCFrameRootPlan(_ *wasm.Module, exactRoots, _ bool, diagnostic *string, _ *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
 	if diagnostic != nil {
 		*diagnostic = ""
 	}

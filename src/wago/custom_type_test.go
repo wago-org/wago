@@ -5,6 +5,7 @@ package wago
 import (
 	"context"
 	"fmt"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -76,7 +77,7 @@ func TestCustomTypeCarriersCompileAndExecuteAsErasedValues(t *testing.T) {
 				t.Fatal(err)
 			}
 			in, err := rt.Instantiate(context.Background(), mod)
-			if carrier == 0x7b {
+			if carrier == 0x7b && goruntime.GOARCH != "riscv64" {
 				if err == nil || !strings.Contains(err.Error(), "v128 host callbacks are not supported") {
 					t.Fatalf("instantiate error = %v, want unsupported v128 host callback", err)
 				}

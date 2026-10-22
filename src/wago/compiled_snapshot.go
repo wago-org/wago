@@ -43,6 +43,9 @@ func (c *Compiled) freezeExecution(limit uint64) (*Compiled, error) {
 		return nil, err
 	}
 	snapshot := cloneCompiledExecutionMetadata(c)
+	if err := railshotInitializeExecutionSnapshot(snapshot); err != nil {
+		return nil, err
+	}
 	memo.snapshotBytes = size
 	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&memo.execution)), unsafe.Pointer(snapshot))
 	return snapshot, nil

@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64) && !tinygo
+//go:build (((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64)) && !tinygo
 
 package wago
 
@@ -129,7 +129,10 @@ func TestHostThunkCachesKeepDeferredAndSyncModesIndependent(t *testing.T) {
 }
 
 func TestI32HostEventRequiresExactSignature(t *testing.T) {
-	c := MustCompile(hostRoundtripLoopModule(t, 0))
+	c := MustCompile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(append(append(append(wasmtest.Name("env"), wasmtest.Name("step")...), 0), 0))),
+	))
 	defer c.Close()
 	if in, err := Instantiate(c, InstantiateOptions{Imports: testImports("env.step", I32HostEvent(func(int32) {}))}); err == nil || in != nil {
 		t.Fatalf("Instantiate = %v, %v; want signature error", in, err)
