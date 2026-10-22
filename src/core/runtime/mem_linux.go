@@ -1,4 +1,4 @@
-//go:build linux && (amd64 || arm64)
+//go:build linux && (amd64 || arm64 || (riscv64 && !tinygo && !wago_target_tinygo))
 
 package runtime
 
@@ -51,21 +51,15 @@ func mmapRWReserve(n int) ([]byte, error) {
 func mmapCodeRW(n int) ([]byte, error) { return mmapRW(n) }
 
 func protectCodeRX(mem []byte) error {
-	return syscall.Mprotect(mem, syscall.PROT_READ|syscall.PROT_EXEC)
+	if err := syscall.Mprotect(mem, syscall.PROT_READ|syscall.PROT_EXEC); err != nil {
+		return err
+	}
+	return synchronizeExecutableCode(mem)
 }
 
 // mmapExec uses W^X: allocate RW, copy, then flip to R-X.
 func mmapExec(code []byte) ([]byte, error) {
-	mem, err := mmapRW(len(code))
-	if err != nil {
-		return nil, err
-	}
-	copy(mem, code)
-	if err := protectCodeRX(mem); err != nil {
-		_ = syscall.Munmap(mem)
-		return nil, err
-	}
-	return mem, nil
+	return mmapExecWith(code, mmapRW, protectCodeRX, munmap)
 }
 
 func munmap(b []byte) error {

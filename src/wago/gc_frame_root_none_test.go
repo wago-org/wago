@@ -27,8 +27,8 @@ func TestGCFrameRootPlanValidationAnalysisParity(t *testing.T) {
 				t.Fatal(err)
 			}
 			var legacyDiagnostic, analysisDiagnostic string
-			legacy := newGCFrameRootPlan(tc.m, true, &legacyDiagnostic, nil)
-			fromAnalysis := newGCFrameRootPlan(tc.m, true, &analysisDiagnostic, &analysis)
+			legacy := newGCFrameRootPlan(tc.m, true, true, &legacyDiagnostic, nil)
+			fromAnalysis := newGCFrameRootPlan(tc.m, true, true, &analysisDiagnostic, &analysis)
 			if legacyDiagnostic != analysisDiagnostic || !reflect.DeepEqual(legacy, fromAnalysis) {
 				t.Fatalf("root plans differ:\nlegacy:   %#v (%q)\nanalysis: %#v (%q)", legacy, legacyDiagnostic, fromAnalysis, analysisDiagnostic)
 			}
@@ -82,7 +82,7 @@ func gcFrameRootNoneModule(tb testing.TB, functions int) *wasm.Module {
 func TestGCFrameRootPlanOmitsNonCollectingFunction(t *testing.T) {
 	m := gcFrameRootNoneModule(t, 2)
 	var diagnostic string
-	plan := newGCFrameRootPlan(m, true, &diagnostic, nil)
+	plan := newGCFrameRootPlan(m, true, true, &diagnostic, nil)
 	if plan == nil || diagnostic != "" {
 		t.Fatalf("module root plan = %+v, diagnostic = %q", plan, diagnostic)
 	}
@@ -97,12 +97,82 @@ func TestGCFrameRootPlanOmitsNonCollectingFunction(t *testing.T) {
 	}
 }
 
+func TestGCFrameRootPlanOmitsTailOnlyCaller(t *testing.T) {
+	binary := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x0b}),
+			wasmtest.Code([]byte{0x10, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x12, 0x00, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var analysis wasm.ValidatedModuleAnalysis
+	if err = wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, &analysis); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name     string
+		analysis *wasm.ValidatedModuleAnalysis
+	}{
+		{name: "decoded"},
+		{name: "validated", analysis: &analysis},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var diagnostic string
+			plan := newGCFrameRootPlan(m, true, true, &diagnostic, tc.analysis)
+			if plan == nil || diagnostic != "" {
+				t.Fatalf("module root plan = %+v, diagnostic = %q", plan, diagnostic)
+			}
+			if got := plan.Function(0); got != nil {
+				t.Fatalf("leaf root plan = %+v, want nil", got)
+			}
+			if got := plan.Function(1); got == nil || !got.Candidate || !got.Exact || got.CallMaskCount() != 1 {
+				t.Fatalf("ordinary caller root plan = %+v, want one returning call", got)
+			}
+			if got := plan.Function(2); got != nil {
+				t.Fatalf("tail-only caller root plan = %+v, want nil", got)
+			}
+		})
+	}
+}
+
+func TestGCFrameRootPlanRetainsImportedTailBridge(t *testing.T) {
+	imported := append(append(wasmtest.Name("env"), wasmtest.Name("tail")...), byte(wasm.ExternFunc), 0x00)
+	binary := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(imported)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x12, 0x00, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var analysis wasm.ValidatedModuleAnalysis
+	if err = wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, &analysis); err != nil {
+		t.Fatal(err)
+	}
+	var diagnostic string
+	plan := newGCFrameRootPlan(m, true, true, &diagnostic, &analysis)
+	if plan == nil || diagnostic != "" {
+		t.Fatalf("module root plan = %+v, diagnostic = %q", plan, diagnostic)
+	}
+	if got := plan.Function(0); got == nil || !got.Candidate || !got.Exact {
+		t.Fatalf("import-tail bridge root plan = %+v, want exact candidate", got)
+	}
+}
+
 func TestGCFrameRootPlanDiagnosticIsSeparateFailureState(t *testing.T) {
 	diagnostic := "stale"
-	if plan := newGCFrameRootPlan(nil, false, &diagnostic, nil); plan != nil || diagnostic != "" {
+	if plan := newGCFrameRootPlan(nil, false, false, &diagnostic, nil); plan != nil || diagnostic != "" {
 		t.Fatalf("disabled root plan = %+v, diagnostic = %q", plan, diagnostic)
 	}
-	if plan := newGCFrameRootPlan(nil, true, &diagnostic, nil); plan != nil || diagnostic == "" {
+	if plan := newGCFrameRootPlan(nil, true, true, &diagnostic, nil); plan != nil || diagnostic == "" {
 		t.Fatalf("invalid root plan = %+v, diagnostic = %q", plan, diagnostic)
 	}
 }
@@ -135,12 +205,12 @@ func TestGCFrameRootPlanSmallLocalPolicy(t *testing.T) {
 		return m
 	}
 
-	narrow := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit), true, nil, nil).Function(0)
+	narrow := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit), true, true, nil, nil).Function(0)
 	if narrow == nil || narrow.Conservative || len(narrow.Locals) != 0 || narrow.AllocationMaskCount() != 1 {
 		t.Fatalf("small native root plan = %+v, want exact compaction of dead locals", narrow)
 	}
 
-	wide := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit+1), true, nil, nil).Function(0)
+	wide := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit+1), true, true, nil, nil).Function(0)
 	if wide == nil || wide.Conservative || len(wide.Locals) != 0 || wide.AllocationMaskCount() != 1 {
 		t.Fatalf("wide root plan = %+v, want exact compaction of dead locals", wide)
 	}
@@ -166,7 +236,7 @@ func BenchmarkGCFrameRootPlanSingleFunction(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {
-				gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil, nil)
+				gcFrameRootPlanSink = newGCFrameRootPlan(m, true, true, nil, nil)
 			}
 		})
 	}
@@ -177,7 +247,7 @@ func BenchmarkGCFrameRootPlanManyNonCollectingFunctions(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil, nil)
+		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, true, nil, nil)
 	}
 }
 
@@ -289,6 +359,6 @@ func BenchmarkGCFrameRootPlanManyCollectingFunctions(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil, nil)
+		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, true, nil, nil)
 	}
 }

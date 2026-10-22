@@ -1,0 +1,7 @@
+//go:build !linux || !riscv64 || tinygo || wago_target_tinygo
+
+package wago
+
+func rv64GCArrayPackedData(*Compiled) bool               { return false }
+func rv64GCArrayPackedDataExecutionCode(*Compiled) bool  { return false }
+func railshotRestoreGCArrayPackedDataArtifact(*Compiled) {}
