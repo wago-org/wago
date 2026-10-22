@@ -103,6 +103,8 @@ func NewJITDump(w io.Writer, pid uint32, arch string, timestamp uint64) (*JITDum
 		machine = 62
 	case "arm64":
 		machine = 183
+	case "riscv64":
+		machine = 243 // ELF EM_RISCV; emitted RV64 code is little-endian.
 	default:
 		return nil, fmt.Errorf("unsupported jitdump architecture %q", arch)
 	}

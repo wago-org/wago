@@ -57,6 +57,18 @@ func (v *funcValidator) step(in *Instruction) error {
 		return v.popExpect(addr)
 	}
 	switch in.Kind {
+	case InstrI64Add128, InstrI64Sub128, InstrI64MulWideS, InstrI64MulWideU:
+		n := 2
+		if in.Kind == InstrI64Add128 || in.Kind == InstrI64Sub128 {
+			n = 4
+		}
+		for i := 0; i < n; i++ {
+			if err := v.popExpect(I64); err != nil {
+				return err
+			}
+		}
+		v.push(I64)
+		v.push(I64)
 	case InstrUnreachable:
 		v.unreachable()
 	case InstrNop:

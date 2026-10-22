@@ -142,6 +142,16 @@ func (a *Asm) bfm(base32, base64 uint32, rd, rn Reg, immr, imms uint32, w bool) 
 	}
 }
 
+// Bitfield emits UBFM or SBFM with bounded rotation and end-bit fields.
+// The width argument follows the existing immediate-shift convention.
+func (a *Asm) Bitfield(rd, rn Reg, immr, imms uint8, signed, is32 bool) {
+	if signed {
+		a.bfm(0x13000000, 0x93400000, rd, rn, uint32(immr), uint32(imms), is32)
+	} else {
+		a.bfm(0x53000000, 0xD3400000, rd, rn, uint32(immr), uint32(imms), is32)
+	}
+}
+
 // LslImm / LsrImm / AsrImm are the immediate shifts (UBFM/SBFM aliases).
 func (a *Asm) LslImm(rd, rn Reg, sh uint8, w bool) {
 	width := uint32(64)

@@ -265,7 +265,7 @@ func (f *ValidatedFuncFacts) observeSlow(kind InstrKind) {
 	if IsCoreAtomicInstructionKind(kind) {
 		f.Flags |= ValidatedFuncUsesThreads | ValidatedFuncNeedsDetailedAdmission
 	}
-	if kind >= InstrV128Load && kind < numInstrKinds {
+	if kind >= InstrV128Load && kind <= InstrI32x4RelaxedDotI8x16I7x16AddS {
 		f.Flags |= ValidatedFuncUsesSIMD
 	}
 	if kind >= InstrStringConst && kind <= InstrStringEncodeWtf8Array {

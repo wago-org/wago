@@ -1,4 +1,4 @@
-//go:build (amd64 || arm64) && !tinygo
+//go:build (amd64 || arm64 || (linux && riscv64)) && !tinygo
 
 package wago
 
@@ -39,9 +39,9 @@ func TestSharedScalarJoinResultLocalAlias(t *testing.T) {
 			}
 			code := append([]byte{1, 2, result}, body...)
 			module := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(ft.Params, ft.Results))), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(code))), code...))))
-			for _, regABI := range []bool{false, true} {
+			for _, regABI := range sharedScalarTestABIModes() {
 				t.Run(fmt.Sprintf("%s/wide=%v/regABI=%v", tc.name, wide, regABI), func(t *testing.T) {
-					c, err := Compile(NewRuntimeConfig().WithOptimization("reg-abi", regABI), module)
+					c, err := Compile(sharedScalarTestConfig(regABI), module)
 					if err != nil {
 						t.Fatal(err)
 					}

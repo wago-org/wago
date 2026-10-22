@@ -1,4 +1,4 @@
-//go:build (amd64 || arm64) && !tinygo
+//go:build (amd64 || arm64 || (linux && riscv64)) && !tinygo
 
 package wago
 
@@ -41,9 +41,9 @@ func TestSharedScalarZeroPoolVersionsAndJoins(t *testing.T) {
 			code := []byte{2, 2, 0x7f, 2, 0x7e}
 			code = append(code, tc.body...)
 			module := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{typ}))), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(code))), code...))))
-			for _, regABI := range []bool{false, true} {
+			for _, regABI := range sharedScalarTestABIModes() {
 				t.Run(fmt.Sprintf("%s/wide=%v/regABI=%v", tc.name, wide, regABI), func(t *testing.T) {
-					c, err := Compile(NewRuntimeConfig().WithOptimization("reg-abi", regABI), module)
+					c, err := Compile(sharedScalarTestConfig(regABI), module)
 					if err != nil {
 						t.Fatal(err)
 					}

@@ -26,7 +26,8 @@ func TestImportedFuncrefRetentionDiscoversRootsBeforeTransfer(t *testing.T) {
 				defer rt.Close()
 				foreignModule := mustCompileWat(foreignRuntime, t, `(module
 				(func $target (export "target") (result i32) (i32.const 73))
-				(elem declare func $target))`)
+				(elem declare func $target)
+				(func (result funcref) (ref.func $target)))`)
 				foreign, err := foreignRuntime.Instantiate(context.Background(), foreignModule)
 				if err != nil {
 					t.Fatal(err)
@@ -39,7 +40,8 @@ func TestImportedFuncrefRetentionDiscoversRootsBeforeTransfer(t *testing.T) {
 				ownerModule := mustCompileWat(rt, t, `(module
 				(import "env" "foreign" (func $foreign (result i32)))
 				(func $local (export "local") (result i32) (i32.const 19))
-				(elem declare func $foreign $local))`)
+				(elem declare func $foreign $local)
+				(func (result funcref) (ref.func $local)))`)
 				owner, err := rt.Instantiate(context.Background(), ownerModule, WithImports(testImports("env.foreign", export)))
 				if err != nil {
 					t.Fatal(err)

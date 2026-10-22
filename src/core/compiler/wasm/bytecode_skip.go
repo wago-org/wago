@@ -382,26 +382,33 @@ func classifyFBBytes(r *reader, imm *InstructionImmediate) error {
 		return err
 	case 20, 21:
 		imm.Kind = InstrRefTest
-		return skipHeapTypeBytes(r)
+		imm.HeapType, err = decodeHeapType(r)
+		imm.HasHeapType = err == nil
+		return err
 	case 22, 23:
 		imm.Kind = InstrRefCast
-		return skipRefHeapTypeBytes(r)
+		imm.Cast.SourceNullable, imm.HeapType, err = decodeRefHeapType(r)
+		imm.HasHeapType = err == nil
+		return err
 	case 24, 25:
 		if sub == 24 {
 			imm.Kind = InstrBrOnCast
 		} else {
 			imm.Kind = InstrBrOnCastFail
 		}
-		if _, err := decodeCastOp(r); err != nil {
+		if imm.Cast, err = decodeCastOp(r); err != nil {
 			return err
 		}
 		if imm.Index, err = r.u32(); err != nil {
 			return err
 		}
-		if err := skipHeapTypeBytes(r); err != nil {
+		if imm.HeapType, err = decodeHeapType(r); err != nil {
 			return err
 		}
-		return skipHeapTypeBytes(r)
+		imm.HasHeapType = true
+		imm.HeapType2, err = decodeHeapType(r)
+		imm.HasHeapType2 = err == nil
+		return err
 	case 35, 36:
 		imm.Kind = InstrRefCastDescEq
 		return skipRefHeapTypeBytes(r)
@@ -508,14 +515,6 @@ func classifyFDBytes(r *reader, imm *InstructionImmediate, widths memargWidths) 
 		_, err := r.bytes(16)
 		if err != nil {
 			return err
-		}
-		if sub == 13 {
-			start := r.pos - 16
-			for i, b := range r.data[start:r.pos] {
-				if b >= 32 {
-					return &DecodeError{Code: ErrInvalidInstruction, Offset: start + i}
-				}
-			}
 		}
 		return nil
 	}

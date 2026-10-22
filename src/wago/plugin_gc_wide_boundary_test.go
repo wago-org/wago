@@ -264,6 +264,30 @@ func TestGCWideDynamicCallRefRetainsRegisterABIProof(t *testing.T) {
 	}
 	defer compiled.Close()
 	admission := compiled.GCNativeRootAdmission()
+	if compiledArchitecture == 4 {
+		if !admission.Required || !admission.Exact || admission.Safepoints == 0 || admission.Callsites == 0 {
+			t.Fatalf("wide dynamic call_ref root admission = %+v", admission)
+		}
+		for _, artifact := range []bool{false, true} {
+			c := compiled
+			if artifact {
+				c = publicArtifactRoundTrip(t, compiled)
+				defer c.Close()
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := in.Invoke("run"); err != nil {
+				in.Close()
+				t.Fatal(err)
+			}
+			if err := in.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return
+	}
 	if !admission.Required || admission.Exact || !strings.Contains(admission.Reason, "unsupported native call or frame shape") {
 		t.Fatalf("wide dynamic call_ref root admission = %+v", admission)
 	}
