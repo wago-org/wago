@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -711,5 +712,21 @@ func TestRelativeReleaseAgeUsesCompactElapsedUnits(t *testing.T) {
 		if got := relativeReleaseAge(tt.published, now); got != tt.want {
 			t.Fatalf("relativeReleaseAge(%s) = %q, want %q", tt.published, got, tt.want)
 		}
+	}
+}
+
+func TestRISCV64InstallBuildSelection(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "riscv64" {
+		t.Skip("native riscv64 build selection")
+	}
+	if _, err := requestedBuild("tiny"); err == nil {
+		t.Fatal("TinyGo install accepted on riscv64")
+	}
+	if got := availableBuilds(); !slices.Equal(got, []wagopaths.Build{wagopaths.BuildNormal}) {
+		t.Fatalf("available builds = %v", got)
+	}
+	dir := t.TempDir()
+	if err := installRunnerPayload("canary", wagopaths.ProfileStandard, wagopaths.BuildTiny, filepath.Join(dir, "runtime"), false, nil); err == nil || !strings.Contains(err.Error(), "--build normal") {
+		t.Fatalf("unsupported install did not fail before discovery: %v", err)
 	}
 }

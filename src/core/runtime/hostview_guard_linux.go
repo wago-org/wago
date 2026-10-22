@@ -1,4 +1,4 @@
-//go:build wago_guardpage && linux && (amd64 || arm64)
+//go:build wago_guardpage && linux && (amd64 || arm64 || riscv64)
 
 package runtime
 

@@ -148,7 +148,7 @@ func (c *Collector) reserveNativeHandles(batch int) {
 // path. Array chunks therefore add no cursor checks or reserved-byte gaps to the
 // established native struct hot path.
 func (c *Collector) PrepareNativeStructAllocation(minObjectBytes uint32) bool {
-	return c.prepareNativeStructAllocation(minObjectBytes, nativeStructHandleBatchSize)
+	return c.prepareNativeStructAllocation(minObjectBytes, 0)
 }
 
 // Dead charges consume no identity. One reserved handle supplies the existing
@@ -166,6 +166,12 @@ func (c *Collector) prepareNativeStructAllocation(minObjectBytes uint32, batch i
 		return true
 	}
 	c.discardNativeStructHandles()
+	if batch == 0 {
+		batch = int(c.structBatch)
+		if batch == 0 {
+			batch = nativeStructHandleBatchSize
+		}
+	}
 	c.reserveNativeHandles(batch)
 	return true
 }
@@ -275,6 +281,7 @@ func (c *Collector) prepareNativeLargeArrayAllocation(objectBytes uint32) bool {
 		e.setYoungAge(0)
 	}
 	h := c.newHandle(handleEntry{})
+	c.nativeLargeArrayNurseryIndex = len(c.nurseryHandles)
 	c.nurseryHandles = append(c.nurseryHandles, h)
 	s.Epoch = c.nativeLargeArrayEpoch
 	s.Cursor = 0
@@ -302,12 +309,19 @@ func (c *Collector) discardNativeLargeArrayAllocation() {
 	unused := s.Count != 0 && s.Cursor == 0 && s.Handle != 0 && int(s.Handle) < len(c.handles) && c.handles[s.Handle].space == spaceFree
 	if unused {
 		c.freeHandles = append(c.freeHandles, s.Handle)
-		for i, h := range c.nurseryHandles {
-			if h == s.Handle {
-				copy(c.nurseryHandles[i:], c.nurseryHandles[i+1:])
-				c.nurseryHandles = c.nurseryHandles[:len(c.nurseryHandles)-1]
-				break
+		index := c.nativeLargeArrayNurseryIndex
+		if index < 0 || index >= len(c.nurseryHandles) || c.nurseryHandles[index] != s.Handle {
+			index = -1
+			for i, h := range c.nurseryHandles {
+				if h == s.Handle {
+					index = i
+					break
+				}
 			}
+		}
+		if index >= 0 {
+			copy(c.nurseryHandles[index:], c.nurseryHandles[index+1:])
+			c.nurseryHandles = c.nurseryHandles[:len(c.nurseryHandles)-1]
 		}
 		space := spaceKind((s.ChunkBump >> 16) & 0xff)
 		if space == spaceNursery {
@@ -367,6 +381,27 @@ func (c *Collector) discardNativeStructHandles() {
 	// Array chunks retain immediate accounting in generated code.
 	if s.ChunkEnd == 0 {
 		c.stats.Allocations += uint64(used)
+		// Mixed allocation helpers may cancel a 512-handle batch after just one
+		// publication. Bound the next reservation by observed use. Require a run
+		// of full batches before doubling, so short bursts cannot regrow a large
+		// reservation between mixed allocations. Long struct-only runs recover.
+		// One-handle dead-object proofs and array chunks supply no feedback.
+		if end > 1 {
+			if used == end {
+				if end < uint32(nativeStructHandleBatchSize) {
+					c.structBatchFull++
+					if c.structBatchFull == 32 {
+						c.structBatch = uint16(min(end*2, uint32(nativeStructHandleBatchSize)))
+						c.structBatchFull = 0
+					}
+				}
+			} else {
+				c.structBatchFull = 0
+				if used < end/4 {
+					c.structBatch = uint16(min(max(used*4, 8), uint32(nativeStructHandleBatchSize)))
+				}
+			}
+		}
 	}
 	canceled := false
 	if end > used {

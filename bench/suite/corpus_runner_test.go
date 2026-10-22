@@ -63,6 +63,10 @@ func corpusStages(m corpusModule) []string {
 
 func runCorpusChild(t *testing.T, m corpusModule, stage, export, bounds string) {
 	t.Helper()
+	timeout, err := corpusChildTimeout()
+	if err != nil {
+		t.Fatal(err)
+	}
 	id := m.ID
 	want := corpusExpectedCompletion(t, m, stage, export, bounds)
 	cmd := exec.Command(os.Args[0], "-test.run=^TestCorpusChild$", "-test.v", "-wago.corpus="+*corpusSelector)
@@ -80,7 +84,6 @@ func runCorpusChild(t *testing.T, m corpusModule, stage, export, bounds string) 
 	}
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
-	const timeout = 15 * time.Second
 	select {
 	case err := <-done:
 		if err != nil {
@@ -97,6 +100,22 @@ func runCorpusChild(t *testing.T, m corpusModule, stage, export, bounds string) 
 	if err := checkCorpusCompletion(output.String(), want); err != nil {
 		t.Fatalf("corpus child completion: %v\n%s", err, output.String())
 	}
+}
+
+// CI sets a per-child budget independently of the whole-suite Go test timeout.
+// Keep overrides bounded so a typo cannot effectively disable the watchdog.
+func corpusChildTimeout() (time.Duration, error) {
+	const fallback = 15 * time.Second
+	const maximum = time.Minute
+	raw, set := os.LookupEnv("WAGO_CORPUS_TIMEOUT")
+	if !set {
+		return fallback, nil
+	}
+	timeout, err := time.ParseDuration(raw)
+	if err != nil || timeout <= 0 || timeout > maximum {
+		return 0, fmt.Errorf("invalid WAGO_CORPUS_TIMEOUT %q: want a duration > 0 and <= %s", raw, maximum)
+	}
+	return timeout, nil
 }
 
 func TestCorpusChild(t *testing.T) {

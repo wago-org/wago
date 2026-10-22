@@ -503,7 +503,10 @@ jobs:
 
       - name: Diagnostic dead-code elimination
         if: matrix.runtime && matrix.goos == 'linux' && matrix.goarch == 'amd64'
-        run: scripts/check-diagnostic-dce.sh
+        run: |
+          scripts/check-diagnostic-dce.sh
+          scripts/check-riscv64-diagnostics.sh
+          go test -tags=wago_precompiled ./src/wago -run '^TestPrecompiledRejectsSourceBeforeDecode$' -count=1
 
       - name: Checked compiler tests on Windows
         if: matrix.runtime && runner.os == 'Windows'
