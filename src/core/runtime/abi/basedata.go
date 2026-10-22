@@ -25,21 +25,35 @@ const (
 	// complete resumable register prefix ends immediately before hcTrampoline.
 	ARM64SyncHostCallSavedLROffset = 96
 	ARM64SyncHostCallSavedBytes    = 176
-	AMD64CallReturnAddressBytes    = 8
+	// RV64SyncHostCallSavedBytes is the complete guest park prefix through the
+	// bridge SP. Host arguments and results follow this prefix and must not be
+	// restored when a parked GC activation is removed.
+	RV64SyncHostCallSavedBytes  = 208
+	AMD64CallReturnAddressBytes = 8
+	// RV64 cold traps restore the production bridge stack and continuation.
+	// Offset 16 is occupied by the memory maximum-pages cache.
+	RV64TrapContinuationOffset = 32
+	RV64TrapReentrySPOffset    = 24
+	// RV64NativeContextOffset reserves the legacy spill scratch word for the
+	// stable activation context identity. RV64 spills live on its framed stack.
+	RV64NativeContextOffset = 48
 )
 
 // Basedata offsets are byte distances below the linear-memory base.
 const (
+	LinMemCurrentPagesOffset = 4
+	LinMemLegacyBytesOffset  = 8
+	LinMemMaxPagesOffset     = 12
 	// MemoryDirPtrOffset points at indexed-memory entries. Ordinary memory-0
 	// accesses keep the direct RBX/basedata hot path; memory.grow also consults
-	// entry 0 when an optional per-instance quota directory is present. Offset 64
-	// was the unused WARP memory-helper slot.
+	// entry 0 when an optional per-instance quota directory is present.
 	// SharedNotifyPendingOffset aliases the unused directory cell in a shared
 	// backing only. Shared memories always have separate instance control;
 	// the cell publishes whether a wait is registering or already queued,
 	// requiring notify to acquire the queue mutex.
 	SharedNotifyPendingOffset = 64
 	MemoryDirPtrOffset        = 64
+	StackFenceOffset          = 72
 	MemoryDirEntryBytes       = 24
 	MemoryDirBaseOffset       = 0
 	// Directory sizes are entry/selected-grow snapshots. Native indexed size

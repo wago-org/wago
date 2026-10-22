@@ -70,13 +70,13 @@ func (c *Collector) Verify(roots RootSet) error {
 	if rootErr != nil {
 		return rootErr
 	}
-	for _, r := range c.globalSlots {
-		if !validRootRef(c, r) {
+	for i, r := range c.globalSlots {
+		if c.persistentRootIsStrong(SlotGlobal, uint32(i)) && !validRootRef(c, r) {
 			return errors.New("gc: invalid global ref")
 		}
 	}
-	for _, r := range c.tableSlots {
-		if !validRootRef(c, r) {
+	for i, r := range c.tableSlots {
+		if c.persistentRootIsStrong(SlotTable, uint32(i)) && !validRootRef(c, r) {
 			return errors.New("gc: invalid table ref")
 		}
 	}
@@ -161,6 +161,11 @@ func (c *Collector) verifyScanObjectRefs(h uint32, visit func(Ref)) error {
 	d, err := c.desc(typeID)
 	if err != nil {
 		return err
+	}
+	if source := c.objectEdgeSource(); source != nil {
+		for i, n := uint32(0), source.ObjectEdgeCount(r); i < n; i++ {
+			visit(source.ObjectEdgeAt(r, i))
+		}
 	}
 	if d.Kind == KindStruct {
 		for _, field := range d.Fields {
@@ -374,6 +379,13 @@ func (c *Collector) verifyEdges(r Ref, d TypeDesc) error {
 			return errors.New("gc: live object points to freed object")
 		}
 		return nil
+	}
+	if source := c.objectEdgeSource(); source != nil {
+		for i, n := uint32(0), source.ObjectEdgeCount(r); i < n; i++ {
+			if err := check(source.ObjectEdgeAt(r, i)); err != nil {
+				return err
+			}
+		}
 	}
 	b := c.bytes(r)
 	hdr := c.header(r)

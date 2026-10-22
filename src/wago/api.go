@@ -3,6 +3,7 @@ package wago
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -21,7 +22,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 type GCConfig = gc.Config
@@ -520,6 +521,8 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 	}
 	exactExternrefReadWrite := stagedTwoLocalExternrefReadWriteShape(m)
 	exactExternrefFill := stagedTwoLocalExternrefFillShape(m)
+	exactIndexedIndirect := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && (stagedOwnedTwoTable32IndirectShape(m) || stagedOwnedTwoTable64IndirectCallShape(m))
+	exactIndexedTail := goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64" && stagedOwnedTwoTable64IndirectTailShape(m)
 	if !exactExternrefReadWrite && !exactExternrefFill {
 		for i := range m.Tables {
 			if !m.Tables[i].Type.Limits.HasMax {
@@ -533,6 +536,12 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 		}
 		if exactExternrefFill {
 			return k == wasm.InstrTableGet || k == wasm.InstrTableFill
+		}
+		if exactIndexedIndirect && k == wasm.InstrCallIndirect {
+			return true
+		}
+		if exactIndexedTail && k == wasm.InstrReturnCallIndirect {
+			return true
 		}
 		ok, _ := stagedTwoLocalTableOperation(k)
 		return ok
@@ -603,6 +612,9 @@ func stagedLocalFuncrefExceptionPayload(m *wasm.Module) (funcIndex uint32, typeI
 }
 
 func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls bool) error {
+	if railshotExceptionHandlingSource(m) {
+		return nil
+	}
 	const maxLocalTags = 9
 	const maxTryTables = 24
 	const maxCatches = 8
@@ -1090,6 +1102,10 @@ func narrowFrontendFeatures(features *frontend.Features, requiredByModule CoreFe
 }
 
 func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features, instructions map[instructionKey]*registeredInstruction) (*Compiled, error) {
+	if !sourceCompilationEnabled {
+		return nil, wrapContextError("compile", errors.New("source compilation is unavailable in a precompiled runtime"))
+	}
+	railshotConfigureFrontendTable64(&features)
 	if cfg.maxModuleBytes != 0 && uint64(len(wasmBytes)) > cfg.maxModuleBytes {
 		return nil, &wruntime.ResourceLimitError{
 			Resource:  "module bytes",
@@ -1126,6 +1142,60 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		return nil, wrapContextError("validate", err)
 	}
 	requirements := analyzeModuleRequirementsWithValidation(m, &validationAnalysis)
+	if err := railshotAdmitSource(wasmBytes, m); err != nil {
+		return nil, wrapContextError("compile", err)
+	}
+	exactI31CoreSource := railshotI31CoreSource(wasmBytes)
+	exactGCRefEqSource := railshotGCRefEqSource(wasmBytes)
+	exactGCRefTestTableSource := railshotGCRefTestTableSource(wasmBytes)
+	exactGCRefTestConcreteSource := railshotGCRefTestConcreteSource(wasmBytes)
+	exactGCRefTestAbstractSource := railshotGCRefTestAbstractSource(wasmBytes)
+	exactGCExternSource := railshotGCExternSource(wasmBytes)
+	exactGCRefCastAbstractSource := railshotGCRefCastAbstractSource(wasmBytes)
+	exactGCRefCastConcreteSource := railshotGCRefCastConcreteSource(wasmBytes)
+	exactGCBrOnCastAbstractSource := railshotGCBrOnCastAbstractSource(wasmBytes)
+	exactGCBrOnCastFailAbstractSource := railshotGCBrOnCastFailAbstractSource(wasmBytes)
+	exactGCBrOnCastConcreteSource := railshotGCBrOnCastConcreteSource(wasmBytes)
+	exactGCBrOnCastFailConcreteSource := railshotGCBrOnCastFailConcreteSource(wasmBytes)
+	exactGCBrOnCastNullabilitySource := railshotGCBrOnCastNullabilitySource(wasmBytes)
+	exactGCBrOnCastFailNullabilitySource := railshotGCBrOnCastFailNullabilitySource(wasmBytes)
+	gcTypeSubtypingDeclarationsSourceVariant := railshotGCTypeSubtypingDeclarationsSource(wasmBytes)
+	gcTypeSubtypingRecursiveFunctionsSourceVariant := railshotGCTypeSubtypingRecursiveFunctionsSource(wasmBytes)
+	gcTypeSubtypingRefFuncGlobalsSourceVariant := railshotGCTypeSubtypingRefFuncGlobalsSource(wasmBytes)
+	exactGCTypeSubtypingRuntimeCallCastSource := railshotGCTypeSubtypingRuntimeCallCastSource(wasmBytes)
+	exactGCTypeSubtypingRuntimeFinalityCallCastSource := railshotGCTypeSubtypingRuntimeFinalityCallCastSource(wasmBytes)
+	exactGCTypeSubtypingRuntimeTypedTableCallSource := railshotGCTypeSubtypingRuntimeTypedTableCallSource(wasmBytes)
+	gcTypeSubtypingRefTestSingleSourceVariant := railshotGCTypeSubtypingRefTestSingleSource(wasmBytes)
+	gcTypeSubtypingLinkSourceVariant := railshotGCTypeSubtypingLinkSource(wasmBytes)
+	gcTypeSubtypingFinalityLinkSourceVariant := railshotGCTypeSubtypingFinalityLinkSource(wasmBytes)
+	gcTypeSubtypingStructLinkSourceVariant := railshotGCTypeSubtypingStructLinkSource(wasmBytes)
+	gcTypeSubtypingStructProjectionLinkSourceVariant := railshotGCTypeSubtypingStructProjectionLinkSource(wasmBytes)
+	gcTypeSubtypingStructMismatchLinkSourceVariant := railshotGCTypeSubtypingStructMismatchLinkSource(wasmBytes)
+	gcTypeSubtypingIndependentStructLinkSourceVariant := railshotGCTypeSubtypingIndependentStructLinkSource(wasmBytes)
+	gcTypeSubtypingExtendedProjectionLinkSourceVariant := railshotGCTypeSubtypingExtendedProjectionLinkSource(wasmBytes)
+	gcTypeSubtypingDuplicateRecursiveLinkSourceVariant := railshotGCTypeSubtypingDuplicateRecursiveLinkSource(wasmBytes)
+	gcTypeSubtypingExtendedRecursiveLinkSourceVariant := railshotGCTypeSubtypingExtendedRecursiveLinkSource(wasmBytes)
+	gcTypeSubtypingCrossGroupMismatchLinkSourceVariant := railshotGCTypeSubtypingCrossGroupMismatchLinkSource(wasmBytes)
+	gcTypeSubtypingTransitiveMismatchLinkSourceVariant := railshotGCTypeSubtypingTransitiveMismatchLinkSource(wasmBytes)
+	exactGCTypeSubtypingNonFlatExportSource := railshotGCTypeSubtypingNonFlatExportSource(wasmBytes)
+	exactGCRootedScalarSource := railshotGCRootedScalarSource(wasmBytes)
+	exactGCStructGetSource := railshotGCStructGetSource(wasmBytes)
+	exactGCStructMutationSource := railshotGCStructMutationSource(wasmBytes)
+	exactGCStructNullSource := railshotGCStructNullSource(wasmBytes)
+	exactGCStructPackedSource := railshotGCStructPackedSource(wasmBytes)
+	exactGCStructBasicSource := railshotGCStructBasicSource(wasmBytes)
+	exactGCStructNumericGlobalsSource := railshotGCStructNumericGlobalsSource(wasmBytes)
+	exactGCArrayLocalSource := compiledArchitecture != 4 && railshotGCArrayLocalSource(wasmBytes)
+	exactGCArrayUniformSource := compiledArchitecture != 4 && railshotGCArrayUniformSource(wasmBytes)
+	exactGCArrayFixedLocalSource := compiledArchitecture != 4 && railshotGCArrayFixedLocalSource(wasmBytes)
+	exactGCArrayFixedOfficialSource := compiledArchitecture != 4 && railshotGCArrayFixedOfficialSource(wasmBytes)
+	exactGCArrayDefaultOfficialSource := compiledArchitecture != 4 && railshotGCArrayDefaultOfficialSource(wasmBytes)
+	exactGCArrayPackedDataSource := compiledArchitecture != 4 && railshotGCArrayPackedDataSource(wasmBytes)
+	exactGCArrayReferenceSource := compiledArchitecture != 4 && railshotGCArrayReferenceSource(wasmBytes)
+	exactGCArrayInitElemSource := compiledArchitecture != 4 && railshotGCArrayInitElemSource(wasmBytes)
+	exactGCArrayInitDataSource := compiledArchitecture != 4 && railshotGCArrayInitDataSource(wasmBytes)
+	exactGCArrayFillSource := compiledArchitecture != 4 && railshotGCArrayFillSource(wasmBytes)
+	exactGCArrayCopySource := compiledArchitecture != 4 && railshotGCArrayCopySource(wasmBytes)
 	requiredByModule := requirements.features
 	narrowFrontendFeatures(&features, requiredByModule)
 	if requiredByModule.IsEnabled(CoreFeatureThreads) {
@@ -1152,14 +1222,19 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		functionIndex++
 	}
 	customInstructions := resolveInstructionLowerings(m, instructions)
-	atomicWaitHelpers := requirements.atomicWaitHelpers
+	if !exactGCRootedScalarSource && len(customInstructions) != 0 {
+		exactGCRootedScalarSource = railshotGCRootedScalarCustomModule(m, customInstructions)
+	}
+	atomicWaitHelpers := requirements.atomicWaitHelpers || threadedGrowthHelpers(m)
 	structuralProduct := stagedStructuralTypeProduct(0)
 	gcTypeSubtypingProduct := stagedGCTypeSubtypingProduct(0)
 	gcStructProduct := stagedGCStructProduct(0)
 	gcArrayProduct := stagedGCArrayProduct(0)
 	gcI31Product := stagedGCI31Product(0)
 	nullReferenceProduct := false
-	if features.StructuralTypeProducts && hasStructuralHeapTypes(m) {
+	metadataOnlyTypes := railshotTypeDeclarationsSource(m) || railshotPrimitiveFunctionGraphSource(m)
+	generalI31Source := compiledArchitecture == 4 && railshotGeneralI31Module(m) || supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && generalCollectorFreeI31Module(m)
+	if features.StructuralTypeProducts && hasStructuralHeapTypes(m) && !metadataOnlyTypes && !exactGCRootedScalarSource {
 		// Structural execution is shape-proven; historical suite hashes no longer
 		// define the product boundary now that Core 3 support is complete.
 		if product, shapeErr := stagedStructuralTypeProductShape(m); shapeErr == nil {
@@ -1169,39 +1244,76 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			structuralProduct = product
 		}
 	}
-	if features.GCTypeSubtypingProducts && requiredByModule.IsEnabled(CoreFeatureGC) {
+	if features.GCTypeSubtypingProducts && requiredByModule.IsEnabled(CoreFeatureGC) && !metadataOnlyTypes && !exactGCRootedScalarSource {
 		// Core 3 type-subtyping execution is no longer tied to hashes of the
 		// historical spec fixtures. The structural classifier remains deliberately
 		// strict because it selects the collector-free function-identity lowering,
 		// but any module with that proven shape receives the same semantics.
 		if product, shapeErr := stagedGCTypeSubtypingProductShape(m); shapeErr == nil {
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCTypeSubtypingDeclarations && gcTypeSubtypingDeclarationsSourceVariant != 0 || product == stagedGCTypeSubtypingRecursiveFunctions && gcTypeSubtypingRecursiveFunctionsSourceVariant != 0 || product == stagedGCTypeSubtypingRefFuncGlobals && gcTypeSubtypingRefFuncGlobalsSourceVariant != 0 || product == stagedGCTypeSubtypingRuntimeCallCast && exactGCTypeSubtypingRuntimeCallCastSource || product == stagedGCTypeSubtypingRuntimeFinalityCallCast && exactGCTypeSubtypingRuntimeFinalityCallCastSource || product == stagedGCTypeSubtypingRuntimeTypedTableCall && exactGCTypeSubtypingRuntimeTypedTableCallSource || (product == stagedGCTypeSubtypingRefTestSingle || product == stagedGCTypeSubtypingRefTestMulti || product == stagedGCTypeSubtypingRefTestDirectionFalse) && gcTypeSubtypingRefTestSingleSourceVariant != 0 || (product == stagedGCTypeSubtypingLinkProvider || product == stagedGCTypeSubtypingLinkConsumer) && gcTypeSubtypingLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingFinalityLinkProvider || product == stagedGCTypeSubtypingFinalityLinkConsumer) && gcTypeSubtypingFinalityLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingStructLinkProvider || product == stagedGCTypeSubtypingStructLinkConsumer) && gcTypeSubtypingStructLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingStructProjectionLinkProvider || product == stagedGCTypeSubtypingStructProjectionLinkConsumer) && gcTypeSubtypingStructProjectionLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingStructMismatchLinkProvider || product == stagedGCTypeSubtypingStructMismatchLinkConsumer) && gcTypeSubtypingStructMismatchLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingIndependentStructLinkProvider || product == stagedGCTypeSubtypingIndependentStructLinkConsumer) && gcTypeSubtypingIndependentStructLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingExtendedProjectionLinkProvider || product == stagedGCTypeSubtypingExtendedProjectionLinkConsumer) && gcTypeSubtypingExtendedProjectionLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingDuplicateRecursiveLinkProvider || product == stagedGCTypeSubtypingDuplicateRecursiveLinkConsumer) && gcTypeSubtypingDuplicateRecursiveLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingExtendedRecursiveLinkProvider || product == stagedGCTypeSubtypingExtendedRecursiveLinkConsumer) && gcTypeSubtypingExtendedRecursiveLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingCrossGroupMismatchLinkProvider || product == stagedGCTypeSubtypingCrossGroupMismatchLinkConsumer) && gcTypeSubtypingCrossGroupMismatchLinkSourceVariant != 0 || (product == stagedGCTypeSubtypingTransitiveMismatchLinkProvider || product == stagedGCTypeSubtypingTransitiveMismatchLinkConsumer) && gcTypeSubtypingTransitiveMismatchLinkSourceVariant != 0 || product == stagedGCTypeSubtypingNonFlatExport && exactGCTypeSubtypingNonFlatExportSource) {
 				return nil, fmt.Errorf("compile: unsupported gc/type-subtyping product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcTypeSubtypingProduct = product
 		}
 	}
-	if features.GCStructProducts && gcProductAnalysisNeeded(requiredByModule) {
+	if features.GCStructProducts && !metadataOnlyTypes && gcProductAnalysisNeeded(requiredByModule) && gcTypeSubtypingProduct == 0 {
 		product, ok := stagedGCStructExecutionProduct(wasmBytes)
+		if ok && exactGCRootedScalarSource && (product == stagedGCStructDeclarations || product == stagedGCStructBindings) {
+			// A declaration-only source is carried by the complete rooted graph;
+			// it has no legacy helper image to select or authenticate.
+			product, ok = 0, false
+		}
+		exactStructSource := exactGCRefEqSource || exactGCRefTestTableSource || exactGCRefTestConcreteSource || exactGCRefTestAbstractSource || exactGCExternSource || exactGCRefCastAbstractSource || exactGCRefCastConcreteSource || exactGCBrOnCastAbstractSource || exactGCBrOnCastFailAbstractSource || exactGCBrOnCastConcreteSource || exactGCBrOnCastFailConcreteSource || exactGCBrOnCastNullabilitySource || exactGCBrOnCastFailNullabilitySource || exactGCStructGetSource || exactGCStructMutationSource || exactGCStructNullSource || exactGCStructPackedSource || exactGCStructBasicSource || exactGCStructNumericGlobalsSource
+		if ok && exactGCRootedScalarSource && !exactStructSource && moduleUsesGenericGCStructHelpers(m) {
+			// General lowering and retained metadata must use the same helper ABI.
+			// A legacy product without its source witness cannot select old state.
+			product = stagedGCStructGeneric
+		}
+		if ok && exactGCRootedScalarSource && product == stagedGCStructNamedGets && moduleUsesGenericGCStructHelpers(m) {
+			product = stagedGCStructGeneric
+		}
 		// Validation and initializer requirements already prove whether a GC
 		// instruction can occur; avoid rescanning ordinary function bodies.
 		if !ok && requiredByModule.IsEnabled(CoreFeatureGC) && moduleUsesGenericGCStructHelpers(m) {
 			product, ok = stagedGCStructGeneric, true
 		}
 		if ok {
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCStructGeneric && exactGCRootedScalarSource) && !(product == stagedGCStructRefEq && exactGCRefEqSource) && !(product == stagedGCStructRefTestTable && exactGCRefTestTableSource) && !(product == stagedGCStructRefTestConcrete && exactGCRefTestConcreteSource) && !(product == stagedGCStructRefTestAbstract && exactGCRefTestAbstractSource) && !(product == stagedGCStructExtern && exactGCExternSource) && !(product == stagedGCStructRefCastAbstract && exactGCRefCastAbstractSource) && !(product == stagedGCStructRefCastConcrete && exactGCRefCastConcreteSource) && !(product == stagedGCStructBrOnCastAbstract && exactGCBrOnCastAbstractSource) && !(product == stagedGCStructBrOnCastFailAbstract && exactGCBrOnCastFailAbstractSource) && !(product == stagedGCStructBrOnCastConcrete && exactGCBrOnCastConcreteSource) && !(product == stagedGCStructBrOnCastFailConcrete && exactGCBrOnCastFailConcreteSource) && !(product == stagedGCStructBrOnCastNullability && exactGCBrOnCastNullabilitySource) && !(product == stagedGCStructBrOnCastFailNullability && exactGCBrOnCastFailNullabilitySource) && !(product == stagedGCStructNumericLocal && (exactGCStructGetSource || exactGCStructMutationSource)) && !(product == stagedGCStructNullDereference && exactGCStructNullSource) && !(product == stagedGCStructPacked && exactGCStructPackedSource) && !(product == stagedGCStructBasic && exactGCStructBasicSource) && !(product == stagedGCStructNumericGlobals && exactGCStructNumericGlobalsSource) {
 				return nil, fmt.Errorf("compile: unsupported collector-backed struct product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcStructProduct = product
 		}
 	}
-	if features.GCArrayProducts && gcProductAnalysisNeeded(requiredByModule) && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
+	// The exact RV64 basic checkpoint is a backend admission product even when
+	// the caller enabled GC through the narrower i31 configuration surface.
+	// Its wire and decoded witnesses are independently rechecked by railshot.
+	if exactGCStructBasicSource {
+		gcStructProduct = stagedGCStructBasic
+	}
+	if exactGCStructNumericGlobalsSource {
+		gcStructProduct = stagedGCStructNumericGlobals
+	}
+	if features.GCArrayProducts && !metadataOnlyTypes && gcProductAnalysisNeeded(requiredByModule) && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
 		product, ok := stagedGCArrayExecutionProduct(wasmBytes)
 		if !ok {
 			product, ok = stagedGCArrayOpcodeProduct(m)
 		}
+		// Opcode classification can select an older exact array profile even
+		// for a different module. Fresh rooted admission proves the generic
+		// helper ABI and frame maps for that module; retain exact profiles only
+		// when their independent source proof is present.
+		exactArraySource := exactGCArrayLocalSource || exactGCArrayUniformSource || exactGCArrayFixedLocalSource || exactGCArrayFixedOfficialSource || exactGCArrayDefaultOfficialSource || exactGCArrayPackedDataSource || exactGCArrayReferenceSource || exactGCArrayInitElemSource || exactGCArrayInitDataSource || exactGCArrayFillSource || exactGCArrayCopySource
+		if ok && !exactArraySource && exactGCRootedScalarSource {
+			// Array declarations alone need metadata, not an execution helper.
+			// Include allocating initializers in the opcode proof.
+			if _, usesArrayHelpers := stagedGCArrayOpcodeProduct(m); usesArrayHelpers {
+				product = stagedGCArrayProductGeneric
+			} else {
+				product, ok = 0, false
+			}
+		}
 		if ok {
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !(product == stagedGCArrayProductGeneric && exactGCRootedScalarSource) && !(product == stagedGCArrayProductNumericLocal && exactGCArrayLocalSource) && !(product == stagedGCArrayProductNumericUniform && exactGCArrayUniformSource) && !(product == stagedGCArrayProductNumericFixedLocal && exactGCArrayFixedLocalSource) && !(product == stagedGCArrayProductNumericFixed && exactGCArrayFixedOfficialSource) && !(product == stagedGCArrayProductNumericDefault && exactGCArrayDefaultOfficialSource) && !(product == stagedGCArrayProductPackedData && exactGCArrayPackedDataSource) && !(product == stagedGCArrayProductReferenceElements && exactGCArrayReferenceSource) && !(product == stagedGCArrayProductInitElem && exactGCArrayInitElemSource) && !(product == stagedGCArrayProductInitData && exactGCArrayInitDataSource) && !(product == stagedGCArrayProductBulkFill && exactGCArrayFillSource) && !(product == stagedGCArrayProductBulkCopy && exactGCArrayCopySource) {
 				return nil, fmt.Errorf("compile: unsupported collector-backed array product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcArrayProduct = product
@@ -1209,13 +1321,13 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	if features.GCI31Products && gcProductAnalysisNeeded(requiredByModule) && gcStructProduct != stagedGCStructRefTestAbstract && gcStructProduct != stagedGCStructExtern && gcStructProduct != stagedGCStructRefEq && gcStructProduct != stagedGCStructRefCastAbstract && gcStructProduct != stagedGCStructRefCastConcrete && gcStructProduct != stagedGCStructBrOnCastAbstract && gcStructProduct != stagedGCStructBrOnCastFailAbstract {
 		if product, ok := stagedGCI31ExecutionProduct(wasmBytes); ok {
-			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !exactI31CoreSource {
 				return nil, fmt.Errorf("compile: unsupported i31 product staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 			}
 			gcI31Product = product
 		}
 	}
-	if features.GCI31Products && requiredByModule.IsEnabled(CoreFeatureGC) && gcI31Product == 0 && !moduleHasGCHeapType(m) {
+	if features.GCI31Products && requiredByModule.IsEnabled(CoreFeatureGC) && gcI31Product == 0 && gcTypeSubtypingProduct == 0 && (!moduleHasGCHeapType(m) || generalI31Source) && !metadataOnlyTypes && !railshotPrimitiveFunctionGraphSource(m) && moduleUsesI31Operations(m) {
 		// Immediate i31 execution is complete and does not require a collector.
 		// Prefer the table/global initializer product when its structural proof
 		// succeeds; otherwise use the general non-allocating i31 lowering.
@@ -1225,17 +1337,25 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			gcI31Product = stagedGCI31ProductCore
 		}
 	}
-	if features.GCStructProducts && gcProductAnalysisNeeded(requiredByModule) && !gcStructProduct.requiresExternConversion() && moduleUsesGCExternConversion(m) {
+	if features.GCI31Products && requiredByModule.IsEnabled(CoreFeatureGC) && exactI31CoreSource && gcI31Product == 0 {
+		gcI31Product = stagedGCI31ProductCore
+	}
+	if features.GCStructProducts && gcProductAnalysisNeeded(requiredByModule) && !gcStructProduct.requiresExternConversion() && moduleUsesGCExternConversion(m) && !exactI31CoreSource && !exactGCRootedScalarSource {
 		// Conversion identity is an orthogonal runtime obligation. The extern
 		// product uses the same complete struct/array helpers while additionally
 		// provisioning the bounded anyref/externref identity bridge.
 		gcStructProduct = stagedGCStructExtern
 	}
-	if features.GCStructProducts && requiredByModule.IsEnabled(CoreFeatureGC) && moduleHasGCHeapType(m) && gcStructProduct == 0 && structuralProduct == 0 && gcTypeSubtypingProduct == 0 {
+	if features.GCStructProducts && !metadataOnlyTypes && requiredByModule.IsEnabled(CoreFeatureGC) && moduleHasGCHeapType(m) && gcStructProduct == 0 && structuralProduct == 0 && gcTypeSubtypingProduct == 0 && (gcI31Product == 0 || moduleUsesGenericGCStructHelpers(m)) && !exactGCRefTestTableSource && !exactGCRefTestConcreteSource && !exactGCRefTestAbstractSource && !exactGCExternSource && !exactGCRefCastAbstractSource && !exactGCRefCastConcreteSource && !exactGCBrOnCastAbstractSource && !exactGCBrOnCastFailAbstractSource && !exactGCBrOnCastConcreteSource && !exactGCBrOnCastFailConcreteSource && !exactGCBrOnCastNullabilitySource && !exactGCBrOnCastFailNullabilitySource && !exactGCStructMutationSource && !exactGCStructNullSource && !exactGCStructPackedSource && !exactGCStructBasicSource && !exactGCStructNumericGlobalsSource && !exactGCArrayLocalSource && !exactGCArrayUniformSource && !exactGCArrayFixedLocalSource && !exactGCArrayFixedOfficialSource && !exactGCArrayDefaultOfficialSource && !exactGCArrayPackedDataSource && !exactGCArrayReferenceSource && !exactGCArrayInitElemSource && !exactGCArrayInitDataSource && !exactGCArrayFillSource && !exactGCArrayCopySource {
 		// Generic GC lowering is the complete Core 3 fallback for modules that do
 		// not match a narrower collector-free or specialized product. Product
 		// recognizers select optimizations, not semantic admission boundaries.
-		gcStructProduct = stagedGCStructGeneric
+		// The bounded RV64 source witness keeps struct and array helper families
+		// independent. An array-only module must not gain the generic struct
+		// product merely because the complete backends use it as an umbrella.
+		if compiledArchitecture != 4 || !exactGCRootedScalarSource || moduleUsesGenericGCStructHelpers(m) {
+			gcStructProduct = stagedGCStructGeneric
+		}
 	}
 	if goruntime.GOARCH == "arm64" && !gcStructProduct.requiresHelpers() && requirements.arm64GCRefTestHelper {
 		// ARM64 lowers collector-reference ref.test through the generic checked
@@ -1243,7 +1363,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		// metadata-only product recognized the module.
 		gcStructProduct = stagedGCStructGeneric
 	}
-	if features.NullReferenceProducts {
+	if features.NullReferenceProducts && !railshotExceptionHandlingSource(m) {
 		if _, shapeErr := stagedNullReferenceProductShape(m); shapeErr == nil {
 			nullReferenceProduct = true
 			if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
@@ -1252,15 +1372,15 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	if features.MultiMemory && m.MemCount() > 1 {
-		if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+		if !supportsMultiMemoryBackend(goruntime.GOOS, goruntime.GOARCH) {
 			return nil, fmt.Errorf("compile: unsupported memory multi-memory staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 	}
-	if features.TailCalls && requiredByModule.IsEnabled(CoreFeatureTailCall) && !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+	if features.TailCalls && requiredByModule.IsEnabled(CoreFeatureTailCall) && !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !railshotNativeTailSource() && railshotStagedTailFeatures(cfg) == 0 {
 		return nil, fmt.Errorf("compile: unsupported instruction tail-call staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 	}
 	if features.ExceptionHandling {
-		if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+		if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) && !railshotExceptionHandlingSource(m) {
 			return nil, fmt.Errorf("compile: unsupported exception handling staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 	}
@@ -1282,7 +1402,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	if features.Memory64 && usesMemory64 {
-		if !supportsCompleteCore3Backend(goruntime.GOOS, goruntime.GOARCH) {
+		if !supportsMemory64Backend(goruntime.GOOS, goruntime.GOARCH) {
 			return nil, fmt.Errorf("compile: unsupported memory memory64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
 		}
 		for i := uint32(0); i < uint32(m.MemCount()); i++ {
@@ -1324,13 +1444,27 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	genericGCExecution := gcStructProduct == stagedGCStructGeneric || gcArrayProduct == stagedGCArrayProductNewData || gcArrayProduct == stagedGCArrayProductNewElem || gcArrayProduct == stagedGCArrayProductGeneric
 	collectorReferenceCallBoundary := moduleHasCollectorReferenceCallBoundary(m)
 	gcAllocationSites := moduleHasGCAllocationSitesWithValidation(m, &validationAnalysis)
-	exactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary
+	// These exact source products retain their bounded persistent-root proof and
+	// fixed artifact image. Generic collector calls use frame-root maps.
+	boundedPersistentGCRoots := exactGCRefTestAbstractSource || exactGCExternSource || exactGCRefCastAbstractSource || exactGCBrOnCastAbstractSource || exactGCBrOnCastFailAbstractSource ||
+		exactGCStructBasicSource || exactGCArrayFixedOfficialSource || exactGCArrayDefaultOfficialSource || exactGCArrayPackedDataSource
+	ownedExceptionReferences := railshotManagedExceptionReferences(m)
+	opaqueExternFrames := compiledArchitecture == 4 && len(m.Code) > 0 && (requiredByModule.IsEnabled(CoreFeatureGC) || moduleHasOpaqueExternTable(m)) && exactGCRootedScalarSource && moduleHasOpaqueExternSignatures(m) && !genericGCExecution && !boundedPersistentGCRoots && !ownedExceptionReferences && !collectorReferenceCallBoundary && !moduleHasInternalCollectorReferenceFunctions(m)
+	rootedReferenceDeclarations := opaqueExternFrames || compiledArchitecture == 4 && exactGCRootedScalarSource && (!metadataOnlyTypes || opaqueExternFrames) && gcStructProduct == 0 && gcArrayProduct == 0 && !gcAllocationSites && (opaqueExternFrames || moduleHasInternalCollectorReferenceFunctions(m) || collectorReferenceCallBoundary)
+	exactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary && !boundedPersistentGCRoots || ownedExceptionReferences || rootedReferenceDeclarations
+	functionEnvironmentFrames := compiledArchitecture == 4 && exactNativeGCRoots && !ownedExceptionReferences && !wasm.ModuleFunctionReferenceStorage(m) && wasm.ModuleFunctionReferenceCarriers(m)
 	var gcFrameRootDiagnostic string
-	gcFrameRoots := newGCFrameRootPlan(m, exactNativeGCRoots, &gcFrameRootDiagnostic, &validationAnalysis)
+	gcFrameRoots := newGCFrameRootPlanWithInstructions(m, exactNativeGCRoots, genericGCExecution, &gcFrameRootDiagnostic, &validationAnalysis, customInstructions)
 	indexedFunctionRefTest, indexedFunctionRefCast := requirements.indexedFuncRefTest, requirements.indexedFuncRefCast
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
-	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
-	gcFunctionRefTest := gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity() || indexedFunctionRefOps
+	foreignFunctionSubtypeHelpers := railshotFunctionSubtypeHelpers(m)
+	dynamicFuncRefTest := foreignFunctionSubtypeHelpers || indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
+	if compiledArchitecture == 4 && metadataOnlyTypes && !foreignFunctionSubtypeHelpers {
+		// Collector-free RV64 function tests/casts compare canonical descriptor
+		// keys directly. They need no collector type-ID array per instance.
+		dynamicFuncRefTest = false
+	}
+	gcFunctionRefTest := gcTypeSubtypingProduct.usesRefTest() || gcTypeSubtypingProduct.usesRuntimeFunctionIdentity() || indexedFunctionRefOps || foreignFunctionSubtypeHelpers
 	var gcCodeStats *railshotModuleStats
 	if (compilerTelemetryEnabled && cfg.gcCodeTelemetry) || (codeProfileEnabled && cfg.codeProfile != nil) {
 		gcCodeStats = new(railshotModuleStats)
@@ -1339,7 +1473,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if err != nil {
 		return nil, wrapContextError("compile", err)
 	}
-	usesGCHelpers := gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers()
+	usesGCHelpers := ownedExceptionReferences || rootedReferenceDeclarations || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers()
 	if usesGCHelpers {
 		gcSlots, err := gcSyncHostSlotCapacity(gcMetadata.Descs)
 		if err != nil {
@@ -1348,8 +1482,69 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if gcSlots > syncHostSlots {
 			syncHostSlots = gcSlots
 		}
+		if goruntime.GOARCH == "riscv64" && gcArrayProduct == stagedGCArrayProductGeneric {
+			syncHostSlots = max(syncHostSlots, rv64GenericArrayFixedSlots)
+		}
 	}
-	compileOptions := railshotCompileOptions{BitCountFeatures: bitCountHostFeaturesSupported(), Workers: workers, DeferCodeMapping: true, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats, SourceMaps: codeProfileEnabled && cfg.codeProfile.IncludeSources(), UnwindMaps: codeProfileEnabled && cfg.codeProfile.IncludeUnwind(), Profile: codeProfileEnabled && cfg.codeProfile != nil}
+	compileOptions := railshotCompileOptions{BitCountFeatures: bitCountHostFeaturesSupported(), Workers: workers, DeferCodeMapping: true, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers || ownedExceptionReferences || foreignFunctionSubtypeHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats, SourceMaps: codeProfileEnabled && cfg.codeProfile.IncludeSources(), UnwindMaps: codeProfileEnabled && cfg.codeProfile.IncludeUnwind(), Profile: codeProfileEnabled && cfg.codeProfile != nil}
+	railshotConfigureResourceLimits(cfg, &compileOptions)
+	railshotConfigureI31Core(exactI31CoreSource, &compileOptions)
+	if compiledArchitecture == 4 {
+		// Import compaction can change the structural witness. Match the final
+		// module that the RV64 backend independently validates.
+		generalI31Source = railshotGeneralI31Module(m)
+	}
+	railshotConfigureGeneralI31(generalI31Source, &compileOptions)
+	railshotConfigureGCRefEq(exactGCRefEqSource, &compileOptions)
+	railshotConfigureGCRefTestTable(exactGCRefTestTableSource, &compileOptions)
+	railshotConfigureGCRefTestConcrete(exactGCRefTestConcreteSource, &compileOptions)
+	railshotConfigureGCRefTestAbstract(exactGCRefTestAbstractSource, &compileOptions)
+	railshotConfigureGCExtern(exactGCExternSource, &compileOptions)
+	railshotConfigureGCRefCastAbstract(exactGCRefCastAbstractSource, &compileOptions)
+	railshotConfigureGCRefCastConcrete(exactGCRefCastConcreteSource, &compileOptions)
+	railshotConfigureGCBrOnCastAbstract(exactGCBrOnCastAbstractSource, &compileOptions)
+	railshotConfigureGCBrOnCastFailAbstract(exactGCBrOnCastFailAbstractSource, &compileOptions)
+	railshotConfigureGCBrOnCastConcrete(exactGCBrOnCastConcreteSource, &compileOptions)
+	railshotConfigureGCBrOnCastFailConcrete(exactGCBrOnCastFailConcreteSource, &compileOptions)
+	railshotConfigureGCBrOnCastNullability(exactGCBrOnCastNullabilitySource, &compileOptions)
+	railshotConfigureGCBrOnCastFailNullability(exactGCBrOnCastFailNullabilitySource, &compileOptions)
+	railshotConfigureGCTypeSubtypingDeclarations(gcTypeSubtypingDeclarationsSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingRecursiveFunctions(gcTypeSubtypingRecursiveFunctionsSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingRuntimeCallCast(exactGCTypeSubtypingRuntimeCallCastSource, &compileOptions)
+	railshotConfigureGCStructGet(exactGCStructGetSource, &compileOptions)
+	railshotConfigureGCStructMutation(exactGCStructMutationSource, &compileOptions)
+	railshotConfigureGCStructNull(exactGCStructNullSource, &compileOptions)
+	railshotConfigureGCStructPacked(exactGCStructPackedSource, &compileOptions)
+	railshotConfigureGCStructBasic(exactGCStructBasicSource, &compileOptions)
+	railshotConfigureGCStructNumericGlobals(exactGCStructNumericGlobalsSource, &compileOptions)
+	railshotConfigureGCArrayLocal(exactGCArrayLocalSource, &compileOptions)
+	railshotConfigureGCArrayUniform(exactGCArrayUniformSource, &compileOptions)
+	railshotConfigureGCArrayFixedLocal(exactGCArrayFixedLocalSource, &compileOptions)
+	railshotConfigureGCArrayFixedOfficial(exactGCArrayFixedOfficialSource, &compileOptions)
+	railshotConfigureGCArrayDefaultOfficial(exactGCArrayDefaultOfficialSource, &compileOptions)
+	railshotConfigureGCArrayPackedData(exactGCArrayPackedDataSource, &compileOptions)
+	railshotConfigureGCArrayReference(exactGCArrayReferenceSource, &compileOptions)
+	railshotConfigureGCArrayInitElem(exactGCArrayInitElemSource, &compileOptions)
+	railshotConfigureGCArrayInitData(exactGCArrayInitDataSource, &compileOptions)
+	railshotConfigureGCArrayFill(exactGCArrayFillSource, &compileOptions)
+	railshotConfigureGCArrayCopy(exactGCArrayCopySource, &compileOptions)
+	railshotConfigureNativeTail(requiredByModule, cfg, &compileOptions)
+	railshotConfigureGCTypeSubtypingRuntimeFinalityCallCast(exactGCTypeSubtypingRuntimeFinalityCallCastSource, &compileOptions)
+	railshotConfigureGCTypeSubtypingRuntimeTypedTableCall(exactGCTypeSubtypingRuntimeTypedTableCallSource, &compileOptions)
+	railshotConfigureGCTypeSubtypingRefTestSingle(gcTypeSubtypingRefTestSingleSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingLink(gcTypeSubtypingLinkSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingFinalityLink(gcTypeSubtypingFinalityLinkSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingStructLink(gcTypeSubtypingStructLinkSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingStructProjectionLink(gcTypeSubtypingStructProjectionLinkSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingStructMismatchLink(gcTypeSubtypingStructMismatchLinkSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingIndependentStructLink(gcTypeSubtypingIndependentStructLinkSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingExtendedProjectionLink(gcTypeSubtypingExtendedProjectionLinkSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingDuplicateRecursiveLink(gcTypeSubtypingDuplicateRecursiveLinkSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingExtendedRecursiveLink(gcTypeSubtypingExtendedRecursiveLinkSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingCrossGroupMismatchLink(gcTypeSubtypingCrossGroupMismatchLinkSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingTransitiveMismatchLink(gcTypeSubtypingTransitiveMismatchLinkSourceVariant, &compileOptions)
+	railshotConfigureGCTypeSubtypingNonFlatExport(exactGCTypeSubtypingNonFlatExportSource, &compileOptions)
+	railshotConfigureGCTypeSubtypingRefFuncGlobals(gcTypeSubtypingRefFuncGlobalsSourceVariant, &compileOptions)
 	var cm *railshotCompiledModule
 	if codegen.SourceChecks {
 		cm, err = railshotCompileValidatedModuleWith(m, compileOptions, &validationAnalysis, validationFeatures)
@@ -1381,13 +1576,13 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	// unbounded execution retains syscall scheduling; bounded entry separately
 	// requires the whole-module proof below and the per-instance native binding.
 	// This compile-only selection is a rollback policy.
-	if wruntime.NativeScalarLeafSupported && cfg.optimizations["native-leaf-host"] && importedFuncs > 0 && len(customInstructions) == 0 && len(internalEntry) != 0 {
+	if goruntime.GOARCH != "riscv64" && wruntime.NativeScalarLeafSupported && cfg.optimizations["native-leaf-host"] && importedFuncs > 0 && len(customInstructions) == 0 && len(internalEntry) != 0 {
 		internalEntry[0] = int(uint(internalEntry[0]) | nativeScalarLeafMask)
 	}
-	if cfg.optimizations["prepared-bounded-entry"] && len(customInstructions) == 0 && boundedModuleHostSegments(m) && len(internalEntry) != 0 {
+	if goruntime.GOARCH != "riscv64" && cfg.optimizations["prepared-bounded-entry"] && len(customInstructions) == 0 && boundedModuleHostSegments(m) && len(internalEntry) != 0 {
 		internalEntry[0] = int(uint(internalEntry[0]) | directHostSegmentsMask)
 	}
-	if wruntime.NativeScalarLeafSupported && cfg.optimizations["prepared-bounded-entry"] && len(customInstructions) == 0 && boundedModuleNativeHostBody(m) && len(internalEntry) != 0 {
+	if goruntime.GOARCH != "riscv64" && wruntime.NativeScalarLeafSupported && cfg.optimizations["prepared-bounded-entry"] && len(customInstructions) == 0 && boundedModuleNativeHostBody(m) && len(internalEntry) != 0 {
 		internalEntry[0] = int(uint(internalEntry[0]) | nativeScalarBoundedMask)
 	}
 	if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && cfg.optimizations["prepared-bounded-entry"] && len(customInstructions) == 0 && boundedIntegerModuleHostSegmentsFor(m, goruntime.GOARCH == "arm64") && len(internalEntry) != 0 {
@@ -1420,7 +1615,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if exactNativeGCRoots || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, preparedIsolatedTables: cm.PreparedIsolatedTables, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscapeWithValidation(m, &validationAnalysis), customInstructions: customInstructions, requiresNotifyPending: atomicWaitHelpers && cfg.optimizations["atomic-notify-empty"], requiresARM64LSE: cm.RequiresARM64LSE, requiredAMD64Features: shared.AMD64Features(cm.RequiredAMD64Features), syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: compilerTelemetryEnabled && cfg.gcCodeTelemetry})
+	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: goruntime.GOARCH == "riscv64" || !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, nativeTable64ABI: stagedNativeTable64ABI(m), independentInstances: cfg.independentInstances, preparedIsolatedTables: cm.PreparedIsolatedTables, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscapeWithValidation(m, &validationAnalysis), customInstructions: customInstructions, requiresNotifyPending: atomicWaitHelpers && cfg.optimizations["atomic-notify-empty"], requiresARM64LSE: cm.RequiresARM64LSE, requiredAMD64Features: shared.AMD64Features(cm.RequiredAMD64Features), syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: compilerTelemetryEnabled && cfg.gcCodeTelemetry})
+	c.core1SegmentPreflight = !features.BulkMemory
 	if cfg.optimizations["prepared-bounded-entry"] && len(customInstructions) == 0 && boundsMode == BoundsChecksExplicit {
 		c.fixedSharedHostSegments = boundedFixedSharedHostSegments(m)
 		c.fixedSharedHostInteger = (goruntime.GOARCH == "arm64" || goruntime.GOARCH == "amd64") && c.fixedSharedHostSegments && integerHostModuleRegistersFor(m, true)
@@ -1430,6 +1626,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		c.validateMemo.memoryLimitPages = cfg.maxMemoryPages
 		c.validateMemo.maxInstanceMetadataBytes = cfg.maxInstanceMetadataBytes
 		c.validateMemo.snapshotLimit = cfg.maxCompiledMetadataBytes
+	}
+	if err := railshotStoreNativeTail(c, cm, cfg); err != nil {
+		return nil, err
+	}
+	if cfg.maxNativeCodeBytes != 0 && railshotNativeCodeBytes(c) > cfg.maxNativeCodeBytes {
+		return nil, &wruntime.ResourceLimitError{Resource: "native code bytes", Scope: "compile", Requested: railshotNativeCodeBytes(c), Limit: cfg.maxNativeCodeBytes}
 	}
 	c.memoryDir.exactExports = true
 	c.memoryDir.staged = features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0)
@@ -1471,6 +1673,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		compiled.ensureCompileIndexes().gcI31Inductions = cm.GCI31Inductions
 	}
 	compiled.codeCache.setNativeGCABIVersion(nativeGCABIVersion)
+	if functionEnvironmentFrames {
+		compiled.codeCache.gcMetadataFlags |= compiledGCMetadataFunctionFrames
+	}
+	if opaqueExternFrames {
+		compiled.codeCache.gcMetadataFlags |= compiledGCMetadataOpaqueExternFrames
+	}
 	if cm.CodeImage != nil {
 		mapping, base, err := cm.CodeImage.Take()
 		if err != nil {
@@ -1478,14 +1686,18 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 		compiled.codeCache.mem = mapping
 		compiled.codeCache.base = base
+		railshotRecordMappedCodeBytes(compiled, len(compiled.code))
 		compiled.codeCache.flags |= compiledCacheWritableCode
 	}
 	keepCodeImage = true
 	if guardPageBuilt && cfg.boundsChecks == BoundsChecksSignalsBased {
 		compiled.codeCache.flags |= compiledCacheGuardMemory
 	}
-	validGCFrameRoots := validGCModuleFrameRootPlan(gcFrameRoots)
-	if validGCFrameRoots && (gcAllocationSites || genericGCExecution && !collectorReferenceCallBoundary) {
+	validGCFrameRoots := validGCModuleFrameRootPlanKinds(gcFrameRoots, compiledArchitecture == 4 && (ownedExceptionReferences || functionEnvironmentFrames || genericGCExecution && wasm.ModuleFunctionReferenceStorage(m)), compiledArchitecture == 4)
+	if (ownedExceptionReferences || compiledArchitecture == 4 && (genericGCExecution || collectorReferenceCallBoundary)) && len(m.Code) == 0 && gcFrameRoots != nil && gcFrameRoots.FunctionCount() == 0 {
+		validGCFrameRoots = true // State-only owned values have no native frame or return PC.
+	}
+	if validGCFrameRoots && len(m.Code) != 0 && (gcAllocationSites || compiledArchitecture != 4 && genericGCExecution && !collectorReferenceCallBoundary) {
 		hasAllocationSafepoint := false
 		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
 			plan := gcFrameRoots.Function(function)
@@ -1524,6 +1736,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		rootMap.adapterReturnOffsets = normalizeAdapterReturnOffsets(rootMap.adapterReturnOffsets)
 		compiled.validateMemo.gcFrameRoots = rootMap
 	}
+	compiled.setOwnedExceptionReferences(ownedExceptionReferences)
 	// GC/typed-reference admission follows validated source requirements; product
 	// classifiers below select representations and optimized paths. Exception
 	// modules with declared tags are inferred from persisted tag metadata, while
@@ -1554,6 +1767,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	if atomicWaitHelpers {
 		compiled.codeCache.flags |= compiledCacheAtomicWaitHelpers
+		if compiledArchitecture == 4 {
+			compiled.needsFuncRefContextHeader = true
+		}
 	}
 	if gcStructProduct != 0 {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
@@ -1566,7 +1782,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			compiled.codeCache.gcMetadataFlags |= compiledGCMetadataCollectorFreeArray
 		}
 	}
-	if gcI31Product != 0 {
+	if gcI31Product != 0 && !railshotExceptionHandlingSource(m) {
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
 		compiled.codeCache.gcI31Product = gcI31Product
 	}
@@ -1574,6 +1790,70 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if err := compiled.installCodeProfile(cfg, wasmBytes, gcCodeStats); err != nil {
 			return nil, joinPrimary(err, compiled.Close())
 		}
+	}
+	if compiledArchitecture == 4 && (genericGCExecution || collectorReferenceCallBoundary || ownedExceptionReferences || rootedReferenceDeclarations) && validGCFrameRoots {
+		rootedTypeDigest, validRootedTypes := rv64RootedTypeDigest(compiled)
+		if !validRootedTypes {
+			return nil, joinPrimary(fmt.Errorf("compile: invalid rooted type receipt"), compiled.Close())
+		}
+		rootedDataDigest, validRootedData := rv64RootedActiveDataDigest(compiled)
+		if !validRootedData {
+			return nil, joinPrimary(fmt.Errorf("compile: invalid rooted active data receipt"), compiled.Close())
+		}
+		rootedExportDigest, validRootedExports := rv64RootedMemoryExportDigest(compiled)
+		if !validRootedExports {
+			return nil, joinPrimary(fmt.Errorf("compile: invalid rooted memory export receipt"), compiled.Close())
+		}
+		rootedGlobalDigest, validRootedGlobals := rv64RootedGlobalDigest(compiled)
+		if !validRootedGlobals {
+			return nil, joinPrimary(fmt.Errorf("compile: invalid rooted global receipt"), compiled.Close())
+		}
+		rootedTableDigest, validRootedTable := rv64RootedTableDigest(compiled)
+		if !validRootedTable {
+			return nil, joinPrimary(fmt.Errorf("compile: invalid rooted table receipt"), compiled.Close())
+		}
+		rootedImportDigest, validRootedImports := rv64RootedImportDigest(compiled)
+		if !validRootedImports {
+			return nil, joinPrimary(fmt.Errorf("compile: invalid rooted import receipt"), compiled.Close())
+		}
+		compiled.validateMemo.rv64FreshRootedGC = true
+		compiled.validateMemo.rv64RootedNoCollectingBodies = true
+		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
+			if gcFrameRoots.Function(function) != nil {
+				compiled.validateMemo.rv64RootedNoCollectingBodies = false
+				break
+			}
+		}
+		compiled.validateMemo.rv64FreshRootedGCDigest = sha256.Sum256(compiled.code)
+		compiled.validateMemo.rv64FreshRootedGCTypeDigest = rootedTypeDigest
+		compiled.validateMemo.rv64FreshRootedGCSyncHostSlots = compiled.syncHostSlots
+		compiled.validateMemo.rv64FreshRootedGCReserveMax = compiled.MemMaxPages
+		compiled.validateMemo.rv64FreshRootedGCDataDigest = rootedDataDigest
+		compiled.validateMemo.rv64FreshRootedGCExportDigest = rootedExportDigest
+		compiled.validateMemo.rv64FreshRootedGCGlobalDigest = rootedGlobalDigest
+		compiled.validateMemo.rv64FreshRootedGCTableDigest = rootedTableDigest
+		compiled.validateMemo.rv64FreshRootedGCImportDigest = rootedImportDigest
+		compiled.validateMemo.rv64FreshRootedGCHasStart = compiled.HasStart
+		if compiled.HasStart {
+			compiled.validateMemo.rv64FreshRootedGCStartImport = compiled.StartIsImport
+			if compiled.StartIsImport {
+				compiled.validateMemo.rv64FreshRootedGCStartImportIndex = uint32(compiled.StartImportIdx)
+			} else {
+				compiled.validateMemo.rv64FreshRootedGCStartLocal = uint32(compiled.StartLocalFunc)
+			}
+		}
+		if directory := compiled.memoryDir; directory != nil {
+			compiled.validateMemo.rv64FreshRootedGCMemories = uint8(len(directory.defs))
+			compiled.validateMemo.rv64FreshRootedGCMemoryStaged = directory.staged
+			if len(directory.defs) != 0 {
+				compiled.validateMemo.rv64FreshRootedGCMemMin = directory.defs[0].Min
+				compiled.validateMemo.rv64FreshRootedGCMemMax = directory.defs[0].Max
+			}
+		}
+	}
+	installRV64StorageFreeProof(compiled, m)
+	if err := installRV64SourceExecutionContract(compiled); err != nil {
+		return nil, joinPrimary(fmt.Errorf("compile: %w", err), compiled.Close())
 	}
 	return publishCompilerCompiled(compiled)
 }
@@ -1833,7 +2113,7 @@ func asyncReplayable(sig FuncSig) bool {
 }
 
 func (c *Compiled) importsRequireSync(imports resolvedImports, force bool) bool {
-	if force || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
+	if force || c.opaqueExternHelperSlots() != 0 || railshotRequiresNativeHostControl(c) || c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.needsOwnedExceptionReferences() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalStoreHelper() {
 		return true
 	}
 	for i := range c.Imports {
@@ -1868,6 +2148,23 @@ func (c *Compiled) importsRequireSync(imports resolvedImports, force bool) bool 
 	return false
 }
 
+func (c *Compiled) exceptionExternPayloads() bool {
+	if compiledArchitecture != 4 || c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) || c.memoryDir == nil {
+		return false
+	}
+	for _, tag := range c.memoryDir.ehTags {
+		if uint64(tag.TypeIndex) >= uint64(len(c.Types)) {
+			continue
+		}
+		for _, value := range c.Types[tag.TypeIndex].Params {
+			if value.Kind == ValueTypeReference && !value.Ref.Heap.Defined && (value.Ref.Heap.Abstract == AbstractHeapExtern || value.Ref.Heap.Abstract == AbstractHeapNoExtern) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // validateImportBindings checks cross-instance signatures and reference-store
 // compatibility. Imported calls are already compiled; instantiation only writes
 // concrete targets into the per-instance dispatch table.
@@ -1877,6 +2174,7 @@ func (c *Compiled) validateImportBindings(imports resolvedImports, store *refere
 
 func (c *Compiled) validateImportBindingsWithPluginGC(imports resolvedImports, store *referenceStore, pluginGCImports map[uint32]struct{}) error {
 	ehNativeCalls := c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) && len(c.Imports) != 0
+	ehExternPayloads := c.exceptionExternPayloads()
 	privateWaitGC := store != nil && !store.private && c.needsRuntimeGCCollectorDomain() && c.usesAtomicWaitHelpers()
 	dynamicFuncrefReachability := compiledHasDynamicFuncrefReachability(c)
 	if privateWaitGC && dynamicFuncrefReachability {
@@ -1945,6 +2243,11 @@ func (c *Compiled) validateImportBindingsWithPluginGC(imports resolvedImports, s
 		if ex == nil || ex.inst == nil {
 			return fmt.Errorf("cross-instance import %q is nil", key)
 		}
+		// A void call can throw an extern payload without an explicit
+		// reference signature. Such tokens still belong to one store.
+		if compiledArchitecture == 4 && c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) && (ehExternPayloads || ex.inst.c.exceptionExternPayloads()) && (store == nil || ex.inst.refStore != store) {
+			return fmt.Errorf("exception-handler transfer import %q requires the same reference store", key)
+		}
 		if ex.inst.executionFlags.Load()&executionFlagDynamicGCDomain != 0 && ex.inst.refStore != store {
 			return fmt.Errorf("cross-instance import %q from a dynamic funcref producer requires the same Runtime", key)
 		}
@@ -1963,14 +2266,14 @@ func (c *Compiled) validateImportBindingsWithPluginGC(imports resolvedImports, s
 		if i >= len(c.importFuncSigs) {
 			return fmt.Errorf("cross-instance import %q is missing its signature", key)
 		}
-		if c.importFuncSigs[i].unsafeCrossTail {
+		if c.importFuncSigs[i].unsafeCrossTail && !railshotNativeTailImport(c, i) {
 			return fmt.Errorf("cross-instance import %q requires unsupported cross-instance tail ABI", key)
 		}
 		if gcSubtypeLinkConsumer && ex.inst.c.stagedGCTypeSubtypingProduct() != gcSubtypeLinkProvider {
 			return fmt.Errorf("cross-instance import %q signature mismatch: producer is outside the exact gc/type-subtyping link product", key)
 		}
 		sig := c.importFuncSigs[i]
-		if !sigMatches(sig, c.Types, ex, gcSubtypeLinkConsumer || c.stagedFeatures().IsEnabled(CoreFeatureTypedFunctionReferences)) {
+		if !sigMatches(sig, c.Types, ex, gcSubtypeLinkConsumer || (c.stagedFeatures()|c.requiredFeatures)&(CoreFeatureTypedFunctionReferences|CoreFeatureGC) != 0) {
 			return fmt.Errorf("cross-instance import %q signature mismatch", key)
 		}
 		if hasValType(sig.Params, ValExternRef) || hasValType(sig.Results, ValExternRef) {
@@ -2351,6 +2654,15 @@ func (c *Compiled) validate() error {
 	if c == nil {
 		return errors.New("compiled module is nil")
 	}
+	if err := railshotValidateCompiled(c); err != nil {
+		return err
+	}
+	return c.validateMetadata()
+}
+
+// validateMetadata checks stored types, entries, resources, and initializers.
+// Native execution admission remains a separate requirement in validate.
+func (c *Compiled) validateMetadata() error {
 	if c.NumImports < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative NumImports %d", c.NumImports)
 	}
@@ -2365,6 +2677,27 @@ func (c *Compiled) validate() error {
 	}
 	if c.dynamicImports != (c.NumImports > 0) {
 		return fmt.Errorf("compiled metadata invalid: dynamic import dispatch=%v with %d function import(s)", c.dynamicImports, c.NumImports)
+	}
+	if !c.HasStart {
+		if c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 {
+			return errors.New("compiled metadata invalid: inactive start function fields")
+		}
+	} else {
+		var start FuncSig
+		if c.StartIsImport {
+			if c.StartLocalFunc != 0 || c.StartImportIdx < 0 || c.StartImportIdx >= c.NumImports {
+				return errors.New("compiled metadata invalid: imported start function index")
+			}
+			start = c.importFuncSigs[c.StartImportIdx]
+		} else {
+			if c.StartImportIdx != 0 || c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Funcs) {
+				return errors.New("compiled metadata invalid: defined start function index")
+			}
+			start = c.Funcs[c.StartLocalFunc]
+		}
+		if len(start.Params) != 0 || len(start.Results) != 0 {
+			return errors.New("compiled metadata invalid: start function must have no parameters or results")
+		}
 	}
 	if c.NumImports > maxInt()-len(c.Funcs) {
 		return errors.New("compiled metadata invalid: function count overflows int")
@@ -2406,10 +2739,13 @@ func (c *Compiled) validate() error {
 	if c.stagedTable64 {
 		staged |= CoreFeatureTable64
 	}
-	// Indexed-memory/table address forms are completely described by persisted
-	// metadata and native code. Once the current platform advertises the family,
-	// codec reload does not need the original compile-only classifier marker.
 	staged |= required & platformCoreFeatures() & (CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64 | CoreFeatureThreads)
+	// RV64 execution contracts independently validate helpers and exact roots.
+	// Inert declarations need no compile-only product on any supported target.
+	// Other executable legacy artifacts must retain their own feature sidecars.
+	if compiledArchitecture == 4 || c.hasNoFunctionCode() && (!gc.HasHeapObjectTypes(c.GCTypeDescs) || c.genericGCFrameRoots() != nil) {
+		staged |= required & platformCoreFeatures() & (CoreFeatureTypedFunctionReferences | CoreFeatureGC)
+	}
 	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
 		staged |= CoreFeatureExceptionHandling
 		importCount := 0
@@ -2430,8 +2766,34 @@ func (c *Compiled) validate() error {
 			}
 		}
 	}
+	// RV64 tag-free EH images carry the requirement in the canonical image
+	// contract. Final native admission authenticates that contract before entry.
+	if compiledArchitecture == 4 && c.nativeContextTrapABI && c.needsFuncRefContextHeader {
+		staged |= required & CoreFeatureExceptionHandling
+	}
 	staged |= c.stagedFeatures()
-	if c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+	if required&(CoreFeatureGC|CoreFeatureTypedFunctionReferences) != 0 && (compiledFunctionOnlyTypeGraph(c) || compiledArchitecture == 4 && railshotPrimitiveReferenceDeclarations(c)) {
+		staged |= required & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
+	}
+	// Owned EH carries exact collector types without requiring a guest struct
+	// allocation product. This restores only metadata grammar; native admission
+	// still checks the canonical image, type directory and complete frame proof.
+	if compiledArchitecture == 4 && c.needsOwnedExceptionReferences() && required.IsEnabled(CoreFeatureExceptionHandling) &&
+		c.nativeContextTrapABI && c.needsFuncRefContextHeader && c.nativeGCABIRequirement() == gc.NativeABIVersion &&
+		c.genericGCFrameRoots() != nil && validateCompiledGCFrameRoots(c, c.genericGCFrameRoots()) == nil {
+		staged |= required & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
+	}
+	// Non-collecting internal collector carriers retain an exact native ABI and
+	// frame contract even when no allocation helper product is selected.
+	if c.hasCollectorDeclarationRoots() && rv64ArtifactContractValid(c) && validateCompiledGCFrameRoots(c, c.genericGCFrameRoots()) == nil {
+		staged |= required & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
+	}
+	// Type declarations alone have no executable GC obligations. Preserve their
+	// validated graph on reload without selecting an allocation product.
+	if c.hasNoFunctionCode() && c.NumImports == 0 && len(c.Imports) == 0 && len(c.Globals) == 0 && len(c.GlobalImports) == 0 && c.tableCount() == 0 && c.memoryCount() == 0 && (c.memoryDir == nil || len(c.memoryDir.ehTags) == 0) && c.activeDataCount() == 0 && len(c.PassiveData) == 0 && len(c.Elems) == 0 && len(c.passiveElems) == 0 && !c.HasStart {
+		staged |= required & CoreFeatureGC
+	}
+	if c.hasNoFunctionCode() || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
 		staged |= compiledStructuralRequiredFeatures(c) & CoreFeatureTypedFunctionReferences
 	}
 	// Aggregate storage declarations are fully represented by exact persisted
@@ -2453,7 +2815,11 @@ func (c *Compiled) validate() error {
 	if c.TableAddr64 && !required.IsEnabled(CoreFeatureTable64) {
 		return errors.New("compiled metadata invalid: table 0 uses 64-bit indexes without table64 feature")
 	}
-	if c.TableMax > uint64(maxInt()) && !c.stagedInertOversizedTable64(0) {
+	if err := railshotValidateTableCapacities(c); err != nil {
+		return err
+	}
+	_, reservedTable0 := railshotTableReservedCapacity(c, 0)
+	if c.TableMax > uint64(maxInt()) && !c.stagedInertOversizedTable64(0) && !reservedTable0 {
 		return fmt.Errorf("compiled metadata invalid: table 0 maximum %d overflows executable capacity", c.TableMax)
 	}
 	if len(c.extraTables) > 0 && !c.HasTable {
@@ -2475,7 +2841,8 @@ func (c *Compiled) validate() error {
 		if table.Addr64 && !required.IsEnabled(CoreFeatureTable64) {
 			return fmt.Errorf("compiled metadata invalid: table %d uses 64-bit indexes without table64 feature", i+1)
 		}
-		if table.Max > uint64(maxInt()) {
+		_, reserved := railshotTableReservedCapacity(c, i+1)
+		if table.Max > uint64(maxInt()) && !reserved {
 			return fmt.Errorf("compiled metadata invalid: table %d maximum %d overflows executable capacity", i+1, table.Max)
 		}
 	}
@@ -2801,7 +3168,7 @@ func (c *Compiled) validateElementValues(kind string, seg int, elem ElemInit) er
 				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has multiple initializer forms", kind, seg, k)
 			}
 			gcConstExpr := c.requiredFeatures.IsEnabled(CoreFeatureGC) || c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
-			if !gcConstExpr || (refType != ValAnyRef && refType != ValI31Ref && !(refType == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) {
+			if !gcConstExpr || (refType != ValAnyRef && refType != ValI31Ref && !(refType == ValExternRef && (c.stagedGCStructProduct().requiresExternConversion() || c.compactExternFrameRoots()))) {
 				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid GC expression", kind, seg, k)
 			}
 			if err := c.validateGCConstExpr(value.Expr, required, len(c.Globals)); err != nil {
@@ -3209,10 +3576,10 @@ func (c *Compiled) declaredMemoryMaxBytes() (uint64, error) {
 		if !def.HasMax {
 			// The exact Wasm type remains unbounded in metadata. Policy and managed-
 			// instance accounting charge the finite implementation reservation used
-			// by instantiation. Only staged memory 0 is capped one page below the
-			// full 2^16-page reservation used by memory32 and secondary memories.
+			// by instantiation. Imported unbounded memories retain the conservative
+			// full memory32 charge; their physical reservation belongs to the provider.
 			pages = 1 << 16
-			if i == 0 && def.Addr64 && def.ImportKey == "" {
+			if def.Addr64 && def.ImportKey == "" {
 				pages = 65535
 			}
 		}
@@ -3285,6 +3652,9 @@ func (c *Compiled) stagedInertOversizedTable64(index int) bool {
 }
 
 func (c *Compiled) tableRuntimeCapacity(index int) int {
+	if capacity, ok := railshotTableReservedCapacity(c, index); ok {
+		return capacity
+	}
 	def := c.tableDef(index)
 	if def.Max == 0 {
 		return def.Size
@@ -3358,6 +3728,7 @@ func (c *Compiled) validateArenaFootprint() error {
 	}
 	hostCallBytes := 0
 	syncHostSlots := wruntime.MaxHostArity
+	internalHelperSlots := 0
 	for i, sig := range c.importFuncSigs {
 		paramSlots, slotErr := valTypesSlots(sig.Params)
 		if slotErr != nil {
@@ -3374,7 +3745,7 @@ func (c *Compiled) validateArenaFootprint() error {
 			syncHostSlots = resultSlots
 		}
 	}
-	if c.usesGCStructHelpers() || c.usesGCArrayHelpers() {
+	if c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.needsOwnedExceptionReferences() {
 		gcSlots, slotErr := gcSyncHostSlotCapacity(c.GCTypeDescs)
 		if slotErr != nil {
 			return wrapContextError("compiled metadata invalid", slotErr)
@@ -3382,11 +3753,27 @@ func (c *Compiled) validateArenaFootprint() error {
 		if gcSlots > syncHostSlots {
 			syncHostSlots = gcSlots
 		}
+		if compiledArchitecture == 4 && c.stagedGCArrayProduct() == stagedGCArrayProductGeneric && !rv64FixedRootlessGCProduct(c) {
+			syncHostSlots = max(syncHostSlots, rv64GenericArrayFixedSlots)
+		}
+		internalHelperSlots, slotErr = gcInternalHelperSlotCapacity(c.GCTypeDescs, c.usesGCStructHelpers(), c.usesGCArrayHelpers(), compiledArchitecture == 4 && c.stagedGCArrayProduct() == stagedGCArrayProductGeneric)
+		if slotErr != nil {
+			return wrapContextError("compiled metadata invalid", slotErr)
+		}
+		if c.needsOwnedExceptionReferences() {
+			internalHelperSlots = max(internalHelperSlots, 1)
+		}
+		if internalHelperSlots > maxParams {
+			maxParams = internalHelperSlots
+		}
+	}
+	if slots := c.opaqueExternHelperSlots(); slots > maxParams {
+		maxParams = slots
 	}
 	if c.syncHostSlots != 0 && int(c.syncHostSlots) != syncHostSlots {
 		return fmt.Errorf("compiled metadata invalid: synchronous host slot capacity %d, want %d", c.syncHostSlots, syncHostSlots)
 	}
-	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
+	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.needsOwnedExceptionReferences() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalStoreHelper() {
 		hostCallBytes, err = wruntime.HostCtrlFrameBytesForSlots(syncHostSlots)
 		if err != nil {
 			return wrapContextError("compiled metadata invalid", err)
@@ -3418,10 +3805,10 @@ func (c *Compiled) validateArenaFootprint() error {
 	if err != nil {
 		return wrapContextError("compiled metadata invalid", err)
 	}
-	if need > maxInt()-wruntime.InstanceContextBytes {
+	if need > maxInt()-railshotNativeInvocationContextBytes {
 		return errors.New("compiled metadata invalid: instantiate arena need overflows instance context")
 	}
-	need += wruntime.InstanceContextBytes
+	need += railshotNativeInvocationContextBytes
 	c.maxParamSlots = maxParams
 	c.maxResultSlots = maxResults
 	if c.syncHostSlots == 0 {
@@ -3448,7 +3835,7 @@ func (c *Compiled) maxCallSlots() (params, results int, err error) {
 			results = resultSlots
 		}
 	}
-	return params, results, nil
+	return railshotImportedCallSlots(c, params, results)
 }
 
 func (c *Compiled) validateGlobalInitExpr(index int, g GlobalDef) error {
@@ -3456,7 +3843,7 @@ func (c *Compiled) validateGlobalInitExpr(index int, g GlobalDef) error {
 		return nil
 	}
 	gcConstExpr := c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion()
-	if gcConstExpr && (g.Type == ValAnyRef || g.Type == ValI31Ref || (g.Type == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) {
+	if gcConstExpr && (g.Type == ValAnyRef || g.Type == ValI31Ref || (g.Type == ValExternRef && (c.stagedGCStructProduct().requiresExternConversion() || c.compactExternFrameRoots()))) {
 		want, err := c.globalExactType(index)
 		if err != nil {
 			return fmt.Errorf("compiled metadata invalid: global %d GC initializer type: %w", index, err)
@@ -3676,14 +4063,17 @@ func (c *Compiled) readFromWithLimits(r io.Reader, limits ArtifactLimits, exactB
 	if err := finishDecodedCompiled(decoded); err != nil {
 		return n, err
 	}
-	mapping, base, err := image.Take()
-	if err != nil {
-		return n, wrapContextError("load compiled code image", err)
-	}
 	decoded.ensureCodeCache()
-	decoded.codeCache.mem = mapping
-	decoded.codeCache.base = base
-	decoded.codeCache.flags |= compiledCacheWritableCode
+	if image != nil {
+		mapping, base, err := image.Take()
+		if err != nil {
+			return n, wrapContextError("load compiled code image", err)
+		}
+		decoded.codeCache.mem = mapping
+		decoded.codeCache.base = base
+		railshotRecordMappedCodeBytes(decoded, len(decoded.code))
+		decoded.codeCache.flags |= compiledCacheWritableCode
+	}
 	decodedLimit := limits.MaxDecodedBytes
 	if decodedLimit == 0 {
 		decodedLimit = DefaultArtifactLimits().MaxDecodedBytes
@@ -3722,10 +4112,58 @@ func finishDecodedCompiled(decoded *Compiled) error {
 		decoded.memoryDir.exports = nil
 	}
 	decoded.memoryDir.exactExports = true
+	railshotRestoreGCRefTestTableArtifact(decoded)
+	railshotRestoreGCRefTestConcreteArtifact(decoded)
+	railshotRestoreGCRefTestAbstractArtifact(decoded)
+	railshotRestoreGCExternArtifact(decoded)
+	railshotRestoreGCRefCastAbstractArtifact(decoded)
+	railshotRestoreGCRefCastConcreteArtifact(decoded)
+	railshotRestoreGCBrOnCastAbstractArtifact(decoded)
+	railshotRestoreGCBrOnCastFailAbstractArtifact(decoded)
+	railshotRestoreGCBrOnCastConcreteArtifact(decoded)
+	railshotRestoreGCBrOnCastFailConcreteArtifact(decoded)
+	railshotRestoreGCBrOnCastNullabilityArtifact(decoded)
+	railshotRestoreGCBrOnCastFailNullabilityArtifact(decoded)
+	railshotRestoreGCTypeSubtypingDeclarationsArtifact(decoded)
+	railshotRestoreGCTypeSubtypingRecursiveFunctionsArtifact(decoded)
+	railshotRestoreGCTypeSubtypingRefFuncGlobalsArtifact(decoded)
+	railshotRestoreGCTypeSubtypingLinkArtifact(decoded)
+	railshotRestoreGCTypeSubtypingFinalityLinkArtifact(decoded)
+	railshotRestoreGCTypeSubtypingStructLinkArtifact(decoded)
+	railshotRestoreGCTypeSubtypingStructProjectionLinkArtifact(decoded)
+	railshotRestoreGCTypeSubtypingStructMismatchLinkArtifact(decoded)
+	railshotRestoreGCTypeSubtypingIndependentStructLinkArtifact(decoded)
+	railshotRestoreGCTypeSubtypingExtendedProjectionLinkArtifact(decoded)
+	railshotRestoreGCTypeSubtypingDuplicateRecursiveLinkArtifact(decoded)
+	railshotRestoreGCTypeSubtypingExtendedRecursiveLinkArtifact(decoded)
+	railshotRestoreGCTypeSubtypingCrossGroupMismatchLinkArtifact(decoded)
+	railshotRestoreGCTypeSubtypingTransitiveMismatchLinkArtifact(decoded)
+	railshotRestoreGCTypeSubtypingNonFlatExportArtifact(decoded)
+	railshotRestoreGCTypeSubtypingRuntimeCallCastArtifact(decoded)
+	railshotRestoreGCTypeSubtypingRuntimeFinalityCallCastArtifact(decoded)
+	railshotRestoreGCTypeSubtypingRuntimeTypedTableCallArtifact(decoded)
+	railshotRestoreGCTypeSubtypingRefTestSingleArtifact(decoded)
+	railshotRestoreGCArrayFixedOfficialArtifact(decoded)
+	railshotRestoreGCStructPackedArtifact(decoded)
+	railshotRestoreGCStructBasicArtifact(decoded)
+	railshotRestoreGCStructNumericGlobalsArtifact(decoded)
+	railshotRestoreGCArrayDefaultOfficialArtifact(decoded)
+	railshotRestoreGCArrayPackedDataArtifact(decoded)
+	railshotRestoreGCArrayReferenceArtifact(decoded)
+	railshotRestoreGCArrayInitElemArtifact(decoded)
+	railshotRestoreGCArrayInitDataArtifact(decoded)
+	railshotRestoreGCArrayFillArtifact(decoded)
+	railshotRestoreGCArrayCopyArtifact(decoded)
 	if inferred := compiledStructuralRequiredFeatures(decoded); inferred&^decoded.requiredFeatures != 0 {
 		return fmt.Errorf("compiled metadata invalid: structural metadata requires unrecorded features %s", inferred&^decoded.requiredFeatures)
 	}
-	if err := decoded.validate(); err != nil {
+	var validationErr error
+	if rv64StructuralCodecMetadata(decoded) {
+		validationErr = decoded.validateMetadata()
+	} else {
+		validationErr = decoded.validate()
+	}
+	if err := validationErr; err != nil {
 		return err
 	}
 	if (goruntime.GOARCH == "amd64" || decoded.requiredFeatures.IsEnabled(CoreFeatureSIMD)) && !hostSupportsSIMD() {
@@ -3882,9 +4320,9 @@ func (in *Instance) tryInvokeCachedHostScalar1(export string, args []uint64) ([]
 		in.endOrdinaryInvocation(state)
 		return nil, nil, false
 	}
-	state.invocationID = newInvocationID()
+	state.setInvocationIdentity(newInvocationID())
 	defer func() {
-		state.invocationID = 0
+		state.setInvocationIdentity(0)
 		in.endOrdinaryInvocation(state)
 	}()
 	binary.LittleEndian.PutUint64(in.serArgs, uint64(uint32(args[0])))
@@ -4222,7 +4660,12 @@ func (in *Instance) invokeAdmitted(export string, args []uint64, contexts invoca
 	if codeProfileEnabled && in.boundaryProfile() != nil {
 		span, restore := in.beginProfileInvocation(export)
 		defer restore()
-		defer finishProfileBoundary(span, &resultErr)
+		completed := false
+		defer finishProfileBoundary(span, &resultErr, &completed)
+		state := in.ensurePluginState()
+		result, resultErr = in.invokeWithToken(export, args, contexts, state.invocationID, true, true, reservation)
+		completed = true
+		return result, resultErr
 	}
 	state := in.ensurePluginState()
 	return in.invokeWithToken(export, args, contexts, state.invocationID, true, true, reservation)
@@ -4253,24 +4696,42 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		return nil, err
 	}
 	admittedHere := false
-	defer func() {
-		if admittedHere {
-			in.endInvocation()
-		}
-		state.unlockInvocation()
-	}()
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		result, resultErr = in.invokeEntryLocked(export, args, contexts, alreadyAdmitted, state, &admittedHere)
+	})
+	if admittedHere {
+		cleanup.run(in.endInvocation)
+	}
+	cleanup.run(state.unlockInvocation)
+	cleanup.finish()
+	return result, resultErr
+}
+
+// invokeEntryLocked runs with the ordinary invocation gate and identity held.
+// The caller journals this body with lifetime and gate release so a body or
+// finalization panic cannot replace an earlier panic or strand the gate.
+func (in *Instance) invokeEntryLocked(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted bool, state *instancePluginState, admittedHere *bool) (result []uint64, resultErr error) {
 	if codeProfileEnabled && in.boundaryProfile() != nil {
 		if !alreadyAdmitted {
 			if err := in.beginInvocation(); err != nil {
 				return nil, fmt.Errorf("invoke %q: %w", export, err)
 			}
-			admittedHere = true
+			*admittedHere = true
 			alreadyAdmitted = true
 		}
 		span, restore := in.beginProfileInvocation(export)
 		defer restore()
-		defer finishProfileBoundary(span, &resultErr)
+		completed := false
+		defer finishProfileBoundary(span, &resultErr, &completed)
+		result, resultErr = in.invokeEntryLockedBody(export, args, contexts, alreadyAdmitted, state, admittedHere)
+		completed = true
+		return result, resultErr
 	}
+	return in.invokeEntryLockedBody(export, args, contexts, alreadyAdmitted, state, admittedHere)
+}
+
+func (in *Instance) invokeEntryLockedBody(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted bool, state *instancePluginState, admittedHere *bool) (result []uint64, resultErr error) {
 	privateRefStore := in.refStore == nil || in.refStore.private
 	if !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil && privateRefStore {
 		// Admit before reading cached or compiled entry metadata. Close publishes
@@ -4279,7 +4740,7 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		if err := in.beginInvocation(); err != nil {
 			return nil, fmt.Errorf("invoke %q: %w", export, err)
 		}
-		admittedHere = true
+		*admittedHere = true
 		alreadyAdmitted = true
 		ic := in.findInvokeCache(export)
 		if ic == nil {
@@ -4308,10 +4769,16 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 			(in.hasSingleDirectTypedScalarHost() || in.hasSingleExpandedTypedScalarHost()) && !ic.hasFuncRefParams && !ic.hasFuncRefResults &&
 			in.table == nil && !in.importsFuncrefStorage() && len(in.hostLog) == 0
 		if privateScalar || hostScalar {
-			out, err := in.invokeCachedNumericEntry(export, ic, args, false, hostScalar)
+			var out []uint64
+			var err error
+			var cleanup resourceCleanup
+			cleanup.run(func() {
+				out, err = in.invokeCachedNumericEntry(export, ic, args, false, hostScalar)
+			})
 			if hostScalar && in.table != nil {
-				in.reconcileFuncrefRoots()
+				cleanup.run(in.reconcileFuncrefRoots)
 			}
+			cleanup.finish()
 			return out, err
 		}
 	}
@@ -4445,55 +4912,99 @@ func nilInstanceInvokeError() error {
 	return errors.New("instance is nil")
 }
 
-func (in *Instance) invokeWithToken(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) ([]uint64, error) {
-	ctx := contexts.admissionContext()
-	reentry := !gateHeld && isNativeActive(in, id)
-	if !reentry && !gateHeld {
-		// Acquire the target instance gate before the shared collector lease. A
-		// parked same-domain callback must be able to reacquire the collector and
-		// finish releasing this gate while a second callback waits to enter.
-		state, err := in.lockInvocationContext(ctx, id)
-		if err != nil {
-			return nil, err
+func (in *Instance) invokeWithToken(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) (result []uint64, resultErr error) {
+	var state *instancePluginState
+	gateOwned := false
+	admittedHere := false
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		ctx := contexts.admissionContext()
+		reentry := !gateHeld && isNativeActive(in, id) && railshotCanReenter(in, id)
+		if !reentry && !gateHeld {
+			// Acquire the target instance gate before the shared collector lease. A
+			// parked same-domain callback must be able to reacquire the collector and
+			// finish releasing this gate while a second callback waits to enter.
+			var err error
+			state, err = in.lockInvocationContext(ctx, id)
+			if err != nil {
+				resultErr = err
+				return
+			}
+			gateOwned = true
 		}
-		defer state.unlockInvocation()
-	}
-	// Cancellation may arrive while this call waits for the instance gate.
-	if ctx != nil {
-		if err := ctx.Err(); err != nil {
-			return nil, err
+		// Cancellation may arrive while this call waits for the instance gate.
+		if ctx != nil {
+			if err := ctx.Err(); err != nil {
+				resultErr = err
+				return
+			}
 		}
-	}
-	if !alreadyAdmitted {
-		if err := in.beginInvocation(); err != nil {
-			return nil, fmt.Errorf("invoke %q: %w", export, err)
+		if !alreadyAdmitted {
+			if err := in.beginInvocation(); err != nil {
+				resultErr = fmt.Errorf("invoke %q: %w", export, err)
+				return
+			}
+			admittedHere = true
 		}
-		defer in.endInvocation()
-	}
-	var gcLease gcInvocationLease
-	if ctx == nil {
-		gcLease = in.lockGCInvocation(id)
-	} else {
-		var err error
-		gcLease, err = in.lockGCInvocationContext(ctx, id)
-		if err != nil {
-			return nil, err
+		var gcLease gcInvocationLease
+		if ctx == nil {
+			gcLease = in.lockGCInvocation(id)
+		} else {
+			var err error
+			gcLease, err = in.lockGCInvocationContext(ctx, id)
+			if err != nil {
+				resultErr = err
+				return
+			}
 		}
+		result, resultErr = in.invokeWithTokenLeased(export, args, contexts, id, gateHeld, reservation, reentry, gcLease)
+	})
+	if admittedHere {
+		cleanup.run(in.endInvocation)
 	}
+	if gateOwned {
+		cleanup.run(state.unlockInvocation)
+	}
+	cleanup.finish()
+	return result, resultErr
+}
+
+// invokeWithTokenLeased owns the collector lease through every body defer and
+// reference reconciliation. Each consumed unit remains independently releasable
+// after an earlier body or cleanup panic.
+func (in *Instance) invokeWithTokenLeased(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld bool, reservation *pluginOperationReservation, reentry bool, gcLease gcInvocationLease) (result []uint64, resultErr error) {
 	var reconcileAttached *Instance
 	var restoreNativeImports func()
-	defer func() {
-		if restoreNativeImports != nil {
-			restoreNativeImports()
-		}
-		gcLease.unlock()
-		if in.importsFuncrefStorage() || in.table != nil {
-			in.reconcileFuncrefRoots()
-		}
-		if reconcileAttached != nil && (reconcileAttached.importsFuncrefStorage() || reconcileAttached.table != nil) {
-			reconcileAttached.reconcileFuncrefRoots()
-		}
-	}()
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		result, resultErr = in.invokeWithTokenAdmitted(export, args, contexts, id, gateHeld, reservation, reentry, &restoreNativeImports, &reconcileAttached)
+	})
+	if restoreNativeImports != nil {
+		cleanup.run(restoreNativeImports)
+	}
+	cleanup.run(gcLease.unlock)
+	if in.importsFuncrefStorage() || in.table != nil {
+		cleanup.run(in.reconcileFuncrefRoots)
+	}
+	if reconcileAttached != nil && (reconcileAttached.importsFuncrefStorage() || reconcileAttached.table != nil) {
+		cleanup.run(reconcileAttached.reconcileFuncrefRoots)
+	}
+	cleanup.finish()
+	return result, resultErr
+}
+
+func (in *Instance) invokeWithTokenAdmitted(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld bool, reservation *pluginOperationReservation, reentry bool, restoreNativeImports *func(), reconcileAttached **Instance) (result []uint64, resultErr error) {
+	var argumentOwners railshotPublicFuncrefArguments
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		result, resultErr = in.invokeWithTokenAdmittedBody(export, args, contexts, id, gateHeld, reservation, reentry, restoreNativeImports, reconcileAttached, &argumentOwners)
+	})
+	cleanup.run(func() { railshotReleasePublicFuncrefArguments(argumentOwners) })
+	cleanup.finish()
+	return result, resultErr
+}
+
+func (in *Instance) invokeWithTokenAdmittedBody(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld bool, reservation *pluginOperationReservation, reentry bool, restoreNativeImports *func(), reconcileAttached **Instance, argumentOwners *railshotPublicFuncrefArguments) ([]uint64, error) {
 	if reentry {
 		restore, err := in.prepareHostReentryState()
 		if err != nil {
@@ -4507,7 +5018,7 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		if restore, err := in.prepareNativeImportReentries(id); err != nil {
 			return nil, err
 		} else {
-			restoreNativeImports = restore
+			*restoreNativeImports = restore
 		}
 	}
 	// Ordinary Invoke and hook-free Call entries carry no reservation and start
@@ -4533,8 +5044,11 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		if importIdx < 0 || importIdx >= len(in.c.Imports) {
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, importIdx)
 		}
-		if ex, ok := in.imports[in.c.functionImportBindingKey(importIdx)].(*InstanceExport); ok && ex != nil && ex.inst != nil {
-			reconcileAttached = ex.inst
+		if ex, ok := railshotNativeFunctionAttachment(in, importIdx); ok && ex != nil && ex.inst != nil {
+			*reconcileAttached = ex.inst
+			if out, handled, err := railshotInvokeNativeReexport(in, export, importIdx, args, contexts); handled {
+				return out, err
+			}
 			// Native cross-instance calls carry only the caller's invocation lease and
 			// trap cell; the import attachment retains the producer's physical resources.
 			// Keep this Go-level re-export path identical so producer Close neither owns
@@ -4557,11 +5071,15 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 	}
 	if ic.hasFuncRefParams {
 		defer in.clearGCRefArgumentRoots()
+		var err error
+		if *argumentOwners, err = railshotBeginPublicFuncrefArguments(in); err != nil {
+			return nil, fmt.Errorf("%s reference argument owners: %w", export, err)
+		}
 		params, _, err := exactFuncSignatureView(in.c.Funcs[li], in.c.Types)
 		if err != nil {
 			return nil, fmt.Errorf("%s exact parameters: %w", export, err)
 		}
-		if err := in.marshalPublicReferenceArgs(export, args, in.c.Funcs[li].Params, params); err != nil {
+		if err := in.marshalPublicReferenceArgs(export, args, in.c.Funcs[li].Params, params, argumentOwners); err != nil {
 			return nil, err
 		}
 	} else {
@@ -4578,17 +5096,14 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		}
 		defer stopCancel()
 	}
+	var executionErr error
 	if in.syncMode {
-		var err error
 		if contexts.interrupt != nil && in.contextBoundedTypedI64Eligible(ic) {
 			// Admission, ownership, and the cancellation watcher above are shared
 			// with the general path. Only the final native driver changes.
-			err = in.callCachedBoundedTypedHostContext(entry, contexts.callback)
+			executionErr = in.callCachedBoundedTypedHostContext(entry, contexts.callback)
 		} else {
-			err = in.callNativeSyncWithTrapContext(entry, in.trap, contexts.callback)
-		}
-		if err != nil {
-			return nil, err
+			executionErr = in.callNativeSyncWithTrapContext(entry, in.trap, contexts.callback)
 		}
 	} else {
 		privateScalar := invokePrivateEntryEnabled && contexts.interrupt == nil && !in.nativeControlIsShared() &&
@@ -4597,22 +5112,18 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		if privateScalar {
 			entryMode = ic.entryMode
 		}
-		var err error
 		if entryMode == preparedEntryIsolated && preparedIsolatedEntryEnabled {
-			err = in.callPreparedIsolated(entry, in.trap, false, ic.boundedWrapper)
+			executionErr = in.callPreparedIsolated(entry, in.trap, false, ic.boundedWrapper)
 		} else if entryMode != preparedEntryGeneral {
-			err = in.callPreparedPrivate(entry, in.trap)
+			executionErr = in.callPreparedPrivate(entry, in.trap)
 		} else {
-			err = in.callNativeAsync(entry, false)
+			executionErr = in.callNativeAsync(entry, false)
 		}
-		if err != nil {
-			return nil, err
-		}
-		if err := in.replayHostLog(); err != nil {
-			return nil, err
+		if executionErr == nil {
+			executionErr = in.replayHostLog()
 		}
 	}
-	if err := in.reconcileGCGlobalRoots(); err != nil {
+	if err := in.reconcileGCGlobalRootsAfter(executionErr); err != nil {
 		return nil, err
 	}
 	goruntime.KeepAlive(in)
@@ -4664,29 +5175,50 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 	return in.invokeLocalContext(li, args, invocationContextSet{}, in.trap)
 }
 
-func (in *Instance) invokeLocalContext(li int, args []uint64, contexts invocationContextSet, activeTrap []byte) ([]uint64, error) {
+func (in *Instance) invokeLocalContext(li int, args []uint64, contexts invocationContextSet, activeTrap []byte) (result []uint64, resultErr error) {
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("invoke function %d: %w", li, err)
 	}
-	defer in.endInvocation()
-	gcLease, err := in.lockGCInvocationContext(contexts.admissionContext(), in.currentInvocationID())
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		gcLease.unlock()
-		if in.importsFuncrefStorage() || in.table != nil {
-			in.reconcileFuncrefRoots()
+	var gcLease gcInvocationLease
+	leaseOwned := false
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		var err error
+		gcLease, err = in.lockGCInvocationContext(contexts.admissionContext(), in.currentInvocationID())
+		if err != nil {
+			resultErr = err
+			return
 		}
-	}()
-	return in.invokeAttachedLocalContext(li, args, contexts, activeTrap, false)
+		leaseOwned = true
+		result, resultErr = in.invokeAttachedLocalContext(li, args, contexts, activeTrap, false)
+	})
+	if leaseOwned {
+		cleanup.run(gcLease.unlock)
+		if in.importsFuncrefStorage() || in.table != nil {
+			cleanup.run(in.reconcileFuncrefRoots)
+		}
+	}
+	cleanup.run(in.endInvocation)
+	cleanup.finish()
+	return result, resultErr
 }
 
 // invokeAttachedLocalContext enters a producer retained by the caller's function
 // import attachment. The caller owns the invocation lease and active trap cell,
 // exactly as for a native dynamic import call. attachedResult permits first-time
 // funcref tokenization to transfer the attachment's finalization lifetime.
-func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts invocationContextSet, activeTrap []byte, attachedResult bool) ([]uint64, error) {
+func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts invocationContextSet, activeTrap []byte, attachedResult bool) (result []uint64, resultErr error) {
+	var argumentOwners railshotPublicFuncrefArguments
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		result, resultErr = in.invokeAttachedLocalContextBody(li, args, contexts, activeTrap, attachedResult, &argumentOwners)
+	})
+	cleanup.run(func() { railshotReleasePublicFuncrefArguments(argumentOwners) })
+	cleanup.finish()
+	return result, resultErr
+}
+
+func (in *Instance) invokeAttachedLocalContextBody(li int, args []uint64, contexts invocationContextSet, activeTrap []byte, attachedResult bool, argumentOwners *railshotPublicFuncrefArguments) ([]uint64, error) {
 	if li < 0 || li >= len(in.c.Funcs) || li >= len(in.c.Entry) {
 		return nil, fmt.Errorf("invalid function index %d", li)
 	}
@@ -4713,11 +5245,15 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts i
 	}
 	if hasReferenceValType(sig.Params) {
 		defer in.clearGCRefArgumentRoots()
+		var err error
+		if *argumentOwners, err = railshotBeginPublicFuncrefArguments(in); err != nil {
+			return nil, wrapContextError("function reference argument owners", err)
+		}
 		params, _, err := exactFuncSignatureView(sig, in.c.Types)
 		if err != nil {
 			return nil, wrapContextError("function exact parameters", err)
 		}
-		if err := in.marshalPublicReferenceArgs("function", args, sig.Params, params); err != nil {
+		if err := in.marshalPublicReferenceArgs("function", args, sig.Params, params, argumentOwners); err != nil {
 			return nil, err
 		}
 	} else {
@@ -4739,19 +5275,16 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts i
 		}
 	}
 	defer stopCancel()
+	var executionErr error
 	if in.syncMode {
-		if err := in.callNativeSyncWithTrapContext(entry, activeTrap, contexts.callback); err != nil {
-			return nil, err
-		}
+		executionErr = in.callNativeSyncWithTrapContext(entry, activeTrap, contexts.callback)
 	} else {
-		if err := in.callNativeAsyncWithTrap(entry, false, activeTrap); err != nil {
-			return nil, err
-		}
-		if err := in.replayHostLog(); err != nil {
-			return nil, err
+		executionErr = in.callNativeAsyncWithTrap(entry, false, activeTrap)
+		if executionErr == nil {
+			executionErr = in.replayHostLog()
 		}
 	}
-	if err := in.reconcileGCGlobalRoots(); err != nil {
+	if err := in.reconcileGCGlobalRootsAfter(executionErr); err != nil {
 		return nil, err
 	}
 	goruntime.KeepAlive(in)
@@ -4796,7 +5329,7 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts i
 // nativeCancellationSupported reports whether this target has either
 // signal/context interruption or compiler-emitted cancellation polls.
 func nativeCancellationSupported() bool {
-	return (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && wruntime.NativeCancellationSchedulerAvailable()
+	return (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64" || (goruntime.GOOS == "linux" && goruntime.GOARCH == "riscv64")) && wruntime.NativeCancellationSchedulerAvailable()
 }
 
 // startCancellationWatch arms the native safepoints for a high-level
@@ -4872,8 +5405,10 @@ func (in *Instance) replayHostLog() (err error) {
 	}
 	// A replayed host call may panic HostExit or HostTrap to end execution;
 	// recover both exactly like the synchronous path.
+	completed := false
 	defer func() {
-		if r := recover(); r != nil {
+		r := recover()
+		if !completed || r != nil {
 			switch trap := r.(type) {
 			case HostTrap:
 				if trap.Err == nil {
@@ -4928,6 +5463,7 @@ func (in *Instance) replayHostLog() (err error) {
 			}
 		}
 	}
+	completed = true
 	return nil
 }
 
@@ -4959,8 +5495,10 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	}
 	params := append([]uint64(nil), args...)
 	results = make([]uint64, resultSlots)
+	returned := false
 	defer func() {
-		if recovered := recover(); recovered != nil {
+		recovered := recover()
+		if !returned || recovered != nil {
 			switch value := recovered.(type) {
 			case HostTrap:
 				if value.Err == nil {
@@ -5002,12 +5540,21 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	if codeProfileEnabled && activeHostInvocationContext(in).profileSession() != nil {
 		span, restore := in.beginProfileHostCallback(importIdx)
 		defer restore()
-		defer finishProfileBoundary(span, &err)
+		completed := false
+		defer finishProfileBoundary(span, &err, &completed)
+		fn := &in.syncHosts[importIdx]
+		caller := in.ensurePluginState().hostScope.beginReservedWithID(in, id, currentInvocationReservation(in), parent)
+		defer caller.scope.end(caller.generation, caller.parentGeneration)
+		fn.call(caller, params, results)
+		completed = true
+		returned = true
+		return results, nil
 	}
 	fn := &in.syncHosts[importIdx]
 	caller := in.ensurePluginState().hostScope.beginReservedWithID(in, id, currentInvocationReservation(in), parent)
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	fn.call(caller, params, results)
+	returned = true
 	return results, nil
 }
 
@@ -5026,7 +5573,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		if gfi >= len(in.c.Imports) {
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, gfi)
 		}
-		if ex, ok := in.imports[in.c.functionImportBindingKey(gfi)].(*InstanceExport); (!ok || ex == nil || ex.inst == nil) && (gfi >= len(in.syncHosts) || !in.syncHosts[gfi].callable()) {
+		if ex, ok := railshotNativeFunctionAttachment(in, gfi); (!ok || ex == nil || ex.inst == nil) && (gfi >= len(in.syncHosts) || !in.syncHosts[gfi].callable()) {
 			return nil, fmt.Errorf("export %q is an imported function without a callable owner", export)
 		}
 		slot, index := in.nextInvokeCacheSlot()
@@ -5254,7 +5801,7 @@ func exactReferenceType(types []ValueTypeDescriptor, index int, legacy ValType) 
 	return valueTypeDescriptorFromValType(legacy)
 }
 
-func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, types []ValType, exact []ValueTypeDescriptor) error {
+func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, types []ValType, exact []ValueTypeDescriptor, argumentOwners *railshotPublicFuncrefArguments) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -5278,7 +5825,8 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 				if in.refStore == nil {
 					return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
 				}
-				descriptor, ok := in.refStore.resolve(bits)
+				token := bits
+				descriptor, ok := in.refStore.resolve(token)
 				if !ok {
 					return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
 				}
@@ -5289,9 +5837,19 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 				if !valueTypeSubtype(actual, actualTypes, required, in.c.Types) {
 					return fmt.Errorf("%s: funcref argument %d does not match its exact structural type", subject, i)
 				}
+				if err := railshotStagePublicFuncrefArgument(in, argumentOwners, token, descriptor); err != nil {
+					return fmt.Errorf("%s: funcref argument %d owner: %w", subject, i, err)
+				}
 				bits = descriptor
 			}
 		case ValExternRef:
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok || required.Kind != ValueTypeReference || required.Ref.Heap.Defined || required.Ref.Heap.Abstract != AbstractHeapExtern && required.Ref.Heap.Abstract != AbstractHeapNoExtern {
+				return fmt.Errorf("%s: missing exact externref type for argument %d", subject, i)
+			}
+			if bits == 0 && !required.Ref.Nullable || bits != 0 && required.Ref.Heap.Abstract == AbstractHeapNoExtern {
+				return fmt.Errorf("%s: externref argument %d does not match its exact structural type", subject, i)
+			}
 			if in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
 				conversion := in.existingGCExternConversionState()
 				if conversion == nil {
@@ -5302,8 +5860,13 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 					return fmt.Errorf("%s: invalid externref token for argument %d: %w", subject, i, err)
 				}
 				bits = internal
-			} else if bits != 0 && (in.refStore == nil || !in.validExternrefToken(bits)) {
-				return fmt.Errorf("%s: invalid externref token for argument %d", subject, i)
+			} else if bits != 0 {
+				if in.refStore == nil || !in.validExternrefToken(bits) {
+					return fmt.Errorf("%s: invalid externref token for argument %d", subject, i)
+				}
+				if err := railshotStagePublicExternrefArgument(in, argumentOwners, bits); err != nil {
+					return fmt.Errorf("%s: externref argument %d lifetime: %w", subject, i, err)
+				}
 			}
 		case ValAnyRef, ValExnRef:
 			required, ok := exactReferenceType(exact, i, typ)
@@ -5320,15 +5883,28 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 					return fmt.Errorf("%s: invalid anyref token for argument %d: %w", subject, i, err)
 				}
 				bits = internal
-			} else if typ == ValAnyRef && bits != 0 {
-				if in.refStore == nil {
-					return fmt.Errorf("%s: invalid anyref token for argument %d", subject, i)
+			} else if (typ == ValAnyRef || typ == ValExnRef && in.c.needsOwnedExceptionReferences()) && bits != 0 {
+				compact := gc.Ref(uint32(bits))
+				if bits == uint64(compact) && compact.IsI31() {
+					if !in.gcRefMatchesValueType(compact, required) {
+						return fmt.Errorf("%s: i31 anyref argument %d does not match its exact type", subject, i)
+					}
+				} else {
+					if in.refStore == nil {
+						return fmt.Errorf("%s: invalid anyref token for argument %d", subject, i)
+					}
+					var internal gc.Ref
+					var err error
+					if in.c.compactExternFrameRoots() && in.validExternrefToken(bits) {
+						internal, err = in.stageCompactExternAnyArgument(bits, required)
+					} else {
+						internal, err = in.refStore.stageGCRefArgument(in, bits, required)
+					}
+					if err != nil {
+						return fmt.Errorf("%s: invalid anyref token for argument %d: %w", subject, i, err)
+					}
+					bits = uint64(internal)
 				}
-				internal, err := in.refStore.stageGCRefArgument(in, bits, required)
-				if err != nil {
-					return fmt.Errorf("%s: invalid anyref token for argument %d: %w", subject, i, err)
-				}
-				bits = uint64(internal)
 			} else if bits != 0 {
 				return fmt.Errorf("%s: non-null %s argument %d is outside the null-only product", subject, typ, i)
 			}
@@ -5361,21 +5937,48 @@ func (in *Instance) translatePublicReferenceResults(subject string, values []uin
 	return in.translatePublicReferenceResultsMode(subject, values, types, exact, false)
 }
 
+// Result ownership remains provisional until every result has passed its exact
+// type and token checks. Small result journals stay on the invocation stack.
+type publicResultToken struct {
+	store   *referenceStore // nil marks a new extern token in in.refStore
+	token   uint64
+	funcref *funcrefTokenEntry
+}
+
 func (in *Instance) translatePublicReferenceResultsMode(subject string, values []uint64, types []ValType, exact []ValueTypeDescriptor, attachedResult bool) (err error) {
-	var issuedGCRefs [gcPublicSlotLimit]struct {
-		store *referenceStore
-		token uint64
+	var inline [gcPublicSlotLimit]publicResultToken
+	issued := inline[:]
+	if len(types) > len(issued) {
+		issued = make([]publicResultToken, len(types))
 	}
-	issuedGCRefCount := 0
+	issuedCount := 0
+	completed := false
 	defer func() {
-		if err == nil {
-			return
+		var cleanup resourceCleanup
+		if !completed && err == nil {
+			cleanup.panicked, cleanup.value = true, recover()
 		}
-		for i := issuedGCRefCount - 1; i >= 0; i-- {
-			if releaseErr := issuedGCRefs[i].store.releaseGCRef(in, issuedGCRefs[i].token); releaseErr != nil {
-				err = fmt.Errorf("%w; rollback GC result token: %v", err, releaseErr)
+		for i := issuedCount - 1; i >= 0; i-- {
+			token := issued[i]
+			if token.store == nil {
+				if !completed || err != nil {
+					cleanup.run(func() {
+						if !in.refStore.releaseExternref(token.token) {
+							err = fmt.Errorf("%w; rollback extern result token failed", err)
+						}
+					})
+				}
+			} else if token.funcref != nil {
+				cleanup.run(func() { token.store.finishFuncrefResult(token.funcref, completed && err == nil) })
+			} else if !completed || err != nil {
+				cleanup.run(func() {
+					if releaseErr := token.store.releaseGCRef(in, token.token); releaseErr != nil {
+						err = fmt.Errorf("%w; rollback GC result token: %v", err, releaseErr)
+					}
+				})
 			}
 		}
+		cleanup.finish()
 	}()
 	slot := 0
 	for i, typ := range types {
@@ -5411,21 +6014,40 @@ func (in *Instance) translatePublicReferenceResultsMode(subject string, values [
 					clear(values)
 					return fmt.Errorf("%s: funcref result %d does not match its exact structural type", subject, i)
 				}
-				var token uint64
-				if attachedResult {
-					token, err = store.issueAttachedResult(in, values[slot])
-				} else {
-					token, err = store.issue(in, values[slot])
-				}
+				token, fresh, err := store.issueResultMode(in, values[slot], attachedResult, issued[:issuedCount], true)
 				if err != nil {
 					clear(values)
 					return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
+				}
+				if fresh != nil {
+					issued[issuedCount] = publicResultToken{store: store, funcref: fresh}
+					issuedCount++
 				}
 				values[slot] = token
 			}
 		}
 		if typ == ValExternRef {
-			if in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok || required.Kind != ValueTypeReference || required.Ref.Heap.Defined || required.Ref.Heap.Abstract != AbstractHeapExtern && required.Ref.Heap.Abstract != AbstractHeapNoExtern {
+				clear(values)
+				return fmt.Errorf("%s: missing exact externref type for result %d", subject, i)
+			}
+			if values[slot] == 0 && !required.Ref.Nullable || values[slot] != 0 && required.Ref.Heap.Abstract == AbstractHeapNoExtern {
+				clear(values)
+				return fmt.Errorf("%s: externref result %d does not match its exact structural type", subject, i)
+			}
+			if in.c.compactExternFrameRoots() && values[slot] != 0 {
+				public, issueErr := in.issueCompactExternPublicToken(values[slot])
+				if issueErr != nil {
+					clear(values)
+					return fmt.Errorf("%s: own externref result %d: %w", subject, i, issueErr)
+				}
+				if public != values[slot] {
+					issued[issuedCount] = publicResultToken{token: public}
+					issuedCount++
+				}
+				values[slot] = public
+			} else if in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern {
 				conversion := in.existingGCExternConversionState()
 				if conversion == nil {
 					clear(values)
@@ -5442,7 +6064,7 @@ func (in *Instance) translatePublicReferenceResultsMode(subject string, values [
 				return fmt.Errorf("%s: invalid externref result %d", subject, i)
 			}
 		}
-		if typ == ValAnyRef {
+		if typ == ValAnyRef || typ == ValExnRef && in.c.needsOwnedExceptionReferences() {
 			required, ok := exactReferenceType(exact, i, typ)
 			if !ok {
 				clear(values)
@@ -5471,6 +6093,15 @@ func (in *Instance) translatePublicReferenceResultsMode(subject string, values [
 					return fmt.Errorf("%s: invalid non-null anyref result %d", subject, i)
 				}
 				ref := gc.Ref(uint32(values[slot]))
+				if token, foreign := compactForeignAnyToken(in.gc, ref); foreign {
+					if matched, _ := compactForeignAnyMatches(in.gc, ref, required); !matched {
+						clear(values)
+						return fmt.Errorf("%s: foreign anyref result %d does not match its exact type", subject, i)
+					}
+					values[slot] = token
+					slot++
+					continue
+				}
 				if ref.IsI31() {
 					if !in.gcRefMatchesValueType(ref, required) {
 						clear(values)
@@ -5489,11 +6120,8 @@ func (in *Instance) translatePublicReferenceResultsMode(subject string, values [
 					clear(values)
 					return fmt.Errorf("%s: own non-null anyref result %d: %w", subject, i, err)
 				}
-				issuedGCRefs[issuedGCRefCount] = struct {
-					store *referenceStore
-					token uint64
-				}{store: store, token: token}
-				issuedGCRefCount++
+				issued[issuedCount] = publicResultToken{store: store, token: token}
+				issuedCount++
 				values[slot] = token
 			}
 		}
@@ -5513,7 +6141,7 @@ func (in *Instance) translatePublicReferenceResultsMode(subject string, values [
 				return fmt.Errorf("%s: invalid i31ref result %d", subject, i)
 			}
 		}
-		if typ == ValExnRef {
+		if typ == ValExnRef && !in.c.needsOwnedExceptionReferences() {
 			required, ok := exactReferenceType(exact, i, typ)
 			if !ok {
 				clear(values)
@@ -5534,6 +6162,7 @@ func (in *Instance) translatePublicReferenceResultsMode(subject string, values [
 			slot++
 		}
 	}
+	completed = true
 	return nil
 }
 
@@ -5569,4 +6198,31 @@ func (in *Instance) CodeBase() (base uintptr, entries []int) {
 	// Copy the entry table so callers cannot mutate the compiled module's
 	// (potentially shared) state through the returned slice.
 	return in.base, append([]int(nil), in.c.Entry...)
+}
+
+func moduleHasOpaqueExternSignatures(m *wasm.Module) bool {
+	for _, group := range m.Types {
+		for _, sub := range group.SubTypes {
+			if sub.Comp.Kind == wasm.CompFunc {
+				for _, values := range [][]wasm.ValType{sub.Comp.Params, sub.Comp.Results} {
+					for _, value := range values {
+						if wasm.ExternReferenceType(value) {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+func moduleHasOpaqueExternTable(m *wasm.Module) bool {
+	for i := uint32(0); i < uint32(m.TableCount()); i++ {
+		table, ok := m.TableType(i)
+		if ok && wasm.ExternReferenceType(wasm.RefVal(table.Ref)) {
+			return true
+		}
+	}
+	return false
 }

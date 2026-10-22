@@ -266,13 +266,48 @@ func moduleHasGCHeapType(m *wasm.Module) bool {
 	return false
 }
 
-func moduleHasGCStructType(m *wasm.Module) bool {
+// Initializers can allocate without any function body using a GC helper.
+// Keep product selection aligned with the instructions evaluated at instantiate.
+func moduleGCInitializerUses(m *wasm.Module, matches func(wasm.InstrKind) bool) bool {
 	if m == nil {
 		return false
 	}
-	for i := range m.Types {
-		for j := range m.Types[i].SubTypes {
-			if m.Types[i].SubTypes[j].Comp.Kind == wasm.CompStruct {
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	uses := func(expr wasm.Expr) bool {
+		for _, in := range expr.Instrs {
+			if matches(in.Kind) {
+				return true
+			}
+		}
+		r := wasm.NewReader(expr.BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return false
+			}
+			var imm wasm.InstructionImmediate
+			if classifier.ClassifyInto(r, op, &imm) != nil {
+				return false
+			}
+			if matches(imm.Kind) {
+				return true
+			}
+		}
+		return false
+	}
+	for i := range m.Globals {
+		if uses(m.Globals[i].Init) {
+			return true
+		}
+	}
+	for i := range m.Tables {
+		if m.Tables[i].Init != nil && uses(*m.Tables[i].Init) {
+			return true
+		}
+	}
+	for i := range m.Elements {
+		for _, expr := range m.Elements[i].Kind.Exprs {
+			if uses(expr) {
 				return true
 			}
 		}
@@ -284,7 +319,7 @@ func moduleUsesGenericGCStructHelpers(m *wasm.Module) bool {
 	if m == nil {
 		return false
 	}
-	hasStructType := moduleHasGCStructType(m)
+	hasHeapType := moduleHasGCHeapType(m)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		r := wasm.NewReader(m.Code[i].BodyBytes)
@@ -304,13 +339,20 @@ func moduleUsesGenericGCStructHelpers(m *wasm.Module) bool {
 			case wasm.InstrRefTest, wasm.InstrRefCast,
 				wasm.InstrBrOnCast, wasm.InstrBrOnCastFail,
 				wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
-				if hasStructType {
+				if hasHeapType {
 					return true
 				}
 			}
 		}
 	}
-	return false
+	return moduleGCInitializerUses(m, func(kind wasm.InstrKind) bool {
+		switch kind {
+		case wasm.InstrStructNew, wasm.InstrStructNewDefault:
+			return true
+		default:
+			return false
+		}
+	})
 }
 
 func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
