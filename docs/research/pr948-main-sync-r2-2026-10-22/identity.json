@@ -1,0 +1,14 @@
+{
+  "pr": "https://github.com/wago-org/wago/pull/948",
+  "pr_parent": "de5213561684394b128519446486e4809ea89096",
+  "main": "d90a458e3d611fb2b0ebbc366e47afb70ef0dbf3",
+  "manual_conflicts": [
+    "ARCHITECTURE.md"
+  ],
+  "go": "1.27.1",
+  "GOMAXPROCS": "2",
+  "GOGC": "50",
+  "GOMEMLIMIT": "1500MiB",
+  "CGO_ENABLED": "0",
+  "hosted_ci": "pending"
+}

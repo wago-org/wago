@@ -30,6 +30,8 @@ func TestGCCollectFrameRootsUsesCurrentArchitecture(t *testing.T) {
 	case "amd64":
 	case "arm64":
 		wantLayout = gcNativeFrameLayoutARM64
+	case "riscv64":
+		wantLayout = gcNativeFrameLayoutRISCV64
 	default:
 		t.Skipf("native GC frame roots are unavailable on %s", runtime.GOARCH)
 	}
@@ -39,6 +41,178 @@ func TestGCCollectFrameRootsUsesCurrentArchitecture(t *testing.T) {
 	if roots.owner != in || roots.suspended != state || roots.frameLayout != wantLayout || roots.allowExternalReturn != wantExternal {
 		t.Fatalf("collect roots = %+v, want layout=%d external=%v", roots, wantLayout, wantExternal)
 	}
+}
+
+func TestGCNativeFrameRootsRISCV64SavedRAWalk(t *testing.T) {
+	frame, releaseFrame := newGCNativeTestFrame(t, 128)
+	defer releaseFrame()
+	code, releaseCode := newGCNativeTestFrame(t, 256)
+	defer releaseCode()
+	base := uintptr(unsafe.Pointer(&frame[0]))
+	codeBase := uintptr(unsafe.Pointer(&code[0]))
+
+	const (
+		calleeFrameBytes = 32
+		callerBase       = calleeFrameBytes
+		callerFrameBytes = 64
+	)
+	// RA is word zero of each RV64 frame. Roots begin after the fixed header.
+	binary.LittleEndian.PutUint64(frame[0:], uint64(codeBase+100))
+	binary.LittleEndian.PutUint64(frame[16:], 7)
+	binary.LittleEndian.PutUint64(frame[callerBase:], uint64(codeBase+200))
+	binary.LittleEndian.PutUint64(frame[callerBase+24:], 11)
+
+	roots := gcNativeFrameRoots{
+		base:                 base,
+		offsets:              []uint32{16},
+		frameBytes:           calleeFrameBytes,
+		frameLayout:          gcNativeFrameLayoutRISCV64,
+		codeBase:             codeBase,
+		codeBytes:            uintptr(len(code)),
+		adapterReturnOffsets: []uint32{200},
+		callsites: []compiledGCFrameCallsite{{
+			returnOffset: 100,
+			frameBytes:   callerFrameBytes,
+			offsets:      []uint32{24},
+		}},
+	}
+	seen := 0
+	roots.RangeRoots(func(slot gc.RootSlot) bool {
+		seen++
+		slot.SetRef(slot.GetRef() + 2)
+		return true
+	})
+	if seen != 2 {
+		t.Fatalf("root count = %d, want 2", seen)
+	}
+	if got := (*gc.Root)(offHeapPtr(base + 16)).GetRef(); got != 9 {
+		t.Fatalf("callee root = %d, want 9", got)
+	}
+	if got := (*gc.Root)(offHeapPtr(base + callerBase + 24)).GetRef(); got != 13 {
+		t.Fatalf("caller root = %d, want 13", got)
+	}
+	runtime.KeepAlive(frame)
+	runtime.KeepAlive(code)
+}
+
+func TestGCNativeFrameRootsRISCV64ForeignBridgeStackAdjustment(t *testing.T) {
+	frame, releaseFrame := newGCNativeTestFrame(t, 256)
+	defer releaseFrame()
+	code, releaseCode := newGCNativeTestFrame(t, 256)
+	defer releaseCode()
+	base := uintptr(unsafe.Pointer(&frame[0]))
+	codeBase := uintptr(unsafe.Pointer(&code[0]))
+
+	const (
+		calleeFrameBytes = 32
+		bridgeFrameBytes = 64
+		callerBase       = calleeFrameBytes + bridgeFrameBytes
+		callerFrameBytes = 64
+	)
+	// The target callee returns into the bridge allocation. Its callsite map
+	// skips that allocation and resumes at the consumer Wasm frame.
+	binary.LittleEndian.PutUint64(frame[0:], uint64(codeBase+80))
+	binary.LittleEndian.PutUint64(frame[16:], 3)
+	binary.LittleEndian.PutUint64(frame[callerBase:], uint64(codeBase+200))
+	binary.LittleEndian.PutUint64(frame[callerBase+24:], 17)
+
+	roots := gcNativeFrameRoots{
+		base:                 base,
+		offsets:              []uint32{16},
+		frameBytes:           calleeFrameBytes,
+		frameLayout:          gcNativeFrameLayoutRISCV64,
+		codeBase:             codeBase,
+		codeBytes:            uintptr(len(code)),
+		adapterReturnOffsets: []uint32{200},
+		callsites: []compiledGCFrameCallsite{{
+			returnOffset: 80,
+			frameBytes:   callerFrameBytes,
+			stackAdjust:  bridgeFrameBytes,
+			offsets:      []uint32{24},
+		}},
+	}
+	seen := 0
+	roots.RangeRoots(func(slot gc.RootSlot) bool {
+		seen++
+		slot.SetRef(slot.GetRef() + 1)
+		return true
+	})
+	if seen != 2 {
+		t.Fatalf("root count = %d, want 2", seen)
+	}
+	if got := (*gc.Root)(offHeapPtr(base + callerBase + 24)).GetRef(); got != 18 {
+		t.Fatalf("adjusted caller root = %d, want 18", got)
+	}
+	runtime.KeepAlive(frame)
+	runtime.KeepAlive(code)
+}
+
+func TestGCNativeFrameRootsCallsiteFreeForeignTargetReturnsToCallerOwner(t *testing.T) {
+	frame := make([]byte, 256)
+	providerCode := make([]byte, 256)
+	consumerCode := make([]byte, 256)
+	base := uintptr(unsafe.Pointer(&frame[0]))
+	providerCodeBase := uintptr(unsafe.Pointer(&providerCode[0]))
+	consumerCodeBase := uintptr(unsafe.Pointer(&consumerCode[0]))
+
+	const (
+		providerFrameBytes = 32
+		bridgeFrameBytes   = 64
+		consumerBase       = providerFrameBytes + bridgeFrameBytes
+		consumerFrameBytes = 64
+	)
+	binary.LittleEndian.PutUint64(frame[0:], uint64(consumerCodeBase+80))
+	binary.LittleEndian.PutUint64(frame[16:], 3)
+	binary.LittleEndian.PutUint64(frame[consumerBase:], uint64(consumerCodeBase+200))
+	binary.LittleEndian.PutUint64(frame[consumerBase+24:], 17)
+
+	collector := new(gc.Collector)
+	domain := &gcStoreDomain{collector: collector}
+	providerRoots := &compiledGCFrameRoots{}
+	consumerRoots := &compiledGCFrameRoots{
+		adapterReturnOffsets: []uint32{200},
+		callsites: []compiledGCFrameCallsite{{
+			returnOffset: 80,
+			frameBytes:   consumerFrameBytes,
+			stackAdjust:  bridgeFrameBytes,
+			offsets:      []uint32{24},
+		}},
+	}
+	provider := &Instance{c: &Compiled{code: providerCode, validateMemo: &validateMemo{gcFrameRoots: providerRoots}}, gc: collector, base: providerCodeBase}
+	consumer := &Instance{c: &Compiled{code: consumerCode, validateMemo: &validateMemo{gcFrameRoots: consumerRoots}}, gc: collector, base: consumerCodeBase}
+	store := &referenceStore{
+		instances: map[*Instance]*referenceStoreInstance{provider: {}, consumer: {}},
+		gcDomains: &gcDomainTopology{first: domain, last: domain, n: 1},
+	}
+	provider.refStore, consumer.refStore = store, store
+
+	roots := gcNativeFrameRoots{
+		owner:       provider,
+		base:        base,
+		offsets:     []uint32{16},
+		frameBytes:  providerFrameBytes,
+		frameLayout: gcNativeFrameLayoutRISCV64,
+		codeBase:    providerCodeBase,
+		codeBytes:   uintptr(len(providerCode)),
+		callsites:   providerRoots.callsites,
+	}
+	seen := 0
+	if !roots.rangeChain(func(slot gc.RootSlot) bool {
+		seen++
+		slot.SetRef(slot.GetRef() + 1)
+		return true
+	}, nil, nil) {
+		t.Fatal("root traversal stopped early")
+	}
+	if seen != 2 {
+		t.Fatalf("root count = %d, want 2", seen)
+	}
+	if got := (*gc.Root)(offHeapPtr(base + consumerBase + 24)).GetRef(); got != 18 {
+		t.Fatalf("foreign caller root = %d, want 18", got)
+	}
+	runtime.KeepAlive(frame)
+	runtime.KeepAlive(providerCode)
+	runtime.KeepAlive(consumerCode)
 }
 
 func TestGCNativeFrameRootsARM64FrameRecordWalk(t *testing.T) {

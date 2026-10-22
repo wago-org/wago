@@ -42,7 +42,7 @@ func TestRelease2MultipleMemoryValidationSites(t *testing.T) {
 		t.Run(base, func(t *testing.T) {
 			tmp := t.TempDir()
 			jsonPath := filepath.Join(tmp, base+".json")
-			out, err := exec.Command(wast2json, "--enable-all", filepath.Join(suite.CoreDir, base+".wast"), "-o", jsonPath).CombinedOutput()
+			out, err := exec.Command(wast2json, filepath.Join(suite.CoreDir, base+".wast"), "-o", jsonPath).CombinedOutput()
 			if err != nil {
 				t.Fatalf("wast2json: %v: %s", err, out)
 			}

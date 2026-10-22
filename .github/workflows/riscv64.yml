@@ -1,0 +1,157 @@
+name: Linux RISC-V64 / RISE
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/riscv64.yml"
+      - "scripts/ci-riscv64.sh"
+      - "scripts/setup-riscv64-go.sh"
+      - "scripts/check-riscv64-cli.sh"
+      - "scripts/build-release-assets.sh"
+      - "scripts/verify-channel-assets.sh"
+      - "scripts/smoke-release-assets.sh"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/canary.yml"
+      - "install.sh"
+      - "cli/**"
+      - "internal/actionartifact/**"
+      - "internal/installbootstrap/**"
+      - "internal/wagopaths/**"
+      - "scripts/test-riscv64.sh"
+      - "scripts/bootstrap-wabt.sh"
+      - "scripts/prepare-riscv64-numeric-spec.py"
+      - "scripts/prepare-riscv64-simd-spec.py"
+      - "src/core/compiler/backend/railshot/riscv64/**"
+      - "src/core/compiler/backend/railshot/shared/**"
+      - "src/core/compiler/wasm/**"
+      - "src/core/encoder/riscv64/**"
+      - "src/core/runtime/**"
+      - "src/wago/**"
+      - "internal/regalloccheck/**"
+      - "tests/support/**"
+      - "src/core/codeimage/**"
+      - "go.mod"
+      - "go.sum"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: riscv64-rise-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fixtures:
+    name: Prepare pinned specification fixtures
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          submodules: true
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.27.1"
+          cache: false
+      - name: Prepare pinned fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixtures="$RUNNER_TEMP/wago-rv64-fixtures"
+          wabt=$(scripts/bootstrap-wabt.sh --print-path)
+          python3 scripts/prepare-riscv64-simd-spec.py \
+            tests/conformance/spec-v2 "$fixtures/simd"
+          python3 scripts/prepare-riscv64-simd-spec.py --relaxed \
+            tests/conformance/spec-v3 "$fixtures/relaxed-simd"
+          for profile in numeric float memory control multimemory memory64 fac call; do
+            suite=spec-v2
+            if [[ $profile == multimemory || $profile == memory64 ]]; then
+              suite=spec-v3
+            fi
+            python3 scripts/prepare-riscv64-numeric-spec.py --profile "$profile" \
+              "tests/conformance/$suite" "$fixtures/$profile" "$wabt"
+          done
+      - name: Compare encoder output with Clang
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang=$(command -v clang)
+          "$clang" --target=riscv64 -c -x assembler /dev/null \
+            -o "$RUNNER_TEMP/wago-rv64-clang-check.o"
+          WAGO_RV64_CLANG="$clang" go test ./src/core/encoder/riscv64 \
+            -run '^Test(Assembler|AtomicEncodingAndAssembler|FloatAssembler)$' -count=1 -v
+      - name: Upload pinned fixtures
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: wago-rv64-fixtures
+          path: ${{ runner.temp }}/wago-rv64-fixtures
+          if-no-files-found: error
+          retention-days: 1
+
+  native:
+    name: JIT / native Linux RISC-V64
+    needs: fixtures
+    # RISE requires exactly this single label; adding self-hosted breaks routing.
+    # Org owner must install the RISE App and permit this repository first.
+    runs-on: ubuntu-24.04-riscv
+    # Native compilation plus the compiler-free artifact matrix takes about 56
+    # minutes on the shared two-core RISE runner before guard-page checks begin.
+    timeout-minutes: 90
+    # Fork PRs need an explicitly approved same-repository branch for this
+    # self-hosted service. Do not use pull_request_target or expose secrets.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      GO_VERSION: "1.27.1"
+      GOWORK: "off"
+      GOTOOLCHAIN: local
+      GORISCV64: rva20u64
+      CGO_ENABLED: "0"
+      GOMAXPROCS: "2"
+      # Go 1.27.1 can corrupt the compiler's DWARF mutex while compiling the
+      # large src/wago test package concurrently on native RISC-V. Keep job
+      # and test parallelism, but serialize functions within each compiler.
+      GOFLAGS: "-gcflags=-c=1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify native runner and install pinned Go
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = riscv64
+          uname -a
+          cat /etc/os-release
+          scripts/setup-riscv64-go.sh
+      - name: Download pinned fixtures
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: wago-rv64-fixtures
+          path: ${{ runner.temp }}/wago-rv64-fixtures
+      - name: Verify native tools and fixture paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixtures="$RUNNER_TEMP/wago-rv64-fixtures"
+          test -f "$fixtures/simd/rv64-simd-manifest.json"
+          test -f "$fixtures/relaxed-simd/rv64-simd-manifest.json"
+          for profile in numeric float memory control multimemory memory64 fac call; do
+            test -f "$fixtures/$profile/rv64-$profile-manifest.json"
+            variable="WAGO_RV64_${profile^^}_SPEC_JSON_DIR"
+            echo "$variable=$fixtures/$profile" >> "$GITHUB_ENV"
+          done
+          echo "WAGO_RV64_SPEC_JSON_DIR=$fixtures/simd" >> "$GITHUB_ENV"
+          echo "WAGO_RV64_RELAXED_SPEC_JSON_DIR=$fixtures/relaxed-simd" >> "$GITHUB_ENV"
+      - name: Native runtime and JIT smoke
+        run: scripts/ci-riscv64.sh smoke
+      - name: Native riscv64 CLI and standalone qualification
+        run: scripts/check-riscv64-cli.sh
+      - name: Compiler and runtime correctness
+        run: scripts/ci-riscv64.sh supported
+      - name: Public ownership and compiler-free artifacts
+        run: scripts/ci-riscv64.sh public
+      - name: Guard pages and thread behavior
+        run: scripts/ci-riscv64.sh guards

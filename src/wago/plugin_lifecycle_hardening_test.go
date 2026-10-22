@@ -1456,6 +1456,9 @@ func TestManagedReservationHeldUntilPhysicalRelease(t *testing.T) {
 	if err := owned.Close(); err != nil {
 		t.Fatal(err)
 	}
+	if err := owned.WaitClosed(); err != nil {
+		t.Fatal(err)
+	}
 	if manager.live != 1 || manager.memoryBytes != pageBytes {
 		t.Fatalf("quota after logical close = %d/%d, want 1/%d", manager.live, manager.memoryBytes, pageBytes)
 	}
