@@ -2,6 +2,53 @@ package wasm
 
 import "testing"
 
+func TestStructuralFuncTypeKeyBoundedAllocations(t *testing.T) {
+	for name, typ := range map[string]ValType{"numeric": I64, "vector": V128, "function": FuncRef, "external": ExternRef} {
+		t.Run(name, func(t *testing.T) {
+			values := make([]ValType, 256)
+			for i := range values {
+				values[i] = typ
+			}
+			sig := &CompType{Kind: CompFunc, Params: values, Results: values}
+			want := StructuralFuncTypeKey(sig)
+			if allocations := testing.AllocsPerRun(100, func() {
+				if StructuralFuncTypeKey(sig) != want {
+					panic("structural signature key changed")
+				}
+			}); allocations != 0 {
+				t.Fatalf("bounded signature key allocations=%g", allocations)
+			}
+		})
+	}
+}
+
+func TestStructuralTypeKeyIncludesSingletonFinalityAndSupers(t *testing.T) {
+	sig := CompType{Kind: CompFunc, Results: []ValType{I32}}
+	m := &Module{Types: []RecType{
+		{SubTypes: []SubType{{Comp: sig}}},
+		{SubTypes: []SubType{{Final: true, Supers: []TypeIdx{{Index: 0}}, Comp: sig}}},
+		{SubTypes: []SubType{{Final: true, Comp: sig}}},
+	}}
+	var keys [3]uint64
+	for i := range keys {
+		key, ok := m.StructuralTypeKeyChecked(uint32(i))
+		if !ok {
+			t.Fatal("valid singleton key rejected", i)
+		}
+		keys[i] = key
+	}
+	if keys[0] == keys[1] || keys[0] == keys[2] || keys[1] == keys[2] {
+		t.Fatal("distinct declared types share a key", keys)
+	}
+	if keys[2] != StructuralFuncTypeKey(&sig) {
+		t.Fatal("ordinary final signature changed its compact key")
+	}
+	if !m.ReferenceTypeSubtype(Ref(false, IndexedHeap(TypeIdx{Index: 1}), false), Ref(false, IndexedHeap(TypeIdx{Index: 0}), false)) ||
+		m.ReferenceTypeSubtype(Ref(false, IndexedHeap(TypeIdx{Index: 2}), false), Ref(false, IndexedHeap(TypeIdx{Index: 0}), false)) {
+		t.Fatal("fixture does not distinguish the declared subtype from an unrelated type")
+	}
+}
+
 func indexedRef(index uint32, nullable bool) ValType {
 	return RefVal(Ref(nullable, IndexedHeap(TypeIdx{Index: index}), false))
 }

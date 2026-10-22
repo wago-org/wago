@@ -1,4 +1,4 @@
-//go:build !wago_regalloccheck
+//go:build !wago_regalloccheck && !wago_profile
 
 package shared
 

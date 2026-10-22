@@ -40,9 +40,6 @@ func (s hostCallSlots) slice() []uint64 {
 	if s.counts == largeHostCallSlotsTag {
 		return (*largeHostCallSlots)(unsafe.Pointer(s.data)).slots
 	}
-	header := struct {
-		data     *uint64
-		len, cap int
-	}{s.data, int(uint32(s.counts)), int(uint32(s.counts >> 32))}
-	return *(*[]uint64)(unsafe.Pointer(&header))
+	length, capacity := int(uint32(s.counts)), int(uint32(s.counts>>32))
+	return unsafe.Slice(s.data, capacity)[:length:capacity]
 }

@@ -58,6 +58,8 @@ type Instance struct {
 	closed                  bool                    // logical close; retained references may defer physical release
 	finalizing              bool                    // one goroutine owns quiescent finalization
 	resourcesClosed         bool
+	proxyReconciliation     bool                     // RV64 closed-proxy scan is non-reentrant
+	proxyReconciled         bool                     // imported reference containers were transferred after close
 	icNext                  uint8                    // round-robin invoke-cache replacement cursor
 	ownsMem                 bool                     // false when memory 0 is host-imported (don't close it)
 	syncMode                bool                     // true when host imports use the synchronous re-entry protocol
@@ -83,8 +85,47 @@ type Instance struct {
 // instanceImportState shares the existing Instance import-state pointer
 // between Runtime plugin policy and cold funcref-owner indexes.
 type instanceImportState struct {
-	pluginGCImports map[uint32]struct{}
-	funcrefImports  atomic.Pointer[funcrefImportContainers]
+	pluginGCImports  map[uint32]struct{}
+	rootAccounting   referenceRootAccounting // RV64 lazy ownership shadow; empty on existing targets
+	funcrefImports   atomic.Pointer[funcrefImportContainers]
+	importRefEntries []importReferenceEntry  // RV64 immutable wrappers and native attachments
+	globalRefEntries []importGlobalReference // RV64 immutable cells and retained descriptor storage
+}
+
+func (in *Instance) importGlobalReferences() []importGlobalReference {
+	if state := in.importState.Load(); state != nil {
+		return state.globalRefEntries
+	}
+	return nil
+}
+
+type importReferenceEntry struct {
+	address uint64
+	native  *InstanceExport
+	host    *HostFuncRef
+}
+
+func (in *Instance) importReferenceNative(index int) *InstanceExport {
+	entries := in.importReferenceEntries()
+	if index < 0 || index >= len(entries) {
+		return nil
+	}
+	return entries[index].native
+}
+
+func (in *Instance) importReferenceHost(index int) *HostFuncRef {
+	entries := in.importReferenceEntries()
+	if index < 0 || index >= len(entries) {
+		return nil
+	}
+	return entries[index].host
+}
+
+func (in *Instance) importReferenceEntries() []importReferenceEntry {
+	if state := in.importState.Load(); state != nil {
+		return state.importRefEntries
+	}
+	return nil
 }
 
 func (in *Instance) ensureImportState() *instanceImportState {

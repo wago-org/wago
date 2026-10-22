@@ -59,8 +59,13 @@ try_tinygo_build() {
   return 0
 }
 
-try_tinygo_build wago_runtime "$standard_tiny" ./cli/wago
-try_tinygo_build wago_runtime,wago_lean,wago_minimal "$minimal_tiny" ./cli/wago
+if [[ "$release_target" == linux-riscv64 ]]; then
+  # Wago's riscv64 backend requires standard Go; do not publish TinyGo stubs.
+  rm -f "$standard_tiny" "$minimal_tiny" "$standard_tiny.sha256" "$minimal_tiny.sha256"
+else
+  try_tinygo_build wago_runtime "$standard_tiny" ./cli/wago
+  try_tinygo_build wago_runtime,wago_lean,wago_minimal "$minimal_tiny" ./cli/wago
+fi
 
 # TinyGo's no-debug Linux binaries do not use DWARF unwind tables for panic
 # reporting or Wago's native trap path. Darwin's linker still retains a large
