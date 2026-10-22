@@ -1,0 +1,45 @@
+# round 1, 0.898s
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCBranchCast/cast-base         	   44985	      5345 ns/op	      3562 code-B	         5.220 ns/cast	       5 B/op	       0 allocs/op
+BenchmarkGCBranchCast/cast-subtype      	   44986	      5363 ns/op	      3562 code-B	         5.237 ns/cast	       5 B/op	       0 allocs/op
+BenchmarkGCBranchCast/cast-miss         	   41512	      5782 ns/op	      3562 code-B	         5.647 ns/cast	       2 B/op	       0 allocs/op
+PASS
+# round 2, 0.891s
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCBranchCast/cast-base         	   44220	      5394 ns/op	      3562 code-B	         5.268 ns/cast	       5 B/op	       0 allocs/op
+BenchmarkGCBranchCast/cast-subtype      	   44713	      5553 ns/op	      3562 code-B	         5.423 ns/cast	       5 B/op	       0 allocs/op
+BenchmarkGCBranchCast/cast-miss         	   35018	      6121 ns/op	      3562 code-B	         5.977 ns/cast	       2 B/op	       0 allocs/op
+PASS
+# round 3, 0.923s
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCBranchCast/cast-base         	   44410	      5644 ns/op	      3562 code-B	         5.512 ns/cast	       5 B/op	       0 allocs/op
+BenchmarkGCBranchCast/cast-subtype      	   44605	      5413 ns/op	      3562 code-B	         5.286 ns/cast	       5 B/op	       0 allocs/op
+BenchmarkGCBranchCast/cast-miss         	   41445	      6120 ns/op	      3562 code-B	         5.977 ns/cast	       2 B/op	       0 allocs/op
+PASS
+# round 4, 0.905s
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCBranchCast/cast-base         	   44186	      5449 ns/op	      3562 code-B	         5.321 ns/cast	       5 B/op	       0 allocs/op
+BenchmarkGCBranchCast/cast-subtype      	   44296	      5493 ns/op	      3562 code-B	         5.364 ns/cast	       5 B/op	       0 allocs/op
+BenchmarkGCBranchCast/cast-miss         	   41425	      5845 ns/op	      3562 code-B	         5.708 ns/cast	       2 B/op	       0 allocs/op
+PASS
+# round 5, 0.922s
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCBranchCast/cast-base         	   44062	      5894 ns/op	      3562 code-B	         5.756 ns/cast	       5 B/op	       0 allocs/op
+BenchmarkGCBranchCast/cast-subtype      	   44502	      5388 ns/op	      3562 code-B	         5.262 ns/cast	       5 B/op	       0 allocs/op
+BenchmarkGCBranchCast/cast-miss         	   41305	      5897 ns/op	      3562 code-B	         5.759 ns/cast	       2 B/op	       0 allocs/op
+PASS

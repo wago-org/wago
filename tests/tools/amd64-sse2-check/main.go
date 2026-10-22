@@ -41,10 +41,10 @@ func main() {
 	}
 	defer arena.Close()
 	mem, entry, err := runtime.MapCode(cm.Code)
+	defer runtime.Unmap(mem)
 	if err != nil {
 		panic(err)
 	}
-	defer runtime.Unmap(mem)
 	args, out, trap := arena.Alloc(8), arena.Alloc(8), arena.Alloc(runtime.TrapBufferBytes)
 	for _, v := range []float64{math.Copysign(0, -1), -0.5, 0.5, 1.5, 2.5, -2.5, math.Inf(1), math.Inf(-1)} {
 		binary.LittleEndian.PutUint64(args, math.Float64bits(v))
@@ -100,10 +100,10 @@ func checkVector(sub uint32, left, right, want [16]byte, unary bool) {
 	}
 	defer ar.Close()
 	mapped, entry, err := runtime.MapCode(cm.Code)
+	defer runtime.Unmap(mapped)
 	if err != nil {
 		panic(err)
 	}
-	defer runtime.Unmap(mapped)
 	args, out, trap := ar.Alloc(32), ar.Alloc(16), ar.Alloc(runtime.TrapBufferBytes)
 	copy(args, left[:])
 	copy(args[16:], right[:])

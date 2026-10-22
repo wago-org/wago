@@ -15,9 +15,13 @@ func (in *Instance) decorateTrap(err error) error {
 	if !errors.As(err, &trap) {
 		return err
 	}
+	owner, pending := railshotTrapOwner(in, trap)
+	if !pending || owner == nil || owner.c == nil {
+		return err
+	}
 	for index := range trap.Frames {
 		if trap.Frames[index].FunctionName == "" {
-			trap.Frames[index].FunctionName = in.c.functionDisplayName(trap.Frames[index].FunctionIndex)
+			trap.Frames[index].FunctionName = owner.c.functionDisplayName(trap.Frames[index].FunctionIndex)
 		}
 	}
 	return err

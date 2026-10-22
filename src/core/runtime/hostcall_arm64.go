@@ -59,6 +59,7 @@ var (
 	hostStubOnce sync.Once
 	hostStubPtr  uintptr
 	hostStubErr  error
+	hostStubMem  []byte // process-lifetime owner, including failed rollback
 )
 
 func prepareHostResume(ctrl, trap []byte, _ uintptr, stackLimit uintptr) {
@@ -71,6 +72,7 @@ func prepareHostResume(ctrl, trap []byte, _ uintptr, stackLimit uintptr) {
 func hostCallStubPtr() (uintptr, error) {
 	hostStubOnce.Do(func() {
 		mem, err := mmapExec(hostCallStub())
+		hostStubMem = mem
 		if err != nil {
 			hostStubErr = err
 			return
@@ -121,3 +123,7 @@ func mustEncode(ok bool) {
 		panic("arm64 host-call stub encoding failed")
 	}
 }
+
+const registerFixedHostCtrlFrames = false
+
+func (e *Engine) validateUnregisteredHostCtrl(uintptr) error { return nil }
