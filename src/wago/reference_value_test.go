@@ -86,10 +86,8 @@ func TestReferenceSignatureConversionPreservesTypes(t *testing.T) {
 }
 
 func TestTypedCallCarriesOpaqueExternRefTokensInWideSlots(t *testing.T) {
-	original := MustCompile(referenceSlotIdentityModule())
-	defer original.Close()
-	c := mutableCompiledFixture(original)
-	c.Funcs[0] = FuncSig{Params: []ValType{ValExternRef}, Results: []ValType{ValExternRef}}
+	c := MustCompile(referenceSlotIdentityModuleType(wasm.ExternRef))
+	defer c.Close()
 	in, err := Instantiate(c)
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
@@ -114,8 +112,12 @@ func TestTypedCallCarriesOpaqueExternRefTokensInWideSlots(t *testing.T) {
 }
 
 func referenceSlotIdentityModule() []byte {
+	return referenceSlotIdentityModuleType(wasm.I64)
+}
+
+func referenceSlotIdentityModuleType(typ wasm.ValType) []byte {
 	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{typ}, []wasm.ValType{typ}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("id", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x0b}))),
@@ -332,6 +334,9 @@ func TestHostFuncRefDescriptorLookup(t *testing.T) {
 		imports:      testImports(key, owner).bindings,
 		funcRefDescs: make([]byte, 3*coreruntime.FuncRefDescBytes),
 	}
+	if railshotNativeContextTrapABI() {
+		in.ensureImportState().importRefEntries = []importReferenceEntry{{host: owner}}
+	}
 	desc := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[coreruntime.FuncRefDescBytes])))
 	if got := in.hostFuncRefForDescriptor(desc); got != owner {
 		t.Fatalf("host descriptor owner = %p, want %p", got, owner)
@@ -360,4 +365,44 @@ func TestHostFuncRefDescriptorLookup(t *testing.T) {
 	if _, ok := in.localFuncrefDescriptor(1); ok {
 		t.Fatal("out-of-range local descriptor index accepted")
 	}
+}
+
+func TestHostFuncRefUnissuedCandidateRetirement(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	sig := FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}}
+	h, err := rt.NewHostFuncRef(slotHostFunc(func(_ HostModule, p, r []uint64) { copy(r, p) }), sig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	if err := h.attachImporter(rt.refStore, sig, nil, 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	defer h.detachImporter()
+	first := &Instance{refStore: rt.refStore}
+	second := &Instance{refStore: rt.refStore}
+	third := &Instance{refStore: rt.refStore}
+	if owner, _, ok := h.canonicalDescriptor(first, 44, sig); !ok || owner != first {
+		t.Fatal("initial candidate")
+	}
+	first.invocationState.Store(instanceInvocationClosed)
+	if owner, descriptor, ok := h.canonicalDescriptor(second, 88, sig); !ok || owner != second || descriptor != 88 {
+		t.Fatal("logically retired unissued candidate", owner, descriptor, ok)
+	}
+	second.resourcesClosed = true
+	if _, _, ok := h.canonicalDescriptor(second, 88, sig); ok {
+		t.Fatal("physically closed replacement")
+	}
+	if owner, descriptor, ok := h.canonicalDescriptor(third, 132, sig); !ok || owner != third || descriptor != 132 {
+		t.Fatal("physically retired unissued candidate", owner, descriptor, ok)
+	}
+	if !h.markTokenLive(third, 132) {
+		t.Fatal("candidate token commit")
+	}
+	third.invocationState.Store(instanceInvocationClosed)
+	if owner, descriptor, ok := h.canonicalDescriptor(first, 44, sig); !ok || owner != third || descriptor != 132 {
+		t.Fatal("issued canonical owner changed", owner, descriptor, ok)
+	}
+	h.tokenReleased(third, 132)
 }

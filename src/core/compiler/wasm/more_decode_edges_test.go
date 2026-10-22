@@ -50,8 +50,9 @@ func TestMoreLEBAndPrimitiveDecodeEdges(t *testing.T) {
 		if _, err := decodeInstruction(newReader([]byte{0xff}), 0); err == nil {
 			t.Fatal("expected invalid instruction")
 		}
-		if _, err := decodeInstruction(newReader(append([]byte{0xfd, 0x0d}, append(make([]byte, 15), 32)...)), 0); err == nil {
-			t.Fatal("expected invalid shuffle lane")
+		in, err := decodeInstruction(newReader(append([]byte{0xfd, 0x0d}, append(make([]byte, 15), 32)...)), 0)
+		if err != nil || in.Kind != InstrI8x16Shuffle || in.Lanes()[15] != 32 {
+			t.Fatal("shuffle lane bytes must reach validation", in, err)
 		}
 	})
 }
