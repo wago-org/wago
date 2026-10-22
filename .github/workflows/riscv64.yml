@@ -92,14 +92,19 @@ jobs:
           retention-days: 1
 
   native:
-    name: JIT / native Linux RISC-V64
+    name: JIT / native Linux RISC-V64 (${{ matrix.suite }})
     needs: fixtures
     # RISE requires exactly this single label; adding self-hosted breaks routing.
     # Org owner must install the RISE App and permit this repository first.
     runs-on: ubuntu-24.04-riscv
-    # Native compilation plus the compiler-free artifact matrix takes about 56
-    # minutes on the shared two-core RISE runner before guard-page checks begin.
+    # A serial run can exhaust 90 minutes in the final guard-profile build.
+    # Keep the complete public/artifact matrix together; run the remaining
+    # native qualification on a separate runner with the same per-job budget.
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [runtime, ownership]
     # Fork PRs need an explicitly approved same-repository branch for this
     # self-hosted service. Do not use pull_request_target or expose secrets.
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
@@ -146,12 +151,17 @@ jobs:
           echo "WAGO_RV64_SPEC_JSON_DIR=$fixtures/simd" >> "$GITHUB_ENV"
           echo "WAGO_RV64_RELAXED_SPEC_JSON_DIR=$fixtures/relaxed-simd" >> "$GITHUB_ENV"
       - name: Native runtime and JIT smoke
+        if: matrix.suite == 'runtime'
         run: scripts/ci-riscv64.sh smoke
       - name: Native riscv64 CLI and standalone qualification
+        if: matrix.suite == 'runtime'
         run: scripts/check-riscv64-cli.sh
       - name: Compiler and runtime correctness
+        if: matrix.suite == 'runtime'
         run: scripts/ci-riscv64.sh supported
       - name: Public ownership and compiler-free artifacts
+        if: matrix.suite == 'ownership'
         run: scripts/ci-riscv64.sh public
       - name: Guard pages and thread behavior
+        if: matrix.suite == 'runtime'
         run: scripts/ci-riscv64.sh guards
