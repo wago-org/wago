@@ -179,7 +179,9 @@ func TestHostFuncRefNumericStaticImportUsesSharedThunk(t *testing.T) {
 	c := *mod.c.executionView()
 	c.dynamicImports = false
 	imports := resolvedImports{c.functionImportBindingKey(0): owner}
-	base, offsets, owned, mem, err := buildHostFuncThunks(&c, imports, true)
+	// This numeric host import uses no cross-instance native wrapper state.
+	var construction railshotNativeImportConstruction
+	base, offsets, owned, mem, err := buildHostFuncThunks(&c, imports, true, nil, 0, 0, &construction)
 	if err != nil {
 		t.Fatal(err)
 	}

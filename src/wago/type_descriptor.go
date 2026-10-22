@@ -68,6 +68,13 @@ type ValueTypeDescriptor struct {
 	Ref  ReferenceTypeDescriptor
 }
 
+// immediateI31ReferenceType reports reference types whose values need no GC
+// heap. The none heap type can contain only null, subject to nullability.
+func immediateI31ReferenceType(value ValueTypeDescriptor) bool {
+	return value.Kind == ValueTypeReference && !value.Ref.Exact && !value.Ref.Heap.Defined && value.Ref.Heap.TypeIndex == 0 &&
+		(value.Ref.Heap.Abstract == AbstractHeapI31 || value.Ref.Heap.Abstract == AbstractHeapNone)
+}
+
 // ABIType reports the one-slot public/product ABI category for values that the
 // current runtime can describe. types is the containing module's flattened type
 // graph and is consulted for indexed references. Struct/array references use

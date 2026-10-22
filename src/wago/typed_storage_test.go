@@ -229,7 +229,7 @@ func TestTypedStorageMetadataRejectsIdentityCollapse(t *testing.T) {
 		Elems:               []ElemInit{{TableIndex: 0, RefType: ValFuncRef, HasValueType: true, ValueTypeIndex: 1, Mode: ElemModeActive, Values: []RefInit{{FuncIndex: 0}}}},
 		NeedsFuncRefDescs:   true,
 	})
-	if err := c.validate(); err == nil || !strings.Contains(err.Error(), "structural type does not match table") {
+	if err := c.validateMetadata(); err == nil || !strings.Contains(err.Error(), "structural type does not match table") {
 		t.Fatalf("collapsed active element metadata error = %v", err)
 	}
 

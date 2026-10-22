@@ -129,6 +129,7 @@ target_name() {
 	case "$(uname -m)" in
 		x86_64|amd64) arch=amd64 ;;
 		arm64|aarch64) arch=arm64 ;;
+		riscv64) [ "$os" = linux ] || return 1; arch=riscv64 ;;
 		*) return 1 ;;
 	esac
 	printf 'wago-installer-%s-%s' "$os" "$arch"

@@ -1,0 +1,1895 @@
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+
+package wago
+
+import (
+	"crypto/sha256"
+	"encoding/binary"
+	"fmt"
+	"slices"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+
+	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
+)
+
+var _ [railshot.MaxHostFunctionImports - rv64RootedMaxHostFunctionImports]struct{}
+var _ [rv64RootedMaxHostFunctionImports - railshot.MaxHostFunctionImports]struct{}
+
+func rv64FreshRootedGC(c *Compiled) bool {
+	if c == nil || c.nativeGCABIRequirement() != gc.NativeABIVersion {
+		return false
+	}
+	memo := c.loadValidateMemo()
+	contract := c.rv64ExecutionContract()
+	if contract != nil && memo != nil && memo.executionView() == c && len(c.code) != 0 && contract.rooted.Load() == c {
+		return true
+	}
+	var artifactReceipt validateMemo
+	if memo != nil && contract != nil {
+		if !rv64ArtifactContractValid(c) {
+			return false
+		}
+		if !memo.rv64FreshRootedGC {
+			if !rv64PopulateArtifactReceipt(&artifactReceipt, c) {
+				return false
+			}
+			memo = &artifactReceipt
+		}
+	}
+	if memo == nil || !memo.rv64FreshRootedGC || sha256.Sum256(c.code) != memo.rv64FreshRootedGCDigest || c.syncHostSlots != memo.rv64FreshRootedGCSyncHostSlots {
+		return false
+	}
+	if len(c.Types) == 0 || len(c.Types) > railshot.MaxFunctions || len(c.Funcs) == 0 && !c.hasNoFunctionCode() && !(len(c.code) == 0 && c.NumImports > 0 && c.hasCollectorReferenceCallBoundary()) || len(c.Funcs) > railshot.MaxFunctions ||
+		len(c.FuncTypeID) > railshot.MaxFunctions || len(c.Exports) > railshot.MaxFunctions ||
+		compiledStructuralRequiredFeatures(c)&^c.requiredFeatures != 0 {
+		return false
+	}
+	typeDigest, validTypes := rv64RootedTypeDigest(c)
+	if !validTypes || typeDigest != memo.rv64FreshRootedGCTypeDigest {
+		return false
+	}
+	structProduct, arrayProduct := c.stagedGCStructProduct(), c.stagedGCArrayProduct()
+	structHelpers, arrayHelpers := structProduct == stagedGCStructGeneric, arrayProduct == stagedGCArrayProductGeneric
+	// Reference-transport-only modules publish exact callsite roots without
+	// staging either allocation/mutation helper family.
+	if structProduct != 0 && !structHelpers || arrayProduct != 0 && !arrayHelpers ||
+		c.usesGCStructHelpers() != structHelpers || c.usesGCArrayHelpers() != arrayHelpers || c.syncHostSlots < 4 ||
+		c.nativeGCABIRequirement() != gc.NativeABIVersion || c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports ||
+		len(c.importFuncSigs) != c.NumImports || c.dynamicImports != (c.NumImports != 0) || c.tableCount() > maxRV64ExecutionTables || c.memoryCount() > rv64RootedMaxMemories ||
+		len(c.GlobalImports) > 256 || len(c.GlobalImports) > len(c.Globals) || len(c.Globals) > 256 || len(c.Elems) > 256 ||
+		len(c.passiveElems) > 256 || len(c.PassiveData) > 256 {
+		return false
+	}
+	importDigest, validImports := rv64RootedImportDigest(c)
+	if !validImports || importDigest != memo.rv64FreshRootedGCImportDigest {
+		return false
+	}
+	if c.HasStart != memo.rv64FreshRootedGCHasStart {
+		return false
+	}
+	if c.HasStart {
+		if c.StartIsImport != memo.rv64FreshRootedGCStartImport {
+			return false
+		}
+		if c.StartIsImport {
+			if c.StartLocalFunc != 0 || c.StartImportIdx < 0 || c.StartImportIdx >= c.NumImports || c.StartImportIdx >= len(c.importFuncSigs) ||
+				uint32(c.StartImportIdx) != memo.rv64FreshRootedGCStartImportIndex || memo.rv64FreshRootedGCStartLocal != 0 ||
+				len(c.importFuncSigs[c.StartImportIdx].Params) != 0 || len(c.importFuncSigs[c.StartImportIdx].Results) != 0 {
+				return false
+			}
+		} else if c.StartImportIdx != 0 || c.StartLocalFunc < 0 || uint64(c.StartLocalFunc) >= uint64(len(c.Funcs)) ||
+			uint32(c.StartLocalFunc) != memo.rv64FreshRootedGCStartLocal || memo.rv64FreshRootedGCStartImportIndex != 0 || c.StartLocalFunc >= len(c.Entry) ||
+			len(c.Funcs[c.StartLocalFunc].Params) != 0 || len(c.Funcs[c.StartLocalFunc].Results) != 0 {
+			return false
+		}
+	} else if c.StartIsImport || c.StartImportIdx != 0 || c.StartLocalFunc != 0 || memo.rv64FreshRootedGCStartImport || memo.rv64FreshRootedGCStartLocal != 0 || memo.rv64FreshRootedGCStartImportIndex != 0 {
+		return false
+	}
+	directory := c.memoryDir
+	if directory == nil || len(directory.defs) > rv64RootedMaxMemories || !directory.exactExports || directory.staged != memo.rv64FreshRootedGCMemoryStaged || len(directory.defs) > 1 && !directory.staged ||
+		len(directory.gcStructGlobals) != 0 || len(directory.gcArrayGlobals) != 0 || directory.gcArrayElement != nil || directory.gcI31TableInit != nil ||
+		(len(directory.ehTags) != 0 || len(directory.ehTagExports) != 0) && !rv64ExceptionHandling(c) || uint8(len(directory.defs)) != memo.rv64FreshRootedGCMemories {
+		return false
+	}
+	if len(directory.defs) != 0 {
+		primary := directory.defs[0]
+		if !c.HasMemory || uint64(c.MemMinPages) != primary.Min || uint64(c.MemMaxPages) < primary.Min || primary.HasMax && uint64(c.MemMaxPages) > primary.Max || c.MemHasMax != primary.HasMax || c.memoryImport != primary.ImportKey ||
+			primary.Min != memo.rv64FreshRootedGCMemMin || primary.Max != memo.rv64FreshRootedGCMemMax || c.MemMaxPages != memo.rv64FreshRootedGCReserveMax {
+			return false
+		}
+		for i := range directory.defs {
+			memory := directory.defs[i]
+			if memory.Shared && !rv64ThreadedMemoryProfile(c) || memory.HasMax && memory.Min > memory.Max {
+				return false
+			}
+		}
+	} else if c.HasMemory || c.MemMinPages != 0 || c.MemMaxPages != 0 || c.MemHasMax || c.memoryImport != "" ||
+		memo.rv64FreshRootedGCMemMin != 0 || memo.rv64FreshRootedGCMemMax != 0 || memo.rv64FreshRootedGCReserveMax != 0 {
+		return false
+	}
+	dataDigest, validData := rv64RootedActiveDataDigest(c)
+	if !validData || dataDigest != memo.rv64FreshRootedGCDataDigest {
+		return false
+	}
+	exportDigest, validExports := rv64RootedMemoryExportDigest(c)
+	if !validExports || exportDigest != memo.rv64FreshRootedGCExportDigest {
+		return false
+	}
+	globalDigest, validGlobals := rv64RootedGlobalDigest(c)
+	if !validGlobals || globalDigest != memo.rv64FreshRootedGCGlobalDigest {
+		return false
+	}
+	for i := range c.Globals {
+		global := &c.Globals[i]
+		if global.HasInitGlobal {
+			if isGCRefValType(global.Type) || global.Type == ValExternRef && c.compactExternFrameRoots() {
+				exact, err := c.globalExactType(i)
+				if err != nil || !rv64InitializerReferenceGlobal(c, global.InitGlobal, exact, i) {
+					return false
+				}
+			} else if !rv64InitializerGlobal(c, global.InitGlobal, global.Type, i) {
+				return false
+			}
+		}
+		if len(global.InitExpr) != 0 {
+			if isGCRefValType(global.Type) || global.Type == ValExternRef && c.compactExternFrameRoots() {
+				exact, err := c.globalExactType(i)
+				if err != nil || c.validateGCConstExpr(global.InitExpr, exact, i) != nil {
+					return false
+				}
+			} else if rv64ValidateIntegerInitializer(c, global.InitExpr, global.Type, i) != nil {
+				return false
+			}
+		}
+	}
+	tableDigest, validTable := rv64RootedTableDigest(c)
+	if !validTable || tableDigest != memo.rv64FreshRootedGCTableDigest {
+		return false
+	}
+	remainingData := railshot.MaxModuleBytes
+	for i := 0; i < c.activeDataCount(); i++ {
+		data := c.activeDataAt(i)
+		if uint64(data.MemoryIndex) >= uint64(len(directory.defs)) || len(data.Bytes) > remainingData {
+			return false
+		}
+		remainingData -= len(data.Bytes)
+	}
+	for i := range c.PassiveData {
+		if len(c.PassiveData[i].Bytes) > remainingData {
+			return false
+		}
+		remainingData -= len(c.PassiveData[i].Bytes)
+	}
+	roots := c.genericGCFrameRoots()
+	if roots == nil || len(c.Types) != len(c.GCTypeDescs) {
+		return false
+	}
+	if err := validateCompiledGCFrameRoots(c, roots); err != nil {
+		return false
+	}
+	opaqueNoCollect := c.needsOwnedExceptionReferences() && rv64ExceptionHandling(c) && len(roots.safepoints) == 0 && len(roots.callsites) == 0
+	ownedFunctionRoots := c.needsOwnedExceptionReferences() && rv64ExceptionHandling(c) && c.functionEnvironmentFrameRoots()
+	rootedAbstract := func(heap AbstractHeapType) (wasm.AbsHeapType, bool) {
+		switch heap {
+		case AbstractHeapFunc:
+			return wasm.HeapFunc, opaqueNoCollect || ownedFunctionRoots || c.functionEnvironmentFrameRoots()
+		case AbstractHeapNoFunc:
+			return wasm.HeapNoFunc, opaqueNoCollect || ownedFunctionRoots || c.functionEnvironmentFrameRoots()
+		case AbstractHeapExtern:
+			return wasm.HeapExtern, opaqueNoCollect || c.compactExternFrameRoots()
+		case AbstractHeapNoExtern:
+			return wasm.HeapNoExtern, opaqueNoCollect || c.compactExternFrameRoots()
+		case AbstractHeapExn:
+			return wasm.HeapExn, rv64ExceptionHandling(c)
+		case AbstractHeapNoExn:
+			return wasm.HeapNoExn, rv64ExceptionHandling(c)
+		case AbstractHeapNone:
+			return wasm.HeapNone, true
+		case AbstractHeapAny:
+			return wasm.HeapAny, true
+		case AbstractHeapEq:
+			return wasm.HeapEq, true
+		case AbstractHeapI31:
+			return wasm.HeapI31, true
+		case AbstractHeapStruct:
+			return wasm.HeapStruct, true
+		case AbstractHeapArray:
+			return wasm.HeapArray, true
+		default:
+			return 0, false
+		}
+	}
+	rootedValue := func(value ValueTypeDescriptor, owner int) bool {
+		if value.Kind <= ValueTypeV128 {
+			return value.Ref == (ReferenceTypeDescriptor{})
+		}
+		if value.Kind != ValueTypeReference {
+			return false
+		}
+		if !value.Ref.Heap.Defined {
+			if value.Ref.Exact {
+				return false
+			}
+			_, ok := rootedAbstract(value.Ref.Heap.Abstract)
+			return ok && value.Ref.Heap.TypeIndex == 0
+		}
+		if int(value.Ref.Heap.TypeIndex) >= owner || int(value.Ref.Heap.TypeIndex) >= len(c.Types) {
+			return false
+		}
+		target := c.Types[value.Ref.Heap.TypeIndex]
+		return target.Kind == CompositeTypeStruct || target.Kind == CompositeTypeArray || (opaqueNoCollect || ownedFunctionRoots || c.functionEnvironmentFrameRoots()) && target.Kind == CompositeTypeFunction
+	}
+	rootedAbstractGlobal := func(heap AbstractHeapType) bool {
+		switch heap {
+		case AbstractHeapExtern, AbstractHeapNoExtern:
+			return opaqueNoCollect || c.compactExternFrameRoots()
+		case AbstractHeapFunc, AbstractHeapNoFunc:
+			return opaqueNoCollect || c.functionEnvironmentFrameRoots()
+		case AbstractHeapNone:
+			return opaqueNoCollect
+		case AbstractHeapExn, AbstractHeapNoExn:
+			return c.needsOwnedExceptionReferences() && rv64ExceptionHandling(c)
+		case AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray:
+			return true
+		default:
+			return false
+		}
+	}
+	rootedExportValue := func(value ValueTypeDescriptor) bool {
+		if value.Kind <= ValueTypeV128 {
+			return value.Ref == (ReferenceTypeDescriptor{})
+		}
+		if value.Kind != ValueTypeReference {
+			return false
+		}
+		if !value.Ref.Heap.Defined {
+			return !value.Ref.Exact && rootedAbstractGlobal(value.Ref.Heap.Abstract) && value.Ref.Heap.TypeIndex == 0
+		}
+		return rootedValue(value, len(c.Types))
+	}
+	for i := range c.Globals {
+		global := &c.Globals[i]
+		if !isGCRefValType(global.Type) {
+			continue
+		}
+		exact, err := c.globalExactType(i)
+		abiType, abiOK := exact.ABIType(c.Types)
+		rootedGlobalType := exact.Ref.Heap.Defined || rootedAbstractGlobal(exact.Ref.Heap.Abstract)
+		if err != nil || !abiOK || global.Type != abiType || exact.Kind != ValueTypeReference ||
+			exact.Ref.Exact || !rootedGlobalType || !rootedValue(exact, len(c.Types)) ||
+			!exact.Ref.Heap.Defined && !exact.Ref.Nullable ||
+			(global.Type != ValI31Ref && global.Bits != 0 || global.Type == ValI31Ref && (global.Bits>>32 != 0 || global.Bits != 0 && global.Bits&1 == 0)) || global.HasInitFunc || global.InitFunc != 0 ||
+			(global.HasInitGlobal && (len(global.InitExpr) != 0 || !rv64InitializerReferenceGlobal(c, global.InitGlobal, exact, i))) ||
+			(!global.HasInitGlobal && (global.InitGlobal != 0 || i >= len(c.GlobalImports) && len(global.InitExpr) == 0 && !exact.Ref.Nullable)) {
+			return false
+		}
+	}
+	for _, index := range c.GlobalExports {
+		if index < 0 || index >= len(c.Globals) {
+			return false
+		}
+		if isGCRefValType(c.Globals[index].Type) {
+			exact, err := c.globalExactType(index)
+			if err != nil || !rootedExportValue(exact) {
+				return false
+			}
+		}
+	}
+	storageKind := func(storage StorageTypeDescriptor, owner int) (gc.StorageKind, bool) {
+		if storage.Packed {
+			switch storage.PackedType {
+			case PackedTypeI8:
+				return gc.StorageI8, true
+			case PackedTypeI16:
+				return gc.StorageI16, true
+			default:
+				return 0, false
+			}
+		}
+		if storage.Value.Kind == ValueTypeReference {
+			ref := storage.Value.Ref
+			if !ref.Heap.Defined {
+				if ref.Exact || ref.Heap.TypeIndex != 0 {
+					return 0, false
+				}
+				switch ref.Heap.Abstract {
+				case AbstractHeapExn, AbstractHeapNoExn:
+					if !c.needsOwnedExceptionReferences() || !rv64ExceptionHandling(c) {
+						return 0, false
+					}
+					if ref.Nullable {
+						return gc.StorageRefNull, true
+					}
+					return gc.StorageRef, true
+				case AbstractHeapExtern, AbstractHeapNoExtern:
+					if !c.compactExternFrameRoots() {
+						return 0, false
+					}
+					if ref.Nullable {
+						return gc.StorageExternRefNull, true
+					}
+					return gc.StorageExternRef, true
+				case AbstractHeapFunc:
+					if ref.Nullable {
+						return gc.StorageFuncRefNull, true
+					}
+					return gc.StorageFuncRef, true
+				case AbstractHeapNone, AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray:
+					if ref.Nullable {
+						return gc.StorageRefNull, true
+					}
+					return gc.StorageRef, true
+				default:
+					return 0, false
+				}
+			}
+			targetIndex := int(ref.Heap.TypeIndex)
+			if targetIndex >= len(c.Types) || targetIndex > owner && c.Types[targetIndex].RecGroup != c.Types[owner].RecGroup ||
+				ref.Exact && c.Types[targetIndex].RecGroup == c.Types[owner].RecGroup {
+				return 0, false
+			}
+			target := c.Types[ref.Heap.TypeIndex]
+			if target.Kind == CompositeTypeFunction && !ref.Exact && c.functionEnvironmentFrameRoots() {
+				if ref.Nullable {
+					return gc.StorageFuncRefNull, true
+				}
+				return gc.StorageFuncRef, true
+			}
+			if target.Kind != CompositeTypeStruct && target.Kind != CompositeTypeArray {
+				return 0, false
+			}
+			if ref.Nullable {
+				return gc.StorageRefNull, true
+			}
+			return gc.StorageRef, true
+		}
+		if storage.Value.Ref != (ReferenceTypeDescriptor{}) {
+			return 0, false
+		}
+		switch storage.Value.Kind {
+		case ValueTypeI32:
+			return gc.StorageI32, true
+		case ValueTypeI64:
+			return gc.StorageI64, true
+		case ValueTypeF32:
+			return gc.StorageF32, true
+		case ValueTypeF64:
+			return gc.StorageF64, true
+		case ValueTypeV128:
+			return gc.StorageV128, true
+		default:
+			return 0, false
+		}
+	}
+	hasStruct, hasArray := false, false
+	groupSizes := make([]int, len(c.Types))
+	for i := range c.Types {
+		if int(c.Types[i].RecGroup) >= len(groupSizes) {
+			return false
+		}
+		groupSizes[c.Types[i].RecGroup]++
+	}
+	requiredSlots := 4
+	if arrayHelpers {
+		requiredSlots = rv64GenericArrayFixedSlots
+	}
+	for i, desc := range c.GCTypeDescs {
+		typ := &c.Types[i]
+		if typ.HasDescribes || typ.HasDescriptor {
+			return false
+		}
+		if groupSizes[typ.RecGroup] > 1 && typ.Kind != CompositeTypeFunction && (!typ.Final || len(typ.Supers) != 0) {
+			return false
+		}
+		if typ.Kind == CompositeTypeFunction {
+			if len(typ.Supers) > 1 {
+				return false
+			}
+		} else if typ.Kind == CompositeTypeStruct || typ.Kind == CompositeTypeArray {
+			if len(typ.Supers) > 1 {
+				return false
+			}
+			if len(typ.Supers) == 1 {
+				super := typ.Supers[0]
+				if uint64(super) >= uint64(i) || c.Types[super].Kind != typ.Kind || c.Types[super].Final {
+					return false
+				}
+			}
+		} else {
+			return false
+		}
+		wantSuper := len(typ.Supers) == 1
+		var super gc.TypeID
+		if wantSuper {
+			super = gc.TypeID(typ.Supers[0])
+		}
+		if desc.Final != typ.Final || desc.HasSuper != wantSuper || desc.Super != super {
+			return false
+		}
+		switch desc.Kind {
+		case gc.KindFunc:
+			if typ.Kind != CompositeTypeFunction || len(typ.Params) > 256 || len(typ.Results) > 256 || len(desc.Fields) != 0 || desc.Elem != 0 || desc.HasRefs {
+				return false
+			}
+			for _, values := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
+				for _, value := range values {
+					// Function signatures also describe validated inline custom
+					// imports. Opaque carriers are metadata here; source root maps
+					// and native binding admission govern their executable uses.
+					if !rootedValue(value, i) && !rv64PrimitiveReferenceValue(c, value) {
+						return false
+					}
+				}
+			}
+		case gc.KindStruct:
+			if typ.Kind != CompositeTypeStruct || len(typ.Fields) > 255 || len(typ.Fields) != len(desc.Fields) {
+				return false
+			}
+			kinds := make([]gc.StorageKind, len(typ.Fields))
+			for field := range typ.Fields {
+				kind, ok := storageKind(typ.Fields[field].Storage, i)
+				if !ok {
+					return false
+				}
+				kinds[field] = kind
+			}
+			expected, err := gc.NewStructDesc(gc.TypeID(i), kinds)
+			expected.Final, expected.Super, expected.HasSuper = typ.Final, super, wantSuper
+			if err != nil || desc.ID != expected.ID || desc.Kind != expected.Kind || desc.Elem != expected.Elem || desc.Size != expected.Size ||
+				desc.ElemSize != expected.ElemSize || desc.Align != expected.Align || desc.HasRefs != expected.HasRefs || desc.Final != expected.Final ||
+				desc.Super != expected.Super || desc.HasSuper != expected.HasSuper || !slices.Equal(desc.Fields, expected.Fields) {
+				return false
+			}
+			requiredSlots = max(requiredSlots, len(typ.Fields)+1)
+			hasStruct = true
+		case gc.KindArray:
+			if typ.Kind != CompositeTypeArray || len(desc.Fields) != 0 {
+				return false
+			}
+			kind, ok := storageKind(typ.Array.Storage, i)
+			if !ok {
+				return false
+			}
+			expected, err := gc.NewArrayDesc(gc.TypeID(i), kind)
+			expected.Final, expected.Super, expected.HasSuper = typ.Final, super, wantSuper
+			if err != nil || desc.ID != expected.ID || desc.Kind != expected.Kind || desc.Elem != expected.Elem || desc.Size != expected.Size ||
+				desc.ElemSize != expected.ElemSize || desc.Align != expected.Align || desc.HasRefs != expected.HasRefs || desc.Final != expected.Final ||
+				desc.Super != expected.Super || desc.HasSuper != expected.HasSuper {
+				return false
+			}
+			hasArray = true
+		default:
+			return false
+		}
+	}
+	if err := gc.ValidateTypeDescs(c.GCTypeDescs); err != nil {
+		return false
+	}
+	if len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
+		return false
+	}
+	groupCount := int(c.Types[len(c.Types)-1].RecGroup) + 1
+	groupStarts := make([]uint32, groupCount)
+	groupMembers := make([]int, groupCount)
+	for i := range c.Types {
+		group := int(c.Types[i].RecGroup)
+		if groupMembers[group] == 0 {
+			groupStarts[group] = uint32(i)
+		}
+		groupMembers[group]++
+	}
+	structural := &wasm.Module{Types: make([]wasm.RecType, groupCount)}
+	for group := range structural.Types {
+		structural.Types[group].SubTypes = make([]wasm.SubType, 0, groupMembers[group])
+	}
+	toWasmValue := func(owner int, value ValueTypeDescriptor) (wasm.ValType, bool) {
+		switch value.Kind {
+		case ValueTypeI32:
+			return wasm.I32, true
+		case ValueTypeI64:
+			return wasm.I64, true
+		case ValueTypeF32:
+			return wasm.F32, true
+		case ValueTypeF64:
+			return wasm.F64, true
+		case ValueTypeV128:
+			return wasm.V128, true
+		case ValueTypeReference:
+			if value.Ref.Heap.Defined {
+				index := wasm.TypeIdx{Index: value.Ref.Heap.TypeIndex}
+				if c.Types[value.Ref.Heap.TypeIndex].RecGroup == c.Types[owner].RecGroup {
+					index.Index -= groupStarts[c.Types[owner].RecGroup]
+					index.Rec = true
+				}
+				return wasm.RefVal(wasm.Ref(value.Ref.Nullable, wasm.IndexedHeap(index), value.Ref.Exact)), true
+			}
+			heap, ok := rootedAbstract(value.Ref.Heap.Abstract)
+			if !ok && c.Types[owner].Kind == CompositeTypeFunction && rv64PrimitiveReferenceValue(c, value) {
+				switch value.Ref.Heap.Abstract {
+				case AbstractHeapFunc:
+					heap, ok = wasm.HeapFunc, true
+				case AbstractHeapNoFunc:
+					heap, ok = wasm.HeapNoFunc, true
+				case AbstractHeapExtern:
+					heap, ok = wasm.HeapExtern, true
+				case AbstractHeapNoExtern:
+					heap, ok = wasm.HeapNoExtern, true
+				}
+			}
+			if !ok || value.Ref.Heap.TypeIndex != 0 || value.Ref.Exact {
+				return wasm.ValType{}, false
+			}
+			return wasm.RefVal(wasm.Ref(value.Ref.Nullable, wasm.AbsHeap(heap), false)), true
+		default:
+			return wasm.ValType{}, false
+		}
+	}
+	toWasmField := func(owner int, field FieldTypeDescriptor) (wasm.FieldType, bool) {
+		var storage wasm.StorageType
+		if field.Storage.Packed {
+			switch field.Storage.PackedType {
+			case PackedTypeI8:
+				storage = wasm.StoragePacked(wasm.PackI8)
+			case PackedTypeI16:
+				storage = wasm.StoragePacked(wasm.PackI16)
+			default:
+				return wasm.FieldType{}, false
+			}
+		} else if value := field.Storage.Value; value.Kind == ValueTypeReference && !value.Ref.Heap.Defined &&
+			!value.Ref.Exact && value.Ref.Heap.Abstract == AbstractHeapFunc && value.Ref.Heap.TypeIndex == 0 {
+			storage = wasm.StorageVal(wasm.RefVal(wasm.Ref(value.Ref.Nullable, wasm.AbsHeap(wasm.HeapFunc), false)))
+		} else {
+			value, ok := toWasmValue(owner, field.Storage.Value)
+			if !ok {
+				return wasm.FieldType{}, false
+			}
+			storage = wasm.StorageVal(value)
+		}
+		mut := wasm.Const
+		if field.Mutable {
+			mut = wasm.Var
+		}
+		return wasm.NewFieldType(storage, mut), true
+	}
+	for i := range c.Types {
+		typ := &c.Types[i]
+		comp := wasm.CompType{}
+		switch typ.Kind {
+		case CompositeTypeFunction:
+			comp.Kind = wasm.CompFunc
+			comp.Params = make([]wasm.ValType, len(typ.Params))
+			comp.Results = make([]wasm.ValType, len(typ.Results))
+			for j := range typ.Params {
+				var ok bool
+				comp.Params[j], ok = toWasmValue(i, typ.Params[j])
+				if !ok {
+					return false
+				}
+			}
+			for j := range typ.Results {
+				var ok bool
+				comp.Results[j], ok = toWasmValue(i, typ.Results[j])
+				if !ok {
+					return false
+				}
+			}
+		case CompositeTypeStruct:
+			comp.Kind = wasm.CompStruct
+			comp.Fields = make([]wasm.FieldType, len(typ.Fields))
+			for j := range typ.Fields {
+				var ok bool
+				comp.Fields[j], ok = toWasmField(i, typ.Fields[j])
+				if !ok {
+					return false
+				}
+			}
+		case CompositeTypeArray:
+			comp.Kind = wasm.CompArray
+			var ok bool
+			comp.Array, ok = toWasmField(i, typ.Array)
+			if !ok {
+				return false
+			}
+		default:
+			return false
+		}
+		sub := wasm.SubType{Final: typ.Final, HasPrefix: !typ.Final || len(typ.Supers) != 0, Comp: comp}
+		if len(typ.Supers) == 1 {
+			index := wasm.TypeIdx{Index: typ.Supers[0]}
+			if c.Types[typ.Supers[0]].RecGroup == typ.RecGroup {
+				index.Index -= groupStarts[typ.RecGroup]
+				index.Rec = true
+			}
+			sub.Supers = []wasm.TypeIdx{index}
+		}
+		group := typ.RecGroup
+		structural.Types[group].SubTypes = append(structural.Types[group].SubTypes, sub)
+	}
+	if err := wasm.ValidateModule(structural); err != nil {
+		return false
+	}
+	validateFunction := func(sig *FuncSig, ordinal int) bool {
+		if !sig.HasTypeIndex || int(sig.TypeIndex) >= len(c.Types) {
+			return false
+		}
+		typ := &c.Types[sig.TypeIndex]
+		if typ.Kind != CompositeTypeFunction || len(sig.Params) != len(typ.Params) || len(sig.Results) != len(typ.Results) {
+			return false
+		}
+		key, ok := structural.StructuralTypeKeyChecked(sig.TypeIndex)
+		if !ok || ordinal < 0 || ordinal >= len(c.FuncTypeID) || c.FuncTypeID[ordinal] != key {
+			return false
+		}
+		for i, exact := range typ.Params {
+			abi, ok := exact.ABIType(c.Types)
+			if !ok || sig.Params[i] != abi {
+				return false
+			}
+		}
+		for i, exact := range typ.Results {
+			abi, ok := exact.ABIType(c.Types)
+			if !ok || sig.Results[i] != abi {
+				return false
+			}
+		}
+		return true
+	}
+	for function := range c.importFuncSigs {
+		if !validateFunction(&c.importFuncSigs[function], function) {
+			return false
+		}
+	}
+	for function := range c.Funcs {
+		if !validateFunction(&c.Funcs[function], c.NumImports+function) {
+			return false
+		}
+	}
+	for _, function := range c.Exports {
+		if function < 0 || function >= c.NumImports+len(c.Funcs) {
+			return false
+		}
+		var sig *FuncSig
+		if function < c.NumImports {
+			sig = &c.importFuncSigs[function]
+		} else {
+			sig = &c.Funcs[function-c.NumImports]
+		}
+		if !sig.HasTypeIndex || int(sig.TypeIndex) >= len(c.Types) {
+			return false
+		}
+		typ := &c.Types[sig.TypeIndex]
+		for _, values := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
+			for _, value := range values {
+				if !rootedExportValue(value) {
+					return false
+				}
+			}
+		}
+	}
+	// The struct-dispatch helper family also owns dynamic ref.test/ref.cast for
+	// both defined aggregate kinds. An array-only rooted module can therefore
+	// require it without declaring a struct descriptor. The fresh compiler
+	// receipt and code digest authenticate the actual helper callsites.
+	valid := (!structHelpers || hasStruct || hasArray) && (!arrayHelpers || hasArray) && int(c.syncHostSlots) >= requiredSlots
+	if valid && contract != nil && c.loadValidateMemo().executionView() == c {
+		contract.rooted.Store(c)
+	}
+	return valid
+}
+
+// rv64StateOnlyExternrefGlobals is the persisted-artifact witness for a
+// bounded directory containing at least one immutable null externref global
+// plus optional immutable literal scalar globals in an otherwise empty module.
+// It must remain declaration-only: executable reference carriers and every
+// imported or initializer-dependent owner path require separate qualification.
+func rv64StateOnlyExternrefGlobals(c *Compiled) bool {
+	if c == nil || !c.hasNoFunctionCode() || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Types) != 0 || len(c.GCTypeDescs) != 0 || len(c.FuncTypeID) != 0 || len(c.Exports) != 0 {
+		return false
+	}
+	if len(c.Globals) == 0 || len(c.Globals) > 256 || len(c.GlobalImports) != 0 || len(c.GlobalExports) > 256 || len(c.ValueTypes) == 0 || len(c.ValueTypes) > 5 || c.tableCount() != 0 || c.memoryCount() != 0 || c.tagImportCount() != 0 || c.HasStart {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+		return false
+	}
+	for _, index := range c.GlobalExports {
+		if index < 0 || index >= len(c.Globals) {
+			return false
+		}
+	}
+	plainExternref, _ := valueTypeDescriptorFromValType(ValExternRef)
+	var kinds, used uint8
+	for _, exact := range c.ValueTypes {
+		if exact.Kind > ValueTypeF64 && exact != plainExternref || exact.Kind <= ValueTypeF64 && exact.Ref != (ReferenceTypeDescriptor{}) || kinds&(1<<exact.Kind) != 0 {
+			return false
+		}
+		kinds |= 1 << exact.Kind
+	}
+	required := CoreFeatureReferenceTypes
+	hasExternref := false
+	for i, g := range c.Globals {
+		exact, err := c.globalExactType(i)
+		plain, ok := valueTypeDescriptorFromValType(g.Type)
+		if err != nil || !ok || exact != plain || !g.HasValueType || uint64(g.ValueTypeIndex) >= uint64(len(c.ValueTypes)) || g.Mutable || g.V128 != (V128{}) || g.HasInitFunc || g.InitFunc != 0 || len(g.InitExpr) != 0 {
+			return false
+		}
+		used |= 1 << g.ValueTypeIndex
+		if g.Type != ValExternRef {
+			if g.Type != ValI32 && g.Type != ValI64 && g.Type != ValF32 && g.Type != ValF64 || g.HasInitGlobal || g.InitGlobal != 0 || (g.Type == ValI32 || g.Type == ValF32) && g.Bits>>32 != 0 {
+				return false
+			}
+			continue
+		}
+		hasExternref = true
+		if exact != plainExternref || g.Bits != 0 {
+			return false
+		}
+		if g.HasInitGlobal {
+			if g.InitGlobal < 0 || g.InitGlobal >= i || c.Globals[g.InitGlobal].Type != ValExternRef {
+				return false
+			}
+			required |= CoreFeatureExtendedConstExpressions
+		} else if g.InitGlobal != 0 {
+			return false
+		}
+	}
+	return hasExternref && used == uint8((1<<len(c.ValueTypes))-1) && c.requiredFeatures == required && compiledStructuralRequiredFeatures(c) == required
+}
+
+// rv64StateOnlyMutableFuncrefImport is the persisted-artifact witness for the
+// first mutable funcref-global boundary. It admits exactly one store-bound,
+// nullable funcref cell which is imported and re-exported without executable
+// code. Executable reads, the exact null-only write, and broader mixed state use
+// separate admission and lowering.
+func rv64StateOnlyMutableFuncrefImport(c *Compiled) bool {
+	if c == nil || !c.hasNoFunctionCode() || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Types) != 0 || len(c.GCTypeDescs) != 0 || len(c.FuncTypeID) != 0 || len(c.Funcs) != 0 || len(c.Exports) != 0 {
+		return false
+	}
+	if len(c.Globals) != 1 || len(c.GlobalImports) != 1 || len(c.GlobalExports) != 1 || len(c.ValueTypes) != 1 || c.tableCount() != 0 || len(c.tableExports) != 0 || c.memoryCount() != 0 || len(c.memoryExportMap()) != 0 || c.tagImportCount() != 0 || c.HasStart {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 {
+		return false
+	}
+	for _, index := range c.GlobalExports {
+		if index != 0 {
+			return false
+		}
+	}
+	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+	imp, global := c.GlobalImports[0], c.Globals[0]
+	exact, err := c.globalExactType(0)
+	if err != nil || exact != plain || c.ValueTypes[0] != plain || !imp.HasValueType || imp.ValueTypeIndex != 0 || imp.Type != ValFuncRef || !imp.Mutable {
+		return false
+	}
+	if global.Type != ValFuncRef || !global.Mutable || !global.HasValueType || global.ValueTypeIndex != 0 || global.HasInitFunc || global.InitFunc != 0 || global.HasInitGlobal || global.InitGlobal != 0 || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) {
+		return false
+	}
+	required := CoreFeatureReferenceTypes | CoreFeatureMutableGlobal
+	return c.requiredFeatures == required && compiledStructuralRequiredFeatures(c) == required
+}
+
+// Loading and hand-built metadata must enforce the same bounded public ABI as
+// source compilation before any executable image or host thunk is published.
+func railshotValidateCompiled(c *Compiled) error {
+	if err := c.validateCompactData(); err != nil {
+		return fmt.Errorf("%w: public RV64 %v", railshot.ErrUnsupported, err)
+	}
+	if c != nil && c.rv64ExecutionContract() != nil {
+		// A general contract cannot fall back to an older image profile when
+		// its bound code or metadata changes, including for state-only modules.
+		if !rv64ArtifactContractValid(c) {
+			return fmt.Errorf("%w: RV64 native execution contract lacks admitted source or artifact metadata", railshot.ErrUnsupported)
+		}
+		if compiledStructuralRequiredFeatures(c)&^c.requiredFeatures != 0 {
+			return fmt.Errorf("%w: RV64 native execution feature contract", railshot.ErrUnsupported)
+		}
+	}
+	// A state-only module has no native entry or imported execution bridge.
+	// Its tables, globals, descriptors, and initializers still pass the common
+	// metadata and resource checks in Compiled.validate.
+	if c != nil && c.hasNoFunctionCode() {
+		return nil
+	}
+	reject := func(detail string) error { return fmt.Errorf("%w: public RV64 %s", railshot.ErrUnsupported, detail) }
+	stateOnlyMutableFuncrefImport := rv64StateOnlyMutableFuncrefImport(c)
+	mutableFuncrefGlobalGet := rv64MutableFuncrefGlobalGet(c)
+	mutableFuncrefGlobalClear := rv64MutableFuncrefGlobalClear(c)
+	mutableFuncrefGlobalStoreSelf := rv64MutableFuncrefGlobalStoreSelf(c)
+	mutableFuncrefGlobalCopy := rv64MutableFuncrefGlobalCopy(c)
+	mutableFuncrefGlobalMove := rv64MutableFuncrefGlobalMove(c)
+	mutableFuncrefGlobalBidirectionalCopy := rv64MutableFuncrefGlobalBidirectionalCopy(c)
+	mutableFuncrefGlobalLocalCopy := rv64MutableFuncrefGlobalLocalCopy(c)
+	mutableFuncrefGlobalLocalPublish := rv64MutableFuncrefGlobalLocalPublish(c)
+	mutableFuncrefGlobalLocalTransfer := rv64MutableFuncrefGlobalLocalTransfer(c)
+	mutableFuncrefGlobalLocalExport := rv64MutableFuncrefGlobalLocalExport(c)
+	mutableFuncrefGlobalLocalObserve := rv64MutableFuncrefGlobalLocalObserve(c)
+	mutableFuncrefGlobalLocalCall := rv64MutableFuncrefGlobalLocalCall(c)
+	freshRootedGC := rv64FreshRootedGC(c)
+	qualifiedEH := rv64ExceptionHandling(c)
+	primitiveReferences := rv64PrimitiveReferenceContract(c)
+	functionOnlyTypes := compiledFunctionOnlyTypeGraph(c)
+	// Dynamic tail metadata is executable state. Require its source or artifact
+	// receipt before any declared type graph can grant execution permission.
+	if rv64HasDynamicTail(rv64NativeTailModule(c)) && !rv64ArtifactContractValid(c) && c.rv64ExecutionContract() == nil {
+		return reject("dynamic tail requires admitted source or artifact metadata")
+	}
+	// A verified general contract binds the full code and metadata. Legacy
+	// image fingerprints remain required when that broader proof is absent.
+	if !primitiveReferences {
+		if rv64MutableFuncrefGlobalGetExecutionCode(c) && !mutableFuncrefGlobalGet {
+			return reject("mutable funcref global.get image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalClearExecutionCode(c) && !mutableFuncrefGlobalClear {
+			return reject("mutable funcref global.clear image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalStoreSelfExecutionCode(c) && !mutableFuncrefGlobalStoreSelf {
+			return reject("mutable funcref self-store image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalCopyExecutionCode(c) && !mutableFuncrefGlobalCopy {
+			return reject("mutable funcref copy image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalMoveExecutionCode(c) && !mutableFuncrefGlobalMove {
+			return reject("mutable funcref move image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalBidirectionalCopyExecutionCode(c) && !mutableFuncrefGlobalBidirectionalCopy {
+			return reject("mutable funcref bidirectional-copy image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalLocalCopyExecutionCode(c) && !mutableFuncrefGlobalLocalCopy {
+			return reject("mutable funcref local-copy image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalLocalPublishExecutionCode(c) && !mutableFuncrefGlobalLocalPublish {
+			return reject("mutable funcref local-publish image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalLocalTransferExecutionCode(c) && !mutableFuncrefGlobalLocalTransfer {
+			return reject("mutable funcref local-transfer image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalLocalExportExecutionCode(c) && !mutableFuncrefGlobalLocalExport {
+			return reject("mutable funcref local-export image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalLocalObserveExecutionCode(c) && !mutableFuncrefGlobalLocalObserve {
+			return reject("mutable funcref local-observe image requires its exact retained metadata")
+		}
+		if rv64MutableFuncrefGlobalLocalCallExecutionCode(c) && !mutableFuncrefGlobalLocalCall {
+			return reject("mutable funcref local-call image requires its exact retained metadata")
+		}
+	}
+	exactGCRefEq := rv64OfficialGCRefEq(c)
+	exactGCRefTestTable := rv64GCRefTestTable(c)
+	exactGCRefTestConcrete := rv64GCRefTestConcrete(c)
+	exactGCRefCastConcrete := rv64GCRefCastConcrete(c)
+	exactGCRefTestAbstract := rv64GCRefTestAbstract(c)
+	exactGCExtern := rv64GCExtern(c)
+	exactGCRefCastAbstract := rv64GCRefCastAbstract(c)
+	exactGCBrOnCastAbstract := rv64GCBrOnCastAbstract(c)
+	exactGCBrOnCastFailAbstract := rv64GCBrOnCastFailAbstract(c)
+	exactGCBrOnCastConcrete := rv64GCBrOnCastConcrete(c)
+	exactGCBrOnCastFailConcrete := rv64GCBrOnCastFailConcrete(c)
+	exactGCBrOnCastNullability := rv64GCBrOnCastNullability(c)
+	exactGCBrOnCastFailNullability := rv64GCBrOnCastFailNullability(c)
+	exactGCTypeSubtypingDeclarations := rv64GCTypeSubtypingDeclarations(c)
+	exactGCTypeSubtypingRecursiveFunctions := rv64GCTypeSubtypingRecursiveFunctions(c)
+	exactGCTypeSubtypingRefFuncGlobals := rv64GCTypeSubtypingRefFuncGlobals(c)
+	exactGCTypeSubtypingRuntimeFinalityCallCast := rv64GCTypeSubtypingRuntimeFinalityCallCast(c)
+	exactGCTypeSubtypingRuntimeTypedTableCall := rv64GCTypeSubtypingRuntimeTypedTableCall(c)
+	exactGCTypeSubtypingRefTestSingle := rv64GCTypeSubtypingRefTestSingle(c)
+	exactGCTypeSubtypingLink := rv64GCTypeSubtypingLink(c)
+	exactGCTypeSubtypingFinalityLink := rv64GCTypeSubtypingFinalityLink(c)
+	exactGCTypeSubtypingStructLink := rv64GCTypeSubtypingStructLink(c)
+	exactGCTypeSubtypingStructProjectionLink := rv64GCTypeSubtypingStructProjectionLink(c)
+	exactGCTypeSubtypingStructMismatchLink := rv64GCTypeSubtypingStructMismatchLink(c)
+	exactGCTypeSubtypingIndependentStructLink := rv64GCTypeSubtypingIndependentStructLink(c)
+	exactGCTypeSubtypingExtendedProjectionLink := rv64GCTypeSubtypingExtendedProjectionLink(c)
+	exactGCTypeSubtypingDuplicateRecursiveLink := rv64GCTypeSubtypingDuplicateRecursiveLink(c)
+	exactGCTypeSubtypingExtendedRecursiveLink := rv64GCTypeSubtypingExtendedRecursiveLink(c)
+	exactGCTypeSubtypingCrossGroupMismatchLink := rv64GCTypeSubtypingCrossGroupMismatchLink(c)
+	exactGCTypeSubtypingTransitiveMismatchLink := rv64GCTypeSubtypingTransitiveMismatchLink(c)
+	exactGCTypeSubtypingNonFlatExport := rv64GCTypeSubtypingNonFlatExport(c)
+	exactGCTypeSubtypingRuntimeCallCast := rv64GCTypeSubtypingRuntimeCallCast(c) || exactGCTypeSubtypingRuntimeFinalityCallCast || exactGCTypeSubtypingRuntimeTypedTableCall
+	exactGCStructGet := rv64GCStructGet(c)
+	exactGCStructMutation := rv64GCStructMutation(c)
+	exactGCStructNull := rv64GCStructNull(c)
+	exactGCStructPacked := rv64GCStructPacked(c)
+	exactGCStructBasic := rv64GCStructBasic(c)
+	exactGCStructNumericGlobals := rv64GCStructNumericGlobals(c)
+	exactGCArrayLocal := rv64GCArrayLocal(c)
+	exactGCArrayUniform := rv64GCArrayUniform(c)
+	exactGCArrayFixedLocal := rv64GCArrayFixedLocal(c)
+	exactGCArrayFixedOfficial := rv64GCArrayFixedOfficial(c)
+	exactGCArrayDefaultOfficial := rv64GCArrayDefaultOfficial(c)
+	exactGCArrayPackedData := rv64GCArrayPackedData(c)
+	exactGCArrayReference := rv64GCArrayReference(c)
+	exactGCArrayInitElem := rv64GCArrayInitElem(c)
+	exactGCArrayInitData := rv64GCArrayInitData(c)
+	exactGCArrayFill := rv64GCArrayFill(c)
+	exactGCArrayCopy := rv64GCArrayCopy(c)
+	if !primitiveReferences && rv64GCTypeSubtypingRecursiveFunctionsExecutionCode(c) && !exactGCTypeSubtypingRecursiveFunctions {
+		return reject("gc/type-subtyping recursive-function image requires its exact retained metadata")
+	}
+	if !primitiveReferences && rv64GCTypeSubtypingRecursiveFunctionsProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingRecursiveFunctions {
+		return reject("gc/type-subtyping recursive-function metadata requires its exact retained image")
+	}
+	if !primitiveReferences && !freshRootedGC && rv64GCTypeSubtypingRefFuncGlobalsExecutionCode(c) && rv64GCTypeSubtypingRefFuncGlobalsExecutionClaim(c) && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink {
+		return reject("gc/type-subtyping ref.func-global image requires its exact retained metadata")
+	}
+	if !primitiveReferences && !freshRootedGC && rv64GCTypeSubtypingRefFuncGlobalsProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingRefFuncGlobals {
+		return reject("gc/type-subtyping ref.func-global metadata requires its exact retained image")
+	}
+	if !primitiveReferences && rv64GCTypeSubtypingRuntimeCallCastExecutionCode(c) && !exactGCTypeSubtypingRuntimeCallCast {
+		return reject("gc/type-subtyping runtime call/cast image requires its exact retained metadata")
+	}
+	if !primitiveReferences && rv64GCTypeSubtypingRuntimeCallCastProfileWithCode(c, true, false) && !exactGCTypeSubtypingRuntimeCallCast {
+		return reject("gc/type-subtyping runtime call/cast metadata requires its exact retained image")
+	}
+	if !primitiveReferences && rv64GCTypeSubtypingRuntimeFinalityCallCastExecutionCode(c) && !exactGCTypeSubtypingRuntimeFinalityCallCast {
+		return reject("gc/type-subtyping runtime finality call/cast image requires its exact retained metadata")
+	}
+	if !primitiveReferences && rv64GCTypeSubtypingRuntimeFinalityCallCastProfileWithCode(c, true, false) && !exactGCTypeSubtypingRuntimeFinalityCallCast {
+		return reject("gc/type-subtyping runtime finality call/cast metadata requires its exact retained image")
+	}
+	if !primitiveReferences && rv64GCTypeSubtypingRuntimeTypedTableCallExecutionCode(c) && !exactGCTypeSubtypingRuntimeTypedTableCall {
+		return reject("gc/type-subtyping runtime typed-table call image requires its exact retained metadata")
+	}
+	if !primitiveReferences && rv64GCTypeSubtypingRuntimeTypedTableCallProfileWithCode(c, true, false) && !exactGCTypeSubtypingRuntimeTypedTableCall {
+		return reject("gc/type-subtyping runtime typed-table call metadata requires its exact retained image")
+	}
+	if !primitiveReferences && rv64GCTypeSubtypingRefTestSingleExecutionCode(c) && !exactGCTypeSubtypingRefTestSingle {
+		return reject("gc/type-subtyping ref.test image requires its exact retained metadata")
+	}
+	if !primitiveReferences && rv64GCTypeSubtypingRefTestSingleProfileWithCode(c, true, false) && !exactGCTypeSubtypingRefTestSingle {
+		return reject("gc/type-subtyping ref.test metadata requires its exact retained image")
+	}
+	if rv64GCTypeSubtypingLinkExecutionCode(c) && rv64GCTypeSubtypingLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingLink {
+		return reject("gc/type-subtyping link image requires its exact retained metadata")
+	}
+	if rv64GCTypeSubtypingLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingLink {
+		return reject("gc/type-subtyping link metadata requires its exact retained image")
+	}
+	if rv64GCTypeSubtypingFinalityLinkExecutionCode(c) && rv64GCTypeSubtypingFinalityLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingFinalityLink {
+		return reject("gc/type-subtyping finality-link image requires its exact retained metadata")
+	}
+	if rv64GCTypeSubtypingFinalityLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingFinalityLink {
+		return reject("gc/type-subtyping finality-link metadata requires its exact retained image")
+	}
+	if rv64GCTypeSubtypingStructLinkExecutionCode(c) && rv64GCTypeSubtypingStructLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingStructLink {
+		return reject("gc/type-subtyping struct-link image requires its exact retained metadata")
+	}
+	if rv64GCTypeSubtypingStructLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingStructLink {
+		return reject("gc/type-subtyping struct-link metadata requires its exact retained image")
+	}
+	if rv64GCTypeSubtypingStructProjectionLinkExecutionCode(c) && rv64GCTypeSubtypingStructProjectionLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingStructProjectionLink {
+		return reject("gc/type-subtyping struct-projection-link image requires its exact retained metadata")
+	}
+	if rv64GCTypeSubtypingStructProjectionLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingStructProjectionLink {
+		return reject("gc/type-subtyping struct-projection-link metadata requires its exact retained image")
+	}
+	if rv64GCTypeSubtypingStructMismatchLinkExecutionCode(c) && rv64GCTypeSubtypingStructMismatchLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingStructMismatchLink {
+		return reject("gc/type-subtyping struct-mismatch-link image requires its exact retained metadata")
+	}
+	if rv64GCTypeSubtypingStructMismatchLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingStructMismatchLink {
+		return reject("gc/type-subtyping struct-mismatch-link metadata requires its exact retained image")
+	}
+	if rv64GCTypeSubtypingIndependentStructLinkExecutionCode(c) && rv64GCTypeSubtypingIndependentStructLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingIndependentStructLink {
+		return reject("gc/type-subtyping independent-struct-link image requires its exact retained metadata")
+	}
+	if rv64GCTypeSubtypingIndependentStructLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingIndependentStructLink {
+		return reject("gc/type-subtyping independent-struct-link metadata requires its exact retained image")
+	}
+	if rv64GCTypeSubtypingExtendedProjectionLinkExecutionCode(c) && rv64GCTypeSubtypingExtendedProjectionLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingExtendedProjectionLink {
+		return reject("gc/type-subtyping extended-projection-link image requires its exact retained metadata")
+	}
+	if rv64GCTypeSubtypingExtendedProjectionLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingExtendedProjectionLink {
+		return reject("gc/type-subtyping extended-projection-link metadata requires its exact retained image")
+	}
+	if rv64GCTypeSubtypingDuplicateRecursiveLinkExecutionCode(c) && rv64GCTypeSubtypingDuplicateRecursiveLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingDuplicateRecursiveLink {
+		return reject("gc/type-subtyping duplicate-recursive-link image requires its exact retained metadata")
+	}
+	if rv64GCTypeSubtypingDuplicateRecursiveLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingDuplicateRecursiveLink {
+		return reject("gc/type-subtyping duplicate-recursive-link metadata requires its exact retained image")
+	}
+	if rv64GCTypeSubtypingExtendedRecursiveLinkExecutionCode(c) && rv64GCTypeSubtypingExtendedRecursiveLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingExtendedRecursiveLink {
+		return reject("gc/type-subtyping extended-recursive-link image requires its exact retained metadata")
+	}
+	if rv64GCTypeSubtypingExtendedRecursiveLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingExtendedRecursiveLink {
+		return reject("gc/type-subtyping extended-recursive-link metadata requires its exact retained image")
+	}
+	if rv64GCTypeSubtypingCrossGroupMismatchLinkExecutionCode(c) && rv64GCTypeSubtypingCrossGroupMismatchLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingCrossGroupMismatchLink {
+		return reject("gc/type-subtyping cross-group-mismatch-link image requires its exact retained metadata")
+	}
+	if rv64GCTypeSubtypingCrossGroupMismatchLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingCrossGroupMismatchLink {
+		return reject("gc/type-subtyping cross-group-mismatch-link metadata requires its exact retained image")
+	}
+	if rv64GCTypeSubtypingTransitiveMismatchLinkExecutionCode(c) && rv64GCTypeSubtypingTransitiveMismatchLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingTransitiveMismatchLink {
+		return reject("gc/type-subtyping transitive-mismatch-link image requires its exact retained metadata")
+	}
+	if rv64GCTypeSubtypingTransitiveMismatchLinkProfileWithCode(c, true, false) != 0 && !exactGCTypeSubtypingTransitiveMismatchLink {
+		return reject("gc/type-subtyping transitive-mismatch-link metadata requires its exact retained image")
+	}
+	if !primitiveReferences && rv64GCTypeSubtypingNonFlatExportExecutionCode(c) && !exactGCTypeSubtypingNonFlatExport {
+		return reject("gc/type-subtyping non-flat-export image requires its exact retained metadata")
+	}
+	if !primitiveReferences && rv64GCTypeSubtypingNonFlatExportProfileWithCode(c, true, false) && !exactGCTypeSubtypingNonFlatExport {
+		return reject("gc/type-subtyping non-flat-export metadata requires its exact retained image")
+	}
+	// A general rooted execution contract binds code, exact type/state receipts
+	// and root maps. Legacy image collisions constrain only legacy contracts.
+	if !freshRootedGC {
+		if rv64OfficialGCRefEqExecutionCode(c) && !exactGCRefEq {
+			return reject("allocating gc/ref.eq image requires its exact retained metadata")
+		}
+		if rv64GCRefTestTableExecutionCode(c) && !exactGCRefTestTable {
+			return reject("gc object-table ref.test image requires its exact retained metadata")
+		}
+		if rv64GCRefTestConcreteExecutionCode(c) && !exactGCRefTestConcrete {
+			return reject("gc concrete ref.test image requires its exact retained metadata")
+		}
+		if rv64GCRefCastConcreteExecutionCode(c) && !exactGCRefCastConcrete {
+			return reject("gc concrete ref.cast image requires its exact retained metadata")
+		}
+		if rv64GCRefTestAbstractExecutionCode(c) && !exactGCRefTestAbstract {
+			return reject("gc abstract ref.test image requires its exact retained metadata")
+		}
+		if rv64GCExternExecutionCode(c) && !exactGCExtern {
+			return reject("gc extern conversion image requires its exact retained metadata")
+		}
+		if rv64GCRefCastAbstractExecutionCode(c) && !exactGCRefCastAbstract {
+			return reject("gc abstract ref.cast image requires its exact retained metadata")
+		}
+		if rv64GCBrOnCastAbstractExecutionCode(c) && !exactGCBrOnCastAbstract {
+			return reject("gc abstract br_on_cast image requires its exact retained metadata")
+		}
+		if rv64GCBrOnCastFailAbstractExecutionCode(c) && !exactGCBrOnCastFailAbstract {
+			return reject("gc abstract br_on_cast_fail image requires its exact retained metadata")
+		}
+		if rv64GCBrOnCastConcreteExecutionCode(c) && !exactGCBrOnCastConcrete {
+			return reject("gc concrete br_on_cast image requires its exact retained metadata")
+		}
+		if rv64GCBrOnCastFailConcreteExecutionCode(c) && !exactGCBrOnCastFailConcrete {
+			return reject("gc concrete br_on_cast_fail image requires its exact retained metadata")
+		}
+		if rv64GCBrOnCastNullabilityExecutionCode(c) && !exactGCBrOnCastNullability {
+			return reject("gc nullability br_on_cast image requires its exact retained metadata")
+		}
+		if rv64GCBrOnCastFailNullabilityExecutionCode(c) && !exactGCBrOnCastFailNullability {
+			return reject("gc nullability br_on_cast_fail image requires its exact retained metadata")
+		}
+		if rv64GCStructGetExecutionCode(c) && !exactGCStructGet {
+			return reject("allocating gc/struct.get image requires its exact retained metadata")
+		}
+		if rv64GCStructMutationExecutionCode(c) && !exactGCStructMutation {
+			return reject("allocating gc/struct mutation image requires its exact retained metadata")
+		}
+		if rv64GCStructNullExecutionCode(c) && !exactGCStructNull {
+			return reject("gc/struct null image requires its exact retained metadata")
+		}
+		if rv64GCStructPackedExecutionCode(c) && !exactGCStructPacked {
+			return reject("gc/struct packed image requires its exact retained metadata")
+		}
+		if rv64GCStructBasicExecutionCode(c) && !exactGCStructBasic {
+			return reject("gc/struct basic image requires its exact retained metadata")
+		}
+		if rv64GCArrayLocalExecutionCode(c) && !exactGCArrayLocal {
+			return reject("allocating gc/array local image requires its exact retained metadata")
+		}
+		if rv64GCArrayUniformExecutionCode(c) && !exactGCArrayUniform {
+			return reject("allocating gc/array uniform image requires its exact retained metadata")
+		}
+		if rv64GCArrayFixedLocalExecutionCode(c) && !exactGCArrayFixedLocal {
+			return reject("allocating gc/array fixed local image requires its exact retained metadata")
+		}
+		if rv64GCArrayFixedOfficialExecutionCode(c) && !exactGCArrayFixedOfficial {
+			return reject("allocating official gc/array fixed image requires its exact retained metadata")
+		}
+		if rv64GCArrayDefaultOfficialExecutionCode(c) && !exactGCArrayDefaultOfficial {
+			return reject("allocating official gc/array default image requires its exact retained metadata")
+		}
+		if rv64GCArrayPackedDataExecutionCode(c) && !exactGCArrayPackedData {
+			return reject("allocating gc/array packed data image requires its exact retained metadata")
+		}
+		if rv64GCArrayReferenceExecutionCode(c) && !exactGCArrayReference {
+			return reject("allocating gc/array reference image requires its exact retained metadata")
+		}
+		if rv64GCArrayInitElemExecutionCode(c) && !exactGCArrayInitElem {
+			return reject("allocating gc/array init elem image requires its exact retained metadata")
+		}
+		if rv64GCArrayInitDataExecutionCode(c) && !exactGCArrayInitData {
+			return reject("allocating gc/array init data image requires its exact retained metadata")
+		}
+		if rv64GCArrayFillExecutionCode(c) && !exactGCArrayFill {
+			return reject("allocating gc/array fill image requires its exact retained metadata")
+		}
+		if rv64GCArrayCopyExecutionCode(c) && !exactGCArrayCopy {
+			return reject("allocating gc/array copy image requires its exact retained metadata")
+		}
+	}
+	if rv64I31CoreExecutionCode(c) && !rv64I31Core(c) {
+		return reject("i31 execution image requires its exact retained metadata")
+	}
+	if c != nil && c.stagedGCI31Product() != 0 && !rv64I31Core(c) && !freshRootedGC {
+		return reject("i31 execution product requires its exact retained image")
+	}
+	immediateReferences := rv64ImmediateReferenceContract(c)
+	generalI31 := rv64GeneralI31Contract(c)
+	exactAnyI31 := rv64I31OfficialAnyGlobal(c)
+	typedI31 := immediateReferences || rv64I31OfficialCore(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialGlobalInitializer(c) || exactAnyI31
+	exactCore3RefIsNull := rv64Core3RefIsNullExecution(c)
+	// General function-only GC images require the binding that joins their code
+	// and declarations. Old artifacts retain their independent exact proof.
+	if functionOnlyTypes && c.requiredFeatures.IsEnabled(CoreFeatureGC) && c.rv64ExecutionContract() == nil && !freshRootedGC && !qualifiedEH && !typedI31 && !exactCore3RefIsNull {
+		legacy := exactGCTypeSubtypingDeclarations || exactGCTypeSubtypingRecursiveFunctions || exactGCTypeSubtypingRefFuncGlobals ||
+			exactGCTypeSubtypingRuntimeCallCast || exactGCTypeSubtypingRefTestSingle || exactGCTypeSubtypingLink || exactGCTypeSubtypingFinalityLink ||
+			exactGCTypeSubtypingStructLink || exactGCTypeSubtypingStructProjectionLink || exactGCTypeSubtypingStructMismatchLink ||
+			exactGCTypeSubtypingIndependentStructLink || exactGCTypeSubtypingExtendedProjectionLink || exactGCTypeSubtypingDuplicateRecursiveLink ||
+			exactGCTypeSubtypingExtendedRecursiveLink || exactGCTypeSubtypingCrossGroupMismatchLink || exactGCTypeSubtypingTransitiveMismatchLink || exactGCTypeSubtypingNonFlatExport
+		if !legacy {
+			return reject("function-only GC execution requires its general binding or a legacy proof")
+		}
+	}
+	if rv64Core3RefIsNullExecutionCode(c) && !exactCore3RefIsNull {
+		return reject("Core 3 ref.is_null image requires its exact retained metadata")
+	}
+	if !c.nativeContextTrapABI {
+		return reject("native-context trap ABI is required")
+	}
+	if len(c.code) > railshot.MaxPublicCodeBytes || uint64(len(c.Types)) > uint64(railshot.MaxPublicCodeBytes)/8 || len(c.GCTypeDescs) > len(c.Types) || len(c.Globals) > railshot.MaxPublicGlobals {
+		return reject("bounded artifact shape")
+	}
+	if len(c.Funcs) == 0 && c.NumImports == 0 && !c.hasNoFunctionCode() {
+		return reject("state-only artifact contains code or function entries")
+	}
+	if uint64(c.activeDataCount()) > uint64(railshot.MaxPublicCodeBytes)/16 || uint64(len(c.PassiveData)) > uint64(railshot.MaxPublicCodeBytes)/16 {
+		return reject("data descriptor count bound")
+	}
+	remaining := railshot.MaxModuleBytes
+	for i := 0; i < c.activeDataCount(); i++ {
+		data := c.activeDataAt(i)
+		if len(data.Bytes) > remaining {
+			return reject("data payload size bound")
+		}
+		remaining -= len(data.Bytes)
+	}
+	for _, data := range c.PassiveData {
+		if len(data.Bytes) > remaining {
+			return reject("data payload size bound")
+		}
+		remaining -= len(data.Bytes)
+	}
+	if c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.Imports) != c.NumImports || len(c.importFuncSigs) != c.NumImports || uint64(c.NumImports)+uint64(len(c.Funcs)) > uint64(railshot.MaxPublicCodeBytes)/16 || c.dynamicImports != (c.NumImports > 0) {
+		return reject("dynamic function import shape")
+	}
+	if c.NumImports+len(c.GlobalImports)+c.memoryImportCount()+c.tableImportCount() > railshot.MaxPublicImports {
+		return reject("aggregate import bound")
+	}
+	if !freshRootedGC && !qualifiedEH {
+		if err := railshotValidateReferenceCalls(c); err != nil {
+			return reject(err.Error())
+		}
+	}
+	if err := rv64ValidateNativeTail(c); err != nil {
+		return reject(err.Error())
+	}
+	if !freshRootedGC && !qualifiedEH && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink {
+		if err := rv64ValidateReferenceFunctions(c); err != nil {
+			return reject(err.Error())
+		}
+	}
+	if m := rv64NativeTailModule(c); m != nil {
+		for _, p := range m.Plans {
+			if p.Kind > 2 {
+				return reject("dynamic tail requires a qualified native-owner plan")
+			}
+		}
+	}
+	vectorProfile := c.requiredFeatures.IsEnabled(CoreFeatureSIMD)
+	if c.NumImports != 0 {
+		if !c.needsFuncRefContextHeader {
+			return reject("host imports require an instance context anchor")
+		}
+		maxImportArity := railshot.MaxVectorFunctionValues
+		publicHostReferenceBoundary := primitiveReferences || rv64PublicHostReferenceBoundary(c) || rv64PublicDynamicHostReferenceBoundary(c) || exactGCTypeSubtypingLink || exactGCTypeSubtypingFinalityLink || exactGCTypeSubtypingStructLink || exactGCTypeSubtypingStructProjectionLink || exactGCTypeSubtypingStructMismatchLink || exactGCTypeSubtypingIndependentStructLink || exactGCTypeSubtypingExtendedProjectionLink || exactGCTypeSubtypingDuplicateRecursiveLink || exactGCTypeSubtypingExtendedRecursiveLink || exactGCTypeSubtypingCrossGroupMismatchLink || exactGCTypeSubtypingTransitiveMismatchLink
+		for _, sig := range c.importFuncSigs {
+			if len(sig.Params) > maxImportArity || len(sig.Results) > maxImportArity {
+				return reject("function import signature arity")
+			}
+			for _, values := range [][]ValType{sig.Params, sig.Results} {
+				for _, typ := range values {
+					if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) &&
+						(!(publicHostReferenceBoundary || c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes)) || typ != ValFuncRef && typ != ValExternRef) && (!freshRootedGC || !isGCRefValType(typ)) {
+						return reject("unsupported function import signature")
+					}
+				}
+			}
+		}
+	}
+	if c.HasStart {
+		if _, err := compiledStartIndex(c); err != nil {
+			return reject(err.Error())
+		}
+	}
+
+	if c.boundsMode == BoundsChecksSignalsBased && c.memoryCount() != 0 && !rv64GuardedMemoryProfile(c) || c.genericGCFrameRoots() != nil && !freshRootedGC || c.usesDynamicFuncRefTest() && !primitiveReferences && !freshRootedGC || c.memoryCount() > railshot.MaxProductionMemories {
+		return reject("resource/host/reference lowering is pending")
+	}
+	if len(c.GlobalImports) > len(c.Globals) {
+		return reject("global import index shape")
+	}
+	for i, global := range c.GlobalImports {
+		funcref := global.Type == ValFuncRef && (primitiveReferences || !global.Mutable || stateOnlyMutableFuncrefImport || mutableFuncrefGlobalGet || mutableFuncrefGlobalClear || mutableFuncrefGlobalStoreSelf || mutableFuncrefGlobalCopy || mutableFuncrefGlobalMove || mutableFuncrefGlobalBidirectionalCopy || mutableFuncrefGlobalLocalCopy || mutableFuncrefGlobalLocalPublish || mutableFuncrefGlobalLocalTransfer) && (primitiveReferences || c.tableCount() <= 1)
+		externRef := (primitiveReferences || freshRootedGC && c.compactExternFrameRoots()) && global.Type == ValExternRef
+		collectorRef := freshRootedGC && isGCRefValType(global.Type)
+		reference := funcref || externRef || collectorRef
+		if funcref || externRef {
+			plain, _ := valueTypeDescriptorFromValType(global.Type)
+			exact, err := exactValueType(global.Type, global.HasValueType, global.ValueTypeIndex, c.ValueTypes, c.Types)
+			if err != nil || exact != plain && !(primitiveReferences && rv64PrimitiveReferenceValue(c, exact)) {
+				return reject("reference global import exact type")
+			}
+		} else if collectorRef {
+			exact, err := exactValueType(global.Type, global.HasValueType, global.ValueTypeIndex, c.ValueTypes, c.Types)
+			if err != nil || exact.Kind != ValueTypeReference {
+				return reject("collector-reference global import exact type")
+			}
+		}
+		if (!reference && global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && (!vectorProfile || global.Type != ValV128)) || global.Type != c.Globals[i].Type || global.Mutable != c.Globals[i].Mutable {
+			return reject("global import type/mutability shape")
+		}
+	}
+	for _, desc := range c.GCTypeDescs {
+		if !freshRootedGC && !generalI31 && !qualifiedEH && !exactGCTypeSubtypingDeclarations && !exactGCTypeSubtypingRecursiveFunctions && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRuntimeCallCast && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink && !exactGCTypeSubtypingNonFlatExport && !exactGCRefEq && !exactGCRefTestTable && !exactGCRefTestConcrete && !exactGCRefCastConcrete && !exactGCRefTestAbstract && !exactGCExtern && !exactGCRefCastAbstract && !exactGCBrOnCastAbstract && !exactGCBrOnCastFailAbstract && !exactGCBrOnCastConcrete && !exactGCBrOnCastFailConcrete && !exactGCBrOnCastNullability && !exactGCBrOnCastFailNullability && !exactGCStructGet && !exactGCStructMutation && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy && (desc.Kind != gc.KindFunc || !primitiveReferences && !functionOnlyTypes && (!desc.Final || desc.HasSuper)) {
+			if !primitiveReferences {
+				return reject("GC descriptor lowering is pending")
+			}
+		}
+	}
+	qualifiedFeatures := platformCoreFeatures() | CoreFeatureTailCall
+	if qualifiedEH {
+		qualifiedFeatures |= CoreFeatureExceptionHandling
+	}
+	if rv64ThreadedMemoryProfile(c) {
+		qualifiedFeatures |= CoreFeatureThreads
+	}
+	if freshRootedGC {
+		qualifiedFeatures |= CoreFeatureGC | CoreFeatureTypedFunctionReferences
+	}
+	if primitiveReferences {
+		// Aggregate declarations can participate in canonical function identity
+		// without requiring collector-backed execution.
+		qualifiedFeatures |= CoreFeatureGC | CoreFeatureTypedFunctionReferences
+	}
+	if rv64I31Core(c) {
+		qualifiedFeatures |= CoreFeatureGC
+		if typedI31 {
+			qualifiedFeatures |= CoreFeatureTypedFunctionReferences
+		}
+	}
+	if exactGCTypeSubtypingDeclarations || exactGCTypeSubtypingRecursiveFunctions || exactGCTypeSubtypingRefFuncGlobals || exactGCTypeSubtypingRuntimeCallCast || exactGCTypeSubtypingRefTestSingle || exactGCTypeSubtypingLink || exactGCTypeSubtypingFinalityLink || exactGCTypeSubtypingStructLink || exactGCTypeSubtypingStructProjectionLink || exactGCTypeSubtypingStructMismatchLink || exactGCTypeSubtypingIndependentStructLink || exactGCTypeSubtypingExtendedProjectionLink || exactGCTypeSubtypingDuplicateRecursiveLink || exactGCTypeSubtypingExtendedRecursiveLink || exactGCTypeSubtypingCrossGroupMismatchLink || exactGCTypeSubtypingTransitiveMismatchLink || exactGCTypeSubtypingNonFlatExport || exactGCRefEq || exactGCRefTestTable || exactGCRefTestConcrete || exactGCRefCastConcrete || exactGCRefTestAbstract || exactGCExtern || exactGCRefCastAbstract || exactGCBrOnCastAbstract || exactGCBrOnCastFailAbstract || exactGCBrOnCastConcrete || exactGCBrOnCastFailConcrete || exactGCBrOnCastNullability || exactGCBrOnCastFailNullability || exactGCStructGet || exactGCStructMutation || exactGCStructNull || exactGCStructPacked || exactGCStructBasic || exactGCStructNumericGlobals || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
+		qualifiedFeatures |= CoreFeatureGC
+	}
+	if exactGCTypeSubtypingDeclarations || exactGCTypeSubtypingRecursiveFunctions || exactGCTypeSubtypingRefFuncGlobals || exactGCTypeSubtypingRuntimeCallCast || exactGCTypeSubtypingRefTestSingle || exactGCTypeSubtypingLink || exactGCTypeSubtypingFinalityLink || exactGCTypeSubtypingStructLink || exactGCTypeSubtypingStructProjectionLink || exactGCTypeSubtypingStructMismatchLink || exactGCTypeSubtypingIndependentStructLink || exactGCTypeSubtypingExtendedProjectionLink || exactGCTypeSubtypingDuplicateRecursiveLink || exactGCTypeSubtypingExtendedRecursiveLink || exactGCTypeSubtypingCrossGroupMismatchLink || exactGCTypeSubtypingTransitiveMismatchLink || exactGCTypeSubtypingNonFlatExport || exactGCRefTestTable || exactGCRefTestConcrete || exactGCRefCastConcrete || exactGCRefTestAbstract || exactGCExtern || exactGCRefCastAbstract || exactGCBrOnCastAbstract || exactGCBrOnCastFailAbstract || exactGCBrOnCastConcrete || exactGCBrOnCastFailConcrete || exactGCBrOnCastNullability || exactGCBrOnCastFailNullability || exactGCStructMutation || exactGCStructNull || exactGCStructPacked || exactGCStructBasic || exactGCStructNumericGlobals || exactGCArrayLocal || exactGCArrayUniform || exactGCArrayFixedLocal || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy {
+		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
+	}
+	if exactGCTypeSubtypingRefTestSingle || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData {
+		qualifiedFeatures |= CoreFeatureBulkMemoryOperations
+	}
+	if c.nativeTable64ABI == nativeTable64SizeABI && !rv64OwnedTwoTable32Size(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Size(c) && !rv64OwnedTwoTable64Size(c)) {
+		return reject("table.size compiler witness requires its exact owned or indexed two-table profile")
+	}
+	if c.nativeTable64ABI == nativeTable64GrowABI && !rv64OwnedTwoTable32Grow(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Grow(c) && !rv64OwnedTwoTable64Grow(c)) {
+		return reject("table.grow compiler witness requires its exact owned or indexed two-table profile")
+	}
+	if c.nativeTable64ABI == nativeTable64GetSetABI && !rv64OwnedTwoTable32GetSet(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64GetSet(c) && !rv64OwnedTwoTable64GetSet(c)) {
+		return reject("table.get/set compiler witness requires its exact owned or indexed two-table profile")
+	}
+	if !primitiveReferences && c.nativeTable64ABI == nativeTable64IndirectABI && !rv64OwnedTwoTable32Indirect(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Indirect(c) && !rv64OwnedTwoTable64Indirect(c) && !rv64MixedTable64Indirect(c) && !rv64MixedTable64ActiveIndirect(c) && !rv64ImportedTable64Indirect(c)) {
+		return reject("table indirect-call compiler witness requires its exact owned, indexed two-table32/table64, or imported table64 profile")
+	}
+	if c.nativeTable64ABI == nativeTable64FillABI && !rv64OwnedTwoTable32Fill(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Fill(c) && !rv64OwnedTwoTable64Fill(c)) {
+		return reject("table.fill compiler witness requires its exact owned or indexed two-table profile")
+	}
+	if c.nativeTable64ABI == nativeTable64CopyABI && !rv64OwnedTwoTable32Copy(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64Copy(c) && !rv64OwnedTwoTable64Copy(c)) {
+		return reject("table.copy compiler witness requires its exact owned or indexed two-table profile")
+	}
+	if c.nativeTable64ABI == nativeTable64InitDropABI && !rv64OwnedTwoTable32InitDrop(c) && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64OwnedTable64InitDrop(c) && !rv64OwnedTwoTable64InitDrop(c)) {
+		return reject("table.init/drop compiler witness requires its exact owned or indexed two-table profile")
+	}
+	if c.nativeTable64ABI == nativeTable64ImportedSizeABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64ImportedTable64Size(c) && !rv64MixedTable64Size(c)) {
+		return reject("table64.size compiler witness requires its exact imported table64 profile")
+	}
+	if c.nativeTable64ABI == nativeTable64ImportedGetSetABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64ImportedTable64GetSet(c) && !rv64MixedTable64GetSet(c)) {
+		return reject("table64.get/set compiler witness requires its exact imported table64 profile")
+	}
+	if c.nativeTable64ABI == nativeTable64ImportedGrowABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64ImportedTable64Grow(c) && !rv64MixedTable64Grow(c)) {
+		return reject("table64.grow compiler witness requires its exact imported table64 profile")
+	}
+	if c.nativeTable64ABI == nativeTable64ImportedFillABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64ImportedTable64Fill(c) && !rv64MixedTable64Fill(c)) {
+		return reject("table64.fill compiler witness requires its exact imported table64 profile")
+	}
+	if c.nativeTable64ABI == nativeTable64ImportedCopyABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64ImportedTable64Copy(c) && !rv64MixedTable64Copy(c) && !rv64MixedTable64CrossCopy(c)) {
+		return reject("table64.copy compiler witness requires its exact imported table64 profile")
+	}
+	if c.nativeTable64ABI == nativeTable64ImportedInitDropABI && (!c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !rv64ImportedTable64InitDrop(c) && !rv64MixedTable64InitDrop(c)) {
+		return reject("table64.init/drop compiler witness requires its exact imported table64 profile")
+	}
+	if c.nativeTable64ABI > nativeTable64ImportedInitDropABI {
+		return reject("unknown table64 compiler witness")
+	}
+	if c.requiredFeatures.IsEnabled(CoreFeatureTable64) && !rv64QualifiedTable64(c) {
+		return reject("table64 requires an exact qualified owned-table profile")
+	}
+	// Dead validated reference-tail instructions need no emitted plan or ABI
+	// flag. Their retained syntax feature still needs its full code binding.
+	emptyTypedTail := rv64NativeTailModule(c) != nil && len(rv64NativeTailModule(c).Plans) == 0 && rv64ArtifactContractValid(c)
+	if primitiveReferences || functionOnlyTypes {
+		qualifiedFeatures |= CoreFeatureGC
+	}
+	if functionOnlyTypes {
+		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
+	}
+	if rv64HasReferenceTail(c) || c.nativeReferenceCallABI || c.nativeReferenceControlABI || emptyTypedTail {
+		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
+	}
+	declarativeTyped := false
+	if c.hasNoFunctionCode() && c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) && !exactGCStructNumericGlobals && !exactGCTypeSubtypingDeclarations {
+		var err error
+		declarativeTyped, err = rv64ValidateDeclarativeControlTypes(c)
+		if err != nil {
+			return reject(err.Error())
+		}
+		if !declarativeTyped {
+			return reject("declarative typed feature requires an exact type witness")
+		}
+		qualifiedFeatures |= CoreFeatureTypedFunctionReferences
+	}
+	if c.requiredFeatures & ^qualifiedFeatures != 0 || c.requiredAMD64Features != 0 || c.preparedIsolatedTables {
+		return reject("feature or ISA contract")
+	}
+	for i, entry := range c.Entry {
+		if entry&15 != 0 || i >= len(c.InternalEntry) {
+			return reject("entry is not an aligned framed wrapper")
+		}
+		internal := c.InternalEntry[i]
+		adapter := internalEntryOffset(internal) != entry && rv64DirectIntegerAdapter(c, i)
+		if internalEntryOffset(internal) != entry && !adapter || !rv64DirectIntegerMarkerShape(internal, adapter) {
+			return reject("entry lacks its exact checked integer adapter")
+		}
+	}
+
+	if vectorProfile {
+		if len(c.GlobalExports) > railshot.MaxFunctions {
+			return reject("global export count bound")
+		}
+		for _, index := range c.GlobalExports {
+			if index < 0 || index >= len(c.Globals) {
+				return reject("global export index bound")
+			}
+		}
+	}
+	maxArity := 256
+	if vectorProfile {
+		maxArity = railshot.MaxVectorFunctionValues
+	}
+	mutableReferenceCarrier := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
+	declarationExtern := c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || primitiveReferences || exactGCRefTestAbstract || exactGCExtern || exactGCRefCastAbstract || exactGCBrOnCastAbstract || exactGCBrOnCastFailAbstract || exactCore3RefIsNull || rv64Core3RefDeclarations(c) || rv64Core3ReferenceDeclarations(c) || rv64Core3RefAsNonNullDeclarations(c) || rv64Core3RefIsNullDeclarations(c) || rv64PublicReferenceCallBoundary(c) || rv64PublicHostReferenceBoundary(c) || rv64PublicDynamicHostReferenceBoundary(c) || mutableReferenceCarrier >= 19 && mutableReferenceCarrier <= 28
+	freshRootedReference := func(typ ValType) bool {
+		roots := c.genericGCFrameRoots()
+		opaqueNoCollect := qualifiedEH && c.needsOwnedExceptionReferences() && roots != nil && len(roots.safepoints) == 0 && len(roots.callsites) == 0
+		return freshRootedGC && (typ == ValAnyRef || typ == ValI31Ref || opaqueNoCollect && (typ == ValFuncRef || typ == ValExternRef))
+	}
+	for _, sig := range c.Funcs {
+		if len(sig.Params) > maxArity || len(sig.Results) > maxArity {
+			return reject("signature arity")
+		}
+		for _, types := range [][]ValType{sig.Params, sig.Results} {
+			for _, typ := range types {
+				if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 && (!vectorProfile || typ != ValV128) && (!(c.nativeReferenceFunctionABI || primitiveReferences || c.functionEnvironmentFrameRoots()) || typ != ValFuncRef) && (!declarationExtern || typ != ValExternRef) && (!typedI31 || typ != ValI31Ref) && !freshRootedReference(typ) && (!qualifiedEH || typ != ValExnRef) && (!(exactGCExtern || exactGCBrOnCastNullability || exactGCBrOnCastFailNullability || exactGCStructBasic || exactGCArrayFixedOfficial || exactGCArrayDefaultOfficial || exactGCArrayPackedData || exactGCArrayReference || exactGCArrayInitElem || exactGCArrayInitData || exactGCArrayFill || exactGCArrayCopy) || typ != ValAnyRef) {
+					return reject("unsupported signature")
+				}
+			}
+		}
+	}
+	if !freshRootedGC && !qualifiedEH && !exactGCTypeSubtypingDeclarations && !exactGCTypeSubtypingRecursiveFunctions && !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRuntimeCallCast && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink && !exactGCTypeSubtypingNonFlatExport && !declarativeTyped && !typedI31 && !exactGCRefEq && !exactGCRefTestTable && !exactGCRefTestConcrete && !exactGCRefCastConcrete && !exactGCRefTestAbstract && !exactGCExtern && !exactGCRefCastAbstract && !exactGCBrOnCastAbstract && !exactGCBrOnCastFailAbstract && !exactGCBrOnCastConcrete && !exactGCBrOnCastFailConcrete && !exactGCBrOnCastNullability && !exactGCBrOnCastFailNullability && !exactGCStructGet && !exactGCStructMutation && !exactGCStructNull && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals && !exactGCArrayLocal && !exactGCArrayUniform && !exactGCArrayFixedLocal && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayPackedData && !exactGCArrayReference && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy {
+		if err := rv64ValidateDeclaredControlTypes(c); err != nil {
+			return reject(err.Error())
+		}
+	}
+	if !exactGCTypeSubtypingRefFuncGlobals && !exactGCTypeSubtypingRefTestSingle && !exactGCTypeSubtypingLink && !exactGCTypeSubtypingFinalityLink && !exactGCTypeSubtypingStructLink && !exactGCTypeSubtypingStructProjectionLink && !exactGCTypeSubtypingStructMismatchLink && !exactGCTypeSubtypingIndependentStructLink && !exactGCTypeSubtypingExtendedProjectionLink && !exactGCTypeSubtypingDuplicateRecursiveLink && !exactGCTypeSubtypingExtendedRecursiveLink && !exactGCTypeSubtypingCrossGroupMismatchLink && !exactGCTypeSubtypingTransitiveMismatchLink {
+		if err := rv64ValidateOwnedTable(c); err != nil {
+			return reject(err.Error())
+		}
+	}
+	localMutableReferences, err := rv64ValidateLocalMutableReferences(c)
+	if err != nil {
+		return reject(err.Error())
+	}
+	hasReferenceGlobal := false
+	stateOnlyExternrefs := rv64StateOnlyExternrefGlobals(c)
+	for i, global := range c.Globals {
+		if freshRootedGC && (isGCRefValType(global.Type) || global.Type == ValFuncRef || global.Type == ValExternRef) {
+			continue // The generic receipt pins exact nullable aggregate roots.
+		}
+		if exactGCTypeSubtypingRefFuncGlobals {
+			continue // The exact metadata digest pins every indexed ref.func global.
+		}
+		if exactGCExtern && i < 2 {
+			continue // The exact product pins both null conversion globals.
+		}
+		if exactGCStructPacked && i < 2 {
+			continue // The exact product pins both rooted non-null struct initializers.
+		}
+		if exactGCStructBasic && i < 2 {
+			continue // The exact product pins both rooted non-null struct initializers.
+		}
+		if exactGCStructNumericGlobals && i < 2 {
+			continue // The exact state-only product pins both rooted non-null struct initializers.
+		}
+		if exactGCArrayFixedOfficial && i == 0 || exactGCArrayDefaultOfficial && i < 2 || exactGCArrayInitElem && i < 2 || exactGCArrayInitData && i < 3 || exactGCArrayFill && i < 2 || exactGCArrayCopy && i < 2 {
+			continue // The exact product pins this rooted non-null array initializer.
+		}
+		if immediateReferences && isGCRefValType(global.Type) {
+			exact, err := c.globalExactType(i)
+			if err != nil || !rv64ImmediateCollectorValue(exact) || global.HasInitFunc || global.InitFunc != 0 || global.V128 != (V128{}) || global.Bits>>32 != 0 || global.Bits != 0 && global.Bits&1 == 0 {
+				return reject("immediate reference global metadata")
+			}
+			if len(global.InitExpr) != 0 {
+				if i < len(c.GlobalImports) || global.HasInitGlobal || c.validateGCConstExpr(global.InitExpr, exact, i) != nil {
+					return reject("immediate reference global initializer")
+				}
+			} else if global.HasInitGlobal && !rv64InitializerReferenceGlobal(c, global.InitGlobal, exact, i) {
+				return reject("immediate reference global source")
+			}
+			continue
+		}
+		if typedI31 && (global.Type == ValI31Ref || exactAnyI31 && global.Type == ValAnyRef) {
+			continue // The exact product witness pins both globals and their initial values.
+		}
+		if global.Type == ValExternRef {
+			if primitiveReferences {
+				exact, err := c.globalExactType(i)
+				if err != nil || !rv64PrimitiveReferenceValue(c, exact) || global.HasInitFunc || global.InitFunc != 0 || global.Bits != 0 || global.V128 != (V128{}) || len(global.InitExpr) != 0 || i < len(c.GlobalImports) && global.HasInitGlobal || global.HasInitGlobal && !rv64InitializerGlobal(c, global.InitGlobal, ValExternRef, i) {
+					return reject("plain external global initializer/type metadata")
+				}
+				continue
+			}
+			if !stateOnlyExternrefs {
+				return reject("externref globals require the exact state-only null directory")
+			}
+			continue
+		}
+		if global.Type == ValFuncRef {
+			hasReferenceGlobal = true
+			plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
+			exact, err := c.globalExactType(i)
+			typedIndex, typed := rv64PrivateIndexedFunctionType(c, exact)
+			callTyped := mutableFuncrefGlobalLocalCall && i == 0 && exact.Kind == ValueTypeReference && exact.Ref.Nullable && !exact.Ref.Exact && exact.Ref.Heap.Defined && exact.Ref.Heap.Abstract == 0 && exact.Ref.Heap.TypeIndex == 0
+			mutableQualified := primitiveReferences || localMutableReferences && i >= len(c.GlobalImports) || (stateOnlyMutableFuncrefImport || mutableFuncrefGlobalGet || mutableFuncrefGlobalClear || mutableFuncrefGlobalStoreSelf || mutableFuncrefGlobalCopy || mutableFuncrefGlobalMove || mutableFuncrefGlobalBidirectionalCopy || mutableFuncrefGlobalLocalCopy || mutableFuncrefGlobalLocalPublish || mutableFuncrefGlobalLocalTransfer) && i < len(c.GlobalImports)
+			primitiveTyped := primitiveReferences && rv64PrimitiveReferenceValue(c, exact)
+			if err != nil || exact != plain && !typed && !callTyped && !primitiveTyped || global.Mutable && !mutableQualified || len(global.InitExpr) != 0 || global.Bits != 0 || global.V128 != (V128{}) || c.tableCount() > 1 && !primitiveReferences || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || global.HasInitFunc && (uint64(global.InitFunc) >= uint64(c.NumImports+len(c.Funcs)) || !c.needsFuncRefDescs()) {
+				return reject("qualified reference global and retained references required")
+			}
+			if typed && !callTyped && !primitiveTyped {
+				local := int(global.InitFunc) - c.NumImports
+				if i < len(c.GlobalImports) || global.Mutable || c.NumImports != 0 || c.tableCount() != 0 || c.memoryCount() != 0 || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || c.HasStart || !global.HasInitFunc || global.HasInitGlobal || global.InitGlobal != 0 || local < 0 || local >= len(c.Funcs) || !c.Funcs[local].HasTypeIndex || c.Funcs[local].TypeIndex != typedIndex || !c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) {
+					return reject("private indexed reference global exact target")
+				}
+			}
+			if i < len(c.GlobalImports) && (global.HasInitFunc || global.HasInitGlobal) {
+				return reject("reference import initializer")
+			}
+			if global.HasInitGlobal && (global.HasInitFunc || !rv64InitializerGlobal(c, global.InitGlobal, ValFuncRef, i)) {
+				return reject("reference initializer requires an earlier immutable global")
+			}
+			continue
+		}
+		if (global.Type != ValI32 && global.Type != ValI64 && global.Type != ValF32 && global.Type != ValF64 && (!vectorProfile || global.Type != ValV128)) || global.HasInitFunc {
+			return reject("global initializer lowering is pending")
+		}
+		if len(global.InitExpr) != 0 {
+			if i < len(c.GlobalImports) || global.HasInitGlobal {
+				return reject("conflicting global initializer")
+			}
+			if err := rv64ValidateIntegerInitializer(c, global.InitExpr, global.Type, i); err != nil {
+				return reject(err.Error())
+			}
+		}
+		if global.HasInitGlobal && (i < len(c.GlobalImports) || !rv64InitializerGlobal(c, global.InitGlobal, global.Type, i)) {
+			return reject("global initializer requires an available immutable global of the exact type")
+		}
+	}
+	if hasReferenceGlobal {
+		if len(c.GlobalExports) > railshot.MaxFunctions {
+			return reject("reference-global export count bound")
+		}
+		for _, index := range c.GlobalExports {
+			if index < 0 || index >= len(c.Globals) {
+				return reject("reference global export index")
+			}
+
+		}
+	}
+	for i := 0; i < c.activeDataCount(); i++ {
+		data := c.activeDataAt(i)
+		if uint64(data.MemoryIndex) >= uint64(c.memoryCount()) {
+			return reject("data initializer memory index")
+		}
+		offsetType := ValI32
+		if c.memoryDef(int(data.MemoryIndex)).Addr64 {
+			offsetType = ValI64
+			if data.Offset.HasGlobal {
+				return reject("memory64 global offset requires an i64 expression")
+			}
+		}
+		if len(data.Offset.Expr) != 0 {
+			if data.Offset.HasGlobal {
+				return reject("conflicting data initializer")
+			}
+			if err := rv64ValidateIntegerInitializer(c, data.Offset.Expr, offsetType, len(c.Globals)); err != nil {
+				return reject(err.Error())
+			}
+		}
+		if data.Offset.HasGlobal && !rv64InitializerGlobal(c, data.Offset.Global, ValI32, len(c.Globals)) {
+			return reject("data initializer lowering is pending")
+		}
+	}
+	if c.memoryCount() > 1 && !c.requiredFeatures.IsEnabled(CoreFeatureMultiMemory) {
+		return reject("memory directory requires multi-memory feature metadata")
+	}
+	for i := 0; i < c.memoryCount(); i++ {
+		memory := c.memoryDef(i)
+		maxTypePages := uint64(65536)
+		if memory.Addr64 {
+			maxTypePages = 1 << 48
+			if !c.requiredFeatures.IsEnabled(CoreFeatureMemory64) {
+				return reject("memory64 requires feature metadata")
+			}
+		}
+		reservation, err := ownedMemoryReservationPages(memory)
+		if memory.Shared && !rv64ThreadedMemoryProfile(c) || err != nil || (memory.HasMax && memory.Max > maxTypePages) {
+			return reject("bounded unshared memory required")
+		}
+		if i == 0 && (!c.HasMemory || uint64(c.MemMinPages) != memory.Min || uint64(c.MemMaxPages) < memory.Min || uint64(c.MemMaxPages) > reservation) {
+			return reject("primary memory reservation metadata mismatch")
+		}
+	}
+	if len(c.memoryExportMap()) > railshot.MaxFunctions {
+		return reject("memory export count bound")
+	}
+	for _, index := range c.memoryExportMap() {
+		if index < 0 || index >= c.memoryCount() {
+			return reject("memory export index bound")
+		}
+	}
+	if c.memoryDir != nil && (len(c.memoryDir.ehTags) != 0 && !qualifiedEH || len(c.memoryDir.gcStructGlobals) != 0 && !exactGCStructPacked && !exactGCStructBasic && !exactGCStructNumericGlobals || len(c.memoryDir.gcArrayGlobals) != 0 && !exactGCArrayFixedOfficial && !exactGCArrayDefaultOfficial && !exactGCArrayInitElem && !exactGCArrayInitData && !exactGCArrayFill && !exactGCArrayCopy || c.memoryDir.gcArrayElement != nil && !exactGCArrayReference || c.memoryDir.gcI31TableInit != nil) {
+		return reject("GC/EH initializer lowering is pending")
+	}
+	return nil
+}
+
+// Imported dispatch still reads descriptor zero. Typed and collector profiles
+// also retain their established descriptor anchor protocol. Plain local
+// functions use the separate, arena-owned native context until a ref.func use.
+func railshotNeedsImportContextHeader(c *Compiled) bool {
+	return c.NumImports != 0 || c.usesAtomicWaitHelpers() || !c.hasNoFunctionCode() && c.requiredFeatures&(CoreFeatureGC|CoreFeatureTypedFunctionReferences) != 0
+}
+
+// Binding policy runs before prepareCodeMapping, including trusted artifacts.
+// Numeric/vector native bindings use retained framed bridges. Go callbacks and
+// owned host handles retain their separately qualified scalar protocol.
+func railshotValidateResolvedImports(c *Compiled, imports resolvedImports, store *referenceStore) error {
+	c = c.executionView()
+	if c.NumImports == 0 && len(c.Imports) == 0 && c.tableImportCount() == 0 && len(c.GlobalImports) == 0 {
+		return nil
+	}
+	if err := railshotValidateCompiled(c); err != nil {
+		return err
+	}
+	if err := rv64ValidateTailImports(c, imports); err != nil {
+		return err
+	}
+	if err := rv64ValidateResolvedGlobals(c, imports, store); err != nil {
+		return err
+	}
+	if err := rv64ValidateResolvedTable(c, imports, store); err != nil {
+		return err
+	}
+	hasReferenceGlobal := false
+	for _, global := range c.Globals {
+		if global.Type == ValFuncRef {
+			hasReferenceGlobal = true
+			break
+		}
+	}
+	if hasReferenceGlobal {
+		// Immutable exported reference chains are bounded and validated above.
+		// Reject unqualified token owners before mapping or attaching any import.
+		for _, index := range c.GlobalExports {
+			global := c.Globals[index]
+			if global.Type != ValFuncRef {
+				continue
+			}
+			for global.HasInitGlobal {
+				global = c.Globals[global.InitGlobal]
+			}
+			if !global.HasInitFunc || int(global.InitFunc) >= c.NumImports {
+				continue
+			}
+			binding := imports[c.functionImportBindingKey(int(global.InitFunc))]
+			if host, ok := binding.(*HostFuncRef); ok {
+				if err := host.validateImport(store, c.importFuncSigs[global.InitFunc]); err != nil {
+					return err
+				}
+				continue // The scalar signature gate below also applies.
+			}
+			ex, ok := binding.(*InstanceExport)
+			if !ok || ex == nil || ex.inst == nil || store == nil {
+				return fmt.Errorf("%w: RV64 reference export requires a same-Runtime native function", railshot.ErrUnsupported)
+			}
+			ex.inst.lifeMu.Lock()
+			sameStore := ex.inst.refStore == store
+			ex.inst.lifeMu.Unlock()
+			if !sameStore {
+				return fmt.Errorf("%w: RV64 reference export requires the same Runtime", railshot.ErrUnsupported)
+			}
+		}
+	}
+	freshRootedGC := rv64FreshRootedGC(c)
+	for _, index := range c.Exports {
+		if index < 0 || index >= c.NumImports+len(c.Funcs) {
+			return fmt.Errorf("%w: public RV64 function export index", railshot.ErrUnsupported)
+		}
+	}
+	for i, key := range c.Imports {
+		value := imports[c.functionImportBindingKey(i)]
+		switch value := value.(type) {
+		case nativeCustomInstructionBinding:
+			if err := value.validate(c.importFuncSigs[i]); err != nil {
+				return fmt.Errorf("public RV64 import %q: %w", key, err)
+			}
+			continue
+		case *HostFuncRef:
+			if funcSigHasGCRefs(c.importFuncSigs[i]) && (value == nil || !value.gcCapable || store == nil || value.store != store) {
+				return fmt.Errorf("public RV64 host import %q cannot transfer collector references: use Runtime.NewGCHostFuncRef from the owning Runtime", key)
+			}
+			if !freshRootedGC && !rv64PrimitiveReferenceContract(c) && !rv64PublicHostReferenceBoundary(c) && !rv64PublicDynamicHostReferenceBoundary(c) {
+				if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {
+					return fmt.Errorf("public RV64 import %q: %w", key, err)
+				}
+			}
+			// The shared attachment path repeats this check under its ownership
+			// lock before retaining the handle; reject invalid input before mapping.
+			if err := value.validateImport(store, c.importFuncSigs[i]); err != nil {
+				return fmt.Errorf("public RV64 import %q: %w", key, err)
+			}
+			continue
+		case *InstanceExport:
+			if err := railshotValidateNativeExport(c, i, value); err != nil {
+				return fmt.Errorf("public RV64 import %q: %w", key, err)
+			}
+			continue
+		case I32HostEvent, gatedI32HostEvent:
+			// Events have no guest capability and can only use the bounded
+			// post-invocation log. Shared mode checks reject synchronous owners.
+			if _, err := bindI32HostEvent(value, c.importFuncSigs[i]); err != nil {
+				return fmt.Errorf("%w: public RV64 import %q: %v", railshot.ErrUnsupported, key, err)
+			}
+			for _, global := range c.GlobalImports {
+				if valTypeMayCarryFuncref(global.Type) {
+					return fmt.Errorf("%w: deferred host-event instance cannot import a funcref global", railshot.ErrUnsupported)
+				}
+			}
+			continue
+		}
+		if !freshRootedGC && !rv64PrimitiveReferenceContract(c) && !rv64PublicHostReferenceBoundary(c) && !rv64PublicDynamicHostReferenceBoundary(c) {
+			if err := rv64ScalarHostSignature(c.importFuncSigs[i]); err != nil {
+				return fmt.Errorf("public RV64 import %q: %w", key, err)
+			}
+		}
+		if _, err := bindSyncHostImport(value, c.importFuncSigs[i]); err != nil {
+			return fmt.Errorf("public RV64 import %q: %w", key, err)
+		}
+	}
+	return nil
+}
+
+func rv64ImportedInitializer(c *Compiled, index int, typ ValType) bool {
+	return index >= 0 && index < len(c.GlobalImports) && !c.GlobalImports[index].Mutable && c.GlobalImports[index].Type == typ
+}
+
+// This binding-dependent gate runs for every host import, including unused
+// signatures and trusted artifacts, before executable mapping or owner retention.
+func rv64ScalarHostSignature(sig FuncSig) error {
+	if len(sig.Params) > railshot.MaxVectorFunctionValues || len(sig.Results) > railshot.MaxVectorFunctionValues {
+		return fmt.Errorf("%w: public RV64 scalar host signature arity", railshot.ErrUnsupported)
+	}
+	for _, types := range [][]ValType{sig.Params, sig.Results} {
+		for _, typ := range types {
+			if typ == ValV128 {
+				return fmt.Errorf("%w: v128 host callbacks are not supported", railshot.ErrUnsupported)
+			}
+			if typ != ValI32 && typ != ValI64 && typ != ValF32 && typ != ValF64 {
+				return fmt.Errorf("%w: public RV64 nonscalar host signature", railshot.ErrUnsupported)
+			}
+		}
+	}
+	return nil
+}
+
+// Reject incompatible storage/targets before executable mapping or element writes.
+// A temporary physical lease makes row authentication safe even during retirement.
+func rv64ValidateResolvedTable(c *Compiled, imports resolvedImports, store *referenceStore) error {
+	importCount := c.tableImportCount()
+	if importCount == 0 {
+		return nil
+	}
+	tables := make([]*Table, 0, importCount)
+	// The descriptors themselves also need leases: host tables have no instance
+	// root. Balance every successful acquisition after the native scan releases
+	// its transient owner roots.
+	defer func() {
+		for i := len(tables) - 1; i >= 0; i-- {
+			tables[i].detachImporter(store)
+		}
+	}()
+	var roots rv64NativeTableTargets
+	// Final-root release can reenter native execution. Unlock first.
+	defer roots.release()
+	nativeExecutionMu.Lock()
+	defer nativeExecutionMu.Unlock()
+	for tableIndex := 0; tableIndex < importCount; tableIndex++ {
+		def, imported := c.tableImportAt(tableIndex)
+		if !imported {
+			return fmt.Errorf("%w: imported table directory %d is missing", railshot.ErrUnsupported, tableIndex)
+		}
+		table, ok := imports.table(c.tableImportBindingKey(tableIndex))
+		if !ok || table == nil {
+			return fmt.Errorf("missing imported table %q", def.Key)
+		}
+		exact, err := c.tableExactType(tableIndex)
+		if err != nil {
+			return err
+		}
+		elementType := c.tableElementType(tableIndex)
+		var collector *gc.Collector
+		if isGCRefValType(elementType) && table.owner != nil {
+			table.owner.mu.Lock()
+			if table.owner.instance != nil {
+				collector = table.owner.instance.gc
+			}
+			table.owner.mu.Unlock()
+		}
+		if err := table.validateImportWithCollector(elementType, exact, c.Types, store, collector, def.Addr64); err != nil {
+			return fmt.Errorf("imported table %d: %w", tableIndex, err)
+		}
+		if err := table.attachImporterWithCollector(elementType, exact, c.Types, store, collector, def.Addr64); err != nil {
+			return fmt.Errorf("imported table %d: %w", tableIndex, err)
+		}
+		tables = append(tables, table)
+	}
+	edges := 0
+	for tableIndex, table := range tables {
+		def, _ := c.tableImportAt(tableIndex)
+		entryBytes := c.tableEntryBytes(tableIndex)
+		if entryBytes == coreruntime.TableEntryBytes {
+			if err := roots.tableRoots(table, &edges); err != nil {
+				return fmt.Errorf("%w: imported table %d: %v", railshot.ErrUnsupported, tableIndex, err)
+			}
+		}
+		table.owner.mu.Lock()
+		table.mu.Lock()
+		valid := false
+		var size uint64
+		if len(table.desc) >= 8 {
+			size = uint64(binary.LittleEndian.Uint32(table.desc))
+			capacity := uint64(binary.LittleEndian.Uint32(table.desc[4:]))
+			maximum, hasMaximum := rv64DeclaredTableMaximumLocked(table, capacity)
+			valid = size >= def.Min && size <= capacity && 8+capacity*uint64(entryBytes) <= uint64(len(table.desc)) && (!def.HasMax || hasMaximum && maximum <= def.Max)
+		}
+		table.mu.Unlock()
+		table.owner.mu.Unlock()
+		if size < def.Min {
+			return fmt.Errorf("imported table %q size %d < required minimum %d", def.Key, size, def.Min)
+		}
+		if !valid {
+			return fmt.Errorf("%w: imported table %q capacity, extent, or required maximum %d", railshot.ErrUnsupported, def.Key, def.Max)
+		}
+	}
+	if err := roots.validateReachable(); err != nil {
+		return fmt.Errorf("%w: %v", railshot.ErrUnsupported, err)
+	}
+	for tableIndex, table := range tables {
+		entryBytes := c.tableEntryBytes(tableIndex)
+		if entryBytes == coreruntime.TableEntryBytes {
+			if err := roots.validateTable(table.desc, entryBytes); err != nil {
+				return fmt.Errorf("%w: imported table %d: %v", railshot.ErrUnsupported, tableIndex, err)
+			}
+		} else if entryBytes != 8 {
+			return fmt.Errorf("%w: imported table %d has unsupported %d-byte entries", railshot.ErrUnsupported, tableIndex, entryBytes)
+		}
+	}
+	return nil
+}
+
+// Compact local references need their own feature witness; the codec's generic
+// structural feature scan does not infer local scope from these indices.
+func rv64InitializerGlobal(c *Compiled, index int, expected ValType, limit int) bool {
+	if index < 0 || index >= limit || index >= len(c.Globals) {
+		return false
+	}
+	if index < len(c.GlobalImports) {
+		return rv64ImportedInitializer(c, index, expected)
+	}
+	g := c.Globals[index]
+	return c.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions) && !g.Mutable && g.Type == expected
+}
+
+func rv64ValidateIntegerInitializer(c *Compiled, body []byte, expected ValType, limit int) error {
+	if (expected != ValI32 && expected != ValI64) || (!c.requiredFeatures.IsEnabled(CoreFeatureExtendedConst) && !c.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions) && !rv64CoreIntegerInitializer(body)) {
+		return fmt.Errorf("integer expression requires its numeric feature metadata")
+	}
+	return railshot.ValidateIntegerInitializer(body, rv64NumericWasmType(expected), func(index uint32) (wasm.ValType, bool) {
+		if uint64(index) >= uint64(len(c.Globals)) {
+			return wasm.ValType{}, false
+		}
+		g := c.Globals[index]
+		return rv64NumericWasmType(g.Type), rv64InitializerGlobal(c, int(index), g.Type, limit)
+	})
+}
+
+// Memory64 keeps even literal/global offsets as Expr to retain all 64 bits.
+// This representation alone does not imply extended-constant instructions.
+// The common validator below still proves the result type and global scope.
+func rv64CoreIntegerInitializer(body []byte) bool {
+	if len(body) > railshot.MaxIntegerInitializerBytes {
+		return false
+	}
+	r := wasm.ReaderFrom(body)
+	op, err := r.Byte()
+	if err != nil {
+		return false
+	}
+	switch op {
+	case 0x41:
+		_, err = r.I32()
+	case 0x42:
+		_, err = r.I64()
+	case 0x23:
+		_, err = r.U32()
+	default:
+		return false
+	}
+	if err != nil {
+		return false
+	}
+	end, err := r.Byte()
+	return err == nil && end == 0x0b && !r.HasNext()
+}
+
+// Called under both table locks with its owner retained by the native scope.
+// The owner snapshot supplies exact declared limits; descriptor capacity is a
+// storage reservation. Host-created tables declare that reservation as a max.
+func rv64DeclaredTableMaximumLocked(table *Table, capacity uint64) (uint64, bool) {
+	owner := table.owner
+	if owner == nil || !owner.declaredHasMax {
+		return 0, false
+	}
+	if owner.instance == nil {
+		return capacity, true
+	}
+	instance := owner.instance
+	if instance.c == nil {
+		return 0, false
+	}
+	for index := 0; index < instance.c.tableCount(); index++ {
+		if _, imported := instance.c.tableImportAt(index); imported {
+			continue
+		}
+		descriptor := instance.tableDescriptor(index)
+		if len(descriptor) == len(table.desc) && offHeapSlicePtr(descriptor) == offHeapSlicePtr(table.desc) {
+			definition := instance.c.tableDef(index)
+			return definition.Max, definition.HasMax
+		}
+	}
+	return 0, false
+}

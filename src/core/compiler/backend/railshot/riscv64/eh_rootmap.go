@@ -1,0 +1,210 @@
+//go:build linux && !tinygo
+
+package riscv64
+
+import (
+	"fmt"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/nativeabi"
+)
+
+// catchAllPayloadRootKinds merges every tag's lane ownership for a
+// catch_all_ref slot, which may hold any of them. Identity lanes must agree on
+// scalar versus funcref. GC lanes are only ever references or zero, and the
+// slot may hold a same-domain foreign exception whose tag this module never
+// declares, so every GC lane is reported.
+func catchAllPayloadRootKinds(m *wasm.Module, owned bool) ([shared.EHPayloadLanes]nativeabi.RootKind, [shared.EHPayloadLanes]bool, error) {
+	var kinds [shared.EHPayloadLanes]nativeabi.RootKind
+	var roots, scalars [shared.EHPayloadLanes]bool
+	mergeTag := func(tagType wasm.TagType, tag uint32) error {
+		var ft wasm.CompType
+		if !m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > shared.MaxEHTagPayloadWords {
+			return fmt.Errorf("tag %d payload is unsupported", tag)
+		}
+		for payload, typ := range ft.Params {
+			lane := exceptionPayloadLane(m, ft.Params, payload)
+			kind, isReference := exceptionPayloadRootKind(m, typ)
+			if owned && isReference && kind == nativeabi.RootFuncRef {
+				continue
+			}
+			if !isReference {
+				scalars[lane] = true
+				if wasm.EqualValType(typ, wasm.V128) {
+					scalars[lane+1] = true
+					if roots[lane+1] {
+						return fmt.Errorf("vector payload mixes scalar and reference ownership")
+					}
+				}
+				if roots[lane] {
+					return fmt.Errorf("payload %d mixes scalar and reference ownership", payload)
+				}
+				continue
+			}
+			if scalars[lane] {
+				return fmt.Errorf("payload %d mixes scalar and reference ownership", payload)
+			}
+			kinds[lane], roots[lane] = kind, true
+		}
+		return nil
+	}
+	tag := uint32(0)
+	importedTags := uint32(m.ImportedTagCount())
+	for i := range m.Imports {
+		if tag == importedTags {
+			break
+		}
+		im := &m.Imports[i]
+		if im.Type.Kind != wasm.ExternTag {
+			continue
+		}
+		if err := mergeTag(im.Type.TagType(), tag); err != nil {
+			return kinds, roots, err
+		}
+		tag++
+	}
+	for _, tagType := range m.Tags {
+		if err := mergeTag(tagType, tag); err != nil {
+			return kinds, roots, err
+		}
+		tag++
+	}
+	for lane := shared.EHGCLaneBase; lane < shared.EHPayloadLanes; lane++ {
+		kinds[lane], roots[lane] = nativeabi.RootGCRef, true
+	}
+	return kinds, roots, nil
+}
+
+// BuildExceptionRootMaps describes reference payloads copied into each
+// function's exception root slots. GC lanes become fixed collector roots of the
+// frame; funcref lanes describe identities whose producers the instance keeps
+// alive and are not scanned by the collector.
+func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error) {
+	return BuildExceptionRootMapsOwned(m, false)
+}
+
+// Owned function payloads are resolved into constructor Env shadow roots before
+// helper allocation. Their packet words can share lanes with scalar tags and
+// do not have a single static raw-reference kind across catch_all routes.
+func BuildExceptionRootMapsOwned(m *wasm.Module, owned bool) ([]nativeabi.FunctionRootMap, error) {
+	if m == nil {
+		return nil, nil
+	}
+	maps := make([]nativeabi.FunctionRootMap, 0, len(m.Code))
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	var catchAllKinds [shared.EHPayloadLanes]nativeabi.RootKind
+	var catchAllRoots [shared.EHPayloadLanes]bool
+	catchAllReady := false
+	for function := range m.Code {
+		ft, ok := m.LocalFuncType(function)
+		if !ok {
+			return nil, fmt.Errorf("exception root map function %d type is unavailable", function)
+		}
+		nLocals := len(ft.Params)
+		for _, run := range m.Code[function].Locals.Runs {
+			nLocals += int(run.Count)
+		}
+		vector, err := functionUsesSWAR(m, function)
+		if err != nil {
+			return nil, err
+		}
+		if vector {
+			nLocals *= 2
+		}
+		shape := shared.EHFrameShape{}
+		if len(m.Code[function].BodyBytes) != 0 {
+			shape, err = shared.ScanEHFrameShape(&classifier, m.Code[function].BodyBytes)
+			if err != nil {
+				return nil, fmt.Errorf("exception root map function %d: %w", function, err)
+			}
+		}
+		frameBytes := shared.RV64CallFrameHeaderBytes + 8*nLocals + (shape.TryRecords*(exceptionRecordBytes/8)+shape.RootRecords*(exceptionRootBytes/8))*8
+		rootCount := 0
+		var slots []nativeabi.RootSlot
+		r := wasm.NewReader(m.Code[function].BodyBytes)
+		var imm wasm.InstructionImmediate
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return nil, err
+			}
+			if op != 0x1f {
+				if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+					return nil, fmt.Errorf("exception root map function %d: %w", function, err)
+				}
+				continue
+			}
+			if _, err := r.S33(); err != nil {
+				return nil, err
+			}
+			n, err := r.U32()
+			if err != nil {
+				return nil, err
+			}
+			for i := uint32(0); i < n; i++ {
+				kindByte, err := r.Byte()
+				if err != nil {
+					return nil, err
+				}
+				kind := wasm.CatchKind(kindByte)
+				var tag uint32
+				if kind == wasm.CatchTag || kind == wasm.CatchRef {
+					tag, err = r.U32()
+					if err != nil {
+						return nil, err
+					}
+				}
+				if _, err := r.U32(); err != nil {
+					return nil, err
+				}
+				if kind != wasm.CatchRef && kind != wasm.CatchAllRef {
+					continue
+				}
+				if rootCount >= shape.RootRecords {
+					return nil, fmt.Errorf("exception root map function %d exceeds %d reserved roots", function, shape.RootRecords)
+				}
+				rootOff := shared.RV64CallFrameHeaderBytes + 8*nLocals + shape.TryRecords*(exceptionRecordBytes/8)*8 + rootCount*(exceptionRootBytes/8)*8
+				if kind == wasm.CatchRef {
+					tagType, ok := shared.TagType(m, tag)
+					if !ok {
+						return nil, fmt.Errorf("exception root map function %d tag %d is unavailable", function, tag)
+					}
+					var tagFunc wasm.CompType
+					if !m.ResolveTypeFunc(tagType.Type.Index, &tagFunc) || len(tagFunc.Params) > shared.MaxEHTagPayloadWords {
+						return nil, fmt.Errorf("exception root map function %d tag %d payload is unsupported", function, tag)
+					}
+					for payload, typ := range tagFunc.Params {
+						rootKind, isReference := exceptionPayloadRootKind(m, typ)
+						if isReference && (!owned || rootKind != nativeabi.RootFuncRef) {
+							lane := exceptionPayloadLane(m, tagFunc.Params, payload)
+							slots = append(slots, nativeabi.RootSlot{Offset: uint32(rootOff + 8 + lane*8), Kind: rootKind})
+						}
+					}
+				} else {
+					if !catchAllReady {
+						var err error
+						catchAllKinds, catchAllRoots, err = catchAllPayloadRootKinds(m, owned)
+						if err != nil {
+							return nil, fmt.Errorf("exception root map function %d catch_all_ref: %w", function, err)
+						}
+						catchAllReady = true
+					}
+					for lane, isReference := range catchAllRoots {
+						if isReference {
+							slots = append(slots, nativeabi.RootSlot{Offset: uint32(rootOff + 8 + lane*8), Kind: catchAllKinds[lane]})
+						}
+					}
+				}
+				rootCount++
+			}
+		}
+		if len(slots) != 0 {
+			maps = append(maps, nativeabi.FunctionRootMap{LocalFunction: uint32(function), FrameBytes: uint32(frameBytes), Slots: slots})
+		}
+	}
+	if err := nativeabi.ValidateRootMaps(maps, len(m.Code)); err != nil {
+		return nil, err
+	}
+	return maps, nil
+}
