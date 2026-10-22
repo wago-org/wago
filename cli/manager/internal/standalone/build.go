@@ -25,7 +25,7 @@ type Target struct {
 func (t Target) String() string { return t.OS + "/" + t.Arch }
 
 func (t Target) supportsCore3() bool {
-	return (t.OS == "linux" && (t.Arch == "amd64" || t.Arch == "arm64")) ||
+	return (t.OS == "linux" && (t.Arch == "amd64" || t.Arch == "arm64" || t.Arch == "riscv64")) ||
 		(t.OS == "darwin" && t.Arch == "arm64")
 }
 
@@ -39,8 +39,8 @@ func ParseTarget(value string) (Target, error) {
 	}
 	target := Target{OS: parts[0], Arch: parts[1]}
 	if (target.OS != "darwin" && target.OS != "linux" && target.OS != "windows") ||
-		(target.Arch != "amd64" && target.Arch != "arm64") {
-		return Target{}, fmt.Errorf("unsupported target %s; use darwin, linux, or windows with amd64 or arm64", value)
+		(target.Arch != "amd64" && target.Arch != "arm64" && !(target.OS == "linux" && target.Arch == "riscv64")) {
+		return Target{}, fmt.Errorf("unsupported target %s; use darwin, linux, or windows with amd64 or arm64, or linux/riscv64", value)
 	}
 	return target, nil
 }

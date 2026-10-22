@@ -6,3 +6,15 @@ package wago
 func compatibilityDefaultConfig() *RuntimeConfig {
 	return NewRuntimeConfig().WithCoreFeatures(coreFeaturesWithoutSidecar)
 }
+
+// artifactTestConfig preserves the build's default bounds mode for source
+// execution, but selects the serializable explicit mode when a fixture will be
+// round-tripped through an artifact. Signals-based native code deliberately
+// cannot be serialized because its guard mapping is process-local.
+func artifactTestConfig(artifact bool) *RuntimeConfig {
+	cfg := NewRuntimeConfig()
+	if artifact {
+		cfg = cfg.WithBoundsChecks(BoundsChecksExplicit)
+	}
+	return cfg
+}

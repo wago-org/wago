@@ -1,4 +1,4 @@
-//go:build !tinygo && ((linux && amd64) || ((linux || darwin) && arm64))
+//go:build !tinygo && ((linux && (amd64 || riscv64)) || ((linux || darwin) && arm64))
 
 package wago
 
@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/binary"
 	"os"
+	"runtime"
 	"testing"
 	"unsafe"
 
@@ -77,8 +78,9 @@ func instantiateDynamicFuncrefImportPair(t testing.TB, consumerFilename string) 
 
 func TestDynamicIndexedFunctionRefCastOnlyModule(t *testing.T) {
 	_, consumer, compiled := instantiateDynamicFuncrefImportPair(t, "dynamic_funcref_cast.wasm")
-	if compiled.usesDynamicFuncRefTest() || !compiled.NeedsFuncRefDescs {
-		t.Fatalf("cast-only runtime metadata = ref.test %v descriptors %v, want false/true", compiled.usesDynamicFuncRefTest(), compiled.NeedsFuncRefDescs)
+	wantDynamicSubtypeMetadata := runtime.GOARCH == "riscv64"
+	if compiled.usesDynamicFuncRefTest() != wantDynamicSubtypeMetadata || !compiled.NeedsFuncRefDescs {
+		t.Fatalf("cast-only runtime metadata = dynamic subtype %v descriptors %v, want %v/true", compiled.usesDynamicFuncRefTest(), compiled.NeedsFuncRefDescs, wantDynamicSubtypeMetadata)
 	}
 	for _, name := range []string{"cast_import", "cast_local_after_imports_and_limit", "call_import", "call_local_after_imports_and_limit"} {
 		got, err := consumer.Invoke(name)
@@ -194,7 +196,11 @@ func TestDynamicIndexedFunctionRefTestUsesBareProviderActualType(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer provider.Close()
-	if len(provider.funcRefDescs) != 0 {
+	if runtime.GOARCH == "riscv64" {
+		if provider.c.NeedsFuncRefDescs || !provider.c.needsFuncRefContextHeader || len(provider.funcRefDescs) != coreruntime.FuncRefDescBytes || binary.LittleEndian.Uint64(provider.funcRefDescs[coreruntime.FuncRefContextOffset:]) != uint64(provider.nativeContext) {
+			t.Fatalf("bare provider context header = descs:%t header:%t bytes:%d context:%#x, want false/true/%d/%#x", provider.c.NeedsFuncRefDescs, provider.c.needsFuncRefContextHeader, len(provider.funcRefDescs), binary.LittleEndian.Uint64(provider.funcRefDescs[coreruntime.FuncRefContextOffset:]), coreruntime.FuncRefDescBytes, provider.nativeContext)
+		}
+	} else if len(provider.funcRefDescs) != 0 {
 		t.Fatalf("bare provider allocated %d descriptor bytes", len(provider.funcRefDescs))
 	}
 	export, err := provider.ExportedFunc("f")

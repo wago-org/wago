@@ -314,7 +314,7 @@ func (m *ManagedInstance) ValidateVoidTableEntry(index uint32) error {
 }
 
 func validateVoidTableEntry(in *Instance, index uint32) error {
-	desc := in.tableDescriptor(0)
+	desc := railshotManagedTableDescriptor(in)
 	if len(desc) < 8 {
 		return fmt.Errorf("wago: instance has no table")
 	}
@@ -357,6 +357,12 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 	if err := validateVoidTableEntry(in, index); err != nil {
 		return err
 	}
+	if entry, handled, err := railshotManagedVoidTableEntry(in, index); handled {
+		if err != nil {
+			return err
+		}
+		return in.invokeVoidEntry(ctx, entry, nil)
+	}
 	base, err := manager.ensureVoidDispatcher()
 	if err != nil {
 		return err
@@ -383,7 +389,7 @@ func (m *InstanceManager) ensureVoidDispatcher() (uintptr, error) {
 	if closed || rt == nil {
 		return 0, fmt.Errorf("wago: instance manager is closed")
 	}
-	c, err := Compile(rt.cfg, managedVoidDispatcherWasm)
+	c, err := compileManagedVoidDispatcher(rt.cfg)
 	if err != nil {
 		return 0, fmt.Errorf("compile managed call_indirect dispatcher: %w", err)
 	}
@@ -449,10 +455,15 @@ func (m *ManagedInstance) WaitClosed() error {
 	return err
 }
 
-// Called exactly once by the instance's terminal finalizer, with lifeMu held.
-// Publish completion under the manager lock so drain cannot miss a record
-// whose terminal work is still in progress. No plugin hooks run under locks.
-func (m *ManagedInstance) finishTerminalClose(state *instanceCloseState) {
+type managedTerminalClose struct {
+	manager  *InstanceManager
+	instance *Instance
+}
+
+// detachTerminalClose is called exactly once with the instance lifeMu held.
+// An in-flight record bridges removal from instances to terminal publication,
+// so manager drain sees either the ManagedInstance or its exact Instance.
+func (m *ManagedInstance) detachTerminalClose() managedTerminalClose {
 	m.mu.Lock()
 	manager := m.manager
 	m.manager = nil
@@ -460,16 +471,39 @@ func (m *ManagedInstance) finishTerminalClose(state *instanceCloseState) {
 		m.closed, m.closedValue, m.value = true, m.value, nil
 		m.memoryBytes = 0
 	}
+	detached := managedTerminalClose{manager: manager, instance: m.closedValue}
 	if manager != nil {
 		manager.mu.Lock()
 		delete(manager.instances, m)
 		delete(manager.byInstance, m.closedValue)
-		state.signalTerminalDone()
+		manager.draining = append(manager.draining, m.closedValue)
 		manager.mu.Unlock()
-	} else {
-		state.signalTerminalDone()
 	}
 	m.mu.Unlock()
+	return detached
+}
+
+// completeTerminalClose publishes terminal completion under the manager lock,
+// then removes the in-flight bridge. Collection, finalization and callbacks run
+// before this method and therefore never hold manager or ManagedInstance locks.
+func (m *ManagedInstance) completeTerminalClose(detached managedTerminalClose, state *instanceCloseState) {
+	manager := detached.manager
+	if manager == nil {
+		state.signalTerminalDone()
+		return
+	}
+	manager.mu.Lock()
+	state.signalTerminalDone()
+	for i := len(manager.draining) - 1; i >= 0; i-- {
+		if manager.draining[i] != detached.instance {
+			continue
+		}
+		copy(manager.draining[i:], manager.draining[i+1:])
+		manager.draining[len(manager.draining)-1] = nil
+		manager.draining = manager.draining[:len(manager.draining)-1]
+		break
+	}
+	manager.mu.Unlock()
 }
 
 func (m *ManagedInstance) closeLogical() (*Instance, error) {
@@ -542,14 +576,16 @@ func (m *InstanceManager) drainInstances() error {
 	for instance := range m.instances {
 		owned = append(owned, instance)
 	}
+	// Snapshot both complementary states under one lock. Any owned instance
+	// which detaches after this point is covered by its ManagedInstance waiter;
+	// any already-detached terminal bridge is covered by list. No instance can
+	// appear in both snapshots or disappear between them.
+	list := append([]*Instance(nil), m.draining...)
 	m.mu.Unlock()
 	var errs []error
 	for _, managed := range owned {
 		_ = managed.Close()
 	}
-	m.mu.Lock()
-	list := m.draining
-	m.mu.Unlock()
 	for _, managed := range owned {
 		if err := managed.WaitClosed(); err != nil {
 			errs = append(errs, err)

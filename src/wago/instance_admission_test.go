@@ -191,8 +191,17 @@ func TestCombinedAdmissionCloseKeepsResourcesUntilRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !fn.tryBeginFastInvocation() {
-		t.Fatal("combined admission rejected private instance")
+	if preparedDirectIntSupported && preparedDirectIntEnabled {
+		if !fn.tryBeginFastInvocation() {
+			t.Fatal("combined admission rejected private instance")
+		}
+	} else {
+		// Targets without direct prepared entry still share the admission word.
+		// Claim that real mapped owner's state without enabling a native fast path.
+		state := in.ensurePluginState()
+		if !preparedDirectIntSupported && fn.directGate != nil || state.invokeMu.state.shared != &in.invocationState.word || !in.invocationState.word.CompareAndSwap(0, instanceFastAdmission) {
+			t.Fatal("combined state admission failed with direct entry disabled")
+		}
 	}
 	if err := in.Close(); err != nil {
 		t.Fatal(err)

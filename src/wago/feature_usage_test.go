@@ -14,6 +14,62 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+func TestCompiledStructuralRequiredFeaturesGlobalGetScope(t *testing.T) {
+	importCopy := &Compiled{
+		GlobalImports: []GlobalImportDef{{Type: ValI32}},
+		Globals: []GlobalDef{
+			{Type: ValI32},
+			{Type: ValI32, HasInitGlobal: true, InitGlobal: 0},
+		},
+	}
+	if got := compiledStructuralRequiredFeatures(importCopy); got.IsEnabled(CoreFeatureExtendedConstExpressions) {
+		t.Fatalf("imported global.get required features = %s, unexpectedly includes extended-const-expressions", got)
+	}
+
+	localCopy := &Compiled{
+		GlobalImports: []GlobalImportDef{{Type: ValI32}},
+		Globals: []GlobalDef{
+			{Type: ValI32},
+			{Type: ValI32},
+			{Type: ValI32, HasInitGlobal: true, InitGlobal: 1},
+		},
+	}
+	if got := compiledStructuralRequiredFeatures(localCopy); !got.IsEnabled(CoreFeatureExtendedConstExpressions) {
+		t.Fatalf("local global.get required features = %s, want extended-const-expressions", got)
+	}
+}
+
+func TestCompiledStructuralRequiredFeaturesElementGlobalGetScope(t *testing.T) {
+	for name, candidate := range map[string]*Compiled{
+		"import-expression": {
+			GlobalImports: []GlobalImportDef{{Type: ValI32}},
+			Elems:         []ElemInit{{Values: []RefInit{{Expr: []byte{0x23, 0x00, 0x0b}}}}},
+		},
+		"local-expression": {
+			GlobalImports: []GlobalImportDef{{Type: ValI32}},
+			Elems:         []ElemInit{{Values: []RefInit{{Expr: []byte{0x23, 0x01, 0x0b}}}}},
+		},
+		"local-structural": {
+			GlobalImports: []GlobalImportDef{{Type: ValI32}},
+			passiveElems:  []ElemInit{{Values: []RefInit{{HasGlobal: true, GlobalIndex: 1}}}},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := compiledStructuralRequiredFeatures(candidate).IsEnabled(CoreFeatureExtendedConstExpressions)
+			want := name != "import-expression"
+			if got != want {
+				t.Fatalf("Extended Const Expressions=%t, want %t", got, want)
+			}
+		})
+	}
+}
+
+func TestCompiledStructuralRequiredFeaturesPassiveData(t *testing.T) {
+	if got := compiledStructuralRequiredFeatures(&Compiled{PassiveData: []PassiveDataInit{{Bytes: []byte{1}}}}); !got.IsEnabled(CoreFeatureBulkMemoryOperations) {
+		t.Fatalf("passive data required features = %s, want bulk-memory-operations", got)
+	}
+}
+
 func TestValidatedAnalysisRequirementsCorpusParity(t *testing.T) {
 	var paths []string
 	err := filepath.WalkDir("../../corpus/workloads", func(path string, entry fs.DirEntry, err error) error {
@@ -833,6 +889,72 @@ func BenchmarkRequiredFeaturesScalarBody(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		if got := requiredFeaturesForBodyBytes(body); got != 0 {
 			b.Fatalf("features = %s, want none", got)
+		}
+	}
+}
+
+// Explicit reference syntax carries both a heap and nullability. The latter
+// must survive both the direct byte scanner and the validated-analysis path.
+func TestRequiredFeaturesExplicitReferenceNullability(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		heap byte
+		want CoreFeatures
+	}{
+		{"func", 0x70, CoreFeatureReferenceTypes},
+		{"extern", 0x6f, CoreFeatureReferenceTypes},
+		{"any", 0x6e, CoreFeatureReferenceTypes | CoreFeatureGC},
+		{"exn", 0x69, CoreFeatureReferenceTypes | CoreFeatureExceptionHandling},
+		{"indexed", 0, CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences},
+	} {
+		for _, form := range []byte{0x63, 0x64} {
+			want := tc.want
+			if form == 0x64 {
+				want |= CoreFeatureTypedFunctionReferences
+			}
+			for _, shape := range []struct {
+				name string
+				body []byte
+			}{
+				{"block", []byte{2, form, tc.heap, 0, 0x0b, 0x1a, 0x0b}},
+				{"loop", []byte{3, form, tc.heap, 0, 0x0b, 0x1a, 0x0b}},
+				{"if", []byte{0x41, 1, 4, form, tc.heap, 0, 5, 0, 0x0b, 0x1a, 0x0b}},
+				{"select", []byte{0, 0x1c, 1, form, tc.heap, 0x1a, 0x0b}},
+			} {
+				name := tc.name + "/" + shape.name + "/nullable"
+				if form == 0x64 {
+					name = tc.name + "/" + shape.name + "/nonnull"
+				}
+				t.Run(name, func(t *testing.T) {
+					if got := requiredFeaturesForBodyBytes(shape.body); got != want {
+						t.Fatal("explicit reference body features", got, want)
+					}
+					source := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))), wasmtest.Section(3, []byte{1, 0}), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(shape.body))))
+					m, err := wasm.DecodeModule(source)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var analysis wasm.ValidatedModuleAnalysis
+					if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, &analysis); err != nil {
+						t.Fatal("fixture", err)
+					}
+					if got := analyzeModuleRequirements(m).features; got != want {
+						t.Fatal("direct module features", got, want)
+					}
+					if got := analyzeModuleRequirementsWithValidation(m, &analysis).features; got != want {
+						t.Fatal("validated module features", got, want)
+					}
+					if tc.name == "func" && form == 0x64 {
+						c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).Compile(source)
+						if c != nil {
+							c.Close()
+						}
+						if err == nil || (!strings.Contains(err.Error(), "typed-function-references") || !strings.Contains(err.Error(), "disabled")) {
+							t.Fatal("non-null feature gate", err)
+						}
+					}
+				})
+			}
 		}
 	}
 }
