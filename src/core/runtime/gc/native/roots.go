@@ -571,7 +571,7 @@ func (c *Collector) validateTinySweepRootPublication(r Ref) error {
 	if err != nil {
 		return err
 	}
-	if d.HasRefs {
+	if d.HasRefs || c.objectEdgeCount(r) != 0 {
 		// A one-pass sweep cannot reconstruct descendants reclaimed before an
 		// omitted white graph is published. Checked persistent-root APIs reject
 		// that unsafe late resurrection before mutating the slot. Pointer-free

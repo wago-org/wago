@@ -24,11 +24,20 @@ func TestAbstractGCRefNullGlobalInitializers(t *testing.T) {
 	}
 	loaded := publicArtifactRoundTrip(t, compiled)
 	defer loaded.Close()
-	in, err := Instantiate(compiled, InstantiateOptions{})
-	if err != nil {
-		t.Fatalf("instantiate abstract ref.null globals: %v", err)
-	}
-	if err := in.Close(); err != nil {
-		t.Fatal(err)
+	for _, candidate := range []*Compiled{compiled, loaded} {
+		if candidate.needsRuntimeGCCollectorDomain() || candidate.nativeGCABIRequirement() != 0 {
+			t.Fatal("abstract null state acquired a collector execution ABI")
+		}
+		in, err := Instantiate(candidate, InstantiateOptions{})
+		if err != nil {
+			t.Fatalf("instantiate abstract ref.null globals: %v", err)
+		}
+		if in.gc != nil {
+			in.Close()
+			t.Fatal("abstract null state allocated a collector")
+		}
+		if err := in.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

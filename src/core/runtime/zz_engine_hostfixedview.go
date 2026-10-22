@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64)
+//go:build ((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64 && !tinygo && !wago_target_tinygo)
 
 package runtime
 
@@ -49,13 +49,14 @@ func (e *Engine) callWithHostLoopFixedView(code uintptr, serArgs []byte, linMemB
 	ctrl, ctrlPtr := rootCtrl, rootCtrlPtr
 	for first := true; ; first = false {
 		if first {
+			e.prepareNativeInvocation(serArgs, results)
 			enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 		} else {
 			clearTrapUnlessInterrupted(trap)
 			if TrapCode(loadTrap(trap)) == TrapInterrupted {
 				return trapErrorFromBuffer(TrapInterrupted, trap)
 			}
-			stackTop := e.StackTop()
+			stackTop := e.nativeResumeStackTop()
 			prepareHostResume(ctrl, trap, stackTop, e.StackLimit())
 			resumeNative(ctrlPtr, stackTop)
 		}
@@ -72,7 +73,11 @@ func (e *Engine) callWithHostLoopFixedView(code uintptr, serArgs []byte, linMemB
 				continue
 			}
 
-			ctrl = hostCtrlFrame(ctrlPtr)
+			var err error
+			ctrl, err = e.parkedHostCtrlFrame(ctrlPtr)
+			if err != nil {
+				return err
+			}
 			imp := binary.LittleEndian.Uint32(ctrl[hcImportIdx:])
 			raw := binary.LittleEndian.Uint32(ctrl[hcNArgs:])
 			n, nres := int(raw&0xffff), int(raw>>16)
