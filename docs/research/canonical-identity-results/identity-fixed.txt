@@ -1,0 +1,45 @@
+# round 1
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCRefCastInstruction         	95708624	         2.467 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCRefCastNonFinalInstruction 	66012028	         3.616 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCRefTestIdentityInstruction 	91631311	         2.743 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 2
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCRefCastInstruction         	94768464	         2.491 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCRefCastNonFinalInstruction 	64714290	         3.622 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCRefTestIdentityInstruction 	90369610	         2.602 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 3
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCRefCastInstruction         	94735470	         2.473 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCRefCastNonFinalInstruction 	65498143	         3.672 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCRefTestIdentityInstruction 	91467945	         2.597 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 4
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCRefCastInstruction         	93197440	         2.480 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCRefCastNonFinalInstruction 	64668534	         3.620 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCRefTestIdentityInstruction 	91399184	         2.599 ns/op	       0 B/op	       0 allocs/op
+PASS
+# round 5
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCRefCastInstruction         	95409756	         2.497 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCRefCastNonFinalInstruction 	63361684	         3.638 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCRefTestIdentityInstruction 	91297102	         2.605 ns/op	       0 B/op	       0 allocs/op
+PASS

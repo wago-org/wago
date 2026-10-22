@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64)
+//go:build ((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64 && !tinygo && !wago_target_tinygo)
 
 package wago
 
@@ -201,14 +201,6 @@ func TestMemoryViewRemainsCoherentAcrossGrow(t *testing.T) {
 	old[0] = 9
 	if got, err := in.Invoke("load"); err != nil || len(got) != 1 || AsI32(got[0]) != 0x11223309 {
 		t.Fatalf("load after old-view write = %v, %v; want %#x", got, err, uint32(0x11223309))
-	}
-}
-
-func requireInterruptedTrap(t *testing.T, err error) {
-	t.Helper()
-	var trap *TrapError
-	if !errors.As(err, &trap) || trap.Code != TrapInterrupted {
-		t.Fatalf("error = %v, want interrupted trap", err)
 	}
 }
 

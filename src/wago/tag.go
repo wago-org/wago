@@ -1,8 +1,10 @@
 package wago
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sync"
+	"unsafe"
 )
 
 // Tag is the identity-bearing handle for an instance-exported exception tag.
@@ -100,8 +102,7 @@ func (a *tagImportAttachments) attach(tag *Tag, requiredType uint32, requiredTyp
 }
 
 func (a *tagImportAttachments) detachAll() {
-	a.set.each((*Tag).detachImporter)
-	a.set.reset()
+	a.set.drain((*Tag).detachImporter)
 }
 
 func (c *Compiled) tagImportCount() int {
@@ -140,14 +141,16 @@ func detachImportedTags(in *Instance) {
 	if in == nil || in.c == nil || in.c.memoryDir == nil {
 		return
 	}
+	var cleanup resourceCleanup
 	var seen importDedup[*Tag]
 	importCount := in.c.tagImportCount()
 	for i := 0; i < importCount; i++ {
 		tag, ok := in.imports.tag(in.c.tagImportBindingKey(i))
 		if ok && seen.add(tag) {
-			tag.detachImporter()
+			cleanup.run(tag.detachImporter)
 		}
 	}
+	cleanup.finish()
 }
 
 func (in *Instance) ExportedTag(name string) (*Tag, error) {
@@ -181,7 +184,7 @@ func (in *Instance) ExportedTag(name string) (*Tag, error) {
 	if state.tagIdentityBase == 0 {
 		return nil, fmt.Errorf("tag owner instance has no native identity directory")
 	}
-	tag := &Tag{owner: in, index: index, typeIndex: def.TypeIndex, identity: uint64(state.tagIdentityBase + uintptr(index*8))}
+	tag := &Tag{owner: in, index: index, typeIndex: def.TypeIndex, identity: binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(state.tagIdentityBase+uintptr(index*8))), 8))}
 	state.tagExports[index] = tag
 	return tag, nil
 }

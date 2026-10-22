@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64)
+//go:build ((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64)
 
 package wago
 
@@ -371,9 +371,9 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		{CoreFeatureTypedFunctionReferences, "typed-function-references", completeCore3Backend},
 		{CoreFeatureGC, "gc", completeCore3Backend},
 		{CoreFeatureExceptionHandling, "exception-handling", completeCore3Backend},
-		{CoreFeatureMultiMemory, "multi-memory", completeCore3Backend},
-		{CoreFeatureMemory64, "memory64", completeCore3Backend},
-		{CoreFeatureTable64, "table64", completeCore3Backend},
+		{CoreFeatureMultiMemory, "multi-memory", supportsMultiMemoryBackend(runtime.GOOS, runtime.GOARCH)},
+		{CoreFeatureMemory64, "memory64", supportsMemory64Backend(runtime.GOOS, runtime.GOARCH)},
+		{CoreFeatureTable64, "table64", supportsTable64Backend(runtime.GOOS, runtime.GOARCH)},
 		{CoreFeatureThreads, "threads", supportsThreadsBackend(runtime.GOOS, runtime.GOARCH)},
 	} {
 		if got, want := SupportedFeatures().IsEnabled(tc.bit), tc.supported && backendAvailable; got != want {
@@ -477,6 +477,9 @@ func TestCompleteCore3BackendPlatforms(t *testing.T) {
 	}{
 		{goos: "linux", goarch: "amd64", want: true},
 		{goos: "linux", goarch: "arm64", want: true},
+		{goos: "linux", goarch: "riscv64", want: true},
+		{goos: "darwin", goarch: "riscv64"},
+		{goos: "windows", goarch: "riscv64"},
 		{goos: "darwin", goarch: "arm64", want: true},
 		{goos: "darwin", goarch: "amd64"},
 		{goos: "windows", goarch: "amd64"},
@@ -590,8 +593,17 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 			CoreFeatureMultiMemory |
 			CoreFeatureMemory64 |
 			CoreFeatureTable64
-		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
+		if runtime.GOARCH == "arm64" && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") || runtime.GOARCH == "riscv64" && runtime.GOOS == "linux" {
 			unsupported &^= CoreFeatureTailCall | CoreFeatureTypedFunctionReferences | CoreFeatureGC | CoreFeatureExceptionHandling | CoreFeatureMultiMemory | CoreFeatureMemory64 | CoreFeatureTable64
+		}
+		if supportsMultiMemoryBackend(runtime.GOOS, runtime.GOARCH) {
+			unsupported &^= CoreFeatureMultiMemory
+		}
+		if supportsMemory64Backend(runtime.GOOS, runtime.GOARCH) {
+			unsupported &^= CoreFeatureMemory64
+		}
+		if supportsTable64Backend(runtime.GOOS, runtime.GOARCH) {
+			unsupported &^= CoreFeatureTable64
 		}
 		wantFeatures &^= unsupported
 	}
