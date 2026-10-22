@@ -261,7 +261,7 @@ func Asset(prefix, goos, goarch string) (string, error) {
 	if goos != "linux" && goos != "darwin" && goos != "windows" {
 		return "", fmt.Errorf("unsupported operating system %q", goos)
 	}
-	if goarch != "amd64" && goarch != "arm64" {
+	if goarch != "amd64" && goarch != "arm64" && !(goos == "linux" && goarch == "riscv64") {
 		return "", fmt.Errorf("unsupported architecture %q", goarch)
 	}
 	return prefix + "-" + goos + "-" + goarch, nil

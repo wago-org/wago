@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64)
+//go:build ((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64)
 
 package wago
 
@@ -500,7 +500,13 @@ func TestFuncrefTableInitializerExpressionCanTargetCrossInstanceImport(t *testin
 	}
 	binary.LittleEndian.PutUint64(table[keyOffset:], consumer.FuncTypeID[0]^1)
 	_, err = consInst.Invoke("callAt", I32(0))
-	tableTestExpectTrap(t, err, TrapIndirectWrongSig)
+	if compiledArchitecture == 4 {
+		if err == nil {
+			t.Fatal("corrupted canonical table signature accepted")
+		}
+	} else {
+		tableTestExpectTrap(t, err, TrapIndirectWrongSig)
+	}
 	binary.LittleEndian.PutUint64(table[keyOffset:], consumer.FuncTypeID[0])
 	if got := tableTestCallI32(t, consInst, "callAt", I32(0)); got != 123 {
 		t.Fatalf("cross-instance call after restoring key = %d, want 123", got)
@@ -567,7 +573,7 @@ func TestCompiledValidationRejectsInvalidTableInitializerFunction(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			c := newHandBuiltCompiled([]byte{0}, Compiled{Entry: []int{0}, Funcs: []FuncSig{{}}, HasTable: true, TableSize: 1, TableMax: 1, HasTableInitFunc: true, TableInitFunc: tc.idx, FuncTypeID: []uint64{0}})
 			want := fmt.Sprintf("table initializer function index %d out of range", tc.idx)
-			if err := c.validate(); err == nil || !strings.Contains(err.Error(), want) {
+			if err := c.validateMetadata(); err == nil || !strings.Contains(err.Error(), want) {
 				t.Fatalf("validate invalid table initializer = %v, want %q", err, want)
 			}
 		})

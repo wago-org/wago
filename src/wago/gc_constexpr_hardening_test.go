@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -87,28 +88,37 @@ func TestGCConstExprRootsStackAndEarlierGlobals(t *testing.T) {
 		t.Fatalf("compile GC constant-expression rooting module: %v", err)
 	}
 	defer compiled.Close()
-	in, err := instantiateCore(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, VerifyAfterCollect: true, StressBarriers: true}})
-	if err != nil {
-		t.Fatalf("instantiate GC constant-expression rooting module: %v", err)
-	}
-	defer in.Close()
+	loaded := publicArtifactRoundTrip(t, compiled)
+	defer loaded.Close()
+	for index, candidate := range []*Compiled{compiled, loaded} {
+		for _, profile := range []corergc.Profile{corergc.ProfileThroughput, corergc.ProfileTiny} {
+			t.Run(fmt.Sprintf("artifact%t/profile%d", index != 0, profile), func(t *testing.T) {
+				in, err := instantiateCore(candidate, InstantiateOptions{GC: GCConfig{Profile: profile, CollectEveryAlloc: true, VerifyAfterCollect: true, StressBarriers: true}})
+				if err != nil {
+					t.Fatalf("instantiate GC constant-expression rooting module: %v", err)
+				}
+				defer in.Close()
 
-	first := corergc.Ref(uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)))
-	value, err := in.gc.StructGet(first, 0)
-	if err != nil || value.Bits != 33 {
-		t.Fatalf("earlier global after later allocations = %+v, %v; want 33", value, err)
-	}
-	pair := corergc.Ref(uint32(readGlobalObject(in.globalCells[1], in.c.Globals[1].Type)))
-	for field, want := range []uint64{11, 22} {
-		child, err := in.gc.StructGet(pair, uint32(field))
-		if err != nil {
-			t.Fatalf("pair field %d: %v", field, err)
+				first := corergc.Ref(uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)))
+				value, err := in.gc.StructGet(first, 0)
+				if err != nil || value.Bits != 33 {
+					t.Fatalf("earlier global after later allocations = %+v, %v; want 33", value, err)
+				}
+				pair := corergc.Ref(uint32(readGlobalObject(in.globalCells[1], in.c.Globals[1].Type)))
+				for field, want := range []uint64{11, 22} {
+					child, err := in.gc.StructGet(pair, uint32(field))
+					if err != nil {
+						t.Fatalf("pair field %d: %v", field, err)
+					}
+					got, err := in.gc.StructGet(child.Ref, 0)
+					if err != nil || got.Bits != want {
+						t.Fatalf("pair field %d value = %+v, %v; want %d", field, got, err, want)
+					}
+				}
+			})
 		}
-		got, err := in.gc.StructGet(child.Ref, 0)
-		if err != nil || got.Bits != want {
-			t.Fatalf("pair field %d value = %+v, %v; want %d", field, got, err, want)
-		}
 	}
+
 }
 
 func gcConstExprFuncrefModule() []byte {

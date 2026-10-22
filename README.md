@@ -162,7 +162,8 @@ See [Use plugins](https://docs.wago.sh/guides/plugins) or browse the
 
 ## Platforms
 
-Wago supports Linux, macOS, and Windows on amd64 and arm64. WebAssembly feature
+Wago supports Linux on amd64, arm64, and riscv64, plus macOS and Windows on
+amd64 and arm64. Linux/riscv64 uses standard Go builds. WebAssembly feature
 support varies by backend and host.
 
 See the feature support on [wasm.fyi](https://wasm.fyi/features/?m=m1&lang=Go)

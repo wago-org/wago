@@ -1,0 +1,13 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-tags=wago_regalloccheck",
+    "./src/wago"
+  ],
+  "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-guest-type-isolation-20261021",
+  "seconds": 42.46154856999783,
+  "exit": 1
+}
