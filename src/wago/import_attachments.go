@@ -82,6 +82,34 @@ func (d *importDedup[T]) each(fn func(T)) {
 	}
 }
 
+// drain consumes this batch before invoking its release actions, so reentry
+// cannot release the same unit again. Each action must consume its ownership
+// unit before any callback that can panic (as releaseResourceRoot and importer
+// detach do). Callers own serialization; this is not a concurrent journal.
+// Entries added by reentry form a separate batch and are left for its owner.
+func (d *importDedup[T]) drain(fn func(T)) {
+	pending := *d
+	*d = importDedup[T]{}
+	pending.index = nil
+	var cleanup resourceCleanup
+	var zero T
+	inlineCount := pending.n
+	if inlineCount > len(pending.inline) {
+		inlineCount = len(pending.inline)
+	}
+	for i := 0; i < inlineCount; i++ {
+		item := pending.inline[i]
+		pending.inline[i] = zero
+		cleanup.run(func() { fn(item) })
+	}
+	for i := range pending.extra {
+		item := pending.extra[i]
+		pending.extra[i] = zero
+		cleanup.run(func() { fn(item) })
+	}
+	cleanup.finish()
+}
+
 // reset empties the set, clearing the inline array so it retains no references.
 func (d *importDedup[T]) reset() {
 	inlineCount := d.n
@@ -98,7 +126,31 @@ func (d *importDedup[T]) reset() {
 }
 
 type functionImportAttachments struct {
-	set importDedup[*Instance]
+	dependencies functionDependencyAttachments // empty on existing targets; not trailing
+	set          importDedup[*Instance]
+}
+
+type memoryImportAttachments struct {
+	dependencies memoryDependencyAttachments // empty on existing targets; not trailing
+	set          importDedup[*Memory]
+}
+
+func (a *memoryImportAttachments) attach(memory *Memory, cleanup *resourceCleanup) error {
+	if a.set.contains(memory) {
+		return nil
+	}
+	if err := railshotAcquireMemoryDependency(a, memory, cleanup); err != nil {
+		return err
+	}
+	a.set.push(memory)
+	return nil
+}
+
+func (a *memoryImportAttachments) detachAll() {
+	if railshotDrainBuilderMemoryDependencies(a) {
+		return
+	}
+	a.set.drain((*Memory).detachImporter)
 }
 
 func (a *functionImportAttachments) attach(export *InstanceExport) error {
@@ -109,22 +161,28 @@ func (a *functionImportAttachments) attach(export *InstanceExport) error {
 	if a.set.contains(producer) {
 		return nil
 	}
-	if !producer.retainResourceRoot() {
-		return fmt.Errorf("producer instance is closed")
+	if err := railshotAcquireFunctionDependency(a, producer); err != nil {
+		return err
 	}
 	a.set.push(producer)
 	return nil
 }
 
 func (a *functionImportAttachments) detachAll() {
-	a.set.each((*Instance).releaseResourceRoot)
-	a.set.reset()
+	if railshotDrainBuilderFunctionDependencies(a) {
+		return
+	}
+	a.set.drain((*Instance).releaseResourceRoot)
 }
 
 func detachImportedFunctions(in *Instance) {
+	if railshotDrainInstanceFunctionDependencies(in) {
+		return
+	}
 	if in == nil || in.c == nil {
 		return
 	}
+	var cleanup resourceCleanup
 	var seen importDedup[*Instance]
 	for i := range in.c.Imports {
 		export, ok := in.imports[in.c.functionImportBindingKey(i)].(*InstanceExport)
@@ -132,9 +190,10 @@ func detachImportedFunctions(in *Instance) {
 			continue
 		}
 		if seen.add(export.inst) {
-			export.inst.releaseResourceRoot()
+			cleanup.run(func() { export.inst.releaseResourceRoot() })
 		}
 	}
+	cleanup.finish()
 }
 
 type hostFuncRefAttachments struct {
@@ -171,47 +230,50 @@ func (a *hostFuncRefAttachments) attach(owner *HostFuncRef, store *referenceStor
 }
 
 func (a *hostFuncRefAttachments) detachAll() {
-	a.bindings.each(func(key hostFuncRefBindingKey) { key.owner.releaseDispatchBinding(key.compiled, key.importIndex) })
-	a.bindings.reset()
-	a.set.each((*HostFuncRef).detachImporter)
-	a.set.reset()
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		a.bindings.drain(func(key hostFuncRefBindingKey) { key.owner.releaseDispatchBinding(key.compiled, key.importIndex) })
+	})
+	cleanup.run(func() { a.set.drain((*HostFuncRef).detachImporter) })
+	cleanup.finish()
 }
 
 func detachImportedHostFuncRefs(in *Instance) {
 	if in == nil || in.c == nil {
 		return
 	}
+	var cleanup resourceCleanup
 	var seen importDedup[*HostFuncRef]
 	for i := range in.c.Imports {
 		owner, ok := in.imports[in.c.functionImportBindingKey(i)].(*HostFuncRef)
 		if !ok || owner == nil {
 			continue
 		}
-		owner.releaseDispatchBinding(in.c, i)
+		cleanup.run(func() { owner.releaseDispatchBinding(in.c, i) })
 		if seen.add(owner) {
-			owner.detachImporter()
+			cleanup.run(func() { owner.detachImporter() })
 		}
 	}
+	cleanup.finish()
 }
 
 type globalImportAttachments struct {
-	set importDedup[*Global]
+	dependencies globalDependencyAttachments // empty on existing targets; not trailing
+	set          importDedup[*Global]
 }
 
-func (a *globalImportAttachments) attach(global *Global, store *referenceStore, collector *gc.Collector) error {
+func (a *globalImportAttachments) attach(global *Global, store *referenceStore, collector *gc.Collector, cleanup *resourceCleanup) error {
 	if global == nil {
 		return fmt.Errorf("global is nil")
 	}
 	validate := global.validateNumericImport
-	attach := global.attachNumericImporter
 	if isReferenceValType(global.Type) {
 		validate = func() error { return global.validateReferenceImportWithCollector(store, collector) }
-		attach = func() error { return global.attachReferenceImporterWithCollector(store, collector) }
 	}
 	if a.set.contains(global) {
 		return validate()
 	}
-	if err := attach(); err != nil {
+	if err := railshotAcquireGlobalDependency(a, global, store, collector, cleanup); err != nil {
 		return err
 	}
 	a.set.push(global)
@@ -219,14 +281,20 @@ func (a *globalImportAttachments) attach(global *Global, store *referenceStore, 
 }
 
 func (a *globalImportAttachments) detachAll() {
-	a.set.each((*Global).detachReferenceImporter)
-	a.set.reset()
+	if railshotDrainBuilderGlobalDependencies(a) {
+		return
+	}
+	a.set.drain((*Global).detachReferenceImporter)
 }
 
 func detachImportedGlobals(in *Instance) {
+	if railshotDrainInstanceGlobalDependencies(in) {
+		return
+	}
 	if in == nil || in.c == nil {
 		return
 	}
+	var cleanup resourceCleanup
 	var seen importDedup[*Global]
 	for i, imp := range in.c.GlobalImports {
 		provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
@@ -234,9 +302,10 @@ func detachImportedGlobals(in *Instance) {
 			continue
 		}
 		if seen.add(provided.Global) && !in.ownsTransferredGlobalAttachment(provided.Global) {
-			provided.Global.detachReferenceImporter()
+			cleanup.run(func() { provided.Global.detachReferenceImporter() })
 		}
 	}
+	cleanup.finish()
 }
 
 func retainProducerRootsInImportedGlobals(in *Instance) bool {
@@ -247,6 +316,7 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool, p
 	if in == nil || in.c == nil {
 		return false
 	}
+	var cleanup resourceCleanup
 	retained := false
 	var seen importDedup[*Global]
 	// The imported source roots need one snapshot for this retention pass.
@@ -256,6 +326,11 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool, p
 		if imp.Type != ValFuncRef {
 			continue
 		}
+		// RV64 immutable imports cannot receive consumer-produced references.
+		// Their frozen roots and ordinary cell attachments last until teardown.
+		if railshotNativeContextTrapABI() && !imp.Mutable && len(in.importGlobalReferences()) != 0 {
+			continue
+		}
 		provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
 		if !ok || provided.Global == nil {
 			continue
@@ -263,17 +338,10 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool, p
 		if !seen.add(provided.Global) {
 			continue
 		}
-		var rooted bool
+		rooted := provided.Global.retainProducerInstanceModeWithCleanup(in, finalization, &cleanup)
 		if finalization {
-			rooted = provided.Global.retainProducerInstanceForFinalization(in)
-		} else {
-			rooted = provided.Global.retainProducerInstance(in)
-		}
-		if finalization {
-			result := provided.Global.retainDescriptorOwnerForFinalization(in.refStore, in)
-			if result.retained {
-				rooted = true
-			}
+			result := provided.Global.retainDescriptorOwnerForFinalizationWithCleanup(in.refStore, in, &cleanup)
+			rooted = rooted || result.retained
 		}
 		if !rootsLoaded {
 			if pass != nil {
@@ -284,11 +352,7 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool, p
 			rootsLoaded = true
 		}
 		for _, producer := range roots {
-			if finalization {
-				if provided.Global.retainProducerInstanceForFinalization(producer) {
-					rooted = true
-				}
-			} else if provided.Global.retainProducerInstance(producer) {
+			if provided.Global.retainProducerInstanceModeWithCleanup(producer, finalization, &cleanup) {
 				rooted = true
 			}
 		}
@@ -296,20 +360,25 @@ func retainProducerRootsInImportedGlobalsMode(in *Instance, finalization bool, p
 			if pass != nil {
 				pass.globals.add(provided.Global)
 			} else {
-				in.transferImportedGlobalAttachment(provided.Global)
+				cleanup.run(func() { in.transferImportedGlobalAttachment(provided.Global) })
 			}
 			retained = true
 		}
 	}
+	cleanup.finish()
 	return retained
 }
 
 type tableImportAttachments struct {
-	set   importDedup[*Table]
-	store *referenceStore
+	dependencies tableDependencyAttachments // empty on existing targets; not trailing
+	set          importDedup[*Table]
+	store        *referenceStore
 }
 
 func (a *tableImportAttachments) attach(table *Table, elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
+	if a.set.n != 0 && a.store != store {
+		return fmt.Errorf("table import attachments use inconsistent reference stores")
+	}
 	if err := table.validateImportWithCollector(elementType, exact, types, store, collector, addr64); err != nil {
 		return err
 	}
@@ -321,17 +390,18 @@ func (a *tableImportAttachments) attach(table *Table, elementType ValType, exact
 	}
 	if a.set.n == 0 {
 		a.store = store
-	} else if a.store != store {
-		return fmt.Errorf("table import attachments use inconsistent reference stores")
 	}
 	a.set.push(table)
 	return nil
 }
 
 func (a *tableImportAttachments) detachAll() {
-	a.set.each(func(table *Table) { table.detachImporter(a.store) })
-	a.set.reset()
+	if railshotDrainBuilderTableDependencies(a) {
+		return
+	}
+	store := a.store
 	a.store = nil
+	a.set.drain(func(table *Table) { table.detachImporter(store) })
 }
 
 func (c *Compiled) preflightImportBindings(imports resolvedImports) error {
@@ -364,6 +434,10 @@ func detachImportedTables(in *Instance) {
 	if in == nil || in.c == nil {
 		return
 	}
+	if railshotDrainInstanceTableDependencies(in) {
+		return
+	}
+	var cleanup resourceCleanup
 	var seen importDedup[*Table]
 	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
 		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
@@ -371,9 +445,10 @@ func detachImportedTables(in *Instance) {
 			continue
 		}
 		if seen.add(table) && !in.ownsTransferredTableAttachment(table) {
-			table.detachImporter(in.refStore)
+			cleanup.run(func() { table.detachImporter(in.refStore) })
 		}
 	}
+	cleanup.finish()
 }
 
 func retainProducerRootsInImportedTables(in *Instance) bool {
@@ -384,6 +459,7 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool, pa
 	if in == nil || in.c == nil {
 		return false
 	}
+	var cleanup resourceCleanup
 	retained := false
 	var seen importDedup[*Table]
 	// Each table handles the writer directly; source roots can be reused.
@@ -400,17 +476,10 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool, pa
 		if finalization && !seen.add(table) {
 			continue
 		}
-		var rooted bool
+		rooted := table.retainProducerInstanceModeWithCleanup(in, finalization, &cleanup)
 		if finalization {
-			rooted = table.retainProducerInstanceForFinalization(in)
-		} else {
-			rooted = table.retainProducerInstance(in)
-		}
-		if finalization {
-			result := table.retainDescriptorOwnersForFinalization(in.refStore, in)
-			if result.retained {
-				rooted = true
-			}
+			result := table.retainDescriptorOwnersForFinalizationWithCleanup(in.refStore, in, &cleanup)
+			rooted = rooted || result.retained
 		}
 		// A descriptor copied from another imported table/global or admitted as
 		// a public token need not occur in the writer's own funcRefDescs. Carry
@@ -425,11 +494,7 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool, pa
 			rootsLoaded = true
 		}
 		for _, producer := range roots {
-			if finalization {
-				if table.retainProducerInstanceForFinalization(producer) {
-					rooted = true
-				}
-			} else if table.retainProducerInstance(producer) {
+			if table.retainProducerInstanceModeWithCleanup(producer, finalization, &cleanup) {
 				rooted = true
 			}
 		}
@@ -440,14 +505,15 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool, pa
 					pass.owners.add(owner)
 				}
 			} else {
-				in.transferImportedTableAttachment(table)
+				cleanup.run(func() { in.transferImportedTableAttachment(table) })
 				if owner := table.instanceOwner(); owner != nil && transferredOwners.add(owner) {
-					in.transferImportedAttachmentsFromOwner(owner)
+					cleanup.run(func() { in.transferImportedAttachmentsFromOwner(owner) })
 				}
 			}
 			retained = true
 		}
 	}
+	cleanup.finish()
 	return retained
 }
 
@@ -476,13 +542,29 @@ func retainProducerRootsInImportedContainersForFinalizationWithBeforeTransfer(in
 	if in == nil || in.c == nil {
 		return false
 	}
+	var cleanup resourceCleanup
+	// RV64 imports carry exact table and frozen-global dependency receipts. Those
+	// receipts are transferred by each container pass and deliberately exclude
+	// immutable frozen cells from generic producer retention. A generic discovery
+	// pass would reacquire the retiring writer through those raw descriptor views,
+	// leaving construction rollback and terminal close permanently rooted.
+	if railshotNativeContextTrapABI() {
+		var retainedTables, retainedGlobals bool
+		cleanup.run(func() { retainedTables = retainProducerRootsInImportedTablesMode(in, true, nil) })
+		cleanup.run(func() { retainedGlobals = retainProducerRootsInImportedGlobalsMode(in, true, nil) })
+		if beforeTransfer != nil {
+			cleanup.run(beforeTransfer)
+		}
+		cleanup.finish()
+		return retainedTables || retainedGlobals
+	}
 	// One imported container has no other destination to propagate back to.
 	if in.c.tableImportCount()+len(in.c.GlobalImports) > 1 {
 		var tables importDedup[*Table]
 		for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
 			table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 			if ok && table != nil && tables.add(table) {
-				table.retainDescriptorOwnersForFinalization(in.refStore, in)
+				table.retainDescriptorOwnersForFinalizationWithCleanup(in.refStore, in, &cleanup)
 			}
 		}
 		var globals importDedup[*Global]
@@ -492,22 +574,26 @@ func retainProducerRootsInImportedContainersForFinalizationWithBeforeTransfer(in
 			}
 			provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
 			if ok && provided.Global != nil && globals.add(provided.Global) {
-				provided.Global.retainDescriptorOwnerForFinalization(in.refStore, in)
+				provided.Global.retainDescriptorOwnerForFinalizationWithCleanup(in.refStore, in, &cleanup)
 			}
 		}
 		pass := importedContainerFinalizationPass{roots: importedFuncrefProducerRoots(in)}
-		retainedTables := retainProducerRootsInImportedTablesMode(in, true, &pass)
-		retainedGlobals := retainProducerRootsInImportedGlobalsMode(in, true, &pass)
+		var retainedTables, retainedGlobals bool
+		cleanup.run(func() { retainedTables = retainProducerRootsInImportedTablesMode(in, true, &pass) })
+		cleanup.run(func() { retainedGlobals = retainProducerRootsInImportedGlobalsMode(in, true, &pass) })
 		if beforeTransfer != nil {
-			beforeTransfer()
+			cleanup.run(beforeTransfer)
 		}
-		pass.tables.each(in.transferImportedTableAttachment)
-		pass.globals.each(in.transferImportedGlobalAttachment)
-		pass.owners.each(in.transferImportedAttachmentsFromOwner)
+		pass.tables.each(func(table *Table) { cleanup.run(func() { in.transferImportedTableAttachment(table) }) })
+		pass.globals.each(func(global *Global) { cleanup.run(func() { in.transferImportedGlobalAttachment(global) }) })
+		pass.owners.each(func(owner *Instance) { cleanup.run(func() { in.transferImportedAttachmentsFromOwner(owner) }) })
+		cleanup.finish()
 		return retainedTables || retainedGlobals
 	}
-	retainedTables := retainProducerRootsInImportedTablesMode(in, true, nil)
-	retainedGlobals := retainProducerRootsInImportedGlobalsMode(in, true, nil)
+	var retainedTables, retainedGlobals bool
+	cleanup.run(func() { retainedTables = retainProducerRootsInImportedTablesMode(in, true, nil) })
+	cleanup.run(func() { retainedGlobals = retainProducerRootsInImportedGlobalsMode(in, true, nil) })
+	cleanup.finish()
 	return retainedTables || retainedGlobals
 }
 
@@ -520,6 +606,7 @@ func (in *Instance) transferImportedAttachmentsFromOwner(owner *Instance) {
 	if in == nil || in.c == nil || owner == nil {
 		return
 	}
+	var cleanup resourceCleanup
 	var memories importDedup[*Memory]
 	for memoryIndex := 0; memoryIndex < in.c.memoryCount(); memoryIndex++ {
 		def := in.c.memoryDef(memoryIndex)
@@ -533,7 +620,7 @@ func (in *Instance) transferImportedAttachmentsFromOwner(owner *Instance) {
 			memory = in.memoryDir.memories[memoryIndex]
 		}
 		if memory != nil && memories.add(memory) && memory.instanceOwner() == owner {
-			in.transferImportedMemoryAttachment(memory)
+			cleanup.run(func() { in.transferImportedMemoryAttachment(memory) })
 		}
 	}
 
@@ -541,7 +628,7 @@ func (in *Instance) transferImportedAttachmentsFromOwner(owner *Instance) {
 	for i := range in.c.GlobalImports {
 		provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
 		if ok && provided.Global != nil && globals.add(provided.Global) && provided.Global.instanceOwner() == owner {
-			in.transferImportedGlobalAttachment(provided.Global)
+			cleanup.run(func() { in.transferImportedGlobalAttachment(provided.Global) })
 		}
 	}
 
@@ -549,9 +636,10 @@ func (in *Instance) transferImportedAttachmentsFromOwner(owner *Instance) {
 	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
 		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 		if ok && table != nil && tables.add(table) && table.instanceOwner() == owner {
-			in.transferImportedTableAttachment(table)
+			cleanup.run(func() { in.transferImportedTableAttachment(table) })
 		}
 	}
+	cleanup.finish()
 }
 
 // importedFuncrefProducerRoots snapshots roots from every imported persistent
@@ -693,8 +781,13 @@ func (in *Instance) reconcileFuncrefRoots() {
 		return
 	}
 	imports := in.funcrefImportContainers()
-	imports.globals.each((*Global).pruneRetainedInstances)
-	imports.tables.each((*Table).pruneRetainedInstances)
+	var cleanup resourceCleanup
+	imports.globals.each(func(global *Global) {
+		cleanup.run(global.pruneRetainedInstances)
+	})
+	imports.tables.each(func(table *Table) {
+		cleanup.run(table.pruneRetainedInstances)
+	})
 	// Walk the local export-handle chain one link at a time under lifeMu, but
 	// reconcile only after releasing it. pruneRetainedInstances may drop a
 	// producer's final root and synchronously finalize that producer; its scan can
@@ -708,12 +801,13 @@ func (in *Instance) reconcileFuncrefRoots() {
 	var localTables importDedup[*Table]
 	for table != nil {
 		if table.owner != nil && table.owner.elementType == ValFuncRef && !imports.tables.contains(table) && localTables.add(table) {
-			table.pruneRetainedInstances()
+			cleanup.run(table.pruneRetainedInstances)
 		}
 		in.lifeMu.Lock()
 		table = table.next
 		in.lifeMu.Unlock()
 	}
+	cleanup.finish()
 }
 
 func (in *Instance) tableDescriptor(index int) []byte {

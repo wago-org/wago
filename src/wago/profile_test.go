@@ -17,7 +17,7 @@ import (
 )
 
 func TestCodeProfileSharedLifecycleAndCodeNeutrality(t *testing.T) {
-	s := NewCodeProfile(CodeProfileOptions{IncludeCode: true, SourceMaps: true, UnwindMaps: true})
+	s := NewCodeProfile(CodeProfileOptions{IncludeCode: true, SourceMaps: true, UnwindMaps: runtime.GOARCH != "riscv64"})
 	defer s.Close()
 	plain, err := Compile(identityI32Module())
 	if err != nil {
@@ -53,6 +53,10 @@ func TestCodeProfileSharedLifecycleAndCodeNeutrality(t *testing.T) {
 	if runtime.GOARCH == "amd64" {
 		if len(im.Unwind) == 0 || im.UnwindCoverage != "amd64-fixed-frames-and-adapters" {
 			t.Fatalf("missing compiler unwind rules: %+v", im)
+		}
+	} else if runtime.GOARCH == "riscv64" {
+		if len(im.Unwind) != 0 || im.UnwindCoverage != "" {
+			t.Fatalf("unrequested RV64 unwind attribution: %+v", im)
 		}
 	} else if len(im.Unwind) != 0 || im.UnwindCoverage != "unsupported" {
 		t.Fatalf("unqualified target claims unwind support: %+v", im)

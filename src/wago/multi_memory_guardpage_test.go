@@ -1,4 +1,4 @@
-//go:build wago_guardpage && (linux || darwin) && (amd64 || arm64) && !tinygo
+//go:build (wago_guardpage && (linux || darwin) && (amd64 || arm64) && !tinygo) || (wago_guardpage && linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled)
 
 package wago
 

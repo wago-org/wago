@@ -117,3 +117,17 @@ func TestAssetAndChecksumContract(t *testing.T) {
 		t.Fatal("malformed checksum accepted")
 	}
 }
+
+func TestLinuxRISCV64Asset(t *testing.T) {
+	for _, prefix := range []string{"wago", "wago-installer"} {
+		got, err := Asset(prefix, "linux", "riscv64")
+		if err != nil || got != prefix+"-linux-riscv64" {
+			t.Fatalf("Asset(%q) = %q, %v", prefix, got, err)
+		}
+	}
+	for _, targetOS := range []string{"darwin", "windows"} {
+		if _, err := Asset("wago", targetOS, "riscv64"); err == nil {
+			t.Fatalf("accepted unsupported %s/riscv64", targetOS)
+		}
+	}
+}

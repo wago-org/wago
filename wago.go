@@ -536,6 +536,8 @@ func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }
 
 func ValidatePluginSet(set PluginSet) error { return impl.ValidatePluginSet(set) }
 
+func ValueExnRef(v ExnRef) Value { return impl.ValueExnRef(v) }
+
 func ValueExternRef(v ExternRef) Value { return impl.ValueExternRef(v) }
 
 func ValueF32(v float32) Value { return impl.ValueF32(v) }
