@@ -3,6 +3,7 @@
 #include "textflag.h"
 #include "funcdata.h"
 #include "go_asm.h"
+#include "inline_host_yield_arm64.h"
 
 TEXT ·inlineHostIntegerEnterForeign(SB), NOSPLIT|NOFRAME, $0-0
 	SUB $176, R10, R10
@@ -107,6 +108,7 @@ TEXT ·inlineHostIntegerViewBridgeAddr(SB), NOSPLIT|NOFRAME, $0-8
 TEXT ·inlineHostIntegerContextEnter(SB), NOSPLIT, $64-88
 	NO_LOCAL_POINTERS
 	MOVD ZR, ret+80(FP)
+	INLINE_HOST_YIELD_INIT(48)
 	MOVD code+16(FP), R9
 	MOVD args+24(FP), R0
 	MOVD linMem+32(FP), R1
@@ -152,6 +154,7 @@ context_twoResults:
 	MOVD R12, const_hcResults(R10)
 	MOVD R13, const_hcResults+8(R10)
 context_resultDone:
+	INLINE_HOST_YIELD(48, inlineHostIntegerContextEnterYieldDone, context_abortTrap, 40, 64)
 	MOVD $·inlineHostIntegerStagedBridge(SB), R9
 	MOVD R9, const_hcTrampoline(R10)
 	MOVD 40(RSP), R9
@@ -172,6 +175,7 @@ context_abortTrap:
 TEXT ·inlineHostIntegerViewContextEnter(SB), NOSPLIT, $96-88
 	NO_LOCAL_POINTERS
 	MOVD ZR, ret+80(FP)
+	INLINE_HOST_YIELD_INIT(80)
 	MOVD code+16(FP), R9
 	MOVD args+24(FP), R0
 	MOVD linMem+32(FP), R1
@@ -217,6 +221,7 @@ context_viewResultsCleared:
 	MOVWU 0(R9), R11
 	CBNZ R11, context_viewAbortTrap
 	MOVD ctrl+64(FP), R10
+	INLINE_HOST_YIELD(80, inlineHostIntegerViewContextEnterYieldDone, context_viewAbortTrap, 40, 64)
 	MOVD $·inlineHostIntegerViewStagedBridge(SB), R9
 	MOVD R9, const_hcTrampoline(R10)
 	MOVD 72(RSP), R9
@@ -237,6 +242,7 @@ context_viewAbortTrap:
 TEXT ·inlineHostIntegerI32Enter(SB), NOSPLIT, $64-80
  NO_LOCAL_POINTERS
  MOVD ZR, ret+72(FP)
+	INLINE_HOST_YIELD_INIT(48)
  MOVD code+8(FP), R9
  MOVD args+16(FP), R0
  MOVD linMem+24(FP), R1
@@ -269,6 +275,7 @@ direct_i32_goCallback:
  MOVD ctrl+56(FP), R10
  MOVWU R0, R0
  MOVD R0, const_hcResults(R10)
+	INLINE_HOST_YIELD(48, inlineHostIntegerI32EnterYieldDone, direct_i32_abortTrap, 32, 56)
  MOVD $·inlineHostIntegerStagedBridge(SB), R9
  MOVD R9, const_hcTrampoline(R10)
  MOVD 40(RSP), R9

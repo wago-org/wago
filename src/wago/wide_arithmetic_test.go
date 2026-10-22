@@ -1,4 +1,4 @@
-//go:build ((linux && amd64) || ((linux || darwin) && arm64)) && !tinygo
+//go:build ((linux && (amd64 || riscv64)) || ((linux || darwin) && arm64)) && !tinygo
 
 package wago
 

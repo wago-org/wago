@@ -20,10 +20,31 @@ func resolveInstallerVersion(stamped string, info *debug.BuildInfo) string {
 	if stamped != "" {
 		return stamped
 	}
-	if info != nil && info.Main.Version != "" && info.Main.Version != "(devel)" && !pseudoVersion(info.Main.Version) {
+	if info == nil {
+		return ""
+	}
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.modified" && setting.Value != "false" {
+			return ""
+		}
+	}
+	if info.Main.Version != "" && info.Main.Version != "(devel)" && !dirtyVersion(info.Main.Version) && !pseudoVersion(info.Main.Version) {
 		return info.Main.Version
 	}
 	return ""
+}
+
+func dirtyVersion(version string) bool {
+	_, metadata, found := strings.Cut(version, "+")
+	if !found {
+		return false
+	}
+	for _, component := range strings.Split(metadata, ".") {
+		if component == "dirty" {
+			return true
+		}
+	}
+	return false
 }
 
 func pseudoVersion(version string) bool {

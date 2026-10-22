@@ -87,6 +87,8 @@ func (in *Instance) dispatchAtomicWaitHelperContext(helper uint32, args, results
 		maximum := binary.LittleEndian.Uint32(in.memoryDir.native[int(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirPolicyMaxPagesOffset:])
 		address64 := in.c.memoryDef(int(memoryIndex)).Addr64
 		if address64 && args[0] > uint64(^uint32(0)) {
+			// Failed shared growth still reads the authoritative length for ordering.
+			memory.currentPages()
 			results[0] = ^uint64(0)
 			return
 		}
@@ -108,6 +110,8 @@ func (in *Instance) dispatchAtomicWaitHelperContext(helper uint32, args, results
 		err    error
 	)
 	switch helper {
+	case shared.AtomicHelperMemoryGrow:
+		result, err = in.dispatchAtomicMemoryGrow(args)
 	case shared.AtomicHelperNotify:
 		if len(args) != 3 {
 			err = fmt.Errorf("atomic notify helper arity = %d, want 3", len(args))

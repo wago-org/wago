@@ -20,6 +20,7 @@ const (
 	stagedGCI31ProductAnyGlobal
 	stagedGCI31ProductAnyTable
 	stagedGCI31ProductRefTest
+	stagedGCI31ProductRefEqPilot
 )
 
 func (p stagedGCI31Product) String() string {
@@ -38,6 +39,8 @@ func (p stagedGCI31Product) String() string {
 		return "anyref-table"
 	case stagedGCI31ProductRefTest:
 		return "ref-test"
+	case stagedGCI31ProductRefEqPilot:
+		return "ref-eq-pilot"
 	default:
 		return "unknown"
 	}
@@ -46,7 +49,7 @@ func (p stagedGCI31Product) String() string {
 func stagedGCI31PinnedProduct(data []byte) (stagedGCI31Product, bool) {
 	// Reject impossible fixture sizes before hashing the whole module.
 	switch len(data) {
-	case 88, 96, 131, 252, 255, 259, 262:
+	case 88, 96, 128, 131, 252, 255, 259, 262:
 	default:
 		return 0, false
 	}
@@ -66,6 +69,8 @@ func stagedGCI31PinnedProduct(data []byte) (stagedGCI31Product, bool) {
 		return stagedGCI31ProductAnyTable, true
 	case len(data) == 255 && digest == "15ae51eb557db91694fc8cb2e2ca148792eec4ae2b524c610edf8005a04837ec":
 		return stagedGCI31ProductRefTest, true
+	case len(data) == 128 && digest == "d41b88eaab338e5b01e67ebf4352ce126dfda50d26aab23c761fd56c3a29d5af":
+		return stagedGCI31ProductRefEqPilot, true
 	default:
 		return 0, false
 	}
@@ -118,4 +123,85 @@ func stagedGCI31TableInitializer(m *wasm.Module) (*gcI31TableInitializer, error)
 		return nil, fmt.Errorf("table initializer has invalid end")
 	}
 	return &gcI31TableInitializer{TableIndex: 0, GlobalIndex: globalIndex}, nil
+}
+
+// moduleUsesI31Operations distinguishes immediate execution from inert null
+// metadata. Null collector heaps alone need no i31 execution image or domain.
+func moduleUsesI31Operations(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	for _, fn := range m.Code {
+		r := wasm.NewReader(fn.BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return false
+			}
+			var imm wasm.InstructionImmediate
+			if classifier.ClassifyInto(r, op, &imm) != nil {
+				return false
+			}
+			switch imm.Kind {
+			case wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU:
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// generalCollectorFreeI31Module proves that live GC references are compact i31
+// values. Unused aggregate declarations do not require a collector.
+func generalCollectorFreeI31Module(m *wasm.Module) bool {
+	if m == nil || m.TagCount() != 0 || moduleHasGCAllocationSites(m) || moduleUsesGenericGCStructHelpers(m) {
+		return false
+	}
+	i31Value := func(typ wasm.ValType) bool {
+		if typ.Kind() != wasm.ValRef {
+			return true
+		}
+		heap := typ.Ref().Heap()
+		if heap.Kind() != wasm.HeapAbs {
+			return false
+		}
+		switch heap.Abs() {
+		case wasm.HeapI31, wasm.HeapNone, wasm.HeapFunc, wasm.HeapNoFunc:
+			return true
+		default:
+			return false
+		}
+	}
+	for i := uint32(0); i < uint32(m.ImportedFuncCount()+len(m.Code)); i++ {
+		sig, found := m.FuncSignature(i)
+		if !found {
+			return false
+		}
+		for _, values := range [][]wasm.ValType{sig.Params, sig.Results} {
+			for _, value := range values {
+				if !i31Value(value) {
+					return false
+				}
+			}
+		}
+	}
+	for i := uint32(0); i < uint32(m.GlobalCount()); i++ {
+		global, found := m.GlobalTypeByIndex(i)
+		if !found || !i31Value(global.Type) {
+			return false
+		}
+	}
+	for i := uint32(0); i < uint32(m.TableCount()); i++ {
+		table, found := m.TableType(i)
+		if !found || !i31Value(wasm.RefVal(table.Ref)) {
+			return false
+		}
+	}
+	for _, elem := range m.Elements {
+		if elem.Kind.Kind == wasm.ElemTypedExprs && !i31Value(wasm.RefVal(elem.Kind.Ref)) {
+			return false
+		}
+	}
+	return moduleUsesI31Operations(m)
 }

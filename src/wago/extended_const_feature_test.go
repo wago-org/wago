@@ -62,12 +62,18 @@ func TestExtendedConstRequiredFeatureSurvivesCodecAndFailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := CoreFeatures(binary.LittleEndian.Uint64(blob[len(blob)-9 : len(blob)-1])); got != CoreFeatureExtendedConst || blob[len(blob)-1] != 0 {
-		t.Fatalf("codec feature tail = %x, want u64 extended-constant mask then zero GC count", blob[len(blob)-9:])
+	metadataEnd := len(blob)
+	if compiled.rv64ExecutionContract() != nil {
+		metadataEnd -= rv64ExecutionContractSize(compiled)
 	}
-	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], 0)
+	featureOffset := metadataEnd - 9
+	required := binary.LittleEndian.Uint64(blob[featureOffset : metadataEnd-1])
+	if got := CoreFeatures(required) & coreFeaturesWago; got != CoreFeatureExtendedConst || blob[metadataEnd-1] != 0 {
+		t.Fatalf("codec feature tail = %x, want u64 extended-constant mask then zero GC count", blob[featureOffset:metadataEnd])
+	}
+	binary.LittleEndian.PutUint64(blob[featureOffset:metadataEnd-1], required&^uint64(CoreFeatureExtendedConst))
 	var missing Compiled
-	if err := missing.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unrecorded features") {
+	if err := missing.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unrecorded features") && !strings.Contains(err.Error(), "code/metadata binding mismatch") {
 		t.Fatalf("missing extended-constant bit error = %v", err)
 	}
 }

@@ -91,14 +91,22 @@ func (c *Collector) scanObjectRefsRange(h uint32, cursor *objectScanCursor, budg
 	}
 	r := makeObjRef(h)
 	d, err := c.refDesc(r)
-	if err != nil || !d.HasRefs {
+	if err != nil {
 		return work, true
+	}
+	source := c.objectEdgeSource()
+	extra := uint32(0)
+	if source != nil {
+		extra = source.ObjectEdgeCount(r)
+	}
+	if !d.HasRefs {
+		return c.scanExtraObjectRefs(r, cursor, 0, extra, budget, visitor, work)
 	}
 	b := c.bytes(r)
 	// Synchronous sweep barriers may request an effectively unlimited Tiny scan.
 	// Avoid finite-budget checks in that cold path. Ordinary complete scans use
 	// scanObjectRefsComplete below so Throughput retains its established hot loop.
-	if budget == completeObjectScanBudget && cursor.index == 0 && visitor.mode == objectScanVisitTinyMark {
+	if extra == 0 && budget == completeObjectScanBudget && cursor.index == 0 && visitor.mode == objectScanVisitTinyMark {
 		switch d.Kind {
 		case KindStruct:
 			work.ScanEntries = uint32(len(d.Fields))
@@ -149,12 +157,15 @@ func (c *Collector) scanObjectRefsRange(h uint32, cursor *objectScanCursor, budg
 			work.ScanEntries++
 			work.PayloadBytes += size
 		}
-		return work, true
+		return c.scanExtraObjectRefs(r, cursor, uint32(len(d.Fields)), extra, budget, visitor, work)
 	case KindArray:
 		if !d.ArrayElementsAreRefs() {
-			return work, true
+			return c.scanExtraObjectRefs(r, cursor, 0, extra, budget, visitor, work)
 		}
 		length := c.header(r).Aux
+		if cursor.index >= length {
+			return c.scanExtraObjectRefs(r, cursor, length, extra, budget, visitor, work)
+		}
 		count := length - cursor.index
 		if available := budget.ScanEntries - work.ScanEntries; count > available {
 			count = available
@@ -184,10 +195,31 @@ func (c *Collector) scanObjectRefsRange(h uint32, cursor *objectScanCursor, budg
 		work.ScanEntries += count
 		work.RefSlots += count
 		work.PayloadBytes += count * d.ElemSize
-		return work, cursor.index == length
+		if cursor.index < length {
+			return work, false
+		}
+		return c.scanExtraObjectRefs(r, cursor, length, extra, budget, visitor, work)
 	default:
+		return c.scanExtraObjectRefs(r, cursor, 0, extra, budget, visitor, work)
+	}
+}
+
+func (c *Collector) scanExtraObjectRefs(r Ref, cursor *objectScanCursor, base, count uint32, budget objectScanBudget, visitor objectScanVisitor, work objectScanWork) (objectScanWork, bool) {
+	if count == 0 {
 		return work, true
 	}
+	source := c.objectEdgeSource()
+	for cursor.index-base < count {
+		if work.ScanEntries == budget.ScanEntries || work.RefSlots == budget.RefSlots || budget.PayloadBytes-work.PayloadBytes < 4 {
+			return work, false
+		}
+		visitor.visit(c, source.ObjectEdgeAt(r, cursor.index-base))
+		cursor.index++
+		work.ScanEntries++
+		work.RefSlots++
+		work.PayloadBytes += 4
+	}
+	return work, true
 }
 
 // scanObjectRefs is the complete synchronous wrapper used by Throughput/full
@@ -199,7 +231,15 @@ func (c *Collector) scanObjectRefs(h uint32, visit func(Ref)) {
 	// measurements showed that imposing it here regresses dense full scans.
 	r := makeObjRef(h)
 	d, err := c.refDesc(r)
-	if err != nil || !d.HasRefs {
+	if err != nil {
+		return
+	}
+	if source := c.objectEdgeSource(); source != nil {
+		for i, n := uint32(0), source.ObjectEdgeCount(r); i < n; i++ {
+			visit(source.ObjectEdgeAt(r, i))
+		}
+	}
+	if !d.HasRefs {
 		return
 	}
 	hdr := c.header(r)

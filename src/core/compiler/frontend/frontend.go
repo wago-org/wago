@@ -58,6 +58,7 @@ type Features struct {
 	MultiMemory             bool // internal staged gate for bounded indexed memory execution
 	Memory64                bool // internal staged gate for bounded local 64-bit-address memory execution
 	Table64                 bool // internal staged gate for bounded local 64-bit-index table execution
+	GenericTable64          bool // retained RV64 table directory; common byte quotas bound storage
 	Threads                 bool // shared memory and core linear-memory atomic instructions
 	ExceptionHandling       bool // internal staged gate for bounded local scalar tag/throw/try_table execution
 	ExceptionReferences     bool // internal staged gate for fixed rooted exn values and throw_ref/reference catches
@@ -144,7 +145,7 @@ type ModuleFacts struct {
 	TableExported  []bool
 	MemoryGrowUsed []bool
 	MemoryExported []bool
-	UsesRefFunc    bool
+	UsesRefFunc    bool // executable/materialized ref.func demand; excludes declarative payloads
 	UsesCallRef    bool
 }
 
@@ -196,7 +197,8 @@ func StagedTable64Max() uint64 { return stagedTable64Max }
 // RequiresFuncRefDescriptors reports whether instantiation needs the canonical
 // per-function descriptor arena. Funcref tables need it; externref-only tables do
 // not. Table-free modules pay for it only when a global initializer or executable
-// body contains ref.func.
+// body contains ref.func, or an element payload materializes function references.
+// Declarative payloads only declare targets and need no descriptors.
 func RequiresFuncRefDescriptors(m *wasm.Module) bool {
 	facts, err := AnalyzeModuleFacts(m)
 	if err != nil {
@@ -216,11 +218,12 @@ func RequiresFuncRefDescriptorsFromFacts(m *wasm.Module, facts *ModuleFacts) boo
 		}
 	}
 	for i := range m.Elements {
-		// Legacy function-index payloads are intrinsically non-null funcrefs.
+		// Active/passive function-index payloads materialize non-null funcrefs.
+		// Legacy declarative payloads start dropped and never materialize values.
 		// Expression payloads require descriptors only when they actually contain
 		// ref.func, which AnalyzeModuleFacts records below. Null externref/funcref
 		// expressions and copied imported references need no local descriptor arena.
-		if len(m.Elements[i].Kind.Funcs) != 0 {
+		if m.Elements[i].Mode.Kind != wasm.ElemDeclarative && len(m.Elements[i].Kind.Funcs) != 0 {
 			return true
 		}
 	}
@@ -400,6 +403,11 @@ func AnalyzeModuleFacts(m *wasm.Module) (*ModuleFacts, error) {
 	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
+		// Declarative segments authorize ref.func instructions but never
+		// materialize either function-index or expression payloads.
+		if e.Mode.Kind == wasm.ElemDeclarative {
+			continue
+		}
 		facts.UsesRefFunc = facts.UsesRefFunc || (e.Kind.Kind == wasm.ElemFuncs && len(e.Kind.Funcs) != 0)
 		for j := range e.Kind.Exprs {
 			facts.UsesRefFunc = facts.UsesRefFunc || exprUsesRefFunc(e.Kind.Exprs[j])
@@ -619,7 +627,7 @@ func (p supportPass) types() error {
 					for fi := range st.Comp.Fields {
 						storage := st.Comp.Fields[fi].Storage()
 						if !storage.Packed() {
-							if err := p.valType(storage.Val(), fmt.Sprintf("%s field %d", ctx, fi)); err != nil {
+							if err := p.aggregateStorageType(storage.Val(), fmt.Sprintf("%s field %d", ctx, fi), gi); err != nil {
 								return err
 							}
 						}
@@ -627,7 +635,7 @@ func (p supportPass) types() error {
 				case wasm.CompArray:
 					storage := st.Comp.Array.Storage()
 					if !storage.Packed() {
-						if err := p.valType(storage.Val(), ctx+" array element"); err != nil {
+						if err := p.aggregateStorageType(storage.Val(), ctx+" array element", gi); err != nil {
 							return err
 						}
 					}
@@ -719,10 +727,10 @@ func (p supportPass) imports() error {
 				if !p.feat.Table64 {
 					return p.unsupported("import", "64-bit table (table64 disabled)", ctx)
 				}
-				if table.Limits.Min > stagedTable64Max {
+				if !p.feat.GenericTable64 && table.Limits.Min > stagedTable64Max {
 					return p.implementation("imported table64", fmt.Sprintf("minimum %d entries exceeds executable capacity", table.Limits.Min), stagedTable64Max)
 				}
-				if table.Limits.HasMax && table.Limits.Max > stagedTable64Max {
+				if !p.feat.GenericTable64 && table.Limits.HasMax && table.Limits.Max > stagedTable64Max {
 					return p.implementation("imported table64", fmt.Sprintf("maximum %d entries exceeds executable capacity", table.Limits.Max), stagedTable64Max)
 				}
 			}
@@ -761,10 +769,10 @@ func (p supportPass) tables() error {
 			if !p.feat.Table64 {
 				return p.unsupported("table", "64-bit limits (table64 disabled)", ctx)
 			}
-			if t.Type.Limits.Min > stagedTable64Max {
+			if !p.feat.GenericTable64 && t.Type.Limits.Min > stagedTable64Max {
 				return p.implementation("table64", fmt.Sprintf("table %d minimum %d entries exceeds executable capacity", tableIndex, t.Type.Limits.Min), stagedTable64Max)
 			}
-			if t.Type.Limits.HasMax && t.Type.Limits.Max > stagedTable64Max && !inertOversizedLocalTable64(p.m, i) {
+			if !p.feat.GenericTable64 && t.Type.Limits.HasMax && t.Type.Limits.Max > stagedTable64Max && !inertOversizedLocalTable64(p.m, i) {
 				return p.implementation("table64", fmt.Sprintf("table %d maximum %d entries exceeds executable capacity", tableIndex, t.Type.Limits.Max), stagedTable64Max)
 			}
 		}
@@ -783,10 +791,6 @@ func (p supportPass) tables() error {
 func (p supportPass) tableAddr64(index uint32) bool {
 	tt, ok := p.m.TableType(index)
 	return ok && tt.Limits.Addr64
-}
-
-func (p supportPass) tableImported(index uint32) bool {
-	return index < uint32(p.m.ImportedTableCount())
 }
 
 func (p supportPass) memories() error {
@@ -1033,7 +1037,10 @@ func (p supportPass) runtimeFootprint() error {
 	}
 	hostCallBytes := 0
 	if needsPublicFuncrefHostReentry(p.m, tables) {
-		hostCallBytes = runtime.HostCtrlFrameBytes
+		hostCallBytes, err = runtime.HostCtrlFrameBytesForSlots(runtime.MaxHostArity)
+		if err != nil {
+			return p.unsupported("runtime footprint", err.Error(), "synchronous host frame")
+		}
 	}
 	_, err = runtime.InstantiateArenaNeed(runtime.InstantiateFootprint{
 		FuncImportCount:    p.m.ImportedFuncCount(),
@@ -1248,7 +1255,11 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 					return err
 				}
 				exceptionHeap := heap == -23 || heap == -12
-				if !p.feat.ReferenceTypes || !((p.feat.ExceptionReferences && exceptionHeap) || p.supportedNullReferenceHeap(heap) || p.supportedGCHeap(heap) || (p.feat.TypedFunctionReferences && p.supportedTypedFuncHeap(heap))) {
+				// Explicit nullable func/extern spellings have the same feature
+				// requirement as their bare aliases. Every non-null form still
+				// requires typed references, including GC and exception heaps.
+				nullableLegacy := b == 0x63 && (heap == -16 || heap == -17)
+				if !p.feat.ReferenceTypes || b == 0x64 && !p.feat.TypedFunctionReferences || !(nullableLegacy || (p.feat.ExceptionReferences && exceptionHeap) || p.supportedNullReferenceHeap(heap) || p.supportedGCHeap(heap) || (p.feat.TypedFunctionReferences && p.supportedTypedFuncHeap(heap))) {
 					return p.unsupported("value type", fmt.Sprintf("ref heap %d (typed-function-references/exception-references disabled or unsupported)", heap), ctx())
 				}
 				return nil
@@ -1682,9 +1693,6 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 			if !p.feat.Table64 {
 				return p.unsupported("table64 instruction", "table.init (table64 disabled)", context())
 			}
-			if p.tableImported(uint32(imm.Index2)) {
-				return p.unsupported("table64 instruction", "table.init on imported table64 remains outside the staged boundary", context())
-			}
 		}
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.init (reference-types disabled)", context())
@@ -2020,9 +2028,6 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 			if !p.feat.Table64 {
 				return p.unsupported("table64 instruction", in.Kind.String()+" (table64 disabled)", context)
 			}
-			if p.tableImported(in.Index2) {
-				return p.unsupported("table64 instruction", in.Kind.String()+" on imported table64 remains outside the staged boundary", context)
-			}
 		}
 	case wasm.InstrTableCopy:
 		if (p.tableAddr64(in.Index) || p.tableAddr64(in.Index2)) && !p.feat.Table64 {
@@ -2178,6 +2183,7 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 		wasm.InstrI32Clz, wasm.InstrI32Ctz, wasm.InstrI32Popcnt,
 		wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Mul, wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU, wasm.InstrI32And, wasm.InstrI32Or, wasm.InstrI32Xor, wasm.InstrI32Shl, wasm.InstrI32ShrS, wasm.InstrI32ShrU, wasm.InstrI32Rotl, wasm.InstrI32Rotr,
 		wasm.InstrI64Clz, wasm.InstrI64Ctz, wasm.InstrI64Popcnt,
+		wasm.InstrI64Add128, wasm.InstrI64Sub128, wasm.InstrI64MulWideS, wasm.InstrI64MulWideU,
 		wasm.InstrI64Add, wasm.InstrI64Sub, wasm.InstrI64Mul, wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU, wasm.InstrI64And, wasm.InstrI64Or, wasm.InstrI64Xor, wasm.InstrI64Shl, wasm.InstrI64ShrS, wasm.InstrI64ShrU, wasm.InstrI64Rotl, wasm.InstrI64Rotr,
 		wasm.InstrF32Abs, wasm.InstrF32Neg, wasm.InstrF32Sqrt, wasm.InstrF32Add, wasm.InstrF32Sub, wasm.InstrF32Mul, wasm.InstrF32Div, wasm.InstrF32Min, wasm.InstrF32Max,
 		wasm.InstrF32Ceil, wasm.InstrF32Floor, wasm.InstrF32Trunc, wasm.InstrF32Nearest, wasm.InstrF32Copysign,
@@ -2313,7 +2319,7 @@ func (p supportPass) supportedGCReference(rt wasm.RefType) bool {
 	if rt.Exact() || heap.Kind() != wasm.HeapAbs {
 		return false
 	}
-	if p.feat.GCI31Products && (heap.Abs() == wasm.HeapI31 || heap.Abs() == wasm.HeapAny || heap.Abs() == wasm.HeapNone) {
+	if p.feat.GCI31Products && (heap.Abs() == wasm.HeapI31 || heap.Abs() == wasm.HeapEq || heap.Abs() == wasm.HeapAny || heap.Abs() == wasm.HeapNone) {
 		return true
 	}
 	return (p.feat.GCTypeSubtypingProducts || p.feat.GCStructProducts || p.feat.GCArrayProducts) && (heap.Abs() == wasm.HeapAny || heap.Abs() == wasm.HeapEq || heap.Abs() == wasm.HeapNone || heap.Abs() == wasm.HeapStruct || heap.Abs() == wasm.HeapArray)
@@ -2321,7 +2327,7 @@ func (p supportPass) supportedGCReference(rt wasm.RefType) bool {
 
 func (p supportPass) supportedStructuralTypeRef(rt wasm.RefType) bool {
 	heap := rt.Heap()
-	if (!p.feat.StructuralTypeProducts && !p.feat.GCTypeSubtypingProducts && !p.feat.GCStructProducts && !p.feat.GCArrayProducts) || rt.Exact() || heap.Kind() != wasm.HeapTypeIndex {
+	if (!p.feat.StructuralTypeProducts && !p.feat.GCTypeSubtypingProducts && !p.feat.GCStructProducts && !p.feat.GCArrayProducts) || heap.Kind() != wasm.HeapTypeIndex {
 		return false
 	}
 	index := heap.Type().Index
@@ -2375,7 +2381,7 @@ func (p supportPass) supportedGCHeap(heap int64) bool {
 }
 
 func (p supportPass) supportedNullReferenceHeap(heap int64) bool {
-	if p.feat.GCI31Products && (heap == -20 || heap == -18 || heap == -15) { // i31 / any / none
+	if p.feat.GCI31Products && (heap == -20 || heap == -19 || heap == -18 || heap == -15) { // i31 / eq / any / none
 		return true
 	}
 	return p.feat.NullReferenceProducts && (heap == -18 || heap == -15 || heap == -23 || heap == -12 || heap == -13 || heap == -14) // any / none / exn / noexn / nofunc / noextern
@@ -2400,6 +2406,53 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 		return p.unsupported("reference type", feature, context)
 	}
 	return p.unsupported("value type", valTypeName(v), context)
+}
+
+// aggregateStorageType admits exact indexed aggregate references only in GC
+// storage. Exactness changes validation and casting, but not the collector's
+// reference layout. Keep the exception local to aggregate fields/elements so
+// signatures, globals, and tables retain their existing capability gates.
+func (p supportPass) aggregateStorageType(v wasm.ValType, context string, group int) error {
+	if v.Kind() == wasm.ValRef && p.supportedRecursiveAggregateStorageRef(v.Ref(), group) {
+		return nil
+	}
+	if v.Kind() == wasm.ValRef && p.supportedExactAggregateStorageRef(v.Ref()) {
+		return nil
+	}
+	return p.valType(v, context)
+}
+
+func (p supportPass) supportedRecursiveAggregateStorageRef(rt wasm.RefType, group int) bool {
+	if !p.feat.ReferenceTypes || !p.feat.TypedFunctionReferences || rt.Exact() || p.m == nil || group < 0 || group >= len(p.m.Types) {
+		return false
+	}
+	heap := rt.Heap()
+	if heap.Kind() != wasm.HeapTypeIndex || !heap.Type().Rec || int(heap.Type().Index) >= len(p.m.Types[group].SubTypes) {
+		return false
+	}
+	kind := p.m.Types[group].SubTypes[heap.Type().Index].Comp.Kind
+	return kind == wasm.CompStruct && (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts || p.feat.GCStructProducts) ||
+		kind == wasm.CompArray && (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts || p.feat.GCArrayProducts)
+}
+
+func (p supportPass) supportedExactAggregateStorageRef(rt wasm.RefType) bool {
+	if !p.feat.ReferenceTypes || !p.feat.TypedFunctionReferences || !rt.Exact() {
+		return false
+	}
+	heap := rt.Heap()
+	if heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec || p.m == nil {
+		return false
+	}
+	index := heap.Type().Index
+	for gi := range p.m.Types {
+		if index < uint32(len(p.m.Types[gi].SubTypes)) {
+			kind := p.m.Types[gi].SubTypes[index].Comp.Kind
+			return kind == wasm.CompStruct && (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts || p.feat.GCStructProducts) ||
+				kind == wasm.CompArray && (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts || p.feat.GCArrayProducts)
+		}
+		index -= uint32(len(p.m.Types[gi].SubTypes))
+	}
+	return false
 }
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {

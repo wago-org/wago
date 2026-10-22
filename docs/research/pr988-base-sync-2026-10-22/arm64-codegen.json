@@ -1,0 +1,19 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p=1",
+    "-exec=/usr/bin/qemu-aarch64",
+    "-tags=wago_regalloccheck,wago_codegenstats",
+    "./src/core/compiler/backend/railshot/arm64",
+    "-run",
+    "^(TestGCPackedStructSet|TestGCGeneralArrayLen|TestGCObjectStub|TestPatchCallRelocsRangeChecks)",
+    "-count=1",
+    "-v"
+  ],
+  "seconds": 10.355971654993482,
+  "exit": 0,
+  "user_seconds": 16.710213,
+  "system_seconds": 0.611068,
+  "peak_rss_kib": 588872
+}

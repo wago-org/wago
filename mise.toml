@@ -1,0 +1,35 @@
+[tools]
+gh = "2.102.0"
+go = "1.27.1"
+just = "1.43.1"
+wasm-tools = "1.251.0"
+
+[env]
+_.path = ["{{config_root}}/.tools/bin"]
+
+[tasks.install-qemu]
+description = "Install the pinned static RISC-V64 user emulator"
+outputs = [".tools/bin/qemu-riscv64"]
+run = '''
+set -eu
+version='7.2+dfsg-7+deb12u18+b3'
+archive="${TMPDIR:-/tmp}/qemu-user-static_${version}_amd64.deb"
+url="https://deb.debian.org/debian/pool/main/q/qemu/qemu-user-static_${version}_amd64.deb"
+checksum='c3e3ba2bd87f8c5b9a5da5ef21b5a3b82d7c63b89dd448d9ddaa4eabc5b6e402'
+install_root=".tools/qemu-user-static-${version}"
+if [ ! -f "$archive" ]; then
+	curl --fail --location --retry 3 --max-time 300 "$url" --output "$archive"
+fi
+printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check --strict
+if [ ! -x "$install_root/usr/bin/qemu-riscv64-static" ]; then
+	tmp=$(mktemp -d .tools/qemu-user-static.XXXXXX)
+	trap 'rm -rf -- "$tmp"' EXIT
+	dpkg-deb --extract "$archive" "$tmp"
+	test -x "$tmp/usr/bin/qemu-riscv64-static"
+	test ! -e "$install_root"
+	mv "$tmp" "$install_root"
+	trap - EXIT
+fi
+mkdir -p .tools/bin
+ln -sfn "../qemu-user-static-${version}/usr/bin/qemu-riscv64-static" .tools/bin/qemu-riscv64
+'''
