@@ -379,7 +379,7 @@ func TestGatedTypedI32HostImportAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	results := []uint64{0}
-	dispatchSyncHostScalar(nil, nil, &binding, []uint64{41}, results, hostInvocationContext{})
+	dispatchSyncHostScalar(nil, nil, 0, &binding, []uint64{41}, results, hostInvocationContext{})
 	if results[0] != 42 || gate.state.Load() != 0 {
 		t.Fatalf("gated typed call = %v, gate state %#x; want [42], 0", results, gate.state.Load())
 	}
@@ -390,7 +390,7 @@ func TestGatedTypedI32HostImportAdmission(t *testing.T) {
 	}
 	gate.state.Store(pluginCallGateClosed | 1)
 	results[0] = 0
-	dispatchSyncHostScalar(nil, nil, &binding, []uint64{41}, results, hostInvocationContext{reservation: reservation})
+	dispatchSyncHostScalar(nil, nil, 0, &binding, []uint64{41}, results, hostInvocationContext{reservation: reservation})
 	if results[0] != 42 {
 		t.Fatalf("reserved typed call during close = %v, want [42]", results)
 	}

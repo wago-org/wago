@@ -237,6 +237,11 @@ func (s *gcRefTestTableState) refCast(collector *gc.Collector, word uint64, targ
 }
 
 func (s *gcRefTestTableState) refTest(collector *gc.Collector, word uint64, target gc.RefTestTarget) (bool, error) {
+	if word == uint64(uint32(word)) {
+		if _, foreign := compactForeignAnyToken(collector, gc.Ref(uint32(word))); foreign {
+			return target.Kind == gc.RefTestAny, nil
+		}
+	}
 	if word>>32 != 0 {
 		if s == nil || s.Conversion == nil {
 			return false, fmt.Errorf("GC ref.test foreign anyref has no conversion owner")

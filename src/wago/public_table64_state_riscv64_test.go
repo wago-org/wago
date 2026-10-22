@@ -1,0 +1,3171 @@
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+
+package wago
+
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"maps"
+	"os"
+	"slices"
+	"strings"
+	"testing"
+
+	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+)
+
+func rv64StateOnlyTable64Source(min, max byte, exports ...string) []byte {
+	sections := [][]byte{wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, min, max}))}
+	if len(exports) != 0 {
+		entries := make([][]byte, len(exports))
+		for i, name := range exports {
+			entries[i] = wasmtest.ExportEntry(name, byte(wasm.ExternTable), 0)
+		}
+		sections = append(sections, wasmtest.Section(7, wasmtest.Vec(entries...)))
+	}
+	return wasmtest.Module(sections...)
+}
+
+func TestRV64PublicStateOnlyTable64Export(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "state-only-table64", rv64StateOnlyTable64Source(2, 4, "table", "alias"), artifact)
+			if !c.TableAddr64 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64) || !compiledStructuralRequiredFeatures(c).IsEnabled(CoreFeatureTable64) || !rv64StateOnlyTable64(c) {
+				t.Fatal("table64 metadata contract")
+			}
+			rv64CheckStateOnlyCode(t, c, 0)
+			instances := make([]*Instance, 0, 2)
+			tables := make([]*Table, 0, 2)
+			for range 2 {
+				in, err := Instantiate(c)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = in.Close() })
+				instances = append(instances, in)
+				table, err := in.ExportedTable("table")
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = table.Close() })
+				tables = append(tables, table)
+				alias, err := in.ExportedTable("alias")
+				if err != nil || alias != table {
+					t.Fatal("table64 export alias identity", err)
+				}
+				if table.Size() != 2 {
+					t.Fatal("table64 size", table.Size())
+				}
+				for i := uint64(0); i < 2; i++ {
+					if null, err := table.EntryIsNull(i); err != nil || !null {
+						t.Fatal("table64 null entry", i, null, err)
+					}
+				}
+				if _, err := table.EntryIsNull(2); err == nil {
+					t.Fatal("table64 public index bound ignored")
+				}
+			}
+			if tables[0] == tables[1] {
+				t.Fatal("owned table64 storage shared between instances")
+			}
+			rv64CheckStateOnlyCode(t, c, 2)
+			if err := c.Close(); err != nil {
+				t.Fatal(err)
+			}
+			for i, table := range tables {
+				if null, err := table.EntryIsNull(0); err != nil || !null {
+					t.Fatal("table64 did not outlive compiled handle", i, null, err)
+				}
+				if err := table.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := instances[i].Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			rv64CheckStateOnlyCode(t, c, 0)
+		})
+	}
+}
+
+func TestRV64PublicStateOnlyTable64CompilerFreeGate(t *testing.T) {
+	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") != "load" {
+		t.Skip("actual precompiled runtime only")
+	}
+	if c, err := Compile(nil, rv64StateOnlyTable64Source(0, 4, "table")); c != nil || err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
+		if c != nil {
+			_ = c.Close()
+		}
+		t.Fatal("compiler-free table64 witness used source compilation", err)
+	}
+}
+
+func rv64Table64SizeInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 2, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x10, 0, 0x0b}))),
+	)
+}
+
+func rv64TwoTable64SizeInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x05, 1, 2},
+			[]byte{0x70, 0x05, 3, 4},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("size0", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("size1", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("table0", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("table1", byte(wasm.ExternTable), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xfc, 0x10, 0, 0x0b}),
+			wasmtest.Code([]byte{0xfc, 0x10, 1, 0x0b}),
+		)),
+	)
+}
+
+func rv64TwoTable64GetSetInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x05, 1, 2},
+			[]byte{0x70, 0x05, 3, 4},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("roundtrip0", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("roundtrip1", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("table0", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("table1", byte(wasm.ExternTable), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0xd0, 0x70, 0x26, 0, 0x20, 0, 0x25, 0, 0xd1, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0xd0, 0x70, 0x26, 1, 0x20, 0, 0x25, 1, 0xd1, 0x0b}),
+		)),
+	)
+}
+
+func rv64TwoTable64GrowInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x05, 1, 2},
+			[]byte{0x70, 0x05, 2, 4},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("grow0", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("grow1", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("table0", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("table1", byte(wasm.ExternTable), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0, 0xfc, 0x0f, 0, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0, 0xfc, 0x0f, 1, 0x0b}),
+		)),
+	)
+}
+
+func rv64TwoTable64FillInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x05, 3, 4},
+			[]byte{0x70, 0x05, 4, 5},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("fill0", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("fill1", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("table0", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("table1", byte(wasm.ExternTable), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0xd0, 0x70, 0x20, 1, 0xfc, 0x11, 0, 0x41, 1, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0xd0, 0x70, 0x20, 1, 0xfc, 0x11, 1, 0x41, 1, 0x0b}),
+		)),
+	)
+}
+
+func rv64TwoTable64CopyInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x05, 5, 5},
+			[]byte{0x70, 0x05, 4, 4},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("copy0", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("copy1", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("table0", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("table1", byte(wasm.ExternTable), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, 0, 0, 0x41, 1, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, 1, 1, 0x41, 1, 0x0b}),
+		)),
+	)
+}
+
+func rv64TwoTable64CrossCopyInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x05, 3, 3},
+			[]byte{0x70, 0x05, 5, 5},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("copy01", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("copy10", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("table0", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("table1", byte(wasm.ExternTable), 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, 0, 1, 0x41, 1, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, 1, 0, 0x41, 1, 0x0b}),
+		)),
+	)
+}
+
+func rv64ImportedTable64SizeInstructionSource() []byte {
+	tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 0x05, 1, 4)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(2, wasmtest.Vec(tableImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x10, 0, 0x0b}))),
+	)
+}
+
+func rv64ImportedTable64GetSetInstructionSource() []byte {
+	tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 0x05, 1, 4)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(tableImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("roundtrip", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xd0, 0x70, 0x26, 0, 0x20, 0, 0x25, 0, 0xd1, 0x0b}))),
+	)
+}
+
+func rv64ImportedTable64GrowInstructionSource() []byte {
+	tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 0x05, 1, 4)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(2, wasmtest.Vec(tableImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0, 0xfc, 0x0f, 0, 0x0b}))),
+	)
+}
+
+func rv64ImportedTable64FillInstructionSource() []byte {
+	tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 0x05, 1, 4)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(tableImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("fill", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xd0, 0x70, 0x20, 1, 0xfc, 0x11, 0, 0x41, 1, 0x0b}))),
+	)
+}
+
+func rv64ImportedTable64CopyInstructionSource() []byte {
+	tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 0x05, 1, 4)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(tableImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("copy", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, 0, 0, 0x41, 1, 0x0b}))),
+	)
+}
+
+func rv64ImportedTable64InitDropInstructionSource() []byte {
+	tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 0x05, 1, 4)
+	passiveNull := []byte{0x05, 0x70, 0x01, 0xd0, 0x70, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(tableImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("init", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("drop", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(passiveNull)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0c, 0, 0, 0x41, 1, 0x0b}),
+			wasmtest.Code([]byte{0xfc, 0x0d, 0, 0x41, 1, 0x0b}),
+		)),
+	)
+}
+
+func rv64ImportedTable64IndirectInstructionSource() []byte {
+	tableImport := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 0x05, 1, 4)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(tableImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("call", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x11, 0, 0, 0x0b}))),
+	)
+}
+
+func rv64Table64UnsupportedInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 2, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x10, 0, 0x1a, 0x42, 0, 0x0b}))),
+	)
+}
+
+func rv64Table64GrowInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 2, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0, 0xfc, 0x0f, 0, 0x0b}))),
+	)
+}
+
+func rv64Table64GrowNoMaxSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x04, 2})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0, 0xfc, 0x0f, 0, 0x0b}))),
+	)
+}
+
+func rv64Table64GetSetInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 2, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("roundtrip", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xd0, 0x70, 0x26, 0, 0x20, 0, 0x25, 0, 0xd1, 0x0b}))),
+	)
+}
+
+func rv64Table64IndirectInstructionSource() []byte {
+	declaredTarget := append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0))...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 2, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", byte(wasm.ExternFunc), 1), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(9, wasmtest.Vec(declaredTarget)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 7, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0xd2, 0, 0x26, 0, 0x20, 0, 0x11, 0, 0, 0x0b}),
+		)),
+	)
+}
+
+func rv64TwoTable64IndirectInstructionSource() []byte {
+	declaredTarget := append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0))...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x05, 2, 2},
+			[]byte{0x70, 0x05, 3, 3},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("call0", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("call1", byte(wasm.ExternFunc), 2),
+			wasmtest.ExportEntry("table0", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("table1", byte(wasm.ExternTable), 1),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(declaredTarget)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 7, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0xd2, 0, 0x26, 0, 0x20, 0, 0x11, 0, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0xd2, 0, 0x26, 1, 0x20, 0, 0x11, 0, 1, 0x0b}),
+		)),
+	)
+}
+
+func rv64Table64FillInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 4, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("fill", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xd0, 0x70, 0x20, 1, 0xfc, 0x11, 0, 0x41, 1, 0x0b}))),
+	)
+}
+
+func rv64Table64CopyInstructionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 5, 5})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("copy", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0e, 0, 0, 0x41, 1, 0x0b}))),
+	)
+}
+
+func rv64Table64InitDropInstructionSource() []byte {
+	passiveNull := []byte{0x05, 0x70, 0x01, 0xd0, 0x70, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 4, 4})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("init", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("drop", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(passiveNull)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0c, 0, 0, 0x41, 1, 0x0b}),
+			wasmtest.Code([]byte{0xfc, 0x0d, 0, 0x41, 1, 0x0b}),
+		)),
+	)
+}
+
+func rv64TwoTable64InitDropInstructionSource() []byte {
+	passiveNull := []byte{0x05, 0x70, 0x01, 0xd0, 0x70, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x05, 3, 3},
+			[]byte{0x70, 0x05, 4, 4},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("init0", byte(wasm.ExternFunc), 0),
+			wasmtest.ExportEntry("init1", byte(wasm.ExternFunc), 1),
+			wasmtest.ExportEntry("drop", byte(wasm.ExternFunc), 2),
+			wasmtest.ExportEntry("table0", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("table1", byte(wasm.ExternTable), 1),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(passiveNull)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0c, 0, 0, 0x41, 1, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x20, 2, 0xfc, 0x0c, 0, 1, 0x41, 1, 0x0b}),
+			wasmtest.Code([]byte{0xfc, 0x0d, 0, 0x41, 1, 0x0b}),
+		)),
+	)
+}
+
+func rv64RelabelledTable32FunctionSource() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 2, 4})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("value", byte(wasm.ExternFunc), 0), wasmtest.ExportEntry("table", byte(wasm.ExternTable), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x42, 7, 0x0b}))),
+	)
+}
+
+func TestRV64PublicOwnedTable64Size(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-table64-size", rv64Table64SizeInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64) {
+				t.Fatal("table64.size metadata contract")
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table, err := in.ExportedTable("table")
+			if err != nil || table.Size() != 2 {
+				t.Fatal("table64.size export", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			for range 3 {
+				if got, err := in.Invoke("size"); err != nil || !slices.Equal(got, []uint64{2}) {
+					t.Fatal("table64.size", got, err)
+				}
+			}
+			if err := c.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := in.Invoke("size"); err != nil || !slices.Equal(got, []uint64{2}) {
+				t.Fatal("table64.size after compiled close", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64Size(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-two-table64-size", rv64TwoTable64SizeInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+				t.Fatalf("two-table64.size metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Size(c), c.tableCount(), c.requiredFeatures)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			if in.jm.TableDirPtr() == 0 || len(in.tableDescriptor(0)) < 8 || len(in.tableDescriptor(1)) < 8 || &in.tableDescriptor(0)[0] == &in.tableDescriptor(1)[0] {
+				t.Fatal("two-table64 descriptor directory")
+			}
+			for range 3 {
+				if got, err := in.Invoke("size0"); err != nil || !slices.Equal(got, []uint64{1}) {
+					t.Fatal("table64.size table 0", got, err)
+				}
+				if got, err := in.Invoke("size1"); err != nil || !slices.Equal(got, []uint64{3}) {
+					t.Fatal("table64.size table 1", got, err)
+				}
+			}
+			second := in.tableDescriptor(1)
+			capacity := binary.LittleEndian.Uint32(second[4:])
+			binary.LittleEndian.PutUint32(second[4:], capacity+railshot.MaxOwnedTableEntries)
+			got, invokeErr := in.Invoke("size0")
+			binary.LittleEndian.PutUint32(second[4:], capacity)
+			if invokeErr == nil || len(got) != 0 {
+				t.Fatal("unselected corrupt table64 descriptor accepted", got, invokeErr)
+			}
+			if got, err := in.Invoke("size0"); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("table64.size reuse after descriptor restore", got, err)
+			}
+			table0, err := in.ExportedTable("table0")
+			if err != nil || table0.Size() != 1 {
+				t.Fatal("table64 table 0 export", table0, err)
+			}
+			t.Cleanup(func() { _ = table0.Close() })
+			table1, err := in.ExportedTable("table1")
+			if err != nil || table1.Size() != 3 || table1 == table0 {
+				t.Fatal("table64 table 1 export", table1, err)
+			}
+			t.Cleanup(func() { _ = table1.Close() })
+			if err := c.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := in.Invoke("size1"); err != nil || !slices.Equal(got, []uint64{3}) {
+				t.Fatal("table64.size table 1 after compiled close", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64GetSet(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-two-table64-get-set", rv64TwoTable64GetSetInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+				t.Fatalf("two-table64 get/set metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64GetSet(c), c.tableCount(), c.requiredFeatures)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table0, err := in.ExportedTable("table0")
+			if err != nil || table0.Size() != 1 {
+				t.Fatal("two-table64 get/set table 0", table0, err)
+			}
+			t.Cleanup(func() { _ = table0.Close() })
+			table1, err := in.ExportedTable("table1")
+			if err != nil || table1.Size() != 3 || table1 == table0 {
+				t.Fatal("two-table64 get/set table 1", table1, err)
+			}
+			t.Cleanup(func() { _ = table1.Close() })
+			if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("two-table64 get/set missing canonical local descriptor")
+			}
+			row := in.funcRefDescs[coreruntime.FuncRefDescBytes : coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			copy(table0.desc[8:], row)
+			copy(table1.desc[8+2*coreruntime.TableEntryBytes:], row)
+			if got, err := in.Invoke("roundtrip1", 2); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("two-table64 get/set seeded table 1", got, err)
+			}
+			if !slices.Equal(table0.desc[8:8+coreruntime.TableEntryBytes], row) || !slices.Equal(table1.desc[8+2*coreruntime.TableEntryBytes:8+3*coreruntime.TableEntryBytes], make([]byte, coreruntime.TableEntryBytes)) {
+				t.Fatal("two-table64 get/set selected wrong descriptor")
+			}
+			for _, tc := range []struct {
+				name  string
+				index uint64
+			}{{"roundtrip0", 0}, {"roundtrip1", 0}, {"roundtrip1", 2}} {
+				if got, err := in.Invoke(tc.name, tc.index); err != nil || !slices.Equal(got, []uint64{1}) {
+					t.Fatal("two-table64 get/set", tc, got, err)
+				}
+			}
+			before0, before1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			for _, tc := range []struct {
+				name     string
+				function uint32
+				index    uint64
+			}{{"roundtrip0", 0, 1}, {"roundtrip1", 1, 3}, {"roundtrip1", 1, 1 << 32}, {"roundtrip1", 1, ^uint64(0)}} {
+				got, err := in.Invoke(tc.name, tc.index)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != tc.function || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 5 {
+					t.Fatal("two-table64 get/set index did not trap", tc, got, err)
+				}
+				if !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+					t.Fatal("two-table64 get/set trap changed storage", tc)
+				}
+			}
+			if got, err := in.Invoke("roundtrip1", 2); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("two-table64 get/set reuse after trap", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64Grow(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-two-table64-grow", rv64TwoTable64GrowInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+				t.Fatalf("two-table64 grow metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Grow(c), c.tableCount(), c.requiredFeatures)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table0, err := in.ExportedTable("table0")
+			if err != nil || table0.Size() != 1 {
+				t.Fatal("two-table64 grow table 0", table0, err)
+			}
+			t.Cleanup(func() { _ = table0.Close() })
+			table1, err := in.ExportedTable("table1")
+			if err != nil || table1.Size() != 2 || table1 == table0 {
+				t.Fatal("two-table64 grow table 1", table1, err)
+			}
+			t.Cleanup(func() { _ = table1.Close() })
+			if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("two-table64 grow missing canonical local descriptor")
+			}
+			row := in.funcRefDescs[coreruntime.FuncRefDescBytes : coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			copy(table0.desc[8+coreruntime.TableEntryBytes:], row)
+			copy(table1.desc[8+2*coreruntime.TableEntryBytes:], row)
+			copy(table1.desc[8+3*coreruntime.TableEntryBytes:], row)
+			if got, err := in.Invoke("grow0", 1); err != nil || !slices.Equal(got, []uint64{1}) || table0.Size() != 2 || table1.Size() != 2 {
+				t.Fatal("two-table64 grow table 0 selected descriptor", got, table0.Size(), table1.Size(), err)
+			}
+			if !slices.Equal(table0.desc[8+coreruntime.TableEntryBytes:8+2*coreruntime.TableEntryBytes], make([]byte, coreruntime.TableEntryBytes)) || !slices.Equal(table1.desc[8+2*coreruntime.TableEntryBytes:8+4*coreruntime.TableEntryBytes], append(slices.Clone(row), row...)) {
+				t.Fatal("two-table64 grow table 0 null initialization or isolation")
+			}
+			afterGrow0 := slices.Clone(table0.desc)
+			if got, err := in.Invoke("grow1", 1); err != nil || !slices.Equal(got, []uint64{2}) || table0.Size() != 2 || table1.Size() != 3 || !slices.Equal(table0.desc, afterGrow0) {
+				t.Fatal("two-table64 grow table 1 selected descriptor", got, table0.Size(), table1.Size(), err)
+			}
+			if !slices.Equal(table1.desc[8+2*coreruntime.TableEntryBytes:8+3*coreruntime.TableEntryBytes], make([]byte, coreruntime.TableEntryBytes)) || !slices.Equal(table1.desc[8+3*coreruntime.TableEntryBytes:8+4*coreruntime.TableEntryBytes], row) {
+				t.Fatal("two-table64 grow table 1 partial null initialization")
+			}
+			before0, before1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			for _, delta := range []uint64{1 << 32, ^uint64(0)} {
+				if got, err := in.Invoke("grow1", delta); err != nil || !slices.Equal(got, []uint64{^uint64(0)}) || !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+					t.Fatal("two-table64 grow full-width failure", delta, got, err)
+				}
+			}
+			if got, err := in.Invoke("grow1", 1); err != nil || !slices.Equal(got, []uint64{3}) || table1.Size() != 4 || table0.Size() != 2 {
+				t.Fatal("two-table64 grow reuse", got, table0.Size(), table1.Size(), err)
+			}
+			for index := uint64(2); index < 4; index++ {
+				if null, err := table1.EntryIsNull(index); err != nil || !null {
+					t.Fatal("two-table64 grow null row", index, null, err)
+				}
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64Fill(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-two-table64-fill", rv64TwoTable64FillInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) || c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
+				t.Fatalf("two-table64 fill metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Fill(c), c.tableCount(), c.requiredFeatures)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table0, err := in.ExportedTable("table0")
+			if err != nil || table0.Size() != 3 {
+				t.Fatal("two-table64 fill table 0", table0, err)
+			}
+			t.Cleanup(func() { _ = table0.Close() })
+			table1, err := in.ExportedTable("table1")
+			if err != nil || table1.Size() != 4 || table1 == table0 {
+				t.Fatal("two-table64 fill table 1", table1, err)
+			}
+			t.Cleanup(func() { _ = table1.Close() })
+			if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("two-table64 fill missing canonical local descriptor")
+			}
+			row := in.funcRefDescs[coreruntime.FuncRefDescBytes : coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			for i := 0; i < table0.Size(); i++ {
+				copy(table0.desc[8+i*coreruntime.TableEntryBytes:], row)
+			}
+			for i := 0; i < table1.Size(); i++ {
+				copy(table1.desc[8+i*coreruntime.TableEntryBytes:], row)
+			}
+			expect0, expect1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			clear(expect0[8+coreruntime.TableEntryBytes : 8+2*coreruntime.TableEntryBytes])
+			if got, err := in.Invoke("fill0", 1, 1); err != nil || !slices.Equal(got, []uint64{1}) || !slices.Equal(table0.desc, expect0) || !slices.Equal(table1.desc, expect1) {
+				t.Fatal("two-table64 fill table 0 selected descriptor", got, err)
+			}
+			clear(expect1[8+coreruntime.TableEntryBytes : 8+3*coreruntime.TableEntryBytes])
+			if got, err := in.Invoke("fill1", 1, 2); err != nil || !slices.Equal(got, []uint64{1}) || !slices.Equal(table0.desc, expect0) || !slices.Equal(table1.desc, expect1) {
+				t.Fatal("two-table64 fill table 1 selected descriptor", got, err)
+			}
+			for _, tc := range []struct {
+				name     string
+				function uint32
+				dest     uint64
+				count    uint64
+			}{{"fill0", 0, 3, 0}, {"fill1", 1, 4, 0}} {
+				if got, err := in.Invoke(tc.name, tc.dest, tc.count); err != nil || !slices.Equal(got, []uint64{1}) {
+					t.Fatal("two-table64 fill exact-end zero range", tc, got, err)
+				}
+			}
+			before0, before1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			for _, tc := range []struct {
+				name     string
+				function uint32
+				dest     uint64
+				count    uint64
+			}{{"fill0", 0, 2, 2}, {"fill1", 1, 3, 2}, {"fill1", 1, 1 << 32, 0}, {"fill1", 1, 0, 1 << 32}, {"fill1", 1, ^uint64(0), 2}} {
+				got, err := in.Invoke(tc.name, tc.dest, tc.count)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != tc.function || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 7 {
+					t.Fatal("two-table64 fill range did not trap", tc, got, err)
+				}
+				if !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+					t.Fatal("two-table64 fill trap changed storage", tc)
+				}
+			}
+			if got, err := in.Invoke("fill1", 3, 1); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("two-table64 fill reuse after trap", got, err)
+			}
+			if null, err := table1.EntryIsNull(3); err != nil || !null {
+				t.Fatal("two-table64 fill reuse did not clear table 1", null, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64Copy(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-two-table64-copy", rv64TwoTable64CopyInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+				t.Fatalf("two-table64 copy metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Copy(c), c.tableCount(), c.requiredFeatures)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table0, err := in.ExportedTable("table0")
+			if err != nil || table0.Size() != 5 {
+				t.Fatal("two-table64 copy table 0", table0, err)
+			}
+			t.Cleanup(func() { _ = table0.Close() })
+			table1, err := in.ExportedTable("table1")
+			if err != nil || table1.Size() != 4 || table1 == table0 {
+				t.Fatal("two-table64 copy table 1", table1, err)
+			}
+			t.Cleanup(func() { _ = table1.Close() })
+			if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("two-table64 copy missing canonical local descriptor")
+			}
+			row := in.funcRefDescs[coreruntime.FuncRefDescBytes : coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			clear(table0.desc[8:])
+			clear(table1.desc[8:])
+			for _, index := range []int{0, 2, 4} {
+				copy(table0.desc[8+index*coreruntime.TableEntryBytes:], row)
+			}
+			for _, index := range []int{1, 3} {
+				copy(table1.desc[8+index*coreruntime.TableEntryBytes:], row)
+			}
+			want0, untouched1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			copy(want0[8+coreruntime.TableEntryBytes:], want0[8:8+4*coreruntime.TableEntryBytes])
+			if got, err := in.Invoke("copy0", 1, 0, 4); err != nil || !slices.Equal(got, []uint64{1}) || !slices.Equal(table0.desc, want0) || !slices.Equal(table1.desc, untouched1) {
+				t.Fatal("two-table64 copy table 0 backwards overlap/isolation", got, err)
+			}
+			untouched0, want1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			copy(want1[8:8+3*coreruntime.TableEntryBytes], want1[8+coreruntime.TableEntryBytes:])
+			if got, err := in.Invoke("copy1", 0, 1, 3); err != nil || !slices.Equal(got, []uint64{1}) || !slices.Equal(table0.desc, untouched0) || !slices.Equal(table1.desc, want1) {
+				t.Fatal("two-table64 copy table 1 forwards overlap/isolation", got, err)
+			}
+			for _, tc := range []struct {
+				name string
+				size uint64
+			}{{"copy0", 5}, {"copy1", 4}} {
+				if got, err := in.Invoke(tc.name, tc.size, tc.size, 0); err != nil || !slices.Equal(got, []uint64{1}) {
+					t.Fatal("two-table64 copy exact-end zero range", tc, got, err)
+				}
+			}
+			before0, before1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			for _, tc := range []struct {
+				name     string
+				function uint32
+				dst      uint64
+				src      uint64
+				count    uint64
+			}{{"copy0", 0, 4, 0, 2}, {"copy1", 1, 0, 3, 2}, {"copy1", 1, 1 << 32, 0, 0}, {"copy1", 1, 0, 1 << 32, 0}, {"copy1", 1, 0, 0, 1 << 32}, {"copy1", 1, ^uint64(0), 0, 2}, {"copy1", 1, 0, ^uint64(0), 2}} {
+				got, err := in.Invoke(tc.name, tc.dst, tc.src, tc.count)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != tc.function || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 7 {
+					t.Fatal("two-table64 copy range did not trap", tc, got, err)
+				}
+				if !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+					t.Fatal("two-table64 copy trap changed storage", tc)
+				}
+			}
+			if got, err := in.Invoke("copy1", 1, 0, 1); err != nil || !slices.Equal(got, []uint64{1}) || slices.Equal(table1.desc, before1) || !slices.Equal(table0.desc, before0) {
+				t.Fatal("two-table64 copy reuse/isolation after trap", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64CrossCopy(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-two-table64-cross-copy", rv64TwoTable64CrossCopyInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+				t.Fatalf("cross-table64 copy metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Copy(c), c.tableCount(), c.requiredFeatures)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table0, err := in.ExportedTable("table0")
+			if err != nil || table0.Size() != 3 {
+				t.Fatal("cross-table64 copy table 0", table0, err)
+			}
+			t.Cleanup(func() { _ = table0.Close() })
+			table1, err := in.ExportedTable("table1")
+			if err != nil || table1.Size() != 5 || table1 == table0 {
+				t.Fatal("cross-table64 copy table 1", table1, err)
+			}
+			t.Cleanup(func() { _ = table1.Close() })
+			if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("cross-table64 copy missing canonical local descriptor")
+			}
+			row := in.funcRefDescs[coreruntime.FuncRefDescBytes : coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			seed := func() {
+				clear(table0.desc[8:])
+				clear(table1.desc[8:])
+				for _, index := range []int{0, 2} {
+					copy(table0.desc[8+index*coreruntime.TableEntryBytes:], row)
+				}
+				for _, index := range []int{1, 3, 4} {
+					copy(table1.desc[8+index*coreruntime.TableEntryBytes:], row)
+				}
+			}
+			seed()
+			want0, untouched1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			copy(want0[8:8+3*coreruntime.TableEntryBytes], untouched1[8+coreruntime.TableEntryBytes:8+4*coreruntime.TableEntryBytes])
+			if got, err := in.Invoke("copy01", 0, 1, 3); err != nil || !slices.Equal(got, []uint64{1}) || !slices.Equal(table0.desc, want0) || !slices.Equal(table1.desc, untouched1) {
+				t.Fatal("cross-table64 copy table1 to table0", got, err)
+			}
+			seed()
+			untouched0, want1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			copy(want1[8+2*coreruntime.TableEntryBytes:8+5*coreruntime.TableEntryBytes], untouched0[8:8+3*coreruntime.TableEntryBytes])
+			if got, err := in.Invoke("copy10", 2, 0, 3); err != nil || !slices.Equal(got, []uint64{1}) || !slices.Equal(table0.desc, untouched0) || !slices.Equal(table1.desc, want1) {
+				t.Fatal("cross-table64 copy table0 to table1", got, err)
+			}
+			if got, err := in.Invoke("copy01", 3, 5, 0); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("cross-table64 copy exact-end zero range 01", got, err)
+			}
+			if got, err := in.Invoke("copy10", 5, 3, 0); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("cross-table64 copy exact-end zero range 10", got, err)
+			}
+			before0, before1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			for _, tc := range []struct {
+				name     string
+				function uint32
+				dst      uint64
+				src      uint64
+				count    uint64
+			}{{"copy01", 0, 2, 0, 2}, {"copy01", 0, 0, 4, 2}, {"copy10", 1, 4, 0, 2}, {"copy10", 1, 0, 2, 2}, {"copy01", 0, 1 << 32, 0, 0}, {"copy01", 0, 0, 1 << 32, 0}, {"copy10", 1, 0, 0, 1 << 32}, {"copy10", 1, ^uint64(0), 0, 2}, {"copy01", 0, 0, ^uint64(0), 2}} {
+				got, err := in.Invoke(tc.name, tc.dst, tc.src, tc.count)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != tc.function || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 7 {
+					t.Fatal("cross-table64 copy range did not trap", tc, got, err)
+				}
+				if !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+					t.Fatal("cross-table64 copy trap changed storage", tc)
+				}
+			}
+			if got, err := in.Invoke("copy01", 0, 0, 1); err != nil || !slices.Equal(got, []uint64{1}) || slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+				t.Fatal("cross-table64 copy reuse/isolation after trap", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64Size(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			producerCode := rv64TableStageCompile(t, "imported-table64-size-producer", rv64Table64GrowInstructionSource(), artifact)
+			consumerCode := rv64TableStageCompile(t, "imported-table64-size-consumer", rv64ImportedTable64SizeInstructionSource(), artifact)
+			view := consumerCode.executionView()
+			importDef, imported := view.tableImportAt(0)
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64) || !imported || !importDef.Addr64 {
+				t.Fatalf("imported table64.size metadata contract: witness=%d qualified=%v addr64=%v imported=%v def=%+v", view.nativeTable64ABI, rv64ImportedTable64Size(view), view.TableAddr64, imported, importDef)
+			}
+			producer, err := Instantiate(producerCode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = producer.Close() })
+			table, err := producer.ExportedTable("table")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer table.Close()
+			consumer, err := Instantiate(consumerCode, NewImports().Table("env", "table", table))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = consumer.Close() })
+			alias, err := consumer.ExportedTable("table")
+			if err != nil || alias != table {
+				t.Fatal("imported table64 export identity", err)
+			}
+			if got, err := consumer.Invoke("size"); err != nil || !slices.Equal(got, []uint64{2}) {
+				t.Fatal("initial imported table64.size", got, err)
+			}
+			if got, err := producer.Invoke("grow", 1); err != nil || !slices.Equal(got, []uint64{2}) {
+				t.Fatal("producer table64.grow", got, err)
+			}
+			for range 3 {
+				if got, err := consumer.Invoke("size"); err != nil || !slices.Equal(got, []uint64{3}) {
+					t.Fatal("shared imported table64.size", got, err)
+				}
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := consumer.Invoke("size"); err != nil || !slices.Equal(got, []uint64{3}) {
+				t.Fatal("imported table64.size after producer close", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64SizeImportGates(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "imported-table64-size-consumer", rv64ImportedTable64SizeInstructionSource(), artifact)
+			newTable := func(addr64 bool, min, max uint32) *Table {
+				t.Helper()
+				var table *Table
+				var err error
+				if addr64 {
+					table, err = NewTable64(min, max)
+				} else {
+					table, err = NewTable(min, max)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = table.Close() })
+				return table
+			}
+			for name, table := range map[string]*Table{
+				"table32":    newTable(false, 1, 4),
+				"minimum":    newTable(true, 0, 4),
+				"maximum":    newTable(true, 1, 5),
+				"undersized": newTable(true, 0, 1),
+			} {
+				t.Run(name, func(t *testing.T) {
+					if in, err := Instantiate(c, NewImports().Table("env", "table", table)); err == nil {
+						_ = in.Close()
+						t.Fatal("incompatible imported table64 admitted")
+					}
+				})
+			}
+			table := newTable(true, 1, 4)
+			in, err := Instantiate(c, NewImports().Table("env", "table", table))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			if got, err := in.Invoke("size"); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("host imported table64.size", got, err)
+			}
+			if err := in.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64GetSet(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			producerCode := rv64TableStageCompile(t, "imported-table64-getset-producer", rv64Table64IndirectInstructionSource(), artifact)
+			consumerCode := rv64TableStageCompile(t, "imported-table64-getset-consumer", rv64ImportedTable64GetSetInstructionSource(), artifact)
+			view := consumerCode.executionView()
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+				t.Fatal("imported table64.get/set metadata contract")
+			}
+			producer, err := Instantiate(producerCode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = producer.Close() })
+			table, err := producer.ExportedTable("table")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			consumer, err := Instantiate(consumerCode, NewImports().Table("env", "table", table))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = consumer.Close() })
+			if got, err := producer.Invoke("call", 0); err != nil || !slices.Equal(got, []uint64{7}) {
+				t.Fatal("seed imported table64 row", got, err)
+			}
+			if null, err := table.EntryIsNull(0); err != nil || null {
+				t.Fatal("producer did not publish canonical row", null, err)
+			}
+			if got, err := consumer.Invoke("roundtrip", 0); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("imported table64 null roundtrip", got, err)
+			}
+			if null, err := table.EntryIsNull(0); err != nil || !null {
+				t.Fatal("imported table64 mutation not visible", null, err)
+			}
+			if got, err := producer.Invoke("call", 0); err != nil || !slices.Equal(got, []uint64{7}) {
+				t.Fatal("reseed imported table64 row", got, err)
+			}
+			before := slices.Clone(table.desc)
+			for _, index := range []uint64{1 << 32, ^uint64(0)} {
+				got, err := consumer.Invoke("roundtrip", index)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 5 {
+					t.Fatal("imported table64 high index did not trap", index, got, err)
+				}
+				if !slices.Equal(table.desc, before) {
+					t.Fatal("imported table64 trap changed storage", index)
+				}
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := consumer.Invoke("roundtrip", 1); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("imported table64 get/set after producer close", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64Indirect(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			producerCode := rv64TableStageCompile(t, "imported-table64-indirect-producer", rv64Table64IndirectInstructionSource(), artifact)
+			consumerCode := rv64TableStageCompile(t, "imported-table64-indirect-consumer", rv64ImportedTable64IndirectInstructionSource(), artifact)
+			view := consumerCode.executionView()
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64) {
+				t.Fatalf("imported table64 indirect metadata contract: witness=%d qualified=%v features=%#x funcs=%+v descs=%v typeids=%v", view.nativeTable64ABI, rv64ImportedTable64Indirect(view), view.requiredFeatures, view.Funcs, view.NeedsFuncRefDescs, view.FuncTypeID)
+			}
+			producer, err := Instantiate(producerCode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = producer.Close() })
+			table, err := producer.ExportedTable("table")
+			if err != nil || table.Size() != 2 {
+				t.Fatal("imported table64 indirect producer table", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			consumer, err := Instantiate(consumerCode, NewImports().Table("env", "table", table))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = consumer.Close() })
+			alias, err := consumer.ExportedTable("table")
+			if err != nil || alias != table {
+				t.Fatal("imported table64 indirect export identity", err)
+			}
+			checkTrap := func(index uint64) {
+				t.Helper()
+				before := slices.Clone(table.desc)
+				got, err := consumer.Invoke("call", index)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapIndirectOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 3 {
+					t.Fatal("imported table64 indirect index did not trap", index, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 2 {
+					t.Fatal("imported table64 indirect trap changed storage", index)
+				}
+			}
+			checkTrap(0) // The imported table is still null before the producer seeds it.
+			for index := uint64(0); index < 2; index++ {
+				if got, err := producer.Invoke("call", index); err != nil || !slices.Equal(got, []uint64{7}) {
+					t.Fatal("imported table64 indirect producer seed", index, got, err)
+				}
+			}
+			before := slices.Clone(table.desc)
+			for index := uint64(0); index < 2; index++ {
+				if got, err := consumer.Invoke("call", index); err != nil || !slices.Equal(got, []uint64{7}) {
+					t.Fatal("imported table64 indirect call", index, got, err)
+				}
+			}
+			for _, index := range []uint64{2, 1 << 32, ^uint64(0)} {
+				checkTrap(index)
+				if got, err := consumer.Invoke("call", 0); err != nil || !slices.Equal(got, []uint64{7}) {
+					t.Fatal("imported table64 indirect after trap", index, got, err)
+				}
+			}
+			if !slices.Equal(table.desc, before) {
+				t.Fatal("imported table64 indirect calls changed storage")
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := consumer.Invoke("call", 0); err != nil || !slices.Equal(got, []uint64{7}) {
+				t.Fatal("imported table64 indirect after producer close", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64Grow(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			producerCode := rv64TableStageCompile(t, "imported-table64-grow-producer", rv64Table64SizeInstructionSource(), artifact)
+			consumerCode := rv64TableStageCompile(t, "imported-table64-grow-consumer", rv64ImportedTable64GrowInstructionSource(), artifact)
+			view := consumerCode.executionView()
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+				t.Fatal("imported table64.grow metadata contract")
+			}
+			producer, err := Instantiate(producerCode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = producer.Close() })
+			table, err := producer.ExportedTable("table")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			consumer, err := Instantiate(consumerCode, NewImports().Table("env", "table", table))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = consumer.Close() })
+			for _, step := range []struct {
+				delta, old uint64
+				size       int
+			}{
+				{1 << 32, ^uint64(0), 2},
+				{1, 2, 3},
+				{1, 3, 4},
+				{1, ^uint64(0), 4},
+				{^uint64(0), ^uint64(0), 4},
+			} {
+				got, err := consumer.Invoke("grow", step.delta)
+				if err != nil || !slices.Equal(got, []uint64{step.old}) || table.Size() != step.size {
+					t.Fatal("imported table64.grow", step, got, table.Size(), err)
+				}
+				if got, err := producer.Invoke("size"); err != nil || !slices.Equal(got, []uint64{uint64(step.size)}) {
+					t.Fatal("provider did not observe imported table64.grow", step, got, err)
+				}
+			}
+			for index := uint64(2); index < 4; index++ {
+				if null, err := table.EntryIsNull(index); err != nil || !null {
+					t.Fatal("imported table64.grow nonnull row", index, null, err)
+				}
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := consumer.Invoke("grow", 0); err != nil || !slices.Equal(got, []uint64{4}) {
+				t.Fatal("imported table64.grow after producer close", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64Fill(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			producerCode := rv64TableStageCompile(t, "imported-table64-fill-producer", rv64Table64IndirectInstructionSource(), artifact)
+			consumerCode := rv64TableStageCompile(t, "imported-table64-fill-consumer", rv64ImportedTable64FillInstructionSource(), artifact)
+			view := consumerCode.executionView()
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) || view.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
+				t.Fatal("imported table64.fill metadata contract")
+			}
+			producer, err := Instantiate(producerCode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = producer.Close() })
+			table, err := producer.ExportedTable("table")
+			if err != nil || table.Size() != 2 {
+				t.Fatal("imported table64.fill producer table", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			for index := uint64(0); index < 2; index++ {
+				if got, err := producer.Invoke("call", index); err != nil || !slices.Equal(got, []uint64{7}) {
+					t.Fatal("imported table64.fill producer row", index, got, err)
+				}
+			}
+			consumer, err := Instantiate(consumerCode, NewImports().Table("env", "table", table))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = consumer.Close() })
+			if got, err := consumer.Invoke("fill", 0, 2); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("imported table64.fill did not clear shared rows", got, err)
+			}
+			for index := uint64(0); index < 2; index++ {
+				if null, err := table.EntryIsNull(index); err != nil || !null {
+					t.Fatal("imported table64.fill shared row remained nonnull", index, null, err)
+				}
+			}
+			if got, err := consumer.Invoke("fill", 2, 0); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("imported table64.fill exact-end zero range", got, err)
+			}
+			// Reinstall a genuine canonical producer descriptor so any partial
+			// null write on a failing range is observable byte-for-byte.
+			if got, err := producer.Invoke("call", 1); err != nil || !slices.Equal(got, []uint64{7}) {
+				t.Fatal("imported table64.fill producer reseed", got, err)
+			}
+			if null, err := table.EntryIsNull(1); err != nil || null {
+				t.Fatal("imported table64.fill reseed remained null", null, err)
+			}
+			before := slices.Clone(table.desc)
+			for _, invalid := range [][2]uint64{{1, 2}, {1 << 32, 0}, {0, 1 << 32}, {^uint64(0), 2}} {
+				got, err := consumer.Invoke("fill", invalid[0], invalid[1])
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 7 {
+					t.Fatal("imported table64.fill range did not trap", invalid, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 2 {
+					t.Fatal("imported table64.fill trap changed storage", invalid)
+				}
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := consumer.Invoke("fill", 1, 1); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("imported table64.fill after producer close", got, err)
+			}
+			if null, err := table.EntryIsNull(1); err != nil || !null {
+				t.Fatal("imported table64.fill retained row remained nonnull", null, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64Copy(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			producerCode := rv64TableStageCompile(t, "imported-table64-copy-producer", rv64Table64IndirectInstructionSource(), artifact)
+			growCode := rv64TableStageCompile(t, "imported-table64-copy-grow", rv64ImportedTable64GrowInstructionSource(), artifact)
+			nullerCode := rv64TableStageCompile(t, "imported-table64-copy-nuller", rv64ImportedTable64GetSetInstructionSource(), artifact)
+			consumerCode := rv64TableStageCompile(t, "imported-table64-copy-consumer", rv64ImportedTable64CopyInstructionSource(), artifact)
+			view := consumerCode.executionView()
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+				t.Fatal("imported table64.copy metadata contract")
+			}
+			producer, err := Instantiate(producerCode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = producer.Close() })
+			table, err := producer.ExportedTable("table")
+			if err != nil || table.Size() != 2 {
+				t.Fatal("imported table64.copy producer table", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			for index := uint64(0); index < 2; index++ {
+				if got, err := producer.Invoke("call", index); err != nil || !slices.Equal(got, []uint64{7}) {
+					t.Fatal("imported table64.copy producer row", index, got, err)
+				}
+			}
+			imports := NewImports().Table("env", "table", table)
+			grower, err := Instantiate(growCode, imports)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = grower.Close() })
+			if got, err := grower.Invoke("grow", 2); err != nil || !slices.Equal(got, []uint64{2}) || table.Size() != 4 {
+				t.Fatal("imported table64.copy setup grow", got, table.Size(), err)
+			}
+			nuller, err := Instantiate(nullerCode, imports)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = nuller.Close() })
+			consumer, err := Instantiate(consumerCode, imports)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = consumer.Close() })
+			invoke := func(dst, src, count uint64) {
+				t.Helper()
+				if got, err := consumer.Invoke("copy", dst, src, count); err != nil || !slices.Equal(got, []uint64{1}) {
+					t.Fatal("imported table64.copy", dst, src, count, got, err)
+				}
+			}
+			seedPattern := func() {
+				t.Helper()
+				for _, index := range []uint64{0, 2} {
+					if got, err := producer.Invoke("call", index); err != nil || !slices.Equal(got, []uint64{7}) {
+						t.Fatal("imported table64.copy pattern seed", index, got, err)
+					}
+				}
+				for _, index := range []uint64{1, 3} {
+					if got, err := nuller.Invoke("roundtrip", index); err != nil || !slices.Equal(got, []uint64{1}) {
+						t.Fatal("imported table64.copy pattern null", index, got, err)
+					}
+				}
+				for index, wantNull := range []bool{false, true, false, true} {
+					if null, err := table.EntryIsNull(uint64(index)); err != nil || null != wantNull {
+						t.Fatal("imported table64.copy seed pattern", index, null, wantNull, err)
+					}
+				}
+			}
+			seedPattern()
+			expected := slices.Clone(table.desc)
+			copy(expected[8+coreruntime.TableEntryBytes:8+4*coreruntime.TableEntryBytes], expected[8:8+3*coreruntime.TableEntryBytes])
+			invoke(1, 0, 3)
+			if !slices.Equal(table.desc, expected) {
+				t.Fatal("imported table64.copy backward overlap differs from memmove oracle")
+			}
+			seedPattern()
+			expected = slices.Clone(table.desc)
+			copy(expected[8:8+3*coreruntime.TableEntryBytes], expected[8+coreruntime.TableEntryBytes:8+4*coreruntime.TableEntryBytes])
+			invoke(0, 1, 3)
+			if !slices.Equal(table.desc, expected) {
+				t.Fatal("imported table64.copy forward overlap differs from memmove oracle")
+			}
+			invoke(4, 4, 0)
+			seedPattern()
+			before := slices.Clone(table.desc)
+			for _, invalid := range [][3]uint64{{3, 0, 2}, {0, 3, 2}, {1 << 32, 0, 0}, {0, 1 << 32, 0}, {0, 0, 1 << 32}, {^uint64(0), 0, 2}, {0, ^uint64(0), 2}} {
+				got, err := consumer.Invoke("copy", invalid[0], invalid[1], invalid[2])
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 7 {
+					t.Fatal("imported table64.copy range did not trap", invalid, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 4 {
+					t.Fatal("imported table64.copy trap changed storage", invalid)
+				}
+			}
+			if got, err := nuller.Invoke("roundtrip", 0); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("imported table64.copy lifetime setup", got, err)
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			invoke(0, 2, 1)
+			if null, err := table.EntryIsNull(0); err != nil || null {
+				t.Fatal("imported table64.copy after producer close remained null", null, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64InitDrop(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			producerCode := rv64TableStageCompile(t, "imported-table64-init-drop-producer", rv64Table64IndirectInstructionSource(), artifact)
+			consumerCode := rv64TableStageCompile(t, "imported-table64-init-drop-consumer", rv64ImportedTable64InitDropInstructionSource(), artifact)
+			view := consumerCode.executionView()
+			if view.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(view) || !view.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+				t.Fatal("imported table64.init/drop metadata contract")
+			}
+			producer, err := Instantiate(producerCode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = producer.Close() })
+			table, err := producer.ExportedTable("table")
+			if err != nil || table.Size() != 2 {
+				t.Fatal("imported table64.init/drop producer table", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			seed := func() {
+				t.Helper()
+				for index := uint64(0); index < 2; index++ {
+					if got, err := producer.Invoke("call", index); err != nil || !slices.Equal(got, []uint64{7}) {
+						t.Fatal("imported table64.init/drop producer row", index, got, err)
+					}
+				}
+			}
+			seed()
+			consumer, err := Instantiate(consumerCode, NewImports().Table("env", "table", table))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = consumer.Close() })
+			invokeInit := func(dst, src, count uint64) {
+				t.Helper()
+				if got, err := consumer.Invoke("init", dst, src, count); err != nil || !slices.Equal(got, []uint64{1}) {
+					t.Fatal("imported table64.init", dst, src, count, got, err)
+				}
+			}
+			invokeInit(1, 0, 1)
+			if null, err := table.EntryIsNull(1); err != nil || !null {
+				t.Fatal("imported table64.init did not copy null", null, err)
+			}
+			if got, err := producer.Invoke("call", 1); err != nil || !slices.Equal(got, []uint64{7}) {
+				t.Fatal("imported table64.init dirty-carrier reseed", got, err)
+			}
+			invokeInit(0, 0xfeedface00000000, 0xdeadbeef00000001)
+			if null, err := table.EntryIsNull(0); err != nil || !null {
+				t.Fatal("imported table64.init did not zero-normalize i32 carriers", null, err)
+			}
+			seed()
+			before := slices.Clone(table.desc)
+			for _, invalid := range [][3]uint64{{1 << 32, 0, 0}, {0, 1, 1}, {0, 0, 2}, {^uint64(0), 0, 2}} {
+				got, err := consumer.Invoke("init", invalid[0], invalid[1], invalid[2])
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 7 {
+					t.Fatal("imported table64.init range did not trap", invalid, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 2 {
+					t.Fatal("imported table64.init trap changed storage", invalid)
+				}
+			}
+			if err := producerCode.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := producer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			invokeInit(0, 0, 1)
+			if null, err := table.EntryIsNull(0); err != nil || !null {
+				t.Fatal("imported table64.init after producer close remained nonnull", null, err)
+			}
+			before = slices.Clone(table.desc)
+			for attempt := 0; attempt < 2; attempt++ {
+				if got, err := consumer.Invoke("drop"); err != nil || !slices.Equal(got, []uint64{1}) || !slices.Equal(table.desc, before) {
+					t.Fatal("imported table64.elem.drop repeat", attempt, got, err)
+				}
+			}
+			invokeInit(2, 0, 0)
+			got, err := consumer.Invoke("init", 1, 0, 1)
+			var trap *coreruntime.TrapError
+			if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || !slices.Equal(table.desc, before) {
+				t.Fatal("imported table64.init used dropped segment", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64Grow(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-table64-grow", rv64Table64GrowInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+				t.Fatal("table64.grow metadata contract")
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table, err := in.ExportedTable("table")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			for _, step := range []struct {
+				delta, old uint64
+				size       int
+			}{
+				{^uint64(0), ^uint64(0), 2},
+				{1, 2, 3},
+				{1, 3, 4},
+				{1, ^uint64(0), 4},
+				{1 << 32, ^uint64(0), 4},
+			} {
+				got, err := in.Invoke("grow", step.delta)
+				if err != nil || !slices.Equal(got, []uint64{step.old}) || table.Size() != step.size {
+					t.Fatal("table64.grow", step, got, table.Size(), err)
+				}
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64GetSet(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-table64-get-set", rv64Table64GetSetInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) {
+				t.Fatal("table64 get/set metadata contract")
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table, err := in.ExportedTable("table")
+			if err != nil || table.Size() != 2 {
+				t.Fatal("table64 get/set export", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			for _, index := range []uint64{0, 1} {
+				if got, err := in.Invoke("roundtrip", index); err != nil || !slices.Equal(got, []uint64{1}) {
+					t.Fatal("table64 get/set", index, got, err)
+				}
+			}
+			before := slices.Clone(table.desc)
+			for _, index := range []uint64{2, 1 << 32, ^uint64(0)} {
+				got, err := in.Invoke("roundtrip", index)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 5 {
+					t.Fatal("table64 get/set index did not trap", index, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 2 {
+					t.Fatal("table64 get/set trap changed storage", index)
+				}
+			}
+			if got, err := in.Invoke("roundtrip", 0); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("table64 get/set reuse after trap", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64Indirect(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-table64-indirect", rv64Table64IndirectInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+				t.Fatalf("table64 indirect-call metadata contract: witness=%d qualified=%v features=%#x funcs=%+v refs=%v descs=%v typeids=%v elems=%+v passive=%+v", c.nativeTable64ABI, rv64OwnedTable64Indirect(c), c.requiredFeatures, c.Funcs, c.nativeReferenceFunctionABI, c.NeedsFuncRefDescs, c.FuncTypeID, c.Elems, c.passiveElems)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table, err := in.ExportedTable("table")
+			if err != nil || table.Size() != 2 {
+				t.Fatal("table64 indirect-call export", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			for _, index := range []uint64{0, 1} {
+				if got, err := in.Invoke("call", index); err != nil || !slices.Equal(got, []uint64{7}) {
+					t.Fatal("table64 indirect call", index, got, err)
+				}
+			}
+			before := slices.Clone(table.desc)
+			for _, index := range []uint64{2, 1 << 32, ^uint64(0)} {
+				got, err := in.Invoke("call", index)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 1 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 5 {
+					t.Fatal("table64 indirect index did not trap", index, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 2 {
+					t.Fatal("table64 indirect trap changed storage", index)
+				}
+			}
+			if got, err := in.Invoke("call", 0); err != nil || !slices.Equal(got, []uint64{7}) {
+				t.Fatal("table64 indirect reuse after trap", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64Indirect(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-two-table64-indirect", rv64TwoTable64IndirectInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+				t.Fatalf("indexed table64 indirect metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64Indirect(c), c.tableCount(), c.requiredFeatures)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table0, err := in.ExportedTable("table0")
+			if err != nil || table0.Size() != 2 {
+				t.Fatal("indexed table64 indirect table 0", table0, err)
+			}
+			t.Cleanup(func() { _ = table0.Close() })
+			table1, err := in.ExportedTable("table1")
+			if err != nil || table1.Size() != 3 || table1 == table0 {
+				t.Fatal("indexed table64 indirect table 1", table1, err)
+			}
+			t.Cleanup(func() { _ = table1.Close() })
+			for _, tc := range []struct {
+				name  string
+				index uint64
+				other *Table
+			}{{"call1", 0, table0}, {"call1", 1, table0}, {"call1", 2, table0}, {"call0", 0, table1}, {"call0", 1, table1}} {
+				other := slices.Clone(tc.other.desc)
+				if got, err := in.Invoke(tc.name, tc.index); err != nil || !slices.Equal(got, []uint64{7}) || !slices.Equal(tc.other.desc, other) {
+					t.Fatal("indexed table64 indirect call/isolation", tc.name, tc.index, got, err)
+				}
+			}
+			before0, before1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			for _, tc := range []struct {
+				name     string
+				function uint32
+				index    uint64
+			}{{"call0", 1, 2}, {"call1", 2, 3}, {"call0", 1, 1 << 32}, {"call1", 2, ^uint64(0)}} {
+				got, err := in.Invoke(tc.name, tc.index)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != tc.function || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 5 {
+					t.Fatal("indexed table64 indirect index did not trap", tc, got, err)
+				}
+				if !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+					t.Fatal("indexed table64 indirect trap changed storage", tc)
+				}
+			}
+			if got, err := in.Invoke("call1", 0); err != nil || !slices.Equal(got, []uint64{7}) {
+				t.Fatal("indexed table64 indirect reuse after trap", got, err)
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64Fill(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-table64-fill", rv64Table64FillInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes) || c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
+				t.Fatalf("table64.fill metadata contract: witness=%d qualified=%v features=%#x funcs=%+v refs=%v descs=%v", c.nativeTable64ABI, rv64OwnedTable64Fill(c), c.requiredFeatures, c.Funcs, c.nativeReferenceFunctionABI, c.NeedsFuncRefDescs)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table, err := in.ExportedTable("table")
+			if err != nil || table.Size() != 4 {
+				t.Fatal("table64.fill export", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			if len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("table64.fill missing canonical local descriptor")
+			}
+			row := in.funcRefDescs[coreruntime.FuncRefDescBytes : coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			for i := uint64(0); i < 4; i++ {
+				copy(table.desc[8+int(i)*coreruntime.TableEntryBytes:], row)
+			}
+			expected := slices.Clone(table.desc)
+			clear(expected[8+coreruntime.TableEntryBytes : 8+3*coreruntime.TableEntryBytes])
+			if got, err := in.Invoke("fill", 1, 2); err != nil || !slices.Equal(got, []uint64{1}) || !slices.Equal(table.desc, expected) {
+				t.Fatal("table64.fill did not clear exact canonical rows", got, err)
+			}
+			if got, err := in.Invoke("fill", 4, 0); err != nil || !slices.Equal(got, []uint64{1}) || !slices.Equal(table.desc, expected) {
+				t.Fatal("table64.fill exact-end zero range", got, err)
+			}
+			for i, wantNull := range []bool{false, true, true, false} {
+				if null, err := table.EntryIsNull(uint64(i)); err != nil || null != wantNull {
+					t.Fatal("table64.fill entry state", i, null, wantNull, err)
+				}
+			}
+			before := slices.Clone(table.desc)
+			for _, invalid := range [][2]uint64{{3, 2}, {1 << 32, 0}, {0, 1 << 32}, {^uint64(0), 2}} {
+				got, err := in.Invoke("fill", invalid[0], invalid[1])
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 7 {
+					t.Fatal("table64.fill range did not trap", invalid, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 4 {
+					t.Fatal("table64.fill trap changed storage", invalid)
+				}
+			}
+			if got, err := in.Invoke("fill", 0, 1); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("table64.fill reuse after trap", got, err)
+			}
+			if null, err := table.EntryIsNull(0); err != nil || !null {
+				t.Fatal("table64.fill reuse did not clear row zero", null, err)
+			}
+			if got, err := in.Invoke("fill", 3, 1); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("table64.fill final cleanup", got, err)
+			}
+			for i := uint64(0); i < 4; i++ {
+				if null, err := table.EntryIsNull(i); err != nil || !null {
+					t.Fatal("table64.fill final null entry", i, null, err)
+				}
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64FillArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-table64-fill-admission", rv64Table64FillInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"indirect-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64IndirectABI
+		},
+		"first-param":  func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"second-param": func(v *Compiled) { v.Funcs[0].Params[1] = ValI32 },
+		"result":       func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"missing-ref":  func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"no-max":       func(v *Compiled) { v.TableHasMax = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 12)
+		},
+		"extra-function": func(v *Compiled) { v.Funcs = append(v.Funcs, FuncSig{}) },
+		"element":        func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"table32":        func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid table64.fill metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid table64.fill artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64Copy(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-table64-copy", rv64Table64CopyInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+				t.Fatalf("table64.copy metadata contract: witness=%d qualified=%v features=%#x funcs=%+v", c.nativeTable64ABI, rv64OwnedTable64Copy(c), c.requiredFeatures, c.Funcs)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table, err := in.ExportedTable("table")
+			if err != nil || table.Size() != 5 || len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("table64.copy export/descriptor", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			row := in.funcRefDescs[coreruntime.FuncRefDescBytes : coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			seed := func() []byte {
+				clear(table.desc[8:])
+				for _, i := range []int{0, 2, 4} {
+					copy(table.desc[8+i*coreruntime.TableEntryBytes:], row)
+				}
+				return slices.Clone(table.desc)
+			}
+			invoke := func(dst, src, count uint64) {
+				t.Helper()
+				if got, err := in.Invoke("copy", dst, src, count); err != nil || !slices.Equal(got, []uint64{1}) {
+					t.Fatal("table64.copy valid range", dst, src, count, got, err)
+				}
+			}
+			original := seed()
+			want := slices.Clone(original)
+			copy(want[8+coreruntime.TableEntryBytes:], want[8:8+4*coreruntime.TableEntryBytes])
+			invoke(1, 0, 4)
+			if !slices.Equal(table.desc, want) {
+				t.Fatal("table64.copy backwards overlap")
+			}
+			original = seed()
+			want = slices.Clone(original)
+			copy(want[8:8+4*coreruntime.TableEntryBytes], want[8+coreruntime.TableEntryBytes:])
+			invoke(0, 1, 4)
+			if !slices.Equal(table.desc, want) {
+				t.Fatal("table64.copy forwards overlap")
+			}
+			invoke(5, 5, 0)
+			before := slices.Clone(table.desc)
+			for _, invalid := range [][3]uint64{{4, 0, 2}, {0, 4, 2}, {1 << 32, 0, 0}, {0, 1 << 32, 0}, {0, 0, 1 << 32}, {^uint64(0), 0, 2}, {0, ^uint64(0), 2}} {
+				got, err := in.Invoke("copy", invalid[0], invalid[1], invalid[2])
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 7 {
+					t.Fatal("table64.copy range did not trap", invalid, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 5 {
+					t.Fatal("table64.copy trap changed storage", invalid)
+				}
+			}
+			invoke(0, 1, 1)
+			if slices.Equal(table.desc, before) {
+				t.Fatal("table64.copy reuse after trap did not move row")
+			}
+			clear(table.desc[8:])
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64CopyArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-table64-copy-admission", rv64Table64CopyInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"fill-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64FillABI },
+		"first-param":     func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"second-param":    func(v *Compiled) { v.Funcs[0].Params[1] = ValI32 },
+		"third-param":     func(v *Compiled) { v.Funcs[0].Params[2] = ValI32 },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
+		"no-max":          func(v *Compiled) { v.TableHasMax = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 11)
+		},
+		"extra-function": func(v *Compiled) { v.Funcs = append(v.Funcs, FuncSig{}) },
+		"element":        func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"table32":        func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid table64.copy metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid table64.copy artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64InitDrop(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-table64-init-drop", rv64Table64InitDropInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+				t.Fatalf("table64.init/drop metadata contract: witness=%d qualified=%v features=%#x funcs=%+v elems=%+v passive=%+v values=%+v", c.nativeTable64ABI, rv64OwnedTable64InitDrop(c), c.requiredFeatures, c.Funcs, c.Elems, c.passiveElems, c.ValueTypes)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table, err := in.ExportedTable("table")
+			if err != nil || table.Size() != 4 || len(in.funcRefDescs) < 2*coreruntime.FuncRefDescBytes {
+				t.Fatal("table64.init/drop export/descriptor", table, err)
+			}
+			t.Cleanup(func() { _ = table.Close() })
+			row := in.funcRefDescs[coreruntime.FuncRefDescBytes : coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			for i := 0; i < 4; i++ {
+				copy(table.desc[8+i*coreruntime.TableEntryBytes:], row)
+			}
+			invokeInit := func(dst, src, count uint64) {
+				t.Helper()
+				if got, err := in.Invoke("init", dst, src, count); err != nil || !slices.Equal(got, []uint64{1}) {
+					t.Fatal("table64.init valid range", dst, src, count, got, err)
+				}
+			}
+			invokeInit(1, 0, 1)
+			if null, err := table.EntryIsNull(1); err != nil || !null {
+				t.Fatal("table64.init did not copy null", null, err)
+			}
+			invokeInit(2, 0xfeedface00000000, 0xdeadbeef00000001)
+			if null, err := table.EntryIsNull(2); err != nil || !null {
+				t.Fatal("table64.init did not zero-normalize i32 carriers", null, err)
+			}
+			before := slices.Clone(table.desc)
+			for _, invalid := range [][3]uint64{{1 << 32, 0, 0}, {0, 1, 1}, {0, 0, 2}, {^uint64(0), 0, 2}} {
+				got, err := in.Invoke("init", invalid[0], invalid[1], invalid[2])
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 7 {
+					t.Fatal("table64.init range did not trap", invalid, got, err)
+				}
+				if !slices.Equal(table.desc, before) || table.Size() != 4 {
+					t.Fatal("table64.init trap changed storage", invalid)
+				}
+			}
+			for attempt := 0; attempt < 2; attempt++ {
+				if got, err := in.Invoke("drop"); err != nil || !slices.Equal(got, []uint64{1}) || !slices.Equal(table.desc, before) {
+					t.Fatal("table64.elem.drop repeat", attempt, got, err)
+				}
+			}
+			invokeInit(4, 0, 0)
+			got, err := in.Invoke("init", 0, 0, 1)
+			var trap *coreruntime.TrapError
+			if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || !slices.Equal(table.desc, before) {
+				t.Fatal("table64.init used dropped segment", got, err)
+			}
+			clear(table.desc[8:])
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64InitDrop(t *testing.T) {
+	for _, artifact := range []bool{false, true} {
+		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
+			c := rv64TableStageCompile(t, "owned-two-table64-init-drop", rv64TwoTable64InitDropInstructionSource(), artifact)
+			if c.nativeTable64ABI != nativeTable64NoABI || !rv64ArtifactContractValid(c) || c.tableCount() != 2 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64|CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+				t.Fatalf("indexed table64.init/drop metadata contract: witness=%d qualified=%v tables=%d features=%#x", c.nativeTable64ABI, rv64OwnedTwoTable64InitDrop(c), c.tableCount(), c.requiredFeatures)
+			}
+			in, err := Instantiate(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = in.Close() })
+			table0, err := in.ExportedTable("table0")
+			if err != nil || table0.Size() != 3 {
+				t.Fatal("indexed table64.init table 0", table0, err)
+			}
+			t.Cleanup(func() { _ = table0.Close() })
+			table1, err := in.ExportedTable("table1")
+			if err != nil || table1.Size() != 4 || table1 == table0 {
+				t.Fatal("indexed table64.init table 1", table1, err)
+			}
+			t.Cleanup(func() { _ = table1.Close() })
+			if len(in.funcRefDescs) < 3*coreruntime.FuncRefDescBytes {
+				t.Fatal("indexed table64.init missing canonical local descriptor")
+			}
+			row := in.funcRefDescs[2*coreruntime.FuncRefDescBytes : 2*coreruntime.FuncRefDescBytes+coreruntime.TableEntryBytes]
+			for i := 0; i < 3; i++ {
+				copy(table0.desc[8+i*coreruntime.TableEntryBytes:], row)
+			}
+			for i := 0; i < 4; i++ {
+				copy(table1.desc[8+i*coreruntime.TableEntryBytes:], row)
+			}
+			if got, err := in.Invoke("init0", 1, 0, 1); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("indexed table64.init table 0 valid range", got, err)
+			}
+			if null, err := table0.EntryIsNull(1); err != nil || !null {
+				t.Fatal("indexed table64.init did not clear table 0", null, err)
+			}
+			if got, err := in.Invoke("init1", 2, 0xfeedface00000000, 0xdeadbeef00000001); err != nil || !slices.Equal(got, []uint64{1}) {
+				t.Fatal("indexed table64.init table 1 normalized range", got, err)
+			}
+			if null, err := table1.EntryIsNull(2); err != nil || !null {
+				t.Fatal("indexed table64.init did not clear table 1", null, err)
+			}
+			before0, before1 := slices.Clone(table0.desc), slices.Clone(table1.desc)
+			for _, tc := range []struct {
+				name     string
+				function uint32
+				dst      uint64
+				src      uint64
+				count    uint64
+			}{{"init0", 0, 1 << 32, 0, 0}, {"init0", 0, 3, 0, 1}, {"init1", 1, 4, 0, 1}, {"init1", 1, 0, 1, 1}, {"init1", 1, 0, 0, 2}} {
+				got, err := in.Invoke(tc.name, tc.dst, tc.src, tc.count)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds || len(trap.Frames) == 0 || trap.Frames[0].FunctionIndex != tc.function || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != 7 {
+					t.Fatal("indexed table64.init range did not trap", tc, got, err)
+				}
+				if !slices.Equal(table0.desc, before0) || !slices.Equal(table1.desc, before1) {
+					t.Fatal("indexed table64.init trap changed storage", tc)
+				}
+			}
+			for attempt := 0; attempt < 2; attempt++ {
+				if got, err := in.Invoke("drop"); err != nil || !slices.Equal(got, []uint64{1}) {
+					t.Fatal("indexed table64.elem.drop repeat", attempt, got, err)
+				}
+			}
+			for _, tc := range []struct {
+				name string
+				dst  uint64
+			}{{"init0", 3}, {"init1", 4}} {
+				if got, err := in.Invoke(tc.name, tc.dst, 0, 0); err != nil || !slices.Equal(got, []uint64{1}) {
+					t.Fatal("indexed table64.init dropped zero range", tc, got, err)
+				}
+				got, err := in.Invoke(tc.name, 0, 0, 1)
+				var trap *coreruntime.TrapError
+				if err == nil || got != nil || !errors.As(err, &trap) || trap.Code != coreruntime.TrapTableOutOfBounds {
+					t.Fatal("indexed table64.init used dropped segment", tc, got, err)
+				}
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64InitDropArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-two-table64-init-drop-admission", rv64TwoTable64InitDropInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"missing-table":   func(v *Compiled) { v.extraTables = nil },
+		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
+		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
+		"second-dest":     func(v *Compiled) { v.Funcs[1].Params[0] = ValI32 },
+		"drop-result":     func(v *Compiled) { v.Funcs[2].Results[0] = ValI64 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
+		"function-export": func(v *Compiled) { v.Exports["init1"] = 0 },
+		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
+		"active-element":  func(v *Compiled) { v.passiveElems[0].Mode = ElemModeActive },
+		"nonnull-element": func(v *Compiled) { v.passiveElems[0].Values[0].Null = false },
+		"defined-element-type": func(v *Compiled) {
+			exact := v.ValueTypes[v.passiveElems[0].ValueTypeIndex]
+			exact.Ref.Heap.Defined = true
+			v.ValueTypes = append(v.ValueTypes, exact)
+			v.passiveElems[0].ValueTypeIndex = uint32(len(v.ValueTypes) - 1)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.extraTables = slices.Clone(bad.extraTables)
+			bad.ValueTypes = slices.Clone(bad.ValueTypes)
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.tableExports = maps.Clone(bad.tableExports)
+			bad.passiveElems = slices.Clone(bad.passiveElems)
+			bad.passiveElems[0].Values = slices.Clone(bad.passiveElems[0].Values)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid indexed table64.init/drop metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if name == "missing-ref" || name == "missing-bulk" {
+				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+					t.Fatal("serialization did not restore structural indexed element features", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("invalid indexed table64.init/drop artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64InitDropArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-table64-init-drop-admission", rv64Table64InitDropInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"copy-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64CopyABI },
+		"dest-param":      func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"source-param":    func(v *Compiled) { v.Funcs[0].Params[1] = ValI64 },
+		"count-param":     func(v *Compiled) { v.Funcs[0].Params[2] = ValI64 },
+		"drop-result":     func(v *Compiled) { v.Funcs[1].Results[0] = ValI64 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
+		"no-max":          func(v *Compiled) { v.TableHasMax = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 10)
+		},
+		"extra-function": func(v *Compiled) { v.Funcs = append(v.Funcs, FuncSig{}) },
+		"active-element": func(v *Compiled) { v.passiveElems[0].Mode = ElemModeActive },
+		"nonnull-element": func(v *Compiled) {
+			v.passiveElems[0].Values[0].Null = false
+		},
+		"table32": func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.passiveElems = slices.Clone(bad.passiveElems)
+			bad.passiveElems[0].Values = slices.Clone(bad.passiveElems[0].Values)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid table64.init/drop metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if name == "missing-ref" || name == "missing-bulk" {
+				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+					t.Fatal("serialization did not restore structural element features", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("invalid table64.init/drop artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64IndirectArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-two-table64-indirect-admission", rv64TwoTable64IndirectInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness":  func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"missing-table":    func(v *Compiled) { v.extraTables = nil },
+		"second-table32":   func(v *Compiled) { v.extraTables[0].Addr64 = false },
+		"second-no-max":    func(v *Compiled) { v.extraTables[0].HasMax = false },
+		"target-result":    func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"second-param":     func(v *Compiled) { v.Funcs[2].Params[0] = ValI32 },
+		"missing-ref":      func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"missing-bulk":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
+		"spurious-private": func(v *Compiled) { v.nativeReferenceFunctionABI = true },
+		"missing-descs":    func(v *Compiled) { v.NeedsFuncRefDescs = false },
+		"missing-key":      func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:2] },
+		"wrong-key":        func(v *Compiled) { v.FuncTypeID[2] ^= 1 },
+		"function-export":  func(v *Compiled) { v.Exports["call1"] = 1 },
+		"table-export":     func(v *Compiled) { v.tableExports["table1"] = 0 },
+		"active-element":   func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.extraTables = slices.Clone(bad.extraTables)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.tableExports = maps.Clone(bad.tableExports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid indexed table64 indirect metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if name == "missing-ref" {
+				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+					t.Fatal("serialization did not restore structural indexed indirect reference feature", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("invalid indexed table64 indirect artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64IndirectArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-table64-indirect-admission", rv64Table64IndirectInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness":  func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"getset-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64GetSetABI },
+		"target-result":    func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"caller-param":     func(v *Compiled) { v.Funcs[1].Params[0] = ValI32 },
+		"missing-ref":      func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"spurious-private": func(v *Compiled) { v.nativeReferenceFunctionABI = true },
+		"missing-descs":    func(v *Compiled) { v.NeedsFuncRefDescs = false },
+		"no-max":           func(v *Compiled) { v.TableHasMax = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 13)
+		},
+		"extra-function": func(v *Compiled) { v.Funcs = append(v.Funcs, FuncSig{}) },
+		"active-element": func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"table32":        func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid table64 indirect metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid table64 indirect artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64IndirectArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "imported-table64-indirect-admission", rv64ImportedTable64IndirectInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness":  func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"size-witness":     func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedSizeABI },
+		"missing-import":   func(v *Compiled) { v.tableImport = "" },
+		"missing-max":      func(v *Compiled) { v.tableImportHasMax = false },
+		"minimum":          func(v *Compiled) { v.tableImportMin = 1025 },
+		"maximum":          func(v *Compiled) { v.tableImportMax = 1025 },
+		"caller-param":     func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"caller-result":    func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"missing-descs":    func(v *Compiled) { v.NeedsFuncRefDescs = false },
+		"missing-type-key": func(v *Compiled) { v.FuncTypeID = nil },
+		"spurious-private": func(v *Compiled) { v.nativeReferenceFunctionABI = true },
+		"extra-function":   func(v *Compiled) { v.Funcs = append(v.Funcs, FuncSig{}) },
+		"element":          func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"table32":          func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid imported table64 indirect metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid imported table64 indirect artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64GetSetArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-table64-get-set-admission", rv64Table64GetSetInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"grow-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64GrowABI },
+		"param":           func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"no-max":          func(v *Compiled) { v.TableHasMax = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 14)
+		},
+		"extra-function": func(v *Compiled) {
+			v.Funcs = append(v.Funcs, FuncSig{})
+		},
+		"element": func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"table32": func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid table64 get/set metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid table64 get/set artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64GrowArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-table64-grow-admission", rv64Table64GrowInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"size-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64SizeABI },
+		"param":           func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI32 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"no-max":          func(v *Compiled) { v.TableHasMax = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 15)
+		},
+		"extra-function": func(v *Compiled) {
+			v.Funcs = append(v.Funcs, FuncSig{})
+		},
+		"element": func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"table32": func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid table64.grow metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid table64.grow artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTable64SizeArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-table64-size-admission", rv64Table64SizeInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI32 },
+		"export":          func(v *Compiled) { v.Exports["size"] = 1 },
+		"extra-function": func(v *Compiled) {
+			v.Funcs = append(v.Funcs, FuncSig{})
+		},
+		"element": func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"table32": func(v *Compiled) { v.TableAddr64 = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid table64.size metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid table64.size artifact admitted")
+			}
+		})
+	}
+
+	relabelled := rv64TableStageCompile(t, "ordinary-table32-i64", rv64RelabelledTable32FunctionSource(), false)
+	if relabelled.nativeTable64ABI != nativeTable64NoABI {
+		t.Fatal("ordinary table32 function acquired table64.size compiler witness")
+	}
+	bad := *relabelled.executionView()
+	bad.TableAddr64 = true
+	bad.requiredFeatures |= CoreFeatureTable64
+	if err := bad.validate(); err == nil {
+		t.Fatal("ordinary table32 function relabelled as table64.size")
+	}
+	blob, err := marshalCompiled(&bad)
+	if err == nil {
+		loaded, loadErr := LoadTrustedArtifact(blob)
+		if loaded != nil {
+			_ = loaded.Close()
+		}
+		if loadErr == nil {
+			t.Fatal("ordinary table32 artifact relabelled as table64.size")
+		}
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64SizeArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-two-table64-size-admission", rv64TwoTable64SizeInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"missing-table":   func(v *Compiled) { v.extraTables = nil },
+		"first-table32":   func(v *Compiled) { v.TableAddr64 = false },
+		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
+		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
+		"second-initializer": func(v *Compiled) {
+			v.extraTables[0].HasInitFunc = true
+			v.extraTables[0].InitFunc = 1
+		},
+		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
+		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
+		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI32 },
+		"function-export": func(v *Compiled) { v.Exports["size1"] = 0 },
+		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
+		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.extraTables = slices.Clone(bad.extraTables)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.tableExports = maps.Clone(bad.tableExports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid two-table64.size metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid two-table64.size artifact admitted")
+			}
+		})
+	}
+
+	inactive := *c.executionView()
+	inactive.extraTables = slices.Clone(inactive.extraTables)
+	inactive.extraTables[0].InitFunc = 1
+	if err := inactive.validate(); err != nil {
+		t.Fatal("inactive table initializer payload", err)
+	}
+	blob, err := marshalCompiled(&inactive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadTrustedArtifact(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loaded.Close()
+	if loaded.extraTables[0].HasInitFunc || loaded.extraTables[0].InitFunc != 0 {
+		t.Fatal("inactive table initializer was not canonicalized")
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64GetSetArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-two-table64-get-set-admission", rv64TwoTable64GetSetInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"missing-table":   func(v *Compiled) { v.extraTables = nil },
+		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
+		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
+		"second-initializer": func(v *Compiled) {
+			v.extraTables[0].HasInitFunc = true
+			v.extraTables[0].InitFunc = 1
+		},
+		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
+		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
+		"second-param":    func(v *Compiled) { v.Funcs[1].Params[0] = ValI32 },
+		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI64 },
+		"function-export": func(v *Compiled) { v.Exports["roundtrip1"] = 0 },
+		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
+		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.extraTables = slices.Clone(bad.extraTables)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.tableExports = maps.Clone(bad.tableExports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid two-table64 get/set metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid two-table64 get/set artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64GrowArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-two-table64-grow-admission", rv64TwoTable64GrowInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"missing-table":   func(v *Compiled) { v.extraTables = nil },
+		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
+		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
+		"second-initializer": func(v *Compiled) {
+			v.extraTables[0].HasInitFunc = true
+			v.extraTables[0].InitFunc = 1
+		},
+		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
+		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
+		"second-param":    func(v *Compiled) { v.Funcs[1].Params[0] = ValI32 },
+		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI32 },
+		"function-export": func(v *Compiled) { v.Exports["grow1"] = 0 },
+		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
+		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.extraTables = slices.Clone(bad.extraTables)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.tableExports = maps.Clone(bad.tableExports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid two-table64 grow metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid two-table64 grow artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64FillArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-two-table64-fill-admission", rv64TwoTable64FillInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"missing-table":   func(v *Compiled) { v.extraTables = nil },
+		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
+		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
+		"second-initializer": func(v *Compiled) {
+			v.extraTables[0].HasInitFunc = true
+			v.extraTables[0].InitFunc = 1
+		},
+		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
+		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
+		"second-param":    func(v *Compiled) { v.Funcs[1].Params[1] = ValI32 },
+		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI64 },
+		"function-export": func(v *Compiled) { v.Exports["fill1"] = 0 },
+		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
+		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.extraTables = slices.Clone(bad.extraTables)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.tableExports = maps.Clone(bad.tableExports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid two-table64 fill metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid two-table64 fill artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64CopyArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-two-table64-copy-admission", rv64TwoTable64CopyInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"missing-table":   func(v *Compiled) { v.extraTables = nil },
+		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
+		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
+		"second-initializer": func(v *Compiled) {
+			v.extraTables[0].HasInitFunc = true
+			v.extraTables[0].InitFunc = 1
+		},
+		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
+		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
+		"second-param":    func(v *Compiled) { v.Funcs[1].Params[2] = ValI32 },
+		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI64 },
+		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
+		"function-export": func(v *Compiled) { v.Exports["copy1"] = 0 },
+		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
+		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.extraTables = slices.Clone(bad.extraTables)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.tableExports = maps.Clone(bad.tableExports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid two-table64 copy metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid two-table64 copy artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicOwnedTwoTable64CrossCopyArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "owned-two-table64-cross-copy-admission", rv64TwoTable64CrossCopyInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"missing-table":   func(v *Compiled) { v.extraTables = nil },
+		"second-table32":  func(v *Compiled) { v.extraTables[0].Addr64 = false },
+		"second-no-max":   func(v *Compiled) { v.extraTables[0].HasMax = false },
+		"missing-key":     func(v *Compiled) { v.FuncTypeID = v.FuncTypeID[:1] },
+		"wrong-key":       func(v *Compiled) { v.FuncTypeID[1] ^= 1 },
+		"second-param":    func(v *Compiled) { v.Funcs[1].Params[1] = ValI32 },
+		"second-result":   func(v *Compiled) { v.Funcs[1].Results[0] = ValI64 },
+		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
+		"function-export": func(v *Compiled) { v.Exports["copy10"] = 0 },
+		"table-export":    func(v *Compiled) { v.tableExports["table1"] = 0 },
+		"element":         func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.extraTables = slices.Clone(bad.extraTables)
+			bad.FuncTypeID = slices.Clone(bad.FuncTypeID)
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.tableExports = maps.Clone(bad.tableExports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid cross-table64 copy metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid cross-table64 copy artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64SizeArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "imported-table64-size-admission", rv64ImportedTable64SizeInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"owned-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64SizeABI },
+		"missing-import":  func(v *Compiled) { v.tableImport = "" },
+		"missing-max":     func(v *Compiled) { v.tableImportHasMax = false },
+		"minimum":         func(v *Compiled) { v.tableImportMin = 1025 },
+		"maximum":         func(v *Compiled) { v.tableImportMax = 1025 },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI32 },
+		"export":          func(v *Compiled) { v.Exports["size"] = 1 },
+		"table32":         func(v *Compiled) { v.TableAddr64 = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 9)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid imported table64.size metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid imported table64.size artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64GetSetArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "imported-table64-getset-admission", rv64ImportedTable64GetSetInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"owned-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64GetSetABI },
+		"size-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedSizeABI },
+		"missing-import":  func(v *Compiled) { v.tableImport = "" },
+		"missing-max":     func(v *Compiled) { v.tableImportHasMax = false },
+		"minimum":         func(v *Compiled) { v.tableImportMin = 1025 },
+		"maximum":         func(v *Compiled) { v.tableImportMax = 1025 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"param":           func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"export":          func(v *Compiled) { v.Exports["roundtrip"] = 1 },
+		"table32":         func(v *Compiled) { v.TableAddr64 = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 8)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid imported table64.get/set metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid imported table64.get/set artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64GrowArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "imported-table64-grow-admission", rv64ImportedTable64GrowInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"owned-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64GrowABI },
+		"getset-witness":  func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedGetSetABI },
+		"missing-import":  func(v *Compiled) { v.tableImport = "" },
+		"missing-max":     func(v *Compiled) { v.tableImportHasMax = false },
+		"minimum":         func(v *Compiled) { v.tableImportMin = 1025 },
+		"maximum":         func(v *Compiled) { v.tableImportMax = 1025 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"param":           func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI32 },
+		"export":          func(v *Compiled) { v.Exports["grow"] = 1 },
+		"table32":         func(v *Compiled) { v.TableAddr64 = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64Features(1 << 7)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid imported table64.grow metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid imported table64.grow artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64FillArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "imported-table64-fill-admission", rv64ImportedTable64FillInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"owned-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64FillABI },
+		"grow-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedGrowABI },
+		"missing-import":  func(v *Compiled) { v.tableImport = "" },
+		"missing-max":     func(v *Compiled) { v.tableImportHasMax = false },
+		"minimum":         func(v *Compiled) { v.tableImportMin = 1025 },
+		"maximum":         func(v *Compiled) { v.tableImportMax = 1025 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"unexpected-bulk": func(v *Compiled) { v.requiredFeatures |= CoreFeatureBulkMemoryOperations },
+		"first-param":     func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"second-param":    func(v *Compiled) { v.Funcs[0].Params[1] = ValI32 },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"export":          func(v *Compiled) { v.Exports["fill"] = 1 },
+		"table32":         func(v *Compiled) { v.TableAddr64 = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64BMI2
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid imported table64.fill metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid imported table64.fill artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64CopyArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "imported-table64-copy-admission", rv64ImportedTable64CopyInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"owned-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64CopyABI },
+		"fill-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedFillABI },
+		"missing-import":  func(v *Compiled) { v.tableImport = "" },
+		"missing-max":     func(v *Compiled) { v.tableImportHasMax = false },
+		"minimum":         func(v *Compiled) { v.tableImportMin = 1025 },
+		"maximum":         func(v *Compiled) { v.tableImportMax = 1025 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
+		"first-param":     func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"second-param":    func(v *Compiled) { v.Funcs[0].Params[1] = ValI32 },
+		"third-param":     func(v *Compiled) { v.Funcs[0].Params[2] = ValI32 },
+		"result":          func(v *Compiled) { v.Funcs[0].Results[0] = ValI64 },
+		"export":          func(v *Compiled) { v.Exports["copy"] = 1 },
+		"table32":         func(v *Compiled) { v.TableAddr64 = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64BMI1
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			bad.Funcs[0].Params = slices.Clone(bad.Funcs[0].Params)
+			bad.Funcs[0].Results = slices.Clone(bad.Funcs[0].Results)
+			bad.Exports = maps.Clone(bad.Exports)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid imported table64.copy metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if err == nil {
+				t.Fatal("invalid imported table64.copy artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicImportedTable64InitDropArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "imported-table64-init-drop-admission", rv64ImportedTable64InitDropInstructionSource(), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"invalid-witness": func(v *Compiled) { v.nativeTable64ABI = 255 },
+		"owned-witness":   func(v *Compiled) { v.nativeTable64ABI = nativeTable64InitDropABI },
+		"copy-witness":    func(v *Compiled) { v.nativeTable64ABI = nativeTable64ImportedCopyABI },
+		"missing-import":  func(v *Compiled) { v.tableImport = "" },
+		"missing-max":     func(v *Compiled) { v.tableImportHasMax = false },
+		"minimum":         func(v *Compiled) { v.tableImportMin = 1025 },
+		"maximum":         func(v *Compiled) { v.tableImportMax = 1025 },
+		"dest-param":      func(v *Compiled) { v.Funcs[0].Params[0] = ValI32 },
+		"source-param":    func(v *Compiled) { v.Funcs[0].Params[1] = ValI64 },
+		"count-param":     func(v *Compiled) { v.Funcs[0].Params[2] = ValI64 },
+		"drop-result":     func(v *Compiled) { v.Funcs[1].Results[0] = ValI64 },
+		"missing-ref":     func(v *Compiled) { v.requiredFeatures &^= CoreFeatureReferenceTypes },
+		"missing-bulk":    func(v *Compiled) { v.requiredFeatures &^= CoreFeatureBulkMemoryOperations },
+		"active-element":  func(v *Compiled) { v.passiveElems[0].Mode = ElemModeActive },
+		"nonnull-element": func(v *Compiled) { v.passiveElems[0].Values[0].Null = false },
+		"table32":         func(v *Compiled) { v.TableAddr64 = false },
+		"cpu-bit-alias": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64NoABI
+			v.requiredAMD64Features = shared.AMD64AVX2
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Funcs = slices.Clone(bad.Funcs)
+			for i := range bad.Funcs {
+				bad.Funcs[i].Params = slices.Clone(bad.Funcs[i].Params)
+				bad.Funcs[i].Results = slices.Clone(bad.Funcs[i].Results)
+			}
+			bad.Exports = maps.Clone(bad.Exports)
+			bad.passiveElems = slices.Clone(bad.passiveElems)
+			bad.passiveElems[0].Values = slices.Clone(bad.passiveElems[0].Values)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid imported table64.init/drop metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if name == "missing-ref" || name == "missing-bulk" {
+				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) {
+					t.Fatal("serialization did not restore structural imported table64.init/drop features", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("invalid imported table64.init/drop artifact admitted")
+			}
+		})
+	}
+}
+
+func TestRV64PublicStateOnlyTable64SourceGates(t *testing.T) {
+	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") == "load" {
+		t.Skip("source admission only")
+	}
+	source := rv64StateOnlyTable64Source(0, 4, "table")
+	if c, err := NewRuntimeConfig().WithCoreFeatures(platformCoreFeatures() &^ CoreFeatureTable64).Compile(source); c != nil || err == nil {
+		if c != nil {
+			_ = c.Close()
+		}
+		t.Fatal("disabled table64 feature admitted", err)
+	}
+	secondTable := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 0, 4}, []byte{0x70, 0x05, 0, 4})))
+	withMemory := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 0, 4})), wasmtest.Section(5, wasmtest.Vec([]byte{0, 0})))
+	imported := append(append(wasmtest.Name("env"), wasmtest.Name("table")...), byte(wasm.ExternTable), 0x70, 0x05, 0, 4)
+	importedTable := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(imported)))
+	overCapacity := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 0, 0x81, 0x08})))
+	for name, bad := range map[string][]byte{
+		"instruction": rv64Table64UnsupportedInstructionSource(),
+		"grow-no-max": rv64Table64GrowNoMaxSource(),
+		"second":      secondTable,
+		"memory":      withMemory,
+		"imported":    importedTable,
+		"capacity":    overCapacity,
+	} {
+		t.Run(name, func(t *testing.T) {
+			rv64RequireCore3SourceValidation(t, bad)
+		})
+	}
+}
+
+func TestRV64PublicStateOnlyTable64ArtifactGates(t *testing.T) {
+	c := rv64TableStageCompile(t, "state-only-table64-admission", rv64StateOnlyTable64Source(0, 4, "table"), true)
+	for name, mutate := range map[string]func(*Compiled){
+		"missing-feature":            func(v *Compiled) { v.requiredFeatures &^= CoreFeatureTable64 },
+		"contradictory-size-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64SizeABI },
+		"contradictory-grow-witness": func(v *Compiled) { v.nativeTable64ABI = nativeTable64GrowABI },
+		"contradictory-getset-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64GetSetABI
+		},
+		"contradictory-indirect-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64IndirectABI
+		},
+		"contradictory-fill-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64FillABI
+		},
+		"contradictory-copy-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64CopyABI
+		},
+		"contradictory-init-drop-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64InitDropABI
+		},
+		"contradictory-imported-size-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64ImportedSizeABI
+		},
+		"contradictory-imported-getset-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64ImportedGetSetABI
+		},
+		"contradictory-imported-grow-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64ImportedGrowABI
+		},
+		"contradictory-imported-fill-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64ImportedFillABI
+		},
+		"contradictory-imported-copy-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64ImportedCopyABI
+		},
+		"contradictory-imported-init-drop-witness": func(v *Compiled) {
+			v.nativeTable64ABI = nativeTable64ImportedInitDropABI
+		},
+		"table32":     func(v *Compiled) { v.TableAddr64 = false },
+		"start":       func(v *Compiled) { v.HasStart = true },
+		"initializer": func(v *Compiled) { v.HasTableInitFunc = true },
+		"element":     func(v *Compiled) { v.Elems = []ElemInit{{Mode: ElemModeActive}} },
+		"passive":     func(v *Compiled) { v.passiveElems = []ElemInit{{Mode: ElemModePassive}} },
+		"externref":   func(v *Compiled) { v.TableType = ValExternRef },
+		"capacity":    func(v *Compiled) { v.TableMax = 1025 },
+		"extra-table": func(v *Compiled) {
+			v.extraTables = append(slices.Clone(v.extraTables), tableDef{Type: ValFuncRef})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := *c.executionView()
+			bad.Elems = slices.Clone(bad.Elems)
+			bad.passiveElems = slices.Clone(bad.passiveElems)
+			mutate(&bad)
+			if err := bad.validate(); err == nil {
+				t.Fatal("invalid table64 metadata admitted")
+			}
+			blob, err := marshalCompiled(&bad)
+			if err != nil {
+				return
+			}
+			loaded, err := LoadTrustedArtifact(blob)
+			if loaded != nil {
+				_ = loaded.Close()
+			}
+			if name == "missing-feature" {
+				if err != nil || loaded == nil || !loaded.requiredFeatures.IsEnabled(CoreFeatureTable64) {
+					t.Fatal("serialization did not restore structural table64 feature", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("invalid table64 artifact admitted")
+			}
+		})
+	}
+	if c.codeCache.refs != 0 || c.codeCache.mem != nil || c.codeCache.base != 0 || c.codeCache.sealed {
+		t.Fatal("table64 metadata gates reached executable publication")
+	}
+}

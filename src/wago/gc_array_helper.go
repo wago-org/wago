@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	goruntime "runtime"
+	"strconv"
 	"strings"
 	"unsafe"
 
@@ -35,6 +36,12 @@ const (
 	gcArrayCheckUniform        uint32 = 37
 	gcArrayCheckData           uint32 = 38
 	gcArrayCheckFixed          uint32 = 39
+	// 40, 42 and 43 are dead-allocation helpers; 45..47 are RV64 host helpers.
+	gcTableFill     uint32 = 48
+	gcTableCopy     uint32 = 49
+	gcTableGrow     uint32 = 50
+	gcTableInit     uint32 = 51
+	gcTableElemDrop uint32 = 52
 )
 
 func gcArrayElementStorage(kind gc.StorageKind) bool {
@@ -58,6 +65,12 @@ func (in *Instance) dispatchGCHelperParked(ctrl uintptr, helper, safepoint uint3
 }
 
 func (in *Instance) dispatchGCHelperParkedOnStack(ctrl uintptr, helper, safepoint uint32, args, results []uint64, stack *coreruntime.Engine) {
+	if in.dispatchCompactExternStore(ctrl, helper, safepoint, args, results, stack) {
+		return
+	}
+	if dispatchOwnedExceptionHelper(in, ctrl, helper, safepoint, args, results, stack) {
+		return
+	}
 	if helper < gcArrayAllocDefault || helper == gcStructReserveDeadNative || helper == gcStructReserveDeadBatch || helper == gcArrayReserveDeadBatch {
 		in.dispatchGCStructHelperParked(ctrl, helper, safepoint, args, results, stack)
 		return
@@ -73,11 +86,12 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 	if in == nil || in.gc == nil {
 		panic(gcHelperFailuref("gc array helper %d has no live collector", helper))
 	}
+	defer drainExceptionReclaims(in.gc)
 	lockedDomain := in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
 	var state *gcPublicState
 	var frameRoots gc.RootSet = gc.EmptyRoots{}
-	if gcHelperMayAllocate(helper) {
+	if gcHelperMayAllocate(helper) || in.managedFunctionAggregateMayAllocate(helper, args) || in.compactExternPersistentMayAllocate(helper, args) {
 		in.gc.CancelNativeAllocationBatch()
 		state = in.publicGCState()
 		state.mu.Lock()
@@ -86,7 +100,104 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		frameRoots = in.gcHelperRoots(ctrl, state, safepoint, stack)
 	}
 
+	if in.dispatchManagedFunctionAggregate(helper, args, results, frameRoots, state) {
+		return
+	}
+
+	if in.dispatchCompactExternTableBulk(helper, args, results, lockedDomain, frameRoots) {
+		return
+	}
+
 	switch helper {
+	case gcTableInit:
+		if len(args) != 5 {
+			panic(gcHelperFailuref("gc table init helper arity = %d, want 5", len(args)))
+		}
+		descriptor, tableLength, _, exact := in.gcRootedTableDescriptor(args[3])
+		destination, source, count := args[0], args[1], args[2]
+		if destination+count < destination || destination+count > uint64(tableLength) {
+			panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
+		}
+		entries, segmentLength := in.gcRootedTableElementSegment(uint32(args[4]), exact)
+		if source+count < source || source+count > uint64(segmentLength) {
+			panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
+		}
+		// Authenticate every retained source root before publishing the first
+		// destination write. This keeps trapping/corrupt metadata atomic.
+		for i := uint64(0); i < count; i++ {
+			word := in.gcRootedTableElementBits(entries, source+i)
+			_ = in.gcRootedTableReference(word, exact)
+		}
+		for i := uint64(0); i < count; i++ {
+			ref := in.gcRootedTableReference(in.gcRootedTableElementBits(entries, source+i), exact)
+			binary.LittleEndian.PutUint64(descriptor[8+(destination+i)*8:], uint64(ref))
+			in.gc.WriteBarrierRoot(ref)
+		}
+	case gcTableElemDrop:
+		if len(args) != 1 {
+			panic(gcHelperFailuref("gc table elem-drop helper arity = %d, want 1", len(args)))
+		}
+		desc, _ := in.gcRootedTableElementDescriptor(uint32(args[0]))
+		// Removing the descriptor length under the collector-domain lock makes
+		// the passive roots unreachable atomically from the scanner's view.
+		binary.LittleEndian.PutUint32(desc[8:], 0)
+	case gcTableFill:
+		if len(args) != 4 {
+			panic(gcHelperFailuref("gc table fill helper arity = %d, want 4", len(args)))
+		}
+		descriptor, length, _, exact := in.gcRootedTableDescriptor(args[3])
+		start, count := args[0], args[2]
+		if start+count < start || start+count > uint64(length) {
+			panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
+		}
+		ref := in.gcRootedTableReference(args[1], exact)
+		for i := uint64(0); i < count; i++ {
+			binary.LittleEndian.PutUint64(descriptor[8+(start+i)*8:], uint64(ref))
+		}
+		in.gc.WriteBarrierRoot(ref)
+	case gcTableCopy:
+		if len(args) != 5 {
+			panic(gcHelperFailuref("gc table copy helper arity = %d, want 5", len(args)))
+		}
+		destination, destinationLength, _, destinationType := in.gcRootedTableDescriptor(args[3])
+		source, sourceLength, _, _ := in.gcRootedTableDescriptor(args[4])
+		destinationStart, sourceStart, count := args[0], args[1], args[2]
+		if destinationStart+count < destinationStart || destinationStart+count > uint64(destinationLength) ||
+			sourceStart+count < sourceStart || sourceStart+count > uint64(sourceLength) {
+			panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
+		}
+		// Validate the full source against the destination's exact table type
+		// before the first write. copy then provides memmove semantics for an
+		// overlapping same-table range.
+		for i := uint64(0); i < count; i++ {
+			word := binary.LittleEndian.Uint64(source[8+(sourceStart+i)*8:])
+			_ = in.gcRootedTableReference(word, destinationType)
+		}
+		destinationBytes := destination[8+destinationStart*8 : 8+(destinationStart+count)*8]
+		sourceBytes := source[8+sourceStart*8 : 8+(sourceStart+count)*8]
+		copy(destinationBytes, sourceBytes)
+		for i := uint64(0); i < count; i++ {
+			in.gc.WriteBarrierRoot(gc.Ref(uint32(binary.LittleEndian.Uint64(destinationBytes[i*8:]))))
+		}
+	case gcTableGrow:
+		if len(args) != 3 || len(results) < 1 {
+			panic(gcHelperFailuref("gc table grow helper arity = %d/%d, want 3/at-least-1", len(args), len(results)))
+		}
+		descriptor, length, capacity, exact := in.gcRootedTableDescriptor(args[2])
+		ref := in.gcRootedTableReference(args[0], exact)
+		delta := args[1]
+		newLength := uint64(length) + delta
+		if newLength < uint64(length) || newLength > uint64(capacity) {
+			results[0] = uint64(^uint32(0))
+			break
+		}
+		for i := uint64(length); i < newLength; i++ {
+			binary.LittleEndian.PutUint64(descriptor[8+i*8:], uint64(ref))
+		}
+		in.gc.WriteBarrierRoot(ref)
+		// Publish length only after every newly visible root has been initialized.
+		binary.LittleEndian.PutUint32(descriptor, uint32(newLength))
+		results[0] = uint64(length)
 	case gcArrayCheckFixed:
 		if len(args) != 2 {
 			panic(gcHelperFailuref("gc array check-fixed helper arity = %d, want 2", len(args)))
@@ -345,7 +456,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		}
 		source, length := uint32(args[0]), uint32(args[1])
 		typeID, elemIndex := uint32(args[2]), uint32(args[3])
-		if product := in.c.stagedGCArrayProduct(); product == stagedGCArrayProductNewElem || product == stagedGCArrayProductGeneric {
+		if product := in.c.stagedGCArrayProduct(); !rv64GCArrayReference(in.c) && (product == stagedGCArrayProductNewElem || product == stagedGCArrayProductGeneric) {
 			if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray || !gcArrayElementStorage(in.c.GCTypeDescs[typeID].Elem) {
 				panic(gcHelperFailuref("gc array element type %d is unavailable", typeID))
 			}
@@ -635,6 +746,156 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 	default:
 		panic(gcHelperFailuref("unknown gc array helper %d", helper))
 	}
+}
+
+// gcRootedTableDescriptor returns a bounded compact collector table.
+// Generic rooted modules authenticate this shape in their retained receipt;
+// these checks keep a corrupted runtime descriptor from becoming an arbitrary
+// off-heap write primitive.
+func (in *Instance) gcRootedTableDescriptor(table uint64) ([]byte, uint32, uint32, ValueTypeDescriptor) {
+	descriptor, length, capacity, exact, _ := in.gcRootedTableStorage(table)
+	return descriptor, length, capacity, exact
+}
+
+func (in *Instance) gcRootedTableStorage(table uint64) ([]byte, uint32, uint32, ValueTypeDescriptor, *Instance) {
+	d, n, capacity, typ, owner, _ := in.gcRootedTablePhysicalStorage(table)
+	return d, n, capacity, typ, owner
+}
+func (in *Instance) gcRootedTablePhysicalStorage(table uint64) ([]byte, uint32, uint32, ValueTypeDescriptor, *Instance, *tableOwner) {
+	var hostOwner *tableOwner
+
+	storageOwner := in
+	if table >= uint64(in.c.tableCount()) || in.existingGCRefTestTableState() != nil {
+		panic(gcHelperFailuref("generic GC table %d is unavailable", table))
+	}
+	index := int(table)
+	opaque := in.c.compactExternFrameRoots() && in.c.tableElementType(index) == ValExternRef
+	if in.c.tableEntryBytes(index) != 8 || !isGCRefValType(in.c.tableElementType(index)) && !opaque {
+		panic(gcHelperFailuref("generic GC table %d is not a compact collector table", table))
+	}
+	exact, err := in.c.tableExactType(index)
+	if err != nil || exact.Kind != ValueTypeReference || !exact.Ref.Nullable || exact.Ref.Exact {
+		panic(gcHelperFailuref("generic GC table %d has no collector reference type", table))
+	}
+	if exact.Ref.Heap.Defined {
+		if exact.Ref.Heap.Abstract != 0 || int(exact.Ref.Heap.TypeIndex) >= len(in.c.Types) {
+			panic(gcHelperFailuref("generic GC table %d has invalid aggregate reference type", table))
+		}
+		kind := in.c.Types[exact.Ref.Heap.TypeIndex].Kind
+		if kind != CompositeTypeStruct && kind != CompositeTypeArray {
+			panic(gcHelperFailuref("generic GC table %d has non-aggregate reference type", table))
+		}
+	} else {
+		if exact.Ref.Heap.TypeIndex != 0 {
+			panic(gcHelperFailuref("generic GC table %d has invalid abstract reference type", table))
+		}
+		switch exact.Ref.Heap.Abstract {
+		case AbstractHeapExtern, AbstractHeapNoExtern:
+			if !opaque {
+				panic(gcHelperFailuref("generic GC table has unqualified extern storage"))
+			}
+		case AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray, AbstractHeapNone:
+		default:
+			panic(gcHelperFailuref("generic GC table %d has unsupported abstract reference type", table))
+		}
+	}
+	var descriptor []byte
+	capacity := in.c.tableRuntimeCapacity(index)
+	if def, imported := in.c.tableImportAt(index); imported {
+		_, ends, _, _, _ := in.c.importModuleEndSections()
+		module, name := splitImportKeyAt(def.Key, importModuleEndAt(ends, index))
+		// The map consumes this key only for the lookup. Keep ordinary names on
+		// the stack instead of allocating a returned binding-key string.
+		var keyBuffer [256]byte
+		key := strconv.AppendInt(keyBuffer[:0], int64(len(module)), 10)
+		key = append(key, ':')
+		key = append(key, module...)
+		key = append(key, name...)
+		shared, ok := in.imports[string(key)].(*Table)
+		if !ok || shared.owner == nil {
+			panic(gcHelperFailuref("generic GC table %d has no retained owner", table))
+		}
+		owner := shared.owner
+		owner.mu.Lock()
+		valid := !owner.closed && owner.store != nil && owner.store == in.refStore && (owner.instance != nil && owner.instance.gc == in.gc || opaque && owner.instance == nil && railshotCompactExternHostTableMatches(shared, in.refStore, in.gc))
+		if valid && owner.instance == nil {
+			hostOwner = owner
+		}
+		storageOwner = owner.instance
+		owner.mu.Unlock()
+		if !valid {
+			panic(gcHelperFailuref("generic GC table %d belongs to an incompatible collector domain", table))
+		}
+		descriptor = shared.desc
+		// Import limits describe the accepted external type. The retained owner
+		// supplies the actual storage capacity, which can be smaller.
+		if len(descriptor) < 8 || (len(descriptor)-8)%8 != 0 {
+			panic(gcHelperFailuref("generic GC table %d descriptor size is invalid", table))
+		}
+		capacity = (len(descriptor) - 8) / 8
+	} else {
+		descriptor = gcRetainedTableDescriptor(in, index)
+	}
+	if capacity < 0 || capacity > int(^uint32(0)) || len(descriptor) != 8+capacity*8 {
+		panic(gcHelperFailuref("generic GC table %d descriptor size is invalid", table))
+	}
+	length, runtimeCapacity := binary.LittleEndian.Uint32(descriptor), binary.LittleEndian.Uint32(descriptor[4:])
+	if runtimeCapacity != uint32(capacity) || length > runtimeCapacity {
+		panic(gcHelperFailuref("generic GC table %d descriptor header is invalid", table))
+	}
+	return descriptor, length, runtimeCapacity, exact, storageOwner, hostOwner
+}
+
+func (in *Instance) gcRootedTableReference(word uint64, exact ValueTypeDescriptor) gc.Ref {
+	ref := gc.Ref(uint32(word))
+	if word != uint64(ref) {
+		panic(gcHelperFailuref("generic GC table mutation contains non-compact reference %#x", word))
+	}
+	if ref.IsNull() {
+		return ref
+	}
+	if !in.gcRefMatchesValueType(ref, exact) {
+		panic(gcHelperFailuref("generic GC table mutation contains an incompatible reference"))
+	}
+	return ref
+}
+
+func (in *Instance) gcRootedTableElementDescriptor(elemIndex uint32) ([]byte, ElemInit) {
+	if int(elemIndex) >= len(in.c.passiveElems) || in.jm.PassiveElemPtr() == 0 {
+		panic(gcHelperFailuref("generic GC table element segment %d is unavailable", elemIndex))
+	}
+	elem := in.c.passiveElems[elemIndex]
+	if elem.Mode != ElemModePassive && (elem.Mode != ElemModeActive && elem.Mode != ElemModeDeclarative || len(elem.Values) != 0) || elemEntryBytes(elem.RefType) != 8 || !isGCRefValType(normalizedElemRefType(elem.RefType)) && (!in.c.compactExternFrameRoots() || normalizedElemRefType(elem.RefType) != ValExternRef) {
+		panic(gcHelperFailuref("generic GC table element segment %d is not passive aggregate reference data", elemIndex))
+	}
+	descOff := int(elemIndex) * coreruntime.PassiveElemDescBytes
+	desc := unsafe.Slice((*byte)(offHeapPtr(in.jm.PassiveElemPtr()+uintptr(descOff))), coreruntime.PassiveElemDescBytes)
+	return desc, elem
+}
+
+func (in *Instance) gcRootedTableElementSegment(elemIndex uint32, tableType ValueTypeDescriptor) (uintptr, uint32) {
+	desc, elem := in.gcRootedTableElementDescriptor(elemIndex)
+	exact, err := in.c.elemExactType(elem)
+	if err != nil || !valueTypeSubtype(exact, in.c.Types, tableType, in.c.Types) {
+		panic(gcHelperFailuref("generic GC table element segment %d type does not match destination", elemIndex))
+	}
+	length := binary.LittleEndian.Uint32(desc[8:])
+	if uint64(length) > uint64(len(elem.Values)) {
+		panic(gcHelperFailuref("generic GC table element segment %d length %d exceeds retained entries %d", elemIndex, length, len(elem.Values)))
+	}
+	entries := uintptr(binary.LittleEndian.Uint64(desc))
+	if length != 0 && entries == 0 {
+		panic(gcHelperFailuref("generic GC table element segment %d has no entries", elemIndex))
+	}
+	return entries, length
+}
+
+func (in *Instance) gcRootedTableElementBits(entries uintptr, index uint64) uint64 {
+	if index > uint64(^uintptr(0))/8 || uint64(entries) > uint64(^uintptr(0))-index*8 {
+		panic(gcHelperFailuref("generic GC table element entry %d address overflows", index))
+	}
+	entry := unsafe.Slice((*byte)(offHeapPtr(entries+uintptr(index*8))), 8)
+	return binary.LittleEndian.Uint64(entry)
 }
 
 //go:noinline

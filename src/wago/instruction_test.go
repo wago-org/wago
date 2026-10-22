@@ -132,8 +132,8 @@ func instructionFuncImport(module, name string, typeIndex uint32) []byte {
 }
 
 func TestCustomInstructionI4AddLowersNatively(t *testing.T) {
-	if runtime.GOARCH != "amd64" {
-		t.Skip("scalar lowering backend is amd64-only")
+	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+		t.Skip("scalar recipe lowering needs AMD64 or ARM64")
 	}
 	calls := 0
 	rt := NewRuntime()
@@ -178,8 +178,8 @@ func TestCustomInstructionI4AddLowersNatively(t *testing.T) {
 }
 
 func TestCustomInstructionRichRecipesLowerNatively(t *testing.T) {
-	if runtime.GOARCH != "amd64" {
-		t.Skip("scalar lowering backend is amd64-only")
+	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+		t.Skip("scalar recipe lowering needs AMD64 or ARM64")
 	}
 	signed4 := func(v uint32) int32 { return int32(int8(uint8(v<<4))) >> 4 }
 	comparisons := []struct {

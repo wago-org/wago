@@ -1,0 +1,55 @@
+# round 1
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCAllocationMix/scalar-structs         	    2031	     78663 ns/op	         9.600 ns/iteration	    2353 B/op	       0 allocs/op
+BenchmarkGCAllocationMix/structs                	      12	  13170818 ns/op	      1608 ns/iteration	  261472 B/op	       1 allocs/op
+BenchmarkGCAllocationMix/alternating            	      12	  15015401 ns/op	      1833 ns/iteration	  176169 B/op	       2 allocs/op
+BenchmarkGCAllocationMix/alternating-default    	      12	  14614778 ns/op	      1784 ns/iteration	  176169 B/op	       2 allocs/op
+BenchmarkGCAllocationMix/alternating-fill       	      12	  14943096 ns/op	      1824 ns/iteration	  176169 B/op	       2 allocs/op
+PASS
+# round 2
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCAllocationMix/scalar-structs         	    2038	     83974 ns/op	        10.25 ns/iteration	    2345 B/op	       0 allocs/op
+BenchmarkGCAllocationMix/structs                	      12	  13987293 ns/op	      1707 ns/iteration	  261472 B/op	       1 allocs/op
+BenchmarkGCAllocationMix/alternating            	      10	  16036200 ns/op	      1957 ns/iteration	  211394 B/op	       2 allocs/op
+BenchmarkGCAllocationMix/alternating-default    	      12	  14833598 ns/op	      1811 ns/iteration	  176169 B/op	       2 allocs/op
+BenchmarkGCAllocationMix/alternating-fill       	      10	  15016069 ns/op	      1833 ns/iteration	  211394 B/op	       2 allocs/op
+PASS
+# round 3
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCAllocationMix/scalar-structs         	    2095	     78231 ns/op	         9.548 ns/iteration	    2281 B/op	       0 allocs/op
+BenchmarkGCAllocationMix/structs                	      12	  13148752 ns/op	      1605 ns/iteration	  261472 B/op	       1 allocs/op
+BenchmarkGCAllocationMix/alternating            	      10	  15395828 ns/op	      1879 ns/iteration	  211394 B/op	       2 allocs/op
+BenchmarkGCAllocationMix/alternating-default    	      12	  14717292 ns/op	      1796 ns/iteration	  176169 B/op	       2 allocs/op
+BenchmarkGCAllocationMix/alternating-fill       	      12	  15009819 ns/op	      1832 ns/iteration	  176169 B/op	       2 allocs/op
+PASS
+# round 4
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCAllocationMix/scalar-structs         	    2106	     77629 ns/op	         9.475 ns/iteration	    2269 B/op	       0 allocs/op
+BenchmarkGCAllocationMix/structs                	      12	  13244736 ns/op	      1616 ns/iteration	  261472 B/op	       1 allocs/op
+BenchmarkGCAllocationMix/alternating            	      12	  15023306 ns/op	      1834 ns/iteration	  176169 B/op	       2 allocs/op
+BenchmarkGCAllocationMix/alternating-default    	      12	  14500474 ns/op	      1770 ns/iteration	  176169 B/op	       2 allocs/op
+BenchmarkGCAllocationMix/alternating-fill       	      12	  14790300 ns/op	      1805 ns/iteration	  176169 B/op	       2 allocs/op
+PASS
+# round 5
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCAllocationMix/scalar-structs         	    2091	     77933 ns/op	         9.512 ns/iteration	    2286 B/op	       0 allocs/op
+BenchmarkGCAllocationMix/structs                	      12	  13166281 ns/op	      1607 ns/iteration	  261472 B/op	       1 allocs/op
+BenchmarkGCAllocationMix/alternating            	      12	  14645610 ns/op	      1787 ns/iteration	  176169 B/op	       2 allocs/op
+BenchmarkGCAllocationMix/alternating-default    	      12	  14603372 ns/op	      1783 ns/iteration	  176169 B/op	       2 allocs/op
+BenchmarkGCAllocationMix/alternating-fill       	      12	  14792961 ns/op	      1806 ns/iteration	  176169 B/op	       2 allocs/op
+PASS

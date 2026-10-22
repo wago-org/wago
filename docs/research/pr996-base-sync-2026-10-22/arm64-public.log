@@ -1,0 +1,1817 @@
+=== RUN   TestGCAllocationMix
+=== RUN   TestGCAllocationMix/scalar-structs/native
+=== RUN   TestGCAllocationMix/structs/native
+=== RUN   TestGCAllocationMix/alternating/native
+=== RUN   TestGCAllocationMix/alternating-default/native
+=== RUN   TestGCAllocationMix/alternating-fill/native
+=== RUN   TestGCAllocationMix/scalar-structs/collect-every-alloc
+=== RUN   TestGCAllocationMix/structs/collect-every-alloc
+=== RUN   TestGCAllocationMix/alternating/collect-every-alloc
+=== RUN   TestGCAllocationMix/alternating-default/collect-every-alloc
+=== RUN   TestGCAllocationMix/alternating-fill/collect-every-alloc
+--- PASS: TestGCAllocationMix (0.33s)
+    --- PASS: TestGCAllocationMix/scalar-structs/native (0.04s)
+    --- PASS: TestGCAllocationMix/structs/native (0.03s)
+    --- PASS: TestGCAllocationMix/alternating/native (0.04s)
+    --- PASS: TestGCAllocationMix/alternating-default/native (0.06s)
+    --- PASS: TestGCAllocationMix/alternating-fill/native (0.05s)
+    --- PASS: TestGCAllocationMix/scalar-structs/collect-every-alloc (0.00s)
+    --- PASS: TestGCAllocationMix/structs/collect-every-alloc (0.00s)
+    --- PASS: TestGCAllocationMix/alternating/collect-every-alloc (0.01s)
+    --- PASS: TestGCAllocationMix/alternating-default/collect-every-alloc (0.01s)
+    --- PASS: TestGCAllocationMix/alternating-fill/collect-every-alloc (0.01s)
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage78
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage77
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7f
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7e
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7d
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7c
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7b
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage6d
+--- PASS: TestGCGeneralArrayLenSourcesAndCollection (0.10s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage78 (0.03s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage77 (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7f (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7e (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7d (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7c (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7b (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage6d (0.01s)
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/count
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/free
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/unknown_space
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/offset
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/size
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/short_handle
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/space_bytes
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/short_header
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/long_header
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/high_bits
+--- PASS: TestGCGeneralArrayLenNativeGuardFallback (0.01s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/count (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/free (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/unknown_space (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/offset (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/size (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/short_handle (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/space_bytes (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/short_header (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/long_header (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/high_bits (0.00s)
+=== RUN   TestGCGeneralArrayLenInvalidReferences
+--- PASS: TestGCGeneralArrayLenInvalidReferences (0.00s)
+=== RUN   TestGCGeneralArrayLenCodec
+--- PASS: TestGCGeneralArrayLenCodec (0.01s)
+=== RUN   TestGCGeneralArrayLenLiveVectorJoin
+--- PASS: TestGCGeneralArrayLenLiveVectorJoin (0.01s)
+=== RUN   TestGCGeneralScalarArraySetVectorCodecJoins
+--- PASS: TestGCGeneralScalarArraySetVectorCodecJoins (0.01s)
+=== RUN   TestGCGeneralScalarArraySetExtentFallback
+--- PASS: TestGCGeneralScalarArraySetExtentFallback (0.01s)
+=== RUN   TestGCGeneralScalarArraySetStale
+--- PASS: TestGCGeneralScalarArraySetStale (0.01s)
+=== RUN   TestGCGeneralScalarArraySetNeighbors
+--- PASS: TestGCGeneralScalarArraySetNeighbors (0.02s)
+=== RUN   TestGCGeneralScalarArraySetSources
+=== RUN   TestGCGeneralScalarArraySetSources/7f/openfalse/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7f/opentrue/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7f/opentrue/childtrue
+=== RUN   TestGCGeneralScalarArraySetSources/7e/openfalse/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7e/opentrue/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7e/opentrue/childtrue
+=== RUN   TestGCGeneralScalarArraySetSources/7d/openfalse/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7d/opentrue/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7d/opentrue/childtrue
+=== RUN   TestGCGeneralScalarArraySetSources/7c/openfalse/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7c/opentrue/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7c/opentrue/childtrue
+--- PASS: TestGCGeneralScalarArraySetSources (0.14s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7f/openfalse/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7f/opentrue/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7f/opentrue/childtrue (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7e/openfalse/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7e/opentrue/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7e/opentrue/childtrue (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7d/openfalse/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7d/opentrue/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7d/opentrue/childtrue (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7c/openfalse/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7c/opentrue/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7c/opentrue/childtrue (0.01s)
+=== RUN   TestGCGeneralScalarArraySetTraps
+--- PASS: TestGCGeneralScalarArraySetTraps (0.01s)
+=== RUN   TestGCGeneralScalarArraySetLivePressure
+--- PASS: TestGCGeneralScalarArraySetLivePressure (0.01s)
+=== RUN   TestGCBranchCast
+=== RUN   TestGCBranchCast/op24/base/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/base/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/base/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/base/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/subtype/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/subtype/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/subtype/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/subtype/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/array/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/array/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/array/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/array/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/i31/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/i31/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/i31/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/i31/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/none/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/none/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/none/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/none/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/struct-fallback/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/struct-fallback/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/struct-fallback/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/struct-fallback/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/base/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/base/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/base/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/base/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/subtype/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/subtype/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/subtype/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/subtype/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/array/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/array/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/array/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/array/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/i31/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/i31/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/i31/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/i31/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/none/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/none/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/none/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/none/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/struct-fallback/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/struct-fallback/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/struct-fallback/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/struct-fallback/nulltrue/depth2
+--- PASS: TestGCBranchCast (0.20s)
+    --- PASS: TestGCBranchCast/op24/base/nullfalse/depth0 (0.01s)
+    --- PASS: TestGCBranchCast/op24/base/nullfalse/depth2 (0.01s)
+    --- PASS: TestGCBranchCast/op24/base/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/base/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/subtype/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/subtype/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/subtype/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/subtype/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/array/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/array/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/array/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/array/nulltrue/depth2 (0.01s)
+    --- PASS: TestGCBranchCast/op24/i31/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/i31/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/i31/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/i31/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/none/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/none/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/none/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/none/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/struct-fallback/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/struct-fallback/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/struct-fallback/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/struct-fallback/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/base/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/base/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/base/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/base/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/subtype/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/subtype/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/subtype/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/subtype/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/array/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/array/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/array/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/array/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/i31/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/i31/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/i31/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/i31/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/none/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/none/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/none/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/none/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/struct-fallback/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/struct-fallback/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/struct-fallback/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/struct-fallback/nulltrue/depth2 (0.00s)
+=== RUN   TestGCBranchCastCollection
+=== RUN   TestGCBranchCastCollection/op24/target0/profile0
+=== RUN   TestGCBranchCastCollection/op24/target0/profile1
+=== RUN   TestGCBranchCastCollection/op24/target2/profile0
+=== RUN   TestGCBranchCastCollection/op24/target2/profile1
+=== RUN   TestGCBranchCastCollection/op24/target6c/profile0
+=== RUN   TestGCBranchCastCollection/op24/target6c/profile1
+=== RUN   TestGCBranchCastCollection/op24/target71/profile0
+=== RUN   TestGCBranchCastCollection/op24/target71/profile1
+=== RUN   TestGCBranchCastCollection/op25/target0/profile0
+=== RUN   TestGCBranchCastCollection/op25/target0/profile1
+=== RUN   TestGCBranchCastCollection/op25/target2/profile0
+=== RUN   TestGCBranchCastCollection/op25/target2/profile1
+=== RUN   TestGCBranchCastCollection/op25/target6c/profile0
+=== RUN   TestGCBranchCastCollection/op25/target6c/profile1
+=== RUN   TestGCBranchCastCollection/op25/target71/profile0
+=== RUN   TestGCBranchCastCollection/op25/target71/profile1
+--- PASS: TestGCBranchCastCollection (0.12s)
+    --- PASS: TestGCBranchCastCollection/op24/target0/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target0/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target2/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target2/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target6c/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target6c/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target71/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target71/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target0/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target0/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target2/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target2/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target6c/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target6c/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target71/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target71/profile1 (0.01s)
+=== RUN   TestGCBranchCastDeferredPrefix
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub25-t108-nulltrue
+--- PASS: TestGCBranchCastDeferredPrefix (0.16s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub24-t113-nullfalse (0.01s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub25-t108-nulltrue (0.00s)
+=== RUN   TestGCBranchCastNonNullableSource
+=== RUN   TestGCBranchCastNonNullableSource/op24/target0/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target0/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op24/target1/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target1/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op24/target2/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target2/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op24/target6c/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target6c/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op24/target71/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target71/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target0/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target0/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target1/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target1/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target2/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target2/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target6c/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target6c/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target71/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target71/nulltrue
+--- PASS: TestGCBranchCastNonNullableSource (0.05s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target0/nullfalse (0.01s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target0/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target1/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target1/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target2/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target2/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target6c/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target6c/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target71/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target71/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target0/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target0/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target1/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target1/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target2/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target2/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target6c/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target6c/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target71/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target71/nulltrue (0.00s)
+=== RUN   TestGCBranchCastLargeTypeIndex
+=== RUN   TestGCBranchCastLargeTypeIndex/4095
+=== RUN   TestGCBranchCastLargeTypeIndex/4096
+--- PASS: TestGCBranchCastLargeTypeIndex (0.04s)
+    --- PASS: TestGCBranchCastLargeTypeIndex/4095 (0.02s)
+    --- PASS: TestGCBranchCastLargeTypeIndex/4096 (0.02s)
+=== RUN   TestGCBranchCastForeignReference
+=== RUN   TestGCBranchCastForeignReference/op24/target0/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op24/target0/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op24/target6c/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op24/target6c/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op24/target71/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op24/target71/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op25/target0/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op25/target0/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op25/target6c/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op25/target6c/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op25/target71/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op25/target71/nulltrue
+--- PASS: TestGCBranchCastForeignReference (0.02s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target0/nullfalse (0.01s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target0/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target6c/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target6c/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target71/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target71/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target0/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target0/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target6c/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target6c/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target71/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target71/nulltrue (0.00s)
+=== RUN   TestGCBranchCastOnlyStackRoot
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target0/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target0/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target2/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target2/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target6c/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target6c/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target71/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target71/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target0/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target0/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target2/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target2/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target6c/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target6c/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target71/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target71/profile1
+--- PASS: TestGCBranchCastOnlyStackRoot (0.05s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target0/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target0/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target2/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target2/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target6c/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target6c/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target71/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target71/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target0/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target0/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target2/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target2/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target6c/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target6c/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target71/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target71/profile1 (0.00s)
+=== RUN   TestBoundedHostYieldAllowsGCAndCancellationWithOneP
+=== RUN   TestBoundedHostYieldAllowsGCAndCancellationWithOneP/typed
+=== RUN   TestBoundedHostYieldAllowsGCAndCancellationWithOneP/HostCall
+=== RUN   TestBoundedHostYieldAllowsGCAndCancellationWithOneP/Caller
+--- PASS: TestBoundedHostYieldAllowsGCAndCancellationWithOneP (0.10s)
+    --- PASS: TestBoundedHostYieldAllowsGCAndCancellationWithOneP/typed (0.04s)
+    --- PASS: TestBoundedHostYieldAllowsGCAndCancellationWithOneP/HostCall (0.02s)
+    --- PASS: TestBoundedHostYieldAllowsGCAndCancellationWithOneP/Caller (0.03s)
+=== RUN   TestCustomInstructionRecipeBudgetARM64
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared1
+    instruction_recipe_budget_test.go:51: code=160 bytes, handler calls=0
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared4
+    instruction_recipe_budget_test.go:51: code=272 bytes, handler calls=0
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared7
+    instruction_recipe_budget_test.go:51: code=1168 bytes, handler calls=0
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared8
+    instruction_recipe_budget_test.go:51: code=496 bytes, handler calls=4
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared12
+    instruction_recipe_budget_test.go:51: code=496 bytes, handler calls=4
+=== RUN   TestCustomInstructionRecipeBudgetARM64/depth
+=== RUN   TestCustomInstructionRecipeBudgetARM64/nodes
+--- PASS: TestCustomInstructionRecipeBudgetARM64 (0.02s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared1 (0.01s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared4 (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared7 (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared8 (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared12 (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/depth (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/nodes (0.00s)
+=== RUN   TestCustomInstructionRecipeWidthBoundaries
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width1/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width1/shifttrue
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width3/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width3/shifttrue
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width5/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width5/shifttrue
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width31/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width31/shifttrue
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width32/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width32/shifttrue
+--- PASS: TestCustomInstructionRecipeWidthBoundaries (0.02s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width1/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width1/shifttrue (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width3/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width3/shifttrue (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width5/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width5/shifttrue (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width31/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width31/shifttrue (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width32/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width32/shifttrue (0.00s)
+=== RUN   TestCustomInstructionRecipeOmittedArgumentTrap
+--- PASS: TestCustomInstructionRecipeOmittedArgumentTrap (0.00s)
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width1
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width3
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width5
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width31
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width32
+--- PASS: TestCustomInstructionRecipeInputOnlyARM64 (0.01s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width1 (0.00s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width3 (0.00s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width5 (0.00s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width31 (0.00s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width32 (0.00s)
+=== RUN   TestGCAllocationMix
+=== RUN   TestGCAllocationMix/scalar-structs/native
+=== RUN   TestGCAllocationMix/structs/native
+=== RUN   TestGCAllocationMix/alternating/native
+=== RUN   TestGCAllocationMix/alternating-default/native
+=== RUN   TestGCAllocationMix/alternating-fill/native
+=== RUN   TestGCAllocationMix/scalar-structs/collect-every-alloc
+=== RUN   TestGCAllocationMix/structs/collect-every-alloc
+=== RUN   TestGCAllocationMix/alternating/collect-every-alloc
+=== RUN   TestGCAllocationMix/alternating-default/collect-every-alloc
+=== RUN   TestGCAllocationMix/alternating-fill/collect-every-alloc
+--- PASS: TestGCAllocationMix (0.22s)
+    --- PASS: TestGCAllocationMix/scalar-structs/native (0.02s)
+    --- PASS: TestGCAllocationMix/structs/native (0.03s)
+    --- PASS: TestGCAllocationMix/alternating/native (0.04s)
+    --- PASS: TestGCAllocationMix/alternating-default/native (0.04s)
+    --- PASS: TestGCAllocationMix/alternating-fill/native (0.05s)
+    --- PASS: TestGCAllocationMix/scalar-structs/collect-every-alloc (0.00s)
+    --- PASS: TestGCAllocationMix/structs/collect-every-alloc (0.00s)
+    --- PASS: TestGCAllocationMix/alternating/collect-every-alloc (0.01s)
+    --- PASS: TestGCAllocationMix/alternating-default/collect-every-alloc (0.01s)
+    --- PASS: TestGCAllocationMix/alternating-fill/collect-every-alloc (0.01s)
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage78
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage77
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7f
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7e
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7d
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7c
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7b
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage6d
+--- PASS: TestGCGeneralArrayLenSourcesAndCollection (0.07s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage78 (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage77 (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7f (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7e (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7d (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7c (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7b (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage6d (0.01s)
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/count
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/free
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/unknown_space
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/offset
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/size
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/short_handle
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/space_bytes
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/short_header
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/long_header
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/high_bits
+--- PASS: TestGCGeneralArrayLenNativeGuardFallback (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/count (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/free (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/unknown_space (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/offset (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/size (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/short_handle (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/space_bytes (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/short_header (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/long_header (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/high_bits (0.00s)
+=== RUN   TestGCGeneralArrayLenInvalidReferences
+--- PASS: TestGCGeneralArrayLenInvalidReferences (0.00s)
+=== RUN   TestGCGeneralArrayLenCodec
+--- PASS: TestGCGeneralArrayLenCodec (0.00s)
+=== RUN   TestGCGeneralArrayLenLiveVectorJoin
+--- PASS: TestGCGeneralArrayLenLiveVectorJoin (0.00s)
+=== RUN   TestGCGeneralScalarArraySetVectorCodecJoins
+--- PASS: TestGCGeneralScalarArraySetVectorCodecJoins (0.00s)
+=== RUN   TestGCGeneralScalarArraySetExtentFallback
+--- PASS: TestGCGeneralScalarArraySetExtentFallback (0.01s)
+=== RUN   TestGCGeneralScalarArraySetStale
+--- PASS: TestGCGeneralScalarArraySetStale (0.01s)
+=== RUN   TestGCGeneralScalarArraySetNeighbors
+--- PASS: TestGCGeneralScalarArraySetNeighbors (0.02s)
+=== RUN   TestGCGeneralScalarArraySetSources
+=== RUN   TestGCGeneralScalarArraySetSources/7f/openfalse/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7f/opentrue/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7f/opentrue/childtrue
+=== RUN   TestGCGeneralScalarArraySetSources/7e/openfalse/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7e/opentrue/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7e/opentrue/childtrue
+=== RUN   TestGCGeneralScalarArraySetSources/7d/openfalse/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7d/opentrue/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7d/opentrue/childtrue
+=== RUN   TestGCGeneralScalarArraySetSources/7c/openfalse/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7c/opentrue/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7c/opentrue/childtrue
+--- PASS: TestGCGeneralScalarArraySetSources (0.13s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7f/openfalse/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7f/opentrue/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7f/opentrue/childtrue (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7e/openfalse/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7e/opentrue/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7e/opentrue/childtrue (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7d/openfalse/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7d/opentrue/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7d/opentrue/childtrue (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7c/openfalse/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7c/opentrue/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7c/opentrue/childtrue (0.01s)
+=== RUN   TestGCGeneralScalarArraySetTraps
+--- PASS: TestGCGeneralScalarArraySetTraps (0.01s)
+=== RUN   TestGCGeneralScalarArraySetLivePressure
+--- PASS: TestGCGeneralScalarArraySetLivePressure (0.00s)
+=== RUN   TestGCBranchCast
+=== RUN   TestGCBranchCast/op24/base/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/base/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/base/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/base/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/subtype/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/subtype/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/subtype/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/subtype/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/array/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/array/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/array/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/array/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/i31/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/i31/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/i31/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/i31/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/none/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/none/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/none/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/none/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/struct-fallback/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/struct-fallback/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/struct-fallback/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/struct-fallback/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/base/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/base/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/base/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/base/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/subtype/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/subtype/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/subtype/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/subtype/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/array/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/array/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/array/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/array/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/i31/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/i31/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/i31/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/i31/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/none/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/none/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/none/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/none/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/struct-fallback/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/struct-fallback/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/struct-fallback/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/struct-fallback/nulltrue/depth2
+--- PASS: TestGCBranchCast (0.18s)
+    --- PASS: TestGCBranchCast/op24/base/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/base/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/base/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/base/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/subtype/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/subtype/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/subtype/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/subtype/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/array/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/array/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/array/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/array/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/i31/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/i31/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/i31/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/i31/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/none/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/none/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/none/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/none/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/struct-fallback/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/struct-fallback/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/struct-fallback/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/struct-fallback/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/base/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/base/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/base/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/base/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/subtype/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/subtype/nullfalse/depth2 (0.01s)
+    --- PASS: TestGCBranchCast/op25/subtype/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/subtype/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/array/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/array/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/array/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/array/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/i31/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/i31/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/i31/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/i31/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/none/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/none/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/none/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/none/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/struct-fallback/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/struct-fallback/nullfalse/depth2 (0.01s)
+    --- PASS: TestGCBranchCast/op25/struct-fallback/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/struct-fallback/nulltrue/depth2 (0.01s)
+=== RUN   TestGCBranchCastCollection
+=== RUN   TestGCBranchCastCollection/op24/target0/profile0
+=== RUN   TestGCBranchCastCollection/op24/target0/profile1
+=== RUN   TestGCBranchCastCollection/op24/target2/profile0
+=== RUN   TestGCBranchCastCollection/op24/target2/profile1
+=== RUN   TestGCBranchCastCollection/op24/target6c/profile0
+=== RUN   TestGCBranchCastCollection/op24/target6c/profile1
+=== RUN   TestGCBranchCastCollection/op24/target71/profile0
+=== RUN   TestGCBranchCastCollection/op24/target71/profile1
+=== RUN   TestGCBranchCastCollection/op25/target0/profile0
+=== RUN   TestGCBranchCastCollection/op25/target0/profile1
+=== RUN   TestGCBranchCastCollection/op25/target2/profile0
+=== RUN   TestGCBranchCastCollection/op25/target2/profile1
+=== RUN   TestGCBranchCastCollection/op25/target6c/profile0
+=== RUN   TestGCBranchCastCollection/op25/target6c/profile1
+=== RUN   TestGCBranchCastCollection/op25/target71/profile0
+=== RUN   TestGCBranchCastCollection/op25/target71/profile1
+--- PASS: TestGCBranchCastCollection (0.12s)
+    --- PASS: TestGCBranchCastCollection/op24/target0/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target0/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target2/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target2/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target6c/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target6c/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target71/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target71/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target0/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target0/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target2/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target2/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target6c/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target6c/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target71/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target71/profile1 (0.01s)
+=== RUN   TestGCBranchCastDeferredPrefix
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub25-t108-nulltrue
+--- PASS: TestGCBranchCastDeferredPrefix (0.14s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub25-t108-nulltrue (0.00s)
+=== RUN   TestGCBranchCastNonNullableSource
+=== RUN   TestGCBranchCastNonNullableSource/op24/target0/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target0/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op24/target1/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target1/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op24/target2/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target2/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op24/target6c/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target6c/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op24/target71/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target71/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target0/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target0/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target1/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target1/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target2/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target2/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target6c/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target6c/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target71/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target71/nulltrue
+--- PASS: TestGCBranchCastNonNullableSource (0.04s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target0/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target0/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target1/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target1/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target2/nullfalse (0.01s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target2/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target6c/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target6c/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target71/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target71/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target0/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target0/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target1/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target1/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target2/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target2/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target6c/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target6c/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target71/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target71/nulltrue (0.00s)
+=== RUN   TestGCBranchCastLargeTypeIndex
+=== RUN   TestGCBranchCastLargeTypeIndex/4095
+=== RUN   TestGCBranchCastLargeTypeIndex/4096
+--- PASS: TestGCBranchCastLargeTypeIndex (0.04s)
+    --- PASS: TestGCBranchCastLargeTypeIndex/4095 (0.02s)
+    --- PASS: TestGCBranchCastLargeTypeIndex/4096 (0.02s)
+=== RUN   TestGCBranchCastForeignReference
+=== RUN   TestGCBranchCastForeignReference/op24/target0/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op24/target0/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op24/target6c/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op24/target6c/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op24/target71/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op24/target71/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op25/target0/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op25/target0/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op25/target6c/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op25/target6c/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op25/target71/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op25/target71/nulltrue
+--- PASS: TestGCBranchCastForeignReference (0.02s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target0/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target0/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target6c/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target6c/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target71/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target71/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target0/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target0/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target6c/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target6c/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target71/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target71/nulltrue (0.00s)
+=== RUN   TestGCBranchCastOnlyStackRoot
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target0/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target0/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target2/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target2/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target6c/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target6c/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target71/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target71/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target0/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target0/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target2/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target2/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target6c/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target6c/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target71/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target71/profile1
+--- PASS: TestGCBranchCastOnlyStackRoot (0.04s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target0/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target0/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target2/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target2/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target6c/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target6c/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target71/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target71/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target0/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target0/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target2/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target2/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target6c/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target6c/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target71/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target71/profile1 (0.00s)
+=== RUN   TestBoundedHostYieldAllowsGCAndCancellationWithOneP
+=== RUN   TestBoundedHostYieldAllowsGCAndCancellationWithOneP/typed
+=== RUN   TestBoundedHostYieldAllowsGCAndCancellationWithOneP/HostCall
+=== RUN   TestBoundedHostYieldAllowsGCAndCancellationWithOneP/Caller
+--- PASS: TestBoundedHostYieldAllowsGCAndCancellationWithOneP (0.12s)
+    --- PASS: TestBoundedHostYieldAllowsGCAndCancellationWithOneP/typed (0.03s)
+    --- PASS: TestBoundedHostYieldAllowsGCAndCancellationWithOneP/HostCall (0.04s)
+    --- PASS: TestBoundedHostYieldAllowsGCAndCancellationWithOneP/Caller (0.05s)
+=== RUN   TestCustomInstructionRecipeBudgetARM64
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared1
+    instruction_recipe_budget_test.go:51: code=160 bytes, handler calls=0
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared4
+    instruction_recipe_budget_test.go:51: code=272 bytes, handler calls=0
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared7
+    instruction_recipe_budget_test.go:51: code=1168 bytes, handler calls=0
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared8
+    instruction_recipe_budget_test.go:51: code=496 bytes, handler calls=4
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared12
+    instruction_recipe_budget_test.go:51: code=496 bytes, handler calls=4
+=== RUN   TestCustomInstructionRecipeBudgetARM64/depth
+=== RUN   TestCustomInstructionRecipeBudgetARM64/nodes
+--- PASS: TestCustomInstructionRecipeBudgetARM64 (0.01s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared1 (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared4 (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared7 (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared8 (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared12 (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/depth (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/nodes (0.00s)
+=== RUN   TestCustomInstructionRecipeWidthBoundaries
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width1/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width1/shifttrue
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width3/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width3/shifttrue
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width5/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width5/shifttrue
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width31/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width31/shifttrue
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width32/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width32/shifttrue
+--- PASS: TestCustomInstructionRecipeWidthBoundaries (0.01s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width1/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width1/shifttrue (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width3/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width3/shifttrue (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width5/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width5/shifttrue (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width31/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width31/shifttrue (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width32/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width32/shifttrue (0.00s)
+=== RUN   TestCustomInstructionRecipeOmittedArgumentTrap
+--- PASS: TestCustomInstructionRecipeOmittedArgumentTrap (0.00s)
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width1
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width3
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width5
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width31
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width32
+--- PASS: TestCustomInstructionRecipeInputOnlyARM64 (0.00s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width1 (0.00s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width3 (0.00s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width5 (0.00s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width31 (0.00s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width32 (0.00s)
+=== RUN   TestGCAllocationMix
+=== RUN   TestGCAllocationMix/scalar-structs/native
+=== RUN   TestGCAllocationMix/structs/native
+=== RUN   TestGCAllocationMix/alternating/native
+=== RUN   TestGCAllocationMix/alternating-default/native
+=== RUN   TestGCAllocationMix/alternating-fill/native
+=== RUN   TestGCAllocationMix/scalar-structs/collect-every-alloc
+=== RUN   TestGCAllocationMix/structs/collect-every-alloc
+=== RUN   TestGCAllocationMix/alternating/collect-every-alloc
+=== RUN   TestGCAllocationMix/alternating-default/collect-every-alloc
+=== RUN   TestGCAllocationMix/alternating-fill/collect-every-alloc
+--- PASS: TestGCAllocationMix (0.22s)
+    --- PASS: TestGCAllocationMix/scalar-structs/native (0.01s)
+    --- PASS: TestGCAllocationMix/structs/native (0.03s)
+    --- PASS: TestGCAllocationMix/alternating/native (0.04s)
+    --- PASS: TestGCAllocationMix/alternating-default/native (0.04s)
+    --- PASS: TestGCAllocationMix/alternating-fill/native (0.05s)
+    --- PASS: TestGCAllocationMix/scalar-structs/collect-every-alloc (0.00s)
+    --- PASS: TestGCAllocationMix/structs/collect-every-alloc (0.00s)
+    --- PASS: TestGCAllocationMix/alternating/collect-every-alloc (0.01s)
+    --- PASS: TestGCAllocationMix/alternating-default/collect-every-alloc (0.01s)
+    --- PASS: TestGCAllocationMix/alternating-fill/collect-every-alloc (0.01s)
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage78
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage77
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7f
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7e
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7d
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7c
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage7b
+=== RUN   TestGCGeneralArrayLenSourcesAndCollection/storage6d
+--- PASS: TestGCGeneralArrayLenSourcesAndCollection (0.06s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage78 (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage77 (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7f (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7e (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7d (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7c (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage7b (0.01s)
+    --- PASS: TestGCGeneralArrayLenSourcesAndCollection/storage6d (0.01s)
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/count
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/free
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/unknown_space
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/offset
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/size
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/short_handle
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/space_bytes
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/short_header
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/long_header
+=== RUN   TestGCGeneralArrayLenNativeGuardFallback/high_bits
+--- PASS: TestGCGeneralArrayLenNativeGuardFallback (0.01s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/count (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/free (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/unknown_space (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/offset (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/size (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/short_handle (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/space_bytes (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/short_header (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/long_header (0.00s)
+    --- PASS: TestGCGeneralArrayLenNativeGuardFallback/high_bits (0.00s)
+=== RUN   TestGCGeneralArrayLenInvalidReferences
+--- PASS: TestGCGeneralArrayLenInvalidReferences (0.00s)
+=== RUN   TestGCGeneralArrayLenCodec
+--- PASS: TestGCGeneralArrayLenCodec (0.00s)
+=== RUN   TestGCGeneralArrayLenLiveVectorJoin
+--- PASS: TestGCGeneralArrayLenLiveVectorJoin (0.00s)
+=== RUN   TestGCGeneralScalarArraySetVectorCodecJoins
+--- PASS: TestGCGeneralScalarArraySetVectorCodecJoins (0.00s)
+=== RUN   TestGCGeneralScalarArraySetExtentFallback
+--- PASS: TestGCGeneralScalarArraySetExtentFallback (0.01s)
+=== RUN   TestGCGeneralScalarArraySetStale
+--- PASS: TestGCGeneralScalarArraySetStale (0.01s)
+=== RUN   TestGCGeneralScalarArraySetNeighbors
+--- PASS: TestGCGeneralScalarArraySetNeighbors (0.02s)
+=== RUN   TestGCGeneralScalarArraySetSources
+=== RUN   TestGCGeneralScalarArraySetSources/7f/openfalse/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7f/opentrue/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7f/opentrue/childtrue
+=== RUN   TestGCGeneralScalarArraySetSources/7e/openfalse/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7e/opentrue/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7e/opentrue/childtrue
+=== RUN   TestGCGeneralScalarArraySetSources/7d/openfalse/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7d/opentrue/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7d/opentrue/childtrue
+=== RUN   TestGCGeneralScalarArraySetSources/7c/openfalse/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7c/opentrue/childfalse
+=== RUN   TestGCGeneralScalarArraySetSources/7c/opentrue/childtrue
+--- PASS: TestGCGeneralScalarArraySetSources (0.13s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7f/openfalse/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7f/opentrue/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7f/opentrue/childtrue (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7e/openfalse/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7e/opentrue/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7e/opentrue/childtrue (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7d/openfalse/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7d/opentrue/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7d/opentrue/childtrue (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7c/openfalse/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7c/opentrue/childfalse (0.01s)
+    --- PASS: TestGCGeneralScalarArraySetSources/7c/opentrue/childtrue (0.01s)
+=== RUN   TestGCGeneralScalarArraySetTraps
+--- PASS: TestGCGeneralScalarArraySetTraps (0.01s)
+=== RUN   TestGCGeneralScalarArraySetLivePressure
+--- PASS: TestGCGeneralScalarArraySetLivePressure (0.00s)
+=== RUN   TestGCBranchCast
+=== RUN   TestGCBranchCast/op24/base/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/base/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/base/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/base/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/subtype/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/subtype/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/subtype/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/subtype/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/array/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/array/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/array/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/array/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/i31/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/i31/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/i31/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/i31/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/none/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/none/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/none/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/none/nulltrue/depth2
+=== RUN   TestGCBranchCast/op24/struct-fallback/nullfalse/depth0
+=== RUN   TestGCBranchCast/op24/struct-fallback/nullfalse/depth2
+=== RUN   TestGCBranchCast/op24/struct-fallback/nulltrue/depth0
+=== RUN   TestGCBranchCast/op24/struct-fallback/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/base/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/base/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/base/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/base/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/subtype/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/subtype/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/subtype/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/subtype/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/array/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/array/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/array/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/array/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/i31/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/i31/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/i31/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/i31/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/none/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/none/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/none/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/none/nulltrue/depth2
+=== RUN   TestGCBranchCast/op25/struct-fallback/nullfalse/depth0
+=== RUN   TestGCBranchCast/op25/struct-fallback/nullfalse/depth2
+=== RUN   TestGCBranchCast/op25/struct-fallback/nulltrue/depth0
+=== RUN   TestGCBranchCast/op25/struct-fallback/nulltrue/depth2
+--- PASS: TestGCBranchCast (0.18s)
+    --- PASS: TestGCBranchCast/op24/base/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/base/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/base/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/base/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/subtype/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/subtype/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/subtype/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/subtype/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/array/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/array/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/array/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/array/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/i31/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/i31/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/i31/nulltrue/depth0 (0.01s)
+    --- PASS: TestGCBranchCast/op24/i31/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/none/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/none/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/none/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/none/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/struct-fallback/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/struct-fallback/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op24/struct-fallback/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op24/struct-fallback/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/base/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/base/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/base/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/base/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/subtype/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/subtype/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/subtype/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/subtype/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/array/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/array/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/array/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/array/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/i31/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/i31/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/i31/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/i31/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/none/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/none/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/none/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/none/nulltrue/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/struct-fallback/nullfalse/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/struct-fallback/nullfalse/depth2 (0.00s)
+    --- PASS: TestGCBranchCast/op25/struct-fallback/nulltrue/depth0 (0.00s)
+    --- PASS: TestGCBranchCast/op25/struct-fallback/nulltrue/depth2 (0.00s)
+=== RUN   TestGCBranchCastCollection
+=== RUN   TestGCBranchCastCollection/op24/target0/profile0
+=== RUN   TestGCBranchCastCollection/op24/target0/profile1
+=== RUN   TestGCBranchCastCollection/op24/target2/profile0
+=== RUN   TestGCBranchCastCollection/op24/target2/profile1
+=== RUN   TestGCBranchCastCollection/op24/target6c/profile0
+=== RUN   TestGCBranchCastCollection/op24/target6c/profile1
+=== RUN   TestGCBranchCastCollection/op24/target71/profile0
+=== RUN   TestGCBranchCastCollection/op24/target71/profile1
+=== RUN   TestGCBranchCastCollection/op25/target0/profile0
+=== RUN   TestGCBranchCastCollection/op25/target0/profile1
+=== RUN   TestGCBranchCastCollection/op25/target2/profile0
+=== RUN   TestGCBranchCastCollection/op25/target2/profile1
+=== RUN   TestGCBranchCastCollection/op25/target6c/profile0
+=== RUN   TestGCBranchCastCollection/op25/target6c/profile1
+=== RUN   TestGCBranchCastCollection/op25/target71/profile0
+=== RUN   TestGCBranchCastCollection/op25/target71/profile1
+--- PASS: TestGCBranchCastCollection (0.12s)
+    --- PASS: TestGCBranchCastCollection/op24/target0/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target0/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target2/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target2/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target6c/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target6c/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target71/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op24/target71/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target0/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target0/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target2/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target2/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target6c/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target6c/profile1 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target71/profile0 (0.01s)
+    --- PASS: TestGCBranchCastCollection/op25/target71/profile1 (0.01s)
+=== RUN   TestGCBranchCastDeferredPrefix
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n0-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n1-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n2-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n3-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n4-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n5-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n6-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n7-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n8-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n9-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n10-sub25-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub24-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub24-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub24-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub24-t108-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub25-t113-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub25-t113-nulltrue
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub25-t108-nullfalse
+=== RUN   TestGCBranchCastDeferredPrefix/n11-sub25-t108-nulltrue
+--- PASS: TestGCBranchCastDeferredPrefix (0.14s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n0-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n1-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n2-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n3-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n4-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n5-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n6-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n7-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n8-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n9-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n10-sub25-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub24-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub24-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub24-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub24-t108-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub25-t113-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub25-t113-nulltrue (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub25-t108-nullfalse (0.00s)
+    --- PASS: TestGCBranchCastDeferredPrefix/n11-sub25-t108-nulltrue (0.00s)
+=== RUN   TestGCBranchCastNonNullableSource
+=== RUN   TestGCBranchCastNonNullableSource/op24/target0/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target0/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op24/target1/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target1/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op24/target2/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target2/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op24/target6c/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target6c/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op24/target71/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op24/target71/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target0/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target0/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target1/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target1/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target2/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target2/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target6c/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target6c/nulltrue
+=== RUN   TestGCBranchCastNonNullableSource/op25/target71/nullfalse
+=== RUN   TestGCBranchCastNonNullableSource/op25/target71/nulltrue
+--- PASS: TestGCBranchCastNonNullableSource (0.04s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target0/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target0/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target1/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target1/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target2/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target2/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target6c/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target6c/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target71/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op24/target71/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target0/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target0/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target1/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target1/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target2/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target2/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target6c/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target6c/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target71/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastNonNullableSource/op25/target71/nulltrue (0.00s)
+=== RUN   TestGCBranchCastLargeTypeIndex
+=== RUN   TestGCBranchCastLargeTypeIndex/4095
+=== RUN   TestGCBranchCastLargeTypeIndex/4096
+--- PASS: TestGCBranchCastLargeTypeIndex (0.04s)
+    --- PASS: TestGCBranchCastLargeTypeIndex/4095 (0.02s)
+    --- PASS: TestGCBranchCastLargeTypeIndex/4096 (0.02s)
+=== RUN   TestGCBranchCastForeignReference
+=== RUN   TestGCBranchCastForeignReference/op24/target0/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op24/target0/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op24/target6c/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op24/target6c/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op24/target71/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op24/target71/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op25/target0/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op25/target0/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op25/target6c/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op25/target6c/nulltrue
+=== RUN   TestGCBranchCastForeignReference/op25/target71/nullfalse
+=== RUN   TestGCBranchCastForeignReference/op25/target71/nulltrue
+--- PASS: TestGCBranchCastForeignReference (0.02s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target0/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target0/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target6c/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target6c/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target71/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op24/target71/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target0/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target0/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target6c/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target6c/nulltrue (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target71/nullfalse (0.00s)
+    --- PASS: TestGCBranchCastForeignReference/op25/target71/nulltrue (0.00s)
+=== RUN   TestGCBranchCastOnlyStackRoot
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target0/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target0/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target2/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target2/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target6c/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target6c/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target71/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op24/target71/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target0/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target0/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target2/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target2/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target6c/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target6c/profile1
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target71/profile0
+=== RUN   TestGCBranchCastOnlyStackRoot/op25/target71/profile1
+--- PASS: TestGCBranchCastOnlyStackRoot (0.04s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target0/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target0/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target2/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target2/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target6c/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target6c/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target71/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op24/target71/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target0/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target0/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target2/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target2/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target6c/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target6c/profile1 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target71/profile0 (0.00s)
+    --- PASS: TestGCBranchCastOnlyStackRoot/op25/target71/profile1 (0.00s)
+=== RUN   TestBoundedHostYieldAllowsGCAndCancellationWithOneP
+=== RUN   TestBoundedHostYieldAllowsGCAndCancellationWithOneP/typed
+=== RUN   TestBoundedHostYieldAllowsGCAndCancellationWithOneP/HostCall
+=== RUN   TestBoundedHostYieldAllowsGCAndCancellationWithOneP/Caller
+--- PASS: TestBoundedHostYieldAllowsGCAndCancellationWithOneP (0.17s)
+    --- PASS: TestBoundedHostYieldAllowsGCAndCancellationWithOneP/typed (0.04s)
+    --- PASS: TestBoundedHostYieldAllowsGCAndCancellationWithOneP/HostCall (0.05s)
+    --- PASS: TestBoundedHostYieldAllowsGCAndCancellationWithOneP/Caller (0.08s)
+=== RUN   TestCustomInstructionRecipeBudgetARM64
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared1
+    instruction_recipe_budget_test.go:51: code=160 bytes, handler calls=0
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared4
+    instruction_recipe_budget_test.go:51: code=272 bytes, handler calls=0
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared7
+    instruction_recipe_budget_test.go:51: code=1168 bytes, handler calls=0
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared8
+    instruction_recipe_budget_test.go:51: code=496 bytes, handler calls=4
+=== RUN   TestCustomInstructionRecipeBudgetARM64/shared12
+    instruction_recipe_budget_test.go:51: code=496 bytes, handler calls=4
+=== RUN   TestCustomInstructionRecipeBudgetARM64/depth
+=== RUN   TestCustomInstructionRecipeBudgetARM64/nodes
+--- PASS: TestCustomInstructionRecipeBudgetARM64 (0.01s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared1 (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared4 (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared7 (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared8 (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/shared12 (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/depth (0.00s)
+    --- PASS: TestCustomInstructionRecipeBudgetARM64/nodes (0.00s)
+=== RUN   TestCustomInstructionRecipeWidthBoundaries
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width1/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width1/shifttrue
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width3/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width3/shifttrue
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width5/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width5/shifttrue
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width31/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width31/shifttrue
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width32/shiftfalse
+=== RUN   TestCustomInstructionRecipeWidthBoundaries/width32/shifttrue
+--- PASS: TestCustomInstructionRecipeWidthBoundaries (0.01s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width1/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width1/shifttrue (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width3/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width3/shifttrue (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width5/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width5/shifttrue (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width31/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width31/shifttrue (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width32/shiftfalse (0.00s)
+    --- PASS: TestCustomInstructionRecipeWidthBoundaries/width32/shifttrue (0.00s)
+=== RUN   TestCustomInstructionRecipeOmittedArgumentTrap
+--- PASS: TestCustomInstructionRecipeOmittedArgumentTrap (0.00s)
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width1
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width3
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width5
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width31
+=== RUN   TestCustomInstructionRecipeInputOnlyARM64/width32
+--- PASS: TestCustomInstructionRecipeInputOnlyARM64 (0.00s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width1 (0.00s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width3 (0.00s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width5 (0.00s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width31 (0.00s)
+    --- PASS: TestCustomInstructionRecipeInputOnlyARM64/width32 (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	4.023s
