@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/wago-org/wago/cli/internal/tui"
@@ -245,6 +246,16 @@ func titleBuild(build wagopaths.Build) string {
 	return strings.ToUpper(value[:1]) + value[1:]
 }
 
+func availableBuilds() []wagopaths.Build {
+	var builds []wagopaths.Build
+	for _, build := range wagopaths.Builds {
+		if build.ValidatePlatform(runtime.GOOS, runtime.GOARCH) == nil {
+			builds = append(builds, build)
+		}
+	}
+	return builds
+}
+
 func chooseInstallVariant(profileValue, buildValue string) (wagopaths.Profile, wagopaths.Build, bool) {
 	profile, profileErr := requestedProfile(profileValue)
 	build, buildErr := requestedBuild(buildValue)
@@ -255,8 +266,8 @@ func chooseInstallVariant(profileValue, buildValue string) (wagopaths.Profile, w
 		return profile, build, true
 	}
 	if profileValue != "" {
-		items := make([]tui.Item, 0, len(wagopaths.Builds))
-		for _, candidate := range wagopaths.Builds {
+		items := make([]tui.Item, 0, len(availableBuilds()))
+		for _, candidate := range availableBuilds() {
 			items = append(items, tui.Item{Label: titleBuild(candidate), Description: candidate.Description(), Value: string(candidate)})
 		}
 		choice, ok := tui.Choose("Choose Wago build", items)
@@ -273,7 +284,7 @@ func chooseInstallVariant(profileValue, buildValue string) (wagopaths.Profile, w
 			item.Value = string(candidate)
 		} else {
 			item.AcceptTitle = "Choose Wago build"
-			for _, candidateBuild := range wagopaths.Builds {
+			for _, candidateBuild := range availableBuilds() {
 				item.AcceptItems = append(item.AcceptItems, tui.Item{
 					Label:       titleBuild(candidateBuild),
 					Description: candidateBuild.Description(),

@@ -1,4 +1,4 @@
-//go:build (amd64 || arm64) && !tinygo
+//go:build (amd64 || arm64 || (linux && riscv64)) && !tinygo
 
 package wago
 
@@ -31,9 +31,9 @@ func TestSharedScalarScaledAddWidths(t *testing.T) {
 			if !shared.AdmitScalar(body, &wasm.CompType{Params: []wasm.ValType{typ, typ}, Results: []wasm.ValType{typ}}, []wasm.ValType{typ, typ}).Eligible {
 				t.Fatal("scaled addition unexpectedly rejected")
 			}
-			for _, regABI := range []bool{false, true} {
+			for _, regABI := range sharedScalarTestABIModes() {
 				t.Run(fmt.Sprintf("wide=%v/shift=%d/regABI=%v", wide, shift, regABI), func(t *testing.T) {
-					c, err := Compile(NewRuntimeConfig().WithOptimization("reg-abi", regABI), module)
+					c, err := Compile(sharedScalarTestConfig(regABI), module)
 					if err != nil {
 						t.Fatal(err)
 					}

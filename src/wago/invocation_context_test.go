@@ -544,6 +544,18 @@ func TestCallerResolverInvocationContextEntryPaths(t *testing.T) {
 		name string
 		run  func(*testing.T, *Runtime, *invocationContextTestState, context.Context)
 	}{
+		{"imported start", func(t *testing.T, rt *Runtime, _ *invocationContextTestState, parent context.Context) {
+			module, err := rt.Compile(invocationContextImportedStartModule())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer module.Close()
+			in, err := rt.Instantiate(parent, module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+		}},
 		{"direct host reexport", func(t *testing.T, rt *Runtime, _ *invocationContextTestState, parent context.Context) {
 			module, err := rt.Compile(invocationContextReexportModule())
 			if err != nil {

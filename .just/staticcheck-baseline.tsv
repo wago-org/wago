@@ -1,66 +1,224 @@
 # Reviewed existing Staticcheck findings. New findings fail CI.
 # Columns: profile, file, check, message.
-diagnostics	internal/profcapture/capture.go	SA4023	this comparison is always true
-diagnostics	internal/profcapture/capture.go	SA4023	this comparison is always true
-diagnostics	internal/profcapture/capture.go	SA4023	this comparison is always true
 diagnostics	src/core/compiler/backend/railshot/amd64/control.go	U1000	func (*fn).frameDepthTypes is unused
 diagnostics	src/core/compiler/backend/railshot/amd64/control.go	U1000	func typesOfVals is unused
 diagnostics	src/core/compiler/backend/railshot/amd64/gc_direct.go	U1000	func (*fn).emitDirectGCArrayLen is unused
 diagnostics	src/core/compiler/backend/railshot/amd64/inline.go	U1000	func allCallsWillInline is unused
 diagnostics	src/core/compiler/backend/railshot/amd64/interval_region.go	U1000	func (*fn).intervalLocalHasMemBorrow is unused
 diagnostics	src/core/compiler/backend/railshot/amd64/magicdiv.go	U1000	func strengthReducible is unused
-diagnostics	src/core/compiler/backend/railshot/arm64/call.go	U1000	func (*fn).finishWrapperResults is unused
-diagnostics	src/core/compiler/backend/railshot/arm64/compile.go	U1000	field profileFnState is unused
-diagnostics	src/core/compiler/backend/railshot/arm64/control.go	U1000	func (*fn).frameDepthTypes is unused
-diagnostics	src/core/compiler/backend/railshot/arm64/control.go	U1000	func skipImmediatesWithMemory64 is unused
-diagnostics	src/core/compiler/backend/railshot/arm64/control.go	U1000	func typesOfVals is unused
-diagnostics	src/core/compiler/backend/railshot/arm64/interval_region.go	U1000	func (*fn).intervalLocalHasMemBorrow is unused
-diagnostics	src/core/compiler/backend/railshot/arm64/memory.go	U1000	func (*fn).bulkDynamicBoundsCheck is unused
-diagnostics	src/core/compiler/backend/railshot/arm64/op.go	U1000	const opNone is unused
-diagnostics	src/core/compiler/backend/railshot/arm64/profile_origin_disabled.go	U1000	type profileFnState is unused
-diagnostics	src/core/compiler/backend/railshot/arm64/simd_exec_arm64_test.go	SA4026	in Go, the floating-point literal '-0.0' is the same as '0.0', it does not produce a negative zero
-diagnostics	src/core/compiler/backend/railshot/arm64/stats.go	ST1018	string literal contains Unicode control characters, consider using escape sequences instead
-diagnostics	src/core/compiler/backend/railshot/arm64/stats.go	U1000	func (*CodegenStats).addGCSharedStubBytes is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/exact_product_wire.go	U1000	func admitExactProductWireShapeWithRecGroups is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/exception.go	U1000	field nextRoot is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/exception_test.go	U1000	func exceptionReferenceModule is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_array_copy_retired_fixture_test.go	U1000	var rv64GCArrayCopySourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_array_fill_retired_fixture_test.go	U1000	var rv64GCArrayFillSourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_array_fixed_official_retired_fixture_test.go	U1000	func rv64ExactArrayType is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	func admitRV64GCArrayInitDataPacked is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	func rv64ExactNumericArrayType is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	func rv64ExactPackedArrayType is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	var rv64GCArrayInitDataSourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	var rv64GCArrayInitDataWideSourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_array_reference_retired_fixture_test.go	U1000	func rv64ExactReferenceArrayType is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_array_reference_test.go	U1000	func rv64GCArrayReferenceBytes is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_concrete_retired_fixture_test.go	U1000	func admitRV64GCBrOnCastConcreteKind is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_concrete_retired_fixture_test.go	U1000	func admitRV64GCBrOnCastConcreteWireKind is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_concrete_retired_fixture_test.go	U1000	var rv64GCBrOnCastConcreteSourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_concrete_retired_fixture_test.go	U1000	var rv64GCBrOnCastFailConcreteSourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_nullability_retired_fixture_test.go	U1000	func admitRV64GCBrOnCastNullabilityKind is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_nullability_retired_fixture_test.go	U1000	func admitRV64GCBrOnCastNullabilityWireKind is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_nullability_retired_fixture_test.go	U1000	var rv64GCBrOnCastFailNullabilitySourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_nullability_retired_fixture_test.go	U1000	var rv64GCBrOnCastNullabilitySourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_ref_cast_concrete_retired_fixture_test.go	U1000	var rv64GCRefCastConcreteSourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_ref_test_concrete_retired_fixture_test.go	U1000	func admitRV64GCRefTestConcreteShape is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_ref_test_concrete_retired_fixture_test.go	U1000	var rv64GCRefTestConcreteSourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_ref_test_table_retired_fixture_test.go	U1000	var rv64GCRefTestTableSourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_rooted_scalar.go	SA4000	identical expressions on the left and right side of the '||' operator
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_rooted_scalar.go	U1000	func rootedScalarNullGlobal is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_struct_basic_retired_fixture_test.go	U1000	var rv64GCStructBasicSourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_struct_mutation_retired_fixture_test.go	U1000	var rv64GCStructMutationSourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_struct_null_retired_fixture_test.go	U1000	var rv64GCStructNullSourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_struct_numeric_globals_retired_fixture_test.go	U1000	var rv64GCStructNumericGlobalsSourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_struct_packed_retired_fixture_test.go	U1000	var rv64GCStructPackedSourceDigest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_cross_group_mismatch_link_retired_fixture_test.go	U1000	func gcTypeSubtypingCrossGroupMismatchLinkSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_cross_group_mismatch_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingCrossGroupMismatchLinkModules is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_declarations_retired_fixture_test.go	U1000	func gcTypeSubtypingDeclarationsSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_declarations_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingDeclarationsTypes is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_duplicate_recursive_link_retired_fixture_test.go	U1000	func gcTypeSubtypingDuplicateRecursiveLinkSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_duplicate_recursive_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingDuplicateRecursiveLinkModules is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_extended_projection_link_retired_fixture_test.go	U1000	func gcTypeSubtypingExtendedProjectionLinkSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_extended_projection_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingExtendedProjectionLinkModules is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_extended_recursive_link_retired_fixture_test.go	U1000	func gcTypeSubtypingExtendedRecursiveLinkSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_extended_recursive_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingExtendedRecursiveLinkModules is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_finality_link_retired_fixture_test.go	U1000	func gcTypeSubtypingFinalityLinkSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_finality_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingFinalityLinkModules is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_independent_struct_link_retired_fixture_test.go	U1000	func gcTypeSubtypingIndependentStructLinkSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_independent_struct_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingIndependentStructLinkModules is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_link_retired_fixture_test.go	U1000	func gcTypeSubtypingLinkSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingLinkModules is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_non_flat_export_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingNonFlatExportModule is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_recursive_functions_retired_fixture_test.go	U1000	func gcTypeSubtypingRecursiveFunctionsSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_recursive_functions_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRecursiveFunctionModules is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_func_globals_retired_fixture_test.go	U1000	func gcTypeSubtypingRefFuncGlobalsSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_func_globals_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefFuncGlobalModules is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	func gcTypeSubtypingRefTestSingleSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	func rv64GCTypeSubtypingRefTestSingleKey is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestDirectionFalseModule is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestModules is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestMultiFirstModule is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestMultiModule is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestMultiPairsModule is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestNominalFalseDeepModule is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestNominalFalseModule is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestRecursiveModule is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestSingleModule is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestSupertypeTrueModule is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_call_cast_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRuntimeCallCastModule is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_finality_call_cast_retired_fixture_test.go	U1000	const rv64GCTypeSubtypingRuntimeFinalityKeySalt is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_finality_call_cast_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRuntimeFinalityCallCastModule is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_typed_table_call_retired_fixture_test.go	U1000	func rv64GCTypeSubtypingRuntimeTypedTableKey is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_typed_table_call_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRuntimeTypedTableCallModule is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_link_retired_fixture_test.go	U1000	func gcTypeSubtypingStructLinkSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingStructLinkModules is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_mismatch_link_retired_fixture_test.go	U1000	func gcTypeSubtypingStructMismatchLinkSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_mismatch_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingStructMismatchLinkModules is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_projection_link_retired_fixture_test.go	U1000	func gcTypeSubtypingStructProjectionLinkSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_projection_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingStructProjectionLinkModules is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_transitive_mismatch_link_retired_fixture_test.go	U1000	func gcTypeSubtypingTransitiveMismatchLinkSourceVariant is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_transitive_mismatch_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingTransitiveMismatchLinkModules is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/initializers.go	U1000	func admitI32Offset is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/initializers.go	U1000	func admitI64Offset is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/native_table_thunk.go	U1000	func (*integerEmitter).nativeTableCall is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/native_tail_dispatch.go	SA4023	this comparison is always true
+diagnostics	src/core/compiler/backend/railshot/riscv64/public_primitive_references.go	U1000	func primitiveNumericReferenceTarget is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/public_primitive_references.go	U1000	func primitiveReferenceCarrierTarget is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/public_primitive_references.go	U1000	func primitiveReferenceTable is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/public_primitive_references.go	U1000	func primitiveReferenceTarget is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/reference_branch_test.go	U1000	func referenceBranchSource is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/reference_call.go	U1000	func (*integerEmitter).functionReferenceIdentityTest is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/swar_call.go	U1000	func (*integerEmitter).swarIndirectCall is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/table.go	U1000	func (*integerEmitter).ownedIndirectTarget is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/table_bulk.go	U1000	func (*integerEmitter).privateTableCopy is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/table_bulk.go	U1000	func (*integerEmitter).privateTableFill is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/table_bulk.go	U1000	func (*integerEmitter).privateTableRange is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/table_elements.go	U1000	func (*integerEmitter).privateTableInit is unused
+diagnostics	src/core/compiler/backend/railshot/riscv64/tail_ra_protocol.go	S1002	should omit comparison to bool constant, can be simplified to !f.mode.interruptible
+diagnostics	src/core/compiler/backend/railshot/riscv64/tail_ra_protocol.go	S1002	should omit comparison to bool constant, can be simplified to !f.mode.production
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source.go	U1000	field active is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source.go	U1000	field err is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source.go	U1000	field function is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source.go	U1000	field instruction is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source.go	U1000	field localDecls is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source_disabled.go	U1000	type scalarSourceState is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field controls is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field freeSlots is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field locals is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field maxSlot is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field nextSlot is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field nodes is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field owners is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field regs is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field reserved is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field stack is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field target is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field tempBase is unused
+diagnostics	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field widths is unused
 diagnostics	src/core/compiler/wasm/bytecode_skip.go	U1000	func classifyExprOpAfterOpcodeWithModuleFeatures is unused
+diagnostics	src/core/compiler/wasm/bytecode_skip.go	U1000	func skipHeapTypeBytes is unused
 diagnostics	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeExprWithMemarg64 is unused
 diagnostics	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeInstructionWithMemarg64 is unused
 diagnostics	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeMemArgWithWidth is unused
+diagnostics	src/core/runtime/engine.go	U1000	func loadOffHeapU64 is unused
+diagnostics	src/core/runtime/gc/native/object_edges_other.go	U1000	func (*Collector).closeObjectEdgeSource is unused
 diagnostics	src/core/runtime/gc/native/tiny_pacing_test.go	SA4006	this value of roots is never used
-diagnostics	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).close is unused
-diagnostics	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).enterWasm is unused
-diagnostics	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).leaveWasm is unused
-diagnostics	src/core/runtime/interrupt_darwin_arm64.go	U1000	func beginInterruptActivation is unused
-diagnostics	src/core/runtime/interrupt_darwin_arm64.go	U1000	type interruptActivation is unused
-diagnostics	src/core/runtime/limits_test.go	U1000	field args is unused
-diagnostics	src/core/runtime/limits_test.go	U1000	field inUse is unused
-diagnostics	src/core/runtime/limits_test.go	U1000	field preparedInt is unused
-diagnostics	src/core/runtime/limits_test.go	U1000	field results is unused
-diagnostics	src/core/runtime/limits_test.go	U1000	field stack is unused
-diagnostics	src/core/runtime/limits_test.go	U1000	field stackTop is unused
-diagnostics	src/wago/amd64_codegen_profile.go	U1000	func selectedAMD64CompileFeatures is unused
+diagnostics	src/core/runtime/hostcall_amd64.go	U1000	var hostStubMem is unused
+diagnostics	src/core/runtime/limits_host_test.go	U1000	field args is unused
+diagnostics	src/core/runtime/limits_host_test.go	U1000	field inUse is unused
+diagnostics	src/core/runtime/limits_host_test.go	U1000	field preparedInt is unused
+diagnostics	src/core/runtime/limits_host_test.go	U1000	field results is unused
+diagnostics	src/core/runtime/limits_host_test.go	U1000	field stack is unused
+diagnostics	src/core/runtime/limits_host_test.go	U1000	field stackTop is unused
+diagnostics	src/wago/api.go	SA4023	this comparison is always true
 diagnostics	src/wago/api.go	U1000	func (*Compiled).tableMinimum is unused
-diagnostics	src/wago/diagnostics_test.go	U1000	func requireCompilerDiagnostics is unused
-diagnostics	src/wago/gc_array_helper.go	U1000	func (*Instance).dispatchGCArrayHelper is unused
+diagnostics	src/wago/compile_table64.go	U1000	func stagedImportedTable64IndirectTailShape is unused
+diagnostics	src/wago/config.go	U1000	field railshotState is unused
+diagnostics	src/wago/cross_instance.go	U1000	field descriptorDependencies is unused
+diagnostics	src/wago/cross_instance.go	U1000	func (*Table).consumeImporterCounter is unused
+diagnostics	src/wago/cross_instance.go	U1000	func (*Table).retainDescriptorOwnersForFinalization is unused
+diagnostics	src/wago/cross_instance.go	U1000	func (*Table).retainProducerInstanceForFinalization is unused
+diagnostics	src/wago/gc_array_copy_other.go	U1000	func rv64GCArrayCopyExecutionCode is unused
+diagnostics	src/wago/gc_array_default_official_other.go	U1000	func rv64GCArrayDefaultOfficialExecutionCode is unused
+diagnostics	src/wago/gc_array_fill_other.go	U1000	func rv64GCArrayFillExecutionCode is unused
+diagnostics	src/wago/gc_array_fixed_local_other.go	U1000	func rv64GCArrayFixedLocalExecutionCode is unused
+diagnostics	src/wago/gc_array_fixed_official_other.go	U1000	func rv64GCArrayFixedOfficialExecutionCode is unused
+diagnostics	src/wago/gc_array_init_data_other.go	U1000	func rv64GCArrayInitDataExecutionCode is unused
+diagnostics	src/wago/gc_array_init_elem_other.go	U1000	func rv64GCArrayInitElemExecutionCode is unused
+diagnostics	src/wago/gc_array_local_other.go	U1000	func rv64GCArrayLocalExecutionCode is unused
+diagnostics	src/wago/gc_array_packed_data_other.go	U1000	func rv64GCArrayPackedDataExecutionCode is unused
+diagnostics	src/wago/gc_array_reference_other.go	U1000	func rv64GCArrayReferenceExecutionCode is unused
+diagnostics	src/wago/gc_array_uniform_other.go	U1000	func rv64GCArrayUniformExecutionCode is unused
+diagnostics	src/wago/gc_compact_extern_other.go	U1000	func railshotCompactExternHostGlobalMatches is unused
+diagnostics	src/wago/gc_compact_extern_other.go	U1000	func railshotCompactExternUnpinnedAfterClose is unused
 diagnostics	src/wago/gc_frame_liveness.go	U1000	func gcFrameBodyMayCollect is unused
-diagnostics	src/wago/gc_frame_roots_arm64.go	U1000	func arm64GCFrameCallRefABI is unused
-diagnostics	src/wago/gc_native_entry_guard_release.go	U1000	const nativeGCEntryValidationEnabled is unused
-diagnostics	src/wago/gc_ref_test_table.go	U1000	func (*gcRefTestTableState).set is unused
-diagnostics	src/wago/gc_struct_product.go	U1000	func stagedGCStructFieldString is unused
-diagnostics	src/wago/gc_struct_product.go	U1000	func stagedGCStructLeaderPinFor is unused
-diagnostics	src/wago/gc_struct_product.go	U1000	func stagedGCStructOpcodeInventory is unused
-diagnostics	src/wago/gc_struct_product.go	U1000	func stagedGCStructProduct.gateReason is unused
-diagnostics	src/wago/gc_struct_product.go	U1000	func stagedGCStructStateGraph is unused
-diagnostics	src/wago/gc_struct_product.go	U1000	func stagedGCStructTypeGraph is unused
-diagnostics	src/wago/gc_struct_product.go	U1000	func stagedGCStructValTypes is unused
-diagnostics	src/wago/gc_struct_product.go	U1000	type stagedGCStructOpcodeCount is unused
-diagnostics	src/wago/gc_struct_product_gate_test.go	U1000	func stagedGCStructMutationBytes is unused
+diagnostics	src/wago/gc_frame_liveness.go	U1000	func gcFrameBodyMayCollectWithClassifier is unused
+diagnostics	src/wago/gc_memory_combinations_test.go	U1000	func gcMemoryCombinationSource is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastAbstractExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastConcreteExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastFailAbstractExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastFailConcreteExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastFailNullabilityExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastNullabilityExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCExternExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCRefCastAbstractExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCRefCastConcreteExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCRefTestAbstractExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCRefTestConcreteExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingCrossGroupMismatchLinkExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingDeclarations is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingDuplicateRecursiveLinkExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingExtendedProjectionLinkExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingExtendedRecursiveLinkExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingFinalityLinkExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingIndependentStructLinkExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingLinkExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingNonFlatExport is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingNonFlatExportExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRecursiveFunctions is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRecursiveFunctionsExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRefFuncGlobals is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRefFuncGlobalsExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRefTestSingleExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRuntimeCallCast is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRuntimeCallCastExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRuntimeFinalityCallCastExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRuntimeTypedTableCallExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingStructLinkExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingStructMismatchLinkExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingStructProjectionLinkExecutionCode is unused
+diagnostics	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingTransitiveMismatchLinkExecutionCode is unused
+diagnostics	src/wago/gc_struct_basic_other.go	U1000	func rv64GCStructBasicExecutionCode is unused
+diagnostics	src/wago/gc_struct_get_other.go	U1000	func rv64GCStructGetExecutionCode is unused
+diagnostics	src/wago/gc_struct_mutation_other.go	U1000	func rv64GCStructMutationExecutionCode is unused
+diagnostics	src/wago/gc_struct_null_other.go	U1000	func rv64GCStructNullExecutionCode is unused
+diagnostics	src/wago/gc_struct_numeric_globals_other.go	U1000	func rv64GCStructNumericGlobals is unused
+diagnostics	src/wago/gc_struct_packed_other.go	U1000	func rv64GCStructPackedExecutionCode is unused
+diagnostics	src/wago/global_importer_counter_boundary_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+diagnostics	src/wago/globals.go	S1016	should convert ref (type ExnRef) to GCRef instead of using struct literal
+diagnostics	src/wago/globals.go	U1000	field descriptorDependencies is unused
+diagnostics	src/wago/globals.go	U1000	func (*Global).consumeImporterCounter is unused
+diagnostics	src/wago/globals.go	U1000	func (*Global).retainProducerInstanceForFinalization is unused
 diagnostics	src/wago/host_execution.go	U1000	func (*hostLoopActivation).dispatchSingleTypedScalarExpandedPortal is unused
-diagnostics	src/wago/hostcall_test.go	U1000	func hostV128FromSlots is unused
+diagnostics	src/wago/host_scope_parent_other.go	U1000	type railshotHostScopeParent is unused
+diagnostics	src/wago/hostcall.go	U1000	field railshotHostScopeParent is unused
+diagnostics	src/wago/hostcall.go	U1000	field railshotInvocation is unused
+diagnostics	src/wago/import_attachments.go	U1000	field dependencies is unused
+diagnostics	src/wago/import_attachments.go	U1000	field dependencies is unused
+diagnostics	src/wago/import_attachments.go	U1000	field dependencies is unused
+diagnostics	src/wago/import_attachments.go	U1000	field dependencies is unused
 diagnostics	src/wago/import_identity_test.go	U1000	const flatKey is unused
 diagnostics	src/wago/imports_external_test.go	S1034	assigning the result of this type assertion to a variable (switch value := value.(type)) could eliminate type assertions in switch cases
-diagnostics	src/wago/imports_legacy_test.go	U1000	func testCloneImports is unused
+diagnostics	src/wago/instance.go	U1000	field rootAccounting is unused
 diagnostics	src/wago/instance_close_completion_test.go	SA4000	identical expressions on the left and right side of the '||' operator
 diagnostics	src/wago/instance_entry.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/instance_invocation_cleanup_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
 diagnostics	src/wago/instance_native_context.go	SA2001	empty critical section
 diagnostics	src/wago/invocation_admission_test.go	SA2001	empty critical section
 diagnostics	src/wago/invocation_admission_test.go	SA2001	empty critical section
@@ -80,79 +238,236 @@ diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Cont
 diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
 diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
 diagnostics	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/memory.go	U1000	func (*Memory).consumeImporterCounter is unused
 diagnostics	src/wago/module.go	U1000	func declaredImportIdentity is unused
-diagnostics	src/wago/null_reference_product_test.go	U1000	func compileStagedNullReferenceProductForTest is unused
-diagnostics	src/wago/null_reference_product_test.go	U1000	func namesForBottomNullReferenceProduct is unused
-diagnostics	src/wago/null_reference_product_test.go	U1000	func stagedBottomNullReferenceModule is unused
+diagnostics	src/wago/mutable_reference_global_clear_other.go	U1000	func (*Instance).dispatchGuestGlobalStore is unused
+diagnostics	src/wago/native_import_other.go	U1000	type railshotInvocationState is unused
+diagnostics	src/wago/native_tail_other.go	U1000	type railshotRuntimeConfigState is unused
 diagnostics	src/wago/prepared_direct_amd64.go	U1000	func (*WasmFunc).invokeDirectInt is unused
-diagnostics	src/wago/prepared_direct_arm64.go	U1000	func (*WasmFunc).invokeDirectInt is unused
+diagnostics	src/wago/public_invocation_cleanup_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+diagnostics	src/wago/reference_dependency.go	U1000	func (*dependencyGraph).closedComponentMemberLocked is unused
+diagnostics	src/wago/reference_dependency_global_other_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+diagnostics	src/wago/reference_dependency_global_other_test.go	U1000	field set is unused
+diagnostics	src/wago/reference_dependency_memory_other_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+diagnostics	src/wago/reference_dependency_memory_other_test.go	U1000	field set is unused
+diagnostics	src/wago/reference_dependency_native_other.go	U1000	func railshotAdoptClosedContainerDependencies is unused
+diagnostics	src/wago/reference_dependency_native_other_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+diagnostics	src/wago/reference_dependency_native_other_test.go	U1000	field set is unused
+diagnostics	src/wago/reference_retained_cleanup_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+diagnostics	src/wago/reference_root_ledger_other_test.go	U1000	field pluginGCImports is unused
+diagnostics	src/wago/reference_store.go	S1016	should convert ref (type ExnRef) to GCRef instead of using struct literal
 diagnostics	src/wago/reference_store.go	U1000	field reserved is unused
 diagnostics	src/wago/reference_store.go	U1000	func (*gcPublicState).resultCapacity is unused
-diagnostics	src/wago/reference_store.go	U1000	func (*referenceStore).gcRefExactType is unused
-diagnostics	src/wago/services.go	U1000	func (*contractSlot).deactivate is unused
-diagnostics	src/wago/spectest_exec_test.go	U1000	func specExecStats.gapCount is unused
-diagnostics	src/wago/structural_type_product.go	U1000	func stagedStructuralTypeProduct.gateReason is unused
-diagnostics	src/wago/structural_type_product_test.go	U1000	func compileStagedStructuralTypeProductForTest is unused
-diagnostics	src/wago/structural_type_product_test.go	U1000	func stagedTypeRecLeaderPinFor is unused
-profiling	internal/profcapture/capture.go	SA4023	this comparison is always true
-profiling	internal/profcapture/capture.go	SA4023	this comparison is always true
-profiling	internal/profcapture/capture.go	SA4023	this comparison is always true
+diagnostics	src/wago/reference_store.go	U1000	func (*referenceStore).gcNativeCallerOwner is unused
+diagnostics	src/wago/reference_store.go	U1000	func (*referenceStore).pinExternref is unused
+diagnostics	src/wago/reference_store.go	U1000	func (*referenceStore).unpinExternref is unused
+diagnostics	src/wago/reference_value_test.go	U1000	func referenceSlotIdentityModule is unused
+diagnostics	src/wago/rv64_execution_contract.go	U1000	field rooted is unused
+diagnostics	src/wago/rv64_execution_contract.go	U1000	func rv64ExecutionDigest is unused
+diagnostics	src/wago/rv64_execution_contract.go	U1000	func rv64PopulateArtifactReceipt is unused
+diagnostics	src/wago/table_importer_counter_preparation_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+diagnostics	src/wago/threads_growth_other.go	U1000	func threadedMemorySizeGrowSupported is unused
+diagnostics	src/wago/threads_host_view.go	U1000	func threadedMemoryHostBytes is unused
 profiling	src/core/compiler/backend/railshot/amd64/control.go	U1000	func (*fn).frameDepthTypes is unused
 profiling	src/core/compiler/backend/railshot/amd64/control.go	U1000	func typesOfVals is unused
 profiling	src/core/compiler/backend/railshot/amd64/gc_direct.go	U1000	func (*fn).emitDirectGCArrayLen is unused
 profiling	src/core/compiler/backend/railshot/amd64/inline.go	U1000	func allCallsWillInline is unused
 profiling	src/core/compiler/backend/railshot/amd64/interval_region.go	U1000	func (*fn).intervalLocalHasMemBorrow is unused
 profiling	src/core/compiler/backend/railshot/amd64/magicdiv.go	U1000	func strengthReducible is unused
-profiling	src/core/compiler/backend/railshot/arm64/call.go	U1000	func (*fn).finishWrapperResults is unused
-profiling	src/core/compiler/backend/railshot/arm64/control.go	U1000	func (*fn).frameDepthTypes is unused
-profiling	src/core/compiler/backend/railshot/arm64/control.go	U1000	func skipImmediatesWithMemory64 is unused
-profiling	src/core/compiler/backend/railshot/arm64/control.go	U1000	func typesOfVals is unused
-profiling	src/core/compiler/backend/railshot/arm64/interval_region.go	U1000	func (*fn).intervalLocalHasMemBorrow is unused
-profiling	src/core/compiler/backend/railshot/arm64/memory.go	U1000	func (*fn).bulkDynamicBoundsCheck is unused
-profiling	src/core/compiler/backend/railshot/arm64/op.go	U1000	const opNone is unused
-profiling	src/core/compiler/backend/railshot/arm64/simd_exec_arm64_test.go	SA4026	in Go, the floating-point literal '-0.0' is the same as '0.0', it does not produce a negative zero
-profiling	src/core/compiler/backend/railshot/arm64/stats.go	ST1018	string literal contains Unicode control characters, consider using escape sequences instead
-profiling	src/core/compiler/backend/railshot/arm64/stats.go	U1000	func (*CodegenStats).addGCSharedStubBytes is unused
+profiling	src/core/compiler/backend/railshot/riscv64/exact_product_wire.go	U1000	func admitExactProductWireShapeWithRecGroups is unused
+profiling	src/core/compiler/backend/railshot/riscv64/exception.go	U1000	field nextRoot is unused
+profiling	src/core/compiler/backend/railshot/riscv64/exception_test.go	U1000	func exceptionReferenceModule is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_array_copy_retired_fixture_test.go	U1000	var rv64GCArrayCopySourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_array_fill_retired_fixture_test.go	U1000	var rv64GCArrayFillSourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_array_fixed_official_retired_fixture_test.go	U1000	func rv64ExactArrayType is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	func admitRV64GCArrayInitDataPacked is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	func rv64ExactNumericArrayType is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	func rv64ExactPackedArrayType is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	var rv64GCArrayInitDataSourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	var rv64GCArrayInitDataWideSourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_array_reference_retired_fixture_test.go	U1000	func rv64ExactReferenceArrayType is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_array_reference_test.go	U1000	func rv64GCArrayReferenceBytes is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_concrete_retired_fixture_test.go	U1000	func admitRV64GCBrOnCastConcreteKind is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_concrete_retired_fixture_test.go	U1000	func admitRV64GCBrOnCastConcreteWireKind is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_concrete_retired_fixture_test.go	U1000	var rv64GCBrOnCastConcreteSourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_concrete_retired_fixture_test.go	U1000	var rv64GCBrOnCastFailConcreteSourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_nullability_retired_fixture_test.go	U1000	func admitRV64GCBrOnCastNullabilityKind is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_nullability_retired_fixture_test.go	U1000	func admitRV64GCBrOnCastNullabilityWireKind is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_nullability_retired_fixture_test.go	U1000	var rv64GCBrOnCastFailNullabilitySourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_nullability_retired_fixture_test.go	U1000	var rv64GCBrOnCastNullabilitySourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_ref_cast_concrete_retired_fixture_test.go	U1000	var rv64GCRefCastConcreteSourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_ref_test_concrete_retired_fixture_test.go	U1000	func admitRV64GCRefTestConcreteShape is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_ref_test_concrete_retired_fixture_test.go	U1000	var rv64GCRefTestConcreteSourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_ref_test_table_retired_fixture_test.go	U1000	var rv64GCRefTestTableSourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_rooted_scalar.go	SA4000	identical expressions on the left and right side of the '||' operator
+profiling	src/core/compiler/backend/railshot/riscv64/gc_rooted_scalar.go	U1000	func rootedScalarNullGlobal is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_struct_basic_retired_fixture_test.go	U1000	var rv64GCStructBasicSourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_struct_mutation_retired_fixture_test.go	U1000	var rv64GCStructMutationSourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_struct_null_retired_fixture_test.go	U1000	var rv64GCStructNullSourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_struct_numeric_globals_retired_fixture_test.go	U1000	var rv64GCStructNumericGlobalsSourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_struct_packed_retired_fixture_test.go	U1000	var rv64GCStructPackedSourceDigest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_cross_group_mismatch_link_retired_fixture_test.go	U1000	func gcTypeSubtypingCrossGroupMismatchLinkSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_cross_group_mismatch_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingCrossGroupMismatchLinkModules is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_declarations_retired_fixture_test.go	U1000	func gcTypeSubtypingDeclarationsSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_declarations_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingDeclarationsTypes is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_duplicate_recursive_link_retired_fixture_test.go	U1000	func gcTypeSubtypingDuplicateRecursiveLinkSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_duplicate_recursive_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingDuplicateRecursiveLinkModules is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_extended_projection_link_retired_fixture_test.go	U1000	func gcTypeSubtypingExtendedProjectionLinkSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_extended_projection_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingExtendedProjectionLinkModules is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_extended_recursive_link_retired_fixture_test.go	U1000	func gcTypeSubtypingExtendedRecursiveLinkSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_extended_recursive_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingExtendedRecursiveLinkModules is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_finality_link_retired_fixture_test.go	U1000	func gcTypeSubtypingFinalityLinkSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_finality_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingFinalityLinkModules is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_independent_struct_link_retired_fixture_test.go	U1000	func gcTypeSubtypingIndependentStructLinkSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_independent_struct_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingIndependentStructLinkModules is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_link_retired_fixture_test.go	U1000	func gcTypeSubtypingLinkSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingLinkModules is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_non_flat_export_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingNonFlatExportModule is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_recursive_functions_retired_fixture_test.go	U1000	func gcTypeSubtypingRecursiveFunctionsSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_recursive_functions_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRecursiveFunctionModules is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_func_globals_retired_fixture_test.go	U1000	func gcTypeSubtypingRefFuncGlobalsSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_func_globals_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefFuncGlobalModules is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	func gcTypeSubtypingRefTestSingleSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	func rv64GCTypeSubtypingRefTestSingleKey is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestDirectionFalseModule is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestModules is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestMultiFirstModule is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestMultiModule is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestMultiPairsModule is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestNominalFalseDeepModule is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestNominalFalseModule is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestRecursiveModule is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestSingleModule is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestSupertypeTrueModule is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_call_cast_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRuntimeCallCastModule is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_finality_call_cast_retired_fixture_test.go	U1000	const rv64GCTypeSubtypingRuntimeFinalityKeySalt is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_finality_call_cast_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRuntimeFinalityCallCastModule is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_typed_table_call_retired_fixture_test.go	U1000	func rv64GCTypeSubtypingRuntimeTypedTableKey is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_typed_table_call_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRuntimeTypedTableCallModule is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_link_retired_fixture_test.go	U1000	func gcTypeSubtypingStructLinkSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingStructLinkModules is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_mismatch_link_retired_fixture_test.go	U1000	func gcTypeSubtypingStructMismatchLinkSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_mismatch_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingStructMismatchLinkModules is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_projection_link_retired_fixture_test.go	U1000	func gcTypeSubtypingStructProjectionLinkSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_projection_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingStructProjectionLinkModules is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_transitive_mismatch_link_retired_fixture_test.go	U1000	func gcTypeSubtypingTransitiveMismatchLinkSourceVariant is unused
+profiling	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_transitive_mismatch_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingTransitiveMismatchLinkModules is unused
+profiling	src/core/compiler/backend/railshot/riscv64/initializers.go	U1000	func admitI32Offset is unused
+profiling	src/core/compiler/backend/railshot/riscv64/initializers.go	U1000	func admitI64Offset is unused
+profiling	src/core/compiler/backend/railshot/riscv64/native_table_thunk.go	U1000	func (*integerEmitter).nativeTableCall is unused
+profiling	src/core/compiler/backend/railshot/riscv64/native_tail_dispatch.go	SA4023	this comparison is always true
+profiling	src/core/compiler/backend/railshot/riscv64/public_primitive_references.go	U1000	func primitiveNumericReferenceTarget is unused
+profiling	src/core/compiler/backend/railshot/riscv64/public_primitive_references.go	U1000	func primitiveReferenceCarrierTarget is unused
+profiling	src/core/compiler/backend/railshot/riscv64/public_primitive_references.go	U1000	func primitiveReferenceTable is unused
+profiling	src/core/compiler/backend/railshot/riscv64/public_primitive_references.go	U1000	func primitiveReferenceTarget is unused
+profiling	src/core/compiler/backend/railshot/riscv64/reference_branch_test.go	U1000	func referenceBranchSource is unused
+profiling	src/core/compiler/backend/railshot/riscv64/reference_call.go	U1000	func (*integerEmitter).functionReferenceIdentityTest is unused
+profiling	src/core/compiler/backend/railshot/riscv64/swar_call.go	U1000	func (*integerEmitter).swarIndirectCall is unused
+profiling	src/core/compiler/backend/railshot/riscv64/table.go	U1000	func (*integerEmitter).ownedIndirectTarget is unused
+profiling	src/core/compiler/backend/railshot/riscv64/table_bulk.go	U1000	func (*integerEmitter).privateTableCopy is unused
+profiling	src/core/compiler/backend/railshot/riscv64/table_bulk.go	U1000	func (*integerEmitter).privateTableFill is unused
+profiling	src/core/compiler/backend/railshot/riscv64/table_bulk.go	U1000	func (*integerEmitter).privateTableRange is unused
+profiling	src/core/compiler/backend/railshot/riscv64/table_elements.go	U1000	func (*integerEmitter).privateTableInit is unused
+profiling	src/core/compiler/backend/railshot/riscv64/tail_ra_protocol.go	S1002	should omit comparison to bool constant, can be simplified to !f.mode.interruptible
+profiling	src/core/compiler/backend/railshot/riscv64/tail_ra_protocol.go	S1002	should omit comparison to bool constant, can be simplified to !f.mode.production
 profiling	src/core/compiler/wasm/bytecode_skip.go	U1000	func classifyExprOpAfterOpcodeWithModuleFeatures is unused
+profiling	src/core/compiler/wasm/bytecode_skip.go	U1000	func skipHeapTypeBytes is unused
 profiling	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeExprWithMemarg64 is unused
 profiling	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeInstructionWithMemarg64 is unused
 profiling	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeMemArgWithWidth is unused
+profiling	src/core/runtime/engine.go	U1000	func loadOffHeapU64 is unused
+profiling	src/core/runtime/gc/native/object_edges_other.go	U1000	func (*Collector).closeObjectEdgeSource is unused
 profiling	src/core/runtime/gc/native/tiny_pacing_test.go	SA4006	this value of roots is never used
-profiling	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).close is unused
-profiling	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).enterWasm is unused
-profiling	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).leaveWasm is unused
-profiling	src/core/runtime/interrupt_darwin_arm64.go	U1000	func beginInterruptActivation is unused
-profiling	src/core/runtime/interrupt_darwin_arm64.go	U1000	type interruptActivation is unused
-profiling	src/core/runtime/limits_test.go	U1000	field args is unused
-profiling	src/core/runtime/limits_test.go	U1000	field inUse is unused
-profiling	src/core/runtime/limits_test.go	U1000	field preparedInt is unused
-profiling	src/core/runtime/limits_test.go	U1000	field results is unused
-profiling	src/core/runtime/limits_test.go	U1000	field stack is unused
-profiling	src/core/runtime/limits_test.go	U1000	field stackTop is unused
-profiling	src/wago/amd64_codegen_profile.go	U1000	func selectedAMD64CompileFeatures is unused
+profiling	src/core/runtime/hostcall_amd64.go	U1000	var hostStubMem is unused
+profiling	src/core/runtime/limits_host_test.go	U1000	field args is unused
+profiling	src/core/runtime/limits_host_test.go	U1000	field inUse is unused
+profiling	src/core/runtime/limits_host_test.go	U1000	field preparedInt is unused
+profiling	src/core/runtime/limits_host_test.go	U1000	field results is unused
+profiling	src/core/runtime/limits_host_test.go	U1000	field stack is unused
+profiling	src/core/runtime/limits_host_test.go	U1000	field stackTop is unused
+profiling	src/wago/api.go	SA4023	this comparison is always true
 profiling	src/wago/api.go	U1000	func (*Compiled).tableMinimum is unused
-profiling	src/wago/diagnostics_test.go	U1000	func requireCompilerDiagnostics is unused
-profiling	src/wago/gc_array_helper.go	U1000	func (*Instance).dispatchGCArrayHelper is unused
+profiling	src/wago/compile_table64.go	U1000	func stagedImportedTable64IndirectTailShape is unused
+profiling	src/wago/config.go	U1000	field railshotState is unused
+profiling	src/wago/cross_instance.go	U1000	field descriptorDependencies is unused
+profiling	src/wago/cross_instance.go	U1000	func (*Table).consumeImporterCounter is unused
+profiling	src/wago/cross_instance.go	U1000	func (*Table).retainDescriptorOwnersForFinalization is unused
+profiling	src/wago/cross_instance.go	U1000	func (*Table).retainProducerInstanceForFinalization is unused
+profiling	src/wago/gc_array_copy_other.go	U1000	func rv64GCArrayCopyExecutionCode is unused
+profiling	src/wago/gc_array_default_official_other.go	U1000	func rv64GCArrayDefaultOfficialExecutionCode is unused
+profiling	src/wago/gc_array_fill_other.go	U1000	func rv64GCArrayFillExecutionCode is unused
+profiling	src/wago/gc_array_fixed_local_other.go	U1000	func rv64GCArrayFixedLocalExecutionCode is unused
+profiling	src/wago/gc_array_fixed_official_other.go	U1000	func rv64GCArrayFixedOfficialExecutionCode is unused
+profiling	src/wago/gc_array_init_data_other.go	U1000	func rv64GCArrayInitDataExecutionCode is unused
+profiling	src/wago/gc_array_init_elem_other.go	U1000	func rv64GCArrayInitElemExecutionCode is unused
+profiling	src/wago/gc_array_local_other.go	U1000	func rv64GCArrayLocalExecutionCode is unused
+profiling	src/wago/gc_array_packed_data_other.go	U1000	func rv64GCArrayPackedDataExecutionCode is unused
+profiling	src/wago/gc_array_reference_other.go	U1000	func rv64GCArrayReferenceExecutionCode is unused
+profiling	src/wago/gc_array_uniform_other.go	U1000	func rv64GCArrayUniformExecutionCode is unused
+profiling	src/wago/gc_compact_extern_other.go	U1000	func railshotCompactExternHostGlobalMatches is unused
+profiling	src/wago/gc_compact_extern_other.go	U1000	func railshotCompactExternUnpinnedAfterClose is unused
 profiling	src/wago/gc_frame_liveness.go	U1000	func gcFrameBodyMayCollect is unused
-profiling	src/wago/gc_frame_roots_arm64.go	U1000	func arm64GCFrameCallRefABI is unused
-profiling	src/wago/gc_native_entry_guard_release.go	U1000	const nativeGCEntryValidationEnabled is unused
-profiling	src/wago/gc_ref_test_table.go	U1000	func (*gcRefTestTableState).set is unused
-profiling	src/wago/gc_struct_product.go	U1000	func stagedGCStructFieldString is unused
-profiling	src/wago/gc_struct_product.go	U1000	func stagedGCStructLeaderPinFor is unused
-profiling	src/wago/gc_struct_product.go	U1000	func stagedGCStructOpcodeInventory is unused
-profiling	src/wago/gc_struct_product.go	U1000	func stagedGCStructProduct.gateReason is unused
-profiling	src/wago/gc_struct_product.go	U1000	func stagedGCStructStateGraph is unused
-profiling	src/wago/gc_struct_product.go	U1000	func stagedGCStructTypeGraph is unused
-profiling	src/wago/gc_struct_product.go	U1000	func stagedGCStructValTypes is unused
-profiling	src/wago/gc_struct_product.go	U1000	type stagedGCStructOpcodeCount is unused
-profiling	src/wago/gc_struct_product_gate_test.go	U1000	func stagedGCStructMutationBytes is unused
+profiling	src/wago/gc_frame_liveness.go	U1000	func gcFrameBodyMayCollectWithClassifier is unused
+profiling	src/wago/gc_memory_combinations_test.go	U1000	func gcMemoryCombinationSource is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastAbstractExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastConcreteExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastFailAbstractExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastFailConcreteExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastFailNullabilityExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastNullabilityExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCExternExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCRefCastAbstractExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCRefCastConcreteExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCRefTestAbstractExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCRefTestConcreteExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingCrossGroupMismatchLinkExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingDeclarations is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingDuplicateRecursiveLinkExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingExtendedProjectionLinkExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingExtendedRecursiveLinkExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingFinalityLinkExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingIndependentStructLinkExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingLinkExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingNonFlatExport is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingNonFlatExportExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRecursiveFunctions is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRecursiveFunctionsExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRefFuncGlobals is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRefFuncGlobalsExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRefTestSingleExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRuntimeCallCast is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRuntimeCallCastExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRuntimeFinalityCallCastExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRuntimeTypedTableCallExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingStructLinkExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingStructMismatchLinkExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingStructProjectionLinkExecutionCode is unused
+profiling	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingTransitiveMismatchLinkExecutionCode is unused
+profiling	src/wago/gc_struct_basic_other.go	U1000	func rv64GCStructBasicExecutionCode is unused
+profiling	src/wago/gc_struct_get_other.go	U1000	func rv64GCStructGetExecutionCode is unused
+profiling	src/wago/gc_struct_mutation_other.go	U1000	func rv64GCStructMutationExecutionCode is unused
+profiling	src/wago/gc_struct_null_other.go	U1000	func rv64GCStructNullExecutionCode is unused
+profiling	src/wago/gc_struct_numeric_globals_other.go	U1000	func rv64GCStructNumericGlobals is unused
+profiling	src/wago/gc_struct_packed_other.go	U1000	func rv64GCStructPackedExecutionCode is unused
+profiling	src/wago/global_importer_counter_boundary_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+profiling	src/wago/globals.go	S1016	should convert ref (type ExnRef) to GCRef instead of using struct literal
+profiling	src/wago/globals.go	U1000	field descriptorDependencies is unused
+profiling	src/wago/globals.go	U1000	func (*Global).consumeImporterCounter is unused
+profiling	src/wago/globals.go	U1000	func (*Global).retainProducerInstanceForFinalization is unused
 profiling	src/wago/host_execution.go	U1000	func (*hostLoopActivation).dispatchSingleTypedScalarExpandedPortal is unused
-profiling	src/wago/hostcall_test.go	U1000	func hostV128FromSlots is unused
+profiling	src/wago/host_scope_parent_other.go	U1000	type railshotHostScopeParent is unused
+profiling	src/wago/hostcall.go	U1000	field railshotHostScopeParent is unused
+profiling	src/wago/hostcall.go	U1000	field railshotInvocation is unused
+profiling	src/wago/import_attachments.go	U1000	field dependencies is unused
+profiling	src/wago/import_attachments.go	U1000	field dependencies is unused
+profiling	src/wago/import_attachments.go	U1000	field dependencies is unused
+profiling	src/wago/import_attachments.go	U1000	field dependencies is unused
 profiling	src/wago/import_identity_test.go	U1000	const flatKey is unused
 profiling	src/wago/imports_external_test.go	S1034	assigning the result of this type assertion to a variable (switch value := value.(type)) could eliminate type assertions in switch cases
-profiling	src/wago/imports_legacy_test.go	U1000	func testCloneImports is unused
+profiling	src/wago/instance.go	U1000	field rootAccounting is unused
 profiling	src/wago/instance_close_completion_test.go	SA4000	identical expressions on the left and right side of the '||' operator
 profiling	src/wago/instance_entry.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/instance_invocation_cleanup_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
 profiling	src/wago/instance_native_context.go	SA2001	empty critical section
 profiling	src/wago/invocation_admission_test.go	SA2001	empty critical section
 profiling	src/wago/invocation_admission_test.go	SA2001	empty critical section
@@ -172,81 +487,256 @@ profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Contex
 profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
 profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
 profiling	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/memory.go	U1000	func (*Memory).consumeImporterCounter is unused
 profiling	src/wago/module.go	U1000	func declaredImportIdentity is unused
-profiling	src/wago/null_reference_product_test.go	U1000	func compileStagedNullReferenceProductForTest is unused
-profiling	src/wago/null_reference_product_test.go	U1000	func namesForBottomNullReferenceProduct is unused
-profiling	src/wago/null_reference_product_test.go	U1000	func stagedBottomNullReferenceModule is unused
+profiling	src/wago/mutable_reference_global_clear_other.go	U1000	func (*Instance).dispatchGuestGlobalStore is unused
+profiling	src/wago/native_import_other.go	U1000	type railshotInvocationState is unused
+profiling	src/wago/native_tail_other.go	U1000	type railshotRuntimeConfigState is unused
 profiling	src/wago/prepared_direct_amd64.go	U1000	func (*WasmFunc).invokeDirectInt is unused
-profiling	src/wago/prepared_direct_arm64.go	U1000	func (*WasmFunc).invokeDirectInt is unused
+profiling	src/wago/profile_boundary_test.go	ST1008	error should be returned as the last argument
+profiling	src/wago/public_invocation_cleanup_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+profiling	src/wago/reference_dependency.go	U1000	func (*dependencyGraph).closedComponentMemberLocked is unused
+profiling	src/wago/reference_dependency_global_other_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+profiling	src/wago/reference_dependency_global_other_test.go	U1000	field set is unused
+profiling	src/wago/reference_dependency_memory_other_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+profiling	src/wago/reference_dependency_memory_other_test.go	U1000	field set is unused
+profiling	src/wago/reference_dependency_native_other.go	U1000	func railshotAdoptClosedContainerDependencies is unused
+profiling	src/wago/reference_dependency_native_other_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+profiling	src/wago/reference_dependency_native_other_test.go	U1000	field set is unused
+profiling	src/wago/reference_retained_cleanup_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+profiling	src/wago/reference_root_ledger_other_test.go	U1000	field pluginGCImports is unused
+profiling	src/wago/reference_store.go	S1016	should convert ref (type ExnRef) to GCRef instead of using struct literal
 profiling	src/wago/reference_store.go	U1000	field reserved is unused
 profiling	src/wago/reference_store.go	U1000	func (*gcPublicState).resultCapacity is unused
-profiling	src/wago/reference_store.go	U1000	func (*referenceStore).gcRefExactType is unused
-profiling	src/wago/services.go	U1000	func (*contractSlot).deactivate is unused
-profiling	src/wago/spectest_exec_test.go	U1000	func specExecStats.gapCount is unused
-profiling	src/wago/structural_type_product.go	U1000	func stagedStructuralTypeProduct.gateReason is unused
-profiling	src/wago/structural_type_product_test.go	U1000	func compileStagedStructuralTypeProductForTest is unused
-profiling	src/wago/structural_type_product_test.go	U1000	func stagedTypeRecLeaderPinFor is unused
-standard	internal/profcapture/capture.go	SA4023	this comparison is always true
-standard	internal/profcapture/capture.go	SA4023	this comparison is always true
-standard	internal/profcapture/capture.go	SA4023	this comparison is always true
+profiling	src/wago/reference_store.go	U1000	func (*referenceStore).gcNativeCallerOwner is unused
+profiling	src/wago/reference_store.go	U1000	func (*referenceStore).pinExternref is unused
+profiling	src/wago/reference_store.go	U1000	func (*referenceStore).unpinExternref is unused
+profiling	src/wago/reference_value_test.go	U1000	func referenceSlotIdentityModule is unused
+profiling	src/wago/rv64_execution_contract.go	U1000	field rooted is unused
+profiling	src/wago/rv64_execution_contract.go	U1000	func rv64ExecutionDigest is unused
+profiling	src/wago/rv64_execution_contract.go	U1000	func rv64PopulateArtifactReceipt is unused
+profiling	src/wago/table_importer_counter_preparation_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+profiling	src/wago/threads_growth_other.go	U1000	func threadedMemorySizeGrowSupported is unused
+profiling	src/wago/threads_host_view.go	U1000	func threadedMemoryHostBytes is unused
 standard	src/core/compiler/backend/railshot/amd64/control.go	U1000	func (*fn).frameDepthTypes is unused
 standard	src/core/compiler/backend/railshot/amd64/control.go	U1000	func typesOfVals is unused
 standard	src/core/compiler/backend/railshot/amd64/gc_direct.go	U1000	func (*fn).emitDirectGCArrayLen is unused
 standard	src/core/compiler/backend/railshot/amd64/inline.go	U1000	func allCallsWillInline is unused
 standard	src/core/compiler/backend/railshot/amd64/interval_region.go	U1000	func (*fn).intervalLocalHasMemBorrow is unused
 standard	src/core/compiler/backend/railshot/amd64/magicdiv.go	U1000	func strengthReducible is unused
-standard	src/core/compiler/backend/railshot/arm64/call.go	U1000	func (*fn).finishWrapperResults is unused
-standard	src/core/compiler/backend/railshot/arm64/compile.go	U1000	field profileFnState is unused
-standard	src/core/compiler/backend/railshot/arm64/control.go	U1000	func (*fn).frameDepthTypes is unused
-standard	src/core/compiler/backend/railshot/arm64/control.go	U1000	func skipImmediatesWithMemory64 is unused
-standard	src/core/compiler/backend/railshot/arm64/control.go	U1000	func typesOfVals is unused
-standard	src/core/compiler/backend/railshot/arm64/interval_region.go	U1000	func (*fn).intervalLocalHasMemBorrow is unused
-standard	src/core/compiler/backend/railshot/arm64/memory.go	U1000	func (*fn).bulkDynamicBoundsCheck is unused
-standard	src/core/compiler/backend/railshot/arm64/op.go	U1000	const opNone is unused
-standard	src/core/compiler/backend/railshot/arm64/profile_origin_disabled.go	U1000	type profileFnState is unused
-standard	src/core/compiler/backend/railshot/arm64/simd_exec_arm64_test.go	SA4026	in Go, the floating-point literal '-0.0' is the same as '0.0', it does not produce a negative zero
-standard	src/core/compiler/backend/railshot/arm64/stats.go	ST1018	string literal contains Unicode control characters, consider using escape sequences instead
-standard	src/core/compiler/backend/railshot/arm64/stats.go	U1000	func (*CodegenStats).addGCSharedStubBytes is unused
+standard	src/core/compiler/backend/railshot/riscv64/exact_product_wire.go	U1000	func admitExactProductWireShapeWithRecGroups is unused
+standard	src/core/compiler/backend/railshot/riscv64/exception.go	U1000	field nextRoot is unused
+standard	src/core/compiler/backend/railshot/riscv64/exception_test.go	U1000	func exceptionReferenceModule is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_array_copy_retired_fixture_test.go	U1000	var rv64GCArrayCopySourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_array_fill_retired_fixture_test.go	U1000	var rv64GCArrayFillSourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_array_fixed_official_retired_fixture_test.go	U1000	func rv64ExactArrayType is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	func admitRV64GCArrayInitDataPacked is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	func rv64ExactNumericArrayType is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	func rv64ExactPackedArrayType is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	var rv64GCArrayInitDataSourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_array_init_data_retired_fixture_test.go	U1000	var rv64GCArrayInitDataWideSourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_array_reference_retired_fixture_test.go	U1000	func rv64ExactReferenceArrayType is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_array_reference_test.go	U1000	func rv64GCArrayReferenceBytes is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_concrete_retired_fixture_test.go	U1000	func admitRV64GCBrOnCastConcreteKind is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_concrete_retired_fixture_test.go	U1000	func admitRV64GCBrOnCastConcreteWireKind is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_concrete_retired_fixture_test.go	U1000	var rv64GCBrOnCastConcreteSourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_concrete_retired_fixture_test.go	U1000	var rv64GCBrOnCastFailConcreteSourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_nullability_retired_fixture_test.go	U1000	func admitRV64GCBrOnCastNullabilityKind is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_nullability_retired_fixture_test.go	U1000	func admitRV64GCBrOnCastNullabilityWireKind is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_nullability_retired_fixture_test.go	U1000	var rv64GCBrOnCastFailNullabilitySourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_br_on_cast_nullability_retired_fixture_test.go	U1000	var rv64GCBrOnCastNullabilitySourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_ref_cast_concrete_retired_fixture_test.go	U1000	var rv64GCRefCastConcreteSourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_ref_test_concrete_retired_fixture_test.go	U1000	func admitRV64GCRefTestConcreteShape is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_ref_test_concrete_retired_fixture_test.go	U1000	var rv64GCRefTestConcreteSourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_ref_test_table_retired_fixture_test.go	U1000	var rv64GCRefTestTableSourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_rooted_scalar.go	SA4000	identical expressions on the left and right side of the '||' operator
+standard	src/core/compiler/backend/railshot/riscv64/gc_rooted_scalar.go	U1000	func rootedScalarNullGlobal is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_struct_basic_retired_fixture_test.go	U1000	var rv64GCStructBasicSourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_struct_mutation_retired_fixture_test.go	U1000	var rv64GCStructMutationSourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_struct_null_retired_fixture_test.go	U1000	var rv64GCStructNullSourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_struct_numeric_globals_retired_fixture_test.go	U1000	var rv64GCStructNumericGlobalsSourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_struct_packed_retired_fixture_test.go	U1000	var rv64GCStructPackedSourceDigest is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_cross_group_mismatch_link_retired_fixture_test.go	U1000	func gcTypeSubtypingCrossGroupMismatchLinkSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_cross_group_mismatch_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingCrossGroupMismatchLinkModules is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_declarations_retired_fixture_test.go	U1000	func gcTypeSubtypingDeclarationsSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_declarations_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingDeclarationsTypes is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_duplicate_recursive_link_retired_fixture_test.go	U1000	func gcTypeSubtypingDuplicateRecursiveLinkSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_duplicate_recursive_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingDuplicateRecursiveLinkModules is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_extended_projection_link_retired_fixture_test.go	U1000	func gcTypeSubtypingExtendedProjectionLinkSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_extended_projection_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingExtendedProjectionLinkModules is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_extended_recursive_link_retired_fixture_test.go	U1000	func gcTypeSubtypingExtendedRecursiveLinkSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_extended_recursive_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingExtendedRecursiveLinkModules is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_finality_link_retired_fixture_test.go	U1000	func gcTypeSubtypingFinalityLinkSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_finality_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingFinalityLinkModules is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_independent_struct_link_retired_fixture_test.go	U1000	func gcTypeSubtypingIndependentStructLinkSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_independent_struct_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingIndependentStructLinkModules is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_link_retired_fixture_test.go	U1000	func gcTypeSubtypingLinkSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingLinkModules is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_non_flat_export_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingNonFlatExportModule is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_recursive_functions_retired_fixture_test.go	U1000	func gcTypeSubtypingRecursiveFunctionsSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_recursive_functions_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRecursiveFunctionModules is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_func_globals_retired_fixture_test.go	U1000	func gcTypeSubtypingRefFuncGlobalsSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_func_globals_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefFuncGlobalModules is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	func gcTypeSubtypingRefTestSingleSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	func rv64GCTypeSubtypingRefTestSingleKey is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestDirectionFalseModule is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestModules is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestMultiFirstModule is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestMultiModule is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestMultiPairsModule is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestNominalFalseDeepModule is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestNominalFalseModule is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestRecursiveModule is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestSingleModule is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_ref_test_single_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRefTestSupertypeTrueModule is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_call_cast_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRuntimeCallCastModule is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_finality_call_cast_retired_fixture_test.go	U1000	const rv64GCTypeSubtypingRuntimeFinalityKeySalt is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_finality_call_cast_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRuntimeFinalityCallCastModule is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_typed_table_call_retired_fixture_test.go	U1000	func rv64GCTypeSubtypingRuntimeTypedTableKey is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_runtime_typed_table_call_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingRuntimeTypedTableCallModule is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_link_retired_fixture_test.go	U1000	func gcTypeSubtypingStructLinkSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingStructLinkModules is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_mismatch_link_retired_fixture_test.go	U1000	func gcTypeSubtypingStructMismatchLinkSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_mismatch_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingStructMismatchLinkModules is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_projection_link_retired_fixture_test.go	U1000	func gcTypeSubtypingStructProjectionLinkSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_struct_projection_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingStructProjectionLinkModules is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_transitive_mismatch_link_retired_fixture_test.go	U1000	func gcTypeSubtypingTransitiveMismatchLinkSourceVariant is unused
+standard	src/core/compiler/backend/railshot/riscv64/gc_type_subtyping_transitive_mismatch_link_retired_fixture_test.go	U1000	var rv64GCTypeSubtypingTransitiveMismatchLinkModules is unused
+standard	src/core/compiler/backend/railshot/riscv64/initializers.go	U1000	func admitI32Offset is unused
+standard	src/core/compiler/backend/railshot/riscv64/initializers.go	U1000	func admitI64Offset is unused
+standard	src/core/compiler/backend/railshot/riscv64/native_table_thunk.go	U1000	func (*integerEmitter).nativeTableCall is unused
+standard	src/core/compiler/backend/railshot/riscv64/native_tail_dispatch.go	SA4023	this comparison is always true
+standard	src/core/compiler/backend/railshot/riscv64/public_primitive_references.go	U1000	func primitiveNumericReferenceTarget is unused
+standard	src/core/compiler/backend/railshot/riscv64/public_primitive_references.go	U1000	func primitiveReferenceCarrierTarget is unused
+standard	src/core/compiler/backend/railshot/riscv64/public_primitive_references.go	U1000	func primitiveReferenceTable is unused
+standard	src/core/compiler/backend/railshot/riscv64/public_primitive_references.go	U1000	func primitiveReferenceTarget is unused
+standard	src/core/compiler/backend/railshot/riscv64/reference_branch_test.go	U1000	func referenceBranchSource is unused
+standard	src/core/compiler/backend/railshot/riscv64/reference_call.go	U1000	func (*integerEmitter).functionReferenceIdentityTest is unused
+standard	src/core/compiler/backend/railshot/riscv64/swar_call.go	U1000	func (*integerEmitter).swarIndirectCall is unused
+standard	src/core/compiler/backend/railshot/riscv64/table.go	U1000	func (*integerEmitter).ownedIndirectTarget is unused
+standard	src/core/compiler/backend/railshot/riscv64/table_bulk.go	U1000	func (*integerEmitter).privateTableCopy is unused
+standard	src/core/compiler/backend/railshot/riscv64/table_bulk.go	U1000	func (*integerEmitter).privateTableFill is unused
+standard	src/core/compiler/backend/railshot/riscv64/table_bulk.go	U1000	func (*integerEmitter).privateTableRange is unused
+standard	src/core/compiler/backend/railshot/riscv64/table_elements.go	U1000	func (*integerEmitter).privateTableInit is unused
+standard	src/core/compiler/backend/railshot/riscv64/tail_ra_protocol.go	S1002	should omit comparison to bool constant, can be simplified to !f.mode.interruptible
+standard	src/core/compiler/backend/railshot/riscv64/tail_ra_protocol.go	S1002	should omit comparison to bool constant, can be simplified to !f.mode.production
+standard	src/core/compiler/backend/railshot/shared/scalar_source.go	U1000	field active is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source.go	U1000	field err is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source.go	U1000	field function is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source.go	U1000	field instruction is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source.go	U1000	field localDecls is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source_disabled.go	U1000	type scalarSourceState is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field controls is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field freeSlots is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field locals is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field maxSlot is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field nextSlot is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field nodes is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field owners is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field regs is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field reserved is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field stack is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field target is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field tempBase is unused
+standard	src/core/compiler/backend/railshot/shared/scalar_source_disabled_test.go	U1000	field widths is unused
 standard	src/core/compiler/wasm/bytecode_skip.go	U1000	func classifyExprOpAfterOpcodeWithModuleFeatures is unused
+standard	src/core/compiler/wasm/bytecode_skip.go	U1000	func skipHeapTypeBytes is unused
 standard	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeExprWithMemarg64 is unused
 standard	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeInstructionWithMemarg64 is unused
 standard	src/core/compiler/wasm/instruction_decode.go	U1000	func decodeMemArgWithWidth is unused
+standard	src/core/runtime/engine.go	U1000	func loadOffHeapU64 is unused
+standard	src/core/runtime/gc/native/object_edges_other.go	U1000	func (*Collector).closeObjectEdgeSource is unused
 standard	src/core/runtime/gc/native/tiny_pacing_test.go	SA4006	this value of roots is never used
-standard	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).close is unused
-standard	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).enterWasm is unused
-standard	src/core/runtime/interrupt_darwin_arm64.go	U1000	func (*interruptActivation).leaveWasm is unused
-standard	src/core/runtime/interrupt_darwin_arm64.go	U1000	func beginInterruptActivation is unused
-standard	src/core/runtime/interrupt_darwin_arm64.go	U1000	type interruptActivation is unused
-standard	src/core/runtime/limits_test.go	U1000	field args is unused
-standard	src/core/runtime/limits_test.go	U1000	field inUse is unused
-standard	src/core/runtime/limits_test.go	U1000	field preparedInt is unused
-standard	src/core/runtime/limits_test.go	U1000	field results is unused
-standard	src/core/runtime/limits_test.go	U1000	field stack is unused
-standard	src/core/runtime/limits_test.go	U1000	field stackTop is unused
-standard	src/wago/amd64_codegen_profile.go	U1000	func selectedAMD64CompileFeatures is unused
+standard	src/core/runtime/hostcall_amd64.go	U1000	var hostStubMem is unused
+standard	src/core/runtime/limits_host_test.go	U1000	field args is unused
+standard	src/core/runtime/limits_host_test.go	U1000	field inUse is unused
+standard	src/core/runtime/limits_host_test.go	U1000	field preparedInt is unused
+standard	src/core/runtime/limits_host_test.go	U1000	field results is unused
+standard	src/core/runtime/limits_host_test.go	U1000	field stack is unused
+standard	src/core/runtime/limits_host_test.go	U1000	field stackTop is unused
+standard	src/wago/api.go	SA4023	this comparison is always true
 standard	src/wago/api.go	U1000	func (*Compiled).tableMinimum is unused
-standard	src/wago/diagnostics_test.go	U1000	func requireCompilerDiagnostics is unused
-standard	src/wago/gc_array_helper.go	U1000	func (*Instance).dispatchGCArrayHelper is unused
+standard	src/wago/compile_table64.go	U1000	func stagedImportedTable64IndirectTailShape is unused
+standard	src/wago/config.go	U1000	field railshotState is unused
+standard	src/wago/cross_instance.go	U1000	field descriptorDependencies is unused
+standard	src/wago/cross_instance.go	U1000	func (*Table).consumeImporterCounter is unused
+standard	src/wago/cross_instance.go	U1000	func (*Table).retainDescriptorOwnersForFinalization is unused
+standard	src/wago/cross_instance.go	U1000	func (*Table).retainProducerInstanceForFinalization is unused
+standard	src/wago/gc_array_copy_other.go	U1000	func rv64GCArrayCopyExecutionCode is unused
+standard	src/wago/gc_array_default_official_other.go	U1000	func rv64GCArrayDefaultOfficialExecutionCode is unused
+standard	src/wago/gc_array_fill_other.go	U1000	func rv64GCArrayFillExecutionCode is unused
+standard	src/wago/gc_array_fixed_local_other.go	U1000	func rv64GCArrayFixedLocalExecutionCode is unused
+standard	src/wago/gc_array_fixed_official_other.go	U1000	func rv64GCArrayFixedOfficialExecutionCode is unused
+standard	src/wago/gc_array_init_data_other.go	U1000	func rv64GCArrayInitDataExecutionCode is unused
+standard	src/wago/gc_array_init_elem_other.go	U1000	func rv64GCArrayInitElemExecutionCode is unused
+standard	src/wago/gc_array_local_other.go	U1000	func rv64GCArrayLocalExecutionCode is unused
+standard	src/wago/gc_array_packed_data_other.go	U1000	func rv64GCArrayPackedDataExecutionCode is unused
+standard	src/wago/gc_array_reference_other.go	U1000	func rv64GCArrayReferenceExecutionCode is unused
+standard	src/wago/gc_array_uniform_other.go	U1000	func rv64GCArrayUniformExecutionCode is unused
+standard	src/wago/gc_compact_extern_other.go	U1000	func railshotCompactExternHostGlobalMatches is unused
+standard	src/wago/gc_compact_extern_other.go	U1000	func railshotCompactExternUnpinnedAfterClose is unused
 standard	src/wago/gc_frame_liveness.go	U1000	func gcFrameBodyMayCollect is unused
-standard	src/wago/gc_frame_roots_arm64.go	U1000	func arm64GCFrameCallRefABI is unused
-standard	src/wago/gc_native_entry_guard_release.go	U1000	const nativeGCEntryValidationEnabled is unused
-standard	src/wago/gc_ref_test_table.go	U1000	func (*gcRefTestTableState).set is unused
-standard	src/wago/gc_struct_product.go	U1000	func stagedGCStructFieldString is unused
-standard	src/wago/gc_struct_product.go	U1000	func stagedGCStructLeaderPinFor is unused
-standard	src/wago/gc_struct_product.go	U1000	func stagedGCStructOpcodeInventory is unused
-standard	src/wago/gc_struct_product.go	U1000	func stagedGCStructProduct.gateReason is unused
-standard	src/wago/gc_struct_product.go	U1000	func stagedGCStructStateGraph is unused
-standard	src/wago/gc_struct_product.go	U1000	func stagedGCStructTypeGraph is unused
-standard	src/wago/gc_struct_product.go	U1000	func stagedGCStructValTypes is unused
-standard	src/wago/gc_struct_product.go	U1000	type stagedGCStructOpcodeCount is unused
-standard	src/wago/gc_struct_product_gate_test.go	U1000	func stagedGCStructMutationBytes is unused
+standard	src/wago/gc_frame_liveness.go	U1000	func gcFrameBodyMayCollectWithClassifier is unused
+standard	src/wago/gc_memory_combinations_test.go	U1000	func gcMemoryCombinationSource is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastAbstractExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastConcreteExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastFailAbstractExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastFailConcreteExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastFailNullabilityExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCBrOnCastNullabilityExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCExternExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCRefCastAbstractExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCRefCastConcreteExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCRefTestAbstractExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCRefTestConcreteExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingCrossGroupMismatchLinkExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingDeclarations is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingDuplicateRecursiveLinkExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingExtendedProjectionLinkExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingExtendedRecursiveLinkExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingFinalityLinkExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingIndependentStructLinkExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingLinkExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingNonFlatExport is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingNonFlatExportExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRecursiveFunctions is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRecursiveFunctionsExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRefFuncGlobals is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRefFuncGlobalsExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRefTestSingleExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRuntimeCallCast is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRuntimeCallCastExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRuntimeFinalityCallCastExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingRuntimeTypedTableCallExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingStructLinkExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingStructMismatchLinkExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingStructProjectionLinkExecutionCode is unused
+standard	src/wago/gc_ref_test_concrete_other.go	U1000	func rv64GCTypeSubtypingTransitiveMismatchLinkExecutionCode is unused
+standard	src/wago/gc_struct_basic_other.go	U1000	func rv64GCStructBasicExecutionCode is unused
+standard	src/wago/gc_struct_get_other.go	U1000	func rv64GCStructGetExecutionCode is unused
+standard	src/wago/gc_struct_mutation_other.go	U1000	func rv64GCStructMutationExecutionCode is unused
+standard	src/wago/gc_struct_null_other.go	U1000	func rv64GCStructNullExecutionCode is unused
+standard	src/wago/gc_struct_numeric_globals_other.go	U1000	func rv64GCStructNumericGlobals is unused
+standard	src/wago/gc_struct_packed_other.go	U1000	func rv64GCStructPackedExecutionCode is unused
+standard	src/wago/global_importer_counter_boundary_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+standard	src/wago/globals.go	S1016	should convert ref (type ExnRef) to GCRef instead of using struct literal
+standard	src/wago/globals.go	U1000	field descriptorDependencies is unused
+standard	src/wago/globals.go	U1000	func (*Global).consumeImporterCounter is unused
+standard	src/wago/globals.go	U1000	func (*Global).retainProducerInstanceForFinalization is unused
 standard	src/wago/host_execution.go	U1000	func (*hostLoopActivation).dispatchSingleTypedScalarExpandedPortal is unused
-standard	src/wago/hostcall_test.go	U1000	func hostV128FromSlots is unused
+standard	src/wago/host_scope_parent_other.go	U1000	type railshotHostScopeParent is unused
+standard	src/wago/hostcall.go	U1000	field railshotHostScopeParent is unused
+standard	src/wago/hostcall.go	U1000	field railshotInvocation is unused
+standard	src/wago/import_attachments.go	U1000	field dependencies is unused
+standard	src/wago/import_attachments.go	U1000	field dependencies is unused
+standard	src/wago/import_attachments.go	U1000	field dependencies is unused
+standard	src/wago/import_attachments.go	U1000	field dependencies is unused
 standard	src/wago/import_identity_test.go	U1000	const flatKey is unused
 standard	src/wago/imports_external_test.go	S1034	assigning the result of this type assertion to a variable (switch value := value.(type)) could eliminate type assertions in switch cases
-standard	src/wago/imports_legacy_test.go	U1000	func testCloneImports is unused
+standard	src/wago/instance.go	U1000	field rootAccounting is unused
 standard	src/wago/instance_close_completion_test.go	SA4000	identical expressions on the left and right side of the '||' operator
 standard	src/wago/instance_entry.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/instance_invocation_cleanup_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
 standard	src/wago/instance_native_context.go	SA2001	empty critical section
 standard	src/wago/invocation_admission_test.go	SA2001	empty critical section
 standard	src/wago/invocation_admission_test.go	SA2001	empty critical section
@@ -266,17 +756,33 @@ standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context
 standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
 standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
 standard	src/wago/managed_entry_context_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/memory.go	U1000	func (*Memory).consumeImporterCounter is unused
 standard	src/wago/module.go	U1000	func declaredImportIdentity is unused
-standard	src/wago/null_reference_product_test.go	U1000	func compileStagedNullReferenceProductForTest is unused
-standard	src/wago/null_reference_product_test.go	U1000	func namesForBottomNullReferenceProduct is unused
-standard	src/wago/null_reference_product_test.go	U1000	func stagedBottomNullReferenceModule is unused
+standard	src/wago/mutable_reference_global_clear_other.go	U1000	func (*Instance).dispatchGuestGlobalStore is unused
+standard	src/wago/native_import_other.go	U1000	type railshotInvocationState is unused
+standard	src/wago/native_tail_other.go	U1000	type railshotRuntimeConfigState is unused
 standard	src/wago/prepared_direct_amd64.go	U1000	func (*WasmFunc).invokeDirectInt is unused
-standard	src/wago/prepared_direct_arm64.go	U1000	func (*WasmFunc).invokeDirectInt is unused
+standard	src/wago/public_invocation_cleanup_test.go	SA1012	do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use
+standard	src/wago/reference_dependency.go	U1000	func (*dependencyGraph).closedComponentMemberLocked is unused
+standard	src/wago/reference_dependency_global_other_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+standard	src/wago/reference_dependency_global_other_test.go	U1000	field set is unused
+standard	src/wago/reference_dependency_memory_other_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+standard	src/wago/reference_dependency_memory_other_test.go	U1000	field set is unused
+standard	src/wago/reference_dependency_native_other.go	U1000	func railshotAdoptClosedContainerDependencies is unused
+standard	src/wago/reference_dependency_native_other_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+standard	src/wago/reference_dependency_native_other_test.go	U1000	field set is unused
+standard	src/wago/reference_retained_cleanup_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+standard	src/wago/reference_root_ledger_other_test.go	U1000	field pluginGCImports is unused
+standard	src/wago/reference_store.go	S1016	should convert ref (type ExnRef) to GCRef instead of using struct literal
 standard	src/wago/reference_store.go	U1000	field reserved is unused
 standard	src/wago/reference_store.go	U1000	func (*gcPublicState).resultCapacity is unused
-standard	src/wago/reference_store.go	U1000	func (*referenceStore).gcRefExactType is unused
-standard	src/wago/services.go	U1000	func (*contractSlot).deactivate is unused
-standard	src/wago/spectest_exec_test.go	U1000	func specExecStats.gapCount is unused
-standard	src/wago/structural_type_product.go	U1000	func stagedStructuralTypeProduct.gateReason is unused
-standard	src/wago/structural_type_product_test.go	U1000	func compileStagedStructuralTypeProductForTest is unused
-standard	src/wago/structural_type_product_test.go	U1000	func stagedTypeRecLeaderPinFor is unused
+standard	src/wago/reference_store.go	U1000	func (*referenceStore).gcNativeCallerOwner is unused
+standard	src/wago/reference_store.go	U1000	func (*referenceStore).pinExternref is unused
+standard	src/wago/reference_store.go	U1000	func (*referenceStore).unpinExternref is unused
+standard	src/wago/reference_value_test.go	U1000	func referenceSlotIdentityModule is unused
+standard	src/wago/rv64_execution_contract.go	U1000	field rooted is unused
+standard	src/wago/rv64_execution_contract.go	U1000	func rv64ExecutionDigest is unused
+standard	src/wago/rv64_execution_contract.go	U1000	func rv64PopulateArtifactReceipt is unused
+standard	src/wago/table_importer_counter_preparation_test.go	SA4000	identical expressions on the left and right side of the '||' operator
+standard	src/wago/threads_growth_other.go	U1000	func threadedMemorySizeGrowSupported is unused
+standard	src/wago/threads_host_view.go	U1000	func threadedMemoryHostBytes is unused

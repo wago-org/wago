@@ -95,6 +95,54 @@ func TestClassifyInstructionImmediateRepresentativeFamilies(t *testing.T) {
 	}
 }
 
+func TestClassifyInstructionImmediateReportsGCHeapType(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		immediate []byte
+		kind      InstrKind
+		nullable  bool
+		exact     bool
+		heap      AbsHeapType
+	}{
+		{name: "ref.test", immediate: []byte{20, byte(HeapI31)}, kind: InstrRefTest, heap: HeapI31},
+		{name: "ref.test nullable", immediate: []byte{21, byte(HeapAny)}, kind: InstrRefTest, nullable: true, heap: HeapAny},
+		{name: "ref.cast", immediate: []byte{22, byte(HeapStruct)}, kind: InstrRefCast, heap: HeapStruct},
+		{name: "ref.cast nullable", immediate: []byte{23, byte(HeapArray)}, kind: InstrRefCast, nullable: true, heap: HeapArray},
+		{name: "ref.cast exact", immediate: []byte{22, 0x62, 0x01}, kind: InstrRefCast, heap: 0, exact: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			imm, err := ClassifyInstructionImmediate(NewReader(tc.immediate), 0xfb)
+			heapMatches := imm.HeapType.Kind() == HeapAbs && imm.HeapType.Abs() == tc.heap
+			if tc.exact {
+				heapMatches = imm.HeapType.Kind() == HeapTypeIndex && imm.HeapType.Type().Index == 1
+			}
+			if err != nil || imm.Kind != tc.kind || !imm.HasHeapType || !heapMatches || imm.Cast.SourceNullable != tc.exact || (imm.Subopcode == 21 || imm.Subopcode == 23) != tc.nullable {
+				t.Fatalf("classify=%+v err=%v", imm, err)
+			}
+		})
+	}
+}
+
+func TestClassifyInstructionImmediateReportsGCBranchCastTypes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		sub  byte
+		kind InstrKind
+	}{
+		{name: "br_on_cast", sub: 24, kind: InstrBrOnCast},
+		{name: "br_on_cast_fail", sub: 25, kind: InstrBrOnCastFail},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			imm, err := ClassifyInstructionImmediate(NewReader([]byte{tc.sub, 3, 7, byte(HeapAny), byte(HeapEq)}), 0xfb)
+			if err != nil || imm.Kind != tc.kind || imm.Index != 7 || !imm.Cast.SourceNullable || !imm.Cast.TargetNullable ||
+				!imm.HasHeapType || imm.HeapType.Kind() != HeapAbs || imm.HeapType.Abs() != HeapAny ||
+				!imm.HasHeapType2 || imm.HeapType2.Kind() != HeapAbs || imm.HeapType2.Abs() != HeapEq {
+				t.Fatalf("classify=%+v err=%v", imm, err)
+			}
+		})
+	}
+}
+
 func TestClassifyInstructionImmediateReportsMemargMetadata(t *testing.T) {
 	var imm InstructionImmediate
 	r := NewReader([]byte{0x02, 0x80, 0x01}) // align=2, offset=128

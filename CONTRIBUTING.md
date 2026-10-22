@@ -9,8 +9,9 @@ I'd reccomend starting with [README.md](README.md)
 
 `wago` supports Go **1.22+** and uses [just](https://just.systems/) **1.43+**
 for developer commands. Its first-class targets are linux/amd64,
-linux/arm64, darwin/amd64, darwin/arm64, windows/amd64, and windows/arm64. CI,
-release assets, and conformance gates cover all six targets. See
+linux/arm64, linux/riscv64, darwin/amd64, darwin/arm64, windows/amd64, and
+windows/arm64. CI, release assets, and conformance gates cover these targets. Linux/riscv64 uses
+the native RISE runner and standard Go builds. See
 [FEATURES.md](FEATURES.md) for feature-level platform support.
 
 Read these files before you plan feature work:
@@ -73,6 +74,15 @@ git worktree remove .worktrees/<name>
 git worktree prune
 ```
 
+Release and canary workflows build Linux/riscv64 assets on the native RISE
+runner. `scripts/setup-riscv64-go.sh` installs and verifies the pinned Go
+archive. Each riscv64 artifact contains the manager, installer, standard/normal
+runtime, minimal/normal runtime, and their SHA-256 checksums. TinyGo runtimes
+are unavailable on this target. `scripts/check-riscv64-cli.sh` runs native
+manager and standalone qualification before either artifact set is uploaded. Run
+`tests/scripts/build-release-assets.sh` when changing the asset set. Publication requires every platform's build and
+smoke checks; the publish job uploads the qualified files without rebuilding.
+
 ## Make a Change
 
 - Prefer the existing design over a new abstraction.
@@ -105,6 +115,10 @@ Take extra care in runtime code. It crosses into native execution.
 Start with the smallest relevant test. `just test` correctness recipes enable
 the debug allocation-transfer checker; `just test unit` also runs the ordinary
 build. Raw `go test` needs `-tags=wago_regalloccheck` explicitly.
+The production compiler policy audit rejects workload names and fingerprints
+as optimization inputs. Its narrow RV64 metadata-accounting exception permits
+name reads only to bound decoded storage and traversal; it does not permit
+names to select lowering or optimizations.
 Before you open a pull request, run:
 
 ```bash

@@ -22,6 +22,8 @@ const (
 	stagedGCArrayProductReferenceElements
 	stagedGCArrayProductNullDereference
 	stagedGCArrayProductNumericLocal
+	stagedGCArrayProductNumericUniform
+	stagedGCArrayProductNumericFixedLocal
 	stagedGCArrayProductBulkFill
 	stagedGCArrayProductBulkCopy
 	stagedGCArrayProductInitData
@@ -32,6 +34,8 @@ const (
 )
 
 const stagedGCArrayNumericLocalSHA256 = "cfa515e66b094db434e59a3bbd21b66e99f391aaa52614e2fa1a5fec4f0e7b3b"
+const stagedGCArrayNumericUniformSHA256 = "5b421e8a65c997be7b20bd188c5a1f1b167716b93abb55b46af8f45959c4515a"
+const stagedGCArrayNumericFixedLocalSHA256 = "41268de7a6cb79d22fc75f6907c8e8aee8f87025222091b7621c4fa5932c4645"
 
 func (p stagedGCArrayProduct) String() string {
 	switch p {
@@ -51,6 +55,10 @@ func (p stagedGCArrayProduct) String() string {
 		return "null-dereference"
 	case stagedGCArrayProductNumericLocal:
 		return "numeric-local-helper"
+	case stagedGCArrayProductNumericUniform:
+		return "numeric-uniform-helper"
+	case stagedGCArrayProductNumericFixedLocal:
+		return "numeric-fixed-local-helper"
 	case stagedGCArrayProductBulkFill:
 		return "bulk-fill"
 	case stagedGCArrayProductBulkCopy:
@@ -71,7 +79,7 @@ func (p stagedGCArrayProduct) String() string {
 }
 
 func (p stagedGCArrayProduct) requiresHelpers() bool {
-	return p == stagedGCArrayProductNumericLocal || p == stagedGCArrayProductNumericDefault || p == stagedGCArrayProductNumericFixed || p == stagedGCArrayProductPackedData || p == stagedGCArrayProductReferenceElements || p == stagedGCArrayProductNullDereference || p == stagedGCArrayProductBulkFill || p == stagedGCArrayProductBulkCopy || p == stagedGCArrayProductInitData || p == stagedGCArrayProductInitElem || p == stagedGCArrayProductNewData || p == stagedGCArrayProductNewElem || p == stagedGCArrayProductGeneric
+	return p == stagedGCArrayProductNumericLocal || p == stagedGCArrayProductNumericUniform || p == stagedGCArrayProductNumericFixedLocal || p == stagedGCArrayProductNumericDefault || p == stagedGCArrayProductNumericFixed || p == stagedGCArrayProductPackedData || p == stagedGCArrayProductReferenceElements || p == stagedGCArrayProductNullDereference || p == stagedGCArrayProductBulkFill || p == stagedGCArrayProductBulkCopy || p == stagedGCArrayProductInitData || p == stagedGCArrayProductInitElem || p == stagedGCArrayProductNewData || p == stagedGCArrayProductNewElem || p == stagedGCArrayProductGeneric
 }
 
 func (p stagedGCArrayProduct) metadataOnly() bool {
@@ -123,6 +131,16 @@ func stagedGCArrayOpcodeProduct(m *wasm.Module) (stagedGCArrayProduct, bool) {
 			found = product
 		}
 	}
+	if !generic {
+		generic = moduleGCInitializerUses(m, func(kind wasm.InstrKind) bool {
+			switch kind {
+			case wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData, wasm.InstrArrayNewElem:
+				return true
+			default:
+				return false
+			}
+		})
+	}
 	if generic {
 		return stagedGCArrayProductGeneric, true
 	}
@@ -132,7 +150,7 @@ func stagedGCArrayOpcodeProduct(m *wasm.Module) (stagedGCArrayProduct, bool) {
 func stagedGCArrayExecutionProduct(data []byte) (stagedGCArrayProduct, bool) {
 	// Reject impossible fixture sizes before hashing the whole module.
 	switch len(data) {
-	case 55, 80, 115, 146, 183, 250, 268, 335, 351, 396, 402, 435:
+	case 55, 80, 115, 127, 139, 146, 183, 250, 268, 335, 351, 396, 402, 435:
 	default:
 		return 0, false
 	}
@@ -140,6 +158,10 @@ func stagedGCArrayExecutionProduct(data []byte) (stagedGCArrayProduct, bool) {
 	switch {
 	case len(data) == 146 && digest == stagedGCArrayNumericLocalSHA256:
 		return stagedGCArrayProductNumericLocal, true
+	case len(data) == 127 && digest == stagedGCArrayNumericUniformSHA256:
+		return stagedGCArrayProductNumericUniform, true
+	case len(data) == 139 && digest == stagedGCArrayNumericFixedLocalSHA256:
+		return stagedGCArrayProductNumericFixedLocal, true
 	case len(data) == 80 && digest == "995b6f4472185333316f224edf99518254df392aa1592239c2d9a0d81e2c052a":
 		return stagedGCArrayProductDeclarations, true
 	case len(data) == 55 && digest == "a812822a7372385725cb75c70f0c3cfa7b9cca83a2bb8306a752adc44dc546bd":

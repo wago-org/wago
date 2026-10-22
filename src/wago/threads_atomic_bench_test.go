@@ -1,4 +1,4 @@
-//go:build (linux || darwin) && (amd64 || arm64) && !tinygo
+//go:build (((linux || darwin) && (amd64 || arm64)) || (linux && riscv64)) && !tinygo
 
 package wago
 
@@ -39,6 +39,10 @@ func BenchmarkThreadsAtomicInvoke(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer instance.Close()
+			// Exclude export-cache setup from steady-state invocation samples.
+			if _, err := instance.Invoke(tc.export, tc.args...); err != nil {
+				b.Fatal(err)
+			}
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {

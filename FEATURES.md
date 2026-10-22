@@ -3,6 +3,17 @@
 WebAssembly features follow the phase groups and row order on
 [webassembly.org/features](https://webassembly.org/features/)
 
+Wago supports Linux, macOS, and Windows on amd64 and arm64, plus Linux on
+RISC-V64. Linux/RV64 is supported in ordinary builds without an experimental
+build tag and covers Core 1, Core 2, and Core 3, plus Wago's threads, guard-page,
+artifact, host, plugin, profiling, and wide-arithmetic paths. See
+[tests/README.md](tests/README.md) for acceptance commands. QEMU provides
+functional validation; performance measurements require native RV64 hardware.
+
+The [committed Core 3 baseline](tests/conformance/baselines/spec-v3-baseline.json)
+records **2,226 modules and 58,038 assertions passed** across the pinned 258-file
+suite, with zero failures, skips, or gap categories.
+
 The emoji legend is:
 
 - ✔️ · fully supported
@@ -24,12 +35,6 @@ Support depends on the build and host. Use `SupportedFeatures()` to check the
 executable feature set. Unsupported rows do not imply a decision against future support. JavaScript, browser, and
 text-format proposals are listed for completeness; Wago accepts binary modules
 and exposes a Go API.
-
-The pinned 258-file Core 3 suite baseline records **2,226 modules and 58,038
-assertions passed**, with zero failures, skips, or gaps. The committed
-[baseline report](tests/conformance/baselines/spec-v3-baseline.json) records
-its exact suite revision and tools. This is a recorded suite result; use
-`SupportedFeatures()` to check the active build.
 
 ## Phase 5 – The Feature is Standardized
 
