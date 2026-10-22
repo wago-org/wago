@@ -353,7 +353,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	imported := f.importedFunctionCount()
 	if int(idx) < imported && f.customInstructions != nil {
-		if custom, ok := f.customInstructions[idx]; ok && pluginARM64Lowering(custom) != nil {
+		if custom, ok := f.customInstructions[idx]; ok && (pluginARM64Lowering(custom) != nil || instructionRecipeEligible(custom)) {
 			return f.emitCustomInstruction(custom, ft)
 		}
 	}
@@ -1197,6 +1197,9 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 }
 
 func (f *fn) emitCustomInstruction(custom railcore.CustomInstruction, ft *wasm.CompType) error {
+	if pluginARM64Lowering(custom) == nil {
+		return f.emitInstructionRecipe(custom, ft)
+	}
 	start := f.a.Len()
 	err := f.emitPluginARM64(pluginARM64Lowering(custom), custom.InputWidths, custom.ResultWidth, len(ft.Results), custom.CustomInputs, custom.CustomOutput)
 	if err == nil {

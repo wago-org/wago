@@ -2707,7 +2707,7 @@ func (f *fn) emitDirectGCArrayLen(typeIndex uint32) bool {
 }
 
 func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32, knownIndex, knownLength uint32, logicalBoundsProven bool) bool {
-	scalar, final, ok := f.directGCArrayLayout(typeIndex)
+	scalar, final, ok := f.directGCArrayAccessLayout(typeIndex)
 	if !ok || !final {
 		return false
 	}
@@ -2730,6 +2730,14 @@ func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32, knownIndex, k
 		disp := int32(constantOffset)
 		f.stats.peep("gc-array-known-bounds")
 		f.stats.peep("gc-array-const-index")
+		if scalar.typ == mtV128 {
+			x := f.allocFReg(0)
+			f.mov128LoadDisp(x, obj, disp)
+			done()
+			f.spillFloor = oldFloor
+			f.pushVReg(x)
+			return true
+		}
 		if scalar.typ.isFloat() {
 			x := f.allocFReg(0)
 			f.a.FLoadDisp(x, obj, disp, scalar.typ == mtF64)
@@ -2771,6 +2779,18 @@ func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32, knownIndex, k
 	f.a.AluRI(0, end, int32(gc.PayloadOffset)+int32(scalar.size), true)
 	f.a.Cmp64(end, tmp)
 	f.trapIf(condA, trapCastFailure)
+	if scalar.typ == mtV128 {
+		x := f.allocFReg(0)
+		f.mov128LoadIdx(x, obj, index, int32(gc.PayloadOffset))
+		f.pinned = f.pinned.remove(end)
+		f.pinned = f.pinned.remove(tmp)
+		f.pinned = f.pinned.remove(index)
+		f.release(index)
+		done()
+		f.spillFloor = oldFloor
+		f.pushVReg(x)
+		return true
+	}
 	if scalar.typ.isFloat() {
 		x := f.allocFReg(0)
 		f.a.FLoadIdx(x, obj, index, int32(gc.PayloadOffset), scalar.typ == mtF64)
@@ -2797,7 +2817,7 @@ func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32, knownIndex, k
 }
 
 func (f *fn) emitDirectGCArraySet(typeIndex, knownIndex, knownLength uint32, logicalBoundsProven bool) bool {
-	scalar, final, ok := f.directGCArrayLayout(typeIndex)
+	scalar, final, ok := f.directGCArrayAccessLayout(typeIndex)
 	if !ok || !final {
 		return false
 	}
@@ -2822,7 +2842,11 @@ func (f *fn) emitDirectGCArraySet(typeIndex, knownIndex, knownLength uint32, log
 		disp := int32(constantOffset)
 		f.stats.peep("gc-array-known-bounds")
 		f.stats.peep("gc-array-const-index")
-		if scalar.typ.isFloat() {
+		if scalar.typ == mtV128 {
+			x := f.materializeV128(value)
+			f.mov128StoreDisp(obj, disp, x)
+			f.releaseF(x)
+		} else if scalar.typ.isFloat() {
 			x := f.materializeF(value)
 			f.a.FStoreDisp(obj, disp, x, scalar.typ == mtF64)
 			f.releaseF(x)
@@ -2861,7 +2885,11 @@ func (f *fn) emitDirectGCArraySet(typeIndex, knownIndex, knownLength uint32, log
 	f.trapIf(condA, trapCastFailure)
 	f.pinned = f.pinned.remove(end)
 	f.pinned = f.pinned.remove(tmp)
-	if scalar.typ.isFloat() {
+	if scalar.typ == mtV128 {
+		x := f.materializeV128(value)
+		f.mov128StoreIdx(obj, index, x, int32(gc.PayloadOffset))
+		f.releaseF(x)
+	} else if scalar.typ.isFloat() {
 		x := f.materializeF(value)
 		f.a.FStoreIdx(obj, index, x, int32(gc.PayloadOffset), scalar.typ == mtF64)
 		f.releaseF(x)
