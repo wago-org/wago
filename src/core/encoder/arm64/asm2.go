@@ -142,6 +142,16 @@ func (a *Asm) bfm(base32, base64 uint32, rd, rn Reg, immr, imms uint32, w bool) 
 	}
 }
 
+// Bitfield emits UBFM or SBFM with bounded rotation and end-bit fields.
+// The width argument follows the existing immediate-shift convention.
+func (a *Asm) Bitfield(rd, rn Reg, immr, imms uint8, signed, is32 bool) {
+	if signed {
+		a.bfm(0x13000000, 0x93400000, rd, rn, uint32(immr), uint32(imms), is32)
+	} else {
+		a.bfm(0x53000000, 0xD3400000, rd, rn, uint32(immr), uint32(imms), is32)
+	}
+}
+
 // LslImm / LsrImm / AsrImm are the immediate shifts (UBFM/SBFM aliases).
 func (a *Asm) LslImm(rd, rn Reg, sh uint8, w bool) {
 	width := uint32(64)
@@ -324,6 +334,14 @@ func fbase(f64 bool, baseS, baseD uint32) uint32 {
 	return baseS
 }
 
+// Fcsel copies one scalar source according to the integer condition flags.
+func (a *Asm) Fcsel(rd, rn, rm Reg, cond Cond, f64 bool) {
+	a.word(fbase(f64, 0x1E200C00, 0x1E600C00) | r(rm)<<16 | uint32(cond)<<12 | r(rn)<<5 | r(rd))
+	if regallocCheckEnabled {
+		a.regallocKillFP(rd)
+	}
+}
+
 func (a *Asm) Fadd(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E202800, 0x1E602800) | r(rm)<<16 | r(rn)<<5 | r(rd))
 	if regallocCheckEnabled {
@@ -407,14 +425,6 @@ func (a *Asm) FmovToGpr(rd, rn Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E260000, 0x9E660000) | r(rn)<<5 | r(rd))
 	if regallocCheckEnabled {
 		a.regallocGPWrites(regallocGPMask(rd, false))
-	}
-}
-
-// Fcsel copies the selected scalar bits without floating-point arithmetic.
-func (a *Asm) Fcsel(rd, rn, rm Reg, c Cond, f64 bool) {
-	a.word(fbase(f64, 0x1E200C00, 0x1E600C00) | r(rm)<<16 | uint32(c)<<12 | r(rn)<<5 | r(rd))
-	if regallocCheckEnabled {
-		a.regallocKillFP(rd)
 	}
 }
 
