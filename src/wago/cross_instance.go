@@ -92,6 +92,8 @@ type Table struct {
 }
 
 type retainedInstanceRoot struct {
+	// RV64 scopes advertise possible writers before native row stores/host parks.
+	activeWriters    uint32
 	precise          bool
 	proxyDescriptors map[uint64]struct{}
 }
@@ -102,14 +104,18 @@ type descriptorRetentionResult struct {
 }
 
 type tableOwner struct {
-	mu           sync.Mutex
-	arena        *coreruntime.Arena
-	store        *referenceStore
-	instance     *Instance
-	elementType  ValType
-	valueType    ValueTypeDescriptor
-	types        []DefinedTypeDescriptor
-	hasValueType bool
+	// RV64 records exact host funcref descriptor acquisitions here. The
+	// architecture holder is empty on existing targets, preserving owner and
+	// public Table footprints there.
+	descriptorDependencies tableDescriptorDependencies
+	mu                     sync.Mutex
+	arena                  *coreruntime.Arena
+	store                  *referenceStore
+	instance               *Instance
+	elementType            ValType
+	valueType              ValueTypeDescriptor
+	types                  []DefinedTypeDescriptor
+	hasValueType           bool
 	// declaredHasMax records whether the table's external Wasm type declares an
 	// explicit maximum. The runtime descriptor's capacity field is only an
 	// allocation reservation (a no-max table still gets a finite reserve), so
@@ -123,7 +129,9 @@ type tableOwner struct {
 	funcrefStores  map[*referenceStore]uint32
 	funcrefGCStore *referenceStore
 	importers      int
-	closed         bool
+	// Native RV64 scopes can survive logical importer detachment while parked.
+	nativeLeases uint32
+	closed       bool
 }
 
 func (t *Table) instanceOwner() *Instance {
@@ -268,14 +276,28 @@ func (t *Table) runtimeCapacity() (uint32, bool) {
 // Close releases a host-created table after every importer closes. Instance-owned
 // export handles remain no-ops; their producer instance owns the descriptor.
 func (t *Table) Close() error {
+	if handled, err := railshotTryCloseCompactExternHostTable(t); handled || err != nil {
+		return err
+	}
 	if t == nil || t.owner == nil {
 		return nil
 	}
 	o := t.owner
 	o.mu.Lock()
 	if o.closed || o.arena == nil {
+		var dependencies tableDescriptorDependencyBatch
+		if o.closed {
+			t.mu.Lock()
+			railshotRetryTableDescriptorDependenciesLocked(t, &dependencies)
+			t.mu.Unlock()
+		}
 		o.mu.Unlock()
+		railshotFlushTableDescriptorDependencies(&dependencies)
 		return nil
+	}
+	if o.nativeLeases != 0 {
+		o.mu.Unlock()
+		return fmt.Errorf("wago: table has active native storage leases")
 	}
 	if o.importers != 0 {
 		count := o.importers
@@ -292,21 +314,26 @@ func (t *Table) Close() error {
 	t.mu.Lock()
 	t.closed = true
 	t.desc = nil
-	roots := make([]*Instance, 0, len(t.retained))
-	for root := range t.retained {
-		roots = append(roots, root)
+	var dependencies tableDescriptorDependencyBatch
+	for root, state := range t.retained {
+		railshotRetireTableDescriptorDependencyLocked(t, root, state, &dependencies)
 	}
 	t.retained = nil
+	// A denied overwrite can remove the live map row while leaving its stable
+	// receipt obligation retryable. Terminal Close owns every such retired row.
+	railshotRetryTableDescriptorDependenciesLocked(t, &dependencies)
 	t.mu.Unlock()
 	o.mu.Unlock()
 
-	for _, root := range roots {
-		root.releaseResourceRoot()
-	}
-	err := arena.Close()
+	var cleanup resourceCleanup
+	cleanup.run(func() { railshotFlushTableDescriptorDependencies(&dependencies) })
+	var err error
+	cleanup.run(func() { railshotReleaseCompactExternHostTable(o) })
+	cleanup.run(func() { err = arena.Close() })
 	if store != nil {
-		store.storeObjectClosed()
+		cleanup.run(store.storeObjectClosed)
 	}
+	cleanup.finish()
 	return err
 }
 
@@ -354,7 +381,7 @@ func (o *tableOwner) validateFuncrefStoreLocked(store *referenceStore) error {
 	}
 	if o.instance != nil {
 		if o.store != store {
-			return fmt.Errorf("instance-owned funcref table requires its producer and importer in the same reference store")
+			return fmt.Errorf("instance-owned funcref table requires its producer and importer in the same reference store and the same Runtime GC domain")
 		}
 		return nil
 	}
@@ -365,6 +392,12 @@ func (o *tableOwner) validateFuncrefStoreLocked(store *referenceStore) error {
 }
 
 func (t *Table) validateImportWithCollector(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
+	return t.validateImportWithRetainedOwner(elementType, exact, types, store, collector, addr64, nil)
+}
+
+// Only an exact managed acquisition may permit its producer's later logical
+// Close. Physical closure and every storage/type/store check still apply.
+func (t *Table) validateImportWithRetainedOwner(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool, retained *Instance) error {
 	if t == nil || t.owner == nil {
 		return fmt.Errorf("table descriptor is invalid")
 	}
@@ -382,7 +415,7 @@ func (t *Table) validateImportWithCollector(elementType ValType, exact ValueType
 	}
 	if o.instance != nil {
 		o.instance.lifeMu.Lock()
-		closed := o.instance.closed || o.instance.resourcesClosed
+		closed := o.instance.resourcesClosed || o.instance.closed && o.instance != retained
 		o.instance.lifeMu.Unlock()
 		if closed {
 			return fmt.Errorf("table owner instance is closed")
@@ -422,7 +455,8 @@ func (t *Table) validateImportWithCollector(elementType ValType, exact ValueType
 	}
 	if isGCRefValType(elementType) {
 		source := o.instance
-		if source == nil || source.gc == nil || store == nil || collector == nil || source.gc != collector || source.refStore != store || !store.ownsGCCollector(collector) {
+		immediateOnly := immediateI31ReferenceType(actual)
+		if !immediateOnly && (source == nil || source.gc == nil || store == nil || collector == nil || source.gc != collector || source.refStore != store || !store.ownsGCCollector(collector)) {
 			return fmt.Errorf("collector-reference table requires producer and importer in the same Runtime GC domain")
 		}
 		t.mu.Lock()
@@ -438,14 +472,20 @@ func (t *Table) validateImportWithCollector(elementType ValType, exact ValueType
 			if bits != uint64(ref) {
 				return fmt.Errorf("collector-reference table slot %d contains non-compact reference %#x", i, bits)
 			}
-			if ref.IsNull() || ref.IsI31() {
-				continue
-			}
-			if !ref.IsObj() {
+			if !ref.IsNull() && !ref.IsI31() && !ref.IsObj() {
 				return fmt.Errorf("collector-reference table slot %d contains invalid reference %#x", i, bits)
 			}
-			if _, err := collector.ObjectType(ref); err != nil {
-				return fmt.Errorf("collector-reference table slot %d contains stale or foreign object: %w", i, err)
+			if ref.IsObj() && !immediateOnly {
+				if _, err := collector.ObjectType(ref); err != nil {
+					return fmt.Errorf("collector-reference table slot %d contains stale or foreign object: %w", i, err)
+				}
+			}
+			matches := source != nil && source.gcRefMatchesValueType(ref, actual)
+			if immediateOnly {
+				matches = ref.IsNull() && actual.Ref.Nullable || ref.IsI31() && actual.Ref.Heap.Abstract == AbstractHeapI31
+			}
+			if !matches {
+				return fmt.Errorf("collector-reference table slot %d contains a reference with an incompatible exact structural type", i)
 			}
 		}
 	}
@@ -457,11 +497,32 @@ func (t *Table) attachImporter(elementType ValType, exact ValueTypeDescriptor, t
 }
 
 func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool) error {
+	return t.attachImporterWithExpectedHost(elementType, exact, types, store, collector, addr64, nil)
+}
+
+// Managed host acquisition cannot silently become an Instance acquisition if
+// its owner identity changes between validation and the actual counter claim.
+func (t *Table) attachImporterWithExpectedHost(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool, expected *tableOwner) error {
 	if err := t.validateImportWithCollector(elementType, exact, types, store, collector, addr64); err != nil {
 		return err
 	}
 	o := t.owner
-	if o.elementType == ValFuncRef && o.instance == nil {
+	// Acquisition alone checks capacity. Validation of an already attached
+	// alias still succeeds without creating a second counter obligation.
+	o.mu.Lock()
+	if expected != nil && (t.owner != expected || o != expected || o.instance != nil || o.elementType != elementType) {
+		o.mu.Unlock()
+		return fmt.Errorf("host table owner changed before acquisition")
+	}
+	err := o.validateImporterCountLocked()
+	o.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if err := railshotAttachCompactExternHostTable(t, store, collector); err != nil {
+		return err
+	}
+	if expected != nil && elementType == ValFuncRef || expected == nil && o.elementType == ValFuncRef && o.instance == nil {
 		if t.hasIncompatibleGCProducer(store) {
 			return fmt.Errorf("funcref table contains a producer from an incompatible GC invocation domain")
 		}
@@ -473,8 +534,14 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 		}
 		o.mu.Lock()
 		defer o.mu.Unlock()
-		if o.closed {
+		if expected != nil && (t.owner != expected || o != expected || o.instance != nil || o.elementType != elementType) {
+			return fmt.Errorf("host table owner changed before acquisition")
+		}
+		if o.closed || !railshotCompactExternHostTableOpen(o) {
 			return fmt.Errorf("table owner is closed")
+		}
+		if err := o.validateImporterCountLocked(); err != nil {
+			return err
 		}
 		if err := o.validateFuncrefStoreLocked(store); err != nil {
 			return err
@@ -486,17 +553,17 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 		} else if o.funcrefStores[nil] != 0 {
 			return fmt.Errorf("standalone and Runtime instances cannot concurrently share a mutable funcref table")
 		}
-		if topology != nil && topology.funcrefGCActive {
-			if o.hasForeignFuncrefStoreLocked(store) {
-				return fmt.Errorf("Runtime GC domains cannot share a mutable funcref table across reference stores")
-			}
-			o.funcrefGCStore = store
-		}
 		if o.funcrefStores[store] == ^uint32(0) {
 			return fmt.Errorf("funcref table has too many importers in one reference store")
 		}
 		if topology != nil && topology.funcrefTables[t] == ^uint32(0) {
 			return fmt.Errorf("funcref table has too many importers in one Runtime")
+		}
+		if topology != nil && topology.funcrefGCActive {
+			if o.hasForeignFuncrefStoreLocked(store) {
+				return fmt.Errorf("Runtime GC domains cannot share a mutable funcref table across reference stores")
+			}
+			o.funcrefGCStore = store
 		}
 		if o.funcrefStores == nil {
 			o.funcrefStores = make(map[*referenceStore]uint32)
@@ -513,8 +580,14 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if o.closed {
+	if expected != nil && (t.owner != expected || o != expected || o.instance != nil || o.elementType != elementType) {
+		return fmt.Errorf("host table owner changed before acquisition")
+	}
+	if o.closed || !railshotCompactExternHostTableOpen(o) {
 		return fmt.Errorf("table owner is closed")
+	}
+	if err := o.validateImporterCountLocked(); err != nil {
+		return err
 	}
 	if err := o.validateFuncrefStoreLocked(store); err != nil {
 		return err
@@ -526,12 +599,35 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 	return nil
 }
 
-func (t *Table) detachImporter(store *referenceStore) {
+// Capacity guards precede both actual producer retention and host topology
+// allocation. The caller holds tableOwner.mu.
+func (o *tableOwner) validateImporterCountLocked() error {
+	if o.importers < 0 {
+		return fmt.Errorf("table importer count is negative")
+	}
+	if o.importers == int(^uint(0)>>1) {
+		return fmt.Errorf("table importer count overflows int")
+	}
+	return nil
+}
+
+// detachImporterCounter consumes the exact store/count obligations without
+// releasing an Instance. Producer callbacks run only after all locks are gone.
+func (t *Table) detachImporterCounter(store *referenceStore) (*Instance, bool) {
+	return t.detachImporterCounterMatching(store, nil, nil, 0, false)
+}
+
+func (t *Table) consumeImporterCounter(store *referenceStore, owner *tableOwner, expected *Instance, elementType ValType) bool {
+	_, consumed := t.detachImporterCounterMatching(store, owner, expected, elementType, true)
+	return consumed
+}
+
+func (t *Table) detachImporterCounterMatching(store *referenceStore, expectedOwner *tableOwner, expected *Instance, elementType ValType, checkExpected bool) (*Instance, bool) {
 	if t == nil || t.owner == nil {
-		return
+		return nil, false
 	}
 	o := t.owner
-	if o.elementType == ValFuncRef && o.instance == nil {
+	if checkExpected && expected == nil && elementType == ValFuncRef || !checkExpected && o.elementType == ValFuncRef && o.instance == nil {
 		var topology *gcDomainTopology
 		if store != nil {
 			store.mu.Lock()
@@ -543,33 +639,42 @@ func (t *Table) detachImporter(store *referenceStore) {
 			}
 		}
 		o.mu.Lock()
-		if o.importers > 0 {
-			o.importers--
-			if refs := o.funcrefStores[store]; refs <= 1 {
-				delete(o.funcrefStores, store)
+		refs := o.funcrefStores[store]
+		if o.importers <= 0 || refs == 0 || store != nil && (topology == nil || topology.funcrefTables[t] == 0) || checkExpected && (t.owner != expectedOwner || o != expectedOwner || o.instance != expected || o.elementType != elementType) {
+			o.mu.Unlock()
+			return nil, false
+		}
+		o.importers--
+		if refs <= 1 {
+			delete(o.funcrefStores, store)
+		} else {
+			o.funcrefStores[store] = refs - 1
+		}
+		if topology != nil {
+			if refs := topology.funcrefTables[t]; refs <= 1 {
+				delete(topology.funcrefTables, t)
 			} else {
-				o.funcrefStores[store] = refs - 1
-			}
-			if topology != nil {
-				if refs := topology.funcrefTables[t]; refs <= 1 {
-					delete(topology.funcrefTables, t)
-				} else {
-					topology.funcrefTables[t] = refs - 1
-				}
+				topology.funcrefTables[t] = refs - 1
 			}
 		}
 		o.mu.Unlock()
-		return
+		return nil, true
 	}
-	var instance *Instance
 	o.mu.Lock()
-	if o.importers > 0 {
-		o.importers--
-		instance = o.instance
+	defer o.mu.Unlock()
+	if o.importers <= 0 || o.store != store || checkExpected && (t.owner != expectedOwner || o != expectedOwner || o.instance != expected || o.elementType != elementType) {
+		return nil, false
 	}
-	o.mu.Unlock()
-	if instance != nil {
-		instance.releaseResourceRoot()
+	o.importers--
+	return o.instance, true
+}
+
+func (t *Table) detachImporter(store *referenceStore) {
+	if instance, consumed := t.detachImporterCounter(store); consumed {
+		if instance != nil {
+			instance.releaseResourceRoot()
+		}
+		railshotFinishCompactExternHostTableDetach(t)
 	}
 }
 
@@ -589,6 +694,13 @@ func (t *Table) retainProducerInstanceForFinalization(in *Instance) bool {
 }
 
 func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool {
+	var cleanup resourceCleanup
+	result := t.retainProducerInstanceModeWithCleanup(in, finalization, &cleanup)
+	cleanup.finish()
+	return result
+}
+
+func (t *Table) retainProducerInstanceModeWithCleanup(in *Instance, finalization bool, cleanup *resourceCleanup) bool {
 	if t == nil || t.owner == nil || t.owner.elementType != ValFuncRef || in == nil {
 		return false
 	}
@@ -608,11 +720,13 @@ func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool
 		return false
 	}
 
-	var release []*Instance
+	railshotLockNativeTableScan()
+	var dependencies tableDescriptorDependencyBatch
 	t.mu.Lock()
 	if t.closed || len(t.desc) < 8 {
 		t.mu.Unlock()
-		in.releaseResourceRoot()
+		railshotUnlockNativeTableScan()
+		cleanup.run(in.releaseResourceRoot)
 		return false
 	}
 	current := t.funcrefDescriptorsLocked()
@@ -623,17 +737,18 @@ func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool
 				delete(state.proxyDescriptors, descriptor)
 			}
 		}
-		if !state.precise && len(state.proxyDescriptors) == 0 {
+		if state.activeWriters == 0 && !state.precise && len(state.proxyDescriptors) == 0 {
 			delete(t.retained, root)
-			release = append(release, root)
+			railshotRetireTableDescriptorDependencyLocked(t, root, state, &dependencies)
+		} else if state.precise || len(state.proxyDescriptors) != 0 {
+			railshotPublishTableDescriptorDependencyLocked(t, state, &dependencies)
 		}
 	}
 	if !t.containsReachableFuncref(in) {
 		t.mu.Unlock()
-		in.releaseResourceRoot()
-		for _, root := range release {
-			root.releaseResourceRoot()
-		}
+		railshotUnlockNativeTableScan()
+		cleanup.run(in.releaseResourceRoot)
+		cleanup.run(func() { railshotFlushTableDescriptorDependencies(&dependencies) })
 		return false
 	}
 	in.markNativeControlShared()
@@ -644,27 +759,28 @@ func (t *Table) retainProducerInstanceMode(in *Instance, finalization bool) bool
 	if !exists {
 		state = &retainedInstanceRoot{}
 		t.retained[in] = state
+		railshotRecordTableDescriptorDependencyLocked(t, in, state, &dependencies)
 	}
 	state.precise = true
+	railshotPublishTableDescriptorDependencyLocked(t, state, &dependencies)
 	for root, retained := range t.retained {
 		for descriptor := range retained.proxyDescriptors {
 			if in.reachesFuncrefDescriptor(descriptor) {
 				delete(retained.proxyDescriptors, descriptor)
 			}
 		}
-		if !retained.precise && len(retained.proxyDescriptors) == 0 {
+		if retained.activeWriters == 0 && !retained.precise && len(retained.proxyDescriptors) == 0 {
 			delete(t.retained, root)
-			release = append(release, root)
+			railshotRetireTableDescriptorDependencyLocked(t, root, retained, &dependencies)
 		}
 	}
 	t.mu.Unlock()
 
+	railshotUnlockNativeTableScan()
 	if exists {
-		in.releaseResourceRoot()
+		cleanup.run(in.releaseResourceRoot)
 	}
-	for _, root := range release {
-		root.releaseResourceRoot()
-	}
+	cleanup.run(func() { railshotFlushTableDescriptorDependencies(&dependencies) })
 	return true
 }
 
@@ -728,6 +844,13 @@ func (t *Table) funcrefProducerRoots() []*Instance {
 // does not contain the copied refSlot. The proxy's still-live import attachments
 // conservatively preserve the source chain until overwrite or table close.
 func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, proxy *Instance) descriptorRetentionResult {
+	var cleanup resourceCleanup
+	result := t.retainDescriptorOwnersForFinalizationWithCleanup(store, proxy, &cleanup)
+	cleanup.finish()
+	return result
+}
+
+func (t *Table) retainDescriptorOwnersForFinalizationWithCleanup(store *referenceStore, proxy *Instance, cleanup *resourceCleanup) descriptorRetentionResult {
 	if t == nil || t.owner == nil || t.owner.elementType != ValFuncRef {
 		return descriptorRetentionResult{}
 	}
@@ -738,13 +861,16 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 	if ownerClosed {
 		return descriptorRetentionResult{}
 	}
+	railshotLockNativeTableScan()
 	t.mu.Lock()
 	if t.closed || len(t.desc) < 8 {
 		t.mu.Unlock()
+		railshotUnlockNativeTableScan()
 		return descriptorRetentionResult{}
 	}
 	descriptors := t.funcrefDescriptorsLocked()
 	t.mu.Unlock()
+	railshotUnlockNativeTableScan()
 
 	resolved := make(map[uint64]*Instance, len(descriptors))
 	if store != nil {
@@ -757,15 +883,18 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 	unresolvedSnapshot := len(resolved) != len(descriptors)
 	proxyAcquired := unresolvedSnapshot && proxy != nil && proxy != containerOwner && proxy.retainResourceRootForFinalization()
 
-	var release []*Instance
+	var release []*Instance // redundant provisional acquisitions only
+	var dependencies tableDescriptorDependencyBatch
+	railshotLockNativeTableScan()
 	t.mu.Lock()
 	if t.closed || len(t.desc) < 8 {
 		t.mu.Unlock()
+		railshotUnlockNativeTableScan()
 		for _, owner := range resolved {
-			owner.releaseResourceRoot()
+			cleanup.run(owner.releaseResourceRoot)
 		}
 		if proxyAcquired {
-			proxy.releaseResourceRoot()
+			cleanup.run(proxy.releaseResourceRoot)
 		}
 		return descriptorRetentionResult{}
 	}
@@ -799,9 +928,9 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 				delete(state.proxyDescriptors, descriptor)
 			}
 		}
-		if !state.precise && len(state.proxyDescriptors) == 0 {
+		if state.activeWriters == 0 && !state.precise && len(state.proxyDescriptors) == 0 {
 			delete(t.retained, root)
-			release = append(release, root)
+			railshotRetireTableDescriptorDependencyLocked(t, root, state, &dependencies)
 		}
 	}
 	for descriptor, owner := range resolved {
@@ -816,11 +945,13 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 		if state == nil {
 			state = &retainedInstanceRoot{}
 			t.retained[owner] = state
+			railshotRecordTableDescriptorDependencyLocked(t, owner, state, &dependencies)
 			owner.markNativeControlShared()
 		} else {
 			release = append(release, owner)
 		}
 		state.precise = true
+		railshotPublishTableDescriptorDependencyLocked(t, state, &dependencies)
 	}
 	for descriptor := range unresolved {
 		precise := false
@@ -859,6 +990,7 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 			if state == nil {
 				state = &retainedInstanceRoot{}
 				t.retained[proxy] = state
+				railshotRecordTableDescriptorDependencyLocked(t, proxy, state, &dependencies)
 				proxy.markNativeControlShared()
 			} else {
 				release = append(release, proxy)
@@ -869,19 +1001,22 @@ func (t *Table) retainDescriptorOwnersForFinalization(store *referenceStore, pro
 			for descriptor := range needed {
 				state.proxyDescriptors[descriptor] = struct{}{}
 			}
+			railshotPublishTableDescriptorDependencyLocked(t, state, &dependencies)
 		}
 	}
 	for root, state := range t.retained {
-		if !state.precise && len(state.proxyDescriptors) == 0 {
+		if state.activeWriters == 0 && !state.precise && len(state.proxyDescriptors) == 0 {
 			delete(t.retained, root)
-			release = append(release, root)
+			railshotRetireTableDescriptorDependencyLocked(t, root, state, &dependencies)
+		} else if state.precise || len(state.proxyDescriptors) != 0 {
+			railshotPublishTableDescriptorDependencyLocked(t, state, &dependencies)
 		}
 	}
 	result := descriptorRetentionResult{retained: len(t.retained) != 0, unresolved: len(unresolved) != 0}
 	t.mu.Unlock()
-	for _, root := range release {
-		root.releaseResourceRoot()
-	}
+	railshotUnlockNativeTableScan()
+	cleanup.run(func() { railshotFlushTableDescriptorDependencies(&dependencies) })
+	cleanup.run(func() { releaseRetainedResourceRoots(release) })
 	return result
 }
 
@@ -907,9 +1042,10 @@ func (t *Table) pruneRetainedInstances() {
 	if t == nil {
 		return
 	}
-	var release []*Instance
+	railshotLockNativeTableScan()
+	var dependencies tableDescriptorDependencyBatch
 	t.mu.Lock()
-	if !t.closed && len(t.desc) >= 8 {
+	if !t.closed && len(t.desc) >= 8 && len(t.retained) != 0 {
 		current := t.funcrefDescriptorsLocked()
 		for root, state := range t.retained {
 			state.precise = false
@@ -924,16 +1060,17 @@ func (t *Table) pruneRetainedInstances() {
 					delete(state.proxyDescriptors, descriptor)
 				}
 			}
-			if !state.precise && len(state.proxyDescriptors) == 0 {
+			if state.activeWriters == 0 && !state.precise && len(state.proxyDescriptors) == 0 {
 				delete(t.retained, root)
-				release = append(release, root)
+				railshotRetireTableDescriptorDependencyLocked(t, root, state, &dependencies)
+			} else if state.precise || len(state.proxyDescriptors) != 0 {
+				railshotPublishTableDescriptorDependencyLocked(t, state, &dependencies)
 			}
 		}
 	}
 	t.mu.Unlock()
-	for _, root := range release {
-		root.releaseResourceRoot()
-	}
+	railshotUnlockNativeTableScan()
+	railshotFlushTableDescriptorDependencies(&dependencies)
 }
 
 func (t *Table) releaseRetainedInstances() {
@@ -942,19 +1079,21 @@ func (t *Table) releaseRetainedInstances() {
 	}
 	t.mu.Lock()
 	if t.closed {
+		var dependencies tableDescriptorDependencyBatch
+		railshotRetryTableDescriptorDependenciesLocked(t, &dependencies)
 		t.mu.Unlock()
+		railshotFlushTableDescriptorDependencies(&dependencies)
 		return
 	}
 	t.closed = true
-	roots := make([]*Instance, 0, len(t.retained))
-	for root := range t.retained {
-		roots = append(roots, root)
+	var dependencies tableDescriptorDependencyBatch
+	for root, state := range t.retained {
+		railshotRetireTableDescriptorDependencyLocked(t, root, state, &dependencies)
 	}
 	t.retained = nil
+	railshotRetryTableDescriptorDependenciesLocked(t, &dependencies)
 	t.mu.Unlock()
-	for _, root := range roots {
-		root.releaseResourceRoot()
-	}
+	railshotFlushTableDescriptorDependencies(&dependencies)
 }
 
 // ExportedTable returns the table exported under name as a shared *Table another
@@ -1015,6 +1154,7 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	}
 	owner := &tableOwner{store: store, instance: in, elementType: elementType, valueType: exact, types: in.c.Types, hasValueType: true, declaredHasMax: in.c.tableDef(tableIndex).HasMax, addr64: in.c.tableDef(tableIndex).Addr64}
 	table := &Table{desc: desc, owner: owner, next: in.table}
+	railshotLinkOwnedTableDescriptorHolderLocked(in, table)
 	in.table = table
 	in.lifeMu.Unlock()
 	in.markNativeControlShared()
@@ -1092,7 +1232,14 @@ func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
 		return nil, deferredHostEventCalleeError()
 	}
 	if idx < len(in.c.GlobalImports) {
-		return g, nil
+		// Object imports retain their original owner. Value imports materialize
+		// a cell in this instance's arena and need an owner before re-export.
+		in.lifeMu.Lock()
+		hasOwner := g.owner != nil
+		in.lifeMu.Unlock()
+		if hasOwner {
+			return g, nil
+		}
 	}
 	store := in.refStore
 	if isReferenceValType(g.Type) && store == nil {
@@ -1108,7 +1255,9 @@ func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
 	}
 	in.lifeMu.Lock()
 	if g.owner == nil {
-		g.owner = &globalOwner{store: store, instance: in, typ: g.Type, mutable: g.Mutable, valueType: exact, types: in.c.Types, hasValueType: true}
+		owner := &globalOwner{store: store, instance: in, typ: g.Type, mutable: g.Mutable, valueType: exact, types: in.c.Types, hasValueType: true}
+		railshotLinkOwnedGlobalDescriptorHolderLocked(in, owner)
+		g.owner = owner
 	}
 	in.lifeMu.Unlock()
 	in.markNativeControlShared()

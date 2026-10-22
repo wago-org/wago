@@ -27,11 +27,7 @@ func (fn *WasmFunc) invokeDirectIntWide(args []uint64) ([]uint64, error) {
 		in.endDirectInvocation()
 		return out, err
 	}
-	lease := in.lockPreparedInvocation()
-	out, err := fn.invokeGeneralAdmitted(args)
-	lease.unlock()
-	in.endDirectInvocation()
-	return out, err
+	return fn.invokeGeneralAfterDirectAdmission(args)
 }
 
 func (fn *WasmFunc) invokeDirectIntWideSession(args []uint64) ([]uint64, error) {

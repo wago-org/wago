@@ -64,17 +64,21 @@ type Global struct {
 }
 
 type globalOwner struct {
-	mu           sync.Mutex
-	arena        *coreruntime.Arena
-	store        *referenceStore
-	instance     *Instance
-	typ          ValType
-	mutable      bool
-	valueType    ValueTypeDescriptor
-	types        []DefinedTypeDescriptor
-	hasValueType bool
-	importers    int
-	closed       bool
+	// RV64 records exact mutable funcref descriptor acquisitions here. The
+	// architecture holder is empty on existing targets, preserving their owner
+	// footprint.
+	descriptorDependencies globalDescriptorDependencies
+	mu                     sync.Mutex
+	arena                  *coreruntime.Arena
+	store                  *referenceStore
+	instance               *Instance
+	typ                    ValType
+	mutable                bool
+	valueType              ValueTypeDescriptor
+	types                  []DefinedTypeDescriptor
+	hasValueType           bool
+	importers              int
+	closed                 bool
 	// retained holds writer instances whose reachable funcref is currently stored
 	// in this global's cell (funcref globals only). Each root preserves the writer's
 	// descriptor arena and transitive import attachments until overwrite or close.
@@ -135,6 +139,13 @@ func (g *Global) retainProducerInstanceForFinalization(in *Instance) bool {
 }
 
 func (g *Global) retainProducerInstanceMode(in *Instance, finalization bool) bool {
+	var cleanup resourceCleanup
+	result := g.retainProducerInstanceModeWithCleanup(in, finalization, &cleanup)
+	cleanup.finish()
+	return result
+}
+
+func (g *Global) retainProducerInstanceModeWithCleanup(in *Instance, finalization bool, cleanup *resourceCleanup) bool {
 	if g == nil || g.owner == nil || g.owner.typ != ValFuncRef || in == nil {
 		return false
 	}
@@ -154,11 +165,11 @@ func (g *Global) retainProducerInstanceMode(in *Instance, finalization bool) boo
 		return false
 	}
 	o := g.owner
-	var release []*Instance
+	var dependencies globalDescriptorDependencyBatch
 	o.mu.Lock()
 	if o.closed || len(g.cell) < 8 {
 		o.mu.Unlock()
-		in.releaseResourceRoot()
+		cleanup.run(in.releaseResourceRoot)
 		return false
 	}
 	current := readGlobalObject(g, ValFuncRef)
@@ -171,15 +182,13 @@ func (g *Global) retainProducerInstanceMode(in *Instance, finalization bool) boo
 		}
 		if !state.precise && len(state.proxyDescriptors) == 0 {
 			delete(o.retained, root)
-			release = append(release, root)
+			railshotRetireGlobalDescriptorDependencyLocked(o, root, state, &dependencies)
 		}
 	}
 	if !in.reachesFuncrefDescriptor(current) {
 		o.mu.Unlock()
-		in.releaseResourceRoot()
-		for _, root := range release {
-			root.releaseResourceRoot()
-		}
+		cleanup.run(in.releaseResourceRoot)
+		cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&dependencies) })
 		return false
 	}
 	if o.retained == nil {
@@ -189,24 +198,24 @@ func (g *Global) retainProducerInstanceMode(in *Instance, finalization bool) boo
 	if !exists {
 		state = &retainedInstanceRoot{}
 		o.retained[in] = state
+		railshotRecordGlobalDescriptorDependencyLocked(o, in, state, &dependencies)
 	}
 	state.precise = true
+	railshotPublishGlobalDescriptorDependencyLocked(o, state, &dependencies)
 	for root, retained := range o.retained {
 		if in.reachesFuncrefDescriptor(current) {
 			delete(retained.proxyDescriptors, current)
 		}
 		if !retained.precise && len(retained.proxyDescriptors) == 0 {
 			delete(o.retained, root)
-			release = append(release, root)
+			railshotRetireGlobalDescriptorDependencyLocked(o, root, retained, &dependencies)
 		}
 	}
 	o.mu.Unlock()
 	if exists {
-		in.releaseResourceRoot()
+		cleanup.run(in.releaseResourceRoot)
 	}
-	for _, root := range release {
-		root.releaseResourceRoot()
-	}
+	cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&dependencies) })
 	return true
 }
 
@@ -248,6 +257,13 @@ func (g *Global) funcrefProducerRoots() []*Instance {
 // fails, proxy conservatively owns the descriptor through its existing import
 // attachment chain until overwrite, later precise resolution, or global close.
 func (g *Global) retainDescriptorOwnerForFinalization(store *referenceStore, proxy *Instance) descriptorRetentionResult {
+	var cleanup resourceCleanup
+	result := g.retainDescriptorOwnerForFinalizationWithCleanup(store, proxy, &cleanup)
+	cleanup.finish()
+	return result
+}
+
+func (g *Global) retainDescriptorOwnerForFinalizationWithCleanup(store *referenceStore, proxy *Instance, cleanup *resourceCleanup) descriptorRetentionResult {
 	if g == nil || g.owner == nil {
 		return descriptorRetentionResult{}
 	}
@@ -266,21 +282,22 @@ func (g *Global) retainDescriptorOwnerForFinalization(store *referenceStore, pro
 		owner = store.retainDescriptorOwnerForFinalization(descriptor)
 	}
 	if owner != nil && owner == containerOwner {
-		owner.releaseResourceRoot()
+		cleanup.run(owner.releaseResourceRoot)
 		owner = nil
 	}
 	unresolved := descriptor != 0 && owner == nil
 	proxyAcquired := unresolved && proxy != nil && proxy != containerOwner && proxy.retainResourceRootForFinalization()
 
 	var release []*Instance
+	var dependencies globalDescriptorDependencyBatch
 	o.mu.Lock()
 	if o.closed || len(g.cell) < 8 || readGlobalObject(g, ValFuncRef) != descriptor {
 		o.mu.Unlock()
 		if owner != nil {
-			owner.releaseResourceRoot()
+			cleanup.run(owner.releaseResourceRoot)
 		}
 		if proxyAcquired {
-			proxy.releaseResourceRoot()
+			cleanup.run(proxy.releaseResourceRoot)
 		}
 		return descriptorRetentionResult{}
 	}
@@ -307,11 +324,13 @@ func (g *Global) retainDescriptorOwnerForFinalization(store *referenceStore, pro
 		if state == nil {
 			state = &retainedInstanceRoot{precise: true}
 			o.retained[owner] = state
+			railshotRecordGlobalDescriptorDependencyLocked(o, owner, state, &dependencies)
 			owner.markNativeControlShared()
 		} else {
 			state.precise = true
 			release = append(release, owner)
 		}
+		railshotPublishGlobalDescriptorDependencyLocked(o, state, &dependencies)
 	}
 	if proxyAcquired {
 		covered := false
@@ -332,10 +351,12 @@ func (g *Global) retainDescriptorOwnerForFinalization(store *referenceStore, pro
 			if state == nil {
 				state = &retainedInstanceRoot{}
 				o.retained[proxy] = state
+				railshotRecordGlobalDescriptorDependencyLocked(o, proxy, state, &dependencies)
 				proxy.markNativeControlShared()
 			} else {
 				release = append(release, proxy)
 			}
+			railshotPublishGlobalDescriptorDependencyLocked(o, state, &dependencies)
 			if state.proxyDescriptors == nil {
 				state.proxyDescriptors = make(map[uint64]struct{}, 1)
 			}
@@ -345,14 +366,13 @@ func (g *Global) retainDescriptorOwnerForFinalization(store *referenceStore, pro
 	for root, state := range o.retained {
 		if !state.precise && len(state.proxyDescriptors) == 0 {
 			delete(o.retained, root)
-			release = append(release, root)
+			railshotRetireGlobalDescriptorDependencyLocked(o, root, state, &dependencies)
 		}
 	}
 	result := descriptorRetentionResult{retained: len(o.retained) != 0, unresolved: unresolved}
 	o.mu.Unlock()
-	for _, root := range release {
-		root.releaseResourceRoot()
-	}
+	cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&dependencies) })
+	cleanup.run(func() { releaseRetainedResourceRoots(release) })
 	return result
 }
 
@@ -365,7 +385,11 @@ func (g *Global) pruneRetainedInstances() {
 		return
 	}
 	o := g.owner
-	var release []*Instance
+	var dependencies globalDescriptorDependencyBatch
+	// Guest writes and public reference setters share this native-state gate.
+	// Claim stale rows while their mapped cell is stable, then release every
+	// physical root after both native state and the container are unlocked.
+	nativeExecutionMu.Lock()
 	o.mu.Lock()
 	if !o.closed && len(g.cell) >= 8 && o.typ == ValFuncRef {
 		descriptor := readGlobalObject(g, ValFuncRef)
@@ -378,14 +402,13 @@ func (g *Global) pruneRetainedInstances() {
 			}
 			if !state.precise && len(state.proxyDescriptors) == 0 {
 				delete(o.retained, root)
-				release = append(release, root)
+				railshotRetireGlobalDescriptorDependencyLocked(o, root, state, &dependencies)
 			}
 		}
 	}
 	o.mu.Unlock()
-	for _, root := range release {
-		root.releaseResourceRoot()
-	}
+	nativeExecutionMu.Unlock()
+	railshotFlushGlobalDescriptorDependencies(&dependencies)
 }
 
 func (rt *Runtime) NewFuncRefGlobal(initial FuncRef, mutable bool) (*Global, error) {
@@ -452,13 +475,21 @@ func (rt *Runtime) NewExternRefGlobal(initial ExternRef, mutable bool) (*Global,
 // global importer closes. Instance-owned exported globals remain no-ops because
 // their producer instance owns the cell.
 func (g *Global) Close() error {
+	if handled, err := railshotTryCloseCompactExternHostGlobal(g); handled {
+		return err
+	}
 	if g == nil || g.owner == nil {
 		return nil
 	}
 	o := g.owner
 	o.mu.Lock()
 	if o.closed || o.arena == nil {
+		var dependencies globalDescriptorDependencyBatch
+		if o.closed {
+			railshotRetryGlobalDescriptorDependenciesLocked(o, &dependencies)
+		}
 		o.mu.Unlock()
+		railshotFlushGlobalDescriptorDependencies(&dependencies)
 		return nil
 	}
 	if o.importers != 0 {
@@ -470,21 +501,27 @@ func (g *Global) Close() error {
 	arena, store := o.arena, o.store
 	o.arena = nil
 	g.cell = nil
-	roots := make([]*Instance, 0, len(o.retained))
-	for root := range o.retained {
-		roots = append(roots, root)
+	var dependencies globalDescriptorDependencyBatch
+	for root, state := range o.retained {
+		railshotRetireGlobalDescriptorDependencyLocked(o, root, state, &dependencies)
 	}
 	o.retained = nil
+	// A prior denied overwrite may already have removed its exact map row while
+	// leaving the stable sidecar obligation retryable. Terminal Close owns every
+	// such retired row, not only the currently live map.
+	railshotRetryGlobalDescriptorDependenciesLocked(o, &dependencies)
 	o.mu.Unlock()
 	// Root release may re-enter instance finalization, so it must not happen
 	// while globalOwner.mu is held.
-	for _, root := range roots {
-		root.releaseResourceRoot()
-	}
-	err := arena.Close()
+	var cleanup resourceCleanup
+	cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&dependencies) })
+	var err error
+	cleanup.run(func() { railshotReleaseCompactExternHostGlobal(o) })
+	cleanup.run(func() { err = arena.Close() })
 	if store != nil {
-		store.storeObjectClosed()
+		cleanup.run(store.storeObjectClosed)
 	}
+	cleanup.finish()
 	return err
 }
 
@@ -581,15 +618,68 @@ func (g *Global) Set(bits uint64) error {
 // GetValue returns a reference global through its exact owner store. Numeric and
 // vector globals keep their existing Get/GetV128 accessors.
 func (g *Global) GetValue() (Value, error) {
-	end, ok := g.beginOwnerAccess()
-	if !ok {
+	if g == nil {
 		return Value{}, fmt.Errorf("global owner instance is closed")
 	}
-	defer end()
+	var owner *Instance
+	if g.owner != nil {
+		owner = g.owner.instance
+	}
+	if owner != nil {
+		if err := owner.beginInvocation(); err != nil {
+			return Value{}, fmt.Errorf("global owner instance is closed")
+		}
+	}
+	nativeMu := &nativeExecutionMu
+	if owner != nil {
+		nativeMu = owner.acquireInstanceNativeStateForHostAccess()
+	} else {
+		nativeMu.Lock()
+	}
+	defer func() {
+		var cleanup resourceCleanup
+		if value := recover(); value != nil {
+			cleanup.panicked, cleanup.value = true, value
+		}
+		cleanup.run(nativeMu.Unlock)
+		if owner != nil {
+			cleanup.run(owner.endInvocation)
+		}
+		cleanup.finish()
+	}()
 	return g.getValueNoLease()
 }
 
+// ReleaseGCRef releases a non-null collector-reference token returned by this
+// global's GetValue method. A re-exported Global retains its original producer,
+// so release remains unambiguous and valid after that producer is logically
+// closed while the token keeps its physical collector resources alive.
+func (g *Global) ReleaseGCRef(ref GCRef) error {
+	if ref.token == 0 {
+		return nil
+	}
+	if g == nil || g.owner == nil {
+		return fmt.Errorf("global has no collector-reference owner")
+	}
+	o := g.owner
+	o.mu.Lock()
+	typ, owner := o.typ, o.instance
+	o.mu.Unlock()
+	if !isGCRefValType(typ) || owner == nil {
+		return fmt.Errorf("global has no collector-reference owner")
+	}
+	return owner.ReleaseGCRef(ref)
+}
+
+// ReleaseExnRef releases an owned exception token returned by GetValue.
+func (g *Global) ReleaseExnRef(ref ExnRef) error {
+	return g.ReleaseGCRef(GCRef{token: ref.token})
+}
+
 func (g *Global) getValueNoLease() (Value, error) {
+	if value, handled, err := railshotGetCompactExternHostGlobal(g); handled {
+		return value, err
+	}
 	if g == nil || g.owner == nil {
 		return Value{}, fmt.Errorf("global has no compatible reference owner")
 	}
@@ -612,6 +702,37 @@ func (g *Global) getValueNoLease() (Value, error) {
 	}
 	if store == nil {
 		return Value{}, fmt.Errorf("global has no compatible reference store")
+	}
+	if value, handled, err := railshotImportedGlobalValue(source, g); handled {
+		return value, err
+	}
+	if isGCRefValType(typ) {
+		if source == nil || source.gc == nil || source.c == nil || !hasExact {
+			return Value{}, fmt.Errorf("global has no compatible collector-reference owner")
+		}
+		if bits != uint64(uint32(bits)) {
+			return Value{}, fmt.Errorf("global contains a non-compact collector reference")
+		}
+		ref := gc.Ref(uint32(bits))
+		if !source.gcRefMatchesValueType(ref, exact) {
+			return Value{}, fmt.Errorf("global contains a collector reference with an incompatible exact structural type")
+		}
+		if ref.IsNull() || ref.IsI31() {
+			return Value{typ: typ, bits: bits}, nil
+		}
+		if store == nil || source.refStore != store {
+			return Value{}, fmt.Errorf("global has no compatible collector-reference store")
+		}
+		lockedDomain := source.lockGCCollector()
+		defer unlockGCCollector(lockedDomain)
+		state := source.publicGCState()
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		token, err := store.issueGCRefLocked(source, state, ref, exact)
+		if err != nil {
+			return Value{}, fmt.Errorf("global contains an invalid collector reference: %w", err)
+		}
+		return Value{typ: typ, bits: token}, nil
 	}
 	if typ == ValExternRef {
 		public, handled, err := source.publicExternFromGlobal(bits)
@@ -640,16 +761,84 @@ func (g *Global) getValueNoLease() (Value, error) {
 }
 
 // SetValue updates a mutable reference global after exact token validation.
-func (g *Global) SetValue(v Value) error {
-	end, ok := g.beginOwnerAccess()
-	if !ok {
+func (g *Global) SetValue(v Value) (err error) {
+	if g == nil {
 		return fmt.Errorf("global owner instance is closed")
 	}
-	defer end()
-	return g.setValueNoLease(v)
+	var owner *Instance
+	if g.owner != nil {
+		owner = g.owner.instance
+	}
+	if owner != nil {
+		if err := owner.beginInvocation(); err != nil {
+			return fmt.Errorf("global owner instance is closed")
+		}
+	}
+	nativeMu := &nativeExecutionMu
+	if owner != nil {
+		nativeMu = owner.acquireInstanceNativeStateForHostAccess()
+	} else {
+		nativeMu.Lock()
+	}
+	var roots globalValueRoots
+	var cleanup resourceCleanup
+	defer func() { finishGlobalValueAccess(nativeMu, owner, &roots, &cleanup) }()
+	cleanup.run(func() { err = g.setValueNoLease(v, &roots) })
+	return err
 }
 
-func (g *Global) setValueNoLease(v Value) error {
+// Each slot owns an independent acquisition, including repeated owners. Record
+// bootstraps before publication and transfer only the unit installed in the map.
+type globalValueRoots struct {
+	inline                 [4]*Instance
+	extra                  []*Instance
+	count                  int
+	descriptorDependencies globalDescriptorDependencyBatch
+}
+
+func (r *globalValueRoots) record(owner *Instance) int {
+	index := r.count
+	if index < len(r.inline) {
+		r.inline[index] = owner
+	} else {
+		r.extra = append(r.extra, owner)
+	}
+	r.count++
+	return index
+}
+
+func (r *globalValueRoots) transfer(index int) {
+	if index < len(r.inline) {
+		r.inline[index] = nil
+	} else {
+		r.extra[index-len(r.inline)] = nil
+	}
+}
+
+func (r *globalValueRoots) release() {
+	n := min(r.count, len(r.inline))
+	var cleanup resourceCleanup
+	cleanup.run(func() { releaseRetainedResourceRoots(r.inline[:n]) })
+	cleanup.run(func() { releaseRetainedResourceRoots(r.extra) })
+	cleanup.finish()
+}
+
+// Physical callbacks may reenter native execution or logically close the owner.
+// Keep the invocation through the whole root drain and preserve the first panic.
+func finishGlobalValueAccess(nativeMu *sync.Mutex, owner *Instance, roots *globalValueRoots, cleanup *resourceCleanup) {
+	cleanup.run(nativeMu.Unlock)
+	cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&roots.descriptorDependencies) })
+	cleanup.run(roots.release)
+	if owner != nil {
+		cleanup.run(owner.endInvocation)
+	}
+	cleanup.finish()
+}
+
+func (g *Global) setValueNoLease(v Value, roots *globalValueRoots) error {
+	if handled, err := railshotSetCompactExternHostGlobal(g, v, roots); handled {
+		return err
+	}
 	if g == nil || g.owner == nil {
 		return fmt.Errorf("global has no compatible reference owner")
 	}
@@ -668,14 +857,28 @@ func (g *Global) setValueNoLease(v Value) error {
 	if !mutable {
 		return fmt.Errorf("global is immutable")
 	}
+	if isGCRefValType(typ) {
+		if containerOwner == nil || containerOwner.c == nil {
+			return fmt.Errorf("global has no compatible collector-reference owner")
+		}
+		name, ok := containerOwner.exportedGlobalNameForCell(g)
+		if !ok {
+			return fmt.Errorf("global collector-reference owner has no matching export")
+		}
+		return containerOwner.setGlobalValueNoLease(name, v, roots, nil)
+	}
 	bits := v.bits
 	var retainedOwner *Instance
+	bootstrap := -1
 	if bits == 0 && hasExact && exact.Kind == ValueTypeReference && !exact.Ref.Nullable {
 		return fmt.Errorf("global requires a non-null reference value")
 	}
 	if bits != 0 {
 		if store == nil {
-			return fmt.Errorf("global has no compatible reference store")
+			if typ == ValFuncRef {
+				return fmt.Errorf("invalid funcref token")
+			}
+			return fmt.Errorf("invalid externref token")
 		}
 		if typ == ValExternRef {
 			internal, handled, err := containerOwner.internalExternForGlobal(bits)
@@ -703,19 +906,23 @@ func (g *Global) setValueNoLease(v Value) error {
 			}
 			bits = descriptor
 			retainedOwner = owner
+			bootstrap = roots.record(owner)
 			if retainedOwner == containerOwner {
-				retainedOwner.releaseResourceRoot()
 				retainedOwner = nil
 			}
 		}
 	}
-	var release []*Instance
+	return g.publishReferenceValueNoLease(typ, mutable, bits, retainedOwner, bootstrap, roots)
+}
+
+// publishReferenceValueNoLease commits a previously authenticated reference
+// and transfers exactly one acquired descriptor-owner root into the container.
+// Callers own the native-state lease and every root represented by roots.
+func (g *Global) publishReferenceValueNoLease(typ ValType, mutable bool, bits uint64, retainedOwner *Instance, bootstrap int, roots *globalValueRoots) error {
+	o := g.owner
 	o.mu.Lock()
+	defer o.mu.Unlock()
 	if o.closed || len(g.cell) < 8 || o.typ != typ || o.mutable != mutable || g.Type != typ || g.Mutable != mutable {
-		o.mu.Unlock()
-		if retainedOwner != nil {
-			retainedOwner.releaseResourceRoot()
-		}
 		return fmt.Errorf("global reference owner metadata is invalid")
 	}
 	writeGlobalObject(g, typ, bits)
@@ -724,8 +931,9 @@ func (g *Global) setValueNoLease(v Value) error {
 			if root == retainedOwner {
 				continue
 			}
+			state := o.retained[root]
 			delete(o.retained, root)
-			release = append(release, root)
+			railshotRetireGlobalDescriptorDependencyLocked(o, root, state, &roots.descriptorDependencies)
 		}
 		if retainedOwner != nil {
 			if o.retained == nil {
@@ -734,16 +942,15 @@ func (g *Global) setValueNoLease(v Value) error {
 			if state := o.retained[retainedOwner]; state != nil {
 				state.precise = true
 				state.proxyDescriptors = nil
-				release = append(release, retainedOwner)
+				railshotPublishGlobalDescriptorDependencyLocked(o, state, &roots.descriptorDependencies)
 			} else {
-				o.retained[retainedOwner] = &retainedInstanceRoot{precise: true}
+				state := &retainedInstanceRoot{precise: true}
+				o.retained[retainedOwner] = state
+				railshotRecordGlobalDescriptorDependencyLocked(o, retainedOwner, state, &roots.descriptorDependencies)
+				roots.transfer(bootstrap)
 				retainedOwner.markNativeControlShared()
 			}
 		}
-	}
-	o.mu.Unlock()
-	for _, root := range release {
-		root.releaseResourceRoot()
 	}
 	return nil
 }
@@ -808,22 +1015,26 @@ func (g *Global) instanceOwnerClosed(in *Instance) {
 		return
 	}
 	o := g.owner
-	var roots []*Instance
+	var dependencies globalDescriptorDependencyBatch
 	o.mu.Lock()
-	if o.instance != in || o.closed {
+	if o.instance != in {
 		o.mu.Unlock()
 		return
 	}
+	if o.closed {
+		railshotRetryGlobalDescriptorDependenciesLocked(o, &dependencies)
+		o.mu.Unlock()
+		railshotFlushGlobalDescriptorDependencies(&dependencies)
+		return
+	}
 	o.closed = true
-	for root := range o.retained {
-		roots = append(roots, root)
+	for root, state := range o.retained {
+		railshotRetireGlobalDescriptorDependencyLocked(o, root, state, &dependencies)
 	}
 	o.retained = nil
 	g.cell = nil
 	o.mu.Unlock()
-	for _, root := range roots {
-		root.releaseResourceRoot()
-	}
+	railshotFlushGlobalDescriptorDependencies(&dependencies)
 }
 
 // GlobalImport supplies an imported global value. Prefer a *Global for mutable
@@ -958,7 +1169,17 @@ type memoryDef struct {
 
 func (c *Compiled) funcTypeKey(index int) uint64 {
 	if c != nil && index >= 0 && index < len(c.FuncTypeID) {
-		return c.FuncTypeID[index]
+		key := c.FuncTypeID[index]
+		if rv64GCTypeSubtypingRuntimeFinalityCallCast(c) && index < len(c.Funcs) && c.Funcs[index].HasTypeIndex && c.Funcs[index].TypeIndex == 1 {
+			key ^= 0x9e3779b97f4a7c15
+		}
+		if rv64GCTypeSubtypingRuntimeTypedTableCall(c) && index < len(c.Funcs) && c.Funcs[index].HasTypeIndex {
+			key ^= uint64(c.Funcs[index].TypeIndex) * 0x9e3779b97f4a7c15
+		}
+		if rv64GCTypeSubtypingRefTestSingle(c) && index < len(c.Funcs) && c.Funcs[index].HasTypeIndex {
+			key ^= uint64(c.Funcs[index].TypeIndex) * 0x9e3779b97f4a7c15
+		}
+		return key
 	}
 	return 0
 }
@@ -1057,11 +1278,15 @@ type Compiled struct {
 	extraTables         []tableDef // table indexes 1..N; imported positions carry indexed import metadata
 	FuncTypeID          []uint64   // collision-resistant native signature key; legacy field name
 	NeedsFuncRefDescs   bool       // true when instantiation requires the canonical per-function descriptor arena
-	// Source-only shared host certificates occupy existing flag padding.
-	// Codecs discard both; resource-free private bridges do not consume them.
-	fixedSharedHostSegments bool
-	fixedSharedHostInteger  bool
-	Elems                   []ElemInit // active element segments
+	// RV64 flags share the descriptor flag's alignment padding.
+	nativeContextTrapABI       bool       // active-context identity and fresh cold-trap provenance
+	nativeReferenceCallABI     bool       // ordinary typed calls with retained owners and declared-type arenas
+	nativeReferenceControlABI  bool       // full-width null checks/branches on retained internal function references
+	nativeReferenceFunctionABI bool       // closed internal reference-valued functions; no public callable descriptors
+	nativeTableContextABI      bool       // retained canonical table calls with framed context switching
+	nativeTableReferenceABI    bool       // full-width foreign table carriers and active writer/storage scopes
+	nativeTable64ABI           uint8      // compiler-attested exact indexed table/table64 instruction/storage profile
+	Elems                      []ElemInit // active element segments
 
 	passiveElems []ElemInit // element-state descriptors keyed by original index; active/declarative slots start dropped
 
@@ -1069,11 +1294,16 @@ type Compiled struct {
 	Data        []DataInit         // active data segments (copied into linear memory at instantiate)
 	PassiveData []PassiveDataInit  // data-state descriptors keyed by original index; active slots start dropped
 
-	HasMemory   bool   // module declares memory 0; direct execution cache
-	MemMinPages uint32 // memory-0 initial size (pages); allocated at instantiate
-	MemMaxPages uint32 // memory-0 reservation ceiling; 0 means use the engine default
-	MemHasMax   bool   // memory-0 declaration/import has an explicit maximum
-	memoryDir   *compiledMemoryDirectory
+	HasMemory             bool   // module declares memory 0; direct execution cache
+	core1SegmentPreflight bool   // Core 1 checks all active segment bounds before writes
+	MemMinPages           uint32 // memory-0 initial size (pages); allocated at instantiate
+	MemMaxPages           uint32 // memory-0 reservation ceiling; 0 means use the engine default
+	MemHasMax             bool   // memory-0 declaration/import has an explicit maximum
+	// Source-only shared host certificates occupy alignment padding before memoryDir.
+	// Codecs discard both; resource-free private bridges do not consume them.
+	fixedSharedHostSegments bool
+	fixedSharedHostInteger  bool
+	memoryDir               *compiledMemoryDirectory
 
 	HasStart       bool // module declares a start function to run at instantiate
 	StartLocalFunc int  // its local function index (valid when HasStart && !StartIsImport)
@@ -1193,7 +1423,7 @@ func (c *Compiled) boundedNativeScalarLeaf() bool {
 }
 
 func (c *Compiled) nativeScalarLeafAllowed() bool {
-	return coreruntime.NativeScalarLeafSupported && c != nil && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&nativeScalarLeafMask != 0
+	return c != nil && (railshotNativeLeafAllowed(c) || coreruntime.NativeScalarLeafSupported && len(c.InternalEntry) != 0 && uint(c.InternalEntry[0])&nativeScalarLeafMask != 0)
 }
 
 func (c *Compiled) boundedHostSegments() bool {
@@ -1224,10 +1454,32 @@ type validateMemo struct {
 	hostThunks     [2]compiledHostThunkCache
 	compileIndexes *compiledCacheIndexes
 
-	once                     sync.Once
-	err                      error
-	gcFrameRoots             *compiledGCFrameRoots // immutable compiled/codec native safepoint and callsite map
-	structuralCallIdentities atomic.Pointer[structuralCallIdentityCache]
+	once         sync.Once
+	err          error
+	gcFrameRoots *compiledGCFrameRoots // immutable compiled/codec native safepoint and callsite map
+	// rv64FreshRootedGC is a process-local compiler receipt. It is never encoded;
+	// loaded artifacts therefore remain fail-closed until generic RV64 images
+	// gain a persisted machine-code authenticator.
+	rv64FreshRootedGC                 bool
+	rv64RootedNoCollectingBodies      bool
+	rv64FreshRootedGCDigest           [32]byte
+	rv64FreshRootedGCTypeDigest       [32]byte
+	rv64FreshRootedGCSyncHostSlots    uint16
+	rv64FreshRootedGCMemories         uint8
+	rv64FreshRootedGCMemoryStaged     bool
+	rv64FreshRootedGCMemMin           uint64
+	rv64FreshRootedGCMemMax           uint64
+	rv64FreshRootedGCReserveMax       uint32
+	rv64FreshRootedGCDataDigest       [32]byte
+	rv64FreshRootedGCExportDigest     [32]byte
+	rv64FreshRootedGCGlobalDigest     [32]byte
+	rv64FreshRootedGCTableDigest      [32]byte
+	rv64FreshRootedGCImportDigest     [32]byte
+	rv64FreshRootedGCHasStart         bool
+	rv64FreshRootedGCStartImport      bool
+	rv64FreshRootedGCStartLocal       uint32
+	rv64FreshRootedGCStartImportIndex uint32
+	structuralCallIdentities          atomic.Pointer[structuralCallIdentityCache]
 	// importModuleEnds stores one plus the module-name byte length for each
 	// non-global import, grouped as functions, tables, memories, then tags. A
 	// zero entry retains the legacy first-dot interpretation for hand-built
@@ -1502,6 +1754,9 @@ func (g *Global) attachNumericImporter() error {
 	if o.closed {
 		return fmt.Errorf("numeric global owner is closed")
 	}
+	if err := o.validateImporterCountLocked(); err != nil {
+		return err
+	}
 	if o.instance != nil && !o.instance.retainResourceRoot() {
 		return fmt.Errorf("numeric global owner instance is closed")
 	}
@@ -1538,6 +1793,10 @@ func (g *Global) validateReferenceImportWithCollector(store *referenceStore, col
 		return fmt.Errorf("reference global belongs to an incompatible reference store")
 	}
 	typ, source := o.typ, o.instance
+	actual := o.valueType
+	if !o.hasValueType {
+		actual, _ = valueTypeDescriptorFromValType(typ)
+	}
 	bits := readGlobalObject(g, typ)
 	retained := make([]retainedSnapshot, 0, len(o.retained))
 	for root, state := range o.retained {
@@ -1557,14 +1816,16 @@ func (g *Global) validateReferenceImportWithCollector(store *referenceStore, col
 		if bits != uint64(ref) {
 			return fmt.Errorf("collector-reference global contains non-compact reference %#x", bits)
 		}
-		if ref.IsNull() || ref.IsI31() {
-			return nil
-		}
-		if !ref.IsObj() {
+		if !ref.IsNull() && !ref.IsI31() && !ref.IsObj() {
 			return fmt.Errorf("collector-reference global contains invalid reference %#x", bits)
 		}
-		if _, err := collector.ObjectType(ref); err != nil {
-			return fmt.Errorf("collector-reference global contains stale or foreign object: %w", err)
+		if ref.IsObj() {
+			if _, err := collector.ObjectType(ref); err != nil {
+				return fmt.Errorf("collector-reference global contains stale or foreign object: %w", err)
+			}
+		}
+		if !source.gcRefMatchesValueType(ref, actual) {
+			return fmt.Errorf("collector-reference global contains a reference with an incompatible exact structural type")
 		}
 		return nil
 	}
@@ -1572,6 +1833,9 @@ func (g *Global) validateReferenceImportWithCollector(store *referenceStore, col
 		return nil
 	}
 	if typ == ValExternRef {
+		if railshotValidCompactExternHostGlobalWord(g, store, collector, bits) {
+			return nil
+		}
 		if _, ok := store.resolveExternref(bits); !ok {
 			return fmt.Errorf("reference global contains an invalid externref token")
 		}
@@ -1618,8 +1882,11 @@ func (g *Global) attachReferenceImporterWithCollector(store *referenceStore, col
 	o := g.owner
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if o.closed {
+	if o.closed || !railshotCompactExternHostGlobalOpen(o) {
 		return fmt.Errorf("reference global owner is closed")
+	}
+	if err := o.validateImporterCountLocked(); err != nil {
+		return err
 	}
 	if o.instance != nil && !o.instance.retainResourceRoot() {
 		return fmt.Errorf("reference global owner instance is closed")
@@ -1628,19 +1895,46 @@ func (g *Global) attachReferenceImporterWithCollector(store *referenceStore, col
 	return nil
 }
 
-func (g *Global) detachReferenceImporter() {
+// validateImporterCountLocked rejects invalid or exhausted counters before any
+// producer root is acquired. The caller holds globalOwner.mu.
+func (o *globalOwner) validateImporterCountLocked() error {
+	if o.importers < 0 {
+		return fmt.Errorf("global importer count is negative")
+	}
+	if o.importers == int(^uint(0)>>1) {
+		return fmt.Errorf("global importer count overflows int")
+	}
+	return nil
+}
+
+// detachImporterCounter consumes one count without releasing its producer root.
+// A host-owned global still consumes a count even though its producer is nil.
+func (g *Global) detachImporterCounter() (*Instance, bool) {
+	return g.detachImporterCounterMatching(nil, false)
+}
+
+func (g *Global) consumeImporterCounter(expected *Instance) bool {
+	_, consumed := g.detachImporterCounterMatching(expected, true)
+	return consumed
+}
+
+func (g *Global) detachImporterCounterMatching(expected *Instance, checkExpected bool) (*Instance, bool) {
 	if g == nil || g.owner == nil {
-		return
+		return nil, false
 	}
 	o := g.owner
-	var instance *Instance
+	defer railshotFinishCompactExternHostGlobalDetach(g)
 	o.mu.Lock()
-	if o.importers > 0 {
-		o.importers--
-		instance = o.instance
+	defer o.mu.Unlock()
+	if o.importers <= 0 || checkExpected && (g.owner != o || o.instance != expected) {
+		return nil, false
 	}
-	o.mu.Unlock()
-	if instance != nil {
+	o.importers--
+	return o.instance, true
+}
+
+func (g *Global) detachReferenceImporter() {
+	if instance, consumed := g.detachImporterCounter(); consumed && instance != nil {
 		instance.releaseResourceRoot()
 	}
 }

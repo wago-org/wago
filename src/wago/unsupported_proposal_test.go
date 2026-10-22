@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64)
+//go:build ((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64 && !tinygo && !wago_target_tinygo)
 
 package wago
 
@@ -9,32 +9,6 @@ import (
 	"strings"
 	"testing"
 )
-
-type proposalFixtureValue struct {
-	Type  string `json:"type"`
-	Value string `json:"value"`
-}
-
-type proposalFixtureAction struct {
-	Type   string                 `json:"type"`
-	Module string                 `json:"module"`
-	Field  string                 `json:"field"`
-	Args   []proposalFixtureValue `json:"args"`
-}
-
-type proposalFixtureFile struct {
-	Commands []struct {
-		Type       string                 `json:"type"`
-		Line       int                    `json:"line"`
-		Filename   string                 `json:"filename"`
-		ModuleType string                 `json:"module_type"`
-		Name       string                 `json:"name"`
-		As         string                 `json:"as"`
-		Action     proposalFixtureAction  `json:"action"`
-		Expected   []proposalFixtureValue `json:"expected"`
-		Text       string                 `json:"text"`
-	} `json:"commands"`
-}
 
 func TestUnsupportedProposalCorporaFailClosed(t *testing.T) {
 	root := filepath.Clean("../../tests/corpus/regressions/spectest-proposals")
