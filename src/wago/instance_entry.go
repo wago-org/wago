@@ -300,7 +300,8 @@ func (in *Instance) lockInvocationContext(ctx context.Context, id invocationID) 
 	if id == 0 {
 		id = newInvocationID()
 	}
-	state.invocationID = id
+	state.setInvocationIdentity(id)
+	managedFunctionBindInvocationState(in, state)
 	return state, nil
 }
 
@@ -314,13 +315,16 @@ func (in *Instance) lockInvocation(id invocationID) *instancePluginState {
 	if id == 0 {
 		id = newInvocationID()
 	}
-	state.invocationID = id
+	state.setInvocationIdentity(id)
+	managedFunctionBindInvocationState(in, state)
 	return state
 }
 
 func (state *instancePluginState) unlockInvocation() {
-	state.invocationID = 0
+	id := state.invocationID
+	state.setInvocationIdentity(0)
 	state.invokeMu.Unlock()
+	managedFunctionAfterInvocationUnlock(state, id)
 }
 
 // invokeVoidEntry runs a table dispatcher or local start under the same native,
@@ -336,12 +340,20 @@ func (in *Instance) invokeVoidEntry(ctx context.Context, entry uintptr, reservat
 	if err != nil {
 		return err
 	}
-	defer func() {
-		gcLease.unlock()
-		if in.importsFuncrefStorage() || in.table != nil {
-			in.reconcileFuncrefRoots()
-		}
-	}()
+	var resultErr error
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		resultErr = in.invokeVoidEntryAdmitted(ctx, entry, reservation)
+	})
+	cleanup.run(gcLease.unlock)
+	if in.importsFuncrefStorage() || in.table != nil {
+		cleanup.run(in.reconcileFuncrefRoots)
+	}
+	cleanup.finish()
+	return resultErr
+}
+
+func (in *Instance) invokeVoidEntryAdmitted(ctx context.Context, entry uintptr, reservation *pluginOperationReservation) error {
 	if reservation != nil {
 		previous := in.swapInvocationReservation(reservation)
 		defer in.swapInvocationReservation(previous)
@@ -363,10 +375,7 @@ func (in *Instance) invokeVoidEntry(ctx context.Context, entry uintptr, reservat
 		} else {
 			err = in.callVoidNative(entry)
 		}
-		if err != nil {
-			return err
-		}
-		return in.reconcileGCGlobalRoots()
+		return in.reconcileGCGlobalRootsAfter(err)
 	}
 	stopCancel, err := in.startCancellationWatch(ctx, in.trap)
 	if err != nil {
@@ -378,10 +387,7 @@ func (in *Instance) invokeVoidEntry(ctx context.Context, entry uintptr, reservat
 	} else {
 		err = in.callVoidNative(entry)
 	}
-	if err != nil {
-		return contextInterruptError(ctx, err)
-	}
-	return contextInterruptError(ctx, in.reconcileGCGlobalRoots())
+	return in.reconcileGCGlobalRootsAfter(contextInterruptError(ctx, err))
 }
 
 func (in *Instance) callVoidNative(entry uintptr) error {
@@ -392,4 +398,11 @@ func (in *Instance) callVoidNative(entry uintptr) error {
 		return err
 	}
 	return in.replayHostLog()
+}
+
+// Every public gate path, including prepared calls and sessions, publishes the
+// same callback identity and RV64 ownership proof before entering native code.
+func (state *instancePluginState) setInvocationIdentity(id invocationID) {
+	state.invocationID = id
+	railshotSetInvocationGateOwner(state, id)
 }

@@ -29,25 +29,29 @@ func normalizeGroupSignalError(pid int, err error) error {
 	// P_WEXIT alone is not proof that all process cleanup has finished.
 	// The caller keeps the leader unreaped throughout this bounded wait.
 	deadline := time.Now().Add(100 * time.Millisecond)
-	return waitForDarwinGroupExit(pid, err, deadline, func() ([]unix.KinfoProc, error) {
+	return waitForDarwinGroupExit(pid, err, deadline, time.Now, func() ([]unix.KinfoProc, error) {
 		return unix.SysctlKinfoProcSlice("kern.proc.pgrp", pid)
 	})
 }
 
-func waitForDarwinGroupExit(pid int, signalErr error, deadline time.Time, query func() ([]unix.KinfoProc, error)) error {
+func waitForDarwinGroupExit(pid int, signalErr error, deadline time.Time, now func() time.Time, query func() ([]unix.KinfoProc, error)) error {
 	for {
-		if !time.Now().Before(deadline) {
+		if !now().Before(deadline) {
 			return signalErr
 		}
 		members, queryErr := query()
 		if queryErr != nil {
 			return errors.Join(signalErr, fmt.Errorf("inspect Go process group %d: %w", pid, queryErr))
 		}
-		if !time.Now().Before(deadline) {
-			return signalErr
-		}
+		// The deadline bounds further polling, not the validity of a completed
+		// inspection. A slow sysctl or a descheduled caller can cross it even
+		// though this pinned group is already inert. Use that evidence before
+		// deciding whether another transition poll is allowed.
 		if !darwinGroupHasLiveMembers(members) {
 			return nil
+		}
+		if !now().Before(deadline) {
+			return signalErr
 		}
 		if darwinGroupHasRunningMembers(members) {
 			return signalErr

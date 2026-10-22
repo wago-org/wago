@@ -61,7 +61,10 @@ func (fn *WasmFunc) OpenSession() (*PreparedSession, error) {
 	// domains only while a call is active. An idle session must not indefinitely
 	// block collection or calls in another instance that shares those domains.
 	state.lease = in.lockPreparedSessionInvocation()
-	state.guardCalls = in.syncMode || len(in.hostLog) != 0
+	// A lazy local-table export can make completed-call reconciliation run a
+	// producer's physical callback. Keep the session reservation through that
+	// boundary even when the module has no synchronous host calls.
+	state.guardCalls = in.syncMode || len(in.hostLog) != 0 || in.c.hasFuncrefImportContainers() || in.c.tableCount() != 0
 	if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64" && armPrivateNumericSessionEnabled) && privateNumericSessionEnabled && !codeProfileEnabled && fn.scalarFast && fn.boundedNumericHost && !fn.gcMaintenance && fn.paramSlots <= 4 {
 		if p := in.eng.PreparedScalarHost(); p != nil && p.DetachedNumericContext() && (goruntime.GOARCH == "arm64" || p.IntegerGuestContext()) {
 			state.privateHost = newPrivateNumericSession(fn, p, state.lease.state)
@@ -160,15 +163,17 @@ func (state *preparedSessionState) closeNow() {
 		return
 	}
 	fn := state.fn
+	var cleanup resourceCleanup
 	if state.fast {
-		fn.in.ensurePluginState().invokeMu.Unlock()
+		cleanup.run(fn.in.ensurePluginState().invokeMu.Unlock)
 	} else {
 		if state.host {
-			state.dropHostLease(false)
+			cleanup.run(func() { state.dropHostLease(state.hostGate.migrated.Load()) })
 		}
-		state.lease.unlock()
+		cleanup.run(state.lease.unlock)
 	}
-	fn.in.endInvocation()
+	cleanup.run(fn.in.endInvocation)
+	cleanup.finish()
 }
 
 // Invoke calls the reserved prepared function. Returned results have the same
@@ -252,15 +257,36 @@ func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) (result 
 		return fn.invokeDirectIntSession(a0, a1, a2, a3)
 	}
 	var gcLease gcInvocationLease
-	if err := state.beginCall(&gcLease); err != nil {
-		return nil, err
+	var owned bool
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		if resultErr = state.beginCallOwned(&gcLease, &owned); resultErr == nil {
+			result, resultErr = state.invokeFixedCall(count, a0, a1, a2, a3)
+		}
+	})
+	if owned {
+		cleanup.run(func() { state.endCall(&gcLease) })
 	}
-	defer state.endCall(&gcLease)
+	cleanup.finish()
+	return result, resultErr
+}
+
+func (state *preparedSessionState) invokeFixedCall(count int, a0, a1, a2, a3 uint64) (result []uint64, resultErr error) {
+	fn := state.fn
 	if codeProfileEnabled && fn.in.boundaryProfile() != nil {
 		span, restore := fn.in.beginProfileInvocation(fn.export)
 		defer restore()
-		defer finishProfileBoundary(span, &resultErr)
+		completed := false
+		defer finishProfileBoundary(span, &resultErr, &completed)
+		result, resultErr = state.invokeFixedCallBody(count, a0, a1, a2, a3)
+		completed = true
+		return result, resultErr
 	}
+	return state.invokeFixedCallBody(count, a0, a1, a2, a3)
+}
+
+func (state *preparedSessionState) invokeFixedCallBody(count int, a0, a1, a2, a3 uint64) (result []uint64, resultErr error) {
+	fn := state.fn
 	args := [4]uint64{a0, a1, a2, a3}
 	if state.host {
 		return state.invokeScalarHostReserved(args[:count])
@@ -296,15 +322,36 @@ func (s *PreparedSession) invokeArgs(args []uint64) (result []uint64, resultErr 
 		return fn.invokeScalarAdmitted(args)
 	}
 	var gcLease gcInvocationLease
-	if err := state.beginCall(&gcLease); err != nil {
-		return nil, err
+	var owned bool
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		if resultErr = state.beginCallOwned(&gcLease, &owned); resultErr == nil {
+			result, resultErr = state.invokeArgsCall(args)
+		}
+	})
+	if owned {
+		cleanup.run(func() { state.endCall(&gcLease) })
 	}
-	defer state.endCall(&gcLease)
+	cleanup.finish()
+	return result, resultErr
+}
+
+func (state *preparedSessionState) invokeArgsCall(args []uint64) (result []uint64, resultErr error) {
+	fn := state.fn
 	if codeProfileEnabled && fn.in.boundaryProfile() != nil {
 		span, restore := fn.in.beginProfileInvocation(fn.export)
 		defer restore()
-		defer finishProfileBoundary(span, &resultErr)
+		completed := false
+		defer finishProfileBoundary(span, &resultErr, &completed)
+		result, resultErr = state.invokeArgsCallBody(args)
+		completed = true
+		return result, resultErr
 	}
+	return state.invokeArgsCallBody(args)
+}
+
+func (state *preparedSessionState) invokeArgsCallBody(args []uint64) (result []uint64, resultErr error) {
+	fn := state.fn
 	if state.host {
 		return state.invokeScalarHostReserved(args)
 	}
@@ -317,10 +364,24 @@ func (s *PreparedSession) invokeArgs(args []uint64) (result []uint64, resultErr 
 	return fn.invokeGeneralAdmitted(args)
 }
 
-func (state *preparedSessionState) beginCall(gcLease *gcInvocationLease) error {
+// Specialized private drivers share this acquisition boundary while retaining
+// their existing host-panic conversion and native restoration.
+func (state *preparedSessionState) beginCall(gcLease *gcInvocationLease) (err error) {
+	var owned bool
+	var cleanup resourceCleanup
+	cleanup.run(func() { err = state.beginCallOwned(gcLease, &owned) })
+	if cleanup.panicked && owned {
+		cleanup.run(func() { state.endCall(gcLease) })
+	}
+	cleanup.finish()
+	return err
+}
+
+func (state *preparedSessionState) beginCallOwned(gcLease *gcInvocationLease, owned *bool) error {
 	if state.guardCalls && !state.active.CompareAndSwap(false, true) {
 		return fmt.Errorf("wago: prepared session is already active")
 	}
+	*owned = true
 	in := state.fn.in
 	// Cached host admission proves that the instance has no local or reachable
 	// collector domain. Recheck the revocable flags on every call so resource
@@ -341,34 +402,32 @@ func (state *preparedSessionState) beginCall(gcLease *gcInvocationLease) error {
 }
 
 func (state *preparedSessionState) endCall(gcLease *gcInvocationLease) {
+	var cleanup resourceCleanup
+	// Migration can retain the process native mutex. Drop it before GC/global/
+	// table reconciliation, while callbacks still observe an active session.
+	if state.host && !state.hostLeaseValid() {
+		cleanup.run(func() { state.dropHostLease(state.hostGate.migrated.Load()) })
+	}
 	if gcLease.acquired {
-		gcLease.unlock()
+		cleanup.run(gcLease.unlock)
 	}
 	if in := state.fn.in; in.table != nil || in.mayImportFuncrefStorage() && in.importsFuncrefStorage() {
-		in.reconcileFuncrefRoots()
+		cleanup.run(in.reconcileFuncrefRoots)
 	}
 	if !state.guardCalls {
+		cleanup.finish()
 		return
 	}
 	if state.closeRequested.Load() {
-		state.closeNow()
+		cleanup.run(state.closeNow)
 	}
 	state.active.Store(false)
-	// A publisher that observed an active call must see its local lease released.
-	if state.host && !state.hostLeaseValid() {
-		state.dropHostLease(state.hostGate.migrated.Load())
-	}
+	cleanup.finish()
 }
 
 func (state *preparedSessionState) invokeScalarHostReserved(args []uint64) ([]uint64, error) {
-	// A capability-free callback can still publish a captured resource. The
-	// current parked activation restores safely; all later calls must leave the
-	// cached local lease and use the shared/general path.
-	defer func() {
-		if state.host && !state.hostLeaseValid() {
-			state.dropHostLease(state.hostGate.migrated.Load())
-		}
-	}()
+	// endCall drops a revoked cached lease before shared reconciliation and
+	// preserves a raw body panic through later cleanup.
 	return state.fn.invokeScalarHostReserved(args, state.hostCall, state.hostFixed, &state.hostActivation)
 }
 
@@ -379,11 +438,23 @@ func (state *preparedSessionState) hostLeaseValid() bool {
 }
 
 func (state *preparedSessionState) dropHostLease(migrated bool) {
+	// Failed RV64 detachment retains its exact scope in the root pool. This
+	// prepared session must still forget its released native mutex, so later
+	// Close/endCall cannot unlock it twice while quarantine awaits a retry.
+	defer state.clearHostLease()
 	if migrated {
+		err := railshotRetireNativeTableTargets(state.entry.tables)
 		nativeExecutionMu.Unlock()
+		if err != nil {
+			panic(invalidHostReference{err: err})
+		}
+		railshotReleaseNativeTableTargets(state.entry.tables)
 	} else {
 		state.entry.unlockExecution()
 	}
+}
+
+func (state *preparedSessionState) clearHostLease() {
 	pluginState := state.fn.in.ensurePluginState()
 	pluginState.nativeShareMu.Lock()
 	if pluginState.preparedHostGate == &state.hostGate {
