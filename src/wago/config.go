@@ -230,6 +230,7 @@ func (m BoundsCheckMode) String() string {
 // RuntimeConfig configures compilation and execution. It is immutable — every
 // WithXxx returns a copy, so a base config can be shared and specialised safely.
 type RuntimeConfig struct {
+	railshotState            railshotRuntimeConfigState
 	codeProfile              *CodeProfile
 	features                 CoreFeatures
 	optimizations            map[string]bool
@@ -476,7 +477,10 @@ func (c *RuntimeConfig) WithMemoryLimitPages(pages uint32) *RuntimeConfig {
 }
 
 // WithMaxInstanceMetadataBytes caps the validated off-heap metadata allocated
-// for one instance. Zero leaves this resource unbounded.
+// for one instance. The RV64 tail profile also charges bounded
+// entry snapshots, import certificates and dispatcher metadata against this
+// limit. Zero leaves this
+// resource unbounded, subject to backend admission bounds.
 func (c *RuntimeConfig) WithMaxInstanceMetadataBytes(bytes uint64) *RuntimeConfig {
 	n := *c
 	n.maxInstanceMetadataBytes = bytes
@@ -510,6 +514,9 @@ func (c *RuntimeConfig) WithMaxModuleBytes(bytes uint64) *RuntimeConfig {
 // bound peak compiler memory, temporary code, or compilation work. Function
 // workers share this one final module limit; it is not a per-worker allowance. Zero
 // is unbounded. Runtime.Module rechecks decoded artifacts against this quota.
+// The RV64 tail profile additionally checks each instance and
+// entry against this limit before allocating dispatchers, conservatively
+// charging retained guest images again for each overlapping generation.
 func (c *RuntimeConfig) WithMaxNativeCodeBytes(bytes uint64) *RuntimeConfig {
 	n := *c
 	n.maxNativeCodeBytes = bytes
@@ -706,18 +713,32 @@ func (c *RuntimeConfig) String() string {
 //
 //	feats := want & wago.SupportedFeatures()
 func supportsCompleteCore3Backend(goos, goarch string) bool {
-	return (goos == "linux" && goarch == "amd64") ||
+	return (goos == "linux" && (goarch == "amd64" || goarch == "riscv64")) ||
 		(goarch == "arm64" && (goos == "linux" || goos == "darwin"))
 }
 
+// Multi-memory follows the complete Core 3 backend set.
+func supportsMultiMemoryBackend(goos, goarch string) bool {
+	return supportsCompleteCore3Backend(goos, goarch) || goos == "linux" && goarch == "riscv64"
+}
+
+func supportsMemory64Backend(goos, goarch string) bool {
+	return supportsCompleteCore3Backend(goos, goarch) || goos == "linux" && goarch == "riscv64"
+}
+
+// Table64 follows the complete Core 3 backend set.
+func supportsTable64Backend(goos, goarch string) bool {
+	return supportsCompleteCore3Backend(goos, goarch) || goos == "linux" && goarch == "riscv64"
+}
+
 func supportsThreadsBackend(goos, goarch string) bool {
-	return (goarch == "amd64" || goarch == "arm64") && (goos == "linux" || goos == "darwin")
+	return (goarch == "amd64" || goarch == "arm64") && (goos == "linux" || goos == "darwin") || goos == "linux" && goarch == "riscv64"
 }
 
 func platformCoreFeatures() CoreFeatures {
 	supported := coreFeaturesWago
 	if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
-		// Targets outside linux/amd64 and Linux/Darwin arm64 retain the portable
+		// Other targets retain the portable
 		// Release 2 surface plus extended constant expressions and reject the
 		// incomplete Core 3 families at configuration time.
 		unsupported := CoreFeatureTailCall |
@@ -805,7 +826,7 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		BulkMemory:              c.features.IsEnabled(CoreFeatureBulkMemoryOperations),
 		SaturatingTrunc:         c.features.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion),
 		ReferenceTypes:          c.features.IsEnabled(CoreFeatureReferenceTypes),
-		TypedFunctionReferences: c.features.IsEnabled(CoreFeatureTypedFunctionReferences),
+		TypedFunctionReferences: c.features.IsEnabled(CoreFeatureTypedFunctionReferences) || railshotI31Frontend(c),
 		TailCalls:               c.features.IsEnabled(CoreFeatureTailCall),
 		TypedTailCalls:          c.features.IsEnabled(CoreFeatureTailCall),
 		MultiMemory:             c.features.IsEnabled(CoreFeatureMultiMemory),
@@ -872,7 +893,7 @@ func (c *RuntimeConfig) Validate() error {
 	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
 		return errNativeCPUFeatures
 	}
-	supported := platformCoreFeatures()
+	supported := platformCoreFeatures() | railshotStagedTailFeatures(c) | railshotStagedGCFeatures(c)
 	if unsupported := c.features &^ supported; unsupported != 0 {
 		return &UnsupportedFeatureError{
 			Requested: unsupported,

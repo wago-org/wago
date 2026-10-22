@@ -11,13 +11,23 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Compile large ARM64 functions whose conditional branches exceed 1 MiB by
   retrying with space for long branches. Fixes PDFium chromium/8111 compilation
   ([#1013](https://github.com/wago-org/wago/issues/1013)).
+- Mask narrow AMD64 plugin recipe results when a recipe returns its input
+  directly, preserving the declared logical bit width.
+- Keep the required atomic length read when an oversized memory64 shared grow
+  request fails in the Go helper.
 
 - Allow up to 32 nested synchronous host calls under standard Go so component
   adapter chains can cross more than four boundaries. TinyGo retains its
-  four-call limit for fixed host stacks. Size parked GC callback and root storage
+  three-call limit for fixed host stacks. Size parked GC callback and root storage
   for the outer callback plus every permitted reentry.
+- Detect register clobbers during RV64 address, store, compare and paired-FP
+  input preparation in checked builds.
 - Preserve deferred load addresses derived from pinned mutable globals on
   AMD64, including Go-style exported function stack wrappers.
+
+- Give imported start callbacks an invocation identity and parent context so
+  authorized callbacks can initialize another instance through `InvokeFromHost`
+  and observe instantiation cancellation and deadlines.
 
 - Preserve deferred memory-load addresses when AMD64 binary operations write
   directly into a hinted register, fixing incorrect results in inlined C++
@@ -39,11 +49,27 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Add opt-in pure integer select branches through `WAGO_AMD64_PURE_SELECT=1`;
   keep them disabled by default because unpredictable conditions can regress.
   ([#895](https://github.com/wago-org/wago/pull/895))
+- Compile bounded portable scalar plugin recipes to ARM64 instructions, preserving
+  exact import identity and the portable fallback for larger or unsupported contracts.
+- Adapt native struct handle reservations to batch use. Mixed struct/array code
+  cancels small batches; sustained struct allocation recovers the configured
+  maximum without changing the native allocation ABI.
+
+- Add checked allocation-mix workloads and collector benchmarks for native
+  struct batches canceled by array allocation helpers.
+- Keep AMD64 `v128` array loads and stores in native code with checked handles,
+  type identity, bounds, and object extents. Add a visible V8 timing comparison.
+
 - Detect writes to live deferred-load address registers, cached global-cell
   pointers, and forwarded store values in the AMD64 and ARM64 compilers when
   `wago_regalloccheck` is enabled. Also guard inputs during address preparation
   in the common scalar store path and during second-input preparation in `fbin`
   and `fbinInto`.
+
+- Combine bounded ARM64 scalar shift and mask pairs with existing bitfield
+  encodings, including masks applied before an unsigned right shift.
+- Reuse ARM64 variable-shift source and count registers in ordinary scalar
+  lowering.
 
 - Prepare native reservations only when the active backend has a matching
   consumer, avoiding unused ARM64 live-struct and large-array batches. Retain
@@ -487,6 +513,12 @@ Require `wago_nativecompare` so ordinary builds and install discovery exclude it
   traps before later conversion, memory, table, reference, and indirect-call traps.
 - Preserve earlier call arguments when later deferred expressions use fixed
   registers for shifts or division, including mixed and tail calls.
+- Local `wago-installer` builds no longer mistake a dirty tagged checkout for a
+  published release on Go 1.24 through 1.26.
+- Actions artifact downloads keep GitHub bearer tokens on the catalog origin
+  instead of forwarding them to a cross-origin archive URL.
+- Full uninstall removes a custom `WAGO_HOME` only when known Wago state cleanup
+  leaves it empty, preserving unrelated files in a shared directory.
 - Legacy exception-handling opcodes now report their unsupported encoding and
   a `try_table`/exnref migration hint instead of a generic invalid instruction.
 - Recovered backend panics now return a distinct `InternalCompilerError` with

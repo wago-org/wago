@@ -5,7 +5,8 @@ package wago
 import "sync"
 
 type executionLease struct {
-	local *sync.Mutex
+	tables railshotTableEntryLease
+	local  *sync.Mutex
 	// private denotes an engine-owned numeric context; no native resource lease.
 	private bool
 }

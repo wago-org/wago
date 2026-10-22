@@ -143,9 +143,11 @@ func analyzeModuleRequirementsWithValidation(m *wasm.Module, analysis *wasm.Vali
 		for _, expr := range elem.Kind.Exprs {
 			features, usesRefFunc := analyzeConstExprRequirements(expr, m.ImportedGlobalCount())
 			out |= features
-			moduleFacts.UsesRefFunc = moduleFacts.UsesRefFunc || usesRefFunc
+			moduleFacts.UsesRefFunc = moduleFacts.UsesRefFunc || elem.Mode.Kind != wasm.ElemDeclarative && usesRefFunc
 		}
-		moduleFacts.UsesRefFunc = moduleFacts.UsesRefFunc || (elem.Kind.Kind == wasm.ElemFuncs && len(elem.Kind.Funcs) != 0)
+		// Legacy declarations have no runtime values. Keep their feature bits
+		// below while avoiding an otherwise unused per-function descriptor arena.
+		moduleFacts.UsesRefFunc = moduleFacts.UsesRefFunc || (elem.Mode.Kind != wasm.ElemDeclarative && elem.Kind.Kind == wasm.ElemFuncs && len(elem.Kind.Funcs) != 0)
 		if elem.Mode.Kind != wasm.ElemActive {
 			out |= CoreFeatureBulkMemoryOperations
 		}
@@ -301,6 +303,12 @@ func analyzeConstExprBytes(body []byte, importedGlobals int) (CoreFeatures, bool
 		if err != nil {
 			return out, true
 		}
+		if op == 0xd0 {
+			probe := *r
+			if heap, err := probe.S33(); err == nil {
+				out |= requiredFeaturesForHeapImmediate(heap)
+			}
+		}
 		imm, err := wasm.ClassifyInstructionImmediate(r, op)
 		if err != nil {
 			return out, true
@@ -309,6 +317,9 @@ func analyzeConstExprBytes(body []byte, importedGlobals int) (CoreFeatures, bool
 		switch imm.Kind {
 		case wasm.InstrRefFunc:
 			usesRefFunc = true
+		case wasm.InstrStructNew, wasm.InstrArrayNew, wasm.InstrArrayNewDefault,
+			wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny:
+			out |= CoreFeatureReferenceTypes | CoreFeatureGC
 		case wasm.InstrGlobalGet:
 			if int(imm.Index) >= importedGlobals {
 				usesPriorLocal = true
@@ -522,6 +533,9 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 					break
 				}
 				out |= requiredFeaturesForHeapImmediate(heap)
+				if first == 0x64 {
+					out |= CoreFeatureTypedFunctionReferences
+				}
 			} else {
 				out |= CoreFeatureMultiValue
 				for first&0x80 != 0 {
@@ -559,6 +573,9 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 						break
 					}
 					out |= requiredFeaturesForHeapImmediate(heap)
+					if b == 0x64 {
+						out |= CoreFeatureTypedFunctionReferences
+					}
 				}
 			}
 			continue
@@ -768,6 +785,9 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	for _, g := range c.Globals {
 		out |= requiredFeaturesForConstExprBytes(g.InitExpr, len(c.GlobalImports))
 		out |= requiredFeaturesForStoredType(c, g.Type, g.HasValueType, g.ValueTypeIndex, false)
+		if g.HasInitGlobal && g.InitGlobal >= len(c.GlobalImports) {
+			out |= CoreFeatureExtendedConstExpressions
+		}
 	}
 	for _, index := range c.GlobalExports {
 		if index >= 0 && index < len(c.Globals) && c.Globals[index].Mutable {
@@ -798,6 +818,12 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	}
 	for _, elem := range c.Elems {
 		out |= requiredFeaturesForConstExprBytes(elem.Offset.Expr, len(c.GlobalImports))
+		for _, value := range elem.Values {
+			out |= requiredFeaturesForConstExprBytes(value.Expr, len(c.GlobalImports))
+			if value.HasGlobal && int(value.GlobalIndex) >= len(c.GlobalImports) {
+				out |= CoreFeatureExtendedConstExpressions
+			}
+		}
 		out |= requiredFeaturesForStoredType(c, normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, !elem.HasValueType)
 		if elem.RefType == ValExternRef || elem.TableIndex != 0 {
 			out |= CoreFeatureReferenceTypes
@@ -805,6 +831,12 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	}
 	for _, elem := range c.passiveElems {
 		out |= requiredFeaturesForConstExprBytes(elem.Offset.Expr, len(c.GlobalImports))
+		for _, value := range elem.Values {
+			out |= requiredFeaturesForConstExprBytes(value.Expr, len(c.GlobalImports))
+			if value.HasGlobal && int(value.GlobalIndex) >= len(c.GlobalImports) {
+				out |= CoreFeatureExtendedConstExpressions
+			}
+		}
 		out |= requiredFeaturesForStoredType(c, normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, !elem.HasValueType)
 		if elem.RefType == ValExternRef {
 			out |= CoreFeatureReferenceTypes
@@ -816,6 +848,9 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	for i := 0; i < c.activeDataCount(); i++ {
 		data := c.activeDataAt(i)
 		out |= requiredFeaturesForConstExprBytes(data.Offset.Expr, len(c.GlobalImports))
+	}
+	if len(c.PassiveData) != 0 {
+		out |= CoreFeatureBulkMemoryOperations
 	}
 	return out
 }

@@ -19,10 +19,11 @@ func ValueI64(v int64) Value   { return Value{ValI64, I64(v)} }
 func ValueF32(v float32) Value { return Value{ValF32, F32(v)} }
 func ValueF64(v float64) Value { return Value{ValF64, F64(v)} }
 
-// ValueFuncRef, ValueExternRef, ValueGCRef, and ValueI31Ref construct typed
+// ValueFuncRef, ValueExternRef, ValueExnRef, ValueGCRef, and ValueI31Ref construct typed
 // reference Values.
 func ValueFuncRef(v FuncRef) Value     { return Value{ValFuncRef, v.token} }
 func ValueExternRef(v ExternRef) Value { return Value{ValExternRef, v.token} }
+func ValueExnRef(v ExnRef) Value       { return Value{ValExnRef, v.token} }
 func ValueGCRef(v GCRef) Value         { return Value{ValAnyRef, v.token} }
 func ValueI31Ref(v I31Ref) Value       { return Value{ValI31Ref, uint64(v.bits)} }
 
@@ -47,10 +48,11 @@ func (v Value) I64() int64   { return AsI64(v.bits) }
 func (v Value) F32() float32 { return AsF32(v.bits) }
 func (v Value) F64() float64 { return AsF64(v.bits) }
 
-// FuncRef, ExternRef, GCRef, and I31Ref decode the matching reference category.
+// FuncRef, ExternRef, ExnRef, GCRef, and I31Ref decode the matching reference category.
 // I31Ref is an immediate value rather than an opaque token.
 func (v Value) FuncRef() FuncRef     { return FuncRef{token: v.bits} }
 func (v Value) ExternRef() ExternRef { return ExternRef{token: v.bits} }
+func (v Value) ExnRef() ExnRef       { return ExnRef{token: v.bits} }
 func (v Value) GCRef() GCRef         { return GCRef{token: v.bits} }
 func (v Value) I31Ref() I31Ref       { return I31Ref{bits: uint32(v.bits)} }
 

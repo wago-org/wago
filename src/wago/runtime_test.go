@@ -596,7 +596,7 @@ func TestRuntimeMemoryLimitChargesFullNoMaximumMemory32(t *testing.T) {
 func TestRuntimeMemoryLimitChargesFullSecondaryNoMaximumMemory64(t *testing.T) {
 	const (
 		pageBytes = uint64(65536)
-		maxPages  = uint64(65536)
+		maxPages  = uint64(65535)
 	)
 	mod := &Module{c: &Compiled{memoryDir: &compiledMemoryDirectory{defs: []memoryDef{
 		{HasMax: true, Max: 1},
