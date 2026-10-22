@@ -561,6 +561,12 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) 
 	if err := emit(custom.Output); err != nil {
 		return err
 	}
+	if custom.StackCompatible && custom.Nodes[custom.Output].Op == CustomInstructionInput && custom.ResultWidth < 32 {
+		// The mask can materialize its argument at the deferred-depth limit.
+		f.materializeTrapsBefore(f.s.back())
+		// A bare input retains its physical i32 bits; normalize the logical result.
+		maskTop(custom.ResultWidth)
+	}
 	if !custom.StackCompatible {
 		result := f.popValue()
 		for _, arg := range args {
@@ -2748,15 +2754,31 @@ func (f *fn) validateWrapperDescriptor(kind, home Reg) {
 	f.trapIf(condA, trapTailUnsupported)
 }
 
-func (f *fn) checkCallType(entry Reg, offset int32, key uint64, avoid regMask) {
+func (f *fn) checkCallType(entry Reg, offset int32, key uint64, typeIdx uint32, avoid regMask) {
 	got := f.allocReg(avoid)
 	f.a.Load64(got, entry, offset)
 	want := f.allocReg(avoid.add(got))
 	f.a.MovImm64(want, key)
 	f.a.Cmp64(got, want)
+	var matches []int
+	if target, ok := f.m.TypeSubType(typeIdx); ok && !target.Final {
+		subtypes, _ := f.m.FunctionSubtypeTypeIndexes(typeIdx)
+		for _, subtype := range subtypes {
+			candidate, valid := f.m.StructuralTypeKeyChecked(subtype)
+			if !valid || candidate == key {
+				continue
+			}
+			matches = append(matches, f.a.JccPlaceholder(condE))
+			f.a.MovImm64(want, candidate)
+			f.a.Cmp64(got, want)
+		}
+	}
 	f.release(want)
 	f.release(got)
 	f.trapIf(condNE, trapIndirectSig)
+	for _, match := range matches {
+		f.a.PatchRel32(match, f.a.Len())
+	}
 }
 
 func (f *fn) callRef(r *wasm.Reader) error {
@@ -2785,7 +2807,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	f.a.Load64(code, ref, runtime.TableEntryCodePtrOffset)
 	f.a.TestSelf(code, true)
 	f.trapIf(condE, trapIndirectOOB)
-	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, maskOf(ref, code))
+	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, typeIdx, maskOf(ref, code))
 	home := f.allocReg(maskOf(ref, code))
 	f.a.Load64(home, ref, runtime.TableEntryHomeLinMemOffset)
 	targetContext := f.allocReg(maskOf(ref, code, home))
@@ -2915,7 +2937,7 @@ func (f *fn) returnCallRefType(typeIdx uint32, stat string) error {
 	f.a.Load64(code, ref, runtime.TableEntryCodePtrOffset)
 	f.a.TestSelf(code, true)
 	f.trapIf(condE, trapIndirectOOB)
-	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, maskOf(ref, code))
+	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, typeIdx, maskOf(ref, code))
 	home := f.allocReg(maskOf(ref, code))
 	f.a.Load64(home, ref, runtime.TableEntryHomeLinMemOffset)
 	targetContext := f.allocReg(maskOf(ref, code, home))
@@ -3350,7 +3372,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if tableHint.typed && tableHint.typeKey == canon {
 		f.stats.peep("immutable-table-type-check-elide")
 	} else {
-		f.checkCallType(idxReg, 8+runtime.TableEntrySigKeyOffset, canon, maskOf(idxReg, code))
+		f.checkCallType(idxReg, 8+runtime.TableEntrySigKeyOffset, canon, typeIdx, maskOf(idxReg, code))
 	}
 	home := f.allocReg(maskOf(idxReg, code))
 	f.a.Load64(home, idxReg, 8+runtime.TableEntryHomeLinMemOffset)
@@ -3464,7 +3486,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		// A uniformly-typed immutable table cannot hold a mismatched signature.
 		f.stats.peep("immutable-table-type-check-elide")
 	} else {
-		f.checkCallType(idxReg, 8+runtime.TableEntrySigKeyOffset, canon, maskOf(idxReg, code))
+		f.checkCallType(idxReg, 8+runtime.TableEntrySigKeyOffset, canon, typeIdx, maskOf(idxReg, code))
 	}
 
 	// With one private local immutable table and no function imports, every non-null

@@ -21,6 +21,32 @@ func TestGCSyncHostSlotCapacityRejectsU16Overflow(t *testing.T) {
 	}
 }
 
+func TestGCInternalHelperSlotCapacity(t *testing.T) {
+	fields := make([]gc.FieldDesc, 78)
+	for i := range fields {
+		fields[i].Kind = gc.StorageI32
+	}
+	descs := []gc.TypeDesc{{Kind: gc.KindStruct, Fields: fields}}
+	for _, tc := range []struct {
+		name                     string
+		structs, arrays, generic bool
+		want                     int
+	}{
+		{name: "none", want: 0},
+		{name: "fixed-struct", structs: true, want: 79},
+		{name: "array", arrays: true, want: 7},
+		{name: "generic-array", arrays: true, generic: true, want: rv64GenericArrayFixedSlots},
+		{name: "both", structs: true, arrays: true, want: 79},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := gcInternalHelperSlotCapacity(descs, tc.structs, tc.arrays, tc.generic)
+			if err != nil || got != tc.want {
+				t.Fatalf("internal helper slot capacity = %d, %v; want %d", got, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestModuleImportPrepassesKeepFunctionNamespace(t *testing.T) {
 	wideParams := make([]wasm.ValType, coreruntime.MaxHostArity+1)
 	for i := range wideParams {

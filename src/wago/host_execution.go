@@ -28,11 +28,12 @@ var hostControlInstances sync.Map // map[uintptr]*Instance
 type hostInvocationContext struct {
 	//lint:ignore U1000 fields are used only by wago_profile builds; the ordinary placeholder is empty
 	profileInvocationState
-	id           invocationID
-	reservation  *pluginOperationReservation
-	parent       context.Context
-	scope        *hostCallScope
-	gcActivation gcHostActivationToken
+	id            invocationID
+	reservation   *pluginOperationReservation
+	parent        context.Context
+	callbackScope *hostCallScope
+	scope         *hostCallScope
+	gcActivation  gcHostActivationToken
 }
 
 // resolvedHostCall accepts identity derived by the runtime while its native
@@ -40,7 +41,7 @@ type hostInvocationContext struct {
 type resolvedHostCall func(uintptr, uint32, []uint64, []uint64, hostInvocationContext)
 
 func (c hostInvocationContext) empty() bool {
-	return c.id == 0 && c.reservation == nil && c.parent == nil && c.scope == nil && c.profileSession() == nil
+	return c.id == 0 && c.reservation == nil && c.parent == nil && c.callbackScope == nil && c.scope == nil && c.profileSession() == nil
 }
 
 var hostInvocationContexts sync.Map // map[uintptr]hostInvocationContext
@@ -126,8 +127,10 @@ func (a *hostLoopActivation) resolveContext(active *Instance) hostInvocationCont
 }
 
 func currentHostInvocationContext(ctrl uintptr, in *Instance) hostInvocationContext {
-	if value, ok := hostInvocationContexts.Load(ctrl); ok {
-		return value.(hostInvocationContext)
+	if activeHostInvocationBindings.Load() != 0 {
+		if value, ok := hostInvocationContexts.Load(ctrl); ok {
+			return value.(hostInvocationContext)
+		}
 	}
 	if in != nil {
 		if id := in.currentInvocationID(); id != 0 {
@@ -182,7 +185,7 @@ func bindHostInvocationParent(in *Instance, parent context.Context) func() {
 }
 
 func registerHostControl(in *Instance) error {
-	if in == nil || len(in.ctrl) < coreruntime.HostCtrlFrameBytes {
+	if in == nil || len(in.ctrl) == 0 || len(in.ctrl) < coreruntime.HostCtrlFrameBytes {
 		return fmt.Errorf("invalid synchronous host control frame")
 	}
 	ptr := offHeapSlicePtr(in.ctrl)
@@ -195,38 +198,42 @@ func registerHostControl(in *Instance) error {
 	}
 	if coreruntime.NativeScalarLeafSupported && !codeProfileEnabled && in.c.nativeScalarLeafAllowed() {
 		binding := in.nativeScalarLeafAliases()
-		if binding == nil {
-			return nil
-		}
-		params := uint32(1)
-		var fn any = binding.typedI32
-		if binding.scalarKind == syncHostTypedI32x2 {
-			params = 2
-			fn = binding.typedI32x2
-		}
-		admitted, err := coreruntime.RegisterNativeScalarLeaf(runtimebridge.GrantHostScalarCall(), in.ctrl, fn, params)
-		if err != nil {
-			coreruntime.UnregisterHostCtrlFrame(in.ctrl)
-			hostControlInstances.Delete(ptr)
-			return err
-		}
-		if admitted {
-			if dispatch := in.jm.CaptureInstanceContext().ImportDispatch; dispatch != 0 {
-				cells := unsafe.Slice((*byte)(offHeapPtr(dispatch)), len(in.syncHosts)*coreruntime.ImportDispatchEntryBytes)
-				for i := range in.syncHosts {
-					cell := cells[i*coreruntime.ImportDispatchEntryBytes : (i+1)*coreruntime.ImportDispatchEntryBytes]
-					coreruntime.BindNativeScalarLeafImport(runtimebridge.GrantHostScalarCall(), in.ctrl, cell)
-				}
+		if binding != nil {
+			params := uint32(1)
+			var fn any = binding.typedI32
+			if binding.scalarKind == syncHostTypedI32x2 {
+				params = 2
+				fn = binding.typedI32x2
 			}
-			for {
-				flags := in.executionFlags.Load()
-				if flags&executionFlagNativeScalarLeaf != 0 || in.executionFlags.CompareAndSwap(flags, flags|executionFlagNativeScalarLeaf) {
-					break
+			admitted, err := coreruntime.RegisterNativeScalarLeaf(runtimebridge.GrantHostScalarCall(), in.ctrl, fn, params)
+			if err != nil {
+				coreruntime.UnregisterHostCtrlFrame(in.ctrl)
+				hostControlInstances.Delete(ptr)
+				return err
+			}
+			if admitted {
+				if dispatch := in.jm.CaptureInstanceContext().ImportDispatch; dispatch != 0 {
+					cells := unsafe.Slice((*byte)(offHeapPtr(dispatch)), len(in.syncHosts)*coreruntime.ImportDispatchEntryBytes)
+					for i := range in.syncHosts {
+						cell := cells[i*coreruntime.ImportDispatchEntryBytes : (i+1)*coreruntime.ImportDispatchEntryBytes]
+						coreruntime.BindNativeScalarLeafImport(runtimebridge.GrantHostScalarCall(), in.ctrl, cell)
+					}
+				}
+				for {
+					flags := in.executionFlags.Load()
+					if flags&executionFlagNativeScalarLeaf != 0 || in.executionFlags.CompareAndSwap(flags, flags|executionFlagNativeScalarLeaf) {
+						break
+					}
 				}
 			}
 		}
 	}
 
+	if err := railshotRegisterNativeHostOwner(in); err != nil {
+		coreruntime.UnregisterHostCtrlFrame(in.ctrl)
+		hostControlInstances.Delete(ptr)
+		return err
+	}
 	return nil
 }
 
@@ -234,6 +241,7 @@ func unregisterHostControl(in *Instance) {
 	if in == nil || len(in.ctrl) == 0 {
 		return
 	}
+	railshotUnregisterNativeHostOwner(in)
 	ptr := offHeapSlicePtr(in.ctrl)
 	if current, ok := hostControlInstances.Load(ptr); ok && current == in {
 		hostControlInstances.Delete(ptr)
@@ -260,14 +268,23 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 }
 
 func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, results []uint64) {
+	// The exact type helper only reads retained descriptor/type metadata. It
+	// cannot collect, invoke host code, or change an owner edge, so its existing
+	// entry lease remains current. Other portals still refresh before resume.
+	if railshotNativeContextTrapABI() && importIdx != gcStructDispatchBit|gcFuncRefTest {
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
+	}
 	root := a.root
 	active := root
 	if root == nil || ctrl != offHeapSlicePtr(root.ctrl) {
-		value, ok := hostControlInstances.Load(ctrl)
+		active = railshotResolveNativeHostControl(root, ctrl)
+		ok := active != nil
 		if !ok {
-			panic(invalidHostReference{err: fmt.Errorf("host control frame %x has no live instance", ctrl)})
+			value, known := hostControlInstances.Load(ctrl)
+			if known {
+				active, ok = value.(*Instance)
+			}
 		}
-		active, ok = value.(*Instance)
 		if !ok || active == nil {
 			panic(invalidHostReference{err: fmt.Errorf("host control frame %x has no live instance", ctrl)})
 		}
@@ -327,8 +344,12 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 		if importIdx&hostFuncRefDispatchBit != 0 {
 			panic(gcHelperFailuref("invalid overlapping GC/host dispatch index %#x", importIdx))
 		}
+		helper, safepoint := shared.DecodeGCDispatch(importIdx &^ gcStructDispatchBit)
+		if helper == gcFuncRefTest && safepoint == 0 {
+			active.dispatchGCFunctionRefTest(root, args, results)
+			return
+		}
 		if active.gc != nil {
-			helper, safepoint := shared.DecodeGCDispatch(importIdx &^ gcStructDispatchBit)
 			physicalStack := active.eng
 			if root != nil && root.eng != nil {
 				physicalStack = root.eng
@@ -339,7 +360,7 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 		// Preserve the injected dispatcher path used by hardening tests and by a
 		// partially constructed instance so missing-collector diagnostics remain
 		// centralized in the configured host dispatcher.
-		active.callHostDispatch(ctrl, importIdx, args, results, hostInvocationContext{})
+		active.callHostDispatch(ctrl, importIdx, args, results, hostInvocationContext{}, nil)
 		return
 	}
 	// Run arbitrary Go host code without the non-reentrant native execution
@@ -381,21 +402,46 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 	// conditional value stays on this Go frame; only its pointer is captured by
 	// cleanup. Keeping the original dispatch frame avoids extra GC-path calls.
 	var gcSuspension *gcInvocationSuspension
-	if leaseOwner.hostCallNeedsGCSuspension() {
-		suspension := leaseOwner.suspendGCInvocation(id)
-		gcSuspension = &suspension
-	}
+	parkedNativeInvocation := railshotParkedNativeInvocation(active)
 	var localMu *sync.Mutex
 	var epoch uint64
 	var localVersion uint64
 	state := a.stateFor(active)
+	invocation.callbackScope = railshotRetainedCallbackHostScope(active, ctrl, state, invocation.parent)
+	if invocation.callbackScope == nil && active == root && ctrl != offHeapSlicePtr(active.ctrl) {
+		// A stack-owned direct tail frame still belongs to this public root. Its
+		// invocation gate serializes the instance scope just like an ordinary call.
+		invocation.callbackScope = &state.hostScope
+	}
 	if active == root && a.localNativeMu() != nil {
 		localMu = a.localNativeMu()
 		localVersion = state.nativeContextVersion.Load()
-		localMu.Unlock()
 	} else if active.usesIndependentExecution() {
 		localMu = active.independentNativeExecutionMu()
 		localVersion = state.nativeContextVersion.Load()
+	}
+	// An authenticated RV64 guest-global helper receives a raw descriptor that
+	// native code may have loaded from a mutable imported container. Resolve and
+	// retain its canonical owner immediately before releasing the native lease:
+	// another host entry may overwrite the source container as soon as the lease
+	// is dropped. The helper transaction acquires the destination's independent
+	// root while this temporary unit keeps the descriptor arena live.
+	var guestDescriptorOwner *Instance
+	if importIdx == hostFuncRefDispatchBit {
+		var err error
+		guestDescriptorOwner, err = active.retainGuestGlobalStoreDescriptor(importIdx, args, results)
+		if err != nil {
+			panic(invalidHostReference{err: err})
+		}
+	}
+	// Descriptor validation above can fail. Keep the original GC lease until
+	// it succeeds so entry cleanup never releases a reader already suspended
+	// before the parked-host resume journal was installed.
+	if leaseOwner.hostCallNeedsGCSuspension() {
+		suspension := leaseOwner.suspendGCInvocation(id)
+		gcSuspension = &suspension
+	}
+	if localMu != nil {
 		localMu.Unlock()
 	} else {
 		epoch = nativeExecutionEpoch
@@ -407,6 +453,16 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 	// between host result validation and the caller's resumed native frame.
 	defer active.popGCHostActivation(activation)
 	defer func() {
+		primary := recover()
+		var cleanup resourceCleanup
+		// Fallback for a failure between acquisition and the callback-scoped drain
+		// below. The normal path has already claimed and cleared this pointer while
+		// callback authority was still published.
+		if guestDescriptorOwner != nil {
+			owner := guestDescriptorOwner
+			guestDescriptorOwner = nil
+			cleanup.run(owner.releaseResourceRoot)
+		}
 		if gcSuspension != nil {
 			gcSuspension.resume()
 		}
@@ -433,12 +489,27 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 		} else {
 			restore = nativeExecutionEpoch != epoch
 		}
+		restore = restore || railshotParkedNativeContextChanged(active, ctrl, parkedNativeInvocation)
 		if restore {
-			if err := active.bindNativeContext(); err != nil {
-				panic(invalidHostReference{err: err})
+			// Foreign producer reentry can replace its custom-context word while
+			// preparing its own engine. Read that Go snapshot under its life lock.
+			foreignRV := railshotNativeContextTrapABI() && active != root
+			if foreignRV {
+				active.lifeMu.Lock()
 			}
-			active.jm.SetStackFence(active.eng.StackLimit())
-			if err := active.jm.RebindTrapCell(active.trap); err != nil {
+			bindErr := active.bindNativeContext()
+			if foreignRV {
+				active.lifeMu.Unlock()
+			}
+			if bindErr != nil {
+				panic(invalidHostReference{err: bindErr})
+			}
+			stackOwner := active
+			if railshotNativeContextTrapABI() && root != nil {
+				stackOwner = root
+			}
+			active.jm.SetStackFence(stackOwner.eng.StackLimit())
+			if err := active.jm.RebindTrapCell(stackOwner.trap); err != nil {
 				panic(invalidHostReference{err: err})
 			}
 			// bindNativeContext restores the instance's immutable context image,
@@ -447,10 +518,17 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 			// before resuming its parked native activation.
 			active.jm.SetCustomCtx(ctrl)
 		}
+		railshotRestoreNativeInvocation(active, root, parkedNativeInvocation)
+		if primary != nil {
+			panic(primary)
+		}
+		cleanup.finish()
 	}()
 	// Only arbitrary host code can synchronously re-enter this instance. The
 	// active marker includes the callback-scoped invocation identity, so another
 	// call chain cannot masquerade as this parked activation.
+	// Callback authority covers the active producer. RV64 separately checks
+	// ownership of its public gate before allowing a scratch-swapping reentry.
 	markNativeActiveState(state, id)
 	defer unmarkNativeActiveState(state, id)
 	if root != nil && root != active {
@@ -461,13 +539,31 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 		markNativeActiveState(rootState, id)
 		defer unmarkNativeActiveState(rootState, id)
 	}
-	// The explicit context above carries foreign callback identity and scope.
-	// Publishing it under the producer's shared control address would let
-	// overlapping roots overwrite one another's ambient identity.
+	if railshotNativeContextTrapABI() && active != root {
+		restoreInvocationContext := bindHostInvocationContext(ctrl, invocation)
+		defer restoreInvocationContext()
+	}
+	if guestDescriptorOwner != nil {
+		// Release while native execution is parked and the active/root callback
+		// markers and cross-instance invocation binding are still published.
+		// Physical finalization may synchronously reenter this invocation. Claim
+		// the unit before the callback so an unwinding fallback cannot double it.
+		defer func() {
+			primary := recover()
+			owner := guestDescriptorOwner
+			guestDescriptorOwner = nil
+			var cleanup resourceCleanup
+			cleanup.run(owner.releaseResourceRoot)
+			if primary != nil {
+				panic(primary)
+			}
+			cleanup.finish()
+		}()
+	}
 	if codeProfileEnabled && invocation.profileSession() != nil {
-		a.callProfiledHost(active, ctrl, importIdx, args, results, invocation)
+		a.callProfiledHost(active, ctrl, importIdx, args, results, invocation, guestDescriptorOwner)
 	} else {
-		active.callHostDispatch(ctrl, importIdx, args, results, invocation)
+		active.callHostDispatch(ctrl, importIdx, args, results, invocation, guestDescriptorOwner)
 	}
 }
 
@@ -517,7 +613,10 @@ func (a *hostLoopActivation) dispatchSharedAtomicWait(active *Instance, ctrl uin
 	active.dispatchAtomicWaitHelperContext(helper, args, results, ctx)
 }
 
-func (in *Instance) callHostDispatch(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
+func (in *Instance) callHostDispatch(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext, guestDescriptorOwner *Instance) {
+	if in.dispatchGuestGlobalStoreWithOwner(importIdx, args, results, guestDescriptorOwner) {
+		return
+	}
 	if in.hostCall != nil {
 		in.hostCall(ctrl, importIdx, args, results, invocation)
 		return
@@ -653,6 +752,9 @@ func (a *hostLoopActivation) localNativeMu() *sync.Mutex {
 // and shared instances release their native lease while arbitrary Go runs. The context version or
 // global epoch still decides whether native context must be rebound before resume.
 func (a *hostLoopActivation) dispatchTypedScalarExpandedPortal(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (uint64, bool) {
+	if railshotNativeContextTrapABI() {
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
+	}
 	active := a.root
 	if active == nil || ctrl != a.ctrl ||
 		importIdx&hostFuncRefDispatchBit != 0 || int(importIdx) >= len(active.syncHosts) ||
@@ -711,6 +813,9 @@ func (a *hostLoopActivation) dispatchTypedScalarExpandedPortal(ctrl uintptr, imp
 // for the original typed scalar imports. Expanded signatures use the separate
 // portal above so adding them cannot perturb this path's register allocation.
 func (a *hostLoopActivation) dispatchTypedScalarPortal(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (uint64, bool) {
+	if railshotNativeContextTrapABI() {
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
+	}
 	active := a.root
 	if active == nil || ctrl != a.ctrl ||
 		importIdx&hostFuncRefDispatchBit != 0 || int(importIdx) >= len(active.syncHosts) ||
@@ -759,6 +864,9 @@ func (a *hostLoopActivation) dispatchTypedScalarPortal(ctrl uintptr, importIdx, 
 // control-frame, import, slot, and execution-version checks that can vary while
 // the activation is live.
 func (a *hostLoopActivation) dispatchSingleTypedScalarPortal(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (uint64, bool) {
+	if railshotNativeContextTrapABI() {
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
+	}
 	if ctrl != a.ctrl || importIdx != 0 {
 		return 0, false
 	}
@@ -784,6 +892,9 @@ func (a *hostLoopActivation) dispatchSingleTypedScalarPortal(ctrl uintptr, impor
 }
 
 func (a *hostLoopActivation) dispatchSingleTypedScalarExpandedPortal(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (uint64, bool) {
+	if railshotNativeContextTrapABI() {
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
+	}
 	if ctrl != a.ctrl || importIdx != 0 {
 		return 0, false
 	}
@@ -808,6 +919,9 @@ func (a *hostLoopActivation) dispatchSingleTypedScalarExpandedPortal(ctrl uintpt
 // translation, so it can share the typed portal's compact park/resume protocol
 // while retaining the generic slice ABI for arbitrary scalar arity.
 func (a *hostLoopActivation) dispatchSingleHostCall(ctrl uintptr, importIdx uint32, args, results []uint64) {
+	if railshotNativeContextTrapABI() {
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
+	}
 	if ctrl != a.ctrl || importIdx != 0 {
 		a.dispatch(ctrl, importIdx, args, results)
 		return
@@ -845,6 +959,9 @@ func (a *hostLoopActivation) dispatchSingleHostCall(ctrl uintptr, importIdx uint
 // while operating directly on the parked argument and result areas. A foreign
 // control frame falls back to the activation's generic dispatcher.
 func (a *hostLoopActivation) dispatchSingleHostCallView(ctrl uintptr, importIdx uint32, args, results []uint64) bool {
+	if railshotNativeContextTrapABI() {
+		defer railshotRefreshNativeTableTargets(railshotCurrentNativeTableTargets(a.root))
+	}
 	if ctrl != a.ctrl || importIdx != 0 {
 		return false
 	}
@@ -948,6 +1065,9 @@ func (in *Instance) restoreTypedScalarNativeContext(ctrl uintptr) {
 		panic(invalidHostReference{err: err})
 	}
 	in.jm.SetCustomCtx(ctrl)
+	// These optimized portals are root-only. A shared-home entry while parked
+	// can replace RV64's live view independently of the 120-byte context copy.
+	railshotBindNativeInvocation(in)
 }
 
 func (in *Instance) hasDirectTypedScalarHost() bool {
@@ -1091,6 +1211,7 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 		return nil, err
 	}
 
+	outerInvocation := railshotSaveNativeInvocation(in)
 	outerEngine, outerCtrl := in.eng, in.ctrl
 	outerArgs, outerResults, outerTrap := in.serArgs, in.results, in.trap
 	outerResultVals := in.resultVals
@@ -1143,6 +1264,7 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 		// request back to the parked outer activation before it resumes.
 		propagateCloseInterrupt := in.isLogicallyClosed()
 		binary.LittleEndian.PutUint64(nativeCtx, outerCustomCtx)
+		railshotRestoreSavedNativeInvocation(in, outerInvocation)
 		restoreInvocationContext()
 		unregisterHostControl(in)
 		in.eng, in.ctrl = outerEngine, outerCtrl
@@ -1167,6 +1289,13 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 // imports without invoking that instance through its Go API. Give those sources
 // private control frames before their import descriptors bind the context.
 func (in *Instance) prepareNativeImportReentries(id invocationID) (func(), error) {
+	// RV64 native imports allocate their control frame and transport on the
+	// calling activation's stack and never enter the producer's Go engine.
+	// A foreign callback's authority does not own the producer's public gate:
+	// swapping its scratch here races unrelated parked producer invocations.
+	if railshotNativeContextTrapABI() {
+		return nil, nil
+	}
 	for _, binding := range in.imports {
 		if ex, ok := binding.(*InstanceExport); ok && ex != nil && ex.inst != nil {
 			return in.prepareNativeImportReentriesSlow(id)

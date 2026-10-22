@@ -170,6 +170,9 @@ func gcConstReferenceKind(c *Compiled, t ValueTypeDescriptor) (gcConstValueKind,
 	case AbstractHeapExtern, AbstractHeapNoExtern:
 		return gcConstExternRef, nil
 	case AbstractHeapExn, AbstractHeapNoExn:
+		if ownedExceptionReferencesRuntime() {
+			return gcConstCollectorRef, nil
+		}
 		return gcConstExnRef, nil
 	case AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray, AbstractHeapNone:
 		return gcConstCollectorRef, nil
@@ -188,6 +191,9 @@ func gcConstHeapKind(c *Compiled, heap int64) (gcConstValueKind, error) {
 	case wasm.HeapExtern, wasm.HeapNoExtern:
 		return gcConstExternRef, nil
 	case wasm.HeapExn, wasm.HeapNoExn:
+		if ownedExceptionReferencesRuntime() {
+			return gcConstCollectorRef, nil
+		}
 		return gcConstExnRef, nil
 	case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 		return gcConstCollectorRef, nil
@@ -196,7 +202,7 @@ func gcConstHeapKind(c *Compiled, heap int64) (gcConstValueKind, error) {
 	}
 }
 
-func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTypeMapping, conversion *gcExternConversionState, c *Compiled, globalCells []*Global, current int, funcRefDescs []byte, roots gc.RootSet) (uint64, error) {
+func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTypeMapping, conversion *gcExternConversionState, c *Compiled, globalCells []*Global, current int, funcRefDescs []byte, roots gc.RootSet, externConstruction ...*compactExternConstruction) (uint64, error) {
 	if c == nil {
 		return 0, fmt.Errorf("collector-backed constant expression has no compiled module")
 	}
@@ -208,7 +214,11 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 	}
 	r := wasm.NewReader(expr)
 	stack := make([]gcConstStackValue, 0, 16)
-	allocationRoots := gcConstStackRootSet{stack: &stack, extra: roots}
+	var compact *compactExternConstruction
+	if len(externConstruction) != 0 {
+		compact = externConstruction[0]
+	}
+	allocationRoots := gcConstStackRootSet{stack: &stack, extra: compact.roots(roots)}
 	pop := func() (gcConstStackValue, error) {
 		if len(stack) == 0 {
 			return gcConstStackValue{}, fmt.Errorf("constant expression stack underflow")
@@ -382,6 +392,7 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				if err != nil {
 					return 0, err
 				}
+				recordManagedFunctionConstruction(collector, c, ref, typeID)
 				stack = append(stack, gcConstStackValue{ref: ref, kind: gcConstCollectorRef})
 			case 1: // struct.new_default
 				if err := requireCollector(); err != nil {
@@ -399,6 +410,7 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				if err != nil {
 					return 0, err
 				}
+				recordManagedFunctionConstruction(collector, c, ref, typeID)
 				stack = append(stack, gcConstStackValue{ref: ref, kind: gcConstCollectorRef})
 			case 6: // array.new
 				if err := requireCollector(); err != nil {
@@ -431,6 +443,7 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				if err != nil {
 					return 0, err
 				}
+				recordManagedFunctionConstruction(collector, c, ref, typeID)
 				stack = append(stack, gcConstStackValue{ref: ref, kind: gcConstCollectorRef})
 			case 7: // array.new_default
 				if err := requireCollector(); err != nil {
@@ -452,6 +465,7 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				if err != nil {
 					return 0, err
 				}
+				recordManagedFunctionConstruction(collector, c, ref, typeID)
 				stack = append(stack, gcConstStackValue{ref: ref, kind: gcConstCollectorRef})
 			case 8: // array.new_fixed
 				if err := requireCollector(); err != nil {
@@ -485,16 +499,22 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				if err != nil {
 					return 0, err
 				}
+				recordManagedFunctionConstruction(collector, c, ref, typeID)
 				stack = append(stack, gcConstStackValue{ref: ref, kind: gcConstCollectorRef})
 			case 26: // any.convert_extern
 				v, err := pop()
 				if err != nil {
 					return 0, err
 				}
-				if v.kind != gcConstExternRef || conversion == nil {
+				if v.kind != gcConstExternRef || conversion == nil && compact == nil {
 					return 0, fmt.Errorf("any.convert_extern constant has no extern conversion owner")
 				}
-				bits, err := conversion.anyFromExtern(v.bits)
+				var bits uint64
+				if compact != nil {
+					bits, err = compact.convert(sub, v, allocationRoots)
+				} else {
+					bits, err = conversion.anyFromExtern(v.bits)
+				}
 				if err != nil {
 					return 0, err
 				}
@@ -507,10 +527,15 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				if err != nil {
 					return 0, err
 				}
-				if v.kind != gcConstCollectorRef || conversion == nil {
+				if v.kind != gcConstCollectorRef || conversion == nil && compact == nil {
 					return 0, fmt.Errorf("extern.convert_any constant has no GC conversion owner")
 				}
-				bits, err := conversion.externFromAny(uint64(v.ref))
+				var bits uint64
+				if compact != nil {
+					bits, err = compact.convert(sub, v, allocationRoots)
+				} else {
+					bits, err = conversion.externFromAny(uint64(v.ref))
+				}
 				if err != nil {
 					return 0, err
 				}
@@ -532,5 +557,5 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 }
 
 func isGCRefValType(t ValType) bool {
-	return t == ValAnyRef || t == ValI31Ref
+	return t == ValAnyRef || t == ValI31Ref || ownedExceptionReferencesRuntime() && t == ValExnRef
 }

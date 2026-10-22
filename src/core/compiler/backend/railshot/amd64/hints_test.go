@@ -201,6 +201,8 @@ func TestScratchLeaseHintExcludesDivisionAndRemainder(t *testing.T) {
 	}{
 		{name: "plain arithmetic", body: []byte{0x41, 6, 0x41, 3, 0x6a, 0x0b}},
 		{name: "i32 div", body: []byte{0x41, 6, 0x41, 3, 0x6e, 0x0b}, want: true},
+		{name: "signed wide mul", body: []byte{0x42, 6, 0x42, 3, 0xfc, 21, 0x0b}, want: true},
+		{name: "unsigned wide mul", body: []byte{0x42, 6, 0x42, 3, 0xfc, 22, 0x0b}, want: true},
 		{name: "i64 rem", body: []byte{0x42, 6, 0x42, 3, 0x82, 0x0b}, want: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -218,6 +220,14 @@ func TestScratchLeaseHintExcludesDivisionAndRemainder(t *testing.T) {
 	noteASTPhysicalEvent(&ast, wasm.InstrI64DivU, 0, false)
 	if !ast.hasFixedScratchLease() {
 		t.Fatal("decoded-AST division did not reserve the fixed scratch pair")
+	}
+
+	for _, kind := range []wasm.InstrKind{wasm.InstrI64MulWideS, wasm.InstrI64MulWideU} {
+		var wide funcHintView
+		noteASTPhysicalEvent(&wide, kind, 0, false)
+		if !wide.hasFixedScratchLease() {
+			t.Fatalf("%s missing fixed-register lease", kind)
+		}
 	}
 
 	var packed funcHints

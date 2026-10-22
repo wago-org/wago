@@ -8,6 +8,7 @@ import (
 	"time"
 
 	wruntime "github.com/wago-org/wago/src/core/runtime"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // InvokeValues is the high-level, context-aware, typed invocation: arguments and results
@@ -200,6 +201,40 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 		return Value{}, fmt.Errorf("exported global %q is v128; use GlobalV128", name)
 	}
 	cell := in.globalCells[idx]
+	if value, handled, err := railshotImportedGlobalValue(in, cell); handled {
+		return value, err
+	}
+	bits := readGlobalObject(cell, g.Type)
+	if in.c.usesGenericGCExecution() && (g.Type == ValAnyRef || g.Type == ValI31Ref) {
+		exact, err := in.c.globalExactType(idx)
+		if err != nil {
+			return Value{}, fmt.Errorf("global %q exact type: %w", name, err)
+		}
+		if bits != uint64(uint32(bits)) {
+			return Value{}, fmt.Errorf("global %q contains a non-compact collector reference", name)
+		}
+		ref := gc.Ref(uint32(bits))
+		if !in.gcRefMatchesValueType(ref, exact) {
+			return Value{}, fmt.Errorf("global %q contains a collector reference with an incompatible exact structural type", name)
+		}
+		if ref.IsNull() || ref.IsI31() {
+			return Value{typ: g.Type, bits: bits}, nil
+		}
+		store, err := in.referenceStoreForBoundary()
+		if err != nil {
+			return Value{}, fmt.Errorf("global %q collector reference store: %w", name, err)
+		}
+		lockedDomain := in.lockGCCollector()
+		defer unlockGCCollector(lockedDomain)
+		state := in.publicGCState()
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		token, err := store.issueGCRefLocked(in, state, ref, exact)
+		if err != nil {
+			return Value{}, fmt.Errorf("global %q collector reference: %w", name, err)
+		}
+		return Value{typ: g.Type, bits: token}, nil
+	}
 	if isReferenceValType(g.Type) && cell.owner != nil {
 		value, err := cell.getValueNoLease()
 		if err != nil {
@@ -207,7 +242,6 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 		}
 		return value, nil
 	}
-	bits := readGlobalObject(cell, g.Type)
 	if (g.Type == ValAnyRef || g.Type == ValExnRef) && bits != 0 {
 		return Value{}, fmt.Errorf("global %q contains a non-null %s value; public GC/exception reference egress is unsupported", name, g.Type)
 	}
@@ -309,13 +343,29 @@ func (in *Instance) TableFunctionIndex(name string, entry uint64) (index uint32,
 // against the global's declared type. Non-null funcref tokens are resolved and
 // non-null externref tokens are validated only through the instance's exact
 // reference store before native-visible storage.
-func (in *Instance) SetGlobalValue(name string, v Value) error {
+func (in *Instance) SetGlobalValue(name string, v Value) (err error) {
 	if err := in.beginInvocation(); err != nil {
 		return fmt.Errorf("set global %q: %w", name, err)
 	}
-	defer in.endInvocation()
-	unlockNative := in.lockInstanceNativeStateForHostAccess()
-	defer unlockNative()
+	nativeMu := in.acquireInstanceNativeStateForHostAccess()
+	var roots globalValueRoots
+	var cleanup resourceCleanup
+	var markShared bool
+	defer func() {
+		cleanup.run(nativeMu.Unlock)
+		cleanup.run(func() { railshotFlushGlobalDescriptorDependencies(&roots.descriptorDependencies) })
+		cleanup.run(roots.release)
+		if markShared {
+			cleanup.run(in.markNativeControlShared)
+		}
+		cleanup.run(in.endInvocation)
+		cleanup.finish()
+	}()
+	cleanup.run(func() { err = in.setGlobalValueNoLease(name, v, &roots, &markShared) })
+	return err
+}
+
+func (in *Instance) setGlobalValueNoLease(name string, v Value, roots *globalValueRoots, markShared *bool) error {
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
 		return err
@@ -328,8 +378,92 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 		return fmt.Errorf("exported global %q is immutable", name)
 	}
 	cell := in.globalCells[idx]
-	if isReferenceValType(g.Type) && cell.owner != nil {
-		if err := cell.setValueNoLease(v); err != nil {
+	if in.c.usesGenericGCExecution() && (g.Type == ValAnyRef || g.Type == ValI31Ref) {
+		exact, exactErr := in.c.globalExactType(idx)
+		if exactErr != nil {
+			return fmt.Errorf("global %q exact type: %w", name, exactErr)
+		}
+		state := in.existingPublicGCState()
+		if state == nil {
+			return fmt.Errorf("global %q collector root state is unavailable", name)
+		}
+		var slot uint32
+		found := false
+		for _, mapping := range state.globalRoots {
+			if int(mapping.GlobalIndex) == idx {
+				slot, found = mapping.SlotIndex, true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("global %q collector root mapping is unavailable", name)
+		}
+		bits := v.bits
+		var ref gc.Ref
+		if bits == 0 {
+			if !exact.Ref.Nullable {
+				return fmt.Errorf("global %q requires a non-null reference value", name)
+			}
+		} else if g.Type == ValI31Ref {
+			if bits>>32 != 0 || uint32(bits)&1 == 0 {
+				return fmt.Errorf("global %q has an invalid i31ref value", name)
+			}
+			ref = gc.Ref(uint32(bits))
+			if !in.gcRefMatchesValueType(ref, exact) {
+				return fmt.Errorf("global %q i31ref does not match its exact type", name)
+			}
+		} else if bits == uint64(uint32(bits)) && gc.Ref(uint32(bits)).IsI31() {
+			ref = gc.Ref(uint32(bits))
+			if !in.gcRefMatchesValueType(ref, exact) {
+				return fmt.Errorf("global %q i31 anyref does not match its exact type", name)
+			}
+		} else {
+			store, storeErr := in.referenceStoreForBoundary()
+			if storeErr != nil {
+				return fmt.Errorf("global %q collector reference store: %w", name, storeErr)
+			}
+			var publishErr error
+			ref, publishErr = store.publishGCRefGlobal(in, bits, exact, slot)
+			if publishErr != nil {
+				return fmt.Errorf("global %q: %w", name, publishErr)
+			}
+			writeGlobalObject(cell, g.Type, uint64(ref))
+			return nil
+		}
+		lockedDomain := in.lockGCCollector()
+		if err := in.gc.SetGlobalSlot(slot, ref); err != nil {
+			unlockGCCollector(lockedDomain)
+			return fmt.Errorf("global %q collector root: %w", name, err)
+		}
+		writeGlobalObject(cell, g.Type, uint64(ref))
+		unlockGCCollector(lockedDomain)
+		return nil
+	}
+	managedReference := false
+	if g.Type == ValFuncRef {
+		in.lifeMu.Lock()
+		if cell.owner == nil {
+			exact, exactErr := in.c.globalExactType(idx)
+			if exactErr != nil {
+				in.lifeMu.Unlock()
+				return fmt.Errorf("global %q exact type: %w", name, exactErr)
+			}
+			owner := &globalOwner{store: in.refStore, instance: in, typ: g.Type, mutable: g.Mutable, valueType: exact, types: in.c.Types, hasValueType: true}
+			railshotLinkOwnedGlobalDescriptorHolderLocked(in, owner)
+			cell.owner = owner
+			if markShared != nil {
+				*markShared = true
+			}
+		}
+		managedReference = cell.owner != nil
+		in.lifeMu.Unlock()
+	} else if g.Type == ValExternRef {
+		in.lifeMu.Lock()
+		managedReference = cell.owner != nil
+		in.lifeMu.Unlock()
+	}
+	if managedReference {
+		if err := cell.setValueNoLease(v, roots); err != nil {
 			return fmt.Errorf("global %q: %w", name, err)
 		}
 		return nil
@@ -381,4 +515,18 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 	}
 	writeGlobalObject(cell, g.Type, bits)
 	return nil
+}
+
+// exportedGlobalNameForCell resolves a public name without crossing another
+// invocation or native-state boundary. Callers already own both leases.
+func (in *Instance) exportedGlobalNameForCell(cell *Global) (string, bool) {
+	if in == nil || in.c == nil || cell == nil {
+		return "", false
+	}
+	for name, index := range in.c.GlobalExports {
+		if index >= 0 && index < len(in.globalCells) && in.globalCells[index] == cell {
+			return name, true
+		}
+	}
+	return "", false
 }

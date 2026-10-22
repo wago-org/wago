@@ -3,6 +3,8 @@
 package runtime
 
 import (
+	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"unsafe"
@@ -143,13 +145,58 @@ func TestIdleOversizedEngineBypassesCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := uintptr(unsafe.Pointer(&e.stack[0]))
+	t.Cleanup(func() {
+		engineCache.Lock()
+		if engineCache.e == e {
+			engineCache.e = nil
+		}
+		engineCache.Unlock()
+		if err := e.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	// Give this oversized stack a unique mapping identity. After munmap, the
+	// race runtime or another thread can reuse its address before a mincore
+	// check. A private file mapping uses the same close path and remains visible
+	// in procfs if Close only drops the owner's fields without unmapping it.
+	if err := e.Close(); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.CreateTemp(t.TempDir(), "oversized-stack-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	if err := file.Truncate(8 << 20); err != nil {
+		t.Fatal(err)
+	}
+	e.stack, err = syscall.Mmap(int(file.Fd()), 0, 8<<20, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_PRIVATE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.stackTop = uintptr(unsafe.Pointer(&e.stack[0])) + uintptr(len(e.stack))
+	assertMapping := func(want bool) {
+		t.Helper()
+		maps, err := os.ReadFile("/proc/self/maps")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(string(maps), file.Name()); got != want {
+			t.Fatalf("oversized stack mapping present = %v, want %v", got, want)
+		}
+	}
+	assertMapping(true)
 	if err = ReleaseEngine(e); err != nil {
 		t.Fatal(err)
 	}
-	var resident [1]byte
-	_, _, errno := syscall.Syscall(syscall.SYS_MINCORE, base, uintptr(syscall.Getpagesize()), uintptr(unsafe.Pointer(&resident[0])))
-	if errno != syscall.ENOMEM {
-		t.Fatalf("oversized idle mapping was retained: %v", errno)
+	if e.stack != nil || e.stackTop != 0 {
+		t.Fatal("oversized idle Engine retains its stack")
 	}
+	engineCache.Lock()
+	cached := engineCache.e == e
+	engineCache.Unlock()
+	if cached {
+		t.Fatal("oversized idle Engine entered the cache")
+	}
+	assertMapping(false)
 }
