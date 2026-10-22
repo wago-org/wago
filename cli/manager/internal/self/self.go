@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/wago-org/wago/cli/internal/tui"
@@ -213,6 +214,14 @@ func selfUninstall(
 		installationDir = filepath.Dir(executable)
 	}
 	emptyDirs := emptyCleanupDirs(lockPath, targets, installationDir)
+	if mode == Full {
+		customRoot := customWagoRoot()
+		if root := filepath.Clean(customRoot); customRoot != "" && safeManagedPath(root) && !slices.Contains(emptyDirs, root) {
+			// A custom root may contain unrelated files. Remove it only if known
+			// Wago state cleanup leaves the directory empty.
+			emptyDirs = append(emptyDirs, root)
+		}
+	}
 
 	for _, config := range shellConfigs {
 		if err := RemoveInstallerPathBlocks(config); err != nil {

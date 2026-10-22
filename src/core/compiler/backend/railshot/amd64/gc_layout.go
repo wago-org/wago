@@ -118,3 +118,16 @@ func (f *fn) directGCArrayLayout(typeIndex uint32) (directGCScalar, bool, bool) 
 	}
 	return directGCArrayLayout(f.m, typeIndex)
 }
+
+// Vector access shares the scalar resolver and bounds checks. Keep its layout
+// separate so scalar fill/copy emitters cannot accidentally admit 16-byte values.
+func (f *fn) directGCArrayAccessLayout(typeIndex uint32) (directGCScalar, bool, bool) {
+	if scalar, final, ok := f.directGCArrayLayout(typeIndex); ok {
+		return scalar, final, true
+	}
+	target, ok := f.stagedArraySubtype(typeIndex)
+	if !ok || target.Comp.Array.Storage().Packed() || target.Comp.Array.Storage().Val() != wasm.V128 {
+		return directGCScalar{}, false, false
+	}
+	return directGCScalar{size: 16, typ: mtV128}, target.Final, true
+}
