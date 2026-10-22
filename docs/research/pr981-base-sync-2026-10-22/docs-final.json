@@ -1,0 +1,12 @@
+{
+  "command": [
+    "go",
+    "run",
+    "./tests/tools/docs-check"
+  ],
+  "seconds": 0.06976288801524788,
+  "exit": 0,
+  "user_seconds": 0.064256,
+  "system_seconds": 0.031687,
+  "peak_rss_kib": 26936
+}

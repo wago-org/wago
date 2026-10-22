@@ -128,6 +128,9 @@ func (c *Compiled) unmapProfileCode(mem []byte) error {
 	if cc := c.loadCodeCache(); jitprofile.Enabled && cc != nil {
 		cc.retireProfileImage(uintptr(unsafe.Pointer(&mem[0])))
 	}
+	if indexes := c.loadCompileIndexes(); indexes != nil && indexes.unmapCode != nil {
+		return indexes.unmapCode(mem)
+	}
 	return coreruntime.Unmap(mem)
 }
 

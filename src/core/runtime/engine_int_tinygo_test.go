@@ -20,6 +20,17 @@ func TestTinyGoTrampolineFailurePreservesInterrupt(t *testing.T) {
 	}
 }
 
+func TestTinyGoNativeResumeUsesPhysicalStackTop(t *testing.T) {
+	e, err := NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	if got, want := e.nativeResumeStackTop(), e.preparedInt.stackTop; got != want || got == e.stackTop {
+		t.Fatalf("resume stack top = %#x, want physical top %#x distinct from entry %#x", got, want, e.stackTop)
+	}
+}
+
 func TestPreparedIntThunkOwnedByEngine(t *testing.T) {
 	e := &Engine{}
 	first, err := preparedIntThunkFor(e)

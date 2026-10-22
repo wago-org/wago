@@ -1,4 +1,4 @@
-//go:build linux && (amd64 || arm64) && !tinygo
+//go:build linux && (amd64 || arm64 || riscv64) && !tinygo
 
 package wago
 
@@ -268,7 +268,6 @@ func TestCrossRuntimePersistentFuncrefTableCopiesRetainProxy(t *testing.T) {
 			destination, _ := NewTable(1, 1)
 			producer := localFuncrefTableProducer(rtA, t, source, 91)
 			writer := instantiateTableCopyWriter(t, rtB, source, destination, copyBody.wat)
-
 			if err := writer.Close(); err != nil {
 				t.Fatal(err)
 			}

@@ -476,7 +476,7 @@ func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
 	return fn.invokeGeneral(args)
 }
 
-func (fn *WasmFunc) tryInvokeScalarHost1(args []uint64) ([]uint64, error, bool) {
+func (fn *WasmFunc) tryInvokeScalarHost1(args []uint64) (result []uint64, resultErr error, admitted bool) {
 	in := fn.in
 	if in.gc != nil || fn.gcMaintenance || !in.usesIndependentExecution() || !in.preparedFastStateValid() {
 		return nil, nil, false
@@ -484,26 +484,56 @@ func (fn *WasmFunc) tryInvokeScalarHost1(args []uint64) ([]uint64, error, bool) 
 	if err := in.beginDirectInvocation(); err != nil {
 		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err), true
 	}
-	lease := in.lockPreparedScalarNoGC()
-	if !in.usesIndependentExecution() || !in.preparedFastStateValid() {
-		lease.unlock()
-		in.endDirectInvocation()
-		return nil, nil, false
+	var lease preparedScalarNoGCLease
+	leaseOwned := false
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		lease = in.lockPreparedScalarNoGC()
+		leaseOwned = true
+		if !in.usesIndependentExecution() || !in.preparedFastStateValid() {
+			return
+		}
+		admitted = true
+		binary.LittleEndian.PutUint64(in.serArgs, uint64(uint32(args[0])))
+		if len(in.hostLog) > 0 {
+			binary.LittleEndian.PutUint32(in.hostLog, 0)
+		}
+		if resultErr = fn.callScalarHostPrepared(); resultErr != nil {
+			return
+		}
+		goruntime.KeepAlive(in)
+		goruntime.KeepAlive(in.c)
+		result = in.resultVals[:1]
+		result[0] = uint64(binary.LittleEndian.Uint32(in.results))
+	})
+	if leaseOwned {
+		cleanup.run(lease.unlock)
 	}
-	defer in.endDirectInvocation()
-	defer lease.unlock()
-	binary.LittleEndian.PutUint64(in.serArgs, uint64(uint32(args[0])))
-	if len(in.hostLog) > 0 {
-		binary.LittleEndian.PutUint32(in.hostLog, 0)
+	cleanup.run(in.endDirectInvocation)
+	cleanup.finish()
+	return result, resultErr, admitted
+}
+
+// invokeGeneralAfterDirectAdmission completes a revoked direct-entry fallback.
+// The caller has already acquired one direct lifetime unit; keep its prepared
+// lease and lifecycle release in the same first-panic journal as the admitted
+// general body.
+func (fn *WasmFunc) invokeGeneralAfterDirectAdmission(args []uint64) (result []uint64, resultErr error) {
+	in := fn.in
+	var lease preparedInvocationLease
+	leaseOwned := false
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		lease = in.lockPreparedInvocation()
+		leaseOwned = true
+		result, resultErr = fn.invokeGeneralAdmitted(args)
+	})
+	if leaseOwned {
+		cleanup.run(lease.unlock)
 	}
-	if err := fn.callScalarHostPrepared(); err != nil {
-		return nil, err, true
-	}
-	goruntime.KeepAlive(in)
-	goruntime.KeepAlive(in.c)
-	out := in.resultVals[:1]
-	out[0] = uint64(binary.LittleEndian.Uint32(in.results))
-	return out, nil, true
+	cleanup.run(in.endDirectInvocation)
+	cleanup.finish()
+	return result, resultErr
 }
 
 type preparedInvocationLease struct {
@@ -520,43 +550,75 @@ type preparedScalarNoGCLease struct {
 	state *instancePluginState
 }
 
-func (in *Instance) lockPreparedScalarNoGC() preparedScalarNoGCLease {
+func (in *Instance) lockPreparedScalarNoGC() (lease preparedScalarNoGCLease) {
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
-	state.invocationID = newInvocationID()
-	return preparedScalarNoGCLease{in: in, state: state}
+	lease.in, lease.state = in, state
+	returned := false
+	defer func() {
+		if returned {
+			return
+		}
+		var cleanup resourceCleanup
+		cleanup.panicked, cleanup.value = true, recover()
+		cleanup.run(func() { state.setInvocationIdentity(0) })
+		cleanup.run(state.invokeMu.Unlock)
+		cleanup.finish()
+	}()
+	state.setInvocationIdentity(newInvocationID())
+	returned = true
+	return lease
 }
 
 func (l preparedScalarNoGCLease) unlock() {
+	var cleanup resourceCleanup
 	if l.in.importsFuncrefStorage() || l.in.table != nil {
-		l.in.reconcileFuncrefRoots()
+		cleanup.run(l.in.reconcileFuncrefRoots)
 	}
-	l.state.invocationID = 0
-	l.state.invokeMu.Unlock()
+	cleanup.run(func() { l.state.setInvocationIdentity(0) })
+	cleanup.run(l.state.invokeMu.Unlock)
+	cleanup.finish()
 }
 
-func (in *Instance) lockPreparedInvocation() preparedInvocationLease {
+func (in *Instance) lockPreparedInvocation() (lease preparedInvocationLease) {
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
+	lease.in, lease.state = in, state
+	returned := false
+	defer func() {
+		if returned {
+			return
+		}
+		var cleanup resourceCleanup
+		cleanup.panicked, cleanup.value = true, recover()
+		cleanup.run(lease.gc.unlock)
+		cleanup.run(func() { state.setInvocationIdentity(0) })
+		cleanup.run(state.invokeMu.Unlock)
+		cleanup.finish()
+	}()
 	id := newInvocationID()
-	state.invocationID = id
-	return preparedInvocationLease{in: in, state: state, gc: in.lockGCInvocation(id)}
+	state.setInvocationIdentity(id)
+	lease.gc = in.lockGCInvocation(id)
+	returned = true
+	return lease
 }
 
 func (in *Instance) lockPreparedSessionInvocation() preparedInvocationLease {
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
-	state.invocationID = newInvocationID()
+	state.setInvocationIdentity(newInvocationID())
 	return preparedInvocationLease{state: state}
 }
 
 func (l preparedInvocationLease) unlock() {
-	l.gc.unlock()
+	var cleanup resourceCleanup
+	cleanup.run(l.gc.unlock)
 	if l.in != nil && (l.in.importsFuncrefStorage() || l.in.table != nil) {
-		l.in.reconcileFuncrefRoots()
+		cleanup.run(l.in.reconcileFuncrefRoots)
 	}
-	l.state.invocationID = 0
-	l.state.invokeMu.Unlock()
+	cleanup.run(func() { l.state.setInvocationIdentity(0) })
+	cleanup.run(l.state.invokeMu.Unlock)
+	cleanup.finish()
 }
 
 // ARM64 avoids copying the complete GC-domain lease through the scalar call
@@ -564,27 +626,40 @@ func (l preparedInvocationLease) unlock() {
 func (in *Instance) lockPreparedScalarInvocationInto(l *preparedInvocationLease) {
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
-	id := newInvocationID()
-	state.invocationID = id
 	l.in, l.state = in, state
+	returned := false
+	defer func() {
+		if returned {
+			return
+		}
+		var cleanup resourceCleanup
+		cleanup.panicked, cleanup.value = true, recover()
+		cleanup.run(l.gc.unlock)
+		cleanup.run(func() { state.setInvocationIdentity(0) })
+		cleanup.run(state.invokeMu.Unlock)
+		cleanup.finish()
+	}()
+	id := newInvocationID()
+	state.setInvocationIdentity(id)
 	if in.mayNeedGCInvocationLease() {
 		l.gc = in.lockGCInvocation(id)
 	} else {
 		l.gc = gcInvocationLease{}
 	}
+	returned = true
 }
 
 func (l *preparedInvocationLease) unlockScalarInvocation() {
-	// Avoid copying the domain view into the by-value release call when this
-	// invocation acquired no domain. Borrowed leases also need no release.
+	var cleanup resourceCleanup
 	if l.gc.acquired {
-		l.gc.unlock()
+		cleanup.run(l.gc.unlock)
 	}
 	if l.in != nil && (l.in.importsFuncrefStorage() || l.in.table != nil) {
-		l.in.reconcileFuncrefRoots()
+		cleanup.run(l.in.reconcileFuncrefRoots)
 	}
-	l.state.invocationID = 0
-	l.state.invokeMu.Unlock()
+	cleanup.run(func() { l.state.setInvocationIdentity(0) })
+	cleanup.run(l.state.invokeMu.Unlock)
+	cleanup.finish()
 }
 
 func (fn *WasmFunc) invokeGeneral(args []uint64) (result []uint64, resultErr error) {
@@ -595,22 +670,45 @@ func (fn *WasmFunc) invokeGeneral(args []uint64) (result []uint64, resultErr err
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
 	}
-	defer in.endInvocation()
 	// Prepared calls share the same instance buffers and Runtime GC domain as
 	// Invoke. Publish an invocation identity under the instance gate so host
 	// callbacks can suspend the domain lease, and retain that lease through public
 	// reference-result tokenization.
-	preparedLease := in.lockPreparedInvocation()
-	defer preparedLease.unlock()
-	if codeProfileEnabled && in.boundaryProfile() != nil {
-		span, restore := in.beginProfileInvocation(fn.export)
-		defer restore()
-		defer finishProfileBoundary(span, &resultErr)
+	var preparedLease preparedInvocationLease
+	leaseOwned := false
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		preparedLease = in.lockPreparedInvocation()
+		leaseOwned = true
+		if codeProfileEnabled && in.boundaryProfile() != nil {
+			span, restore := in.beginProfileInvocation(fn.export)
+			defer restore()
+			completed := false
+			defer finishProfileBoundary(span, &resultErr, &completed)
+			result, resultErr = fn.invokeGeneralAdmitted(args)
+			completed = true
+			return
+		}
+		result, resultErr = fn.invokeGeneralAdmitted(args)
+	})
+	if leaseOwned {
+		cleanup.run(preparedLease.unlock)
 	}
-	return fn.invokeGeneralAdmitted(args)
+	cleanup.run(in.endInvocation)
+	cleanup.finish()
+	return result, resultErr
 }
 
-func (fn *WasmFunc) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
+func (fn *WasmFunc) invokeGeneralAdmitted(args []uint64) (result []uint64, resultErr error) {
+	var argumentOwners railshotPublicFuncrefArguments
+	var cleanup resourceCleanup
+	cleanup.run(func() { result, resultErr = fn.invokeGeneralAdmittedBody(args, &argumentOwners) })
+	cleanup.run(func() { railshotReleasePublicFuncrefArguments(argumentOwners) })
+	cleanup.finish()
+	return result, resultErr
+}
+
+func (fn *WasmFunc) invokeGeneralAdmittedBody(args []uint64, argumentOwners *railshotPublicFuncrefArguments) ([]uint64, error) {
 	in := fn.in
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
@@ -620,7 +718,11 @@ func (fn *WasmFunc) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
 	}
 	if fn.hasReferenceParams {
 		defer in.clearGCRefArgumentRoots()
-		if err := in.marshalPublicReferenceArgs(fn.export, args, fn.paramTypes, fn.paramExact); err != nil {
+		var err error
+		if *argumentOwners, err = railshotBeginPublicFuncrefArguments(in); err != nil {
+			return nil, fmt.Errorf("%s reference argument owners: %w", fn.export, err)
+		}
+		if err := in.marshalPublicReferenceArgs(fn.export, args, fn.paramTypes, fn.paramExact, argumentOwners); err != nil {
 			return nil, err
 		}
 	} else {
@@ -629,29 +731,21 @@ func (fn *WasmFunc) invokeGeneralAdmitted(args []uint64) ([]uint64, error) {
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
+	var executionErr error
 	if in.syncMode {
-		var err error
 		if fn.gcPrepared && (!codeProfileEnabled || in.boundaryProfile() == nil && activeHostInvocationContext(in).profileSession() == nil) {
-			err = fn.callGCPrepared()
+			executionErr = fn.callGCPrepared()
 		} else {
-			err = in.callNativeSync(fn.entry)
-		}
-		if err != nil {
-			return nil, err
+			executionErr = in.callNativeSync(fn.entry)
 		}
 	} else {
 		prepared := directPreparedCallEnabled && preparedCallEnabled && in.ownsMem
-		err := in.callNativeAsync(fn.entry, prepared)
-		if err != nil {
-			return nil, err
-		}
-		if len(in.hostLog) != 0 {
-			if err := in.replayHostLog(); err != nil {
-				return nil, err
-			}
+		executionErr = in.callNativeAsync(fn.entry, prepared)
+		if executionErr == nil && len(in.hostLog) != 0 {
+			executionErr = in.replayHostLog()
 		}
 	}
-	if err := in.reconcileGCGlobalRoots(); err != nil {
+	if err := in.reconcileGCGlobalRootsAfter(executionErr); err != nil {
 		return nil, err
 	}
 	goruntime.KeepAlive(in)
@@ -752,7 +846,7 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 	return in.callPreparedHostSyncAdmitted(fn.hostPrepared, fn.hostFixed, &fn.hostActivation)
 }
 
-func (fn *WasmFunc) invokeScalar(args []uint64) ([]uint64, error) {
+func (fn *WasmFunc) invokeScalar(args []uint64) (result []uint64, resultErr error) {
 	in := fn.in
 	var admissionErr error
 	if fn.isolatedFast {
@@ -771,21 +865,52 @@ func (fn *WasmFunc) invokeScalar(args []uint64) ([]uint64, error) {
 			return out, err
 		}
 	}
-	defer in.endInvocation()
 	if in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain) == 0 {
-		preparedLease := in.lockPreparedScalarNoGC()
-		defer preparedLease.unlock()
-		return fn.invokeScalarAdmitted(args)
+		var preparedLease preparedScalarNoGCLease
+		leaseOwned := false
+		var cleanup resourceCleanup
+		cleanup.run(func() {
+			preparedLease = in.lockPreparedScalarNoGC()
+			leaseOwned = true
+			result, resultErr = fn.invokeScalarAdmitted(args)
+		})
+		if leaseOwned {
+			cleanup.run(preparedLease.unlock)
+		}
+		cleanup.run(in.endInvocation)
+		cleanup.finish()
+		return result, resultErr
 	}
 	if preparedScalarInPlaceLease {
 		var preparedLease preparedInvocationLease
-		in.lockPreparedScalarInvocationInto(&preparedLease)
-		defer preparedLease.unlockScalarInvocation()
-		return fn.invokeScalarAdmitted(args)
+		leaseOwned := false
+		var cleanup resourceCleanup
+		cleanup.run(func() {
+			in.lockPreparedScalarInvocationInto(&preparedLease)
+			leaseOwned = true
+			result, resultErr = fn.invokeScalarAdmitted(args)
+		})
+		if leaseOwned {
+			cleanup.run(preparedLease.unlockScalarInvocation)
+		}
+		cleanup.run(in.endInvocation)
+		cleanup.finish()
+		return result, resultErr
 	}
-	preparedLease := in.lockPreparedInvocation()
-	defer preparedLease.unlock()
-	return fn.invokeScalarAdmitted(args)
+	var preparedLease preparedInvocationLease
+	leaseOwned := false
+	var cleanup resourceCleanup
+	cleanup.run(func() {
+		preparedLease = in.lockPreparedInvocation()
+		leaseOwned = true
+		result, resultErr = fn.invokeScalarAdmitted(args)
+	})
+	if leaseOwned {
+		cleanup.run(preparedLease.unlock)
+	}
+	cleanup.run(in.endInvocation)
+	cleanup.finish()
+	return result, resultErr
 }
 
 func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
