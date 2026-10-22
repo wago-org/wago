@@ -1,0 +1,16 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-tags=wago_regalloccheck,wago_codegenstats",
+    "./src/core/compiler/backend/railshot/amd64",
+    "-run",
+    "^(TestGCFinalCastFieldReadResolvesOnce|TestGCResolversLoadSpaceByte)$",
+    "-count=1"
+  ],
+  "seconds": 7.895216363016516,
+  "exit": 0,
+  "user_seconds": 13.706965,
+  "system_seconds": 0.370635,
+  "peak_rss_kib": 708072
+}

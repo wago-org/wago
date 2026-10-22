@@ -275,6 +275,7 @@ func (c *Collector) prepareNativeLargeArrayAllocation(objectBytes uint32) bool {
 		e.setYoungAge(0)
 	}
 	h := c.newHandle(handleEntry{})
+	c.nativeLargeArrayNurseryIndex = len(c.nurseryHandles)
 	c.nurseryHandles = append(c.nurseryHandles, h)
 	s.Epoch = c.nativeLargeArrayEpoch
 	s.Cursor = 0
@@ -302,12 +303,19 @@ func (c *Collector) discardNativeLargeArrayAllocation() {
 	unused := s.Count != 0 && s.Cursor == 0 && s.Handle != 0 && int(s.Handle) < len(c.handles) && c.handles[s.Handle].space == spaceFree
 	if unused {
 		c.freeHandles = append(c.freeHandles, s.Handle)
-		for i, h := range c.nurseryHandles {
-			if h == s.Handle {
-				copy(c.nurseryHandles[i:], c.nurseryHandles[i+1:])
-				c.nurseryHandles = c.nurseryHandles[:len(c.nurseryHandles)-1]
-				break
+		index := c.nativeLargeArrayNurseryIndex
+		if index < 0 || index >= len(c.nurseryHandles) || c.nurseryHandles[index] != s.Handle {
+			index = -1
+			for i, h := range c.nurseryHandles {
+				if h == s.Handle {
+					index = i
+					break
+				}
 			}
+		}
+		if index >= 0 {
+			copy(c.nurseryHandles[index:], c.nurseryHandles[index+1:])
+			c.nurseryHandles = c.nurseryHandles[:len(c.nurseryHandles)-1]
 		}
 		space := spaceKind((s.ChunkBump >> 16) & 0xff)
 		if space == spaceNursery {

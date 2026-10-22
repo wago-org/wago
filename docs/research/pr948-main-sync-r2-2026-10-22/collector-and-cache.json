@@ -1,0 +1,14 @@
+{
+  "command": [
+    "go",
+    "test",
+    "./src/core/runtime/gc/native",
+    "./cli/runtime/internal/artifactcache",
+    "-count=1"
+  ],
+  "seconds": 1.586138950980967,
+  "exit": 0,
+  "user_seconds": 2.866804,
+  "system_seconds": 0.48036599999999996,
+  "peak_rss_kib": 161668
+}

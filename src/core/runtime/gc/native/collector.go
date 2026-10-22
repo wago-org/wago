@@ -169,6 +169,8 @@ type Collector struct {
 	// Keep optional proof state last so existing collector field offsets stay fixed.
 	lastCardBounds objectCardBounds
 	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
+	// A validated list-position hint; compaction may move or remove the entry.
+	nativeLargeArrayNurseryIndex int
 }
 
 const defaultNursery = 64 << 10
