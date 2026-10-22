@@ -151,6 +151,11 @@ jobs:
             goarch: arm64
             target: linux-arm64
             best_effort: false
+          - runner: ubuntu-24.04-riscv
+            goos: linux
+            goarch: riscv64
+            target: linux-riscv64
+            best_effort: false
           - runner: macos-15-intel
             goos: darwin
             goarch: amd64
@@ -177,6 +182,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        if: matrix.goarch != 'riscv64'
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -187,40 +193,44 @@ jobs:
             bench/go.mod
             bench/go.sum
             cli/wago-installer/go.mod
+      - name: Install native riscv64 Go toolchain
+        if: matrix.goarch == 'riscv64'
+        shell: bash
+        run: scripts/setup-riscv64-go.sh
       - name: Identify Go toolchain for TinyGo cache
         id: tinygo-go
-        if: matrix.target != 'windows-arm64'
+        if: matrix.target != 'windows-arm64' && matrix.goarch != 'riscv64'
         shell: bash
         run: echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
       - name: Restore TinyGo toolchain
-        if: matrix.target != 'windows-arm64'
+        if: matrix.target != 'windows-arm64' && matrix.goarch != 'riscv64'
         id: tinygo-cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ runner.tool_cache }}/tinygo/${{ env.TINYGO_VERSION }}
           key: tinygo-${{ runner.os }}-${{ runner.arch }}-${{ env.TINYGO_VERSION }}-${{ steps.tinygo-go.outputs.version }}-${{ hashFiles('tests/tools/tinygo-cache/main.go') }}
       - name: Verify restored TinyGo tree
-        if: matrix.target != 'windows-arm64'
+        if: matrix.target != 'windows-arm64' && matrix.goarch != 'riscv64'
         env:
           TINYGO_GO_VERSION: ${{ steps.tinygo-go.outputs.version }}
           TINYGO_CACHE_HIT: ${{ steps.tinygo-cache.outputs.cache-hit }}
         run: go run ./tests/tools/tinygo-cache verify
       - uses: acifani/setup-tinygo@db56321a62b9a67922bb9ac8f9d085e218807bb3 # v2
-        if: matrix.target != 'windows-arm64'
+        if: matrix.target != 'windows-arm64' && matrix.goarch != 'riscv64'
         with:
           tinygo-version: ${{ env.TINYGO_VERSION }}
           install-binaryen: false
       - name: Apply upstream TinyGo task scheduler fix
-        if: matrix.target != 'windows-arm64'
+        if: matrix.target != 'windows-arm64' && matrix.goarch != 'riscv64'
         shell: bash
         run: scripts/patch-tinygo-042.sh
       - name: Record TinyGo tree provenance
-        if: matrix.target != 'windows-arm64'
+        if: matrix.target != 'windows-arm64' && matrix.goarch != 'riscv64'
         env:
           TINYGO_GO_VERSION: ${{ steps.tinygo-go.outputs.version }}
         run: go run ./tests/tools/tinygo-cache record
       - name: Install lld
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.goarch != 'riscv64'
         run: sudo apt-get update && sudo apt-get install -y lld
       - name: Build CLI and runtime profiles
         shell: bash
@@ -232,6 +242,10 @@ jobs:
           scripts/build-release-assets.sh
           scripts/verify-channel-assets.sh . "${{ matrix.target }}"
           scripts/smoke-release-assets.sh . "${{ matrix.target }}" "canary@${{ needs.prepare.outputs.sha }}"
+      - name: Native riscv64 CLI and standalone qualification
+        if: matrix.goarch == 'riscv64'
+        shell: bash
+        run: scripts/check-riscv64-cli.sh
       - name: Upload canary workflow artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

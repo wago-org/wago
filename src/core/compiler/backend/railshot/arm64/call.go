@@ -353,7 +353,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	imported := f.importedFunctionCount()
 	if int(idx) < imported && f.customInstructions != nil {
-		if custom, ok := f.customInstructions[idx]; ok && pluginARM64Lowering(custom) != nil {
+		if custom, ok := f.customInstructions[idx]; ok && (pluginARM64Lowering(custom) != nil || instructionRecipeEligible(custom)) {
 			return f.emitCustomInstruction(custom, ft)
 		}
 	}
@@ -866,7 +866,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 	code := f.allocReg(0)
 	f.ld64(code, ref, runtime.TableEntryCodePtrOffset)
 	f.trapIfZero(code, true, true, trapIndirectOOB)
-	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, maskOf(ref, code))
+	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, typeIdx, maskOf(ref, code))
 	home := f.allocReg(maskOf(ref, code))
 	f.ld64(home, ref, runtime.TableEntryHomeLinMemOffset)
 	targetContext := f.allocReg(maskOf(ref, code, home))
@@ -1138,14 +1138,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.ld64(code, idx, 8)
 	f.trapIfZero(code, true, true, trapIndirectOOB)
 	if !f.immutableTableTyped || f.immutableTableType != canon {
-		got := f.allocReg(maskOf(idx, code))
-		f.ld64(got, idx, 16)
-		want := f.allocReg(maskOf(idx, code, got))
-		f.a.MovImm64(want, canon)
-		f.cmpRR(got, want, true)
-		f.release(want)
-		f.release(got)
-		f.trapIf(condNE, trapIndirectSig)
+		f.checkCallType(idx, 8+runtime.TableEntrySigKeyOffset, canon, typeIdx, maskOf(idx, code))
 	}
 	home := f.allocReg(maskOf(idx, code))
 	f.ld64(home, idx, 8+runtime.TableEntryHomeLinMemOffset)
@@ -1186,6 +1179,9 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 }
 
 func (f *fn) emitCustomInstruction(custom railcore.CustomInstruction, ft *wasm.CompType) error {
+	if pluginARM64Lowering(custom) == nil {
+		return f.emitInstructionRecipe(custom, ft)
+	}
 	start := f.a.Len()
 	err := f.emitPluginARM64(pluginARM64Lowering(custom), custom.InputWidths, custom.ResultWidth, len(ft.Results), custom.CustomInputs, custom.CustomOutput)
 	if err == nil {
@@ -2980,15 +2976,31 @@ func (f *fn) validateWrapperDescriptor(kind, home Reg) {
 	f.trapIf(condA, trapIndirectSig)
 }
 
-func (f *fn) checkCallType(entry Reg, offset int32, key uint64, avoid regMask) {
+func (f *fn) checkCallType(entry Reg, offset int32, key uint64, typeIdx uint32, avoid regMask) {
 	got := f.allocReg(avoid)
 	f.ld64(got, entry, offset)
 	want := f.allocReg(avoid.add(got))
 	f.a.MovImm64(want, key)
 	f.cmpRR(got, want, true)
+	var matches []int
+	if target, ok := f.m.TypeSubType(typeIdx); ok && !target.Final {
+		subtypes, _ := f.m.FunctionSubtypeTypeIndexes(typeIdx)
+		for _, subtype := range subtypes {
+			candidate, valid := f.m.StructuralTypeKeyChecked(subtype)
+			if !valid || candidate == key {
+				continue
+			}
+			matches = append(matches, f.a.Bcond(condE))
+			f.a.MovImm64(want, candidate)
+			f.cmpRR(got, want, true)
+		}
+	}
 	f.release(want)
 	f.release(got)
 	f.trapIf(condNE, trapIndirectSig)
+	for _, match := range matches {
+		f.patchBranch19(match, f.a.Len())
+	}
 }
 
 func (f *fn) callRef(r *wasm.Reader) error {
@@ -3014,7 +3026,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	code := f.allocReg(0)
 	f.ld64(code, ref, runtime.TableEntryCodePtrOffset)
 	f.trapIfZero(code, true, true, trapIndirectOOB)
-	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, maskOf(ref, code))
+	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, typeIdx, maskOf(ref, code))
 	home := f.allocReg(maskOf(ref, code))
 	f.ld64(home, ref, runtime.TableEntryHomeLinMemOffset)
 	targetContext := f.allocReg(maskOf(ref, code, home))
@@ -3140,14 +3152,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	} else if tableIdx == 0 && f.immutableTableTyped && f.immutableTableType == canon {
 		f.stats.peep("immutable-table-type-check-elide")
 	} else {
-		got := f.allocReg(maskOf(code))
-		f.ld64(got, idxReg, 16) // entry structural type key
-		want := f.allocReg(maskOf(code).add(got))
-		f.a.MovImm64(want, canon)
-		f.cmpRR(got, want, true)
-		f.release(want)
-		f.release(got)
-		f.trapIf(condNE, trapIndirectSig)
+		f.checkCallType(idxReg, 8+runtime.TableEntrySigKeyOffset, canon, typeIdx, maskOf(idxReg, code))
 	}
 
 	// With one private local immutable table and no function imports, every non-null

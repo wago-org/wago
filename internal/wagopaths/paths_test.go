@@ -134,3 +134,17 @@ func TestFishCompletionPathRejectsRelativeHome(t *testing.T) {
 		t.Fatalf("relative home resolved to %q, %v", path, err)
 	}
 }
+
+func TestRISCV64RuntimeBuildSupport(t *testing.T) {
+	if err := BuildNormal.ValidatePlatform("linux", "riscv64"); err != nil {
+		t.Fatal(err)
+	}
+	if err := BuildTiny.ValidatePlatform("linux", "riscv64"); err == nil {
+		t.Fatal("riscv64 TinyGo runtime accepted")
+	}
+	for _, arch := range []string{"amd64", "arm64"} {
+		if err := BuildTiny.ValidatePlatform("linux", arch); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

@@ -1,0 +1,17 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-overlay",
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/guest-type-isolation/baseline-overlay.json",
+    "./src/wago",
+    "-run",
+    "^TestGuestStorageDefinedType",
+    "-count=1"
+  ],
+  "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-guest-type-isolation-20261021",
+  "seconds": 0.5962305280045257,
+  "exit": 1
+}

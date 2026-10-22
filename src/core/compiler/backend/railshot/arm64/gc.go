@@ -846,6 +846,7 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	f.materializePendingTraps()
 	original := f.popValue()
 	gcRoot := original.st.hasGCRoot()
 	value := f.materialize(original)
@@ -853,6 +854,43 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 	f.a.MovReg64(copyReg, value)
 	f.pushReg(value, mtI64).st.setGCRoot(gcRoot)
 	f.pushReg(copyReg, mtI64).st.setGCRoot(gcRoot)
+	if !exactTarget && target >= 0 {
+		_, isStruct := f.stagedStructType(uint32(target))
+		_, isArray := f.stagedArraySubtype(uint32(target))
+		if isStruct || isArray {
+			f.emitNativeBranchCastTest(uint32(target), flags&2 != 0)
+			return f.brOnCastResult(depth, sub == 24)
+		}
+	}
+	if target == -20 || target == -15 { // i31 or none
+		// Canonicalize the prefix before the match register leaves the stack.
+		f.flush()
+		ref := f.materialize(f.popValue())
+		if target == -20 {
+			tag := f.allocReg(maskOf(ref))
+			f.a.LsrImm(tag, ref, 32, false)
+			f.cmpImm(tag, 0, true)
+			f.a.Cset32(tag, condE)
+			f.a.And32(tag, tag, ref)
+			f.a.AndImm32(tag, tag, 1)
+			if flags&2 != 0 {
+				f.cmpImm(ref, 0, true)
+				f.a.Cset32(ref, condE)
+				f.a.Orr32(tag, tag, ref)
+			}
+			f.release(ref)
+			f.pushReg(tag, mtI32)
+		} else {
+			if flags&2 != 0 {
+				f.cmpImm(ref, 0, true)
+				f.a.Cset32(ref, condE)
+			} else {
+				f.a.MovImm32(ref, 0)
+			}
+			f.pushReg(ref, mtI32)
+		}
+		return f.brOnCastResult(depth, sub == 24)
+	}
 	f.pushValue(storage{kind: stConst, typ: mtI64, cval: target})
 	nullable := int64(0)
 	if flags&2 != 0 {

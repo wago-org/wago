@@ -28,7 +28,7 @@ func TestRelease2RefFuncValidationSites(t *testing.T) {
 
 	tmp := t.TempDir()
 	jsonPath := filepath.Join(tmp, "ref_func.json")
-	out, err := exec.Command(wast2json, "--enable-all", filepath.Join(suite.CoreDir, "ref_func.wast"), "-o", jsonPath).CombinedOutput()
+	out, err := exec.Command(wast2json, filepath.Join(suite.CoreDir, "ref_func.wast"), "-o", jsonPath).CombinedOutput()
 	if err != nil {
 		t.Fatalf("wast2json: %v: %s", err, out)
 	}
