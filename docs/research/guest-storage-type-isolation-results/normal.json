@@ -1,0 +1,12 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "./src/wago"
+  ],
+  "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-guest-type-isolation-20261021",
+  "seconds": 17.877201007999247,
+  "exit": 1
+}

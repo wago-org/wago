@@ -2,10 +2,12 @@ package wago
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func FuzzCompiledCodecGeneratedValidModules(f *testing.F) {
@@ -18,8 +20,23 @@ func FuzzCompiledCodecGeneratedValidModules(f *testing.F) {
 		f.Add(seed)
 	}
 
+	if compiledArchitecture == 4 {
+		state := uint64(0x9e3779b97f4a7c15)
+		for range 32 {
+			seed := make([]byte, 24)
+			for i := range seed {
+				state ^= state << 13
+				state ^= state >> 7
+				state ^= state << 17
+				seed[i] = byte(state)
+			}
+			f.Add(seed)
+		}
+	}
+
 	f.Fuzz(func(t *testing.T, data []byte) {
 		input := generatedValidCompiled(t, data)
+		defer input.Close()
 		if err := input.validate(); err != nil {
 			t.Fatalf("generated invalid Compiled: %v", err)
 		}
@@ -32,6 +49,7 @@ func FuzzCompiledCodecGeneratedValidModules(f *testing.F) {
 		if err := decoded.UnmarshalBinary(encoded); err != nil {
 			t.Fatalf("UnmarshalBinary generated Compiled: %v", err)
 		}
+		defer decoded.Close()
 		if err := decoded.validate(); err != nil {
 			t.Fatalf("decoded generated Compiled failed validation: %v", err)
 		}
@@ -56,6 +74,7 @@ func FuzzCompiledCodecMutations(f *testing.F) {
 			return
 		}
 
+		defer c.Close()
 		encoded, err := c.MarshalBinary()
 		if err != nil {
 			t.Fatalf("MarshalBinary after successful decode: %v", err)
@@ -64,6 +83,7 @@ func FuzzCompiledCodecMutations(f *testing.F) {
 		if err := roundtrip.UnmarshalBinary(encoded); err != nil {
 			t.Fatalf("roundtrip UnmarshalBinary: %v", err)
 		}
+		defer roundtrip.Close()
 	})
 }
 
@@ -114,6 +134,9 @@ func (r *compiledFuzzBytes) valType() ValType {
 
 func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
 	t.Helper()
+	if compiledArchitecture == 4 {
+		return generatedRV64CodecCompiled(t, data)
+	}
 	r := compiledFuzzBytes{data: data}
 
 	importCount := r.n(3)
@@ -397,4 +420,85 @@ func compiledCodecMaliciousGCFieldCountSeed(t testing.TB) []byte {
 		w.u8(0)
 	}
 	return w.buf
+}
+
+// RV64 artifacts bind metadata to genuine framed native code. Generate source
+// instead of assigning arbitrary code bytes and unrelated signature keys.
+func generatedRV64CodecCompiled(t testing.TB, data []byte) *Compiled {
+	t.Helper()
+	r := compiledFuzzBytes{data: data}
+	importCount, localCount := r.n(3), 1+r.n(4)
+	var types, imports, functions, bodies, exports [][]byte
+	catalog := []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}
+	for index := 0; index < importCount+localCount; index++ {
+		params, results := make([]wasm.ValType, r.n(4)), make([]wasm.ValType, r.n(3))
+		for i := range params {
+			params[i] = catalog[r.n(len(catalog))]
+		}
+		for i := range results {
+			results[i] = catalog[r.n(len(catalog))]
+		}
+		types = append(types, wasmtest.FuncType(params, results))
+		if index < importCount {
+			entry := append(append(wasmtest.Name("env"), wasmtest.Name(fmt.Sprintf("f%d", index))...), 0)
+			imports = append(imports, append(entry, wasmtest.ULEB(uint32(index))...))
+			continue
+		}
+		functions = append(functions, wasmtest.ULEB(uint32(index)))
+		var body []byte
+		for _, typ := range results {
+			switch typ {
+			case wasm.I32:
+				body = append(body, 0x41)
+				body = append(body, wasmtest.SLEB32(int32(r.next()))...)
+			case wasm.I64:
+				body = append(body, 0x42)
+				body = append(body, wasmtest.SLEB64(int64(r.next()))...)
+			case wasm.F32:
+				body = append(body, 0x43)
+				for range 4 {
+					body = append(body, r.next())
+				}
+			case wasm.F64:
+				body = append(body, 0x44)
+				for range 8 {
+					body = append(body, r.next())
+				}
+			}
+		}
+		bodies = append(bodies, wasmtest.Code(append(body, 0x0b)))
+		exports = append(exports, wasmtest.ExportEntry(fmt.Sprintf("f%d", index), 0, uint32(index)))
+	}
+	var globals [][]byte
+	if r.n(2) != 0 {
+		imports = append(imports, wasmtest.GlobalImportEntry("env", "global", wasm.I32, false))
+		globals = append(globals, wasmtest.GlobalEntry(wasm.I32, false, []byte{0x23, 0, 0x0b}))
+	} else {
+		globals = append(globals, wasmtest.GlobalEntry(wasm.I32, r.n(2) != 0, append(append([]byte{0x41}, wasmtest.SLEB32(int32(r.next()))...), 0x0b)))
+	}
+	exports = append(exports, wasmtest.ExportEntry("global", 3, 0))
+	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(types...)), wasmtest.Section(2, wasmtest.Vec(imports...)), wasmtest.Section(3, wasmtest.Vec(functions...))}
+	table, memory := r.n(2) != 0, r.n(2) != 0
+	if table {
+		sections = append(sections, wasmtest.Section(4, []byte{1, 0x70, 1, 1, 2}))
+		exports = append(exports, wasmtest.ExportEntry("table", 1, 0))
+	}
+	if memory {
+		sections = append(sections, wasmtest.Section(5, []byte{1, 1, 1, 2}))
+		exports = append(exports, wasmtest.ExportEntry("memory", 2, 0))
+	}
+	sections = append(sections, wasmtest.Section(6, wasmtest.Vec(globals...)), wasmtest.Section(7, wasmtest.Vec(exports...)))
+	if table {
+		sections = append(sections, wasmtest.Section(9, []byte{1, 0, 0x41, 0, 0x0b, 1, byte(r.n(importCount + localCount))}))
+	}
+	sections = append(sections, wasmtest.Section(10, wasmtest.Vec(bodies...)))
+	if memory {
+		contents := make([]byte, r.n(8))
+		for i := range contents {
+			contents[i] = r.next()
+		}
+		entry := append([]byte{0, 0x41, 0, 0x0b}, wasmtest.ULEB(uint32(len(contents)))...)
+		sections = append(sections, wasmtest.Section(11, wasmtest.Vec(append(entry, contents...))))
+	}
+	return compileExplicitArtifact(t, wasmtest.Module(sections...))
 }

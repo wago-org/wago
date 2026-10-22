@@ -1,5 +1,522 @@
 # Wago roadmap
 
+Linux/RV64 is now an ordinary supported build. The detailed notes below record
+the incremental qualification work that led to full Core 1/2/3, runtime, host,
+artifact, guard-page, plugin, profiling, GC, threads, and wide-arithmetic
+support. QEMU results establish functional correctness; native RV64 performance
+qualification remains separate.
+
+The initial RV64 work combined a bounded owned/imported funcref table32
+with numeric function imports, including retained foreign targets and parked
+host callbacks, imported references through owned thunks, and bounded nullable
+funcref element expressions with immutable imported-i32 offsets. Scalar/SWAR
+initialization supports numeric/vector imported-global copies and imported-i32
+data offsets, with bounded integer constant add/sub/mul expressions. Immutable
+nullable funcref globals support local copies, exports, and explicit same-Runtime
+imports into modules with no table, an owned table, or a host-created imported
+table. Nullable funcref locals/control and body-level `ref.func` of export-declared
+local or native-imported numeric/vector functions also work without module state.
+Local mutable nullable funcref globals retain only own canonical descriptors or
+null; their profile excludes tables, reference imports/signatures, and mutable
+reference exports. Separately, an exact zero-code profile admits one same-Runtime
+mutable nullable funcref `Global` import and re-export. It preserves shared cell
+identity, mutation visibility and descriptor-owner lifetime through source and
+compiler-free artifacts. One exact executable consumer can read that cell with
+`global.get` and reduce it through `ref.is_null`, while retaining the same
+identity and lifetime guarantees. A second exact executable shape can store only
+`ref.null func` into that cell through the parked container ownership transaction,
+including descriptor-owner retirement. A third stores its sole exported function
+into that cell after authenticating the complete local descriptor and transferring
+one precise owner root. A fourth copies one imported mutable nullable funcref cell
+to a second through the same parked transaction, including null overwrite,
+canonical foreign-owner transfer, repeated-copy deduplication and aliased cells.
+One exact composition moves source to target and then clears source through
+two ordered parked transactions, preserving the owner root across the handoff
+and retiring the expected roots for null and aliased moves.
+An additional exact two-function product copies in either direction through an
+indexed parked bridge. Both one-write paths preserve canonical owners, null
+overwrite and alias deduplication without exposing arbitrary multi-write bodies.
+The next exact mixed-state product initializes one private mutable cell to its
+sole local function and copies that own descriptor into one imported mutable
+target. The private cell has no foreign ingress or export, and the parked bridge
+transfers exactly one descriptor-owner root before resuming native execution.
+Other non-null or general guest `global.set`, raw reference escape, and broader
+executable mutable-reference shapes remain unsupported.
+Parked callbacks, retirement and compiler-free artifact tests cover these bounded
+shapes.
+The exact official concrete struct-subtyping `gc/ref_cast` module now has genuine
+RV64 lowering for indexed heap types 0 through 7, retained source/artifact
+classifiers, rooted-table GC stress coverage, and compiler-free reload. Baseline
+RV64G QEMU establishes functional correctness only; native cache/performance
+qualification remains pending, and other module shapes remain closed.
+The exact official abstract `br_on_cast` and `br_on_cast_fail` products now have
+genuine RV64 lowering for nullable/non-null i31, struct, array, and indexed branch
+targets, including typed multi-value label transfer. Exact retained-metadata
+classifiers, source/artifact stress-GC execution, dirty-upper i32 table indices,
+out-of-bounds traps, and compiler-free reload are covered. This checkpoint is
+functional QEMU qualification only; native cache/performance qualification and
+broader branch-cast shapes remain pending.
+The exact official concrete struct-subtyping `br_on_cast` and
+`br_on_cast_fail` products now lower indexed heap targets 0 through 7 through
+the rooted four-slot subtype helper, including canonical-equivalent and declared
+supertype cases. Source and compiler-free artifact execution, retained metadata,
+stress collection, and the eight rooted table objects are covered under RV64G
+QEMU. The two remaining official nullability-only branch-cast products now also
+have genuine framed RV64 lowering, exact source/artifact admission, collector
+lifecycle coverage without table state, and compiler-free reload. Native
+cache/performance qualification and broader non-official branch-cast shapes
+remain pending.
+The first six official `gc/type-subtyping` modules now have exact source and
+compiler-free artifact admission for their declaration-only array, struct,
+function, self-recursive, and mutually recursive subtype graphs. Retained
+type/descriptor metadata is validated exactly, while instantiation allocates
+neither executable memory nor a collector. The two immediately following
+official modules now form a separate exact RV64 recursive-function checkpoint:
+three private reference-typed functions receive framed direct-call code across
+self- and mutually recursive declared function groups. Exact source and
+compiler-free artifact classifiers bind the flattened type graph, descriptor
+graph, function/type keys, entries, features, ABI flags, and code digest before
+executable publication. Instantiation is collector-free, and close tests cover
+the mapped-code lease. Because neither module exports a function, this is not
+evidence for a public recursive-call result. Functional qualification is under
+baseline QEMU RV64G; native cache and performance qualification remain open.
+The next exact collector-free checkpoint covers official modules `.8`, `.9`,
+and `.11` through `.14` (`.10` is invalid): one or two genuinely framed local
+RV64 functions back one, two, four, or eight immutable indexed `ref.func`
+globals. Exact source and decoded shapes plus code and serialized retained-
+metadata digests bind recursive type graphs, function/type keys, global target
+indices, value types, features, and ABI flags. Source/artifact instantiation,
+actual compiler-free reload and source rejection, W^X publication, executable
+leases, and final unmapping are qualified under baseline QEMU RV64G. The six
+modules have no exports, and native cache/performance qualification remains
+open. Official `.17` is now a separate exact callable checkpoint. Its three
+private function-subtype descriptors populate an immutable table; genuine RV64
+`call_indirect` admits only the pinned transitive subtype keys and genuine
+`ref.cast` traps on non-matching full-width canonical descriptors. Source,
+artifact, actual compiler-free, W^X lease, final-unmap, success, and six failure
+paths are covered under baseline QEMU RV64G without a collector. Cross-instance
+subtype boundaries remain closed for later checkpoints. Official `.18` now has
+its own exact collector-free checkpoint: structurally identical open and final
+function types are separated by pinned private descriptor keys, and both
+wrong-signature indirect calls plus both cross-finality casts trap from source
+and compiler-free artifacts. Exact retained metadata, W^X publication, live
+leases, final unmapping, and framed trap re-entry are covered under baseline
+QEMU RV64G. Official `.19` now forms the next exact checkpoint:
+its indexed typed table stores two nominal function subtypes, and genuine RV64
+`call_indirect` checks pinned subtype-closure key sets even though all four
+declared function types share the same structural carrier. Source/artifact and
+actual compiler-free execution cover the five successful calls, both wrong-
+signature traps, post-trap re-entry, W^X leases/final unmapping, and hostile
+retained metadata under baseline QEMU RV64G without a collector. Official `.20`
+through `.28` now form the first exact function `ref.test` checkpoints: one
+private canonical descriptor crosses equivalent recursive type groups and
+produces a normalized true result through table-free genuine RV64 lowering.
+The second checkpoint retains mutually recursive indexed function parameters
+and results; the third proves the reverse type direction returns normalized
+false despite a structurally identical carrier; the fourth projects the matching
+supertype and returns normalized true. The third and fourth intentionally reuse
+the same type-4 comparison image while distinct retained graphs select the actual
+type-6 and type-4 descriptors. Source-specific compiler-free
+artifacts pair each full image with
+its own retained graph; W^X lifetime, hostile metadata, and private-runtime
+permission are covered without a collector. The fifth checkpoint adds two
+multi-value tests and returns `[1, 1]` for the root and intermediate projections
+of one deeper nominal subtype. The sixth keeps two reference-signature source
+functions non-callable while testing their exact canonical arena identities
+across equivalent recursive groups, returning `[1, 1, 1, 1]`. The seventh
+extends both recursive signature pairs across eight exact projections and
+returns eight normalized true results. The eighth checkpoint admits the later
+distinct-recursive-group empty signature and returns normalized false. The ninth
+checkpoint repeats that nominal false relation one recursive layer deeper,
+comparing actual type 4 with target type 2. Official `.29` and `.30` now form
+the first exact cross-instance subtype-link checkpoint: three exported provider
+functions satisfy six ordered consumer imports through their pinned transitive
+function-subtype closure. The consumer copies canonical producer identities,
+deduplicates the retained producer lifetime across imports, and releases it only
+after consumer close. Source and compiler-free artifacts, exact hostile state,
+wrong-subtype linking, W^X publication, and final unmapping are covered under
+baseline QEMU RV64G without a collector. Expected unlinkables `.31` through
+`.33` now compile as three separate exact zero-code consumer artifacts and
+reject their narrowed provider bindings before retention; rollback leaves the
+provider live and unretained. Official `.34` through `.36` add the exact
+function-finality link cluster: the two exported `() -> ()` provider functions
+remain identity-only across open/final type declarations, while both inverse
+consumer imports are authenticated zero-code artifacts that reject before
+retaining the provider. Source and compiler-free artifact paths pin the scalar
+framed image and metadata without claiming a closed reference-function ABI for
+these scalar signatures. Official `.37` and `.38` add the first positive
+recursive-struct link pair: the empty scalar `g` body remains collector-free,
+the consumer proves the structural function subtype across independently
+decoded type graphs, and its descriptor copies the provider's canonical
+identity while retaining the provider through logical close. Official `.39`
+and `.40` extend that exact link contract to a projected recursive struct:
+the independently decoded consumer accepts the provider's narrower field and
+function result types, while artifact authentication keeps the shared empty
+machine image distinct through its larger type metadata. Official `.41` and
+`.42` add the corresponding negative recursive-struct pair: both exact products
+compile and authenticate, but their structurally different companion fields
+make the imported function types incompatible. The consumer therefore rejects
+the provider before attachment, leaving its resource-retention count unchanged.
+Official `.43` and `.44` then prove the positive independent-recursion case:
+separately declared but structurally equivalent self-recursive companions let
+the consumer accept `g`, copy its canonical descriptor identity, and retain the
+provider through logical close. Official `.45` and `.46` extend the projected
+recursive-struct link to two imports of the same provider export through distinct
+consumer type projections. Both imported descriptor slots acquire the provider's
+canonical identity, while resource ownership is deduplicated to one retained
+provider and released only after consumer close. Official `.47` and `.48` add the
+duplicate-recursive function-link pair: two provider exports each satisfy two
+consumer imports declared through independently decoded equivalent recursive
+groups. All four imported descriptor slots copy the matching provider canonical
+identity, while resource ownership is deduplicated to one retained provider and
+released only after consumer close. Exact source and compiler-free artifacts,
+hostile retained state, wrong-binding rejection, W^X publication, and final
+unmapping are covered under baseline QEMU RV64G without a collector. Official
+`.49` and `.50` extend that function-link graph to four recursive groups and
+eight ordered imports. Two provider exports satisfy both the independently
+equivalent base groups and their two declared extensions; all eight consumer
+descriptor slots copy the matching provider canonical identity while retaining
+one producer resource. Exact source and compiler-free artifacts, hostile state,
+wrong-binding rejection, W^X publication, and final unmapping are covered under
+baseline QEMU RV64G without a collector. Official `.51` and `.52` add the first
+cross-group recursive-function mismatch: the exact scalar provider remains
+callable, while the independently decoded consumer's superficially equal root
+belongs to a different recursive group and is rejected before import attachment.
+Exact source and compiler-free artifacts authenticate the zero-code consumer and
+shared 576-byte provider image separately; rejection leaves the provider live and
+unretained under baseline QEMU RV64G without a collector. Official `.53` and `.54`
+extend that negative proof across three provider and two consumer recursive groups:
+the requested consumer type is transitively related inside its own graph but remains
+incompatible with the provider's separately decoded final group. The exact scalar
+provider remains callable and the failed link again leaves it live and unretained,
+with source and compiler-free artifacts covered under baseline QEMU RV64G. The
+next executable product, official `.76`, now has exact source and artifact
+admission for its non-flat declared subtype graph. Six genuinely framed scalar
+RV64 functions export `f1` through `f6`, each returning `f32` zero without a
+collector or steady-state allocation. The retained type graph, canonical
+function-type identities, descriptors, exports, entries, feature set, code, and
+serialized metadata are authenticated before publication; actual compiler-free
+reload, W^X leases, and final unmapping are covered. Official `.55` through `.75`
+are invalid or unlinkable assertions rather than additional executable product
+images. Products after `.76` and native cache/performance qualification remain
+open.
+Table-free declarative segments, empty/state-only modules, bounded opaque custom
+metadata and empty supported sections are admitted. State-only modules retain
+resource ownership without allocating executable memory. The public pinned SIMD
+suite includes all 472 valid modules and checks 669 binary invalid cases; its 510
+malformed WAT text cases remain outside the binary-only API harness. Table-free
+passive segments and immutable reference-global element initializers preserve
+canonical owners. Bounded multi-memory lowering covers scalar, FP, SWAR, bulk
+operations and aliased imports. Memory64 adds per-memory address typing,
+carry-checked scalar/SWAR accesses and growth, mixed-width bulk operations and
+I64 initialization while retaining finite physical reservations. Fallback
+control nesting supports 128 constructs. Pinned integer/conversion, float,
+memory, control and complete factorial/call corpora extend public source/artifact
+qualification, including exact stack-exhaustion assertions, and
+diagnostics expose finalized code/frame statistics. Profiling builds now retain
+bounded finalized regions and optional sparse source maps, including deferred
+scalar origins and cold traps; wrapper/helper bytes remain unattributed.
+Unwind maps and detailed compiler-site attribution remain pending.
+A private qualification profile now exercises proper local, native-import,
+indirect and typed-reference tail calls with numeric/vector signatures, plus
+synchronous scalar Go and owned-host targets. Certified owner snapshots include
+import-only modules without claiming a guest frame for their wrappers. Tests
+cover ordinary `call_ref`, mixed call paths, nested host reentry, table replacement
+while parked, cancellation, exact quotas and compiler-free artifacts. Deep
+prepared-session tests execute 20,000 dynamic tails ending at a host callback
+on the minimum native stack. Internal `ref.as_non_null`, `br_on_null` and
+`br_on_non_null` preserve the full reference carrier and share a retained-carrier
+artifact requirement. Source and compiler-free tests cover null traps, unreachable
+uses, deep typed label transfers, numeric loop parameters, combined `call_ref`,
+and retained foreign immutable globals. Existing non-null artifacts retain the
+same format and load without recompilation. Explicit abstract function-reference
+block results, typed selects and initialized non-null locals are qualified through the same
+retained-carrier contract. Nullable spellings retain ordinary ReferenceTypes
+admission; non-null type-only bodies carry the typed feature and artifact witness
+even without typed opcodes. Frontend initialization checks reject invalid locals
+before image staging. Non-calling reference control does not reserve declared-call
+transport. Selects preserve both full-width reference arms while zero-normalizing
+i32 conditions, including raw incoming upper bits. Standalone indexed `ref.null`
+constants within the admitted numeric function-type directory carry the typed
+feature and retained-carrier witness even in unreachable bodies. Abstract
+`ref.null func` retains baseline admission; neither form reserves declared-call
+transport. Public TailCall and
+TypedFunctionReferences remain
+gated: these bounded cases do not establish complete feature support.
+Internal indexed function-reference locals, inline block results and typed
+selects within the existing numeric/vector type directory are also qualified
+through source and compiler-free artifacts. Both nullable and non-null indexed
+annotations carry the typed witness, including unused locals and unreachable
+bodies. Matching signatures, nullability and initialization are proved by the
+frontend before carrier erasure. Real descriptor selection, large-frame local
+reloads and foreign imported-function owners through joined teardown are
+covered. Scalar untyped selects now preserve unknown carriers in unreachable
+code, matching the SWAR path; typed selects and reference branches specialize
+them without accepting concrete incompatible operands or borrowing below a
+nested control floor. Source and compiler-free artifact fixtures cover admission
+and exact unreachable traps followed by instance reuse.
+Indexed control signatures now preserve reference parameters/results
+through exact joins, loop backedges and overlapping scalar/SWAR transfers.
+Unreachable branch tables check each target against the original polymorphic
+payload; known incompatible values still reject. Signature budgets precede
+derived carrier allocation. Source and retained-artifact admission distinguish
+internal controls from numeric/vector callable signatures, including unused
+declarations. Scalar and SWAR decoded budgets charge reference encodings before
+validation. Typed declarations without a defined code owner remain closed pending
+a separate empty-code ownership contract; reference-valued callable signatures
+also remain closed. A separate private same-image direct-call mode
+preserves reference entry/results and mixed scalar/SWAR transfers, including
+explicit root exits, recursive stack traps/reuse and maximum compact arenas.
+Separately enabled local proper tails preserve exact reference result types,
+original return addresses, constant entry SP, and cooperative cancellation across
+mixed reference/vector transfers. Private decoded scalar/SWAR module adapters
+now require a bounded closed-module proof: numeric exports and descriptor targets,
+numeric function imports only, and no indirect calls or reference tails. Ordinary
+numeric reference calls now compose through the bounded retained bridge. They retain actual function
+indices across descriptor-directory holes. Legacy production staging routes and
+legacy isolated instantiation reject that mode before allocation. A private
+sparse owner constructor now retains full physical function spans with explicit
+noncallable ordinals, empty descriptor/target rows and bounded frozen metadata.
+Callable targets after internal functions preserve their indices; entry binding
+also works when ordinal zero is internal. A separate backend staging permission
+now selects only actual reference-valued functions, rechecks closed source and
+all emitted modes, and records a distinct image witness. Scalar/SWAR direct calls
+and local proper tails retain framed ABI and bounded metadata. Bare nullable
+signatures keep baseline ReferenceTypes admission; ordinary modules and unused
+control declarations keep their existing witnesses. Private source and retained
+artifact integration now preserves that witness, checks the closed metadata
+allowlist, and requires destination permission before RW staging becomes RX.
+Sparse production owners retain internal frame spans without callable identities;
+ordinary entry checks every internal descriptor and target row is empty. Tiny
+numeric foreign exports can invoke wider internal reference/vector functions
+after logical producer closure. Closed internal reference functions also compose
+with owned numeric globals, unshared memory32/64, multiple memories and bulk data.
+Source and retained admission bound state and types together; exact export maps
+and canonical initializer forms preserve confinement. Scalar/SWAR tests cover
+stateful calls and local tails, high-bit initializer bounds, failed stores without
+partial writes, exact generation quotas and all-memory retirement after foreign
+callers close. Owned numeric resource exports now have exact shared namespace
+validation, aggregate name/count budgets and alias sharing. Borrowers can grow an
+exported memory even when the producer contains no growth instructions. Independent
+memory-only/global-only borrowers retain all storage after function callers close;
+late imports and host state access through a closed producer reject. Resource
+imports now compose in this closed mode with separate function/global/memory
+namespaces, exact names and zero imported initializer payloads. Non-primary
+memory aliases refresh on host resume before guest growth; numeric resource-only
+providers remain physical attachment roots without callable snapshots. Source,
+retained metadata and compiler-free paths cover resource aliases, full-u64 active
+initializer rejection, failed-link refunds and joined callback interruption.
+General reference-valued imports/exports and mutable reference ownership remain
+separate work. Ordinary numeric function imports now
+compose with private references across native calls and scalar Go/owned callbacks.
+The imported prefix preserves physical ordinals, exact numeric bindings and
+paired internal descriptor holes; sparse generations retain native reexports and
+host identities through producer retirement. Exact limits, interrupted callback
+cleanup and compiler-free artifacts qualify this bounded path. Numeric direct
+imported proper tails now compose with private reference frames, preserving
+ordinary-caller continuation, scalar/SWAR payloads and static capability lifetime.
+Exact finalized plans, numeric target results and real frame extents are checked
+before publication; internal source rows remain noncallable. Baseline RV64G
+source/artifact tests cover foreign homes, native reexports, parked alias growth,
+joined interruption, static quota rejection/retry, warm native allocation and
+deep local tails followed by an imported tail on the minimum stack. Native vector
+targets are supported; V128 Go host signatures remain unsupported. Defined numeric
+void starts now compose with private reference functions and direct imported tails,
+with canonical source/retained selectors, real framed-entry validation and bounded
+metadata accounting. Construction, callback scope, nonnil operation reservations,
+physical owners and static capabilities survive nested reentry and parked growth.
+Start-once, nonzero/final ordinals, trap/panic/initializer rollback, cancellation,
+Close joins and exact quota rejection/retry have focused source/artifact coverage.
+Canonical numeric imported void starts now compose with the selected mode,
+preserving separate import namespaces and the defined-start frame proof. Shared
+and owned Go callbacks use scoped construction authority without a fabricated
+native outer frame; native callbacks identify the original producer, including
+reexports, and retain full-width transport. Start-once, nested private guest
+entry, cancellation/Close joins, genuine native traps, code retirement, linking
+before publication and exact quota retries have source/artifact coverage.
+Owned mutable nullable funcref cells now compose with private functions, confined
+to null or own numeric descriptor slots, including imported numeric targets.
+Complete bounded source proofs preserve scalar256/SWAR128 limits and reject
+private initializer targets, reference imports/exports and dead escapes. Retained
+exact-type/pool/literal checks, full-width distinct saved/lower snapshots after
+callback clearing, start and foreign reentry, parked retirement/Close joins,
+aggregate and physical quotas, compiler-free execution and zero-allocation warm
+local calls qualify the bounded composition. No mutable foreign-owner edge or
+cycle collector is introduced.
+Own immutable plain nullable funcref cells also compose with private scalar/SWAR
+functions, with exact null/numeric literals and preserved mutability. Complete
+source and retained bounds, table-free null headers/full numeric directories,
+dead/nested immutable-write rejection, real cell-produced indirect tails,
+native/Go imports, parked callbacks, retirement, quotas and compiler-free
+artifacts qualify this slice. Immutable cells remain instance-owned storage;
+general reference imports/exports still require the separate ownership work.
+Ordinary numeric `call_ref` now composes with the selected scalar/SWAR private
+frames and own mutable cells. Numeric own/native/Go targets stay canonical; private
+reference-bearing rows remain noncallable. Dead target confinement, frontend-backed
+operand-floor checks, exact staging witnesses, ordered transport at existing
+scalar/import/vector bounds, private trap attribution and reuse, retired relays,
+foreign dynamic roots, quotas and zero-allocation own calls qualify this slice.
+One bounded private owned nullable funcref table32 now composes with these frames
+and cells through ordinary numeric `call_indirect` and table.get/set/size. Active
+legacy numeric elements and literal null/own numeric table initializers stay
+confined even when unused; exact empty export metadata blocks host ingress.
+Source and retained aggregate bounds, sparse SWAR keys, table-only pooled types,
+strict frontend-backed dead operands, dirty-upper indices, private trap/reuse,
+maximum ordered transport, no-max reserved capacities, starts, retired relays,
+parked cleanup and compiler-free artifacts qualify the new slice. Bulk table
+init/drop/copy/grow/fill now compose through the same confined private profile,
+with bounded passive numeric elements, original segment indices and
+per-instance drops. Active/passive payloads share the 1024-value and aggregate
+byte budgets. Strict scalar/SWAR operand floors, complete range guards, overlap,
+growth-before-length publication, exact private trap/reuse and interruption
+checks qualify this slice. No-max growth requires minimum<=512 with at most 1024
+reserved entries. Proper numeric `return_call_ref` now composes with this
+private scalar/SWAR profile using canonical own/native/scalar Go targets and
+empty private descriptor rows. Actual instruction witnesses select one dynamic
+factory for mixed direct/reference sites; complete finalized and retained proofs
+bound declared results, actual frames, argument spans and full-width target homes.
+Maximum scalar256/vector128 transport, repeated private-frame cycles on the minimum
+stack, authentic null/signature traps and reuse, active target parking with nested
+reentry, cancellation/Close joins and exact dynamic quota retries qualify this
+slice. Frozen actual keys and complete owner tuples authenticate targets before a
+genuine declared-signature mismatch traps. Old non-reference-tail fixture bytes
+are preserved, and cold root completion retires generations; only warm generation
+activation claims zero allocation. Proper numeric `return_call_indirect` now
+composes with the confined private owned table32 and the same factories. Separate
+actual reference/indirect witnesses require an emitted plan for each used kind;
+exact table/type/source/frame/home proofs preserve old no-indirect images. An
+untyped-only private indirect module needs no typed-reference permission. Canonical
+wrong-signature/null/bounds traps, distinct type/function/table ordinals, far
+full-width maximum homes, active target parking and exact dynamic quotas qualify
+source, retained artifacts and compiler-free execution. Broader table ingress and
+reference external signatures remain gated. Confined nullable funcref literal
+expression elements now compose with these private frames. Every original null
+or numeric function literal is proved before discarded declarative payloads are
+removed. Exact retained element type-pool bindings include empty/dropped slots;
+final declarations without retained slots do not intern unused types. Tableless
+declarative drops are bounded and idempotent; tableless active state stays closed.
+Complete null replacement, expression-installed own/native/Go targets, original
+ordinals, exact aggregate bounds, compiler-free artifacts and retained codec
+rejection/repair qualify the slice. Closed typed-reference functions may also
+retain bounded, nonempty legacy passive declarations of numeric targets; the two
+executable modules from the pinned Core 3 `br_on_null.wast` now cover null/taken
+paths, `call_ref`, traps, block arguments and dirty-upper i32 ingress. This is
+complete file-level qualification for that pinned test: the same file's exact
+declaration-only module is now admitted separately: its three unexported and
+unreferenced functions cover nullable indexed funcref, abstract funcref and
+abstract externref `br_on_null` validation without publishing a callable externref
+ABI or descriptor. Imports, exports, start, state/resources, altered signatures
+or bodies, tableless active and typed-expression passive shapes remain closed.
+The file's remaining invalid module is pinned to its exact validation failure;
+the broader official typed-reference corpus remains unqualified on RV64. No new
+owner graph or ABI is needed. The first executable module from pinned Core 3
+`ref_as_non_null.wast` also qualifies the exact table-free numeric-export shape
+through source and compiler-free artifacts, including unreachable-before-null
+trap order, full-width internal carriers and normalized i32 results. This does
+not qualify typed-expression or active elements, tables, imports, resource or
+reference-valued public/imported signatures, or general ownership beyond the
+pinned file. The exact 59-byte no-debug `ref_as_non_null.2.wasm`
+declaration module is qualified separately through exact wire, decoded and
+retained classifiers. Its three private bodies only validate and drop non-null
+indexed, func and extern parameters; it adds no callable externref boundary,
+ownership protocol, resources or name/custom metadata. Together with the
+file's exact invalid module and executable assertions, this completes
+file-level qualification for the pinned `ref_as_non_null.wast`.
+The exact 59-byte no-debug `ref_is_null.1.wasm` declaration module is also
+qualified through separate wire, decoded, native-code and retained-artifact
+attestation. Its three private functions observe non-null indexed, func and
+extern parameters and immediately drop the numeric result; they add no
+callable reference boundary or resource ownership. The file's exact `.2` and
+`.3` invalid modules are pinned to their typed validation failures. The exact
+272-byte table-backed `.0` module is now admitted through its existing genuine
+RV64 lowering and authenticated retained image. Source, artifact and actual
+compiler-free execution cover nullable funcref/externref/indexed carriers,
+three private tables, active legacy and typed-expression elements, table
+bounds traps, externref token authentication and release, W^X publication,
+live leases and final cleanup. Together these checkpoints complete pinned
+`ref_is_null.wast` file-level qualification under baseline QEMU RV64G; native
+cache and performance qualification remain open.
+The pinned Core 3 `ref.wast` is now file-level qualified. Its exact 47-byte
+no-debug `.0` module retains one private function with the complete nullable
+and non-null abstract/indexed function/extern reference parameter matrix, but
+no export, import, start, element, table, global, descriptor arena or callable
+surface. Exact wire, decoded, native-code and retained-artifact witnesses keep
+nearby sources and forged metadata closed, including the canonical 60-byte
+debug-name form. All twelve remaining official modules are pinned to their
+`unknown type` validation failures before publication. Source, artifact and
+actual compiler-free lifecycle tests cover W^X publication and final cleanup;
+this declaration-only checkpoint adds no general callable externref ABI.
+The first and third executable modules from pinned Core 3
+`br_on_non_null.wast` now qualify separately through source and compiler-free
+artifacts. Exact WABT 1.0.41 bytes from revision
+`9d36019973201a19f9c9ebb0f10828b2fe2374aa` cover null fallthrough and
+non-null branching, internal `call_ref`, the nullable join followed by
+`ref.as_non_null`, unreachable-before-branch trap order, multi-value block
+arguments, dirty-upper i32 normalization, full-width private descriptors,
+owner-scope reuse and cleanup. This does not qualify active or typed-expression
+elements, imports, resources, reference-valued public signatures or general
+ownership beyond the pinned file. The same
+pinned file's exact 75-byte `br_on_non_null.1.wasm` declaration module now
+qualifies separately. Its three private, unreachable functions cover non-null
+indexed-function, abstract-function and abstract-extern block annotations; an
+exact whole-module witness confines abstract extern to the typed `0x64` block
+form and keeps selects, locals, results and callable signatures closed. The
+canonical 106-byte debug-name form, altered bodies or metadata, and all
+imports, exports, starts, state and resources remain rejected. This validates
+decoding, lowering and source/artifact confinement only; it does not add a
+callable externref or ownership contract. With the exact invalid module pinned
+to its validation failure, these three valid modules and the invalid module
+complete file-level qualification for the pinned `br_on_non_null.wast`; they
+do not imply broader typed-reference corpus parity.
+The eight modules from the pinned Core 3 `call_ref.wast` are now qualified as a
+bounded file-level checkpoint. The recursive executable `.0` module lowers its
+five private immutable non-null indexed-function globals to full-width retained
+descriptor cells, with exact `ref.func` target/type binding. Its factorial,
+accumulator, Fibonacci and mutually recursive parity paths execute through the
+genuine RV64 `call_ref` bridge; dirty-upper i32 dispatch is normalized and a
+null callee reports `TrapNullReference` before descriptor or argument access.
+The unreachable-typing modules `.1` through `.3` preserve unreachable-first
+trap order and full-width private descriptors after declarative elements are
+consumed. Exact WABT 1.0.41 source identities, retained artifacts, actual
+compiler-free reload, hostile retained-state rejection, W^X publication,
+repeated call/trap reuse, leases and final unmapping are covered under baseline
+QEMU RV64G. The four type-invalid modules `.4` through `.7` remain pinned to
+their exact validation failures before code publication. This does not admit
+mutable, imported, exported, nullable, exact, non-function, mismatched or
+global-copy typed cells, and does not imply broader typed-reference corpus or
+native cache/performance qualification.
+Mixed table/call_ref and private mutable-cell fixtures retain
+foreign owners through retirement without extra control-only call transport.
+Conservative resource-root accounting and an independently tested bounded receipt
+primitive prepare later reference ownership work. Native function, memory, global and table
+imports now record their actual producer acquisitions in one process graph and transfer
+receipt ownership from construction to instance teardown. Cleanup retires graph
+members only after physical callbacks finish. This noncollecting prerequisite
+keeps the physical-root shadow entirely external; its prototype metadata ceiling
+and exact anonymous fallback do not qualify complete registration or collection.
+Memory rows also preserve exact per-handle importer counters and protect consumer
+resources through concurrent transfer, counter consumption and producer callbacks.
+Global rows also keep counted cell owners separate from frozen descriptor owners,
+preserve aliases and host-only counts, and hold consumer resources through
+concurrent transfers and producer callbacks. Table rows preserve the acquired store,
+actual storage owner, host topology and unconsumed counter obligations; acquisition
+precedes native construction and adoption follows construction-lease release.
+Frozen immutable-global descriptors now have separate actual-owner receipts,
+with guarded registration, alias sharing, builder rollback and terminal cleanup.
+Mutable global and table containers now use exact acquisition receipts; scalable
+complete registration and cycle collection remain. One exact executable
+mutable-funcref import can now store its own sole exported function through an
+authenticated full-width bridge, retain that writer after logical close, and
+retire it on overwrite without manufacturing a token. Remaining work includes
+general executable and mixed-state mutable reference imports/exports, reference
+signatures/equality, broader WebAssembly parity, and native cache/runtime/performance
+qualification. The
+experimental build tag and unsupported-feature admission remain in place.
+- [x] Wide Arithmetic Phase 4: automatic baseline AMD64, ARM64, and experimental
+  Linux/RV64 lowering for i64 low/high pairs, including validation and native
+  artifact reload. RV64G QEMU establishes functional correctness; native RV64
+  cache and performance qualification remain pending.
+
 AMD64 uses SSE2 as its architectural baseline. Newer CPU extensions are optional
 compile-time optimization tiers and are recorded in native artifact requirements
 when emitted. Scalar, core SIMD, and supported relaxed SIMD have baseline

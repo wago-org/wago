@@ -1,0 +1,16 @@
+{
+  "BenchmarkGCVectorArrayAccess/read": {
+    "baseline_ns": 688549.0,
+    "fixed_ns": 31149.0,
+    "speedup": 22.10501139683457,
+    "v8_ns": 5693.572677066728,
+    "v8_ratio": 5.470905838343958
+  },
+  "BenchmarkGCVectorArrayAccess/write": {
+    "baseline_ns": 807223.0,
+    "fixed_ns": 30141.0,
+    "speedup": 26.781560001327097,
+    "v8_ns": 4736.758970229502,
+    "v8_ratio": 6.363211679005831
+  }
+}

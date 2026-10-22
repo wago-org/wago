@@ -62,6 +62,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	state.frameRoots.offsets = offsets
 	state.frameRoots.frameBytes = frameBytes
 	state.frameRoots.frameLayout = gcNativeFrameLayoutAMD64 | gcNativeFrameSyncGlobalRoots
+	state.frameRoots.allowExternalReturn = true
 	state.frameRoots.codeBase = in.base
 	state.frameRoots.codeBytes = uintptr(len(in.c.code))
 	state.frameRoots.adapterReturnOffsets = plan.adapterReturnOffsets

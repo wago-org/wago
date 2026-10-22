@@ -448,3 +448,33 @@ func TestSourceLedgerCanonicalConstantsWithObservedMaterializations(t *testing.T
 		}
 	}
 }
+
+func TestSourceLedgerWideArithmeticPairs(t *testing.T) {
+	for _, kind := range []InstrKind{InstrI64Add128, InstrI64Sub128, InstrI64MulWideS, InstrI64MulWideU} {
+		n := 2
+		if kind == InstrI64Add128 || kind == InstrI64Sub128 {
+			n = 4
+		}
+		params := make([]ValType, n)
+		instrs := make([]Instruction, 0, n+1)
+		for i := range params {
+			params[i] = I64
+			instrs = append(instrs, Instruction{Kind: InstrLocalGet, Index: uint32(i)})
+		}
+		instrs = append(instrs, Instruction{Kind: kind})
+		m := sourceModule(t, params, []ValType{I64, I64}, instrs...)
+		l := sourceComplete(t, m, sourceAnalysis(t, m, ValidationFeatures{}), ValidationFeatures{})
+		for i := 0; i < n; i++ {
+			if l.Input(n, i) != l.EntryLocal(i) {
+				t.Fatalf("%s operand %d order", kind, i)
+			}
+		}
+		low, high := l.Output(n, 0), l.Output(n, 1)
+		if low == high || l.Value(low).Kind != SourceResult || l.Value(high).Kind != SourceResult {
+			t.Fatalf("%s result identities", kind)
+		}
+		if l.Input(n+1, 0) != low || l.Input(n+1, 1) != high {
+			t.Fatalf("%s result order", kind)
+		}
+	}
+}

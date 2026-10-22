@@ -336,6 +336,13 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 		defer importer.Close()
 
 		got, err := importer.Invoke("get")
+		if compiledArchitecture == 4 {
+			if err != nil || len(got) != 1 {
+				t.Fatal("owned imported function egress", got, err)
+			}
+			requireOwnedImportedFuncrefCall(t, rt, importer, got[0])
+			return
+		}
 		if err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
 			t.Fatalf("host imported get = %v, %v; want fail-closed result", got, err)
 		}
@@ -383,6 +390,27 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 	})
 }
 
+func requireOwnedImportedFuncrefCall(t *testing.T, rt *Runtime, owner *Instance, token uint64) {
+	t.Helper()
+	if descriptor, actualOwner, ok := rt.refStore.resolveFuncrefTokenOwner(token); !ok || descriptor == 0 || actualOwner != owner {
+		t.Fatal("imported function token has no retained wrapper owner")
+	}
+	module, err := rt.Compile(funcrefCallableConsumerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	consumer, err := rt.Instantiate(context.Background(), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	got, err := consumer.Invoke("call", token)
+	if err != nil || len(got) != 1 || got[0] != 42 {
+		t.Fatal("imported function token call", got, err)
+	}
+}
+
 func TestFuncrefReferenceStoreStructFootprint(t *testing.T) {
 	if !requireStandardGoTestRuntime(t) {
 		return
@@ -394,8 +422,9 @@ func TestFuncrefReferenceStoreStructFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(Table{}); got != 64 {
 		t.Fatalf("Table size = %d, want 64 bytes", got)
 	}
-	if got := unsafe.Sizeof(funcrefTokenEntry{}); got != 24 {
-		t.Fatalf("funcrefTokenEntry size = %d, want 24 bytes", got)
+	// Claims and publication state use one additional eight-byte allocation unit.
+	if got := unsafe.Sizeof(funcrefTokenEntry{}); got != 32 {
+		t.Fatalf("funcrefTokenEntry size = %d, want 32 bytes with result claims", got)
 	}
 	if got := unsafe.Sizeof(externrefSlot{}); got != 24 {
 		t.Fatalf("externrefSlot size = %d, want 24 bytes", got)

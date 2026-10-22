@@ -4,9 +4,6 @@ package shared
 
 const scalarGraphChecks = false
 
-// ScalarState contains the sole semantic state for an admitted function.
-// A defined type preserves its public identity and exact ordinary fields.
-type ScalarState scalarState
 type scalarGraphSnapshot struct{}
 
 // Hooks are package functions so ordinary ScalarState method metadata stays
