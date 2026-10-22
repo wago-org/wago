@@ -804,6 +804,7 @@ func (c *Collector) deferThroughputFree(h uint32) { c.releaseHandle(h, true, tru
 
 func (c *Collector) releaseHandle(h uint32, lazyThroughput, poisonTiny bool) {
 	e := &c.handles[h]
+	c.notifyObjectReclaimed(Ref(h << 1))
 	// A live handle is the allocator ownership proof. Reject internal metadata
 	// corruption before clearing the handle or its remembered/card state; losing
 	// either would make the allocation unreachable and unrecoverable. These errors

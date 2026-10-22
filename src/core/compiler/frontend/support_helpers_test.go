@@ -708,3 +708,68 @@ func TestValueAndGlobalTypeSupportHelpers(t *testing.T) {
 		t.Fatal("reference type accepted without reference-types")
 	}
 }
+
+func TestExplicitReferenceByteSupportNullability(t *testing.T) {
+	for _, heap := range []byte{0x70, 0x6f} {
+		for _, nullable := range []bool{false, true} {
+			for _, refs := range []bool{false, true} {
+				for _, typed := range []bool{false, true} {
+					form := byte(0x64)
+					if nullable {
+						form = 0x63
+					}
+					pass := supportPass{m: &wasm.Module{}, feat: Features{ReferenceTypes: refs, TypedFunctionReferences: typed}}
+					typ := wasm.RefVal(wasm.Ref(nullable, wasm.AbsHeap(wasm.AbsHeapType(heap)), false))
+					want := refs && (nullable || typed)
+					if pass.supportedValType(typ) != want {
+						t.Fatal("decoded reference support", heap, nullable, refs, typed)
+					}
+					for _, body := range [][]byte{
+						{2, form, heap, 0, 0x0b, 0x1a, 0x0b},
+						{3, form, heap, 0, 0x0b, 0x1a, 0x0b},
+						{0x41, 1, 4, form, heap, 0, 5, 0, 0x0b, 0x1a, 0x0b},
+						{0, 0x1c, 1, form, heap, 0x1a, 0x0b},
+					} {
+						if err := pass.exprBytes(body, "test"); (err == nil) != want {
+							t.Fatal("byte/decoded reference support", heap, nullable, refs, typed, body, err)
+						}
+					}
+				}
+			}
+		}
+	}
+	for _, tc := range []struct {
+		heap byte
+		feat Features
+	}{
+		{0x6e, Features{ReferenceTypes: true, GCI31Products: true}},
+		{0x69, Features{ReferenceTypes: true, ExceptionHandling: true, ExceptionReferences: true}},
+	} {
+		pass := supportPass{m: &wasm.Module{}, feat: tc.feat}
+		for _, body := range [][]byte{{2, 0x64, tc.heap, 0, 0x0b, 0x1a, 0x0b}, {0, 0x1c, 1, 0x64, tc.heap, 0x1a, 0x0b}} {
+			if err := pass.exprBytes(body, "test"); err == nil {
+				t.Fatal("non-null heap bypassed typed permission", tc.heap)
+			}
+		}
+	}
+}
+
+func TestI31ProductEqRefSupportIsFeatureScoped(t *testing.T) {
+	eqref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapEq), false))
+	base := supportPass{m: &wasm.Module{}, feat: Features{ReferenceTypes: true}}
+	if base.supportedValType(eqref) {
+		t.Fatal("eqref accepted outside a staged GC product")
+	}
+	pilot := supportPass{m: &wasm.Module{}, feat: Features{ReferenceTypes: true, GCI31Products: true}}
+	if !pilot.supportedValType(eqref) || pilot.valType(eqref, "eqref") != nil {
+		t.Fatal("i31 product did not admit its nullable eqref table carrier")
+	}
+	// ref.null eq; ref.null i31; ref.eq; drop; end
+	body := []byte{0xd0, 0x6d, 0xd0, 0x6c, 0xd3, 0x1a, 0x0b}
+	if err := base.exprBytes(body, "test"); err == nil {
+		t.Fatal("ref.null eq accepted without the staged i31 product")
+	}
+	if err := pilot.exprBytes(body, "test"); err != nil {
+		t.Fatal("staged i31 ref.eq sequence rejected", err)
+	}
+}
