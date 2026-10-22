@@ -80,11 +80,11 @@ func TestSameBuildOutputMetadataIncludesAllWindowsAttributes(t *testing.T) {
 }
 
 func TestSameWindowsFilteredSACLDescriptorNormalizesEmptyForms(t *testing.T) {
-	withoutSACL, err := windows.SecurityDescriptorFromString("O:SY")
+	withoutSACL, err := buildSecurityDescriptorFromString("O:SY")
 	if err != nil {
 		t.Fatal(err)
 	}
-	emptySACL, err := windows.SecurityDescriptorFromString("O:SYS:")
+	emptySACL, err := buildSecurityDescriptorFromString("O:SYS:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestSameWindowsFilteredSACLDescriptorNormalizesEmptyForms(t *testing.T) {
 	if !sameWindowsFilteredSACLDescriptor(withoutSACL, emptySACL) {
 		t.Fatal("filtered SACL comparison rejected equivalent empty encodings")
 	}
-	label, err := windows.SecurityDescriptorFromString("S:(ML;;NW;;;LW)")
+	label, err := buildSecurityDescriptorFromString("S:(ML;;NW;;;LW)")
 	if err != nil {
 		t.Fatal(err)
 	}

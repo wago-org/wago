@@ -4,7 +4,9 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -12,7 +14,7 @@ import (
 	"unsafe"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func compileStagedGCTypeSubtypingProductForTest(data []byte) (*Compiled, error) {
@@ -432,12 +434,34 @@ func TestStagedGCTypeSubtypingProductsCompile(t *testing.T) {
 			if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) || !reflect.DeepEqual(loadedMeta.Globals, meta.Globals) || !reflect.DeepEqual(loadedMeta.Tables, meta.Tables) || !reflect.DeepEqual(loadedMeta.ExportedTables, meta.ExportedTables) {
 				t.Fatalf("codec metadata changed\n got: %#v\nwant: %#v", loadedMeta, meta)
 			}
-			if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
-				t.Fatalf("codec-loaded instantiate = %v, want required-feature rejection", err)
-			}
-			var public Compiled
-			if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
-				t.Fatalf("public codec load = %v, want unsupported GC gate", err)
+			if len(loaded.code) == 0 {
+				// A declaration-only artifact needs no executable GC helper contract.
+				instance, err := instantiateCore(&loaded, InstantiateOptions{})
+				if err != nil {
+					t.Fatalf("declaration artifact instantiate: %v", err)
+				}
+				instance.Close()
+				var public Compiled
+				if err := public.UnmarshalBinary(blob); err != nil {
+					t.Fatalf("public declaration artifact load: %v", err)
+				}
+				public.Close()
+			} else {
+				if assertFunctionOnlyPublicReload(t, &loaded, blob) {
+					loaded.Close()
+					return
+				}
+				if instance, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
+					if instance != nil {
+						instance.Close()
+					}
+					t.Fatalf("codec-loaded instantiate = %v, want required-feature rejection", err)
+				}
+				var public Compiled
+				if err := public.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
+					public.Close()
+					t.Fatalf("public codec load = %v, want unsupported GC gate", err)
+				}
 			}
 		})
 	}
@@ -620,6 +644,10 @@ func TestStagedGCTypeSubtypingFirstLinkingClusterLifecycle(t *testing.T) {
 		}
 		if loaded.stagedGCTypeSubtypingProduct() != 0 || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
 			t.Fatalf("private %s reload inherited admission: product=%v features=%v", name, loaded.stagedGCTypeSubtypingProduct(), loaded.stagedFeatures())
+		}
+		if assertFunctionOnlyPublicReload(t, &loaded, blob) {
+			loaded.Close()
+			continue
 		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private %s reload instantiate = %v, want required-feature rejection", name, err)
@@ -811,6 +839,10 @@ func TestStagedGCTypeSubtypingStructLinkingClusterLifecycle(t *testing.T) {
 		if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) {
 			t.Fatalf("private %s reload changed type/function metadata", name)
 		}
+		if assertFunctionOnlyPublicReload(t, &loaded, item.blob) {
+			loaded.Close()
+			continue
+		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private %s reload instantiate = %v, want required-feature rejection", name, err)
 		}
@@ -1001,6 +1033,10 @@ func TestStagedGCTypeSubtypingStructProjectionLinkingClusterLifecycle(t *testing
 		if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) {
 			t.Fatalf("private %s reload changed type/function metadata", name)
 		}
+		if assertFunctionOnlyPublicReload(t, &loaded, item.blob) {
+			loaded.Close()
+			continue
+		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private %s reload instantiate = %v, want required-feature rejection", name, err)
 		}
@@ -1050,6 +1086,10 @@ func TestStagedGCTypeSubtypingRemainingProductsLifecycle(t *testing.T) {
 		}
 		if loaded.stagedGCTypeSubtypingProduct() != 0 || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
 			t.Fatal("M9 private reload inherited admission")
+		}
+		if assertFunctionOnlyPublicReload(t, &loaded, blob) {
+			loaded.Close()
+			continue
 		}
 		_ = loaded.Close()
 		var public Compiled
@@ -1296,6 +1336,10 @@ func TestStagedGCTypeSubtypingDuplicateRecursiveLinkingClusterLifecycle(t *testi
 		if loaded.stagedGCTypeSubtypingProduct() != 0 || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
 			t.Fatalf("private %s reload inherited admission", name)
 		}
+		if assertFunctionOnlyPublicReload(t, &loaded, item.blob) {
+			loaded.Close()
+			continue
+		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private %s instantiate = %v", name, err)
 		}
@@ -1484,6 +1528,10 @@ func TestStagedGCTypeSubtypingExtendedProjectionLinkingClusterLifecycle(t *testi
 		loadedMeta := (&Module{c: &loaded}).Metadata()
 		if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) {
 			t.Fatalf("private %s reload changed type/function metadata", name)
+		}
+		if assertFunctionOnlyPublicReload(t, &loaded, item.blob) {
+			loaded.Close()
+			continue
 		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private %s reload instantiate = %v, want required-feature rejection", name, err)
@@ -1675,6 +1723,10 @@ func TestStagedGCTypeSubtypingIndependentStructLinkingClusterLifecycle(t *testin
 		if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) {
 			t.Fatalf("private %s reload changed type/function metadata", name)
 		}
+		if assertFunctionOnlyPublicReload(t, &loaded, item.blob) {
+			loaded.Close()
+			continue
+		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private %s reload instantiate = %v, want required-feature rejection", name, err)
 		}
@@ -1838,6 +1890,10 @@ func TestStagedGCTypeSubtypingStructMismatchLinkingClusterLifecycle(t *testing.T
 		if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) {
 			t.Fatalf("private %s reload changed type/function metadata", name)
 		}
+		if assertFunctionOnlyPublicReload(t, &loaded, item.blob) {
+			loaded.Close()
+			continue
+		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private %s reload instantiate = %v, want required-feature rejection", name, err)
 		}
@@ -1980,6 +2036,10 @@ func TestStagedGCTypeSubtypingFinalityLinkingClusterLifecycle(t *testing.T) {
 		if !reflect.DeepEqual(loadedMeta.Types, meta.Types) || !reflect.DeepEqual(loadedMeta.Functions, meta.Functions) {
 			t.Fatalf("private reload %d changed type/function metadata", i)
 		}
+		if assertFunctionOnlyPublicReload(t, &loaded, blob) {
+			loaded.Close()
+			continue
+		}
 		if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
 			t.Fatalf("private reload %d instantiate = %v, want required-feature rejection", i, err)
 		}
@@ -1989,4 +2049,50 @@ func TestStagedGCTypeSubtypingFinalityLinkingClusterLifecycle(t *testing.T) {
 			t.Fatalf("public reload %d = %v, want unsupported GC rejection", i, err)
 		}
 	}
+}
+
+func assertFunctionOnlyPublicReload(t *testing.T, c *Compiled, blob []byte) bool {
+	t.Helper()
+	if !compiledFunctionOnlyTypeGraph(c) {
+		return false
+	}
+	assertFunctionOnlyPublicRuntime(t, c)
+	public, err := LoadTrustedArtifact(blob)
+	if err != nil {
+		t.Fatal("public function-only artifact load", err)
+	}
+	defer public.Close()
+	assertFunctionOnlyPublicRuntime(t, public)
+	return true
+}
+
+// A validated function-only graph restores its recorded type features without
+// inheriting a legacy product tag or an allocation-helper capability.
+func assertFunctionOnlyPublicRuntime(t *testing.T, c *Compiled) {
+	t.Helper()
+	if !compiledFunctionOnlyTypeGraph(c) {
+		t.Fatal("expected a function-only type graph")
+	}
+	rt := NewRuntime()
+	defer func() {
+		if err := rt.CloseContext(context.Background()); err != nil {
+			t.Error(err)
+		}
+	}()
+	module, err := rt.Module(c)
+	if err != nil {
+		t.Fatal("public function-only module", err)
+	}
+	defer module.Close()
+	instance, err := rt.Instantiate(context.Background(), module)
+	if len(c.Imports) != 0 || len(c.GlobalImports) != 0 || c.tableImportCount() != 0 || c.memoryImportCount() != 0 {
+		if !errors.Is(err, ErrMissingImport) || instance != nil {
+			t.Fatal("function-only consumer missing imports", err)
+		}
+		return
+	}
+	if err != nil || instance == nil {
+		t.Fatal("public function-only instance", err)
+	}
+	instance.Close()
 }

@@ -1,0 +1,148 @@
+//go:build linux && !tinygo
+
+package riscv64
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"slices"
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+const rv64I31RefEqPilotHex = "0061736d01000000018a808080000260000060027f7f017f038380808000020001048480808000016d0005078d808080000204696e6974000002657100010abc8080800002a680808000004100d06d26004101d06c260041024107fb1c260041034107fb1c260041044108fb1c26000b8b80808000002000250020012500d30b"
+const rv64OfficialObjectRefEqHex = "0061736d0100000001af808080000950005f0050005f017f005e78005001005f005001005f005001015f017f005001015f017f0060000060027f7f017f038380808000020708048480808000016d0014078d808080000204696e6974000002657100010adc8080800002c680808000004100d06d26004101d06c260041024107fb1c260041034107fb1c260041044108fb1c26004105fb010026004106fb0100260041074100fb0702260041084100fb070226000b8b80808000002000250020012500d30b"
+const rv64GCStructGetHex = "0061736d01000000018980808000025f017f016000017f0382808080000101078780808000010367657400000a8f8080800001898080800000fb0100fb0200000b"
+const rv64GCArrayLocalHex = "0061736d01000000019680808000045e7f0160027f7f017f60037f7f7f017f60017f017f0384808080000301020307978080800003036765740000077365745f6765740001036c656e00020ac180808000038c80808000002000fb07002001fb0b000b9c80808000010163002000fb07002103200320012002fb0e0020032001fb0b000b8980808000002000fb0700fb0f0b"
+const rv64GCArrayUniformHex = "0061736d010000000119045e7f0160037f7f7f017f60047f7f7f7f017f60027f7f017f030403010203071703036765740000077365745f6765740001036c656e00020a3b030e0020002001fb06002002fb0b000b1e0101630020002001fb06002104200420022003fb0e0020042002fb0b000b0b0020002001fb0600fb0f0b"
+const rv64GCArrayFixedLocalHex = "0061736d01000000011c045e7f0160047f7f7f7f017f60057f7f7f7f7f017f60037f7f7f017f030403010203071703036765740000077365745f6765740001036c656e00020a44031100200020012002fb0800032003fb0b000b2101016300200020012002fb0800032105200520032004fb0e0020052003fb0b000b0e00200020012002fb080003fb0f0b"
+
+func rv64I31RefEqPilotBytes(t testing.TB) []byte {
+	t.Helper()
+	b, err := hex.DecodeString(rv64I31RefEqPilotHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestRV64I31RefEqPilotAdmissionAndImage(t *testing.T) {
+	source := rv64I31RefEqPilotBytes(t)
+	wantSource := [sha256.Size]byte{0xd4, 0x1b, 0x88, 0xea, 0xab, 0x33, 0x8e, 0x5b, 0x01, 0xe6, 0x7e, 0xbf, 0x43, 0x52, 0xce, 0x12, 0x6d, 0xfd, 0xa5, 0x0d, 0x26, 0xaa, 0xb2, 0x3c, 0x76, 0x1f, 0xd5, 0x6c, 0x3a, 0x29, 0xd5, 0xaf}
+	if len(source) != 128 || sha256.Sum256(source) != wantSource {
+		t.Fatalf("i31 ref.eq source identity changed: len=%d sha=%x", len(source), sha256.Sum256(source))
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !admitRV64I31RefEqPilot(m) || !admitRV64I31Core(m) || !admitRV64I31TableProduct(m) || !admitRV64I31CoreWire(source) || !AdmitI31CoreSource(source) {
+		t.Fatal("i31 ref.eq classifiers rejected")
+	}
+	opts := CompileOptions{DeferCodeMapping: true, Interruptible: true, InvocationContext: true, ForeignTableCalls: true}
+	if _, err = CompileModuleWith(m, opts); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("decoded ref.eq shape escaped exact-wire provenance", err)
+	}
+	opts = authenticateI31TestModule(t, m, opts)
+	compiled, err := CompileModuleWith(m, opts)
+	if err != nil {
+		t.Fatal("production compile", err)
+	}
+	wantDigest := [sha256.Size]byte{0x35, 0xa6, 0xd7, 0xcf, 0x47, 0xfe, 0xec, 0xb8, 0x28, 0x37, 0xbd, 0xfd, 0x50, 0x1c, 0xbd, 0x67, 0xa8, 0x73, 0xe2, 0xab, 0xb3, 0xc6, 0xd0, 0x10, 0xa9, 0xa1, 0xb0, 0xda, 0x3e, 0x33, 0xe9, 0x23}
+	wantEntry := []int{0, 1488}
+	if len(compiled.Code) != 2436 || sha256.Sum256(compiled.Code) != wantDigest || !slices.Equal(compiled.Entry, wantEntry) || !slices.Equal(compiled.InternalEntry, wantEntry) {
+		t.Fatalf("ref.eq image identity = %d/%x entries %v/%v", len(compiled.Code), sha256.Sum256(compiled.Code), compiled.Entry, compiled.InternalEntry)
+	}
+
+	// Insert an empty memory section after the function section. Decoding
+	// discards it, but the exact source-provenance witness must not.
+	nearWire := slices.Concat(source[:43], []byte{5, 1, 0}, source[43:])
+	nearModule, err := wasm.DecodeModule(nearWire)
+	if err != nil {
+		t.Fatal("decode inert-section near miss", err)
+	}
+	if !admitRV64I31RefEqPilot(nearModule) || !admitRV64I31CoreWire(nearWire) || !AdmitI31CoreSource(nearWire) {
+		t.Fatal("valid inert section was rejected by general immediate-reference admission")
+	}
+	opts.I31CoreSource = false
+	if _, err = CompileModuleWith(nearModule, opts); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("inert-section near miss escaped provenance", err)
+	}
+
+	for name, mutate := range map[string]func(*wasm.Module){
+		"body":       func(v *wasm.Module) { v.Code[1].BodyBytes[8] = 0xd1 },
+		"export":     func(v *wasm.Module) { v.Exports[1].Name = "ne" },
+		"table-type": func(v *wasm.Module) { v.Tables[0].Type.Ref = wasm.AnyRef.Ref() },
+	} {
+		candidate, err := wasm.DecodeModule(slices.Clone(source))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mutate(candidate)
+		if admitRV64I31RefEqPilot(candidate) {
+			t.Fatal("decoded near miss admitted", name)
+		}
+		checkGeneralI31Module(t, candidate, opts)
+	}
+
+	full, err := hex.DecodeString(rv64OfficialObjectRefEqHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fullModule, err := wasm.DecodeModule(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(full) != 197 || admitRV64I31RefEqPilot(fullModule) || admitRV64I31Core(fullModule) || admitRV64I31CoreWire(full) || AdmitI31CoreSource(full) {
+		t.Fatal("object-allocating official ref_eq module entered the compact pilot")
+	}
+	opts.I31CoreSource = true
+	if _, err = CompileModuleWith(fullModule, opts); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("object-allocating official ref_eq module compiled without collector lowering", err)
+	}
+}
+
+func TestRV64I31RefEqUsesFullWidthIdentity(t *testing.T) {
+	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32, wasm.I32}, Results: []wasm.ValType{wasm.I32}}
+	fn := &wasm.Func{BodyBytes: []byte{0x20, 0, 0x25, 0, 0x20, 1, 0x25, 0, 0xd3, 0x0b}}
+	state := moduleState{
+		production:      true,
+		i31Core:         true,
+		ownedTable:      true,
+		tableAddr64:     []bool{false},
+		tableCompactRef: []bool{true},
+		types:           []functionSpec{{signature: ft}},
+		functions:       []functionSpec{{signature: ft}},
+	}
+	if _, err := walkInteger(fn, ft, &state, nil); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("ref.eq escaped its exact product witness", err)
+	}
+	state.i31RefEq = true
+	summary, err := walkInteger(fn, ft, &state, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _, _, err := compileIntegerMode(fn, ft, &state, summary, emissionMode{production: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, instruction := range map[string]uint32{
+		"left-full-width-load":  rv64IType(0x03, 3, 5, 2, 32),
+		"right-full-width-load": rv64IType(0x03, 3, 6, 2, 40),
+	} {
+		if !rv64HasInstruction(code, instruction) {
+			t.Fatalf("%s missing: %#08x", name, instruction)
+		}
+	}
+	if !rv64HasInstruction(code, 0x0062c2b3) || !rv64HasInstruction(code, rv64IType(0x13, 3, 5, 5, 1)) {
+		t.Fatal("ref.eq did not compare full carrier words and normalize its i32 result")
+	}
+}
+
+// Insert an empty memory section after the function section. Decoding drops
+// it, but the exact source-provenance witness must not.
+
+// Insert an empty memory section after the function section. Decoding drops
+// it, but the exact source-provenance witness must not.

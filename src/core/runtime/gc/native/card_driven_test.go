@@ -460,8 +460,9 @@ func TestCardMetadataFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(tinyGC{}); got != 88 {
 		t.Fatalf("tinyGC size=%d, want 88 with unbounded transient-root accounting", got)
 	}
-	// Bounds and lazy major-block state have fixed descriptor costs.
-	wantCollector := uintptr(1168) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil))
+	// Bounds, lazy major-block state, and one large-array list-index hint have
+	// fixed descriptor costs. The hint does not change the native state layout.
+	wantCollector := uintptr(1168) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0))
 	if got := unsafe.Sizeof(Collector{}); got != wantCollector {
 		t.Fatalf("Collector size=%d, want %d", got, wantCollector)
 	}

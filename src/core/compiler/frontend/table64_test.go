@@ -80,8 +80,10 @@ func TestStagedTable64ASTAdmitsPassiveInitAndDrop(t *testing.T) {
 	}
 	m.Imports = []wasm.Import{{Module: "env", Name: "table", Type: wasm.NewTableExternType(m.Tables[0].Type)}}
 	m.Tables = nil
-	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "imported table64") {
-		t.Fatalf("imported table64.init gate = %v", err)
+	// The shared frontend accepts the instruction/type contract. Architecture
+	// backends and the public runtime still require an exact executable shape.
+	if err := RejectUnsupportedWithFeatures(&m, features); err != nil {
+		t.Fatalf("imported table64.init frontend contract: %v", err)
 	}
 }
 

@@ -429,6 +429,8 @@ func flowLocation(loc Location, size int, unknown bool) bool {
 		return loc.Index >= 0 && loc.Index < 32 && int(loc.Byte)+size <= MaxCarrierBytes
 	case Frame:
 		return loc.Byte == 0 && int64(loc.Index)+int64(size)-1 <= 2147483647
+	case ReturnArea:
+		return loc.Index == 0 && int(loc.Byte)+size <= 8
 	case Unknown:
 		return unknown
 	}
@@ -436,6 +438,9 @@ func flowLocation(loc Location, size int, unknown bool) bool {
 }
 
 func machineEffectValid(e Effect) bool {
+	if e.Dst.Bank == ReturnArea || e.Src.Bank == ReturnArea {
+		return returnAreaEffectValid(e)
+	}
 	if e.Kind == Call {
 		return e.Size == 0 && e.ClearTo == 0
 	}
@@ -520,7 +525,7 @@ func (g *Graph) validate(b *flowBudget) string {
 		return "operation limit"
 	}
 	for _, input := range g.Inputs {
-		if !flowLocation(input.Location, g.width(input.Value), false) {
+		if input.Location.Bank == ReturnArea || !flowLocation(input.Location, g.width(input.Value), false) {
 			return "invalid input binding"
 		}
 	}
@@ -532,7 +537,7 @@ func (g *Graph) validate(b *flowBudget) string {
 		for _, op := range block.Operations {
 			switch op.Kind {
 			case Define, DefineConstant, Use:
-				if !flowLocation(op.Location, g.width(op.Value), false) {
+				if !flowLocation(op.Location, g.width(op.Value), false) || op.Location.Bank == ReturnArea && !returnAreaUseValid(op, g.width(op.Value)) {
 					return "invalid semantic operation"
 				}
 				if op.Kind == DefineConstant && !isConstant(op.Value) || op.Kind == Define && isConstant(op.Value) {
@@ -557,7 +562,7 @@ func (g *Graph) validate(b *flowBudget) string {
 			}
 			seen := make(map[ValueID]bool)
 			for _, p := range edge.Parameters {
-				if g.width(p.From) == 0 || g.width(p.From) != g.width(p.To) || seen[p.To] || isConstant(p.To) || !flowLocation(p.Location, g.width(p.From), false) {
+				if g.width(p.From) == 0 || g.width(p.From) != g.width(p.To) || seen[p.To] || isConstant(p.To) || p.Location.Bank == ReturnArea || !flowLocation(p.Location, g.width(p.From), false) {
 					return "invalid or duplicate edge parameter"
 				}
 				seen[p.To] = true
