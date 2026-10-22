@@ -418,8 +418,8 @@ func addProfileChoices(items []tui.Item) []tui.Item {
 		items[i].AcceptTitle = "Choose Wago profile"
 		items[i].AcceptItems = make([]tui.Item, 0, len(wagopaths.Profiles))
 		for _, profile := range wagopaths.Profiles {
-			builds := make([]tui.Item, 0, len(wagopaths.Builds))
-			for _, build := range wagopaths.Builds {
+			builds := make([]tui.Item, 0, len(availableBuilds()))
+			for _, build := range availableBuilds() {
 				builds = append(builds, tui.Item{
 					Label:       titleBuild(build),
 					Description: build.Description(),

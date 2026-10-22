@@ -65,6 +65,7 @@ func (e *Engine) callWithBoundedHostLoop(code uintptr, serArgs []byte, linMemBas
 	root := slicePtr(ctrl)
 	n := rawSlots & 0xffff
 	nres := rawSlots >> 16
+	e.prepareNativeInvocation(serArgs, results)
 	enterNativeBounded(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 	for {
 		switch tc := loadTrap(trap); {
@@ -97,7 +98,7 @@ func (e *Engine) callWithBoundedHostLoop(code uintptr, serArgs []byte, linMemBas
 		if TrapCode(loadTrap(trap)) == TrapInterrupted {
 			return trapErrorFromBuffer(TrapInterrupted, trap)
 		}
-		stackTop := e.StackTop()
+		stackTop := e.nativeResumeStackTop()
 		prepareHostResume(ctrl, trap, stackTop, e.StackLimit())
 		resumeNativeBounded(root, stackTop)
 	}
@@ -154,6 +155,7 @@ func (e *Engine) callWithBoundedHostLoopView(code uintptr, serArgs []byte, linMe
 	}
 
 	root := slicePtr(ctrl)
+	e.prepareNativeInvocation(serArgs, results)
 	enterNativeBounded(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 	for {
 		switch tc := loadTrap(trap); {
@@ -172,7 +174,7 @@ func (e *Engine) callWithBoundedHostLoopView(code uintptr, serArgs []byte, linMe
 		if TrapCode(loadTrap(trap)) == TrapInterrupted {
 			return trapErrorFromBuffer(TrapInterrupted, trap)
 		}
-		stackTop := e.StackTop()
+		stackTop := e.nativeResumeStackTop()
 		prepareHostResume(ctrl, trap, stackTop, e.StackLimit())
 		resumeNativeBounded(root, stackTop)
 	}

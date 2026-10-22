@@ -6,21 +6,26 @@ cd "$repo_dir"
 check_dir="$(mktemp -d)"
 trap 'rm -rf -- "$check_dir"' EXIT
 for target_os in linux darwin windows; do
-  for arch in amd64 arm64; do
-    for flavor in manager runtime minimal embed; do
+  for arch in amd64 arm64 riscv64; do
+    [[ "$arch" != riscv64 || "$target_os" == linux ]] || continue
+    for flavor in manager runtime minimal embed precompiled-embed; do
       build_tags=""
       build_package=./cli/wago
       case "$flavor" in
         runtime) build_tags=wago_runtime ;;
         minimal) build_tags=wago_runtime,wago_minimal ;;
         embed) build_package=./scripts/testdata/diagnostic-dce ;;
+        precompiled-embed)
+          build_tags=wago_precompiled
+          build_package=./scripts/testdata/precompiled-dce
+          ;;
       esac
       CGO_ENABLED=0 GOOS="$target_os" GOARCH="$arch" go build -tags="$build_tags" -o "$check_dir/wago-$arch" "$build_package"
       go tool nm "$check_dir/wago-$arch" > "$check_dir/symbols-$arch"
       # Type equality functions and API no-op stubs may remain. These expressions
       # identify executable collection, journaling, attribution, and report bodies.
       scan_status=0
-      grep -E -e ' T .*((internal/jitprofile\.(New|\(\*Session\)))|internal/(profcapture|profilecmd)|RemapNativeCodeSites|recordProfileCodeSite|recordProfileFPressure|profileCodeSites|CodeSites|RemapNativeUnwind|collectProfileUnwind|collectProfileAdapterUnwind|recordSharedAdapterUnwind|recordSharedAdapterTailUnwind|RemapNativeSources|collectProfileSources|rememberProfileNode|enterProfileNode|enterProfileInstruction|recordProfileTrap|profileTrapOrigin|switchProfileOrigin|rewindProfileEmission|profileEmissionRanges|SourceEmission|OverlayNativeSources|enterProfileInlineAdd|leaveProfileInlineAdd|enterProfileInline|leaveProfileInline|profileTrapCaller|profileInlineFrames|compiledProfile|attachProfile|registerProfileThunk|retireProfileImage|beginProfileBoundary|beginProfileActivation|beginProfileInvocation|beginProfileHostCallback|beginProfileInstantiation|beginProfileInitialization|beginProfileLifecycle|bindProfileInstance|callProfiledHost|profileReentryContext|installCodeProfile|recordProfileRegions|railshotGCNativeCodeTelemetry|\(\*CodegenStats\)\.(report|peep|call|add)|\(\*Telemetry\)\.(begin|end|noteObjectScan)|writeJIT|profile\.JITDump)' -e ' T github.com/wago-org/wago/(profile|internal/jitprofile|internal/regalloccheck)\.' -e ' T github.com/wago-org/wago/src/core/compiler/backend/railshot/(amd64|arm64)\.(\(\*fn\)\.)?check(BeginFlush|EndFlush|Use|Inputs|FoldedUse|Occupy|BeginSlots|BeginRegMoves|Immutable|ReleaseImmutable|CallClobber|EndLifetimes|TerminalWrites|RestoreWrites|RegMovesWindow|Size|Reg)' -e ' T github.com/wago-org/wago/src/core/compiler/backend/railshot/(shared|amd64|arm64)\..*(scalarGraph|ScalarGraph|checkGraph|checkSource|SourceLeaf|sourceLeaf|SourceBranch|sourceBranch|SourceLoop|sourceLoop|SourceCall|sourceCall|decodeSourceTransfer|sourceNOPAMD64|leafOperator|leafReg)' -e ' T github.com/wago-org/wago/src/core/compiler/codegen\.(SourceOptions|AttachSourceContext|SourceContextFor|ValidatedSourceContext|CloseSourceContext|SetSourceReporter|RecordSourceResult|ReserveFinalSourcePass)' -e ' T github.com/wago-org/wago/src/core/compiler/backend/railshot/shared\.(PrepareSourceWorker|SetSourceContext|SetSourceWorkerContext|BeginSourceLeaf|BeginSourceAttempt|AttachSourceLedger|EndSourceAttempt|finishSourceWorker)' -e ' T github.com/wago-org/wago/src/core/compiler/backend/railshot/(amd64|arm64)\.compileSourceModuleWith' -e ' T github.com/wago-org/wago/src/core/compiler/(backend/railshot/(shared|amd64|arm64)|codegen)\..*(nativeSource|NativeSource|SourcePlan|SourceNodeContract|IntegerSourcePlan|RecordSourceAccountingResult|SourceMaterialization|SourceIntegerPhysical|sourceInteger|decodeSourceInteger|SourceFinal|sourceFinal|recordSourceIntegerFinal)' -e ' T github.com/wago-org/wago/src/wago\.railshotCompileValidatedModuleWith' -e ' T github.com/wago-org/wago/src/core/encoder/(amd64|arm64)\.(\(\*Asm\)\.)?regalloc' "$check_dir/symbols-$arch" || scan_status=$?
+      grep -E -e ' T .*((internal/jitprofile\.(New|\(\*Session\)))|internal/(profcapture|profilecmd)|RemapNativeCodeSites|recordProfileCodeSite|recordProfileFPressure|profileCodeSites|CodeSites|RemapNativeUnwind|collectProfileUnwind|collectProfileAdapterUnwind|recordSharedAdapterUnwind|recordSharedAdapterTailUnwind|RemapNativeSources|collectProfileSources|rememberProfileNode|enterProfileNode|enterProfileInstruction|recordProfileTrap|profileTrapOrigin|switchProfileOrigin|rewindProfileEmission|profileEmissionRanges|SourceEmission|OverlayNativeSources|enterProfileInlineAdd|leaveProfileInlineAdd|enterProfileInline|leaveProfileInline|profileTrapCaller|profileInlineFrames|compiledProfile|attachProfile|registerProfileThunk|retireProfileImage|beginProfileBoundary|beginProfileActivation|beginProfileInvocation|beginProfileHostCallback|beginProfileInstantiation|beginProfileInitialization|beginProfileLifecycle|bindProfileInstance|callProfiledHost|profileReentryContext|installCodeProfile|recordProfileRegions|railshotGCNativeCodeTelemetry|\(\*CodegenStats\)\.(report|peep|call|add)|\(\*Telemetry\)\.(begin|end|noteObjectScan)|writeJIT|profile\.JITDump)' -e ' T github.com/wago-org/wago/(profile|internal/jitprofile|internal/regalloccheck)\.' -e ' T github.com/wago-org/wago/src/core/compiler/backend/railshot/(amd64|arm64|riscv64)\.(\(\*fn\)\.)?check(BeginFlush|EndFlush|Use|Inputs|FoldedUse|Occupy|BeginSlots|BeginRegMoves|Immutable|ReleaseImmutable|CallClobber|EndLifetimes|TerminalWrites|RestoreWrites|RegMovesWindow|Size|Reg)' -e ' T github.com/wago-org/wago/src/core/compiler/backend/railshot/(shared|amd64|arm64|riscv64)\..*(scalarGraph|ScalarGraph|checkGraph|checkSource|SourceLeaf|sourceLeaf|SourceBranch|sourceBranch|SourceLoop|sourceLoop|SourceCall|sourceCall|decodeSourceTransfer|sourceNOPAMD64|leafOperator|leafReg)' -e ' T github.com/wago-org/wago/src/core/compiler/codegen\.(SourceOptions|AttachSourceContext|SourceContextFor|ValidatedSourceContext|CloseSourceContext|SetSourceReporter|RecordSourceResult|ReserveFinalSourcePass)' -e ' T github.com/wago-org/wago/src/core/compiler/backend/railshot/shared\.(PrepareSourceWorker|SetSourceContext|SetSourceWorkerContext|BeginSourceLeaf|BeginSourceAttempt|AttachSourceLedger|EndSourceAttempt|finishSourceWorker)' -e ' T github.com/wago-org/wago/src/core/compiler/backend/railshot/(amd64|arm64|riscv64)\.compileSourceModuleWith' -e ' T github.com/wago-org/wago/src/core/compiler/(backend/railshot/(shared|amd64|arm64|riscv64)|codegen)\..*(nativeSource|NativeSource|SourcePlan|SourceNodeContract|IntegerSourcePlan|RecordSourceAccountingResult|SourceMaterialization|SourceIntegerPhysical|sourceInteger|decodeSourceInteger|SourceFinal|sourceFinal|recordSourceIntegerFinal)' -e ' T github.com/wago-org/wago/src/wago\.railshotCompileValidatedModuleWith' -e ' T github.com/wago-org/wago/src/core/encoder/(amd64|arm64|riscv64)\.(\(\*Asm\)\.)?regalloc' -e ' T github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64\..*(profileSourceRecorder|profileFunctionCapture|profileFunctionLayout|profileMetadataBudget|finalizeProfileMetadata|profileInstructionMetadata|collectFinalizedStats|checkImmutable|checkEndLifetimes|checkTerminalGPWrites|checkRestoreGPWrites|checkProtectRead|checkRestoreRead|checkObserveGPWrites)' -e ' T github.com/wago-org/wago/src/core/encoder/riscv64\..*(ObserveGPWrites|ObserveFPWrites|ObserveRegalloc)' "$check_dir/symbols-$arch" || scan_status=$?
       if [[ "$scan_status" == 0 ]]; then
         echo "diagnostic implementation retained in $target_os/$arch $flavor" >&2
         exit 1
@@ -28,6 +33,34 @@ for target_os in linux darwin windows; do
         echo "diagnostic symbol scan failed for $target_os/$arch $flavor (status $scan_status)" >&2
         exit "$scan_status"
       fi
+      if [[ "$flavor" == precompiled-embed ]]; then
+        # Artifact admission still validates type metadata and emits runtime
+        # thunks. Source decoding, frontend lowering, and function compilation
+        # must disappear even when the source-compilation API is referenced.
+        scan_status=0
+        grep -E -e ' T github.com/wago-org/wago/src/core/compiler/wasm\.(DecodeModule|decodeModule)' -e ' T github.com/wago-org/wago/src/core/compiler/frontend\.' -e ' T github.com/wago-org/wago/src/core/compiler/backend/railshot/(amd64|arm64|riscv64)\.(Compile|compileFunction|compileInteger|compileOptions)' "$check_dir/symbols-$arch" || scan_status=$?
+        if [[ "$scan_status" == 0 ]]; then
+          echo "source compiler retained in $target_os/$arch $flavor" >&2
+          exit 1
+        elif [[ "$scan_status" != 1 ]]; then
+          echo "source compiler symbol scan failed (status $scan_status)" >&2
+          exit "$scan_status"
+        fi
+      fi
+      # Cross-compilable backend packages must not pull foreign emitters into
+      # the public CLI or embedding dependency graph.
+      for other_arch in amd64 arm64 riscv64; do
+        [[ "$other_arch" != "$arch" ]] || continue
+        scan_status=0
+        grep -E " T github.com/wago-org/wago/src/core/(compiler/backend/railshot|encoder)/$other_arch\\." "$check_dir/symbols-$arch" || scan_status=$?
+        if [[ "$scan_status" == 0 ]]; then
+          echo "$other_arch implementation retained in $target_os/$arch $flavor" >&2
+          exit 1
+        elif [[ "$scan_status" != 1 ]]; then
+          echo "foreign architecture symbol scan failed (status $scan_status)" >&2
+          exit "$scan_status"
+        fi
+      done
       echo "$target_os/$arch $flavor: diagnostic implementation symbols absent"
     done
   done

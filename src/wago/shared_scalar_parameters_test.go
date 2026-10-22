@@ -1,4 +1,4 @@
-//go:build (amd64 || arm64) && !tinygo
+//go:build (amd64 || arm64 || (linux && riscv64)) && !tinygo
 
 package wago
 
@@ -22,9 +22,9 @@ func TestSharedScalarEightIncomingParameters(t *testing.T) {
 	}
 	code := append([]byte{1, 1, 0x7e}, body...)
 	module := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(ft.Params, ft.Results))), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(code))), code...))))
-	for _, regABI := range []bool{false, true} {
+	for _, regABI := range sharedScalarTestABIModes() {
 		t.Run(fmt.Sprintf("regABI=%v", regABI), func(t *testing.T) {
-			c, err := Compile(NewRuntimeConfig().WithOptimization("reg-abi", regABI), module)
+			c, err := Compile(sharedScalarTestConfig(regABI), module)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -58,8 +58,8 @@ func TestSharedScalarRawI32Return(t *testing.T) {
 		{0x20, 0, 0x22, 0, 0x0f, 0x0b},
 		{0x20, 0, 0x22, 1, 0x0b},
 	} {
-		for _, regABI := range []bool{false, true} {
-			c, err := Compile(NewRuntimeConfig().WithOptimization("reg-abi", regABI), scalarPilotModule(wasm.I32, body, 1))
+		for _, regABI := range sharedScalarTestABIModes() {
+			c, err := Compile(sharedScalarTestConfig(regABI), scalarPilotModule(wasm.I32, body, 1))
 			if err != nil {
 				t.Fatal(err)
 			}

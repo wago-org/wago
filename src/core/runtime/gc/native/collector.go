@@ -164,12 +164,16 @@ type Collector struct {
 	stats                 Stats
 	rootMarkMode          uint8
 	closed                bool
-	majorYoungDirty       bool // uses padding before checkedHandles
+	majorYoungDirty       bool   // uses padding before checkedHandles
+	structBatch           uint16 // next live-struct batch; uses existing padding; zero selects maximum
+	structBatchFull       uint8  // consecutive full batches before increasing the reservation
 	checkedHandles        *[]uint64
 	// Keep optional proof state last so existing collector field offsets stay fixed.
-	lastCardBounds       objectCardBounds
-	majorBlocks          []uint64           // lazy AMD64 full-collection occupancy; one bit per256handles
-	promotionSortScratch []plannedPromotion // bounded stable counting-sort workspace
+	lastCardBounds objectCardBounds
+	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
+	// A validated list-position hint; compaction may move or remove the entry.
+	nativeLargeArrayNurseryIndex int
+	promotionSortScratch         []plannedPromotion // bounded stable counting-sort workspace
 }
 
 const defaultNursery = 64 << 10
@@ -239,6 +243,7 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 // errCollectorClosed. It is idempotent; Stats remains safe for post-close
 // counters, while unchecked root-slot reads return null after slots are released.
 func (c *Collector) Close() {
+	c.notifyCollectorClosed()
 	c.discardNativeStructHandles()
 	c.discardNativeLargeArrayAllocation()
 	c.stats.LiveObjects = 0
