@@ -18,7 +18,7 @@ Repeated callbacks can keep the single P busy and delay a requested collection.
 The original ordinary fixture still passes under Linux/QEMU; that does not
 invalidate the repeated native Darwin failure.
 
-A new direct-runtime fixture uses 65,536 callbacks with no stack-growth checks
+The initial direct-runtime fixture used 65,536 callbacks with no stack-growth checks
 and asks a second goroutine to collect. It requires the final callback to see
 that collection completed before the guest returns. With asynchronous
 preemption disabled, all eight live ARM64 owner variants fail on unchanged
@@ -87,3 +87,41 @@ corpus was supplied by a temporary shared local Git clone and removed after the
 root suites. No timeout is increased and no test is removed. The original
 three-second public GC/cancellation limit stays intact. Hosted Darwin validation
 is still required after the push; another retry of old failing code is not used.
+
+
+## Linux ARM64 test synchronization follow-up
+
+The [Linux ARM64 job](https://github.com/wago-org/wago/actions/runs/39737641460/job/119687183896)
+on `ed37834` fails only the new leaf-callback scalar case: the final callback
+still sees zero after the fixed 65,536-call loop. That loop assumes collection
+must complete within 64 yields. Scheduler access does not imply completion in
+that short window, especially during a process's first collection. The public
+three-second host-GC test passes in this job.
+
+The guest test now exits when its callback observes collection completion.
+A hard cap of 16,777,216 callbacks still makes a non-yielding bridge return and
+report a diagnostic failure. This cap is a safety stop, not the normal exit.
+An atomic callback count gates the collector: collection starts only after
+native execution begins, so a collection before entry cannot satisfy the test.
+All callbacks remain NOSPLIT and contain no explicit scheduler call. Cleanup
+joins the collector, including a failure before the first callback. The eight
+owner paths and all interrupt outcome/trap assertions remain in place.
+
+A negative control temporarily disables the production scheduling macro only
+while building a separate test binary, then restores the header. With async
+preemption disabled and GOMAXPROCS=1 in the test, the scalar and scalar/cancel
+cases both reach the hard cap and fail with explicit progress/outcome messages:
+3.559 seconds, peak RSS 29,876 KiB. This control confirms that waiting for the
+event does not mask the original scheduler-starvation fault. The negative
+binary build takes 0.838 seconds, peak RSS 142,484 KiB.
+
+The unchanged production bridge passes 30 repeats of the leaf, stack-growth,
+FP preservation, admission, and bounded-helper checks under ARM64 QEMU with
+register checks and async preemption disabled: 2.376 seconds including build,
+1.630 seconds for the test package, peak RSS 137,872 KiB. The default-build leaf test also passes 30 repeats: 1.832 seconds including
+build, peak RSS 141,968 KiB. The Darwin ARM64 runtime test binary builds in
+0.771 seconds with peak RSS 142,032 KiB. The documentation check passes in
+0.136 seconds with peak RSS 69,544 KiB.
+This update changes the test and this note. The runtime's 1,024-callback yield
+interval and the public three-second GC/cancel limit remain unchanged. Native
+Linux and Darwin CI must still confirm their platform suites.
