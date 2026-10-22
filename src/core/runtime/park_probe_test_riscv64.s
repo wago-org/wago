@@ -1,0 +1,29 @@
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+
+#include "textflag.h"
+
+TEXT ·rv64ReadFCSR(SB),NOSPLIT|NOFRAME,$0-8
+ WORD $0x003022f3
+ MOV T0, ret+0(FP)
+ RET
+
+TEXT ·rv64SetFCSR(SB),NOSPLIT|NOFRAME,$0-8
+ MOV value+0(FP), T0
+ WORD $0x00329073
+ RET
+
+TEXT ·rv64ClobberParkFP(SB),NOSPLIT|NOFRAME,$0-0
+ MOV $99, T0
+ WORD $0xf2028453
+ WORD $0xf20284d3
+ WORD $0xf2028953
+ WORD $0xf20289d3
+ WORD $0xf2028a53
+ WORD $0xf2028ad3
+ WORD $0xf2028b53
+ WORD $0xf2028bd3
+ WORD $0xf2028c53
+ WORD $0xf2028cd3
+ WORD $0xf2028d53
+ WORD $0xf2028dd3
+ RET

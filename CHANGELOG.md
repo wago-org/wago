@@ -10,8 +10,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 - Allow up to 32 nested synchronous host calls under standard Go so component
   adapter chains can cross more than four boundaries. TinyGo retains its
-  four-call limit for fixed host stacks. Size parked GC callback and root storage
+  three-call limit for fixed host stacks. Size parked GC callback and root storage
   for the outer callback plus every permitted reentry.
+- Detect register clobbers during RV64 address, store, compare and paired-FP
+  input preparation in checked builds.
 - Preserve deferred load addresses derived from pinned mutable globals on
   AMD64, including Go-style exported function stack wrappers.
 

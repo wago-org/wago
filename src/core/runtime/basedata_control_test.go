@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64)
+//go:build ((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64 && !tinygo && !wago_target_tinygo)
 
 package runtime
 
@@ -274,6 +274,20 @@ func TestEngineAndArenaReuseMappings(t *testing.T) {
 }
 
 func TestRuntimeMappingBoundaryHelpers(t *testing.T) {
+	// Other tests may leave the process-wide one-slot cache populated. This
+	// test asserts which mapping wins the slot, so begin with an empty cache.
+	jobMemoryCache.Lock()
+	previous := jobMemoryCache.j
+	jobMemoryCache.j = nil
+	if previous != nil {
+		changeInterruptLinearMemoryCache(-1)
+	}
+	jobMemoryCache.Unlock()
+	if previous != nil {
+		if err := previous.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if slicePtr(nil) != 0 || slicePtr([]byte{}) != 0 {
 		t.Fatal("empty mapping slice has a non-zero pointer")
 	}

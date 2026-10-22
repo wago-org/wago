@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/wago-org/wago/cli/internal/automation"
@@ -50,6 +51,9 @@ func buildRunnerFromSource(ref string, profile wagopaths.Profile, build wagopath
 }
 
 func buildRunnerFromSourceContext(ctx context.Context, ref string, profile wagopaths.Profile, build wagopaths.Build, dest string, progress *managerprogress.Progress) error {
+	if err := build.ValidatePlatform(runtime.GOOS, runtime.GOARCH); err != nil {
+		return err
+	}
 	temp, source, stamp, err := checkoutWagoSourceContext(ctx, ref, progress)
 	if err != nil {
 		return err

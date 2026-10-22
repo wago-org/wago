@@ -36,10 +36,11 @@ follow a module from compilation through execution and public API ownership.
 
 ## Platform and artifact rules
 
-<!-- architecture:targets linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 -->
-Railshot compilation and the native runtime support Linux, macOS, and Windows
-on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
-guard-page bounds checks; all six targets support explicit bounds checks and
+<!-- architecture:targets linux/amd64 linux/arm64 linux/riscv64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 -->
+Railshot compilation and the native runtime support Linux on amd64, arm64, and
+riscv64, plus macOS and Windows on amd64 and arm64. Linux and Darwin/arm64
+additionally support signal-backed guard-page bounds checks; all seven targets
+support explicit bounds checks and
 cooperative cancellation safepoints.
 
 <!-- artifact:codec-version 7 -->
@@ -100,6 +101,118 @@ mask is a subset of detected host capabilities. Unknown bits and older artifact
 versions fail closed. Plugin declarations, BMI2 and bit-count instructions share
 this mask. The AVX-512 plugin tier requires F/DQ/BW/VL and enabled ZMM/opmask state.
 Core and relaxed SIMD do not require FMA, AVX2, AVX-512 or VNNI.
+
+Linux/RV64 artifacts use architecture ID 3. The retained table-call
+requirement in bit 53 depends on the native-context trap requirement in bit 54.
+The full-width retained table-reference requirement in bit 52 depends on both.
+Callable table code requires all three, synchronous framed controls, full
+signature transport, and authenticated canonical entries whose physical target
+owners survive entry, host resume, and cold-trap decoration. The qualified call
+path can switch to a foreign canonical target in one bounded owned or imported
+nullable funcref table32. Imported storage is authenticated and physically leased
+before mapping; active writers publish their ownership before construction
+releases the native lease. Foreign local-wrapper references preserve their full
+width through table.get, locals, typed select and inline block joins. Set, fill,
+grow and copy retain physical descriptor owners through interruption and cold
+unwinding; storage accepts different signatures and indirect calls check exact
+keys. Older table artifacts without bit 52 reject before publication; table-free
+artifacts retain their existing contract. The cooperative public profile combines
+that table with numeric Go/native function imports, with structural signature
+keys covering the full imported and defined function namespace. Imported element
+and ref.func targets use importer-owned canonical descriptors for published
+Go, HostFuncRef or native import thunks. Authentication checks an independent
+frozen entry directory; retaining the importer preserves thunk mappings and
+attached owners. Exported immutable funcref globals issue same-Runtime tokens
+with canonical native/HostFuncRef identity; raw Go callback references remain
+ineligible for public tokens. Reference-valued signatures remain gated. Up to 256
+function imports, 256 globals, one memory and one table share a
+514-import bound. QEMU correctness does not establish native
+instruction-cache or performance qualification.
+
+RV64's public table profile accepts legacy indices and expression-form elements
+containing only `ref.func` and `ref.null func`, with exact nullable funcref types.
+All 256-segment/1,024-entry limits include dropped declarations and null entries;
+each byte-backed expression is bounded before validation and staging. Active
+segment offsets accept i32 constants or exact immutable imported-i32 `global.get`
+expressions; runtime reads normalize the low 32 bits. Segments apply in source
+order: earlier effects survive a later failure, while
+each segment checks its complete range before writes. Public SWAR compilation
+uses shared runtime initializer metadata without duplicating private table-owner
+payloads. Public scalar/SWAR global initializers also copy exact immutable
+imported numeric values, including both V128 halves, into distinct local cells;
+active data offsets accept immutable imported i32 globals. The shared runtime
+owns these global/data payloads without duplicate private SWAR state. Integer
+initializers and active offsets support i32/i64 constants, immutable imported
+integer reads, and matching add/sub/mul, bounded to 128 bytes and eight operands.
+Source checks precede folding; artifact checks precede runtime evaluation.
+Bounded immutable prior-local copies and integer expressions are also supported.
+Immutable nullable funcref imports require explicit same-Runtime Global owners
+and an owned or host-created imported table. A frozen sidecar records each distinct imported cell,
+its raw descriptor, and its actual descriptor-storage owner; one physical root
+per owner lasts until consumer teardown. Attachment quiesces each descriptor
+owner's independent execution before cross-instance use, including token-created
+host globals that never exported a GlobalObject. Native scopes traverse these edges
+within the existing owner/edge bounds, authenticate complete descriptors, and
+keep roots across parked callbacks and cold unwinding. Imported aliases and
+local copies may first issue public tokens after producer retirement without
+reopening direct producer access. Host-token canonical identity may name a
+different importer from the raw slot's storage owner. Before a scope releases
+writer promises or temporary roots, imported host tables retain the actual owners
+of authenticated rows. This bounded scan publishes no roots from malformed table
+extents and releases no resources under native/container locks. Existing quiescent
+attachment transfer handles a retired producer importing the same host table.
+Local mutable nullable funcref globals are admitted only after complete source
+and artifact checks exclude tables, reference-global imports, reference-valued
+signatures, and mutable reference exports. Cells retain full-width own canonical
+descriptors or null, including importer-owned thunks whose existing attachments
+retain foreign targets. No foreign descriptor address can enter this bounded
+shape; replacement therefore does not transfer a foreign physical root.
+Imported mutable nullable funcref cells additionally have exact executable
+profiles for observing nullness, clearing to null, and storing the writer's sole
+exported function. The non-null bridge authenticates the complete published
+descriptor and its same-store local owner before transferring one container root;
+overwrite or close retires that root through the ordinary global transaction.
+One further exact product copies a full-width descriptor from imported mutable
+global zero to imported mutable global one. The parked bridge resolves the
+canonical same-store owner before publication, transfers exactly one target root,
+releases speculative roots for repeated or aliased copies, and uses the same
+transaction to retire a prior target when the copied value is null.
+An exact move product composes two such bridges in one framed body: it first
+publishes source into target, then clears source. The first transaction acquires
+the target root before the second can retire the source root, so a logically
+closed descriptor owner remains physically live across the handoff. Null and
+aliased moves use the same transactions rather than a raw-cell shortcut.
+The exact bidirectional-copy product adds a two-slot indexed variant of that
+bridge. Each of its two exported bodies performs exactly one load and one write;
+the runtime accepts only target indices zero or one after the complete artifact
+shape and code image are authenticated. This permits both transfer directions
+without letting a guest temporary outlive the only container root for a descriptor.
+One exact mixed-state product initializes a private mutable funcref cell with
+its sole local function and copies that full-width descriptor into one imported
+mutable target. The private cell cannot be exported or receive foreign values;
+the same parked transaction transfers one precise own descriptor root to the
+container before native execution resumes.
+Reference-global imports combined with instance-owned imported tables, general
+mutable reference imports/exports and typed references remain gated pending
+separate ownership qualification.
+
+RV64 host calls retain the framed cooperative park/resume boundary. The
+bounded/live host portals and native scalar leaf optimization are unavailable
+on RV64; their shared API returns unavailable without entering native code.
+Fresh compilation cannot mint those optimization proofs, and artifact loading
+rejects their internal-entry markers.
+
+An internal RV64 prerequisite supports proper same-image numeric/vector `return_call`
+with exact result types. It stages arguments in the existing serialized arena,
+restores the incoming return address and result destination, discards the whole
+caller frame, and jumps to the callee's checked cooperative wrapper. Entry stack
+bounds and cancellation checks still precede writes. Scalar and forced-SWAR
+paths preserve their existing 256/128 logical value limits, respectively, with
+SWAR transfer work bounded and charged in up to 256 physical cells per direction.
+Public tail-call admission remains closed: imported targets,
+indirect/reference tails and profiling combinations await separate lowering and
+qualification. QEMU tests cover constant stack use, wide internal signatures,
+ordinary foreign-bridge return state, stack fences and active interruption.
 
 The immutable `shared.AMD64Features` uint32 assigns bits 0–10 to SSSE3, SSE4.1,
 SSE4.2, AVX, AVX2, BMI1, BMI2, LZCNT, POPCNT, FMA and the AVX-512 plugin tier,
@@ -521,6 +634,19 @@ typed-register contract.
 Separate bounded original-source and final-byte proofs cover selected recipes;
 unsupported shapes remain inconclusive. These checks do not establish general
 whole-function or whole-CFG equivalence.
+A checked-only serialized return cell accepts observed full-width GP stores and
+scalar result uses; it cannot be seeded, semantically defined, or read back into
+registers. This vocabulary does not activate RV64 graph verification, which still
+requires complete body-byte and final framing/relocation authentication.
+
+RV64 checked builds use separate GP and FP write observers to protect inputs
+while preparing large addresses, stores, compare operands, and paired floating
+inputs. A nonzero-link call invalidates both register banks. Guards end before
+consumers can overwrite their inputs, and compiler cleanup restores enclosing
+observers. The current RV64 backend has no deferred-load address, global-cell,
+or store-forward cache to guard. These checks add no ordinary-build state and
+must preserve ordinary generated code and compile allocations.
+
 
 The production compiler path is still single-pass: there is no separate
 register-allocation pass on the hot load path; Valent-Block is the compiler's
@@ -785,7 +911,7 @@ private immutable token and expires when the callback returns. All host
 functions use flat `(module, name)` registration and retain normal plugin gate
 and reservation checks. A synchronous invocation permits up to 32 active
 `InvokeFromHost` calls under standard Go, whose host stack grows. TinyGo keeps
-a four-call limit for its smaller fixed task stack. Both builds reject deeper
+a three-call limit for its smaller fixed task stack. Both builds reject deeper
 chains before allocating another native activation. Parked GC callback and root
 storage accommodates the outer callback plus every permitted reentry.
 
@@ -910,15 +1036,16 @@ pinned specification suites. See [tests/README.md](tests/README.md) for prerequi
 
 - Wago has no interpreter tier: supported modules execute as native code. Wasm
   can be compiled in-process, serialized as a native `.wago` artifact, or
-  embedded in a standalone executable that compiles it at startup.
-- Linux, macOS, and Windows on amd64 and arm64 execute the native JIT and are
-  required CI and release targets. Signal-backed guard pages remain specific to
-  Linux/amd64, Linux/arm64, and Darwin/arm64; other targets use explicit bounds.
+  embedded in a compiler-free standalone executable.
+- Linux on amd64, arm64, and riscv64, plus macOS and Windows on amd64 and arm64,
+  execute the native JIT and are required release targets. Signal-backed guard pages remain specific to
+  Linux/amd64, Linux/arm64, Linux/riscv64, and Darwin/arm64; other targets use
+  explicit bounds.
 - WebAssembly 1.0, the documented WebAssembly 2.0 feature set, and the default
   WebAssembly Core 3.0 feature families on complete backends (tail calls, typed
   references, WasmGC, exception handling, multi-memory, memory64, table64,
   extended constants, and relaxed SIMD) are complete on linux/amd64,
-  linux/arm64, and darwin/arm64. Threads & atomics are available as the bounded
+  linux/arm64, linux/riscv64, and darwin/arm64. Threads & atomics are available as the bounded
   experimental explicit-bounds product documented in [FEATURES.md](FEATURES.md), which is the
   source of truth for per-feature status.
 - The off-path `src/core/compiler/ir` package is a research/debug oracle, not an
@@ -940,8 +1067,16 @@ statistics and static WasmGC native-code attribution remain available to the
 new profiler.
 The removal contract is checked by `scripts/check-diagnostic-dce.sh`, which
 inspects unstripped manager, standard-runtime, minimal-runtime, and embedding binaries for
-both architectures on Linux, macOS, and Windows. Profiling must add no generated
-guest instrumentation or steady-state recording to ordinary builds.
+AMD64 and ARM64 on Linux, macOS, and Windows, plus RV64 on Linux. It also
+rejects foreign backend and encoder implementations. An artifact-loading embedding
+build with `wago_precompiled` must discard source decoding, frontend lowering,
+and function compilation even when it references `Compile`. Source requests fail
+before decoding. Artifact metadata validation
+and runtime thunk generation remain required.
+`scripts/check-riscv64-diagnostics.sh` compares ordinary and checked guest bytes
+and audits a force-linked RV64 compiler harness. Both scripts run in CI.
+Profiling must add no generated guest instrumentation or steady-state recording
+to ordinary builds.
 
 ### Build contract
 
@@ -995,6 +1130,19 @@ on boundary tracing halfway through existing activations.
 The registry performs no I/O or observer callbacks and retains copied bytes rather
 than executable pointers. `profile/` owns perf-map/jitdump encoders, temporal PC
 resolution, and pprof output with optional compiler-recorded inline ancestry.
+The portable jitdump encoder accepts AMD64, ARM64 and little-endian RV64 machine
+identities. RV64 code-load records and discovery-marker lifecycle are tested;
+this does not qualify native perf sampling or RV64 compiler unwind rules.
+Experimental RV64 profiling measures frame prefixes, bodies, epilogues, cold
+traps and alignment in the finalized image before executable staging. Optional
+source maps preserve shared deferred origins and fallback scalar/SWAR opcode
+offsets, including the local-declaration prefix. Wrapper and helper bytes leave
+explicit source gaps. Each function has at most 65,536 source/body ranges;
+module directories are capped at 262,144 entries each before retained copies.
+Ordinary builds retain no capture fields or source-recording implementation.
+Compiler-free artifacts can attach mapping profiles with unknown provenance;
+they cannot recover discarded compiler source maps. Unwind maps and inline
+reports remain rejected before publication.
 `internal/profcapture` owns workload contracts, collector phase control, and
 manifests; `internal/profilecmd` owns the shared parser and reports. Profiling
 captures remain incomplete while an external collector or conversion is pending.

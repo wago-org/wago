@@ -310,9 +310,6 @@ func decodeFDWithMemargWidthsInto(r *reader, widths memargWidths, ext *instrExt)
 			if err != nil {
 				return Instruction{}, err
 			}
-			if b >= 32 {
-				return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
-			}
 			lanes[i] = LaneIdx(b)
 		}
 		if ext == nil {

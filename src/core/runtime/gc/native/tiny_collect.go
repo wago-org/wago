@@ -339,11 +339,15 @@ func (c *Collector) tinyCollectNonIncremental(roots RootSet) error {
 	c.tinyGC.rootPhase = tinyRootsNone
 	c.tinyGC.state = tinyMark
 	c.tinyApplyStagedRoots()
-	for _, r := range c.globalSlots {
-		c.tinyMarkRef(r)
+	for i, r := range c.globalSlots {
+		if c.persistentRootIsStrong(SlotGlobal, uint32(i)) {
+			c.tinyMarkRef(r)
+		}
 	}
-	for _, r := range c.tableSlots {
-		c.tinyMarkRef(r)
+	for i, r := range c.tableSlots {
+		if c.persistentRootIsStrong(SlotTable, uint32(i)) {
+			c.tinyMarkRef(r)
+		}
 	}
 	for c.tinyGC.scan.handle != 0 || len(c.tinyGC.grayStack) != 0 {
 		if work := c.tinyDrainGrayBudget(completeObjectScanBudget); work == (objectScanWork{}) {
@@ -604,7 +608,9 @@ func (c *Collector) tinyDrainRootBudget(roots RootSet) (bool, error) {
 			c.tinyGC.sweep++
 			r := c.globalSlots[i]
 
-			c.tinyMarkRef(r)
+			if c.persistentRootIsStrong(SlotGlobal, i) {
+				c.tinyMarkRef(r)
+			}
 
 			remaining--
 		case tinyRootsTables:
@@ -617,7 +623,9 @@ func (c *Collector) tinyDrainRootBudget(roots RootSet) (bool, error) {
 			c.tinyGC.sweep++
 			r := c.tableSlots[i]
 
-			c.tinyMarkRef(r)
+			if c.persistentRootIsStrong(SlotTable, i) {
+				c.tinyMarkRef(r)
+			}
 
 			remaining--
 		default:
@@ -904,16 +912,21 @@ func (c *Collector) verifyTiny(roots RootSet) error {
 			}
 			r := makeObjRef(active)
 			d, err := c.refDesc(r)
-			if err != nil || !d.HasRefs {
+			if err != nil || !d.HasRefs && c.objectEdgeCount(r) == 0 {
 				return fmt.Errorf("gc: active tiny scan handle %d has no reference layout", active)
 			}
 			limit := uint32(len(d.Fields))
-			if d.Kind == KindArray {
-				if !d.ArrayElementsAreRefs() {
-					return fmt.Errorf("gc: active tiny array scan handle %d has non-reference elements", active)
-				}
-				limit = c.header(r).Aux
+			if !d.HasRefs {
+				limit = 0
 			}
+			if d.Kind == KindArray {
+				if d.ArrayElementsAreRefs() {
+					limit = c.header(r).Aux
+				} else {
+					limit = 0
+				}
+			}
+			limit += c.objectEdgeCount(r)
 			if c.tinyGC.scan.scan.index >= limit {
 				return fmt.Errorf("gc: active tiny scan handle %d cursor %d beyond %d entries", active, c.tinyGC.scan.scan.index, limit)
 			}
