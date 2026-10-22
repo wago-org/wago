@@ -52,13 +52,19 @@ func (lifetime referenceLifetime) finalize() {
 	store := in.refStore
 	in.lifeMu.Unlock()
 
-	retainProducerRootsInImportedContainersForFinalization(in)
-	lifetime.notifyStore(store, referenceLifetimeQuiesced)
+	// These scans can detach transferred attachments and synchronously finalize
+	// another producer. A callback panic must not strand our finalizing claim or
+	// skip the later scan, store notification, and eligible physical teardown.
+	var cleanup resourceCleanup
+	cleanup.run(func() { retainProducerRootsInImportedContainersForFinalization(in) })
+	cleanup.run(func() { lifetime.notifyStore(store, referenceLifetimeQuiesced) })
 
 	in.lifeMu.Lock()
 	in.finalizing = false
 	if in.resourcesClosed || !in.closed || in.resourceRefs != 0 || in.constructionActive || in.invocationState.Load()&instanceInvocationCount != 0 {
 		in.lifeMu.Unlock()
+		cleanup.run(func() { railshotRequestClosedContainerDependencyAdoption(in) })
+		cleanup.finish()
 		return
 	}
 	in.resourcesClosed = true
@@ -66,11 +72,15 @@ func (lifetime referenceLifetime) finalize() {
 	in.finalizers = nil
 	in.lifeMu.Unlock()
 
-	lifetime.notifyStore(store, referenceLifetimeResourcesReleased)
-	in.releaseResources()
+	cleanup.run(func() { lifetime.notifyStore(store, referenceLifetimeResourcesReleased) })
+	in.releaseResources(&cleanup)
 	if finalizers != nil && finalizers.physical != nil {
-		finalizers.physical()
+		cleanup.run(finalizers.physical)
 	}
+	// resourcesClosed was only the claim. Registration retirement must wait for
+	// native teardown and the complete physical callback journal, including panic.
+	railshotFunctionDependencyCleanupCompleted(in)
+	cleanup.finish()
 }
 
 func (lifetime referenceLifetime) afterPhysicalRelease(fn func()) {
@@ -92,8 +102,10 @@ func (lifetime referenceLifetime) afterPhysicalRelease(fn func()) {
 	} else {
 		previous := in.finalizers.physical
 		in.finalizers.physical = func() {
-			previous()
-			fn()
+			var cleanup resourceCleanup
+			cleanup.run(previous)
+			cleanup.run(fn)
+			cleanup.finish()
 		}
 	}
 	in.lifeMu.Unlock()
@@ -138,6 +150,9 @@ func (in *Instance) transferImportedMemoryAttachment(memory *Memory) {
 	if in == nil || memory == nil {
 		return
 	}
+	if railshotTransferMemoryDependency(in, memory) {
+		return
+	}
 	state := transferredImportState(in)
 	state.mu.Lock()
 	if state.memories == nil {
@@ -154,6 +169,9 @@ func (in *Instance) transferImportedMemoryAttachment(memory *Memory) {
 }
 
 func (in *Instance) ownsTransferredMemoryAttachment(memory *Memory) bool {
+	if transferred, managed := railshotTransferredMemoryDependency(in, memory); managed {
+		return transferred
+	}
 	value, ok := transferredImportAttachments.Load(in)
 	if !ok {
 		return false
@@ -167,6 +185,9 @@ func (in *Instance) ownsTransferredMemoryAttachment(memory *Memory) bool {
 
 func (in *Instance) transferImportedGlobalAttachment(global *Global) {
 	if in == nil || global == nil {
+		return
+	}
+	if railshotTransferGlobalDependency(in, global) {
 		return
 	}
 	state := transferredImportState(in)
@@ -185,6 +206,9 @@ func (in *Instance) transferImportedGlobalAttachment(global *Global) {
 }
 
 func (in *Instance) ownsTransferredGlobalAttachment(global *Global) bool {
+	if transferred, managed := railshotTransferredGlobalDependency(in, global); managed {
+		return transferred
+	}
 	value, ok := transferredImportAttachments.Load(in)
 	if !ok {
 		return false
@@ -198,6 +222,9 @@ func (in *Instance) ownsTransferredGlobalAttachment(global *Global) bool {
 
 func (in *Instance) transferImportedTableAttachment(table *Table) {
 	if in == nil || table == nil {
+		return
+	}
+	if railshotTransferTableDependency(in, table) {
 		return
 	}
 	state := transferredImportState(in)
@@ -216,6 +243,9 @@ func (in *Instance) transferImportedTableAttachment(table *Table) {
 }
 
 func (in *Instance) ownsTransferredTableAttachment(table *Table) bool {
+	if transferred, managed := railshotTransferredTableDependency(in, table); managed {
+		return transferred
+	}
 	value, ok := transferredImportAttachments.Load(in)
 	if !ok {
 		return false

@@ -1,0 +1,18 @@
+.text
+.option norvc
+lr.w x5, (x6)
+lr.w.aq x5, (x6)
+lr.w.rl x5, (x6)
+lr.w.aqrl x5, (x6)
+sc.w x5, x7, (x6)
+sc.w.aq x5, x7, (x6)
+sc.w.rl x5, x7, (x6)
+sc.w.aqrl x5, x7, (x6)
+lr.d x5, (x6)
+lr.d.aq x5, (x6)
+lr.d.rl x5, (x6)
+lr.d.aqrl x5, (x6)
+sc.d x5, x7, (x6)
+sc.d.aq x5, x7, (x6)
+sc.d.rl x5, x7, (x6)
+sc.d.aqrl x5, x7, (x6)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
 	"github.com/wago-org/wago/internal/wagopaths"
@@ -120,8 +121,13 @@ func requestedProfile(value string) (wagopaths.Profile, error) {
 }
 
 func requestedBuild(value string) (wagopaths.Build, error) {
+	build := wagopaths.BuildNormal
 	if value != "" {
-		return wagopaths.ParseBuild(value)
+		parsed, err := wagopaths.ParseBuild(value)
+		if err != nil {
+			return "", err
+		}
+		build = parsed
 	}
-	return wagopaths.BuildNormal, nil
+	return build, build.ValidatePlatform(runtime.GOOS, runtime.GOARCH)
 }

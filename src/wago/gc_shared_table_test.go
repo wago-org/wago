@@ -1,13 +1,15 @@
-//go:build (linux && (amd64 || arm64)) || (darwin && arm64)
+//go:build (linux && (amd64 || arm64 || riscv64)) || (darwin && arm64)
 
 package wago
 
 import (
+	"encoding/binary"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	native "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -62,6 +64,47 @@ func gcSharedTableModule(imported bool) []byte {
 			append(wasmtest.ULEB(uint32(len(setBody))), setBody...),
 			append(wasmtest.ULEB(uint32(len(readBody))), readBody...),
 			append(wasmtest.ULEB(uint32(len(growBody))), growBody...),
+		)),
+	)
+	return wasmtest.Module(sections...)
+}
+
+func gcSharedI31TableModule(imported bool) []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	setType := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+	readType := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	tableType := []byte{byte(wasm.HeapI31), 0x01, 0x01, 0x02}
+	setBody := []byte{
+		0x00,
+		0x20, 0x00,
+		0x20, 0x01, 0xfb, 0x1c,
+		0x26, 0x00,
+		0x20, 0x00, 0x25, 0x00, 0xfb, 0x1d,
+		0x0b,
+	}
+	readBody := []byte{0x00, 0x20, 0x00, 0x25, 0x00, 0xfb, 0x1d, 0x0b}
+	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(structType, setType, readType))}
+	if imported {
+		entry := append(append(wasmtest.Name("provider"), wasmtest.Name("values")...), byte(wasm.ExternTable))
+		entry = append(entry, tableType...)
+		sections = append(sections, wasmtest.Section(2, wasmtest.Vec(entry)))
+	}
+	sections = append(sections, wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))))
+	if !imported {
+		sections = append(sections, wasmtest.Section(4, wasmtest.Vec(tableType)))
+	}
+	exports := [][]byte{
+		wasmtest.ExportEntry("set", byte(wasm.ExternFunc), 0),
+		wasmtest.ExportEntry("read", byte(wasm.ExternFunc), 1),
+	}
+	if !imported {
+		exports = append(exports, wasmtest.ExportEntry("values", byte(wasm.ExternTable), 0))
+	}
+	sections = append(sections,
+		wasmtest.Section(7, wasmtest.Vec(exports...)),
+		wasmtest.Section(10, wasmtest.Vec(
+			append(wasmtest.ULEB(uint32(len(setBody))), setBody...),
+			append(wasmtest.ULEB(uint32(len(readBody))), readBody...),
 		)),
 	)
 	return wasmtest.Module(sections...)
@@ -302,6 +345,110 @@ func TestGCSharedMultipleTableAttachmentRollback(t *testing.T) {
 			t.Fatalf("table %d retained %d importer roots after rollback", i, importers)
 		}
 	}
+}
+
+func TestGCSharedTableImportRejectsIllTypedCompactRows(t *testing.T) {
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	compile := func(source []byte) *Compiled {
+		t.Helper()
+		compiled, err := Compile(cfg, source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = compiled.Close() })
+		return compiled
+	}
+	aggregateProviderCode := compile(gcSharedTableModule(false))
+	aggregateConsumerCode := compile(gcSharedTableModule(true))
+	multiProviderCode := compile(gcSharedMultiTableModule(false))
+	multiConsumerCode := compile(gcSharedMultiTableModule(true))
+	i31ProviderCode := compile(gcSharedI31TableModule(false))
+	i31ConsumerCode := compile(gcSharedI31TableModule(true))
+	if compiledArchitecture == 4 && (i31ProviderCode.nativeGCABIRequirement() != 0 || i31ProviderCode.genericGCFrameRoots() != nil || i31ProviderCode.stagedGCI31Product() == 0 ||
+		i31ConsumerCode.nativeGCABIRequirement() != 0 || i31ConsumerCode.genericGCFrameRoots() != nil || i31ConsumerCode.stagedGCI31Product() == 0) {
+		t.Fatal("non-allocating i31 tables require a collector-free execution product")
+	}
+	gcConfig := GCConfig{DisableCollection: true}
+	expectRejected := func(code *Compiled, store *referenceStore, imports *Imports) {
+		t.Helper()
+		in, err := instantiateCore(code, InstantiateOptions{GC: gcConfig, store: store, Imports: imports})
+		if in != nil {
+			_ = in.Close()
+		}
+		if err == nil || !strings.Contains(err.Error(), "incompatible exact structural type") {
+			t.Fatalf("ill-typed compact table import error=%v", err)
+		}
+	}
+
+	t.Run("aggregate-from-i31", func(t *testing.T) {
+		store := newReferenceStore(false)
+		defer store.closeRuntime()
+		provider, err := instantiateCore(aggregateProviderCode, InstantiateOptions{GC: gcConfig, store: store})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer provider.Close()
+		table, err := provider.ExportedTable("t")
+		if err != nil {
+			t.Fatal(err)
+		}
+		binary.LittleEndian.PutUint64(table.desc[8:], uint64(native.I31New(7)))
+		expectRejected(aggregateConsumerCode, store, testImports("provider.t", table))
+	})
+
+	t.Run("aggregate-from-wrong-nominal-object", func(t *testing.T) {
+		store := newReferenceStore(false)
+		defer store.closeRuntime()
+		provider, err := instantiateCore(multiProviderCode, InstantiateOptions{GC: gcConfig, store: store})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer provider.Close()
+		if _, err := provider.Invoke("set1", 0, 43); err != nil {
+			t.Fatal(err)
+		}
+		table0, err := provider.ExportedTable("t0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		table1, err := provider.ExportedTable("t1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		copy(table0.desc[8:16], table1.desc[8:16])
+		expectRejected(multiConsumerCode, store, testImports("provider.t0", table0, "provider.t1", table1))
+	})
+
+	t.Run("i31-from-object", func(t *testing.T) {
+		store := newReferenceStore(false)
+		defer store.closeRuntime()
+		aggregate, err := instantiateCore(aggregateProviderCode, InstantiateOptions{GC: gcConfig, store: store})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer aggregate.Close()
+		i31, err := instantiateCore(i31ProviderCode, InstantiateOptions{GC: gcConfig, store: store})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer i31.Close()
+		if aggregate.gc == nil || i31.gc != nil {
+			t.Fatal("aggregate provider requires a collector and i31 provider must remain collector-free")
+		}
+		if _, err := aggregate.Invoke("set", 0, 47); err != nil {
+			t.Fatal(err)
+		}
+		aggregateTable, err := aggregate.ExportedTable("t")
+		if err != nil {
+			t.Fatal(err)
+		}
+		i31Table, err := i31.ExportedTable("values")
+		if err != nil {
+			t.Fatal(err)
+		}
+		copy(i31Table.desc[8:16], aggregateTable.desc[8:16])
+		expectRejected(i31ConsumerCode, store, testImports("provider.values", i31Table))
+	})
 }
 
 func TestGCSharedTableAliasesGrowthCollectionCodecAndCloseOrder(t *testing.T) {
