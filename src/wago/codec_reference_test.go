@@ -182,7 +182,9 @@ func TestCompiledCodecRequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal unknown-feature fixture: %v", err)
 	}
-	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], uint64(CoreFeatureTailCall))
+	// Tail calls are now an admitted artifact family. Bit 30 is outside the
+	// public feature set and all version-6 private execution flags.
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], uint64(1)<<30)
 	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 		t.Fatalf("unknown feature bits error = %v, want fail-closed rejection", err)
 	}

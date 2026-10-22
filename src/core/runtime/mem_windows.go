@@ -77,16 +77,7 @@ func protectCodeRX(mem []byte) error {
 }
 
 func mmapExec(code []byte) ([]byte, error) {
-	mem, err := mmapRW(len(code))
-	if err != nil {
-		return nil, err
-	}
-	copy(mem, code)
-	if err := protectCodeRX(mem); err != nil {
-		_ = munmap(mem)
-		return nil, err
-	}
-	return mem, nil
+	return mmapExecWith(code, mmapRW, protectCodeRX, munmap)
 }
 
 func munmap(b []byte) error {

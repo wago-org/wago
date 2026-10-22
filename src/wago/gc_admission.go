@@ -105,6 +105,16 @@ func (g *gcTopologyGate) TryLock() bool {
 	return true
 }
 
+func (g *gcTopologyGate) TryRLock() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.writer || g.writers != 0 {
+		return false
+	}
+	g.readers++
+	return true
+}
+
 func (v gcInvocationDomainView) lockContext(ctx context.Context) error {
 	if v.dynamic {
 		it := v.iterator(false)

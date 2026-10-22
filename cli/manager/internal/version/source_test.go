@@ -164,10 +164,14 @@ func TestMissingReleaseAssetFallsBackToSource(t *testing.T) {
 	}
 
 	dest := filepath.Join(t.TempDir(), "runner")
-	if err := installRunnerPayload("v9.9.9", wagopaths.ProfileMinimal, wagopaths.BuildTiny, dest, false, nil); err != nil {
+	build := wagopaths.BuildTiny
+	if err := build.ValidatePlatform(runtime.GOOS, runtime.GOARCH); err != nil {
+		build = wagopaths.BuildNormal
+	}
+	if err := installRunnerPayload("v9.9.9", wagopaths.ProfileMinimal, build, dest, false, nil); err != nil {
 		t.Fatal(err)
 	}
-	if gotRef != "v9.9.9" || gotProfile != wagopaths.ProfileMinimal || gotBuild != wagopaths.BuildTiny {
+	if gotRef != "v9.9.9" || gotProfile != wagopaths.ProfileMinimal || gotBuild != build {
 		t.Fatalf("source fallback = %q %q %q", gotRef, gotProfile, gotBuild)
 	}
 	if body, err := os.ReadFile(dest); err != nil || string(body) != "source runner" {

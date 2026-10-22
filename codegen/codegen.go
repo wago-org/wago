@@ -7,8 +7,9 @@ package codegen
 type Architecture string
 
 const (
-	AMD64 Architecture = "amd64"
-	ARM64 Architecture = "arm64"
+	AMD64   Architecture = "amd64"
+	ARM64   Architecture = "arm64"
+	RISCV64 Architecture = "riscv64"
 )
 
 // Lowering is one target-specific plugin code generator. Instruction metadata

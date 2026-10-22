@@ -1,9 +1,10 @@
-//go:build (linux || darwin || windows) && (amd64 || arm64)
+//go:build (linux || darwin || windows) && (amd64 || arm64 || riscv64)
 
 package wago
 
 import (
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -102,10 +103,16 @@ func TestTrapFrameOmitsAmbiguousProgramCounter(t *testing.T) {
 		t.Fatalf("Invoke error = %v, trap %#v", err, trap)
 	}
 	frame := trap.Frames[0]
-	if frame.FunctionIndex != 0 || frame.FunctionName != "choose_boom" || frame.HasProgramCounter {
-		t.Fatalf("shared-site trap frame = %#v, want function-only frame", frame)
-	}
-	if strings.Contains(frame.String(), "wasm pc") {
-		t.Fatalf("function-only frame guessed a PC: %s", frame.String())
+	if runtime.GOARCH == "riscv64" {
+		if frame.FunctionIndex != 0 || frame.FunctionName != "choose_boom" || !frame.HasProgramCounter || frame.ProgramCounter != 5 {
+			t.Fatalf("distinct-site trap frame = %#v, want choose_boom func[0] at wasm pc 5", frame)
+		}
+	} else {
+		if frame.FunctionIndex != 0 || frame.FunctionName != "choose_boom" || frame.HasProgramCounter {
+			t.Fatalf("shared-site trap frame = %#v, want function-only frame", frame)
+		}
+		if strings.Contains(frame.String(), "wasm pc") {
+			t.Fatalf("function-only frame guessed a PC: %s", frame.String())
+		}
 	}
 }

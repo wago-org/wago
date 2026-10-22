@@ -309,7 +309,7 @@ func TestSelfUninstallRemovesInstalledFishCompletion(t *testing.T) {
 	}
 }
 
-func TestSelfUninstallTargetsCollapseCustomWagoHome(t *testing.T) {
+func TestSelfUninstallTargetsKeepCustomWagoHomeAsBoundary(t *testing.T) {
 	home := t.TempDir()
 	root := filepath.Join(home, "custom-wago")
 	setTestHome(t, home)
@@ -320,8 +320,26 @@ func TestSelfUninstallTargetsCollapseCustomWagoHome(t *testing.T) {
 		Cache:  filepath.Join(root, "cache", "canary"),
 	}
 	manager := filepath.Join(root, "bin", "wago")
-	if got, want := Targets(dirs, manager, Full), []string{root}; !reflect.DeepEqual(got, want) {
+	if got, want := Targets(dirs, manager, Full), []string{dirs.Data, dirs.Config, filepath.Dir(dirs.Cache), manager}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("selfUninstallTargets(custom home) = %q, want %q", got, want)
+	}
+}
+
+func TestSelfUninstallTargetsRejectCustomWagoHomeAsRecursiveTarget(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "shared-state")
+	setTestHome(t, home)
+	t.Setenv("WAGO_HOME", root)
+	dirs := wagopaths.Dirs{
+		Data:   root,
+		Config: filepath.Join(root, "config"),
+		Cache:  filepath.Join(root, "cache", "canary"),
+	}
+	manager := filepath.Join(home, "bin", "wago")
+	for _, target := range Targets(dirs, manager, Full) {
+		if resolvedCleanupPath(target) == resolvedCleanupPath(root) {
+			t.Fatalf("custom WAGO_HOME is a recursive target: %q", target)
+		}
 	}
 }
 
@@ -352,7 +370,7 @@ func TestSelfUninstallFullRemovesSelectedWagoHomeIncludingPlugins(t *testing.T) 
 	}
 }
 
-func TestSelfUninstallFullRemovesCustomInstallationDirectory(t *testing.T) {
+func TestSelfUninstallFullPreservesUnownedCustomWagoHomeContent(t *testing.T) {
 	home := t.TempDir()
 	root := filepath.Join(home, "state")
 	installDir := filepath.Join(home, "custom-bin")
@@ -373,10 +391,11 @@ func TestSelfUninstallFullRemovesCustomInstallationDirectory(t *testing.T) {
 	}
 
 	selfUninstall(dirs, manager, Full, true, strings.NewReader(""), io.Discard)
-	for _, path := range []string{root, installDir} {
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
-			t.Fatalf("full uninstall kept %s: %v", path, err)
-		}
+	if data, err := os.ReadFile(filepath.Join(root, "leftover")); err != nil || string(data) != "state" {
+		t.Fatalf("full uninstall changed unowned custom-home content: %q, %v", data, err)
+	}
+	if _, err := os.Stat(installDir); !os.IsNotExist(err) {
+		t.Fatalf("full uninstall kept installation directory %s: %v", installDir, err)
 	}
 }
 
