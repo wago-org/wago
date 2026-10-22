@@ -17,7 +17,7 @@ import (
 // arenas for larger configured populations. Dead-at-all-sites locals are
 // removed before variable-sized per-site vectors are emitted. Each function
 // gets independent compile state so workers may populate maps in parallel.
-func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
+func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
 	if diagnostic != nil {
 		*diagnostic = ""
 	}

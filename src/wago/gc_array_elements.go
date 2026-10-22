@@ -231,6 +231,20 @@ func (in *Instance) existingGCArrayElementState() *gcArrayElementState {
 	return plugin.gcArrayElements.Load()
 }
 
+// takeGCArrayElementState transfers teardown ownership exactly once. Physical
+// instance release calls it while holding the public collector lock, before the
+// arena-backed descriptor is released.
+func (in *Instance) takeGCArrayElementState() *gcArrayElementState {
+	if in == nil {
+		return nil
+	}
+	plugin := in.pluginState.Load()
+	if plugin == nil {
+		return nil
+	}
+	return plugin.gcArrayElements.Swap(nil)
+}
+
 func (s *gcArrayElementState) drop(collector *gc.Collector) {
 	if s == nil || collector == nil {
 		return

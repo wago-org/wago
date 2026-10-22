@@ -1,0 +1,567 @@
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+
+package wago
+
+import (
+	"fmt"
+
+	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
+)
+
+type railshotImportBinding = railshot.ImportBinding
+type railshotCompileOptions = railshot.CompileOptions
+type railshotCompiledModule = encoder.CompiledModule
+type railshotKnobInfo = railshot.KnobInfo
+type railshotOptimizationSnapshot = railshot.OptimizationSnapshot
+type railshotModuleStats = railshot.ModuleStats
+
+func railshotOptKnobs() []railshotKnobInfo { return railshot.OptKnobs() }
+func railshotOptKnobSnapshot() ([]railshotKnobInfo, railshotOptimizationSnapshot) {
+	return railshot.OptKnobSnapshot()
+}
+func railshotCurrentOptKnobSnapshot() railshotOptimizationSnapshot {
+	return railshot.CurrentOptKnobSnapshot()
+}
+func railshotSetOptKnob(name string, on bool) bool { return railshot.SetOptKnob(name, on) }
+
+func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*railshotCompiledModule, error) {
+	if m == nil {
+		return railshot.CompileModuleWith(m, opts)
+	}
+	// The plan was produced from this already decoded and validated module by
+	// newGCFrameRootPlan. The backend still authenticates the bounded source
+	// product and every plan count before emitting a callable image.
+	opts.GCFrameRootsSource = opts.GCFrameRoots != nil
+	maxImportArity := railshot.MaxVectorFunctionValues
+	if opts.GCTypeSubtypingDeclarationsSource == 0 && opts.GCTypeSubtypingRecursiveFunctionsSource == 0 && opts.GCTypeSubtypingRefFuncGlobalsSource == 0 && !opts.GCTypeSubtypingRuntimeCallCastSource && !opts.GCTypeSubtypingRuntimeFinalityCallCastSource && !opts.GCTypeSubtypingRuntimeTypedTableCallSource && opts.GCTypeSubtypingRefTestSingleSource == 0 && opts.GCTypeSubtypingLinkSource == 0 && opts.GCTypeSubtypingFinalityLinkSource == 0 && opts.GCTypeSubtypingStructLinkSource == 0 && opts.GCTypeSubtypingStructProjectionSource == 0 && opts.GCTypeSubtypingStructMismatchSource == 0 && opts.GCTypeSubtypingIndependentStructSource == 0 && opts.GCTypeSubtypingExtendedProjectionSource == 0 && opts.GCTypeSubtypingDuplicateRecursiveSource == 0 && opts.GCTypeSubtypingExtendedRecursiveSource == 0 && opts.GCTypeSubtypingCrossGroupMismatchSource == 0 && opts.GCTypeSubtypingTransitiveMismatchSource == 0 && !opts.GCTypeSubtypingNonFlatExportSource {
+		if _, err := railshot.UsesSWAR(m); err != nil {
+			return nil, err
+		}
+	}
+	for i, im := range m.Imports {
+		if im.Type.Kind == wasm.ExternFunc {
+			ft, ok := m.ImportFuncType(i)
+			if !ok || len(ft.Params) > maxImportArity || len(ft.Results) > maxImportArity {
+				return nil, fmt.Errorf("%w: public function import signature arity", railshot.ErrUnsupported)
+			}
+		}
+	}
+	// Callable public artifacts use the cooperative ABI unconditionally. The
+	// new RV64 architecture identity denotes this framed, polling RV64G ABI.
+	opts.Interruptible = true
+	opts.ForeignTableCalls = true
+	opts.InvocationContext = true
+	opts.ExceptionHandlingSource = railshot.AdmitExceptionHandlingModule(m)
+	opts.OwnedExceptionReferences = opts.ExceptionHandlingSource && railshot.ManagedExceptionReferences(m)
+	return railshot.CompileModuleWith(m, opts)
+}
+
+func railshotGCNativeCodeTelemetry(stats *railshotModuleStats) GCNativeCodeTelemetry {
+	var out GCNativeCodeTelemetry
+	if stats != nil {
+		for _, function := range stats.Funcs {
+			if function != nil {
+				out.TotalBytes += uint64(function.GCCodeBytes.Total)
+			}
+		}
+	}
+	return out
+}
+
+// Deferred event wrappers use the bounded per-instance replay log.
+func railshotHostIndirectThunk(index uint32) []byte { return railshot.HostIndirectThunk(index) }
+func railshotHostIndirectSyncThunk(index uint32, params, results int) []byte {
+	return railshot.HostIndirectSyncThunk(index, params, results)
+}
+func railshotHostIndirectOwnedSyncThunk(index uint32, params, results int) []byte {
+	return railshot.HostIndirectOwnedSyncThunk(index, params, results)
+}
+
+func railshotAdmitSource(data []byte, m *wasm.Module) error {
+	if err := railshot.AdmitProductionSource(data); err != nil {
+		return err
+	}
+	if railshot.AdmitExceptionHandlingModule(m) {
+		return railshot.AdmitExceptionHandlingInitializers(m)
+	}
+	return railshot.AdmitPublicInitializers(m)
+}
+
+func railshotManagedExceptionReferences(m *wasm.Module) bool {
+	return railshot.AdmitExceptionHandlingModule(m) && railshot.ManagedExceptionReferences(m)
+}
+
+func railshotExceptionHandlingSource(m *wasm.Module) bool {
+	return railshot.AdmitExceptionHandlingModule(m)
+}
+
+func railshotI31CoreSource(data []byte) bool { return railshot.AdmitI31CoreSource(data) }
+
+func railshotGCRefEqSource(data []byte) bool { return railshot.AdmitGCRefEqSource(data) }
+
+func railshotGCRefTestTableSource(data []byte) bool {
+	return railshot.AdmitGCRefTestTableSource(data)
+}
+
+func railshotGCRefTestConcreteSource(data []byte) bool {
+	return railshot.AdmitGCRefTestConcreteSource(data)
+}
+
+func railshotGCRefTestAbstractSource(data []byte) bool {
+	return railshot.AdmitGCRefTestAbstractSource(data)
+}
+
+func railshotGCExternSource(data []byte) bool { return railshot.AdmitGCExternSource(data) }
+
+func railshotGCRefCastAbstractSource(data []byte) bool {
+	return railshot.AdmitGCRefCastAbstractSource(data)
+}
+
+func railshotGCRefCastConcreteSource(data []byte) bool {
+	return railshot.AdmitGCRefCastConcreteSource(data)
+}
+
+func railshotGCBrOnCastAbstractSource(data []byte) bool {
+	return railshot.AdmitGCBrOnCastAbstractSource(data)
+}
+
+func railshotGCBrOnCastFailAbstractSource(data []byte) bool {
+	return railshot.AdmitGCBrOnCastFailAbstractSource(data)
+}
+
+func railshotGCBrOnCastConcreteSource(data []byte) bool {
+	return railshot.AdmitGCBrOnCastConcreteSource(data)
+}
+
+func railshotGCBrOnCastFailConcreteSource(data []byte) bool {
+	return railshot.AdmitGCBrOnCastFailConcreteSource(data)
+}
+
+func railshotGCBrOnCastNullabilitySource(data []byte) bool {
+	return railshot.AdmitGCBrOnCastNullabilitySource(data)
+}
+
+func railshotGCBrOnCastFailNullabilitySource(data []byte) bool {
+	return railshot.AdmitGCBrOnCastFailNullabilitySource(data)
+}
+
+func railshotGCTypeSubtypingDeclarationsSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingDeclarationsSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingRecursiveFunctionsSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingRecursiveFunctionsSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingRefFuncGlobalsSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingRefFuncGlobalsSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingRuntimeCallCastSource(data []byte) bool {
+	return railshot.AdmitGCTypeSubtypingRuntimeCallCastSource(data)
+}
+
+func railshotGCTypeSubtypingRuntimeFinalityCallCastSource(data []byte) bool {
+	return railshot.AdmitGCTypeSubtypingRuntimeFinalityCallCastSource(data)
+}
+
+func railshotGCTypeSubtypingRuntimeTypedTableCallSource(data []byte) bool {
+	return railshot.AdmitGCTypeSubtypingRuntimeTypedTableCallSource(data)
+}
+
+func railshotGCTypeSubtypingRefTestSingleSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingRefTestSingleSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingLinkSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingLinkSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingFinalityLinkSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingFinalityLinkSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingStructLinkSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingStructLinkSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingStructProjectionLinkSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingStructProjectionLinkSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingStructMismatchLinkSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingStructMismatchLinkSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingIndependentStructLinkSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingIndependentStructLinkSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingExtendedProjectionLinkSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingExtendedProjectionLinkSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingDuplicateRecursiveLinkSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingDuplicateRecursiveLinkSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingExtendedRecursiveLinkSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingExtendedRecursiveLinkSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingCrossGroupMismatchLinkSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingCrossGroupMismatchLinkSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingTransitiveMismatchLinkSource(data []byte) uint8 {
+	return railshot.GCTypeSubtypingTransitiveMismatchLinkSourceVariant(data)
+}
+
+func railshotGCTypeSubtypingNonFlatExportSource(data []byte) bool {
+	return railshot.GCTypeSubtypingNonFlatExportSource(data)
+}
+
+func railshotGCRootedScalarSource(data []byte) bool {
+	return railshot.AdmitGCRootedScalarSource(data)
+}
+
+func railshotGCStructGetSource(data []byte) bool { return railshot.AdmitGCStructGetSource(data) }
+
+func railshotGCStructMutationSource(data []byte) bool {
+	return railshot.AdmitGCStructMutationSource(data)
+}
+
+func railshotGCStructNullSource(data []byte) bool { return railshot.AdmitGCStructNullSource(data) }
+
+func railshotGCStructPackedSource(data []byte) bool { return railshot.AdmitGCStructPackedSource(data) }
+
+func railshotGCStructBasicSource(data []byte) bool { return railshot.AdmitGCStructBasicSource(data) }
+
+func railshotGCStructNumericGlobalsSource(data []byte) bool {
+	return railshot.AdmitGCStructNumericGlobalsSource(data)
+}
+
+func railshotGCArrayLocalSource(data []byte) bool { return railshot.AdmitGCArrayLocalSource(data) }
+
+func railshotGCArrayUniformSource(data []byte) bool { return railshot.AdmitGCArrayUniformSource(data) }
+
+func railshotGCArrayFixedLocalSource(data []byte) bool {
+	return railshot.AdmitGCArrayFixedLocalSource(data)
+}
+
+func railshotGCArrayFixedOfficialSource(data []byte) bool {
+	return railshot.AdmitGCArrayFixedOfficialSource(data)
+}
+
+func railshotGCArrayDefaultOfficialSource(data []byte) bool {
+	return railshot.AdmitGCArrayDefaultOfficialSource(data)
+}
+
+func railshotGCArrayPackedDataSource(data []byte) bool {
+	return railshot.AdmitGCArrayPackedDataSource(data)
+}
+
+func railshotGCArrayReferenceSource(data []byte) bool {
+	return railshot.AdmitGCArrayReferenceSource(data)
+}
+
+func railshotGCArrayInitElemSource(data []byte) bool {
+	return railshot.AdmitGCArrayInitElemSource(data)
+}
+
+func railshotGCArrayInitDataSource(data []byte) bool {
+	return railshot.AdmitGCArrayInitDataSource(data)
+}
+
+func railshotGCArrayFillSource(data []byte) bool {
+	return railshot.AdmitGCArrayFillSource(data)
+}
+
+func railshotGCArrayCopySource(data []byte) bool {
+	return railshot.AdmitGCArrayCopySource(data)
+}
+
+func railshotConfigureI31Core(exactSource bool, opts *railshotCompileOptions) {
+	opts.I31CoreSource = exactSource
+}
+
+func railshotGeneralI31Module(m *wasm.Module) bool {
+	return railshot.AdmitGeneralI31Module(m)
+}
+
+func railshotConfigureGeneralI31(source bool, opts *railshotCompileOptions) {
+	opts.GeneralI31Source = source
+}
+
+func railshotConfigureGCRefEq(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCRefEqSource = exactSource
+}
+
+func railshotConfigureGCRefTestTable(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCRefTestTableSource = exactSource
+}
+
+func railshotConfigureGCRefTestConcrete(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCRefTestConcreteSource = exactSource
+}
+
+func railshotConfigureGCRefTestAbstract(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCRefTestAbstractSource = exactSource
+}
+
+func railshotConfigureGCExtern(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCExternSource = exactSource
+}
+
+func railshotConfigureGCRefCastAbstract(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCRefCastAbstractSource = exactSource
+}
+
+func railshotConfigureGCRefCastConcrete(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCRefCastConcreteSource = exactSource
+}
+
+func railshotConfigureGCBrOnCastAbstract(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCBrOnCastAbstractSource = exactSource
+}
+
+func railshotConfigureGCBrOnCastFailAbstract(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCBrOnCastFailAbstractSource = exactSource
+}
+
+func railshotConfigureGCBrOnCastConcrete(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCBrOnCastConcreteSource = exactSource
+}
+
+func railshotConfigureGCBrOnCastFailConcrete(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCBrOnCastFailConcreteSource = exactSource
+}
+
+func railshotConfigureGCBrOnCastNullability(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCBrOnCastNullabilitySource = exactSource
+}
+
+func railshotConfigureGCBrOnCastFailNullability(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCBrOnCastFailNullabilitySource = exactSource
+}
+
+func railshotConfigureGCTypeSubtypingDeclarations(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingDeclarationsSource = sourceVariant
+}
+
+func railshotConfigureGCTypeSubtypingRecursiveFunctions(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingRecursiveFunctionsSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = true
+	}
+}
+
+func railshotConfigureGCTypeSubtypingRefFuncGlobals(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingRefFuncGlobalsSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingRuntimeCallCast(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingRuntimeCallCastSource = exactSource
+	if exactSource {
+		opts.NativeReferenceCalls = true
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingRuntimeFinalityCallCast(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingRuntimeFinalityCallCastSource = exactSource
+	if exactSource {
+		opts.NativeReferenceCalls = true
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingRuntimeTypedTableCall(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingRuntimeTypedTableCallSource = exactSource
+	if exactSource {
+		opts.NativeReferenceCalls = true
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingRefTestSingle(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingRefTestSingleSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingLink(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingLinkSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingFinalityLink(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingFinalityLinkSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingStructLink(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingStructLinkSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingStructProjectionLink(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingStructProjectionSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingStructMismatchLink(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingStructMismatchSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingIndependentStructLink(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingIndependentStructSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingExtendedProjectionLink(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingExtendedProjectionSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingDuplicateRecursiveLink(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingDuplicateRecursiveSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingExtendedRecursiveLink(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingExtendedRecursiveSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingCrossGroupMismatchLink(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingCrossGroupMismatchSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingTransitiveMismatchLink(sourceVariant uint8, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingTransitiveMismatchSource = sourceVariant
+	if sourceVariant != 0 {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCTypeSubtypingNonFlatExport(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCTypeSubtypingNonFlatExportSource = exactSource
+	if exactSource {
+		opts.NativeReferenceCalls = false
+		opts.NativeReferenceFunctions = false
+	}
+}
+
+func railshotConfigureGCStructGet(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCStructGetSource = exactSource
+}
+
+func railshotConfigureGCStructMutation(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCStructMutationSource = exactSource
+}
+
+func railshotConfigureGCStructNull(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCStructNullSource = exactSource
+}
+
+func railshotConfigureGCStructPacked(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCStructPackedSource = exactSource
+}
+
+func railshotConfigureGCStructBasic(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCStructBasicSource = exactSource
+}
+
+func railshotConfigureGCStructNumericGlobals(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCStructGlobalsSource = exactSource
+}
+
+func railshotConfigureGCArrayLocal(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCArrayLocalSource = exactSource
+}
+
+func railshotConfigureGCArrayUniform(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCArrayUniformSource = exactSource
+}
+
+func railshotConfigureGCArrayFixedLocal(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCArrayFixedLocalSource = exactSource
+}
+
+func railshotConfigureGCArrayFixedOfficial(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCArrayFixedOfficialSource = exactSource
+}
+
+func railshotConfigureGCArrayDefaultOfficial(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCArrayDefaultOfficialSource = exactSource
+}
+
+func railshotConfigureGCArrayPackedData(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCArrayPackedDataSource = exactSource
+}
+
+func railshotConfigureGCArrayReference(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCArrayReferenceSource = exactSource
+}
+
+func railshotConfigureGCArrayInitElem(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCArrayInitElemSource = exactSource
+}
+
+func railshotConfigureGCArrayInitData(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCArrayInitDataSource = exactSource
+}
+
+func railshotConfigureGCArrayFill(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCArrayFillSource = exactSource
+}
+
+func railshotConfigureGCArrayCopy(exactSource bool, opts *railshotCompileOptions) {
+	opts.GCArrayCopySource = exactSource
+}
+
+func railshotFunctionSubtypeHelpers(m *wasm.Module) bool {
+	return railshot.NeedsFunctionSubtypeHelpers(m)
+}

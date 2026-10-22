@@ -129,8 +129,8 @@ func TestJournalActualEncoderTransport(t *testing.T) {
 						previousWrites(mask)
 					}
 				})
-				defer a.observeEffect(previousEffect)
-				defer a.observeWrites(previousWrites)
+				defer func() { a.observeEffect(previousEffect) }()
+				defer func() { a.observeWrites(previousWrites) }()
 				if mode == "discarded wrong source" {
 					at := a.length()
 					m := j.Checkpoint(at)
@@ -197,9 +197,9 @@ func TestJournalActualObserverRestorationAfterPanic(t *testing.T) {
 				}()
 				defer j.Close()
 				previousEffect := a.observeEffect(j.ObserveEffect)
-				defer a.observeEffect(previousEffect)
+				defer func() { a.observeEffect(previousEffect) }()
 				previousWrites := a.observeWrites(j.ObserveGPWrites)
-				defer a.observeWrites(previousWrites)
+				defer func() { a.observeWrites(previousWrites) }()
 				journalEmit(t, j, a, func() { a.load(8) })
 				panic("emission panic")
 			}()
