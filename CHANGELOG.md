@@ -46,6 +46,17 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Add opt-in pure integer select branches through `WAGO_AMD64_PURE_SELECT=1`;
   keep them disabled by default because unpredictable conditions can regress.
   ([#895](https://github.com/wago-org/wago/pull/895))
+- Compile bounded portable scalar plugin recipes to ARM64 instructions, preserving
+  exact import identity and the portable fallback for larger or unsupported contracts.
+- Adapt native struct handle reservations to batch use. Mixed struct/array code
+  cancels small batches; sustained struct allocation recovers the configured
+  maximum without changing the native allocation ABI.
+
+- Add checked allocation-mix workloads and collector benchmarks for native
+  struct batches canceled by array allocation helpers.
+- Keep AMD64 `v128` array loads and stores in native code with checked handles,
+  type identity, bounds, and object extents. Add a visible V8 timing comparison.
+
 - Detect writes to live deferred-load address registers, cached global-cell
   pointers, and forwarded store values in the AMD64 and ARM64 compilers when
   `wago_regalloccheck` is enabled. Also guard inputs during address preparation
