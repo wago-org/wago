@@ -272,7 +272,15 @@ globals use direct domain-wide alias-cell roots plus checked barrier slots. Mult
 heterogeneous imported/exported collector-reference tables use the same domain-wide
 descriptor-root scan across growth, attachment rollback, and producer-first close.
 Exact cross-instance GC-reference calls coexist with those shared persistent roots and
-retain the same foreign-frame ownership across compiled-code codec reload. Generic
+retain the same foreign-frame ownership across compiled-code codec reload.
+On AMD64 and ARM64, a scalar native relay does not end a root walk. The walker
+uses exact return maps and saved instance contexts to cross foreign frames, skips
+their collector-local slots, and resumes older frames of the collecting domain.
+Collector-free relays retain zero-root return maps without selecting a collector
+execution product. Immutable imports retain cross-store code and context owners
+until physical resource release. Parked foreign host activations retain the same
+chain while the public caller releases its collector lease for Go.
+Generic
 struct/array results may leave the domain as up to 64 opaque retained `GCRef` tokens
 per producer. Partial multi-result issuance rolls back atomically; exact store/producer
 ownership survives producer close, and non-null tokens may re-enter the same collector
@@ -320,7 +328,7 @@ helper-bound. Arm64 builds lower struct/array/i31 and dynamic cast/test helpers
 through the synchronous ABI. The
 bounded arm64 native-root product publishes liveness-exact locals and hidden
 spills from parked SP, then follows saved-LR callsites through direct/recursive
-calls, suspended direct-host activations, and same-domain foreign frames. Mutable
+calls, suspended host activations, and retained foreign native frames. Mutable
 local/shared GC globals, local/shared collector tables, indirect/reference calls,
 discarded-frame direct/indirect/reference tails, and fixed EH payload records are
 exact. ARM64 `try_table`, `throw`, `throw_ref`, function subtype identity, indexed

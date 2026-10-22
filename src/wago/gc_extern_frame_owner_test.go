@@ -433,7 +433,7 @@ func TestGCExternNativeAdapterRecordBounds(t *testing.T) {
 	})
 }
 
-func TestGCNativeScalarDomainBoundary(t *testing.T) {
+func TestGCNativeFrameOwnerAcrossDomains(t *testing.T) {
 	collecting := new(gc.Collector)
 	for _, tc := range []struct {
 		name    string
@@ -443,26 +443,26 @@ func TestGCNativeScalarDomainBoundary(t *testing.T) {
 		want    bool
 	}{
 		{"scalar", 0x10040, 0x20000, nil, true},
-		// No frame is read at this boundary. Even an interior image address
-		// cannot conceal roots belonging to the collecting domain.
+		// Image lookup identifies a plan, not a stopping point or a root slot.
+		// The walker must still match an exact return map before using it.
 		{"interior-pc", 0x10001, 0x20000, nil, true},
 		{"other-collector", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) { in.gc = new(gc.Collector) }, true},
-		{"same-collector", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) { in.gc = collecting }, false},
+		{"same-collector", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) { in.gc = collecting }, true},
 		{"unknown-pc", 0x30040, 0x20000, nil, false},
 		{"end-pc", 0x10080, 0x20000, nil, false},
 		{"wrong-context", 0x10040, 0x20001, nil, false},
-		{"zero-context", 0x10040, 0, nil, false},
+		{"plan-only-lookup", 0x10040, 0, nil, true},
 		{"released", 0x10040, 0x20000, func(_ *Instance, state *referenceStoreInstance) { state.resourcesReleased = true }, false},
 		{"other-store", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) { in.refStore = new(referenceStore) }, false},
 		{"dynamic-global", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) {
 			in.c.Globals = []GlobalDef{{Type: ValFuncRef}}
-		}, false},
+		}, true},
 		{"collector-argument", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) {
 			in.c.importFuncSigs = []FuncSig{{Params: []ValType{ValAnyRef}}}
-		}, false},
+		}, true},
 		{"collector-result", 0x10040, 0x20000, func(in *Instance, _ *referenceStoreInstance) {
 			in.c.importFuncSigs = []FuncSig{{Results: []ValType{ValAnyRef}}}
-		}, false},
+		}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := new(referenceStore)
@@ -472,7 +472,7 @@ func TestGCNativeScalarDomainBoundary(t *testing.T) {
 			if tc.change != nil {
 				tc.change(caller, state)
 			}
-			if got := store.gcFrameScalarBoundary(tc.pc, collecting, tc.context); got != tc.want {
+			if got := store.gcAnyFrameOwner(tc.pc, tc.context) != nil; got != tc.want {
 				t.Fatalf("boundary = %t, want %t", got, tc.want)
 			}
 		})

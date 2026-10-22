@@ -3854,7 +3854,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// the direct-entry proof without changing the guest body.
 	nativeHostDirect := coreruntime.NativeScalarLeafSupported && f.opt(optNativeLeafHost) && m.ImportedFuncCount() == 1 && shared.BoundedNativeHostBody(c.BodyBytes, 1)
 	directPrepared := f.opt(optPreparedDirectEntry) && regABI && (preparedDirectIntSig(ft) || preparedDirectFloatSupported && (preparedDirectFloatSig(ft) || preparedDirectMixedSig(ft))) && (!hasCall || hints.hasNonDirectCall() || nativeHostDirect) && !touchesMemory && len(modGlobals) == 0 && !moduleEH && (!hints.hasUnsupportedDynamicCall() || nativeHostDirect) &&
-		(!hasCall || len(gcTypeLayouts) == 0 && !gcTypeSubtypingRefTest && !gcStructHelpers && !gcArrayHelpers && gcFrameRoots == nil) &&
+		(!hasCall || len(gcTypeLayouts) == 0 && !gcTypeSubtypingRefTest && !gcStructHelpers && !gcArrayHelpers && (gcFrameRoots == nil || gcFrameRoots.UnwindOnly)) &&
 		((m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall)) || nativeHostDirect) && len(c.BodyBytes) <= 96 && nLocals <= 8
 	if directPrepared {
 		for _, r := range [...]Reg{RBP, R12, R13, R14, R15} {

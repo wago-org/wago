@@ -64,5 +64,6 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	state.frameRoots.adapterReturnOffsets = plan.adapterReturnOffsets
 	state.frameRoots.callsites = plan.callsites
 	state.frameRoots.suspended = state
+	state.frameRoots.domainHostRoots = true
 	return &state.frameRoots
 }
