@@ -28,7 +28,12 @@ variables remain available for automation. `just bench check` is a
 correctness/wiring smoke test; its numbers must not be published as performance
 results.
 
-Every executable benchmark proves its catalog oracle before the timer starts.
+The opt-in [first prepared-call lifecycle](first-prepared-call.md) diagnostic
+separates the first call on a fresh instance from its second call while reusing
+compilation. It requires a bounded fixed iteration count and preserves per-batch
+timing and allocation units.
+
+Every catalog execution benchmark proves its oracle before the timer starts.
 Core exports compare exact return values, semantic workloads use their published
 return/memory/vector oracles, and command workloads use self-checking exit status
 or exact stdout/stderr hashes. A module that merely avoids trapping is not an
