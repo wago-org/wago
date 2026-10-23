@@ -18,13 +18,13 @@ func TestFloatCompareBranchSemantics(t *testing.T) {
 	saved := floatBranchEnabled
 	defer func() { floatBranchEnabled = saved }()
 	for _, wide := range []bool{false, true} {
-		typ, first := wasm.F32, byte(0x5d)
+		typ, first := wasm.F32, byte(0x5b)
 		values := []uint64{0, 0x80000000, 0x3f800000, 0xbf800000, 1, 0x7f800000, 0xff800000, 0x7fc01234, 0x7f800001}
 		if wide {
-			typ, first = wasm.F64, 0x63
+			typ, first = wasm.F64, 0x61
 			values = []uint64{0, 0x8000000000000000, 0x3ff0000000000000, 0xbff0000000000000, 1, 0x7ff0000000000000, 0xfff0000000000000, 0x7ff8123456789abc, 0x7ff0000000000001}
 		}
-		for cmp := byte(0); cmp < 4; cmp++ {
+		for cmp := byte(0); cmp < 6; cmp++ {
 			for _, branch := range []bool{false, true} {
 				for _, invert := range []bool{false, true} {
 					body := []byte{0}
@@ -55,12 +55,16 @@ func TestFloatCompareBranchSemantics(t *testing.T) {
 										truth := false
 										switch cmp {
 										case 0:
-											truth = af < bf
+											truth = af == bf
 										case 1:
-											truth = af > bf
+											truth = af != bf
 										case 2:
-											truth = af <= bf
+											truth = af < bf
 										case 3:
+											truth = af > bf
+										case 4:
+											truth = af <= bf
+										case 5:
 											truth = af >= bf
 										}
 										if invert {
@@ -217,6 +221,175 @@ func TestFloatCompareBranchMemoryOperands(t *testing.T) {
 				if stats.Funcs[0].Peephole["float-branch-fuse"] != 1 {
 					t.Fatalf("missing memory fusion: %+v", stats.Funcs[0].Peephole)
 				}
+			}
+		}
+	}
+}
+
+func TestFloatCompareIntegerSelect(t *testing.T) {
+	saved := floatBranchEnabled
+	floatBranchEnabled = true
+	defer func() { floatBranchEnabled = saved }()
+	for _, wide := range []bool{false, true} {
+		typ, first := wasm.F32, byte(0x5b)
+		values := []uint64{0, 1 << 31, 1, 0x3f800000, 0xbf800000, 0x7f800000, 0xff800000, 0x7fc12345, 0x7f812345}
+		if wide {
+			typ, first = wasm.F64, 0x61
+			values = []uint64{0, 1 << 63, 1, 0x3ff0000000000000, 0xbff0000000000000, 0x7ff0000000000000, 0xfff0000000000000, 0x7ff8000000001234, 0x7ff0000000001234}
+		}
+		for op := byte(0); op < 6; op++ {
+			for _, invert := range []bool{false, true} {
+				for _, typed := range []bool{false, true} {
+					body := []byte{0, 0x20, 2, 0x20, 3, 0x20, 0, 0x20, 1, first + op}
+					if invert {
+						body = append(body, 0x45)
+					}
+					if typed {
+						body = append(body, 0x1c, 1, 0x7e)
+					} else {
+						body = append(body, 0x1b)
+					}
+					body = append(body, 0x0b)
+					m := mod1(t, []wasm.ValType{typ, typ, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}, body)
+					for _, features := range []shared.AMD64Features{0, shared.AMD64ModernBaseline} {
+						var stats ModuleStats
+						cm, err := CompileModuleWith(m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: features, Stats: optionalTestStats(&stats)})
+						if err != nil {
+							t.Fatal(err)
+						}
+						if cm.CodeImage != nil {
+							t.Cleanup(func() { cm.CodeImage.Close() })
+						}
+						if diagnosticsEnabled && (stats.Funcs[0].Peephole["float-branch-fuse"] != 1 || stats.Funcs[0].Peephole["select-flags"] != 1) {
+							t.Fatalf("fusion not selected: %v", stats.Funcs[0].Peephole)
+						}
+						for _, a := range values {
+							for _, b := range values {
+								x, y := math.Float64frombits(a), math.Float64frombits(b)
+								if !wide {
+									x, y = float64(math.Float32frombits(uint32(a))), float64(math.Float32frombits(uint32(b)))
+								}
+								truth := false
+								switch op {
+								case 0:
+									truth = x == y
+								case 1:
+									truth = x != y
+								case 2:
+									truth = x < y
+								case 3:
+									truth = x > y
+								case 4:
+									truth = x <= y
+								case 5:
+									truth = x >= y
+								}
+								if invert {
+									truth = !truth
+								}
+								left, right := uint64(0x12345678abcdef01), uint64(0xfedcba9876543210)
+								want := right
+								if truth {
+									want = left
+								}
+								got := runCompiledAmd64u(t, cm, a, b, left, right)
+								if got != want {
+									t.Fatalf("wide=%v op=%d invert=%v typed=%v features=%x a=%x b=%x got=%x want=%x", wide, op, invert, typed, features, a, b, got, want)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestFloatCompareAllRelationsPendingLoads(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		ft, load, align, first := wasm.F32, byte(0x2a), byte(2), byte(0x5b)
+		if wide {
+			ft, load, align, first = wasm.F64, 0x2b, 3, 0x61
+		}
+		for k := byte(0); k < 6; k++ {
+			body := []byte{1, 1, 0x7f}
+			for i := byte(1); i <= 40; i++ {
+				body = append(body, 0x20, 2, 0x41, i, 0x6c, load, align, 0)
+			}
+			body = append(body, 0x20, 0, 0x20, 1, first+k, 0x04, 0x7f, 0x41, 1, 0x05, 0x41, 0, 0x0b, 0x21, 3)
+			for range 40 {
+				body = append(body, 0x1a)
+			}
+			body = append(body, 0x20, 3, 0x0b)
+			m := mod1(t, []wasm.ValType{ft, ft, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+			m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+			a, b := uint64(0x7f812345), uint64(0x3f800000)
+			if wide {
+				a, b = 0x7ff0000000001234, 0x3ff0000000000000
+			}
+			got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{}, nil, a, b, 8)
+			want := uint64(0)
+			if k == 1 {
+				want = 1
+			}
+			if err != nil || got != want {
+				t.Fatalf("wide=%v op=%d got=%d want=%d err=%v", wide, k, got, want, err)
+			}
+		}
+	}
+}
+
+func TestFloatCompareSelectMaterialization(t *testing.T) {
+	saved := floatBranchEnabled
+	floatBranchEnabled = true
+	defer func() { floatBranchEnabled = saved }()
+	for op := byte(0); op < 6; op++ {
+		// Float-valued selections materialize the predicate and preserve the
+		// selected payload, including a signaling NaN and negative zero.
+		body := []byte{0, 0x20, 2, 0x20, 3, 0x20, 0, 0x20, 1, 0x61 + op, 0x1c, 1, 0x7c, 0xbd, 0x0b}
+		m := mod1(t, []wasm.ValType{wasm.F64, wasm.F64, wasm.F64, wasm.F64}, []wasm.ValType{wasm.I64}, body)
+		left, right := uint64(0x7ff0000000001234), uint64(1<<63)
+		want := right
+		if op == 1 {
+			want = left
+		}
+		for _, features := range []shared.AMD64Features{0, shared.AMD64ModernBaseline} {
+			for _, enabled := range []bool{false, true} {
+				var stats ModuleStats
+				opts := CompileOptions{AMD64FeaturesSet: true, AMD64Features: features, Stats: optionalTestStats(&stats), Optimizations: map[string]bool{"st-flags": enabled}}
+				got, _, err := runMemAmd64WithOptions(t, m, opts, nil, 0x7ff8000000000001, math.Float64bits(1), left, right)
+				if err != nil || got != want {
+					t.Fatalf("op=%d features=%x enabled=%v got=%x want=%x err=%v", op, features, enabled, got, want, err)
+				}
+				if diagnosticsEnabled && (stats.Funcs[0].Peephole["float-branch-materialize"] == 1) != enabled {
+					t.Fatalf("materialization/rollback mismatch: %v", stats.Funcs[0].Peephole)
+				}
+			}
+		}
+	}
+}
+
+func TestFloatCompareAllRelationsLoadTrap(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		load, align, first := byte(0x2a), byte(2), byte(0x5b)
+		if wide {
+			load, align, first = 0x2b, 3, 0x61
+		}
+		for k := byte(0); k < 6; k++ {
+			// Even comparisons whose result is false must evaluate the load.
+			body := []byte{0, 0x20, 0, load, align, 0, 0x41, 0, load, align, 0, first + k, 0x04, 0x7f, 0x41, 1, 0x05, 0x41, 0, 0x0b, 0x0b}
+			m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+			m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+			got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{}, nil, 0)
+			want := uint64(1)
+			if k == 1 || k == 2 || k == 3 {
+				want = 0
+			}
+			if err != nil || got != want {
+				t.Fatalf("wide=%v op=%d got=%d want=%d err=%v", wide, k, got, want, err)
+			}
+			if _, _, err := runMemAmd64WithOptions(t, m, CompileOptions{}, nil, 65536); err == nil {
+				t.Fatalf("wide=%v op=%d: load trap eliminated", wide, k)
 			}
 		}
 	}
