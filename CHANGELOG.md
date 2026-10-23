@@ -138,6 +138,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Compile general array length reads to checked AMD64 and ARM64 instructions,
   with the existing helper for invalid handles and exact traps.
 
+- Write packed i8/i16 struct fields through the checked native object path on
+  ARM64, retaining typed helpers for unsupported or unresolved objects.
+
 - Return from AMD64 and ARM64 atomic wait mismatches and empty notify calls
   before the Go-call argument setup. Preserve memory ordering for zero-count
   notify and keep matching dynamic waits on the synchronized helper path.
