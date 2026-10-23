@@ -1,0 +1,16 @@
+{
+  "issue": "https://github.com/wago-org/wago/issues/1013",
+  "repository": "https://github.com/klippa-app/go-pdfium",
+  "revision": "7d0f255cd091ad18e4696cf0c7cf301657ef4b52",
+  "revision_date": "2026-10-21T15:18:33Z",
+  "artifact": "internal/pdfium_wasm/pdfium.wasm",
+  "artifact_sha256": "e6f77e01dce34de05ad62515114152da580b64c23871e3e3e2afef3f7bb88ade",
+  "artifact_size": 5828543,
+  "pdfium_revision": "chromium/8111",
+  "license_archive": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8111/pdfium-wasm.tgz",
+  "license_archive_sha256": "ed8ee2e70c628a4bd261fade8e381079aca250aeb5b1f3192c59682f8441fdcd",
+  "license_archive_release_date": "2026-10-19T18:30:12Z",
+  "input_source": "build_input.py (original Wago invoice fixture)",
+  "input_toolchain": "Python 3.13.5, zlib 1.3.1",
+  "oracle": "oracle.mjs; Node 24.21.0 / V8"
+}

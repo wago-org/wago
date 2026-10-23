@@ -4,6 +4,7 @@ package arm64
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -3079,7 +3080,26 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		gcFrameRoots.FrameBytes = 0
 		gcFrameRoots.AdapterReturnOffset = 0
 	}
+	sc.asm.ReserveBranch19 = false
 	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, immutableTable, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, true, inlineTargets, calleeHints, policy, sc)
+	if errors.Is(err, errNativeBranchRange) {
+		// Retry once with expansion slots. The ordinary pass keeps small
+		// functions byte-for-byte unchanged; only failing functions pay for
+		// the extra slots and second compilation.
+		sc.asm.ReserveBranch19 = true
+		if stats != nil {
+			*stats = CodegenStats{FuncIdx: stats.FuncIdx, Name: stats.Name,
+				RecordSources: stats.RecordSources, FunctionAttempts: stats.FunctionAttempts + 1}
+		}
+		if gcFrameRoots != nil && gcFrameRoots.Candidate {
+			gcFrameRoots.Exact = true
+			gcFrameRoots.ResetSafepoints()
+			gcFrameRoots.ResetCallsites()
+			gcFrameRoots.FrameBytes = 0
+			gcFrameRoots.AdapterReturnOffset = 0
+		}
+		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, immutableTable, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, true, inlineTargets, calleeHints, policy, sc)
+	}
 	if err == nil && sc.fnState.nativeImportRouter > 0 {
 		router := sc.fnState.nativeImportRouter
 		asm := &a64.Asm{B: code}
