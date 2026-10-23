@@ -49,6 +49,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Return dynamic shared atomic-wait mismatches in native AMD64 and ARM64 code
   for indexed memories and memory64. Preserve overflow/alignment/bounds traps
   and use the synchronized queue helper for matching values.
+- Drop nonzero element segments in native AMD64 code when GC array helpers are
+  enabled. Keep checked-root cleanup for segment zero in the helper.
+- Handle shared memory growth with a statically impossible delta in native
+  AMD64 and ARM64 code while retaining the required atomic length read.
 - Compile bounded portable scalar plugin recipes to ARM64 instructions, preserving
   exact import identity and the portable fallback for larger or unsupported contracts.
 - Adapt native struct handle reservations to batch use. Mixed struct/array code
@@ -133,6 +137,8 @@ Require `wago_nativecompare` so ordinary builds and install discovery exclude it
   independent result checks, native placement controls, and compile/execution
   benchmarks.
   ([#881](https://github.com/wago-org/wago/pull/881))
+- Add bounded first/second prepared-call lifecycle diagnostics with guest state
+  controls, explicit setup boundaries and consistent per-batch metrics.
 
 ## [v0.1.0-beta.13] - 2026-10-15
 
