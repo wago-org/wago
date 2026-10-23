@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -36,6 +37,8 @@ func (f *fn) setRepresentationLimit(limit functionRepresentationLimit) {
 	}
 }
 
+var errNativeBranchRange = errors.New("arm64: native branch displacement exceeds instruction range")
+
 func (f *fn) representationError() error {
 	var field string
 	switch f.representationLimit {
@@ -46,7 +49,7 @@ func (f *fn) representationError() error {
 	case functionRepresentationCallReloc:
 		field = "call relocation"
 	case functionRepresentationBranchRange:
-		return fmt.Errorf("arm64: native branch displacement exceeds instruction range")
+		return errNativeBranchRange
 	case functionRepresentationADRRange:
 		return fmt.Errorf("arm64: native PC-relative address exceeds instruction range")
 	default:
