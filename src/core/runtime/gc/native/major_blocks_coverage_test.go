@@ -105,8 +105,8 @@ func TestMajorBlocksFlagUsesExistingPadding(t *testing.T) {
 	if unsafe.Offsetof(Collector{}.checkedHandles) != 3088-batchBytes || unsafe.Offsetof(Collector{}.majorBlocks) != 3104-batchBytes {
 		t.Fatal("native index changed existing collector offsets")
 	}
-	if unsafe.Offsetof(Collector{}.nativeLargeArrayNurseryIndex) != 3128-batchBytes || unsafe.Sizeof(Collector{}) != 3128-batchBytes+unsafe.Sizeof(int(0)) {
-		t.Fatal("large-array list hint must add one word after the existing collector state")
+	if unsafe.Offsetof(Collector{}.nativeLargeArrayNurseryIndex) != 3128-batchBytes || unsafe.Offsetof(Collector{}.promotionSortScratch) != 3128-batchBytes+unsafe.Sizeof(int(0)) || unsafe.Sizeof(Collector{}) != 3128-batchBytes+unsafe.Sizeof(int(0))+unsafe.Sizeof([]plannedPromotion(nil)) {
+		t.Fatal("large-array hint and promotion scratch must follow the existing collector state")
 	}
 	if unsafe.Offsetof(Collector{}.majorYoungDirty) >= unsafe.Offsetof(Collector{}.checkedHandles) {
 		t.Fatal("flag does not use existing padding")

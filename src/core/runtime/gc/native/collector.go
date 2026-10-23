@@ -173,6 +173,7 @@ type Collector struct {
 	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
 	// A validated list-position hint; compaction may move or remove the entry.
 	nativeLargeArrayNurseryIndex int
+	promotionSortScratch         []plannedPromotion // bounded stable counting-sort workspace
 }
 
 const defaultNursery = 64 << 10
@@ -260,6 +261,7 @@ func (c *Collector) Close() {
 	c.markStack = nil
 	c.subtypeIntervals = nil
 	c.promotionScratch = nil
+	c.promotionSortScratch = nil
 	c.remembered = nil
 	c.lastCardBounds = objectCardBounds{}
 	c.objectCards = nil

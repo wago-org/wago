@@ -1,10 +1,8 @@
 package gc
 
 import (
-	"cmp"
 	"encoding/binary"
 	"errors"
-	"slices"
 	"time"
 )
 
@@ -409,16 +407,7 @@ func (c *Collector) promoteNursery(captured bool) (copiedBytes, promotedBytes ui
 		}
 	}
 	if needsOldAllocation && len(plans) > 1 && !c.promotionPlansSorted(plans) {
-		slices.SortStableFunc(plans, func(a, b plannedPromotion) int {
-			ak, bk := promotionPlanKind(a.entry), promotionPlanKind(b.entry)
-			if ak != bk {
-				return cmp.Compare(ak, bk)
-			}
-			if ak == 1 {
-				return cmp.Compare(c.throughput.promotionAllocSize(c.handles[a.handle].size), c.throughput.promotionAllocSize(c.handles[b.handle].size))
-			}
-			return 0
-		})
+		c.sortPromotionPlans(plans)
 	}
 	if !needsOldAllocation {
 		// A pure survivor/large-young cycle cannot mutate old-space allocation
@@ -616,16 +605,7 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 		plans = append(plans, plan)
 	}
 	if len(plans) > 1 && !plansSorted {
-		slices.SortStableFunc(plans, func(a, b plannedPromotion) int {
-			ak, bk := promotionPlanKind(a.entry), promotionPlanKind(b.entry)
-			if ak != bk {
-				return cmp.Compare(ak, bk)
-			}
-			if ak == 1 {
-				return cmp.Compare(c.throughput.promotionAllocSize(c.handles[a.handle].size), c.throughput.promotionAllocSize(c.handles[b.handle].size))
-			}
-			return 0
-		})
+		c.sortPromotionPlans(plans)
 	}
 	if err = c.throughput.sweepAllPending(); err != nil {
 		finish()
