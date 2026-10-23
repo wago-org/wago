@@ -72,6 +72,7 @@ type GCFrameRootPlan struct {
 	Candidate    bool
 	Exact        bool
 	Conservative bool // local masks retain every tracked local at each site
+	UnwindOnly   bool // zero-root return maps; retain ordinary numeric host lowering
 	FrameBytes   uint32
 	Locals       []GCFrameLocal
 	// LiveMaskWords is one site-major, pointer-free arena. Allocating sites come

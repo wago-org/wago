@@ -1,0 +1,15 @@
+{
+  "command": [
+    "go",
+    "test",
+    "./src/wago",
+    "-run",
+    "^(TestGC(Extern|ScalarAdapter|CollectorFreeReturnMaps|NativeFrameRoots|NativeFrameOwner|ModuleFrameRootPlan)|TestScalarCrossInstanceRelay|TestCustomInstructionInputRecipe|TestSharedGrowHighDelta|TestGuestStorageDefinedType)",
+    "-count=1"
+  ],
+  "seconds": 47.71401033899747,
+  "exit": 0,
+  "user_seconds": 88.017475,
+  "system_seconds": 1.725458,
+  "peak_rss_kib": 2129148
+}

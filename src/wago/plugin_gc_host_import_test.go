@@ -750,8 +750,8 @@ func TestPluginScalarHostImportStaysOrdinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mod.Close()
-	if mod.c.needsExactNativeGCRoots() || mod.c.genericGCFrameRoots() != nil {
-		t.Fatalf("scalar plugin import acquired GC root metadata: required=%v roots=%v", mod.c.needsExactNativeGCRoots(), mod.c.genericGCFrameRoots())
+	if roots := mod.c.genericGCFrameRoots(); mod.c.needsExactNativeGCRoots() || mod.c.nativeGCABIRequirement() != 0 || roots != nil && !mod.c.collectorFreeNativeUnwind(roots) {
+		t.Fatalf("scalar plugin import acquired collector metadata: required=%v roots=%v", mod.c.needsExactNativeGCRoots(), roots)
 	}
 	in, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {

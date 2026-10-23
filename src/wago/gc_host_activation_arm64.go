@@ -17,8 +17,8 @@ type gcHostActivationToken struct {
 	index uint8
 }
 
-func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *coreruntime.Engine) gcHostActivationToken {
-	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
+func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *coreruntime.Engine, root *Instance) gcHostActivationToken {
+	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 || in.gc == nil && (root == nil || !root.hostCallNeedsGCSuspension()) {
 		return gcHostActivationToken{}
 	}
 	plan := in.c.genericGCFrameRoots()
@@ -106,6 +106,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *c
 	state.hostRootPlan = plan
 	state.hostCodeBase = in.base
 	state.hostCodeBytes = uintptr(len(in.c.code))
+	gcNativeHostActivations.Add(1)
 	return gcHostActivationToken{state: state, index: index}
 }
 
@@ -125,6 +126,7 @@ func (in *Instance) popGCHostActivation(token gcHostActivationToken) {
 		binary.LittleEndian.PutUint64(control[i*8:], value)
 	}
 	*activation = gcHostActivation{}
+	gcNativeHostActivations.Add(-1)
 	// Concurrent foreign roots need not resume in suspension order. Preserve
 	// occupied slots and trim only the empty suffix; new activations reuse holes.
 	for state.hostActivationCount > 0 && state.hostActivations[state.hostActivationCount-1].stack == nil {

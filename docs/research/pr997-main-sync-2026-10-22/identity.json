@@ -1,0 +1,12 @@
+{
+  "pr_head": "d868ee7fb3fb8c123669a2301154da8bbcd62c8e",
+  "merged_main": "62dff80d2e506fa07c7316f167560bba75d1a021",
+  "go": "1.27.1",
+  "gomaxprocs": 2,
+  "gogc": 50,
+  "gomemlimit": "1500MiB",
+  "cgo_enabled": false,
+  "manual_conflicts": [
+    "CHANGELOG.md"
+  ]
+}

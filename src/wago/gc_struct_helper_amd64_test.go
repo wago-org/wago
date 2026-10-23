@@ -323,7 +323,8 @@ func TestStagedGCStructHelperFootprint(t *testing.T) {
 	// Raising the activation bound from 8 to 33 adds 25 records (96 bytes
 	// each), two 64-entry root-slot arrays and four tracking bytes per level,
 	// plus four bytes of final alignment: 7864 + 25*(96+512+4) + 4.
-	const wantGCState = 23168
+	// The entry landing snapshot adds one pointer plus 33 activation pointers.
+	const wantGCState = 23168 + 34*8
 	if got := unsafe.Sizeof(gcPublicState{}); got != wantGCState {
 		t.Fatalf("gcPublicState size = %d, want %d with RV64 roots and full-depth host activation storage", got, wantGCState)
 	}

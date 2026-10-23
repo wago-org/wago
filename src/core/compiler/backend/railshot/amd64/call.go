@@ -1796,7 +1796,7 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
 // The instance's tagged dispatch word proves this is not a same-context Wasm
 // target. Both alternatives join with canonical operands and homed locals.
 func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) error {
-	if !b.Dynamic || !f.dynamicHostFast || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate || funcTypeSlots(ft.Params) > maxSyncHostSlots || funcTypeSlots(ft.Results) > maxSyncHostSlots {
+	if !b.Dynamic || !f.dynamicHostFast || f.gcFrameRoots != nil && f.gcFrameRoots.Candidate && !f.gcFrameRoots.UnwindOnly || funcTypeSlots(ft.Params) > maxSyncHostSlots || funcTypeSlots(ft.Results) > maxSyncHostSlots {
 		return f.emitCrossInstanceCall(b, ft)
 	}
 	for _, typ := range ft.Params {
@@ -1822,6 +1822,7 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	f.a.Load64(RDX, RAX, disp+runtime.ImportDispatchCallerContextOffset)
 	f.a.TestImm(RDX, uint32(runtime.ImportDispatchCallerGoHostTag), true)
 	slow := f.a.JccPlaceholder(condE)
+	callsiteIndex := f.gcCallsiteIndex
 	if err := f.callHostSync(int(b.ImportIndex), ft); err != nil {
 		return err
 	}
@@ -1833,6 +1834,8 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	f.a.PatchRel32(slow, f.a.Len())
 	copy(f.locals, locals)
 	f.setDepthTypesWithGCRoots(types, rootFlags)
+	// These exclusive machine branches implement one logical Wasm call.
+	f.gcCallsiteIndex = callsiteIndex
 	if err := f.emitCrossInstanceCall(b, ft); err != nil {
 		return err
 	}

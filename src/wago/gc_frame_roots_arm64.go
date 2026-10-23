@@ -40,6 +40,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 		return reject("table or element ownership is outside the exact native-root model")
 	}
 	collectorBoundary := moduleHasCollectorReferenceCallBoundary(m)
+	externBridge := false
+	if !analysis.ValidFor(m) || analysis.Flags()&wasm.ValidatedFuncHasTailCall != 0 {
+		externBridge = moduleUsesGCExternConversion(m)
+	}
 	funcImport := uint32(0)
 	for i := range m.Imports {
 		switch m.Imports[i].Type.Kind {
@@ -140,7 +144,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 				}
 			}
 		}
-		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, &classifier, collectorBoundary) {
+		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, &classifier, collectorBoundary, externBridge) {
 			return reject("function %d contains an unsupported native call or frame shape", function)
 		}
 		var liveMasks gcFrameLiveMasks
@@ -177,6 +181,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 	}
 	totalFuncs := m.ImportedFuncCount() + len(m.Code)
 	functionIndexOK := func(index uint32) bool { return int(index) < totalFuncs }
+	externBridge := m.TableCount() != 0 && moduleUsesGCExternConversion(m)
 	tableKinds := make([]uint8, m.TableCount())
 	for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
 		tableType, ok := m.TableType(uint32(tableIndex))
@@ -189,6 +194,15 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 			tableKinds[tableIndex] = 1
 		case collectorFrameRefType(m, typ):
 			tableKinds[tableIndex] = 2
+		case typ == wasm.ExternRef && externBridge && tableIndex >= m.ImportedTableCount():
+			// The local conversion owner retains object identities in checked
+			// collector slots. External table aliases need a separate proof.
+			for _, export := range m.Exports {
+				if export.Index.Kind == wasm.ExternTable && export.Index.Index == uint32(tableIndex) {
+					return false
+				}
+			}
+			tableKinds[tableIndex] = 3
 		default:
 			return false
 		}
@@ -258,7 +272,7 @@ func arm64GCFrameTablesSafe(m *wasm.Module) bool {
 	return true
 }
 
-func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier, collectorBoundary bool) bool {
+func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier, collectorBoundary, externBridge bool) bool {
 	r := wasm.NewReader(body)
 	var imm wasm.InstructionImmediate
 	for r.HasNext() {
@@ -267,6 +281,12 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
 			return false
 		}
 		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+			return false
+		}
+		// A foreign proper tail can insert an unmapped context-restoration
+		// trampoline. Keep the extern bridge collection-disabled for those
+		// shapes; a direct known-local tail retains the ordinary caller record.
+		if externBridge && (op == 0x13 || op == 0x15 || op == 0x12 && int(imm.Index) < m.ImportedFuncCount()) {
 			return false
 		}
 		switch op {

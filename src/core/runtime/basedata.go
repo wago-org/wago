@@ -305,6 +305,15 @@ func (j *JobMemory) LinMemBase() uintptr {
 // guard ([linMem - 72]).
 func (j *JobMemory) SetStackFence(v uintptr) { j.putU64(offStackFence, uint64(v)) }
 
+// TrapStackReentry returns the active entry's trap landing stack address.
+// The caller must hold the native execution lease while reading this word.
+func (j *JobMemory) TrapStackReentry() uintptr {
+	if j == nil {
+		return 0
+	}
+	return uintptr(j.getU64(offTrapStackReentry))
+}
+
 // StackFence returns the currently bound native stack's low address.
 func (j *JobMemory) StackFence() uintptr { return uintptr(j.getU64(offStackFence)) }
 
