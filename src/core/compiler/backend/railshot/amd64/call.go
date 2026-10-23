@@ -1306,15 +1306,24 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	f.tmpTypes = types
 	f.tmpStackSlots = slotOf
-	// Only memory32 index zero has this compact canonical-slot fast path.
-	// Other memories retain their existing width-aware helper lowering.
-	atomicFast := f.threadedMemory0 && !f.memoryAddr64(0) &&
-		(atomicWait && p == 4 || notifyFast && p == 3)
-	atomicOffset := uint32(0)
+	// Dynamic wait mismatch can use any declared shared memory. Notify keeps
+	// its existing compact admission; other notify forms are already native
+	// after marshaling through notifyEmptyShortcut.
+	atomicFast := d >= p && (atomicWait && (p == 4 || p == 5) ||
+		f.threadedMemory0 && !f.memoryAddr64(0) && notifyFast && p == 3)
+	atomicIndex, atomicOffset := uint32(0), uint64(0)
 	if atomicFast {
-		offset := roots[d-1].st
-		atomicFast = offset.kind == stConst && uint64(offset.cval) <= 0xffffffff
-		atomicOffset = uint32(offset.cval)
+		offsetSlot := d - 1
+		if atomicWait && p == 5 {
+			index := roots[d-1].st
+			atomicFast = index.kind == stConst && uint64(index.cval) <= 0xffffffff
+			atomicIndex = uint32(index.cval)
+			offsetSlot--
+		}
+		offset := roots[offsetSlot].st
+		atomicOffset = uint64(offset.cval)
+		atomicFast = atomicFast && offset.kind == stConst && f.memoryShared(atomicIndex) &&
+			(atomicWait || atomicOffset <= 0xffffffff)
 	}
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
@@ -1346,7 +1355,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		atomicDone = f.emitAtomicWaitFastPath(uint32(importIdx)&^shared.AtomicWaitDispatchBit, int(slotOf[d-p]), atomicOffset)
+		atomicDone = f.emitAtomicWaitFastPath(uint32(importIdx)&^shared.AtomicWaitDispatchBit, int(slotOf[d-p]), atomicIndex, atomicOffset)
 		if notifyFast {
 			f.stats.peep("atomic-notify-empty")
 		}
