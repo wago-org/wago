@@ -1,0 +1,18 @@
+{
+  "wasm_sha256": "e6f77e01dce34de05ad62515114152da580b64c23871e3e3e2afef3f7bb88ade",
+  "input_sha256": "ac4cf7033464ad520b052f0e2bd98c66e8088d2b22cebe39ca25f2213d7ebb65",
+  "pages": [
+    {
+      "width": 612,
+      "height": 792,
+      "text": "Wago Services - Invoice 2026-1013\r\nPage 1 of 2\r\nCustomer: Example Manufacturing\r\nDescription Quantity Amount\r\nPDF processing batch 01 1 125.00\r\nPDF processing batch 02 2 250.00\r\nPDF processing batch 03 3 375.00\r\nPDF processing batch 04 4 500.00\r\nPDF processing batch 05 5 625.00\r\nPDF processing batch 06 6 750.00\r\nPDF processing batch 07 7 875.00\r\nPDF processing batch 08 8 1000.00\r\nPDF processing batch 09 9 1125.00\r\nPDF processing batch 10 10 1250.00\r\nPDF processing batch 11 11 1375.00\r\nPDF processing batch 12 12 1500.00\r\nPDF processing batch 13 13 1625.00\r\nPDF processing batch 14 14 1750.00\r\nPDF processing batch 15 15 1875.00\r\nPDF processing batch 16 16 2000.00\r\nPDF processing batch 17 17 2125.00\r\nPDF processing batch 18 18 2250.00\r\nPDF processing batch 19 19 2375.00\r\nPDF processing batch 20 20 2500.00\r\nContinued on page 2\r\nPayment due: 2026-11-20",
+      "bitmap_sha256": "01a6d0eaa7671560b10ee6e8cfb1546cbcef61603c58179229c6024727fb1bfe"
+    },
+    {
+      "width": 612,
+      "height": 792,
+      "text": "Wago Services - Invoice 2026-1013\r\nPage 2 of 2\r\nCustomer: Example Manufacturing\r\nDescription Quantity Amount\r\nPDF processing batch 21 21 2625.00\r\nPDF processing batch 22 22 2750.00\r\nPDF processing batch 23 23 2875.00\r\nPDF processing batch 24 24 3000.00\r\nPDF processing batch 25 25 3125.00\r\nPDF processing batch 26 26 3250.00\r\nPDF processing batch 27 27 3375.00\r\nPDF processing batch 28 28 3500.00\r\nPDF processing batch 29 29 3625.00\r\nPDF processing batch 30 30 3750.00\r\nPDF processing batch 31 31 3875.00\r\nPDF processing batch 32 32 4000.00\r\nPDF processing batch 33 33 4125.00\r\nPDF processing batch 34 34 4250.00\r\nPDF processing batch 35 35 4375.00\r\nPDF processing batch 36 36 4500.00\r\nPDF processing batch 37 37 4625.00\r\nPDF processing batch 38 38 4750.00\r\nPDF processing batch 39 39 4875.00\r\nPDF processing batch 40 40 5000.00\r\nSubtotal: 102500.00\r\nPayment due: 2026-11-20",
+      "bitmap_sha256": "6f46b96d29d48b4553a3d8bba149790a97c4e1bb8df3631d0a375543001b4767"
+    }
+  ]
+}

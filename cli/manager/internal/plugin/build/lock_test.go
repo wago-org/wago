@@ -96,8 +96,8 @@ func TestBuildLockRetriesRemovalRace(t *testing.T) {
 	attempts := 0
 	err := acquireBuildLock(lockDir, func(path string, mode os.FileMode) error {
 		attempts++
-		if attempts == 1 {
-			// The old owner removed the directory between mkdir and Stat.
+		if attempts <= 4 {
+			// Windows can deny mkdir for several polls while removal is pending.
 			return &os.PathError{Op: "mkdir", Path: path, Err: os.ErrPermission}
 		}
 		return os.Mkdir(path, mode)
@@ -106,8 +106,8 @@ func TestBuildLockRetriesRemovalRace(t *testing.T) {
 		t.Fatalf("acquire after removal: %v", err)
 	}
 	defer os.Remove(lockDir)
-	if attempts != 2 {
-		t.Fatalf("mkdir attempts = %d, want 2", attempts)
+	if attempts != 5 {
+		t.Fatalf("mkdir attempts = %d, want 5", attempts)
 	}
 	if info, err := os.Stat(lockDir); err != nil || !info.IsDir() {
 		t.Fatalf("lock was not acquired: %v", err)
@@ -116,15 +116,44 @@ func TestBuildLockRetriesRemovalRace(t *testing.T) {
 
 func TestBuildLockReportsPersistentPermissionFailure(t *testing.T) {
 	lockDir := filepath.Join(t.TempDir(), "plugins.lock")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*buildLockPermissionGrace)
+	defer cancel()
 	attempts := 0
-	err := acquireBuildLock(lockDir, func(path string, _ os.FileMode) error {
+	err := acquireBuildLockContext(ctx, lockDir, func(path string, _ os.FileMode) error {
 		attempts++
 		return &os.PathError{Op: "mkdir", Path: path, Err: os.ErrPermission}
 	})
 	if !errors.Is(err, os.ErrPermission) {
-		t.Fatalf("acquire error = %v, want permission error", err)
+		t.Fatalf("acquire error = %v, want permission error before context deadline", err)
 	}
-	if attempts != 2 {
-		t.Fatalf("mkdir attempts = %d, want 2", attempts)
+	if attempts < 3 {
+		t.Fatalf("mkdir attempts = %d, want repeated retries during removal", attempts)
+	}
+}
+
+func TestBuildLockPermissionRetryHonorsCancellation(t *testing.T) {
+	lockDir := filepath.Join(t.TempDir(), "plugins.lock")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	attempts := 0
+	err := acquireBuildLockContext(ctx, lockDir, func(path string, _ os.FileMode) error {
+		attempts++
+		cancel()
+		return &os.PathError{Op: "mkdir", Path: path, Err: os.ErrPermission}
+	})
+	if !errors.Is(err, context.Canceled) || attempts != 1 {
+		t.Fatalf("acquire error = %v, attempts = %d; want cancellation after first denial", err, attempts)
+	}
+}
+
+func TestBuildLockReportsOtherErrorsWithoutRetry(t *testing.T) {
+	lockDir := filepath.Join(t.TempDir(), "plugins.lock")
+	attempts := 0
+	err := acquireBuildLock(lockDir, func(path string, _ os.FileMode) error {
+		attempts++
+		return &os.PathError{Op: "mkdir", Path: path, Err: os.ErrInvalid}
+	})
+	if !errors.Is(err, os.ErrInvalid) || attempts != 1 {
+		t.Fatalf("acquire error = %v, attempts = %d; want original error without retry", err, attempts)
 	}
 }
