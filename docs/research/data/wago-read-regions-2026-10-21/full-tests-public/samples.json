@@ -1,0 +1,32 @@
+[
+  {
+    "label": "spec-corpora",
+    "command": [
+      "git",
+      "submodule",
+      "update",
+      "--init",
+      "--",
+      "tests/conformance/spec-v1",
+      "tests/conformance/spec-v2",
+      "tests/conformance/spec-v3"
+    ],
+    "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions-public",
+    "seconds": 30.905589985995903,
+    "exit": 0
+  },
+  {
+    "label": "combined-normal",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-count=1",
+      "./..."
+    ],
+    "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions-public",
+    "seconds": 144.1307362630032,
+    "exit": 1
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "test": "TestGCValueCheckHomesPreserveLocalPacking",
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-run",
+    "^TestGCValueCheckHomesPreserveLocalPacking$",
+    "-count=1",
+    "./src/core/compiler/backend/railshot/amd64"
+  ],
+  "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks",
+  "exit": 1,
+  "seconds": 6.02,
+  "peak_rss_kib": 804452,
+  "diagnostic": "private cache homes damaged local recorder: {Sites:[{ModRMOff:2 DispOff:4 Local:1 OldDisp:128}] Limit:8 Locals:2 Next:3 Pending:false Overflow:true}",
+  "fix": "Keep private fixed homes outside the source-local packing recorder; retain address diagnostics."
+}

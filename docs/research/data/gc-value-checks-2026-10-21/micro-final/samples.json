@@ -1,0 +1,82 @@
+[
+  {
+    "variant": "control",
+    "command": [
+      "taskset",
+      "-c",
+      "15",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/value-checks/micro-final/control.test",
+      "-test.run=^TestGCValueChecks",
+      "-test.bench=^BenchmarkGCValueChecks$",
+      "-test.benchtime=200ms",
+      "-test.count=1"
+    ],
+    "seconds": 0.26628532499307767,
+    "exit": 0,
+    "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     \nBenchmarkGCValueChecks \t    1800\t    134622 ns/op\t       4 B/op\t       0 allocs/op\nPASS\n",
+    "stderr": "",
+    "ns_per_8192_reads": {
+      "BenchmarkGCValueChecks": 134622.0
+    }
+  },
+  {
+    "variant": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "15",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/value-checks/micro-final/candidate.test",
+      "-test.run=^TestGCValueChecks",
+      "-test.bench=^BenchmarkGCValueChecks$",
+      "-test.benchtime=200ms",
+      "-test.count=1"
+    ],
+    "seconds": 0.25924259700695984,
+    "exit": 0,
+    "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     \nBenchmarkGCValueChecks \t    3049\t     79406 ns/op\t       0 B/op\t       0 allocs/op\nPASS\n",
+    "stderr": "",
+    "ns_per_8192_reads": {
+      "BenchmarkGCValueChecks": 79406.0
+    }
+  },
+  {
+    "variant": "candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "15",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/value-checks/micro-final/candidate.test",
+      "-test.run=^TestGCValueChecks",
+      "-test.bench=^BenchmarkGCValueChecks$",
+      "-test.benchtime=200ms",
+      "-test.count=1"
+    ],
+    "seconds": 0.2706833020056365,
+    "exit": 0,
+    "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     \nBenchmarkGCValueChecks \t    3218\t     78990 ns/op\t       2 B/op\t       0 allocs/op\nPASS\n",
+    "stderr": "",
+    "ns_per_8192_reads": {
+      "BenchmarkGCValueChecks": 78990.0
+    }
+  },
+  {
+    "variant": "control",
+    "command": [
+      "taskset",
+      "-c",
+      "15",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/value-checks/micro-final/control.test",
+      "-test.run=^TestGCValueChecks",
+      "-test.bench=^BenchmarkGCValueChecks$",
+      "-test.benchtime=200ms",
+      "-test.count=1"
+    ],
+    "seconds": 0.2599766870116582,
+    "exit": 0,
+    "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     \nBenchmarkGCValueChecks \t    1741\t    136177 ns/op\t       4 B/op\t       0 allocs/op\nPASS\n",
+    "stderr": "",
+    "ns_per_8192_reads": {
+      "BenchmarkGCValueChecks": 136177.0
+    }
+  }
+]

@@ -1,0 +1,18 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-tags=wago_codegenstats,wago_regalloccheck",
+    "-run",
+    "^TestGCTestField",
+    "-count=1",
+    "-v",
+    "./src/wago"
+  ],
+  "seconds": 23.40894616999867,
+  "exit": 1,
+  "stdout": "=== RUN   TestGCTestField\n--- PASS: TestGCTestField (0.00s)\n=== RUN   TestGCTestFieldConditionalExtent\n--- PASS: TestGCTestFieldConditionalExtent (0.00s)\n=== RUN   TestGCTestFieldAdmission\n    gc_test_field_stats_amd64_test.go:50: read fusions=0 want1 calls=map[gcnative:2]\n    gc_test_field_stats_amd64_test.go:53: read resolver calls=map[gcnative:2] want one\n--- FAIL: TestGCTestFieldAdmission (0.00s)\npanic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]\n[signal SIGSEGV: segmentation violation code=0x1 addr=0x1 pc=0xdfbf2f]\n\ngoroutine 24 [running]:\ntesting.tRunner.func1.2({0x23a1210, 0x246e000})\n\t/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2123 +0x232\ntesting.tRunner.func1()\n\t/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2126 +0x329\npanic({0x23a1210?, 0x246e000?})\n\t/home/dev/.local/share/mise/installs/go/1.27.1/src/runtime/panic.go:859 +0x125\ngithub.com/wago-org/wago/src/wago.TestGCTestFieldAdmission(0x36fed6578d88)\n\t/home/dev/Projects/dewdrop/.tmp/wago-ref-test-field-pr/src/wago/gc_test_field_stats_amd64_test.go:59 +0xa4f\ntesting.tRunner(0x36fed6578d88, 0x244cd10)\n\t/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2193 +0xea\ncreated by testing.(*T).Run in goroutine 1\n\t/home/dev/.local/share/mise/installs/go/1.27.1/src/testing/testing.go:2258 +0x4d4\nFAIL\tgithub.com/wago-org/wago/src/wago\t0.008s\nFAIL\n",
+  "stderr": ""
+}

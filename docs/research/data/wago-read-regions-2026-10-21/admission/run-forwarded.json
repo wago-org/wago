@@ -1,0 +1,20 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-tags=wago_codegenstats",
+    "-overlay",
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/read-regions/admission/overlay.json",
+    "-run",
+    "^TestRealSharedGetterStaticAdmission$",
+    "-count=1",
+    "-v",
+    "./src/wago"
+  ],
+  "seconds": 25.420316195006308,
+  "exit": 0,
+  "stdout": "=== RUN   TestRealSharedGetterStaticAdmission\n    real_shared_getter_capture_test.go:71: fusions=6485 functions=1554 native_bytes=25882251 compile_seconds=0.486738 roots={Required:true Exact:true Reason: Safepoints:25794 Callsites:50438 MaximumRoots:77 MetadataBytes:1803076}\n--- PASS: TestRealSharedGetterStaticAdmission (0.52s)\nPASS\nok  \tgithub.com/wago-org/wago/src/wago\t0.519s\n",
+  "stderr": ""
+}

@@ -1,0 +1,203 @@
+=== RUN   TestGCReadRegionAdmissionBoundary
+=== RUN   TestGCReadRegionAdmissionBoundary/accept
+=== RUN   TestGCReadRegionAdmissionBoundary/arrays-disabled
+=== RUN   TestGCReadRegionAdmissionBoundary/allocation
+=== RUN   TestGCReadRegionAdmissionBoundary/store
+=== RUN   TestGCReadRegionAdmissionBoundary/loop
+=== RUN   TestGCReadRegionAdmissionBoundary/host-call
+=== RUN   TestGCReadRegionAdmissionBoundary/array-len
+=== RUN   TestGCReadRegionAdmissionBoundary/numeric-shape
+=== RUN   TestGCReadRegionAdmissionBoundary/numeric-signature
+=== RUN   TestGCReadRegionAdmissionBoundary/declared-local
+=== RUN   TestGCReadRegionAdmissionBoundary/float-parameter
+=== RUN   TestGCReadRegionAdmissionBoundary/large
+=== RUN   TestGCReadRegionAdmissionBoundary/open-type
+=== RUN   TestGCReadRegionAdmissionBoundary/all-trap
+--- PASS: TestGCReadRegionAdmissionBoundary (0.00s)
+    --- PASS: TestGCReadRegionAdmissionBoundary/accept (0.00s)
+    --- PASS: TestGCReadRegionAdmissionBoundary/arrays-disabled (0.00s)
+    --- PASS: TestGCReadRegionAdmissionBoundary/allocation (0.00s)
+    --- PASS: TestGCReadRegionAdmissionBoundary/store (0.00s)
+    --- PASS: TestGCReadRegionAdmissionBoundary/loop (0.00s)
+    --- PASS: TestGCReadRegionAdmissionBoundary/host-call (0.00s)
+    --- PASS: TestGCReadRegionAdmissionBoundary/array-len (0.00s)
+    --- PASS: TestGCReadRegionAdmissionBoundary/numeric-shape (0.00s)
+    --- PASS: TestGCReadRegionAdmissionBoundary/numeric-signature (0.00s)
+    --- PASS: TestGCReadRegionAdmissionBoundary/declared-local (0.00s)
+    --- PASS: TestGCReadRegionAdmissionBoundary/float-parameter (0.00s)
+    --- PASS: TestGCReadRegionAdmissionBoundary/large (0.00s)
+    --- PASS: TestGCReadRegionAdmissionBoundary/open-type (0.00s)
+    --- PASS: TestGCReadRegionAdmissionBoundary/all-trap (0.00s)
+=== RUN   TestGCReadRegionNativeOnlyGuard
+=== RUN   TestGCReadRegionNativeOnlyGuard/GC_helper
+=== RUN   TestGCReadRegionNativeOnlyGuard/host
+=== RUN   TestGCReadRegionNativeOnlyGuard/sync_host
+=== RUN   TestGCReadRegionNativeOnlyGuard/internal
+--- PASS: TestGCReadRegionNativeOnlyGuard (0.00s)
+    --- PASS: TestGCReadRegionNativeOnlyGuard/GC_helper (0.00s)
+    --- PASS: TestGCReadRegionNativeOnlyGuard/host (0.00s)
+    --- PASS: TestGCReadRegionNativeOnlyGuard/sync_host (0.00s)
+    --- PASS: TestGCReadRegionNativeOnlyGuard/internal (0.00s)
+=== RUN   TestGCReadRegionAddressExcludesMergeRegister
+--- PASS: TestGCReadRegionAddressExcludesMergeRegister (0.00s)
+=== RUN   TestGCReadRegionCallerReservationBound
+--- PASS: TestGCReadRegionCallerReservationBound (0.00s)
+=== RUN   TestGCValueCheckHomesPreserveLocalPacking
+--- PASS: TestGCValueCheckHomesPreserveLocalPacking (0.00s)
+=== RUN   TestGCValueChecksFinalIntervalTransfer
+--- PASS: TestGCValueChecksFinalIntervalTransfer (0.00s)
+=== RUN   TestGCValueChecksUseValueVersions
+--- PASS: TestGCValueChecksUseValueVersions (0.00s)
+=== RUN   TestGCValueCheckPlan
+    gc_value_checks_test.go:149: plan=map[5:true 14:true 24:true 34:true]
+--- PASS: TestGCValueCheckPlan (0.00s)
+=== RUN   TestLocalSlotOrderShrinksHotUnpinnedFrameRefs
+--- PASS: TestLocalSlotOrderShrinksHotUnpinnedFrameRefs (0.00s)
+=== RUN   TestLocalSlotOrderDefaultsOnForCompaction
+--- PASS: TestLocalSlotOrderDefaultsOnForCompaction (0.00s)
+=== RUN   TestLocalSlotOrderDoesNotGrowMixedCompactFrame
+--- PASS: TestLocalSlotOrderDoesNotGrowMixedCompactFrame (0.00s)
+=== RUN   TestLocalSlotOrderSkipsGCFrameRootFunctions
+--- PASS: TestLocalSlotOrderSkipsGCFrameRootFunctions (0.00s)
+=== RUN   TestLocalSlotOrderExcludesMultiSlotHomes
+--- PASS: TestLocalSlotOrderExcludesMultiSlotHomes (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.010s
+=== RUN   TestGCReadRegions
+--- PASS: TestGCReadRegions (0.01s)
+=== RUN   TestGCReadRegionsConditionalExtent
+=== RUN   TestGCReadRegionsConditionalExtent/artifact0/header
+=== RUN   TestGCReadRegionsConditionalExtent/artifact0/handle
+=== RUN   TestGCReadRegionsConditionalExtent/artifact1/header
+=== RUN   TestGCReadRegionsConditionalExtent/artifact1/handle
+--- PASS: TestGCReadRegionsConditionalExtent (0.00s)
+    --- PASS: TestGCReadRegionsConditionalExtent/artifact0/header (0.00s)
+    --- PASS: TestGCReadRegionsConditionalExtent/artifact0/handle (0.00s)
+    --- PASS: TestGCReadRegionsConditionalExtent/artifact1/header (0.00s)
+    --- PASS: TestGCReadRegionsConditionalExtent/artifact1/handle (0.00s)
+=== RUN   TestGCReadRegionsAdmission
+    gc_read_regions_stats_amd64_test.go:56: read regions=1 calls=map[gcnative:2 inline:1] frame=56 spills=1
+    gc_read_regions_stats_amd64_test.go:56: loop regions=1 calls=map[gcnative:2 inline:1] frame=72 spills=2
+    gc_read_regions_stats_amd64_test.go:56: roots regions=5 calls=map[gcnative:8 hostsync:1 inline:5 regabi:2] frame=88 spills=2
+    gc_read_regions_stats_amd64_test.go:56: stack-roots regions=3 calls=map[gcnative:5 hostsync:1 inline:3 regabi:1] frame=72 spills=2
+    gc_read_regions_stats_amd64_test.go:56: branch regions=2 calls=map[gcnative:4 inline:2] frame=56 spills=1
+    gc_read_regions_stats_amd64_test.go:56: forward regions=1 calls=map[gcnative:2 inline:1] frame=56 spills=1
+    gc_read_regions_stats_amd64_test.go:56: arms regions=1 calls=map[gcnative:4 inline:1] frame=40 spills=1
+    gc_read_regions_stats_amd64_test.go:56: late regions=1 calls=map[gcnative:3 inline:1] frame=56 spills=2
+    gc_read_regions_stats_amd64_test.go:56: nested regions=2 calls=map[gcnative:7 inline:2] frame=56 spills=1
+    gc_read_regions_stats_amd64_test.go:56: join regions=1 calls=map[gcnative:1 inline:1] frame=40 spills=1
+    gc_read_regions_stats_amd64_test.go:56: pressure regions=1 calls=map[gcnative:2 inline:1] frame=104 spills=1
+    gc_read_regions_stats_amd64_test.go:56: different regions=4 calls=map[gcnative:6 inline:4 regabi:1] frame=72 spills=2
+    gc_read_regions_stats_amd64_test.go:56: two-targets regions=3 calls=map[gcnative:5 inline:3] frame=88 spills=2
+    gc_read_regions_stats_amd64_test.go:56: pressure-root regions=2 calls=map[gcnative:3 inline:2 regabi:1] frame=120 spills=1
+    gc_read_regions_stats_amd64_test.go:56: many regions=16 calls=map[gcnative:32 inline:16 wrapper:1] frame=72 spills=4
+    gc_read_regions_stats_amd64_test.go:56: home-branch regions=1 calls=map[gcnative:5 hostsync:1 inline:1] frame=136 spills=4
+    gc_read_regions_stats_amd64_test.go:56: after-trap regions=0 calls=map[regabi:1 wrapper:1] frame=24 spills=2
+    gc_read_regions_stats_amd64_test.go:56: pressure-loop regions=1 calls=map[gcnative:2 inline:1] frame=152 spills=2
+--- PASS: TestGCReadRegionsAdmission (0.00s)
+=== RUN   TestGCTestField
+--- PASS: TestGCTestField (0.00s)
+=== RUN   TestGCTestFieldConditionalExtent
+=== RUN   TestGCTestFieldConditionalExtent/artifact0/init/header
+=== RUN   TestGCTestFieldConditionalExtent/artifact0/init/handle
+=== RUN   TestGCTestFieldConditionalExtent/artifact0/init/space
+=== RUN   TestGCTestFieldConditionalExtent/artifact0/init/interval
+=== RUN   TestGCTestFieldConditionalExtent/artifact0/init/high-bits
+=== RUN   TestGCTestFieldConditionalExtent/artifact0/wrong/header
+=== RUN   TestGCTestFieldConditionalExtent/artifact0/wrong/handle
+=== RUN   TestGCTestFieldConditionalExtent/artifact0/wrong/space
+=== RUN   TestGCTestFieldConditionalExtent/artifact0/wrong/interval
+=== RUN   TestGCTestFieldConditionalExtent/artifact0/wrong/high-bits
+=== RUN   TestGCTestFieldConditionalExtent/artifact1/init/header
+=== RUN   TestGCTestFieldConditionalExtent/artifact1/init/handle
+=== RUN   TestGCTestFieldConditionalExtent/artifact1/init/space
+=== RUN   TestGCTestFieldConditionalExtent/artifact1/init/interval
+=== RUN   TestGCTestFieldConditionalExtent/artifact1/init/high-bits
+=== RUN   TestGCTestFieldConditionalExtent/artifact1/wrong/header
+=== RUN   TestGCTestFieldConditionalExtent/artifact1/wrong/handle
+=== RUN   TestGCTestFieldConditionalExtent/artifact1/wrong/space
+=== RUN   TestGCTestFieldConditionalExtent/artifact1/wrong/interval
+=== RUN   TestGCTestFieldConditionalExtent/artifact1/wrong/high-bits
+--- PASS: TestGCTestFieldConditionalExtent (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact0/init/header (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact0/init/handle (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact0/init/space (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact0/init/interval (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact0/init/high-bits (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact0/wrong/header (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact0/wrong/handle (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact0/wrong/space (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact0/wrong/interval (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact0/wrong/high-bits (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact1/init/header (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact1/init/handle (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact1/init/space (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact1/init/interval (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact1/init/high-bits (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact1/wrong/header (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact1/wrong/handle (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact1/wrong/space (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact1/wrong/interval (0.00s)
+    --- PASS: TestGCTestFieldConditionalExtent/artifact1/wrong/high-bits (0.00s)
+=== RUN   TestGCTestFieldNullableFallback
+--- PASS: TestGCTestFieldNullableFallback (0.00s)
+=== RUN   TestGCTestFieldDirtyPins
+=== RUN   TestGCTestFieldDirtyPins/artifact0/valid
+=== RUN   TestGCTestFieldDirtyPins/artifact0/wrong
+=== RUN   TestGCTestFieldDirtyPins/artifact0/null
+=== RUN   TestGCTestFieldDirtyPins/artifact0/short
+=== RUN   TestGCTestFieldDirtyPins/artifact1/valid
+=== RUN   TestGCTestFieldDirtyPins/artifact1/wrong
+=== RUN   TestGCTestFieldDirtyPins/artifact1/null
+=== RUN   TestGCTestFieldDirtyPins/artifact1/short
+--- PASS: TestGCTestFieldDirtyPins (0.00s)
+    --- PASS: TestGCTestFieldDirtyPins/artifact0/valid (0.00s)
+    --- PASS: TestGCTestFieldDirtyPins/artifact0/wrong (0.00s)
+    --- PASS: TestGCTestFieldDirtyPins/artifact0/null (0.00s)
+    --- PASS: TestGCTestFieldDirtyPins/artifact0/short (0.00s)
+    --- PASS: TestGCTestFieldDirtyPins/artifact1/valid (0.00s)
+    --- PASS: TestGCTestFieldDirtyPins/artifact1/wrong (0.00s)
+    --- PASS: TestGCTestFieldDirtyPins/artifact1/null (0.00s)
+    --- PASS: TestGCTestFieldDirtyPins/artifact1/short (0.00s)
+=== RUN   TestGCTestFieldProfile
+--- PASS: TestGCTestFieldProfile (0.00s)
+=== RUN   TestGCTestFieldAdmission
+    gc_test_field_stats_amd64_test.go:98: root fusions=1 code=1335 frame=40 pins=2 calls=map[gcnative:3 hostsync:1]
+    gc_test_field_stats_amd64_test.go:98: nonfinal fusions=0 code=1403 frame=40 pins=1 calls=map[gcnative:3 gcnative-leaf:1 hostsync:1]
+    gc_test_field_stats_amd64_test.go:98: packed-s fusions=1 code=672 frame=40 pins=1 calls=map[gcnative:1 hostsync:1]
+    gc_test_field_stats_amd64_test.go:98: packed-u fusions=1 code=672 frame=40 pins=1 calls=map[gcnative:1 hostsync:1]
+    gc_test_field_stats_amd64_test.go:98: pressure fusions=1 code=734 frame=88 pins=4 calls=map[gcnative:1 regabi:1]
+    gc_test_field_stats_amd64_test.go:98: stack-root fusions=1 code=1359 frame=40 pins=1 calls=map[gcnative:4 hostsync:1]
+--- PASS: TestGCTestFieldAdmission (0.00s)
+=== RUN   TestGCValueChecks
+--- PASS: TestGCValueChecks (0.00s)
+=== RUN   TestGCValueChecksExtentAndChild
+=== RUN   TestGCValueChecksExtentAndChild/header
+=== RUN   TestGCValueChecksExtentAndChild/handle
+=== RUN   TestGCValueChecksExtentAndChild/child
+=== RUN   TestGCValueChecksExtentAndChild/header#01
+=== RUN   TestGCValueChecksExtentAndChild/handle#01
+=== RUN   TestGCValueChecksExtentAndChild/child#01
+--- PASS: TestGCValueChecksExtentAndChild (0.00s)
+    --- PASS: TestGCValueChecksExtentAndChild/header (0.00s)
+    --- PASS: TestGCValueChecksExtentAndChild/handle (0.00s)
+    --- PASS: TestGCValueChecksExtentAndChild/child (0.00s)
+    --- PASS: TestGCValueChecksExtentAndChild/header#01 (0.00s)
+    --- PASS: TestGCValueChecksExtentAndChild/handle#01 (0.00s)
+    --- PASS: TestGCValueChecksExtentAndChild/child#01 (0.00s)
+=== RUN   TestGCValueChecksAdmission
+    gc_value_checks_stats_amd64_test.go:51: mix all=map[commute-mem-left:5 final-cast-scalar-get-fuse:6 gc-value-check-extend:2 gc-value-check-input:6 gc-value-check-plan:1 gc-value-check-reuse:4 gc-value-check-save:2] reuse=4 save=2 extend=2 frame=184
+    gc_value_checks_stats_amd64_test.go:51: copy all=map[commute-mem-left:1 final-cast-scalar-get-fuse:2 gc-value-check-extend:1 gc-value-check-input:2 gc-value-check-plan:1 gc-value-check-reuse:1 gc-value-check-save:1] reuse=1 save=1 extend=1 frame=184
+    gc_value_checks_stats_amd64_test.go:51: children all=map[commute-mem-left:3 final-cast-scalar-get-fuse:4 final-cast-struct-get-fuse:4 gc-value-check-extend:3 gc-value-check-input:8 gc-value-check-plan:1 gc-value-check-reuse:5 gc-value-check-save:3] reuse=5 save=3 extend=3 frame=184
+    gc_value_checks_stats_amd64_test.go:51: typed-children all=map[commute-mem-left:1 final-cast-scalar-get-fuse:2 gc-shared-resolve-call:2 gc-value-check-extend:1 gc-value-check-input:2 gc-value-check-plan:1 gc-value-check-reuse:1 gc-value-check-save:1] reuse=1 save=1 extend=1 frame=184
+    gc_value_checks_stats_amd64_test.go:51: test-read all=map[commute-mem-left:2 final-cast-scalar-get-fuse:2 gc-test-field-fuse:1 gc-value-check-extend:1 gc-value-check-input:2 gc-value-check-plan:1 gc-value-check-reuse:2 gc-value-check-save:1 lone-predicate:1] reuse=2 save=1 extend=1 frame=184
+    gc_value_checks_stats_amd64_test.go:51: snapshot all=map[commute-mem-left:1 final-cast-scalar-get-fuse:4 gc-value-check-input:4 gc-value-check-plan:1 gc-value-check-reuse:2 gc-value-check-save:1] reuse=2 save=1 extend=0 frame=184
+    gc_value_checks_stats_amd64_test.go:51: later all=map[commute-mem-left:1 compact-i32-frame:1 final-cast-scalar-get-fuse:2 gc-value-check-extend:1 gc-value-check-input:2 gc-value-check-plan:1 gc-value-check-reuse:1 gc-value-check-save:1] reuse=1 save=1 extend=1 frame=184
+    gc_value_checks_stats_amd64_test.go:51: after-call all=map[commute-mem-left:1 final-cast-scalar-get-fuse:4 gc-value-check-input:4 gc-value-check-plan:1 gc-value-check-reuse:1 gc-value-check-save:1] reuse=1 save=1 extend=0 frame=184
+    gc_value_checks_stats_amd64_test.go:51: branch all=map[compact-i32-frame:1 final-cast-scalar-get-fuse:3 gc-value-check-input:3 gc-value-check-plan:1 gc-value-check-reuse:1 gc-value-check-save:1] reuse=1 save=1 extend=0 frame=184
+    gc_value_checks_stats_amd64_test.go:51: write all=map[final-cast-scalar-get-fuse:3 final-cast-struct-get-fuse:3 gc-barrier-slow:1 gc-value-check-input:6 gc-value-check-plan:1 gc-value-check-reuse:2 gc-value-check-save:2] reuse=2 save=2 extend=0 frame=216
+    gc_value_checks_stats_amd64_test.go:51: small all=map[commute-mem-left:1 final-cast-scalar-get-fuse:2 gc-value-check-input:2 gc-value-check-plan:1 gc-value-check-reuse:1 gc-value-check-save:1] reuse=1 save=1 extend=0 frame=184
+    gc_value_checks_stats_amd64_test.go:51: pressure all=map[commute-mem-left:3 compact-i32-frame:1 final-cast-scalar-get-fuse:3 gc-test-field-fuse:1 gc-value-check-extend:2 gc-value-check-input:3 gc-value-check-plan:1 gc-value-check-reuse:2 gc-value-check-save:2 late-frame-commute:1 tree-order:5 tree-order-candidate:5] reuse=2 save=2 extend=2 frame=232
+--- PASS: TestGCValueChecksAdmission (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.036s

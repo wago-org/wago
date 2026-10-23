@@ -1,0 +1,51 @@
+[
+  {
+    "label": "final-normal",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-count=1",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks",
+    "seconds": 33.80474221800978,
+    "exit": 0
+  },
+  {
+    "label": "final-checked",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-tags=wago_regalloccheck",
+      "-count=1",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks",
+    "seconds": 53.9645438669977,
+    "exit": 0
+  },
+  {
+    "label": "final-profile",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-tags=wago_codegenstats,wago_regalloccheck,wago_profile",
+      "-run",
+      "TestGC(ValueCheck|TestField|ReadRegion|TrappingGuard)|TestLocalSlotOrder",
+      "-count=1",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks",
+    "seconds": 26.16737096599536,
+    "exit": 0
+  }
+]

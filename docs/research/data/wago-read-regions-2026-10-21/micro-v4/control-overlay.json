@@ -1,0 +1,11 @@
+{
+  "Replace": {
+    "/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions/src/core/compiler/backend/railshot/amd64/call.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/read-regions/micro-v4/call.go.base.txt",
+    "/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions/src/core/compiler/backend/railshot/amd64/compile.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/read-regions/micro-v4/compile.go.base.txt",
+    "/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions/src/core/compiler/backend/railshot/amd64/driver.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/read-regions/micro-v4/driver.go.base.txt",
+    "/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions/src/core/compiler/backend/railshot/amd64/gc_struct.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/read-regions/micro-v4/gc_struct.go.base.txt",
+    "/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions/src/core/compiler/backend/railshot/amd64/inline.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/read-regions/micro-v4/inline.go.base.txt",
+    "/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions/src/core/compiler/backend/railshot/amd64/gc_cast_array_get.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/read-regions/micro-v4/gc_cast_array_get.go.base.txt",
+    "/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions/src/core/compiler/backend/railshot/amd64/gc_read_region.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/read-regions/micro-v4/gc_read_region.go.base.txt"
+  }
+}

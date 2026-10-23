@@ -1,0 +1,33 @@
+{
+  "label": "build-candidate",
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-tags=wago_codegenstats",
+    "-c",
+    "-overlay",
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/value-checks/admission/overlay.json",
+    "-o",
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/value-checks/admission/candidate.test",
+    "./src/wago"
+  ],
+  "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks",
+  "seconds": 24.815737690005335,
+  "user_seconds": 42.936609,
+  "system_seconds": 0.9388799999999999,
+  "peak_rss_kib": 3531532,
+  "exit": 0,
+  "timeout": false,
+  "load_start": [
+    2.53173828125,
+    2.01025390625,
+    1.78857421875
+  ],
+  "load_end": [
+    2.31005859375,
+    1.99462890625,
+    1.78955078125
+  ]
+}

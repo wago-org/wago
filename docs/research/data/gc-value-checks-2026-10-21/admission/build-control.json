@@ -1,0 +1,33 @@
+{
+  "label": "build-control",
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-tags=wago_codegenstats",
+    "-c",
+    "-overlay",
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/value-checks/admission/control-overlay.json",
+    "-o",
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/value-checks/admission/control.test",
+    "./src/wago"
+  ],
+  "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks",
+  "seconds": 25.125490025995532,
+  "user_seconds": 43.099691,
+  "system_seconds": 1.169731,
+  "peak_rss_kib": 3481200,
+  "exit": 0,
+  "timeout": false,
+  "load_start": [
+    2.529296875,
+    2.51318359375,
+    1.86669921875
+  ],
+  "load_end": [
+    2.21044921875,
+    2.4384765625,
+    1.85986328125
+  ]
+}

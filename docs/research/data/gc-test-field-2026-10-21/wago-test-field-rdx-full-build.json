@@ -1,0 +1,28 @@
+[
+  {
+    "variant": "candidate",
+    "source_commit": "8e4a3d7d4427b2bd7de84bf261e51f57a618db05",
+    "candidate_production_delta": {
+      "src/core/compiler/backend/railshot/amd64/compile.go": "3646922a8109c07aa0340b659ee0e38f2f6e09175e9b0791944be816ee071bf9",
+      "src/core/compiler/backend/railshot/amd64/gc_direct.go": "55d74a5b1ce6a62c18f246c17f376c5c77f6832541c10540cfedd347f354bb86",
+      "src/core/compiler/backend/railshot/amd64/gc_struct.go": "b8ace9c3a15f22275887a225d6771a3620cec2726a4484f8354af7ac37f55443",
+      "src/core/compiler/backend/railshot/amd64/gc_test_field.go": "b9fd291da45295ae953fb9bdb9408b55003e6e5238712f4214af77f0dd0b7704"
+    },
+    "command": [
+      "go",
+      "build",
+      "-mod=mod",
+      "-ldflags=-X main.runtimePatchIdentity=test-field-candidate -X main.workerPluginIdentity=test-field-candidate",
+      "-o",
+      "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/test-field-rdx-candidate-host",
+      "."
+    ],
+    "seconds": 8.643271293003636,
+    "total_prepare_seconds": 9.672940233998816,
+    "exit": 0,
+    "stdout": "",
+    "stderr": "",
+    "managed_patch_sha256": "3f016f6442cc891cf982b5edf6f4de9952e7cb03b634c5c40f5c4e7f8842ec87",
+    "binary_sha256": "02b0f2fafd39f1421402e7fa9dba16cb056596bb9afa0a25dbfddaf647e2e2b5"
+  }
+]

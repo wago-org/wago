@@ -1,0 +1,16 @@
+[
+  {
+    "label": "combined-normal",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-count=1",
+      "./..."
+    ],
+    "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks",
+    "seconds": 138.52121403100318,
+    "exit": 1
+  }
+]

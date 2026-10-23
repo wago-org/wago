@@ -1,0 +1,44 @@
+[
+  {
+    "variant": "control",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-tags=wago_codegenstats",
+      "-overlay",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/test-field/admission/control-overlay.json",
+      "-run",
+      "^TestRealTestFieldStaticAdmission$",
+      "-count=1",
+      "-v",
+      "./src/wago"
+    ],
+    "seconds": 26.576084103005996,
+    "exit": 0,
+    "stdout": "=== RUN   TestRealTestFieldStaticAdmission\n    real_test_field_capture_test.go:71: fusions=0 functions=0 native_bytes=24177611 compile_seconds=0.501118 roots={Required:true Exact:true Reason: Safepoints:25794 Callsites:56923 MaximumRoots:77 MetadataBytes:1983045}\n--- PASS: TestRealTestFieldStaticAdmission (0.51s)\nPASS\nok  \tgithub.com/wago-org/wago/src/wago\t0.518s\n",
+    "stderr": ""
+  },
+  {
+    "variant": "candidate",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-tags=wago_codegenstats",
+      "-overlay",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/test-field/admission/overlay.json",
+      "-run",
+      "^TestRealTestFieldStaticAdmission$",
+      "-count=1",
+      "-v",
+      "./src/wago"
+    ],
+    "seconds": 26.376829803994042,
+    "exit": 0,
+    "stdout": "=== RUN   TestRealTestFieldStaticAdmission\n    real_test_field_capture_test.go:71: fusions=929 functions=257 native_bytes=24228859 compile_seconds=0.490326 roots={Required:true Exact:true Reason: Safepoints:25794 Callsites:56923 MaximumRoots:77 MetadataBytes:1983045}\n--- PASS: TestRealTestFieldStaticAdmission (0.51s)\nPASS\nok  \tgithub.com/wago-org/wago/src/wago\t0.508s\n",
+    "stderr": ""
+  }
+]

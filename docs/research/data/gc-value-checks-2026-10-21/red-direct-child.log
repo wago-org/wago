@@ -1,0 +1,10 @@
+=== RUN   TestGCValueChecksAdmission
+    gc_value_checks_stats_amd64_test.go:51: mix all=map[commute-mem-left:5 final-cast-scalar-get-fuse:6 gc-value-check-extend:2 gc-value-check-input:6 gc-value-check-plan:1 gc-value-check-reuse:4 gc-value-check-save:2] reuse=4 save=2 extend=2 frame=184
+    gc_value_checks_stats_amd64_test.go:51: copy all=map[commute-mem-left:1 final-cast-scalar-get-fuse:2 frame-header-elide:1 gc-value-check-extend:1 gc-value-check-input:2 gc-value-check-plan:1 gc-value-check-reuse:1 gc-value-check-save:1] reuse=1 save=1 extend=1 frame=168
+    gc_value_checks_stats_amd64_test.go:51: children all=map[commute-mem-left:3 final-cast-scalar-get-fuse:4 final-cast-struct-get-fuse:4 frame-header-elide:1 gc-value-check-extend:3 gc-value-check-input:8 gc-value-check-plan:1 gc-value-check-reuse:5 gc-value-check-save:3] reuse=5 save=3 extend=3 frame=168
+    gc_value_checks_stats_amd64_test.go:51: typed-children all=map[commute-mem-left:1 final-cast-scalar-get-fuse:2 frame-header-elide:1 gc-shared-resolve-call:2 gc-value-check-input:2 gc-value-check-plan:1 gc-value-check-unknown-input:2] reuse=0 save=0 extend=0 frame=168
+    gc_value_checks_stats_amd64_test.go:67: direct child read lost value identity: map[commute-mem-left:1 final-cast-scalar-get-fuse:2 frame-header-elide:1 gc-shared-resolve-call:2 gc-value-check-input:2 gc-value-check-plan:1 gc-value-check-unknown-input:2]
+--- FAIL: TestGCValueChecksAdmission (0.00s)
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.003s
+FAIL

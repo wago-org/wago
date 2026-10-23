@@ -38,11 +38,15 @@ const (
 )
 
 func (f *fn) emitFB(r *wasm.Reader) error {
+	if f.gcReadRegion != nil {
+		return f.emitGCReadRegionGroup(r)
+	}
 	before := f.a.Len()
 	sub, err := r.U32()
 	if err != nil {
 		return err
 	}
+	f.prepareGCValueFB(sub)
 	f.prepareGCResolvedFB(sub)
 	f.prepareGCFreshStructFB(sub)
 	f.gcOpcodeBarrier = false
@@ -566,6 +570,11 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 		return f.emitDynamicFunctionSubtypeTest(uint32(heap), nullable)
 	}
 	if f.gcStructHelpers && heap >= 0 {
+		if !nullable {
+			if done, err := f.tryGCTestField(uint32(heap), r); done || err != nil {
+				return err
+			}
+		}
 		if target, ok := f.stagedGCType(uint32(heap)); ok && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
 			return f.emitNativeDefinedTest(uint32(heap), nullable)
 		}
@@ -1111,9 +1120,13 @@ func (f *fn) emitGCI31(sub uint32) error {
 }
 
 func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) error {
+	if f.gcReadRegion != nil {
+		return f.gcReadRegionViolation("Go GC helper")
+	}
 	// Every parked helper may run collector work, so the transient raw resolver
 	// certificate does not survive it.
 	f.invalidateGCResolvedObject()
+	f.clearGCValueChecks()
 	before := f.a.Len()
 	defer func() {
 		n := f.a.Len() - before
@@ -1142,6 +1155,10 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 }
 
 func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
+	if f.gcReadRegion != nil {
+		f.gcReadRegion.err = f.gcReadRegionViolation("safepoint")
+		return 0
+	}
 	plan := f.gcFrameRoots
 	id := plan.SafepointBase + uint32(plan.SafepointCount()+1)
 	if id == 0 || id > shared.GCSafepointIDMax {

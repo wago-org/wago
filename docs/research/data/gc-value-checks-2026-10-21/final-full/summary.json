@@ -1,0 +1,24 @@
+{
+  "control": {
+    "seconds": [
+      34.07506827000179,
+      33.83844387800491,
+      33.73990503999812
+    ],
+    "median_seconds": 33.83844387800491,
+    "median_peak_rss_kib": 1096388
+  },
+  "candidate": {
+    "seconds": [
+      33.007731784004136,
+      32.887734264993924,
+      32.74369963600475
+    ],
+    "median_seconds": 32.887734264993924,
+    "median_peak_rss_kib": 1141100
+  },
+  "candidate_reduction_percent": 2.8095547668755216,
+  "v8_reference_seconds": 4.0,
+  "candidate_over_known_v8": 8.221933566248481,
+  "all_outputs_identical_and_main_42": true
+}

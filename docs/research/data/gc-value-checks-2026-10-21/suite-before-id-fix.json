@@ -1,0 +1,65 @@
+[
+  {
+    "label": "combined-normal",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-count=1",
+      "./..."
+    ],
+    "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks",
+    "seconds": 123.18889545599814,
+    "exit": 0
+  },
+  {
+    "label": "combined-checked",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-tags=wago_regalloccheck",
+      "-count=1",
+      "./..."
+    ],
+    "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks",
+    "seconds": 135.02028668600542,
+    "exit": 0
+  },
+  {
+    "label": "bench-checked",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-tags=wago_regalloccheck",
+      "-count=1",
+      "./..."
+    ],
+    "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks/bench",
+    "seconds": 26.96893455699319,
+    "exit": 0
+  },
+  {
+    "label": "focus-profile-final",
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-tags=wago_codegenstats,wago_regalloccheck,wago_profile",
+      "-run",
+      "^TestGCValueCheck",
+      "-count=1",
+      "-v",
+      "./src/core/compiler/backend/railshot/amd64",
+      "./src/wago"
+    ],
+    "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-value-checks",
+    "seconds": 26.025955500997952,
+    "exit": 0
+  }
+]

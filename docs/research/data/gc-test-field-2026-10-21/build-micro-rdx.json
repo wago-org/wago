@@ -1,0 +1,17 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-c",
+    "-o",
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/test-field/candidate-rdx.test",
+    "./src/wago"
+  ],
+  "seconds": 0.9129230250036926,
+  "exit": 0,
+  "stdout": "",
+  "stderr": "",
+  "sha256": "d4a2ed76ac72f6379d9f8eae585032fca532158fdfc6989f8fed632de0ca49b0"
+}

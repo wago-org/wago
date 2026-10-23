@@ -1,0 +1,18 @@
+{
+  "command": [
+    "env",
+    "GOMAXPROCS=2",
+    "CGO_ENABLED=0",
+    "go",
+    "test",
+    "-p=2",
+    "-tags=wago_codegenstats,wago_regalloccheck",
+    "./src/core/compiler/backend/railshot/amd64",
+    "./src/wago",
+    "-run",
+    "^Test(DirectForwarder|CompactInline|Inline|FinalizeOmittedInline)",
+    "-count=1"
+  ],
+  "seconds": 25.733711349999794,
+  "returncode": 1
+}

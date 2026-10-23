@@ -1,0 +1,63 @@
+{
+  "common_stack_commit": "40cfab8d8ec32ca3eff1cd178fa746cb2eeb82b0",
+  "control_build": {
+    "variant": "control",
+    "source_commit": "40cfab8d8ec32ca3eff1cd178fa746cb2eeb82b0",
+    "candidate_production_delta": {},
+    "command": [
+      "go",
+      "build",
+      "-mod=mod",
+      "-ldflags=-X main.runtimePatchIdentity=value-checks-control -X main.workerPluginIdentity=value-checks-control",
+      "-o",
+      "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/value-checks-control-host",
+      "."
+    ],
+    "seconds": 8.762052158010192,
+    "total_prepare_seconds": 9.753030843989109,
+    "exit": 0,
+    "stdout": "",
+    "stderr": "",
+    "managed_patch_sha256": "3f016f6442cc891cf982b5edf6f4de9952e7cb03b634c5c40f5c4e7f8842ec87",
+    "binary_sha256": "bff56a5161fc727deec536367f73b06ccafe5343bdabf875a28e9069fba05424"
+  },
+  "candidate_build": {
+    "variant": "candidate",
+    "source_commit": "40cfab8d8ec32ca3eff1cd178fa746cb2eeb82b0",
+    "candidate_production_delta": {
+      "src/core/compiler/backend/railshot/amd64/compile.go": "95362ab42fe622d3b94b2217e68d6d4960ca8b6dbaa68b269488a072895ce052",
+      "src/core/compiler/backend/railshot/amd64/driver.go": "a9aa250f3afe21e3269bd8a796262fb4fdb180e7cd9543b27d5783494e0a1c4f",
+      "src/core/compiler/backend/railshot/amd64/gc_direct.go": "fd822b9d47c30a4c7cacf72b2061a02d740c2e2cfe81b92c6e598363fb4965c6",
+      "src/core/compiler/backend/railshot/amd64/gc_resolver.go": "675d75620c30b6f2e3328c699d77579cb6d6bfbb4c5c630643d1b52062686665",
+      "src/core/compiler/backend/railshot/amd64/gc_struct.go": "31297798ca991f15c7d76857ed4a13635bfceebd87cffa66d76f24a280f2af0c",
+      "src/core/compiler/backend/railshot/amd64/gc_test_field.go": "56edb5c6c81c0890142250660f89dfbdeb0703f25778f440a33cfc8a427119b4",
+      "src/core/compiler/backend/railshot/amd64/references.go": "9039920615d58ee8467c5ffc11b3cde58418e7cc71419c6b0b3ad7b70c4a5d1c",
+      "src/core/compiler/backend/railshot/amd64/regalloc.go": "57f05824499e77ed3908f7b9da4b6b0c0e16bc484d1adc015f779a5bcdeb02db",
+      "src/core/compiler/backend/railshot/amd64/gc_value_checks.go": "88424503b3b166d9c0bf17de32c7ecd4d4b3771082dc8e82940e622450875ea2",
+      "src/core/compiler/backend/railshot/amd64/gc_read_region.go": "33bf00361ec7350fdd2d8fb916135647ab131f605b533396f3b35778454ee44a",
+      "src/core/compiler/backend/railshot/amd64/gc_trapping_guard.go": "123ace152cc30a06206b57947a60192a23c8749f214e8a232e4f7b9a497c03e1"
+    },
+    "command": [
+      "go",
+      "build",
+      "-mod=mod",
+      "-ldflags=-X main.runtimePatchIdentity=value-checks-candidate -X main.workerPluginIdentity=value-checks-candidate",
+      "-o",
+      "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/value-checks-final-host",
+      "."
+    ],
+    "seconds": 7.628828289991361,
+    "total_prepare_seconds": 8.488211459000013,
+    "exit": 0,
+    "stdout": "",
+    "stderr": "",
+    "managed_patch_sha256": "3f016f6442cc891cf982b5edf6f4de9952e7cb03b634c5c40f5c4e7f8842ec87",
+    "binary_sha256": "1d4a53e7b64aad61586baa8f5ad094c6c912329ea82c1b7e4f22aefe4b63256d"
+  },
+  "compiler_sha256": "c64fcf044b72cb7356ad598a35670045931337cfa7a6bb9d5916cd304b23fba6",
+  "request_sha256": "077b0ff0271706cc3034f3e06c7a228f227c49aeec7786d21373b2072af89c72",
+  "affinity": "12,14",
+  "GOMAXPROCS": 2,
+  "v8_reference_seconds": 4.0,
+  "method": "Three serial balanced pairs; fresh native/result caches; normal diagnostic-free binaries. Same installed GC safety/performance stack; only candidate per-value compile-time checks table with private non-root address/extent homes and local/field snapshot identities. All physical/type/root checks remain. No concurrent task-owned builds/tests/benchmarks. Known V8 four-second result; no new V8 run."
+}

@@ -1,0 +1,8 @@
+{
+  "test": "TestGCValueChecksFinalIntervalTransfer",
+  "exit": 1,
+  "seconds": 6.061,
+  "peak_rss_kib": 801292,
+  "diagnostic": "final local transfer value ID=0, want 7",
+  "fix": "Preserve the declared reference local value ID on the owned register after a final interval transfer."
+}

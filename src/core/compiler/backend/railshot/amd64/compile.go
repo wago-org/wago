@@ -336,7 +336,10 @@ type fn struct {
 	gcLocalTypes        []uint64      // collector reference types, independent of local liveness
 	localSlot           []uint32      // low 24 bits: byte offset; high 8 bits: bounded local-reference count
 	gcOpcodeBarrier     bool          // current 0xfb opcode emits real barrier work
+	gcValues            *gcValueChecks
 	gcResolved          gcResolvedObject
+	gcReadRegion        *gcReadRegionState
+	gcReadRegionSites   int
 	gcSharedResolver    bool
 	gcDeferResolver     bool
 	gcDynamicCopySites  uint8 // bounded native-copy expansion within this function
@@ -346,6 +349,7 @@ type fn struct {
 	gcSubtypeProofs     [4]gcSubtypeProof
 	gcSubtypeProofN     uint8
 	gcGuardSites        uint8 // bounded prefix-match attempts; shares existing padding
+	gcTestFieldSites    uint8 // bounded successful test/field prefixes
 	nLocalSlots         int   // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
@@ -857,6 +861,7 @@ type scratch struct {
 	policy                CodegenPolicy
 	classifier            wasm.ModuleInstructionClassifier
 	moduleTypes           moduleTypeCache
+	gcValueScratch        gcValueChecks
 	fnState               fn // per-function compiler state, reused across the module
 	relocs                []callReloc
 
@@ -870,8 +875,11 @@ type scratch struct {
 	gcArrayLenStubSites     []int
 	gcFinalCastStubSites    []int
 	gcDefinedTestStubSites  []int
+	gcTestFieldStubSites    []int
 	gcArrayRefGetSites      []int
 	gcCastArrayGetSites     [5][]int
+	gcValueStructStubSites  []int
+	gcValueTestStubSites    []int
 	gcStructRefGetStubSites []int
 	gcStructRefSetStubSites []int
 	gcArrayRefSetStubSites  []int
@@ -1138,10 +1146,13 @@ func (sc *scratch) reset() {
 	sc.gcArrayLenStubSites = sc.gcArrayLenStubSites[:0]
 	sc.gcFinalCastStubSites = sc.gcFinalCastStubSites[:0]
 	sc.gcDefinedTestStubSites = sc.gcDefinedTestStubSites[:0]
+	sc.gcTestFieldStubSites = sc.gcTestFieldStubSites[:0]
 	sc.gcArrayRefGetSites = sc.gcArrayRefGetSites[:0]
 	for i := range sc.gcCastArrayGetSites {
 		sc.gcCastArrayGetSites[i] = sc.gcCastArrayGetSites[i][:0]
 	}
+	sc.gcValueStructStubSites = sc.gcValueStructStubSites[:0]
+	sc.gcValueTestStubSites = sc.gcValueTestStubSites[:0]
 	sc.gcStructRefGetStubSites = sc.gcStructRefGetStubSites[:0]
 	sc.gcStructRefSetStubSites = sc.gcStructRefSetStubSites[:0]
 	sc.gcArrayRefSetStubSites = sc.gcArrayRefSetStubSites[:0]
@@ -1952,6 +1963,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	inlineTargets := buildInlineTargets(m, allHints, policy)
 	if opts.GCFrameRoots != nil {
 		restrictGCNumericInlineTargets(m, &inlineTargets)
+		if opts.GCStructHelpers && (len(allHints) == 0 || !allHints[0].flags.has(hintModuleEH)) && len(opts.CustomInstructions) == 0 {
+			addGCReadRegionTargets(m, &inlineTargets, opts.Codegen.Module.GCTypeLayouts, opts.GCArrayHelpers, policy)
+		}
 	}
 	requiresBMI2 := false
 	var requiresBitCount uint8
@@ -4042,6 +4056,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// caller's own locals only). Extends the frame's local arrays with unpinned
 	// scratch; the splice at each call site binds/zeroes them.
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
+	if err := f.reserveGCValueChecks(c.BodyBytes, c.LocalDeclBytes); err != nil {
+		return nil, nil, 0, err
+	}
 	if uint64(f.nLocalSlots)*8 > uint64(localSlotOffsetMask) {
 		return nil, nil, 0, fmt.Errorf("amd64: local frame %d bytes exceeds packed offset range %d", 8*f.nLocalSlots, localSlotOffsetMask)
 	}
