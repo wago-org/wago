@@ -34,6 +34,9 @@ type pdfiumOracle struct {
 // compiling its large functions, it parses a compressed two-page invoice,
 // extracts every line and rasterizes both pages against an independent V8 oracle.
 func TestPDFiumCorpus(t *testing.T) {
+	if !wago.SupportedFeatures().IsEnabled(wago.CoreFeatureExceptionHandling) {
+		t.Skip("PDFium fixture requires exception-handling support")
+	}
 	if regressiontest.RunIsolated(t, 60*time.Second) {
 		return
 	}
@@ -64,7 +67,8 @@ func TestPDFiumCorpus(t *testing.T) {
 	pdf := read("invoice.pdf", oracle.InputSHA256)
 	for _, workers := range []int{1, 4} {
 		t.Run(fmt.Sprintf("workers=%d", workers), func(t *testing.T) {
-			rt := wago.NewRuntime(wago.WithRuntimeConfig(wago.NewRuntimeConfig().WithCompileWorkers(workers)))
+			config := wago.NewRuntimeConfig().WithCompileWorkers(workers).WithBoundsChecks(wago.BoundsChecksExplicit)
+			rt := wago.NewRuntime(wago.WithRuntimeConfig(config))
 			defer rt.Close()
 			module, err := rt.Compile(wasm)
 			if err != nil {
