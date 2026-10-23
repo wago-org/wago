@@ -97,11 +97,11 @@ type compilerCompiledOwner struct {
 	state compilerCompiledState
 }
 
-func newCompilerCompiled(initial Compiled) *Compiled {
-	initial.nativeContextTrapABI = railshotNativeContextTrapABI()
-	initial.nativeTableContextABI = railshotNativeContextTrapABI()
-	initial.nativeTableReferenceABI = railshotNativeContextTrapABI()
-	owner := &compilerCompiledOwner{Compiled: initial}
+func newCompilerCompiled() *Compiled {
+	owner := &compilerCompiledOwner{}
+	owner.Compiled.nativeContextTrapABI = railshotNativeContextTrapABI()
+	owner.Compiled.nativeTableContextABI = railshotNativeContextTrapABI()
+	owner.Compiled.nativeTableReferenceABI = railshotNativeContextTrapABI()
 	owner.Compiled.codeCache = &owner.state.codeCache
 	owner.Compiled.validateMemo = &owner.state.validateMemo
 	owner.Compiled.memoryDir = &owner.state.memoryDir
@@ -842,6 +842,7 @@ func (c *Compiled) releaseCode() {
 		_ = c.releaseHostThunksLocked()
 		_ = c.releaseFailedMappingsLocked()
 		_ = railshotRetryNativeTail(c)
+		_ = c.releaseCompactDataLocked()
 		c.clearCodeViewsLocked()
 		if c.validateMemo != nil {
 			c.validateMemo.structuralCallIdentities.Store(nil)
@@ -1000,7 +1001,7 @@ func (c *Compiled) replaceDecoded(decoded Compiled, snapshotLimit uint64) error 
 				cc.mem = nil
 			}
 		}
-		releaseErr = errors.Join(releaseErr, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked(), railshotRetryNativeTail(c))
+		releaseErr = errors.Join(releaseErr, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked(), railshotRetryNativeTail(c), c.releaseCompactDataLocked())
 		cc.mu.Unlock()
 		goruntime.SetFinalizer(c, nil)
 		if releaseErr != nil {
@@ -1047,7 +1048,7 @@ func (c *Compiled) Close() error {
 			cc.mem = nil
 		}
 	}
-	return errors.Join(err, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked(), railshotRetryNativeTail(c))
+	return errors.Join(err, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked(), railshotRetryNativeTail(c), c.releaseCompactDataLocked())
 }
 
 func (c *Compiled) hasOpaqueExternFrames() bool {

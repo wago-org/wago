@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"runtime"
+	"sync"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -98,6 +100,33 @@ func rv64RootedTypeDigest(c *Compiled) ([32]byte, bool) {
 type compactActiveData struct {
 	records []compactDataRecord
 	bytes   []byte
+	owner   *compactDataMapping
+}
+
+type compactDataMapping struct {
+	bytes []byte
+	once  sync.Once
+	err   error
+}
+
+func ownCompactDataMapping(bytes []byte) *compactDataMapping {
+	owner := &compactDataMapping{bytes: bytes}
+	runtime.SetFinalizer(owner, func(owner *compactDataMapping) { _ = owner.Close() })
+	return owner
+}
+
+func (m *compactDataMapping) Close() error {
+	if m == nil {
+		return nil
+	}
+	m.once.Do(func() {
+		runtime.SetFinalizer(m, nil)
+		m.err = unmapCompactData(m.bytes)
+		if m.err == nil {
+			m.bytes = nil
+		}
+	})
+	return m.err
 }
 
 type compactDataRecord struct {
@@ -136,6 +165,26 @@ func (c *Compiled) activeDataAt(index int) DataInit {
 	}
 	d := c.compactData.records[index]
 	return DataInit{MemoryIndex: d.memoryIndex, Offset: OffsetInit{Base: d.offset}, Bytes: c.compactData.bytes[d.start:d.end:d.end]}
+}
+
+// releaseCompactDataLocked releases a mapped execution payload after the last
+// instance has dropped the shared compiled cache. Callers hold codeCache.mu.
+func (c *Compiled) releaseCompactDataLocked() error {
+	target := c
+	if target.compactData == nil {
+		if snapshot := c.loadValidateMemo().executionView(); snapshot != nil {
+			target = snapshot
+		}
+	}
+	if target.compactData == nil || target.compactData.owner == nil {
+		return nil
+	}
+	if err := target.compactData.owner.Close(); err != nil {
+		return err
+	}
+	target.compactData.bytes = nil
+	target.compactData.owner = nil
+	return nil
 }
 
 // rv64RootedImportDigest authenticates the bounded host boundary used by
@@ -890,12 +939,20 @@ func compactActiveDataSize(c *Compiled) (int, bool) {
 }
 
 func cloneCompactActiveData(out *compactActiveData, c *Compiled, payloadBytes int) {
-	*out = compactActiveData{records: make([]compactDataRecord, c.activeDataCount()), bytes: make([]byte, payloadBytes)}
+	*out = compactActiveData{records: make([]compactDataRecord, c.activeDataCount())}
+	if bytes, err := mapCompactActiveData(c, payloadBytes); err == nil && bytes != nil {
+		out.bytes = bytes
+		out.owner = ownCompactDataMapping(bytes)
+	} else {
+		out.bytes = make([]byte, payloadBytes)
+	}
 	next := 0
 	for i := range out.records {
 		d := c.activeDataAt(i)
 		end := next + len(d.Bytes)
-		copy(out.bytes[next:end], d.Bytes)
+		if out.owner == nil {
+			copy(out.bytes[next:end], d.Bytes)
+		}
 		out.records[i] = compactDataRecord{memoryIndex: d.MemoryIndex, offset: d.Offset.Base, start: uint32(next), end: uint32(end)}
 		next = end
 	}

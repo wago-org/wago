@@ -2661,8 +2661,7 @@ func exprBytesRequireSIMDWithClassifier(body []byte, classifier wasm.ModuleInstr
 			}
 			continue
 		}
-		var imm wasm.InstructionImmediate
-		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+		if err := classifier.SkipImmediate(r, op); err != nil {
 			return false
 		}
 	}

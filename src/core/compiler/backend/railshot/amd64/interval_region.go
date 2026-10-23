@@ -272,6 +272,13 @@ scan:
 	}
 }
 
+// hasIntervalLocal is the shared entry guard for regional reads and writes.
+// A missing plan or an unassigned local makes both activation and final-get
+// transfer no-ops; keep that case in the opcode driver.
+func (f *fn) hasIntervalLocal(x int) bool {
+	return x >= 0 && x < len(f.intervalReg) && f.intervalReg[x] != regNone
+}
+
 // activateIntervalLocal opportunistically restores an assigned regional local
 // after pressure evicted it. A busy register is left to the ordinary lowering;
 // forcing a spill merely to recreate the cache loses the cache's purpose.

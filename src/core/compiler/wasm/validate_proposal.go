@@ -91,7 +91,7 @@ func (v *funcValidator) stepCallRef(in Instruction) error {
 		return err
 	}
 	wantTyped := RefVal(Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false))
-	if !callee.unknown && !v.subtype(callee.t, wantTyped) {
+	if !callee.unknown() && !v.subtype(callee.t, wantTyped) {
 		// call_ref requires a reference to the selected function type. Nullable
 		// typed references remain valid and trap dynamically when null; abstract
 		// funcref has no exact callable signature.
@@ -373,25 +373,25 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && !v.subtype(x.t, operand) {
+		if !x.unknown() && !v.subtype(x.t, operand) {
 			return v.verr(ErrTypeMismatch, x.t.String()+" is not "+operand.String())
 		}
 		// An unreachable stack operand can use the non-null input type.
-		v.push(RefVal(result.Ref().WithNullable(!x.unknown && x.t.Ref().Nullable())))
+		v.push(RefVal(result.Ref().WithNullable(!x.unknown() && x.t.Ref().Nullable())))
 		return nil
 	case InstrRefTest, InstrRefTestDesc:
 		x, err := v.pop()
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind() != ValRef {
+		if !x.unknown() && x.t.Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, in.Kind.String()+" expects a reference operand")
 		}
 		target, ok := v.descriptorTargetRefType(in.Cast.TargetNullable, in.HeapType(), false)
 		if !ok {
 			return v.verr(ErrUnknownType, "invalid descriptor target reftype")
 		}
-		if !x.unknown {
+		if !x.unknown() {
 			compatible := v.refTestCompatible(x.t.Ref(), target.Ref())
 			if in.Kind == InstrRefTestDesc {
 				compatible = v.descriptorCompatible(x.t.Ref(), target.Ref())
@@ -434,10 +434,10 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind() != ValRef {
+		if !x.unknown() && x.t.Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, "ref.cast expects a reference operand")
 		}
-		if !x.unknown {
+		if !x.unknown() {
 			compatible := v.refTestCompatible(x.t.Ref(), target.Ref())
 			if in.Kind == InstrRefCastDescEq {
 				compatible = v.descriptorCompatible(x.t.Ref(), target.Ref())
@@ -467,10 +467,10 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind() != ValRef {
+		if !x.unknown() && x.t.Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, "expected a reference operand")
 		}
-		if !x.unknown && !v.refSubtype(x.t.Ref(), Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)) {
+		if !x.unknown() && !v.refSubtype(x.t.Ref(), Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)) {
 			return v.verr(ErrTypeMismatch, "ref.get_desc target")
 		}
 		v.push(RefVal(Ref(false, IndexedHeap(TypeIdx{Index: uint32(descriptorFlat)}), true)))
@@ -550,7 +550,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && (x.t.Kind() != ValRef || !v.heapSubtype(x.t.Ref().Heap(), AbsHeap(HeapArray))) {
+		if !x.unknown() && (x.t.Kind() != ValRef || !v.heapSubtype(x.t.Ref().Heap(), AbsHeap(HeapArray))) {
 			return v.verr(ErrTypeMismatch, "array.len")
 		}
 		v.push(I32)
@@ -787,7 +787,7 @@ func (v *funcValidator) stepBrOnCast(in Instruction) error {
 	if err != nil {
 		return err
 	}
-	if !x.unknown && (x.t.Kind() != ValRef || !v.refSubtype(x.t.Ref(), rt1)) {
+	if !x.unknown() && (x.t.Kind() != ValRef || !v.refSubtype(x.t.Ref(), rt1)) {
 		return v.verr(ErrTypeMismatch, "br_on_cast operand")
 	}
 	// A nullable target consumes null on the successful cast edge. The failed

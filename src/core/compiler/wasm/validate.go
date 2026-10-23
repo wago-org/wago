@@ -995,12 +995,19 @@ func (v *funcValidator) elemRefType(index uint32) (RefType, error) {
 }
 
 type val struct {
-	t       ValType
-	unknown bool
+	t ValType
 }
 
+// Canonical value types use lo bits only through bit49. Keep the validator's
+// polymorphic-stack marker in an otherwise unused bit, preserving all64 bits
+// of hi for exact resolved type coordinates. Bot and reference bottom remain
+// ordinary known types; this marker never enters a module declaration.
+const unknownValidationBit = uint64(1) << 63
+
+func (v val) unknown() bool { return v.t.lo&unknownValidationBit != 0 }
+
 func nonNullValidationType(x val) ValType {
-	if x.unknown {
+	if x.unknown() {
 		// A reference instruction constrains value bottom to reference bottom.
 		return RefVal(Ref(false, HeapType{lo: uint64(heapBottom)}, false))
 	}
@@ -1153,7 +1160,7 @@ func (v *funcValidator) pop() (val, error) {
 	f := v.top()
 	if len(v.vals) == f.height {
 		if f.unreachable {
-			return val{unknown: true}, nil
+			return val{t: ValType{lo: unknownValidationBit}}, nil
 		}
 		return val{}, v.verr(ErrTypeMismatch, "stack underflow")
 	}
@@ -1166,7 +1173,7 @@ func (v *funcValidator) popExpect(t ValType) error {
 	if err != nil {
 		return err
 	}
-	if !x.unknown && !v.subtype(x.t, t) {
+	if !x.unknown() && !v.subtype(x.t, t) {
 		return v.verr(ErrTypeMismatch, x.t.String()+" is not "+t.String())
 	}
 	return nil

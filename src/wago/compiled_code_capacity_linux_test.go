@@ -15,7 +15,9 @@ func TestCompiledOnlyImagesDoNotReserveExecutionRanges(t *testing.T) {
 		}
 	}()
 	for i := 0; i < modules; i++ {
-		staged := installCompilerCompiledFinalizer(newCompilerCompiled(Compiled{code: []byte{0}}))
+		staged := newCompilerCompiled()
+		staged.code = []byte{0}
+		installCompilerCompiledFinalizer(staged)
 		c, err := publishCompilerCompiled(staged)
 		if err != nil {
 			t.Fatalf("publish compiled-only image %d: %v", i, err)

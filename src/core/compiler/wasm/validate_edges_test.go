@@ -246,6 +246,13 @@ func TestBranchTableFrameEpochFitsValidatorPadding(t *testing.T) {
 	// Lazy local indexing adds only a scan-work counter; the existing compact
 	// run-end index is reused, and control-frame epoch padding is unchanged.
 	wantValidator += unsafe.Sizeof(uint64(0))
+	// The two inline operand slots now carry their unknown marker inside the
+	// value type, removing the old boolean and its alignment padding.
+	legacyValueBytes := unsafe.Sizeof(struct {
+		t       ValType
+		unknown bool
+	}{})
+	wantValidator -= 2 * (legacyValueBytes - unsafe.Sizeof(val{}))
 	var validator funcValidator
 	if unsafe.Offsetof(validator.constOnly) != unsafe.Offsetof(validator.branchTableEpoch)+unsafe.Sizeof(validator.branchTableEpoch) {
 		t.Fatal("branch-table epoch no longer packs immediately before constOnly")
