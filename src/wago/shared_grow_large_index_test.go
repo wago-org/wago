@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-const sharedGrowLargeIndexPath = "constant"
-
 func sharedGrowLargeIndexConfig(t testing.TB, wide bool) *RuntimeConfig {
 	t.Helper()
 	return sharedGrowFailureConfig(t, wide).WithMaxMemoriesPerModule(MaxMemoriesPerModuleLimit)
@@ -18,7 +16,7 @@ func sharedGrowLargeIndexConfig(t testing.TB, wide bool) *RuntimeConfig {
 
 // Repeated imported indexes alias one empty backing. Only the selected shared
 // backing has a page, so execution storage does not increase with the index.
-func sharedGrowLargeIndexModule(wide bool, index uint32, imported bool) []byte {
+func sharedGrowLargeIndexModule(wide bool, index uint32, imported bool, path string) []byte {
 	typ, flags := wasm.I32, byte(3)
 	if wide {
 		typ, flags = wasm.I64, 7
@@ -34,7 +32,7 @@ func sharedGrowLargeIndexModule(wide bool, index uint32, imported bool) []byte {
 		imports[i] = append(append(entry, 2), memory...)
 	}
 	params, body := []wasm.ValType{typ}, []byte{0x20, 0}
-	if sharedGrowLargeIndexPath == "constant" {
+	if path == "constant" {
 		params, body = nil, []byte{0x41, 1}
 		if wide {
 			body[0] = 0x42
@@ -89,10 +87,10 @@ func sharedGrowLargeIndexInstance(t *testing.T, cfg *RuntimeConfig, c *Compiled,
 	return in
 }
 
-func sharedGrowLargeIndexInvoke(t *testing.T, in *Instance, wide bool, delta uint64) {
+func sharedGrowLargeIndexInvoke(t *testing.T, in *Instance, wide bool, delta uint64, path string) {
 	t.Helper()
 	args, want := []uint64{delta}, uint64(1)
-	if sharedGrowLargeIndexPath == "constant" {
+	if path == "constant" {
 		args, delta = nil, 1
 	}
 	if delta != 0 {
@@ -107,32 +105,41 @@ func sharedGrowLargeIndexInvoke(t *testing.T, in *Instance, wide bool, delta uin
 }
 
 func TestSharedGrowLargeMemoryIndexCompile(t *testing.T) {
-	for _, index := range []uint32{1365, 1366, 4095} {
-		for _, wide := range []bool{false, true} {
-			t.Run(fmt.Sprintf("index%d/wide%t", index, wide), func(t *testing.T) {
-				c, err := sharedGrowLargeIndexConfig(t, wide).Compile(sharedGrowLargeIndexModule(wide, index, false))
-				if err != nil {
-					t.Fatal(err)
-				}
-				c.Close()
-			})
+	for _, path := range []string{"constant", "zero"} {
+		for _, index := range []uint32{1365, 1366, 4095} {
+			for _, wide := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/index%d/wide%t", path, index, wide), func(t *testing.T) {
+					c, err := sharedGrowLargeIndexConfig(t, wide).Compile(sharedGrowLargeIndexModule(wide, index, false, path))
+					if err != nil {
+						t.Fatal(err)
+					}
+					c.Close()
+				})
+			}
 		}
 	}
 }
 func TestSharedGrowLargeMemoryIndexImportedResults(t *testing.T) {
-	for _, index := range []uint32{1365, 1366, 4095} {
-		for _, wide := range []bool{false, true} {
-			t.Run(fmt.Sprintf("index%d/wide%t", index, wide), func(t *testing.T) {
-				cfg := sharedGrowLargeIndexConfig(t, wide)
-				c, err := cfg.Compile(sharedGrowLargeIndexModule(wide, index, true))
-				if err != nil {
-					t.Fatal(err)
-				}
-				t.Cleanup(func() { c.Close() })
-				in := sharedGrowLargeIndexInstance(t, cfg, c, wide)
-				sharedGrowLargeIndexInvoke(t, in, wide, 0)
-				sharedGrowLargeIndexInvoke(t, in, wide, 1)
-			})
+	for _, path := range []string{"constant", "zero"} {
+		for _, index := range []uint32{1365, 1366, 4095} {
+			for _, wide := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/index%d/wide%t", path, index, wide), func(t *testing.T) {
+					cfg := sharedGrowLargeIndexConfig(t, wide)
+					c, err := cfg.Compile(sharedGrowLargeIndexModule(wide, index, true, path))
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() { c.Close() })
+					in := sharedGrowLargeIndexInstance(t, cfg, c, wide)
+					deltas := []uint64{0, 1}
+					if path == "constant" {
+						deltas = []uint64{1}
+					}
+					for _, delta := range deltas {
+						sharedGrowLargeIndexInvoke(t, in, wide, delta, path)
+					}
+				})
+			}
 		}
 	}
 }

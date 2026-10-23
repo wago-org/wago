@@ -99,6 +99,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   helper-based dynamic array copies, in the lean TinyGo runtime to meet its
   existing size budget.
 
+- Return dynamic shared `memory.grow` zero queries in native AMD64 and ARM64
+  code while preserving atomic size visibility and nonzero growth checks.
+
 - Prepare one checked native identity for proven-dead GC batches on both
   backends, avoiding unused live-object handle refills at collection.
 
