@@ -646,26 +646,39 @@ func (f *fn) fsqrt(f64 bool) {
 	f.pushFReg(dst, mtOf2(f64))
 }
 
-// fsign applies a sign/magnitude bit op (neg = xorps sign; abs = andps magnitude)
-// via the 3-operand VEX form so a borrowed pinned-local operand is read directly
-// (dst = src <op> mask) instead of copied into the destination first.
-func (f *fn) fsign(op byte, mask64 uint64, mask32 uint32, f64 bool) {
+// fsignInto can write an immediate local assignment directly, eliminating the
+// result copy. Both the AVX three-operand and SSE2 paths preserve source bits.
+func (f *fn) fsignInto(dst Reg, op byte, mask64 uint64, mask32 uint32, f64 bool) Reg {
+	saved := f.fpinned
+	if dst != regNone {
+		f.fpinned = f.fpinned.add(dst)
+	}
 	src, owned := f.operandRegF(f.popValue())
 	f.fpinned = f.fpinned.add(src)
 	m := f.allocFReg(0)
+	f.fpinned = f.fpinned.add(m)
 	f.loadFMask(m, mask64, mask32, f64)
-	f.fpinned = f.fpinned.remove(src)
-	dst := src
-	if !owned { // borrowed pinned local: write a fresh dest, leave the local intact
-		dst = f.allocFReg(maskOf(src, m))
+	if dst == regNone {
+		dst = src
+		if !owned {
+			dst = f.allocFReg(maskOf(src, m))
+		}
 	}
-	var pp byte // VEX pp: 66 (pd) for f64, none (ps) for f32
+	var pp byte
 	if f64 {
 		pp = 0b01
 	}
 	f.scalarLogic(pp, op, dst, src, m)
+	f.fpinned = saved
 	f.releaseF(m)
-	f.pushFReg(dst, mtOf2(f64))
+	if owned && dst != src {
+		f.releaseF(src)
+	}
+	return dst
+}
+
+func (f *fn) fsign(op byte, mask64 uint64, mask32 uint32, f64 bool) {
+	f.pushFReg(f.fsignInto(regNone, op, mask64, mask32, f64), mtOf2(f64))
 }
 
 func (f *fn) fneg(f64 bool) { f.fsign(0x57, fSignMask64, fSignMask32, f64) }
@@ -688,17 +701,41 @@ func (f *fn) fround(f64 bool, mode byte) {
 //
 // Select the form that can reuse an owned operand. The VEX three-operand
 // sequence also reads pinned float locals directly instead of copying both.
-func (f *fn) fcopysign(f64 bool) {
+func (f *fn) fcopysignInto(dst Reg, f64 bool) Reg {
 	b := f.popValue()
 	a := f.popValue()
+	saved := f.fpinned
+	if dst != regNone {
+		f.fpinned = f.fpinned.add(dst)
+	}
 	xa, xaOwned := f.operandRegF(a)
 	f.fpinned = f.fpinned.add(xa)
 	xb, xbOwned := f.operandRegF(b)
 	f.fpinned = f.fpinned.add(xb)
 
-	dst := regNone
+	// The last XOR must read an original operand that the destination did
+	// not overwrite. Equal inputs are an identity, including signaling NaNs.
+	if xa == xb {
+		if dst == regNone {
+			dst = xa
+			if !xaOwned && !xbOwned {
+				dst = f.allocFReg(maskOf(xa))
+			}
+		}
+		if dst != xa {
+			f.a.FMov(dst, xa, f64)
+		}
+		f.fpinned = saved
+		if (xaOwned || xbOwned) && dst != xa {
+			f.releaseF(xa)
+		}
+		f.stats.peep("float-copysign-self")
+		return dst
+	}
 	useMagnitude := false
 	switch {
+	case dst != regNone:
+		useMagnitude = dst == xa
 	case xbOwned:
 		dst = xb // preserve a; finish with a ^ sign(a^b)
 	case xaOwned:
@@ -707,7 +744,9 @@ func (f *fn) fcopysign(f64 bool) {
 	default:
 		dst = f.allocFReg(maskOf(xa, xb))
 	}
+	f.fpinned = f.fpinned.add(dst)
 	m := f.allocFReg(maskOf(dst))
+	f.fpinned = f.fpinned.add(m)
 	if useMagnitude {
 		f.loadFMask(m, fMagMask64, fMagMask32, f64)
 	} else {
@@ -725,7 +764,7 @@ func (f *fn) fcopysign(f64 bool) {
 		f.scalarLogic(pp, 0x57, dst, xa, dst) // dst = a ^ sign(a^b)
 	}
 	f.releaseF(m)
-	f.fpinned = f.fpinned.remove(xa).remove(xb)
+	f.fpinned = saved
 	if xaOwned && xa != dst {
 		f.releaseF(xa)
 	}
@@ -733,7 +772,11 @@ func (f *fn) fcopysign(f64 bool) {
 		f.releaseF(xb)
 	}
 	f.stats.peep("fcopysign-xor-mask")
-	f.pushFReg(dst, mtOf2(f64))
+	return dst
+}
+
+func (f *fn) fcopysign(f64 bool) {
+	f.pushFReg(f.fcopysignInto(regNone, f64), mtOf2(f64))
 }
 
 // fcmp lowers a NaN-correct float comparison to a 0/1 i32 result.
@@ -741,11 +784,13 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
 	xa, xaOwned := f.operandRegF(a) // read-only: only compared
-	f.fpinned = f.fpinned.add(xa)
+	saved := f.fpinned
+	f.fpinned = saved.add(xa)
 	xb, xbOwned := f.operandRegF(b) // read-only: only compared
-	f.fpinned = f.fpinned.remove(xa)
+	f.fpinned = f.fpinned.add(xb)
 	dst := f.allocReg(0)
 	f.emitFCmpSetcc(kind, xa, xb, f64, dst)
+	f.fpinned = saved
 	if xaOwned {
 		f.releaseF(xa)
 	}
@@ -755,26 +800,42 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 	f.pushReg(dst, mtI32)
 }
 
-// emitFCmpSetcc emits UCOMIS(S/D) plus the NaN-correct SETcc sequence for a float
-// relational op, landing a 0/1 i32 boolean in dst. The ordered ops (gt/ge/lt/le)
+// emitFCmpSetcc emits a NaN-correct float comparison, landing a 0/1 i32 boolean
+// in dst. Strict self-relations need only a zeroing instruction. The ordered ops (gt/ge/lt/le)
 // use the CF-clear `above`/`above-equal` forms (via operand swap for lt/le) so
 // unordered (NaN) yields false; eq/ne combine the equal/parity bits. Shared by
 // fcmp (eager boolean).
 func (f *fn) emitFCmpSetcc(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
+	if xa == xb {
+		// Both inputs have already been evaluated. Strict self-relations are
+		// always false; eq/le/ge are true exactly when the input is ordered.
+		// Clear before producing flags and preserve the input bits.
+		cc := condNP
+		if kind == opNe {
+			cc = condP
+		}
+		f.a.AluRR(aluTable[opXor].rr, dst, dst, false)
+		if kind != opLtS && kind != opGtS {
+			f.a.Ucomis(xa, xb, f64)
+			f.a.SetccReg8(cc, dst)
+		}
+		f.stats.peep("float-self-compare-full-width")
+		return
+	}
+
 	switch kind {
-	case opEq:
-		f.a.Ucomis(xa, xb, f64)
+	case opEq, opNe:
+		// Allocation can realize pending loads. Finish it before the flag
+		// producer while both input XMM registers remain protected.
 		t := f.allocReg(maskOf(dst))
-		f.a.SetccReg(condE, dst)
-		f.a.SetccReg(condNP, t)
-		f.a.AluRR(aluTable[opAnd].rr, dst, t, false)
-		f.release(t)
-	case opNe:
+		first, parity, combine := condE, condNP, opAnd
+		if kind == opNe {
+			first, parity, combine = condNE, condP, opOr
+		}
 		f.a.Ucomis(xa, xb, f64)
-		t := f.allocReg(maskOf(dst))
-		f.a.SetccReg(condNE, dst)
-		f.a.SetccReg(condP, t)
-		f.a.AluRR(aluTable[opOr].rr, dst, t, false)
+		f.a.SetccReg(first, dst)
+		f.a.SetccReg(parity, t)
+		f.a.AluRR(aluTable[combine].rr, dst, t, false)
 		f.release(t)
 	case opGtS: // fc gt
 		f.a.Ucomis(xa, xb, f64)
