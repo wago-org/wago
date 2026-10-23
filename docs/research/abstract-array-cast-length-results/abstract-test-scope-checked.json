@@ -1,0 +1,17 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-tags=wago_codegenstats,wago_regalloccheck",
+    "./src/core/compiler/backend/railshot/amd64",
+    "./src/core/runtime/gc/native",
+    "-run",
+    "^Test(GCAbstractArrayCastLen|RefDescRejectsInvalidObjectExtent)",
+    "-count=1"
+  ],
+  "cwd": "/home/dev/Projects/wago-gc-abstract-array-length-pr",
+  "seconds": 6.819075261002581,
+  "exit": 0
+}

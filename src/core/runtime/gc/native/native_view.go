@@ -14,6 +14,15 @@ import (
 // Version 8 also gates the dead-reservation/native-preparation helper dispatch.
 const NativeABIVersion uint32 = 9
 
+// SubtypeEncoding is an optional extension in the existing ABI padding word.
+// Encoding zero is legacy and must use the Go abstract-array cast fallback.
+// Encoding one keeps the same ordered eight-byte DFS intervals and marks arrays
+// in the low bit of the entry timestamp. No object or view layout grows.
+const (
+	NativeSubtypeEncodingKindBit uint32 = 1
+	NativeSubtypeArrayKindBit    uint32 = 1
+)
+
 // Native allocation-stat offsets are relative to the AllocationCount pointer
 // in NativeCollectorView. Generated AMD64 dead charges use these counters to
 // invalidate pending-object accounting after a collection without adding work
@@ -67,7 +76,7 @@ type NativeCollectorView struct {
 	HandleStride          uint32
 	Handles               uintptr
 	HandleCount           uint32
-	_                     uint32
+	SubtypeEncoding       uint32
 	Spaces                [NativeSpaceCount]NativeSpaceView
 	RefreshGeneration     uint64
 	ObjectCards           uintptr
@@ -90,6 +99,7 @@ const (
 	NativeViewHandleStrideOffset          = 4
 	NativeViewHandlesOffset               = 8
 	NativeViewHandleCountOffset           = 16
+	NativeViewSubtypeEncodingOffset       = 20
 	NativeViewSpacesOffset                = 24
 	NativeViewSpaceStride                 = 16
 	NativeSpaceBaseOffset                 = 0
@@ -207,6 +217,7 @@ func ValidateNativeABI() error {
 		unsafe.Offsetof(view.HandleStride) != NativeViewHandleStrideOffset ||
 		unsafe.Offsetof(view.Handles) != NativeViewHandlesOffset ||
 		unsafe.Offsetof(view.HandleCount) != NativeViewHandleCountOffset ||
+		unsafe.Offsetof(view.SubtypeEncoding) != NativeViewSubtypeEncodingOffset ||
 		unsafe.Offsetof(view.Spaces) != NativeViewSpacesOffset ||
 		unsafe.Offsetof(view.RefreshGeneration) != NativeViewRefreshGenerationOffset ||
 		unsafe.Offsetof(view.ObjectCards) != NativeViewObjectCardsOffset ||
@@ -270,6 +281,9 @@ func ValidateNativeInstanceView(view *NativeInstanceView, collector *Collector, 
 	if collector.nativeView.HandleStride != NativeHandleStride {
 		return fmt.Errorf("gc: native handle stride %d unsupported (want %d)", collector.nativeView.HandleStride, NativeHandleStride)
 	}
+	if collector.nativeView.SubtypeEncoding != 0 && collector.nativeView.SubtypeEncoding != NativeSubtypeEncodingKindBit {
+		return fmt.Errorf("gc: unknown native subtype encoding %d", collector.nativeView.SubtypeEncoding)
+	}
 	if collector.nativeView.SubtypeIntervalCount != uint32(len(collector.subtypeIntervals)) || collector.nativeView.SubtypeIntervals != sliceData(collector.subtypeIntervals) {
 		return fmt.Errorf("gc: native subtype interval view does not match immutable collector backing")
 	}
@@ -292,6 +306,7 @@ func (c *Collector) refreshNativeView() {
 	v.HandleStride = NativeHandleStride
 	v.Handles = sliceData(c.handles)
 	v.HandleCount = uint32(len(c.handles))
+	v.SubtypeEncoding = NativeSubtypeEncodingKindBit
 	v.Spaces[NativeSpaceNursery] = NativeSpaceView{Base: sliceData(c.nursery), Bytes: uint32(len(c.nursery))}
 	v.Spaces[NativeSpaceOld] = NativeSpaceView{Base: sliceData(c.throughput.mem), Bytes: uint32(len(c.throughput.mem))}
 	v.Spaces[NativeSpaceLarge] = v.Spaces[NativeSpaceOld]

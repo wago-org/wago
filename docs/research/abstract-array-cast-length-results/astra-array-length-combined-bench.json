@@ -1,0 +1,160 @@
+{
+  "rows": [
+    {
+      "kind": "baseline",
+      "round": 1,
+      "name": "loop",
+      "ns": 683446.0
+    },
+    {
+      "kind": "baseline",
+      "round": 1,
+      "name": "allocate-across-length",
+      "ns": 761149.0
+    },
+    {
+      "kind": "fixed",
+      "round": 1,
+      "name": "loop",
+      "ns": 33329.0
+    },
+    {
+      "kind": "fixed",
+      "round": 1,
+      "name": "allocate-across-length",
+      "ns": 103720.0
+    },
+    {
+      "kind": "fixed",
+      "round": 2,
+      "name": "loop",
+      "ns": 33906.0
+    },
+    {
+      "kind": "fixed",
+      "round": 2,
+      "name": "allocate-across-length",
+      "ns": 104615.0
+    },
+    {
+      "kind": "baseline",
+      "round": 2,
+      "name": "loop",
+      "ns": 683401.0
+    },
+    {
+      "kind": "baseline",
+      "round": 2,
+      "name": "allocate-across-length",
+      "ns": 763778.0
+    },
+    {
+      "kind": "baseline",
+      "round": 3,
+      "name": "loop",
+      "ns": 686615.0
+    },
+    {
+      "kind": "baseline",
+      "round": 3,
+      "name": "allocate-across-length",
+      "ns": 760130.0
+    },
+    {
+      "kind": "fixed",
+      "round": 3,
+      "name": "loop",
+      "ns": 33652.0
+    },
+    {
+      "kind": "fixed",
+      "round": 3,
+      "name": "allocate-across-length",
+      "ns": 104588.0
+    },
+    {
+      "kind": "fixed",
+      "round": 4,
+      "name": "loop",
+      "ns": 33654.0
+    },
+    {
+      "kind": "fixed",
+      "round": 4,
+      "name": "allocate-across-length",
+      "ns": 104608.0
+    },
+    {
+      "kind": "baseline",
+      "round": 4,
+      "name": "loop",
+      "ns": 690425.0
+    },
+    {
+      "kind": "baseline",
+      "round": 4,
+      "name": "allocate-across-length",
+      "ns": 769313.0
+    },
+    {
+      "kind": "baseline",
+      "round": 5,
+      "name": "loop",
+      "ns": 687727.0
+    },
+    {
+      "kind": "baseline",
+      "round": 5,
+      "name": "allocate-across-length",
+      "ns": 762479.0
+    },
+    {
+      "kind": "fixed",
+      "round": 5,
+      "name": "loop",
+      "ns": 33605.0
+    },
+    {
+      "kind": "fixed",
+      "round": 5,
+      "name": "allocate-across-length",
+      "ns": 104565.0
+    }
+  ],
+  "summary": {
+    "allocate-across-length": {
+      "baseline": [
+        761149.0,
+        763778.0,
+        760130.0,
+        769313.0,
+        762479.0
+      ],
+      "fixed": [
+        103720.0,
+        104615.0,
+        104588.0,
+        104608.0,
+        104565.0
+      ],
+      "speedup": 7.290310551879757
+    },
+    "loop": {
+      "baseline": [
+        683446.0,
+        683401.0,
+        686615.0,
+        690425.0,
+        687727.0
+      ],
+      "fixed": [
+        33329.0,
+        33906.0,
+        33652.0,
+        33654.0,
+        33605.0
+      ],
+      "speedup": 20.403393557589446
+    }
+  }
+}

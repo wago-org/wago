@@ -1,0 +1,19 @@
+ok  	github.com/wago-org/wago/src/wago	0.055s
+--- FAIL: TestGCAbstractArrayCastLenLoadsSpaceByte (0.00s)
+    gc_abstract_array_len_test.go:80: cast 22: selected space byte loads=2, want1
+FAIL
+FAIL	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.016s
+--- FAIL: TestRefDescRejectsInvalidObjectExtent (0.00s)
+    --- FAIL: TestRefDescRejectsInvalidObjectExtent/nursery (0.00s)
+        ref_desc_bounds_test.go:57: invalid space space=5 offset=0 size=32: true,<nil>; want diagnostic invalid object ref
+    --- FAIL: TestRefDescRejectsInvalidObjectExtent/survivor (0.00s)
+        ref_desc_bounds_test.go:57: invalid space space=5 offset=5120 size=32: true,<nil>; want diagnostic invalid object ref
+    --- FAIL: TestRefDescRejectsInvalidObjectExtent/old (0.00s)
+        ref_desc_bounds_test.go:57: invalid space space=5 offset=0 size=32: true,<nil>; want diagnostic invalid object ref
+    --- FAIL: TestRefDescRejectsInvalidObjectExtent/large (0.00s)
+        ref_desc_bounds_test.go:57: invalid space space=5 offset=0 size=32: true,<nil>; want diagnostic invalid object ref
+    --- FAIL: TestRefDescRejectsInvalidObjectExtent/tiny (0.00s)
+        ref_desc_bounds_test.go:57: invalid space space=5 offset=0 size=32: true,<nil>; want diagnostic invalid object ref
+FAIL
+FAIL	github.com/wago-org/wago/src/core/runtime/gc/native	0.002s
+FAIL

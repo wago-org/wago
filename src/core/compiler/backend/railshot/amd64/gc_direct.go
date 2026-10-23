@@ -23,6 +23,7 @@ const (
 	gcSharedStubResolveSubtypeObject
 	gcSharedStubResolveBoundedObject
 	gcSharedStubResolveArrayObject
+	gcSharedStubAbstractArrayCastLen
 	gcSharedStubMax
 )
 
@@ -374,7 +375,7 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 	for i := range offsets {
 		offsets[i] = -1
 	}
-	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] && !used[gcSharedStubResolveArrayObject] {
+	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] && !used[gcSharedStubResolveArrayObject] && !used[gcSharedStubAbstractArrayCastLen] {
 		return nil, offsets
 	}
 	a := &x64.Asm{}
@@ -388,6 +389,10 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 			offsets[kind] = a.Len()
 			emitModuleGCResolveObjectStub(a, kind == gcSharedStubResolveSubtypeObject, kind == gcSharedStubResolveBoundedObject || kind == gcSharedStubResolveArrayObject, kind == gcSharedStubResolveArrayObject)
 		}
+	}
+	if used[gcSharedStubAbstractArrayCastLen] {
+		offsets[gcSharedStubAbstractArrayCastLen] = a.Len()
+		emitModuleGCAbstractArrayCastLen(a)
 	}
 	return a.B, offsets
 }

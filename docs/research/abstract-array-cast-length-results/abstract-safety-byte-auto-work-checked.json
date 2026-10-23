@@ -1,0 +1,16 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-tags=wago_regalloccheck",
+    "./..."
+  ],
+  "cwd": "/home/dev/Projects/wago-gc-abstract-array-length-pr",
+  "seconds": 126.02140228699864,
+  "exit": 0,
+  "environment": {
+    "GOWORK": "unset; auto-discovery"
+  }
+}

@@ -1,0 +1,246 @@
+[
+  {
+    "command": [
+      "taskset",
+      "-c",
+      "15",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/abstract-byte-bench/baseline.test",
+      "-test.run=^$",
+      "-test.bench=^BenchmarkGCAbstractArrayCastLen$",
+      "-test.benchmem",
+      "-test.count=3",
+      "-test.benchtime=200ms"
+    ],
+    "cwd": "/home/dev/Projects/wago-gc-abstract-array-length-pr/src/wago",
+    "seconds": 1.4453003210001043,
+    "returncode": 0,
+    "label": "baseline",
+    "samples": [
+      {
+        "case": "loop",
+        "invocations": 7278,
+        "ns_invoke": 33407.0,
+        "bytes_invoke": 0,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "loop",
+        "invocations": 7489,
+        "ns_invoke": 34227.0,
+        "bytes_invoke": 0,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "loop",
+        "invocations": 7100,
+        "ns_invoke": 33298.0,
+        "bytes_invoke": 0,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "allocate-across-length",
+        "invocations": 2176,
+        "ns_invoke": 103647.0,
+        "bytes_invoke": 2204,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "allocate-across-length",
+        "invocations": 2053,
+        "ns_invoke": 103284.0,
+        "bytes_invoke": 2336,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "allocate-across-length",
+        "invocations": 2077,
+        "ns_invoke": 103080.0,
+        "bytes_invoke": 2309,
+        "allocs_invoke": 0
+      }
+    ]
+  },
+  {
+    "command": [
+      "taskset",
+      "-c",
+      "15",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/abstract-byte-bench/candidate.test",
+      "-test.run=^$",
+      "-test.bench=^BenchmarkGCAbstractArrayCastLen$",
+      "-test.benchmem",
+      "-test.count=3",
+      "-test.benchtime=200ms"
+    ],
+    "cwd": "/home/dev/Projects/wago-gc-abstract-array-length-pr/src/wago",
+    "seconds": 1.4404705029992328,
+    "returncode": 0,
+    "label": "candidate",
+    "samples": [
+      {
+        "case": "loop",
+        "invocations": 7370,
+        "ns_invoke": 32466.0,
+        "bytes_invoke": 0,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "loop",
+        "invocations": 7688,
+        "ns_invoke": 32708.0,
+        "bytes_invoke": 0,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "loop",
+        "invocations": 7646,
+        "ns_invoke": 32798.0,
+        "bytes_invoke": 0,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "allocate-across-length",
+        "invocations": 2158,
+        "ns_invoke": 103751.0,
+        "bytes_invoke": 2222,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "allocate-across-length",
+        "invocations": 1960,
+        "ns_invoke": 103628.0,
+        "bytes_invoke": 2447,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "allocate-across-length",
+        "invocations": 2083,
+        "ns_invoke": 103011.0,
+        "bytes_invoke": 2302,
+        "allocs_invoke": 0
+      }
+    ]
+  },
+  {
+    "command": [
+      "taskset",
+      "-c",
+      "15",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/abstract-byte-bench/candidate.test",
+      "-test.run=^$",
+      "-test.bench=^BenchmarkGCAbstractArrayCastLen$",
+      "-test.benchmem",
+      "-test.count=3",
+      "-test.benchtime=200ms"
+    ],
+    "cwd": "/home/dev/Projects/wago-gc-abstract-array-length-pr/src/wago",
+    "seconds": 1.4145143870009633,
+    "returncode": 0,
+    "label": "candidate",
+    "samples": [
+      {
+        "case": "loop",
+        "invocations": 7440,
+        "ns_invoke": 32531.0,
+        "bytes_invoke": 0,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "loop",
+        "invocations": 7239,
+        "ns_invoke": 32554.0,
+        "bytes_invoke": 0,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "loop",
+        "invocations": 7165,
+        "ns_invoke": 32707.0,
+        "bytes_invoke": 0,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "allocate-across-length",
+        "invocations": 2228,
+        "ns_invoke": 103553.0,
+        "bytes_invoke": 2152,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "allocate-across-length",
+        "invocations": 2019,
+        "ns_invoke": 103186.0,
+        "bytes_invoke": 2375,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "allocate-across-length",
+        "invocations": 2013,
+        "ns_invoke": 102692.0,
+        "bytes_invoke": 2382,
+        "allocs_invoke": 0
+      }
+    ]
+  },
+  {
+    "command": [
+      "taskset",
+      "-c",
+      "15",
+      "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/abstract-byte-bench/baseline.test",
+      "-test.run=^$",
+      "-test.bench=^BenchmarkGCAbstractArrayCastLen$",
+      "-test.benchmem",
+      "-test.count=3",
+      "-test.benchtime=200ms"
+    ],
+    "cwd": "/home/dev/Projects/wago-gc-abstract-array-length-pr/src/wago",
+    "seconds": 1.7283389339972928,
+    "returncode": 0,
+    "label": "baseline",
+    "samples": [
+      {
+        "case": "loop",
+        "invocations": 7209,
+        "ns_invoke": 33658.0,
+        "bytes_invoke": 0,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "loop",
+        "invocations": 7056,
+        "ns_invoke": 33611.0,
+        "bytes_invoke": 0,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "loop",
+        "invocations": 7506,
+        "ns_invoke": 33833.0,
+        "bytes_invoke": 0,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "allocate-across-length",
+        "invocations": 2234,
+        "ns_invoke": 102901.0,
+        "bytes_invoke": 2147,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "allocate-across-length",
+        "invocations": 2084,
+        "ns_invoke": 169553.0,
+        "bytes_invoke": 2301,
+        "allocs_invoke": 0
+      },
+      {
+        "case": "allocate-across-length",
+        "invocations": 2085,
+        "ns_invoke": 170043.0,
+        "bytes_invoke": 2300,
+        "allocs_invoke": 0
+      }
+    ]
+  }
+]

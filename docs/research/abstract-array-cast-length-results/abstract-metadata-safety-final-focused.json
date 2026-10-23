@@ -1,0 +1,16 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-tags=wago_regalloccheck",
+    "./src/core/runtime/gc/native",
+    "./src/wago",
+    "-run",
+    "^(TestRefDescRejectsInvalidObjectExtent|TestGCAbstractArrayCastLenSpaceByte)$",
+    "-count=1"
+  ],
+  "seconds": 11.31729923000239,
+  "exit": 0,
+  "stdout": "ok  \tgithub.com/wago-org/wago/src/core/runtime/gc/native\t0.002s\nok  \tgithub.com/wago-org/wago/src/wago\t0.007s\n",
+  "stderr": ""
+}

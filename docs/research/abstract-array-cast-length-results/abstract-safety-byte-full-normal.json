@@ -1,0 +1,12 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "./..."
+  ],
+  "cwd": "/home/dev/Projects/wago-gc-abstract-array-length-pr",
+  "seconds": 90.77138297200145,
+  "exit": 1
+}

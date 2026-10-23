@@ -308,7 +308,15 @@ repeated inline resolver bodies at modules with at least two candidate scalar si
 one-site modules retain inline code. A single-function module with reuse enabled is
 lowered inline first and adds the island only when at least two actual resolutions
 remain, so one-object repeated runs avoid the fixed leaf while distinct objects retain
-sharing. Bounded straight-line reuse may retain one derived object address only while
+sharing. An AMD64 abstract `ref.cast array` immediately followed by `array.len`
+can use a shared noncollecting leaf that checks the object once and returns its
+length. The low bit of each existing DFS entry timestamp records array kind;
+doubling the timestamps preserves interval ordering and the eight-byte table
+entry. Native collector ABI 9 uses its existing padding word at offset 20 as an
+optional encoding marker. Zero requests the original Go path, so saved native
+code remains safe with older ABI-9 runtimes. Null and invalid-object paths also
+use the original helpers and preserve trap order. No derived address escapes
+the leaf. Bounded straight-line reuse may retain one derived object address only while
 its unchanged compact local remains the root and no call,
 allocation, collection, host transition, control/EH edge, local mutation, or other
 invalidating opcode can intervene. Final abstract

@@ -1,0 +1,216 @@
+{
+  "summary": {
+    "control": 49.51355869100007,
+    "array": 47.51087146399914,
+    "speedup": 1.0421521888630993,
+    "reduction_percent": 4.044724879298478,
+    "cpu_affinity": "12,14",
+    "GOMAXPROCS": 2
+  },
+  "rows": [
+    {
+      "label": "astra-paired-control-1",
+      "command": [
+        "taskset",
+        "-c",
+        "12,14",
+        "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/final-69c165ace-host",
+        "run",
+        "-p8",
+        "--core",
+        "3",
+        "--local",
+        "--locked",
+        "--no-input",
+        "--gc-heap",
+        "512MiB",
+        "--gc-nursery",
+        "64MiB",
+        "/home/dev/Projects/dewdrop/.tmp/transform-workers/run-rvr6ozve/compiler.wasm",
+        ".tmp/wago-local-perf-2026-10-20/request.bin"
+      ],
+      "cwd": "/home/dev/Projects/dewdrop",
+      "seconds": 49.89291315399896,
+      "user_seconds": 50.049963,
+      "system_seconds": 0.30338499999999996,
+      "peak_rss_kib": 1141700,
+      "exit": 0,
+      "timeout": false,
+      "load_start": [
+        2.58349609375,
+        5.63818359375,
+        4.4736328125
+      ],
+      "load_end": [
+        2.1298828125,
+        5.04345703125,
+        4.3310546875
+      ],
+      "environment": {
+        "WAGO_HOME": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/astra-paired-control-1-home",
+        "DEW_TRANSFORM_WORKERS": "0",
+        "WAGO_AMD64_GC_STRUCT_BATCH": "",
+        "DEW_WAGO_NATIVE_MAP": "",
+        "DEW_WAGO_PROFILE_DIR": ""
+      },
+      "output_wasm_sha256": "89af055df4b2a4e44be109f10f50d98b5e29deb4810194aca234c9e019912fbb",
+      "output_cache_sha256": "c3a9142e2f4a1186fb5d47f78dfea5adcbf1892e52ff0a803a7c3332e7236240",
+      "validated_main": 42,
+      "request_sha256": "077b0ff0271706cc3034f3e06c7a228f227c49aeec7786d21373b2072af89c72",
+      "native_cache": "cold"
+    },
+    {
+      "label": "astra-paired-array-1",
+      "command": [
+        "taskset",
+        "-c",
+        "12,14",
+        "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/astra-array-length-host",
+        "run",
+        "-p8",
+        "--core",
+        "3",
+        "--local",
+        "--locked",
+        "--no-input",
+        "--gc-heap",
+        "512MiB",
+        "--gc-nursery",
+        "64MiB",
+        "/home/dev/Projects/dewdrop/.tmp/transform-workers/run-rvr6ozve/compiler.wasm",
+        ".tmp/wago-local-perf-2026-10-20/request.bin"
+      ],
+      "cwd": "/home/dev/Projects/dewdrop",
+      "seconds": 47.18977859000006,
+      "user_seconds": 47.348417,
+      "system_seconds": 0.31187,
+      "peak_rss_kib": 1068092,
+      "exit": 0,
+      "timeout": false,
+      "load_start": [
+        2.1298828125,
+        5.04345703125,
+        4.3310546875
+      ],
+      "load_end": [
+        1.8916015625,
+        4.52685546875,
+        4.19091796875
+      ],
+      "environment": {
+        "WAGO_HOME": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/astra-paired-array-1-home",
+        "DEW_TRANSFORM_WORKERS": "0",
+        "WAGO_AMD64_GC_STRUCT_BATCH": "",
+        "DEW_WAGO_NATIVE_MAP": "",
+        "DEW_WAGO_PROFILE_DIR": ""
+      },
+      "output_wasm_sha256": "89af055df4b2a4e44be109f10f50d98b5e29deb4810194aca234c9e019912fbb",
+      "output_cache_sha256": "c3a9142e2f4a1186fb5d47f78dfea5adcbf1892e52ff0a803a7c3332e7236240",
+      "validated_main": 42,
+      "request_sha256": "077b0ff0271706cc3034f3e06c7a228f227c49aeec7786d21373b2072af89c72",
+      "native_cache": "cold"
+    },
+    {
+      "label": "astra-paired-array-2",
+      "command": [
+        "taskset",
+        "-c",
+        "12,14",
+        "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/astra-array-length-host",
+        "run",
+        "-p8",
+        "--core",
+        "3",
+        "--local",
+        "--locked",
+        "--no-input",
+        "--gc-heap",
+        "512MiB",
+        "--gc-nursery",
+        "64MiB",
+        "/home/dev/Projects/dewdrop/.tmp/transform-workers/run-rvr6ozve/compiler.wasm",
+        ".tmp/wago-local-perf-2026-10-20/request.bin"
+      ],
+      "cwd": "/home/dev/Projects/dewdrop",
+      "seconds": 47.831964337998215,
+      "user_seconds": 48.042373,
+      "system_seconds": 0.29386799999999996,
+      "peak_rss_kib": 1130848,
+      "exit": 0,
+      "timeout": false,
+      "load_start": [
+        1.8916015625,
+        4.52685546875,
+        4.19091796875
+      ],
+      "load_end": [
+        1.76025390625,
+        4.125,
+        4.0693359375
+      ],
+      "environment": {
+        "WAGO_HOME": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/astra-paired-array-2-home",
+        "DEW_TRANSFORM_WORKERS": "0",
+        "WAGO_AMD64_GC_STRUCT_BATCH": "",
+        "DEW_WAGO_NATIVE_MAP": "",
+        "DEW_WAGO_PROFILE_DIR": ""
+      },
+      "output_wasm_sha256": "89af055df4b2a4e44be109f10f50d98b5e29deb4810194aca234c9e019912fbb",
+      "output_cache_sha256": "c3a9142e2f4a1186fb5d47f78dfea5adcbf1892e52ff0a803a7c3332e7236240",
+      "validated_main": 42,
+      "request_sha256": "077b0ff0271706cc3034f3e06c7a228f227c49aeec7786d21373b2072af89c72",
+      "native_cache": "cold"
+    },
+    {
+      "label": "astra-paired-control-2",
+      "command": [
+        "taskset",
+        "-c",
+        "12,14",
+        "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/final-69c165ace-host",
+        "run",
+        "-p8",
+        "--core",
+        "3",
+        "--local",
+        "--locked",
+        "--no-input",
+        "--gc-heap",
+        "512MiB",
+        "--gc-nursery",
+        "64MiB",
+        "/home/dev/Projects/dewdrop/.tmp/transform-workers/run-rvr6ozve/compiler.wasm",
+        ".tmp/wago-local-perf-2026-10-20/request.bin"
+      ],
+      "cwd": "/home/dev/Projects/dewdrop",
+      "seconds": 49.13420422800118,
+      "user_seconds": 49.295923,
+      "system_seconds": 0.294797,
+      "peak_rss_kib": 1062064,
+      "exit": 0,
+      "timeout": false,
+      "load_start": [
+        1.76025390625,
+        4.125,
+        4.0693359375
+      ],
+      "load_end": [
+        2.92431640625,
+        3.998046875,
+        4.02392578125
+      ],
+      "environment": {
+        "WAGO_HOME": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/astra-paired-control-2-home",
+        "DEW_TRANSFORM_WORKERS": "0",
+        "WAGO_AMD64_GC_STRUCT_BATCH": "",
+        "DEW_WAGO_NATIVE_MAP": "",
+        "DEW_WAGO_PROFILE_DIR": ""
+      },
+      "output_wasm_sha256": "89af055df4b2a4e44be109f10f50d98b5e29deb4810194aca234c9e019912fbb",
+      "output_cache_sha256": "c3a9142e2f4a1186fb5d47f78dfea5adcbf1892e52ff0a803a7c3332e7236240",
+      "validated_main": 42,
+      "request_sha256": "077b0ff0271706cc3034f3e06c7a228f227c49aeec7786d21373b2072af89c72",
+      "native_cache": "cold"
+    }
+  ]
+}

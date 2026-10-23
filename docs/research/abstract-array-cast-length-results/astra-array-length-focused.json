@@ -1,0 +1,17 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-tags=wago_regalloccheck,wago_codegenstats",
+    "./src/core/compiler/backend/railshot/amd64",
+    "./src/core/runtime/gc/native",
+    "./src/wago",
+    "-run",
+    "TestGCAbstractArray|TestSubtypeIntervalsCarry|TestNativeSubtypeKind",
+    "-count=1"
+  ],
+  "seconds": 18.907662772999174,
+  "exit": 0,
+  "stdout": "ok  \tgithub.com/wago-org/wago/src/core/compiler/backend/railshot/amd64\t0.008s\nok  \tgithub.com/wago-org/wago/src/core/runtime/gc/native\t0.004s\nok  \tgithub.com/wago-org/wago/src/wago\t0.032s\n",
+  "stderr": ""
+}
