@@ -1415,6 +1415,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		f.stats.call("gcnativearray")
 		nativeAllocDone = f.a.JccPlaceholder(condNE)
 	}
+	if gcSharedStubsEnabled && uint32(importIdx) == gcStructDispatchBit|gcArrayLen {
+		nativeAllocDone = f.arrayLenShortcut()
+	}
 	if wide {
 		f.a.Load64(R8, RBX, -offCustomCtx)
 	}
