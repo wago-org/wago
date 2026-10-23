@@ -258,12 +258,19 @@ func TestGrowFailureKeepsBothCleanupOwners(t *testing.T) {
 		t.Fatal("failed close lost owners", err)
 	}
 	base1, base2 := pointer(b.mem), pointer(b.extra)
-	ops.unmap = unmap
+	var retried []uintptr
+	ops.unmap = func(mem []byte) error {
+		retried = append(retried, pointer(mem))
+		return unmap(mem)
+	}
 	if err = b.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if permissions(t, base1) != "" || permissions(t, base2) != "" {
-		t.Fatal("growth cleanup retry leaked")
+	if b.mem != nil || b.extra != nil {
+		t.Fatal("growth cleanup retry retained owners")
+	}
+	if len(retried) != 2 || retried[0] != base1 || retried[1] != base2 {
+		t.Fatalf("growth cleanup retry = %x, want [%x %x]", retried, base1, base2)
 	}
 }
 

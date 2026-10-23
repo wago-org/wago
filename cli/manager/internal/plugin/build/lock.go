@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	buildLockPoll    = 50 * time.Millisecond
-	buildLockTimeout = 30 * time.Minute
+	buildLockPoll            = 50 * time.Millisecond
+	buildLockTimeout         = 30 * time.Minute
+	buildLockPermissionGrace = time.Second
 )
 
 // withBuildLock serializes access to a generated plugin build module across
@@ -41,7 +42,7 @@ func acquireBuildLock(lockDir string, mkdir func(string, os.FileMode) error) err
 
 func acquireBuildLockContext(ctx context.Context, lockDir string, mkdir func(string, os.FileMode) error) error {
 	deadline := time.Now().Add(buildLockTimeout)
-	retriedPermission := false
+	var permissionDeadline time.Time
 	for {
 		// A canceled mutation must not wait for the 30-minute build-lock
 		// timeout after another builder has taken this generated module.
@@ -53,14 +54,19 @@ func acquireBuildLockContext(ctx context.Context, lockDir string, mkdir func(str
 			return nil
 		}
 		if buildLockContended(lockDir, err) {
-			retriedPermission = false
+			permissionDeadline = time.Time{}
 		} else {
 			// Windows can deny mkdir during removal, then report the lock
-			// absent to Stat. Retry once; persistent denial stays an error.
-			if !os.IsPermission(err) || retriedPermission {
+			// absent to Stat. Allow a short removal grace period; persistent
+			// denial must still return the permission error.
+			if !os.IsPermission(err) {
 				return fmt.Errorf("lock plugin build: %w", err)
 			}
-			retriedPermission = true
+			if permissionDeadline.IsZero() {
+				permissionDeadline = time.Now().Add(buildLockPermissionGrace)
+			} else if !time.Now().Before(permissionDeadline) {
+				return fmt.Errorf("lock plugin build: %w", err)
+			}
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("plugin build lock timed out; if no Wago process is running, remove %s", lockDir)

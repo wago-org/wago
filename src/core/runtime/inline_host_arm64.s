@@ -3,10 +3,12 @@
 #include "textflag.h"
 #include "funcdata.h"
 #include "go_asm.h"
+#include "inline_host_yield_arm64.h"
 
 TEXT ·inlineHostEnter(SB), NOSPLIT, $64-80
 	NO_LOCAL_POINTERS
 	MOVD ZR, ret+72(FP)
+	INLINE_HOST_YIELD_INIT(48)
 	MOVD code+8(FP), R9
 	MOVD args+16(FP), R0
 	MOVD linMem+24(FP), R1
@@ -51,6 +53,7 @@ twoResults:
 	MOVD R12, const_hcResults(R10)
 	MOVD R13, const_hcResults+8(R10)
 resultDone:
+	INLINE_HOST_YIELD(48, inlineHostEnterYieldDone, abortTrap, 32, 56)
 	MOVD $·inlineHostStagedBridge(SB), R9
 	MOVD R9, const_hcTrampoline(R10)
 	MOVD 40(RSP), R9
@@ -151,6 +154,7 @@ TEXT ·inlineHostBridgeAddr(SB), NOSPLIT|NOFRAME, $0-8
 TEXT ·inlineHostViewEnter(SB), NOSPLIT, $96-80
 	NO_LOCAL_POINTERS
 	MOVD ZR, ret+72(FP)
+	INLINE_HOST_YIELD_INIT(80)
 	MOVD code+8(FP), R9
 	MOVD args+16(FP), R0
 	MOVD linMem+24(FP), R1
@@ -195,6 +199,7 @@ viewResultsCleared:
 	MOVWU 0(R9), R11
 	CBNZ R11, viewAbortTrap
 	MOVD ctrl+56(FP), R10
+	INLINE_HOST_YIELD(80, inlineHostViewEnterYieldDone, viewAbortTrap, 32, 56)
 	MOVD $·inlineHostViewStagedBridge(SB), R9
 	MOVD R9, const_hcTrampoline(R10)
 	MOVD 72(RSP), R9
@@ -245,6 +250,7 @@ TEXT ·inlineHostViewBridgeAddr(SB), NOSPLIT|NOFRAME, $0-8
 TEXT ·inlineHostContextEnter(SB), NOSPLIT, $64-88
 	NO_LOCAL_POINTERS
 	MOVD ZR, ret+80(FP)
+	INLINE_HOST_YIELD_INIT(48)
 	MOVD code+16(FP), R9
 	MOVD args+24(FP), R0
 	MOVD linMem+32(FP), R1
@@ -290,6 +296,7 @@ context_twoResults:
 	MOVD R12, const_hcResults(R10)
 	MOVD R13, const_hcResults+8(R10)
 context_resultDone:
+	INLINE_HOST_YIELD(48, inlineHostContextEnterYieldDone, context_abortTrap, 40, 64)
 	MOVD $·inlineHostStagedBridge(SB), R9
 	MOVD R9, const_hcTrampoline(R10)
 	MOVD 40(RSP), R9
@@ -310,6 +317,7 @@ context_abortTrap:
 TEXT ·inlineHostViewContextEnter(SB), NOSPLIT, $96-88
 	NO_LOCAL_POINTERS
 	MOVD ZR, ret+80(FP)
+	INLINE_HOST_YIELD_INIT(80)
 	MOVD code+16(FP), R9
 	MOVD args+24(FP), R0
 	MOVD linMem+32(FP), R1
@@ -355,6 +363,7 @@ context_viewResultsCleared:
 	MOVWU 0(R9), R11
 	CBNZ R11, context_viewAbortTrap
 	MOVD ctrl+64(FP), R10
+	INLINE_HOST_YIELD(80, inlineHostViewContextEnterYieldDone, context_viewAbortTrap, 40, 64)
 	MOVD $·inlineHostViewStagedBridge(SB), R9
 	MOVD R9, const_hcTrampoline(R10)
 	MOVD 72(RSP), R9
