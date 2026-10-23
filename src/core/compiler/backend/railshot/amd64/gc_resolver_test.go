@@ -172,7 +172,7 @@ func TestModuleSharedGCResolverStubReducesDenseSites(t *testing.T) {
 }
 
 func TestModuleGCResolverFamilyCounts(t *testing.T) {
-	for _, kinds := range [][]gcSharedStubKind{nil, {gcSharedStubResolveObject}, {gcSharedStubResolveSubtypeObject}, {gcSharedStubResolveBoundedObject}, {gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject}} {
+	for _, kinds := range [][]gcSharedStubKind{nil, {gcSharedStubResolveObject}, {gcSharedStubResolveSubtypeObject}, {gcSharedStubResolveBoundedObject}, {gcSharedStubResolveArrayObject}, {gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject, gcSharedStubResolveArrayObject}} {
 		relocs := make([]callReloc, len(kinds))
 		for i, kind := range kinds {
 			relocs[i].gcStub = kind
