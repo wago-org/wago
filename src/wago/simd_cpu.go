@@ -9,10 +9,6 @@ import (
 // optional features select compiler optimizations. ARM64 guarantees NEON.
 var simdHostFeaturesSupported = cachedSIMDHostFeatures
 
-func cachedSIMDHostFeatures() bool { return detectSIMDHostFeatures() }
-
-func hostSupportsSIMD() bool { return simdHostFeaturesSupported() }
-
 var bmi2HostFeaturesSupported = cachedBMI2HostFeatures
 
 func cachedBMI2HostFeatures() bool { return architectureSupportsBMI2() }
@@ -20,8 +16,6 @@ func cachedBMI2HostFeatures() bool { return architectureSupportsBMI2() }
 func hostSupportsBMI2() bool { return bmi2HostFeaturesSupported() }
 
 var bitCountHostFeaturesSupported = cachedBitCountHostFeatures
-
-func cachedBitCountHostFeatures() uint8 { return architectureAMD64BitCountFeatures() }
 
 func amd64BitCountFeatures(ecx1, ebx7, extECX uint32) (features uint8) {
 	if extECX&(uint32(1)<<5) != 0 {
@@ -35,8 +29,6 @@ func amd64BitCountFeatures(ecx1, ebx7, extECX uint32) (features uint8) {
 	}
 	return
 }
-
-func detectSIMDHostFeatures() bool { return architectureSupportsSIMD() }
 
 func amd64SIMDFeaturesSupported(ecx, xcr0 uint32) bool {
 	const (

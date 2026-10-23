@@ -26,12 +26,6 @@ const (
 	nativeTable64ImportedInitDropABI
 )
 
-// New source modules use the indexed descriptor ABI and the complete execution
-// contract. Operation-specific markers remain decoder compatibility metadata.
-func stagedNativeTable64ABI(*wasm.Module) uint8 {
-	return nativeTable64NoABI
-}
-
 // Keep table64 admission separate from ordinary compilation. This cold path
 // carries many shape checks and error exits that otherwise enlarge its frame.
 //

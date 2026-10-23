@@ -22,6 +22,84 @@ func TestNewStackArenaDefaultCapacityArm64(t *testing.T) {
 	}
 }
 
+func TestDetachedNodeRetirementPreservesOuterInstructionArm64(t *testing.T) {
+	s := newStackWithCap(16)
+	parentID, parent := s.alloc()
+	parent.st = storage{kind: stConst, typ: mtI32, cval: 111}
+	s.detached = append(s.detached, parentID)
+	childStart := len(s.detached)
+	childID, child := s.alloc()
+	child.st = storage{kind: stConst, typ: mtI32, cval: 222}
+	s.detached = append(s.detached, childID)
+	s.recycleDetached(childStart)
+	reused, value := s.alloc()
+	value.st.cval = 333
+	if reused != childID || parent.st.cval != 111 || len(s.detached) != childStart {
+		t.Fatal("nested instruction retirement reused its caller's live operand")
+	}
+	s.recycleDetached(0)
+	if reused, _ := s.alloc(); reused != parentID {
+		t.Fatal("outer instruction did not release its detached operand")
+	}
+	s.detached = append(s.detached, parentID)
+	s.reset()
+	if len(s.detached) != 0 {
+		t.Fatal("function reset retained detached operand identities")
+	}
+}
+
+func TestInstructionRetirementReusesFoldedRootsArm64(t *testing.T) {
+	s := newStackWithCap(minStackArenaCap)
+	f := fn{s: s, reuseOperands: true}
+	for i := range 10000 {
+		start := len(s.detached)
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(i)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
+		f.pushBinOp(opAdd, mtI32)
+		result := f.popValue()
+		if result.st.cval != int64(i+7) {
+			t.Fatalf("fold %d: got %d", i, result.st.cval)
+		}
+		s.recycleDetached(start)
+	}
+	if len(s.chunks) != 1 || len(s.chunks[0]) > 4 {
+		t.Fatal("constant folding retained consumed root nodes across instructions")
+	}
+}
+
+func TestInstructionRetirementReusesFlushedModelArm64(t *testing.T) {
+	s := newStackWithCap(minStackArenaCap)
+	f := fn{s: s, reuseOperands: true}
+	// A surrounding instruction owns this detached value while nested lowering
+	// repeatedly rebuilds its own stack, as happens around inlined control flow.
+	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 111})
+	parent := f.popValue()
+	start := len(s.detached)
+	types := []machineType{mtI32, mtV128, mtI64}
+	for range 10000 {
+		f.setDepthTypes(types)
+		if got := f.currentLogicalTypes(); !slices.Equal(got, types) {
+			t.Fatalf("rebuilt stack types = %v", got)
+		}
+		if parent.st.cval != 111 {
+			t.Fatal("nested stack rebuild reused the caller's detached value")
+		}
+		s.recycleDetached(start)
+	}
+	if len(s.chunks) != 1 || len(s.chunks[0]) > 8 {
+		t.Fatal("control-flow rebuild retained abandoned operand nodes")
+	}
+}
+
+func TestFunctionBoundsRetirementWithoutArenaOverflowArm64(t *testing.T) {
+	sc := newCompileScratch(minStackArenaCap)
+	sc.stack.detached = make([]nodeID, 0, 1024)
+	sc.finishStackFunction()
+	if cap(sc.stack.detached) != 0 {
+		t.Fatal("small arena retained a wide instruction's retirement vector")
+	}
+}
+
 func TestNewStackWithCapSizesFirstChunkArm64(t *testing.T) {
 	for _, tc := range []struct {
 		hint int
@@ -180,17 +258,17 @@ func TestScratchClearNodeReferencesArm64(t *testing.T) {
 	sc := scratch{}
 	sc.fnState.regUser[0] = e
 	sc.fnState.fregUser[0] = e
-	sc.transient.tmpRoots = make([]*elem, 1, 4)
-	sc.transient.tmpRoots[:cap(sc.transient.tmpRoots)][3] = e
-	sc.transient.tmpDeferred = make([]deferredArg, 1, 4)
-	sc.transient.tmpDeferred[:cap(sc.transient.tmpDeferred)][3].root = e
+	sc.fnState.tmpRoots = make([]*elem, 1, 4)
+	sc.fnState.tmpRoots[:cap(sc.fnState.tmpRoots)][3] = e
+	sc.fnState.tmpDeferred = make([]deferredArg, 1, 4)
+	sc.fnState.tmpDeferred[:cap(sc.fnState.tmpDeferred)][3].root = e
 
 	sc.clearNodeReferences()
 	if sc.fnState.regUser[0] != nil || sc.fnState.fregUser[0] != nil {
 		t.Fatal("register-user table retained an operand node")
 	}
-	if sc.transient.tmpRoots[:cap(sc.transient.tmpRoots)][3] != nil ||
-		sc.transient.tmpDeferred[:cap(sc.transient.tmpDeferred)][3].root != nil {
+	if sc.fnState.tmpRoots[:cap(sc.fnState.tmpRoots)][3] != nil ||
+		sc.fnState.tmpDeferred[:cap(sc.fnState.tmpDeferred)][3].root != nil {
 		t.Fatal("pointer-bearing scratch capacity retained an operand node")
 	}
 }

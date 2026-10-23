@@ -453,6 +453,11 @@ Type-indexed control encodings record multi-value even for zero or one result.
 - `validate.go` / `validate_ops.go` enforce the wasm type rules: a structured
   operand-stack/control-frame validator that type-checks every opcode and
   rejects malformed or ill-typed modules before it emits code.
+- Public compilation pairs `DecodeModuleForValidation` with the full typed
+  validator. Section containers and locals decode first; instruction syntax is
+  checked during validation, avoiding a redundant body walk. On rejection the
+  standalone decoder restores the original syntax-error precedence. Standalone
+  decode APIs continue checking instruction syntax themselves.
 - Module declarations and constant expressions, including element initializers,
   validate serially. With function workers enabled, independent bodies use
   worker-local stacks/readers. Shared module/element metadata is immutable, the
@@ -511,6 +516,90 @@ power-of-two total, then doubles that total. This avoids tripling storage after
 a one-node underestimate. The existing large-arena growth and retention limits
 remain unchanged. Sparse global-hint storage uses the same power-of-two capacity
 rule in serial and parallel scans, starting at one record instead of eight.
+ARM64's `operand-node-reuse` policy retires popped value nodes at the end of
+their consuming lowering instruction. Nested inline lowering releases only its
+own retirement suffix, keeping caller operands addressable until the caller
+instruction finishes. Node size remains 32 bytes; an instruction-scoped ID list
+replaces function-long retention of consumed nodes. Oversized retirement lists
+are discarded at function boundaries rather than retained by every worker.
+Constant-folded roots, direct assignments, and discarded expressions share that
+retirement boundary. Fully consumed expression children retain immediate reuse.
+Control-flow rebuilds retire every still-linked operand node before replacing the
+stack model. Their detached-ID vector has its own retention bound, independent of
+the node arena's capacity.
+
+ARM64 keeps instruction-word appending, register-allocation failure checks,
+mandatory branch-range checks, and scalar load/store convenience wrappers at
+shared Go call boundaries. This bounds duplicated compiler text while leaving
+operand-stack accessors inline. These boundaries change the compiler's working
+set, not its native instruction selection or public compilation policy.
+
+Function-only type groups without super edges construct their GC `KindFunc`
+sentinels directly in flattened order, preserving IDs and finality without a
+temporary layout-resolution table. Other groups retain general GC lowering and
+super/layout validation. Compilation consumes those validated descriptors once;
+artifact and instance boundaries retain independent checks for untrusted tables.
+
+Public compilation omits the collector descriptor table when validated feature
+requirements exclude GC, typed function references, and exceptions, provided no
+custom instruction binding can add an ownership requirement. Public function
+type descriptors remain complete, including opaque funcref/externref signatures.
+Other modules keep full GC metadata. Older artifacts with function sentinels
+remain valid; artifact validation is independent of this construction shortcut.
+
+Whole-function GC reduction recognizers also have cheap necessary conditions at
+body entry: the i31 proof requires its exact void-loop header, while struct and
+array proofs require their corresponding helper family. The complete proofs
+remain responsible for acceptance. Ordinary functions skip cold recognizer code
+without changing native lowering or proposal admission.
+
+ARM64 trap sites store the branch word and a packed function/PC source in eight
+bytes. Function indexes below 4096 and PCs below 524288 are inline; uncommon
+coordinates use a compilation-scratch side table. Final sorting and source-profile
+emission decode through the same representation.
+Ordinary and compact functions with one source function link memory-trap sites
+through unresolved branch immediates instead of allocating site records. Links
+are cleared before final patching; foreign sources, profiling, and
+oversized chains retain the table representation and existing source attribution.
+Ordinary and compact linked groups participate in function-local shared trap
+bodies before native offset remapping, preserving the site-table instruction
+stream exactly. Each trap group sets its own source function, source PC, and trap
+code before entering the common terminal writeback/unwind body. Register inputs
+use only dead locals, preserving dirty global pins until their publication.
+The optimization switch retains the separate-body path for differential checks.
+Sharing complete tails between functions remains confined to compact policy;
+ordinary function layout retains its independent tails.
+`WAGO_COMPACT=1` selects the same full bounded compact policy as the backend's
+explicit compact option; ordinary compilation remains the default.
+
+The ARM64 finalizer collects bounded branch-pair and adjacent store/load sites
+inside its mandatory branch-target walk. An overflowing inventory uses the full
+scan, preserving coverage for large functions. Necessary compare-packet shapes
+also gate optional whole-function scans without changing their safety checks.
+The three fixed compact-deletion inventories live in a lazy worker sidecar,
+avoiding a 4 KiB reservation during ordinary compilation. Initial operand arenas
+are capped at 128 nodes; larger live sets grow through the existing stable-ID
+arena path.
+Identity finalization validates offsets directly; the full deletion/prefix map
+lives in the same lazy sidecar as compact inventories. Profiling keeps checked
+identity ranges. Transient compiler buffers have one set of headers in the
+worker's persistent function state, preserved when that state resets.
+Ordinary hint scans retain interval event counts but allocate shadow residency
+summaries only when detailed telemetry is requested.
+
+Serial mapped compilation emits functions directly into its owned code image;
+capacity underestimates grow normally. The ARM64 encoder uses ordinary Go byte
+appends for its fixed-width little-endian instruction words.
+The common word append stays out of line so slice growth and word stores are
+shared across instruction emitters instead of expanding the compiler's text.
+Ordinary and compact `br_if` lowering can use CBNZ directly when the materialized
+i32 condition survives an empty reconciliation edge. Non-empty edges keep the
+flags-based path. The bounded source-loop checker recognizes both the original
+CMP/B.NE recipe and the exact W-register CBNZ form with the same backedge proof.
+Comparison-only phase padding is omitted by default. Setting
+`omit-cold-phase-padding` false restores the NOP debt used to preserve following
+function addresses during optimization comparisons. Normal loop/function
+alignment and relocation are independent of this padding.
 
 Parallel non-compact codegen sizes its final heap join from completed native
 worker bytes when that is below the original Wasm expansion estimate. Checked
@@ -518,8 +607,32 @@ arithmetic adds per-function alignment space and a 4 KiB module-tail allowance.
 This remains a capacity hint, not an output limit: append can grow. Compact
 adapter sharing keeps its old estimate because it temporarily appends an island
 before compaction. Code layout, relocation checks, and emitted bytes are unchanged.
+ARM64 workers emit directly into their arena's unused tail, falling back to a
+copy when encoder growth detaches it. A deferred one-worker compile leaves one
+maximum alignment pad before each source function and compacts its final image
+in place, keeping writes behind unread source functions.
 Dynamic `memory.copy` lowering uses stack-backed lists for its four fixed branch
 patch sites (two per branch encoding on ARM64), with ordinary append fallback.
+
+ARM64's `a_core_*.go` files group compiler declarations exercised by ordinary
+compilation ahead of less frequently used declarations in the Go linker's source
+order. This reduces compiler instruction-page dispersion. The split preserves
+complete function declarations, including comments and compiler directives;
+types, globals, and initialization stay in their original files. It changes no
+Wasm dispatch rules or generated native instructions. Keep related ordinary
+compiler paths together when editing these files; correctness never depends on
+which file contains a declaration.
+
+The public runtime package similarly keeps ordinary compilation and publication
+helpers in `a_compile_*.go`. Execution-only paths remain alongside their runtime
+features. This separation changes source/link order, not the API or ownership
+rules; complete declarations and build constraints are preserved when moving code.
+
+The recursive ARM64 hint walker delegates classified-immediate records to
+nonrecursive helpers. The shared Wasm immediate-skipping entry also keeps its
+scratch record behind a Go call boundary, so each open control construct does
+not retain another record on the Go stack. Classification, event accounting,
+and error ordering are unchanged.
 
 Parallel codegen reserves at most 64 local slots per worker; a larger function
 uses the normal growth path. Parallel hint scans allocate dense global scratch
@@ -786,10 +899,10 @@ pointer.
 
 ### Mapping code (W^X)
 
-Serial compilation and streamed artifact loading write directly into an owned
+ARM64 single-worker compilation and streamed artifact loading write into an owned
 `PROT_READ|PROT_WRITE` mapping, then first instantiation changes that same
 mapping to `PROT_READ|PROT_EXEC`—write-xor-execute—without copying. The
-latency-gated parallel compiler retains its faster heap join and maps it on first
+parallel compiler and other architectures retain heap staging and map it on first
 use. A refcounted cache shares one executable mapping across instances of a
 `Compiled`; `Close` rejects future instances, while existing instances retain
 the mapping until the last one closes. Decode replacement is rejected while any
@@ -827,6 +940,13 @@ the JobMemory linear-memory base (so the wrapper reaches basedata at negative
 offsets). Traps are reported by writing a trap code into the
 `trap` slot. This uniform shape is what makes the host↔wasm boundary cheap and
 allocation-free on the hot path.
+
+ARM64 wrapper-call setup homes dirty local pins before publishing global cells.
+Global publication uses X9 as scratch, and X9 also belongs to the extended local
+pin bank. Direct and home-aware indirect calls preserve this ordering so global
+synchronization cannot overwrite a local before its spill. Regression coverage
+exercises direct, indirect, and `call_ref` entries with register ABI enabled and
+disabled, under both eager and lazy local spills.
 
 ---
 

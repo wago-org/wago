@@ -16,6 +16,38 @@ import (
 
 var parallelStackOutlierSinkArm64 *encoder.CompiledModule
 
+// Compare actual code and entry offsets independently of worker-specific
+// resource statistics. Deferred compilation exercises arena-tail emission and
+// the one-worker in-place join; mapped serial compilation is the oracle.
+func TestDeferredWorkerArenaMatchesMappedSerialArm64(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")
+	for _, name := range []string{
+		"synthetic/tiny.wasm", "synthetic/many_funcs.wasm",
+		"synthetic/memory_tree.wasm", "assemblyscript/json-as-simd.wasm",
+		"semantic/pcre2/pcre2.wasm", "applications/grain-stdlib/array.wasm",
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := readParallelTestModuleArm64(t, filepath.Join(root, name))
+			for _, compact := range []bool{false, true} {
+				want, err := CompileModuleWith(m, CompileOptions{Workers: 1, CompactNative: compact})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if want.CodeImage != nil {
+					t.Cleanup(func() { _ = want.CodeImage.Close() })
+				}
+				for _, workers := range []int{1, 2, 4} {
+					got, err := CompileModuleWith(m, CompileOptions{Workers: workers, CompactNative: compact, DeferCodeMapping: true})
+					if err != nil {
+						t.Fatalf("workers=%d compact=%v: %v", workers, compact, err)
+					}
+					assertCompiledModuleEqualArm64(t, got, want)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkRailshotCompileParallelStackOutliersArm64(b *testing.B) {
 	body := make([]byte, 1, 1+(64<<10)*3+1) // no locals
 	for range 64 << 10 {

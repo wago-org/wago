@@ -61,7 +61,7 @@ func TestPatchCallRelocsRangeChecks(t *testing.T) {
 	t.Run("internal entry", func(t *testing.T) {
 		code := make([]byte, 12)
 		binary.LittleEndian.PutUint32(code, 0x94000000)
-		err := patchCallRelocs(code, []int{0, 4}, []int{0, 8}, testCallRelocTable(t, []callReloc{{at: 0, target: 1, internal: true}}, nil))
+		err := patchCallRelocs(code, []int{0, 4}, []int{0, 8}, testCallRelocTable(t, []callReloc{{at: 0, target: callRelocInternal | 1}}, nil))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -100,7 +100,7 @@ func TestCallRelocTableRequiresFunctionOrder(t *testing.T) {
 	if !table.appendFunction(0, []callReloc{{target: 1}}) || !table.appendFunction(1, nil) {
 		t.Fatal("rejected ordered functions")
 	}
-	if got := table.serialFunction(0); len(got) != 1 || got[0].target != 1 {
+	if got := table.serialFunction(0); len(got) != 1 || got[0].targetIndex() != 1 {
 		t.Fatalf("function 0 relocations = %+v", got)
 	}
 	if table.appendFunction(1, nil) {

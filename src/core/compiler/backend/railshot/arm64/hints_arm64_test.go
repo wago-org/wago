@@ -62,6 +62,37 @@ func TestParallelModuleHintsMatchSerialDetailedResidencyArm64(t *testing.T) {
 	}
 }
 
+func TestResidencyTelemetryDoesNotChangeCodegenHintsArm64(t *testing.T) {
+	body := []byte{1, 40, 0x7f} // Forty i32 locals; enough body bytes for both scan paths.
+	for range 512 {
+		body = append(body, 0x20, 0, 0x21, 1)
+	}
+	body = append(body, 0x0b)
+	defs := make([]funcDef, 8)
+	for i := range defs {
+		defs[i].body = body
+	}
+	m := modFuncs(t, defs...)
+	for _, workers := range []int{1, 4} {
+		policy := currentCodegenPolicy()
+		hints, sidecar, globals, err := computeModuleHintsWithWorkersResidencyPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), workers, policy, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		detailedHints, detailedSidecar, detailedGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), workers, policy, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sidecar.residencyShadow) != 0 || len(detailedSidecar.residencyShadow) == 0 {
+			t.Fatalf("workers=%d: ordinary/detailed telemetry entries = %d/%d", workers, len(sidecar.residencyShadow), len(detailedSidecar.residencyShadow))
+		}
+		detailedSidecar.residencyShadow = nil
+		if !reflect.DeepEqual(hints, detailedHints) || !reflect.DeepEqual(sidecar, detailedSidecar) || !reflect.DeepEqual(globals, detailedGlobals) {
+			t.Fatalf("workers=%d: telemetry changed codegen hints", workers)
+		}
+	}
+}
+
 func TestParallelModuleHintsMatchSerialArm64(t *testing.T) {
 	for _, name := range []string{"assemblyscript/json-as-simd.wasm", "semantic/coremark/coremark.wasm"} {
 		t.Run(name, func(t *testing.T) {
@@ -102,7 +133,7 @@ func TestLocalEventTapeScansStructuredLocalsArm64(t *testing.T) {
 	h.localEvents = &tape
 	elig := newGlobalEligibilityTracker(0)
 	var globals shared.GlobalHintAccumulator
-	got, err := scanBodyBytesIntoModule([]byte{0x02, 0x40, 0x20, 0x00, 0x21, 0x01, 0x0b, 0x0b}, 0, 2, 0, 0, nil, h, &elig, nil, nil, nil, nil, 0, &globals, true, false)
+	got, err := scanBodyBytesIntoModule([]byte{0x02, 0x40, 0x20, 0x00, 0x21, 0x01, 0x0b, 0x0b}, 0, 2, 0, 0, nil, h, &elig, nil, nil, nil, nil, 0, &globals, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,6 +148,30 @@ func TestLocalEventTapeScansStructuredLocalsArm64(t *testing.T) {
 	}
 	if got.localEvents != &tape {
 		t.Fatal("scanner lost worker-owned tape")
+	}
+}
+
+func TestLocalEventCountMatchesDetailedTapeArm64(t *testing.T) {
+	body := []byte{0x02, 0x40, 0x20, 0x00, 0x21, 0x01, 0x0b, 0x0b}
+	scan := func(h funcHintView) funcHintView {
+		elig := newGlobalEligibilityTracker(0)
+		var globals shared.GlobalHintAccumulator
+		got, err := scanBodyBytesIntoModule(body, 0, 2, 0, 0, nil, h, &elig, nil, nil, nil, nil, 0, &globals, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	var tape shared.LocalEventTape
+	tape.Reset(shared.LocalEventLimit)
+	detailed := newFuncHints(2, 0)
+	detailed.localEvents = &tape
+	detailed = scan(detailed)
+	counted := newFuncHints(2, 0)
+	counted.countLocalEvents = true
+	counted = scan(counted)
+	if counted.localEventCountAt != len(tape.Events) || counted.localEventFull != tape.Overflow {
+		t.Fatalf("count-only events = %d/%t, detailed = %d/%t", counted.localEventCountAt, counted.localEventFull, len(tape.Events), tape.Overflow)
 	}
 }
 
@@ -169,7 +224,7 @@ func TestCallPlacementHintsDistinguishColdDirectCallsArm64(t *testing.T) {
 	imported := newFuncHints(0, 0)
 	elig := newGlobalEligibilityTracker(0)
 	var globals shared.GlobalHintAccumulator
-	imported, err = scanBodyBytesIntoModule([]byte{0x10, 0x00, 0x0b}, 0, 0, 0, 1, nil, imported, &elig, nil, nil, nil, nil, 1, &globals, true, false)
+	imported, err = scanBodyBytesIntoModule([]byte{0x10, 0x00, 0x0b}, 0, 0, 0, 1, nil, imported, &elig, nil, nil, nil, nil, 1, &globals, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +318,7 @@ func TestScanBodyBytesFloatConstHintArm64(t *testing.T) {
 	}
 }
 
-func TestScanBodyBytesLoopMemoryHintArm64(t *testing.T) {
+func TestScanBodyBytesCountsMemoryInsideAndOutsideLoopsArm64(t *testing.T) {
 	outside, err := scanBodyBytes([]byte{0x41, 0x00, 0x28, 0x02, 0x00, 0x1a, 0x0b}, 0, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -272,8 +327,8 @@ func TestScanBodyBytesLoopMemoryHintArm64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outside.hasLoopMemory() || !inside.hasLoopMemory() {
-		t.Fatalf("loop memory hints: outside=%v inside=%v", outside.hasLoopMemory(), inside.hasLoopMemory())
+	if outside.memOpCount() != 1 || inside.memOpCount() != 1 || outside.flags.has(hintHasLoop) || !inside.flags.has(hintHasLoop) || !outside.flags.has(hintTouchesMemory) || !inside.flags.has(hintTouchesMemory) {
+		t.Fatalf("memory/loop hints: outside=%+v inside=%+v", outside.funcHints, inside.funcHints)
 	}
 }
 

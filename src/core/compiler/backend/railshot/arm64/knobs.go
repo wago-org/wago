@@ -29,18 +29,17 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
 	optimization.Bind("leaf-scratch-memsize", &leafScratchMemSizeEnabled),
-	optimization.Bind("loop-trap-cell", &loopTrapCellEnabled),
+
 	optimization.Bind("prepared-direct-entry", &preparedDirectEntryEnabled),
-	optimization.Bind("prepared-light-entry", &preparedLightEntryEnabled),
+
 	optimization.Bind("prepared-bounded-entry", &preparedBoundedEntryEnabled),
 	optimization.Bind("native-leaf-host", &nativeLeafHostEnabled),
 	optimization.Bind("direct-go-host-import", &directGoImportEnabled),
 	optimization.Bind("loop-int-const", &loopIntConstEnabled),
 	optimization.Bind("scoped-loop-int-const", &scopedLoopConstsEnabled),
 	optimization.Bind("scoped-loop-float-const", &scopedLoopFloatConstsEnabled),
-	optimization.Bind("loop-memory-base", &loopMemoryBaseEnabled),
 	optimization.Bind("indexed-base-reuse", &indexedBaseReuseEnabled),
-	optimization.Bind("linear-integer-tree", &linearIntegerTreeEnabled),
+
 	optimization.Bind("dominated-indexed-base", &dominatedIndexedBaseEnabled),
 	optimization.Bind("dominated-indexed-key", &dominatedIndexedKeyEnabled),
 	optimization.Bind("ordinary-shifted-immediate", &ordinaryShiftedImmediateEnabled),
@@ -52,7 +51,6 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("borrowed-div-rem", &borrowedDivRemEnabled),
 	optimization.Bind("bounded-signed-quotient", &boundedSignedQuotientEnabled),
 	optimization.Bind("br-table-branch-vector", &brTableBranchVectorEnabled),
-	optimization.Bind("bounded-branch-index", &boundedBranchIndexEnabled),
 	optimization.Bind("convert-read", &convertReadEnabled),
 	optimization.Bind("cold-call-local-pins", &coldCallLocalPinsEnabled),
 	optimization.Bind("magic-div", &magicDivEnabled),
@@ -66,18 +64,15 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("olddest-rhs-sink", &oldDestRHSSinkEnabled),
 	optimization.Bind("branch-fold", &branchFoldEnabled),
 	optimization.Bind("store-load-fwd", &storeLoadFwdEnabled),
+	optimization.Bind("operand-node-reuse", &operandNodeReuseEnabled),
+	optimization.Bind("omit-cold-phase-padding", &omitColdPhasePaddingEnabled),
 	optimization.Bind("memcopy-tail4", &memcopyTail4Enabled),
 	optimization.Bind("memcopy-qpairs", &memcopyQPairsEnabled),
 	optimization.Bind("uxtw-add", &uxtwAddEnabled),
 	optimization.Bind("shifted-register-alu", &shiftedRegisterALUEnabled),
 	optimization.Bind("inverted-logical", &invertedLogicalEnabled),
 	optimization.Bind("select-group-guard", &selectGroupEnabled),
-	optimization.Bind("dot-loop-vector", &dotLoopEnabled),
-	optimization.Bind("pure-reduce-vector", &pureReduceEnabled),
-	optimization.Bind("wide-reuse-pins", &wideReusePinsEnabled),
-	optimization.Bind("guarded-test-ccmp", &guardedTestCCMPEnabled),
-	optimization.Bind("crowded-products", &crowdedProductsEnabled),
-	optimization.Bind("streaming-i32-reduction", &streamReduceEnabled),
+
 	optimization.Bind("single-negative-move32", &singleNegativeMove32Enabled),
 	optimization.Bind("select-source-read", &selectSourceReadEnabled),
 	optimization.Bind("select-sink-pure-guard", &selectSinkPureGuardEnabled),
@@ -111,9 +106,11 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("inline", &inlineEnabled),
 	optimization.BindInverted("stack-fence", &noStackFence),
 	optimization.BindInverted("stack-reg", &noStackReg),
+	optimization.Bind("validated-hint-stream", &validationHintStreamEnabled),
 )
 
 var (
+	optValidationHintStream = optimizationBindings.Option("validated-hint-stream")
 	optMemoryMinimumBounds  = optimizationBindings.Option("memory-min-bounds")
 	optAtomicNotifyEmpty    = optimizationBindings.Option("atomic-notify-empty")
 	optAtomicStaticBounds   = optimizationBindings.Option("atomic-static-bounds")
@@ -133,16 +130,15 @@ var (
 	optLinearSumLoop        = optimizationBindings.Option("linear-sum-loop")
 	optMultiBoundsCert      = optimizationBindings.Option("multi-bounds-cert")
 	optLeafScratchMemSize   = optimizationBindings.Option("leaf-scratch-memsize")
-	optLoopTrapCell         = optimizationBindings.Option("loop-trap-cell")
-	optPreparedDirectEntry  = optimizationBindings.Option("prepared-direct-entry")
-	optPreparedLightEntry   = optimizationBindings.Option("prepared-light-entry")
+
+	optPreparedDirectEntry = optimizationBindings.Option("prepared-direct-entry")
+
 	optPreparedBoundedEntry = optimizationBindings.Option("prepared-bounded-entry")
 	optNativeLeafHost       = optimizationBindings.Option("native-leaf-host")
 	optDirectGoHostImport   = optimizationBindings.Option("direct-go-host-import")
 	optLoopIntConst         = optimizationBindings.Option("loop-int-const")
 	optScopedLoopIntConst   = optimizationBindings.Option("scoped-loop-int-const")
 	optScopedLoopFloatConst = optimizationBindings.Option("scoped-loop-float-const")
-	optLoopMemoryBase       = optimizationBindings.Option("loop-memory-base")
 	optCommonExitCompare    = optimizationBindings.Option("common-exit-compare")
 	optTakenZeroBranch      = optimizationBindings.Option("taken-zero-branch")
 	optCsetLineage          = optimizationBindings.Option("cset-lineage")
@@ -151,12 +147,11 @@ var (
 	optBorrowedDivRem       = optimizationBindings.Option("borrowed-div-rem")
 	optBoundedQuotient      = optimizationBindings.Option("bounded-signed-quotient")
 	optBrTableBranchVector  = optimizationBindings.Option("br-table-branch-vector")
-	optBoundedBranchIndex   = optimizationBindings.Option("bounded-branch-index")
 	optDominatedIndexedBase = optimizationBindings.Option("dominated-indexed-base")
 	optDominatedIndexedKey  = optimizationBindings.Option("dominated-indexed-key")
 	optOrdinaryShiftedImm   = optimizationBindings.Option("ordinary-shifted-immediate")
 	optIndexedBaseReuse     = optimizationBindings.Option("indexed-base-reuse")
-	optLinearIntegerTree    = optimizationBindings.Option("linear-integer-tree")
+
 	optConvertRead          = optimizationBindings.Option("convert-read")
 	optColdCallLocalPins    = optimizationBindings.Option("cold-call-local-pins")
 	optMagicDiv             = optimizationBindings.Option("magic-div")
@@ -170,16 +165,13 @@ var (
 	optOldDestRHSSink       = optimizationBindings.Option("olddest-rhs-sink")
 	optBranchFold           = optimizationBindings.Option("branch-fold")
 	optStoreLoadFwd         = optimizationBindings.Option("store-load-fwd")
+	optOperandNodeReuse     = optimizationBindings.Option("operand-node-reuse")
+	optOmitColdPhasePadding = optimizationBindings.Option("omit-cold-phase-padding")
 	optMemcopyTail4         = optimizationBindings.Option("memcopy-tail4")
 	optMemcopyQPairs        = optimizationBindings.Option("memcopy-qpairs")
 	optUXTWAdd              = optimizationBindings.Option("uxtw-add")
 	optSelectGroupGuard     = optimizationBindings.Option("select-group-guard")
-	optDotLoopVector        = optimizationBindings.Option("dot-loop-vector")
-	optPureReduceVector     = optimizationBindings.Option("pure-reduce-vector")
-	optWideReusePins        = optimizationBindings.Option("wide-reuse-pins")
-	optGuardedTestCCMP      = optimizationBindings.Option("guarded-test-ccmp")
-	optCrowdedProducts      = optimizationBindings.Option("crowded-products")
-	optStreamReduce         = optimizationBindings.Option("streaming-i32-reduction")
+
 	optSingleNegativeMove32 = optimizationBindings.Option("single-negative-move32")
 	optSelectSourceRead     = optimizationBindings.Option("select-source-read")
 	optSelectSinkPureGuard  = optimizationBindings.Option("select-sink-pure-guard")
@@ -222,10 +214,6 @@ type OptimizationSnapshot = optimization.Snapshot
 type CodegenPolicy = shared.CodegenPolicy
 
 func OptKnobs() []KnobInfo { return optimizationBindings.Infos() }
-
-func OptKnobSnapshot() ([]KnobInfo, OptimizationSnapshot) { return optimizationBindings.Snapshot() }
-
-func CurrentOptKnobSnapshot() OptimizationSnapshot { return optimizationBindings.CurrentSnapshot() }
 
 func SetOptKnob(name string, on bool) bool { return optimizationBindings.Set(name, on) }
 

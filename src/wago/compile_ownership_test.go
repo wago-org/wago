@@ -2,6 +2,7 @@ package wago
 
 import (
 	"bytes"
+	"runtime"
 	"strings"
 	"testing"
 	"unsafe"
@@ -92,14 +93,22 @@ func TestCompileDoesNotRetainSourceForLinking(t *testing.T) {
 	}
 }
 
-func TestCompileDefersExecutableCodeUntilInstantiate(t *testing.T) {
+func TestCompileDefersExecutableProtectionUntilInstantiate(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithFunctionWorkers(1), benchAddOneModule())
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
 	defer compiled.Close()
-	if compiled.codeCache == nil || compiled.codeCache.mem != nil || compiled.codeCache.flags&compiledCacheWritableCode != 0 {
-		t.Fatal("Compile eagerly retained a writable executable code image")
+	if compiled.codeCache == nil || compiled.codeCache.sealed {
+		t.Fatal("Compile must not seal executable code before instantiation")
+	}
+	mappedSerial := runtime.GOARCH == "arm64"
+	if mappedSerial {
+		if compiled.codeCache.mem == nil || compiled.codeCache.flags&compiledCacheWritableCode == 0 {
+			t.Fatal("ARM64 serial Compile did not publish its writable mapping")
+		}
+	} else if compiled.codeCache.mem != nil || compiled.codeCache.flags&compiledCacheWritableCode != 0 {
+		t.Fatal("heap-staged Compile eagerly retained a code mapping")
 	}
 	before := uintptr(unsafe.Pointer(&compiled.code[0]))
 	instance, err := Instantiate(compiled, InstantiateOptions{})
@@ -107,12 +116,12 @@ func TestCompileDefersExecutableCodeUntilInstantiate(t *testing.T) {
 		t.Fatalf("Instantiate: %v", err)
 	}
 	defer instance.Close()
-	if compiled.codeCache.mem == nil {
-		t.Fatal("first Instantiate did not allocate executable memory")
+	if compiled.codeCache.mem == nil || !compiled.codeCache.sealed {
+		t.Fatal("first Instantiate did not seal executable memory")
 	}
 	after := uintptr(unsafe.Pointer(&compiled.codeCache.mem[0]))
-	if after == before {
-		t.Fatalf("first Instantiate did not map native code: %#x -> %#x", before, after)
+	if (after == before) != mappedSerial {
+		t.Fatalf("mapping reuse=%v, want %v: %#x -> %#x", after == before, mappedSerial, before, after)
 	}
 }
 

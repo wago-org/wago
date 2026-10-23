@@ -59,14 +59,14 @@ func floatMapModule(t testing.TB, wide bool, packets int, src, dst, start, limit
 	return modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
 }
 
-func runFloatMapMemory(t *testing.T, m *wasm.Module, enabled bool, initial []byte) (uint32, []byte, error, int) {
+func runFloatMapMemory(t *testing.T, m *wasm.Module, initial []byte) (uint32, []byte, error) {
 	t.Helper()
 	var stats ModuleStats
 	var out *ModuleStats
 	if diagnosticsEnabled {
 		out = &stats
 	}
-	cm, err := CompileModuleWith(m, CompileOptions{Stats: out, Optimizations: map[string]bool{"dot-loop-vector": enabled}})
+	cm, err := CompileModuleWith(m, CompileOptions{Stats: out, Optimizations: map[string]bool{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,11 +94,7 @@ func runFloatMapMemory(t *testing.T, m *wasm.Module, enabled bool, initial []byt
 	defer coreruntime.Unmap(code)
 	args, results, trap := ar.Alloc(16), ar.Alloc(16), ar.Alloc(coreruntime.TrapBufferBytes)
 	err = eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results)
-	hits := 0
-	if diagnosticsEnabled {
-		hits = stats.Funcs[0].Peephole["float-map-loop-vector"]
-	}
-	return binary.LittleEndian.Uint32(results), append([]byte(nil), jm.CurrentBytes()...), err, hits
+	return binary.LittleEndian.Uint32(results), append([]byte(nil), jm.CurrentBytes()...), err
 }
 
 func TestFloatMapLoopRangesAliasesAndScalarTail(t *testing.T) {
@@ -129,13 +125,10 @@ func TestFloatMapLoopRangesAliasesAndScalarTail(t *testing.T) {
 								dst += length
 							}
 							m := floatMapModule(t, wide, packets, src, dst, start, limit, neighbor)
-							want, wantMem, wantErr, _ := runFloatMapMemory(t, m, false, initial)
-							got, gotMem, gotErr, hits := runFloatMapMemory(t, m, true, initial)
-							if (wantErr == nil) != (gotErr == nil) || wantErr == nil && got != want || !bytes.Equal(gotMem, wantMem) {
-								t.Fatalf("wide%t packets%d len%d neighbor%d src%x dst%x countdown%t: got%x/%v want%x/%v memory equal%t", wide, packets, length, neighbor, src, dst, countdown, got, gotErr, want, wantErr, bytes.Equal(gotMem, wantMem))
-							}
-							if diagnosticsEnabled && hits != 1 {
-								t.Fatalf("missing admission: wide%t packets%d len%d", wide, packets, length)
+							want, wantMem, trapped := referenceFloatMap(wide, packets, src, dst, start, limit, neighbor, initial)
+							got, gotMem, gotErr := runFloatMapMemory(t, m, initial)
+							if trapped != (gotErr != nil) || !trapped && got != want || !bytes.Equal(gotMem, wantMem) {
+								t.Fatalf("wide%t packets%d len%d neighbor%d src%x dst%x countdown%t: got%x/%v want%x/%v memory equal%t", wide, packets, length, neighbor, src, dst, countdown, got, gotErr, want, trapped, bytes.Equal(gotMem, wantMem))
 							}
 						}
 					}
@@ -143,4 +136,55 @@ func TestFloatMapLoopRangesAliasesAndScalarTail(t *testing.T) {
 			}
 		}
 	}
+}
+
+// referenceFloatMap executes the Wasm load/add/multiply/store order in Go,
+// including uint32 address wrapping and partial writes before a later trap.
+func referenceFloatMap(wide bool, packets int, src, dst, index, limit, neighbor uint32, initial []byte) (uint32, []byte, bool) {
+	mem := append([]byte(nil), initial...)
+	size := uint32(4)
+	if wide {
+		size = 8
+	}
+	var lastSrc, lastDst uint32
+	valid := func(p uint32) bool { return uint64(p)+uint64(size) <= uint64(len(mem)) }
+	for {
+		for i := 0; i < packets; i++ {
+			bias := uint32(i) * size
+			lastDst = dst + index + bias
+			lastSrc = src + index + bias
+			if !valid(lastSrc) {
+				return 0, mem, true
+			}
+			first := lastSrc
+			lastSrc = src + index + bias + neighbor
+			if !valid(lastSrc) {
+				return 0, mem, true
+			}
+			if wide {
+				x := math.Float64frombits(binary.LittleEndian.Uint64(mem[first:]))
+				y := math.Float64frombits(binary.LittleEndian.Uint64(mem[lastSrc:]))
+				sum := float64(x + y)
+				value := float64(sum * 1.125)
+				if !valid(lastDst) {
+					return 0, mem, true
+				}
+				binary.LittleEndian.PutUint64(mem[lastDst:], math.Float64bits(value))
+			} else {
+				x := math.Float32frombits(binary.LittleEndian.Uint32(mem[first:]))
+				y := math.Float32frombits(binary.LittleEndian.Uint32(mem[lastSrc:]))
+				sum := float32(x + y)
+				value := float32(sum * 1.125)
+				if !valid(lastDst) {
+					return 0, mem, true
+				}
+				binary.LittleEndian.PutUint32(mem[lastDst:], math.Float32bits(value))
+			}
+		}
+		index += uint32(packets) * size
+		if index == limit {
+			break
+		}
+	}
+	return 123 ^ index ^ lastSrc ^ lastDst, mem, false
 }

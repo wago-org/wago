@@ -57,6 +57,33 @@ func TestIdentityFinalizerRemapsAllArm64Metadata(t *testing.T) {
 	if f.relocs[0].at != 4 || f.relocs[1].at != 20 || testGCCallsiteReturn(t, plan, 0) != 16 || testGCCallsiteReturn(t, plan, 1) != 24 {
 		t.Fatalf("relocation/callsite offsets changed: relocs=%#v callsite-data=%#v", f.relocs, plan.CallsiteData)
 	}
+	if sc.compact != nil {
+		t.Fatal("identity finalization reserved compact-only storage")
+	}
+}
+
+func TestSmallIdentityOffsetsPreserveBoundsChecksArm64(t *testing.T) {
+	for _, length := range []int{0, 4, 96} {
+		full, err := shared.NewOffsetMap(length, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		points := []int{-1, 0, 1, 4, length, length + 1}
+		for _, off := range points {
+			want, wantErr := mapFinalOffset(&full, off, length, "test")
+			got, gotErr := mapFinalOffset(nil, off, length, "test")
+			if got != want || (gotErr == nil) != (wantErr == nil) {
+				t.Fatalf("length=%d offset=%d: got %d/%v, want %d/%v", length, off, got, gotErr, want, wantErr)
+			}
+			for _, end := range points {
+				start, finish, ok := identityProfileOffsets(length).MapRange(off, end)
+				wantStart, wantFinish, wantOK := full.MapRange(off, end)
+				if start != wantStart || finish != wantFinish || ok != wantOK {
+					t.Fatalf("length=%d range=[%d,%d): identity range bounds changed", length, off, end)
+				}
+			}
+		}
+	}
 }
 
 func TestCompileIdentityFinalizerByteParityArm64(t *testing.T) {
@@ -162,12 +189,49 @@ func TestFinalizePeepholesRecordsBranchToNextArm64(t *testing.T) {
 	f := fn{a: sc.asm, sc: sc}
 	f.finalizePeepholes()
 	for _, pc := range []int{0, 8, 12, 16} {
-		if !slices.Contains(sc.branchNextSites[:sc.branchNextN], pc) {
+		if !slices.Contains(sc.compact.branchNextSites[:sc.branchNextN], pc) {
 			t.Errorf("branch at %d was not recorded", pc)
 		}
 	}
-	if slices.Contains(sc.branchNextSites[:sc.branchNextN], 4) {
+	if slices.Contains(sc.compact.branchNextSites[:sc.branchNextN], 4) {
 		t.Error("BL-to-next was incorrectly recorded")
+	}
+}
+
+func TestPeepholeWorklistsMatchFullScansArm64(t *testing.T) {
+	for _, count := range []int{0, 1, 64, 65, 257} {
+		for _, enterLoad := range []bool{false, true} {
+			n := count*16 + 4
+			code := make([]byte, n)
+			for i := range count {
+				pc := i * 16
+				target := n - 4
+				if enterLoad {
+					target = pc + 12 // the load must retain its independent memory read
+				}
+				wrWord(code, pc, 0x54000040) // B.EQ +8
+				wrWord(code, pc+4, 0x14000000|uint32((target-pc-4)/4))
+				wrWord(code, pc+8, 0xf90003e0)  // STR X0,[SP]
+				wrWord(code, pc+12, 0xf94003e1) // LDR X1,[SP]
+			}
+			wrWord(code, n-4, 0xd65f03c0)
+			want := bytes.Clone(code)
+			targets := make([]uint64, (n/4+63)/64)
+			for pc := 0; pc < n; pc += 4 {
+				if target, ok := branchTarget(pc, rdWord(want, pc)); ok {
+					branchTargetAdd(targets, target, n)
+				}
+			}
+			policy := currentCodegenPolicy()
+			ref := fn{a: &a64.Asm{B: want}, policy: policy}
+			ref.foldBranchPairs(want, n, targets)
+			ref.forwardStoreLoads(want, n, targets)
+			got := fn{a: &a64.Asm{B: code}, policy: policy}
+			got.finalizePeepholes()
+			if !bytes.Equal(code, want) {
+				t.Fatalf("count=%d enterLoad=%v: indexed rewrites differ from full scans", count, enterLoad)
+			}
+		}
 	}
 }
 
@@ -240,7 +304,7 @@ func TestFinalizerCandidateInventoryIsBoundedArm64(t *testing.T) {
 	for off := 4 * (maxFinalizerDeletions + 3); off >= 0; off -= 4 {
 		f.recordBranchNext(off)
 	}
-	got := append([]int(nil), sc.branchNextSites[:sc.branchNextN]...)
+	got := append([]int(nil), sc.compact.branchNextSites[:sc.branchNextN]...)
 	slices.Sort(got)
 	want := make([]int, maxFinalizerDeletions)
 	for i := range want {

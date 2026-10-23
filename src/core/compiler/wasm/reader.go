@@ -30,7 +30,7 @@ func (r *reader) peek() (byte, bool) {
 }
 func (r *reader) byte() (byte, error) {
 	if r.pos >= len(r.data) {
-		return 0, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.pos}
+		return 0, newDecodeError(ErrIndexOutOfBounds, r.pos)
 	}
 	b := r.data[r.pos]
 	r.pos++
@@ -38,7 +38,7 @@ func (r *reader) byte() (byte, error) {
 }
 func (r *reader) bytes(n int) ([]byte, error) {
 	if n < 0 || n > len(r.data)-r.pos {
-		return nil, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.pos}
+		return nil, newDecodeError(ErrIndexOutOfBounds, r.pos)
 	}
 	b := r.data[r.pos : r.pos+n]
 	r.pos += n
@@ -64,14 +64,14 @@ func (r *reader) leb(signed bool, maxBits uint32) (uint64, error) {
 	var shift uint32
 	for i := 0; ; i++ {
 		if i >= int((maxBits+6)/7) {
-			return 0, &DecodeError{Code: ErrMalformedLEB, Offset: r.pos}
+			return 0, newDecodeError(ErrMalformedLEB, r.pos)
 		}
 		b, err := r.byte()
 		if err != nil {
 			return 0, err
 		}
 		if shift >= 64 && (b&0x7f) != 0 {
-			return 0, &DecodeError{Code: ErrMalformedLEB, Offset: r.pos}
+			return 0, newDecodeError(ErrMalformedLEB, r.pos)
 		}
 		if shift < 64 {
 			result |= uint64(b&0x7f) << shift
@@ -85,10 +85,10 @@ func (r *reader) leb(signed bool, maxBits uint32) (uint64, error) {
 				mask := byte(((uint16(1) << extra) - 1) << used)
 				if signed && (b&(1<<(used-1))) != 0 {
 					if b&mask != mask {
-						return 0, &DecodeError{Code: ErrMalformedLEB, Offset: r.pos}
+						return 0, newDecodeError(ErrMalformedLEB, r.pos)
 					}
 				} else if b&mask != 0 {
-					return 0, &DecodeError{Code: ErrMalformedLEB, Offset: r.pos}
+					return 0, newDecodeError(ErrMalformedLEB, r.pos)
 				}
 			}
 			if signed && shift < 64 && (b&0x40) != 0 {
@@ -97,7 +97,7 @@ func (r *reader) leb(signed bool, maxBits uint32) (uint64, error) {
 			return result, nil
 		}
 		if shift >= maxBits+7 {
-			return 0, &DecodeError{Code: ErrMalformedLEB, Offset: r.pos}
+			return 0, newDecodeError(ErrMalformedLEB, r.pos)
 		}
 	}
 }
@@ -140,7 +140,7 @@ func (r *reader) name() (string, error) {
 		return "", err
 	}
 	if !utf8.Valid(b) {
-		return "", &DecodeError{Code: ErrInvalidSection, Offset: start}
+		return "", newDecodeError(ErrInvalidSection, start)
 	}
 	if err := r.reserve(uint64(len(b)), 2); err != nil {
 		return "", err

@@ -1,0 +1,511 @@
+//go:build arm64
+
+package arm64
+
+import (
+	"fmt"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"math/bits"
+)
+
+// invertCond returns the condition that holds exactly when c does not. AArch64
+// condition codes (like x86) are paired by their low bit.
+func invertCond(c Cond) Cond { return c ^ 1 }
+
+// isFusableCompare reports whether e is a deferred relational/eqz node whose flag
+// result can be branched on directly.
+func isFusableCompare(e *elem) bool {
+	return e != nil && e.elemKind() == ekDeferred && (isCompare(e.deferredOp()) || e.deferredOp() == opEqz)
+}
+
+// isFusableCondition also accepts an i32 bitmask consumed for its truth value.
+// local.tee must still use isFusableCompare: its stored value must stay intact.
+func isFusableCondition(e *elem) bool {
+	return isFusableCompare(e) || swarMaskTestEnabled && e != nil && e.isDeferred() && e.deferredOp() == opAnd && e.st.typ == mtI32
+}
+
+func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
+	if !swarMaskTestEnabled || node == nil {
+		return 0, false
+	}
+	inner, cc := node, condNE
+	if node.deferredOp() == opEqz {
+		inner, cc = f.s.arg0(node), condE
+	} else if node.deferredOp() != opAnd || node.st.typ != mtI32 {
+		return 0, false
+	}
+	if inner == nil || !inner.isDeferred() || inner.deferredOp() != opAnd {
+		return 0, false
+	}
+	left, right := f.s.arg0(inner), f.s.arg1(inner)
+	if left.elemKind() == ekValue && left.st.kind == stConst {
+		left, right = right, left
+	}
+	savedPinned := f.pinned
+	wide := inner.st.typ.is64()
+	if right.elemKind() == ekValue && right.st.kind == stConst {
+		x, owned := f.materializeRead(left)
+		f.pinned = f.pinned.add(x)
+		c := uint64(right.st.cval)
+		if !wide {
+			c = uint64(uint32(c))
+		}
+		testOff := f.a.Len()
+		emitted := false
+		if wide {
+			emitted = f.a.TstImm64(x, c)
+		} else {
+			emitted = f.a.TstImm32(x, uint32(c))
+		}
+		if !emitted {
+			t, tempOwned := f.intConstReadReg(right.st, maskOf(x))
+			f.a.TstReg(x, t, !wide)
+			if tempOwned {
+				f.release(t)
+			}
+		} else if c&(c-1) == 0 {
+			f.recordSingleBitTest(testOff, x, uint8(bits.TrailingZeros64(c)))
+		}
+		if owned {
+			f.release(x)
+		}
+	} else {
+		// Match the ordinary deferred RHS-first realization order.
+		inverted := invertedOperand(f.s, right, inner.st.typ)
+		source := right
+		if inverted != nil {
+			source = inverted
+		}
+		y, ownY := f.materializeRead(source)
+		f.pinned = f.pinned.add(y)
+		x, ownX := f.materializeRead(left)
+		if inverted != nil {
+			f.a.TstNotReg(x, y, !wide)
+		} else {
+			f.a.TstReg(x, y, !wide)
+		}
+		if ownX {
+			f.release(x)
+		}
+		if ownY && y != x {
+			f.release(y)
+		}
+	}
+	f.pinned = savedPinned
+	if node.deferredOp() == opEqz && right.elemKind() == ekValue && right.st.kind == stConst && right.st.cval != 0 {
+		f.stats.peep("swar-mask-test")
+	} else {
+		f.stats.peep("mask-condition-test")
+	}
+	f.consumeBlockBelow(node)
+	return cc, true
+}
+
+// flushBelow materializes every operand strictly below node's valent block into
+// its canonical frame slots (v128 values use two adjacent slots), leaving node's
+// block on top untouched. Returns the number of flushed operands. Used before emitting a
+// fused compare so the subsequent branch's moveSlots reads canonical slots and no
+// flag-clobbering flush happens between the CMP and the B.cond.
+func (f *fn) flushBelow(node *elem) int {
+	f.stats.addFlushBelow()
+	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
+	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
+	base := f.s.baseOfValentBlock(node)
+	var below []*elem
+	belowSlots := 0
+	for cur := f.s.prev(base); cur != f.s.head; cur = f.s.prev(f.s.baseOfValentBlock(cur)) {
+		below = append(below, cur)
+		belowSlots += rootMachineType(cur).stackSlots()
+	}
+	for i, j := 0, len(below)-1; i < j; i, j = i+1, j-1 {
+		below[i], below[j] = below[j], below[i]
+	}
+	if regallocCheckEnabled {
+		f.checkBeginFlush(below)
+		defer f.checkEndFlush()
+	}
+	// Canonical stores must not overwrite any live prefix, condition or argument
+	// source. New allocator spills during materialization need the same floor.
+	oldFloor := f.spillFloor
+	f.spillFloor = max(oldFloor, belowSlots)
+	f.stageFlushSpills(belowSlots, below)
+
+	slot := 0
+	for _, root := range below {
+		typ := rootMachineType(root)
+		f.stats.addFlushBelowRoot(root.elemKind() == ekDeferred)
+		if root.elemKind() == ekValue && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.typ == typ {
+			slot += typ.stackSlots()
+			continue
+		}
+		if typ == mtV128 {
+			x := f.materializeV128(root)
+			f.a.StrQ(SP, f.spillOff(slot), x)
+			f.releaseF(x)
+			f.replaceStorage(root, storage{kind: stSlot, typ: mtV128, slot: uint32(slot)})
+			slot += 2
+			continue
+		}
+		if root.elemKind() == ekValue && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
+			if root.st.typ.isFloat() {
+				f.a.StrD(SP, f.spillOff(slot), root.st.reg)
+			} else {
+				f.st64(SP, f.spillOff(slot), root.st.reg)
+			}
+			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
+			slot++
+			continue
+		}
+		if root.elemKind() == ekValue && typ.isFloat() {
+			x := f.materializeF(root)
+			f.a.StrD(SP, f.spillOff(slot), x)
+			f.releaseF(x)
+			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
+			slot++
+			continue
+		}
+		r := f.materialize(root)
+		f.st64(SP, f.spillOff(slot), r)
+		f.release(r)
+		f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
+		slot++
+	}
+	if slot > f.maxSpill {
+		f.maxSpill = slot
+	}
+	f.spillFloor = oldFloor
+	return len(below)
+}
+
+// condenseToFlags emits a relational/eqz node's CMP (no Cset), consumes the node
+// and its operands, and returns the condition code that is true when the
+// comparison holds. The CMP must be the last flag-affecting instruction before
+// the branch, so callers flush everything below first.
+func (f *fn) condenseToFlags(node *elem) Cond {
+	f.stats.peep("cmp-branch-fuse")
+	// eqz over a fusable compare fuses by INVERTING the branch condition rather than
+	// materializing the inner boolean (the Cset+CMP an `eqz(a<b)` otherwise
+	// costs): `eqz(a<b)` branches on !(a<b) directly. Nested eqz peels too
+	// (`eqz(eqz(x))` → x, double inversion). Each peel just unlinks the wrapper elem
+	// (its operand sits directly below it); the inner node's CMP is still emitted
+	// LAST by the logic below, so flag safety is unchanged. This is the dominant
+	// missed-fusion on branch-dense code (esbuild ~20k `relop;eqz;br` sites). Gated by
+	// the stFlags kill switch (WAGO_NO_STFLAGS) as the A/B oracle.
+	invert := false
+	if f.opt(optSTFlags) {
+		for node.deferredOp() == opEqz && isFusableCompare(f.s.arg0(node)) {
+			inner := f.s.arg0(node)
+			f.erase(node) // drop the eqz wrapper; `inner` becomes the top of the block
+			f.stats.peep("eqz-fold")
+			node = inner
+			invert = !invert
+		}
+	}
+	if cc, ok := f.tryMaskedEqzToFlags(node); ok {
+		f.erase(node)
+		if invert {
+			cc = invertCond(cc)
+		}
+		return cc
+	}
+	applyInvert := func(cc Cond) Cond {
+		if invert {
+			return invertCond(cc)
+		}
+		return cc
+	}
+	w := node.st.typ.is64()
+	if node.deferredOp() == opEqz {
+		// CMP #0 does not write its operand, so a register-resident value (a pinned
+		// local — e.g. a loop counter — or an owned temp) is tested in place with no
+		// copy, mirroring the relational path below.
+		a := f.s.arg0(node)
+		var L Reg
+		ownedL := false
+		switch {
+		case a.elemKind() == ekValue && (a.st.kind == stLocalReg || a.st.kind == stGlobReg):
+			L = a.st.reg
+		case a.elemKind() == ekValue && a.st.kind == stReg:
+			L, ownedL = a.st.reg, true
+		default:
+			L, ownedL = f.materialize(a), true
+		}
+		// eqz → CMP L, #0 (SUBS XZR,L,#0); condE (CondEQ) holds when L == 0. A
+		// branch consumer could equivalently use CBZ/CBNZ, but the compare keeps
+		// parity with the relational path so the caller's B.cond is uniform.
+		if w {
+			f.a.CmpImm64(L, 0)
+		} else {
+			f.a.CmpImm32(L, 0)
+		}
+		if ownedL {
+			f.release(L)
+		}
+		f.consumeBlockBelow(node)
+		f.erase(node)
+		return applyInvert(condE)
+	}
+	cc := applyInvert(condOf(node.deferredOp()))
+	// CMP does not write its left operand, so a register-resident left (an owned
+	// temp or a pinned local) can be compared in place — no copy needed.
+	left := f.s.arg0(node)
+	var L Reg
+	ownedL := false
+	switch {
+	case left.elemKind() == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg):
+		L = left.st.reg
+	case left.elemKind() == ekValue && left.st.kind == stReg:
+		L, ownedL = left.st.reg, true
+	default:
+		L, ownedL = f.materialize(left), true
+	}
+	f.pinned = f.pinned.add(L)
+	right := f.s.arg1(node)
+	if right.isDeferred() {
+		// condense rewrites the existing operand node in place; keep that owner
+		// instead of allocating a duplicate register-value node.
+		f.condense(right, regNone)
+	}
+	switch right.st.kind {
+	case stConst:
+		f.cmpConst(L, right.st, w)
+	case stReg:
+		f.cmpRR(L, right.st.reg, w)
+		f.release(right.st.reg)
+	case stLocalReg, stGlobReg:
+		f.cmpRR(L, right.st.reg, w)
+	case stSlot:
+		// arm64 has no memory operand: LDR the spilled value, then compare reg-reg.
+		t := f.allocReg(maskOf(L))
+		f.ld64(t, SP, f.spillOff(right.st.slotIndex()))
+		f.cmpRR(L, t, w)
+		f.release(t)
+	case stLocalRef:
+		// arm64 has no memory operand: LDR the local from its frame slot, then compare.
+		t := f.allocReg(maskOf(L))
+		f.ld64(t, SP, f.localOff(right.st.index()))
+		f.cmpRR(L, t, w)
+		f.release(t)
+	case stMemRef:
+		// A deferred linear-memory load can NEVER be folded as a CMP operand on
+		// arm64 (memRefFoldable is always false, §4a), so we always materialize the
+		// value into a register first, then compare register-register.
+		r := f.memRefValue(right)
+		f.cmpRR(L, r, w)
+		f.release(r)
+		f.releaseMemRef(right.st)
+	}
+	f.pinned = f.pinned.remove(L)
+	if ownedL {
+		f.release(L)
+	}
+	f.consumeBlockBelow(node)
+	f.erase(node)
+	return cc
+}
+
+// condenseSimpleEqzOperand consumes an eqz whose operand is already a concrete
+// value and returns that value in a register. Branch consumers can then select
+// CBZ/CBNZ directly without materializing NZCV. Deferred arithmetic/mask trees
+// stay on condenseToFlags so their existing fused covers remain authoritative.
+func (f *fn) condenseSimpleEqzOperand(node *elem) (reg Reg, owned, wide, ok bool) {
+	if node == nil || node.deferredOp() != opEqz {
+		return 0, false, false, false
+	}
+	a := f.s.arg0(node)
+	if a == nil || a.elemKind() != ekValue {
+		return 0, false, false, false
+	}
+	switch {
+	case a.st.kind == stLocalReg || a.st.kind == stGlobReg:
+		reg = a.st.reg
+	case a.st.kind == stReg:
+		reg, owned = a.st.reg, true
+	default:
+		reg, owned = f.materialize(a), true
+	}
+	wide = a.st.typ.is64()
+	f.consumeBlockBelow(node)
+	f.erase(node)
+	return reg, owned, wide, true
+}
+
+// brIfSimpleEqz selects CBZ directly for an empty branch edge. The branch has
+// exactly the same integer-width test and target as `<integer>.eqz; br_if`, and
+// convergence/flush work remains before the test just as in brIfFused.
+func (f *fn) brIfSimpleEqz(r *wasm.Reader, top *elem, labelIdx uint32) (bool, error) {
+	if !f.opt(optZeroBranch) || top == nil || top.deferredOp() != opEqz {
+		return false, nil
+	}
+	fi := len(f.ctrl) - 1 - int(labelIdx)
+	if fi < 0 {
+		return false, errBadLabel
+	}
+	// A handler restore makes the edge nonempty; use the guarded fused path.
+	if f.branchHandlerRecord(fi) >= 0 {
+		return false, nil
+	}
+	fr := &f.ctrl[fi]
+	if fr.branchArity() != 0 || (fr.kind != cfLoop && fr.kind != cfBlock && fr.kind != cfIf) {
+		return false, nil
+	}
+	loopHeader := false
+	counter := -1
+	if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && labelIdx == 1 && len(f.ctrl) >= 2 && fi == len(f.ctrl)-2 {
+		loop := &f.ctrl[len(f.ctrl)-1]
+		counter, loopHeader = localAddressKey(f.s.arg0(top))
+		loopHeader = loopHeader && loop.kind == cfLoop && loop.paramN == 0 && loop.resultN == 0 &&
+			fr.kind == cfBlock && fr.branchArity() == 0 && f.a.Len() == loop.controlSite
+	}
+	mark := f.a.Len()
+	canDefer := f.callFreeLoopExit(fi)
+	var saved localStateSnapshot
+	if canDefer {
+		saved, canDefer = f.snapshotLocalStates()
+	}
+	f.convergeBranchLocals(fr)
+	var coldEdgeCode []byte
+	if canDefer && f.a.Len() != mark {
+		coldEdgeCode = append(coldEdgeCode, f.a.B[mark:]...)
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.rewindProfileEmission(mark)
+		}
+		f.a.B = f.a.B[:mark]
+		f.restoreLocalStates(saved)
+	}
+	f.flushBelow(top)
+	reg, owned, wide, ok := f.condenseSimpleEqzOperand(top)
+	if !ok {
+		return false, nil
+	}
+	var site int
+	if wide {
+		site = f.a.Cbz64(reg)
+	} else {
+		site = f.a.Cbz32(reg)
+	}
+	if owned {
+		f.release(reg)
+	}
+	if len(coldEdgeCode) != 0 {
+		f.appendFrameColdEdge(fr, coldEdge{site: site, code: coldEdgeCode})
+		fr.set(ctrlEndReachable, true)
+		f.stats.peep("callfree-loop-exit-cold")
+	} else if fr.kind == cfLoop {
+		if !f.a.PatchBranch19(site, fr.controlSite) {
+			return false, fmt.Errorf("arm64: direct eqz loop branch out of range")
+		}
+	} else {
+		f.appendFrameEnd(fr, site, true)
+		fr.set(ctrlEndReachable, true)
+	}
+	f.stats.peep("zero-branch")
+	if loopHeader {
+		loop := &f.ctrl[len(f.ctrl)-1]
+		_, isFloat, pinned := f.pinReg(counter)
+		if pinned && !isFloat {
+			f.tryHoistLinearSumBounds(r, counter)
+			f.ensureCtrlMerge(loop).setCountedLoop(counter)
+		}
+	}
+	// Keep the next function's entry address unchanged. The removed CMP was hot;
+	// this replacement word is emitted after every reachable return and trap tail.
+	f.phasePadWords++
+	return true, nil
+}
+
+// brIfFused lowers `<compare> br_if L` as CMP + conditional branch.
+func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
+	return f.brIfFusedSet(top, labelIdx, regNone)
+}
+
+// brIfFusedSet is brIfFused with an optional `local.tee` destination. CSET is
+// flag-transparent, so storing the compare result between CMP and B.cond keeps
+// the flags live and avoids rematerializing/re-comparing the boolean.
+func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
+	fi := len(f.ctrl) - 1 - int(labelIdx)
+	if fi < 0 {
+		return errBadLabel
+	}
+	fr := &f.ctrl[fi]
+	reconcileMark := f.a.Len()
+	canDefer := f.callFreeLoopExit(fi)
+	var saved localStateSnapshot
+	if canDefer {
+		saved, canDefer = f.snapshotLocalStates()
+	}
+	f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
+	var coldEdgeCode []byte
+	if canDefer && f.a.Len() != reconcileMark {
+		coldEdgeCode = append(coldEdgeCode, f.a.B[reconcileMark:]...)
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.rewindProfileEmission(reconcileMark)
+		}
+		f.a.B = f.a.B[:reconcileMark]
+		f.restoreLocalStates(saved)
+	}
+	k := f.flushBelow(top)
+	cc := f.condenseToFlags(top)
+	if setDst != regNone {
+		f.a.Cset32(setDst, cc)
+	}
+	a := fr.branchArity()
+	// Emit the edge and measure it. The edge helpers emit only LDR/STR/MOV, which
+	// are position-independent AND leave NZCV untouched — so the compare's flags
+	// stay live across them and the bytes can be relocated below.
+	mark := f.a.Len()
+	if fr.has(ctrlRegMerge1) {
+		f.branchEdgeToMerge1(fr, k)
+	} else {
+		f.moveBranchValues(fr, k, a)
+	}
+	f.restoreBranchHandlers(fi)
+	if len(coldEdgeCode) != 0 {
+		coldEdgeCode = append(coldEdgeCode, f.a.B[mark:]...)
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.rewindProfileEmission(mark)
+		}
+		f.a.B = f.a.B[:mark]
+		site := f.a.Bcond(cc)
+		f.appendFrameColdEdge(fr, coldEdge{site: site, code: coldEdgeCode})
+		fr.set(ctrlEndReachable, true)
+		f.stats.peep("callfree-loop-exit-cold")
+		return nil
+	}
+	if f.a.Len() == mark {
+		// Empty edge: branch straight to the target when the compare holds — one
+		// instruction, no skip branch, no padding NOP in the loop body.
+		if f.opt(optBranchFold) && f.condBranchJump(fr, cc) {
+			return nil
+		}
+		over := f.a.Bcond(invertCond(cc))
+		f.branchJump(fr)
+		f.patchBranch19(over, f.a.Len())
+		return nil
+	}
+	if f.branchHintUnlikely && fr.kind != cfLoop {
+		// The compare already produced NZCV. Keep the hinted false path as the
+		// fall-through and defer only the true-edge reconciliation to the target
+		// frame, preserving the flags window at the source branch.
+		edge := append([]byte(nil), f.a.B[mark:]...)
+		if profileEnabled && f.stats != nil && f.stats.RecordSources {
+			f.rewindProfileEmission(mark)
+		}
+		f.a.B = f.a.B[:mark]
+		site := f.a.Bcond(cc)
+		f.appendFrameColdEdge(fr, coldEdge{site: site, code: edge})
+		return nil
+	}
+	// Non-empty edge: insert the skip guard right after the CMP (keeping the flag
+	// window tight) by relocating the edge bytes up one word.
+	f.edgeScratch = append(f.edgeScratch[:0], f.a.B[mark:]...)
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		f.rewindProfileEmission(mark)
+	}
+	f.a.B = f.a.B[:mark]
+	over := f.a.Bcond(invertCond(cc)) // fall through when the compare is false
+	f.a.B = append(f.a.B, f.edgeScratch...)
+	f.branchJump(fr)
+	f.patchBranch19(over, f.a.Len())
+	return nil
+}

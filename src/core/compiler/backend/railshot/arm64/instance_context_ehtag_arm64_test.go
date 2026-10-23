@@ -41,7 +41,7 @@ func TestEHHandlerRestoresSavedInstanceContext(t *testing.T) {
 		globalReg:     []Reg{X25, X24},
 	}
 	fr := ctrlFrame{mergeIndex: 1}
-	f.sc.ctrlMerges = []ctrlFrameMerge{{eh: &ctrlFrameEH{targetSite: uint32(targetSite)}}}
+	f.sc.ctrlMerges = []ctrlFrameMerge{{extra: &ctrlFrameMergeExtra{eh: &ctrlFrameEH{targetSite: uint32(targetSite)}}}}
 	f.emitEHHandler(&fr)
 
 	wantLinMem := &fn{a: &a64.Asm{}}
@@ -162,7 +162,7 @@ func TestEHHandlerRestoresInstanceContextBeyondScaledDisplacement(t *testing.T) 
 		ctrl:        []ctrlFrame{{kind: cfBlock}},
 	}
 	fr := ctrlFrame{mergeIndex: 1}
-	f.sc.ctrlMerges = []ctrlFrameMerge{{eh: eh}}
+	f.sc.ctrlMerges = []ctrlFrameMerge{{extra: &ctrlFrameMergeExtra{eh: eh}}}
 	f.emitEHHandler(&fr)
 
 	wantBase := &fn{a: &a64.Asm{}}

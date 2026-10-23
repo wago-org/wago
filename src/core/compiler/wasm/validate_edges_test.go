@@ -239,9 +239,9 @@ func TestBranchTableFrameEpochDeduplicatesWithoutAllocation(t *testing.T) {
 func TestBranchTableFrameEpochFitsValidatorPadding(t *testing.T) {
 	// The embedded byte reader also holds the shared decode-budget pointer. The
 	// validator keeps one compact run-end index for logarithmic local lookup.
-	wantValidator, wantFrame := uintptr(656)+unsafe.Sizeof((*decodeBudget)(nil))+unsafe.Sizeof([]uint64{}), uintptr(80)
+	wantValidator, wantFrame := uintptr(632)+unsafe.Sizeof((*decodeBudget)(nil))+unsafe.Sizeof([]uint64{}), uintptr(72)
 	if unsafe.Sizeof(uintptr(0)) == 4 {
-		wantValidator, wantFrame = 412+unsafe.Sizeof((*decodeBudget)(nil))+unsafe.Sizeof([]uint64{}), 44
+		wantValidator, wantFrame = 404+unsafe.Sizeof((*decodeBudget)(nil))+unsafe.Sizeof([]uint64{}), 44
 	}
 	// Lazy local indexing adds only a scan-work counter; the existing compact
 	// run-end index is reused, and control-frame epoch padding is unchanged.

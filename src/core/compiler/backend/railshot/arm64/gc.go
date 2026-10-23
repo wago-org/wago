@@ -1048,17 +1048,6 @@ func arm64GCFrameRefType(m *wasm.Module, t wasm.ValType) bool {
 	}
 }
 
-func (f *fn) tracksGCFrameRoots() bool {
-	return f.gcFrameRoots != nil && f.gcFrameRoots.Candidate
-}
-
-func (f *fn) gcFrameLocal(index int) bool {
-	if index < 0 || f.gcFrameRoots == nil {
-		return false
-	}
-	return f.gcFrameRoots.TracksLocal(uint32(index))
-}
-
 func arm64GCHelperMayAllocate(helper uint32) bool {
 	switch helper {
 	case gcStructAllocDefault, gcStructAllocOne, gcStructReserveDeadNative, gcStructReserveDeadBatch, gcArrayReserveDeadBatch,

@@ -16,7 +16,7 @@ import (
 var nativeFinalizerEnabled = os.Getenv("WAGO_FINALIZE") != "0"
 var nativeFinalizerValidate = os.Getenv("WAGO_FINALIZE_VALIDATE") == "1"
 
-// WAGO_COMPACT=1 forces bounded shrinking for measurement and rollout checks.
+// WAGO_COMPACT=1 forces the full bounded compact policy for measurement and rollout checks.
 // CompileOptions.CompactNative selects the same path for an individual
 // compilation; WAGO_COMPACT=0 disables it globally as a rollback oracle.
 var nativeCompactionEnabled = os.Getenv("WAGO_COMPACT") == "1"
@@ -115,33 +115,6 @@ func decodeFinalizerMarker(key int) (off int, marker finalizerMarker, ok bool) {
 	return value >> 4, finalizerMarker(value & 15), true
 }
 
-func (f *fn) recordFinalizerMarker(off int, marker finalizerMarker) {
-	if !nativeFinalizerEnabled || !nativeFinalizerValidate {
-		return
-	}
-	sc := f.scratchState()
-	if sc.finalizerMarkers == nil {
-		sc.finalizerMarkers = make(map[int]bool, 16)
-	}
-	sc.finalizerMarkers[finalizerMarkerKey(off, marker)] = true
-}
-
-func (f *fn) recordJumpTableData(start, end int) {
-	f.opaqueFragments = true
-	f.recordFinalizerFragment(start, end, fragmentJumpData)
-	f.recordFinalizerMarker(start, markerJumpDataStart)
-	f.recordFinalizerMarker(end, markerJumpDataEnd)
-}
-
-func (f *fn) recordOpaqueData(start, end int) {
-	if end > start {
-		f.opaqueFragments = true
-		f.recordFinalizerFragment(start, end, fragmentOpaqueData)
-		f.recordFinalizerMarker(start, markerOpaqueDataStart)
-		f.recordFinalizerMarker(end, markerOpaqueDataEnd)
-	}
-}
-
 func (f *fn) recordOpaquePlugin(start, end int) {
 	if end > start {
 		f.opaqueFragments = true
@@ -151,56 +124,34 @@ func (f *fn) recordOpaquePlugin(start, end int) {
 	}
 }
 
-func (f *fn) recordFinalizerFragment(start, end int, kind finalizerFragmentKind) {
-	if !nativeFinalizerEnabled || !f.compactNative() || end <= start {
-		return
-	}
-	sc := f.scratchState()
-	if start < 0 || uint64(end) > uint64(^uint32(0)) {
-		sc.fragmentOverflow = true
-		return
-	}
-	sc.finalFragments = append(sc.finalFragments, finalizerFragment{start: uint32(start), end: uint32(end), kind: kind})
-}
-
-func (f *fn) recordPCRelative(off int) {
-	if nativeFinalizerEnabled {
-		f.scratchState().hasPCRelative = true
-	}
-	f.recordFinalizerMarker(off, markerPCRelative)
-}
-
 func (f *fn) recordBranchNext(off int) {
 	if !nativeFinalizerEnabled || !f.compactNative() {
 		return
 	}
 	sc := f.scratchState()
+	compact := sc.ensureCompactScratch()
 	for i := range int(sc.branchNextN) {
-		if sc.branchNextSites[i] == off {
+		if compact.branchNextSites[i] == off {
 			return
 		}
 	}
-	if int(sc.branchNextN) < len(sc.branchNextSites) {
-		sc.branchNextSites[sc.branchNextN] = off
+	if int(sc.branchNextN) < len(compact.branchNextSites) {
+		compact.branchNextSites[sc.branchNextN] = off
 		sc.branchNextN++
 	} else {
 		largest := 0
-		for i := 1; i < len(sc.branchNextSites); i++ {
-			if sc.branchNextSites[i] > sc.branchNextSites[largest] {
+		for i := 1; i < len(compact.branchNextSites); i++ {
+			if compact.branchNextSites[i] > compact.branchNextSites[largest] {
 				largest = i
 			}
 		}
-		if off < sc.branchNextSites[largest] {
-			sc.branchNextSites[largest] = off
+		if off < compact.branchNextSites[largest] {
+			compact.branchNextSites[largest] = off
 		}
 	}
 	if nativeFinalizerValidate {
 		f.recordFinalizerMarker(off, markerBranchNext)
 	}
-}
-
-func (f *fn) compactNative() bool {
-	return !nativeCompactionDisabled && (nativeCompactionEnabled || f.policy.CompactNative)
 }
 
 func (f *fn) finalizerDeletionLimit() int {
@@ -222,140 +173,8 @@ func loopCompactionLimitArm64(policy CodegenPolicy) int {
 	return min(arm64LoopCompactionLimit, limit)
 }
 
-func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
-	// Mandatory branch patches also occur after body lowering, in return, trap,
-	// and adapter code. Reject failures before any optional finalization path.
-	if f.representationLimit != functionRepresentationOK {
-		return 0, f.representationError()
-	}
-	if !nativeFinalizerEnabled {
-		return internalOff, nil
-	}
-	if f.scratchState().fragmentOverflow {
-		return 0, fmt.Errorf("arm64 finalizer: fragment offset exceeds 32-bit function domain")
-	}
-	if nativeFinalizerValidate {
-		if err := f.validateFinalizerInventory(internalOff); err != nil {
-			return 0, err
-		}
-	}
-	oldLen := len(f.a.B)
-	code := f.a.B
-	offsets := &f.scratchState().offsetMap
-	frameDeleted := 0
-	if f.compactNative() {
-		var storage [maxFinalizerDeletions]shared.DeletedRange
-		deletions, deletedFrames, ok := f.buildCompactionPlan(storage[:0:f.finalizerDeletionLimit()])
-		if ok {
-			if err := offsets.Reset(oldLen, deletions); err != nil {
-				return 0, fmt.Errorf("arm64 finalizer: %w", err)
-			}
-			var err error
-			code, err = f.compactNativeCode(offsets, deletions)
-			if err != nil {
-				return 0, err
-			}
-			frameDeleted = deletedFrames
-		} else {
-			if err := offsets.Reset(oldLen, nil); err != nil {
-				return 0, fmt.Errorf("arm64 finalizer: %w", err)
-			}
-		}
-	} else {
-		if err := offsets.Reset(oldLen, nil); err != nil {
-			return 0, fmt.Errorf("arm64 finalizer: %w", err)
-		}
-	}
-	f.a.B = code
-	if profileEnabled && f.stats != nil && f.stats.RecordSources {
-		sites, err := shared.RemapNativeCodeSites(f.stats.CodeSites, offsets)
-		if err != nil {
-			return 0, err
-		}
-		f.stats.CodeSites = sites
-		mapped, err := shared.RemapNativeSources(f.stats.SourceRanges, offsets)
-		if err != nil {
-			return 0, err
-		}
-		f.stats.SourceRanges = mapped
-		start, _, ok := offsets.MapRange(internalOff, internalOff)
-		if !ok {
-			return 0, fmt.Errorf("invalid profile internal entry")
-		}
-		f.stats.SourceInternalOffset = start
-	}
-
-	mappedInternal, err := mapFinalOffset(offsets, internalOff, len(code), "internal entry")
-	if err != nil {
-		return 0, err
-	}
-	internalOff = mappedInternal
-	if f.nativeImportRouter > 0 {
-		mapped, err := mapFinalOffset(offsets, f.nativeImportRouter, len(code), "native import router")
-		if err != nil {
-			return 0, err
-		}
-		f.nativeImportRouter = mapped
-	}
-	for i := range f.relocs {
-		mapped, err := mapFinalOffset(offsets, int(f.relocs[i].at), len(code), "call relocation")
-		if err != nil {
-			return 0, err
-		}
-		if uint64(mapped) >= uint64(invalidCallRelocField) {
-			return 0, fmt.Errorf("arm64 finalizer: call relocation offset %#x exceeds compact domain", mapped)
-		}
-		f.relocs[i].at = uint32(mapped)
-	}
-	if f.adapterReturnOff != 0 {
-		mapped, err := mapFinalOffset(offsets, f.adapterReturnOff, len(code), "adapter return")
-		if err != nil {
-			return 0, err
-		}
-		f.adapterReturnOff = mapped
-	}
-	if f.trapBodyEnd > f.trapBodyOff {
-		mappedOff, err := mapFinalOffset(offsets, f.trapBodyOff, len(code), "trap body start")
-		if err != nil {
-			return 0, err
-		}
-		mappedEnd, err := mapFinalOffset(offsets, f.trapBodyEnd, len(code), "trap body end")
-		if err != nil {
-			return 0, err
-		}
-		f.trapBodyOff, f.trapBodyEnd = mappedOff, mappedEnd
-	}
-	if plan := f.gcFrameRoots; plan != nil {
-		if plan.AdapterReturnOffset != 0 {
-			mapped, err := mapFinalOffset(offsets, int(plan.AdapterReturnOffset), len(code), "GC adapter return")
-			if err != nil {
-				return 0, err
-			}
-			plan.AdapterReturnOffset = uint32(mapped)
-		}
-		var callsiteErr error
-		if !plan.VisitCallsites(func(_ int, callsite shared.GCFrameCallsite) bool {
-			var mapped int
-			mapped, callsiteErr = mapFinalOffset(offsets, int(callsite.ReturnOffset()), len(code), "GC call return")
-			if callsiteErr != nil {
-				return false
-			}
-			callsite.SetReturnOffset(uint32(mapped))
-			return true
-		}) {
-			if callsiteErr != nil {
-				return 0, callsiteErr
-			}
-			return 0, fmt.Errorf("arm64: malformed GC callsite stream")
-		}
-	}
-	if len(code) != oldLen {
-		f.remapNativeSizeStats(offsets, internalOff, frameDeleted)
-	}
-	return internalOff, nil
-}
-
 func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.DeletedRange, int, bool) {
+	compact := f.scratchState().ensureCompactScratch()
 	// Any deletion before an optionally aligned loop would move its body away
 	// from the emission-time alignment. Native compaction clamps loop alignment
 	// to ARM64's mandatory four-byte instruction alignment, which every deletion
@@ -386,7 +205,7 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 	if sc.deadHoleOverflow {
 		return f.rejectCompaction("dead-hole-overflow")
 	}
-	for _, off := range sc.deadHoleSites[:sc.deadHoleN] {
+	for _, off := range compact.deadHoleSites[:sc.deadHoleN] {
 		if !add(off, 4) {
 			return f.rejectCompaction("dead-hole-budget")
 		}
@@ -426,7 +245,7 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 	// larger frame/hole wins. If the bound fills, deterministically retain the
 	// earliest sites instead of depending on map iteration order.
 	branchStart := len(deletions)
-	for _, off := range sc.branchNextSites[:sc.branchNextN] {
+	for _, off := range compact.branchNextSites[:sc.branchNextN] {
 		candidate := shared.DeletedRange{Off: uint32(off), Len: 4}
 		duplicate := false
 		for _, deletion := range deletions[:branchStart] {
@@ -760,10 +579,11 @@ func adrTarget(pc int, word uint32) (int, bool) {
 	return pc + imm, true
 }
 
-func mapFinalOffset(offsets *shared.OffsetMap, off, codeLen int, what string) (int, error) {
-	mapped, ok := offsets.Map(off)
-	if !ok {
-		return 0, fmt.Errorf("arm64 identity finalizer: %s offset %d is outside %d-byte function", what, off, codeLen)
+type identityProfileOffsets int
+
+func (length identityProfileOffsets) MapRange(start, end int) (int, int, bool) {
+	if start < 0 || end < start || end > int(length) {
+		return 0, 0, false
 	}
-	return mapped, nil
+	return start, end, true
 }

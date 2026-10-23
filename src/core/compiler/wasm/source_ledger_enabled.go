@@ -457,7 +457,7 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 				result.Message = "unsupported dead source instruction"
 				return
 			}
-			base := max(v.top().height, len(v.vals)-inputs)
+			base := max(int(v.top().height), len(v.vals)-inputs)
 			if outputs > limits.Stack-base {
 				panic(sourceLedgerLimit{})
 			}
@@ -506,7 +506,7 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 			}
 			for i := 0; i < base; i++ {
 				b.charge(1)
-				if v.vals[i].unknown || v.vals[i].t != b.ledger.Value(b.stack[i]).Type {
+				if v.vals[i].unknown() || v.vals[i].t != b.ledger.Value(b.stack[i]).Type {
 					result.Coverage = SourceInvalid
 					result.Reason = regalloccheck.InvalidGraph
 					result.Message = "source prefix disagrees with validator"
@@ -531,7 +531,7 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 			e.outputStart = len(b.ledger.operands)
 			for i := 0; i < outputs; i++ {
 				t := v.vals[base+i].t
-				if v.vals[base+i].unknown || !sourcePrimitive(t) {
+				if v.vals[base+i].unknown() || !sourcePrimitive(t) {
 					result.Reason = regalloccheck.UnsupportedOperation
 					result.Message = "unsupported or polymorphic result"
 					return

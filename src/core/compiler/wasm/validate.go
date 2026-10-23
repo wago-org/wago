@@ -97,6 +97,10 @@ func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidat
 }
 
 func validateModuleWithWorkersFeaturesAndLimitsAnalysis(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits, analysis *ValidatedModuleAnalysis) (err error) {
+	return validateModuleWithWorkersFeaturesAndLimitsAnalysisObserver(m, direct, workers, features, limits, analysis, nil)
+}
+
+func validateModuleWithWorkersFeaturesAndLimitsAnalysisObserver(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits, analysis *ValidatedModuleAnalysis, factory ValidationHintFactory) (err error) {
 	// Every exported module validator converges here; reject nil before deriving
 	// indexes or resetting analysis so invalid API input remains error-returning.
 	if m == nil {
@@ -147,8 +151,14 @@ func validateModuleWithWorkersFeaturesAndLimitsAnalysis(m *Module, direct *direc
 		runtime.KeepAlive(direct)
 		return err
 	}
+	if analysis != nil && factory != nil && workers <= 1 {
+		analysis.hintObserver = factory(m)
+	}
 	err = v.validateFunctions(workers)
 	if err == nil && analysis != nil {
+		if observer := analysis.hintObserver; observer != nil && !observer.Complete() {
+			analysis.hintObserver = nil
+		}
 		analysis.finish()
 	}
 	// TinyGo's conservative collector needs the metadata owners to remain live
@@ -202,10 +212,19 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 		v.analysis.funcs[localIndex] = ValidatedFuncFacts{BodyBytes: saturatingUint32(len(fn.BodyBytes))}
 	}
 	fv.beginFunc(abs)
+	if v.analysis != nil && v.analysis.hintObserver != nil {
+		v.analysis.hintCurrent = v.analysis.hintObserver.BeginFunction(localIndex)
+	}
 	if len(fn.BodyBytes) != 0 {
 		err = fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory, &counts)
 	} else {
 		err = fv.validateFunc(*fn, ft)
+	}
+	if v.analysis != nil && v.analysis.hintObserver != nil {
+		if err == nil {
+			v.analysis.hintObserver.EndFunction(localIndex)
+		}
+		v.analysis.hintCurrent = nil
 	}
 	return counts, err
 }
@@ -995,12 +1014,15 @@ func (v *funcValidator) elemRefType(index uint32) (RefType, error) {
 }
 
 type val struct {
-	t       ValType
-	unknown bool
+	t ValType
 }
 
+// ValBot is the validator's polymorphic unknown, never a concrete Wasm value
+// type. Encoding it in the type removes a padded boolean from every stack slot.
+func (x val) unknown() bool { return x.t.Kind() == ValBot }
+
 func nonNullValidationType(x val) ValType {
-	if x.unknown {
+	if x.unknown() {
 		// A reference instruction constrains value bottom to reference bottom.
 		return RefVal(Ref(false, HeapType{lo: uint64(heapBottom)}, false))
 	}
@@ -1019,17 +1041,17 @@ const (
 
 type ctrlFrame struct {
 	in, out []ValType
-	height  int
+	height  uint32
 	// initHeight is the local-initialization log watermark at control entry.
 	// Initializations performed inside a block do not escape that block; an
 	// else arm likewise restarts from the if entry state.
-	initHeight int
+	initHeight uint32
 
 	// Byte-backed binary validation does not build nested If instruction bodies,
 	// so it tracks then/else arms while streaming opcodes. ifThenHeight records
 	// the operand-stack height at the end of the then-arm (after its results were
 	// re-pushed) so the else-arm end can confirm both arms leave the same shape.
-	ifThenHeight int
+	ifThenHeight uint32
 	// branchTableEpoch marks whether this exact label frame has already been
 	// checked by the current br_table.
 	branchTableEpoch uint32
@@ -1151,9 +1173,9 @@ func (v *funcValidator) pushAll(ts []ValType) {
 }
 func (v *funcValidator) pop() (val, error) {
 	f := v.top()
-	if len(v.vals) == f.height {
+	if uint32(len(v.vals)) == f.height {
 		if f.unreachable {
-			return val{unknown: true}, nil
+			return val{t: Bot}, nil
 		}
 		return val{}, v.verr(ErrTypeMismatch, "stack underflow")
 	}
@@ -1166,7 +1188,7 @@ func (v *funcValidator) popExpect(t ValType) error {
 	if err != nil {
 		return err
 	}
-	if !x.unknown && !v.subtype(x.t, t) {
+	if !x.unknown() && x.t != t && !v.subtype(x.t, t) {
 		return v.verr(ErrTypeMismatch, x.t.String()+" is not "+t.String())
 	}
 	return nil
@@ -1183,7 +1205,7 @@ func (v *funcValidator) pushCtrl(k ctrlKind, in, out []ValType) error {
 	if err := v.popAll(in); err != nil {
 		return err
 	}
-	v.ctrls = append(v.ctrls, ctrlFrame{kind: k, in: in, out: out, height: len(v.vals), initHeight: len(v.localInitLog)})
+	v.ctrls = append(v.ctrls, ctrlFrame{kind: k, in: in, out: out, height: uint32(len(v.vals)), initHeight: uint32(len(v.localInitLog))})
 	v.pushAll(in)
 	return nil
 }
@@ -1195,17 +1217,17 @@ func (v *funcValidator) popCtrl() (ctrlFrame, error) {
 	if err := v.popAll(f.out); err != nil {
 		return f, err
 	}
-	if len(v.vals) != f.height {
+	if uint32(len(v.vals)) != f.height {
 		return f, v.verr(ErrTypeMismatch, "leftover values")
 	}
-	v.restoreLocalInitialization(f.initHeight)
+	v.restoreLocalInitialization(int(f.initHeight))
 	v.ctrls = v.ctrls[:len(v.ctrls)-1]
 	v.pushAll(f.out)
 	return f, nil
 }
 func (v *funcValidator) unreachable() {
 	f := v.top()
-	v.vals = v.vals[:f.height]
+	v.vals = v.vals[:int(f.height)]
 	v.ctrls[len(v.ctrls)-1].unreachable = true
 }
 
