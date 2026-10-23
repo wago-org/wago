@@ -4,6 +4,7 @@ package arm64
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -1947,6 +1948,18 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 			moduleOther += sharedBytes
 		}
+		if needsGCObjectStub(&relocs) {
+			relocs.gcObjectEntry = len(codeBuffer.Bytes())
+			tail, err := codeBuffer.AppendTail(256)
+			if err != nil {
+				return nil, fmt.Errorf("arm64: grow checked-object leaf: %w", err)
+			}
+			stub := emitGCObjectStub(tail)
+			if !codeBuffer.CommitTail(stub) {
+				return nil, fmt.Errorf("arm64: commit checked-object leaf")
+			}
+			moduleOther += len(stub)
+		}
 		code := codeBuffer.Bytes()
 		if err := finalizeOmittedInlineEntries(entry, internalEntry, &relocs, hostAdapters, inlineTargets); err != nil {
 			return nil, err
@@ -2229,6 +2242,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}
 		moduleOther += sharedBytes
 	}
+	if needsGCObjectStub(&relocs) {
+		relocs.gcObjectEntry = len(code)
+		code = emitGCObjectStub(code)
+		moduleOther += len(code) - relocs.gcObjectEntry
+	}
 	if err := finalizeOmittedInlineEntries(entry, internalEntry, &relocs, hostAdapters, inlineTargets); err != nil {
 		return nil, err
 	}
@@ -2277,6 +2295,9 @@ func finalizeOmittedInlineEntries(entry, internalEntry []int, relocs *callRelocT
 			functionRelocs = relocs.parallelFunction(caller)
 		}
 		for _, rl := range functionRelocs {
+			if rl.gcObject {
+				continue
+			}
 			target := int(rl.target)
 			if rl.target != invalidCallRelocField && target < len(entry) && targets.omitStandaloneBody(target, hostAdapters[target]) {
 				return fmt.Errorf("arm64: function %d retains relocation to omitted inline body %d", caller, rl.target)
@@ -2306,6 +2327,12 @@ func patchCallRelocs(code []byte, entry, internalEntry []int, relocs *callRelocT
 		for _, rl := range functionRelocs {
 			if rl.at == invalidCallRelocField || base < 0 || base > len(code)-4 || uint64(rl.at) > uint64(len(code)-base-4) {
 				return fmt.Errorf("arm64: invalid relocation site %#x in function %d for %d-byte code image", rl.at, i, len(code))
+			}
+			if rl.gcObject {
+				if relocs.gcObjectEntry <= 0 || relocs.gcObjectEntry >= len(code) || !patchGCObjectCall(asm, base+int(rl.at), relocs.gcObjectEntry, rl.target) {
+					return fmt.Errorf("arm64: invalid checked-object leaf relocation in function %d", i)
+				}
+				continue
 			}
 			targetIndex := int(rl.target)
 			if rl.target == invalidCallRelocField || targetIndex >= len(entry) {
@@ -3079,7 +3106,26 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		gcFrameRoots.FrameBytes = 0
 		gcFrameRoots.AdapterReturnOffset = 0
 	}
+	sc.asm.ReserveBranch19 = false
 	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, immutableTable, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, true, inlineTargets, calleeHints, policy, sc)
+	if errors.Is(err, errNativeBranchRange) {
+		// Retry once with expansion slots. The ordinary pass keeps small
+		// functions byte-for-byte unchanged; only failing functions pay for
+		// the extra slots and second compilation.
+		sc.asm.ReserveBranch19 = true
+		if stats != nil {
+			*stats = CodegenStats{FuncIdx: stats.FuncIdx, Name: stats.Name,
+				RecordSources: stats.RecordSources, FunctionAttempts: stats.FunctionAttempts + 1}
+		}
+		if gcFrameRoots != nil && gcFrameRoots.Candidate {
+			gcFrameRoots.Exact = true
+			gcFrameRoots.ResetSafepoints()
+			gcFrameRoots.ResetCallsites()
+			gcFrameRoots.FrameBytes = 0
+			gcFrameRoots.AdapterReturnOffset = 0
+		}
+		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, immutableTable, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, true, inlineTargets, calleeHints, policy, sc)
+	}
 	if err == nil && sc.fnState.nativeImportRouter > 0 {
 		router := sc.fnState.nativeImportRouter
 		asm := &a64.Asm{B: code}
