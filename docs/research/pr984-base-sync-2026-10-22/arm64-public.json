@@ -1,0 +1,19 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p=1",
+    "-exec=/usr/bin/qemu-aarch64",
+    "-tags=wago_regalloccheck,wago_codegenstats",
+    "./src/wago",
+    "-run",
+    "^(TestGCScalarStructSet|TestGCGeneralArrayLen|TestGCAllocationMix|TestCustomInstructionRecipe|TestBoundedHostYieldAllowsGCAndCancellationWithOneP)",
+    "-count=3",
+    "-v"
+  ],
+  "seconds": 36.42735137901036,
+  "exit": 0,
+  "user_seconds": 62.878623,
+  "system_seconds": 1.107205,
+  "peak_rss_kib": 1669600
+}
