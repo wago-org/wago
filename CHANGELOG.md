@@ -10,10 +10,18 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 - Bound portable instruction stack classification to linear work for shared
   recipe subexpressions, while retaining their general native lowering.
+- Compile ARM64 memory operations at large valid directory indexes by forming
+  an encodable entry address before loading or updating its fields.
+- Compile large ARM64 functions whose conditional branches exceed 1 MiB by
+  retrying with space for long branches. Fixes PDFium chromium/8111 compilation
+  ([#1013](https://github.com/wago-org/wago/issues/1013)).
 - Mask narrow AMD64 plugin recipe results when a recipe returns its input
   directly, preserving the declared logical bit width.
 - Keep the required atomic length read when an oversized memory64 shared grow
   request fails in the Go helper.
+
+- Use an allocated scratch register for AMD64 prefix spill moves. Checked
+  builds no longer reject a temporary borrow of a live load-address register.
 
 - Allow up to 32 nested synchronous host calls under standard Go so component
   adapter chains can cross more than four boundaries. TinyGo retains its
@@ -68,6 +76,14 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   `wago_regalloccheck` is enabled. Also guard inputs during address preparation
   in the common scalar store path and during second-input preparation in `fbin`
   and `fbinInto`.
+- Simplify scalar floating self-comparisons with full-width booleans and no GP temporary.
+  Fuse ARM64 and Linux AMD64 scalar float comparisons into immediate branches and
+  integer selections, including boolean inversion, without materializing an intermediate
+  integer boolean.
+  Write ARM64 scalar abs/neg local assignments directly with native instructions,
+  and lower copysign to one sign mask plus bitwise select, preserving NaN payloads.
+  Write AMD64 scalar abs/neg/copysign local assignments directly, avoiding result
+  copies, and simplify copysign with identical inputs without altering signaling NaNs.
 
 - Combine bounded ARM64 scalar shift and mask pairs with existing bitfield
   encodings, including masks applied before an unsigned right shift.
@@ -120,6 +136,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   i31 round trips with specialized generated paths, bounded native-handle
   batches, and survivor-aware nursery management. Preserve the existing Go
   fallbacks and collector safety checks.
+
+- Compile general array length reads to checked AMD64 and ARM64 instructions,
+  with the existing helper for invalid handles and exact traps.
 
 - Return from AMD64 and ARM64 atomic wait mismatches and empty notify calls
   before the Go-call argument setup. Preserve memory ordering for zero-count

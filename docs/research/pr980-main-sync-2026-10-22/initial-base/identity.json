@@ -1,0 +1,16 @@
+{
+  "pr": "https://github.com/wago-org/wago/pull/980",
+  "pr_parent": "d27c59c2461ec32434ddb1deb0f422f2d6cbfbb0",
+  "main": "b610d37096f7eca8e4f08f4c420d77e492a62733",
+  "manual_conflicts": [
+    "CHANGELOG.md"
+  ],
+  "manual_resolution": "Keep both the general array.len and native vector-array entries.",
+  "go": "1.27.1",
+  "GOMAXPROCS": "2",
+  "GOGC": "50",
+  "GOMEMLIMIT": "1500MiB",
+  "CGO_ENABLED": "0",
+  "qemu": "10.0.13",
+  "hosted_ci": "pending"
+}

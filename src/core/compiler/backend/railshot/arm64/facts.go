@@ -111,7 +111,7 @@ func (f *fn) applyFactsForLocal(e *elem, x int) {
 // and ARM64's W-register write semantics. Reads from locals, globals, memory, or
 // unknown calls begin with no facts and cannot enter through this function.
 func deferredResultFacts(op wOp, typ machineType) valueFacts {
-	if isCompare(op) || op == opEqz {
+	if isCompare(op) || isFloatCompare(op) || op == opEqz {
 		return factUpper32Zero | factBoolean
 	}
 	if op == opWrap || op == opZExt32 {
