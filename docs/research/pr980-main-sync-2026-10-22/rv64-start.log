@@ -1,0 +1,416 @@
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-runtime-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-runtime-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-runtime-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-runtime-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-producer-trap
+--- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle (0.96s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-success (0.14s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-success (0.02s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-runtime-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-success (0.02s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-runtime-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-runtime-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-cancel (0.02s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-runtime-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-producer-trap (0.01s)
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-runtime-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-runtime-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-runtime-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-runtime-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-producer-trap
+--- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle (0.80s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-runtime-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-runtime-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-runtime-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-runtime-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-producer-trap (0.01s)
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-runtime-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-runtime-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-runtime-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-producer-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-success
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-pre-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-cancel
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-importer-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-runtime-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-producer-self-close
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-host-trap
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-host-exit
+=== RUN   TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-producer-trap
+--- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle (0.80s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimefalse-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-runtime-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifactfalse-runtimetrue-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimefalse-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-runtime-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedfalse-artifacttrue-runtimetrue-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimefalse-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-runtime-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifactfalse-runtimetrue-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimefalse-producer-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-success (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-pre-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-cancel (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-importer-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-runtime-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-producer-self-close (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-host-trap (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-host-exit (0.01s)
+    --- PASS: TestRV64PublicNativeImportedStartStateReentryAndLifecycle/sharedtrue-artifacttrue-runtimetrue-producer-trap (0.01s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	2.626s

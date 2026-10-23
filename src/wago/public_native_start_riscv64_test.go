@@ -164,6 +164,10 @@ func TestRV64PublicNativeImportedStartStateReentryAndLifecycle(t *testing.T) {
 							cancel()
 						}
 						entered, release := make(chan struct{}, 1), make(chan struct{})
+						closeEntered, closeRelease := make(chan struct{}), make(chan struct{})
+						var closeOnce sync.Once
+						finishClose := func() { closeOnce.Do(func() { close(closeRelease) }) }
+						defer finishClose()
 						var once sync.Once
 						unblock := func() { once.Do(func() { close(release) }) }
 						cause := errors.New("native imported start host trap")
@@ -232,6 +236,16 @@ func TestRV64PublicNativeImportedStartStateReentryAndLifecycle(t *testing.T) {
 							hooks.afterCreate = append(hooks.afterCreate, func(event InstantiationEvent) error { return capture(event.Instance.value) })
 							hooks.afterInstantiate = append(hooks.afterInstantiate, func(InstantiationEvent) { terminal++ })
 							hooks.onInstantiateError = append(hooks.onInstantiateError, func(InstantiationErrorEvent) { failed++ })
+							if behavior == "runtime-close" {
+								// Hold the runtime's close owner while construction
+								// unwinds. Close publishes cancellation before this hook.
+								hooks.beforeClose = append(hooks.beforeClose, func(event InstanceCloseEvent) {
+									if event.Instance.value == active {
+										close(closeEntered)
+										<-closeRelease
+									}
+								})
+							}
 							rt.storeHooks(hooks)
 						} else {
 							producer, err = Instantiate(producerCode, producerImports)
@@ -253,6 +267,7 @@ func TestRV64PublicNativeImportedStartStateReentryAndLifecycle(t *testing.T) {
 						done := make(chan outcome, 1)
 						joined := false
 						defer func() {
+							finishClose()
 							cancel()
 							unblock()
 							if !joined {
@@ -292,6 +307,11 @@ func TestRV64PublicNativeImportedStartStateReentryAndLifecycle(t *testing.T) {
 								if err := rt.Close(); err != nil {
 									t.Fatal(err)
 								}
+								select {
+								case <-closeEntered:
+								case <-time.After(5 * time.Second):
+									t.Fatal("runtime close did not reach constructor hook")
+								}
 							}
 							deadline := time.Now().Add(5 * time.Second)
 							for atomic.LoadUint32((*uint32)(unsafe.Pointer(&active.trap[0]))) != uint32(coreruntime.TrapInterrupted) && time.Now().Before(deadline) {
@@ -311,6 +331,22 @@ func TestRV64PublicNativeImportedStartStateReentryAndLifecycle(t *testing.T) {
 							joined = true
 						case <-time.After(5 * time.Second):
 							t.Fatal("native start did not finish")
+						}
+						if behavior == "runtime-close" {
+							// Runtime.Close is prompt. Construction may return while
+							// the other goroutine still owns terminal cleanup.
+							select {
+							case <-rt.Closed():
+								t.Fatal("runtime closed before the close hook was released")
+							default:
+							}
+							finishClose()
+							closeCtx, stopClose := context.WithTimeout(context.Background(), 5*time.Second)
+							closeErr := rt.WaitClosed(closeCtx)
+							stopClose()
+							if closeErr != nil {
+								t.Fatal("native start runtime shutdown did not complete", closeErr)
+							}
 						}
 						success := behavior == "success" || behavior == "producer-self-close"
 						if success {
@@ -366,7 +402,7 @@ func TestRV64PublicNativeImportedStartStateReentryAndLifecycle(t *testing.T) {
 								}
 							}
 							if producer.referenceLifetime().snapshot().ResourceRoots != beforeRoots || active != nil && (active.jm != nil || active.thunkMem != nil) {
-								t.Fatal("failed native start leaked attachment/publication")
+								t.Fatalf("failed native start leaked attachment/publication: producer roots=%d want=%d, importer memory=%t thunks=%t", producer.referenceLifetime().snapshot().ResourceRoots, beforeRoots, active != nil && active.jm != nil, active != nil && active.thunkMem != nil)
 							}
 							want := uint64(10)
 							if behavior == "pre-cancel" {

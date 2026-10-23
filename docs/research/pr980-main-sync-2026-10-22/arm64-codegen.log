@@ -1,0 +1,66 @@
+=== RUN   TestGCGeneralArrayLenEligibility
+--- PASS: TestGCGeneralArrayLenEligibility (0.03s)
+=== RUN   TestGCGeneralArrayLenSharedModuleLeaf
+--- PASS: TestGCGeneralArrayLenSharedModuleLeaf (0.01s)
+=== RUN   TestGCObjectStubPhysicalGuards
+=== RUN   TestGCObjectStubPhysicalGuards/nursery
+=== RUN   TestGCObjectStubPhysicalGuards/old
+=== RUN   TestGCObjectStubPhysicalGuards/large
+=== RUN   TestGCObjectStubPhysicalGuards/tiny
+=== RUN   TestGCObjectStubPhysicalGuards/null
+=== RUN   TestGCObjectStubPhysicalGuards/i31
+=== RUN   TestGCObjectStubPhysicalGuards/high_bits
+=== RUN   TestGCObjectStubPhysicalGuards/count
+=== RUN   TestGCObjectStubPhysicalGuards/free
+=== RUN   TestGCObjectStubPhysicalGuards/unknown_space
+=== RUN   TestGCObjectStubPhysicalGuards/offset
+=== RUN   TestGCObjectStubPhysicalGuards/size
+=== RUN   TestGCObjectStubPhysicalGuards/short_handle
+=== RUN   TestGCObjectStubPhysicalGuards/short_header
+=== RUN   TestGCObjectStubPhysicalGuards/long_header
+=== RUN   TestGCObjectStubPhysicalGuards/space_bytes
+--- PASS: TestGCObjectStubPhysicalGuards (0.01s)
+    --- PASS: TestGCObjectStubPhysicalGuards/nursery (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/old (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/large (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/tiny (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/null (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/i31 (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/high_bits (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/count (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/free (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/unknown_space (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/offset (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/size (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/short_handle (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/short_header (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/long_header (0.00s)
+    --- PASS: TestGCObjectStubPhysicalGuards/space_bytes (0.00s)
+=== RUN   TestGCObjectStubFarCallUsesHelper
+=== RUN   TestGCObjectStubFarCallUsesHelper/last_BL_displacement
+=== RUN   TestGCObjectStubFarCallUsesHelper/first_far_displacement
+=== RUN   TestGCObjectStubFarCallUsesHelper/moved_function_prefix
+--- PASS: TestGCObjectStubFarCallUsesHelper (0.00s)
+    --- PASS: TestGCObjectStubFarCallUsesHelper/last_BL_displacement (0.00s)
+    --- PASS: TestGCObjectStubFarCallUsesHelper/first_far_displacement (0.00s)
+    --- PASS: TestGCObjectStubFarCallUsesHelper/moved_function_prefix (0.00s)
+=== RUN   TestPatchCallRelocsRangeChecks
+=== RUN   TestPatchCallRelocsRangeChecks/invalid_site
+=== RUN   TestPatchCallRelocsRangeChecks/invalid_target
+=== RUN   TestPatchCallRelocsRangeChecks/forward
+=== RUN   TestPatchCallRelocsRangeChecks/backward
+=== RUN   TestPatchCallRelocsRangeChecks/internal_entry
+=== RUN   TestPatchCallRelocsRangeChecks/maximum_forward_displacement
+=== RUN   TestPatchCallRelocsRangeChecks/out_of_range
+--- PASS: TestPatchCallRelocsRangeChecks (0.00s)
+    --- PASS: TestPatchCallRelocsRangeChecks/invalid_site (0.00s)
+    --- PASS: TestPatchCallRelocsRangeChecks/invalid_target (0.00s)
+    --- PASS: TestPatchCallRelocsRangeChecks/forward (0.00s)
+    --- PASS: TestPatchCallRelocsRangeChecks/backward (0.00s)
+    --- PASS: TestPatchCallRelocsRangeChecks/internal_entry (0.00s)
+    --- PASS: TestPatchCallRelocsRangeChecks/maximum_forward_displacement (0.00s)
+    --- PASS: TestPatchCallRelocsRangeChecks/out_of_range (0.00s)
+=== RUN   TestGCObjectStubRelocation
+--- PASS: TestGCObjectStubRelocation (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.116s

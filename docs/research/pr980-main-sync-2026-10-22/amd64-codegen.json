@@ -1,0 +1,16 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-tags=wago_regalloccheck,wago_codegenstats",
+    "./src/core/compiler/backend/railshot/amd64",
+    "-run",
+    "^(TestGCGeneralArrayLen|TestGCVectorArrayAccessStaysNative)",
+    "-count=1"
+  ],
+  "seconds": 7.658278103976045,
+  "exit": 0,
+  "user_seconds": 13.120773,
+  "system_seconds": 0.332395,
+  "peak_rss_kib": 706020
+}

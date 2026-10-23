@@ -1,0 +1,442 @@
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel
+--- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks (0.06s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar (0.02s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32 (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel (0.00s)
+=== RUN   TestBoundedHelperBorrowedFrame
+=== RUN   TestBoundedHelperBorrowedFrame/accepted
+=== RUN   TestBoundedHelperBorrowedFrame/different-helper
+=== RUN   TestBoundedHelperBorrowedFrame/overlapping-tag
+=== RUN   TestBoundedHelperBorrowedFrame/different-shape
+--- PASS: TestBoundedHelperBorrowedFrame (0.01s)
+    --- PASS: TestBoundedHelperBorrowedFrame/accepted (0.01s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-helper (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/overlapping-tag (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-shape (0.00s)
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel
+--- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks (0.03s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32 (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel (0.00s)
+=== RUN   TestBoundedHelperBorrowedFrame
+=== RUN   TestBoundedHelperBorrowedFrame/accepted
+=== RUN   TestBoundedHelperBorrowedFrame/different-helper
+=== RUN   TestBoundedHelperBorrowedFrame/overlapping-tag
+=== RUN   TestBoundedHelperBorrowedFrame/different-shape
+--- PASS: TestBoundedHelperBorrowedFrame (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/accepted (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-helper (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/overlapping-tag (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-shape (0.00s)
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel
+--- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks (0.03s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32 (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel (0.00s)
+=== RUN   TestBoundedHelperBorrowedFrame
+=== RUN   TestBoundedHelperBorrowedFrame/accepted
+=== RUN   TestBoundedHelperBorrowedFrame/different-helper
+=== RUN   TestBoundedHelperBorrowedFrame/overlapping-tag
+=== RUN   TestBoundedHelperBorrowedFrame/different-shape
+--- PASS: TestBoundedHelperBorrowedFrame (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/accepted (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-helper (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/overlapping-tag (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-shape (0.00s)
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel
+--- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks (0.03s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32 (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel (0.00s)
+=== RUN   TestBoundedHelperBorrowedFrame
+=== RUN   TestBoundedHelperBorrowedFrame/accepted
+=== RUN   TestBoundedHelperBorrowedFrame/different-helper
+=== RUN   TestBoundedHelperBorrowedFrame/overlapping-tag
+=== RUN   TestBoundedHelperBorrowedFrame/different-shape
+--- PASS: TestBoundedHelperBorrowedFrame (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/accepted (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-helper (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/overlapping-tag (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-shape (0.00s)
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel
+--- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks (0.03s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32 (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel (0.00s)
+=== RUN   TestBoundedHelperBorrowedFrame
+=== RUN   TestBoundedHelperBorrowedFrame/accepted
+=== RUN   TestBoundedHelperBorrowedFrame/different-helper
+=== RUN   TestBoundedHelperBorrowedFrame/overlapping-tag
+=== RUN   TestBoundedHelperBorrowedFrame/different-shape
+--- PASS: TestBoundedHelperBorrowedFrame (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/accepted (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-helper (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/overlapping-tag (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-shape (0.00s)
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel
+--- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks (0.03s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32 (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel (0.00s)
+=== RUN   TestBoundedHelperBorrowedFrame
+=== RUN   TestBoundedHelperBorrowedFrame/accepted
+=== RUN   TestBoundedHelperBorrowedFrame/different-helper
+=== RUN   TestBoundedHelperBorrowedFrame/overlapping-tag
+=== RUN   TestBoundedHelperBorrowedFrame/different-shape
+--- PASS: TestBoundedHelperBorrowedFrame (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/accepted (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-helper (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/overlapping-tag (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-shape (0.00s)
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel
+--- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks (0.03s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32 (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel (0.00s)
+=== RUN   TestBoundedHelperBorrowedFrame
+=== RUN   TestBoundedHelperBorrowedFrame/accepted
+=== RUN   TestBoundedHelperBorrowedFrame/different-helper
+=== RUN   TestBoundedHelperBorrowedFrame/overlapping-tag
+=== RUN   TestBoundedHelperBorrowedFrame/different-shape
+--- PASS: TestBoundedHelperBorrowedFrame (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/accepted (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-helper (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/overlapping-tag (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-shape (0.00s)
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel
+--- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks (0.03s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32 (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel (0.00s)
+=== RUN   TestBoundedHelperBorrowedFrame
+=== RUN   TestBoundedHelperBorrowedFrame/accepted
+=== RUN   TestBoundedHelperBorrowedFrame/different-helper
+=== RUN   TestBoundedHelperBorrowedFrame/overlapping-tag
+=== RUN   TestBoundedHelperBorrowedFrame/different-shape
+--- PASS: TestBoundedHelperBorrowedFrame (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/accepted (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-helper (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/overlapping-tag (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-shape (0.00s)
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel
+--- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks (0.03s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32 (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel (0.00s)
+=== RUN   TestBoundedHelperBorrowedFrame
+=== RUN   TestBoundedHelperBorrowedFrame/accepted
+=== RUN   TestBoundedHelperBorrowedFrame/different-helper
+=== RUN   TestBoundedHelperBorrowedFrame/overlapping-tag
+=== RUN   TestBoundedHelperBorrowedFrame/different-shape
+--- PASS: TestBoundedHelperBorrowedFrame (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/accepted (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-helper (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/overlapping-tag (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-shape (0.00s)
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view
+=== RUN   TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel
+--- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks (0.03s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/scalar/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-view-context/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32 (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/integer-i32/cancel (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view (0.00s)
+    --- PASS: TestInlineHostBridgeAllowsGCWithLeafCallbacks/multi-view/cancel (0.00s)
+=== RUN   TestBoundedHelperBorrowedFrame
+=== RUN   TestBoundedHelperBorrowedFrame/accepted
+=== RUN   TestBoundedHelperBorrowedFrame/different-helper
+=== RUN   TestBoundedHelperBorrowedFrame/overlapping-tag
+=== RUN   TestBoundedHelperBorrowedFrame/different-shape
+--- PASS: TestBoundedHelperBorrowedFrame (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/accepted (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-helper (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/overlapping-tag (0.00s)
+    --- PASS: TestBoundedHelperBorrowedFrame/different-shape (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/runtime	0.459s
