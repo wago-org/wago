@@ -776,6 +776,10 @@ existing forward search remains the fallback. This avoids scanning the live
 nursery prefix for an unchanged reservation without changing the 40-byte native
 reservation state, prior collector field offsets, or the native ABI.
 
+AMD64 prefix spill relocation uses an allocator-owned scratch register. It
+respects pending load addresses and pinned inputs without temporarily borrowing
+RAX; newly spilled sources remain outside the destination range.
+
 ### Off-heap allocation
 
 `Arena` hands out stable, off-heap, 8-byte-aligned buffers for everything native
