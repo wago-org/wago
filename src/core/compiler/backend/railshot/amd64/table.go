@@ -213,7 +213,8 @@ func (f *fn) elemDrop(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if f.gcArrayHelpers {
+	// Only segment zero can own the staged checked-element roots.
+	if f.gcArrayHelpers && elemIdx == 0 {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(elemIdx)})
 		return f.callGCStructHelper(gcArrayDropElem, []wasm.ValType{wasm.I32}, nil)
 	}
