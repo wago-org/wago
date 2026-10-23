@@ -8,10 +8,18 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Compile ARM64 memory operations at large valid directory indexes by forming
+  an encodable entry address before loading or updating its fields.
+- Compile large ARM64 functions whose conditional branches exceed 1 MiB by
+  retrying with space for long branches. Fixes PDFium chromium/8111 compilation
+  ([#1013](https://github.com/wago-org/wago/issues/1013)).
 - Mask narrow AMD64 plugin recipe results when a recipe returns its input
   directly, preserving the declared logical bit width.
 - Keep the required atomic length read when an oversized memory64 shared grow
   request fails in the Go helper.
+
+- Use an allocated scratch register for AMD64 prefix spill moves. Checked
+  builds no longer reject a temporary borrow of a live load-address register.
 
 - Allow up to 32 nested synchronous host calls under standard Go so component
   adapter chains can cross more than four boundaries. TinyGo retains its
@@ -46,6 +54,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Add opt-in pure integer select branches through `WAGO_AMD64_PURE_SELECT=1`;
   keep them disabled by default because unpredictable conditions can regress.
   ([#895](https://github.com/wago-org/wago/pull/895))
+- Drop nonzero element segments in native AMD64 code when GC array helpers are
+  enabled. Keep checked-root cleanup for segment zero in the helper.
+- Handle shared memory growth with a statically impossible delta in native
+  AMD64 and ARM64 code while retaining the required atomic length read.
 - Compile bounded portable scalar plugin recipes to ARM64 instructions, preserving
   exact import identity and the portable fallback for larger or unsupported contracts.
 - Adapt native struct handle reservations to batch use. Mixed struct/array code
@@ -64,6 +76,14 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   and `fbinInto`.
 - Resolve adjacent final GC casts and numeric, packed, or vector struct field
   reads once in native AMD64 code. Preserve the original cast and null traps.
+- Simplify scalar floating self-comparisons with full-width booleans and no GP temporary.
+  Fuse ARM64 and Linux AMD64 scalar float comparisons into immediate branches and
+  integer selections, including boolean inversion, without materializing an intermediate
+  integer boolean.
+  Write ARM64 scalar abs/neg local assignments directly with native instructions,
+  and lower copysign to one sign mask plus bitwise select, preserving NaN payloads.
+  Write AMD64 scalar abs/neg/copysign local assignments directly, avoiding result
+  copies, and simplify copysign with identical inputs without altering signaling NaNs.
 
 - Combine bounded ARM64 scalar shift and mask pairs with existing bitfield
   encodings, including masks applied before an unsigned right shift.
@@ -132,6 +152,8 @@ Require `wago_nativecompare` so ordinary builds and install discovery exclude it
   independent result checks, native placement controls, and compile/execution
   benchmarks.
   ([#881](https://github.com/wago-org/wago/pull/881))
+- Add bounded first/second prepared-call lifecycle diagnostics with guest state
+  controls, explicit setup boundaries and consistent per-batch metrics.
 
 ## [v0.1.0-beta.13] - 2026-10-15
 

@@ -719,7 +719,8 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 			f.a.MovReg64(base, f.cachedSharedMemoryBase())
 		} else {
 			f.ld64(base, linMemReg, -int32(offMemoryDirPtr))
-			f.ld64(base, base, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+			entry := f.memoryDirectoryEntry(base, memoryIndex)
+			f.ld64(base, base, entry+abi.MemoryDirBaseOffset)
 		}
 		f.stats.peep("memory-min-bounds")
 		return base, ea, disp
@@ -735,7 +736,7 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	} else {
 		dir = f.allocReg(maskOf(ea))
 		f.ld64(dir, linMemReg, -int32(offMemoryDirPtr))
-		entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
+		entry := f.memoryDirectoryEntry(dir, memoryIndex)
 		mb = f.allocReg(maskOf(ea, dir))
 		base = f.allocReg(maskOf(ea, dir, mb))
 		f.ld64(base, dir, entry+abi.MemoryDirBaseOffset)
@@ -1966,6 +1967,20 @@ func (f *fn) loadMemoryCache() {
 	}
 }
 
+// memoryDirectoryEntry retains the original scaled fields for small indexes.
+// For large valid directories, move their base by a page-aligned constant so
+// every 32/64-bit field remains encodable without another scratch register.
+// Module validation caps the directory at 4096 entries (at most 96 KiB).
+func (f *fn) memoryDirectoryEntry(dir Reg, memoryIndex uint32) int32 {
+	offset := uint64(memoryIndex) * abi.MemoryDirEntryBytes
+	if offset+abi.MemoryDirPolicyMaxPagesOffset <= 0xfff*4 {
+		return int32(offset)
+	}
+	high := uint32(offset) &^ uint32(0xfff)
+	f.a.AddImm64LSL12(dir, dir, high)
+	return int32(offset & 0xfff)
+}
+
 // loadSharedMemoryBytes acquires the backing's authoritative size, rather
 // than an instance directory snapshot that another grower can make stale.
 func (f *fn) loadSharedMemoryBytes(dst, base Reg) {
@@ -1979,7 +1994,8 @@ func (f *fn) sharedMemorySize(memoryIndex uint32) {
 		f.loadSharedMemoryBytes(out, base)
 	} else {
 		f.ld64(out, linMemReg, -int32(offMemoryDirPtr))
-		f.ld64(out, out, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+		entry := f.memoryDirectoryEntry(out, memoryIndex)
+		f.ld64(out, out, entry+abi.MemoryDirBaseOffset)
 		f.loadSharedMemoryBytes(out, out)
 	}
 	f.a.LsrImm(out, out, 16, false)
@@ -1994,10 +2010,33 @@ func (f *fn) sharedMemoryGrow(memoryIndex uint32) error {
 	f.materializePendingLoads()
 	f.materializePendingTraps()
 	f.invalidateBoundsCert()
-	if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst && (top.st.cval == 0 || !f.memoryAddr64(memoryIndex) && uint32(top.st.cval) == 0) {
-		f.dropValue()
-		f.sharedMemorySize(memoryIndex)
-		return nil
+	if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
+		mt, ok := f.memoryType(memoryIndex)
+		delta := uint64(top.st.cval)
+		if !mt.Limits.Addr64 {
+			delta = uint64(uint32(delta))
+		}
+		if delta == 0 {
+			f.dropValue()
+			f.sharedMemorySize(memoryIndex)
+			return nil
+		}
+		// Current pages are at least Min and the effective maximum is at most
+		// Max. Subtract validated limits before comparing to avoid overflow.
+		// This new proof reads the selected entry with one scaled LDR64.
+		if ok && mt.Limits.HasMax && mt.Limits.Min <= mt.Limits.Max && delta > mt.Limits.Max-mt.Limits.Min &&
+			uint64(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset <= 0xfff*8 {
+			typ := mtI32
+			if mt.Limits.Addr64 {
+				typ = mtI64
+			}
+			f.dropValue()
+			// Failed shared growth still performs an atomic length read.
+			f.sharedMemorySize(memoryIndex)
+			f.dropValue()
+			f.pushValue(storage{kind: stConst, typ: typ, cval: -1})
+			return nil
+		}
 	}
 	typ := wasm.I32
 	if f.memoryAddr64(memoryIndex) {
@@ -2028,7 +2067,8 @@ func (f *fn) memorySize(r *wasm.Reader) error {
 	} else {
 		dir := f.allocReg(maskOf(out))
 		f.ld64(dir, linMemReg, -int32(offMemoryDirPtr))
-		f.ld64(dir, dir, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+		entry := f.memoryDirectoryEntry(dir, memoryIndex)
+		f.ld64(dir, dir, entry+abi.MemoryDirBaseOffset)
 		f.ld32(out, dir, -int32(bdCurPages))
 		f.release(dir)
 	}
@@ -2069,6 +2109,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	if memoryIndex != 0 {
 		base = f.allocReg(maskOf(delta, res))
 		f.ld64(base, linMemReg, -int32(offMemoryDirPtr))
+		entry = f.memoryDirectoryEntry(base, memoryIndex)
 		f.ld64(base, base, entry)
 	}
 	f.ld32(res, base, -int32(bdCurPages))
@@ -2093,6 +2134,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	if memoryIndex == 0 {
 		noPolicyDir = f.zeroBranch(tmp, true, true)
 	}
+	entry = f.memoryDirectoryEntry(tmp, memoryIndex)
 	f.ld32(tmp, tmp, entry+abi.MemoryDirPolicyMaxPagesOffset)
 	noPolicy := f.zeroBranch(tmp, false, true)
 	f.cmpRR(nw, tmp, false)
@@ -2105,6 +2147,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	f.st32(base, -int32(bdCurPages), nw)
 	if memoryIndex != 0 {
 		f.ld64(tmp, linMemReg, -int32(offMemoryDirPtr))
+		entry = f.memoryDirectoryEntry(tmp, memoryIndex)
 		f.st32(tmp, entry+abi.MemoryDirCurrentPagesOffset, nw)
 	}
 	f.shiftImm(shLSL, nw, wasmPageLog, true)
@@ -2223,7 +2266,7 @@ func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
 		return
 	}
 	f.ld64(X13, linMemReg, -int32(offMemoryDirPtr))
-	entry := int32(memoryIndex) * abi.MemoryDirEntryBytes
+	entry := f.memoryDirectoryEntry(X13, memoryIndex)
 	if f.memoryShared(memoryIndex) {
 		f.ld64(X16, X13, entry+abi.MemoryDirBaseOffset)
 		f.loadSharedMemoryBytes(X16, X16)
@@ -2275,10 +2318,12 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 		} else {
 			f.ld64(mb, linMemReg, -int32(offMemoryDirPtr))
 			if f.memoryShared(memoryIndex) {
-				f.ld64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+				entry := f.memoryDirectoryEntry(mb, memoryIndex)
+				f.ld64(mb, mb, entry+abi.MemoryDirBaseOffset)
 				f.loadSharedMemoryBytes(mb, mb)
 			} else {
-				f.ld64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+				entry := f.memoryDirectoryEntry(mb, memoryIndex)
+				f.ld64(mb, mb, entry+abi.MemoryDirBaseOffset)
 				f.ld64(mb, mb, -int32(bdCurBytes))
 			}
 		}
@@ -2302,7 +2347,8 @@ func (f *fn) indexedMemoryBase(memoryIndex uint32, avoid regMask) (Reg, bool) {
 	dir := f.allocReg(avoid)
 	f.ld64(dir, linMemReg, -int32(offMemoryDirPtr))
 	base := f.allocReg(avoid.add(dir))
-	f.ld64(base, dir, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+	entry := f.memoryDirectoryEntry(dir, memoryIndex)
+	f.ld64(base, dir, entry+abi.MemoryDirBaseOffset)
 	f.release(dir)
 	return base, true
 }
