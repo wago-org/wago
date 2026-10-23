@@ -3,10 +3,12 @@
 #include "textflag.h"
 #include "funcdata.h"
 #include "go_asm.h"
+#include "inline_host_yield_arm64.h"
 
 TEXT ·inlineHostMultiViewEnter(SB), NOSPLIT, $96-96
 	NO_LOCAL_POINTERS
 	MOVD ZR, ret+88(FP)
+	INLINE_HOST_YIELD_INIT(80)
 	MOVD code+8(FP), R9
 	MOVD args+16(FP), R0
 	MOVD linMem+24(FP), R1
@@ -56,6 +58,7 @@ multiViewResultsCleared:
 	MOVWU 0(R9), R11
 	CBNZ R11, multiViewAbortTrap
 	MOVD ctrl+56(FP), R10
+	INLINE_HOST_YIELD(80, inlineHostMultiViewEnterYieldDone, multiViewAbortTrap, 32, 56)
 	MOVD $·inlineHostViewStagedBridge(SB), R9
 	MOVD R9, const_hcTrampoline(R10)
 	MOVD 72(RSP), R9

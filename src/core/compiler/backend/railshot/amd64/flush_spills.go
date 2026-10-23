@@ -12,7 +12,7 @@ func (f *fn) stageFlushSpills(belowSlots int, belowRoots []*elem) {
 	f.s.spillExtentValid = false
 	nextSlot := f.spillFloor
 	direct := true
-	scratchSlot := 0
+	scratch := regNone
 	for pass := 0; pass < 2; pass++ {
 		rootIndex, canonicalSlot := 0, 0
 		overlaps := false
@@ -42,8 +42,8 @@ func (f *fn) stageFlushSpills(belowSlots int, belowRoots []*elem) {
 				continue
 			}
 			for i := 0; i < width; i++ {
-				f.a.Load64(RAX, RSP, f.spillOff(from+i))
-				f.a.Store64(RSP, f.spillOff(nextSlot+i), RAX)
+				f.a.Load64(scratch, RSP, f.spillOff(from+i))
+				f.a.Store64(RSP, f.spillOff(nextSlot+i), scratch)
 			}
 			e.st.slot = uint32(nextSlot)
 			nextSlot += width
@@ -52,18 +52,20 @@ func (f *fn) stageFlushSpills(belowSlots int, belowRoots []*elem) {
 			return
 		}
 		if pass == 0 {
-			// RAX may still own a condition/address or a pinned call argument. Preserve
-			// its physical value without changing ownership or moving the stack pointer.
-			scratchSlot = nextSlot
-			nextSlot++
-			f.a.Store64(RSP, f.spillOff(scratchSlot), RAX)
+			// Use an allocator-owned scratch. A fixed RAX save/restore temporarily
+			// overwrites pending load addresses and pinned arguments. Allocation
+			// materializes or spills an owner before that register can be reused.
+			scratch = f.allocReg(0)
+			nextSlot = max(nextSlot, f.curSpillSlot())
 			if direct {
-				f.canonicalizeFlushSpills(belowSlots, belowRoots)
+				f.canonicalizeFlushSpills(belowSlots, belowRoots, scratch)
 				break
 			}
 		}
 	}
-	f.a.Load64(RAX, RSP, f.spillOff(scratchSlot))
+	// Staging moved live homes after curSpillSlot cached their old extent.
+	f.s.spillExtentValid = false
+	f.release(scratch)
 	if nextSlot > f.maxSpill {
 		f.maxSpill = nextSlot
 	}
@@ -72,7 +74,7 @@ func (f *fn) stageFlushSpills(belowSlots int, belowRoots []*elem) {
 // When every overlapping source is a complete prefix root at or below its own
 // destination, copy backwards directly to canonical homes. Each write then lies
 // above all earlier sources; no temporary spill range or second copy is needed.
-func (f *fn) canonicalizeFlushSpills(slot int, roots []*elem) {
+func (f *fn) canonicalizeFlushSpills(slot int, roots []*elem, scratch Reg) {
 	f.s.spillExtentValid = false
 	limit := slot
 	for i := len(roots) - 1; i >= 0; i-- {
@@ -88,8 +90,8 @@ func (f *fn) canonicalizeFlushSpills(slot int, roots []*elem) {
 		}
 		// Copy both halves backwards when a vector overlaps its new home.
 		for j := width - 1; j >= 0; j-- {
-			f.a.Load64(RAX, RSP, f.spillOff(from+j))
-			f.a.Store64(RSP, f.spillOff(slot+j), RAX)
+			f.a.Load64(scratch, RSP, f.spillOff(from+j))
+			f.a.Store64(RSP, f.spillOff(slot+j), scratch)
 		}
 		root.st.slot = uint32(slot)
 	}
