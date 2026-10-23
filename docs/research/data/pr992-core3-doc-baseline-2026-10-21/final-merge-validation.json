@@ -1,0 +1,27 @@
+[
+  {
+    "command": [
+      "go",
+      "test",
+      "-p",
+      "2",
+      "-count=1",
+      "./tests/conformance/spectest"
+    ],
+    "seconds": 0.17876518401317298,
+    "exit": 0,
+    "stdout": "ok  \tgithub.com/wago-org/wago/tests/conformance/spectest\t0.037s\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "go",
+      "run",
+      "./tests/tools/docs-check"
+    ],
+    "seconds": 0.14368862700939644,
+    "exit": 0,
+    "stdout": "docs-check: validated 86 Markdown files\n",
+    "stderr": ""
+  }
+]
