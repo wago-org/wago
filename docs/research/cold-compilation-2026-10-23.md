@@ -8,7 +8,54 @@ Standalone decoding, malformed-input diagnostics, typed validation and runtime
 guards remain checked. Adjacent compiler-local declarations are compacted while
 preserving zero-count type checks and original source offsets.
 
-## Measurements
+## Final PR branch validation against current main
+
+Tested production source: 0a7de4d9c45149ac83325b629d5cdd56bfa7bea0 (after merging main).
+Baseline: dc13730184e8ba6a1a2b3e3887c53a2b880db88c. The baseline uses identical measurement instrumentation;
+its production compiler/runtime sources are unchanged.
+[Identity](cold-compilation-2026-10-23/postmerge-identity.json) binds both revisions
+and all four measurement binaries. Subsequent changes only add this report/evidence.
+
+A single fresh-process pair per input measured **40.4% less total
+compile CPU time** (ratio 0.596293; geometric ratio 0.67393).
+The independent compile/execution harness measured about 40.0% less total compile
+wall time. Execution was roughly flat (weighted ratio 1.006980, geometric
+ratio 1.01415), with identical native-code hashes on **20/20** inputs and
+**40/40** numeric/memory oracle checks passing. Only **7/20** workloads met
+40% less compile CPU time in this rough sample. No universal per-workload or
+same/better execution timing claim is established.
+
+Full Wasm/frontend/shared/AMD64 encoder/backend/runtime tests, full
+register-allocation checks, targeted race checks and focused profiling checks
+passed on the merged source with a fresh task-local Go cache.
+[Validation log](cold-compilation-2026-10-23/postmerge-validation.log),
+[CPU rows](cold-compilation-2026-10-23/postmerge-cpu.jsonl), and
+[execution rows](cold-compilation-2026-10-23/postmerge-execution.jsonl) are included.
+
+| Workload | Current-main CPU ms | PR CPU ms | Time reduction |
+| --- | ---: | ---: | ---: |
+| fannkuch | 0.414 | 0.388 | +6.3% |
+| raytrace | 0.611 | 0.406 | +33.6% |
+| sha256 | 0.313 | 0.378 | -20.8% |
+| json-as-simd | 2.682 | 1.691 | +37.0% |
+| utf-as-simd | 1.132 | 0.827 | +26.9% |
+| yyjson | 12.630 | 8.179 | +35.2% |
+| pcre2 | 20.308 | 11.641 | +42.7% |
+| monocypher | 1.761 | 1.121 | +36.3% |
+| kissfft | 1.924 | 1.579 | +17.9% |
+| fastfloat | 2.393 | 1.570 | +34.4% |
+| polybench-gemm | 0.508 | 0.368 | +27.6% |
+| polybench-nussinov | 0.406 | 0.372 | +8.4% |
+| coremark | 1.293 | 0.806 | +37.7% |
+| quickjs-script | 72.189 | 41.182 | +43.0% |
+| esbuild-minify | 1263.549 | 722.234 | +42.8% |
+| sqlite3-query | 149.530 | 88.454 | +40.8% |
+| jq-json-transform | 64.486 | 36.283 | +43.7% |
+| brotli-compress | 45.294 | 26.488 | +41.5% |
+| lua-cli-buckets | 37.768 | 19.734 | +47.7% |
+| swift-format-source | 1766.641 | 1091.025 | +38.2% |
+
+## Earlier frozen-baseline study
 
 Frozen baseline: fc6af651c15e286409d9cc117c94181e9ee50ff3.
 Candidate146 source and binary hashes:
