@@ -19,6 +19,27 @@ func TestConstNullHeapRequiredFeatures(t *testing.T) {
 			t.Fatalf("ref.null heap %#x features = %s, want %s", tc.heap, got, tc.want)
 		}
 	}
+	if got, want := requiredFeaturesForConstExprBytes([]byte{0xd0, 0x62, 0x00, 0x0b}, 0), CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences; got != want {
+		t.Fatalf("exact ref.null features = %s, want %s", got, want)
+	}
+}
+
+func TestExactReferenceBodyRequiredFeatures(t *testing.T) {
+	want := CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences
+	for _, tc := range []struct {
+		name string
+		body []byte
+	}{
+		{"ref.null", []byte{0xd0, 0x62, 0x00, 0x1a, 0x0b}},
+		{"block", []byte{0x02, 0x63, 0x62, 0x00, 0xd0, 0x62, 0x00, 0x0b, 0x1a, 0x0b}},
+		{"typed select", []byte{0xd0, 0x62, 0x00, 0xd0, 0x62, 0x00, 0x41, 0x00, 0x1c, 0x01, 0x63, 0x62, 0x00, 0x1a, 0x0b}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := requiredFeaturesForBodyBytes(tc.body); got != want {
+				t.Fatalf("features = %s, want %s", got, want)
+			}
+		})
+	}
 }
 
 func TestGCConstRequiredFeaturesGlobalScope(t *testing.T) {

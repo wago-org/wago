@@ -156,7 +156,7 @@ func evalConstExprBytesWithContext(b []byte, want wasm.ValType, ctx *constExprCo
 		}
 		got.bits, got.vtype = binary.LittleEndian.Uint64(bb), wasm.F64
 	case 0xd0: // ref.null
-		heap, err := r.S33()
+		exact, heap, err := r.RefHeapType()
 		if err != nil {
 			return constExprResult{}, err
 		}
@@ -196,7 +196,7 @@ func evalConstExprBytesWithContext(b []byte, want wasm.ValType, ctx *constExprCo
 			if uint64(heap) >= uint64(typeCount) {
 				return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
 			}
-			got.vtype = wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false))
+			got.vtype = wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), exact))
 		}
 		got.bits = 0
 	case 0xd2: // ref.func
@@ -265,7 +265,7 @@ func evalNullExternConversionConstExpr(b []byte, want wasm.ValType) (constExprRe
 	if err != nil || op != 0xd0 {
 		return constExprResult{}, false, nil
 	}
-	heap, err := r.S33()
+	_, heap, err := r.RefHeapType()
 	if err != nil {
 		return constExprResult{}, true, err
 	}
