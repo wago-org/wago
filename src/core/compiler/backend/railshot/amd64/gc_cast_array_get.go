@@ -252,6 +252,6 @@ func (f *fn) emitNativeFinalCastArrayGetStub(width int) {
 				a.Pop(R9 + Reg(i))
 			}
 		}
-		f.trapAlways(failure.code)
+		f.trapAlwaysUnknownPC(failure.code)
 	}
 }
