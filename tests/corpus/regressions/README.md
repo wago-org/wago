@@ -54,3 +54,12 @@ tests.
 103 sources are byte-identical; one has a non-normative diagnostic-text change
 with unchanged malformed module bytes. No applicable Core 3 inventory entry is
 pending.
+
+## PDFium application regression
+
+[`pdfium/`](pdfium/README.md) pins the unmodified PDFium chromium/8111 application
+from issue [#1013](https://github.com/wago-org/wago/issues/1013). Its independent
+Node/V8 oracle checks text extraction and rasterization of a compressed two-page
+invoice. Ordinary package tests execute the workload from fresh and saved code.
+This corpus has separate application provenance and licenses; it is excluded
+from the base wazero fixture digest above.

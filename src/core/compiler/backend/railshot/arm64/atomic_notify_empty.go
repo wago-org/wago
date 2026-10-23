@@ -23,7 +23,8 @@ func (f *fn) notifyEmptyShortcut(memoryIndex uint32) int {
 		f.a.MovReg64(X10, linMemReg)
 	} else {
 		f.ld64(X10, linMemReg, -int32(offMemoryDirPtr))
-		f.ld64(X10, X10, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+		entry := f.memoryDirectoryEntry(X10, memoryIndex)
+		f.ld64(X10, X10, entry+abi.MemoryDirBaseOffset)
 	}
 	f.a.MovImm64(X16, 4)
 	f.a.Adds64(X9, X9, X16)
