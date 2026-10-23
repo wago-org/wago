@@ -1,0 +1,21 @@
+{
+  "command": [
+    "env",
+    "GODEBUG=asyncpreemptoff=1",
+    "go",
+    "test",
+    "-p=1",
+    "-exec=/usr/bin/qemu-aarch64",
+    "-tags=wago_regalloccheck",
+    "./src/core/runtime",
+    "-run",
+    "^(TestInlineHostBridgeAllowsGCWithLeafCallbacks|TestBoundedHelperBorrowedFrame)$",
+    "-count=10",
+    "-v"
+  ],
+  "seconds": 0.6368970409967005,
+  "exit": 0,
+  "user_seconds": 0.609839,
+  "system_seconds": 0.07582799999999999,
+  "peak_rss_kib": 95836
+}
