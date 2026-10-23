@@ -1,0 +1,14 @@
+{
+  "command": [
+    "env",
+    "GOMAXPROCS=2",
+    "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1",
+    "go",
+    "test",
+    "-p=2",
+    "-tags=wago_regalloccheck",
+    "./..."
+  ],
+  "seconds": 36.09436764899874,
+  "returncode": 1
+}

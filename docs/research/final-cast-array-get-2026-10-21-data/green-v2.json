@@ -1,0 +1,19 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-count=1",
+    "-tags=wago_codegenstats",
+    "./src/wago",
+    "-run",
+    "^TestGCFinalCastArrayGet",
+    "-v"
+  ],
+  "cwd": "/home/dev/Projects/wago-gc-final-cast-array-get-pr",
+  "seconds": 24.20417297899985,
+  "exit_code": 0,
+  "GOMAXPROCS": "2",
+  "GOWORK": null
+}

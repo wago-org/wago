@@ -1,0 +1,8 @@
+{
+  "Replace": {
+    "/home/dev/Projects/wago-gc-final-cast-array-get-pr/src/core/compiler/backend/railshot/amd64/compile.go": "/home/dev/Projects/wago-gc-final-cast-array-get-pr/docs/research/final-cast-array-get-2026-10-21-data/compile.go.control.txt",
+    "/home/dev/Projects/wago-gc-final-cast-array-get-pr/src/core/compiler/backend/railshot/amd64/gc_direct.go": "/home/dev/Projects/wago-gc-final-cast-array-get-pr/docs/research/final-cast-array-get-2026-10-21-data/gc_direct.go.control.txt",
+    "/home/dev/Projects/wago-gc-final-cast-array-get-pr/src/core/compiler/backend/railshot/amd64/gc_struct.go": "/home/dev/Projects/wago-gc-final-cast-array-get-pr/docs/research/final-cast-array-get-2026-10-21-data/gc_struct.go.control.txt",
+    "/home/dev/Projects/wago-gc-final-cast-array-get-pr/src/core/compiler/backend/railshot/amd64/gc_cast_array_get.go": ""
+  }
+}

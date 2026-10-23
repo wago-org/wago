@@ -1,0 +1,7 @@
+{
+  "Replace": {
+    "/home/dev/Projects/dewdrop/.tmp/wago-cast-array-qualification/src/wago/api.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/cast-array-static-reader/api.go.txt",
+    "/home/dev/Projects/dewdrop/.tmp/wago-cast-array-qualification/src/wago/real_cast_array_capture.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/cast-array-static-reader/hook.go",
+    "/home/dev/Projects/dewdrop/.tmp/wago-cast-array-qualification/src/wago/real_cast_array_capture_test.go": "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/cast-array-static-reader/capture_test.go"
+  }
+}

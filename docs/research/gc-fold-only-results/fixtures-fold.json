@@ -1,0 +1,9 @@
+{
+  "seconds": 0.04528954800480278,
+  "returncode": 0,
+  "cmd": [
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/fold-only/fold.test",
+    "-test.run=TestGCResolverSelectedSpaceDescriptor|TestGCResolverDependentSpaceFixture|TestGCResolverMixedSpaceFixture",
+    "-test.count=1"
+  ]
+}

@@ -49,16 +49,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 			if !ok {
 				return reject("function import %d has no validated signature", funcImport-1)
 			}
-			// Reference-free imports use the parked synchronous wrapper and need
-			// not also fit the internal register ABI. Preserve the existing
-			// collector-boundary path so reference ownership and root handling
-			// remain coupled to that module-level proof.
-			if collectorBoundary || wasmFuncTypeReferenceFree(ft) {
-				if !gcFrameHostCallABI(ft) {
-					return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
-				}
-			} else if !gcFrameReferenceCallABI(m, ft) {
-				return reject("function import %d exceeds the exact native call ABI", funcImport-1)
+			// Direct imports use the parked synchronous host frame. Its slot ABI
+			// accepts external tokens; they are not managed collector roots.
+			if !gcFrameHostCallABI(ft) {
+				return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
 			}
 		case wasm.ExternGlobal:
 			global := m.Imports[i].Type.GlobalType()
@@ -150,7 +144,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 		}
 		var liveMasks gcFrameLiveMasks
 		var err error
-		plan.Conservative = bodyUsesEH(m.Code[function].BodyBytes, &classifier) || len(plan.Locals) == 0
+		plan.Conservative = bodyUsesEH(m.Code[function].BodyBytes, &classifier) || len(plan.Locals) == 0 && !gcFrameNeedsReachableMasks(m.Code[function].BodyBytes, &classifier)
 		if plan.Conservative {
 			liveMasks, err = gcFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.Locals), &classifier)
 		} else {
@@ -159,9 +153,13 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
+		allReferenceLocals := plan.Locals
 		plan.Locals, liveMasks, _, err = gcFrameCompactLiveLocalsArena(plan.Locals, liveMasks)
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
+		}
+		if len(plan.Locals) != len(allReferenceLocals) {
+			plan.AllReferenceLocals = allReferenceLocals
 		}
 		if uint64(safepointBase)+uint64(liveMasks.allocationN) > uint64(shared.GCSafepointIDMax) {
 			return reject("function %d exceeds the dense safepoint ID bound", function)

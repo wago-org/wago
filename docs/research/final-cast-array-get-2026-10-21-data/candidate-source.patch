@@ -1,0 +1,722 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index b08511247..77bd05087 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -870,6 +870,7 @@ type scratch struct {
+ 	gcFinalCastStubSites    []int
+ 	gcDefinedTestStubSites  []int
+ 	gcArrayRefGetSites      []int
++	gcCastArrayGetSites     [5][]int
+ 	gcStructRefGetStubSites []int
+ 	gcStructRefSetStubSites []int
+ 	gcArrayRefSetStubSites  []int
+@@ -1137,6 +1138,9 @@ func (sc *scratch) reset() {
+ 	sc.gcFinalCastStubSites = sc.gcFinalCastStubSites[:0]
+ 	sc.gcDefinedTestStubSites = sc.gcDefinedTestStubSites[:0]
+ 	sc.gcArrayRefGetSites = sc.gcArrayRefGetSites[:0]
++	for i := range sc.gcCastArrayGetSites {
++		sc.gcCastArrayGetSites[i] = sc.gcCastArrayGetSites[i][:0]
++	}
+ 	sc.gcStructRefGetStubSites = sc.gcStructRefGetStubSites[:0]
+ 	sc.gcStructRefSetStubSites = sc.gcStructRefSetStubSites[:0]
+ 	sc.gcArrayRefSetStubSites = sc.gcArrayRefSetStubSites[:0]
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_cast_array_get.go b/src/core/compiler/backend/railshot/amd64/gc_cast_array_get.go
+new file mode 100644
+index 000000000..44438a39f
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/gc_cast_array_get.go
+@@ -0,0 +1,257 @@
++//go:build amd64
++
++package amd64
++
++import (
++	"fmt"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/src/core/runtime/abi"
++	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
++)
++
++// Only one nontrapping index producer may move before the cast. No call,
++// control edge, store, or arbitrary arithmetic can enter the fused region.
++func (f *fn) tryFuseFinalCastArrayGet(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {
++	if f.inlineDepth != 0 || f.localBase != 0 || len(f.customInstructions) != 0 || !f.gcArrayHelpers {
++		return false, nil
++	}
++	st, ok := f.stagedArraySubtype(typeIndex)
++	if !ok || !st.Final {
++		return false, nil
++	}
++	storage := st.Comp.Array.Storage()
++	scalar, supported := directGCScalarStorage(storage)
++	collectorRef := nativeGCCollectorRefStorage(f.m, typeIndex, storage)
++	if collectorRef {
++		scalar, supported = directGCScalar{size: 4, typ: mtI64}, true
++	}
++	if !storage.Packed() && storage.Val() == wasm.V128 {
++		scalar, supported = directGCScalar{size: 16, typ: mtV128}, true
++	}
++	if !supported {
++		return false, nil
++	}
++	start := r.Offset()
++	matched := false
++	defer func() {
++		if !matched {
++			_ = r.JumpTo(start)
++		}
++	}()
++	op, err := r.Byte()
++	if err != nil {
++		return false, nil
++	}
++	switch op {
++	case 0x20:
++		x, e := r.U32()
++		if e != nil {
++			return false, e
++		}
++		if int(x) >= len(f.localType) || f.localType[x] != mtI32 {
++			return false, nil
++		}
++	case 0x41:
++		if _, e := r.I32(); e != nil {
++			return false, e
++		}
++	default:
++		return false, nil
++	}
++	next, e := r.Byte()
++	if e != nil || next != 0xfb {
++		return false, nil
++	}
++	sub, e := r.U32()
++	if e != nil {
++		return false, e
++	}
++	if sub < 11 || sub > 13 || (sub == 11) == storage.Packed() {
++		return false, nil
++	}
++	accessType, e := r.U32()
++	if e != nil {
++		return false, e
++	}
++	if accessType != typeIndex {
++		return false, nil
++	}
++	end := r.Offset()
++	// Use the ordinary local/constant emitter, including lazy local recovery.
++	// The object is still on the stack, so local.get cannot select a loop latch.
++	_ = r.JumpTo(start + 1)
++	if err = f.emitPlain(r, op); err != nil {
++		return false, err
++	}
++	_ = r.JumpTo(end)
++	matched = true
++	f.stats.peep("final-cast-array-get-fuse")
++	return true, f.emitNativeFinalCastArrayGet(typeIndex, nullable, scalar, collectorRef, sub == 12)
++}
++
++func (f *fn) emitNativeFinalCastArrayGet(typeIndex uint32, nullable bool, scalar directGCScalar, collectorRef, signed bool) error {
++	switch scalar.size {
++	case 1, 2, 4, 8, 16:
++	default:
++		return fmt.Errorf("amd64: fused array width %d is invalid", scalar.size)
++	}
++	f.flush()
++	indexValue := f.popValue()
++	object := f.popValue()
++	ref := f.materialize(object)
++	if ref != RAX {
++		f.a.MovReg64(RAX, ref)
++	}
++	f.release(ref)
++	f.pinned = f.pinned.add(RAX)
++	index := f.materialize(indexValue)
++	// i32 index semantics discard dirty upper bits from a host result/local.
++	f.a.MovRegReg32(RCX, index)
++	f.release(index)
++	f.pinned = f.pinned.remove(RAX)
++	f.a.MovImm32(RDX, int32(typeIndex))
++	flag := int32(0)
++	if nullable {
++		flag = 1
++	}
++	f.a.MovImm32(RSI, flag)
++	if regallocCheckEnabled {
++		f.checkCallClobber()
++	}
++	site := f.a.CallRel32()
++	widthIndex := 0
++	for width := scalar.size; width > 1; width >>= 1 {
++		widthIndex++
++	}
++	f.sc.gcCastArrayGetSites[widthIndex] = append(f.sc.gcCastArrayGetSites[widthIndex], site)
++	f.stats.call("gcnative")
++	// The returned element address is consumed immediately, before any safepoint.
++	if scalar.typ == mtV128 {
++		x := f.allocFReg(0)
++		f.mov128LoadDisp(x, RAX, 0)
++		f.pushVReg(x)
++	} else if scalar.typ.isFloat() {
++		x := f.allocFReg(0)
++		f.a.FLoadDisp(x, RAX, 0, scalar.typ == mtF64)
++		f.pushFReg(x, scalar.typ)
++	} else {
++		f.a.LoadIdx(RAX, RAX, RSP, 0, scalar.size, signed, scalar.typ == mtI64 && !collectorRef)
++		result := f.pushReg(RAX, scalar.typ)
++		if collectorRef {
++			f.setStackGCRoot(result, true)
++		}
++	}
++	return nil
++}
++
++// EAX=untrusted compact ref, EDX=final local type, ECX=i32 index,
++// ESI=nullable cast. Returns the checked element address in RAX. This leaf
++// cannot allocate, collect, reenter, or expose its address to Wasm.
++func (f *fn) emitNativeFinalCastArrayGetStub(width int) {
++	a := f.a
++	var castFailures, nullFailures, boundsFailures []int
++	castFailure := func(cond Cond) { castFailures = append(castFailures, a.JccPlaceholder(cond)) }
++	var preserve [3]bool
++	for _, local := range f.pinnedLocals {
++		if reg := f.locals[local].reg; reg >= R9 && reg <= R11 {
++			preserve[reg-R9] = true
++		}
++	}
++	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
++		state := f.globalReg[global]
++		reg := globalRegValue(state)
++		if reg >= R9 && reg <= R11 {
++			preserve[reg-R9] = true
++		}
++	}
++	for i, yes := range preserve {
++		if yes {
++			a.Push(R9 + Reg(i))
++		}
++	}
++	f.rejectForeignAnyref(castFailure)
++	a.TestSelf(RAX, false)
++	nonNull := a.JccPlaceholder(condNE)
++	a.TestSelf(RSI, false)
++	castFailure(condE)
++	nullFailures = append(nullFailures, a.JmpPlaceholder())
++	a.PatchRel32(nonNull, a.Len())
++	a.MovRegReg32(RSI, RCX)
++	a.MovRegReg32(R10, RAX)
++	a.AluRI(4, R10, 1, false)
++	a.TestSelf(R10, false)
++	castFailure(condNE)
++
++	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
++	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
++	a.ImulRI(RDX, 4, true)
++	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
++
++	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
++	a.ShiftImm(5, RAX, 1, false)
++	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
++	castFailure(condAE)
++	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
++	a.ShiftImm(4, RAX, 4, true)
++	a.Add64(R9, RAX)
++
++	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
++	a.TestSelf(R10, false)
++	castFailure(condE)
++	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
++	castFailure(condA)
++	a.ImulRI(R10, gc.NativeViewSpaceStride, true)
++	a.LeaDisp(R8, R8, gc.NativeViewSpacesOffset)
++	a.Add64(R8, R10)
++	a.Load64(R11, R8, gc.NativeSpaceBaseOffset)
++	a.Load32(R8, R8, gc.NativeSpaceBytesOffset)
++	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
++	a.Cmp32(RAX, R8)
++	castFailure(condA)
++	a.Sub32(R8, RAX)
++	a.Load32(RCX, R9, gc.NativeHandleSizeOffset)
++	a.Cmp32(RCX, R8)
++	castFailure(condA)
++	a.AluRI(cmpDigit, RCX, int32(gc.PayloadOffset), false)
++	castFailure(condB)
++
++	a.Add64(R11, RAX)
++	a.Load32(RCX, R11, 0)
++	a.Cmp32(RCX, RDX)
++	castFailure(condNE)
++	a.Load32(R10, R11, 8)
++	a.Cmp32(RSI, R10)
++	boundsFailures = append(boundsFailures, a.JccPlaceholder(condAE))
++	a.ImulRI(RSI, int32(width), true)
++	a.Load32(R10, R11, 4)
++	a.MovReg64(R8, RSI)
++	a.AluRI(0, R8, int32(gc.PayloadOffset)+int32(width), true)
++	a.Load32(RDX, R9, gc.NativeHandleSizeOffset)
++	a.Cmp64(R8, RDX)
++	castFailure(condA)
++	a.Cmp64(R8, R10)
++	castFailure(condA)
++	a.LeaDisp(RAX, R11, int32(gc.PayloadOffset))
++	a.Add64(RAX, RSI)
++	for i := len(preserve) - 1; i >= 0; i-- {
++		if preserve[i] {
++			a.Pop(R9 + Reg(i))
++		}
++	}
++	a.Ret()
++	// Trap tails commit dirty globals; restore their pins before reaching them.
++	for _, failure := range []struct {
++		sites []int
++		code  uint32
++	}{{castFailures, trapCastFailure}, {nullFailures, trapNullReference}, {boundsFailures, trapBuiltin}} {
++		for _, site := range failure.sites {
++			a.PatchRel32(site, a.Len())
++		}
++		for i := len(preserve) - 1; i >= 0; i-- {
++			if preserve[i] {
++				a.Pop(R9 + Reg(i))
++			}
++		}
++		f.trapAlways(failure.code)
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_direct.go b/src/core/compiler/backend/railshot/amd64/gc_direct.go
+index 1fd2480a2..5adda6021 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_direct.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_direct.go
+@@ -944,12 +944,24 @@ func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
+ }
+ 
+ func (f *fn) emitNativeGCStubs() {
++
+ 	before := f.a.Len()
+ 	defer func() {
+ 		n := f.a.Len() - before
+ 		f.stats.addGCSharedStubBytes(n)
+ 		f.stats.addGCHandleResolutionBytes(n)
+ 	}()
++	for i, sites := range f.sc.gcCastArrayGetSites {
++		if len(sites) == 0 {
++			continue
++		}
++		entry := f.a.Len()
++		f.emitNativeFinalCastArrayGetStub(1 << i)
++		for _, site := range sites {
++			f.a.PatchRel32(site, entry)
++		}
++	}
++
+ 	if len(f.sc.gcArrayAllocStubSites) != 0 {
+ 		type arrayStubKey struct {
+ 			typeIndex uint32
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_struct.go b/src/core/compiler/backend/railshot/amd64/gc_struct.go
+index c45625687..410b7a971 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_struct.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_struct.go
+@@ -646,6 +646,9 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
+ 		if fused, err := f.tryFuseFinalCastStructGet(uint32(heap), sub == 23, r); fused || err != nil {
+ 			return err
+ 		}
++		if fused, err := f.tryFuseFinalCastArrayGet(uint32(heap), sub == 23, r); fused || err != nil {
++			return err
++		}
+ 		if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
+ 			return err
+ 		}
+diff --git a/src/wago/gc_final_cast_array_get_amd64_test.go b/src/wago/gc_final_cast_array_get_amd64_test.go
+new file mode 100644
+index 000000000..4d2fafcf8
+--- /dev/null
++++ b/src/wago/gc_final_cast_array_get_amd64_test.go
+@@ -0,0 +1,218 @@
++//go:build linux && amd64 && !tinygo && !wago_guardpage
++
++package wago
++
++import (
++	"bytes"
++	"encoding/binary"
++	"errors"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++	"math"
++	"os"
++	"strings"
++	"testing"
++	"unsafe"
++)
++
++func finalCastArrayCompiled(tb testing.TB, codec bool) *Compiled {
++	tb.Helper()
++	data, err := os.ReadFile("../../tests/fixtures/wasm/gc-final-cast-array-get.wasm")
++	if err != nil {
++		tb.Fatal(err)
++	}
++	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
++	if err != nil {
++		tb.Fatal(err)
++	}
++	if codec {
++		blob, err := c.MarshalBinary()
++		c.Close()
++		if err != nil {
++			tb.Fatal(err)
++		}
++		c = &Compiled{}
++		if err = c.UnmarshalBinary(blob); err != nil {
++			tb.Fatal(err)
++		}
++	}
++	tb.Cleanup(func() { c.Close() })
++	return c
++}
++
++func TestGCFinalCastArrayGet(t *testing.T) {
++	for _, codec := range []bool{false, true} {
++		c := finalCastArrayCompiled(t, codec)
++		for _, cfg := range []GCConfig{{VerifyAfterCollect: true}, {CollectEveryAlloc: true, StressNurseryBytes: 128, VerifyAfterCollect: true}, {Profile: GCProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16, VerifyAfterCollect: true}} {
++			in, err := Instantiate(c, InstantiateOptions{GC: cfg})
++			if err != nil {
++				t.Fatal(err)
++			}
++			func() {
++				defer in.Close()
++				if _, err = in.Invoke("init"); err != nil {
++					t.Fatal(err)
++				}
++				for _, tc := range []struct {
++					name string
++					want uint64
++				}{
++					{"float32", uint64(math.Float32bits(9))}, {"int64", 1234567890123}, {"nonfinal", 17}, {"roots", 0}, {"read", 7}, {"nullable", 7}, {"packed-s", 0xfffffffe}, {"packed-u", 254}, {"half-s", 0xfffffffd}, {"half-u", 65533}, {"refs", 13}, {"float", math.Float64bits(9)}, {"vector", 13},
++					{"ref-loop", 8192}, {"loop", 57344}, {"pressure", 57344}, {"negative-nop", 57344}, {"negative-index", 57344}, {"pin-entry", 7},
++				} {
++					var args []uint64
++					if tc.name == "read" || tc.name == "nullable" {
++						args = []uint64{uint64(1)<<40 | 1}
++					}
++					got, err := in.Invoke(tc.name, args...)
++					if err != nil || len(got) != 1 || got[0] != tc.want {
++						t.Fatalf("codec=%v profile=%v %s=%v,%v want%d", codec, cfg.Profile, tc.name, got, err, tc.want)
++					}
++					if err = in.CollectGC(); err != nil {
++						t.Fatal(err)
++					}
++				}
++				for _, setup := range []string{"init", "clear", "wrong"} {
++					if _, err = in.Invoke(setup); err != nil {
++						t.Fatal(err)
++					}
++					for _, name := range []string{"read", "nullable", "pin-entry", "index-trap"} {
++						var args []uint64
++						if name != "pin-entry" && name != "index-trap" {
++							args = []uint64{0xffffffff}
++						}
++						_, err = in.Invoke(name, args...)
++						want := "cast failure"
++						if setup == "init" {
++							if name == "pin-entry" {
++								continue
++							}
++							want = "builtin"
++							if name == "index-trap" {
++								want = "integer division by zero"
++							}
++						}
++						if setup == "clear" && name == "nullable" {
++							want = "null reference"
++						}
++						if err == nil || !strings.Contains(err.Error(), want) {
++							t.Fatalf("%s/%s error=%v want%q", setup, name, err, want)
++						}
++					}
++				}
++			}()
++		}
++	}
++}
++
++func BenchmarkGCFinalCastArrayGet(b *testing.B) {
++	for _, name := range []string{"loop", "ref-loop", "pressure", "negative-nop", "negative-index", "pin-entry"} {
++		b.Run(name, func(b *testing.B) {
++			c := finalCastArrayCompiled(b, false)
++			in, err := Instantiate(c, InstantiateOptions{})
++			if err != nil {
++				b.Fatal(err)
++			}
++			defer in.Close()
++			if _, err = in.Invoke("init"); err != nil {
++				b.Fatal(err)
++			}
++			want := uint64(57344)
++			if name == "ref-loop" {
++				want = 8192
++			}
++			if name == "pin-entry" {
++				want = 7
++			}
++			b.ReportAllocs()
++			b.ResetTimer()
++			for range b.N {
++				got, err := in.Invoke(name)
++				if err != nil || len(got) != 1 || got[0] != want {
++					b.Fatalf("%s=%v,%v", name, got, err)
++				}
++			}
++		})
++	}
++}
++
++// This one-function module makes the R9-R11 value pins observable on cold exits.
++func finalCastArrayPinModule() []byte {
++	globals := make([][]byte, 0, 9)
++	for range 8 {
++		globals = append(globals, wasmtest.GlobalEntry(wasm.I64, true, []byte{0x42, 0, 0x0b}))
++	}
++	globals = append(globals, []byte{0x6d, 1, 0xd0, 0x6d, 0x0b})
++	body := []byte{1, 1, 0x6d, 0x23, 8, 0x21, 0, 0x03, 0x40}
++	for g := byte(0); g < 8; g++ {
++		body = append(body, 0x23, g, 0x42, g+1, 0x7c, 0x24, g)
++	}
++	body = append(body, 0x0b, 0x20, 0, 0xfb, 22, 0, 0x41, 1, 0xfb, 11, 0, 0x0b)
++	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 1}, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))), wasmtest.Section(3, wasmtest.Vec([]byte{1})), wasmtest.Section(6, wasmtest.Vec(globals...)), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))))
++}
++
++func TestGCFinalCastArrayGetColdPins(t *testing.T) {
++	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), finalCastArrayPinModule())
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	if n := bytes.Count(c.code, []byte{0x41, 0x51, 0x41, 0x52, 0x41, 0x53}); n != 1 {
++		t.Fatalf("R9-R11 save groups=%d want1; pressure coverage changed", n)
++	}
++	t.Log("new leaf saves actual value pins R9,R10,R11; cold exits checked against all8 globals")
++	for _, name := range []string{"null", "i31", "bounds", "extent", "success"} {
++		t.Run(name, func(t *testing.T) {
++			in, err := Instantiate(c, InstantiateOptions{})
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer in.Close()
++			if name == "i31" {
++				writeGlobalObject(in.globalCells[8], in.c.Globals[8].Type, 3)
++			} else if name != "null" {
++				length := uint32(2)
++				if name == "bounds" {
++					length = 1
++				}
++				ref, e := in.gc.NewArrayDefaultWithRoots(in.requireGCDomainType(0), length, gc.EmptyRoots{})
++				if e != nil {
++					t.Fatal(e)
++				}
++				writeGlobalObject(in.globalCells[8], in.c.Globals[8].Type, uint64(ref))
++				if name == "extent" {
++					view := in.gc.NativeView()
++					handle := unsafe.Slice((*byte)(offHeapPtr(view.Handles+uintptr(ref>>1)*gc.NativeHandleStride)), gc.NativeHandleStride)
++					header := unsafe.Slice((*byte)(offHeapPtr(view.Spaces[handle[gc.NativeHandleSpaceOffset]].Base+uintptr(binary.LittleEndian.Uint32(handle)))), gc.HeaderSize)
++					old := binary.LittleEndian.Uint32(header[4:])
++					binary.LittleEndian.PutUint32(header[4:], gc.PayloadOffset+4)
++					defer binary.LittleEndian.PutUint32(header[4:], old)
++				}
++			}
++			got, e := in.Invoke("run")
++			if name == "success" {
++				if e != nil || len(got) != 1 || got[0] != 0 {
++					t.Fatalf("run=%v,%v", got, e)
++				}
++			} else {
++				var trap *TrapError
++				if !errors.As(e, &trap) {
++					t.Fatalf("run trap=%v", e)
++				}
++				want := TrapCastFailure
++				if name == "bounds" {
++					want = TrapBuiltin
++				}
++				if trap.Code != want {
++					t.Fatalf("trap=%v want%d", e, want)
++				}
++			}
++			for g := 0; g < 8; g++ {
++				if got := readGlobalObject(in.globalCells[g], in.c.Globals[g].Type); got != uint64(g+1) {
++					t.Errorf("global%d=%#x want%d", g, got, g+1)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/wago/gc_final_cast_array_get_stats_amd64_test.go b/src/wago/gc_final_cast_array_get_stats_amd64_test.go
+new file mode 100644
+index 000000000..3e88a565b
+--- /dev/null
++++ b/src/wago/gc_final_cast_array_get_stats_amd64_test.go
+@@ -0,0 +1,55 @@
++//go:build linux && amd64 && !tinygo && wago_codegenstats
++
++package wago
++
++import (
++	backend "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
++	"github.com/wago-org/wago/src/core/compiler/codegen"
++	"github.com/wago-org/wago/src/core/compiler/frontend"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"os"
++	"testing"
++)
++
++func TestGCFinalCastArrayGetAdmission(t *testing.T) {
++	data, err := os.ReadFile("../../tests/fixtures/wasm/gc-final-cast-array-get.wasm")
++	if err != nil {
++		t.Fatal(err)
++	}
++	m, err := wasm.DecodeModule(data)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	meta, err := frontend.BuildGCTypeMetadata(m)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var stats backend.ModuleStats
++	c, err := backend.CompileModuleWith(m, backend.CompileOptions{Stats: &stats, GCStructHelpers: true, GCArrayHelpers: true, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: meta.Descs, GCTypeLayouts: meta.Layouts}}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.CodeImage.Close()
++	want := map[string]int{"float32": 1, "int64": 1, "nonfinal": 0, "ref-loop": 1, "index-trap": 0, "roots": 1, "read": 1, "nullable": 1, "packed-s": 1, "packed-u": 1, "half-s": 1, "half-u": 1, "refs": 1, "float": 1, "vector": 1, "loop": 1, "pressure": 1, "pin-entry": 1, "negative-nop": 0, "negative-index": 0}
++	for _, e := range m.Exports {
++		n, ok := want[e.Name]
++		if !ok {
++			continue
++		}
++		s := stats.Funcs[e.Index.Index]
++		if got := s.Peephole["final-cast-array-get-fuse"]; got != n {
++			t.Errorf("%s fused=%d want%d calls=%v", e.Name, got, n, s.Calls)
++		}
++		if e.Name == "pin-entry" && s.PinnedGlobalsValue < 3 {
++			t.Errorf("pin-entry value pins=%d want at least3", s.PinnedGlobalsValue)
++		}
++		t.Logf("%s fused=%d pins=%d code=%d calls=%v", e.Name, s.Peephole["final-cast-array-get-fuse"], s.PinnedGlobalsValue, s.CodeBytes, s.Calls)
++		delete(want, e.Name)
++	}
++	if len(want) != 0 {
++		t.Fatalf("missing exports:%v", want)
++	}
++}
+diff --git a/tests/fixtures/wasm/gc-final-cast-array-get.wasm b/tests/fixtures/wasm/gc-final-cast-array-get.wasm
+new file mode 100644
+index 0000000000000000000000000000000000000000..884186cf4823365eceddaf1d0cd2673ae56d0cab
+GIT binary patch
+literal 1302
+zcmbVMOHbrR5U%QW`_=aF3WjW=)qt%?ISe5{$Q3);<4XGrCV0W)HTW^IXV^tCkZVr)
+zLy442PPxD}_uO*Np@o!gGfPI0T}9hccU67$byanB+YmPe0swCJhF3UzgTvQ2EO6N3
+z@O%6Yh8H-z#1|lahX99og;$5r%}ctzX4^LBjv8*a&QyKZF7UeG-ExT$@c*$Gf8v^!
+zmDvP<9py<}1G3k3Ri;3+I*E^gn&mXl<Cl2?nmLY-PLtz71MICj1zmp?=Oc+3cghq@
+zxpUNj#YTA*Pr%mClA}pg1K0AZ8iQkw>!fL>bpozaCTTp$&XPeXJ-yz&nU%-M8(6T$
+zSvg3`Nqr8Bc83inbv%Y8R#(-efn`&s8gyY-j4s{o4t&J2a<ab%t7ci1qpXZ`@a*5%
+zng^i~YC?wqLRWmMR2m@H;kpQb8z4ZJ(g7cY2YnEHW~|MOB?vD=B6JiUhA1554-mIQ
+zE)<6dk0=gNoO#40eElxHWKrSKP$rTx7f<=e@U46ka%>)`7@F`j8G~!T@BnTdE**}X
+zuADtN6@>|pDGIy&gzy2uf?WBq0pSn7!UocVK9R?e$CeB@*&uyc_UR_N!25(JkJvtm
+zunmY$Bhm)c*CN^mn$IGw4VbS-tPOPEi1aovd^0lI!1S%iYy<0kS+*W!nXy#|9~ZU#
+zE_#R|oczaz=ZJ+mF+KRu>iNGd;tO|ouacGO`Zr~C`6^VW@2^UBw=WEMqPFQb{ENGa
+z@nO@cIv>4x_OR`%@D0FXs6raTGZf4CnR^iZ{^MUi{p~B<6rQPYQ@x!fg;>I~6k>7s
+z1GO?P67s@uC}5135!y@(ci!mD8w>NsBFa6>2&{?ElH-+m7yX<$2;C>@&SY;U7iMy0
+zCbiG(F7-=-uPD|Uju@Wl*cf!QyJOO9f6vmYaZ(yvHn6y^<8$nO352BEl%!v3B;8>o
+T-PK9DXOQ$Olcf6=Nx%LFhd~j^
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/fixtures/wasm/gc-final-cast-array-get.wat b/tests/fixtures/wasm/gc-final-cast-array-get.wat
+new file mode 100644
+index 000000000..09747d3c1
+--- /dev/null
++++ b/tests/fixtures/wasm/gc-final-cast-array-get.wat
+@@ -0,0 +1,79 @@
++(module
++(type $a (array (mut i32)))
++(type $b (array (mut i8)))
++(type $h (array (mut i16)))
++(type $r (array (mut eqref)))
++(type $f (array (mut f64)))
++(type $v (array (mut v128)))
++(type $s (struct))
++(type $f32 (array (mut f32)))
++(type $i64 (array (mut i64)))
++(type $open (sub (array (mut i32))))
++(global $array (mut eqref) (ref.null eq))
++(global $refs (mut eqref) (ref.null eq))
++(global $g0 (mut i64) (i64.const 0))
++(global $g1 (mut i64) (i64.const 0))
++(global $g2 (mut i64) (i64.const 0))
++(global $g3 (mut i64) (i64.const 0))
++(global $g4 (mut i64) (i64.const 0))
++(global $g5 (mut i64) (i64.const 0))
++(global $g6 (mut i64) (i64.const 0))
++(global $g7 (mut i64) (i64.const 0))
++(func (export "init") i32.const 7 i32.const 4 array.new $a global.set $array i32.const 13 ref.i31 i32.const 4 array.new $r global.set $refs)
++(func (export "clear") ref.null eq global.set $array)
++(func (export "wrong") struct.new $s global.set $array)
++(func (export "read") (param i32) (result i32) global.get $array ref.cast (ref $a) local.get 0 array.get $a)
++(func (export "nullable") (param i32) (result i32) global.get $array ref.cast (ref null $a) local.get 0 array.get $a)
++(func (export "packed-s") (result i32) i32.const -2 i32.const 2 array.new $b ref.cast (ref $b) i32.const 1 array.get_s $b )
++(func (export "packed-u") (result i32) i32.const -2 i32.const 2 array.new $b ref.cast (ref $b) i32.const 1 array.get_u $b )
++(func (export "half-s") (result i32) i32.const -3 i32.const 2 array.new $h ref.cast (ref $h) i32.const 1 array.get_s $h )
++(func (export "half-u") (result i32) i32.const -3 i32.const 2 array.new $h ref.cast (ref $h) i32.const 1 array.get_u $h )
++(func (export "refs") (result i32) i32.const 13 ref.i31 i32.const 2 array.new $r ref.cast (ref $r) i32.const 0 array.get $r ref.cast (ref i31) i31.get_u)
++(func (export "float") (result i64) f64.const 9 i32.const 2 array.new $f ref.cast (ref $f) i32.const 1 array.get $f i64.reinterpret_f64)
++(func (export "vector") (result i32) v128.const i32x4 11 12 13 14 i32.const 2 array.new $v ref.cast (ref $v) i32.const 1 array.get $v i32x4.extract_lane 2)
++(func (export "loop") (result i32) (local $a eqref) (local $i i32) (local $sum i32) global.get $array local.set $a i32.const 8192 local.set $i (loop $loop
++local.get $sum local.get $a ref.cast (ref $a)
++i32.const 1
++array.get $a i32.add local.set $sum local.get $i i32.const 1 i32.sub local.tee $i br_if $loop) local.get $sum)
++(func (export "pressure") (result i32) (local $a eqref) (local $i i32) (local $sum i32) global.get $array local.set $a i32.const 8192 local.set $i (loop $loop
++global.get $g0 i64.const 1 i64.add global.set $g0
++global.get $g1 i64.const 2 i64.add global.set $g1
++global.get $g2 i64.const 3 i64.add global.set $g2
++global.get $g3 i64.const 4 i64.add global.set $g3
++global.get $g4 i64.const 5 i64.add global.set $g4
++global.get $g5 i64.const 6 i64.add global.set $g5
++global.get $g6 i64.const 7 i64.add global.set $g6
++global.get $g7 i64.const 8 i64.add global.set $g7
++local.get $sum local.get $a ref.cast (ref $a)
++i32.const 1
++array.get $a i32.add local.set $sum local.get $i i32.const 1 i32.sub local.tee $i br_if $loop) local.get $sum)
++(func (export "negative-nop") (result i32) (local $a eqref) (local $i i32) (local $sum i32) global.get $array local.set $a i32.const 8192 local.set $i (loop $loop
++local.get $sum local.get $a ref.cast (ref $a)
++nop
++i32.const 1
++array.get $a i32.add local.set $sum local.get $i i32.const 1 i32.sub local.tee $i br_if $loop) local.get $sum)
++(func (export "negative-index") (result i32) (local $a eqref) (local $i i32) (local $sum i32) global.get $array local.set $a i32.const 8192 local.set $i (loop $loop
++local.get $sum local.get $a ref.cast (ref $a)
++i32.const 1
++i32.const 0 i32.add
++array.get $a i32.add local.set $sum local.get $i i32.const 1 i32.sub local.tee $i br_if $loop) local.get $sum)
++(func (export "pin-entry") (result i32) (local $a eqref) global.get $array local.set $a (loop
++global.get $g0 i64.const 1 i64.add global.set $g0
++global.get $g1 i64.const 2 i64.add global.set $g1
++global.get $g2 i64.const 3 i64.add global.set $g2
++global.get $g3 i64.const 4 i64.add global.set $g3
++global.get $g4 i64.const 5 i64.add global.set $g4
++global.get $g5 i64.const 6 i64.add global.set $g5
++global.get $g6 i64.const 7 i64.add global.set $g6
++global.get $g7 i64.const 8 i64.add global.set $g7
++) local.get $a ref.cast (ref $a) i32.const 1 array.get $a)
++(func (export "index-trap") (result i32) global.get $array ref.cast (ref $a) i32.const 1 i32.const 0 i32.div_u array.get $a)
++(func (export "roots") (result i32) (local $saved eqref) struct.new $s i32.const 2 array.new $r ref.cast (ref $r) i32.const 0 array.get $r local.set $saved i32.const 32 array.new_default $a drop local.get $saved ref.cast (ref $s) ref.is_null)
++(func (export "ref-loop") (result i32) (local $a eqref) (local $i i32) (local $sum i32)
++ global.get $refs local.set $a i32.const 8192 local.set $i
++ (loop $loop local.get $sum local.get $a ref.cast (ref $r) i32.const 1 array.get $r ref.is_null i32.eqz i32.add local.set $sum
++ local.get $i i32.const 1 i32.sub local.tee $i br_if $loop) local.get $sum)
++(func (export "float32") (result i32) f32.const 9 i32.const 2 array.new $f32 ref.cast (ref $f32) i32.const 1 array.get $f32 i32.reinterpret_f32)
++(func (export "int64") (result i64) i64.const 1234567890123 i32.const 2 array.new $i64 ref.cast (ref $i64) i32.const 1 array.get $i64)
++(func (export "nonfinal") (result i32) i32.const 17 i32.const 2 array.new $open ref.cast (ref $open) i32.const 1 array.get $open)
++)

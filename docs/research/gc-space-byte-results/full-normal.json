@@ -1,0 +1,12 @@
+{
+  "command": [
+    "env",
+    "GOMAXPROCS=2",
+    "go",
+    "test",
+    "-p=2",
+    "./..."
+  ],
+  "seconds": 214.7140450199986,
+  "returncode": 1
+}
