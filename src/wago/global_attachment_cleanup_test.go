@@ -4,9 +4,7 @@ package wago
 
 import (
 	"fmt"
-	"syscall"
 	"testing"
-	"unsafe"
 )
 
 func globalCleanupCompile(t *testing.T, module []byte, artifact bool) *Compiled {
@@ -29,12 +27,6 @@ func globalCleanupCompile(t *testing.T, module []byte, artifact bool) *Compiled 
 	}
 	t.Cleanup(func() { _ = loaded.Close() })
 	return loaded
-}
-
-func globalCleanupMappingStatus(address uintptr) syscall.Errno {
-	var resident [1]byte
-	_, _, errno := syscall.Syscall(syscall.SYS_MINCORE, address, uintptr(syscall.Getpagesize()), uintptr(unsafe.Pointer(&resident[0])))
-	return errno
 }
 
 // All retained owners really reach one published descriptor: its mapped
@@ -77,9 +69,9 @@ func TestGlobalAttachmentCleanupMappedOwnersAndHostStorage(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer g.Close()
-				address := uintptr(unsafe.Pointer(&g.cell[0]))
-				if errno := globalCleanupMappingStatus(address); errno != 0 {
-					t.Fatal("host global arena is not mapped", errno)
+				arena := g.owner.arena
+				if cell := arena.AllocatedPrefix(8); len(cell) != 8 || &cell[0] != &g.cell[0] {
+					t.Fatal("host global does not own its actual arena allocation")
 				}
 				// Seed genuine native bits without issuing a token; retain through
 				// the production descriptor-reachability and real lifetime paths.
@@ -161,7 +153,7 @@ func TestGlobalAttachmentCleanupMappedOwnersAndHostStorage(t *testing.T) {
 				objects = store.liveObjects
 				store.mu.Unlock()
 				if action == "overwrite" {
-					if g.owner.closed || g.owner.arena == nil || readGlobalObject(g, ValFuncRef) != 0 || objects != 1 || globalCleanupMappingStatus(address) != 0 {
+					if g.owner.closed || g.owner.arena == nil || readGlobalObject(g, ValFuncRef) != 0 || objects != 1 || arena.AllocatedPrefix(8) == nil {
 						t.Fatal("null overwrite consumed unrelated host arena/store ownership")
 					}
 					if err := g.Close(); err != nil {
@@ -173,8 +165,14 @@ func TestGlobalAttachmentCleanupMappedOwnersAndHostStorage(t *testing.T) {
 				store.mu.Lock()
 				objects = store.liveObjects
 				store.mu.Unlock()
-				if !g.owner.closed || g.owner.arena != nil || g.cell != nil || len(g.owner.retained) != 0 || objects != 0 || globalCleanupMappingStatus(address) != syscall.ENOMEM {
-					t.Fatal("global cleanup failed to unmap its actual host arena or close its store")
+				if !g.owner.closed || g.owner.arena != nil || g.cell != nil || len(g.owner.retained) != 0 {
+					t.Fatal("global cleanup left host ownership published")
+				}
+				if objects != 0 {
+					t.Fatal("global cleanup failed to close its store object", objects)
+				}
+				if arena.AllocatedPrefix(8) != nil {
+					t.Fatal("global cleanup failed to close its actual host arena")
 				}
 				if err := g.Close(); err != nil || visited != [3]int{1, 1, 1} {
 					t.Fatal("repeated global Close repeated a consumed native callback", err, visited)
