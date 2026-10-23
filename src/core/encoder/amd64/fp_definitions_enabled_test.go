@@ -31,6 +31,8 @@ func TestRegallocScalarFPDefinitions(t *testing.T) {
 		{"sd to ss", 4, false, func(a *Asm) { a.Cvtsd2ss(8, 9) }},
 		{"roundss", 4, false, func(a *Asm) { a.SseMapRRI(0x66, 0x3a, 0x0a, 8, 9, 0) }},
 		{"roundsd", 8, false, func(a *Asm) { a.SseMapRRI(0x66, 0x3a, 0x0b, 8, 9, 0) }},
+		{"vcmpss", 4, true, func(a *Asm) { a.VFCmpScalar(8, 9, 10, false, 0) }},
+		{"vcmpsd", 8, true, func(a *Asm) { a.VFCmpScalar(8, 9, 10, true, 4) }},
 		{"addss disp", 4, false, func(a *Asm) { a.FAluDisp(0x58, 8, RSP, 32, false) }},
 		{"addsd index", 8, false, func(a *Asm) { a.SseIdx(0xf2, 0x58, 8, RSP, R9, 32) }},
 		{"vaddss", 4, true, func(a *Asm) { a.VFAdd(8, 9, 10, false) }},
