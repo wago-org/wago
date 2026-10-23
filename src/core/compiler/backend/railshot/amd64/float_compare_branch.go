@@ -6,26 +6,30 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 // Qualified on Linux AMD64. Set WAGO_AMD64_FLOAT_BRANCH=0 to restore eager
-// boolean materialization before branches. Other platforms retain that path.
+// boolean materialization before branches/selects. Other platforms retain that path.
 var floatBranchEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_FLOAT_BRANCH") != "0"
 
-// Retain only the two eager scalar operands through an immediate branch consumer.
-// Equality keeps its existing unordered-aware boolean lowering.
+// Retain scalar operands through an immediate branch or integer-select consumer.
 func (f *fn) fcmpNext(r *wasm.Reader, kind wOp, f64 bool) {
-	if floatBranchEnabled {
+	if floatBranchEnabled && f.opt(optSTFlags) {
 		look := *r
 		next, ok := look.Peek()
-		if ok && next == 0x45 { // One boolean inversion before the branch.
+		if ok && next == 0x45 { // One boolean inversion before the consumer.
 			_, _ = look.Byte()
 			next, ok = look.Peek()
 		}
-		if ok && (next == 0x04 || next == 0x0d) {
+		if ok && (next == 0x04 || next == 0x0d || next == 0x1b || next == 0x1c) {
 			var op wOp
 			switch kind {
+			case opEq:
+				op = opFEq
+			case opNe:
+				op = opFNe
 			case opLtS:
 				op = opFLt
 			case opGtS:
@@ -42,6 +46,12 @@ func (f *fn) fcmpNext(r *wasm.Reader, kind wOp, f64 bool) {
 				node.setElemKind(ekDeferred)
 				node.setDeferredOp(op)
 				node.setValueType(mtI32)
+				if f.opt(optValueFacts) {
+					node.st.setValueFacts(deferredResultFacts(op, mtI32))
+				}
+				if profileEnabled && f.stats != nil && f.stats.RecordSources {
+					f.rememberProfileNode(node)
+				}
 				node.arg0, node.arg1 = left, right
 				labelDeferredNode(node)
 				f.s.pushDeferred(node)
@@ -62,9 +72,46 @@ func (f *fn) emitFloatCompareFlags(node *elem) Cond {
 	old := f.fpinned
 	f.fpinned = old.add(xa)
 	xb, ownB := f.operandRegF(right)
-	f.fpinned = old
+	f.fpinned = f.fpinned.add(xb)
 	cc := condA
 	switch node.deferredOp() {
+	case opFEq, opFNe:
+		if xa == xb {
+			f.a.Ucomis(xa, xb, f64)
+			cc = condNP
+			if node.deferredOp() == opFNe {
+				cc = condP
+			}
+		} else {
+			// Scalar EQ produces zero for unordered; NE produces all ones. MOVMSK's
+			// low bit ignores upper lanes, and TEST gives a single NaN-correct flag.
+			tmp := f.allocReg(0)
+			mask := f.allocFReg(maskOf(xa, xb))
+			pred := byte(0) // EQ_OQ
+			if node.deferredOp() == opFNe {
+				pred = 4
+			} // NEQ_UQ
+			if f.cpuHas(shared.AMD64AVX) {
+				f.a.VFCmpScalar(mask, xa, xb, f64, pred)
+				if f64 {
+					f.a.VMovmskpd(tmp, mask)
+				} else {
+					f.a.VMovmskps(tmp, mask)
+				}
+			} else {
+				f.a.FMov(mask, xa, f64)
+				f.a.SseMapRRI(scalarFloatPrefix(f64), 0, 0xC2, mask, xb, pred)
+				prefix := byte(0)
+				if f64 {
+					prefix = 0x66
+				}
+				f.a.SseRR(prefix, 0x50, tmp, mask, false)
+			}
+			f.a.TestImm(tmp, 1, false)
+			f.release(tmp)
+			f.releaseF(mask)
+			cc = condNE
+		}
 	case opFLt:
 		f.a.Ucomis(xb, xa, f64)
 	case opFGt:
@@ -78,6 +125,7 @@ func (f *fn) emitFloatCompareFlags(node *elem) Cond {
 	default:
 		panic("amd64: invalid deferred float comparison")
 	}
+	f.fpinned = old
 	if ownA {
 		f.releaseF(xa)
 	}
@@ -88,7 +136,7 @@ func (f *fn) emitFloatCompareFlags(node *elem) Cond {
 	return cc
 }
 
-// Local-reference reconciliation can materialize the boolean before its branch.
+// Local-reference reconciliation can materialize the boolean before its consumer.
 func (f *fn) condenseFloatCompare(node *elem, dest Reg) Reg {
 	if dest == regNone {
 		dest = f.allocReg(0)
