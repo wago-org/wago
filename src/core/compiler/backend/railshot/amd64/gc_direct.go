@@ -22,6 +22,7 @@ const (
 	gcSharedStubResolveObject
 	gcSharedStubResolveSubtypeObject
 	gcSharedStubResolveBoundedObject
+	gcSharedStubResolveArrayObject
 	gcSharedStubMax
 )
 
@@ -373,14 +374,19 @@ func buildModuleGCSharedStubs(relocs [][]callReloc) ([]byte, [gcSharedStubMax]in
 	for i := range offsets {
 		offsets[i] = -1
 	}
-	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] {
+	if !used[gcSharedStubResolveObject] && !used[gcSharedStubResolveSubtypeObject] && !used[gcSharedStubResolveBoundedObject] && !used[gcSharedStubResolveArrayObject] {
 		return nil, offsets
 	}
 	a := &x64.Asm{}
-	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject} {
+	if used[gcSharedStubResolveArrayObject] {
+		// The array-only leaf fits here. Avoid repeated byte-buffer growth for
+		// modules that previously needed no shared resolver island.
+		a.B = make([]byte, 0, 256)
+	}
+	for _, kind := range []gcSharedStubKind{gcSharedStubResolveObject, gcSharedStubResolveSubtypeObject, gcSharedStubResolveBoundedObject, gcSharedStubResolveArrayObject} {
 		if used[kind] {
 			offsets[kind] = a.Len()
-			emitModuleGCResolveObjectStub(a, kind == gcSharedStubResolveSubtypeObject, kind == gcSharedStubResolveBoundedObject)
+			emitModuleGCResolveObjectStub(a, kind == gcSharedStubResolveSubtypeObject, kind == gcSharedStubResolveBoundedObject || kind == gcSharedStubResolveArrayObject, kind == gcSharedStubResolveArrayObject)
 		}
 	}
 	return a.B, offsets
@@ -398,14 +404,18 @@ func countGCSharedStubBodies(offsets [gcSharedStubMax]int) int {
 
 // emitModuleGCResolveObjectStub implements the AMD64 noncollecting GC leaf ABI:
 //
-//	EAX compact object ref, EDX static module-local type, ECX required bytes
+//	RAX compact object ref, EDX static module-local type, ECX required bytes
 //	RAX resolved object header on success, EDX zero on success or trap code
 //	clobbers RAX,RCX,RDX,RDI,R8 and flags; preserves R9-R11 explicitly
 //	no Go transition, allocation, collection, root publication, or safepoint
 //
 // The compact reference remains in the caller's canonical local/stack root. A
 // returned raw address is valid only until the caller's next invalidating edge.
-func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded bool) {
+// arrayOperand is used only for validator-proven arrayref operands. It skips
+// the redundant static type relation, retaining the checked physical resolution.
+// That mode writes the length to hcResults on success and returns R8=control
+// frame on either path, so each caller needs only the status branch.
+func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded, arrayOperand bool) {
 	a.Push(R9)
 	a.Push(R10)
 	a.Push(R11)
@@ -417,12 +427,20 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded bool) {
 	a.AluRI(4, R10, 1, false)
 	a.TestSelf(R10, false)
 	castFailures := []int{a.JccPlaceholder(condNE)}
+	if arrayOperand {
+		a.MovReg64(R10, RAX)
+		a.ShiftImm(5, R10, 32, true)
+		a.TestSelf(R10, true)
+		castFailures = append(castFailures, a.JccPlaceholder(condNE))
+	}
 
 	// Immutable view/type-map shape was proved at artifact load + instantiation.
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
-	a.ImulRI(RDX, 4, true)
-	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
+	if !arrayOperand {
+		a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
+		a.ImulRI(RDX, 4, true)
+		a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
+	}
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 
 	// Validate handle range/liveness, space, backing extent, object extent,
@@ -462,42 +480,49 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded bool) {
 		a.Cmp32(R8, RCX)
 		castFailures = append(castFailures, a.JccPlaceholder(condA))
 	}
-	a.Load32(RCX, R11, 0)
-	a.Cmp32(RCX, RDX)
-	if subtype {
-		exact := a.JccPlaceholder(condE)
-		// Validated struct subtypes preserve declared field layouts. Array
-		// subtypes preserve the header length at offset 8.
-		// The existing packed intervals store pre in the high dword, post in the low.
-		a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-		a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
-		a.AluRM(cmpRMcode, RCX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
-		castFailures = append(castFailures, a.JccPlaceholder(condAE))
-		a.AluRM(cmpRMcode, RDX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
-		castFailures = append(castFailures, a.JccPlaceholder(condAE))
-		a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
-		a.TestSelf(R10, true)
-		castFailures = append(castFailures, a.JccPlaceholder(condE))
-		a.ImulRI(RCX, 8, true)
-		a.LoadIdx(R9, R10, RCX, 0, 8, false, true)
-		a.ImulRI(RDX, 8, true)
-		a.LoadIdx(R10, R10, RDX, 0, 8, false, true)
-		a.MovReg64(RAX, R9)
-		a.ShiftImm(5, RAX, 32, true)
-		a.MovReg64(RCX, R10)
-		a.ShiftImm(5, RCX, 32, true)
-		a.Cmp32(RAX, RCX)
-		castFailures = append(castFailures, a.JccPlaceholder(condB))
-		a.Cmp32(R9, R10)
-		castFailures = append(castFailures, a.JccPlaceholder(condA))
-		a.PatchRel32(exact, a.Len())
-	} else {
-		castFailures = append(castFailures, a.JccPlaceholder(condNE))
+	if !arrayOperand {
+		a.Load32(RCX, R11, 0)
+		a.Cmp32(RCX, RDX)
+		if subtype {
+			exact := a.JccPlaceholder(condE)
+			// Validated struct subtypes preserve declared field layouts. Array
+			// subtypes preserve the header length at offset 8.
+			// The existing packed intervals store pre in the high dword, post in the low.
+			a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+			a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+			a.AluRM(cmpRMcode, RCX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+			castFailures = append(castFailures, a.JccPlaceholder(condAE))
+			a.AluRM(cmpRMcode, RDX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+			castFailures = append(castFailures, a.JccPlaceholder(condAE))
+			a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
+			a.TestSelf(R10, true)
+			castFailures = append(castFailures, a.JccPlaceholder(condE))
+			a.ImulRI(RCX, 8, true)
+			a.LoadIdx(R9, R10, RCX, 0, 8, false, true)
+			a.ImulRI(RDX, 8, true)
+			a.LoadIdx(R10, R10, RDX, 0, 8, false, true)
+			a.MovReg64(RAX, R9)
+			a.ShiftImm(5, RAX, 32, true)
+			a.MovReg64(RCX, R10)
+			a.ShiftImm(5, RCX, 32, true)
+			a.Cmp32(RAX, RCX)
+			castFailures = append(castFailures, a.JccPlaceholder(condB))
+			a.Cmp32(R9, R10)
+			castFailures = append(castFailures, a.JccPlaceholder(condA))
+			a.PatchRel32(exact, a.Len())
+		} else {
+			castFailures = append(castFailures, a.JccPlaceholder(condNE))
+		}
 	}
 	a.Load32(RCX, R11, 4)
 	a.Cmp32(RCX, RDI)
 	castFailures = append(castFailures, a.JccPlaceholder(condB))
 	a.MovReg64(RAX, R11)
+	if arrayOperand {
+		a.Load32(RAX, RAX, 8)
+		a.Load64(R8, RBX, -offCustomCtx)
+		a.Store64(R8, hcResults, RAX)
+	}
 	a.XorSelf32(RDX)
 	done := a.JmpPlaceholder()
 
@@ -519,6 +544,9 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded bool) {
 	a.Pop(R11)
 	a.Pop(R10)
 	a.Pop(R9)
+	if arrayOperand {
+		a.Load64(R8, RBX, -offCustomCtx)
+	}
 	a.Ret()
 }
 

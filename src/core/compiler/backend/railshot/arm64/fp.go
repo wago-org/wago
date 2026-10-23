@@ -488,12 +488,12 @@ func (f *fn) loadFMask(dst Reg, mask64 uint64, mask32 uint32, f64 bool) {
 	f.release(t)
 }
 
-// IEEE-754 sign/magnitude masks for neg, abs, copysign.
+// IEEE-754 sign/magnitude masks for scalar sign operations.
 const (
 	fSignMask32 uint32 = 0x80000000
-	fMagMask32  uint32 = 0x7FFFFFFF
+	fMagMask32  uint32 = 0x7fffffff
 	fSignMask64 uint64 = 0x8000000000000000
-	fMagMask64  uint64 = 0x7FFFFFFFFFFFFFFF
+	fMagMask64  uint64 = 0x7fffffffffffffff
 )
 
 // Rounding modes for FRINT* (nearest/floor/ceil/trunc), matching wasm's
@@ -616,8 +616,8 @@ func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 	f.patchBranch26(jdone2, f.a.Len())
 }
 
-// fminmaxInto lowers scalar wasm min/max through the shared lane helper used by
-// SIMD. When dst is supplied, it is a pinned local's V register and the result
+// fminmaxInto lowers scalar wasm min/max through the NaN and signed-zero helper.
+// When dst is supplied, it is a pinned local's V register and the result
 // is sunk there directly; otherwise an owned operand register is reused.
 func (f *fn) fminmaxInto(dst Reg, f64, isMax bool) {
 	b := f.popValue()
@@ -664,32 +664,50 @@ func (f *fn) fsqrt(f64 bool) {
 	f.pushFReg(dst, mtOf2(f64))
 }
 
-// fsign applies a sign/magnitude bit op (neg = EOR sign; abs = AND magnitude) via
-// the 3-operand NEON form so a borrowed pinned-local operand is read directly
-// (dst = src <op> mask) instead of copied into the destination first.
-func (f *fn) fsign(op byte, mask64 uint64, mask32 uint32, f64 bool) {
+// fsignInto writes a local assignment directly with the native sign op,
+// preserving signaling NaN payloads. The regular path uses a bitwise mask
+// and produces an owned value.
+func (f *fn) fsignInto(dst Reg, f64, neg bool) {
 	src, owned := f.operandRegF(f.popValue())
-	f.fpinned = f.fpinned.add(src)
-	m := f.allocFReg(0)
-	f.loadFMask(m, mask64, mask32, f64)
-	f.fpinned = f.fpinned.remove(src)
-	dst := src
-	if !owned { // borrowed pinned local: write a fresh dest, leave the local intact
-		dst = f.allocFReg(maskOf(src, m))
+	if dst == regNone {
+		saved := f.fpinned
+		f.fpinned = saved.add(src)
+		m := f.allocFReg(0)
+		f.fpinned = f.fpinned.add(m)
+		if neg {
+			f.loadFMask(m, fSignMask64, fSignMask32, f64)
+		} else {
+			f.loadFMask(m, fMagMask64, fMagMask32, f64)
+		}
+		f.fpinned = saved
+		dst = src
+		if !owned {
+			dst = f.allocFReg(maskOf(src, m))
+		}
+		if neg {
+			f.a.Eor16b(dst, src, m)
+		} else {
+			f.a.And16b(dst, src, m)
+		}
+		f.releaseF(m)
+	} else {
+		if neg {
+			f.a.NeonFneg(dst, src, f64)
+		} else {
+			f.a.NeonFabs(dst, src, f64)
+		}
+		f.stats.peep("float-native-sign")
 	}
-	// 3-operand NEON bitwise (.16b): neg = EOR sign-mask, abs = AND magnitude-mask.
-	switch op {
-	case 0x57: // xorps analog -> EOR
-		f.a.Eor16b(dst, src, m)
-	case 0x54: // andps analog -> AND
-		f.a.And16b(dst, src, m)
+	if owned && dst != src {
+		f.releaseF(src)
 	}
-	f.releaseF(m)
 	f.pushFReg(dst, mtOf2(f64))
 }
 
-func (f *fn) fneg(f64 bool) { f.fsign(0x57, fSignMask64, fSignMask32, f64) }
-func (f *fn) fabs(f64 bool) { f.fsign(0x54, fMagMask64, fMagMask32, f64) }
+func (f *fn) fsign(f64, neg bool) { f.fsignInto(regNone, f64, neg) }
+
+func (f *fn) fneg(f64 bool) { f.fsign(f64, true) }
+func (f *fn) fabs(f64 bool) { f.fsign(f64, false) }
 
 func (f *fn) fround(f64 bool, mode byte) {
 	src, owned := f.operandRegF(f.popValue())
@@ -701,25 +719,29 @@ func (f *fn) fround(f64 bool, mode byte) {
 	f.pushFReg(dst, mtOf2(f64))
 }
 
-// fcopysign: (a & ~sign) | (b & sign).
+// fcopysign selects the sign bit from b and all other bits from a. BSL is
+// bitwise, so even signaling NaN payloads are preserved without FP arithmetic.
 func (f *fn) fcopysign(f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
-	xa := f.materializeF(a)
-	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeF(b)
+	saved := f.fpinned
+	xa, ownA := f.operandRegF(a)
+	f.fpinned = saved.add(xa)
+	xb, ownB := f.operandRegF(b)
 	f.fpinned = f.fpinned.add(xb)
-	m := f.allocFReg(0)
-	f.loadFMask(m, fMagMask64, fMagMask32, f64)
-	f.a.And16b(xa, xa, m) // xa = |a|
-	f.loadFMask(m, fSignMask64, fSignMask32, f64)
-	f.a.And16b(xb, xb, m) // xb = sign(b)
-	f.releaseF(m)
-	f.a.Orr16b(xa, xa, xb) // xa |= xb
-	f.fpinned = f.fpinned.remove(xa)
-	f.fpinned = f.fpinned.remove(xb)
-	f.releaseF(xb)
-	f.pushFReg(xa, mtOf2(f64))
+	dst := f.allocFReg(maskOf(xa, xb))
+	f.fpinned = f.fpinned.add(dst)
+	f.loadFMask(dst, fSignMask64, fSignMask32, f64)
+	f.a.NeonBsl16b(dst, xb, xa)
+	f.fpinned = saved
+	if ownA {
+		f.releaseF(xa)
+	}
+	if ownB {
+		f.releaseF(xb)
+	}
+	f.pushFReg(dst, mtOf2(f64))
+	f.stats.peep("float-copysign-bsl")
 }
 
 // fcmp lowers a NaN-correct float comparison to a 0/1 i32 result. arm64 FCMP sets
@@ -729,11 +751,13 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
 	xa, xaOwned := f.operandRegF(a) // read-only: only compared
-	f.fpinned = f.fpinned.add(xa)
+	saved := f.fpinned
+	f.fpinned = saved.add(xa)
 	xb, xbOwned := f.operandRegF(b) // read-only: only compared
-	f.fpinned = f.fpinned.remove(xa)
+	f.fpinned = f.fpinned.add(xb)
 	dst := f.allocReg(0)
 	f.emitFCmpCset(kind, xa, xb, f64, dst)
+	f.fpinned = saved
 	if xaOwned {
 		f.releaseF(xa)
 	}
@@ -748,6 +772,12 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 // (unordered clears N=V, so NaN yields false); lt/le swap the operands. Shared by
 // fcmp (eager boolean).
 func (f *fn) emitFCmpCset(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
+	if xa == xb && (kind == opLtS || kind == opGtS) {
+		// Inputs have been evaluated; strict self-relations are false even for NaN.
+		f.a.MovImm32(dst, 0)
+		f.stats.peep("float-self-compare-zero")
+		return
+	}
 	switch kind {
 	case opEq: // ordered equal: EQ requires Z=1, which unordered does not set
 		f.a.Fcmp(xa, xb, f64)
