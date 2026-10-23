@@ -312,6 +312,14 @@ func TestRV64PublicNativeImportedStartStateReentryAndLifecycle(t *testing.T) {
 						case <-time.After(5 * time.Second):
 							t.Fatal("native start did not finish")
 						}
+						if behavior == "runtime-close" {
+							waitCtx, stopWait := context.WithTimeout(context.Background(), 5*time.Second)
+							closeErr := rt.WaitClosed(waitCtx)
+							stopWait()
+							if closeErr != nil {
+								t.Fatal("native start runtime close did not finish", closeErr)
+							}
+						}
 						success := behavior == "success" || behavior == "producer-self-close"
 						if success {
 							if result.err != nil || result.in == nil {
