@@ -95,7 +95,10 @@ func (c Cond) Invert() Cond { return c ^ 1 }
 type Asm struct {
 	//lint:ignore U1000 debug-only observer; the ordinary placeholder is empty
 	regallocState
-	B                             []byte
+	B []byte
+	// ReserveBranch19 leaves a NOP after conditional branches so an out-of-range
+	// patch can expand to an inverted condition followed by an unconditional B.
+	ReserveBranch19               bool
 	DenseIdxDisp                  bool // prefer ADD base,index + immediate-offset load/store
 	ReuseIndexedBase              bool // reuse an adjacent proven X16=base+index address
 	DisableLogicalMoveImmediate   bool
@@ -737,14 +740,23 @@ func (a *Asm) Branch() int { at := a.Len(); a.word(0x14000000); return at }
 
 // Bcond emits a conditional branch with a zero displacement; patch with
 // PatchBranch19.
-func (a *Asm) Bcond(c Cond) int { at := a.Len(); a.word(0x54000000 | uint32(c)); return at }
+func (a *Asm) Bcond(c Cond) int { return a.branch19(0x54000000 | uint32(c)) }
 
 // Cbz / Cbnz emit a compare-and-branch on Rt==0 / Rt!=0 with a zero displacement;
 // patch with PatchBranch19.
-func (a *Asm) Cbz32(rt Reg) int  { at := a.Len(); a.word(0x34000000 | r(rt)); return at }
-func (a *Asm) Cbnz32(rt Reg) int { at := a.Len(); a.word(0x35000000 | r(rt)); return at }
-func (a *Asm) Cbz64(rt Reg) int  { at := a.Len(); a.word(0xB4000000 | r(rt)); return at }
-func (a *Asm) Cbnz64(rt Reg) int { at := a.Len(); a.word(0xB5000000 | r(rt)); return at }
+func (a *Asm) Cbz32(rt Reg) int  { return a.branch19(0x34000000 | r(rt)) }
+func (a *Asm) Cbnz32(rt Reg) int { return a.branch19(0x35000000 | r(rt)) }
+func (a *Asm) Cbz64(rt Reg) int  { return a.branch19(0xB4000000 | r(rt)) }
+func (a *Asm) Cbnz64(rt Reg) int { return a.branch19(0xB5000000 | r(rt)) }
+
+func (a *Asm) branch19(word uint32) int {
+	at := a.Len()
+	a.word(word)
+	if a.ReserveBranch19 {
+		a.Nop()
+	}
+	return at
+}
 
 // PatchBranch26 fills the imm26 field of the B at byte offset `at` to jump to
 // byte offset `target`. Returns false if the (word) displacement is out of the
@@ -759,15 +771,51 @@ func (a *Asm) PatchBranch26(at, target int) bool {
 }
 
 // PatchBranch19 fills the imm19 field (bits 23:5) of a B.cond / CBZ / CBNZ at
-// byte offset `at` to jump to byte offset `target`. Returns false if out of the
-// ±1 MiB range.
+// byte offset `at` to jump to byte offset `target`. With ReserveBranch19, an
+// out-of-range branch expands in place using its reserved NOP and an imm26 B.
+// Returns false without modifying bytes when neither encoding reaches the target.
 func (a *Asm) PatchBranch19(at, target int) bool {
 	d := (target - at) / 4
 	if d < -(1<<18) || d >= (1<<18) {
-		return false
+		if !a.ReserveBranch19 || at+8 > len(a.B) || a.wordAt(at+4) != 0xD503201F || (target-at)&3 != 0 {
+			return false
+		}
+		word := a.wordAt(at)
+		inverse := uint32(0)
+		switch {
+		case word&0xFF000010 == 0x54000000:
+			// AL and NV both mean always for B.cond.
+			if word&15 >= 14 {
+				delta := (target - at) / 4
+				if delta < -(1<<25) || delta >= (1<<25) {
+					return false
+				}
+				a.putWord(at, 0x14000000|uint32(delta)&0x03FFFFFF)
+				return true
+			}
+			inverse = word ^ 1
+		case word&0x7E000000 == 0x34000000:
+			inverse = word ^ (1 << 24)
+		default:
+			return false
+		}
+		delta := (target - at - 4) / 4
+		if delta < -(1<<25) || delta >= (1<<25) {
+			return false
+		}
+		a.putWord(at, inverse&^(0x7FFFF<<5)|2<<5)
+		a.putWord(at+4, 0x14000000|uint32(delta)&0x03FFFFFF)
+		return true
 	}
 	a.patchWord(at, (uint32(d)&0x7FFFF)<<5)
 	return true
+}
+
+func (a *Asm) putWord(at int, word uint32) {
+	a.B[at] = byte(word)
+	a.B[at+1] = byte(word >> 8)
+	a.B[at+2] = byte(word >> 16)
+	a.B[at+3] = byte(word >> 24)
 }
 
 // LdrLiteralF emits an LDR S/D literal with a zero displacement and returns its

@@ -53,6 +53,14 @@ const (
 	opGeS
 	opGeU
 	opEqz
+
+	// Scalar floating comparisons retain float operands and produce an i32.
+	opFEq
+	opFNe
+	opFLt
+	opFGt
+	opFLe
+	opFGe
 )
 
 // aluOps is the set of straight two-operand integer ALU ops selectInstr can fold
@@ -185,3 +193,5 @@ func condOf(o wOp) Cond {
 	}
 	panic("arm64: not a compare op")
 }
+
+func isFloatCompare(op wOp) bool { return op >= opFEq && op <= opFGe }
