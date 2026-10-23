@@ -1,0 +1,12 @@
+{
+  "command": [
+    "just",
+    "test",
+    "ci-smoke"
+  ],
+  "seconds": 62.76001536601689,
+  "exit": 0,
+  "user_seconds": 114.001413,
+  "system_seconds": 3.060598,
+  "peak_rss_kib": 2115752
+}
