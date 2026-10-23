@@ -50,6 +50,16 @@ func exceptionBranchExitModule(kind string, nesting int) []byte {
 		body = append(body, 0x20, 0, 0x45, 0x0d, target)
 	case "br_if_compare":
 		body = append(body, 0x20, 0, 0x41, 0, 0x47, 0x0d, target)
+	case "br_table_bitset":
+		body = append(body, 0x20, 0, 0x0e, 8)
+		for i := 0; i < 8; i++ {
+			label := target + 1 // $caught returns 99 without throwing.
+			if i%2 == 1 {
+				label = target
+			} // $out throws after every handler is left.
+			body = append(body, label)
+		}
+		body = append(body, target+1)
 	case "br_table", "br_table_large":
 		n := 2
 		if kind == "br_table_large" {
@@ -234,4 +244,29 @@ func TestExceptionBranchToTryLabelDiscardsHandler(t *testing.T) {
 			t.Fatalf("branch to inner try label: got %v, %v; want outer catch result 99", got, err)
 		}
 	})
+}
+
+func TestBitsetBranchExitsDiscardHandlers(t *testing.T) {
+	for nesting := 1; nesting <= 3; nesting++ {
+		c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("inline", false), exceptionBranchExitModule("br_table_bitset", nesting))
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer c.Close()
+		in, e := Instantiate(c)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer in.Close()
+		for _, idx := range []uint64{0, 1, 7, 8, 31, 32, 63, 64, 0xffffffff} {
+			got, e := in.Invoke("run", idx)
+			if idx < 8 && idx%2 == 1 {
+				if e == nil || !strings.Contains(e.Error(), "unhandled WebAssembly exception") {
+					t.Fatalf("depth=%d index=%x got=%v err=%v", nesting, idx, got, e)
+				}
+			} else if e != nil || len(got) != 1 || got[0] != 99 {
+				t.Fatalf("depth=%d index=%x got=%v err=%v", nesting, idx, got, e)
+			}
+		}
+	}
 }

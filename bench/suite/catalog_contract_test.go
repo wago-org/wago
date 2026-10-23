@@ -292,7 +292,7 @@ func TestCatalogSelection(t *testing.T) {
 		selector string
 		want     []string
 	}{
-		{"all", []string{"a", "b"}}, {"quick", []string{"a"}}, {"tag:vm", []string{"b"}}, {"a,b", []string{"a", "b"}},
+		{"all", []string{"a", "b"}}, {"quick", []string{"a"}}, {"tag:vm", []string{"b"}}, {"b", []string{"b"}}, {"a,b", []string{"a", "b"}},
 	} {
 		t.Run(tc.selector, func(t *testing.T) {
 			ids := selectedIDs(t, c, tc.selector)

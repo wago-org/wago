@@ -83,6 +83,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   Write AMD64 scalar abs/neg/copysign local assignments directly, avoiding result
   copies, and simplify copysign with identical inputs without altering signaling NaNs.
 
+- Keep sparse two-target tables on existing dispatch and use ARM64 mask-and-branch selection with the standard branch range.
+
+- Use bounded bitset dispatch for dispersed small branch tables with one
+  nondefault target on AMD64 and ARM64.
 - Combine bounded ARM64 scalar shift and mask pairs with existing bitfield
   encodings, including masks applied before an unsigned right shift.
 - Reuse ARM64 variable-shift source and count registers in ordinary scalar
