@@ -47,19 +47,21 @@ var noStackReg = os.Getenv("WAGO_ARM64_NOSTACKREG") == "1"
 // target local function's entry once the module is laid out.
 type callReloc struct {
 	at       uint32 // byte offset of the BL instruction within this function's code
-	target   uint32 // target local-function index (into m.Code)
+	target   uint32 // target function index; gcObject uses the positive helper-fallback byte delta
 	internal bool   // target the callee's register-ABI internal entry (else offset 0)
+	gcObject bool   // target the module checked-object leaf (not a local function)
 }
 
 // callRelocTable stores every module relocation in source-function order. One
 // pointer-free offset per function replaces a retained slice header per
 // function; function slices are reconstructed only while finalizing the module.
 type callRelocTable struct {
-	offsets []uint32
-	data    []callReloc
-	next    uint32
-	results []funcResult
-	states  []workerState
+	offsets       []uint32
+	data          []callReloc
+	next          uint32
+	results       []funcResult
+	states        []workerState
+	gcObjectEntry int // appended checked-object leaf; zero if not emitted
 }
 
 func parallelCallRelocTable(results []funcResult, states []workerState) callRelocTable {
@@ -1477,6 +1479,10 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		} else {
 			gcDone = f.arrayScalarShortcut(nativeArrayHelper, nativeArrayType, int(slotOf[d-p]))
 		}
+	}
+
+	if uint32(importIdx) == gcStructDispatchBit|gcArrayLen {
+		gcDone = f.arrayLenShortcut(int(slotOf[d-p]))
 	}
 
 	// Marshal params into the control frame as wrapper-ABI slots. A v128 occupies

@@ -1,0 +1,19 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p=1",
+    "-exec=./scripts/qemu-riscv64.sh",
+    "-tags=wago_regalloccheck",
+    "./src/wago",
+    "-run",
+    "^TestRV64PublicNativeImportedStartStateReentryAndLifecycle$",
+    "-count=3",
+    "-v"
+  ],
+  "seconds": 81.98774098901777,
+  "exit": 1,
+  "user_seconds": 149.65878,
+  "system_seconds": 2.873125,
+  "peak_rss_kib": 2577588
+}
