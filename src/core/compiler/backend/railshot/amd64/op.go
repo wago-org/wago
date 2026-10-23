@@ -54,7 +54,9 @@ const (
 	opGeU
 	opEqz
 
-	// Ordered floating comparisons, producing an i32 boolean.
+	// Floating comparisons, producing an i32 boolean.
+	opFEq
+	opFNe
 	opFLt
 	opFGt
 	opFLe
@@ -166,4 +168,4 @@ func condOf(o wOp) Cond {
 	panic("amd64: not a compare op")
 }
 
-func isFloatCompare(o wOp) bool { return o >= opFLt && o <= opFGe }
+func isFloatCompare(o wOp) bool { return o >= opFEq && o <= opFGe }

@@ -17,3 +17,10 @@ the following terms:
 
     Copyright (c) 2026 wasm.fyi contributors
     MIT License (tests/fixtures/wasmfyi/LICENSE)
+
+* PDFium application regression fixture (chromium/8111)
+
+    Copyright 2014 The PDFium Authors. BSD-style license and dependency notices
+    are retained in tests/corpus/regressions/pdfium/LICENSE.pdfium and licenses/.
+    The go-pdfium wrapper and upstream binary-packaging notices are retained
+    alongside the fixture. See its PROVENANCE.json and README.md.
