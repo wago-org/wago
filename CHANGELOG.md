@@ -138,6 +138,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Compile general array length reads to checked AMD64 and ARM64 instructions,
   with the existing helper for invalid handles and exact traps.
 
+- Read ARM64 scalar numeric array elements through checked native object
+  resolution, preserving the typed helper for failed bounds and extent checks.
+
 - Return from AMD64 and ARM64 atomic wait mismatches and empty notify calls
   before the Go-call argument setup. Preserve memory ordering for zero-count
   notify and keep matching dynamic waits on the synchronized helper path.

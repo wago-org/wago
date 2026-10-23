@@ -1,0 +1,15 @@
+{
+  "command": [
+    "go",
+    "test",
+    "./src/wago",
+    "-run",
+    "^(TestGCGeneralScalarArrayGet|TestGCGeneralArrayLen|TestGCVectorArrayAccess|TestGCAllocationMix|TestBoundedHostYieldAllowsGCAndCancellationWithOneP|TestCustomInstructionRecipe)",
+    "-count=1"
+  ],
+  "seconds": 52.30209227799787,
+  "exit": 0,
+  "user_seconds": 96.451874,
+  "system_seconds": 1.489465,
+  "peak_rss_kib": 2117932
+}
