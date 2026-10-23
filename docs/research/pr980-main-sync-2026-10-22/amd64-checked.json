@@ -1,0 +1,16 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-tags=wago_regalloccheck",
+    "./src/wago",
+    "-run",
+    "^(TestGCGeneralArrayLen|TestGCVectorArrayAccess|TestGCAllocationMix|TestGCNative(Final|Open)ParameterArrayLength|TestGCFinalCastArrayLen|TestBoundedHostYield|TestImportedStart|TestGuestStorageDefinedType|TestCustomInstruction(Input|Recipe|Checksum)|TestSharedGrowHighDelta)",
+    "-count=1"
+  ],
+  "seconds": 2.4738096670189407,
+  "exit": 0,
+  "user_seconds": 1.609661,
+  "system_seconds": 0.145558,
+  "peak_rss_kib": 284428
+}

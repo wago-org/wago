@@ -56,7 +56,7 @@ func (st *storage) setLogicalRoot(root bool) {
 }
 
 func deferredResultFacts(op wOp, typ machineType) valueFacts {
-	if isCompare(op) || op == opEqz {
+	if isCompare(op) || isFloatCompare(op) || op == opEqz {
 		return factUpper32Zero | factBoolean
 	}
 	if op == opWrap || op == opZExt32 {
