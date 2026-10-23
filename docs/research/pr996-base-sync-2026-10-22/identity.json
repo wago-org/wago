@@ -1,0 +1,17 @@
+{
+  "pr": "https://github.com/wago-org/wago/pull/996",
+  "head_parent": "0373c594106306f020df617e44485e803365db60",
+  "base_branch": "perf/native-array-len",
+  "base_head": "6938cdeb5f2f14ab76c2e50a8677cb930f1dd75b",
+  "manual_conflicts": [
+    "CHANGELOG.md"
+  ],
+  "manual_resolution": "Keep the scalar array setter entry beside the base array-length entry and preserve every base entry.",
+  "go": "1.27.1",
+  "GOMAXPROCS": "2",
+  "GOGC": "50",
+  "GOMEMLIMIT": "1500MiB",
+  "CGO_ENABLED": "0",
+  "qemu": "10.0.13",
+  "hosted_ci": "pending"
+}
