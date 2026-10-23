@@ -400,16 +400,17 @@ func (v *moduleValidator) validateModule() error {
 		if err := v.validateTableType(t.Type); err != nil {
 			return err
 		}
+		globalLimit := len(v.importsOfKind(ExternGlobal))
 		hasInit := t.Init != nil
 		if v.direct != nil {
 			hasInit = i < len(v.direct.tableHasInit) && v.direct.tableHasInit[i]
 			if hasInit {
-				if err := v.validateConstExprDirect(v.direct.tableInits[i], RefVal(t.Type.Ref)); err != nil {
+				if err := v.validateConstExprDirectWithGlobalLimit(v.direct.tableInits[i], RefVal(t.Type.Ref), globalLimit); err != nil {
 					return err
 				}
 			}
 		} else if hasInit {
-			if err := v.validateConstExpr(*t.Init, RefVal(t.Type.Ref)); err != nil {
+			if err := v.validateConstExprWithGlobalLimit(*t.Init, RefVal(t.Type.Ref), globalLimit); err != nil {
 				return err
 			}
 		}
