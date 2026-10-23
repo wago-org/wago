@@ -112,7 +112,7 @@ func TestManifestValidationAcceptsCataloguedOptimizationFamilies(t *testing.T) {
 		"simd-superopt", "interval-region-pins", "magic-div",
 		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse",
 		"entry-init-elision", "v128-direct-results", "dead-gc-new",
-		"gc-native-alloc",
+		"gc-native-alloc", "direct-reference-abi",
 	} {
 		optimizations[name] = false
 	}
