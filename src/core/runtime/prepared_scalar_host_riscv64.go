@@ -11,6 +11,7 @@ import (
 var preparedScalarHostEnabled = os.Getenv("WAGO_NO_PREPARED_SCALAR_HOST") != "1"
 
 func preparedScalarHostAvailable() bool     { return preparedScalarHostEnabled }
+func windowsTypedI64HostAvailable() bool    { return false }
 func preparedScalarHostBridge() uintptr     { ptr, _ := hostCallStubPtr(); return ptr }
 func preparedScalarHostViewBridge() uintptr { return preparedScalarHostBridge() }
 func integerHostContextBridge(bool) uintptr { return preparedScalarHostBridge() }
