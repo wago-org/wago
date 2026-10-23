@@ -1427,6 +1427,26 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		atomicFast = offset.kind == stConst && uint64(offset.cval) <= 0xffffffff
 		atomicOffset = uint32(offset.cval)
 	}
+	growFailureFast := uint32(importIdx) == shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow &&
+		(p == 1 || p == 2) && roots[d-p].st.kind != stConst
+	growIndex := uint32(0)
+	if growFailureFast && p == 2 {
+		index := roots[d-1].st
+		growFailureFast = index.kind == stConst
+		growIndex = uint32(index.cval)
+	}
+	growRoom := uint64(0)
+	if growFailureFast {
+		memory, ok := f.memoryType(growIndex)
+		// Keep the helper when the selected entry exceeds scaled LDR64.
+		growFailureFast = ok && memory.Shared && memory.Limits.HasMax && memory.Limits.Min <= memory.Limits.Max &&
+			uint64(growIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset <= 0xfff*8
+		if growFailureFast {
+			growRoom = memory.Limits.Max - memory.Limits.Min
+			// Omit an unreachable guard when every canonical delta fits this bound.
+			growFailureFast = growRoom != ^uint64(0) && (memory.Limits.Addr64 || growRoom < 0xffffffff)
+		}
+	}
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
@@ -1450,11 +1470,15 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 
 	atomicDone := -1
-	if atomicFast {
+	if atomicFast || growFailureFast {
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		atomicDone = f.emitAtomicWaitFastPath(uint32(importIdx)&^shared.AtomicWaitDispatchBit, int(slotOf[d-p]), atomicOffset)
+		if growFailureFast {
+			atomicDone = f.emitSharedMemoryGrowFailureFastPath(int(slotOf[d-p]), growIndex, growRoom)
+		} else {
+			atomicDone = f.emitAtomicWaitFastPath(uint32(importIdx)&^shared.AtomicWaitDispatchBit, int(slotOf[d-p]), atomicOffset)
+		}
 		if notifyFast {
 			f.stats.peep("atomic-notify-empty")
 		}

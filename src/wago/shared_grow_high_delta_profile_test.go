@@ -40,8 +40,8 @@ func TestSharedGrowHighDeltaHelperEntries(t *testing.T) {
 					}
 				}
 				t.Logf("grow helper entries = %d / %d", count, iterations)
-				if count != iterations {
-					t.Fatalf("grow helpers%d,want%d", count, iterations)
+				if count != 0 {
+					t.Fatalf("grow helpers%d,want0", count)
 				}
 			})
 		}

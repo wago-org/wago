@@ -17,7 +17,7 @@ func TestSharedGrowImpossibleHelperEntries(t *testing.T) {
 				name string
 				mode uint64
 				want int
-			}{{"constant-fail", 0, 0}, {"fallback", 1, iterations}, {"mixed", 2, iterations / 2}} {
+			}{{"constant-fail", 0, 0}, {"dynamic-fail", 1, 0}, {"mixed", 2, 0}} {
 				t.Run(fmt.Sprintf("i64=%t/index=%d/%s", address64, index, path.name), func(t *testing.T) {
 					trace := NewCodeProfile(CodeProfileOptions{TraceBoundaries: true})
 					defer trace.Close()

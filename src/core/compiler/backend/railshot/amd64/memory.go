@@ -1837,6 +1837,44 @@ func (f *fn) sharedMemoryGrow(memoryIndex uint32) error {
 	return f.callHostSync(int(shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow), ft)
 }
 
+// A request above the declaration's maximum minus minimum cannot succeed:
+// current >= minimum, and the effective maximum cannot exceed the declaration.
+// The caller homes all live values. Failure still acquire-reads the authoritative
+// size, as required by shared memory.grow, before returning the typed -1.
+func (f *fn) emitSharedMemoryGrowFailureFastPath(slot int, memoryIndex uint32, room uint64) int {
+	memory64 := f.memoryAddr64(memoryIndex)
+	if memory64 {
+		f.a.Load64(RAX, RSP, f.spillOff(slot))
+	} else {
+		f.a.Load32(RAX, RSP, f.spillOff(slot))
+	}
+	if room <= 0x7fffffff {
+		f.a.AluRI(7, RAX, int32(room), true)
+	} else {
+		f.a.MovImm64(RDI, room)
+		f.a.Cmp64(RAX, RDI)
+	}
+	slow := f.a.JccPlaceholder(condBE)
+	// Aligned u64 MOV is atomic on AMD64, as in shared memory.size.
+	if base := f.cachedSharedMemoryBase(); memoryIndex == 0 && base != regNone {
+		f.a.Load64(RAX, base, -bdCurBytes)
+	} else {
+		f.a.Load64(RAX, RBX, -offMemoryDirPtr)
+		f.a.Load64(RAX, RAX, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset)
+		f.a.Load64(RAX, RAX, -bdCurBytes)
+	}
+	if memory64 {
+		f.a.MovImm64(RAX, ^uint64(0))
+	} else {
+		f.a.MovImm32(RAX, -1)
+	}
+	f.a.Load64(R8, RBX, -offCustomCtx)
+	f.a.Store64(R8, hcResults, RAX)
+	done := f.a.JmpPlaceholder()
+	f.a.PatchRel32(slow, f.a.Len())
+	return done
+}
+
 func (f *fn) memorySize(r *wasm.Reader) error {
 	memoryIndex, err := r.U32()
 	if err != nil {
