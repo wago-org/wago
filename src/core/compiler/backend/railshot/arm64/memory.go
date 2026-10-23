@@ -1994,10 +1994,33 @@ func (f *fn) sharedMemoryGrow(memoryIndex uint32) error {
 	f.materializePendingLoads()
 	f.materializePendingTraps()
 	f.invalidateBoundsCert()
-	if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst && (top.st.cval == 0 || !f.memoryAddr64(memoryIndex) && uint32(top.st.cval) == 0) {
-		f.dropValue()
-		f.sharedMemorySize(memoryIndex)
-		return nil
+	if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
+		mt, ok := f.memoryType(memoryIndex)
+		delta := uint64(top.st.cval)
+		if !mt.Limits.Addr64 {
+			delta = uint64(uint32(delta))
+		}
+		if delta == 0 {
+			f.dropValue()
+			f.sharedMemorySize(memoryIndex)
+			return nil
+		}
+		// Current pages are at least Min and the effective maximum is at most
+		// Max. Subtract validated limits before comparing to avoid overflow.
+		// This new proof reads the selected entry with one scaled LDR64.
+		if ok && mt.Limits.HasMax && mt.Limits.Min <= mt.Limits.Max && delta > mt.Limits.Max-mt.Limits.Min &&
+			uint64(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset <= 0xfff*8 {
+			typ := mtI32
+			if mt.Limits.Addr64 {
+				typ = mtI64
+			}
+			f.dropValue()
+			// Failed shared growth still performs an atomic length read.
+			f.sharedMemorySize(memoryIndex)
+			f.dropValue()
+			f.pushValue(storage{kind: stConst, typ: typ, cval: -1})
+			return nil
+		}
 	}
 	typ := wasm.I32
 	if f.memoryAddr64(memoryIndex) {
