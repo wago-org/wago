@@ -54,6 +54,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Add opt-in pure integer select branches through `WAGO_AMD64_PURE_SELECT=1`;
   keep them disabled by default because unpredictable conditions can regress.
   ([#895](https://github.com/wago-org/wago/pull/895))
+- Use native custom plugin lowerings for imported `return_call` on AMD64 and
+  ARM64, with the existing handler fallback and return-frame rules.
 - Drop nonzero element segments in native AMD64 code when GC array helpers are
   enabled. Keep checked-root cleanup for segment zero in the helper.
 - Handle shared memory growth with a statically impossible delta in native

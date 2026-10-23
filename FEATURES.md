@@ -10,6 +10,11 @@ artifact, host, plugin, profiling, and wide-arithmetic paths. See
 [tests/README.md](tests/README.md) for acceptance commands. QEMU provides
 functional validation; performance measurements require native RV64 hardware.
 
+Portable plugin recipes with inputs up to 32 bits and one output up to 32 bits
+compile to scalar instructions on AMD64 and ARM64. ARM64 bounds the recipe's
+node count, depth, and expanded expression work. Larger ARM64 recipes, wider
+logical values, and unsupported contracts retain the portable handler.
+
 The [committed Core 3 baseline](tests/conformance/baselines/spec-v3-baseline.json)
 records **2,226 modules and 58,038 assertions passed** across the pinned 258-file
 suite, with zero failures, skips, or gap categories.
