@@ -930,7 +930,7 @@ jobs:
   app-corpus-verify:
     name: Verify corpus shard coverage
     needs: [changes, app-corpus, corpus-correctness]
-    if: always() && needs.changes.outputs.profile == 'full' && needs.app-corpus.result == 'success' && needs.corpus-correctness.result == 'success'
+    if: always() && !cancelled() && needs.changes.outputs.profile == 'full' && needs.app-corpus.result == 'success' && needs.corpus-correctness.result == 'success'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -1341,7 +1341,7 @@ jobs:
   # skipped jobs are accepted only when the profile did not expect them.
   ci-ok:
     name: CI
-    if: always()
+    if: always() && !cancelled()
     needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size]
     runs-on: ubuntu-latest
     steps:
