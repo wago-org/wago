@@ -4995,57 +4995,17 @@ func rootedScalarDirectReferenceGlobalTableInitializerModule(imported bool) []by
 	return wasmtest.Module(sections...)
 }
 
-func TestRV64RootedAggregateGlobalTableInitializerExecutes(t *testing.T) {
+func TestRV64RootedAggregateDefinedGlobalTableInitializerRejected(t *testing.T) {
 	source := rootedScalarAggregateGlobalTableInitializerModule()
-	if !railshot.AdmitGCRootedScalarSource(source) {
-		t.Fatal("aggregate global table initializer module was not source-admitted")
-	}
-	decoded, err := wasm.DecodeModule(source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var rootDiagnostic string
-	if plan := newGCFrameRootPlan(decoded, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
-		t.Fatalf("aggregate global table initializer exact-root plan=%+v diagnostic=%q", plan, rootDiagnostic)
+	if railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("table initializer referencing a defined global was source-admitted")
 	}
 	compiled, err := Compile(rv64RootedScalarConfig(), source)
-	if err != nil {
-		t.Fatal(err)
+	if compiled != nil {
+		defer compiled.Close()
 	}
-	defer compiled.Close()
-	view := compiled.executionView()
-	if !rv64FreshRootedGC(view) || len(view.Globals) != 1 || len(view.Elems) != 1 || len(view.Elems[0].Values) != 2 ||
-		len(view.Elems[0].Values[0].Expr) == 0 || !view.Elems[0].Values[1].RepeatPrevious {
-		t.Fatalf("aggregate global table initializer receipt=%t globals=%#v elems=%#v validation=%v", rv64FreshRootedGC(view), view.Globals, view.Elems, railshotValidateCompiled(view))
-	}
-	if !view.requiredFeatures.IsEnabled(CoreFeatureExtendedConstExpressions) || !compiledStructuralRequiredFeatures(view).IsEnabled(CoreFeatureExtendedConstExpressions) {
-		t.Fatalf("aggregate local-global initializer feature receipt=%#x structural=%#x", view.requiredFeatures, compiledStructuralRequiredFeatures(view))
-	}
-	candidate := cloneCompiledMetadata(view)
-	candidate.requiredFeatures &^= CoreFeatureExtendedConstExpressions
-	if rv64FreshRootedGC(candidate) {
-		t.Fatal("aggregate local-global initializer retained the generic receipt without Extended Const Expressions")
-	}
-	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer instance.Close()
-	if _, err := instance.Invoke("run"); err != nil {
-		t.Fatal(err)
-	}
-	if err := instance.CollectGC(); err != nil {
-		t.Fatal(err)
-	}
-	descriptor := instance.tableDescriptor(0)
-	want := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
-	got := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[16:])))
-	if want.IsNull() || got != want {
-		t.Fatalf("aggregate global table initializer refs = %v/%v", want, got)
-	}
-	value, err := instance.gc.StructGet(want, 0)
-	if err != nil || value.Bits != 55 {
-		t.Fatalf("aggregate global table initializer field = %+v, %v", value, err)
+	if err == nil {
+		t.Fatal("table initializer referencing a defined global was compiled")
 	}
 }
 
@@ -5093,49 +5053,17 @@ func TestRV64RootedAggregateImportedGlobalTableInitializerExecutes(t *testing.T)
 	}
 }
 
-func TestRV64RootedAggregateReferenceGlobalTableInitializerExecutes(t *testing.T) {
+func TestRV64RootedAggregateReferenceDefinedGlobalTableInitializerRejected(t *testing.T) {
 	source := rootedScalarAggregateReferenceGlobalTableInitializerModule()
-	if !railshot.AdmitGCRootedScalarSource(source) {
-		t.Fatal("aggregate reference-global table initializer module was not source-admitted")
-	}
-	decoded, err := wasm.DecodeModule(source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var rootDiagnostic string
-	if plan := newGCFrameRootPlan(decoded, true, true, &rootDiagnostic, nil); plan == nil || rootDiagnostic != "" {
-		t.Fatalf("aggregate reference-global table initializer exact-root plan=%+v diagnostic=%q", plan, rootDiagnostic)
+	if railshot.AdmitGCRootedScalarSource(source) {
+		t.Fatal("table initializer referencing a defined global was source-admitted")
 	}
 	compiled, err := Compile(rv64RootedScalarConfig(), source)
-	if err != nil {
-		t.Fatal(err)
+	if compiled != nil {
+		defer compiled.Close()
 	}
-	defer compiled.Close()
-	view := compiled.executionView()
-	if !rv64FreshRootedGC(view) || len(view.Globals) != 1 || len(view.Elems) != 1 || len(view.Elems[0].Values) != 2 ||
-		len(view.Elems[0].Values[0].Expr) == 0 || !view.Elems[0].Values[1].RepeatPrevious {
-		t.Fatalf("aggregate reference-global table initializer receipt=%t globals=%#v elems=%#v validation=%v", rv64FreshRootedGC(view), view.Globals, view.Elems, railshotValidateCompiled(view))
-	}
-	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer instance.Close()
-	if _, err := instance.Invoke("run"); err != nil {
-		t.Fatal(err)
-	}
-	if err := instance.CollectGC(); err != nil {
-		t.Fatal(err)
-	}
-	descriptor := instance.tableDescriptor(0)
-	want := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[8:])))
-	got := native.Ref(uint32(binary.LittleEndian.Uint64(descriptor[16:])))
-	if want.IsNull() || got != want {
-		t.Fatalf("aggregate reference-global table initializer refs = %v/%v", want, got)
-	}
-	value, err := instance.gc.StructGet(want, 0)
-	if err != nil || value.Bits != 0 {
-		t.Fatalf("aggregate reference-global table initializer field = %+v, %v", value, err)
+	if err == nil {
+		t.Fatal("table initializer referencing a defined global was compiled")
 	}
 }
 
@@ -5143,6 +5071,19 @@ func TestRV64RootedDirectReferenceGlobalTableInitializers(t *testing.T) {
 	for _, imported := range []bool{false, true} {
 		t.Run(map[bool]string{false: "local", true: "imported"}[imported], func(t *testing.T) {
 			source := rootedScalarDirectReferenceGlobalTableInitializerModule(imported)
+			if !imported {
+				if railshot.AdmitGCRootedScalarSource(source) {
+					t.Fatal("table initializer referencing a defined global was source-admitted")
+				}
+				compiled, err := Compile(rv64RootedScalarConfig(), source)
+				if compiled != nil {
+					defer compiled.Close()
+				}
+				if err == nil {
+					t.Fatal("table initializer referencing a defined global was compiled")
+				}
+				return
+			}
 			if !railshot.AdmitGCRootedScalarSource(source) {
 				t.Fatal("direct collector-reference global table initializer was not source-admitted")
 			}
@@ -5177,13 +5118,6 @@ func TestRV64RootedDirectReferenceGlobalTableInitializers(t *testing.T) {
 			candidate.Globals[0].Mutable = true
 			if rv64FreshRootedGC(candidate) {
 				t.Fatal("mutable direct table initializer global retained the rooted receipt")
-			}
-			if !imported {
-				candidate = cloneCompiledMetadata(view)
-				candidate.requiredFeatures &^= CoreFeatureExtendedConstExpressions
-				if rv64FreshRootedGC(candidate) {
-					t.Fatal("local direct table initializer retained the rooted receipt without Extended Const Expressions")
-				}
 			}
 			requireRV64RootedArtifactRoundTrip(t, compiled)
 

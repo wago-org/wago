@@ -138,6 +138,17 @@ func TestExtendedConstValidationRejectsStrictly(t *testing.T) {
 		)))
 		validateBoth(t, data, ErrConstExprRequired)
 	})
+	t.Run("table initializer cannot read defined global", func(t *testing.T) {
+		data := extModule(
+			extSection(4, extVec([]byte{
+				0x40, 0x00, // table with initializer form
+				0x70, 0x00, 0x0a, // funcref, min 10
+				0x23, 0x00, 0x0b, // global.get 0
+			})),
+			extSection(6, extVec(extGlobalEntry(FuncRef, false, []byte{0xd0, 0x70, 0x0b}))),
+		)
+		validateBoth(t, data, ErrConstExprRequired)
+	})
 	t.Run("mutable prior global", func(t *testing.T) {
 		data := extModule(extSection(6, extVec(
 			extGlobalEntry(I32, true, []byte{0x41, 0, 0x0b}),
