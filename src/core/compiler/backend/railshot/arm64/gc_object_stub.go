@@ -45,8 +45,9 @@ func needsGCObjectStub(relocs *callRelocTable) bool {
 // It returns X10=object and X17=0 on success, X17=1 on failure, and clobbers
 // X9, X10, X16, X17 and flags. X11 and all other registers are preserved.
 // The caller must already have homed caller-saved pins and saved LR. There is
-// no call or safepoint here. The validator proves the operand's array kind;
-// these checks prove physical access safety, without a dynamic type lookup.
+// no call or safepoint here. The validator proves the operand's array or concrete
+// struct type; public reference ingress enforces that same structural contract.
+// These checks prove physical access safety, without a dynamic type lookup.
 func emitGCObjectStub(code []byte) []byte {
 	a := a64.Asm{B: code}
 	var fallback [11]int
