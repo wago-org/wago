@@ -300,6 +300,10 @@ jobs:
       - name: Initialize Release 3 suite
         run: git submodule update --init --depth=1 tests/conformance/spec-v3
       - name: Run focused runtime race suites
+        # Corpus fixtures run in separate test processes. Avoid one second of
+        # race-runtime exit sleep per fixture; keep all race instrumentation.
+        env:
+          GORACE: atexit_sleep_ms=0
         run: go test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency
 
   current-go:
