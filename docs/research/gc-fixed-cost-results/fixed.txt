@@ -1,217 +1,224 @@
-# pair 1 order ['before', 'after']
+# pair 1 order ['before', 'after'] started_utc=2026-10-24T12:57:28+00:00
 goos: linux
 goarch: amd64
 pkg: github.com/wago-org/wago/src/core/runtime/gc/native
 cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
-BenchmarkThroughputFullLivePointerFree/objects=90         	    1000	      1506 ns/op	      24 B/op	       1 allocs/op
-BenchmarkThroughputFullLivePointerFree/objects=900        	    1000	     14944 ns/op	      24 B/op	       1 allocs/op
-BenchmarkThroughputFullLivePointerFree/objects=9000       	    1000	    150965 ns/op	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/one           	    1000	       349.7 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/cluster       	    1000	      4360 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/spread        	    1000	       429.4 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/dense         	    1000	     16974 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/one          	    1000	       225.6 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/cluster      	    1000	      4474 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/spread       	    1000	     36767 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/dense        	    1000	   1112466 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/one         	    1000	       302.4 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/cluster     	    1000	      4639 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/spread      	    1000	    141661 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/dense       	    1000	   4449388 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=1            	    1000	       218.9 ns/op	      2745 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       143.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=64           	    1000	       217.8 ns/op	      2354 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       143.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=4096         	    1000	       235.3 ns/op	      4879 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=8                  	    1000	       770.1 ns/op	      24 B/op	       1 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=64                 	    1000	      4883 ns/op	      27 B/op	       1 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=512                	    1000	     35633 ns/op	      49 B/op	       1 allocs/op
-BenchmarkThroughputMixedLifetimeGraph/immediate-promotion 	    1000	       195.1 ns/op	         0 full-GCs/op	        32.00 promoted-B/op	        32.00 young-copy-B/op	     178 B/op	       2 allocs/op
-BenchmarkThroughputMixedLifetimeGraph/survivor-aging      	    1000	       172.9 ns/op	         0 full-GCs/op	         0 promoted-B/op	        32.00 young-copy-B/op	      48 B/op	       2 allocs/op
-BenchmarkThroughputZeroSurvivalPolicy/immediate-promotion 	    1000	        49.49 ns/op	       0 B/op	       0 allocs/op
-BenchmarkThroughputZeroSurvivalPolicy/survivor-aging      	    1000	        59.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=90         	    1000	      1564 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=900        	    1000	     15171 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=9000       	    1000	    150462 ns/op	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/one           	    1000	       348.9 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/cluster       	    1000	      4617 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/spread        	    1000	       458.1 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/dense         	    1000	     19033 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/one          	    1000	       234.6 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/cluster      	    1000	      4652 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/spread       	    1000	     36162 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/dense        	    1000	   1082934 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/one         	    1000	       295.0 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/cluster     	    1000	      4626 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/spread      	    1000	    141146 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/dense       	    1000	   4302186 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=1            	    1000	       218.8 ns/op	      9778 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       143.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=64           	    1000	       206.7 ns/op	      2184 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       135.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=4096         	    1000	       208.0 ns/op	      1403 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       143.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=8                  	    1000	       747.1 ns/op	      24 B/op	       1 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=64                 	    1000	      4408 ns/op	      27 B/op	       1 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=512                	    1000	     33863 ns/op	      49 B/op	       1 allocs/op
+BenchmarkThroughputMixedLifetimeGraph/immediate-promotion 	    1000	       181.9 ns/op	         0 full-GCs/op	        32.00 promoted-B/op	        32.00 young-copy-B/op	     178 B/op	       2 allocs/op
+BenchmarkThroughputMixedLifetimeGraph/survivor-aging      	    1000	       174.6 ns/op	         0 full-GCs/op	         0 promoted-B/op	        32.00 young-copy-B/op	      48 B/op	       2 allocs/op
+BenchmarkThroughputZeroSurvivalPolicy/immediate-promotion 	    1000	        47.14 ns/op	       0 B/op	       0 allocs/op
+BenchmarkThroughputZeroSurvivalPolicy/survivor-aging      	    1000	        47.90 ns/op	       0 B/op	       0 allocs/op
 PASS
-# pair 2 order ['after', 'before']
+# finished_utc=2026-10-24T12:57:34+00:00
+# pair 2 order ['after', 'before'] started_utc=2026-10-24T12:57:34+00:00
 goos: linux
 goarch: amd64
 pkg: github.com/wago-org/wago/src/core/runtime/gc/native
 cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
-BenchmarkThroughputFullLivePointerFree/objects=90         	    1000	      1633 ns/op	      24 B/op	       1 allocs/op
-BenchmarkThroughputFullLivePointerFree/objects=900        	    1000	     15874 ns/op	      24 B/op	       1 allocs/op
-BenchmarkThroughputFullLivePointerFree/objects=9000       	    1000	    149469 ns/op	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/one           	    1000	       351.2 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/cluster       	    1000	      4379 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/spread        	    1000	       418.4 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/dense         	    1000	     16979 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/one          	    1000	       221.2 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/cluster      	    1000	      4658 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/spread       	    1000	     35395 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/dense        	    1000	   1290743 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/one         	    1000	       281.6 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/cluster     	    1000	      4438 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/spread      	    1000	    141685 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/dense       	    1000	   4284803 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=1            	    1000	       213.5 ns/op	      2265 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       143.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=64           	    1000	       234.9 ns/op	     11642 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=4096         	    1000	       227.1 ns/op	      4499 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=8                  	    1000	       760.2 ns/op	      24 B/op	       1 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=64                 	    1000	      4800 ns/op	      27 B/op	       1 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=512                	    1000	     34299 ns/op	      49 B/op	       1 allocs/op
-BenchmarkThroughputMixedLifetimeGraph/immediate-promotion 	    1000	       218.0 ns/op	         0 full-GCs/op	        32.00 promoted-B/op	        32.00 young-copy-B/op	     178 B/op	       2 allocs/op
-BenchmarkThroughputMixedLifetimeGraph/survivor-aging      	    1000	       172.7 ns/op	         0 full-GCs/op	         0 promoted-B/op	        32.00 young-copy-B/op	      48 B/op	       2 allocs/op
-BenchmarkThroughputZeroSurvivalPolicy/immediate-promotion 	    1000	        48.10 ns/op	       0 B/op	       0 allocs/op
-BenchmarkThroughputZeroSurvivalPolicy/survivor-aging      	    1000	        49.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=90         	    1000	      1539 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=900        	    1000	     15086 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=9000       	    1000	    149923 ns/op	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/one           	    1000	       383.3 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/cluster       	    1000	      4474 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/spread        	    1000	       417.9 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/dense         	    1000	     16758 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/one          	    1000	       213.3 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/cluster      	    1000	      4391 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/spread       	    1000	     34337 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/dense        	    1000	   1076279 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/one         	    1000	       284.2 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/cluster     	    1000	      4568 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/spread      	    1000	    136594 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/dense       	    1000	   4300514 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=1            	    1000	       206.6 ns/op	      2084 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       143.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=64           	    1000	       213.0 ns/op	      4499 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       143.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=4096         	    1000	       218.4 ns/op	      5500 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       143.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=8                  	    1000	       762.0 ns/op	      24 B/op	       1 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=64                 	    1000	      4663 ns/op	      27 B/op	       1 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=512                	    1000	     33784 ns/op	      49 B/op	       1 allocs/op
+BenchmarkThroughputMixedLifetimeGraph/immediate-promotion 	    1000	       214.9 ns/op	         0 full-GCs/op	        32.00 promoted-B/op	        32.00 young-copy-B/op	     178 B/op	       2 allocs/op
+BenchmarkThroughputMixedLifetimeGraph/survivor-aging      	    1000	       176.2 ns/op	         0 full-GCs/op	         0 promoted-B/op	        32.00 young-copy-B/op	      48 B/op	       2 allocs/op
+BenchmarkThroughputZeroSurvivalPolicy/immediate-promotion 	    1000	        46.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkThroughputZeroSurvivalPolicy/survivor-aging      	    1000	        53.00 ns/op	       0 B/op	       0 allocs/op
 PASS
-# pair 3 order ['before', 'after']
+# finished_utc=2026-10-24T12:57:40+00:00
+# pair 3 order ['before', 'after'] started_utc=2026-10-24T12:57:52+00:00
 goos: linux
 goarch: amd64
 pkg: github.com/wago-org/wago/src/core/runtime/gc/native
 cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
-BenchmarkThroughputFullLivePointerFree/objects=90         	    1000	      1534 ns/op	      24 B/op	       1 allocs/op
-BenchmarkThroughputFullLivePointerFree/objects=900        	    1000	     14566 ns/op	      24 B/op	       1 allocs/op
-BenchmarkThroughputFullLivePointerFree/objects=9000       	    1000	    146257 ns/op	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/one           	    1000	       481.7 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/cluster       	    1000	      4311 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/spread        	    1000	       426.5 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/dense         	    1000	     16448 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/one          	    1000	       233.5 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/cluster      	    1000	      4521 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/spread       	    1000	     35237 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/dense        	    1000	   1060218 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/one         	    1000	       280.1 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/cluster     	    1000	      4469 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/spread      	    1000	    139603 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/dense       	    1000	   4278975 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=1            	    1000	       219.4 ns/op	     10450 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       143.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=64           	    1000	       209.6 ns/op	      2675 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       135.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=4096         	    1000	       213.4 ns/op	      4689 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       143.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=8                  	    1000	       748.3 ns/op	      24 B/op	       1 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=64                 	    1000	      4687 ns/op	      27 B/op	       1 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=512                	    1000	     33961 ns/op	      49 B/op	       1 allocs/op
-BenchmarkThroughputMixedLifetimeGraph/immediate-promotion 	    1000	       179.1 ns/op	         0 full-GCs/op	        32.00 promoted-B/op	        32.00 young-copy-B/op	     178 B/op	       2 allocs/op
-BenchmarkThroughputMixedLifetimeGraph/survivor-aging      	    1000	       186.8 ns/op	         0 full-GCs/op	         0 promoted-B/op	        32.00 young-copy-B/op	      48 B/op	       2 allocs/op
-BenchmarkThroughputZeroSurvivalPolicy/immediate-promotion 	    1000	        46.10 ns/op	       0 B/op	       0 allocs/op
-BenchmarkThroughputZeroSurvivalPolicy/survivor-aging      	    1000	        52.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=90         	    1000	      1639 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=900        	    1000	     15013 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=9000       	    1000	    146469 ns/op	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/one           	    1000	       426.2 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/cluster       	    1000	      4399 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/spread        	    1000	       418.7 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/dense         	    1000	     16633 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/one          	    1000	       211.2 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/cluster      	    1000	      4397 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/spread       	    1000	     34569 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/dense        	    1000	   1078900 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/one         	    1000	       285.4 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/cluster     	    1000	      4446 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/spread      	    1000	    140929 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/dense       	    1000	   4320382 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=1            	    1000	       217.3 ns/op	     11221 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       167.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=64           	    1000	       218.6 ns/op	      6302 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=4096         	    1000	       247.1 ns/op	      4499 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       271.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=8                  	    1000	       817.8 ns/op	      24 B/op	       1 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=64                 	    1000	      5189 ns/op	      27 B/op	       1 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=512                	    1000	     34538 ns/op	      49 B/op	       1 allocs/op
+BenchmarkThroughputMixedLifetimeGraph/immediate-promotion 	    1000	       215.2 ns/op	         0 full-GCs/op	        32.00 promoted-B/op	        32.00 young-copy-B/op	     178 B/op	       2 allocs/op
+BenchmarkThroughputMixedLifetimeGraph/survivor-aging      	    1000	       180.4 ns/op	         0 full-GCs/op	         0 promoted-B/op	        32.00 young-copy-B/op	      48 B/op	       2 allocs/op
+BenchmarkThroughputZeroSurvivalPolicy/immediate-promotion 	    1000	        47.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkThroughputZeroSurvivalPolicy/survivor-aging      	    1000	        54.06 ns/op	       0 B/op	       0 allocs/op
 PASS
-# pair 4 order ['after', 'before']
+# finished_utc=2026-10-24T12:57:58+00:00
+# pair 4 order ['after', 'before'] started_utc=2026-10-24T12:57:58+00:00
 goos: linux
 goarch: amd64
 pkg: github.com/wago-org/wago/src/core/runtime/gc/native
 cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
-BenchmarkThroughputFullLivePointerFree/objects=90         	    1000	      1445 ns/op	      24 B/op	       1 allocs/op
-BenchmarkThroughputFullLivePointerFree/objects=900        	    1000	     14649 ns/op	      24 B/op	       1 allocs/op
-BenchmarkThroughputFullLivePointerFree/objects=9000       	    1000	    148571 ns/op	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/one           	    1000	       488.8 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/cluster       	    1000	      4490 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/spread        	    1000	       520.1 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/dense         	    1000	     16959 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/one          	    1000	       218.8 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/cluster      	    1000	      4429 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/spread       	    1000	     36052 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/dense        	    1000	   1290765 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/one         	    1000	       315.6 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/cluster     	    1000	      4576 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/spread      	    1000	    204778 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/dense       	    1000	   5135837 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=1            	    1000	       258.4 ns/op	      8456 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       143.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=64           	    1000	       271.6 ns/op	      5079 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       143.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       175.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=4096         	    1000	       229.4 ns/op	      4709 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       143.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=8                  	    1000	       844.6 ns/op	      24 B/op	       1 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=64                 	    1000	      4968 ns/op	      27 B/op	       1 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=512                	    1000	     35409 ns/op	      49 B/op	       1 allocs/op
-BenchmarkThroughputMixedLifetimeGraph/immediate-promotion 	    1000	       220.6 ns/op	         0 full-GCs/op	        32.00 promoted-B/op	        32.00 young-copy-B/op	     178 B/op	       2 allocs/op
-BenchmarkThroughputMixedLifetimeGraph/survivor-aging      	    1000	       183.5 ns/op	         0 full-GCs/op	         0 promoted-B/op	        32.00 young-copy-B/op	      48 B/op	       2 allocs/op
-BenchmarkThroughputZeroSurvivalPolicy/immediate-promotion 	    1000	        50.34 ns/op	       0 B/op	       0 allocs/op
-BenchmarkThroughputZeroSurvivalPolicy/survivor-aging      	    1000	        51.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=90         	    1000	      1592 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=900        	    1000	     15496 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=9000       	    1000	    146557 ns/op	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/one           	    1000	       369.3 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/cluster       	    1000	      4392 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/spread        	    1000	       410.3 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/dense         	    1000	     16728 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/one          	    1000	       210.0 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/cluster      	    1000	      4418 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/spread       	    1000	     35328 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/dense        	    1000	   1084736 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/one         	    1000	       278.9 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/cluster     	    1000	      4475 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/spread      	    1000	    136981 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/dense       	    1000	   4308655 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=1            	    1000	       216.2 ns/op	      1973 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       175.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=64           	    1000	       225.2 ns/op	      4769 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       167.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=4096         	    1000	       233.7 ns/op	      4779 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       143.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=8                  	    1000	       804.2 ns/op	      24 B/op	       1 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=64                 	    1000	      4615 ns/op	      27 B/op	       1 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=512                	    1000	     33888 ns/op	      49 B/op	       1 allocs/op
+BenchmarkThroughputMixedLifetimeGraph/immediate-promotion 	    1000	       215.2 ns/op	         0 full-GCs/op	        32.00 promoted-B/op	        32.00 young-copy-B/op	     178 B/op	       2 allocs/op
+BenchmarkThroughputMixedLifetimeGraph/survivor-aging      	    1000	       175.1 ns/op	         0 full-GCs/op	         0 promoted-B/op	        32.00 young-copy-B/op	      48 B/op	       2 allocs/op
+BenchmarkThroughputZeroSurvivalPolicy/immediate-promotion 	    1000	        45.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkThroughputZeroSurvivalPolicy/survivor-aging      	    1000	        46.99 ns/op	       0 B/op	       0 allocs/op
 PASS
-# pair 5 order ['before', 'after']
+# finished_utc=2026-10-24T12:58:05+00:00
+# pair 5 order ['before', 'after'] started_utc=2026-10-24T12:58:17+00:00
 goos: linux
 goarch: amd64
 pkg: github.com/wago-org/wago/src/core/runtime/gc/native
 cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
-BenchmarkThroughputFullLivePointerFree/objects=90         	    1000	      1601 ns/op	      24 B/op	       1 allocs/op
-BenchmarkThroughputFullLivePointerFree/objects=900        	    1000	     16181 ns/op	      24 B/op	       1 allocs/op
-BenchmarkThroughputFullLivePointerFree/objects=9000       	    1000	    150905 ns/op	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/one           	    1000	       355.7 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/cluster       	    1000	      4454 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/spread        	    1000	       418.1 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/dense         	    1000	     16905 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/one          	    1000	       221.7 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/cluster      	    1000	      4436 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/spread       	    1000	     35542 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/dense        	    1000	   1107409 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/one         	    1000	       295.2 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/cluster     	    1000	      4594 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/spread      	    1000	    143345 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/dense       	    1000	   4388892 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=1            	    1000	       228.8 ns/op	      2836 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       143.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=64           	    1000	       226.4 ns/op	      2374 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       143.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=4096         	    1000	       232.6 ns/op	      1824 minor-pause-max-ns	       143.0 minor-pause-p50-ns	       151.0 minor-pause-p90-ns	       151.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=8                  	    1000	       798.7 ns/op	      24 B/op	       1 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=64                 	    1000	      4658 ns/op	      27 B/op	       1 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=512                	    1000	     35335 ns/op	      49 B/op	       1 allocs/op
-BenchmarkThroughputMixedLifetimeGraph/immediate-promotion 	    1000	       222.0 ns/op	         0 full-GCs/op	        32.00 promoted-B/op	        32.00 young-copy-B/op	     178 B/op	       2 allocs/op
-BenchmarkThroughputMixedLifetimeGraph/survivor-aging      	    1000	       188.6 ns/op	         0 full-GCs/op	         0 promoted-B/op	        32.00 young-copy-B/op	      48 B/op	       2 allocs/op
-BenchmarkThroughputZeroSurvivalPolicy/immediate-promotion 	    1000	        55.91 ns/op	       0 B/op	       0 allocs/op
-BenchmarkThroughputZeroSurvivalPolicy/survivor-aging      	    1000	        57.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=90         	    1000	      1501 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=900        	    1000	     14694 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=9000       	    1000	    146584 ns/op	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/one           	    1000	       345.4 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/cluster       	    1000	      4344 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/spread        	    1000	       415.6 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/dense         	    1000	     16646 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/one          	    1000	       206.1 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/cluster      	    1000	      4405 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/spread       	    1000	     34398 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/dense        	    1000	   1077644 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/one         	    1000	       283.5 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/cluster     	    1000	      5825 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/spread      	    1000	    140506 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/dense       	    1000	   4449702 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=1            	    1000	       206.3 ns/op	      2114 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       191.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=64           	    1000	       210.1 ns/op	      2806 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       167.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=4096         	    1000	       208.7 ns/op	      2455 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=8                  	    1000	       810.1 ns/op	      24 B/op	       1 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=64                 	    1000	      4672 ns/op	      27 B/op	       1 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=512                	    1000	     34075 ns/op	      49 B/op	       1 allocs/op
+BenchmarkThroughputMixedLifetimeGraph/immediate-promotion 	    1000	       211.5 ns/op	         0 full-GCs/op	        32.00 promoted-B/op	        32.00 young-copy-B/op	     178 B/op	       2 allocs/op
+BenchmarkThroughputMixedLifetimeGraph/survivor-aging      	    1000	       176.8 ns/op	         0 full-GCs/op	         0 promoted-B/op	        32.00 young-copy-B/op	      48 B/op	       2 allocs/op
+BenchmarkThroughputZeroSurvivalPolicy/immediate-promotion 	    1000	        47.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkThroughputZeroSurvivalPolicy/survivor-aging      	    1000	        47.35 ns/op	       0 B/op	       0 allocs/op
 PASS
-# pair 6 order ['after', 'before']
+# finished_utc=2026-10-24T12:58:23+00:00
+# pair 6 order ['after', 'before'] started_utc=2026-10-24T12:58:23+00:00
 goos: linux
 goarch: amd64
 pkg: github.com/wago-org/wago/src/core/runtime/gc/native
 cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
-BenchmarkThroughputFullLivePointerFree/objects=90         	    1000	      1719 ns/op	      24 B/op	       1 allocs/op
-BenchmarkThroughputFullLivePointerFree/objects=900        	    1000	     15897 ns/op	      24 B/op	       1 allocs/op
-BenchmarkThroughputFullLivePointerFree/objects=9000       	    1000	    154409 ns/op	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/one           	    1000	       381.1 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/cluster       	    1000	      4825 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/spread        	    1000	       462.5 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/dense         	    1000	     17523 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/one          	    1000	       213.9 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/cluster      	    1000	      4526 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/spread       	    1000	     36336 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/dense        	    1000	   1103818 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/one         	    1000	       295.8 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/cluster     	    1000	      4575 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/spread      	    1000	    146886 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/dense       	    1000	   4406309 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=1            	    1000	       222.5 ns/op	      4238 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=64           	    1000	       221.7 ns/op	      1813 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       143.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=4096         	    1000	       234.6 ns/op	      4799 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       143.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       143.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=8                  	    1000	       801.4 ns/op	      24 B/op	       1 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=64                 	    1000	      4798 ns/op	      27 B/op	       1 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=512                	    1000	     34891 ns/op	      49 B/op	       1 allocs/op
-BenchmarkThroughputMixedLifetimeGraph/immediate-promotion 	    1000	       221.8 ns/op	         0 full-GCs/op	        32.00 promoted-B/op	        32.00 young-copy-B/op	     178 B/op	       2 allocs/op
-BenchmarkThroughputMixedLifetimeGraph/survivor-aging      	    1000	       172.2 ns/op	         0 full-GCs/op	         0 promoted-B/op	        32.00 young-copy-B/op	      48 B/op	       2 allocs/op
-BenchmarkThroughputZeroSurvivalPolicy/immediate-promotion 	    1000	        48.95 ns/op	       0 B/op	       0 allocs/op
-BenchmarkThroughputZeroSurvivalPolicy/survivor-aging      	    1000	        50.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=90         	    1000	      1547 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=900        	    1000	     15321 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=9000       	    1000	    150409 ns/op	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/one           	    1000	       488.4 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/cluster       	    1000	      4501 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/spread        	    1000	       420.8 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/dense         	    1000	     16852 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/one          	    1000	       213.5 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/cluster      	    1000	      4401 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/spread       	    1000	     34606 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/dense        	    1000	   1080606 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/one         	    1000	       295.0 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/cluster     	    1000	      8577 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/spread      	    1000	    137465 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/dense       	    1000	   4385456 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=1            	    1000	       214.4 ns/op	      2184 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       231.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=64           	    1000	       216.9 ns/op	      4668 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       135.0 minor-pause-p95-ns	       167.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=4096         	    1000	       215.3 ns/op	      4569 minor-pause-max-ns	       123.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=8                  	    1000	       785.7 ns/op	      24 B/op	       1 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=64                 	    1000	      4749 ns/op	      27 B/op	       1 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=512                	    1000	     35007 ns/op	      49 B/op	       1 allocs/op
+BenchmarkThroughputMixedLifetimeGraph/immediate-promotion 	    1000	       218.4 ns/op	         0 full-GCs/op	        32.00 promoted-B/op	        32.00 young-copy-B/op	     178 B/op	       2 allocs/op
+BenchmarkThroughputMixedLifetimeGraph/survivor-aging      	    1000	       171.3 ns/op	         0 full-GCs/op	         0 promoted-B/op	        32.00 young-copy-B/op	      48 B/op	       2 allocs/op
+BenchmarkThroughputZeroSurvivalPolicy/immediate-promotion 	    1000	        47.92 ns/op	       0 B/op	       0 allocs/op
+BenchmarkThroughputZeroSurvivalPolicy/survivor-aging      	    1000	        49.77 ns/op	       0 B/op	       0 allocs/op
 PASS
-# pair 7 order ['before', 'after']
+# finished_utc=2026-10-24T12:58:29+00:00
+# pair 7 order ['before', 'after'] started_utc=2026-10-24T12:58:41+00:00
 goos: linux
 goarch: amd64
 pkg: github.com/wago-org/wago/src/core/runtime/gc/native
 cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
-BenchmarkThroughputFullLivePointerFree/objects=90         	    1000	      1674 ns/op	      24 B/op	       1 allocs/op
-BenchmarkThroughputFullLivePointerFree/objects=900        	    1000	     15507 ns/op	      24 B/op	       1 allocs/op
-BenchmarkThroughputFullLivePointerFree/objects=9000       	    1000	    167878 ns/op	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/one           	    1000	       640.6 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/cluster       	    1000	      7379 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/spread        	    1000	       753.7 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles1024/dense         	    1000	     23148 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/one          	    1000	       227.3 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/cluster      	    1000	      4526 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/spread       	    1000	     39677 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles65536/dense        	    1000	   1445236 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/one         	    1000	       305.1 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/cluster     	    1000	      4748 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/spread      	    1000	    143926 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkFullSparseHandleBlocks/handles262144/dense       	    1000	   4426844 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=1            	    1000	       225.8 ns/op	      4429 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       143.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=64           	    1000	       229.0 ns/op	      7904 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       143.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCDirtyPersistentRoots/global-slots=4096         	    1000	       244.1 ns/op	      4940 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       143.0 minor-pause-p90-ns	       151.0 minor-pause-p95-ns	       167.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=8                  	    1000	       818.4 ns/op	      24 B/op	       1 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=64                 	    1000	      4966 ns/op	      27 B/op	       1 allocs/op
-BenchmarkGCSparseCardWholeMinor/ranges=512                	    1000	     35666 ns/op	      49 B/op	       1 allocs/op
-BenchmarkThroughputMixedLifetimeGraph/immediate-promotion 	    1000	       188.8 ns/op	         0 full-GCs/op	        32.00 promoted-B/op	        32.00 young-copy-B/op	     178 B/op	       2 allocs/op
-BenchmarkThroughputMixedLifetimeGraph/survivor-aging      	    1000	       173.5 ns/op	         0 full-GCs/op	         0 promoted-B/op	        32.00 young-copy-B/op	      48 B/op	       2 allocs/op
-BenchmarkThroughputZeroSurvivalPolicy/immediate-promotion 	    1000	        49.55 ns/op	       0 B/op	       0 allocs/op
-BenchmarkThroughputZeroSurvivalPolicy/survivor-aging      	    1000	        50.22 ns/op	       0 B/op	       0 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=90         	    1000	      1599 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=900        	    1000	     15820 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=9000       	    1000	    146297 ns/op	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/one           	    1000	       360.2 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/cluster       	    1000	      4330 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/spread        	    1000	       412.3 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles1024/dense         	    1000	     16812 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/one          	    1000	       204.1 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/cluster      	    1000	      4410 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/spread       	    1000	     34446 ns/op	        48.00 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles65536/dense        	    1000	   1101332 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/one         	    1000	       281.2 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/cluster     	    1000	      4495 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/spread      	    1000	    137209 ns/op	       144.0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkFullSparseHandleBlocks/handles262144/dense       	    1000	   4331559 ns/op	         0 index-cap-B	      24 B/op	       1 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=1            	    1000	       216.6 ns/op	      2234 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       143.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=64           	    1000	       221.2 ns/op	      1893 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       135.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       143.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCDirtyPersistentRoots/global-slots=4096         	    1000	       229.5 ns/op	      2284 minor-pause-max-ns	       135.0 minor-pause-p50-ns	       143.0 minor-pause-p90-ns	       143.0 minor-pause-p95-ns	       151.0 minor-pause-p99-ns	      73 B/op	       0 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=8                  	    1000	       801.2 ns/op	      24 B/op	       1 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=64                 	    1000	      4778 ns/op	      27 B/op	       1 allocs/op
+BenchmarkGCSparseCardWholeMinor/ranges=512                	    1000	     33936 ns/op	      49 B/op	       1 allocs/op
+BenchmarkThroughputMixedLifetimeGraph/immediate-promotion 	    1000	       223.7 ns/op	         0 full-GCs/op	        32.00 promoted-B/op	        32.00 young-copy-B/op	     178 B/op	       2 allocs/op
+BenchmarkThroughputMixedLifetimeGraph/survivor-aging      	    1000	       175.3 ns/op	         0 full-GCs/op	         0 promoted-B/op	        32.00 young-copy-B/op	      48 B/op	       2 allocs/op
+BenchmarkThroughputZeroSurvivalPolicy/immediate-promotion 	    1000	        46.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkThroughputZeroSurvivalPolicy/survivor-aging      	    1000	        47.14 ns/op	       0 B/op	       0 allocs/op
 PASS
+# finished_utc=2026-10-24T12:58:47+00:00
