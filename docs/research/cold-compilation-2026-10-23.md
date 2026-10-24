@@ -8,6 +8,40 @@ Standalone decoding, malformed-input diagnostics, typed validation and runtime
 guards remain checked. Adjacent compiler-local declarations are compacted while
 preserving zero-count type checks and original source offsets.
 
+## Direct validation while collecting compiler hints
+
+Production `70e8c20d0172cb28ce3f5da4357897e05a7a0dac` applies the existing direct memory,
+control and call validators to the observed validation loop. Scalar numeric
+dispatch uses the same closed opcode range as ordinary validation. Constants,
+locals and ordinary scalar numeric operations skip zero-valued fixed-fact
+updates; sign-extension instructions retain their required flag. A consistency
+test binds these assumptions to the independent fact classifier. Successful
+instructions publish the same scalar observer payload after validation.
+
+A fresh single alternating pair per pinned input against main `dc13730184e8`,
+with `file-backed-code` enabled, measured compile wall ratio **0.729**
+(~27% faster), summed process compile peak-RSS ratio **0.675** (~33% lower),
+allocation ratio 0.202 and geometric warm execution ratio 1.002 (roughly flat
+in aggregate). All 40 exact oracles pass. All 20 raw native hashes match the
+preceding published compiler. These fresh ratios do not combine older samples.
+The Go 1.27.1/native Linux ARM64/worker-1/GOMAXPROCS-1 protocol and phase limits
+below apply; unrelated host load was uncontrolled. The full goal remains open:
+compilation is still short of 30%, and aggregate execution does not establish
+same-or-better timing on each workload.
+
+Wasm/frontend/IR/backend/public regalloc tests, native Linux ARM64 public tests,
+and 36 off/on execution pairs across 33 unique workloads pass. Differential
+regressions cover memory/control/call facts and errors, truncated immediates,
+wrong operand types, polymorphic stack, and exact mixed 32/64-memory payloads.
+AMD64/RISC-V public binaries cross-build. TinyGo 0.42 threads/Boehm builds and
+preserves the earlier two large-input native hashes.
+
+[Samples](cold-compilation-2026-10-23/observed-validation-arm64-samples.jsonl),
+[identity](cold-compilation-2026-10-23/observed-validation-arm64-identity.json),
+[qualification](cold-compilation-2026-10-23/observed-validation-qualification.json)
+and [option matrix](cold-compilation-2026-10-23/observed-validation-option-ablation.log.gz).
+Earlier profiles below remain tied to their tested sources.
+
 ## Reuse call roots and skip empty omission proofs
 
 Production `00781ec66b7175e43a683e8c2d3a9a332e0bb47d` reuses the existing operand-root inventory
