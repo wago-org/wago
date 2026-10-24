@@ -2593,8 +2593,9 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 // emitNativeBarrierSafeStructRefSetStub resolves an exact final struct in
 // Throughput nursery, old, or large space. Nursery stores need no barrier;
 // old/large stores proceed only for non-young children or an already remembered
-// parent. Tiny and stores that must grow the remembered set use the exact Go
-// helper fallback. The checked store returns EAX=1; EAX=0 selects that fallback.
+// parent with a card covering the field. Tiny and stores that must grow
+// metadata use the exact Go helper fallback. The checked store returns EAX=1;
+// EAX=0 selects that fallback.
 func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a := f.a
 	var traps []gcNativeLeafTrap
@@ -2619,7 +2620,7 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	}
 	a.MovRegReg32(RDI, RSI) // compact child
 	a.MovRegReg32(RSI, RCX) // required parent extent
-	var fallback [16]int
+	var fallback [24]int
 	nfallback := 0
 	addFallback := func(site int) { fallback[nfallback], nfallback = site, nfallback+1 }
 
@@ -2698,8 +2699,8 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a.AluRI(4, RAX, 0xff, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
-	// Old/large parents may bypass the Go barrier when the child is not young,
-	// or when the parent is already conservatively remembered.
+	// Old/large parents may bypass the Go barrier for a young child only
+	// when remembered membership and card coverage both hold.
 	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
 	childIsNursery := a.JccPlaceholder(condE)
 	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceLarge), false)
@@ -2710,6 +2711,37 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a.ShiftImm(5, RAX, 24, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
+	// Remembered membership alone does not cover the whole object: the Go
+	// barrier may have recorded only a different field's card. Require this
+	// field's payload byte to lie in the existing head range, as array.set does.
+	// Otherwise the helper records or coalesces the missing range.
+	a.Load32(RAX, R9, gc.NativeHandleCardSlotOffset)
+	a.TestSelf(RAX, false)
+	addFallback(a.JccPlaceholder(condE))
+	a.AluRI(5, RAX, 1, false)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewObjectCardCountOffset, false)
+	addFallback(a.JccPlaceholder(condAE))
+	a.Load64(R10, R8, gc.NativeViewObjectCardsOffset)
+	a.TestSelf(R10, true)
+	addFallback(a.JccPlaceholder(condE))
+	a.ImulRI(RAX, gc.NativeObjectCardStride, true)
+	a.Add64(R10, RAX)
+	// Recover the parent handle index from its validated handle-entry address.
+	a.MovReg64(RDX, R9)
+	a.Load64(RAX, R8, gc.NativeViewHandlesOffset)
+	a.AluRR(aluTable[opSub].rr, RDX, RAX, true)
+	a.ShiftImm(5, RDX, 4, true)
+	a.Load32(RAX, R10, gc.NativeObjectCardHandleOffset)
+	a.Cmp32(RAX, RDX)
+	addFallback(a.JccPlaceholder(condNE))
+	a.MovRegReg32(RCX, RSI)
+	a.AluRI(5, RCX, int32(gc.PayloadOffset)+4, false)
+	a.Load32(RAX, R10, gc.NativeObjectCardStartOffset)
+	a.Cmp32(RCX, RAX)
+	addFallback(a.JccPlaceholder(condB))
+	a.Load32(RAX, R10, gc.NativeObjectCardEndOffset)
+	a.Cmp32(RCX, RAX)
+	addFallback(a.JccPlaceholder(condA))
 	a.PatchRel32(childValid, a.Len())
 	a.PatchRel32(childI31, a.Len())
 	a.PatchRel32(childNotYoung, a.Len())
