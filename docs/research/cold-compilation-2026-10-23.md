@@ -36,6 +36,40 @@ They do not measure the combined integration. A fresh paired comparison is still
 required to establish its compile, total process peak-RSS and execution effects.
 The 30% physical-memory reduction goal remains open.
 
+## Integrated source: rough Linux ARM64 comparison
+
+Tested source `1c3a98cb23ec4e7154221319b61ac77de3d1ba78` against unchanged
+main `dc13730184e8ba6a1a2b3e3887c53a2b880db88c`, using the identical test-only
+measurement harness and frozen 20-workload manifest. Native ARM64 Linux ran in
+Docker Desktop on Apple M4 Max, Go 1.27.1, GOMAXPROCS=1, one compiler worker.
+One fresh-process pair per input, alternating order; no repeated precision runs.
+Builds/tests finished before measurement; unrelated host load was uncontrolled.
+
+| Metric | Integrated/main ratio | Change |
+| --- | ---: | ---: |
+| Total compile wall time | 0.750 | -25.0% |
+| Geometric mean compile time | 0.606 | -39.4% |
+| Sum of per-process compile peak RSS | 0.835 | -16.5% |
+| Geometric mean process peak RSS | 0.865 | -13.5% |
+| Total compile allocation traffic | 0.228 | -77.2% |
+| Total native code bytes | 0.916 | -8.4% |
+| Geometric mean execution time | 1.006 | +0.6% |
+
+All 40 samples pass exact execution oracles. Compile peak RSS is captured before
+guest execution and includes process startup/input residency. Summing independent
+process peaks is an aggregate comparison, not one simultaneous process peak.
+Compilation CPU time was not measured by this harness.
+
+Execution remains unqualified against the same-or-better gate: polybench-gemm
+was about 86% slower in this single sample, while fastfloat was about 29% faster.
+The rough aggregate cannot establish per-workload neutrality. The 30% total
+compile-time and physical-memory goals remain open.
+
+[Raw paired samples](cold-compilation-2026-10-23/integrated-arm64-samples.jsonl)
+and [source/binary identity](cold-compilation-2026-10-23/integrated-arm64-identity.json)
+preserve attribution. This compares current main with the combined PR; it does
+not isolate the incremental contribution of the ARM64 merge.
+
 ## Earlier PR branch validation against current main
 
 Tested production source: 0a7de4d9c45149ac83325b629d5cdd56bfa7bea0 (after merging main).
