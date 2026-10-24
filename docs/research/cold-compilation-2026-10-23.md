@@ -36,6 +36,54 @@ They do not measure the combined integration. A fresh paired comparison is still
 required to establish its compile, total process peak-RSS and execution effects.
 The 30% physical-memory reduction goal remains open.
 
+## Current source: native Linux AMD64 comparison
+
+Production `d8c878ada3a834af9b305997fa7e301479763591` versus unchanged main
+`dc13730184e8ba6a1a2b3e3887c53a2b880db88c`, Go 1.27.1, identical test-only
+measurement harness and pinned 20-workload manifest. Hub is an AMD Ryzen 7
+7800X3D running Linux x86_64. GOMAXPROCS=1, one compiler worker, CPU6 affinity.
+The shared-host benchmark lock serialized the run and was verified released.
+All artifact and command-input hashes were checked before execution; the current
+catalog was copied into an isolated temporary directory. Shared inputs and
+checkouts were not modified.
+
+One alternating fresh-process pair per input gives these ballpark estimates:
+
+| Metric | Current/main ratio | Change |
+| --- | ---: | ---: |
+| Total compile wall time | 0.623 | -37.7% |
+| Geometric mean compile time | 0.654 | -34.6% |
+| Sum of per-process compile peak RSS | 0.803 | -19.7% |
+| Geometric mean process peak RSS | 0.896 | -10.4% |
+| Compile allocation traffic | 0.191 | -80.9% |
+| Native code bytes | 1.000 | unchanged |
+| Geometric mean execution time | 0.999 | roughly flat |
+
+All40 exact execution oracles pass. This is separate from the ARM64 comparison;
+ratios across different hosts are not combined. Allocation traffic is not
+physical memory. The total process-memory target remains open on both profiles.
+These samples measure compile wall time, not compile CPU time.
+
+[Paired samples](cold-compilation-2026-10-23/current-amd64-samples.jsonl)
+and [source/binary identity](cold-compilation-2026-10-23/current-amd64-identity.json)
+preserve the current-source attribution.
+
+The native AMD64 on/off sweep also passed on the original20 corpus:
+**1,702 complete valid execution-entry pairs across74 switches**, covering
+23 entries. All75 advertised switches were exercised; stack-fence-off is
+intentionally unsafe, so its23 on-only entries are excluded from pair counts.
+One iteration per selection keeps this an oracle/attribution screen, not a
+precision timing study. The sweep used CPU6 and one compiler worker under the
+same required host lock, which was verified released afterward. The one missing
+Grain fixture was copied with its exact hash into private scratch and redirected
+in the private catalog only; shared fixtures were unchanged.
+
+[Matrix summary](cold-compilation-2026-10-23/current-amd64-ablation-summary.json)
+and [compressed complete log](cold-compilation-2026-10-23/current-amd64-ablation.log.gz)
+retain selection coverage. Single-iteration timing differences alone do not
+justify retiring an optimization without checking generated-code effects and
+its applicable workload coverage.
+
 ## Follow-up: reuse validation's negative inline proof
 
 Source `92c909d0a715456c46cdf39be9ff1d304445332d` records one bit per

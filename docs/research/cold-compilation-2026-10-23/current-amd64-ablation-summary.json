@@ -1,0 +1,21 @@
+{
+  "production_source": "d8c878ada3a834af9b305997fa7e301479763591",
+  "complete_pairs": 1702,
+  "complete_switches": 74,
+  "observed_switches": 75,
+  "execution_entries": 23,
+  "incomplete": {
+    "stack-fence": 23
+  },
+  "scope": "original20, one iteration per valid switch selection; exact execution oracle precedes timing; timings are exploratory",
+  "lock_owner": "codex-pr1017-d8c878-amd64-ablation",
+  "lock_released_verified": true,
+  "log_sha256": "173e4480754bb242f44d1a7df3111fb6110d118e3b05ef4e274c1a64a1b8ed26",
+  "fixture_override": {
+    "id": "grain-stdlib-array",
+    "reason": "artifact absent from shared checkout; exact local bytes copied into private directory",
+    "original_path": "workloads/applications/grain-stdlib/array.wasm",
+    "private_path": "private-grain-array.wasm",
+    "sha256": "cffc1de88b1777739c8f004791f6bb16185b1113bed0b38bb8533635ca970c74"
+  }
+}
