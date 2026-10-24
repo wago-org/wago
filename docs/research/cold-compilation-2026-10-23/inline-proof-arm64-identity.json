@@ -1,0 +1,18 @@
+{
+  "production_source": "92c909d0a715456c46cdf39be9ff1d304445332d",
+  "baseline": "dc13730184e8ba6a1a2b3e3887c53a2b880db88c",
+  "platform": "native Linux ARM64 Docker Desktop on Apple M4 Max",
+  "go": "go1.27.1",
+  "gomaxprocs": 1,
+  "compiler_workers": 1,
+  "samples": 1,
+  "order": "alternating fresh processes per input",
+  "execution": "three warmups;30ms minimum oracle-checked window",
+  "isolation": "serial samples after tests/builds ended; unrelated host load uncontrolled",
+  "candidate_test_driver_note": "same production source; measurement binary predates the added negative-proof regression test only",
+  "binary_sha256": {
+    "/tmp/wago-study-main-dc137-linux-arm64.test": "0ce430b7ce20f3e86e633bbbd4fdc118b3521737dcc4604a4bbb08e5485c539b",
+    "/tmp/wago-study-inline-skip.test": "41f252fe6c43448c19c4febf585278a0e4f8dfdc8fa778efe5b074af8573d0d7"
+  },
+  "manifest_sha256": "26da587e5283014d1cfa9588ec1f087e2d97e7df2de5241a5c9649aa7f62707e"
+}

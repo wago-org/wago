@@ -55,6 +55,19 @@ and exact corpus checks across 33 workloads pass. Tests compare every available
 negative proof with the complete inline-target scan and cover oversized-only
 callers, real candidates, compact policy and missing-proof fallback.
 
+The fresh pinned-20 comparison against current main on the same Linux ARM64
+profile measured total compile wall ratio **0.710** (about 29% faster), summed
+per-process compile peak-RSS ratio **0.843** (about 16% lower), allocation ratio
+0.228 and geometric execution-time ratio 0.995. All 40 exact oracles passed.
+One pair per input, alternating order, GOMAXPROCS=1 and one compiler worker;
+unrelated host load was uncontrolled. Several individual execution rows still
+regress in this rough timing screen; aggregate neutrality does not establish
+per-workload same-or-better timing. The full goal remains open.
+
+[Raw paired samples](cold-compilation-2026-10-23/inline-proof-arm64-samples.jsonl)
+and [production/binary identity](cold-compilation-2026-10-23/inline-proof-arm64-identity.json)
+identify this source separately from the earlier integrated measurements below.
+
 ## Follow-up: restore independently proven float maps
 
 The expanded corpus exposed a real gap in the earlier retirement screen:
