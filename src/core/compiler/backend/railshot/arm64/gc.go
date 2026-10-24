@@ -105,6 +105,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			f.pushReg(value, mtI32)
 			return nil
 		}
+		if f.gcStructHelpers && (heap == -20 || heap == -15) {
+			return f.emitNullI31Reference(sub, heap)
+		}
 		if !f.gcStructHelpers {
 			return fmt.Errorf("arm64: ref.test requires GC helpers")
 		}
@@ -144,6 +147,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				f.pushReg(ref, mtI64).st.setGCRoot(gcRoot)
 				return nil
 			}
+		}
+		if f.gcStructHelpers && (heap == -20 || heap == -15 && sub == 23) {
+			return f.emitNullI31Reference(sub, heap)
 		}
 		if !moduleHasCollectorTypes(f.m) {
 			value := f.popValue()

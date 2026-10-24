@@ -588,6 +588,9 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 		f.pushReg(value, mtI32)
 		return nil
 	}
+	if f.gcStructHelpers && (heap == -20 || heap == -15) {
+		return f.emitNullI31Reference(sub, heap)
+	}
 	if f.gcStructHelpers {
 		value := f.materialize(f.popValue())
 		f.pushReg(value, mtI64)
@@ -674,6 +677,9 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 			f.pushReg(value, mtI64)
 			return nil
 		}
+	}
+	if f.gcStructHelpers && (heap == -20 || heap == -15 && sub == 23) {
+		return f.emitNullI31Reference(sub, heap)
 	}
 	if f.gcStructHelpers {
 		value := f.materialize(f.popValue())
