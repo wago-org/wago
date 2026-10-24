@@ -1,0 +1,20 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-tags=wago_codegenstats",
+    "-overlay",
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/trapping-guard-static-reader/overlay.json",
+    "-run",
+    "^TestRealTrappingGuardStaticAdmission$",
+    "-count=1",
+    "-v",
+    "./src/wago"
+  ],
+  "seconds": 28.387592120998306,
+  "exit": 0,
+  "stdout": "=== RUN   TestRealTrappingGuardStaticAdmission\n    real_trapping_guard_capture_test.go:71: fusions=6 functions=6 native_bytes=24170715 compile_seconds=0.464457 roots={Required:true Exact:true Reason: Safepoints:25794 Callsites:56923 MaximumRoots:77 MetadataBytes:1983045}\n--- PASS: TestRealTrappingGuardStaticAdmission (0.48s)\nPASS\nok  \tgithub.com/wago-org/wago/src/wago\t0.481s\n",
+  "stderr": ""
+}

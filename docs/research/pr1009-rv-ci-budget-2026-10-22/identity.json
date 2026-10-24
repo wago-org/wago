@@ -1,0 +1,19 @@
+{
+  "pr": "https://github.com/wago-org/wago/pull/1009",
+  "head_parent": "9efe8d8fe0aa7051dc8f3c1aa220c5367d8f3395",
+  "run": 39839450493,
+  "job": 120052879201,
+  "conclusion": "cancelled",
+  "reason": "The job has exceeded the maximum execution time of 1h30m0s",
+  "last_package_pass": "2026-10-22T21:10:16.9351266Z",
+  "cancelled_at": "2026-10-22T21:37:58.4821459Z",
+  "orphan_processes": [
+    "bash",
+    "go",
+    "compile"
+  ],
+  "native_validation": "pending",
+  "test_selectors_and_timeouts": "unchanged",
+  "go": "1.27.1",
+  "qemu": "10.0.13"
+}

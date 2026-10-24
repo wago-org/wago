@@ -1,0 +1,18 @@
+{
+  "production_commit": "46a9e4e9909cdf18bafd6b57acf1f3dbed6d6d0d",
+  "patch_sha256": "9750d2e14358734c2a34cdf7d5cd485b8f21dbd374eb24ca81bbc9c6ee51dac0",
+  "patch": "/tmp/wago-trapping-guard-production.patch",
+  "paths": [
+    "src/core/compiler/backend/railshot/amd64/call.go",
+    "src/core/compiler/backend/railshot/amd64/compile.go",
+    "src/core/compiler/backend/railshot/amd64/gc_struct.go",
+    "src/core/compiler/backend/railshot/amd64/gc_trapping_guard.go"
+  ],
+  "go": "go version go1.27.1 linux/amd64",
+  "system": "Linux-7.2.8-9-omarchy-x86_64-with-glibc2.41",
+  "cpu": "AMD Ryzen 7 8845HS w/ Radeon 780M Graphics",
+  "binaries": {
+    "control": "9c8b82e2db5e8b6575caa1b5b5e93f5420aec1e0238cb0098824b4027b40f6df",
+    "candidate": "037cffe25020823963ee1fa229592883ad0a7a2004890c3b95d6ae03f11a51d7"
+  }
+}

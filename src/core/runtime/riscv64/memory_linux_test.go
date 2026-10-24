@@ -174,6 +174,7 @@ func TestPublicationFailuresAndCleanupRetry(t *testing.T) {
 		t.Run(stage, func(t *testing.T) {
 			ops := testMemory()
 			unmap := ops.unmap
+			var unmapped []uintptr
 			var base uintptr
 			flushes := 0
 			ops.flush = func([]byte, int) error {
@@ -190,7 +191,12 @@ func TestPublicationFailuresAndCleanupRetry(t *testing.T) {
 				if stage == "cleanup" {
 					return failure
 				}
-				return unmap(mem)
+				addr := pointer(mem)
+				err := unmap(mem)
+				if err == nil {
+					unmapped = append(unmapped, addr)
+				}
+				return err
 			}
 			b, err := newCodeBuffer(4, 4, ops)
 			if err != nil {
@@ -214,15 +220,22 @@ func TestPublicationFailuresAndCleanupRetry(t *testing.T) {
 				if _, err := new(Engine).Call(p, 0, 0, 0, 16); !errors.Is(err, ErrClosed) {
 					t.Fatal("failed publication callable", err)
 				}
-				ops.unmap = unmap
+				ops.unmap = func(mem []byte) error {
+					addr := pointer(mem)
+					err := unmap(mem)
+					if err == nil {
+						unmapped = append(unmapped, addr)
+					}
+					return err
+				}
 				if err = p.Close(); err != nil {
 					t.Fatal(err)
 				}
 			} else if p != nil {
 				t.Fatal("failed publication exposed an owner")
 			}
-			if permissions(t, base) != "" {
-				t.Fatal("failed image not cleaned up")
+			if len(unmapped) != 1 || unmapped[0] != base {
+				t.Fatalf("failed image cleanup = %x, want [%x]", unmapped, base)
 			}
 		})
 	}

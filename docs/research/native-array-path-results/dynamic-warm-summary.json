@@ -1,0 +1,21 @@
+{
+  "BenchmarkGCSharedNurseryArrays/alternating-fill-dynamic": {
+    "baseline": [
+      13300017.0,
+      12870711.0,
+      13022394.0,
+      13051909.0,
+      13088793.0
+    ],
+    "fixed": [
+      191055.0,
+      191578.0,
+      191360.0,
+      191085.0,
+      190723.0
+    ],
+    "baseline_median_ns": 13051909.0,
+    "fixed_median_ns": 191085.0,
+    "speedup": 68.30420493497658
+  }
+}

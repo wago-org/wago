@@ -1,0 +1,10 @@
+{
+  "command": [
+    "/tmp/wago-trapping-guard-control.test",
+    "-test.run=^TestGCTrappingGuard",
+    "-test.v"
+  ],
+  "cwd": "/home/dev/Projects/wago-gc-trapping-guard-pr/src/wago",
+  "seconds": 0.0067477449993020855,
+  "exit": 0
+}

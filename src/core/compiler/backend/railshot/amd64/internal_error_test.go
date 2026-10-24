@@ -24,7 +24,7 @@ func TestCompilePanicHasInternalClassification(t *testing.T) {
 			false, false, false, false, false,
 			nil, hints, nil, nil, false, 0,
 			false, false, false, false,
-			nil, nil, nil, false, inlineTargetTable{}, newCompileScratch(minStackArenaCap))
+			nil, nil, nil, false, inlineTargetTable{}, newCompileScratch(minStackArenaCap), nil)
 		if index == 1 {
 			if err == nil || strings.Contains(err.Error(), "internal compiler error") {
 				t.Fatalf("ordinary unknown-function rejection = %v", err)
@@ -62,7 +62,7 @@ func TestCompileDebugPanicRethrowsOriginal(t *testing.T) {
 		false, false, false, false, false,
 		nil, hints, nil, nil, false, 0,
 		false, false, false, false,
-		nil, nil, nil, false, inlineTargetTable{}, newCompileScratch(minStackArenaCap))
+		nil, nil, nil, false, inlineTargetTable{}, newCompileScratch(minStackArenaCap), nil)
 }
 
 func TestRegisterExhaustionDiagnosticKeepsCause(t *testing.T) {

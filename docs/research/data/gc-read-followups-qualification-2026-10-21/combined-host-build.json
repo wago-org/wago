@@ -1,0 +1,19 @@
+{
+  "source_commit": "676f015cbe377af9ca4ce1be96e13d7f5ca36d2f",
+  "command": [
+    "go",
+    "build",
+    "-mod=mod",
+    "-ldflags=-X main.runtimePatchIdentity=gc-read-followups-676f015cb -X main.workerPluginIdentity=gc-read-followups-676f015cb",
+    "-o",
+    "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/gc-read-followups-candidate-host",
+    "."
+  ],
+  "build_seconds": 8.165712705005717,
+  "total_prepare_seconds": 9.808863760001259,
+  "exit": 0,
+  "stdout": "",
+  "stderr": "",
+  "managed_patch_sha256": "3f016f6442cc891cf982b5edf6f4de9952e7cb03b634c5c40f5c4e7f8842ec87",
+  "binary_sha256": "65eafb71f46ba8410ba631bf504d6e866efd61652f288a8ca49583dd967ca106"
+}

@@ -1,0 +1,16 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-run",
+    "^Test(GCDefinedTrapPreservesGlobalPins|GCFinalResolverTrapPreservesGlobalPins|GCTrappingGuard)",
+    "-count=1",
+    "./src/wago"
+  ],
+  "seconds": 23.982614369997464,
+  "exit": 0,
+  "stdout": "ok  \tgithub.com/wago-org/wago/src/wago\t0.009s\n",
+  "stderr": ""
+}

@@ -1,0 +1,17 @@
+{
+  "label": "combined-bench-checked",
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-tags=wago_regalloccheck",
+    "-count=1",
+    "./..."
+  ],
+  "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-gc-read-followups-qualification/bench",
+  "seconds": 28.22525585599942,
+  "exit": 0,
+  "stdout": "?   \tgithub.com/wago-org/wago/bench/chart\t[no test files]\nok  \tgithub.com/wago-org/wago/bench/cmd/benchpub\t0.002s\nok  \tgithub.com/wago-org/wago/bench/cmd/corpus-shard\t0.003s\n?   \tgithub.com/wago-org/wago/bench/cmd/explain\t[no test files]\nok  \tgithub.com/wago-org/wago/bench/cmd/validatestats\t0.013s\n?   \tgithub.com/wago-org/wago/bench/cmd/wagoprof\t[no test files]\nok  \tgithub.com/wago-org/wago/bench/internal/corpusplan\t0.002s\nok  \tgithub.com/wago-org/wago/bench/internal/semanticcorpus\t0.349s\nok  \tgithub.com/wago-org/wago/bench/suite\t26.484s\n",
+  "stderr": ""
+}
