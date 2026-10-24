@@ -8,6 +8,36 @@ Standalone decoding, malformed-input diagnostics, typed validation and runtime
 guards remain checked. Adjacent compiler-local declarations are compacted while
 preserving zero-count type checks and original source offsets.
 
+## Reuse call roots and skip empty omission proofs
+
+Production `00781ec66b7175e43a683e8c2d3a9a332e0bb47d` reuses the existing operand-root inventory
+for integer and mixed register calls, eliminating duplicate stack-depth and
+argument-root walks. The omitted-inline-body finalizer skips its relocation
+proof when no target carries an omission flag. Compact omission proofs and
+residual-call rejection remain active when an omitted target exists.
+
+A fresh single pair per pinned input against main `dc13730184e8`, with the
+experimental file-backed option enabled, measured total compile wall ratio
+**0.759** (~24% faster), summed process compile peak-RSS ratio **0.673**
+(~33% lower), allocation ratio 0.202 and geometric warm execution ratio 1.004
+(roughly flat overall). All 40 exact oracles pass; all 20 native hashes match
+the prior published compiler. The same Go 1.27.1, native Linux ARM64, worker-1
+and GOMAXPROCS-1 protocol and phase limits apply. Unrelated host load was
+uncontrolled. Individual execution outliers remain; the full goal is open.
+These are fresh source-attributed ratios, not products of earlier ratios.
+
+Full backend/public regalloc checks and the file option's 36 off/on execution
+pairs across 33 unique workloads pass. TinyGo 0.42 threads/Boehm builds and
+preserves the two earlier large-input native hashes. A two-input incremental screen was
+roughly flat for Swift and faster for esbuild, with identical native hashes;
+its size does not establish a precise incremental speedup.
+
+[Samples](cold-compilation-2026-10-23/call-root-arm64-samples.jsonl),
+[identity](cold-compilation-2026-10-23/call-root-arm64-identity.json),
+[qualification](cold-compilation-2026-10-23/call-root-qualification.json) and
+[option matrix](cold-compilation-2026-10-23/call-root-option-ablation.log.gz).
+The earlier profiles below remain tied to their named sources.
+
 ## Experimental file-backed compiler images
 
 Production `ac41e89a2f0a867daa83bf4c8154e15664d49164` adds the default-off ARM64 `file-backed-code`
