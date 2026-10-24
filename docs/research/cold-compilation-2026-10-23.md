@@ -36,6 +36,25 @@ They do not measure the combined integration. A fresh paired comparison is still
 required to establish its compile, total process peak-RSS and execution effects.
 The 30% physical-memory reduction goal remains open.
 
+## Follow-up: reuse validation's negative inline proof
+
+Source `92c909d0a715456c46cdf39be9ff1d304445332d` records one bit per
+function when validation proves that no direct callee fits any inline body-size
+limit. Those callers skip the later inline-callee bytecode scan. Possible
+candidates retain the existing full scan and inlining decisions; unavailable or
+mismatched streamed hints retain the scanner fallback. Compact limits, configured
+inline limits and the bounded recursive candidate are included in the proof.
+There is no module/workload identity check.
+
+A compile-only sample attributed about 7% of Swift compilation to that scan.
+One exploratory pair against parent `e76b9fa2f` measured about 4% less Swift
+compile time and 1% less esbuild compile time, with essentially unchanged RSS
+and native-code sizes. These two rows are an attribution screen, not acceptance
+of the full performance goal. Backend/public tests, register-allocation checks,
+and exact corpus checks across 33 workloads pass. Tests compare every available
+negative proof with the complete inline-target scan and cover oversized-only
+callers, real candidates, compact policy and missing-proof fallback.
+
 ## Follow-up: restore independently proven float maps
 
 The expanded corpus exposed a real gap in the earlier retirement screen:
