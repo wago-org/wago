@@ -8,6 +8,11 @@ on:
         description: Native architecture to screen
         options: [amd64, arm64, both]
         default: amd64
+      comparison:
+        type: choice
+        description: Main comparison or current-source file-option coverage
+        options: [file-option, main]
+        default: file-option
   pull_request:
     paths:
       - .github/workflows/cold-compilation-study.yml
@@ -56,7 +61,14 @@ jobs:
         if: matrix.arch == 'amd64'
         run: go test -tags wago_regalloccheck ./src/core/runtime ./src/core/compiler/optimization ./src/core/compiler/backend/railshot/amd64 ./src/wago -count=1 -timeout=15m
       - name: Run alternating fresh-process pairs
-        run: python3 scripts/cold-compilation-study.py --output cold-study --file-backed-code
+        env:
+          COMPARISON: ${{ inputs.comparison }}
+        run: |
+          options=()
+          if [ -z "$COMPARISON" ] || [ "$COMPARISON" = file-option ]; then
+            options+=(--file-option-comparison)
+          fi
+          python3 scripts/cold-compilation-study.py --output cold-study --file-backed-code "${options[@]}"
       - name: Upload source identity and measurements
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

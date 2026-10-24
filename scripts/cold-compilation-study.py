@@ -24,7 +24,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--file-backed-code", action="store_true")
+    parser.add_argument("--file-option-comparison", action="store_true", help="compare current source with file option off/on instead of comparing main/current")
     args = parser.parse_args()
+    if args.file_option_comparison and not args.file_backed_code:
+        parser.error("--file-option-comparison requires --file-backed-code")
     if platform.system() != "Linux":
         parser.error("native Linux is required")
     root = Path(__file__).resolve().parent.parent
@@ -44,9 +47,13 @@ def main():
             del env[key]
     env.update(GOMAXPROCS="1", WAGO_STUDY_MANIFEST=str(manifest), WAGO_STUDY_EXEC_TIME="30ms")
     cpu = min(os.sched_getaffinity(0))
+    candidate_sha = command(["git", "rev-parse", "HEAD"], root)
+    baseline_sha = candidate_sha if args.file_option_comparison else BASELINE
     identity = {
-        "baseline_sha": BASELINE,
-        "candidate_sha": command(["git", "rev-parse", "HEAD"], root),
+        "comparison": "current file option off/on" if args.file_option_comparison else "main/current",
+        "baseline_option": "file-backed-code=false" if args.file_option_comparison else "defaults",
+        "baseline_sha": baseline_sha,
+        "candidate_sha": candidate_sha,
         "candidate_option": "file-backed-code" if args.file_backed_code else "default",
         "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
         "harness_sha256": hashlib.sha256((root / HARNESS).read_bytes()).hexdigest(),
@@ -63,7 +70,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="wago-cold-study-") as temporary:
         temporary = Path(temporary)
         base = temporary / "baseline"
-        subprocess.run(["git", "worktree", "add", "--detach", str(base), BASELINE], cwd=root, check=True)
+        subprocess.run(["git", "worktree", "add", "--detach", str(base), baseline_sha], cwd=root, check=True)
         try:
             shutil.copyfile(root / HARNESS, base / HARNESS)
             binaries = {}
@@ -83,6 +90,8 @@ def main():
                     order = ("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline")
                     for label in order:
                         sample_env = env.copy()
+                        if label == "baseline" and args.file_option_comparison:
+                            sample_env.update(WAGO_STUDY_OPT="file-backed-code", WAGO_STUDY_ON="0")
                         if label == "candidate" and args.file_backed_code:
                             sample_env.update(WAGO_STUDY_OPT="file-backed-code", WAGO_STUDY_ON="1")
                         result = subprocess.run(
