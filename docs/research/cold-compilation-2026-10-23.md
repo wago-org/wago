@@ -8,6 +8,53 @@ Standalone decoding, malformed-input diagnostics, typed validation and runtime
 guards remain checked. Adjacent compiler-local declarations are compacted while
 preserving zero-count type checks and original source offsets.
 
+## Experimental file-backed compiler images
+
+Production `ac41e89a2f0a867daa83bf4c8154e15664d49164` adds the default-off ARM64 `file-backed-code`
+option for serial Linux compilation. Each buffer owns an unnamed regular file;
+preallocated blocks avoid exposing expected disk-space failures as mapping
+faults. Completed whole pages are written back and released in bounded windows.
+The mapping keeps its bytes and virtual addresses. Descriptor ownership ends on
+close, seal or transfer, including failed-growth cleanup. Unsupported, missing,
+no-execute or memory-backed temporary storage uses anonymous mappings.
+Parallel, deferred and other backend paths retain their existing storage.
+
+One fresh-process pair per pinned workload against main `dc13730184e8`
+measured the following with Go 1.27.1, one worker and GOMAXPROCS=1 on native
+Linux ARM64 Docker Desktop on Apple M4 Max. Unrelated host load was uncontrolled.
+
+| Measurement | Candidate / main | Approximate change |
+| --- | ---: | ---: |
+| Total compile wall time | 0.786 | 21% faster |
+| Sum of process compile peak RSS | 0.682 | 32% lower |
+| Allocation traffic | 0.202 | 80% lower |
+| Native code bytes | 0.916 | 8% smaller |
+| Geometric warm execution time | 1.021 | 2% slower |
+
+All 40 exact execution oracles pass. Native hashes match the previously
+published compiler on 20/20 inputs. The new option's off/on matrix passes
+36 execution entries across 33 unique workloads. Runtime ownership tests cover
+reclaim/readback, growth, concurrent independent buffers, seal/transfer,
+unavailable storage, injected reservation failure and failed cleanup.
+Darwin backend/public regalloc checks, Linux ARM64 runtime/public tests and
+AMD64/RISC-V cross-builds pass. TinyGo 0.42 threads/Boehm builds and preserves
+the earlier two large-input native hashes through its anonymous fallback.
+
+This crosses the aggregate **process compile RSS** gate in an opt-in profile;
+it does not meet the compile-time or same-or-better execution gates. RSS is
+captured before native-code export and guest execution, includes startup/input,
+and is summed across separate processes. Temporary file cache is not included
+in RSS. Earlier prototype cgroup measurements included page cache on two inputs;
+those are not a full-corpus charged-memory measurement of this implementation.
+Disk capacity, I/O, artifact-export residency and cold first-invoke costs remain
+tradeoffs. Default compilation behavior remains unchanged.
+
+[Raw samples](cold-compilation-2026-10-23/file-backed-arm64-samples.jsonl),
+[source/binary identity](cold-compilation-2026-10-23/file-backed-arm64-identity.json),
+[qualification](cold-compilation-2026-10-23/file-backed-qualification.json) and
+[option matrix](cold-compilation-2026-10-23/file-backed-option-ablation.log.gz)
+retain attribution. Older default-profile results below remain separate.
+
 ## Compact compiler data-section view
 
 Production `811162816d52f78aa3414ec2ae38262eab390a37` keeps compiler data
