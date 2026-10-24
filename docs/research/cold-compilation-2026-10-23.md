@@ -11,7 +11,7 @@ preserving zero-count type checks and original source offsets.
 ## Compact compiler data-section view
 
 Production `811162816d52f78aa3414ec2ae38262eab390a37` keeps compiler data
-segments as pointer-free spans over the original section bytes. Each20-byte
+segments as pointer-free spans over the original section bytes. Each 20-byte
 record preserves the full memory index, offset-expression bytes and initializer
 bytes; passive mode uses an impossible active-expression endpoint as its tag.
 Ordinary decoding and programmatic `Module.Data` retain their existing expanded
@@ -20,18 +20,18 @@ records; slice-based legacy consumers can explicitly expand a private copy.
 The expanded decoder's conservative budget and error ordering are preserved.
 
 A refined single-pair compile-only screen against `4d4bc6c09` on Linux ARM64
-measured roughly unchanged Swift compile time with3% lower process peak RSS;
-esbuild was about4% faster with9% lower peak RSS. Allocation traffic fell about
-8% and19% respectively. Native-code hashes matched on both inputs. These are
+measured roughly unchanged Swift compile time with 3% lower process peak RSS;
+esbuild was about 4% faster with 9% lower peak RSS. Allocation traffic fell about
+8% and 19% respectively. Native-code hashes matched on both inputs. These are
 exploratory prepublication screens, not fresh full-corpus acceptance of this
-source. Full30% compile/RSS and same-or-better execution qualification stays open.
+source. Full 30% compile/RSS and same-or-better execution qualification stays open.
 
 Wasm/frontend/IR/ARM64/public tests, regalloc checks, backend profiling, native
-Linux ARM64 public tests and exact corpus checks across33 workloads pass. Linux
+Linux ARM64 public tests and exact corpus checks across 33 workloads pass. Linux
 AMD64 and RISC-V public test binaries cross-compile. Differential tests cover
 mixed active/passive segments, empty payloads, memory64, full-width invalid
 memory indexes, extended/noncanonical offsets, decode errors and GC ownership.
-TinyGo0.42 threads/Boehm builds and produces identical native hashes through
+TinyGo 0.42 threads/Boehm builds and produces identical native hashes through
 compact and expanded decode paths for both large inputs; these are compilation
 checks, not a TinyGo execution matrix. The probe reports unavailable TinyGo
 `StackSys` as JSON null instead of referencing a nonexistent runtime field.
@@ -39,6 +39,23 @@ checks, not a TinyGo execution matrix. The probe reports unavailable TinyGo
 [Qualification and raw screens](cold-compilation-2026-10-23/data-view-qualification.json)
 retain scope and identity. Performance tables below measure their named earlier
 sources and must not be relabeled as measurements of this change.
+
+The fresh pinned-20 ARM64 comparison of this production source against main
+measured total compile wall ratio **0.700** (about 30% faster), summed
+per-process compile peak-RSS ratio **0.828** (about 17% lower), allocation ratio
+0.202 and geometric execution-time ratio 1.013. All 40 exact oracles passed.
+This is one alternating fresh-process pair per input with the same harness,
+Go 1.27.1, GOMAXPROCS=1 and one compiler worker; unrelated host load was
+uncontrolled. The compile threshold is close to sampling noise, and the memory
+target remains unmet. Same-or-better execution timing is not established by
+this rough aggregate.
+
+QuickJS was a 27% execution outlier in the full screen. One focused 200ms-window
+check measured main 145ms, the parent 146ms and current 145ms per command; the large
+slowdown did not reproduce. This is attribution evidence, not precision timing.
+[Current paired rows](cold-compilation-2026-10-23/data-view-arm64-samples.jsonl)
+and [binary/source identity](cold-compilation-2026-10-23/data-view-arm64-identity.json)
+keep these results separate from earlier-source tables below.
 
 ## ARM64 campaign integration
 
@@ -73,7 +90,7 @@ The 30% physical-memory reduction goal remains open.
 Production `d8c878ada3a834af9b305997fa7e301479763591` versus unchanged main
 `dc13730184e8ba6a1a2b3e3887c53a2b880db88c`, Go 1.27.1, identical test-only
 measurement harness and pinned 20-workload manifest. Hub is an AMD Ryzen 7
-7800X3D running Linux x86_64. GOMAXPROCS=1, one compiler worker, CPU6 affinity.
+7800X3D running Linux x86_64. GOMAXPROCS=1, one compiler worker, CPU 6 affinity.
 The shared-host benchmark lock serialized the run and was verified released.
 All artifact and command-input hashes were checked before execution; the current
 catalog was copied into an isolated temporary directory. Shared inputs and
@@ -91,7 +108,7 @@ One alternating fresh-process pair per input gives these ballpark estimates:
 | Native code bytes | 1.000 | unchanged |
 | Geometric mean execution time | 0.999 | roughly flat |
 
-All40 exact execution oracles pass. This is separate from the ARM64 comparison;
+All 40 exact execution oracles pass. This is separate from the ARM64 comparison;
 ratios across different hosts are not combined. Allocation traffic is not
 physical memory. The total process-memory target remains open on both profiles.
 These samples measure compile wall time, not compile CPU time.
@@ -100,12 +117,12 @@ These samples measure compile wall time, not compile CPU time.
 and [source/binary identity](cold-compilation-2026-10-23/current-amd64-identity.json)
 preserve the current-source attribution.
 
-The native AMD64 on/off sweep also passed on the original20 corpus:
-**1,702 complete valid execution-entry pairs across74 switches**, covering
-23 entries. All75 advertised switches were exercised; stack-fence-off is
-intentionally unsafe, so its23 on-only entries are excluded from pair counts.
+The native AMD64 on/off sweep also passed on the original 20-workload corpus:
+**1,702 complete valid execution-entry pairs across 74 switches**, covering
+23 entries. All 75 advertised switches were exercised; stack-fence-off is
+intentionally unsafe, so its 23 on-only entries are excluded from pair counts.
 One iteration per selection keeps this an oracle/attribution screen, not a
-precision timing study. The sweep used CPU6 and one compiler worker under the
+precision timing study. The sweep used CPU 6 and one compiler worker under the
 same required host lock, which was verified released afterward. The one missing
 Grain fixture was copied with its exact hash into private scratch and redirected
 in the private catalog only; shared fixtures were unchanged.
