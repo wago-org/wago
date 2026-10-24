@@ -431,12 +431,9 @@ func (c *Collector) discardNativeStructHandles() {
 		}
 		c.nurseryBump = rewind
 	}
-	chargedBump := c.nurseryBump
 	if canceled {
-		// Reserved handles are appended as one tail batch and no Go allocation or
-		// collection can append another nursery identity before cancellation. Trim
-		// that bounded tail directly and retain only consumed live handles. Keep the
-		// full compaction as a fail-closed fallback if the invariant is not exact.
+		// Usually this batch is the ledger tail. An independent large-array
+		// reservation can follow it, so use the bounded trim only when exact.
 		trimmed := false
 		if int(end) <= len(c.nurseryHandles) {
 			start := len(c.nurseryHandles) - int(end)
@@ -459,16 +456,20 @@ func (c *Collector) discardNativeStructHandles() {
 			}
 		}
 		if !trimmed {
-			// A failed collection can return before normal nursery compaction, and
-			// later handle reuse must not append a duplicate identity to the dense
-			// young set.
-			c.compactNurseryHandles()
-			if c.hasPendingDeadNurseryObjects() && c.nurseryBump < chargedBump {
-				// Native dead-struct charges have no handle extent for compaction
-				// to discover. Keep their high-water mark until collection reclaims
-				// the charged bytes and clears the pending object count.
-				c.nurseryBump = chargedBump
+			// Unpublished large-array handles are also spaceFree, but remain
+			// owned by their independent reservation. Keep that ledger entry.
+			// Cancellation must not recompute nurseryBump from published handle
+			// extents: they omit reserved array bytes and dead-struct charges.
+			// The guarded chunk rewind above is the only safe reclamation here.
+			reserved := &c.nativeLargeArrayAlloc
+			out := c.nurseryHandles[:0]
+			for _, h := range c.nurseryHandles {
+				if c.isYoungHandle(h) || (reserved.Count != 0 && h == reserved.Handle) {
+					out = append(out, h)
+				}
 			}
+			clear(c.nurseryHandles[len(out):])
+			c.nurseryHandles = out
 		}
 	}
 	clear(s.Handles[:end])
