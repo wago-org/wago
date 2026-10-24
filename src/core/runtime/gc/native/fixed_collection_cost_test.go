@@ -2,6 +2,61 @@ package gc
 
 import "testing"
 
+type panickingQueuedRoots struct{ ref Ref }
+
+func (panickingQueuedRoots) RangeRoots(func(RootSlot) bool) {}
+func (r panickingQueuedRoots) RangeRootRefs(sink RootRefSink) bool {
+	sink.VisitRootRef(r.ref)
+	panic("root walk after queuing parent")
+}
+
+func TestMarkResetPreservesGraphAfterPanicMinorFull(t *testing.T) {
+	c := newTestCollector(t, Config{NurseryBytes: 1 << 20})
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := c.NewStructDefault(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	roots := RefSliceRoots{parent}
+	// Promote the graph so a later nursery reset cannot clear the parent's mark.
+	if err := c.CollectMinor(roots); err != nil {
+		t.Fatal(err)
+	}
+	if c.entry(parent).young() || c.entry(child).young() {
+		t.Fatal("setup did not promote the graph")
+	}
+	func() {
+		defer func() {
+			if got := recover(); got != "root walk after queuing parent" {
+				t.Fatalf("root walk panic = %v", got)
+			}
+		}()
+		if err := c.CollectFull(panickingQueuedRoots{ref: parent}); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// The interrupted full trace queued the parent without draining it. The
+	// minor reset must preserve that mark's reset bound before dropping the queue.
+	if err := c.CollectMinor(roots); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.CollectFull(roots); err != nil {
+		t.Fatal(err)
+	}
+	if !c.validObjectRef(parent) || !c.validObjectRef(child) {
+		t.Fatalf("panic/minor/full lost rooted graph: parent valid=%v child valid=%v", c.validObjectRef(parent), c.validObjectRef(child))
+	}
+	if err := c.Verify(roots); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMarkResetCoversQueuedAndDrainedRoots(t *testing.T) {
 	for _, mode := range []string{"queued", "minor", "captured-minor", "full"} {
 		t.Run(mode, func(t *testing.T) {

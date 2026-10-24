@@ -24,6 +24,11 @@ func (c *Collector) clearNurseryMarks() {
 			c.mark[h] = false
 		}
 	}
+	// An interrupted full trace may have queued old handles whose marks must
+	// still be cleared by the next full reset after this queue is discarded.
+	for _, h := range c.markStack {
+		c.markHighWater = max(c.markHighWater, h+1)
+	}
 	c.markStack = c.markStack[:0]
 }
 
