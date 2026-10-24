@@ -10,6 +10,16 @@ preserving zero-count type checks and original source offsets.
 
 ## Native Linux screening
 
+The first native runs below carried a ~33 MiB Python-launcher RSS floor into
+small samples. Their RSS ratios are retained for audit and **do not qualify the
+memory target**. Compile timing, allocations and exact oracles remain useful.
+A Linux diagnostic with a 64 MiB Python allocation reproduced ~79 MiB inherited
+peak RSS in a tiny child; a fresh small shell followed by a fork reduced the
+same child's peak to ~9 MiB. The corrected runner uses that launch boundary,
+with CPU affinity inherited from its parent and no Python pre-exec callback.
+Linux [preserves resource usage across exec](https://man7.org/linux/man-pages/man2/getrusage.2.html).
+The first corrected AMD64 comparison is pending.
+
 A single alternating pair per frozen input on GitHub native Ubuntu 24.04
 runners, candidate `e3ca167ec51e` (compiler `85fd3b36af34`) against main
 `dc13730184e8`, produced the following ratios. These measurements supersede no

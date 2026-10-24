@@ -57,7 +57,7 @@ def main():
         "filesystem": command(["findmnt", "-T", str(root)], root),
         "temporary_filesystem": command(["findmnt", "-T", tempfile.gettempdir()], root),
         "affinity_cpu": cpu,
-        "protocol": "one pair per input, alternating order, fresh processes, one worker, GOMAXPROCS=1; all builds finish before timing",
+        "protocol": "one pair per input, alternating order, fresh processes, one worker, GOMAXPROCS=1; all builds finish before timing; small shell forks after exec to exclude Python launcher RSS",
     }
     (output / "identity.json").write_text(json.dumps(identity, indent=2) + "\n")
     with tempfile.TemporaryDirectory(prefix="wago-cold-study-") as temporary:
@@ -73,6 +73,10 @@ def main():
                 binaries[label] = binary
                 identity[label + "_binary_sha256"] = hashlib.sha256(binary.read_bytes()).hexdigest()
             (output / "identity.json").write_text(json.dumps(identity, indent=2) + "\n")
+            # Linux preserves resource peaks across exec. Fork from a fresh,
+            # small shell so Python's resident heap cannot become the Go test's
+            # pre-exec RSS floor. CPU affinity is inherited without callbacks.
+            os.sched_setaffinity(0, {cpu})
             samples = {"baseline": {}, "candidate": {}}
             with (output / "samples.jsonl").open("w") as receipt, (output / "raw.log").open("w") as log:
                 for index, entry in enumerate(inputs):
@@ -82,9 +86,9 @@ def main():
                         if label == "candidate" and args.file_backed_code:
                             sample_env.update(WAGO_STUDY_OPT="file-backed-code", WAGO_STUDY_ON="1")
                         result = subprocess.run(
-                            [str(binaries[label]), "-test.run=^TestOptimizationStudySample$", "-test.v", "-test.timeout=3m", "-wago.corpus=" + entry["id"]],
+                            ["/bin/sh", "-c", '"$@" & child=$!; wait "$child"', "wago-study-launch", str(binaries[label]), "-test.run=^TestOptimizationStudySample$", "-test.v", "-test.timeout=3m", "-wago.corpus=" + entry["id"]],
                             cwd=root / "bench/suite", env=sample_env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            preexec_fn=lambda: os.sched_setaffinity(0, {cpu}), timeout=200,
+                            timeout=200,
                         )
                         log.write(f"STUDY_IMAGE {label}\n{result.stdout}\n")
                         log.flush()
