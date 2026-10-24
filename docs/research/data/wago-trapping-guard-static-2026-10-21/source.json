@@ -1,0 +1,7 @@
+{
+  "source": "/home/dev/Projects/dewdrop/.tmp/wago-trapping-guard-qualification",
+  "commit": "59f785143d7ed810f305bce435d1bef6768adf25",
+  "api_source_sha256": "955d0f2a6e0d2135a7151e5d8250ab233c670f03396aeb35cf9daceeb0c00e95",
+  "overlay_api_sha256": "0cb2001845989484d57b9dc54dbc9dd9af2f358a2bba666e5300398e81b9f1ba",
+  "purpose": "diagnostic capture after ordinary public API selects exact root/helper/inline policies; no candidate source edits"
+}

@@ -1,0 +1,17 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-tags=wago_codegenstats,wago_regalloccheck",
+    "-run",
+    "^Test(GCDefinedTrapPreservesGlobalPins|GCFinalResolverTrapPreservesGlobalPins|GCResolverSelectedSpaceDescriptor|GCTrappingGuard)",
+    "-count=1",
+    "./src/wago"
+  ],
+  "seconds": 28.85168597800657,
+  "exit": 0,
+  "stdout": "ok  \tgithub.com/wago-org/wago/src/wago\t0.024s\n",
+  "stderr": ""
+}

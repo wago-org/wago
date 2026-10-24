@@ -1,0 +1,19 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCResolverSpaceByte/inline-struct              81323236                 2.924 ns/op           0 B/op          0 allocs/op
+BenchmarkGCResolverSpaceByte/inline-struct              81624740                 2.921 ns/op           0 B/op          0 allocs/op
+BenchmarkGCResolverSpaceByte/shared-open-struct         75593503                 3.173 ns/op           0 B/op          0 allocs/op
+BenchmarkGCResolverSpaceByte/shared-open-struct         74588898                 3.169 ns/op           0 B/op          0 allocs/op
+BenchmarkGCResolverSpaceByte/defined-cast               64624896                 3.676 ns/op           0 B/op          0 allocs/op
+BenchmarkGCResolverSpaceByte/defined-cast               63717823                 3.675 ns/op           0 B/op          0 allocs/op
+BenchmarkGCResolverSpaceByte/defined-test               68250494                 3.467 ns/op           0 B/op          0 allocs/op
+BenchmarkGCResolverSpaceByte/defined-test               68087944                 3.486 ns/op           0 B/op          0 allocs/op
+BenchmarkGCResolverSpaceByte/cast-array-length          86181079                 2.725 ns/op           0 B/op          0 allocs/op
+BenchmarkGCResolverSpaceByte/cast-array-length          87227368                 2.725 ns/op           0 B/op          0 allocs/op
+BenchmarkGCResolverSpaceByte/array-reference-get        65219782                 3.642 ns/op           0 B/op          0 allocs/op
+BenchmarkGCResolverSpaceByte/array-reference-get        65136589                 3.634 ns/op           0 B/op          0 allocs/op
+BenchmarkGCResolverSpaceByte/cast-struct-get            81419964                 2.866 ns/op           0 B/op          0 allocs/op
+BenchmarkGCResolverSpaceByte/cast-struct-get            81418057                 2.871 ns/op           0 B/op          0 allocs/op
+PASS

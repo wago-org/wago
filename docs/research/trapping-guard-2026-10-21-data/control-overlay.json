@@ -1,0 +1,8 @@
+{
+  "Replace": {
+    "/home/dev/Projects/wago-gc-trapping-guard-pr/src/core/compiler/backend/railshot/amd64/call.go": "/home/dev/Projects/wago-gc-trapping-guard-pr/docs/research/trapping-guard-2026-10-21-data/control/call.go",
+    "/home/dev/Projects/wago-gc-trapping-guard-pr/src/core/compiler/backend/railshot/amd64/compile.go": "/home/dev/Projects/wago-gc-trapping-guard-pr/docs/research/trapping-guard-2026-10-21-data/control/compile.go",
+    "/home/dev/Projects/wago-gc-trapping-guard-pr/src/core/compiler/backend/railshot/amd64/gc_struct.go": "/home/dev/Projects/wago-gc-trapping-guard-pr/docs/research/trapping-guard-2026-10-21-data/control/gc_struct.go",
+    "/home/dev/Projects/wago-gc-trapping-guard-pr/src/core/compiler/backend/railshot/amd64/gc_trapping_guard.go": "/home/dev/Projects/wago-gc-trapping-guard-pr/docs/research/trapping-guard-2026-10-21-data/control/gc_trapping_guard.go"
+  }
+}

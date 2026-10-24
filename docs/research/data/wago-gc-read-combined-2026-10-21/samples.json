@@ -1,0 +1,162 @@
+[
+  {
+    "label": "gc-read-combined-control",
+    "command": [
+      "taskset",
+      "-c",
+      "12,14",
+      "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/cast-array-candidate-host",
+      "run",
+      "-p8",
+      "--core",
+      "3",
+      "--local",
+      "--locked",
+      "--no-input",
+      "--gc-heap",
+      "512MiB",
+      "--gc-nursery",
+      "64MiB",
+      "/home/dev/Projects/dewdrop/.tmp/transform-workers/run-rvr6ozve/compiler.wasm",
+      ".tmp/wago-local-perf-2026-10-20/request.bin"
+    ],
+    "cwd": "/home/dev/Projects/dewdrop",
+    "seconds": 42.173588356003165,
+    "user_seconds": 42.359919,
+    "system_seconds": 0.254554,
+    "peak_rss_kib": 1060668,
+    "exit": 0,
+    "timeout": false,
+    "load_start": [
+      1.95751953125,
+      2.65673828125,
+      2.55810546875
+    ],
+    "load_end": [
+      2.2431640625,
+      2.66552734375,
+      2.56640625
+    ],
+    "environment": {
+      "WAGO_HOME": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/gc-read-combined-control-home",
+      "DEW_TRANSFORM_WORKERS": "0",
+      "WAGO_AMD64_GC_STRUCT_BATCH": "",
+      "DEW_WAGO_NATIVE_MAP": "",
+      "DEW_WAGO_PROFILE_DIR": ""
+    },
+    "output_wasm_sha256": "89af055df4b2a4e44be109f10f50d98b5e29deb4810194aca234c9e019912fbb",
+    "output_cache_sha256": "c3a9142e2f4a1186fb5d47f78dfea5adcbf1892e52ff0a803a7c3332e7236240",
+    "validated_main": 42,
+    "request_sha256": "077b0ff0271706cc3034f3e06c7a228f227c49aeec7786d21373b2072af89c72",
+    "native_cache": "cold",
+    "engine": "control",
+    "root_admission": {
+      "Callsites": 56923,
+      "Exact": true,
+      "MaximumRoots": 77,
+      "MetadataBytes": 1983045,
+      "Reason": "",
+      "Required": true,
+      "Safepoints": 25794,
+      "artifact_sections": {
+        "Framing": 16,
+        "Code": 24170827,
+        "Entries": 54060,
+        "Imports": 7322,
+        "Types": 213538,
+        "Functions": 36399,
+        "ExportsAndNames": 214776,
+        "Globals": 55014,
+        "Tables": 58229,
+        "Elements": 2,
+        "Data": 436198,
+        "Memories": 27,
+        "Tags": 2,
+        "Features": 9,
+        "GC": 2258152,
+        "Metadata": 3333728,
+        "Total": 27504571
+      }
+    }
+  },
+  {
+    "label": "gc-read-combined-candidate",
+    "command": [
+      "taskset",
+      "-c",
+      "12,14",
+      "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/gc-read-followups-candidate-host",
+      "run",
+      "-p8",
+      "--core",
+      "3",
+      "--local",
+      "--locked",
+      "--no-input",
+      "--gc-heap",
+      "512MiB",
+      "--gc-nursery",
+      "64MiB",
+      "/home/dev/Projects/dewdrop/.tmp/transform-workers/run-rvr6ozve/compiler.wasm",
+      ".tmp/wago-local-perf-2026-10-20/request.bin"
+    ],
+    "cwd": "/home/dev/Projects/dewdrop",
+    "seconds": 39.36687980100396,
+    "user_seconds": 39.516629,
+    "system_seconds": 0.283223,
+    "peak_rss_kib": 1053928,
+    "exit": 0,
+    "timeout": false,
+    "load_start": [
+      2.2431640625,
+      2.66552734375,
+      2.56640625
+    ],
+    "load_end": [
+      2.2744140625,
+      2.64013671875,
+      2.5625
+    ],
+    "environment": {
+      "WAGO_HOME": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/gc-read-combined-candidate-home",
+      "DEW_TRANSFORM_WORKERS": "0",
+      "WAGO_AMD64_GC_STRUCT_BATCH": "",
+      "DEW_WAGO_NATIVE_MAP": "",
+      "DEW_WAGO_PROFILE_DIR": ""
+    },
+    "output_wasm_sha256": "89af055df4b2a4e44be109f10f50d98b5e29deb4810194aca234c9e019912fbb",
+    "output_cache_sha256": "c3a9142e2f4a1186fb5d47f78dfea5adcbf1892e52ff0a803a7c3332e7236240",
+    "validated_main": 42,
+    "request_sha256": "077b0ff0271706cc3034f3e06c7a228f227c49aeec7786d21373b2072af89c72",
+    "native_cache": "cold",
+    "engine": "candidate",
+    "root_admission": {
+      "Callsites": 56923,
+      "Exact": true,
+      "MaximumRoots": 77,
+      "MetadataBytes": 1983045,
+      "Reason": "",
+      "Required": true,
+      "Safepoints": 25794,
+      "artifact_sections": {
+        "Framing": 16,
+        "Code": 24149947,
+        "Entries": 54060,
+        "Imports": 7322,
+        "Types": 213538,
+        "Functions": 36399,
+        "ExportsAndNames": 214776,
+        "Globals": 55014,
+        "Tables": 58229,
+        "Elements": 2,
+        "Data": 436198,
+        "Memories": 27,
+        "Tags": 2,
+        "Features": 9,
+        "GC": 2258152,
+        "Metadata": 3333728,
+        "Total": 27483691
+      }
+    }
+  }
+]

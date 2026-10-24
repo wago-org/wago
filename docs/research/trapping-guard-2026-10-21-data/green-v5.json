@@ -1,0 +1,17 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-tags=wago_codegenstats,wago_regalloccheck",
+    "-run",
+    "^TestGCTrappingGuard|^TestGCFinalResolverTrapPins|^TestGCNumericLeafInline",
+    "-count=1",
+    "-v",
+    "./src/wago"
+  ],
+  "cwd": "/home/dev/Projects/wago-gc-trapping-guard-pr",
+  "seconds": 25.946964669004956,
+  "exit": 0
+}

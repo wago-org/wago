@@ -1,0 +1,146 @@
+=== RUN   TestGCNumericLeafInlineTrapGlobals
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-0/i32/9
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-0/i32/10
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-0/i64/9
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-0/i64/10
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-0/i32/0
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-0/i64/0
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-1/i32/9
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-1/i32/10
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-1/i64/9
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-1/i64/10
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-1/i32/0
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-1/i64/0
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-0/i32/9
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-0/i32/10
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-0/i64/9
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-0/i64/10
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-0/i32/0
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-0/i64/0
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-1/i32/9
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-1/i32/10
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-1/i64/9
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-1/i64/10
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-1/i32/0
+=== RUN   TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-1/i64/0
+--- PASS: TestGCNumericLeafInlineTrapGlobals (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-0/i32/9 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-0/i32/10 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-0/i64/9 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-0/i64/10 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-0/i32/0 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-0/i64/0 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-1/i32/9 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-1/i32/10 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-1/i64/9 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-1/i64/10 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-1/i32/0 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-false/artifact-1/i64/0 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-0/i32/9 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-0/i32/10 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-0/i64/9 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-0/i64/10 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-0/i32/0 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-0/i64/0 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-1/i32/9 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-1/i32/10 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-1/i64/9 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-1/i64/10 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-1/i32/0 (0.00s)
+    --- PASS: TestGCNumericLeafInlineTrapGlobals/inline-true/artifact-1/i64/0 (0.00s)
+=== RUN   TestGCNumericLeafInlineRoots
+=== RUN   TestGCNumericLeafInlineRoots/inline-false
+=== RUN   TestGCNumericLeafInlineRoots/inline-true
+--- PASS: TestGCNumericLeafInlineRoots (0.00s)
+    --- PASS: TestGCNumericLeafInlineRoots/inline-false (0.00s)
+    --- PASS: TestGCNumericLeafInlineRoots/inline-true (0.00s)
+=== RUN   TestGCNumericLeafInlineTrapPins
+--- PASS: TestGCNumericLeafInlineTrapPins (0.00s)
+=== RUN   TestGCNumericLeafInlineAdmission
+--- PASS: TestGCNumericLeafInlineAdmission (0.00s)
+=== RUN   TestGCTrappingGuard
+--- PASS: TestGCTrappingGuard (0.00s)
+=== RUN   TestGCTrappingGuardFirstExtent
+--- PASS: TestGCTrappingGuardFirstExtent (0.00s)
+=== RUN   TestGCTrappingGuardAdmission
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true read reuse=1 locals=2 globals=0 frame=72 spills=0 code=531 calls=map[gcnative:1 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: read rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 gc-numeric-leaf-inline:1 gc-trapping-guard-rbp:1 gc-trapping-guard-reuse:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true nullable reuse=1 locals=2 globals=0 frame=72 spills=0 code=531 calls=map[gcnative:1 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: nullable rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 gc-numeric-leaf-inline:1 gc-trapping-guard-rbp:1 gc-trapping-guard-reuse:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true noninline reuse=0 locals=2 globals=0 frame=56 spills=0 code=558 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: noninline rewrites=map[final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true store reuse=0 locals=2 globals=0 frame=72 spills=0 code=567 calls=map[gcnative:2 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: store rewrites=map[addr-zext-elim:1 cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 gc-numeric-leaf-inline:1 memory-min-bounds:1 store-imm:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true local-write reuse=0 locals=2 globals=0 frame=72 spills=0 code=561 calls=map[gcnative:2 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: local-write rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 gc-numeric-leaf-inline:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true both-arms reuse=0 locals=2 globals=0 frame=72 spills=0 code=525 calls=map[gcnative:2 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: both-arms rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 gc-numeric-leaf-inline:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true larger reuse=0 locals=2 globals=0 frame=56 spills=0 code=547 calls=map[gcnative:2 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: larger rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:2 frame-header-elide:1 gc-numeric-leaf-inline:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true different-type reuse=0 locals=2 globals=0 frame=72 spills=0 code=920 calls=map[gcnative:2 gcnative-leaf:1 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: different-type rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 gc-numeric-leaf-inline:1 gc-shared-resolve-call:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true budget reuse=0 locals=2 globals=0 frame=72 spills=0 code=555 calls=map[gcnative:2 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: budget rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 gc-numeric-leaf-inline:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true roots reuse=1 locals=3 globals=0 frame=56 spills=0 code=1000 calls=map[gcnative:3 hostsync:1 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: roots rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:2 frame-header-elide:1 gc-numeric-leaf-inline:1 gc-trapping-guard-rbp:1 gc-trapping-guard-reuse:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true dirty reuse=1 locals=2 globals=0 frame=72 spills=0 code=549 calls=map[gcnative:1 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: dirty rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 gc-numeric-leaf-inline:1 gc-trapping-guard-rbp:1 gc-trapping-guard-reuse:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true pressure reuse=0 locals=7 globals=0 frame=136 spills=0 code=685 calls=map[gcnative:2 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: pressure rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 gc-numeric-leaf-inline:1 late-frame-commute:2 tree-order:5 tree-order-candidate:5]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true subtype reuse=0 locals=2 globals=0 frame=72 spills=0 code=747 calls=map[gcnative:2 gcnative-leaf:2 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: subtype rewrites=map[cmp-branch-fuse:1 gc-numeric-leaf-inline:1 gc-shared-resolve-call:2]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true same-field reuse=1 locals=2 globals=0 frame=56 spills=0 code=523 calls=map[gcnative:1 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: same-field rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 frame-header-elide:1 gc-numeric-leaf-inline:1 gc-trapping-guard-rbp:1 gc-trapping-guard-reuse:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true packed-s reuse=1 locals=2 globals=0 frame=72 spills=0 code=619 calls=map[gcnative:1 hostsync:1 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: packed-s rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 frame-header-elide:1 gc-numeric-leaf-inline:1 gc-trapping-guard-rbp:1 gc-trapping-guard-reuse:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true packed-u reuse=1 locals=2 globals=0 frame=72 spills=0 code=619 calls=map[gcnative:1 hostsync:1 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: packed-u rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 frame-header-elide:1 gc-numeric-leaf-inline:1 gc-trapping-guard-rbp:1 gc-trapping-guard-reuse:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true indexed-block reuse=1 locals=2 globals=0 frame=56 spills=0 code=523 calls=map[gcnative:1 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: indexed-block rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 frame-header-elide:1 gc-numeric-leaf-inline:1 gc-trapping-guard-rbp:1 gc-trapping-guard-reuse:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true block-param reuse=0 locals=2 globals=0 frame=72 spills=0 code=565 calls=map[gcnative:2 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: block-param rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 gc-numeric-leaf-inline:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=true block-multi reuse=0 locals=2 globals=0 frame=72 spills=0 code=571 calls=map[gcnative:2 inline:1]
+    gc_trapping_guard_stats_amd64_test.go:103: block-multi rewrites=map[cmp-branch-fuse:1 final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 gc-numeric-leaf-inline:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false read reuse=0 locals=2 globals=0 frame=56 spills=0 code=558 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: read rewrites=map[final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false nullable reuse=0 locals=2 globals=0 frame=56 spills=0 code=558 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: nullable rewrites=map[final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false noninline reuse=0 locals=2 globals=0 frame=56 spills=0 code=558 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: noninline rewrites=map[final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false store reuse=0 locals=2 globals=0 frame=56 spills=0 code=570 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: store rewrites=map[addr-zext-elim:1 final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 lone-predicate:1 memory-min-bounds:1 store-imm:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false local-write reuse=0 locals=2 globals=0 frame=56 spills=0 code=564 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: local-write rewrites=map[final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false both-arms reuse=0 locals=2 globals=0 frame=56 spills=0 code=528 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: both-arms rewrites=map[final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false larger reuse=0 locals=2 globals=0 frame=40 spills=0 code=550 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: larger rewrites=map[final-cast-scalar-get-fuse:2 frame-header-elide:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false different-type reuse=0 locals=2 globals=0 frame=56 spills=0 code=923 calls=map[gcnative:2 gcnative-leaf:1 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: different-type rewrites=map[final-cast-scalar-get-fuse:1 gc-shared-resolve-call:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false budget reuse=0 locals=2 globals=0 frame=56 spills=0 code=558 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: budget rewrites=map[final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false roots reuse=0 locals=3 globals=0 frame=40 spills=0 code=1023 calls=map[gcnative:4 hostsync:1 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: roots rewrites=map[final-cast-scalar-get-fuse:2 final-cast-struct-get-fuse:1 frame-header-elide:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false dirty reuse=0 locals=2 globals=0 frame=56 spills=0 code=576 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: dirty rewrites=map[final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false pressure reuse=0 locals=7 globals=0 frame=120 spills=0 code=713 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: pressure rewrites=map[final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 late-frame-commute:2 lone-predicate:1 tree-order:5 tree-order-candidate:5]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false subtype reuse=0 locals=2 globals=0 frame=56 spills=0 code=750 calls=map[gcnative:2 gcnative-leaf:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: subtype rewrites=map[gc-shared-resolve-call:2 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false same-field reuse=0 locals=2 globals=0 frame=40 spills=0 code=550 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: same-field rewrites=map[final-cast-scalar-get-fuse:2 frame-header-elide:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false packed-s reuse=0 locals=2 globals=0 frame=56 spills=0 code=646 calls=map[gcnative:2 hostsync:1 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: packed-s rewrites=map[final-cast-scalar-get-fuse:2 frame-header-elide:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false packed-u reuse=0 locals=2 globals=0 frame=56 spills=0 code=646 calls=map[gcnative:2 hostsync:1 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: packed-u rewrites=map[final-cast-scalar-get-fuse:2 frame-header-elide:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false indexed-block reuse=0 locals=2 globals=0 frame=40 spills=0 code=550 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: indexed-block rewrites=map[final-cast-scalar-get-fuse:2 frame-header-elide:1 lone-predicate:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false block-param reuse=0 locals=2 globals=0 frame=56 spills=0 code=577 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: block-param rewrites=map[final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1]
+    gc_trapping_guard_stats_amd64_test.go:102: inline=false block-multi reuse=0 locals=2 globals=0 frame=56 spills=0 code=574 calls=map[gcnative:2 regabi:1]
+    gc_trapping_guard_stats_amd64_test.go:103: block-multi rewrites=map[final-cast-scalar-get-fuse:1 final-cast-struct-get-fuse:1 lone-predicate:1]
+--- PASS: TestGCTrappingGuardAdmission (0.00s)
+=== RUN   TestGCTrappingGuardImportAdmission
+--- PASS: TestGCTrappingGuardImportAdmission (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.040s

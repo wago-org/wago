@@ -646,6 +646,9 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		if fused, err := f.tryFuseFinalCastStructGet(uint32(heap), sub == 23, r); fused || err != nil {
 			return err
 		}
+		if fused, err := f.tryFuseFinalCastArrayGet(uint32(heap), sub == 23, r); fused || err != nil {
+			return err
+		}
 		if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
 			return err
 		}
@@ -724,6 +727,9 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 }
 
 func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {
+	if done, err := f.tryGCTrappingGuard(typeIndex, nullable, r); done || err != nil {
+		return done, err
+	}
 	st, ok := f.stagedStructType(typeIndex)
 	if !ok || !st.Final {
 		return false, nil
@@ -758,11 +764,17 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 		_ = r.JumpTo(start)
 		return false, nil
 	}
-	if _, direct := directGCScalarStorage(field.Storage()); direct {
-		// Let the shared native final-cast stub and existing direct scalar access
-		// run independently; this removes the Go transition at a measured code-size cost.
-		_ = r.JumpTo(start)
-		return false, nil
+	scalar, direct := directGCScalarStorage(field.Storage())
+	if !field.Storage().Packed() && field.Storage().Val() == wasm.V128 {
+		scalar, direct = directGCScalar{size: 16, typ: mtV128}, true
+	}
+	if direct {
+		layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex)
+		if !layoutOK || !final || layout.Size != uint32(scalar.size) {
+			return false, fmt.Errorf("amd64: final cast/load field %d.%d has inconsistent layout", typeIndex, fieldIndex)
+		}
+		f.stats.peep("final-cast-scalar-get-fuse")
+		return true, f.emitNativeFinalCastStructScalarGet(typeIndex, layout.Offset, scalar, sub == 3, nullable)
 	}
 	if layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex); layoutOK && layout.CollectorRef {
 		if final && layout.Size == 4 {
