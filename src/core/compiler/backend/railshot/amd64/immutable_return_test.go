@@ -55,7 +55,7 @@ func TestImmutableIntegerCacheAllowsTerminalMultiResultReturn(t *testing.T) {
 	sc := newScratch()
 	sc.policy = policy
 	sc.amd64Features = shared.AMD64ModernBaseline
-	_, _, _, err = compileFunc(m, nil, 0, true, false, true, false, false, nil, &h, computeImmutableTableHints(m, hints, policy), nil, false, coreruntime.MaxHostArity, false, false, false, nil, nil, nil, inlineTargetTable{}, sc)
+	_, _, _, err = compileFunc(m, nil, 0, true, false, true, false, false, nil, &h, computeImmutableTableHints(m, hints, policy), nil, false, coreruntime.MaxHostArity, false, false, false, nil, nil, nil, inlineTargetTable{}, sc, nil)
 	f := &sc.fnState
 	t.Logf("checked=%v shared=%v pins=%x caches=%v error=%v", regallocCheckEnabled, f.scalarSummary.Eligible, f.pinnedLocalMask, f.iconsts[:f.iconstN], err)
 	if err != nil {

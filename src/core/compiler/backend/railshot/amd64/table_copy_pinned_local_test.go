@@ -70,7 +70,7 @@ func TestTableCopyPreservesPinnedLocalAMD64(t *testing.T) {
 	var functionStats CodegenStats
 	code, relocs, _, err := compileFunc(m, nil, 0, true, false, true, false, false,
 		nil, &h, computeImmutableTableHints(m, hints, policy), nil, false, coreruntime.MaxHostArity,
-		false, false, false, nil, nil, &functionStats, buildInlineTargets(m, hints, policy), sc)
+		false, false, false, nil, nil, &functionStats, buildInlineTargets(m, hints, policy), sc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

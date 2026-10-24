@@ -76,6 +76,28 @@ and loads the RV64 artifacts in a compiler-free executable. The `artifacts`
 command runs the prepare/load checks without the wider public API set. QEMU uses
 a 15-minute default per-command timeout; native CI timeouts stay unchanged.
 
+Native RISE qualification gives each large Wago test build its own 90-minute
+job: ordinary and checked public preparation, ordinary and checked compiler-free
+loading, and ordinary and checked guard-page checks. A separate core job runs
+backend/runtime and CLI qualification. The final `JIT / native Linux RISC-V64`
+check requires all lanes to pass; cancellation or a skipped prerequisite fails
+that check visibly. Each native matrix runs at most two jobs in parallel.
+
+The script's default still runs all checks in one local invocation. CI selects
+one build with `WAGO_RV64_CI_CHECK=ordinary` or `checked` (default `all`). For
+`public` or `artifacts`, `WAGO_RV64_CI_PHASE=prepare` writes the guest artifacts
+and `load` uses a separate `wago_precompiled` executable. Split phases require
+`WAGO_RV64_CI_ARTIFACT_DIR`; that directory stays available after the command.
+Transfer its full contents, including the `ordinary` or `checked` subdirectory,
+before running the loader with the same check selection. The workflow uses
+same-run, per-check artifacts for that handoff. The default `all` phase uses and
+cleans a private temporary directory as before.
+
+Run `python3 tests/scripts/ci-riscv64.py` to check command coverage, artifact
+transfer, and error propagation without a native runner. `just test ci-smoke`
+includes this check. It also executes the workflow's final status gate for
+success, failure, cancellation, and skipped results.
+
 Record the commit, local diff, tool versions, corpus pins, test tags, raw test
 output, failures, and skips for each result. Keep captures in `.validation/`.
 Use `-benchmem` for allocation checks and raw repeated samples for performance

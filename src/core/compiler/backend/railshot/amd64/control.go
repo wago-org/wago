@@ -1345,6 +1345,9 @@ func (f *fn) placeSingleResult() {
 		f.condenseInto(e, RAX)
 	}
 	f.erase(e)
+	// Register returns bypass flush. Retire the body cache before another
+	// control-flow arm or an out-of-line helper reuses its register.
+	f.invalidateGlobalsCache()
 }
 
 // reconcileMerge1 is the fall-through edge into a regMerge1 block: flush the

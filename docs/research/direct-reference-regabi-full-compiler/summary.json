@@ -1,0 +1,43 @@
+{
+  "control": {
+    "seconds": [
+      42.64872733700031,
+      42.44673487399996,
+      42.37541452499863
+    ],
+    "median_seconds": 42.44673487399996,
+    "median_peak_rss_kib": 1136704
+  },
+  "abi": {
+    "seconds": [
+      38.815079564999905,
+      38.53293719599969,
+      38.85897873399881
+    ],
+    "median_seconds": 38.815079564999905,
+    "median_peak_rss_kib": 1132800
+  },
+  "byte": {
+    "seconds": [
+      41.395393430000695,
+      41.13221011399946,
+      41.185921347998374
+    ],
+    "median_seconds": 41.185921347998374,
+    "median_peak_rss_kib": 1109388
+  },
+  "v8": {
+    "seconds": [
+      4.058386715001689,
+      3.9503503120031382,
+      4.008501895001245
+    ],
+    "median_seconds": 4.008501895001245,
+    "median_peak_rss_kib": 489672
+  },
+  "abi_reduction_percent": 8.555794267286654,
+  "abi_over_v8": 9.683188528213941,
+  "byte_reduction_percent": 2.9703427831238804,
+  "byte_over_v8": 10.274641855442,
+  "all_outputs_identical_and_main_42": true
+}

@@ -34,6 +34,23 @@ test "$(go env GOOS)/$(go env GOARCH)" = linux/riscv64
 go version
 go env GOOS GOARCH GORISCV64 CGO_ENABLED GOMAXPROCS GOFLAGS
 mode=${1:-}
+checks=(ordinary checked)
+case "${WAGO_RV64_CI_CHECK:-all}" in
+  all) ;;
+  ordinary|checked) checks=("$WAGO_RV64_CI_CHECK") ;;
+  *) echo "Unknown RV64 CI check: $WAGO_RV64_CI_CHECK" >&2; exit 2 ;;
+esac
+public_phase=${WAGO_RV64_CI_PHASE:-all}
+case "$public_phase" in
+  all|prepare|load) ;;
+  *) echo "Unknown RV64 CI phase: $public_phase" >&2; exit 2 ;;
+esac
+go_test_prepare() {
+  if [[ $public_phase != load ]]; then go_test "$@"; fi
+}
+go_test_load() {
+  if [[ $public_phase != prepare ]]; then go_test "$@"; fi
+}
 case "$mode" in
   smoke)
     # Actual mmap/mprotect/process-wide flush precede executable calls here.
@@ -52,7 +69,7 @@ case "$mode" in
       -count=1 -parallel=2 -timeout=5m -v
     ;;
   guards)
-    for check in ordinary checked; do
+    for check in "${checks[@]}"; do
       tags=wago_guardpage
       if [[ "$check" == checked ]]; then
         tags+=,wago_regalloccheck
@@ -65,8 +82,24 @@ case "$mode" in
   public|artifacts)
     # This is the bounded public profile, not a whole-Core conformance claim.
     # Artifact loading is exercised in a genuinely compiler-free executable.
-    artifact_dir=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/wago-rv64-public.XXXXXX")
-    trap 'rm -rf -- "$artifact_dir"' EXIT
+    if [[ -n ${WAGO_RV64_CI_ARTIFACT_DIR:-} ]]; then
+      artifact_dir=$WAGO_RV64_CI_ARTIFACT_DIR
+      if [[ $public_phase == load ]]; then
+        if [[ ! -d $artifact_dir ]]; then
+          echo "Prepared RV64 artifact directory is missing: $artifact_dir" >&2
+          exit 1
+        fi
+      else
+        mkdir -p "$artifact_dir"
+      fi
+    else
+      if [[ $public_phase != all ]]; then
+        echo "Split RV64 phases require WAGO_RV64_CI_ARTIFACT_DIR" >&2
+        exit 2
+      fi
+      artifact_dir=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/wago-rv64-public.XXXXXX")
+      trap 'rm -rf -- "$artifact_dir"' EXIT
+    fi
     unset WAGO_RV64_TABLE_STAGE_ARTIFACT_DIR WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE \
       WAGO_RV64_CALL_STAGE_ARTIFACT_DIR WAGO_RV64_CALL_STAGE_ARTIFACT_MODE \
       WAGO_RV64_PORTABLE_FEATURE_DIR WAGO_RV64_PORTABLE_FEATURE_MODE \
@@ -138,7 +171,8 @@ case "$mode" in
       WAGO_RV64_GC_ARRAY_INIT_DATA_WIDE_ARTIFACT_DIR WAGO_RV64_GC_ARRAY_INIT_DATA_WIDE_ARTIFACT_MODE \
       WAGO_RV64_GC_ARRAY_FILL_ARTIFACT_DIR WAGO_RV64_GC_ARRAY_FILL_ARTIFACT_MODE \
       WAGO_RV64_GC_ARRAY_COPY_ARTIFACT_DIR WAGO_RV64_GC_ARRAY_COPY_ARTIFACT_MODE
-    for check in ordinary checked; do
+    for check in "${checks[@]}"; do
+      echo "RV64 public qualification: check=$check phase=$public_phase"
       tags=""
       if [[ "$check" == checked ]]; then
         tags=wago_regalloccheck
@@ -146,7 +180,7 @@ case "$mode" in
       mkdir -p "$artifact_dir/$check/portable-features" \
         "$artifact_dir/$check/custom-wide" "$artifact_dir/$check/events"
       if [[ $mode == public ]]; then
-      go_test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=15m -v \
+      go_test_prepare -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=15m -v \
         -run '^Test(RetainedResourceCleanup|ReferenceEntryCleanup|PhysicalFinalizerChain|ResourceCleanup|ImportDedup|FunctionImportDrain|BuilderRollbackContinues|Dependency|WideArithmetic|Threads|RV64)'
       fi
       WAGO_RV64_PORTABLE_FEATURE_DIR="$artifact_dir/$check/portable-features" \
@@ -155,7 +189,7 @@ case "$mode" in
         WAGO_RV64_CUSTOM_ARTIFACT_MODE=prepare \
         WAGO_RV64_TABLE_STAGE_ARTIFACT_DIR="$artifact_dir/$check/events" \
         WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE=prepare \
-        go_test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
+        go_test_prepare -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
           -run '^TestRV64(PortableFeatureArtifacts|CustomWideDataSourceArtifact|HostEventCompilerFreeArtifact|HostEventCancelCloseAndReentry)$'
       WAGO_RV64_PORTABLE_FEATURE_DIR="$artifact_dir/$check/portable-features" \
         WAGO_RV64_PORTABLE_FEATURE_MODE=load \
@@ -163,16 +197,16 @@ case "$mode" in
         WAGO_RV64_CUSTOM_ARTIFACT_MODE=load \
         WAGO_RV64_TABLE_STAGE_ARTIFACT_DIR="$artifact_dir/$check/events" \
         WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE=load \
-        go_test -tags="$tags,wago_precompiled" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
+        go_test_load -tags="$tags,wago_precompiled" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
           -run '^TestRV64(PortableFeatureArtifacts|CustomWideDataSourceArtifact|HostEventCompilerFreeArtifact|HostEventCancelCloseAndReentry)$'
       mkdir -p "$artifact_dir/$check/call-spec"
       WAGO_RV64_CALL_STAGE_ARTIFACT_DIR="$artifact_dir/$check/call-spec" \
         WAGO_RV64_CALL_STAGE_ARTIFACT_MODE=prepare \
-        go_test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
+        go_test_prepare -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
           -run '^TestRV64PublicPinnedCallSpecPreparedArtifacts$'
       WAGO_RV64_CALL_STAGE_ARTIFACT_DIR="$artifact_dir/$check/call-spec" \
         WAGO_RV64_CALL_STAGE_ARTIFACT_MODE=load \
-        go_test -tags="$tags,wago_precompiled" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
+        go_test_load -tags="$tags,wago_precompiled" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
           -run '^TestRV64PublicPinnedCallSpecPreparedArtifacts$'
       WAGO_RV64_CORE3_REF_ARTIFACT_DIR="$artifact_dir/$check/core3-ref" \
         WAGO_RV64_CORE3_REF_ARTIFACT_MODE=prepare \
@@ -310,7 +344,7 @@ case "$mode" in
         WAGO_RV64_GC_ARRAY_FILL_ARTIFACT_MODE=prepare \
         WAGO_RV64_GC_ARRAY_COPY_ARTIFACT_DIR="$artifact_dir/$check/gc-array-copy" \
         WAGO_RV64_GC_ARRAY_COPY_ARTIFACT_MODE=prepare \
-        go_test -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
+        go_test_prepare -tags="$tags" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
 		-run '^TestRV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialTableExecutionAndArtifact|OfficialTableGlobalInitializerExecutionAndArtifact|OfficialGlobalInitializerExecutionAndArtifact|OfficialAnyGlobalExecutionAndArtifact|OfficialAnyTableExecutionAndArtifact|OfficialRefTestExecutionAndArtifact|RefEqPilotExecutionAndArtifact)|OfficialGCRefEqExecutionAndArtifact|GCRefTest(Table|Concrete|Abstract)ExecutionAndArtifact|GCExternExecutionAndArtifact|GCRefCast(Abstract|Concrete)(ExecutionAndArtifact|AdmissionIsExact)|GCBrOnCast(Abstract|Concrete|Nullability)(ExecutionAndArtifact|AdmissionIsExact)|GCTypeSubtyping(Declarations|RecursiveFunctions|RuntimeCallCast|RuntimeFinalityCallCast|RuntimeTypedTableCall|NonFlatExport|RefTest(Single|Recursive|DirectionFalse|SupertypeTrue|MultiFirst|MultiPairs|Multi|NominalFalse|NominalFalseDeep))(ExecutionAndArtifact|AdmissionIsExact|RequiresPrivateRuntimePermission)|GCTypeSubtypingLink(ExecutionAndArtifact|AdmissionIsExact|MismatchAndPermission|ExpectedUnlinkables)|GCTypeSubtypingFinalityLink(ExpectedUnlinkables|AdmissionIsExact|MismatchAndPermission)|GCTypeSubtypingStruct(Link|ProjectionLink|MismatchLink)(ExecutionAndArtifact|AdmissionIsExact|MismatchAndPermission)|GCTypeSubtypingIndependentStructLink(ExecutionAndArtifact|AdmissionIsExact|MismatchAndPermission)|GCTypeSubtyping(ExtendedProjection|DuplicateRecursive|ExtendedRecursive|CrossGroupMismatch|TransitiveMismatch)Link(ExecutionAndArtifact|AdmissionIsExact|MismatchAndPermission)|GCStruct(Get|Mutation|Null|Packed|Basic|NumericGlobals)ExecutionAndArtifact|GCArray(Local|Uniform|FixedLocal|FixedOfficial|DefaultOfficial|PackedData|Reference|InitElem|InitData(Wide)?|Fill|Copy)ExecutionAndArtifact|GCArrayReferenceCloseDropsOnlyOwnedSegmentRoots|LocalMutableReference|MutableFuncrefState(Import|Admission|Binding)|MutableFuncrefGlobal(Get|Clear|StoreSelf|Copy|Move|BidirectionalCopy|Local(Copy|Publish|Transfer|Export|Observe))(Admission|Binding)?)|^TestRV64GCTypeSubtypingRefFuncGlobals(SourceAndArtifact|RejectHostileRetainedState)$|^TestRV64Core3Ref(PinnedDeclarations|PinnedDeclaration(SourceGates|ArtifactGates|FeatureGates|RequiresPrivateRuntimePermission)|PinnedInvalidModules)$|^TestRV64Core3RefIsNullExecution(CompilerFreeRejectsSource|FeatureGates)?$|^TestRV64Core3CallRef(UnreachableExecutionAndArtifact|UnreachableFeatureGates|PinnedInvalidModules|Main(ExecutionAndArtifact|FeatureAndSourceGates|RetainedAdmission|RequiresPrivateRuntimePermission))$|^TestRV64PublicReferenceImportInstanceOwnedTable(Binding|Lifecycle)$'
       WAGO_RV64_CORE3_REF_ARTIFACT_DIR="$artifact_dir/$check/core3-ref" \
         WAGO_RV64_CORE3_REF_ARTIFACT_MODE=load \
@@ -448,7 +482,7 @@ case "$mode" in
         WAGO_RV64_GC_ARRAY_FILL_ARTIFACT_MODE=load \
         WAGO_RV64_GC_ARRAY_COPY_ARTIFACT_DIR="$artifact_dir/$check/gc-array-copy" \
         WAGO_RV64_GC_ARRAY_COPY_ARTIFACT_MODE=load \
-        go_test -tags="$tags,wago_precompiled" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
+        go_test_load -tags="$tags,wago_precompiled" ./src/wago -count=1 -parallel=2 -timeout=5m -v \
 		-run '^Test(RV64Public(I31(CoreExecutionAndArtifact|OfficialCoreExecutionAndArtifact|OfficialTableExecutionAndArtifact|OfficialTableGlobalInitializerExecutionAndArtifact|OfficialGlobalInitializerExecutionAndArtifact|OfficialAnyGlobalExecutionAndArtifact|OfficialAnyTableExecutionAndArtifact|OfficialRefTestExecutionAndArtifact|RefEqPilotExecutionAndArtifact)|OfficialGCRefEq(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCRefTest(Table|Concrete|Abstract)(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCExtern(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCRefCast(Abstract|Concrete)(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCBrOnCast(Abstract|Concrete|Nullability)(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCTypeSubtyping(Declarations|RecursiveFunctions|RuntimeCallCast|RuntimeFinalityCallCast|RuntimeTypedTableCall|NonFlatExport|RefTest(Single|Recursive|DirectionFalse|SupertypeTrue|MultiFirst|MultiPairs|Multi|NominalFalse|NominalFalseDeep))(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCTypeSubtypingLink(ExecutionAndArtifact|ExpectedUnlinkables|CompilerFreeRejectsSource)|GCTypeSubtypingFinalityLink(ExpectedUnlinkables|CompilerFreeRejectsSource)|GCTypeSubtypingStruct(Link|ProjectionLink|MismatchLink)(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCTypeSubtypingIndependentStructLink(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCTypeSubtyping(ExtendedProjection|DuplicateRecursive|ExtendedRecursive|CrossGroupMismatch|TransitiveMismatch)Link(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCStruct(Get|Mutation|Null|Packed|Basic|NumericGlobals)(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCArray(Local|Uniform|FixedLocal|FixedOfficial|DefaultOfficial|PackedData|Reference|InitElem|InitData(Wide)?|Fill|Copy)(ExecutionAndArtifact|CompilerFreeRejectsSource)|GCArrayReferenceCloseDropsOnlyOwnedSegmentRoots|LocalMutableReference|MutableFuncrefState(Import|Admission|Binding)|MutableFuncrefGlobal(Get|Clear|StoreSelf|Copy|Move|BidirectionalCopy|Local(Copy|Publish|Transfer|Export|Observe))(Admission|Binding)?)|RV64ActualImportedTablePrecompiledCompilerGate|RV64GCTypeSubtypingRefFuncGlobals(SourceAndArtifact|CompilerFreeRejectsSource)|RV64Core3Ref(PinnedDeclarations|PinnedDeclarationRequiresPrivateRuntimePermission|PinnedInvalidModules|DeclarationCompilerFreeGate)|RV64Core3RefIsNullExecution(CompilerFreeRejectsSource|FeatureGates)?|RV64Core3CallRef(UnreachableExecutionAndArtifact|PinnedInvalidModules|UnreachableCompilerFreeRejectsSource|Main(ExecutionAndArtifact|CompilerFreeRejectsSource|RequiresPrivateRuntimePermission))|RV64PublicReferenceImportInstanceOwnedTable(Binding|Lifecycle))$'
     done
     ;;

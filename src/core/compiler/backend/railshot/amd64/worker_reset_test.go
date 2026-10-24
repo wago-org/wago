@@ -104,7 +104,7 @@ func (c *workerResetContext) compile(sc *scratch, index int, capture bool) (work
 		st = &CodegenStats{FuncIdx: index, RecordSources: profileEnabled, RecordUnwind: profileEnabled, RecordAdapterUnwind: profileEnabled}
 	}
 	code, relocs, internal, err := compileFunc(c.m, nil, index, true, false, true, false, true,
-		nil, &h, nil, nil, false, rt.MaxHostArity, false, false, false, nil, nil, st, inlineTargetTable{}, sc)
+		nil, &h, nil, nil, false, rt.MaxHostArity, false, false, false, nil, nil, st, inlineTargetTable{}, sc, nil)
 	if err != nil {
 		return workerResetOutput{}, err
 	}

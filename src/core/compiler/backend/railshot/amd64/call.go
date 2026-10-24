@@ -2173,9 +2173,8 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
 	f.setDepthTypesWithGCRoots(types, gcRoots)
 }
 
-// callInternal lowers a direct call to another local function. Integer-only
-// callees use the fast register ABI (args/result in registers); others go
-// through the wrapper (rsp-buffer) ABI.
+// callInternal lowers a direct call to another local function. Admitted numeric
+// and reference signatures use registers; other signatures use wrapper buffers.
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
 	relocBase := len(f.relocs)
@@ -2189,7 +2188,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 		}
 		f.gcFrameRoots.RecordCallsite(uint32(f.relocs[relocBase].at+4), 0, rootOffsets)
 	}
-	if f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))) {
+	if f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)) || f.directReferenceRegABI(localIdx, ft)) {
 		if sigIsIntOnly(ft) {
 			f.stats.call(callKindRegisterABI)
 			f.emitRegisterCall(localIdx, ft, resHint)

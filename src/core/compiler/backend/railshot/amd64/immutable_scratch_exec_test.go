@@ -96,7 +96,7 @@ func compileImmutableScratchInline(t *testing.T, m *wasm.Module, table bool) *en
 	var functionStats CodegenStats
 	code, relocs, _, err := compileFunc(m, nil, 0, true, false, true, false, false,
 		nil, &h, computeImmutableTableHints(m, hints, policy), nil, false, coreruntime.MaxHostArity,
-		false, false, false, nil, nil, &functionStats, targets, sc)
+		false, false, false, nil, nil, &functionStats, targets, sc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,18 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p=1",
+    "-exec=/tmp/wago-pr1009-rv-ci-budget-20261022/scripts/qemu-riscv64.sh",
+    "./src/wago",
+    "-run",
+    "^TestRV64PortableFeatureArtifacts$",
+    "-count=1",
+    "-v"
+  ],
+  "seconds": 81.76480900699971,
+  "exit": 1,
+  "user_seconds": 149.375406,
+  "system_seconds": 2.619009,
+  "peak_rss_kib": 2592856
+}

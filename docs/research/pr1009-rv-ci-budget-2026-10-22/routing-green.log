@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/tmp/wago-pr1009-rv-ci-budget-20261022/tests/scripts/ci-riscv64.py", line 73, in <module>
+    assert all('wago_precompiled' in r['args'][0] for r in loaded)
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

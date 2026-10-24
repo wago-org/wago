@@ -1,0 +1,13 @@
+{
+  "command": [
+    "env",
+    "BASELINE_RV64_CI_SCRIPT=/tmp/wago-pr1009-rv-cancel-20261022-evidence/ci-riscv64-before.sh",
+    "python3",
+    "tests/scripts/ci-riscv64.py"
+  ],
+  "seconds": 2.401277320983354,
+  "exit": 0,
+  "user_seconds": 1.576054,
+  "system_seconds": 0.813325,
+  "peak_rss_kib": 13228
+}
