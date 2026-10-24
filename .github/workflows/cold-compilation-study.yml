@@ -49,6 +49,9 @@ jobs:
             go.sum
             bench/go.mod
             bench/go.sum
+      - name: Initialize pinned public-test fixtures
+        if: matrix.arch == 'amd64'
+        run: git submodule update --init --depth=1 tests/conformance/spec-v3
       - name: Validate native runtime and compiler
         if: matrix.arch == 'amd64'
         run: go test -tags wago_regalloccheck ./src/core/runtime ./src/core/compiler/optimization ./src/core/compiler/backend/railshot/amd64 ./src/wago -count=1 -timeout=15m
