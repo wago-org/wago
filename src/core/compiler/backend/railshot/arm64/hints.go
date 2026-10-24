@@ -97,6 +97,7 @@ func (h *funcHints) markUnsupportedDynamicCall() {
 // funcHintView reconstructs scan/compile slices on the stack. Only funcHints is
 // retained per function; all variable-length data lives in one module sidecar.
 type funcHintView struct {
+	skipInlineScan bool // optional validation proof: no direct callee fits any inline body limit
 	funcHints
 	scalarMergeWeight uint32 // scan-only; retained as one threshold bit in maxControlDepth
 	entryInitialized  uint64 // scan-local view; compilation decodes bits during pin planning
@@ -124,6 +125,7 @@ type loopIntConstHintEntry struct {
 }
 
 type funcHintSidecar struct {
+	inlineScanUnneeded     []uint64 // optional streamed negative proof, one bit per function
 	localScore             []uint32
 	localLastGet           []uint32
 	sparseGlobals          []shared.GlobalHint

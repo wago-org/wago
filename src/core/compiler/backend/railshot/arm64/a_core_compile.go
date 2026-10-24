@@ -1785,7 +1785,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// from the pool for a memory-touching call-making function) would be skipped for
 	// a caller whose own body never touched memory.
 	var inlinedCallees []*inlineTarget
-	if hasCall {
+	if hasCall && !hints.skipInlineScan {
 		inlinedCallees = collectInlinedCallees(c, inlineTargets)
 	}
 	f.linkMemoryTraps = !profileEnabled && len(inlinedCallees) == 0

@@ -63,7 +63,17 @@ func assertValidationHintParity(t testing.TB, m *wasm.Module, opts CompileOption
 			}
 		}
 	}
-	if !reflect.DeepEqual(sidecar, collector.sidecar) {
+	// The streaming-only negative proof is optional; verify it against the
+	// complete inline-target scan before comparing ordinary retained hints.
+	targets := buildInlineTargets(m, hints, collector.policy)
+	for i := range hints {
+		if collector.sidecar.viewAt(collector.hints[i], i).skipInlineScan && len(collectInlinedCallees(&m.Code[i], targets)) != 0 {
+			t.Fatalf("function %d incorrectly skipped inline scan", i)
+		}
+	}
+	streamed := collector.sidecar
+	streamed.inlineScanUnneeded = nil
+	if !reflect.DeepEqual(sidecar, streamed) {
 		t.Fatalf("hint sidecars differ:\nreference %#v\nstream    %#v", sidecar, collector.sidecar)
 	}
 	if !reflect.DeepEqual(globals, collector.globals) {
@@ -151,5 +161,36 @@ func TestValidationHintStreamCompilerConsumesProof(t *testing.T) {
 	}
 	if analysis.HintObserver().(*moduleValidationHints).taken != 1 {
 		t.Fatal("compiler fell back instead of consuming proof")
+	}
+}
+
+func TestValidationHintStreamInlineScanNegativeProof(t *testing.T) {
+	// The first caller can only reach an oversized body; the second reaches a
+	// real small candidate. Never turn a missing proof into permission to skip.
+	large := []byte{0}
+	for range max(inlineMaxBytes, compactInlineMaxBytesOverride, 256) + 1 {
+		large = append(large, 0x01)
+	}
+	large = append(large, 0x0b)
+	for _, compact := range []bool{false, true} {
+		m := hintStreamTestModule(t,
+			funcDef{body: []byte{0, 0x10, 1, 0x0b}},
+			funcDef{body: large},
+			funcDef{body: []byte{0, 0x10, 3, 0x0b}},
+			funcDef{body: []byte{0, 0x0b}},
+		)
+		analysis := assertValidationHintParity(t, m, CompileOptions{CompactNative: compact})
+		collector := analysis.HintObserver().(*moduleValidationHints)
+		if !collector.sidecar.viewAt(collector.hints[0], 0).skipInlineScan {
+			t.Fatal("oversized-only caller lost negative proof")
+		}
+		if collector.sidecar.viewAt(collector.hints[2], 2).skipInlineScan {
+			t.Fatal("candidate caller incorrectly skipped")
+		}
+		fallback := collector.sidecar
+		fallback.inlineScanUnneeded = nil
+		if fallback.viewAt(collector.hints[0], 0).skipInlineScan {
+			t.Fatal("missing proof must retain scanner fallback")
+		}
 	}
 }

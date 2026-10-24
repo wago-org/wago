@@ -91,6 +91,11 @@ func newModuleValidationHints(m *wasm.Module, policy CodegenPolicy) *moduleValid
 	out := &moduleValidationHints{module: m, policy: policy}
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
+	inlineScanUnneeded := make([]uint64, (n+63)/64)
+	inlineBodyLimit := max(inlineMaxBytes, compactInlineBodyLimit(policy))
+	if recursiveInlineEnabled && n == 1 {
+		inlineBodyLimit = max(inlineBodyLimit, 64)
+	}
 	totalScores := 0
 	intervalLocals := 0
 	intervalFunctions := 0
@@ -217,6 +222,7 @@ func newModuleValidationHints(m *wasm.Module, policy CodegenPolicy) *moduleValid
 		stream.body = m.Code[i].BodyBytes
 		stream.frames = append(stream.frames[:0], validationHintFrame{curLoop: -1, weight: 1, hotness: 1})
 		stream.failed, stream.ended = false, false
+		stream.possibleInlineCall, stream.inlineBodyLimit = false, inlineBodyLimit
 		return stream
 	}
 	out.end = func(i int) {
@@ -229,6 +235,9 @@ func newModuleValidationHints(m *wasm.Module, policy CodegenPolicy) *moduleValid
 		}
 		if stream.scanner.loopIntConstN != 0 {
 			stream.scanner.finishLoopIntConsts()
+		}
+		if !stream.possibleInlineCall {
+			inlineScanUnneeded[i/64] |= uint64(1) << uint(i%64)
 		}
 		h = stream.scanner.h
 		h.inlineCallSites = allHints[i].inlineCallSites
@@ -290,6 +299,7 @@ func newModuleValidationHints(m *wasm.Module, policy CodegenPolicy) *moduleValid
 		}
 		out.hints = allHints
 		out.sidecar = funcHintSidecar{
+			inlineScanUnneeded:     inlineScanUnneeded,
 			localScore:             localScores,
 			localLastGet:           localLastGets,
 			localEventMeta:         localEventMeta,
@@ -315,10 +325,12 @@ type validationHintFrame struct {
 }
 
 type validationHintStream struct {
-	scanner       byteBodyScanner
-	body          []byte
-	frames        []validationHintFrame
-	failed, ended bool
+	possibleInlineCall bool
+	inlineBodyLimit    int
+	scanner            byteBodyScanner
+	body               []byte
+	frames             []validationHintFrame
+	failed, ended      bool
 }
 
 func (v *validationHintStream) Observe(op byte, kind wasm.InstrKind, index, index2 uint32, bits uint64, meta uint8, start, end int) {
@@ -418,6 +430,12 @@ func (v *validationHintStream) Observe(op byte, kind wasm.InstrKind, index, inde
 		v.frames = append(v.frames, child)
 		return
 	case 0x10, 0x12:
+		if op == 0x10 && !v.possibleInlineCall {
+			local := int(index) - s.importedFuncs
+			if local >= 0 && local < len(s.m.Code) && len(s.m.Code[local].BodyBytes) <= v.inlineBodyLimit {
+				v.possibleInlineCall = true
+			}
+		}
 		s.h.flags.set(hintHasCall)
 		if int(index) < s.importedFuncs {
 			s.h.flags.set(hintCallsImport)

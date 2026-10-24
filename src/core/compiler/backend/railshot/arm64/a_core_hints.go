@@ -90,6 +90,7 @@ func (s funcHintSidecar) viewAt(h funcHints, function int) funcHintView {
 	eventMeta := shared.FindLocalEventMeta(s.localEventMeta, h.localStart)
 	shadow := shared.FindResidencyShadow(s.residencyShadow, h.localStart)
 	view := funcHintView{
+		skipInlineScan:  function >= 0 && function/64 < len(s.inlineScanUnneeded) && s.inlineScanUnneeded[function/64]&(uint64(1)<<uint(function%64)) != 0,
 		funcHints:       h,
 		nLocals:         nLocals,
 		localScore:      s.localScore[localStart:localEnd],
