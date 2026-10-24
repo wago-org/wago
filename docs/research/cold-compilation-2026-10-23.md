@@ -10,18 +10,41 @@ preserving zero-count type checks and original source offsets.
 
 ## Native Linux screening
 
-The `Cold compilation screening` workflow runs manually, and when its runner
-or workflow is changed in a pull request. It runs
-`scripts/cold-compilation-study.py` on separate native Linux AMD64 and ARM64
-GitHub runners. It builds candidate and main `dc13730184e8` before timing, copies
-the identical measurement harness into the baseline without changing production
-source, and runs one alternating fresh-process pair per frozen input on one CPU.
-AMD64 uses defaults; ARM64 enables the experimental file option. Artifacts
-include source/binary/input-harness identity, CPU/kernel/filesystem details,
-all 40 oracle results, per-input ratios and ratios of totals. This optional
-screening job is separate from the required correctness checks. Shared runners
-and short execution windows limit timing conclusions; the job's presence is not
-a performance result.
+A single alternating pair per frozen input on GitHub native Ubuntu 24.04
+runners, candidate `e3ca167ec51e` (compiler `85fd3b36af34`) against main
+`dc13730184e8`, produced the following ratios. These measurements supersede no
+other host's results; the earlier Docker ARM64 figures cannot be transferred
+to these machines.
+
+| Host/profile | Compile wall | Sum of process peak RSS | Allocated bytes | Execution geometric mean |
+| --- | ---: | ---: | ---: | ---: |
+| Linux AMD64, defaults | 0.632 | 0.857 | 0.172 | 0.993 |
+| Linux ARM64, file option on | 0.884 | 0.798 | 0.202 | 0.992 |
+
+All 80 exact oracles pass. AMD64 native code size matches main; ARM64's ratio
+is 0.916. The 30% speed and 30% process-memory goals are not jointly met.
+Individual execution ratios are recorded, with the largest slow samples about
+3.5% on AMD64 and 1.8% on ARM64; 30ms windows support ballpark conclusions.
+These shared runners use ext4; source/binary/harness hashes and CPU/kernel/FS
+identity are captured in the artifacts. RSS excludes nonresident file cache.
+
+[AMD64 identity](cold-compilation-2026-10-23/native-linux-amd64-identity.json),
+[samples](cold-compilation-2026-10-23/native-linux-amd64-samples.jsonl),
+[summary](cold-compilation-2026-10-23/native-linux-amd64-summary.json);
+[ARM64 identity](cold-compilation-2026-10-23/native-linux-arm64-identity.json),
+[samples](cold-compilation-2026-10-23/native-linux-arm64-samples.jsonl),
+[summary](cold-compilation-2026-10-23/native-linux-arm64-summary.json).
+[Workflow run](https://github.com/wago-org/wago/actions/runs/40070990847).
+
+The separate `Cold compilation screening` workflow runs manually, or when its
+runner/workflow changes in a pull request. The default target is AMD64; manual
+runs can select ARM64 or both. It finishes all builds before timing, copies the
+identical measurement harness into the baseline without changing production
+source, and pins each fresh sample to one CPU with one worker/GOMAXPROCS=1.
+Generated-code hashes are also recorded in subsequent runs. Native checked
+AMD64 runtime/compiler/public tests run before measurements. Screening remains
+separate from required correctness CI. The AMD64 extension of the experimental,
+default-off file option is pending its first native qualification.
 
 ## Direct operand-stack sentinel lookup
 

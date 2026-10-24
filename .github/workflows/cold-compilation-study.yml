@@ -2,6 +2,12 @@ name: Cold compilation screening
 
 on:
   workflow_dispatch:
+    inputs:
+      architecture:
+        type: choice
+        description: Native architecture to screen
+        options: [amd64, arm64, both]
+        default: amd64
   pull_request:
     paths:
       - .github/workflows/cold-compilation-study.yml
@@ -22,18 +28,12 @@ jobs:
   # architecture gets its own native runner, with builds completed before timing.
   cold-compilation-study:
     name: Cold compilation study (${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-24.04
-            file_backed_code: false
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-            file_backed_code: true
+        arch: ${{ fromJSON(inputs.architecture == 'both' && '["amd64","arm64"]' || inputs.architecture == 'arm64' && '["arm64"]' || '["amd64"]') }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -49,15 +49,11 @@ jobs:
             go.sum
             bench/go.mod
             bench/go.sum
+      - name: Validate native runtime and compiler
+        if: matrix.arch == 'amd64'
+        run: go test -tags wago_regalloccheck ./src/core/runtime ./src/core/compiler/optimization ./src/core/compiler/backend/railshot/amd64 ./src/wago -count=1 -timeout=15m
       - name: Run alternating fresh-process pairs
-        env:
-          FILE_BACKED_CODE: ${{ matrix.file_backed_code }}
-        run: |
-          options=()
-          if [ "$FILE_BACKED_CODE" = true ]; then
-            options+=(--file-backed-code)
-          fi
-          python3 scripts/cold-compilation-study.py --output cold-study "${options[@]}"
+        run: python3 scripts/cold-compilation-study.py --output cold-study --file-backed-code
       - name: Upload source identity and measurements
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

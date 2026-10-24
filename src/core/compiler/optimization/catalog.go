@@ -530,7 +530,7 @@ var catalog = []Definition{
 	both("stack-fence", "Stack fence", "emit the stack-overflow guard fence"),
 	both("stack-reg", "Stack register", "keep the guest stack pointer in a register"),
 	arm64("validated-hint-stream", "Validation hint stream", "collect serial compiler hints during validation; retain the exact scanner for other modes"),
-	{Name: "file-backed-code", Label: "File-backed compiler code", Description: "stage large serial Linux compiler images in reclaimable temporary files; fall back to anonymous memory when unavailable", Experimental: true, Architectures: catalogARM64Architectures},
+	{Name: "file-backed-code", Label: "File-backed compiler code", Description: "stage large serial Linux compiler images in reclaimable temporary files; fall back to anonymous memory when unavailable", Experimental: true, Architectures: catalogBothArchitectures},
 }
 
 func both(name, label, description string) Definition {

@@ -32,8 +32,6 @@ def main():
     expected = {"aarch64": "arm64", "x86_64": "amd64"}.get(platform.machine())
     if goos != "linux" or goarch != expected:
         parser.error("Go target must match the native host")
-    if args.file_backed_code and goarch != "arm64":
-        parser.error("file-backed-code is currently ARM64 only")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     manifest = root / MANIFEST
@@ -104,6 +102,7 @@ def main():
             metrics = ("compile_ns", "compile_peak_rss_bytes", "allocated_bytes", "native_code_bytes")
             summary = {
                 "pairs": len(inputs), "oracles_passed": 2 * len(inputs),
+                "native_hashes_equal": sum(candidate[key]["native_code_sha256"] == baseline[key]["native_code_sha256"] for key in baseline),
                 "ratios_of_totals": {metric: sum(v[metric] for v in candidate.values()) / sum(v[metric] for v in baseline.values()) for metric in metrics},
                 "execution_geomean_ratio": math.exp(sum(math.log(candidate[key]["exec_ns"] / baseline[key]["exec_ns"]) for key in baseline) / len(inputs)),
                 "per_input_ratios": {key: {metric: candidate[key][metric] / baseline[key][metric] for metric in (*metrics, "exec_ns")} for key in baseline},

@@ -133,6 +133,10 @@ func TestOptimizationStudySample(t *testing.T) {
 		}
 		f.Close()
 	}
+	codeHash := sha256.New()
+	if _, err := compiled.WriteCodeTo(codeHash); err != nil {
+		t.Fatal(err)
+	}
 	var invoke func() error
 	if m.Command != nil {
 		validateCommandInputs(t, m)
@@ -230,7 +234,7 @@ func TestOptimizationStudySample(t *testing.T) {
 		}
 	}
 	execNS := float64(time.Since(started).Nanoseconds()) / float64(count)
-	out := map[string]any{"id": m.ID, "optimization": opt, "on": enabled, "sha256": entry.SHA256, "go": runtime.Version(), "compile_ns": compileNS, "startup_peak_rss_bytes": startup, "compile_peak_rss_bytes": peak, "allocated_bytes": after.TotalAlloc - before.TotalAlloc, "allocations": after.Mallocs - before.Mallocs, "retained_heap_bytes": retained.HeapAlloc, "native_code_bytes": code, "exec_ns": execNS, "exec_calls": count, "oracle": "pass"}
+	out := map[string]any{"id": m.ID, "optimization": opt, "on": enabled, "sha256": entry.SHA256, "go": runtime.Version(), "compile_ns": compileNS, "startup_peak_rss_bytes": startup, "compile_peak_rss_bytes": peak, "allocated_bytes": after.TotalAlloc - before.TotalAlloc, "allocations": after.Mallocs - before.Mallocs, "retained_heap_bytes": retained.HeapAlloc, "native_code_bytes": code, "native_code_sha256": hex.EncodeToString(codeHash.Sum(nil)), "exec_ns": execNS, "exec_calls": count, "oracle": "pass"}
 	raw, err = json.Marshal(out)
 	if err != nil {
 		t.Fatal(err)

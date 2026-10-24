@@ -1998,7 +1998,13 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
 			sc.reserveControlFrames(ctrlCap)
 		}
-		codeBuffer, err := coreruntime.NewCodeBuffer(codeCap)
+		var codeBuffer *coreruntime.CodeBuffer
+		var err error
+		if policy.EnabledOption(optFileBackedCode) {
+			codeBuffer, err = coreruntime.NewCompilerCodeBuffer(codeCap)
+		} else {
+			codeBuffer, err = coreruntime.NewCodeBuffer(codeCap)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("amd64: allocate code image: %w", err)
 		}
@@ -2011,6 +2017,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if regallocCheckEnabled {
 			shared.SetSourceWorkerContext(&sc.scalar, codegen.SourceContextFor(opts.Codegen, m), 0, 1)
 		}
+		fileCode := codeBuffer.OwnsCompilerFile()
+		reclaimedCode := 0
 		pressureDone := false
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		var directPrepared, directPreparedBounded, gcReducedBounded, gcI31Inductions []uint64
@@ -2118,6 +2126,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 					return nil, fmt.Errorf("amd64: grow code image: %w", err)
 				}
 			}
+			if fileCode && len(codeBuffer.Bytes())-reclaimedCode >= 8<<20 {
+				reclaimedCode, err = codeBuffer.ReclaimCompilerPages(reclaimedCode, len(codeBuffer.Bytes()))
+				if err != nil {
+					return nil, fmt.Errorf("amd64: reclaim compiler image: %w", err)
+				}
+			}
 			if !pressureDone && opts.MemoryPressure != nil && len(codeBuffer.Bytes()) >= pressureAt {
 				pressureDone = true
 				opts.MemoryPressure()
@@ -2172,11 +2186,16 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if profileEnabled && opts.Profile {
 			recordProfileRegions(ms, entry, importedFuncs, len(code), functionsEnd, sharedAdapterBytes, literalBase, len(literalCode), stubBase, len(stubCode))
 		}
-		if err := patchModuleRelocs(code, entry, internalEntry, relocs, stubBase, stubOffsets); err != nil {
+		if err := patchModuleRelocsWithImage(code, entry, internalEntry, relocs, stubBase, stubOffsets, codeBuffer); err != nil {
 			return nil, err
 		}
-		if err := patchModuleLiteralRelocs(code, entry, literalWords, literalOffsets, literalBase, moduleLiterals); err != nil {
+		if err := patchModuleLiteralRelocsWithImage(code, entry, literalWords, literalOffsets, literalBase, moduleLiterals, codeBuffer); err != nil {
 			return nil, err
+		}
+		if fileCode {
+			if err := codeBuffer.FinishCompilerCode(); err != nil {
+				return nil, fmt.Errorf("amd64: finish compiler image: %w", err)
+			}
 		}
 		directPreparedBounded = resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTables)
 		if gcInductionReductionsEnabled {
@@ -2595,10 +2614,23 @@ func finalizeOmittedInlineEntriesAMD64(entry, internalEntry []int, relocs [][]ca
 }
 
 func patchModuleRelocs(code []byte, entry, internalEntry []int, relocs [][]callReloc, stubBase int, stubOffsets [gcSharedStubMax]int) error {
+	return patchModuleRelocsWithImage(code, entry, internalEntry, relocs, stubBase, stubOffsets, nil)
+}
+
+func patchModuleRelocsWithImage(code []byte, entry, internalEntry []int, relocs [][]callReloc, stubBase int, stubOffsets [gcSharedStubMax]int, image *coreruntime.CodeBuffer) error {
 	if len(entry) < len(relocs) {
 		return fmt.Errorf("amd64: relocation entry table has %d functions, want at least %d", len(entry), len(relocs))
 	}
+	fileCode := image != nil && image.OwnsCompilerFile()
+	reclaimedCode := 0
 	for i := range relocs {
+		if fileCode && entry[i]-reclaimedCode >= 8<<20 {
+			var err error
+			reclaimedCode, err = image.ReclaimCompilerPages(reclaimedCode, entry[i])
+			if err != nil {
+				return fmt.Errorf("amd64: reclaim relocated image: %w", err)
+			}
+		}
 		base := entry[i]
 		if base < 0 || base > len(code) {
 			return fmt.Errorf("amd64: invalid function %d entry %#x for %d-byte code image", i, base, len(code))
