@@ -48,6 +48,38 @@ func LowerGCTypeDescs(types []wasm.RecType) ([]gc.TypeDesc, error) {
 
 // LowerGCTypeMetadata derives runtime and compiler layout metadata in one pass.
 func LowerGCTypeMetadata(types []wasm.RecType) (GCTypeMetadata, error) {
+	if metadata, ok := lowerFunctionTypeSentinels(types); ok {
+		return metadata, nil
+	}
+	return lowerGCTypeMetadataGeneral(types)
+}
+
+// Function-only groups without super edges need no heap-layout resolution or
+// recursive index directory. These literals satisfy the descriptor invariants
+// by construction; declarations with supers retain the general validation path.
+func lowerFunctionTypeSentinels(types []wasm.RecType) (GCTypeMetadata, bool) {
+	count := 0
+	for i := range types {
+		for j := range types[i].SubTypes {
+			st := &types[i].SubTypes[j]
+			if st.Comp.Kind != wasm.CompFunc || len(st.Supers) != 0 {
+				return GCTypeMetadata{}, false
+			}
+			count++
+		}
+	}
+	descs := make([]gc.TypeDesc, count)
+	at := 0
+	for i := range types {
+		for j := range types[i].SubTypes {
+			descs[at] = gc.TypeDesc{ID: gc.TypeID(at), Kind: gc.KindFunc, Final: types[i].SubTypes[j].Final}
+			at++
+		}
+	}
+	return GCTypeMetadata{Descs: descs}, true
+}
+
+func lowerGCTypeMetadataGeneral(types []wasm.RecType) (GCTypeMetadata, error) {
 	flat, hasLayouts := flattenGCTypes(types)
 	descs := make([]gc.TypeDesc, len(flat))
 	var layouts []codegen.GCTypeLayout

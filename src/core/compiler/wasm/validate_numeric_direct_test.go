@@ -29,7 +29,7 @@ func TestDirectNumericStackEffectParity(t *testing.T) {
 										values[len(values)-1-operand].t.lo |= unknownValidationBit
 									}
 								}
-								frame := ctrlFrame{height: height, unreachable: unreachable}
+								frame := ctrlFrame{height: uint32(height), unreachable: unreachable}
 								reference := funcValidator{ctrls: []ctrlFrame{frame}, vals: append([]val(nil), values...)}
 								direct := funcValidator{ctrls: []ctrlFrame{frame}, vals: append([]val(nil), values...)}
 								want := reference.step(&Instruction{Kind: kind})

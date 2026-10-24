@@ -85,26 +85,26 @@ func (f *fn) collectProfileSources(internalOff int) {
 			continue
 		}
 		for _, site := range sites {
-			function, originPC, deferred := f.profileTrapOrigin(int(site.branch))
+			function, originPC := f.trapFunction(site), f.trapPC(site)
+			deferredFunction, deferredPC, deferred := f.profileTrapOrigin(int(site.branch))
 			if deferred {
-				site.function = function
-				site.pc = originPC
+				function, originPC = deferredFunction, deferredPC
 			}
 			if (trapCode == trapDivZero || trapCode == trapDivOverflow) && !deferred {
 				continue
 			}
-			if site.pc == 0 {
+			if originPC == 0 {
 				continue
 			}
-			idx := int(site.function) - imports
+			idx := int(function) - imports
 			if idx < 0 || idx >= len(f.m.Code) {
 				continue
 			}
 			body := f.m.Code[idx]
-			if site.pc < body.LocalDeclBytes {
+			if originPC < body.LocalDeclBytes {
 				continue
 			}
-			pc := site.pc - body.LocalDeclBytes
+			pc := originPC - body.LocalDeclBytes
 			if uint64(pc) >= uint64(len(body.BodyBytes)) {
 				continue
 			}
@@ -123,7 +123,7 @@ func (f *fn) collectProfileSources(internalOff int) {
 			if start < internalOff || start < 0 || start+size > len(f.a.B) {
 				continue
 			}
-			f.stats.SourceRanges = append(f.stats.SourceRanges, shared.NativeSourceRange{Offset: uint64(start), Size: uint64(size), Function: site.function, WasmOffset: site.pc, InlineParent: f.profileTrapCaller(int(site.branch))})
+			f.stats.SourceRanges = append(f.stats.SourceRanges, shared.NativeSourceRange{Offset: uint64(start), Size: uint64(size), Function: function, WasmOffset: originPC, InlineParent: f.profileTrapCaller(int(site.branch))})
 		}
 	}
 	sort.Slice(f.stats.SourceRanges, func(i, j int) bool { return f.stats.SourceRanges[i].Offset < f.stats.SourceRanges[j].Offset })

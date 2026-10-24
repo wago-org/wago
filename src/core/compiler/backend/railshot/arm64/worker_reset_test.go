@@ -106,7 +106,7 @@ func (c *workerResetContext) compile(sc *scratch, index int, capture bool) (work
 	}
 	return workerResetOutput{
 		Code: append([]byte(nil), code...), Relocs: append([]callReloc(nil), relocs...), Internal: internal,
-		Direct: sc.directPrepared, Light: sc.directPreparedLight, Bounded: sc.directPreparedBounded, Shared: sc.fnState.scalarSummary.Eligible,
+		Direct: sc.directPrepared, Bounded: sc.directPreparedBounded, Shared: sc.fnState.scalarSummary.Eligible,
 		Metadata: metadata,
 	}, nil
 }
@@ -206,11 +206,11 @@ func workerResetExecute(t *testing.T, out, helper workerResetOutput, target int)
 	helperStart := len(code)
 	code = append(code, helper.Code...)
 	for _, reloc := range out.Relocs {
-		if reloc.target != 0 {
+		if reloc.targetIndex() != 0 {
 			t.Fatal("unexpected relocation target")
 		}
 		destination := helperStart
-		if reloc.internal {
+		if reloc.targetsInternal() {
 			destination += helper.Internal
 		}
 		a := encoder.Asm{B: code}

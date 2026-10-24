@@ -457,7 +457,7 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 				result.Message = "unsupported dead source instruction"
 				return
 			}
-			base := max(v.top().height, len(v.vals)-inputs)
+			base := max(int(v.top().height), len(v.vals)-inputs)
 			if outputs > limits.Stack-base {
 				panic(sourceLedgerLimit{})
 			}

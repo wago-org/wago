@@ -36,7 +36,11 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 	}
-	if e := opEffects[in.Kind]; e.cat == effLoad {
+	if e := opEffects[in.Kind]; e.cat >= effUnary && e.cat <= effConv {
+		// Core numeric operations have complete table effects. They cannot carry
+		// a proposal payload, so avoid both general instruction dispatches.
+		return v.stackEffect(in)
+	} else if e.cat == effLoad {
 		addr, err := v.checkMemArg(in.MemArg(), uint32(e.align))
 		if err != nil {
 			return err
@@ -591,6 +595,29 @@ func (v *funcValidator) stackEffect(in *Instruction) error {
 	k := in.Kind
 	if e := opEffects[k]; e.cat != effNone {
 		a := e.a.valType()
+		// Concrete numeric operands need neither polymorphic pops nor a subtype
+		// walk. Validate them above the current control boundary, then replace the
+		// consumed suffix in place. Mismatches and unreachable-stack operands keep
+		// the ordinary path below, including its diagnostic order.
+		if e.cat <= effConv {
+			n := len(v.vals)
+			arity := 1
+			if e.cat == effBinary || e.cat == effCompare {
+				arity = 2
+			}
+			if n-arity >= int(v.top().height) && v.vals[n-1].t == a &&
+				(arity == 1 || v.vals[n-2].t == a) {
+				result := a
+				if e.cat == effCompare || e.cat == effTest {
+					result = I32
+				} else if e.cat == effConv {
+					result = e.b.valType()
+				}
+				v.vals[n-arity] = val{t: result}
+				v.vals = v.vals[:n-arity+1]
+				return nil
+			}
+		}
 		switch e.cat {
 		case effUnary:
 			if err := v.popExpect(a); err != nil {

@@ -26,6 +26,8 @@ import (
 )
 
 // Explain/debug knobs, parsed once. Kept here next to the stats they drive.
+var omitColdPhasePaddingEnabled = true
+
 var (
 	// explainEnabled prints a per-module CodegenStats dump to stderr after every
 	// compile. "size" retains the full report and highlights its native byte
@@ -75,16 +77,11 @@ var (
 	// leafScratchMemSizeEnabled caches memBytes in backend scratch X17 for bounded
 	// straight-line regional leaves, freeing X27 for one more resident local.
 	leafScratchMemSizeEnabled = os.Getenv("WAGO_ARM64_NO_LEAF_SCRATCH_MEMSIZE") != "1"
-	// loopTrapCellEnabled keeps the invocation's stable trap-cell pointer in a
-	// dedicated register across call-free loops, leaving every cancellation poll
-	// intact while removing its repeated basedata load. This is independent of
-	// whether the loop also accesses linear memory.
-	loopTrapCellEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_TRAP_CELL") != "1"
 	// preparedDirectEntryEnabled admits the compiler-proved register-ABI entry
 	// family. Disabling it removes all direct/light/bounded entry metadata, so
 	// prepared calls retain the ordinary adapter as a correctness and A/B oracle.
-	preparedDirectEntryEnabled  = os.Getenv("WAGO_ARM64_NO_PREPARED_DIRECT_ENTRY") != "1"
-	preparedLightEntryEnabled   = os.Getenv("WAGO_ARM64_NO_PREPARED_LIGHT_ENTRY") != "1"
+	preparedDirectEntryEnabled = os.Getenv("WAGO_ARM64_NO_PREPARED_DIRECT_ENTRY") != "1"
+
 	preparedBoundedEntryEnabled = os.Getenv("WAGO_ARM64_NO_PREPARED_BOUNDED_ENTRY") != "1"
 	nativeLeafHostEnabled       = os.Getenv("WAGO_ARM64_NO_NATIVE_LEAF_HOST") != "1"
 	loopIntConstEnabled         = os.Getenv("WAGO_ARM64_NO_LOOP_INT_CONST") != "1"
@@ -116,7 +113,7 @@ var (
 	// shiftedAddSubImmediateEnabled selects the legal imm12 LSL #12 form for
 	// compact add, sub, compare, and address displacement operations.
 	shiftedAddSubImmediateEnabled = os.Getenv("WAGO_ARM64_NO_SHIFTED_ADD_SUB_IMMEDIATE") != "1"
-	// sharedTrapBodyEnabled lets compact trap groups share the complete
+	// sharedTrapBodyEnabled lets trap groups share the complete
 	// terminal trap record/writeback/unwind body within one function.
 	sharedTrapBodyEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_TRAP_BODY") != "1"
 	// loadPairEnabled combines exact adjacent full-width scalar loads into LDP.
@@ -140,21 +137,6 @@ const (
 	callKindWrapper        = shared.CallWrapper
 	callKindIndirect       = shared.CallIndirect
 )
-
-func parsePinGlobalK(s string) int {
-	switch s {
-	case "0":
-		return 0
-	case "1":
-		return 1
-	case "2":
-		return 2
-	case "3":
-		return 3
-	default: // "", "auto", or anything unrecognized
-		return -1
-	}
-}
 
 // CodegenStats holds one function's codegen counters. All fields are zero when a
 // phenomenon did not occur; maps are nil until first use.
@@ -224,37 +206,6 @@ type CodegenStats struct {
 	Peephole map[string]int
 }
 
-func (ms *ModuleStats) finalizeCompileResourceStats() {
-	if !diagnosticsEnabled || ms == nil {
-		return
-	}
-	c := &ms.Compile
-	c.StageNanos[shared.CompileStageFunctions] = 0
-	c.FunctionAttempts = 0
-	for _, s := range ms.Funcs {
-		if !diagnosticsEnabled || s == nil {
-			continue
-		}
-		c.StageNanos[shared.CompileStageFunctions] += s.CompileNanos
-		c.FunctionAttempts += s.FunctionAttempts
-	}
-}
-
-func (ms *ModuleStats) setNodeScratchStats(sc *scratch) {
-	if !diagnosticsEnabled || ms == nil {
-		return
-	}
-	ms.Compile.NodeScratchReserved = 0
-	ms.Compile.NodeScratchPeak = 0
-	ms.Compile.NodeScratchRetained = 0
-	ms.Compile.NodeScratchDiscarded = 0
-	ms.Compile.ControlScratchReserved = 0
-	ms.Compile.ControlScratchPeak = 0
-	ms.Compile.ControlScratchRetained = 0
-	ms.Compile.ControlScratchDiscarded = 0
-	ms.addNodeScratchStats(sc)
-}
-
 func (ms *ModuleStats) addNodeScratchStats(sc *scratch) {
 	if (!diagnosticsEnabled || ms == nil) || sc == nil {
 		return
@@ -289,82 +240,6 @@ func (s *CodegenStats) setFinalizerFallback(reason string) {
 
 // --- nil-safe counter methods (no-op when collection is off) ---
 
-func (s *CodegenStats) addFlush() {
-	if diagnosticsEnabled && s != nil {
-		s.Flushes++
-	}
-}
-func (s *CodegenStats) addFlushBelow() {
-	if diagnosticsEnabled && s != nil {
-		s.FlushBelows++
-	}
-}
-func (s *CodegenStats) addFlushRoot(deferred bool) {
-	if diagnosticsEnabled && s != nil {
-		s.FlushRoots++
-		if deferred {
-			s.FlushDeferredRoots++
-		}
-	}
-}
-func (s *CodegenStats) addFlushBelowRoot(deferred bool) {
-	if diagnosticsEnabled && s != nil {
-		s.FlushBelowRoots++
-		if deferred {
-			s.FlushBelowDeferred++
-		}
-	}
-}
-func (s *CodegenStats) addCallFlush() {
-	if diagnosticsEnabled && s != nil {
-		s.CallFlushes++
-	}
-}
-func (s *CodegenStats) addLocalSetDeferred() {
-	if diagnosticsEnabled && s != nil {
-		s.LocalSetDeferred++
-	}
-}
-func (s *CodegenStats) addCondense() {
-	if diagnosticsEnabled && s != nil {
-		s.Condenses++
-	}
-}
-func (s *CodegenStats) addSpill() {
-	if diagnosticsEnabled && s != nil {
-		s.Spills++
-	}
-}
-func (s *CodegenStats) addReload() {
-	if diagnosticsEnabled && s != nil {
-		s.Reloads++
-	}
-}
-func (s *CodegenStats) addForcedLoad() {
-	if diagnosticsEnabled && s != nil {
-		s.MemRefsForcedByStore++
-	}
-}
-func (s *CodegenStats) addTrapStub() {
-	if diagnosticsEnabled && s != nil {
-		s.TrapStubs++
-	}
-}
-func (s *CodegenStats) addTrapGroup() {
-	if diagnosticsEnabled && s != nil {
-		s.TrapGroups++
-	}
-}
-func (s *CodegenStats) addBoundsCheck() {
-	if diagnosticsEnabled && s != nil {
-		s.BoundsChecks++
-	}
-}
-func (s *CodegenStats) addBoundsElidable() {
-	if diagnosticsEnabled && s != nil {
-		s.BoundsChecksElidable++
-	}
-}
 func (s *CodegenStats) addBoundsInLoop() {
 	if diagnosticsEnabled && s != nil {
 		s.BoundsChecksInLoop++
@@ -375,16 +250,7 @@ func (s *CodegenStats) addBoundsHoistable() {
 		s.BoundsChecksHoistable++
 	}
 }
-func (s *CodegenStats) addPinnedLocal() {
-	if diagnosticsEnabled && s != nil {
-		s.PinnedLocals++
-	}
-}
-func (s *CodegenStats) addPinnedGlobalValue() {
-	if diagnosticsEnabled && s != nil {
-		s.PinnedGlobalsValue++
-	}
-}
+
 func (s *CodegenStats) addGCAllocationBytes(n int) {
 	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.Allocation += n
@@ -425,53 +291,10 @@ func (s *CodegenStats) addGCSharedStubBytes(n int) {
 		s.GCCodeBytes.SharedStub += n
 	}
 }
-func (s *CodegenStats) addGCSpillReloadBytes(n int) {
-	if diagnosticsEnabled && s != nil && n > 0 {
-		s.GCCodeBytes.SpillReload += n
-	}
-}
-func (s *CodegenStats) addGCTrapStubBytes(n int) {
-	if diagnosticsEnabled && s != nil && n > 0 {
-		s.GCCodeBytes.TrapStub += n
-	}
-}
+
 func (s *CodegenStats) addGCRootMapBytes(n int) {
 	if diagnosticsEnabled && s != nil && n > 0 {
 		s.GCCodeBytes.RootMap += n
-	}
-}
-
-// call records one call lowering of the given kind.
-func (s *CodegenStats) call(kind string) {
-	if !diagnosticsEnabled || s == nil {
-		return
-	}
-	if s.Calls == nil {
-		s.Calls = make(map[string]int)
-	}
-	s.Calls[kind]++
-}
-
-func (s *CodegenStats) addInlineSiteBytes(n int) {
-	if diagnosticsEnabled && s != nil {
-		s.InlineSiteBytes += n
-	}
-}
-
-// peep records one peephole/instruction-selection rewrite by stable name.
-func (s *CodegenStats) peep(name string) {
-	if !diagnosticsEnabled || s == nil {
-		return
-	}
-	if s.Peephole == nil {
-		s.Peephole = make(map[string]int)
-	}
-	s.Peephole[name]++
-}
-
-func (s *CodegenStats) peepN(name string, n int) {
-	for ; n > 0; n-- {
-		s.peep(name)
 	}
 }
 
@@ -743,12 +566,4 @@ func funcDisplayName(m *wasm.Module, localIdx, importedFuncs int) string {
 		}
 	}
 	return ""
-}
-
-// Keep environment reads out of ordinary builds, including package initialization.
-func diagnosticEnv(key string) string {
-	if !diagnosticsEnabled {
-		return ""
-	}
-	return os.Getenv(key)
 }

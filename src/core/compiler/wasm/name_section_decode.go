@@ -28,7 +28,7 @@ func decodeNameSecWithBudget(payload []byte, budget *decodeBudget) (*NameSec, er
 			return nil, err
 		}
 		if seen && id <= prev {
-			return nil, &DecodeError{Code: ErrInvalidSection, Offset: r.off() - 1}
+			return nil, newDecodeError(ErrInvalidSection, r.off()-1)
 		}
 		prev = id
 		seen = true
@@ -119,7 +119,7 @@ func decodeNameSecWithBudget(payload []byte, budget *decodeBudget) (*NameSec, er
 			known = false
 		}
 		if known && sub.has() {
-			return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off() - sub.left()}
+			return nil, newDecodeError(ErrSectionSizeMismatch, r.off()-sub.left())
 		}
 	}
 	return ns, nil
@@ -138,7 +138,7 @@ func decodeNameMap(r *reader) (NameMap, error) {
 	}
 	for i := 1; i < len(entries); i++ {
 		if entries[i].Index <= entries[i-1].Index {
-			return nil, &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+			return nil, newDecodeError(ErrInvalidSection, r.off())
 		}
 	}
 	return entries, nil
@@ -157,7 +157,7 @@ func decodeIndirectNameMap(r *reader) (IndirectNameMap, error) {
 	}
 	for i := 1; i < len(entries); i++ {
 		if entries[i].Index <= entries[i-1].Index {
-			return nil, &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+			return nil, newDecodeError(ErrInvalidSection, r.off())
 		}
 	}
 	return entries, nil

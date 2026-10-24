@@ -30,14 +30,14 @@ func decodeBranchHintSectionWithBudget(payload []byte, budget *decodeBudget) ([]
 				return BranchHint{}, err
 			}
 			if size != 1 {
-				return BranchHint{}, &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+				return BranchHint{}, newDecodeError(ErrInvalidSection, r.off())
 			}
 			direction, err := r.byte()
 			if err != nil {
 				return BranchHint{}, err
 			}
 			if direction > 1 {
-				return BranchHint{}, &DecodeError{Code: ErrInvalidSection, Offset: r.off() - 1}
+				return BranchHint{}, newDecodeError(ErrInvalidSection, r.off()-1)
 			}
 			return BranchHint{Offset: offset, Likely: direction == 1}, nil
 		})
@@ -50,17 +50,17 @@ func decodeBranchHintSectionWithBudget(payload []byte, budget *decodeBudget) ([]
 		return nil, err
 	}
 	if r.has() {
-		return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
+		return nil, newDecodeError(ErrSectionSizeMismatch, r.off())
 	}
 	for i := 1; i < len(funcs); i++ {
 		if funcs[i].FuncIndex <= funcs[i-1].FuncIndex {
-			return nil, &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+			return nil, newDecodeError(ErrInvalidSection, r.off())
 		}
 	}
 	for i := range funcs {
 		for j := 1; j < len(funcs[i].Hints); j++ {
 			if funcs[i].Hints[j].Offset <= funcs[i].Hints[j-1].Offset {
-				return nil, &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+				return nil, newDecodeError(ErrInvalidSection, r.off())
 			}
 		}
 	}

@@ -2,6 +2,7 @@ package wago
 
 import (
 	"bytes"
+
 	"strings"
 	"testing"
 	"unsafe"
@@ -92,7 +93,7 @@ func TestCompileDoesNotRetainSourceForLinking(t *testing.T) {
 	}
 }
 
-func TestCompileDefersExecutableCodeUntilInstantiate(t *testing.T) {
+func TestCompileDefersExecutableProtectionUntilInstantiate(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithFunctionWorkers(1), benchAddOneModule())
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
@@ -108,8 +109,8 @@ func TestCompileDefersExecutableCodeUntilInstantiate(t *testing.T) {
 		t.Fatalf("Instantiate: %v", err)
 	}
 	defer instance.Close()
-	if compiled.codeCache.mem == nil {
-		t.Fatal("first Instantiate did not allocate executable memory")
+	if compiled.codeCache.mem == nil || !compiled.codeCache.sealed {
+		t.Fatal("first Instantiate did not seal executable memory")
 	}
 	after := uintptr(unsafe.Pointer(&compiled.codeCache.mem[0]))
 	if !compiled.codeCache.sealed || (mappedStaging && after != before) || (!mappedStaging && after == before) {

@@ -674,8 +674,19 @@ func TestApplicationCorpusRuns(t *testing.T) {
 }
 
 func BenchmarkCommandExec(b *testing.B) {
+	cfg := wago.NewRuntimeConfig()
+	if *execOptimization != "" {
+		cfg = cfg.WithOptimization(*execOptimization, *execOptimizationEnabled)
+		if err := cfg.Validate(); err != nil {
+			b.Fatal(err)
+		}
+	}
+	benchmarkCommandExec(b, cfg)
+}
+
+func benchmarkCommandExec(b *testing.B, cfg *wago.RuntimeConfig) {
 	for _, m := range commandCorpus(b) {
-		compiled, err := wago.Compile(nil, m.bytes)
+		compiled, err := wago.Compile(cfg, m.bytes)
 		if err != nil {
 			b.Fatalf("%s compile: %v", m.name(), err)
 		}

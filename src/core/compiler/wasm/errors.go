@@ -33,6 +33,14 @@ type DecodeError struct {
 	Cause        error
 }
 
+// newDecodeError shares cold error allocation across the decoder's inlineable
+// bounds and immediate readers. Section context is attached by their caller.
+//
+//go:noinline
+func newDecodeError(code DecodeErrorCode, offset int) *DecodeError {
+	return &DecodeError{Code: code, Offset: offset}
+}
+
 func (e *DecodeError) Error() string {
 	if e.SectionEnd > 0 {
 		return fmt.Sprintf("wasm decode: %v at offset %d in section %d [%d,%d)", e.Code, e.Offset, e.SectionID, e.SectionStart, e.SectionEnd)
@@ -88,7 +96,7 @@ func invalidInstructionError(op byte, offset int) *DecodeError {
 	case 0x06, 0x07, 0x09, 0x18, 0x19: // legacy try, catch, rethrow, delegate, catch_all
 		code = ErrLegacyExceptionHandling
 	}
-	return &DecodeError{Code: code, Offset: offset}
+	return newDecodeError(code, offset)
 }
 
 type ValidationErrorCode int

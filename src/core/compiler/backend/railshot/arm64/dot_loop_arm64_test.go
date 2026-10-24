@@ -3,7 +3,6 @@
 package arm64
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"testing"
@@ -46,9 +45,7 @@ func dotLoopModule(t testing.TB, terms int, start, limit uint32, biasA, biasB in
 }
 
 func TestDotLoopIndependentExecution(t *testing.T) {
-	old := dotLoopEnabled
-	dotLoopEnabled = true
-	defer func() { dotLoopEnabled = old }()
+
 	setup := func(mem []byte) {
 		for i := 0; i < len(mem)/4; i++ {
 			binary.LittleEndian.PutUint32(mem[i*4:], uint32(i)*0x9e3779b9+0x80000001)
@@ -93,77 +90,5 @@ func TestDotLoopIndependentExecution(t *testing.T) {
 				}
 			}
 		}
-	}
-}
-
-func TestDotLoopAdmission(t *testing.T) {
-	requireCompilerDiagnostics(t)
-	old := dotLoopEnabled
-	dotLoopEnabled = true
-	defer func() { dotLoopEnabled = old }()
-	for _, terms := range []int{1, 2, 4} {
-		stats := compileWithStats(t, dotLoopModule(t, terms, 0, 64, -128, 37), false).Funcs[0]
-		if stats.Peephole["dot-loop-vector"] != 1 {
-			t.Fatalf("terms %d not admitted: %v", terms, stats.Peephole)
-		}
-	}
-}
-
-func TestDotLoopPolicyRollback(t *testing.T) {
-	requireCompilerDiagnostics(t)
-	var stats ModuleStats
-	cm, err := CompileModuleWith(dotLoopModule(t, 2, 0, 64, -128, 37), CompileOptions{
-		Stats: &stats, Optimizations: map[string]bool{"dot-loop-vector": false},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	cm.CodeImage.Close()
-	if stats.Funcs[0].Peephole["dot-loop-vector"] != 0 {
-		t.Fatal("disabled loop vectorization admitted")
-	}
-}
-
-func TestDotLoopRejectsEffectsAndMismatchedTerms(t *testing.T) {
-	requireCompilerDiagnostics(t)
-	old := dotLoopEnabled
-	dotLoopEnabled = true
-	defer func() { dotLoopEnabled = old }()
-	for _, test := range []struct {
-		name         string
-		prefix       []byte
-		changeOffset bool
-		shared       bool
-	}{
-		{"store", []byte{0x41, 0, 0x41, 1, 0x36, 2, 0}, false, false},
-		{"changed-base", []byte{0x41, 4, 0x21, 0}, false, false},
-		{"unequal-offsets", nil, true, false},
-		{"shared-memory", nil, false, true},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			m := dotLoopModule(t, 2, 0, 64, -128, 37)
-			body := m.Code[0].BodyBytes
-			if len(test.prefix) != 0 {
-				pos := bytes.Index(body, []byte{0x03, 0x40}) + 2
-				body = append(append(append([]byte{}, body[:pos]...), test.prefix...), body[pos:]...)
-			}
-			if test.changeOffset {
-				pos := bytes.Index(body, []byte{0x28, 2, 0})
-				if pos < 0 {
-					t.Fatal("missing load")
-				}
-				body[pos+2] = 4
-			}
-			m.Code[0].BodyBytes = body
-			if test.shared {
-				m.Memories[0].Shared = true
-				m.Memories[0].Limits.HasMax = true
-				m.Memories[0].Limits.Max = 1
-			}
-			stats := compileWithStats(t, m, false).Funcs[0]
-			if stats.Peephole["dot-loop-vector"] != 0 {
-				t.Fatalf("unsafe loop admitted: %v", stats.Peephole)
-			}
-		})
 	}
 }

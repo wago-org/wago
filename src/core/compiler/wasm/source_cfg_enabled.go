@@ -270,10 +270,10 @@ func (g *sourceCFGBuilder) control(op *directOp, e *SourceEvent) (handled, suppo
 		// validator stack. Bound the actual post-entry height before pushCtrl
 		// can materialize a large indexed signature, even on a dead source path.
 		available := len(v.vals)
-		if op.kind == directIf && available > v.top().height {
+		if op.kind == directIf && available > int(v.top().height) {
 			available--
 		}
-		base := max(v.top().height, available-len(ins))
+		base := max(int(v.top().height), available-len(ins))
 		if len(ins) > b.limits.Stack-base {
 			panic(sourceLedgerLimit{})
 		}

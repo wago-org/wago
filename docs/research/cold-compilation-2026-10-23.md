@@ -8,7 +8,30 @@ Standalone decoding, malformed-input diagnostics, typed validation and runtime
 guards remain checked. Adjacent compiler-local declarations are compacted while
 preserving zero-count type checks and original source offsets.
 
-## Final PR branch validation against current main
+## ARM64 campaign integration
+
+The ARM64 optimization campaign is now integrated into this existing PR. It adds
+streamed validation hints, reusable register-move graphs, compact scratch and
+metadata, and compiler declaration locality. Weak ARM64 selections are retired;
+existing CLI/project configuration keys remain accepted as ignored compatibility
+settings. The integration preserves the PR's shared frontend and AMD64 changes.
+
+Merged-source validation passed both frozen 20-workload corpus sets (33 unique
+workloads), 2,116 complete valid optimization off/on pairs across 93 selections,
+Wasm/shared/ARM64/public tests, register-allocation checks, targeted race checks,
+and native Linux ARM64 public tests. Linux AMD64 test binaries cross-compile;
+AMD64 execution has not been rerun locally for this integration.
+
+The full public profiling suite encounters a pre-existing mutex failure in
+`TestHostFuncRefNumericRetainedReference`, independently reproduced on current
+main and both parent sources. Backend profiling tests pass.
+
+All performance figures below describe the explicitly identified earlier source.
+They do not measure the combined integration. A fresh paired comparison is still
+required to establish its compile, total process peak-RSS and execution effects.
+The 30% physical-memory reduction goal remains open.
+
+## Earlier PR branch validation against current main
 
 Tested production source: 0a7de4d9c45149ac83325b629d5cdd56bfa7bea0 (after merging main).
 Baseline: dc13730184e8ba6a1a2b3e3887c53a2b880db88c. The baseline uses identical measurement instrumentation;
