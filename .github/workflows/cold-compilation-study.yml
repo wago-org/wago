@@ -1,0 +1,69 @@
+name: Cold compilation screening
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/cold-compilation-study.yml
+      - scripts/cold-compilation-study.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cold-compilation-study-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.27.1"
+
+jobs:
+  # Optional measurements are separate from correctness qualification. Each
+  # architecture gets its own native runner, with builds completed before timing.
+  cold-compilation-study:
+    name: Cold compilation study (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            file_backed_code: false
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            file_backed_code: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+      - name: Run alternating fresh-process pairs
+        env:
+          FILE_BACKED_CODE: ${{ matrix.file_backed_code }}
+        run: |
+          options=()
+          if [ "$FILE_BACKED_CODE" = true ]; then
+            options+=(--file-backed-code)
+          fi
+          python3 scripts/cold-compilation-study.py --output cold-study "${options[@]}"
+      - name: Upload source identity and measurements
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cold-study-${{ matrix.arch }}-${{ github.sha }}
+          path: cold-study/
+          if-no-files-found: error
+          retention-days: 30
+

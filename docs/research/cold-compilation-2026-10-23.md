@@ -10,7 +10,8 @@ preserving zero-count type checks and original source offsets.
 
 ## Native Linux screening
 
-The manual CI input `cold_compilation_study=true` runs
+The `Cold compilation screening` workflow runs manually, and when its runner
+or workflow is changed in a pull request. It runs
 `scripts/cold-compilation-study.py` on separate native Linux AMD64 and ARM64
 GitHub runners. It builds candidate and main `dc13730184e8` before timing, copies
 the identical measurement harness into the baseline without changing production
