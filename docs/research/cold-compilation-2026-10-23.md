@@ -8,6 +8,38 @@ Standalone decoding, malformed-input diagnostics, typed validation and runtime
 guards remain checked. Adjacent compiler-local declarations are compacted while
 preserving zero-count type checks and original source offsets.
 
+## Compact compiler data-section view
+
+Production `811162816d52f78aa3414ec2ae38262eab390a37` keeps compiler data
+segments as pointer-free spans over the original section bytes. Each20-byte
+record preserves the full memory index, offset-expression bytes and initializer
+bytes; passive mode uses an impossible active-expression endpoint as its tag.
+Ordinary decoding and programmatic `Module.Data` retain their existing expanded
+representation. Validation, feature checks, IR and compilation read projected
+records; slice-based legacy consumers can explicitly expand a private copy.
+The expanded decoder's conservative budget and error ordering are preserved.
+
+A refined single-pair compile-only screen against `4d4bc6c09` on Linux ARM64
+measured roughly unchanged Swift compile time with3% lower process peak RSS;
+esbuild was about4% faster with9% lower peak RSS. Allocation traffic fell about
+8% and19% respectively. Native-code hashes matched on both inputs. These are
+exploratory prepublication screens, not fresh full-corpus acceptance of this
+source. Full30% compile/RSS and same-or-better execution qualification stays open.
+
+Wasm/frontend/IR/ARM64/public tests, regalloc checks, backend profiling, native
+Linux ARM64 public tests and exact corpus checks across33 workloads pass. Linux
+AMD64 and RISC-V public test binaries cross-compile. Differential tests cover
+mixed active/passive segments, empty payloads, memory64, full-width invalid
+memory indexes, extended/noncanonical offsets, decode errors and GC ownership.
+TinyGo0.42 threads/Boehm builds and produces identical native hashes through
+compact and expanded decode paths for both large inputs; these are compilation
+checks, not a TinyGo execution matrix. The probe reports unavailable TinyGo
+`StackSys` as JSON null instead of referencing a nonexistent runtime field.
+
+[Qualification and raw screens](cold-compilation-2026-10-23/data-view-qualification.json)
+retain scope and identity. Performance tables below measure their named earlier
+sources and must not be relabeled as measurements of this change.
+
 ## ARM64 campaign integration
 
 The ARM64 optimization campaign is now integrated into this existing PR. It adds
@@ -36,7 +68,7 @@ They do not measure the combined integration. A fresh paired comparison is still
 required to establish its compile, total process peak-RSS and execution effects.
 The 30% physical-memory reduction goal remains open.
 
-## Current source: native Linux AMD64 comparison
+## Pre data-view source: native Linux AMD64 comparison
 
 Production `d8c878ada3a834af9b305997fa7e301479763591` versus unchanged main
 `dc13730184e8ba6a1a2b3e3887c53a2b880db88c`, Go 1.27.1, identical test-only
