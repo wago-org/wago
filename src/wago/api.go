@@ -1373,6 +1373,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			}
 		}
 	}
+	moduleFacts := requirements.moduleFacts
+	if err := frontend.RejectUnsupportedWithFeaturesFactsAndValidation(m, features, moduleFacts, &validationAnalysis); err != nil {
+		return nil, wrapContextError("compile", err)
+	}
 	ownedExceptionReferences := railshotManagedExceptionReferences(m)
 	gcMetadata, err := frontend.BuildGCTypeMetadataWithOptions(m, frontend.GCTypeMetadataOptions{OwnedExceptionReferences: ownedExceptionReferences})
 	if err != nil {
@@ -1381,10 +1385,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	gcDescs := gcMetadata.Descs
 	if err := configureStagedGCArrayTypeDescs(gcArrayProduct, gcDescs); err != nil {
 		return nil, wrapContextError("gc array descriptors", err)
-	}
-	moduleFacts := requirements.moduleFacts
-	if err := frontend.RejectUnsupportedWithFeaturesFactsAndValidation(m, features, moduleFacts, &validationAnalysis); err != nil {
-		return nil, wrapContextError("compile", err)
 	}
 	var unsafeDirectTailImports []uint64
 	if features.TailCalls {

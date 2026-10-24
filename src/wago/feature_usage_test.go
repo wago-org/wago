@@ -242,6 +242,15 @@ func TestAggregateStorageTypesRequireIndependentFeatures(t *testing.T) {
 			}
 
 			compiled, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(tc.module)
+			if tc.required.IsEnabled(CoreFeatureExceptionHandling) && !ownedExceptionReferencesRuntime() {
+				if compiled != nil {
+					compiled.Close()
+				}
+				if err == nil || !strings.Contains(err.Error(), "exception reference storage requires owned exception references") {
+					t.Fatalf("compile without owned exception storage: %v", err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("compile with all features: %v", err)
 			}
