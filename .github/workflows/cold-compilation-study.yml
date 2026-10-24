@@ -13,10 +13,6 @@ on:
         description: Main comparison or current-source file-option coverage
         options: [file-option, main]
         default: file-option
-  pull_request:
-    paths:
-      - .github/workflows/cold-compilation-study.yml
-      - scripts/cold-compilation-study.py
 
 permissions:
   contents: read

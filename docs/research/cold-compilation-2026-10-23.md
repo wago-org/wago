@@ -137,9 +137,10 @@ identity are captured in the artifacts. RSS excludes nonresident file cache.
 [summary](cold-compilation-2026-10-23/native-linux-arm64-summary.json).
 [Workflow run](https://github.com/wago-org/wago/actions/runs/40070990847).
 
-The separate `Cold compilation screening` workflow runs manually, or when its
-runner/workflow changes in a pull request. The default target is AMD64; manual
-runs can select ARM64 or both. It finishes all builds before timing, copies the
+The separate `Cold compilation screening` workflow runs manually. It does not
+repeat measurements on ordinary PR/evidence updates. The default target is AMD64;
+manual runs can select ARM64 or both and compare main/current or the file option
+on/off. It finishes all builds before timing, copies the
 identical measurement harness into the baseline without changing production
 source, and pins each fresh sample to one CPU with one worker/GOMAXPROCS=1.
 Generated-code hashes are also recorded in subsequent runs. Native checked
