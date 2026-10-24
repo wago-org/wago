@@ -52,6 +52,20 @@ correctness CI for this source is [running](https://github.com/wago-org/wago/act
 so final qualification remains pending. The previous accepted compiler plus test
 fixes passed [full CI](https://github.com/wago-org/wago/actions/runs/40070638663).
 
+The subsequent current-source file-option check at `4de7ac3170fc` passes
+40/40 exact oracles and 20/20 native-code hash comparisons across all 20 inputs.
+Both variants use the same source SHA, with the flag explicitly false/true.
+On that runner, enabling it changes total compile wall time by 1.274 and summed
+process peak RSS by 0.852: roughly 27% extra compile time for 15% lower RSS
+relative to current defaults. The flag remains opt-in. This incremental switch
+comparison is separate from the whole-profile-versus-main result above; their
+ratios are not multiplied or combined.
+
+[Off/on identity](cold-compilation-2026-10-23/amd64-file-offon-identity.json),
+[samples](cold-compilation-2026-10-23/amd64-file-offon-samples.jsonl),
+[summary](cold-compilation-2026-10-23/amd64-file-offon-summary.json),
+[successful coverage run](https://github.com/wago-org/wago/actions/runs/40073536273).
+
 [Identity](cold-compilation-2026-10-23/amd64-file-cache-identity.json),
 [samples](cold-compilation-2026-10-23/amd64-file-cache-samples.jsonl),
 [summary](cold-compilation-2026-10-23/amd64-file-cache-summary.json),
