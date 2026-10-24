@@ -12,6 +12,7 @@ type validationHintRecorder struct {
 	complete             bool
 	opcodes              []byte
 	values               []uint64
+	details              []validationHintEvent
 }
 
 func (r *validationHintRecorder) BeginFunction(int) wasm.ValidationHintInstructionObserver {
@@ -20,10 +21,21 @@ func (r *validationHintRecorder) BeginFunction(int) wasm.ValidationHintInstructi
 }
 func (r *validationHintRecorder) EndFunction(int) { r.ends++ }
 func (r *validationHintRecorder) Complete() bool  { return r.complete }
-func (r *validationHintRecorder) Observe(op byte, _ wasm.InstrKind, _, _ uint32, bits uint64, _ uint8, _, _ int) {
+
+type validationHintEvent struct {
+	op            byte
+	kind          wasm.InstrKind
+	index, index2 uint32
+	bits          uint64
+	meta          uint8
+	start, end    int
+}
+
+func (r *validationHintRecorder) Observe(op byte, kind wasm.InstrKind, index, index2 uint32, bits uint64, meta uint8, start, end int) {
 	r.events++
 	r.opcodes = append(r.opcodes, op)
 	r.values = append(r.values, bits)
+	r.details = append(r.details, validationHintEvent{op, kind, index, index2, bits, meta, start, end})
 }
 
 func TestValidationHintObserverFallbackAndFailure(t *testing.T) {
@@ -119,5 +131,69 @@ func TestValidationHintScalarDecodeMatchesOrdinaryValidation(t *testing.T) {
 		} else if observed.ValidFor(m) || observed.HintObserver() != nil {
 			t.Fatal("invalid scalar body retained analysis")
 		}
+	}
+}
+
+func TestValidationHintDirectMemoryAndControlParity(t *testing.T) {
+	cases := [][]byte{
+		{0x41, 0, 0x28, 2, 0, 0x1a, 0x0b},
+		{0x41, 0, 0x41, 1, 0x36, 2, 0, 0x0b},
+		{0x41, 0, 0x28, 0x42, 0, 0, 0x1a, 0x0b}, // explicit memory index
+		{0x41, 0, 0x28, 3, 0, 0x1a, 0x0b},       // invalid alignment
+		{0x41, 0, 0x28, 2, 0x80},                // truncated offset
+		{0x41, 0, 0x28, 0x42, 0x80},             // truncated memory index
+		{0x41, 0, 0x28, 0x42, 2, 0, 0x1a, 0x0b}, // unknown memory
+		{0x42, 0, 0x28, 2, 0, 0x1a, 0x0b},       // wrong address type
+		{0x41, 0, 0x42, 1, 0x36, 2, 0, 0x0b},    // wrong store type
+		{0x00, 0x28, 2, 0, 0x1a, 0x0b},          // polymorphic stack
+		{0x10, 1, 0x0b},
+		{0x12, 1, 0x0b},
+		{0x10, 2, 0x0b}, // unknown function
+		{0x10, 0x80},    // truncated call index
+		{0x02, 0x40, 0x0c, 0, 0x0b, 0x0b},
+		{0x02, 0x40, 0x41, 0, 0x0d, 0, 0x0b, 0x0b},
+		{0x0c, 2, 0x0b}, // unknown label
+		{0x0d, 0x80},    // truncated branch index
+		{0x41, 1, 0x04, 0x40, 0x05, 0x0b, 0x0b},
+		{0x05, 0x0b}, // else outside if
+		{0x0b, 0x0b}, // bytes after function end
+	}
+	for i, body := range cases {
+		for _, multi := range []bool{false, true} {
+			m := validationAnalysisModule(t)
+			m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+			m.Code[0].BodyBytes, m.Code[1].BodyBytes = body, []byte{0x0b}
+			features := wasm.ValidationFeatures{MultiMemory: multi}
+			var ordinary, observed wasm.ValidatedModuleAnalysis
+			want := wasm.ValidateModuleWithAnalysis(m, features, 1, wasm.ValidationLimits{}, &ordinary)
+			r := &validationHintRecorder{complete: true}
+			got := wasm.ValidateModuleWithHintObserver(m, features, 1, wasm.ValidationLimits{}, &observed, func(*wasm.Module) wasm.ValidationHintObserver { return r })
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("case %d multi=%v: got %v want %v", i, multi, got, want)
+			}
+			if want == nil {
+				if ordinary.Flags() != observed.Flags() || ordinary.Func(0) != observed.Func(0) || ordinary.Func(1) != observed.Func(1) {
+					t.Fatalf("case %d multi=%v: facts differ", i, multi)
+				}
+			} else if observed.ValidFor(m) || observed.HintObserver() != nil {
+				t.Fatalf("case %d retained failed analysis", i)
+			}
+		}
+	}
+}
+
+func TestValidationHintMixedMemoryWidthPayload(t *testing.T) {
+	m := validationAnalysisModule(t)
+	m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}, {Limits: wasm.Limits{Min: 1, Addr64: true}}}
+	m.Code[0].BodyBytes = []byte{0x42, 0, 0x28, 0x42, 1, 0x80, 0x80, 0x80, 0x80, 0x10, 0x1a, 0x0b}
+	m.Code[1].BodyBytes = []byte{0x0b}
+	r := &validationHintRecorder{complete: true}
+	var analysis wasm.ValidatedModuleAnalysis
+	if err := wasm.ValidateModuleWithHintObserver(m, wasm.ValidationFeatures{MultiMemory: true}, 1, wasm.ValidationLimits{}, &analysis, func(*wasm.Module) wasm.ValidationHintObserver { return r }); err != nil {
+		t.Fatal(err)
+	}
+	want := validationHintEvent{op: 0x28, kind: wasm.InstrI32Load, index: 1, bits: 1 << 32, meta: wasm.ValidationHintTouchesMemory | wasm.ValidationHintHasMemoryIndex, start: 2, end: 10}
+	if len(r.details) < 2 || r.details[1] != want {
+		t.Fatalf("memory event = %#v, want %#v", r.details, want)
 	}
 }

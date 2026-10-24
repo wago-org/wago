@@ -103,3 +103,23 @@ func TestRecordValidatedAnalysisSegmentCounts(t *testing.T) {
 		t.Fatalf("segment counts = data:%d element:%d, want 300/400", counts.data, counts.elem)
 	}
 }
+
+// The observed scalar fast path omits writes for classes with no fixed facts.
+// Keep that optimization tied to the independent classifier as facts evolve.
+func TestObservedScalarFixedFlagElision(t *testing.T) {
+	initValidatedFuncFlags()
+	for _, kind := range []InstrKind{InstrLocalGet, InstrLocalSet, InstrLocalTee, InstrI32Const, InstrI64Const, InstrF32Const, InstrF64Const} {
+		if validatedFuncFlagsByKind[kind] != 0 {
+			t.Fatalf("%v now needs observed scalar facts", kind)
+		}
+	}
+	for opcode := byte(0x45); opcode <= 0xc4; opcode++ {
+		want := ValidatedFuncFlags(0)
+		if opcode >= 0xc0 {
+			want = ValidatedFuncUsesSignExtension
+		}
+		if got := validatedFuncFlagsByKind[simpleOpcode[opcode]]; got != want {
+			t.Fatalf("opcode %#x facts=%v, want %v", opcode, got, want)
+		}
+	}
+}

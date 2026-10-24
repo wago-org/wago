@@ -1340,6 +1340,8 @@ func (v *funcValidator) directEnd() error {
 }
 
 func (v *funcValidator) validateFuncDirectObservedLoop(r *reader, widths memargWidths, multiMemory bool, segmentCounts *validationSegmentCounts, facts *ValidatedFuncFacts, observer ValidationHintInstructionObserver) error {
+	// Constants, locals and scalar arithmetic have no fixed flags, except
+	// sign-extension instructions. Their fast cases avoid zero-valued updates.
 	var op directOp
 	for {
 		start := r.pos
@@ -1378,7 +1380,6 @@ func (v *funcValidator) validateFuncDirectObservedLoop(r *reader, widths memargW
 					return err
 				}
 				v.push(typ)
-				facts.Flags |= validatedFuncFlagsByKind[kind]
 				observer.Observe(opcode, kind, 0, 0, bits, 0, start, r.pos)
 				continue
 			}
@@ -1392,18 +1393,70 @@ func (v *funcValidator) validateFuncDirectObservedLoop(r *reader, widths memargW
 				if err := v.stepLocalIndex(kind, index); err != nil {
 					return err
 				}
-				facts.Flags |= validatedFuncFlagsByKind[kind]
 				observer.Observe(opcode, kind, index, 0, 0, 0, start, r.pos)
 				continue
 			}
-			kind := simpleOpcode[r.data[r.pos]]
-			if cat := opEffects[kind].cat; cat >= effUnary && cat <= effConv {
+			if opcode >= 0x45 && opcode <= 0xc4 {
+				kind := simpleOpcode[opcode]
 				r.pos++
 				if err := v.stepDirectNumeric(kind); err != nil {
 					return err
 				}
+				if opcode >= 0xc0 {
+					facts.Flags |= ValidatedFuncUsesSignExtension
+				}
+				observer.Observe(opcode, kind, 0, 0, 0, 0, start, r.pos)
+				continue
+			}
+			if opcode >= 0x28 && opcode <= 0x3e {
+				r.pos++
+				kind := memOpcodeKind[opcode]
+				arg, err := decodeMemArgWithWidths(r, widths)
+				if err != nil {
+					return err
+				}
+				if err := v.stepDirectMemory(kind, arg); err != nil {
+					return err
+				}
 				facts.Flags |= validatedFuncFlagsByKind[kind]
-				observer.Observe(r.data[start], kind, 0, 0, 0, 0, start, r.pos)
+				index, meta := uint32(0), ValidationHintTouchesMemory
+				if arg.Mem != nil {
+					index = uint32(*arg.Mem)
+					meta |= ValidationHintHasMemoryIndex
+				}
+				observer.Observe(opcode, kind, index, 0, arg.Offset, meta, start, r.pos)
+				continue
+			}
+			if opcode == 0x05 || opcode == 0x0b {
+				r.pos++
+				kind, err := v.stepDirectControlImmediate(r, opcode)
+				if err != nil {
+					return err
+				}
+				observer.Observe(opcode, kind, 0, 0, 0, 0, start, r.pos)
+				continue
+			}
+			if opcode == 0x0c || opcode == 0x0d || opcode == 0x10 || opcode == 0x12 {
+				r.pos++
+				index, err := r.u32()
+				if err != nil {
+					return err
+				}
+				var kind InstrKind
+				if opcode == 0x10 || opcode == 0x12 {
+					kind, err = v.stepDirectCallIndex(opcode, index)
+				} else {
+					kind = InstrBr
+					if opcode == 0x0d {
+						kind = InstrBrIf
+					}
+					err = v.stepBranch(kind, index)
+				}
+				if err != nil {
+					return err
+				}
+				facts.Flags |= validatedFuncFlagsByKind[kind]
+				observer.Observe(opcode, kind, index, 0, 0, 0, start, r.pos)
 				continue
 			}
 		}
@@ -1765,6 +1818,10 @@ func (v *funcValidator) stepDirectCallImmediate(r *reader, opcode byte) (InstrKi
 	if err != nil {
 		return InstrInvalid, err
 	}
+	return v.stepDirectCallIndex(opcode, index)
+}
+
+func (v *funcValidator) stepDirectCallIndex(opcode byte, index uint32) (InstrKind, error) {
 	ft, ok := v.funcType(index)
 	if !ok {
 		return InstrInvalid, v.verr(ErrUnknownFunc, "")
