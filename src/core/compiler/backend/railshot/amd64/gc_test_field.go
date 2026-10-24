@@ -1,4 +1,4 @@
-//go:build amd64
+//go:build amd64 && (!tinygo || !wago_lean)
 
 package amd64
 
@@ -9,6 +9,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
+
+const gcTestFieldAvailable = true
 
 type gcTestFieldPlan struct {
 	ifPC, castPC, fieldPC, end int

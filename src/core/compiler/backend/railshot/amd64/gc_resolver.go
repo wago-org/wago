@@ -97,7 +97,9 @@ func (f *fn) invalidateGCLoadFactsForLocal(local int) {
 }
 
 func (f *fn) invalidateGCMutableLoadFacts() {
-	f.clearGCValueChecks()
+	if gcValueChecksAvailable {
+		f.clearGCValueChecks()
+	}
 	f.invalidateGCResolvedObject()
 	f.invalidateGCFreshStructFact()
 }

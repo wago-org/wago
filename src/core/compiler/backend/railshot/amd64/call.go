@@ -349,7 +349,7 @@ func (f *fn) selectedInlineTarget(idx uint32) *inlineTarget {
 	if t == nil {
 		return nil
 	}
-	if t.readRegion != nil && (f.gcFrameRoots == nil || !f.gcFrameRoots.Candidate || f.inlineDepth != 0 || f.gcReadRegionSites >= 16) {
+	if gcReadRegionsAvailable && t.readRegion != nil && (f.gcFrameRoots == nil || !f.gcFrameRoots.Candidate || f.inlineDepth != 0 || f.gcReadRegionSites >= 16) {
 		return nil
 	}
 	_, reserved := f.inlineBase[t.globalIdx]
@@ -360,7 +360,7 @@ func (f *fn) selectedInlineTarget(idx uint32) *inlineTarget {
 }
 
 func (f *fn) callOp(r *wasm.Reader) error {
-	if s := f.gcReadRegion; s != nil {
+	if gcReadRegionsAvailable && f.gcReadRegion != nil {
 		return f.emitGCReadRegionNumeric(r)
 	}
 
@@ -408,7 +408,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	// Keep one real call and one original source root mask. This runs after
 	// inlining so it needs no new inline-local reservation or mask consumption.
-	if f.opt(optDirectForwarder) {
+	if directForwarderAvailable && f.opt(optDirectForwarder) {
 		// Compact layout can omit the terminal leaf after its original caller
 		// inlines it. Keep the wrapper edge rather than create a relocation to
 		// that leaf; this caller has no reserved inline locals for the new target.
@@ -1196,7 +1196,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 // synchronous re-entry path instead (callHostSync). The caller (emitCall) routes
 // by result arity, so ft here always has zero results.
 func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
-	if f.gcReadRegion != nil {
+	if gcReadRegionsAvailable && f.gcReadRegion != nil {
 		return f.gcReadRegionViolation("ordinary call")
 	}
 	f.invalidateGCResolvedObject()
@@ -1292,7 +1292,7 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 // globals are also synced around the call: the host may read or write the
 // instance's globals through their cells.
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
-	if f.gcReadRegion != nil {
+	if gcReadRegionsAvailable && f.gcReadRegion != nil {
 		return f.gcReadRegionViolation("ordinary call")
 	}
 	f.invalidateGCResolvedObject()
@@ -2212,7 +2212,7 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
 // callInternal lowers a direct call to another local function. Admitted numeric
 // and reference signatures use registers; other signatures use wrapper buffers.
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
-	if f.gcReadRegion != nil {
+	if gcReadRegionsAvailable && f.gcReadRegion != nil {
 		return f.gcReadRegionViolation("ordinary call")
 	}
 	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
@@ -2252,7 +2252,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 
 // Advance the source mask when an inline zero-timeout wait cannot suspend.
 func (f *fn) consumeGCFrameCallsite() {
-	if f.gcReadRegion != nil {
+	if gcReadRegionsAvailable && f.gcReadRegion != nil {
 		f.gcReadRegion.err = f.gcReadRegionViolation("source mask consumption")
 		return
 	}
@@ -2268,7 +2268,7 @@ func (f *fn) consumeGCFrameCallsite() {
 }
 
 func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
-	if f.gcReadRegion != nil {
+	if gcReadRegionsAvailable && f.gcReadRegion != nil {
 		f.gcReadRegion.err = f.gcReadRegionViolation("source mask preparation")
 		return nil, false
 	}

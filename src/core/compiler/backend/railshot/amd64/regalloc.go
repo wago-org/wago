@@ -87,7 +87,10 @@ func (f *fn) occupy(e *elem, r Reg) {
 	}
 
 	f.s.canonicalSlots = false
-	valueID := f.gcValueID(e)
+	var valueID uint32
+	if gcValueChecksAvailable {
+		valueID = f.gcValueID(e)
+	}
 	local, hasLocal := gcLocalProvenance(e)
 	f.regUser[r] = e
 	if e.isDeferred() && e.valueType() != mtNone {
@@ -102,7 +105,9 @@ func (f *fn) occupy(e *elem, r Reg) {
 	if hasLocal {
 		markGCLocalProvenance(e, local)
 	}
-	f.setGCValueID(e, valueID)
+	if gcValueChecksAvailable {
+		f.setGCValueID(e, valueID)
+	}
 }
 
 // pushReg pushes a register-resident value of the given type onto the operand

@@ -781,7 +781,10 @@ func (f *fn) emitNativeFinalCastArrayLen(typeIndex uint32, nullable bool) error 
 }
 
 func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact bool) error {
-	valueID := f.gcValueID(f.s.back())
+	var valueID uint32
+	if gcValueChecksAvailable {
+		valueID = f.gcValueID(f.s.back())
+	}
 	object := f.popValue()
 	f.flush()
 	ref := f.materialize(object)
@@ -808,7 +811,9 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact bool) error
 	f.stats.call("gcnative")
 	result := f.pushReg(RAX, mtI64)
 	f.setStackGCRoot(result, true)
-	f.setGCValueID(result, valueID)
+	if gcValueChecksAvailable {
+		f.setGCValueID(result, valueID)
+	}
 	return nil
 }
 
@@ -837,8 +842,11 @@ func (f *fn) emitNativeDefinedTest(typeIndex uint32, nullable bool) error {
 }
 
 func (f *fn) emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, fieldBytes uint32, nullable bool) error {
-	valueID := f.gcValueID(f.s.back())
-	if f.gcValues != nil {
+	var valueID uint32
+	if gcValueChecksAvailable {
+		valueID = f.gcValueID(f.s.back())
+	}
+	if gcValueChecksAvailable && f.gcValues != nil {
 		f.stats.peep("gc-value-check-input")
 		if valueID == 0 {
 			f.stats.peep("gc-value-check-unknown-input")
@@ -869,7 +877,7 @@ func (f *fn) emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, field
 		f.checkCallClobber()
 	}
 	site := f.a.CallRel32()
-	cache := f.gcValues != nil && valueID != 0 && f.inlineDepth == 0 && f.gcValues.producers[f.wasmPC]
+	cache := gcValueChecksAvailable && f.gcValues != nil && valueID != 0 && f.inlineDepth == 0 && f.gcValues.producers[f.wasmPC]
 	if cache {
 		f.sc.gcValueStructStubSites = append(f.sc.gcValueStructStubSites, site)
 	} else {
@@ -883,14 +891,17 @@ func (f *fn) emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, field
 }
 
 func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, nullable bool) error {
-	parentID := f.gcValueID(f.s.back())
+	var parentID uint32
+	if gcValueChecksAvailable {
+		parentID = f.gcValueID(f.s.back())
+	}
 	if err := f.emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, 4, nullable); err != nil {
 		return err
 	}
 	f.a.Load32(RAX, RAX, int32(gc.PayloadOffset+fieldOffset))
 	result := f.pushReg(RAX, mtI64)
 	f.setStackGCRoot(result, true)
-	if f.gcValues != nil {
+	if gcValueChecksAvailable && f.gcValues != nil {
 		f.setGCValueID(result, f.gcValues.fieldValue(parentID, typeIndex, fieldOffset))
 	}
 	return nil
@@ -1124,7 +1135,7 @@ func (f *fn) emitNativeGCStubs() {
 			f.a.PatchRel32(site, stub)
 		}
 	}
-	if len(f.sc.gcTestFieldStubSites) != 0 {
+	if gcTestFieldAvailable && len(f.sc.gcTestFieldStubSites) != 0 {
 		stub := f.a.Len()
 		f.emitNativeDefinedTypeCheckStub(true, true)
 		for _, site := range f.sc.gcTestFieldStubSites {
@@ -1145,14 +1156,14 @@ func (f *fn) emitNativeGCStubs() {
 			f.a.PatchRel32(site, stub)
 		}
 	}
-	if len(f.sc.gcValueStructStubSites) != 0 {
+	if gcValueChecksAvailable && len(f.sc.gcValueStructStubSites) != 0 {
 		stub := f.a.Len()
 		f.emitNativeFinalCastStructRefResolverStub(true)
 		for _, site := range f.sc.gcValueStructStubSites {
 			f.a.PatchRel32(site, stub)
 		}
 	}
-	if len(f.sc.gcValueTestStubSites) != 0 {
+	if gcValueChecksAvailable && len(f.sc.gcValueTestStubSites) != 0 {
 		stub := f.a.Len()
 		f.emitNativeDefinedTypeCheckStub(true, true, true)
 		for _, site := range f.sc.gcValueTestStubSites {
@@ -2281,8 +2292,8 @@ func (f *fn) emitNativeDefinedTestStub() { f.emitNativeDefinedTypeCheckStub(true
 // mode also returns the checked object address in RDX on success. Cast mode
 // returns the original compact reference.
 func (f *fn) emitNativeDefinedTypeCheckStub(test, field bool, returnLimit ...bool) {
-	limit := len(returnLimit) != 0 && returnLimit[0]
-	if field && !test {
+	limit := gcValueChecksAvailable && len(returnLimit) != 0 && returnLimit[0]
+	if gcTestFieldAvailable && field && !test {
 		panic("amd64: field test leaf requires test mode")
 	}
 	a := f.a
@@ -2322,7 +2333,7 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test, field bool, returnLimit ...boo
 	nonNull := a.JccPlaceholder(condNE)
 	if test {
 		a.MovRegReg32(RAX, RCX)
-		if field {
+		if gcTestFieldAvailable && field {
 			a.MovImm32(RDX, 0)
 		}
 	} else {
@@ -2371,7 +2382,7 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test, field bool, returnLimit ...boo
 	a.AluRI(cmpDigit, RCX, int32(gc.HeaderSize), false)
 	castFailure(condB)
 
-	if field {
+	if gcTestFieldAvailable && field {
 		a.MovRegReg32(RDI, RCX)
 	} // retain validated handle extent
 	a.Add64(R11, RAX)
@@ -2419,7 +2430,7 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test, field bool, returnLimit ...boo
 	successAt := a.Len()
 	a.PatchRel32(identityDone, successAt)
 	if test {
-		if field {
+		if gcTestFieldAvailable && field {
 			// A malformed subtype interval can report true for unequal final
 			// identities. The original following final cast still rejects it.
 			a.Load32(RAX, R11, 0)
@@ -2443,7 +2454,7 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test, field bool, returnLimit ...boo
 	if test {
 		mismatchAt := a.Len()
 		a.MovImm32(RAX, 0)
-		if field {
+		if gcTestFieldAvailable && field {
 			a.MovImm32(RDX, 0)
 		}
 		for _, branch := range mismatches {
@@ -2566,7 +2577,7 @@ func (f *fn) emitNativeFinalArrayRefGetStub() {
 // ESI=cast-null flag. The call site immediately performs one constant-offset
 // field load before any safepoint can relocate the object.
 func (f *fn) emitNativeFinalCastStructRefResolverStub(returnLimit ...bool) {
-	limit := len(returnLimit) != 0 && returnLimit[0]
+	limit := gcValueChecksAvailable && len(returnLimit) != 0 && returnLimit[0]
 	a := f.a
 	var castFailures []int
 	castFailure := func(cond Cond) {
@@ -3053,7 +3064,10 @@ func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex ui
 	if !ok || (!final && !gcSharedStubsEnabled) {
 		return false
 	}
-	parentID := f.gcValueID(f.s.back())
+	var parentID uint32
+	if gcValueChecksAvailable {
+		parentID = f.gcValueID(f.s.back())
+	}
 	local, hasLocal := gcLocalProvenance(f.s.back())
 	oldFloor := f.spillFloor
 	required := gc.PayloadOffset + off + uint32(scalar.size)
@@ -3093,7 +3107,7 @@ func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex ui
 		// Publish the loaded compact child as a root, without assigning it the
 		// parent's local provenance or retaining its raw address as a value.
 		f.markTopGCReference()
-		if f.gcValues != nil {
+		if gcValueChecksAvailable && f.gcValues != nil {
 			f.setGCValueID(value, f.gcValues.fieldValue(parentID, typeIndex, off))
 		}
 	}

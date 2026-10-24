@@ -1,4 +1,4 @@
-//go:build amd64
+//go:build amd64 && (!tinygo || !wago_lean)
 
 package amd64
 
@@ -18,6 +18,7 @@ import (
 const gcValueCheckCapacity = 8
 const gcValuePlanWorkingSet = 256
 const gcValuePlanProducerLimit = 4096
+const gcValueChecksAvailable = true
 
 type gcValueCheck struct {
 	value, typ, extent uint32

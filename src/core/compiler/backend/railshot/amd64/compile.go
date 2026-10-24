@@ -1966,7 +1966,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	inlineTargets := buildInlineTargets(m, allHints, policy)
 	if opts.GCFrameRoots != nil {
 		restrictGCNumericInlineTargets(m, &inlineTargets)
-		if opts.GCStructHelpers && (len(allHints) == 0 || !allHints[0].flags.has(hintModuleEH)) && len(opts.CustomInstructions) == 0 {
+		if gcReadRegionsAvailable && opts.GCStructHelpers && (len(allHints) == 0 || !allHints[0].flags.has(hintModuleEH)) && len(opts.CustomInstructions) == 0 {
 			addGCReadRegionTargets(m, &inlineTargets, opts.Codegen.Module.GCTypeLayouts, opts.GCArrayHelpers, policy)
 		}
 	}
@@ -4063,8 +4063,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// caller's own locals only). Extends the frame's local arrays with unpinned
 	// scratch; the splice at each call site binds/zeroes them.
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
-	if err := f.reserveGCValueChecks(c.BodyBytes, c.LocalDeclBytes); err != nil {
-		return nil, nil, 0, err
+	if gcValueChecksAvailable {
+		if err := f.reserveGCValueChecks(c.BodyBytes, c.LocalDeclBytes); err != nil {
+			return nil, nil, 0, err
+		}
 	}
 	if uint64(f.nLocalSlots)*8 > uint64(localSlotOffsetMask) {
 		return nil, nil, 0, fmt.Errorf("amd64: local frame %d bytes exceeds packed offset range %d", 8*f.nLocalSlots, localSlotOffsetMask)

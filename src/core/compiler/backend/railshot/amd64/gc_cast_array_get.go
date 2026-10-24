@@ -95,7 +95,7 @@ func (f *fn) emitNativeFinalCastArrayGet(typeIndex uint32, nullable bool, scalar
 	default:
 		return fmt.Errorf("amd64: fused array width %d is invalid", scalar.size)
 	}
-	if f.gcReadRegion != nil {
+	if gcReadRegionsAvailable && f.gcReadRegion != nil {
 		oldFloor := f.spillFloor
 		if err := f.stageGCReadRegionOperands(2); err != nil {
 			return err

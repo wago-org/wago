@@ -1,4 +1,4 @@
-//go:build amd64
+//go:build amd64 && (!tinygo || !wago_lean)
 
 package amd64
 
@@ -10,6 +10,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
+
+const gcReadRegionsAvailable = true
 
 // A region is a complete prevalidated, bounded function body. Every GC group
 // selects its physical native emitter here, before any caller state is changed.

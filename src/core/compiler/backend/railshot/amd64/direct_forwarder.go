@@ -1,10 +1,12 @@
-//go:build amd64
+//go:build amd64 && (!tinygo || !wago_lean)
 
 package amd64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 var directForwarderEnabled = true
+
+const directForwarderAvailable = true
 
 const (
 	maxDirectForwarderHops = 4

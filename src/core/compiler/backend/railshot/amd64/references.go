@@ -32,7 +32,10 @@ func (f *fn) setStackGCRoot(e *elem, root bool) {
 // every push/pop/replace with no reader on the other side.
 
 func (f *fn) replaceStorage(e *elem, st storage) {
-	valueID := f.gcValueID(e)
+	var valueID uint32
+	if gcValueChecksAvailable {
+		valueID = f.gcValueID(e)
+	}
 	f.s.forgetSpill(e)
 	f.s.canonicalSlots = false
 	// Replacements move the same semantic value between registers, locals, and
@@ -47,7 +50,9 @@ func (f *fn) replaceStorage(e *elem, st storage) {
 		st.cold = e.st.cold
 	}
 	e.st = st
-	f.setGCValueID(e, valueID)
+	if gcValueChecksAvailable {
+		f.setGCValueID(e, valueID)
+	}
 	if regallocCheckEnabled {
 		f.checkTrackMemRef(e)
 	}

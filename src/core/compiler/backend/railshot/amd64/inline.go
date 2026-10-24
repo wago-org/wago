@@ -838,7 +838,7 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 			f.nLocalSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, typ: lt, state: lsMem})
 		}
-		if t.readRegion != nil {
+		if gcReadRegionsAvailable && t.readRegion != nil {
 			words := (len(f.localType) + 63) / 64
 			for len(f.gcLocalTypes) < words {
 				f.gcLocalTypes = append(f.gcLocalTypes, 0)
@@ -918,7 +918,7 @@ func buildInlineCallerPlan(caller *wasm.Func, targets inlineTargetTable) inlineC
 				allInline = false
 				continue
 			}
-			if t.recursive() || t.readRegion != nil {
+			if t.recursive() || gcReadRegionsAvailable && t.readRegion != nil {
 				allInline = false
 			}
 			duplicate := false
@@ -937,7 +937,7 @@ func buildInlineCallerPlan(caller *wasm.Func, targets inlineTargetTable) inlineC
 			}
 			// Match the bounded emission policy without reserving a large
 			// unused frame for later ordinary calls to other read targets.
-			if t.readRegion != nil {
+			if gcReadRegionsAvailable && t.readRegion != nil {
 				if readTargets >= 16 {
 					continue
 				}
@@ -1036,7 +1036,7 @@ func inlinePlanTouchesMemory(callees []*inlineTarget) bool {
 // on the cheap frameless path; a control-flow callee runs under a synthetic
 // boundary frame (inlineBodyCtrl).
 func (f *fn) inlineCall(t *inlineTarget) error {
-	if f.gcReadRegion != nil {
+	if gcReadRegionsAvailable && f.gcReadRegion != nil {
 		return f.gcReadRegionViolation("nested inline emission")
 	}
 	f.stats.call(callKindInline)
@@ -1089,7 +1089,7 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 	oldInlineDepth := f.inlineDepth
 	f.inlineDepth++
 	var err error
-	if t.readRegion != nil {
+	if gcReadRegionsAvailable && t.readRegion != nil {
 		f.gcReadRegionSites++
 		state := gcReadRegionState{plan: t.readRegion, base: base, lease: regNone}
 		previous := f.gcReadRegion
@@ -1158,7 +1158,7 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 	// A region's extra local is private scratch, not a declared Wasm local.
 	// Its certificate starts invalid and its checked address is stored before
 	// use; clearing it at every entry would add a redundant hot-path store.
-	if t.readRegion != nil {
+	if gcReadRegionsAvailable && t.readRegion != nil {
 		return
 	}
 	if nLocals > params {

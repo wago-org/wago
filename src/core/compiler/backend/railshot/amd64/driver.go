@@ -95,14 +95,16 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if f.vectorRegion.enabled {
 			f.vectorRegionBoundary(op)
 		}
-		if err := f.prepareGCReadRegionControl(op); err != nil {
+		if err := f.prepareGCReadRegionControl(op); gcReadRegionsAvailable && err != nil {
 			return err
 		}
 		f.prepareStoreForward(op)
 		if op == 0x04 && f.gcResolved.valid {
 			f.prepareGCPureIf(r, op, minCtrl)
 		}
-		f.prepareGCValueChecks(op)
+		if gcValueChecksAvailable {
+			f.prepareGCValueChecks(op)
+		}
 		f.prepareGCResolvedObject(op)
 		f.prepareGCFreshStructFact(op)
 		switch op {
@@ -274,7 +276,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
 			value = f.pushReg(reg, f.localType[x])
 			f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
-			f.setGCValueID(value, f.gcLocalValueID(int(x)))
+			if gcValueChecksAvailable {
+				f.setGCValueID(value, f.gcLocalValueID(int(x)))
+			}
 			break
 		}
 		if f.localConstZero(int(x)) {
@@ -1266,8 +1270,11 @@ func (f *fn) v128TeeOverwritten(r *wasm.Reader, x int) bool {
 }
 
 func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
-	valueID := f.gcValueID(f.s.back())
-	if f.gcValues != nil && x >= 0 && x < len(f.gcValues.locals) {
+	var valueID uint32
+	if gcValueChecksAvailable {
+		valueID = f.gcValueID(f.s.back())
+	}
+	if gcValueChecksAvailable && f.gcValues != nil && x >= 0 && x < len(f.gcValues.locals) {
 		if valueID == 0 {
 			valueID = f.gcValues.nextID()
 		}
