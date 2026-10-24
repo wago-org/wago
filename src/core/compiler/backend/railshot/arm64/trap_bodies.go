@@ -42,8 +42,6 @@ type sharedTrapBodyCluster struct {
 	n      uint8
 }
 
-func (c *sharedTrapBodyCluster) reset() { c.n = 0 }
-
 // share keeps the first complete body of each exact shape in place and turns
 // later function-tail copies into one backward B. The first body is already a
 // cold function fragment, so this achieves module reuse without a second code

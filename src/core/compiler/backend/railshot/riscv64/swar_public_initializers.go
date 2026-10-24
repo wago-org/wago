@@ -11,7 +11,7 @@ func admitSWARPublicInitializersWithMemories(m *wasm.Module, memories []wasm.Mem
 		return unsupported("SWAR initializer memory count")
 	}
 
-	if m.ImportedGlobalCount()+len(m.Globals) > MaxPublicGlobals || len(m.Data) > 256 {
+	if m.ImportedGlobalCount()+len(m.Globals) > MaxPublicGlobals || m.DataSegmentCount() > 256 {
 		return unsupported("SWAR initializer count bound")
 	}
 	localMutableReferences, err := admitLocalMutableFunctionGlobals(m)
@@ -58,7 +58,8 @@ func admitSWARPublicInitializersWithMemories(m *wasm.Module, memories []wasm.Mem
 		}
 	}
 	remaining := MaxModuleBytes
-	for _, data := range m.Data {
+	for dataIndex := 0; dataIndex < m.DataSegmentCount(); dataIndex++ {
+		data := m.DataSegment(dataIndex)
 		if len(data.Init) > remaining {
 			return unsupported("SWAR aggregate data byte bound")
 		}

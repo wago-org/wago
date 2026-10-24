@@ -1,0 +1,154 @@
+{
+  "pairs": 20,
+  "oracles_passed": 40,
+  "ratios_of_totals": {
+    "compile_ns": 0.6324291854866165,
+    "compile_peak_rss_bytes": 0.8574429851721557,
+    "allocated_bytes": 0.17187428482478115,
+    "native_code_bytes": 1.0
+  },
+  "execution_geomean_ratio": 0.9926915089844908,
+  "per_input_ratios": {
+    "fannkuch": {
+      "compile_ns": 0.9010821728420825,
+      "compile_peak_rss_bytes": 1.0,
+      "allocated_bytes": 0.7260795935647756,
+      "native_code_bytes": 1.0,
+      "exec_ns": 1.0045041021964332
+    },
+    "raytrace": {
+      "compile_ns": 0.6501672301637287,
+      "compile_peak_rss_bytes": 0.9997611940298508,
+      "allocated_bytes": 0.48305529325359353,
+      "native_code_bytes": 1.0,
+      "exec_ns": 0.9609741342567946
+    },
+    "sha256": {
+      "compile_ns": 0.7894324950111963,
+      "compile_peak_rss_bytes": 1.0,
+      "allocated_bytes": 0.7257602862254025,
+      "native_code_bytes": 1.0,
+      "exec_ns": 0.9838058752583718
+    },
+    "json-as-simd": {
+      "compile_ns": 0.7368259924819974,
+      "compile_peak_rss_bytes": 1.0,
+      "allocated_bytes": 0.21919884849784094,
+      "native_code_bytes": 1.0,
+      "exec_ns": 1.0004392832977855
+    },
+    "utf-as-simd": {
+      "compile_ns": 0.6891736820732639,
+      "compile_peak_rss_bytes": 1.0,
+      "allocated_bytes": 0.4034686398543451,
+      "native_code_bytes": 1.0,
+      "exec_ns": 0.9761281968522517
+    },
+    "yyjson": {
+      "compile_ns": 0.6664253334779079,
+      "compile_peak_rss_bytes": 1.0,
+      "allocated_bytes": 0.11300450081940693,
+      "native_code_bytes": 1.0,
+      "exec_ns": 1.0233691218566126
+    },
+    "pcre2": {
+      "compile_ns": 0.5886635942582676,
+      "compile_peak_rss_bytes": 1.0001193317422434,
+      "allocated_bytes": 0.17089571763361172,
+      "native_code_bytes": 1.0,
+      "exec_ns": 0.9403618461526093
+    },
+    "monocypher": {
+      "compile_ns": 0.6994023137783814,
+      "compile_peak_rss_bytes": 0.9998806967310905,
+      "allocated_bytes": 0.6630605787417582,
+      "native_code_bytes": 1.0,
+      "exec_ns": 0.9932637302412252
+    },
+    "kissfft": {
+      "compile_ns": 0.6656234285281534,
+      "compile_peak_rss_bytes": 1.0,
+      "allocated_bytes": 0.3306313884428131,
+      "native_code_bytes": 1.0,
+      "exec_ns": 0.9896560760636964
+    },
+    "fastfloat": {
+      "compile_ns": 0.697872092298112,
+      "compile_peak_rss_bytes": 1.0,
+      "allocated_bytes": 0.3626561942163513,
+      "native_code_bytes": 1.0,
+      "exec_ns": 1.034805665562094
+    },
+    "polybench-gemm": {
+      "compile_ns": 0.7883448070733405,
+      "compile_peak_rss_bytes": 1.0,
+      "allocated_bytes": 0.7120361990950226,
+      "native_code_bytes": 1.0,
+      "exec_ns": 1.0097301555696239
+    },
+    "polybench-nussinov": {
+      "compile_ns": 0.8195459152572974,
+      "compile_peak_rss_bytes": 0.9997615072740281,
+      "allocated_bytes": 0.7285214112577431,
+      "native_code_bytes": 1.0,
+      "exec_ns": 0.98429244203337
+    },
+    "coremark": {
+      "compile_ns": 0.6511756036281987,
+      "compile_peak_rss_bytes": 1.0,
+      "allocated_bytes": 0.4264550749896803,
+      "native_code_bytes": 1.0,
+      "exec_ns": 0.9994955117539928
+    },
+    "quickjs-script": {
+      "compile_ns": 0.6506394878834777,
+      "compile_peak_rss_bytes": 0.9998807962808439,
+      "allocated_bytes": 0.21779469395810425,
+      "native_code_bytes": 1.0,
+      "exec_ns": 0.9903911486523492
+    },
+    "esbuild-minify": {
+      "compile_ns": 0.6013061677874089,
+      "compile_peak_rss_bytes": 0.7772498602571268,
+      "allocated_bytes": 0.23903615212601084,
+      "native_code_bytes": 1.0,
+      "exec_ns": 0.9984469637864796
+    },
+    "sqlite3-query": {
+      "compile_ns": 0.6564480843022915,
+      "compile_peak_rss_bytes": 1.0,
+      "allocated_bytes": 0.17051634677748684,
+      "native_code_bytes": 1.0,
+      "exec_ns": 0.9977194669836047
+    },
+    "jq-json-transform": {
+      "compile_ns": 0.624631801288632,
+      "compile_peak_rss_bytes": 1.0,
+      "allocated_bytes": 0.24007717318207775,
+      "native_code_bytes": 1.0,
+      "exec_ns": 1.0049374051177957
+    },
+    "brotli-compress": {
+      "compile_ns": 0.6077912625185968,
+      "compile_peak_rss_bytes": 1.0,
+      "allocated_bytes": 0.20935547035193786,
+      "native_code_bytes": 1.0,
+      "exec_ns": 0.9961034899585985
+    },
+    "lua-cli-buckets": {
+      "compile_ns": 0.5973584873246196,
+      "compile_peak_rss_bytes": 1.0,
+      "allocated_bytes": 0.16063191302161892,
+      "native_code_bytes": 1.0,
+      "exec_ns": 0.9965600522520542
+    },
+    "swift-format-source": {
+      "compile_ns": 0.653579028110545,
+      "compile_peak_rss_bytes": 0.6139757273309209,
+      "allocated_bytes": 0.14901163831695485,
+      "native_code_bytes": 1.0,
+      "exec_ns": 0.9729337630388832
+    }
+  },
+  "limitations": "Single screening pair on a shared GitHub runner; 30ms execution windows are noisy. Process RSS excludes nonresident file cache. Ratios of summed peaks do not describe a single process."
+}

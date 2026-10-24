@@ -36,7 +36,11 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 	}
-	if e := opEffects[in.Kind]; e.cat == effLoad {
+	if e := opEffects[in.Kind]; e.cat >= effUnary && e.cat <= effConv {
+		// Core numeric operations have complete table effects. They cannot carry
+		// a proposal payload, so avoid both general instruction dispatches.
+		return v.stackEffect(in)
+	} else if e.cat == effLoad {
 		addr, err := v.checkMemArg(in.MemArg(), uint32(e.align))
 		if err != nil {
 			return err
@@ -141,27 +145,8 @@ func (v *funcValidator) step(in *Instruction) error {
 			return v.verr(ErrTypeMismatch, "if branch heights")
 		}
 		v.vals = thenVals
-	case InstrBr:
-		lt, err := v.label(in.Index)
-		if err != nil {
-			return err
-		}
-		if err := v.popAll(lt); err != nil {
-			return err
-		}
-		v.unreachable()
-	case InstrBrIf:
-		if err := v.popExpect(I32); err != nil {
-			return err
-		}
-		lt, err := v.label(in.Index)
-		if err != nil {
-			return err
-		}
-		if err := v.popAll(lt); err != nil {
-			return err
-		}
-		v.pushAll(lt)
+	case InstrBr, InstrBrIf:
+		return v.stepBranch(in.Kind, in.Index)
 	case InstrBrTable:
 		if err := v.popExpect(I32); err != nil {
 			return err
@@ -281,46 +266,20 @@ func (v *funcValidator) step(in *Instruction) error {
 			// The implicit form is restricted to numeric and vector values. A
 			// stack-polymorphic unknown still matches any permitted operand, but
 			// must not hide a known reference operand.
-			if (!a.unknown && !isImplicitSelectType(a.t)) || (!b.unknown && !isImplicitSelectType(b.t)) {
+			if (!a.unknown() && !isImplicitSelectType(a.t)) || (!b.unknown() && !isImplicitSelectType(b.t)) {
 				return v.verr(ErrTypeMismatch, "implicit select operand type")
 			}
-			if !a.unknown && !b.unknown && !equalValType(a.t, b.t) {
+			if !a.unknown() && !b.unknown() && !equalValType(a.t, b.t) {
 				return v.verr(ErrTypeMismatch, "select")
 			}
-			if a.unknown {
+			if a.unknown() {
 				v.vals = append(v.vals, b)
 			} else {
 				v.vals = append(v.vals, a)
 			}
 		}
-	case InstrLocalGet:
-		t, ok := v.localType(in.Index)
-		if !ok {
-			return v.verr(ErrUnknownLocal, "")
-		}
-		if !v.localIsInitialized(in.Index, t) {
-			return v.verr(ErrUninitializedLocal, "")
-		}
-		v.push(t)
-	case InstrLocalSet:
-		t, ok := v.localType(in.Index)
-		if !ok {
-			return v.verr(ErrUnknownLocal, "")
-		}
-		if err := v.popExpect(t); err != nil {
-			return err
-		}
-		v.initializeLocal(in.Index, t)
-	case InstrLocalTee:
-		t, ok := v.localType(in.Index)
-		if !ok {
-			return v.verr(ErrUnknownLocal, "")
-		}
-		if err := v.popExpect(t); err != nil {
-			return err
-		}
-		v.initializeLocal(in.Index, t)
-		v.push(t)
+	case InstrLocalGet, InstrLocalSet, InstrLocalTee:
+		return v.stepLocalIndex(in.Kind, in.Index)
 	case InstrGlobalGet:
 		typ, mutable, ok := v.globalProperties(in.Index)
 		if !ok {
@@ -388,7 +347,7 @@ func (v *funcValidator) step(in *Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind() != ValRef {
+		if !x.unknown() && x.t.Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, "ref.is_null")
 		}
 		v.push(I32)
@@ -410,7 +369,7 @@ func (v *funcValidator) step(in *Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind() != ValRef {
+		if !x.unknown() && x.t.Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, "ref.as_non_null")
 		}
 		v.push(nonNullValidationType(x))
@@ -423,7 +382,7 @@ func (v *funcValidator) step(in *Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind() != ValRef {
+		if !x.unknown() && x.t.Kind() != ValRef {
 			return v.verr(ErrTypeMismatch, "br_on_null")
 		}
 		if err := v.popAll(lt); err != nil {
@@ -440,10 +399,10 @@ func (v *funcValidator) step(in *Instruction) error {
 		if err != nil {
 			return err
 		}
-		if len(lt) == 0 || lt[len(lt)-1].Kind() != ValRef || (!x.unknown && x.t.Kind() != ValRef) {
+		if len(lt) == 0 || lt[len(lt)-1].Kind() != ValRef || (!x.unknown() && x.t.Kind() != ValRef) {
 			return v.verr(ErrTypeMismatch, "br_on_non_null")
 		}
-		if !x.unknown {
+		if !x.unknown() {
 			x.t = RefVal(x.t.Ref().WithNullable(false))
 			if !v.subtype(x.t, lt[len(lt)-1]) {
 				return v.verr(ErrTypeMismatch, x.t.String()+" is not "+lt[len(lt)-1].String())
@@ -636,6 +595,29 @@ func (v *funcValidator) stackEffect(in *Instruction) error {
 	k := in.Kind
 	if e := opEffects[k]; e.cat != effNone {
 		a := e.a.valType()
+		// Concrete numeric operands need neither polymorphic pops nor a subtype
+		// walk. Validate them above the current control boundary, then replace the
+		// consumed suffix in place. Mismatches and unreachable-stack operands keep
+		// the ordinary path below, including its diagnostic order.
+		if e.cat <= effConv {
+			n := len(v.vals)
+			arity := 1
+			if e.cat == effBinary || e.cat == effCompare {
+				arity = 2
+			}
+			if n-arity >= int(v.top().height) && v.vals[n-1].t == a &&
+				(arity == 1 || v.vals[n-2].t == a) {
+				result := a
+				if e.cat == effCompare || e.cat == effTest {
+					result = I32
+				} else if e.cat == effConv {
+					result = e.b.valType()
+				}
+				v.vals[n-arity] = val{t: result}
+				v.vals = v.vals[:n-arity+1]
+				return nil
+			}
+		}
 		switch e.cat {
 		case effUnary:
 			if err := v.popExpect(a); err != nil {
@@ -740,7 +722,7 @@ func (v *funcValidator) checkMem(align uint32) error {
 func (v *funcValidator) checkDataIndex(idx uint32, op string) error {
 	// Bulk-memory data instructions are guarded by the data count section. The
 	// segment may have any mode; active segments are already dropped at runtime.
-	if v.m.DataCount == nil || idx >= *v.m.DataCount || uint(idx) >= uint(len(v.m.Data)) {
+	if v.m.DataCount == nil || idx >= *v.m.DataCount || uint(idx) >= uint(v.m.DataSegmentCount()) {
 		return v.verr(ErrInvalidDataCount, op+" data index")
 	}
 	return nil
@@ -911,4 +893,49 @@ func init() {
 	setOpEffects(opEffect{cat: effStore, a: effectI64}, InstrI64Store8)
 	setOpEffects(opEffect{cat: effStore, a: effectI64, align: 1}, InstrI64Store16)
 	setOpEffects(opEffect{cat: effStore, a: effectI64, align: 2}, InstrI64Store32)
+}
+
+func (v *funcValidator) stepLocalIndex(kind InstrKind, index uint32) error {
+	typ, ok := v.localType(index)
+	if !ok {
+		return v.verr(ErrUnknownLocal, "")
+	}
+	if kind == InstrLocalGet {
+		if !v.localIsInitialized(index, typ) {
+			return v.verr(ErrUninitializedLocal, "")
+		}
+		v.push(typ)
+		return nil
+	}
+	if err := v.popExpect(typ); err != nil {
+		return err
+	}
+	v.initializeLocal(index, typ)
+	if kind == InstrLocalTee {
+		v.push(typ)
+	}
+	return nil
+}
+
+// stepBranch preserves the operand/error order shared by decoded and raw-body
+// validation without materializing an Instruction for each scalar branch.
+func (v *funcValidator) stepBranch(kind InstrKind, index uint32) error {
+	if kind == InstrBrIf {
+		if err := v.popExpect(I32); err != nil {
+			return err
+		}
+	}
+	types, err := v.label(index)
+	if err != nil {
+		return err
+	}
+	if err := v.popAll(types); err != nil {
+		return err
+	}
+	if kind == InstrBr {
+		v.unreachable()
+	} else {
+		v.pushAll(types)
+	}
+	return nil
 }

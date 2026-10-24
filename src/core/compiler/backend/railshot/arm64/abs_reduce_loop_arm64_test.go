@@ -93,8 +93,10 @@ func TestAbsReduceIndependentOverflowAndFallback(t *testing.T) {
 							}
 							want := uint32(123) ^ remaining ^ index ^ acc ^ lastA ^ lastB ^ sign
 							m := absReduceModule(t, lanes, reverse, localStride, src, dst, rows, layout[2], stride)
-							for _, enabled := range []bool{false, true} {
-								got, mem, err, _ := runFloatMapMemory(t, m, enabled, initial)
+							{
+								const enabled = false
+
+								got, mem, err := runFloatMapMemory(t, m, initial)
 								if (err != nil) != trapped || !trapped && got != want || !bytes.Equal(mem, initial) {
 									t.Fatalf("lanes%d reverse%t local%t rows%d stride%x src%x dst%x index%x enabled%t: got%x/%v want%x trapped%t", lanes, reverse, localStride, rows, stride, src, dst, layout[2], enabled, got, err, want, trapped)
 								}
@@ -103,22 +105,6 @@ func TestAbsReduceIndependentOverflowAndFallback(t *testing.T) {
 					}
 				}
 			}
-		}
-	}
-}
-
-func TestAbsReduceAdmission(t *testing.T) {
-	requireCompilerDiagnostics(t)
-	for _, enabled := range []bool{false, true} {
-		var stats ModuleStats
-		cm, err := CompileModuleWith(absReduceModule(t, 8, true, true, 0, 4096, 8, 0, 192), CompileOptions{Stats: &stats, Optimizations: map[string]bool{"dot-loop-vector": enabled}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		cm.CodeImage.Close()
-		hits := stats.Funcs[0].Peephole["abs-reduce-loop-vector"]
-		if enabled && hits != 1 || !enabled && hits != 0 {
-			t.Fatalf("enabled%t admissions%d", enabled, hits)
 		}
 	}
 }

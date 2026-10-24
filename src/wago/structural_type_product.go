@@ -52,26 +52,11 @@ func (p stagedStructuralTypeProduct) gateReason() string {
 	}
 }
 
-func hasStructuralHeapTypes(m *wasm.Module) bool {
-	if m == nil {
-		return false
-	}
-	for gi := range m.Types {
-		for si := range m.Types[gi].SubTypes {
-			kind := m.Types[gi].SubTypes[si].Comp.Kind
-			if kind == wasm.CompStruct || kind == wasm.CompArray {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func stagedStructuralTypeProductShape(m *wasm.Module) (stagedStructuralTypeProduct, error) {
 	if m == nil {
 		return 0, fmt.Errorf("nil module")
 	}
-	if m.Start != nil || m.TagCount() != 0 || m.MemCount() != 0 || len(m.Data) != 0 {
+	if m.Start != nil || m.TagCount() != 0 || m.MemCount() != 0 || m.DataSegmentCount() != 0 {
 		return 0, fmt.Errorf("collector-free structural products reject start, tag, memory, and data state")
 	}
 	if err := stagedStructuralTypeMetadataShape(m); err != nil {

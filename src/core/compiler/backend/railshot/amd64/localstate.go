@@ -420,6 +420,9 @@ func (f *fn) newLocStateBuf() []locState {
 }
 
 func (f *fn) freeLocStateBuf(b []locState) {
+	if len(b) != 0 && &b[0] == &registerOnlyMergeStates[0] {
+		return // shared contracts never become mutable pool storage
+	}
 	if n := len(f.pinnedLocals); cap(b) >= n && n > 0 && len(f.lsPool) < maxRetainedLocStateBufs && f.lsPoolBytes+cap(b) <= maxRetainedLocStateBytes {
 		if len(f.lsPool) == cap(f.lsPool) {
 			newCap := min(max(16, 2*cap(f.lsPool)), maxRetainedLocStateBufs)
@@ -468,6 +471,11 @@ func (f *fn) freeEndsBuf(b []uint32) {
 	}
 }
 
+// lsReg is zero. This shared contract is read-only, including at loop
+// headers, and never enters the mutable state-buffer pool. Wider synthetic
+// pin sets retain the ordinary buffer path.
+var registerOnlyMergeStates [64]locState
+
 func (f *fn) convergeEdgeTo(target *[]locState) {
 	if !f.usesCalls {
 		f.reconcileLocals()
@@ -493,11 +501,15 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 	if f.callFreeRegMerges() {
 		f.restorePinnedRegisters()
 		if *target == nil {
-			t := f.newLocStateBuf()
-			for i := range t {
-				t[i] = lsReg
+			if n := len(f.pinnedLocals); n <= len(registerOnlyMergeStates) {
+				*target = registerOnlyMergeStates[:n]
+			} else {
+				t := f.newLocStateBuf()
+				for i := range t {
+					t[i] = lsReg
+				}
+				*target = t
 			}
-			*target = t
 		}
 		return
 	}

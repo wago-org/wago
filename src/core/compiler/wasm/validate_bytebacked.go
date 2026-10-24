@@ -35,6 +35,7 @@ type directValidationEnv struct {
 }
 
 type directModule struct {
+	compactData        bool
 	m                  Module
 	direct             directValidationEnv
 	seenName           bool
@@ -47,7 +48,8 @@ type directModule struct {
 // structured function-body Expr/Instruction trees. Module contains compact
 // section metadata plus raw function BodyBytes; the unexported validation state
 // keeps remaining const-expression summaries for ValidateDecodedByteBackedModule.
-// Active data offsets live directly in Module.Data as byte-backed expressions.
+// Active data offsets are byte-backed expressions projected through DataSegment.
+// Ordinary decoding also exposes the expanded Module.Data records.
 type DecodedByteBackedModule struct {
 	Module *Module
 	direct directValidationEnv
@@ -97,6 +99,10 @@ func DecodeModuleByteBacked(data []byte) (*DecodedByteBackedModule, error) {
 // DecodeModuleByteBackedWithFeatures selects wire grammar from explicit features.
 func DecodeModuleByteBackedWithFeatures(data []byte, features ValidationFeatures) (*DecodedByteBackedModule, error) {
 	return DecodeModuleByteBackedWithLimits(data, features, DecodeLimits{})
+}
+
+func DecodeModuleForValidation(data []byte, features ValidationFeatures) (*Module, error) {
+	return DecodeModuleForValidationWithFeatures(data, features)
 }
 
 // DecodeModuleByteBackedWithLimits selects wire features and metadata limits.
@@ -190,101 +196,7 @@ func decodeDirectModuleLimited(data []byte, features ValidationFeatures, limits 
 }
 
 func decodeDirectModuleInnerLimits(data []byte, features ValidationFeatures, limits DecodeLimits) (*directModule, error) {
-	// Keep the top-level cursor in this frame. TinyGo's conservative collector
-	// can otherwise lose the heap-allocated reader while its backing slice is
-	// still being consumed across allocation-heavy section decoding.
-	r := reader{budget: newDecodeBudget(limits)}
-	r.reset(data)
-	magic, err := r.bytes(4)
-	if err != nil {
-		return nil, err
-	}
-	if string(magic) != "\x00asm" {
-		return nil, &DecodeError{Code: ErrBadMagic, Offset: 0}
-	}
-	ver, err := r.le32()
-	if err != nil {
-		return nil, err
-	}
-	if ver != 1 {
-		return nil, &DecodeError{Code: ErrBadVersion, Offset: 4}
-	}
-	dm := &directModule{}
-	var lastOrder uint8
-	var seen uint16 // standard section IDs are the dense range 1..13
-	sub := reader{budget: r.budget}
-	for r.has() {
-		id, err := r.byte()
-		if err != nil {
-			return nil, err
-		}
-		size, err := r.u32()
-		if err != nil {
-			return nil, err
-		}
-		start := r.off()
-		payload, err := r.bytes(int(size))
-		if err != nil {
-			return nil, err
-		}
-		end := r.off()
-		if id != secCustom {
-			ord, ok := lookupSectionOrder(id)
-			if !ok {
-				return nil, &DecodeError{Code: ErrInvalidSection, Offset: start - 1, SectionID: id, SectionStart: start, SectionEnd: end}
-			}
-			if ord < lastOrder {
-				return nil, &DecodeError{Code: ErrSectionOrder, Offset: start - 1, SectionID: id, SectionStart: start, SectionEnd: end}
-			}
-			bit := uint16(1) << id
-			if seen&bit != 0 {
-				return nil, &DecodeError{Code: ErrDuplicateSection, Offset: start - 1, SectionID: id, SectionStart: start, SectionEnd: end}
-			}
-			seen |= bit
-			lastOrder = ord
-		}
-		sub.reset(payload)
-		switch id {
-		case secCustom:
-			err = dm.decodeDirectCustomSection(&sub)
-		case secTable:
-			err = decodeDirectTableSection(dm, &sub)
-		case secGlobal:
-			err = decodeDirectGlobalSection(dm, &sub)
-		case secElement:
-			err = decodeDirectElementSection(dm, &sub)
-		case secCode:
-			dm.m.Code, dm.usesDataCountInstr, err = decodeDirectCodeSectionWithModule(&sub, &dm.m, features.MultiMemory)
-			dm.seenCode = true
-		case secData:
-			err = decodeDirectDataSection(dm, &sub)
-		default:
-			err = decodeSection(&dm.m, &sub, id)
-		}
-		if err != nil {
-			if de, ok := err.(*DecodeError); ok {
-				de.SectionID = id
-				de.SectionStart = start
-				de.SectionEnd = end
-				de.Offset += start
-				return nil, de
-			}
-			return nil, err
-		}
-		if sub.has() {
-			return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: start + sub.off(), SectionID: id, SectionStart: start, SectionEnd: end}
-		}
-	}
-	if len(dm.m.FuncTypes) != len(dm.m.Code) {
-		return nil, &DecodeError{Code: ErrInvalidModule, Offset: len(data)}
-	}
-	if dm.m.DataCount != nil && uint64(*dm.m.DataCount) != uint64(len(dm.m.Data)) {
-		return nil, &DecodeError{Code: ErrInvalidModule, Offset: len(data)}
-	}
-	if dm.m.DataCount == nil && dm.usesDataCountInstr {
-		return nil, &DecodeError{Code: ErrInvalidModule, Offset: len(data)}
-	}
-	return dm, nil
+	return decodeDirectModuleInnerLimitsMode(data, features, limits, false, false)
 }
 
 func (dm *directModule) decodeDirectCustomSection(r *reader) error {
@@ -315,7 +227,7 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 	}
 	if name == branchHintSectionName {
 		if dm.seenBranchHints || dm.seenCode {
-			return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+			return newDecodeError(ErrInvalidSection, r.off())
 		}
 		hints, err := decodeBranchHintSectionWithBudget(payload, r.budget)
 		if err != nil {
@@ -357,7 +269,7 @@ func decodeDirectTableSection(dm *directModule, r *reader) error {
 		if b, ok := r.peek(); ok && b == 0x40 {
 			_, _ = r.byte()
 			if b2, ok := r.peek(); !ok || b2 != 0x00 {
-				return &DecodeError{Code: ErrInvalidType, Offset: r.off()}
+				return newDecodeError(ErrInvalidType, r.off())
 			}
 			_, _ = r.byte()
 			tt, err := decodeTableType(r)
@@ -415,15 +327,24 @@ func decodeDirectDataSection(dm *directModule, r *reader) error {
 	if err != nil {
 		return err
 	}
+	// Preserve the expanded decoder's conservative budget and rejection order.
 	if err := reserveDecodedSlice[Data](r, n); err != nil {
 		return err
 	}
-	// Every data segment needs at least a flags byte and a payload-length
-	// byte. Retain the conservative admission budget above, but allocate the
-	// checked vector once instead of accumulating pointer-rich growth
-	// buffers for modules with many segments.
 	if uint64(n) > uint64(r.left()/2) {
-		return &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
+		return newDecodeError(ErrIndexOutOfBounds, r.off())
+	}
+	if dm.compactData && n != 0 {
+		view := &dataSectionView{bytes: r.data, spans: make([]dataSegmentSpan, n)}
+		dm.m.dataView = view
+		for i := range view.spans {
+			span, err := decodeDirectDataSpan(r)
+			if err != nil {
+				return err
+			}
+			view.spans[i] = span
+		}
+		return nil
 	}
 	dm.m.Data = make([]Data, n)
 	for i := range dm.m.Data {
@@ -437,6 +358,41 @@ func decodeDirectDataSection(dm *directModule, r *reader) error {
 		dm.m.Data[i] = d
 	}
 	return nil
+}
+
+func decodeDirectDataSpan(r *reader) (dataSegmentSpan, error) {
+	var s dataSegmentSpan
+	flags, err := r.u32()
+	if err != nil {
+		return s, err
+	}
+	switch flags {
+	case 0, 2:
+		if flags == 2 {
+			s.memory, err = r.u32()
+			if err != nil {
+				return s, err
+			}
+		}
+		s.offsetStart = uint32(r.off())
+		if _, err = readDirectConstExprBytes(r); err != nil {
+			return s, err
+		}
+		s.offsetEnd = uint32(r.off())
+	case 1:
+	default:
+		return s, newDecodeError(ErrInvalidSection, r.off())
+	}
+	n, err := r.u32()
+	if err != nil {
+		return s, err
+	}
+	s.initStart = uint32(r.off())
+	if _, err = r.bytes(int(n)); err != nil {
+		return s, err
+	}
+	s.initEnd = uint32(r.off())
+	return s, nil
 }
 
 func decodeDirectData(r *reader) (Data, directConstExpr, error) {
@@ -468,7 +424,7 @@ func decodeDirectData(r *reader) (Data, directConstExpr, error) {
 		off = e
 		d.Mode = DataMode{Kind: DataActive, Mem: MemIdx(mi)}
 	default:
-		return d, off, &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+		return d, off, newDecodeError(ErrInvalidSection, r.off())
 	}
 	n, err := r.u32()
 	if err != nil {
@@ -509,7 +465,7 @@ func readElemKind(r *reader) error {
 		return err
 	}
 	if b != 0 {
-		return &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
+		return newDecodeError(ErrInvalidType, r.off()-1)
 	}
 	return nil
 }
@@ -637,7 +593,7 @@ func decodeDirectElem(r *reader) (Elem, directElem, error) {
 		de.elemLen = uint32(len(exprs))
 		de.exprs = exprs
 	default:
-		return e, de, &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+		return e, de, newDecodeError(ErrInvalidSection, r.off())
 	}
 	e.Mode = ElemMode{Kind: de.modeKind, Table: de.table}
 	e.Kind = ElemKind{Kind: de.kind, Ref: de.ref}
@@ -695,7 +651,7 @@ func readDirectConstExprBytes(r *reader) (directConstExpr, error) {
 	depth := 0
 	for {
 		if !r.has() {
-			return directConstExpr{}, &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
+			return directConstExpr{}, newDecodeError(ErrSectionSizeMismatch, r.off())
 		}
 		op, err := skipExprOp(r)
 		if err != nil {
@@ -705,7 +661,7 @@ func readDirectConstExprBytes(r *reader) (directConstExpr, error) {
 		case directBlock, directLoop, directIf, directTryTable:
 			depth++
 			if depth > maxInstructionNestingDepth {
-				return directConstExpr{}, &DecodeError{Code: ErrInstructionNestingLimitExceeded, Offset: r.off()}
+				return directConstExpr{}, newDecodeError(ErrInstructionNestingLimitExceeded, r.off())
 			}
 		case directEnd:
 			if depth == 0 {
@@ -725,6 +681,10 @@ func decodeDirectCodeSectionWithModule(r *reader, m *Module, multiMemory bool) (
 }
 
 func decodeDirectCodeSectionWithWidths(r *reader, widths memargWidths, multiMemory bool) ([]Func, bool, error) {
+	return decodeDirectCodeSectionBodyPolicy(r, widths, multiMemory, false)
+}
+
+func decodeDirectCodeSectionBodyPolicy(r *reader, widths memargWidths, multiMemory, deferBodies bool) ([]Func, bool, error) {
 	n, err := r.u32()
 	if err != nil {
 		return nil, false, err
@@ -757,13 +717,24 @@ func decodeDirectCodeSectionWithWidths(r *reader, widths memargWidths, multiMemo
 		}
 		var exprBytes []byte
 		var bodyUsesDataCount bool
-		exprBytes, frames, bodyUsesDataCount, err = readDirectFuncExprBytes(&sub, frames, widths, multiMemory)
+		if deferBodies {
+			// The body length and local declarations are already bounded. Keep
+			// a nonempty raw body so validation cannot mistake it for an AST
+			// function with an implicit empty expression.
+			if !sub.has() {
+				return nil, false, newDecodeError(ErrSectionSizeMismatch, bodyStart+sub.off())
+			}
+			exprBytes = sub.data[sub.pos:]
+			sub.pos = len(sub.data)
+		} else {
+			exprBytes, frames, bodyUsesDataCount, err = readDirectFuncExprBytes(&sub, frames, widths, multiMemory)
+		}
 		if err != nil {
 			return nil, false, rebaseDecodeError(err, bodyStart)
 		}
 		usesDataCountInstr = usesDataCountInstr || bodyUsesDataCount
 		if sub.has() {
-			return nil, false, &DecodeError{Code: ErrSectionSizeMismatch, Offset: bodyStart + sub.off()}
+			return nil, false, newDecodeError(ErrSectionSizeMismatch, bodyStart+sub.off())
 		}
 		out = append(out, Func{Locals: locals, LocalDeclBytes: uint32(sub.off() - len(exprBytes)), BodyBytes: exprBytes})
 	}
@@ -785,7 +756,7 @@ func readDirectFuncExprBytes(r *reader, stack []exprSkipFrame, widths memargWidt
 	var imm InstructionImmediate
 	for {
 		if !r.has() {
-			return nil, stack, false, &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
+			return nil, stack, false, newDecodeError(ErrSectionSizeMismatch, r.off())
 		}
 		opcode, err := r.byte()
 		if err != nil {
@@ -802,16 +773,16 @@ func readDirectFuncExprBytes(r *reader, stack []exprSkipFrame, widths memargWidt
 		switch op {
 		case directBlock, directLoop, directIf, directTryTable:
 			if len(stack) >= maxInstructionNestingDepth {
-				return nil, stack, false, &DecodeError{Code: ErrInstructionNestingLimitExceeded, Offset: r.off()}
+				return nil, stack, false, newDecodeError(ErrInstructionNestingLimitExceeded, r.off())
 			}
 			stack = append(stack, exprSkipFrame{kind: op})
 		case directElse:
 			if len(stack) == 0 {
-				return nil, stack, false, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
+				return nil, stack, false, newDecodeError(ErrInvalidInstruction, r.off()-1)
 			}
 			top := &stack[len(stack)-1]
 			if top.kind != directIf || top.seenElse {
-				return nil, stack, false, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
+				return nil, stack, false, newDecodeError(ErrInvalidInstruction, r.off()-1)
 			}
 			top.seenElse = true
 		case directEnd:
@@ -843,7 +814,7 @@ func (v *moduleValidator) validateConstExprDirectWithGlobalLimit(e directConstEx
 	for {
 		if len(fv.ctrls) == 0 {
 			if r.has() {
-				return &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
+				return newDecodeError(ErrSectionSizeMismatch, r.off())
 			}
 			return nil
 		}
@@ -930,6 +901,7 @@ func (v *funcValidator) directElemRefType(index uint32) (RefType, error) {
 }
 
 func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, widths memargWidths, multiMemory bool, segmentCounts *validationSegmentCounts) error {
+	widths.multiMemory = multiMemory
 	v.localParams = ft.Params
 	v.localRuns = body.locals.Runs
 	var overflow bool
@@ -952,13 +924,72 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 	r := &v.rd
 	var op directOp // reused across the loop; decodeDirectOp overwrites it each step
 	facts := v.analysisFacts()
+	if facts != nil && v.analysis.hintCurrent != nil {
+		return v.validateFuncDirectObservedLoop(r, widths, multiMemory, segmentCounts, facts, v.analysis.hintCurrent)
+	}
 	if facts != nil {
 		for {
 			if len(v.ctrls) == 0 {
 				if r.has() {
-					return &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
+					return newDecodeError(ErrSectionSizeMismatch, r.off())
 				}
 				return nil
+			}
+			// Immediate-free scalar operations need neither a decoded instruction
+			// payload nor the general control/memory dispatcher.
+			if r.pos < len(r.data) {
+				opcode := r.data[r.pos]
+				if opcode >= 0x20 && opcode <= 0x24 || opcode >= 0x41 && opcode <= 0x44 {
+					r.pos++
+					kind, err := v.stepDirectScalarImmediate(r, opcode)
+					if err != nil {
+						return err
+					}
+					facts.Flags |= validatedFuncFlagsByKind[kind]
+					continue
+				}
+				if opcode >= 0x28 && opcode <= 0x3e {
+					r.pos++
+					kind := memOpcodeKind[opcode]
+					arg, err := decodeMemArgWithWidths(r, widths)
+					if err != nil {
+						return err
+					}
+					if err = v.stepDirectMemory(kind, arg); err != nil {
+						return err
+					}
+					facts.Flags |= validatedFuncFlagsByKind[kind]
+					continue
+				}
+				if opcode >= 0x45 && opcode <= 0xc4 {
+					r.pos++
+					kind := simpleOpcode[opcode]
+					if err := v.stepDirectNumeric(kind); err != nil {
+						return err
+					}
+					facts.Flags |= validatedFuncFlagsByKind[kind]
+					continue
+				}
+				if opcode == 0x05 || opcode >= 0x0b && opcode <= 0x0d {
+					r.pos++
+					kind, err := v.stepDirectControlImmediate(r, opcode)
+					if err != nil {
+						return err
+					}
+					if kind != InstrInvalid {
+						facts.Flags |= validatedFuncFlagsByKind[kind]
+					}
+					continue
+				}
+				if opcode == 0x10 || opcode == 0x12 {
+					r.pos++
+					kind, err := v.stepDirectCallImmediate(r, opcode)
+					if err != nil {
+						return err
+					}
+					facts.Flags |= validatedFuncFlagsByKind[kind]
+					continue
+				}
 			}
 			if err := v.decodeDirectOp(r, widths, multiMemory, &op); err != nil {
 				return err
@@ -980,9 +1011,51 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 	for {
 		if len(v.ctrls) == 0 {
 			if r.has() {
-				return &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
+				return newDecodeError(ErrSectionSizeMismatch, r.off())
 			}
 			return nil
+		}
+		if r.pos < len(r.data) {
+			opcode := r.data[r.pos]
+			if opcode >= 0x20 && opcode <= 0x24 || opcode >= 0x41 && opcode <= 0x44 {
+				r.pos++
+				if _, err := v.stepDirectScalarImmediate(r, opcode); err != nil {
+					return err
+				}
+				continue
+			}
+			if opcode >= 0x28 && opcode <= 0x3e {
+				r.pos++
+				arg, err := decodeMemArgWithWidths(r, widths)
+				if err != nil {
+					return err
+				}
+				if err = v.stepDirectMemory(memOpcodeKind[opcode], arg); err != nil {
+					return err
+				}
+				continue
+			}
+			if opcode >= 0x45 && opcode <= 0xc4 {
+				r.pos++
+				if err := v.stepDirectNumeric(simpleOpcode[opcode]); err != nil {
+					return err
+				}
+				continue
+			}
+			if opcode == 0x05 || opcode >= 0x0b && opcode <= 0x0d {
+				r.pos++
+				if _, err := v.stepDirectControlImmediate(r, opcode); err != nil {
+					return err
+				}
+				continue
+			}
+			if opcode == 0x10 || opcode == 0x12 {
+				r.pos++
+				if _, err := v.stepDirectCallImmediate(r, opcode); err != nil {
+					return err
+				}
+				continue
+			}
 		}
 		if err := v.decodeDirectOp(r, widths, multiMemory, &op); err != nil {
 			return err
@@ -1031,6 +1104,11 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		return nil
 	}
 	switch op {
+	case 0x08, 0x0c, 0x0d, 0x10, 0x12, 0x14, 0x15, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0xd2, 0xd5, 0xd6:
+		in, err := indexInst(r, oneIndexImmediateKind(op))
+		*out = directOp{kind: directInstr, instr: in}
+		return err
+
 	case 0x02, 0x03, 0x04:
 		bt, err := decodeBlockType(r)
 		if err != nil {
@@ -1048,21 +1126,9 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 	case 0x05:
 		*out = directOp{kind: directElse}
 		return nil
-	case 0x08:
-		in, err := indexInst(r, InstrThrow)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
 	case 0x0b:
 		*out = directOp{kind: directEnd}
 		return nil
-	case 0x0c:
-		in, err := indexInst(r, InstrBr)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x0d:
-		in, err := indexInst(r, InstrBrIf)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
 	case 0x0e:
 		labels, err := readVec(r, func(r *reader) (uint32, error) { return r.u32() })
 		if err != nil {
@@ -1073,28 +1139,12 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		v.opExt = instrExt{Indices: labels}
 		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrBrTable, Index: def, ext: &v.opExt}}
 		return err
-	case 0x10:
-		in, err := indexInst(r, InstrCall)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
 	case 0x11:
 		in, err := twoIndexInst(r, InstrCallIndirect)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
-	case 0x12:
-		in, err := indexInst(r, InstrReturnCall)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
 	case 0x13:
 		in, err := twoIndexInst(r, InstrReturnCallIndirect)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x14:
-		in, err := indexInst(r, InstrCallRef)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x15:
-		in, err := indexInst(r, InstrReturnCallRef)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0x1c:
@@ -1115,34 +1165,6 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		}
 		*out = directOp{kind: directTryTable, blockType: bt, catches: catches}
 		return nil
-	case 0x20:
-		in, err := indexInst(r, InstrLocalGet)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x21:
-		in, err := indexInst(r, InstrLocalSet)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x22:
-		in, err := indexInst(r, InstrLocalTee)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x23:
-		in, err := indexInst(r, InstrGlobalGet)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x24:
-		in, err := indexInst(r, InstrGlobalSet)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x25:
-		in, err := indexInst(r, InstrTableGet)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x26:
-		in, err := indexInst(r, InstrTableSet)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
 		ma, err := decodeMemArgWithWidths(r, widths)
 		v.opExt = instrExt{MemArg: ma}
@@ -1182,24 +1204,12 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		v.opExt = instrExt{RefType: rt}
 		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrRefNull, ext: &v.opExt}}
 		return err
-	case 0xd2:
-		in, err := indexInst(r, InstrRefFunc)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
 	case 0xd3:
 		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrRefEq}}
 		return nil
 	case 0xd4:
 		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrRefAsNonNull}}
 		return nil
-	case 0xd5:
-		in, err := indexInst(r, InstrBrOnNull)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0xd6:
-		in, err := indexInst(r, InstrBrOnNonNull)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
 	case 0xfb:
 		in, err := decodeFB(r)
 		*out = directOp{kind: directInstr, instr: in}
@@ -1218,7 +1228,7 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		return err
 	default:
 		*out = directOp{}
-		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
+		return newDecodeError(ErrInvalidInstruction, r.off()-1)
 	}
 }
 
@@ -1300,11 +1310,11 @@ func (v *funcValidator) directElse() error {
 		return err
 	}
 	thenHeight := len(v.vals)
-	v.vals = v.vals[:f.height]
+	v.vals = v.vals[:int(f.height)]
 	if len(v.ctrls) >= maxInstructionNestingDepth {
 		return &DecodeError{Code: ErrInstructionNestingLimitExceeded}
 	}
-	v.ctrls = append(v.ctrls, ctrlFrame{kind: ctrlIf, in: f.in, out: f.out, height: f.height, initHeight: f.initHeight, ifSeenElse: true, ifThenHeight: thenHeight})
+	v.ctrls = append(v.ctrls, ctrlFrame{kind: ctrlIf, in: f.in, out: f.out, height: f.height, initHeight: f.initHeight, ifSeenElse: true, ifThenHeight: uint32(thenHeight)})
 	v.pushAll(f.in)
 	return nil
 }
@@ -1319,7 +1329,7 @@ func (v *funcValidator) directEnd() error {
 	}
 	if f.kind == ctrlIf {
 		if f.ifSeenElse {
-			if len(v.vals) != f.ifThenHeight {
+			if uint32(len(v.vals)) != f.ifThenHeight {
 				return v.verr(ErrTypeMismatch, "if branch heights")
 			}
 		} else if !v.matchValTypes(f.in, f.out) {
@@ -1327,4 +1337,522 @@ func (v *funcValidator) directEnd() error {
 		}
 	}
 	return nil
+}
+
+func (v *funcValidator) validateFuncDirectObservedLoop(r *reader, widths memargWidths, multiMemory bool, segmentCounts *validationSegmentCounts, facts *ValidatedFuncFacts, observer ValidationHintInstructionObserver) error {
+	// Constants, locals and scalar arithmetic have no fixed flags, except
+	// sign-extension instructions. Their fast cases avoid zero-valued updates.
+	var op directOp
+	for {
+		start := r.pos
+		if len(v.ctrls) == 0 {
+			if r.has() {
+				return newDecodeError(ErrSectionSizeMismatch, r.off())
+			}
+			return nil
+		}
+		if !v.constOnly && r.pos < len(r.data) {
+			opcode := r.data[r.pos]
+			if opcode >= 0x41 && opcode <= 0x44 {
+				r.pos++
+				var bits uint64
+				var typ ValType
+				var kind InstrKind
+				var err error
+				switch opcode {
+				case 0x41:
+					var n int32
+					n, err = r.i32()
+					bits, typ, kind = uint64(int64(n)), I32, InstrI32Const
+				case 0x42:
+					var n int64
+					n, err = r.i64()
+					bits, typ, kind = uint64(n), I64, InstrI64Const
+				case 0x43:
+					var n uint32
+					n, err = r.le32()
+					bits, typ, kind = uint64(n), F32, InstrF32Const
+				case 0x44:
+					bits, err = r.le64()
+					typ, kind = F64, InstrF64Const
+				}
+				if err != nil {
+					return err
+				}
+				v.push(typ)
+				observer.Observe(opcode, kind, 0, 0, bits, 0, start, r.pos)
+				continue
+			}
+			if opcode >= 0x20 && opcode <= 0x22 {
+				r.pos++
+				index, err := r.u32()
+				if err != nil {
+					return err
+				}
+				kind := oneIndexImmediateKind(opcode)
+				if err := v.stepLocalIndex(kind, index); err != nil {
+					return err
+				}
+				observer.Observe(opcode, kind, index, 0, 0, 0, start, r.pos)
+				continue
+			}
+			if opcode >= 0x45 && opcode <= 0xc4 {
+				kind := simpleOpcode[opcode]
+				r.pos++
+				if err := v.stepDirectNumeric(kind); err != nil {
+					return err
+				}
+				if opcode >= 0xc0 {
+					facts.Flags |= ValidatedFuncUsesSignExtension
+				}
+				observer.Observe(opcode, kind, 0, 0, 0, 0, start, r.pos)
+				continue
+			}
+			if opcode >= 0x28 && opcode <= 0x3e {
+				r.pos++
+				kind := memOpcodeKind[opcode]
+				arg, err := decodeMemArgWithWidths(r, widths)
+				if err != nil {
+					return err
+				}
+				if err := v.stepDirectMemory(kind, arg); err != nil {
+					return err
+				}
+				facts.Flags |= validatedFuncFlagsByKind[kind]
+				index, meta := uint32(0), ValidationHintTouchesMemory
+				if arg.Mem != nil {
+					index = uint32(*arg.Mem)
+					meta |= ValidationHintHasMemoryIndex
+				}
+				observer.Observe(opcode, kind, index, 0, arg.Offset, meta, start, r.pos)
+				continue
+			}
+			if opcode == 0x05 || opcode == 0x0b {
+				r.pos++
+				kind, err := v.stepDirectControlImmediate(r, opcode)
+				if err != nil {
+					return err
+				}
+				observer.Observe(opcode, kind, 0, 0, 0, 0, start, r.pos)
+				continue
+			}
+			if opcode == 0x0c || opcode == 0x0d || opcode == 0x10 || opcode == 0x12 {
+				r.pos++
+				index, err := r.u32()
+				if err != nil {
+					return err
+				}
+				var kind InstrKind
+				if opcode == 0x10 || opcode == 0x12 {
+					kind, err = v.stepDirectCallIndex(opcode, index)
+				} else {
+					kind = InstrBr
+					if opcode == 0x0d {
+						kind = InstrBrIf
+					}
+					err = v.stepBranch(kind, index)
+				}
+				if err != nil {
+					return err
+				}
+				facts.Flags |= validatedFuncFlagsByKind[kind]
+				observer.Observe(opcode, kind, index, 0, 0, 0, start, r.pos)
+				continue
+			}
+		}
+		if err := v.decodeDirectOp(r, widths, multiMemory, &op); err != nil {
+			return err
+		}
+		if err := v.stepDirectOp(&op); err != nil {
+			return err
+		}
+		opcode := r.data[start]
+		if op.kind != directInstr || opcode >= 0x20 && opcode <= 0x26 {
+			observer.Observe(opcode, op.instr.Kind, op.instr.Index, op.instr.Index2, 0, 0, start, r.pos)
+		} else {
+			observeValidationHint(observer, opcode, start, r.pos, &op.instr)
+		}
+		if op.kind == directInstr {
+			kind := op.instr.Kind
+			facts.Flags |= validatedFuncFlagsByKind[kind]
+			if validatedFuncNeedsPayloadByKind[kind] {
+				v.observeValidatedInstructionPayload(facts, &op.instr, segmentCounts)
+			}
+		} else {
+			facts.observeStructuredDirect(&op)
+		}
+	}
+}
+
+func decodeDirectModuleInnerLimitsMode(data []byte, features ValidationFeatures, limits DecodeLimits, deferCodeBodies, compactData bool) (*directModule, error) {
+	// Keep the top-level cursor in this frame. TinyGo's conservative collector
+	// can otherwise lose the heap-allocated reader while its backing slice is
+	// still being consumed across allocation-heavy section decoding.
+	r := reader{budget: newDecodeBudget(limits)}
+	r.reset(data)
+	magic, err := r.bytes(4)
+	if err != nil {
+		return nil, err
+	}
+	if string(magic) != "\x00asm" {
+		return nil, newDecodeError(ErrBadMagic, 0)
+	}
+	ver, err := r.le32()
+	if err != nil {
+		return nil, err
+	}
+	if ver != 1 {
+		return nil, newDecodeError(ErrBadVersion, 4)
+	}
+	dm := &directModule{compactData: compactData}
+	var lastOrder uint8
+	var seen uint16 // standard section IDs are the dense range 1..13
+	sub := reader{budget: r.budget}
+	for r.has() {
+		id, err := r.byte()
+		if err != nil {
+			return nil, err
+		}
+		size, err := r.u32()
+		if err != nil {
+			return nil, err
+		}
+		start := r.off()
+		payload, err := r.bytes(int(size))
+		if err != nil {
+			return nil, err
+		}
+		end := r.off()
+		if id != secCustom {
+			ord, ok := lookupSectionOrder(id)
+			if !ok {
+				return nil, &DecodeError{Code: ErrInvalidSection, Offset: start - 1, SectionID: id, SectionStart: start, SectionEnd: end}
+			}
+			if ord < lastOrder {
+				return nil, &DecodeError{Code: ErrSectionOrder, Offset: start - 1, SectionID: id, SectionStart: start, SectionEnd: end}
+			}
+			bit := uint16(1) << id
+			if seen&bit != 0 {
+				return nil, &DecodeError{Code: ErrDuplicateSection, Offset: start - 1, SectionID: id, SectionStart: start, SectionEnd: end}
+			}
+			seen |= bit
+			lastOrder = ord
+		}
+		sub.reset(payload)
+		switch id {
+		case secCustom:
+			err = dm.decodeDirectCustomSection(&sub)
+		case secTable:
+			err = decodeDirectTableSection(dm, &sub)
+		case secGlobal:
+			err = decodeDirectGlobalSection(dm, &sub)
+		case secElement:
+			err = decodeDirectElementSection(dm, &sub)
+		case secCode:
+			if deferCodeBodies {
+				dm.m.Code, err = decodePendingCodeSection(&sub)
+			} else {
+				dm.m.Code, dm.usesDataCountInstr, err = decodeDirectCodeSectionWithModule(&sub, &dm.m, features.MultiMemory)
+			}
+			dm.seenCode = true
+		case secData:
+			err = decodeDirectDataSection(dm, &sub)
+		default:
+			err = decodeSection(&dm.m, &sub, id)
+		}
+		if err != nil {
+			if de, ok := err.(*DecodeError); ok {
+				de.SectionID = id
+				de.SectionStart = start
+				de.SectionEnd = end
+				de.Offset += start
+				return nil, de
+			}
+			return nil, err
+		}
+		if sub.has() {
+			return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: start + sub.off(), SectionID: id, SectionStart: start, SectionEnd: end}
+		}
+	}
+	if len(dm.m.FuncTypes) != len(dm.m.Code) {
+		return nil, newDecodeError(ErrInvalidModule, len(data))
+	}
+	if dm.m.DataCount != nil && uint64(*dm.m.DataCount) != uint64(dm.m.DataSegmentCount()) {
+		return nil, newDecodeError(ErrInvalidModule, len(data))
+	}
+	if dm.m.DataCount == nil && dm.usesDataCountInstr {
+		return nil, newDecodeError(ErrInvalidModule, len(data))
+	}
+	return dm, nil
+}
+
+// stepDirectNumeric validates an immediate-free scalar stack effect in place.
+// The common case replaces its operands with the result without repeatedly
+// popping and pushing the same backing slice. The ordinary path retains exact
+// error order and polymorphic-stack handling for underflow and mismatched types.
+func (v *funcValidator) stepDirectNumeric(kind InstrKind) error {
+	effect := opEffects[kind]
+	input := effect.a.valType()
+	output := input
+	operands := 1
+	switch effect.cat {
+	case effBinary:
+		operands = 2
+	case effCompare:
+		operands = 2
+		output = I32
+	case effTest:
+		output = I32
+	case effConv:
+		output = effect.b.valType()
+	case effUnary:
+	default:
+		return v.step(&Instruction{Kind: kind})
+	}
+	n := len(v.vals)
+	if !v.constOnly && n-int(v.top().height) >= operands {
+		matched := true
+		for i := n - operands; i < n; i++ {
+			value := v.vals[i]
+			if !value.unknown() && value.t != input {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			result := n - operands
+			v.vals = v.vals[:result+1]
+			v.vals[result] = val{t: output}
+			return nil
+		}
+	}
+	return v.step(&Instruction{Kind: kind})
+}
+
+// stepDirectScalarImmediate consumes scalar immediates directly into validation
+// state. Values of constants are irrelevant to typing, but their complete LEB
+// or fixed-width encodings are still checked before pushing the result type.
+func (v *funcValidator) stepDirectScalarImmediate(r *reader, opcode byte) (InstrKind, error) {
+	var kind InstrKind
+	var typ ValType
+	var err error
+	switch opcode {
+	case 0x20, 0x21, 0x22:
+		switch opcode {
+		case 0x20:
+			kind = InstrLocalGet
+		case 0x21:
+			kind = InstrLocalSet
+		case 0x22:
+			kind = InstrLocalTee
+		}
+		index, e := r.u32()
+		if e != nil {
+			return kind, e
+		}
+		return kind, v.stepLocalIndex(kind, index)
+	case 0x23, 0x24:
+		kind = InstrGlobalGet
+		if opcode == 0x24 {
+			kind = InstrGlobalSet
+		}
+		index, e := r.u32()
+		if e != nil {
+			return kind, e
+		}
+		return kind, v.step(&Instruction{Kind: kind, Index: index})
+	case 0x41:
+		kind, typ = InstrI32Const, I32
+		_, err = r.i32()
+	case 0x42:
+		kind, typ = InstrI64Const, I64
+		_, err = r.i64()
+	case 0x43:
+		kind, typ = InstrF32Const, F32
+		_, err = r.le32()
+	case 0x44:
+		kind, typ = InstrF64Const, F64
+		_, err = r.le64()
+	}
+	if err == nil {
+		v.push(typ)
+	}
+	return kind, err
+}
+
+// stepDirectMemory preserves the ordinary memory/type check order while
+// replacing a load's address in place or consuming a store's two operands.
+func (v *funcValidator) stepDirectMemory(kind InstrKind, arg MemArg) error {
+	effect := opEffects[kind]
+	address, err := v.checkMemArg(arg, uint32(effect.align))
+	if err != nil {
+		return err
+	}
+	n := len(v.vals)
+	height := int(v.top().height)
+	valueType := effect.a.valType()
+	if effect.cat == effLoad {
+		if n > height && (v.vals[n-1].unknown() || v.vals[n-1].t == address) {
+			v.vals[n-1] = val{t: valueType}
+			return nil
+		}
+		if err = v.popExpect(address); err != nil {
+			return err
+		}
+		v.push(valueType)
+		return nil
+	}
+	if n-height >= 2 && (v.vals[n-1].unknown() || v.vals[n-1].t == valueType) && (v.vals[n-2].unknown() || v.vals[n-2].t == address) {
+		v.vals = v.vals[:n-2]
+		return nil
+	}
+	if err = v.popExpect(valueType); err != nil {
+		return err
+	}
+	return v.popExpect(address)
+}
+
+// DecodeModuleForValidationWithFeatures decodes section metadata and bounds each
+// code body, leaving its instruction syntax to the mandatory subsequent
+// ValidateModule call. Unlike DecodeModule, this is not a standalone syntax
+// checker. It is the first half of the compiler's fused decode/validate path.
+func DecodeModuleForValidationWithFeatures(data []byte, features ValidationFeatures) (*Module, error) {
+	return decodeModuleForValidationDataMode(data, features, false)
+}
+
+// DecodeModuleForCompilation retains pointer-free data-section spans instead of
+// expanded data records. Function syntax still needs subsequent validation.
+// Read data through DataSegmentCount/DataSegment; ordinary
+// decoding and programmatically populated Module.Data remain unchanged.
+func DecodeModuleForCompilation(data []byte, features ValidationFeatures) (*Module, error) {
+	return decodeModuleForValidationDataMode(data, features, true)
+}
+
+func decodeModuleForValidationDataMode(data []byte, features ValidationFeatures, compactData bool) (*Module, error) {
+	dm, err := decodeDirectModuleInnerLimitsMode(data, features, DecodeLimits{}, true, compactData)
+	runtime.KeepAlive(data)
+	if err != nil {
+		return nil, err
+	}
+	dm.populateCodeBodies()
+	if err = validateBranchHints(&dm.m); err != nil {
+		return nil, err
+	}
+	return &dm.m, nil
+}
+
+func decodePendingCodeSection(r *reader) ([]Func, error) {
+	count, err := r.u32()
+	if err != nil {
+		return nil, err
+	}
+	if err = reserveDecodedSlice[Func](r, count); err != nil {
+		return nil, err
+	}
+	// Every valid body needs a size byte, a local-vector byte and an end.
+	// The metadata budget above bounds the full vector allocation. Reserve it
+	// once when the byte count can hold it, avoiding old growth buffers for
+	// large modules; retain the conservative path for impossible counts.
+	capacity := boundedVecCap(count, r.left())
+	if uint64(count) <= uint64(r.left()/3) {
+		capacity = int(count)
+	}
+	out := make([]Func, 0, capacity)
+	// Keep the same decode-budget reservation as the syntax-only path, even
+	// though the validation control stack replaces its structural scratch.
+	if err = r.reserve(uint64(min(r.left(), maxInstructionNestingDepth)), 32); err != nil {
+		return nil, err
+	}
+	sub := reader{budget: r.budget}
+	for i := uint32(0); i < count; i++ {
+		size, err := r.u32()
+		if err != nil {
+			return nil, err
+		}
+		body, err := r.bytes(int(size))
+		if err != nil {
+			return nil, err
+		}
+		start := r.off() - len(body)
+		sub.reset(body)
+		locals, err := decodeLocals(&sub)
+		if err != nil {
+			return nil, rebaseDecodeError(err, start)
+		}
+		if len(locals.Runs) > 1 {
+			locals.Runs = coalesceCompilerLocalRuns(locals.Runs)
+		}
+		declarations := sub.off()
+		if !sub.has() {
+			return nil, newDecodeError(ErrSectionSizeMismatch, start+sub.off())
+		}
+		expression, err := sub.bytes(sub.left())
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, Func{Locals: locals, LocalDeclBytes: uint32(declarations), BodyBytes: expression})
+	}
+	return out, nil
+}
+
+func (v *funcValidator) stepDirectControlImmediate(r *reader, opcode byte) (InstrKind, error) {
+	switch opcode {
+	case 0x05:
+		return InstrInvalid, v.directElse()
+	case 0x0b:
+		return InstrInvalid, v.directEnd()
+	}
+	index, err := r.u32()
+	if err != nil {
+		return InstrInvalid, err
+	}
+	kind := InstrBr
+	if opcode == 0x0d {
+		kind = InstrBrIf
+	}
+	return kind, v.stepBranch(kind, index)
+}
+
+func (v *funcValidator) stepDirectCallImmediate(r *reader, opcode byte) (InstrKind, error) {
+	index, err := r.u32()
+	if err != nil {
+		return InstrInvalid, err
+	}
+	return v.stepDirectCallIndex(opcode, index)
+}
+
+func (v *funcValidator) stepDirectCallIndex(opcode byte, index uint32) (InstrKind, error) {
+	ft, ok := v.funcType(index)
+	if !ok {
+		return InstrInvalid, v.verr(ErrUnknownFunc, "")
+	}
+	if err := v.popAll(ft.Params); err != nil {
+		return InstrInvalid, err
+	}
+	if opcode == 0x12 {
+		if !v.matchValTypes(ft.Results, v.ctrls[0].out) {
+			return InstrInvalid, v.verr(ErrTypeMismatch, "return_call")
+		}
+		v.unreachable()
+		return InstrReturnCall, nil
+	}
+	v.pushAll(ft.Results)
+	return InstrCall, nil
+}
+
+// coalesceCompilerLocalRuns gives the compiler a compact local declaration
+// view while LocalDeclBytes continues to identify the original wire offset.
+// Zero-count declarations remain present: their types still need validation.
+func coalesceCompilerLocalRuns(runs []LocalRun) []LocalRun {
+	at := 0
+	for _, run := range runs {
+		if at != 0 && runs[at-1].Type == run.Type {
+			runs[at-1].Count += run.Count // decodeLocals already checked the complete sum.
+		} else {
+			runs[at] = run
+			at++
+		}
+	}
+	clear(runs[at:])
+	return runs[:at]
 }

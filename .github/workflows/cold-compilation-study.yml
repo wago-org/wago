@@ -1,0 +1,76 @@
+name: Cold compilation screening
+
+on:
+  workflow_dispatch:
+    inputs:
+      architecture:
+        type: choice
+        description: Native architecture to screen
+        options: [amd64, arm64, both]
+        default: amd64
+      comparison:
+        type: choice
+        description: Main comparison or current-source file-option coverage
+        options: [file-option, main]
+        default: file-option
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cold-compilation-study-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.27.1"
+
+jobs:
+  # Optional measurements are separate from correctness qualification. Each
+  # architecture gets its own native runner, with builds completed before timing.
+  cold-compilation-study:
+    name: Cold compilation study (${{ matrix.arch }})
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(inputs.architecture == 'both' && '["amd64","arm64"]' || inputs.architecture == 'arm64' && '["arm64"]' || '["amd64"]') }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            go.work
+            go.mod
+            go.sum
+            bench/go.mod
+            bench/go.sum
+      - name: Initialize pinned public-test fixtures
+        if: matrix.arch == 'amd64'
+        run: git submodule update --init --depth=1 tests/conformance/spec-v3
+      - name: Validate native runtime and compiler
+        if: matrix.arch == 'amd64'
+        run: go test -tags wago_regalloccheck ./src/core/runtime ./src/core/compiler/optimization ./src/core/compiler/backend/railshot/amd64 ./src/wago -count=1 -timeout=15m
+      - name: Run alternating fresh-process pairs
+        env:
+          COMPARISON: ${{ inputs.comparison }}
+        run: |
+          options=()
+          if [ -z "$COMPARISON" ] || [ "$COMPARISON" = file-option ]; then
+            options+=(--file-option-comparison)
+          fi
+          python3 scripts/cold-compilation-study.py --output cold-study --file-backed-code "${options[@]}"
+      - name: Upload source identity and measurements
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cold-study-${{ matrix.arch }}-${{ github.sha }}
+          path: cold-study/
+          if-no-files-found: error
+          retention-days: 30
+

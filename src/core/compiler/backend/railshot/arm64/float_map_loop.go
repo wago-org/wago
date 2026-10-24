@@ -4,6 +4,8 @@ package arm64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
+var floatMapLoopEnabled = true
+
 // A bounded symbolic proof admits only independent scalar floating-point maps.
 // The vector prefix preserves the expression tree and leaves an original scalar
 // packet to restore every observable local. All range/alias failures fall back.
@@ -340,7 +342,7 @@ func (p *floatMapPlan) sameMap(x, y int, step uint32, depth int) bool {
 }
 
 func (f *fn) emitFloatMapLoop(source *wasm.Reader) {
-	if !f.opt(optDotLoopVector) || f.interruptible || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
+	if !f.opt(optFloatMapLoop) || f.interruptible || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
 		return
 	}
 	if f.nLocals > 32 || !f.hasFloatMapPrefix(source) {

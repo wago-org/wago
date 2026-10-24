@@ -19,13 +19,13 @@ func TestValueFactsAndRootsFitCompactStorageArm64(t *testing.T) {
 	if got, want := unsafe.Sizeof(elem{}), uintptr(32); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(stack{}), uintptr(72); got != want {
+	if got, want := unsafe.Sizeof(stack{}), uintptr(96); got != want {
 		t.Fatalf("stack size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(trapSite{}), uintptr(12); got != want {
+	if got, want := unsafe.Sizeof(trapSite{}), uintptr(8); got != want {
 		t.Fatalf("trapSite size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(callReloc{}), uintptr(12); got != want {
+	if got, want := unsafe.Sizeof(callReloc{}), uintptr(8); got != want {
 		t.Fatalf("callReloc size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(localDef{}), uintptr(4); got != want {
@@ -252,7 +252,7 @@ func TestMemoryAddressUsesUpperZeroFactArm64(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer off.CodeImage.Close()
-	if got, want := len(on.Code), len(off.Code); got != want {
+	if got, want := len(on.Code), len(off.Code)-4; got != want {
 		t.Fatalf("upper-zero address code bytes = %d, want %d (without fact: %d)", got, want, len(off.Code))
 	}
 	if got, err := runArm64WrapperWithOptions(t, computed, CompileOptions{Optimizations: map[string]bool{"value-facts": true}}, 1, 2); err != nil || got != 0 {

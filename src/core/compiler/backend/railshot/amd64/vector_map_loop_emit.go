@@ -759,6 +759,10 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 	if !inspectRegionLoop(look, f.localType, f.classifier, &p) {
 		return false, nil
 	}
+	return f.emitRegionLoop(r, &p)
+}
+
+func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 	if p.storeN <= 2 && p.independentLanes() {
 		if !regionLoopEnabled && !(regionWideIndependentEnabled && f.cpuHas(shared.AMD64AVX)) && !(regionZeroCounterEnabled && p.zeroTerminated) {
 			return false, nil
@@ -804,7 +808,7 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 	if err := f.opBlock(r, 0x03); err != nil {
 		return true, err
 	}
-	e := regionLoopEmitter{f: f, p: &p, folded: folded, memoryOperand: memory, invariantPrefix: prefix, permanent: permanent}
+	e := regionLoopEmitter{f: f, p: p, folded: folded, memoryOperand: memory, invariantPrefix: prefix, permanent: permanent}
 	block := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
 	n := 0
 	for _, reg := range gpAlloc {

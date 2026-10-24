@@ -1,0 +1,1631 @@
+{
+  "baseline_sha": "fc6af651c15e286409d9cc117c94181e9ee50ff3",
+  "wasmfyi_contracts_sha256": "71a3d4e6ce70d6df7d588d14a566b8542a9218bd327fb145d3c429137eb8b4b6",
+  "policy": "Frozen before tuning. Equal-workload geometric means; report every regression. Cold physical RSS and allocations distinct. One compile worker, GOMAXPROCS=1. Exact oracles on every sample. Screening is not final qualification.",
+  "corpus": [
+    {
+      "id": "fannkuch",
+      "path": "corpus/workloads/compute/fannkuch.wasm",
+      "sha256": "31e05ae6968784b6d1078f70d4badb93ca8772a0b790559b724efefa64dfaf37",
+      "contract": {
+        "schema": 1,
+        "id": "wago/fannkuch/run",
+        "family": "algorithms",
+        "artifact": "workloads/compute/fannkuch.wasm",
+        "sha256": "31e05ae6968784b6d1078f70d4badb93ca8772a0b790559b724efefa64dfaf37",
+        "abi": "core",
+        "features": [],
+        "export": "run",
+        "args": [
+          "8"
+        ],
+        "original_contract": {
+          "desc": "Benchmarks-Game fannkuch-redux: permute + pancake-flip (branch/array churn, no f64)",
+          "exec": [
+            {
+              "export": "run",
+              "args": [
+                8
+              ],
+              "want": [
+                22
+              ]
+            }
+          ],
+          "id": "fannkuch",
+          "artifact": "workloads/compute/fannkuch.wasm",
+          "tags": [
+            "compute"
+          ],
+          "artifact_sha256": "31e05ae6968784b6d1078f70d4badb93ca8772a0b790559b724efefa64dfaf37"
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "fannkuch-permutation-flips",
+          "category": "Integer & graph algorithms"
+        },
+        "work_unit": "invocation",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            "22"
+          ]
+        },
+        "license": "see upstream artifact provenance; not inferred from repository license",
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 2667
+    },
+    {
+      "id": "raytrace",
+      "path": "corpus/workloads/compute/raytrace.wasm",
+      "sha256": "d5a226fa10efa31e193244858fdcb206edd7c935e3de794d7e39478538404c04",
+      "contract": {
+        "schema": 1,
+        "id": "wago/raytrace/render",
+        "family": "algorithms",
+        "artifact": "workloads/compute/raytrace.wasm",
+        "sha256": "d5a226fa10efa31e193244858fdcb206edd7c935e3de794d7e39478538404c04",
+        "abi": "core",
+        "features": [],
+        "export": "render",
+        "args": [
+          "48"
+        ],
+        "original_contract": {
+          "desc": "recursive Whitted ray tracer: n x n frame, 4 spheres + checker plane, depth-4 mirrors (heavy f64 vector math)",
+          "exec": [
+            {
+              "export": "render",
+              "args": [
+                48
+              ],
+              "want": [
+                1021273579
+              ]
+            }
+          ],
+          "id": "raytrace",
+          "artifact": "workloads/compute/raytrace.wasm",
+          "tags": [
+            "compute"
+          ],
+          "artifact_sha256": "d5a226fa10efa31e193244858fdcb206edd7c935e3de794d7e39478538404c04"
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "ray-tracing",
+          "category": "3D & rendering"
+        },
+        "work_unit": "invocation",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            "1021273579"
+          ]
+        },
+        "license": "see upstream artifact provenance; not inferred from repository license",
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 5803
+    },
+    {
+      "id": "sha256",
+      "path": "corpus/workloads/compute/sha256.wasm",
+      "sha256": "0dbe8308751754ba91836fc546e7b805101851e301edc7b135fbb64aab46e384",
+      "contract": {
+        "schema": 1,
+        "id": "wago/sha256/hashN",
+        "family": "algorithms",
+        "artifact": "workloads/compute/sha256.wasm",
+        "sha256": "0dbe8308751754ba91836fc546e7b805101851e301edc7b135fbb64aab46e384",
+        "abi": "core",
+        "features": [],
+        "export": "hashN",
+        "args": [
+          "8"
+        ],
+        "original_contract": {
+          "desc": "standards-correct SHA-256 of an n-KiB buffer (i32 rotate/shift/xor/add, 64-round)",
+          "exec": [
+            {
+              "export": "hashN",
+              "args": [
+                8
+              ],
+              "want": [
+                3825852647
+              ]
+            }
+          ],
+          "id": "sha256",
+          "artifact": "workloads/compute/sha256.wasm",
+          "tags": [
+            "compute"
+          ],
+          "artifact_sha256": "0dbe8308751754ba91836fc546e7b805101851e301edc7b135fbb64aab46e384"
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "sha256",
+          "category": "Hashing & cryptography"
+        },
+        "work_unit": "invocation",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            "3825852647"
+          ]
+        },
+        "license": "see upstream artifact provenance; not inferred from repository license",
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 2818
+    },
+    {
+      "id": "json-as-simd",
+      "path": "corpus/workloads/assemblyscript/json-as-simd.wasm",
+      "sha256": "ca353a5601a88ad1912a7b041030da0d98604640cc25937f3d4b704a4dd9117c",
+      "contract": {
+        "schema": 1,
+        "id": "wago/json-as-simd/serializeN",
+        "family": "algorithms",
+        "artifact": "workloads/assemblyscript/json-as-simd.wasm",
+        "sha256": "ca353a5601a88ad1912a7b041030da0d98604640cc25937f3d4b704a4dd9117c",
+        "abi": "core",
+        "host_profile": "assemblyscript-abort-v1",
+        "features": [],
+        "export": "serializeN",
+        "args": [
+          "200"
+        ],
+        "initialize": "_initialize",
+        "original_contract": {
+          "desc": "AssemblyScript json-as SIMD: serialize/deserialize canonical payload",
+          "init": "_initialize",
+          "exec": [
+            {
+              "export": "serializeN",
+              "args": [
+                200
+              ],
+              "want": [
+                18600
+              ]
+            },
+            {
+              "export": "deserializeN",
+              "args": [
+                200
+              ],
+              "want": [
+                8400
+              ]
+            }
+          ],
+          "id": "json-as-simd",
+          "artifact": "workloads/assemblyscript/json-as-simd.wasm",
+          "tags": [
+            "real-simd",
+            "simd"
+          ],
+          "artifact_sha256": "ca353a5601a88ad1912a7b041030da0d98604640cc25937f3d4b704a4dd9117c"
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "json-serialization",
+          "category": "JSON & serialization"
+        },
+        "work_unit": "invocation",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            "18600"
+          ]
+        },
+        "license": "see upstream artifact provenance; not inferred from repository license",
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 25576
+    },
+    {
+      "id": "utf-as-simd",
+      "path": "corpus/workloads/assemblyscript/utf-as-simd.wasm",
+      "sha256": "8867205c0e7c3772b776bb495867378a587db972de47cfb4914a4fa55083b31a",
+      "contract": {
+        "schema": 1,
+        "id": "wago/utf-as-simd/validateN",
+        "family": "algorithms",
+        "artifact": "workloads/assemblyscript/utf-as-simd.wasm",
+        "sha256": "8867205c0e7c3772b776bb495867378a587db972de47cfb4914a4fa55083b31a",
+        "abi": "core",
+        "host_profile": "assemblyscript-abort-v1",
+        "features": [],
+        "export": "validateN",
+        "args": [
+          "200"
+        ],
+        "initialize": "_initialize",
+        "original_contract": {
+          "desc": "AssemblyScript utf-as SIMD: UTF-8 length and validation of mixed text",
+          "init": "_initialize",
+          "exec": [
+            {
+              "export": "convertN",
+              "args": [
+                200
+              ],
+              "want": [
+                710400
+              ]
+            },
+            {
+              "export": "validateN",
+              "args": [
+                200
+              ],
+              "want": [
+                200
+              ]
+            }
+          ],
+          "id": "utf-as-simd",
+          "artifact": "workloads/assemblyscript/utf-as-simd.wasm",
+          "tags": [
+            "real-simd",
+            "simd"
+          ],
+          "artifact_sha256": "8867205c0e7c3772b776bb495867378a587db972de47cfb4914a4fa55083b31a"
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "utf8-validation",
+          "category": "Text & parsing"
+        },
+        "work_unit": "invocation",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            "200"
+          ]
+        },
+        "license": "see upstream artifact provenance; not inferred from repository license",
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 29801
+    },
+    {
+      "id": "yyjson",
+      "path": "corpus/workloads/semantic/yyjson/yyjson.wasm",
+      "sha256": "56874b0102785568fa02478e4d109ecc328419cc05fcc2654062d02df7a2c48b",
+      "contract": {
+        "schema": 1,
+        "id": "wago/yyjson/parse-edit-write",
+        "family": "algorithms",
+        "artifact": "workloads/semantic/yyjson/yyjson.wasm",
+        "sha256": "56874b0102785568fa02478e4d109ecc328419cc05fcc2654062d02df7a2c48b",
+        "abi": "core",
+        "features": [],
+        "export": "yyjson_run",
+        "args": [],
+        "original_contract": {
+          "id": "yyjson/parse-edit-write",
+          "artifact": "workloads/semantic/yyjson/yyjson.wasm",
+          "artifact_sha256": "56874b0102785568fa02478e4d109ecc328419cc05fcc2654062d02df7a2c48b",
+          "abi": "core",
+          "source": {
+            "repository": "https://github.com/ibireme/yyjson.git",
+            "revision": "6447536015f3d600f3d65323b10976103b337ca7",
+            "revision_date": "2026-09-09",
+            "license": "MIT",
+            "toolchain": "wasi-sdk",
+            "toolchain_version": "34.0"
+          },
+          "invoke": {
+            "export": "yyjson_run"
+          },
+          "expect": {
+            "return": [
+              "0xd4809d398dd1ec"
+            ]
+          },
+          "limits": {
+            "timeout_ms": 15000
+          },
+          "tags": [
+            "json",
+            "parser",
+            "serialization",
+            "c"
+          ]
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "json-parse-edit-write",
+          "category": "JSON & serialization"
+        },
+        "work_unit": "invocation",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            "59814107826475500"
+          ]
+        },
+        "license": "see upstream artifact provenance; not inferred from repository license",
+        "source": {
+          "repository": "https://github.com/ibireme/yyjson.git",
+          "revision": "6447536015f3d600f3d65323b10976103b337ca7",
+          "revision_date": "2026-09-09",
+          "license": "MIT",
+          "toolchain": "wasi-sdk",
+          "toolchain_version": "34.0"
+        },
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 127009
+    },
+    {
+      "id": "pcre2",
+      "path": "corpus/workloads/semantic/pcre2/pcre2.wasm",
+      "sha256": "2d00dceff9bbb44ce56ce1e0ad4e1ee09c160da4bc7c4f44634dfee91d966eda",
+      "contract": {
+        "schema": 1,
+        "id": "wago/pcre2/compile-match",
+        "family": "algorithms",
+        "artifact": "workloads/semantic/pcre2/pcre2.wasm",
+        "sha256": "2d00dceff9bbb44ce56ce1e0ad4e1ee09c160da4bc7c4f44634dfee91d966eda",
+        "abi": "core",
+        "features": [],
+        "export": "pcre2_run",
+        "args": [],
+        "original_contract": {
+          "id": "pcre2/compile-match",
+          "artifact": "workloads/semantic/pcre2/pcre2.wasm",
+          "artifact_sha256": "2d00dceff9bbb44ce56ce1e0ad4e1ee09c160da4bc7c4f44634dfee91d966eda",
+          "abi": "core",
+          "source": {
+            "repository": "https://github.com/PCRE2Project/pcre2.git",
+            "revision": "085f8170c27b8336f0bd61f8e99518717ad0950d",
+            "revision_date": "2026-09-16",
+            "license": "BSD-3-Clause WITH PCRE2-exception",
+            "toolchain": "wasi-sdk",
+            "toolchain_version": "34.0"
+          },
+          "invoke": {
+            "export": "pcre2_run"
+          },
+          "expect": {
+            "return": [
+              "0x84e7c9d181489c1f"
+            ]
+          },
+          "limits": {
+            "timeout_ms": 15000
+          },
+          "tags": [
+            "regex",
+            "unicode",
+            "parser",
+            "c"
+          ]
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "regex-compilation-matching",
+          "category": "Text & parsing"
+        },
+        "work_unit": "invocation",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            "9576845034281016351"
+          ]
+        },
+        "license": "see upstream artifact provenance; not inferred from repository license",
+        "source": {
+          "repository": "https://github.com/PCRE2Project/pcre2.git",
+          "revision": "085f8170c27b8336f0bd61f8e99518717ad0950d",
+          "revision_date": "2026-09-16",
+          "license": "BSD-3-Clause WITH PCRE2-exception",
+          "toolchain": "wasi-sdk",
+          "toolchain_version": "34.0"
+        },
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 311039
+    },
+    {
+      "id": "monocypher",
+      "path": "corpus/workloads/semantic/monocypher/monocypher.wasm",
+      "sha256": "fa4356e1222b86387b5566f02c2ccd24404c5f9f044f697a14c164075dacf133",
+      "contract": {
+        "schema": 1,
+        "id": "wago/monocypher/aead-blake2b",
+        "family": "algorithms",
+        "artifact": "workloads/semantic/monocypher/monocypher.wasm",
+        "sha256": "fa4356e1222b86387b5566f02c2ccd24404c5f9f044f697a14c164075dacf133",
+        "abi": "core",
+        "features": [],
+        "export": "monocypher_run",
+        "args": [],
+        "original_contract": {
+          "id": "monocypher/aead-blake2b",
+          "artifact": "workloads/semantic/monocypher/monocypher.wasm",
+          "artifact_sha256": "fa4356e1222b86387b5566f02c2ccd24404c5f9f044f697a14c164075dacf133",
+          "abi": "core",
+          "source": {
+            "repository": "https://github.com/LoupVaillant/Monocypher.git",
+            "revision": "1830c06d5910fba451cec329c8f30f348fc607db",
+            "revision_date": "2026-07-28",
+            "license": "BSD-2-Clause OR CC0-1.0",
+            "toolchain": "wasi-sdk",
+            "toolchain_version": "34.0"
+          },
+          "invoke": {
+            "export": "monocypher_run"
+          },
+          "expect": {
+            "return": [
+              "0x1f4d3a1f1c2cb0"
+            ]
+          },
+          "limits": {
+            "timeout_ms": 15000
+          },
+          "tags": [
+            "crypto",
+            "aead",
+            "blake2b",
+            "c"
+          ]
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "xchacha20-poly1305",
+          "category": "Hashing & cryptography"
+        },
+        "work_unit": "invocation",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            "8810636303412400"
+          ]
+        },
+        "license": "see upstream artifact provenance; not inferred from repository license",
+        "source": {
+          "repository": "https://github.com/LoupVaillant/Monocypher.git",
+          "revision": "1830c06d5910fba451cec329c8f30f348fc607db",
+          "revision_date": "2026-07-28",
+          "license": "BSD-2-Clause OR CC0-1.0",
+          "toolchain": "wasi-sdk",
+          "toolchain_version": "34.0"
+        },
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 15833
+    },
+    {
+      "id": "kissfft",
+      "path": "corpus/workloads/semantic/kissfft/kissfft.wasm",
+      "sha256": "95b236874a6a1e8218545ce703abd36195dcad39eecd3e3b318bbc2a53fd3a1d",
+      "contract": {
+        "schema": 1,
+        "id": "wago/kissfft/complex-roundtrip",
+        "family": "algorithms",
+        "artifact": "workloads/semantic/kissfft/kissfft.wasm",
+        "sha256": "95b236874a6a1e8218545ce703abd36195dcad39eecd3e3b318bbc2a53fd3a1d",
+        "abi": "core",
+        "features": [],
+        "export": "kissfft_run",
+        "args": [],
+        "original_contract": {
+          "id": "kissfft/complex-roundtrip",
+          "artifact": "workloads/semantic/kissfft/kissfft.wasm",
+          "artifact_sha256": "95b236874a6a1e8218545ce703abd36195dcad39eecd3e3b318bbc2a53fd3a1d",
+          "abi": "core",
+          "source": {
+            "repository": "https://github.com/mborgerding/kissfft.git",
+            "revision": "e5e3fac46e0d94a8f8170c06706b7a4218828333",
+            "revision_date": "2026-08-12",
+            "license": "BSD-3-Clause",
+            "toolchain": "wasi-sdk",
+            "toolchain_version": "34.0"
+          },
+          "invoke": {
+            "export": "kissfft_run"
+          },
+          "expect": {
+            "return": [
+              "0xa3e64611f12f3e45"
+            ]
+          },
+          "limits": {
+            "timeout_ms": 15000
+          },
+          "tags": [
+            "fft",
+            "numerical",
+            "floating-point",
+            "c"
+          ]
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "fft",
+          "category": "Audio"
+        },
+        "work_unit": "invocation",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            "11810204115700497989"
+          ]
+        },
+        "license": "see upstream artifact provenance; not inferred from repository license",
+        "source": {
+          "repository": "https://github.com/mborgerding/kissfft.git",
+          "revision": "e5e3fac46e0d94a8f8170c06706b7a4218828333",
+          "revision_date": "2026-08-12",
+          "license": "BSD-3-Clause",
+          "toolchain": "wasi-sdk",
+          "toolchain_version": "34.0"
+        },
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 18901
+    },
+    {
+      "id": "fastfloat",
+      "path": "corpus/workloads/semantic/fastfloat/fastfloat.wasm",
+      "sha256": "6eb172b5da57c4d0a0ff194def7179f022847d09345fd975ba6dcdd827bd7265",
+      "contract": {
+        "schema": 1,
+        "id": "wago/fastfloat/decimal-parse",
+        "family": "algorithms",
+        "artifact": "workloads/semantic/fastfloat/fastfloat.wasm",
+        "sha256": "6eb172b5da57c4d0a0ff194def7179f022847d09345fd975ba6dcdd827bd7265",
+        "abi": "core",
+        "features": [],
+        "export": "fastfloat_run",
+        "args": [],
+        "original_contract": {
+          "id": "fastfloat/decimal-parse",
+          "artifact": "workloads/semantic/fastfloat/fastfloat.wasm",
+          "artifact_sha256": "6eb172b5da57c4d0a0ff194def7179f022847d09345fd975ba6dcdd827bd7265",
+          "abi": "core",
+          "source": {
+            "repository": "https://github.com/fastfloat/fast_float.git",
+            "revision": "b0ab987b3dfdde13fa1915f65ef2a5c068d9208c",
+            "revision_date": "2026-09-15",
+            "license": "MIT OR Apache-2.0 OR BSL-1.0",
+            "toolchain": "wasi-sdk",
+            "toolchain_version": "34.0"
+          },
+          "invoke": {
+            "export": "fastfloat_run"
+          },
+          "expect": {
+            "return": [
+              "0xf3a5520f8bb1ba22"
+            ]
+          },
+          "limits": {
+            "timeout_ms": 15000
+          },
+          "tags": [
+            "floating-point",
+            "parser",
+            "cpp"
+          ]
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "decimal-floating-point-parsing",
+          "category": "Text & parsing"
+        },
+        "work_unit": "invocation",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            "17556528949095414306"
+          ]
+        },
+        "license": "see upstream artifact provenance; not inferred from repository license",
+        "source": {
+          "repository": "https://github.com/fastfloat/fast_float.git",
+          "revision": "b0ab987b3dfdde13fa1915f65ef2a5c068d9208c",
+          "revision_date": "2026-09-15",
+          "license": "MIT OR Apache-2.0 OR BSL-1.0",
+          "toolchain": "wasi-sdk",
+          "toolchain_version": "34.0"
+        },
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 30010
+    },
+    {
+      "id": "polybench-gemm",
+      "path": "corpus/workloads/polybench/gemm.wasm",
+      "sha256": "8ba9ee8cafd9bf19b1547fe9127c861505daeecfe84c0516801776fddfcabd79",
+      "contract": {
+        "schema": 1,
+        "id": "wago/polybench-gemm/polybench_run",
+        "family": "algorithms",
+        "artifact": "workloads/polybench/gemm.wasm",
+        "sha256": "8ba9ee8cafd9bf19b1547fe9127c861505daeecfe84c0516801776fddfcabd79",
+        "abi": "core",
+        "features": [],
+        "export": "polybench_run",
+        "args": [],
+        "original_contract": {
+          "suite": "PolyBench/C",
+          "desc": "PolyBench/C gemm (small dataset)",
+          "id": "polybench-gemm",
+          "artifact": "workloads/polybench/gemm.wasm",
+          "tags": [
+            "blas",
+            "algorithm",
+            "polybench"
+          ],
+          "artifact_sha256": "8ba9ee8cafd9bf19b1547fe9127c861505daeecfe84c0516801776fddfcabd79",
+          "exec": [
+            {
+              "export": "polybench_run",
+              "args": [],
+              "want": [
+                122535361
+              ]
+            }
+          ]
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "matrix-multiplication",
+          "category": "Linear algebra"
+        },
+        "work_unit": "invocation",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            "122535361"
+          ]
+        },
+        "license": "see upstream artifact provenance; not inferred from repository license",
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 2184
+    },
+    {
+      "id": "polybench-nussinov",
+      "path": "corpus/workloads/polybench/nussinov.wasm",
+      "sha256": "d057968b40a33481a9f64c98365f1301450c627586bbeabe64f39d03901ebf44",
+      "contract": {
+        "schema": 1,
+        "id": "wago/polybench-nussinov/polybench_run",
+        "family": "algorithms",
+        "artifact": "workloads/polybench/nussinov.wasm",
+        "sha256": "d057968b40a33481a9f64c98365f1301450c627586bbeabe64f39d03901ebf44",
+        "abi": "core",
+        "features": [],
+        "export": "polybench_run",
+        "args": [],
+        "original_contract": {
+          "suite": "PolyBench/C",
+          "desc": "PolyBench/C nussinov (small dataset)",
+          "id": "polybench-nussinov",
+          "artifact": "workloads/polybench/nussinov.wasm",
+          "tags": [
+            "dynamic-programming",
+            "algorithm",
+            "polybench"
+          ],
+          "artifact_sha256": "d057968b40a33481a9f64c98365f1301450c627586bbeabe64f39d03901ebf44",
+          "exec": [
+            {
+              "export": "polybench_run",
+              "args": [],
+              "want": [
+                1011254973
+              ]
+            }
+          ]
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "rna-nussinov",
+          "category": "Bioinformatics"
+        },
+        "work_unit": "invocation",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            "1011254973"
+          ]
+        },
+        "license": "see upstream artifact provenance; not inferred from repository license",
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 1930
+    },
+    {
+      "id": "coremark",
+      "path": "corpus/workloads/semantic/coremark/coremark.wasm",
+      "sha256": "dc98981b11142786c3e505e1c7a129bc5bb398ebabead2d8082072385954fb5a",
+      "contract": {
+        "schema": 1,
+        "id": "wago/coremark/2k-performance",
+        "family": "algorithms",
+        "artifact": "workloads/semantic/coremark/coremark.wasm",
+        "sha256": "dc98981b11142786c3e505e1c7a129bc5bb398ebabead2d8082072385954fb5a",
+        "abi": "core",
+        "features": [],
+        "export": "coremark_run",
+        "args": [
+          "1000",
+          "0"
+        ],
+        "original_contract": {
+          "id": "coremark/2k-performance",
+          "artifact": "workloads/semantic/coremark/coremark.wasm",
+          "artifact_sha256": "dc98981b11142786c3e505e1c7a129bc5bb398ebabead2d8082072385954fb5a",
+          "abi": "core",
+          "source": {
+            "repository": "https://github.com/eembc/coremark.git",
+            "revision": "1f483d5b8316753a742cbf5590caf5bd0a4e4777",
+            "revision_date": "2025-05-01",
+            "license": "Apache-2.0",
+            "toolchain": "wasi-sdk",
+            "toolchain_version": "33.0"
+          },
+          "invoke": {
+            "export": "coremark_run",
+            "args": [
+              1000,
+              0
+            ]
+          },
+          "expect": {
+            "return": [
+              "0x0"
+            ],
+            "memory": [
+              {
+                "offset": 0,
+                "hex": "14e7d71f3a8e40d3"
+              }
+            ]
+          },
+          "limits": {
+            "timeout_ms": 15000
+          },
+          "tags": [
+            "integer",
+            "lists",
+            "matrix",
+            "state-machine",
+            "c"
+          ]
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "coremark-mixed-integer",
+          "category": "Integer & graph algorithms"
+        },
+        "work_unit": "invocation",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_u64",
+          "expected": [
+            "0"
+          ],
+          "memory": [
+            {
+              "offset": 0,
+              "hex": "14e7d71f3a8e40d3"
+            }
+          ]
+        },
+        "license": "see upstream artifact provenance; not inferred from repository license",
+        "source": {
+          "repository": "https://github.com/eembc/coremark.git",
+          "revision": "1f483d5b8316753a742cbf5590caf5bd0a4e4777",
+          "revision_date": "2025-05-01",
+          "license": "Apache-2.0",
+          "toolchain": "wasi-sdk",
+          "toolchain_version": "33.0"
+        },
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 8156
+    },
+    {
+      "id": "quickjs-script",
+      "path": "corpus/workloads/applications/quickjs/qjs.wasm",
+      "sha256": "e384f80f3dd492dab373d9eda08fb124cc4484945bbc2c9d03cbc7598e711a40",
+      "contract": {
+        "schema": 1,
+        "id": "wago/quickjs-script",
+        "family": "applications",
+        "artifact": "workloads/applications/quickjs/qjs.wasm",
+        "sha256": "e384f80f3dd492dab373d9eda08fb124cc4484945bbc2c9d03cbc7598e711a40",
+        "abi": "wasi-command",
+        "host_profile": "wasi-preview1-readonly-v1",
+        "features": [],
+        "export": "_start",
+        "args": [],
+        "command": {
+          "argv": [
+            "quickjs-script",
+            "program.js"
+          ],
+          "files": {
+            "program.js": {
+              "path": "corpora/upstream/wago/corpus/workloads/applications/js-runtime/inputs/program.js",
+              "size": 1961,
+              "sha256": "5f2ea9684e195fc3f7bcbc8be4ad8b4c2540e6b10a560365176d3ce07c2ac92d"
+            }
+          },
+          "exit_code": 0,
+          "stdout_sha256": "485ded1ee5ff38dee328f324894460d61da6914badb6cf5359a36a3e14ca865b",
+          "output_limit_bytes": 16777216
+        },
+        "original_contract": {
+          "suite": "quickjs",
+          "desc": "QuickJS WASI CLI parses and aggregates 50,000 generated service events",
+          "id": "quickjs-script",
+          "artifact": "workloads/applications/quickjs/qjs.wasm",
+          "artifact_sha256": "e384f80f3dd492dab373d9eda08fb124cc4484945bbc2c9d03cbc7598e711a40",
+          "tags": [
+            "application",
+            "interpreter",
+            "javascript",
+            "c",
+            "wasi"
+          ],
+          "source": {
+            "repository": "https://github.com/saghul/wasi-lab.git",
+            "revision": "05d2c175afeed626187f792c9dd1a8142e11f95a",
+            "revision_date": "2019-10-25",
+            "license": "MIT",
+            "toolchain": "wasi-sdk",
+            "toolchain_version": "34.0"
+          },
+          "stages": [
+            "Decode",
+            "Validate",
+            "Compile",
+            "CompileFull",
+            "CommandExec"
+          ],
+          "command": {
+            "runtime": "wasi",
+            "platforms": [
+              "linux/amd64",
+              "linux/arm64",
+              "darwin/amd64",
+              "darwin/arm64"
+            ],
+            "export": "_start",
+            "args": [
+              "program.js"
+            ],
+            "preopen": "workloads/applications/js-runtime/inputs",
+            "inputs": {
+              "program.js": "5f2ea9684e195fc3f7bcbc8be4ad8b4c2540e6b10a560365176d3ce07c2ac92d"
+            },
+            "stdout_sha256": "485ded1ee5ff38dee328f324894460d61da6914badb6cf5359a36a3e14ca865b"
+          }
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "javascript-interpreter",
+          "category": "Language runtimes"
+        },
+        "work_unit": "command",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_command",
+          "expected": []
+        },
+        "license": "MIT",
+        "source": {
+          "repository": "https://github.com/saghul/wasi-lab.git",
+          "revision": "05d2c175afeed626187f792c9dd1a8142e11f95a",
+          "revision_date": "2019-10-25",
+          "license": "MIT",
+          "toolchain": "wasi-sdk",
+          "toolchain_version": "34.0"
+        },
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 727617
+    },
+    {
+      "id": "esbuild-minify",
+      "path": "corpus/workloads/applications/esbuild/esbuild.wasm",
+      "sha256": "a593128fc5b588cfc19d974ef8896ab9ad3bd3d8ccaaf392c981a26380617e8f",
+      "contract": {
+        "schema": 1,
+        "id": "wago/esbuild-minify",
+        "family": "applications",
+        "artifact": "workloads/applications/esbuild/esbuild.wasm",
+        "sha256": "a593128fc5b588cfc19d974ef8896ab9ad3bd3d8ccaaf392c981a26380617e8f",
+        "abi": "wasi-command",
+        "host_profile": "wasi-preview1-readonly-v1",
+        "features": [],
+        "export": "_start",
+        "args": [],
+        "command": {
+          "argv": [
+            "esbuild-minify",
+            "--minify",
+            "--loader=js"
+          ],
+          "stdin_file": "source.js",
+          "files": {
+            "source.js": {
+              "path": "corpora/upstream/wago/corpus/workloads/applications/javascript-source/inputs/source.js",
+              "size": 2160055,
+              "sha256": "ebc5d1b1cf40ddf6fcc2cee0d8bcb01090a1e935c79ac27c8a6f4aeabf78c0ce"
+            }
+          },
+          "exit_code": 0,
+          "stdout_sha256": "070f4effcdccfa95e41cca57494d11ddf329c48e9af6d535638a3b3d7a306203",
+          "output_limit_bytes": 16777216
+        },
+        "original_contract": {
+          "suite": "esbuild",
+          "desc": "esbuild WASI CLI minifies 2.16 MB of generated production-shaped JavaScript",
+          "id": "esbuild-minify",
+          "artifact": "workloads/applications/esbuild/esbuild.wasm",
+          "artifact_sha256": "a593128fc5b588cfc19d974ef8896ab9ad3bd3d8ccaaf392c981a26380617e8f",
+          "tags": [
+            "application",
+            "compiler",
+            "javascript",
+            "go",
+            "wasi"
+          ],
+          "source": {
+            "repository": "https://github.com/evanw/esbuild.git",
+            "revision": "f6058f8364fe7ab91ca57a83e02577ed74c9cae4",
+            "revision_date": "2026-08-09",
+            "license": "MIT",
+            "toolchain": "go",
+            "toolchain_version": "1.26.5"
+          },
+          "stages": [
+            "Decode",
+            "Validate",
+            "Compile",
+            "CompileFull",
+            "CommandExec"
+          ],
+          "command": {
+            "runtime": "wasi",
+            "platforms": [
+              "linux/amd64",
+              "linux/arm64",
+              "darwin/amd64",
+              "darwin/arm64"
+            ],
+            "export": "_start",
+            "args": [
+              "--minify",
+              "--loader=js"
+            ],
+            "stdin": "source.js",
+            "preopen": "workloads/applications/javascript-source/inputs",
+            "inputs": {
+              "source.js": "ebc5d1b1cf40ddf6fcc2cee0d8bcb01090a1e935c79ac27c8a6f4aeabf78c0ce"
+            },
+            "stdout_sha256": "070f4effcdccfa95e41cca57494d11ddf329c48e9af6d535638a3b3d7a306203"
+          }
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "javascript-minification",
+          "category": "Compilers & development tools"
+        },
+        "work_unit": "command",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_command",
+          "expected": []
+        },
+        "license": "MIT",
+        "source": {
+          "repository": "https://github.com/evanw/esbuild.git",
+          "revision": "f6058f8364fe7ab91ca57a83e02577ed74c9cae4",
+          "revision_date": "2026-08-09",
+          "license": "MIT",
+          "toolchain": "go",
+          "toolchain_version": "1.26.5"
+        },
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 20677268
+    },
+    {
+      "id": "sqlite3-query",
+      "path": "corpus/workloads/applications/sqlite3/sqlite3.wasm",
+      "sha256": "bbfa28f00fea33bd95bd3bd573c92fd821173d03b280180b7e40dac0af91a669",
+      "contract": {
+        "schema": 1,
+        "id": "wago/sqlite3-query",
+        "family": "applications",
+        "artifact": "workloads/applications/sqlite3/sqlite3.wasm",
+        "sha256": "bbfa28f00fea33bd95bd3bd573c92fd821173d03b280180b7e40dac0af91a669",
+        "abi": "wasi-command",
+        "host_profile": "wasi-preview1-readonly-v1",
+        "features": [],
+        "export": "_start",
+        "args": [],
+        "command": {
+          "argv": [
+            "sqlite3-query",
+            "-batch",
+            ":memory:",
+            "WITH RECURSIVE events(n,value) AS (VALUES(1,12345) UNION ALL SELECT n+1,(value+48271)%1000003 FROM events WHERE n<1000000) SELECT count(*),sum(value),sum(CASE WHEN value%257=0 THEN value ELSE 0 END),sum(value&4095) FROM events;"
+          ],
+          "exit_code": 0,
+          "stdout_sha256": "5531212e58a571b40d57b960e0d0e2dfa46d183496f18fb0389a7927ad48a897",
+          "output_limit_bytes": 16777216
+        },
+        "original_contract": {
+          "suite": "sqlite3",
+          "desc": "SQLite WASI shell recursively generates one million rows and computes four exact aggregates",
+          "id": "sqlite3-query",
+          "artifact": "workloads/applications/sqlite3/sqlite3.wasm",
+          "artifact_sha256": "bbfa28f00fea33bd95bd3bd573c92fd821173d03b280180b7e40dac0af91a669",
+          "tags": [
+            "application",
+            "database",
+            "sql",
+            "c",
+            "wasi"
+          ],
+          "source": {
+            "repository": "https://www.sqlite.org/2026/sqlite-amalgamation-3530400.zip",
+            "revision": "3.53.4",
+            "revision_date": "2026-07-24",
+            "license": "Public-Domain",
+            "toolchain": "wasi-sdk",
+            "toolchain_version": "34.0"
+          },
+          "stages": [
+            "Decode",
+            "Validate",
+            "Compile",
+            "CompileFull",
+            "CommandExec"
+          ],
+          "command": {
+            "runtime": "wasi",
+            "platforms": [
+              "linux/amd64",
+              "linux/arm64",
+              "darwin/amd64",
+              "darwin/arm64"
+            ],
+            "export": "_start",
+            "args": [
+              "-batch",
+              ":memory:",
+              "WITH RECURSIVE events(n,value) AS (VALUES(1,12345) UNION ALL SELECT n+1,(value+48271)%1000003 FROM events WHERE n<1000000) SELECT count(*),sum(value),sum(CASE WHEN value%257=0 THEN value ELSE 0 END),sum(value&4095) FROM events;"
+            ],
+            "stdout_sha256": "5531212e58a571b40d57b960e0d0e2dfa46d183496f18fb0389a7927ad48a897"
+          }
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "sqlite-sql-query",
+          "category": "Databases & analytics"
+        },
+        "work_unit": "command",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_command",
+          "expected": []
+        },
+        "license": "Public-Domain",
+        "source": {
+          "repository": "https://www.sqlite.org/2026/sqlite-amalgamation-3530400.zip",
+          "revision": "3.53.4",
+          "revision_date": "2026-07-24",
+          "license": "Public-Domain",
+          "toolchain": "wasi-sdk",
+          "toolchain_version": "34.0"
+        },
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 1318577
+    },
+    {
+      "id": "jq-json-transform",
+      "path": "corpus/workloads/applications/jq/jq.wasm",
+      "sha256": "e99e12da7947aa782137d61367fbe78264af6a6aa6fed6c5d73e327b81571d0e",
+      "contract": {
+        "schema": 1,
+        "id": "wago/jq-json-transform",
+        "family": "applications",
+        "artifact": "workloads/applications/jq/jq.wasm",
+        "sha256": "e99e12da7947aa782137d61367fbe78264af6a6aa6fed6c5d73e327b81571d0e",
+        "abi": "wasi-command",
+        "host_profile": "wasi-preview1-readonly-v1",
+        "features": [],
+        "export": "_start",
+        "args": [],
+        "command": {
+          "argv": [
+            "jq-json-transform",
+            "-n",
+            "-c",
+            "-M",
+            "[range(0;50000) | {category:(. % 97), score:(((. * 48271) % 2147483647) % 100003), label:(\"event-\" + tostring)}] | sort_by(.category, .score) | group_by(.category) | map({category: .[0].category, count: length, total: (map(.score) | add), maximum: (map(.score) | max)}) | {groups:length, count:(map(.count)|add), total:(map(.total)|add), checksum:(map((.category + 1) * .maximum)|add)}"
+          ],
+          "exit_code": 0,
+          "stdout_sha256": "4f33b717f7ae401dc56e8b19b87ea14c04f718a38860ac970696c52d5abba25a",
+          "output_limit_bytes": 16777216
+        },
+        "original_contract": {
+          "suite": "jq",
+          "desc": "jq WASI CLI sorts, groups, and aggregates 50,000 generated JSON objects with an exact output oracle",
+          "id": "jq-json-transform",
+          "artifact": "workloads/applications/jq/jq.wasm",
+          "artifact_sha256": "e99e12da7947aa782137d61367fbe78264af6a6aa6fed6c5d73e327b81571d0e",
+          "tags": [
+            "application",
+            "json",
+            "query",
+            "c",
+            "wasi"
+          ],
+          "source": {
+            "repository": "https://github.com/jqlang/jq.git",
+            "revision": "34f7186b86743a083a589741b6cea95293524108",
+            "revision_date": "2026-06-20",
+            "license": "MIT AND BSD-2-Clause",
+            "toolchain": "wasi-sdk",
+            "toolchain_version": "34.0"
+          },
+          "stages": [
+            "Decode",
+            "Validate",
+            "Compile",
+            "CompileFull",
+            "CommandExec"
+          ],
+          "command": {
+            "runtime": "wasi",
+            "platforms": [
+              "linux/amd64",
+              "linux/arm64",
+              "darwin/amd64",
+              "darwin/arm64"
+            ],
+            "export": "_start",
+            "args": [
+              "-n",
+              "-c",
+              "-M",
+              "[range(0;50000) | {category:(. % 97), score:(((. * 48271) % 2147483647) % 100003), label:(\"event-\" + tostring)}] | sort_by(.category, .score) | group_by(.category) | map({category: .[0].category, count: length, total: (map(.score) | add), maximum: (map(.score) | max)}) | {groups:length, count:(map(.count)|add), total:(map(.total)|add), checksum:(map((.category + 1) * .maximum)|add)}"
+            ],
+            "stdout_sha256": "4f33b717f7ae401dc56e8b19b87ea14c04f718a38860ac970696c52d5abba25a"
+          }
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "jq-query-transform",
+          "category": "JSON & serialization"
+        },
+        "work_unit": "command",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_command",
+          "expected": []
+        },
+        "license": "MIT AND BSD-2-Clause",
+        "source": {
+          "repository": "https://github.com/jqlang/jq.git",
+          "revision": "34f7186b86743a083a589741b6cea95293524108",
+          "revision_date": "2026-06-20",
+          "license": "MIT AND BSD-2-Clause",
+          "toolchain": "wasi-sdk",
+          "toolchain_version": "34.0"
+        },
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 957803
+    },
+    {
+      "id": "brotli-compress",
+      "path": "corpus/workloads/applications/brotli/brotli.wasm",
+      "sha256": "9452cb53ecb2092847effd78a5a991cd8009cea6139b52a8561fe5889634f35c",
+      "contract": {
+        "schema": 1,
+        "id": "wago/brotli-compress",
+        "family": "applications",
+        "artifact": "workloads/applications/brotli/brotli.wasm",
+        "sha256": "9452cb53ecb2092847effd78a5a991cd8009cea6139b52a8561fe5889634f35c",
+        "abi": "wasi-command",
+        "host_profile": "wasi-preview1-readonly-v1",
+        "features": [],
+        "export": "_start",
+        "args": [],
+        "command": {
+          "argv": [
+            "brotli-compress",
+            "-q",
+            "10",
+            "-c",
+            "-n",
+            "-f"
+          ],
+          "stdin_file": "source.js",
+          "files": {
+            "source.js": {
+              "path": "corpora/upstream/wago/corpus/workloads/applications/javascript-source/inputs/source.js",
+              "size": 2160055,
+              "sha256": "ebc5d1b1cf40ddf6fcc2cee0d8bcb01090a1e935c79ac27c8a6f4aeabf78c0ce"
+            }
+          },
+          "exit_code": 0,
+          "stdout_sha256": "8407ca5c3b664e4244c2a6673307678420e9b261510056d6072cbc6b9eb240b1",
+          "output_limit_bytes": 16777216
+        },
+        "original_contract": {
+          "suite": "brotli",
+          "desc": "Brotli WASI CLI compresses 2.16 MB of generated JavaScript at quality 10 with an exact output oracle",
+          "id": "brotli-compress",
+          "artifact": "workloads/applications/brotli/brotli.wasm",
+          "artifact_sha256": "9452cb53ecb2092847effd78a5a991cd8009cea6139b52a8561fe5889634f35c",
+          "tags": [
+            "application",
+            "compression",
+            "c",
+            "wasi"
+          ],
+          "source": {
+            "repository": "https://github.com/google/brotli.git",
+            "revision": "028fb5a23661f123017c060daa546b55cf4bde29",
+            "revision_date": "2025-10-27",
+            "license": "MIT",
+            "toolchain": "wasi-sdk",
+            "toolchain_version": "34.0"
+          },
+          "stages": [
+            "Decode",
+            "Validate",
+            "Compile",
+            "CompileFull",
+            "CommandExec"
+          ],
+          "command": {
+            "runtime": "wasi",
+            "platforms": [
+              "linux/amd64",
+              "linux/arm64",
+              "darwin/amd64",
+              "darwin/arm64"
+            ],
+            "export": "_start",
+            "args": [
+              "-q",
+              "10",
+              "-c",
+              "-n",
+              "-f"
+            ],
+            "stdin": "source.js",
+            "preopen": "workloads/applications/javascript-source/inputs",
+            "inputs": {
+              "source.js": "ebc5d1b1cf40ddf6fcc2cee0d8bcb01090a1e935c79ac27c8a6f4aeabf78c0ce"
+            },
+            "stdout_sha256": "8407ca5c3b664e4244c2a6673307678420e9b261510056d6072cbc6b9eb240b1"
+          }
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "brotli",
+          "category": "Compression"
+        },
+        "work_unit": "command",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_command",
+          "expected": []
+        },
+        "license": "MIT",
+        "source": {
+          "repository": "https://github.com/google/brotli.git",
+          "revision": "028fb5a23661f123017c060daa546b55cf4bde29",
+          "revision_date": "2025-10-27",
+          "license": "MIT",
+          "toolchain": "wasi-sdk",
+          "toolchain_version": "34.0"
+        },
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 791733
+    },
+    {
+      "id": "lua-cli-buckets",
+      "path": "corpus/workloads/applications/lua/lua.wasm",
+      "sha256": "51e8072539c5ba5f4e97e7e776ef852f9879cb5b97b4e5d0f9f1e9c3956ffbe2",
+      "contract": {
+        "schema": 1,
+        "id": "wago/lua-cli-buckets",
+        "family": "applications",
+        "artifact": "workloads/applications/lua/lua.wasm",
+        "sha256": "51e8072539c5ba5f4e97e7e776ef852f9879cb5b97b4e5d0f9f1e9c3956ffbe2",
+        "abi": "wasi-command",
+        "host_profile": "wasi-preview1-readonly-v1",
+        "features": [],
+        "export": "_start",
+        "args": [],
+        "command": {
+          "argv": [
+            "lua-cli-buckets",
+            "/program.lua"
+          ],
+          "files": {
+            "program.lua": {
+              "path": "corpora/upstream/wago/corpus/workloads/applications/lua/inputs/program.lua",
+              "size": 1263,
+              "sha256": "3807a5f816795e9be766394e54b9f07e35717a19d9af91e10611c69e5e8e3c28"
+            }
+          },
+          "exit_code": 0,
+          "stdout_sha256": "0596a0eadbe52c645aa00bb7fca2ed57f1620d4041ce78dc40080b2b934468fb",
+          "output_limit_bytes": 16777216
+        },
+        "original_contract": {
+          "suite": "lua",
+          "desc": "standalone Lua 5.4.6 interpreter aggregates one million generated events into 257 ranked buckets",
+          "id": "lua-cli-buckets",
+          "artifact": "workloads/applications/lua/lua.wasm",
+          "artifact_sha256": "51e8072539c5ba5f4e97e7e776ef852f9879cb5b97b4e5d0f9f1e9c3956ffbe2",
+          "tags": [
+            "application",
+            "interpreter",
+            "lua",
+            "c",
+            "wasi"
+          ],
+          "source": {
+            "repository": "https://github.com/nalgeon/lua-wasi",
+            "revision": "@antonz/lua-wasi 5.4.6",
+            "revision_date": "2024-01-03",
+            "license": "MIT",
+            "toolchain": "wasienv plus WABT import rename",
+            "toolchain_version": "Lua 5.4.6"
+          },
+          "stages": [
+            "Decode",
+            "Validate",
+            "Compile",
+            "CompileFull",
+            "CommandExec"
+          ],
+          "command": {
+            "runtime": "wasi",
+            "reference_runtime": "wasmtime",
+            "platforms": [
+              "linux/amd64",
+              "linux/arm64",
+              "darwin/amd64",
+              "darwin/arm64"
+            ],
+            "export": "_start",
+            "args": [
+              "/program.lua"
+            ],
+            "preopen": "workloads/applications/lua/inputs",
+            "inputs": {
+              "program.lua": "3807a5f816795e9be766394e54b9f07e35717a19d9af91e10611c69e5e8e3c28"
+            },
+            "stdout_sha256": "0596a0eadbe52c645aa00bb7fca2ed57f1620d4041ce78dc40080b2b934468fb"
+          }
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "lua-interpreter",
+          "category": "Language runtimes"
+        },
+        "work_unit": "command",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_command",
+          "expected": []
+        },
+        "license": "MIT",
+        "source": {
+          "repository": "https://github.com/nalgeon/lua-wasi",
+          "revision": "@antonz/lua-wasi 5.4.6",
+          "revision_date": "2024-01-03",
+          "license": "MIT",
+          "toolchain": "wasienv plus WABT import rename",
+          "toolchain_version": "Lua 5.4.6"
+        },
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 306612
+    },
+    {
+      "id": "swift-format-source",
+      "path": "corpus/workloads/applications/swift-format/swift-format.wasm",
+      "sha256": "4f9c01a9569407766947c6fa6e9369dd9703f461f31dc9c79b49a6a6bcc5bc76",
+      "contract": {
+        "schema": 1,
+        "id": "wago/swift-format-source",
+        "family": "applications",
+        "artifact": "workloads/applications/swift-format/swift-format.wasm",
+        "sha256": "4f9c01a9569407766947c6fa6e9369dd9703f461f31dc9c79b49a6a6bcc5bc76",
+        "abi": "wasi-command",
+        "host_profile": "wasi-preview1-readonly-v1",
+        "features": [],
+        "export": "_start",
+        "args": [],
+        "command": {
+          "argv": [
+            "swift-format-source",
+            "format",
+            "source.swift"
+          ],
+          "files": {
+            "source.swift": {
+              "path": "corpora/upstream/wago/corpus/workloads/applications/swift-format/inputs/source.swift",
+              "size": 271,
+              "sha256": "aa42bbc4d55e53cc38902fbcaf6b8da46d1e9ca52202d487bbd6c0e17c461d74"
+            }
+          },
+          "exit_code": 0,
+          "stdout_sha256": "1248b3fde251be78256a4e080ead7992ab502c8715f4ba5162a914c91a48137a",
+          "output_limit_bytes": 16777216
+        },
+        "original_contract": {
+          "suite": "swift-format",
+          "desc": "Swift formatter CLI reformats source from stdin with an exact output oracle",
+          "id": "swift-format-source",
+          "artifact": "workloads/applications/swift-format/swift-format.wasm",
+          "artifact_sha256": "4f9c01a9569407766947c6fa6e9369dd9703f461f31dc9c79b49a6a6bcc5bc76",
+          "tags": [
+            "application",
+            "formatter",
+            "swift",
+            "wasi"
+          ],
+          "source": {
+            "repository": "https://github.com/kkebo/swift-format.git",
+            "revision": "92097d54ac3be47738fe77e38c918e9aabce0302",
+            "revision_date": "2026-07-01",
+            "license": "Apache-2.0 WITH Swift-exception",
+            "toolchain": "upstream WASI release artifact",
+            "toolchain_version": "603.0.0-wasm32-wasi"
+          },
+          "stages": [
+            "Decode",
+            "Validate",
+            "Compile",
+            "CompileFull",
+            "CommandExec"
+          ],
+          "command": {
+            "runtime": "wasi",
+            "platforms": [
+              "linux/amd64",
+              "linux/arm64",
+              "darwin/amd64",
+              "darwin/arm64"
+            ],
+            "export": "_start",
+            "args": [
+              "format",
+              "source.swift"
+            ],
+            "preopen": "workloads/applications/swift-format/inputs",
+            "inputs": {
+              "source.swift": "aa42bbc4d55e53cc38902fbcaf6b8da46d1e9ca52202d487bbd6c0e17c461d74"
+            },
+            "stdout_sha256": "1248b3fde251be78256a4e080ead7992ab502c8715f4ba5162a914c91a48137a"
+          }
+        },
+        "provenance": {
+          "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+          "importer": "wago-catalog-v1",
+          "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+          "algorithm": "swift-formatting",
+          "category": "Compilers & development tools"
+        },
+        "work_unit": "command",
+        "units_per_invocation": 1,
+        "reset": "fresh_instance_per_sample",
+        "oracle": {
+          "kind": "exact_command",
+          "expected": []
+        },
+        "license": "Apache-2.0 WITH Swift-exception",
+        "source": {
+          "repository": "https://github.com/kkebo/swift-format.git",
+          "revision": "92097d54ac3be47738fe77e38c918e9aabce0302",
+          "revision_date": "2026-07-01",
+          "license": "Apache-2.0 WITH Swift-exception",
+          "toolchain": "upstream WASI release artifact",
+          "toolchain_version": "603.0.0-wasm32-wasi"
+        },
+        "generator": "wago-catalog-v1"
+      },
+      "bytes": 51209935
+    }
+  ]
+}

@@ -13,6 +13,7 @@ import (
 	"os"
 	"runtime"
 	"syscall"
+	"time"
 	"unsafe"
 
 	wago "github.com/wago-org/wago"
@@ -24,6 +25,14 @@ func rss() int64 {
 		panic(err)
 	}
 	return r.Maxrss * 1024
+}
+
+func cpuNS() int64 {
+	var r syscall.Rusage
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &r); err != nil {
+		panic(err)
+	}
+	return (int64(r.Utime.Sec)+int64(r.Stime.Sec))*1e9 + (int64(r.Utime.Usec)+int64(r.Stime.Usec))*1e3
 }
 
 func main() {
@@ -39,7 +48,15 @@ func main() {
 	var before, after, retained, closed runtime.MemStats
 	runtime.ReadMemStats(&before)
 	startupRSS := rss()
-	cm, err := wago.Compile(nil, data)
+	cfg := wago.NewRuntimeConfig().WithFunctionWorkers(1)
+	if opt := os.Getenv("WAGO_STUDY_OPT"); opt != "" {
+		cfg = cfg.WithOptimization(opt, os.Getenv("WAGO_STUDY_ON") != "0")
+	}
+	cpuStarted := cpuNS()
+	started := time.Now()
+	cm, err := cfg.Compile(data)
+	compileNS := time.Since(started).Nanoseconds()
+	compileCPU := cpuNS() - cpuStarted
 	if err != nil {
 		panic(err)
 	}
@@ -71,7 +88,8 @@ func main() {
 	runtime.KeepAlive(data)
 	if err := json.NewEncoder(os.Stdout).Encode(map[string]any{
 		"input": os.Args[1], "input_bytes": len(data), "go": runtime.Version(), "gomaxprocs": runtime.GOMAXPROCS(0),
-		"startup_peak_rss_bytes": startupRSS, "compile_peak_rss_bytes": peakRSS,
+		"compile_ns": compileNS, "startup_peak_rss_bytes": startupRSS, "compile_peak_rss_bytes": peakRSS,
+		"compile_cpu_ns":  compileCPU,
 		"allocated_bytes": after.TotalAlloc - before.TotalAlloc, "allocations": after.Mallocs - before.Mallocs,
 		"compile_gc_cycles": after.NumGC - before.NumGC, "heap_before_bytes": before.HeapAlloc,
 		"heap_after_compile_bytes": after.HeapAlloc, "heap_retained_result_bytes": retained.HeapAlloc,

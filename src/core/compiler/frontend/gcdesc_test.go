@@ -1,6 +1,7 @@
 package frontend
 
 import (
+	"reflect"
 	"testing"
 	"unsafe"
 
@@ -9,6 +10,58 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestFunctionSentinelsMatchGeneralMetadata(t *testing.T) {
+	for _, count := range []int{0, 1, 7, 256} {
+		types := []wasm.RecType{{}}
+		for at := 0; at < count; {
+			group := wasm.RecType{SubTypes: make([]wasm.SubType, min(3, count-at))}
+			for i := range group.SubTypes {
+				group.SubTypes[i] = wasm.SubType{Final: (at+i)%2 == 0, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32, wasm.ExternRef}, Results: []wasm.ValType{wasm.I64}}}
+			}
+			at += len(group.SubTypes)
+			types = append(types, group, wasm.RecType{})
+		}
+		got, ok := lowerFunctionTypeSentinels(types)
+		if !ok {
+			t.Fatalf("count=%d: function-only groups declined", count)
+		}
+		want, err := lowerGCTypeMetadataGeneral(types)
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("count=%d: metadata differs from general path: %v", count, err)
+		}
+		if err := gc.ValidateTypeDescs(got.Descs); err != nil {
+			t.Fatalf("count=%d: invalid constructed sentinels: %v", count, err)
+		}
+	}
+	for _, sub := range []wasm.SubType{
+		{Comp: wasm.CompType{Kind: wasm.CompStruct}},
+		{Comp: wasm.CompType{Kind: wasm.CompArray}},
+		{Comp: wasm.CompType{Kind: wasm.CompFunc}, Supers: []wasm.TypeIdx{{Index: 0}}},
+	} {
+		if _, ok := lowerFunctionTypeSentinels([]wasm.RecType{{SubTypes: []wasm.SubType{sub}}}); ok {
+			t.Fatalf("nontrivial type accepted by sentinel construction: %+v", sub)
+		}
+	}
+}
+
+func TestFunctionSentinelsRetainSuperValidation(t *testing.T) {
+	base, child := fn(), fn()
+	base.Final = false
+	child.Supers = []wasm.TypeIdx{{Index: 0, Rec: true}}
+	types := []wasm.RecType{{SubTypes: []wasm.SubType{base, child}}}
+	got, err := LowerGCTypeMetadata(types)
+	want, generalErr := lowerGCTypeMetadataGeneral(types)
+	if err != nil || generalErr != nil || !reflect.DeepEqual(got, want) || !got.Descs[1].HasSuper || got.Descs[1].Super != 0 {
+		t.Fatalf("function super metadata differs: %v / %v", err, generalErr)
+	}
+	for _, invalid := range []uint32{1, 9} {
+		types[0].SubTypes[1].Supers[0].Index = invalid
+		if _, err := LowerGCTypeMetadata(types); err == nil {
+			t.Fatalf("invalid function super %d accepted", invalid)
+		}
+	}
+}
 
 func val(v wasm.ValType) wasm.StorageType     { return wasm.StorageVal(v) }
 func packed(p wasm.PackType) wasm.StorageType { return wasm.StoragePacked(p) }

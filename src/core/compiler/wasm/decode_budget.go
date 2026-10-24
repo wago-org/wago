@@ -72,7 +72,7 @@ func readMetadataVec[T any](r *reader, fn func(*reader) (T, error)) ([]T, error)
 		return nil, err
 	}
 	if uint64(n) > uint64(r.left()) {
-		return nil, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
+		return nil, newDecodeError(ErrIndexOutOfBounds, r.off())
 	}
 	if err := reserveMetadataStorage[T](r, n); err != nil {
 		return nil, err
@@ -112,7 +112,7 @@ func decodeTypeSection(r *reader) ([]RecType, error) {
 		return nil, fmt.Errorf("wasm decode recursive group count exceeds limit %d", r.budget.limits.MaxTypes)
 	}
 	if uint64(n) > uint64(r.left()) {
-		return nil, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
+		return nil, newDecodeError(ErrIndexOutOfBounds, r.off())
 	}
 	if err := reserveMetadataStorage[RecType](r, n); err != nil {
 		return nil, err

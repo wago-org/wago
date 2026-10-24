@@ -1,0 +1,12 @@
+ok  	github.com/wago-org/wago/src/core/compiler/wasm	0.301s
+ok  	github.com/wago-org/wago/src/core/compiler/frontend	0.014s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/shared	0.016s
+ok  	github.com/wago-org/wago/src/core/encoder/amd64	0.533s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	3.521s
+ok  	github.com/wago-org/wago/src/wago	30.341s
+ok  	github.com/wago-org/wago/src/core/compiler/wasm	0.328s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/shared	0.052s
+ok  	github.com/wago-org/wago/src/core/encoder/amd64	0.166s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	5.859s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	1.041s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.012s

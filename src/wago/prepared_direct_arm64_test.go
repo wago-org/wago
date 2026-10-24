@@ -49,8 +49,8 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 	if !compiled.directPreparedAt(0) {
 		t.Fatal("memory-independent function did not select the ARM64 direct prepared entry")
 	}
-	if !compiled.directPreparedLightAt(0) {
-		t.Fatal("caller-clobber-only function did not select the light ARM64 entry thunk")
+	if compiled.directPreparedLightAt(0) {
+		t.Fatal("new compilation emitted retired light ARM64 entry metadata")
 	}
 	if !compiled.directPreparedBoundedAt(0) {
 		t.Fatal("straight-line caller-clobber-only function did not select the bounded ARM64 entry thunk")
@@ -83,19 +83,19 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 	if got, err := rollbackFunction.Invoke(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
 		t.Fatalf("direct rollback add(20,22) = %v, %v; want 42", got, err)
 	}
-	rollback, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithOptimization("prepared-light-entry", false), module)
+	rollback, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
 	if err != nil {
 		t.Fatalf("compile rollback: %v", err)
 	}
 	if !rollback.directPreparedAt(0) || rollback.directPreparedLightAt(0) || !rollback.directPreparedBoundedAt(0) {
-		t.Fatalf("light rollback direct/light/bounded selection = %v/%v/%v, want true/false/true", rollback.directPreparedAt(0), rollback.directPreparedLightAt(0), rollback.directPreparedBoundedAt(0))
+		t.Fatalf("default direct/light/bounded selection = %v/%v/%v, want true/false/true", rollback.directPreparedAt(0), rollback.directPreparedLightAt(0), rollback.directPreparedBoundedAt(0))
 	}
 	boundedRollback, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithOptimization("prepared-bounded-entry", false), module)
 	if err != nil {
 		t.Fatalf("compile bounded rollback: %v", err)
 	}
-	if !boundedRollback.directPreparedAt(0) || !boundedRollback.directPreparedLightAt(0) || boundedRollback.directPreparedBoundedAt(0) {
-		t.Fatalf("bounded rollback direct/light/bounded selection = %v/%v/%v, want true/true/false", boundedRollback.directPreparedAt(0), boundedRollback.directPreparedLightAt(0), boundedRollback.directPreparedBoundedAt(0))
+	if !boundedRollback.directPreparedAt(0) || boundedRollback.directPreparedLightAt(0) || boundedRollback.directPreparedBoundedAt(0) {
+		t.Fatalf("bounded rollback direct/light/bounded selection = %v/%v/%v, want true/false/false", boundedRollback.directPreparedAt(0), boundedRollback.directPreparedLightAt(0), boundedRollback.directPreparedBoundedAt(0))
 	}
 	in, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
@@ -109,14 +109,14 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 	if !fn.directIntFast {
 		t.Fatal("memory-independent function did not prepare the ARM64 direct integer entry")
 	}
-	if !fn.directIntLight {
-		t.Fatal("memory-independent function did not retain the light entry proof")
+	if fn.directIntLight {
+		t.Fatal("new preparation selected the retired light entry")
 	}
 	if !fn.directIntBounded {
 		t.Fatal("memory-independent function did not retain the bounded entry proof")
 	}
-	if fn.directIntMode != preparedIntCallBlock {
-		t.Fatal("bounded light function did not select the immutable call block")
+	if fn.directIntMode == preparedIntCallBlock {
+		t.Fatal("ordinary bounded function selected the legacy light call block")
 	}
 	got, err := fn.Invoke(20, 22)
 	if err != nil || len(got) != 1 || got[0] != 42 {
@@ -170,7 +170,7 @@ func TestPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T) {
 		t.Fatalf("prepare: %v", err)
 	}
 	if !fn.directIntFast || !fn.isolatedFast {
-		t.Fatalf("direct/isolated selection = %v/%v, want true/true", fn.directIntFast, fn.isolatedFast)
+		t.Fatalf("direct/isolated selection = %v/%v, want true/false", fn.directIntFast, fn.isolatedFast)
 	}
 	if !fn.directIntBounded {
 		t.Fatal("acyclic immutable-table dispatch did not retain bounded entry proof")
@@ -201,9 +201,9 @@ func TestPreparedDirectARM64ContinuationTrapRecovery(t *testing.T) {
 		wantLight bool
 	}{
 		{
-			name:      "light",
+			name:      "caller-clobber",
 			code:      wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x6d, 0x03, 0x40, 0x0b, 0x0b}),
-			wantLight: true,
+			wantLight: false,
 		},
 		{
 			name: "full-save",
@@ -270,8 +270,8 @@ func TestPreparedDirectARM64BoundedEntryRejectsLoop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	if !compiled.directPreparedAt(0) || !compiled.directPreparedLightAt(0) {
-		t.Fatalf("loop direct/light selection = %v/%v, want true/true", compiled.directPreparedAt(0), compiled.directPreparedLightAt(0))
+	if !compiled.directPreparedAt(0) || compiled.directPreparedLightAt(0) {
+		t.Fatalf("loop direct/light selection = %v/%v, want true/false", compiled.directPreparedAt(0), compiled.directPreparedLightAt(0))
 	}
 	if compiled.directPreparedBoundedAt(0) {
 		t.Fatal("loop selected the no-scheduler-release bounded entry")

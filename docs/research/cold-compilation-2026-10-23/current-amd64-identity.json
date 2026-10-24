@@ -1,0 +1,22 @@
+{
+  "production_source": "d8c878ada3a834af9b305997fa7e301479763591",
+  "baseline": "dc13730184e8ba6a1a2b3e3887c53a2b880db88c",
+  "host": "Hub;Linux x86_64;AMD Ryzen7 7800X3D",
+  "go": "go1.27.1",
+  "cpu": 6,
+  "gomaxprocs": 1,
+  "compiler_workers": 1,
+  "samples_per_input_per_revision": 1,
+  "order": "alternating fresh-process pairs",
+  "execution": "three warmups;30ms minimum oracle-checked window",
+  "lock_owner": "codex-pr1017-d8c878-native-amd64",
+  "lock_wrapper": "/home/hub/benchmark-lock.py",
+  "lock_released_verified": true,
+  "input_verification": "all20artifact and5commandinput hashes verified before run; exact local catalog copied into private scratch; workload files reused unchanged",
+  "binary_sha256": {
+    "/tmp/wago-study-current-linux-amd64.test": "66104fbd1c98473134319c5d984d8352afd61e3dacd4a5969433f1423e82d363",
+    "/tmp/wago-study-main-linux-amd64.test": "a2c96415e85d5d2a878823c24c160da6f99f4ea07c3bd979689573203ec45644"
+  },
+  "manifest_sha256": "26da587e5283014d1cfa9588ec1f087e2d97e7df2de5241a5c9649aa7f62707e",
+  "catalog_sha256": "ee1f3fc1aac78c02e7a89b9742a0facc4b1108ff3c53907cc4242633a0896dbe"
+}

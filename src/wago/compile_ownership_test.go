@@ -2,6 +2,7 @@ package wago
 
 import (
 	"bytes"
+
 	"strings"
 	"testing"
 	"unsafe"
@@ -16,14 +17,14 @@ func TestCompilerCompiledStateUsesOneFixedOwnerAllocation(t *testing.T) {
 		return
 	}
 	allocs := testing.AllocsPerRun(100, func() {
-		c := newCompilerCompiled(Compiled{})
+		c := newCompilerCompiled()
 		compilerCompiledAllocationSink = c
 	})
 	if allocs != 1 {
 		t.Fatalf("compiler Compiled state allocations = %.0f, want one fixed owner", allocs)
 	}
 
-	c := newCompilerCompiled(Compiled{})
+	c := newCompilerCompiled()
 	base := uintptr(unsafe.Pointer(c.codeCache))
 	state := compilerCompiledState{}
 	if got, want := uintptr(unsafe.Pointer(c.validateMemo)), base+unsafe.Offsetof(state.validateMemo); got != want {
@@ -92,27 +93,28 @@ func TestCompileDoesNotRetainSourceForLinking(t *testing.T) {
 	}
 }
 
-func TestCompileDefersExecutableCodeUntilInstantiate(t *testing.T) {
+func TestCompileDefersExecutableProtectionUntilInstantiate(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithFunctionWorkers(1), benchAddOneModule())
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
 	defer compiled.Close()
-	if compiled.codeCache == nil || compiled.codeCache.mem != nil || compiled.codeCache.flags&compiledCacheWritableCode != 0 {
-		t.Fatal("Compile eagerly retained a writable executable code image")
+	if compiled.codeCache == nil || compiled.codeCache.sealed {
+		t.Fatal("Compile eagerly made native code executable")
 	}
+	mappedStaging := compiled.codeCache.flags&compiledCacheWritableCode != 0
 	before := uintptr(unsafe.Pointer(&compiled.code[0]))
 	instance, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
 	defer instance.Close()
-	if compiled.codeCache.mem == nil {
-		t.Fatal("first Instantiate did not allocate executable memory")
+	if compiled.codeCache.mem == nil || !compiled.codeCache.sealed {
+		t.Fatal("first Instantiate did not seal executable memory")
 	}
 	after := uintptr(unsafe.Pointer(&compiled.codeCache.mem[0]))
-	if after == before {
-		t.Fatalf("first Instantiate did not map native code: %#x -> %#x", before, after)
+	if !compiled.codeCache.sealed || (mappedStaging && after != before) || (!mappedStaging && after == before) {
+		t.Fatalf("first Instantiate did not activate native code correctly: %#x -> %#x", before, after)
 	}
 }
 
@@ -251,7 +253,9 @@ func TestCompilerPublicationReleasesHeapCodeBacking(t *testing.T) {
 	// Parallel compilation emits a Go slice. Its grouped staging owner remains
 	// reachable through the cache even after the public result is copied out.
 	original := bytes.Repeat([]byte{0x5a}, 1<<20)
-	staged := installCompilerCompiledFinalizer(newCompilerCompiled(Compiled{code: original}))
+	staged := newCompilerCompiled()
+	staged.code = original
+	installCompilerCompiledFinalizer(staged)
 	published, err := publishCompilerCompiled(staged)
 	if err != nil {
 		t.Fatal(err)

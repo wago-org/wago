@@ -1,0 +1,32 @@
+{
+  "production_source": "85fd3b36af3417bfbc1d43c1665843ee1bbc3332",
+  "main_comparison": {
+    "compile_ns": 0.7259639829718365,
+    "compile_peak_rss_bytes": 0.6662702905683351,
+    "allocated_bytes": 0.2019352724036265,
+    "native_code_bytes": 0.9159260285800694,
+    "exec_geomean": 0.9462823300888777
+  },
+  "oracle": "40/40 PASS",
+  "raw_native_hashes": "20/20 unchanged from 70e8c20d0",
+  "file_option_matrix": "36 off/on execution pairs across 33 unique workloads PASS; selector IDs deduplicated by harness",
+  "validation": {
+    "backend_public_regalloc": "PASS",
+    "native_linux_arm64_public": "PASS",
+    "tinygo": "0.42 threads/Boehm opt2 build PASS; two raw native hashes match preceding accepted source; no execution matrix"
+  },
+  "regression": "nil/sentinel identity and stable node addresses across growth and reset",
+  "execution_outliers": {
+    "polybench-nussinov": 0.361,
+    "json-as-simd": 1.073,
+    "sqlite3-query": 1.07,
+    "esbuild-minify": 1.079
+  },
+  "limitations": [
+    "single pair, unrelated host load uncontrolled",
+    "30% compile-time target not met",
+    "execution aggregate skewed by large outlier; same-or-better gate not proven",
+    "experimental file option default-off; temporary file cache outside RSS",
+    "older full option sweeps retain their own source attribution"
+  ]
+}

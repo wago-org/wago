@@ -53,7 +53,7 @@ func newGCFrameRootPlanOwned(m *wasm.Module, exactRoots bool, diagnostic *string
 	importedTables := m.ImportedTableCount()
 	memoryCount := importedMemories + len(m.Memories)
 	tableCount := importedTables + len(m.Tables)
-	if importedFunctions+importedGlobals+importedMemories+importedTables+m.ImportedTagCount() != len(m.Imports) || importedFunctions > railshot.MaxHostFunctionImports || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > maxRV64ExecutionTables || tableCount > maxRV64ExecutionTables || memoryCount > rv64RootedMaxMemories || m.TagCount() > railshot.MaxFunctions || importedGlobals+len(m.Globals) > 256 || len(m.Elements) > 256 || len(m.Data) > 256 || len(m.StringRefs) != 0 {
+	if importedFunctions+importedGlobals+importedMemories+importedTables+m.ImportedTagCount() != len(m.Imports) || importedFunctions > railshot.MaxHostFunctionImports || importedFunctions+len(m.Code) > railshot.MaxFunctions || len(m.Tables) > maxRV64ExecutionTables || tableCount > maxRV64ExecutionTables || memoryCount > rv64RootedMaxMemories || m.TagCount() > railshot.MaxFunctions || importedGlobals+len(m.Globals) > 256 || len(m.Elements) > 256 || m.DataSegmentCount() > 256 || len(m.StringRefs) != 0 {
 		return reject("RV64 exact roots require a bounded scalar allocation module")
 	}
 	rootedImportValue := func(typ wasm.ValType) bool {
@@ -131,7 +131,7 @@ func newGCFrameRootPlanOwned(m *wasm.Module, exactRoots bool, diagnostic *string
 			}
 		}
 	}
-	if m.DataCount != nil && (uint64(*m.DataCount) != uint64(len(m.Data)) || *m.DataCount > 256) {
+	if m.DataCount != nil && (uint64(*m.DataCount) != uint64(m.DataSegmentCount()) || *m.DataCount > 256) {
 		return reject("RV64 exact roots require an exact bounded data count")
 	}
 	if m.Start != nil {
@@ -280,8 +280,8 @@ func newGCFrameRootPlanOwned(m *wasm.Module, exactRoots bool, diagnostic *string
 	}
 
 	remainingData := railshot.MaxModuleBytes
-	for i := range m.Data {
-		data := &m.Data[i]
+	for i := 0; i < m.DataSegmentCount(); i++ {
+		data := m.DataSegment(i)
 		if len(data.Init) > remainingData {
 			return reject("RV64 exact roots require bounded data payloads")
 		}

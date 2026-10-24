@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 // moduleLiteralIslandEnabled defers compact function pools to one module
@@ -302,6 +303,10 @@ func buildModuleLiteralIsland(words []uint64, offsets []uint32) ([]byte, []modul
 }
 
 func patchModuleLiteralRelocs(code []byte, entry []int, words []uint64, offsets []uint32, islandBase int, literals []moduleLiteral) error {
+	return patchModuleLiteralRelocsWithImage(code, entry, words, offsets, islandBase, literals, nil)
+}
+
+func patchModuleLiteralRelocsWithImage(code []byte, entry []int, words []uint64, offsets []uint32, islandBase int, literals []moduleLiteral, image *coreruntime.CodeBuffer) error {
 	if len(offsets) == 0 {
 		return nil
 	}
@@ -313,7 +318,16 @@ func patchModuleLiteralRelocs(code []byte, entry []int, words []uint64, offsets 
 		}
 		return nil
 	}
+	fileCode := image != nil && image.OwnsCompilerFile()
+	reclaimedCode := 0
 	for function := 0; function+1 < len(offsets); function++ {
+		if fileCode && entry[function]-reclaimedCode >= 8<<20 {
+			var err error
+			reclaimedCode, err = image.ReclaimCompilerPages(reclaimedCode, entry[function])
+			if err != nil {
+				return fmt.Errorf("amd64: reclaim literal image: %w", err)
+			}
+		}
 		plan := words[offsets[function]:offsets[function+1]]
 		if len(plan) == 0 {
 			continue
@@ -424,14 +438,13 @@ func (f *fn) preloadV128Consts(code []byte) {
 		}
 	}
 	r := wasm.NewReader(code)
-	var imm wasm.InstructionImmediate
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
 			return
 		}
 		if op != 0xFD { // not the SIMD prefix
-			if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
+			if err := f.classifier.SkipImmediate(r, op); err != nil {
 				return
 			}
 			continue
@@ -459,7 +472,7 @@ func (f *fn) preloadV128Consts(code []byte) {
 		if err := r.JumpTo(afterPrefix); err != nil {
 			return
 		}
-		if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
+		if err := f.classifier.SkipImmediate(r, op); err != nil {
 			return
 		}
 	}

@@ -1,0 +1,9 @@
+{
+  "src/core/compiler/wasm/validate_bytebacked.go": "6b434b47fa25a125a60961c6685621f0b89a5345342f1753416b9e81d3062f1f",
+  "src/core/compiler/wasm/compiler_local_runs_test.go": "0d2d8011d4549aedbb19226a1d32a4076c09520257d30b4141b4016302a1424b",
+  "src/core/compiler/backend/railshot/amd64/stack.go": "444e24e61c10082d38bdec899470ee8d2779e7fc10c4cc94d399b46786f61a1c",
+  "src/core/compiler/backend/railshot/amd64/driver.go": "c03c075e646569c798d837d87c69f78ff7c7da95c660c212e80e918bf3d134f3",
+  ".optimization-study/candidate146-cpu-compilemem": "59e45e83a51e4ce4a85115d74d065ab3f4fd4924e0ec32df0d278b274ed12ecb",
+  ".optimization-study/candidate146.test": "27888ceae20f139249ab9f50a58c5eaaa63713a53cf2fe00c5e4f5dea10b187d",
+  "ARCHITECTURE.md": "6db2a1dbfb4c89068c1fabd87d09beefd9280447a0543edb30f6b81827d0e1eb"
+}

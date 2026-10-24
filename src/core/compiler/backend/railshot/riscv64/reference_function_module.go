@@ -202,7 +202,7 @@ func publicReferenceCallBoundaryWireShape(data []byte) bool {
 // authentication, retained tail plan, and invocation owner graph are all
 // required; no other public dynamic-reference shape inherits this exception.
 func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
-	if m == nil || len(m.Imports) != 0 || len(m.Types) != 3 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 3 || len(m.Customs) != 0 || m.BranchHints != nil || m.UsesCompactImports {
+	if m == nil || len(m.Imports) != 0 || len(m.Types) != 3 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 3 || len(m.Customs) != 0 || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Types {
@@ -280,7 +280,7 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 // the canonical representation contract; this decoded check independently
 // binds every semantic directory and type before the exception reaches lowering.
 func admitPublicDynamicHostReferenceBoundary(m *wasm.Module) bool {
-	if m == nil || len(m.Imports) != 1 || m.Imports[0].Module != "env" || m.Imports[0].Name != "target" || m.Imports[0].Type != wasm.NewFuncExternType(wasm.TypeIdx{}) || len(m.Types) != 4 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 2 || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
+	if m == nil || len(m.Imports) != 1 || m.Imports[0].Module != "env" || m.Imports[0].Name != "target" || m.Imports[0].Type != wasm.NewFuncExternType(wasm.TypeIdx{}) || len(m.Types) != 4 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 2 || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Types {

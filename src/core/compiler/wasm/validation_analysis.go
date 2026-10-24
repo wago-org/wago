@@ -62,6 +62,8 @@ type ValidatedModuleAnalysis struct {
 	dataStateCount uint32
 	module         *Module
 	valid          bool
+	hintObserver   ValidationHintObserver
+	hintCurrent    ValidationHintInstructionObserver
 }
 
 func (a *ValidatedModuleAnalysis) reset(m *Module) {

@@ -28,9 +28,14 @@ type CodeBuffer struct {
 // Per-owner fault injection avoids changing process-wide mapping operations.
 // The ordinary path uses the platform functions directly.
 type codeBufferOps struct {
-	mapRW func(int) ([]byte, error)
-	unmap func([]byte) error
-	seal  func([]byte) error
+	mapRW      func(int) ([]byte, error)
+	unmap      func([]byte) error
+	seal       func([]byte) error
+	afterUnmap func([]byte) error
+	take       func([]byte) error
+	reclaim    func([]byte, int, int) (int, error)
+	finish     func([]byte, int) error
+	hasFile    func([]byte) bool
 }
 
 func (b *CodeBuffer) mapRW(n int) ([]byte, error) {
@@ -48,6 +53,21 @@ func (b *CodeBuffer) unmap(mem []byte) error {
 		return b.ops.unmap(mem)
 	}
 	return munmap(mem)
+}
+
+// releaseMapping separates mapping ownership from auxiliary-handle errors.
+// A failed file close must never leave an already-unmapped slice owned.
+func (b *CodeBuffer) releaseMapping(mem []byte) (bool, error) {
+	if len(mem) == 0 {
+		return true, nil
+	}
+	if err := b.unmap(mem); err != nil {
+		return false, err
+	}
+	if b.ops != nil && b.ops.afterUnmap != nil {
+		return true, b.ops.afterUnmap(mem)
+	}
+	return true, nil
 }
 
 func (b *CodeBuffer) seal(mem []byte) error {
@@ -77,6 +97,54 @@ func NewCodeBuffer(capacity int) (*CodeBuffer, error) {
 		return nil, err
 	}
 	return &CodeBuffer{mem: mem}, nil
+}
+
+// NewCompilerCodeBuffer permits reclaimable temporary-file staging for large
+// compiler images where supported. Unsupported or unavailable storage falls
+// back to an ordinary anonymous code mapping. Each buffer owns its handles.
+func NewCompilerCodeBuffer(capacity int) (*CodeBuffer, error) {
+	if capacity < 0 {
+		return nil, fmt.Errorf("jit: negative code capacity %d", capacity)
+	}
+	b := &CodeBuffer{ops: compilerCodeBufferOps()}
+	mem, err := b.mapRW(capacity)
+	if err != nil {
+		return nil, err
+	}
+	b.mem = mem
+	return b, nil
+}
+
+// OwnsCompilerFile reports whether the compiler image owns a staging
+// file handle. Sealing or transferring the mapping closes that handle.
+func (b *CodeBuffer) OwnsCompilerFile() bool {
+	return b != nil && b.ops != nil && b.ops.hasFile != nil && b.ops.hasFile(b.mem)
+}
+
+// ReclaimCompilerPages releases completed whole pages while retaining their
+// bytes and virtual addresses. The returned boundary uses the OS page size.
+func (b *CodeBuffer) ReclaimCompilerPages(start, end int) (int, error) {
+	if b == nil || b.closed || b.sealed {
+		return start, fmt.Errorf("jit: compiler image is not writable")
+	}
+	if start < 0 || start > end || end > b.n {
+		return start, fmt.Errorf("jit: invalid compiler reclaim range [%d,%d)", start, end)
+	}
+	if b.ops == nil || b.ops.reclaim == nil {
+		return end, nil
+	}
+	return b.ops.reclaim(b.mem, start, end)
+}
+
+// FinishCompilerCode completes pending staging writeback before publication.
+func (b *CodeBuffer) FinishCompilerCode() error {
+	if b == nil || b.closed || b.sealed {
+		return fmt.Errorf("jit: compiler image is not writable")
+	}
+	if b.ops == nil || b.ops.finish == nil {
+		return nil
+	}
+	return b.ops.finish(b.mem, b.n)
 }
 
 // Append adds p to the image. A capacity underestimate grows the mapping
@@ -268,6 +336,11 @@ func (b *CodeBuffer) Take() ([]byte, uintptr, error) {
 	if b.heap {
 		return nil, 0, fmt.Errorf("jit: heap code buffer has no mapping")
 	}
+	if b.ops != nil && b.ops.take != nil {
+		if err := b.ops.take(b.mem); err != nil {
+			return nil, 0, err
+		}
+	}
 	mem, base := b.mem, b.Base()
 	b.mem = nil
 	b.n = 0
@@ -309,12 +382,12 @@ func (b *CodeBuffer) Close() error {
 		b.mem = nil
 		return nil
 	}
-	currentErr := b.unmap(b.mem)
-	if currentErr == nil {
+	currentReleased, currentErr := b.releaseMapping(b.mem)
+	if currentReleased {
 		b.mem = nil
 	}
-	retiredErr := b.unmap(b.retired)
-	if retiredErr == nil {
+	retiredReleased, retiredErr := b.releaseMapping(b.retired)
+	if retiredReleased {
 		b.retired = nil
 	}
 	return errors.Join(currentErr, retiredErr)
@@ -362,12 +435,14 @@ func (b *CodeBuffer) growPreserving(extra, preserveEnd int) error {
 	if b.heap {
 		return nil
 	}
-	if err := b.unmap(old); err != nil {
-		b.retired = old
+	if released, err := b.releaseMapping(old); err != nil {
+		if !released {
+			b.retired = old
+		}
 		b.n = 0
 		b.closed = true
-		cleanup := b.unmap(mem)
-		if cleanup == nil {
+		cleanupReleased, cleanup := b.releaseMapping(mem)
+		if cleanupReleased {
 			b.mem = nil
 		}
 		return errors.Join(err, cleanup)

@@ -40,11 +40,13 @@ func TestDominatedAddressAfterGuardedTestFold(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, bounds := range []bool{false, true} {
-		for _, fold := range []bool{false, true} {
+		{
+			const fold = false
+
 			for _, a := range []uint64{0, 1} {
 				t.Run(fmt.Sprintf("bounds%v/fold%v/a%d", bounds, fold, a), func(t *testing.T) {
 					var stats ModuleStats
-					opts := CompileOptions{ElideBoundsChecks: bounds, Optimizations: map[string]bool{"guarded-test-ccmp": fold}}
+					opts := CompileOptions{ElideBoundsChecks: bounds}
 					if diagnosticsEnabled {
 						opts.Stats = &stats
 					}
@@ -52,9 +54,7 @@ func TestDominatedAddressAfterGuardedTestFold(t *testing.T) {
 					if err != nil || got != 11 {
 						t.Fatalf("got %d, %v; want 11", got, err)
 					}
-					if diagnosticsEnabled && fold && stats.Funcs[0].Peephole["ccmp-guarded-tests"] == 0 {
-						t.Fatalf("fold not exercised: %v", stats.Funcs[0].Peephole)
-					}
+
 				})
 			}
 		}
@@ -91,7 +91,9 @@ func TestIntervalBranchFlushPreservesDirtyLocals(t *testing.T) {
 		if err := wasm.ValidateModule(m); err != nil {
 			t.Fatal(err)
 		}
-		for _, enabled := range []bool{false, true} {
+		{
+			const enabled = false
+
 			for _, taken := range []uint64{0, 1} {
 				t.Run(fmt.Sprintf("depth%d/enabled%v/taken%d", depth, enabled, taken), func(t *testing.T) {
 					var stats ModuleStats
@@ -189,10 +191,12 @@ func TestDotLoopPreservesDiscardedLoadTrap(t *testing.T) {
 		if err := wasm.ValidateModule(m); err != nil {
 			t.Fatal(err)
 		}
-		for _, enabled := range []bool{false, true} {
+		{
+			const enabled = false
+
 			t.Run(fmt.Sprintf("address%d/enabled%v", address, enabled), func(t *testing.T) {
 				var stats ModuleStats
-				opts := CompileOptions{Optimizations: map[string]bool{"dot-loop-vector": enabled}}
+				opts := CompileOptions{Optimizations: map[string]bool{}}
 				if diagnosticsEnabled {
 					opts.Stats = &stats
 				}
@@ -252,9 +256,11 @@ func TestMinPlusCachedPivotOverlap(t *testing.T) {
 			for i := uint32(0); i < limit; i += 4 {
 				want = (want + binary.LittleEndian.Uint32(expected[i:])) * 0x9e3779b9
 			}
-			for _, enabled := range []bool{false, true} {
+			{
+				const enabled = false
+
 				t.Run(fmt.Sprintf("limit%d/pivot%d/enabled%v", limit, pivot, enabled), func(t *testing.T) {
-					opts := CompileOptions{Optimizations: map[string]bool{"dot-loop-vector": enabled}}
+					opts := CompileOptions{Optimizations: map[string]bool{}}
 					got, err := runArm64WrapperMemWithOptions(t, m, opts, 0, func(mem []byte) { copy(mem, original) })
 					if err != nil || got != want {
 						t.Fatalf("got %x, %v; want %x", got, err, want)

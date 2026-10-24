@@ -23,7 +23,7 @@ func (f *fn) arrayLenShortcut(argSlot int) int {
 	f.patchBranch19(fallback, f.a.Len())
 	// Prefix compaction moves the call and helper together. Keep their distance
 	// so module finalization can retain the helper if the leaf is out of BL range.
-	f.relocs = append(f.relocs, callReloc{at: f.compactCallRelocField(site), target: f.compactCallRelocField(f.a.Len() - site), gcObject: true})
+	f.relocs = append(f.relocs, f.gcObjectReloc(site, f.a.Len()-site))
 	f.stats.peep("gc-array-len-native")
 	return done
 }

@@ -5,8 +5,8 @@ package wago
 import "github.com/wago-org/wago/src/core/runtime/gc/native"
 import coreruntime "github.com/wago-org/wago/src/core/runtime"
 
-func (*Compiled) needsOwnedExceptionReferences() bool                  { return false }
-func (*Compiled) setOwnedExceptionReferences(bool)                     {}
+func (*Compiled) needsOwnedExceptionReferences() bool { return false }
+
 func newNativeExceptionTag(_ *Compiled, _ int, fallback uint64) uint64 { return fallback }
 func releaseNativeExceptionTags(*Compiled, []byte)                     {}
 func releaseInstanceExceptionTags(*Instance)                           {}

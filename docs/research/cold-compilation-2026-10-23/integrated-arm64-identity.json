@@ -1,0 +1,20 @@
+{
+  "candidate": "1c3a98cb23ec4e7154221319b61ac77de3d1ba78",
+  "baseline": "dc13730184e8ba6a1a2b3e3887c53a2b880db88c",
+  "platform": "native Linux ARM64 container on Apple M4 Max; Docker desktop VM",
+  "go": "go1.27.1",
+  "gomaxprocs": 1,
+  "compiler_workers": 1,
+  "samples": 1,
+  "order": "alternate main/integrated per workload",
+  "execution": "three warmups,30ms minimum oracle-checked window; commands fresh-instance",
+  "isolation": "serial samples after validation jobs ended; unrelated host load uncontrolled",
+  "docker_image": "node@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205",
+  "hashes": {
+    "/tmp/wago-study-main-dc137-linux-arm64.test": "0ce430b7ce20f3e86e633bbbd4fdc118b3521737dcc4604a4bbb08e5485c539b",
+    "/tmp/wago-study-integrated-linux-arm64.test": "fe721ad40d5e703556ea8888ca304739855e1e7cac3420338de79a3b90cd5bd2",
+    "bench/suite/optimization_study_linux_test.go": "023da14ffa85be2f67f310774df35fbbbd5d5406c10f8d031566037359b7c67f",
+    "/tmp/wago-pr1017-paired.sh": "29aa77308e53556174b65b3ce61fb27690240b4c9dbe1a7adef8873852946820",
+    "docs/research/cold-compilation-2026-10-23/manifest.json": "26da587e5283014d1cfa9588ec1f087e2d97e7df2de5241a5c9649aa7f62707e"
+  }
+}

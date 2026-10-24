@@ -973,7 +973,8 @@ func elemKindName(k wasm.ElemKindKind) string {
 }
 
 func (p supportPass) data() error {
-	for i, d := range p.m.Data {
+	for i := 0; i < p.m.DataSegmentCount(); i++ {
+		d := p.m.DataSegment(i)
 		switch d.Mode.Kind {
 		case wasm.DataActive:
 			if d.Mode.Mem != 0 && !p.feat.MultiMemory {
@@ -1092,8 +1093,8 @@ func needsPublicFuncrefHostReentry(m *wasm.Module, tables []TableRuntimeShape) b
 
 func passiveDataDescriptorCount(m *wasm.Module) int {
 	maxIdx := -1
-	for i := range m.Data {
-		if m.Data[i].Mode.Kind == wasm.DataPassive {
+	for i := 0; i < m.DataSegmentCount(); i++ {
+		if m.DataSegmentIsPassive(i) {
 			maxIdx = i
 		}
 	}
@@ -2581,8 +2582,8 @@ func ModuleNonCodeRequiresSIMD(m *wasm.Module) bool {
 			}
 		}
 	}
-	for i := range m.Data {
-		if exprRequiresSIMD(m.Data[i].Mode.Offset) {
+	for i := 0; i < m.DataSegmentCount(); i++ {
+		if exprRequiresSIMD(m.DataSegment(i).Mode.Offset) {
 			return true
 		}
 	}
@@ -2661,8 +2662,7 @@ func exprBytesRequireSIMDWithClassifier(body []byte, classifier wasm.ModuleInstr
 			}
 			continue
 		}
-		var imm wasm.InstructionImmediate
-		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+		if err := classifier.SkipImmediate(r, op); err != nil {
 			return false
 		}
 	}

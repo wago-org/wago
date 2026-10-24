@@ -406,3 +406,12 @@ func TestCatalogArchitectureSlicesAreOwnedByCaller(t *testing.T) {
 		})
 	}
 }
+
+func TestFileBackedCodeIsExperimental(t *testing.T) {
+	for _, arch := range []string{"arm64", "amd64"} {
+		definition, ok := Lookup(arch, "file-backed-code")
+		if !ok || definition.Default || !definition.Experimental {
+			t.Fatalf("%s file-backed code definition = %+v, found=%t", arch, definition, ok)
+		}
+	}
+}

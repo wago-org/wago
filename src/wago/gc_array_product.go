@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // stagedGCArrayProduct identifies exact compile-only gc/array products. It is
@@ -78,21 +77,8 @@ func (p stagedGCArrayProduct) String() string {
 	}
 }
 
-func (p stagedGCArrayProduct) requiresHelpers() bool {
-	return p == stagedGCArrayProductNumericLocal || p == stagedGCArrayProductNumericUniform || p == stagedGCArrayProductNumericFixedLocal || p == stagedGCArrayProductNumericDefault || p == stagedGCArrayProductNumericFixed || p == stagedGCArrayProductPackedData || p == stagedGCArrayProductReferenceElements || p == stagedGCArrayProductNullDereference || p == stagedGCArrayProductBulkFill || p == stagedGCArrayProductBulkCopy || p == stagedGCArrayProductInitData || p == stagedGCArrayProductInitElem || p == stagedGCArrayProductNewData || p == stagedGCArrayProductNewElem || p == stagedGCArrayProductGeneric
-}
-
 func (p stagedGCArrayProduct) metadataOnly() bool {
 	return p == stagedGCArrayProductDeclarations || p == stagedGCArrayProductBindings
-}
-
-func configureStagedGCArrayTypeDescs(_ stagedGCArrayProduct, descs []gc.TypeDesc) error {
-	// Keep decoded reference storage intact for every product. Compact GC/i31
-	// references remain traced, while function and extern references retain
-	// their opaque non-scanned storage kinds. array.init_elem now uses the same
-	// generic typed store path as array.new_elem instead of rewriting fixtures to
-	// an untyped i64 layout.
-	return gc.ValidateTypeDescs(descs)
 }
 
 func stagedGCArrayOpcodeProduct(m *wasm.Module) (stagedGCArrayProduct, bool) {

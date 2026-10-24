@@ -14,9 +14,12 @@ func TestPreserveIndirectCallTargetAcrossArgumentStaging(t *testing.T) {
 		t.Run(fmt.Sprintf("reg%d", indirect), func(t *testing.T) {
 			a := &encoderamd64.Asm{}
 			f := &fn{a: a, s: newStack()}
-			target := f.preserveIndirectCallTarget(indirect, paramCount+1)
+			target, spilled := f.preserveIndirectCallTarget(indirect, paramCount+1)
 
 			argRegs := maskOf(intArgRegs[:paramCount+1]...)
+			if spilled {
+				t.Fatal("ordinary target preservation unexpectedly spilled")
+			}
 			if target == indirect || argRegs.has(target) {
 				t.Fatalf("preserved target = %v, want a non-argument register distinct from %v", target, indirect)
 			}
@@ -33,7 +36,7 @@ func TestPreserveIndirectCallTargetAcrossArgumentStaging(t *testing.T) {
 func TestPreserveIndirectCallTargetLeavesSafeRegisterAlone(t *testing.T) {
 	a := &encoderamd64.Asm{}
 	f := &fn{a: a, s: newStack()}
-	if target := f.preserveIndirectCallTarget(RSI, len(intArgRegs)); target != RSI {
+	if target, spilled := f.preserveIndirectCallTarget(RSI, len(intArgRegs)); target != RSI || spilled {
 		t.Fatalf("safe target = %v, want RSI", target)
 	}
 	if len(a.B) != 0 {
@@ -41,5 +44,26 @@ func TestPreserveIndirectCallTargetLeavesSafeRegisterAlone(t *testing.T) {
 	}
 	if !f.pinned.has(RSI) {
 		t.Fatal("safe target RSI is not pinned")
+	}
+}
+
+func TestPreserveIndirectCallTargetFallsBackToInstanceScratch(t *testing.T) {
+	a := &encoderamd64.Asm{}
+	f := &fn{a: a, s: newStack()}
+	indirect := intArgRegs[len(intArgRegs)-1]
+	argRegs := maskOf(intArgRegs...)
+	for _, reg := range gpAlloc {
+		if !argRegs.has(reg) {
+			f.reserved = f.reserved.add(reg)
+		}
+	}
+	target, spilled := f.preserveIndirectCallTarget(indirect, len(intArgRegs))
+	if target != regNone || !spilled {
+		t.Fatalf("preserved target = %v, spilled=%t, want memory fallback", target, spilled)
+	}
+	var want encoderamd64.Asm
+	want.Store64(RBX, -int32(offSpillRegion), indirect)
+	if string(a.B) != string(want.B) {
+		t.Fatalf("target spill = %x, want %x", a.B, want.B)
 	}
 }

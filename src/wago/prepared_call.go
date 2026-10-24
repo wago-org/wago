@@ -41,10 +41,3 @@ var preparedDirectIntEnabled = os.Getenv("WAGO_PREPARED_DIRECT_INT") != "0"
 // faster on the native Ryzen gate. An explicit 0/1 overrides the architecture
 // default for measurement and rollback.
 var preparedIntCallBlockEnabled = preparedIntCallBlockSetting()
-
-func preparedIntCallBlockSetting() bool {
-	if value, ok := os.LookupEnv("WAGO_PREPARED_INT_CALL_BLOCK"); ok {
-		return value != "0"
-	}
-	return preparedIntCallBlockDefault
-}

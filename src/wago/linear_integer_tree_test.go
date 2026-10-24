@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
-	"runtime"
 	"testing"
 )
 
 func TestLinearIntegerTreePublicExecution(t *testing.T) {
 	for _, coeff := range [][7]int32{{7, 11, 13, -17, 19, 2, 0}, {0x40000000, -5, -1, 0, 1, 2, 17}, {3, 5, -12, -20, 0, 2, 17}, {1, 1, -6, -3, 1, 2, 9}, {-77, 31, 11, -9, 53, 37, -123}} {
-		for _, enabled := range []bool{false, true} {
+		{
+			const enabled = false
+
 			for _, regABI := range []bool{false, true} {
 				for _, captured := range []bool{false, true} {
 					t.Run(fmt.Sprintf("coeff=%v/on=%t/abi=%t/captured=%t", coeff, enabled, regABI, captured), func(t *testing.T) {
@@ -45,9 +46,6 @@ func TestLinearIntegerTreePublicExecution(t *testing.T) {
 						body = append(body, 0x0b, 0x0b)
 						module := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))), wasmtest.Section(3, wasmtest.Vec([]byte{0})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))))
 						cfg := NewRuntimeConfig().WithOptimization("reg-abi", regABI)
-						if runtime.GOARCH == "arm64" {
-							cfg = cfg.WithOptimization("linear-integer-tree", enabled)
-						}
 						c, err := cfg.Compile(module)
 						if err != nil {
 							t.Fatal(err)

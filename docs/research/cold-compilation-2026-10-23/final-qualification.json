@@ -1,0 +1,407 @@
+{
+  "compiler_runtime_source": "4ad00155048d3649664dbe55545ceb519d4b4704",
+  "baseline_sha": "dc13730184e8ba6a1a2b3e3887c53a2b880db88c",
+  "configuration": {
+    "os_arch": "linux/amd64",
+    "cpu": "Intel Xeon Platinum 8370C",
+    "go": "go version go1.27.1 linux/amd64",
+    "gomaxprocs": 1,
+    "compile_workers": 1,
+    "file_backed_code": true,
+    "file_option_default": false
+  },
+  "performance": {
+    "run_id": 40073017826,
+    "pairs": 20,
+    "oracles_passed": 40,
+    "native_hashes_equal": 20,
+    "ratios_of_totals": {
+      "compile_ns": 0.6572148023241641,
+      "compile_peak_rss_bytes": 0.6687465686391522,
+      "allocated_bytes": 0.17190416306552891,
+      "native_code_bytes": 1.0
+    },
+    "execution_geomean_ratio": 0.9930949454873353,
+    "independent_audit": "all fixture hashes and IDs checked against frozen manifest; 40 oracle rows and 20 native-hash equalities checked; ratios recomputed"
+  },
+  "file_option_coverage": {
+    "run_id": 40073536273,
+    "source_sha": "4de7ac3170fce7f98b49dc481214d7cc61633473",
+    "pairs": 20,
+    "oracles_passed": 40,
+    "native_hashes_equal": 20,
+    "baseline": "same source, file-backed-code=false",
+    "candidate": "same source, file-backed-code=true",
+    "ratio_scope": "incremental option comparison; never multiplied with main comparison"
+  },
+  "full_ci": {
+    "run_id": 40073075665,
+    "url": "https://github.com/wago-org/wago/actions/runs/40073075665",
+    "head_sha": "4ad00155048d3649664dbe55545ceb519d4b4704",
+    "event": "workflow_dispatch",
+    "scope": "full, not draft smoke",
+    "status": "completed",
+    "conclusion": "success",
+    "jobs": 56,
+    "successful_jobs": 53,
+    "skipped_jobs": 3,
+    "skips": "two draft smoke jobs and the nested GC corpus regeneration job; the top-level pinned-corpus regeneration passed. Planner/aggregate verify every expected full-profile job",
+    "job_results": [
+      {
+        "conclusion": "success",
+        "id": 120810533231,
+        "name": "Plan CI profile",
+        "status": "completed"
+      },
+      {
+        "conclusion": "skipped",
+        "id": 120810534049,
+        "name": "Draft smoke / Linux amd64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810622412,
+        "name": "Lint & format",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810622427,
+        "name": "Regression corpus integrity",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810622441,
+        "name": "Race detector / Linux amd64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623108,
+        "name": "Core v2 conformance / Linux arm64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623123,
+        "name": "Build size",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623132,
+        "name": "TinyGo / Darwin / arm64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623140,
+        "name": "TinyGo / Linux / amd64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623149,
+        "name": "Core v2 conformance / Linux amd64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623155,
+        "name": "Regenerate regression corpus from pinned source",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623195,
+        "name": "TinyGo / Linux / arm64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623202,
+        "name": "TinyGo / Darwin / amd64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623203,
+        "name": "Core v3 conformance / Linux arm64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623232,
+        "name": "Linux / amd64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623237,
+        "name": "Darwin / amd64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623264,
+        "name": "Current Go / Linux amd64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623271,
+        "name": "Documentation",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623273,
+        "name": "Core v3 conformance / Darwin arm64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623299,
+        "name": "Darwin / arm64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623303,
+        "name": "Corpus correctness / Windows arm64 / shard 4 of 4",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623304,
+        "name": "Windows / arm64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623310,
+        "name": "Windows / amd64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623316,
+        "name": "Corpus correctness / Darwin amd64 / shard 2 of 4",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623317,
+        "name": "Corpus correctness / Darwin amd64 / shard 1 of 4",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623331,
+        "name": "Bounded fuzzing / Linux amd64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623340,
+        "name": "Corpus correctness / Windows arm64 / shard 1 of 4",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623341,
+        "name": "Corpus correctness / Darwin amd64 / shard 3 of 4",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623344,
+        "name": "Corpus correctness / Windows arm64 / shard 2 of 4",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623346,
+        "name": "WebAssembly 1.0 conformance / Linux arm64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623354,
+        "name": "Linux / arm64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623360,
+        "name": "Corpus correctness / Windows arm64 / shard 3 of 4",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623363,
+        "name": "Application corpus / Linux amd64 / shard 2 of 2",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623380,
+        "name": "WebAssembly 1.0 conformance / Linux amd64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623406,
+        "name": "Corpus correctness / Darwin amd64 / shard 4 of 4",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623443,
+        "name": "Application corpus / Linux arm64 / shard 2 of 2",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623449,
+        "name": "Core v3 conformance / Linux amd64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623461,
+        "name": "Application corpus / Windows arm64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623470,
+        "name": "Application corpus / Darwin arm64 / shard 2 of 2",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623497,
+        "name": "Application corpus / Darwin arm64 / shard 1 of 2",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623498,
+        "name": "Application corpus / Linux amd64 / shard 1 of 2",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623505,
+        "name": "Application corpus / Darwin amd64 / shard 3 of 4",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623517,
+        "name": "Application corpus / Darwin amd64 / shard 1 of 4",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623518,
+        "name": "Application corpus / Linux arm64 / shard 1 of 2",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623524,
+        "name": "GC hardening / bounded / Extended runtime stress",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623529,
+        "name": "Application corpus / Darwin amd64 / shard 2 of 4",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623532,
+        "name": "Application corpus / Darwin amd64 / shard 4 of 4",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623639,
+        "name": "GC hardening / bounded / GC hardening / arm64 / explicit",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623641,
+        "name": "GC hardening / bounded / GC hardening / amd64 / explicit",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623643,
+        "name": "GC hardening / bounded / GC hardening / amd64 / guard-page",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623691,
+        "name": "GC hardening / bounded / GC hardening / arm64 / guard-page",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120810623720,
+        "name": "Application corpus / Windows amd64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "skipped",
+        "id": 120810624403,
+        "name": "GC hardening / bounded / Regenerate regression corpus from pinned source",
+        "status": "completed"
+      },
+      {
+        "conclusion": "skipped",
+        "id": 120810624708,
+        "name": "GC hardening / bounded / Draft GC smoke / Linux amd64",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120813268554,
+        "name": "Verify corpus shard coverage",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "id": 120815102283,
+        "name": "CI",
+        "status": "completed"
+      }
+    ],
+    "skipped_job_names": [
+      "Draft smoke / Linux amd64",
+      "GC hardening / bounded / Regenerate regression corpus from pinned source",
+      "GC hardening / bounded / Draft GC smoke / Linux amd64"
+    ]
+  },
+  "documentation": "just docs PASS, 97 Markdown files; final documentation-only update rechecked before publication",
+  "switch_coverage": "earlier source-attributed ARM64 2116 valid pairs/93 observed selections plus float-map and file-option matrices; native AMD64 1702 valid pairs/74 complete,75 observed switches plus current AMD64 file-option matrix",
+  "invalid_selection_exception": "stack-fence=false is rejected by bounded-execution config; rejection tested and recorded, not counted as a successful off/on execution pair",
+  "weak_policy_cleanup": "current catalog/public/backend tests verify removed low-value policies, including seven retired ARM64 recognizers; compatibility settings remain documented",
+  "general_optimizations": "compiler/runtime choices depend on structure, bounds, size, platform and options; no corpus name/hash admission checks",
+  "limits": [
+    "opt-in configured Linux AMD64 profile, not default settings or all-platform guarantee",
+    "process compile peak RSS includes startup/input but excludes nonresident file cache; not a total-machine/cgroup-memory claim",
+    "file cache may remain higher during compilation; final flush/drop preserved",
+    "code export and cold first invocation outside compile measurement",
+    "one alternating fresh-process pair per input; short warm timing windows have individual noise",
+    "native hashes and exact oracles prove unchanged guest code/behavior; no universal timing-speedup claim",
+    "earlier switch matrices retain their own source identities"
+  ]
+}

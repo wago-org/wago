@@ -3,6 +3,7 @@ package wasm
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"slices"
 	"sync"
 )
 
@@ -21,8 +22,15 @@ func (m *Module) structuralIndexedFuncTypeID(typeIdx uint32) (uint32, bool) {
 }
 
 type structuralTypeKeyResult struct {
-	key uint64
-	ok  bool
+	key        uint64
+	ok         bool
+	flatValues []ValType
+	flatParams int
+}
+
+func (r structuralTypeKeyResult) matchesFlat(ft *CompType) bool {
+	return r.flatParams == len(ft.Params) && len(r.flatValues) == len(ft.Params)+len(ft.Results) &&
+		slices.Equal(r.flatValues[:r.flatParams], ft.Params) && slices.Equal(r.flatValues[r.flatParams:], ft.Results)
 }
 
 var structuralTypeCacheInitMu sync.Mutex
@@ -32,11 +40,25 @@ type structuralTypeKeyCache struct {
 	owner        *RecType
 	groups       int
 	flat         int
-	keys         map[uint32]structuralTypeKeyResult
+	keys         map[uint64]structuralTypeKeyResult
 	groupDigests map[int][32]byte
 }
 
 func (m *Module) structuralIndexedFuncTypeKey(typeIdx uint32) (uint64, bool) {
+	return m.cachedStructuralFuncTypeKey(typeIdx, nil)
+}
+
+func (m *Module) cachedStructuralFuncTypeKey(typeIdx uint32, flatType *CompType) (uint64, bool) {
+	if m == nil {
+		return 0, false
+	}
+	// The explicit indexed serializer and the public compact-flat format are
+	// distinct identities. Keep their cache entries separate without losing any
+	// bits of the module's uint32 type index.
+	cacheIndex := uint64(typeIdx) << 1
+	if flatType != nil {
+		cacheIndex |= 1
+	}
 	structuralTypeCacheInitMu.Lock()
 	if m.structuralTypeCache == nil {
 		m.structuralTypeCache = &structuralTypeKeyCache{}
@@ -54,7 +76,7 @@ func (m *Module) structuralIndexedFuncTypeKey(typeIdx uint32) (uint64, bool) {
 	// type-slice identity before asking for the flattened count: a cache hit
 	// should not re-enter the module type-directory lookup on every query.
 	if cache.owner == owner && cache.groups == len(m.Types) {
-		if result, ok := cache.keys[typeIdx]; ok {
+		if result, ok := cache.keys[cacheIndex]; ok && (flatType == nil || result.matchesFlat(flatType)) {
 			return result.key, result.ok
 		}
 	}
@@ -64,8 +86,22 @@ func (m *Module) structuralIndexedFuncTypeKey(typeIdx uint32) (uint64, bool) {
 		cache.keys = nil
 		cache.groupDigests = nil
 	}
-	if result, ok := cache.keys[typeIdx]; ok {
+	if result, ok := cache.keys[cacheIndex]; ok && (flatType == nil || result.matchesFlat(flatType)) {
 		return result.key, result.ok
+	}
+	if flatType != nil {
+		// Flat signatures historically reflect in-place edits even without a
+		// validation pass. Own the compared bytes so a cache hit preserves that
+		// behavior instead of relying only on the outer type-section identity.
+		values := make([]ValType, 0, len(flatType.Params)+len(flatType.Results))
+		values = append(values, flatType.Params...)
+		values = append(values, flatType.Results...)
+		result := structuralTypeKeyResult{key: StructuralFuncTypeKey(flatType), ok: true, flatValues: values, flatParams: len(flatType.Params)}
+		if cache.keys == nil {
+			cache.keys = make(map[uint64]structuralTypeKeyResult)
+		}
+		cache.keys[cacheIndex] = result
+		return result.key, true
 	}
 	// A completed group digest is enough to derive any member key. Avoid
 	// rebuilding per-query graph scratch when the module cache already owns it.
@@ -77,9 +113,9 @@ func (m *Module) structuralIndexedFuncTypeKey(typeIdx uint32) (uint64, bool) {
 				key := structuralGroupMemberKey(groupDigest, len(m.Types[ref.recGroup].SubTypes), uint32(int(typeIdx)-directory.bases[ref.recGroup]))
 				result := structuralTypeKeyResult{key: key, ok: true}
 				if cache.keys == nil {
-					cache.keys = make(map[uint32]structuralTypeKeyResult)
+					cache.keys = make(map[uint64]structuralTypeKeyResult)
 				}
-				cache.keys[typeIdx] = result
+				cache.keys[cacheIndex] = result
 				return result.key, true
 			}
 		}
@@ -98,9 +134,9 @@ func (m *Module) structuralIndexedFuncTypeKey(typeIdx uint32) (uint64, bool) {
 		result.ok = false
 	}
 	if cache.keys == nil {
-		cache.keys = make(map[uint32]structuralTypeKeyResult)
+		cache.keys = make(map[uint64]structuralTypeKeyResult)
 	}
-	cache.keys[typeIdx] = result
+	cache.keys[cacheIndex] = result
 	return result.key, result.ok
 }
 
