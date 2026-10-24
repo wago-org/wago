@@ -90,3 +90,52 @@ func TestCustomInstructionInputRecipeTrapOrder(t *testing.T) {
 		t.Fatalf("portable handler calls=%d, want 0", calls)
 	}
 }
+
+func TestCustomInstructionNonStackRecipeTrapOrder(t *testing.T) {
+	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+		t.Skip("AMD64 or ARM64 portable recipe lowering")
+	}
+	calls := 0
+	rt := NewRuntime()
+	defer rt.Close()
+	if err := rt.Use(instructionRecipeExt{
+		name: "nonstack.trap-order", input: []int32{4}, output: 4, portableCalls: &calls,
+		lower: func(c LoweringContext) error {
+			c.Output(0, c.Add(c.Input(0), c.Input(0)))
+			return nil
+		},
+		eval: func(v []uint32) uint32 { return v[0] + v[0] },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// An unused prefix overflows before the recipe argument divides by zero.
+	// Reusing the input makes this a non-stack-compatible recipe.
+	body := []byte{0x20, 0, 0x41, 0x7f, 0x6d, 0x20, 1, 0x41, 0, 0x6d}
+	body = append(body, 0x10, 0, 0x0f, 0x0b)
+	mod, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(instructionFuncImport("wago:instr/recipe", "nonstack.trap-order", 0))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	in, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	_, err = in.Invoke("run", I32(-2147483648), I32(7))
+	var trap *TrapError
+	if !errors.As(err, &trap) || trap.Code != TrapDivOverflow {
+		t.Fatalf("got %v, want the earlier integer overflow", err)
+	}
+	if calls != 0 {
+		t.Fatalf("portable handler calls=%d, want 0", calls)
+	}
+}
