@@ -3,10 +3,16 @@ package gc
 func (c *Collector) clearMarks() {
 	if len(c.mark) < len(c.handles) {
 		c.mark = make([]bool, len(c.handles))
+	} else {
+		// The handle table retains its allocation high-water capacity. Only
+		// marks set since the last reset can require clearing. Queued roots may
+		// not have reached a drain yet (for example in scan-only callers).
+		for _, h := range c.markStack {
+			c.markHighWater = max(c.markHighWater, h+1)
+		}
+		clear(c.mark[:c.markHighWater])
 	}
-	for i := range c.mark {
-		c.mark[i] = false
-	}
+	c.markHighWater = 0
 	c.markStack = c.markStack[:0]
 }
 func (c *Collector) clearNurseryMarks() {
@@ -143,6 +149,7 @@ func (c *Collector) drainNurseryMarkStack() uint64 {
 		n := len(c.markStack) - 1
 		h := c.markStack[n]
 		c.markStack = c.markStack[:n]
+		c.markHighWater = max(c.markHighWater, h+1)
 		c.stats.MinorObjectsScanned++
 		scanned++
 		// The mark stack contains validated live handles. Scalar payloads carry
@@ -164,6 +171,7 @@ func (c *Collector) drainNurseryMarkStackForPromotion() uint64 {
 		n := len(c.markStack) - 1
 		h := c.markStack[n]
 		c.markStack = c.markStack[:n]
+		c.markHighWater = max(c.markHighWater, h+1)
 		c.stats.MinorObjectsScanned++
 		scanned++
 		plan := len(c.promotionScratch)
@@ -201,6 +209,7 @@ func (c *Collector) drainMarkStack() {
 		n := len(c.markStack) - 1
 		h := c.markStack[n]
 		c.markStack = c.markStack[:n]
+		c.markHighWater = max(c.markHighWater, h+1)
 		c.scanObject(h)
 	}
 }
