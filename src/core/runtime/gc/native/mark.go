@@ -24,6 +24,11 @@ func (c *Collector) clearNurseryMarks() {
 			c.mark[h] = false
 		}
 	}
+	// A panicking full root walk can leave old marks queued but undrained.
+	// Preserve their reset bound before discarding the stack for minor tracing.
+	for _, h := range c.markStack {
+		c.markHighWater = max(c.markHighWater, h+1)
+	}
 	c.markStack = c.markStack[:0]
 }
 

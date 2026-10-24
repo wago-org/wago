@@ -2,6 +2,85 @@ package gc
 
 import "testing"
 
+type panickingMarkRoots struct{ root Root }
+
+func (r *panickingMarkRoots) RangeRoots(visit func(RootSlot) bool) {
+	visit(&r.root)
+	panic("root enumeration failed")
+}
+
+type directPanickingMarkRoots struct{ panickingMarkRoots }
+
+func (r *directPanickingMarkRoots) RangeRootRefs(sink RootRefSink) bool {
+	sink.VisitRootRef(r.root.GetRef())
+	panic("root enumeration failed")
+}
+
+func TestFullMarkResetAfterRootPanicAndMinorCollection(t *testing.T) {
+	for _, direct := range []bool{false, true} {
+		name := "slots"
+		if direct {
+			name = "direct"
+		}
+		t.Run(name, func(t *testing.T) {
+			c := newTestCollector(t, Config{NurseryBytes: 1 << 20})
+			child, err := c.NewStructDefault(0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parent, err := c.NewStructDefault(1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
+				t.Fatal(err)
+			}
+			roots := RefSliceRoots{parent}
+			if err := c.CollectMinor(roots); err != nil {
+				t.Fatal(err)
+			}
+			if c.entry(parent).space != spaceOld || c.entry(child).space != spaceOld {
+				t.Fatal("parent and child were not promoted")
+			}
+
+			var panickingRoots RootSet = &panickingMarkRoots{root: Root(parent)}
+			if direct {
+				panickingRoots = &directPanickingMarkRoots{panickingMarkRoots{root: Root(parent)}}
+			}
+			func() {
+				defer func() {
+					if got := recover(); got != "root enumeration failed" {
+						t.Fatalf("root walk panic = %v", got)
+					}
+				}()
+				if err := c.CollectFull(panickingRoots); err != nil {
+					t.Fatal(err)
+				}
+			}()
+			if !c.mark[handleOf(parent)] || c.mark[handleOf(child)] || len(c.markStack) != 1 || c.markHighWater != 0 {
+				t.Fatal("panicking root walk did not leave the parent queued and child unmarked")
+			}
+			// This collection discards the queued parent without tracing it. Its
+			// old mark must still be covered by the next full mark reset.
+			if err := c.CollectMinor(nil); err != nil {
+				t.Fatal(err)
+			}
+			if len(c.markStack) != 0 {
+				t.Fatal("minor collection retained the queued parent")
+			}
+			if err := c.CollectFull(roots); err != nil {
+				t.Fatal(err)
+			}
+			if !c.validObjectRef(parent) || !c.validObjectRef(child) {
+				t.Fatal("full collection freed a reachable object after root panic and minor collection")
+			}
+			if err := c.Verify(roots); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestMarkResetCoversQueuedAndDrainedRoots(t *testing.T) {
 	for _, mode := range []string{"queued", "minor", "captured-minor", "full"} {
 		t.Run(mode, func(t *testing.T) {
