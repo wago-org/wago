@@ -3,6 +3,8 @@
 package arm64
 
 import (
+	"os"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -142,3 +144,5 @@ func (f *fn) tryBoundedSignedQuotient(reader *wasm.Reader) bool {
 	f.stats.peep("bounded-signed-quotient")
 	return true
 }
+
+var boundedSignedQuotientEnabled = os.Getenv("WAGO_ARM64_NO_BOUNDED_SIGNED_QUOTIENT") != "1" && os.Getenv("WAGO_ARM64_EXPERIMENT_BOUNDED_SIGNED_QUOTIENT") != "0"

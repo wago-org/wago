@@ -16,3 +16,9 @@ func (f *fn) straightLineBlock(r *wasm.Reader, kind ctrlKind, params, results in
 func (fr *ctrlFrame) isStraightLineBlock() bool {
 	return fr.kind == cfBlock && fr.controlSite == straightLineBlockSite
 }
+
+var straightLineBlockEnabled = true
+
+// Ordinary blocks have no header branch site (-1). This distinct sentinel
+// records the proven fallthrough-only frame without consuming packed flag bits.
+const straightLineBlockSite = -2

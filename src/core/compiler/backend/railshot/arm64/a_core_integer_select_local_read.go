@@ -2,6 +2,10 @@
 
 package arm64
 
+import (
+	"os"
+)
+
 // Unlike popValue, these operands remain on the stack until all reads are
 // protected. Regional homes are leases: erasing a borrowed reference before
 // pinning its physical register would let another operand evict its value.
@@ -35,3 +39,5 @@ func (f *fn) emitIntegerSelectLocalRead(a, b, cond *elem, dest Reg, wide bool) {
 		f.stats.peep("integer-select-local-read")
 	}
 }
+
+var integerSelectLocalReadEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_SELECT_LOCAL_READ") != "1"

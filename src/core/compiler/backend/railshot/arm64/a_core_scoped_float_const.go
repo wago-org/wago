@@ -100,3 +100,5 @@ func (f *fn) releaseScopedFloatConsts(depth int) {
 	clear(f.fconsts)
 	f.fconsts = f.fconsts[:0]
 }
+
+var scopedLoopFloatConstsEnabled = true

@@ -62,3 +62,5 @@ func (f *fn) unsignedAddressMaximum(e *elem, wide bool, budget int) (uint64, int
 	}
 	return shared.UnsignedOperationMaximum(shared.IntOp(op), a, b, constant, known, wide), budget
 }
+
+var memoryMinimumBoundsEnabled = true

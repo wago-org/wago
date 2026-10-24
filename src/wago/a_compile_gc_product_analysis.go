@@ -1,5 +1,9 @@
 package wago
 
+import (
+	"os"
+)
+
 func gcProductAnalysisNeeded(required CoreFeatures) bool {
 	return !gcProductRequiredGateEnabled || required.IsEnabled(CoreFeatureGC)
 }
@@ -10,3 +14,7 @@ func gcProductAnalysisNeeded(required CoreFeatures) bool {
 func gcTypeMetadataNeeded(required CoreFeatures) bool {
 	return required&(CoreFeatureGC|CoreFeatureTypedFunctionReferences|CoreFeatureExceptionHandling) != 0
 }
+
+// Feature requirements are already proved by validation.
+// It avoids product hashes and opcode walks for modules that cannot use GC.
+var gcProductRequiredGateEnabled = os.Getenv("WAGO_GC_PRODUCT_GATE") != "0"

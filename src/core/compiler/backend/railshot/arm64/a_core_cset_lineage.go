@@ -4,6 +4,7 @@ package arm64
 
 import (
 	"math/bits"
+	"os"
 )
 
 func csetLineagePair(cmp, sel uint32) bool {
@@ -126,3 +127,5 @@ func (f *fn) foldCsetLineage(b []byte, n, firstSet int, targets []uint64, entrie
 		}
 	}
 }
+
+var csetLineageEnabled = os.Getenv("WAGO_ARM64_NO_CSET_LINEAGE") != "1"

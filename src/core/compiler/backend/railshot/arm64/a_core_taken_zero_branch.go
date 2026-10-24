@@ -2,6 +2,10 @@
 
 package arm64
 
+import (
+	"os"
+)
+
 // The taken edge of CBZ/CBNZ already determines a second same-width test of
 // the same register at its direct destination. Bypass that second test without
 // changing any word on intervening or alternative paths. In particular, this
@@ -41,3 +45,5 @@ func (f *fn) threadTakenZeroBranches(b []byte, n int, targets []uint64) {
 		f.stats.peep("taken-zero-branch")
 	}
 }
+
+var takenZeroBranchEnabled = os.Getenv("WAGO_ARM64_NO_TAKEN_ZERO_BRANCH") != "1"

@@ -2,6 +2,10 @@
 
 package arm64
 
+import (
+	"os"
+)
+
 // Concrete read-only operands retain the existing traps and result allocation.
 func (f *fn) condenseBorrowedDivRem(node *elem, dest Reg) Reg {
 	w := node.st.typ.is64()
@@ -107,3 +111,6 @@ func (f *fn) canBorrowDivRemOperands(node *elem) bool {
 	}
 	return left.st.kind == stLocalReg || left.st.kind == stGlobReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg
 }
+
+var borrowedDivRemEnabled = os.Getenv("WAGO_ARM64_NO_BORROWED_DIV_REM") != "1" &&
+	os.Getenv("WAGO_ARM64_EXPERIMENT_BORROWED_DIV_REM") != "0"

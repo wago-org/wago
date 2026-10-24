@@ -2,6 +2,10 @@
 
 package arm64
 
+import (
+	"os"
+)
+
 func (f *fn) selectSinkRead(e *elem) (Reg, bool) {
 	if f.opt(optSelectSourceRead) {
 		if e.elemKind() == ekValue && e.st.kind == stConst {
@@ -32,3 +36,5 @@ func (f *fn) selectSinkPublishConst(st storage, r Reg) {
 	f.iconstN++
 	f.stats.peep("select-const-reuse")
 }
+
+var selectSourceReadEnabled = os.Getenv("WAGO_ARM64_NO_SELECT_SOURCE_READ") != "1"

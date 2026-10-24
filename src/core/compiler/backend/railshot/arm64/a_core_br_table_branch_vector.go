@@ -2,6 +2,10 @@
 
 package arm64
 
+import (
+	"os"
+)
+
 // A uniform executable vector needs no offset load: every entry is one B.
 // Restrict the first cover to the existing small unique-table cohort, avoiding
 // duplicate-heavy edge-list growth and any branch-value/handler setup.
@@ -50,3 +54,5 @@ func (f *fn) emitBranchVector(labels []uint32, def uint32, index Reg, emitCase f
 	f.stats.peep("br-table-branch-vector")
 	f.unreachable = true
 }
+
+var brTableBranchVectorEnabled = os.Getenv("WAGO_ARM64_NO_BR_TABLE_BRANCH_VECTOR") != "1" && os.Getenv("WAGO_ARM64_EXPERIMENT_BR_TABLE_BRANCH_VECTOR") != "0"

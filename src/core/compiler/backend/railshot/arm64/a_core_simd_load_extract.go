@@ -56,3 +56,5 @@ func (f *fn) trySIMDLoadExtract(r *wasm.Reader, memoryIndex uint32, off uint64) 
 	f.stats.peep("simd-load-extract")
 	return true, nil
 }
+
+var simdLoadExtractEnabled = true

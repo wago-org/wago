@@ -2,6 +2,10 @@
 
 package arm64
 
+import (
+	"os"
+)
+
 // CMP; B.c1 exit; CMP; B.c2 exit -> CMP; CCMP(!c1); NOP; B.c2 exit.
 // The forced NZCV satisfies c2 when c1 originally took the exit. Both
 // continuations must overwrite NZCV before any use. No GPR or layout changes.
@@ -131,3 +135,6 @@ func compareCondHolds(c Cond, flags uint32) bool {
 	}
 	return false
 }
+
+var commonExitCompareEnabled = os.Getenv("WAGO_ARM64_NO_COMMON_EXIT_COMPARE") != "1" &&
+	os.Getenv("WAGO_ARM64_EXPERIMENT_COMMON_EXIT_COMPARE") != "0"

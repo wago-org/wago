@@ -41,3 +41,5 @@ func (f *fn) memoryFillVector(n int, memoryIndex uint32) {
 		f.release(dst)
 	}
 }
+
+var bulkFillVectorEnabled = true

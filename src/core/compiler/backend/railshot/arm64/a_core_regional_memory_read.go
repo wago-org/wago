@@ -2,6 +2,10 @@
 
 package arm64
 
+import (
+	"os"
+)
+
 // Detached regional references ordinarily need snapshots because eviction can
 // no longer find them on the operand stack. An immediate memory address instead
 // lends its register only for memAddr, pinned until lowering finishes. A load
@@ -19,3 +23,5 @@ func (f *fn) popRegionalMemoryAddress() (*elem, bool) {
 	}
 	return f.popValue(), false
 }
+
+var regionalMemoryReadEnabled = os.Getenv("WAGO_ARM64_NO_REGIONAL_MEMORY_READ") != "1" && os.Getenv("WAGO_ARM64_EXPERIMENT_REGIONAL_MEMORY_READ") != "0"

@@ -2,6 +2,10 @@
 
 package arm64
 
+import (
+	"os"
+)
+
 // Pure integer work can be skipped when a select keeps its destination local.
 // Trapping loads/divides and unsupported nodes decline. The bounded weighted
 // cost avoids branching around a single cheap operation.
@@ -80,3 +84,5 @@ func (f *fn) tryPureSelectSinkGuard(a, b, cond *elem, x int, dest Reg, wide bool
 	f.stats.peep("select-sink-pure-guard")
 	return true
 }
+
+var selectSinkPureGuardEnabled = os.Getenv("WAGO_ARM64_NO_SELECT_SINK_PURE_GUARD") != "1"
