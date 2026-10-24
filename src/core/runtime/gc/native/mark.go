@@ -138,6 +138,9 @@ func (c *Collector) markRootForMode(r Ref, mode uint8) {
 }
 
 func (c *Collector) drainNurseryMarkStack() uint64 {
+	if scanned, ok := c.drainParallel(false, true); ok {
+		return scanned
+	}
 	var scanned uint64
 	for len(c.markStack) > 0 {
 		n := len(c.markStack) - 1
@@ -156,6 +159,9 @@ func (c *Collector) drainNurseryMarkStack() uint64 {
 }
 
 func (c *Collector) drainNurseryMarkStackForPromotion() uint64 {
+	if scanned, ok := c.drainParallel(true, true); ok {
+		return scanned
+	}
 	// Keep this hot loop separate from the general drain. A capture-mode branch
 	// per live object costs more than the duplicated control flow on AMD64.
 	c.promotionScratch = c.promotionScratch[:0]
@@ -197,6 +203,9 @@ func (c *Collector) markNurseryRef(r Ref) {
 }
 
 func (c *Collector) drainMarkStack() {
+	if _, ok := c.drainParallel(false, false); ok {
+		return
+	}
 	for len(c.markStack) > 0 {
 		n := len(c.markStack) - 1
 		h := c.markStack[n]

@@ -1,0 +1,28 @@
+(module
+  (type $Node (struct (field i32) (field (ref null $Node))))
+  (type $Nodes (array (mut (ref null $Node))))
+  (global $roots (mut (ref null $Nodes)) (ref.null $Nodes))
+  (func (export "build") (param $n i32) (result i32)
+    (local $i i32) (local $head (ref null $Node))
+    (global.set $roots (array.new_default $Nodes (local.get $n)))
+    (loop $fill
+      (local.set $head (struct.new $Node (local.get $i) (local.get $head)))
+      (array.set $Nodes (global.get $roots) (local.get $i) (local.get $head))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $fill (i32.lt_u (local.get $i) (local.get $n))))
+    (local.get $i))
+  (func (export "churn") (param $n i32) (result i32)
+    (local $i i32) (local $last (ref null $Node))
+    (loop $allocate
+      (local.set $last (struct.new $Node (local.get $i) (ref.null $Node)))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $allocate (i32.lt_u (local.get $i) (local.get $n))))
+    (struct.get $Node 0 (local.get $last)))
+  (func (export "sum") (param $n i32) (result i32)
+    (local $i i32) (local $sum i32)
+    (loop $read
+      (local.set $sum (i32.add (local.get $sum)
+        (struct.get $Node 0 (array.get $Nodes (global.get $roots) (local.get $i)))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br_if $read (i32.lt_u (local.get $i) (local.get $n))))
+    (local.get $sum)))

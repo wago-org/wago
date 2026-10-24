@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"fmt"
 	"os"
 	"testing"
 )
@@ -69,12 +70,20 @@ func TestGCAllocationMix(t *testing.T) {
 
 // Collection stays enabled: DisableCollection bypasses native reservations and
 // would hide the batch cancellation cost that this benchmark must measure.
-func BenchmarkGCAllocationMix(b *testing.B) {
+func BenchmarkGCAllocationMix(b *testing.B) { benchmarkGCAllocationMix(b, 1) }
+
+func BenchmarkGCAllocationMixWorkers(b *testing.B) {
+	for _, workers := range []int{1, 4} {
+		b.Run(fmt.Sprintf("workers=%d", workers), func(b *testing.B) { benchmarkGCAllocationMix(b, workers) })
+	}
+}
+
+func benchmarkGCAllocationMix(b *testing.B, workers int) {
 	compiled := allocationMixModule(b)
 	for _, name := range allocationMixExports {
 		b.Run(name, func(b *testing.B) {
 			instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{
-				NurseryBytes: 1 << 20, ThroughputHeapBytes: 64 << 20,
+				Workers: workers, NurseryBytes: 1 << 20, ThroughputHeapBytes: 64 << 20,
 			}})
 			if err != nil {
 				b.Fatal(err)

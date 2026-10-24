@@ -1,0 +1,80 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkThroughputFullLivePointerFree/objects=90-4         	  239310	      1540 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=900-4        	   23732	     15039 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=9000-4       	    2421	    152008 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullOldHeapPause/objects=1000/survival=0-4         	   53528	      6754 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=1000/survival=50-4        	   31550	     11090 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=10000/survival=0-4        	    5697	     64106 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=10000/survival=50-4       	    3252	    108274 ns/op
+BenchmarkThroughputParallelGraph/workers=1/edges=2-4                  	     466	    756919 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=1/edges=32-4                 	     159	   2212116 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=4/edges=2-4                  	    1095	    345099 ns/op	    1168 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=4/edges=32-4                 	     284	   1282103 ns/op	   13465 B/op	       1 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkThroughputFullLivePointerFree/objects=90-4         	  238159	      1518 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=900-4        	   23422	     15160 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=9000-4       	    2422	    156104 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullOldHeapPause/objects=1000/survival=0-4         	   52946	      6819 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=1000/survival=50-4        	   32392	     11105 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=10000/survival=0-4        	    5674	     63921 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=10000/survival=50-4       	    3356	    109185 ns/op
+BenchmarkThroughputParallelGraph/workers=1/edges=2-4                  	     483	    793246 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=1/edges=32-4                 	     163	   2232719 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=4/edges=2-4                  	    1063	    344655 ns/op	    1257 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=4/edges=32-4                 	     285	   1340761 ns/op	   13092 B/op	       1 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkThroughputFullLivePointerFree/objects=90-4         	  224659	      1556 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=900-4        	   23338	     15467 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=9000-4       	    2414	    154951 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullOldHeapPause/objects=1000/survival=0-4         	   53916	      6734 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=1000/survival=50-4        	   32464	     11197 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=10000/survival=0-4        	    5558	     63567 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=10000/survival=50-4       	    3098	    108092 ns/op
+BenchmarkThroughputParallelGraph/workers=1/edges=2-4                  	     458	    755941 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=1/edges=32-4                 	     160	   2203046 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=4/edges=2-4                  	    1086	    343294 ns/op	    1268 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=4/edges=32-4                 	     284	   1301303 ns/op	   11927 B/op	       1 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkThroughputFullLivePointerFree/objects=90-4         	  232299	      1533 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=900-4        	   23601	     14960 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=9000-4       	    2433	    153677 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullOldHeapPause/objects=1000/survival=0-4         	   53232	      6820 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=1000/survival=50-4        	   32343	     11051 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=10000/survival=0-4        	    5674	     63739 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=10000/survival=50-4       	    3379	    109527 ns/op
+BenchmarkThroughputParallelGraph/workers=1/edges=2-4                  	     484	    801314 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=1/edges=32-4                 	     157	   2203744 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=4/edges=2-4                  	    1083	    342811 ns/op	    1423 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=4/edges=32-4                 	     284	   1279411 ns/op	   13119 B/op	       1 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/core/runtime/gc/native
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkThroughputFullLivePointerFree/objects=90-4         	  238260	      1520 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=900-4        	   23821	     15093 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullLivePointerFree/objects=9000-4       	    2436	    160557 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputFullOldHeapPause/objects=1000/survival=0-4         	   53972	      6693 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=1000/survival=50-4        	   32404	     11145 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=10000/survival=0-4        	    5704	     63584 ns/op
+BenchmarkThroughputFullOldHeapPause/objects=10000/survival=50-4       	    3129	    108156 ns/op
+BenchmarkThroughputParallelGraph/workers=1/edges=2-4                  	     460	    754936 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=1/edges=32-4                 	     159	   2227878 ns/op	      24 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=4/edges=2-4                  	     985	    359809 ns/op	    1459 B/op	       1 allocs/op
+BenchmarkThroughputParallelGraph/workers=4/edges=32-4                 	     280	   1290511 ns/op	   14464 B/op	       1 allocs/op
+PASS

@@ -230,6 +230,19 @@ backend code generation.
 
 ### WasmGC boundary
 
+Throughput collection accepts `GCConfig.Workers` (zero/one for serial, two
+through eight for parallel collection under standard Go). A lazily created pool
+retains at most the requested participants, capped by `GOMAXPROCS` at creation,
+including the caller. Exact root callbacks and remembered-card scanning run on
+the caller before helpers trace with atomic per-handle claims, private stacks,
+a bounded shared queue, and disjoint large-array ranges. Dense full sweeps
+partition dead-handle discovery; the caller commits frees in handle order.
+Large admitted promotion batches copy disjoint payloads before the caller
+publishes handles. Every phase joins before allocator/card mutation, verification,
+or mutator resumption; `Close` stops and joins parked helpers. Small collections,
+Tiny/TinyGo, and ownership-edge callbacks retain serial paths. See the
+[parallel collector design and measurements](docs/research/parallel-collection.md).
+
 Exact native GC liveness starts with bounded backward sweeps, switching to a
 compact predecessor directory and work queue when more propagation is needed.
 Root bitsets can omit unused locals, and explicit work/memory limits bound

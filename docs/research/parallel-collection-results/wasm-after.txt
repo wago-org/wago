@@ -1,0 +1,75 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCAllocationMixWorkers/workers=1/scalar-structs-4         	    3052	     77049 ns/op	    1566 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/structs-4                	      68	   3488043 ns/op	   46144 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-4            	      46	   5068058 ns/op	   45969 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-default-4    	      50	   4656292 ns/op	   42293 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-fill-4       	      48	   5051377 ns/op	   44053 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/scalar-structs-4         	    2863	     77424 ns/op	    1813 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/structs-4                	      60	   3555931 ns/op	   52294 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-4            	      40	   5082230 ns/op	   58621 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-default-4    	      51	   4775987 ns/op	   45988 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-fill-4       	      46	   5088497 ns/op	   51010 B/op	       1 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCAllocationMixWorkers/workers=1/scalar-structs-4         	    2858	     75960 ns/op	    1672 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/structs-4                	      60	   3421700 ns/op	   52294 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-4            	      42	   5249702 ns/op	   50345 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-default-4    	      45	   4648824 ns/op	   46990 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-fill-4       	      42	   4953076 ns/op	   50344 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/scalar-structs-4         	    2818	     77283 ns/op	    1842 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/structs-4                	      69	   3534498 ns/op	   45473 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-4            	      39	   5129953 ns/op	   60167 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-default-4    	      50	   4728545 ns/op	   46900 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-fill-4       	      46	   4969249 ns/op	   51015 B/op	       1 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCAllocationMixWorkers/workers=1/scalar-structs-4         	    3015	     75400 ns/op	    1585 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/structs-4                	      56	   3607115 ns/op	   56030 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-4            	      39	   5306020 ns/op	   54217 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-default-4    	      46	   4692289 ns/op	   45969 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-fill-4       	      46	   5016150 ns/op	   45969 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/scalar-structs-4         	    2822	     76910 ns/op	    1839 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/structs-4                	      67	   3491738 ns/op	   46831 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-4            	      40	   5162057 ns/op	   58621 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-default-4    	      51	   4713562 ns/op	   45990 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-fill-4       	      48	   5036617 ns/op	   48853 B/op	       1 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCAllocationMixWorkers/workers=1/scalar-structs-4         	    2955	     75198 ns/op	    1617 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/structs-4                	      61	   3476036 ns/op	   51437 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-4            	      43	   5211152 ns/op	   49174 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-default-4    	      42	   4766494 ns/op	   50345 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-fill-4       	      42	   5098597 ns/op	   50344 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/scalar-structs-4         	    2654	     76154 ns/op	    1956 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/structs-4                	      60	   3437592 ns/op	   52294 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-4            	      40	   5177595 ns/op	   58624 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-default-4    	      51	   4702741 ns/op	   45987 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-fill-4       	      40	   5087114 ns/op	   58621 B/op	       1 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCAllocationMixWorkers/workers=1/scalar-structs-4         	    2896	     74955 ns/op	    1650 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/structs-4                	      63	   3513086 ns/op	   49804 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-4            	      46	   5235934 ns/op	   45969 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-default-4    	      51	   4639757 ns/op	   41464 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=1/alternating-fill-4       	      46	   4974598 ns/op	   45971 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/scalar-structs-4         	    2803	     76034 ns/op	    1852 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/structs-4                	      68	   3497789 ns/op	   46142 B/op	       0 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-4            	      46	   5097769 ns/op	   50977 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-default-4    	      50	   4711748 ns/op	   46900 B/op	       1 allocs/op
+BenchmarkGCAllocationMixWorkers/workers=4/alternating-fill-4       	      48	   4978960 ns/op	   48857 B/op	       1 allocs/op
+PASS

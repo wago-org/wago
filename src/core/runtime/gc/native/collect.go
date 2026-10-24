@@ -142,6 +142,12 @@ func (c *Collector) finishFullCardMetadata() {
 }
 
 func (c *Collector) sweepAll() {
+	if c.sweepParallel() {
+		if nativeCollectorFastPaths {
+			c.prepareMajorBlocks()
+		}
+		return
+	}
 	// A refilled table uses the original sweep before spending work indexing
 	// its young ledger. If that sweep makes it sparse again, retain the dirty
 	// ledger until the next indexed sweep (or reset it when disabling the map).
@@ -523,19 +529,26 @@ func (c *Collector) commitPromotionPlans(plans []plannedPromotion, toSpace uint8
 	if dense {
 		young = c.nurseryHandles[:0]
 	}
+	parallelCopied := c.copyPromotionParallel(plans)
 	hasYoung, hasTenured := false, false
 	for _, p := range plans {
 		src := c.handles[p.handle]
 		size := src.size
 		switch p.entry.space {
 		case spaceNursery:
-			dst := c.nursery[p.entry.off : p.entry.off+p.entry.size]
-			copy(dst, c.bytes(makeObjRef(p.handle)))
-			c.poisonYoungSource(src)
+			if !parallelCopied {
+				dst := c.nursery[p.entry.off : p.entry.off+p.entry.size]
+				copy(dst, c.bytes(makeObjRef(p.handle)))
+				c.poisonYoungSource(src)
+			}
 			c.handles[p.handle] = p.entry
 			copiedBytes += uint64(size)
 		case spaceOld:
-			c.promoteHandleTo(p.handle, p.entry)
+			if parallelCopied {
+				c.publishPromotedHandle(p.handle, p.entry)
+			} else {
+				c.promoteHandleTo(p.handle, p.entry)
+			}
 			copiedBytes += uint64(size)
 			promotedBytes += uint64(size)
 		case spaceLarge:
@@ -690,13 +703,18 @@ func (c *Collector) promoteMarkedNurseryImmediate() (copiedBytes, promotedBytes 
 			return 0, 0, err
 		}
 	}
+	parallelCopied := c.copyPromotionParallel(plans)
 	for _, p := range plans {
 		size := c.handles[p.handle].size
 		if p.entry.space == spaceLarge {
 			c.tenureLargeInPlace(p.handle)
 			promotedBytes += uint64(size)
 		} else {
-			c.promoteHandleTo(p.handle, p.entry)
+			if parallelCopied {
+				c.publishPromotedHandle(p.handle, p.entry)
+			} else {
+				c.promoteHandleTo(p.handle, p.entry)
+			}
 			copiedBytes += uint64(size)
 			promotedBytes += uint64(size)
 		}
@@ -779,8 +797,7 @@ func (c *Collector) promoteHandle(h uint32) error {
 }
 
 func (c *Collector) promoteHandleTo(h uint32, oldEntry handleEntry) {
-	// Native nursery objects may not be indexed yet. Cover a survivor before
-	// promotion removes it from the dense nursery ledger used by the next major.
+	// Preserve the serial copy/publication loop for the one-worker path.
 	if nativeCollectorFastPaths && c.majorYoungDirty {
 		c.noteMajorHandle(h)
 	}
@@ -796,6 +813,15 @@ func (c *Collector) promoteHandleTo(h uint32, oldEntry handleEntry) {
 		}
 	}
 	*e = oldEntry
+}
+
+func (c *Collector) publishPromotedHandle(h uint32, oldEntry handleEntry) {
+	// Native nursery objects may not be indexed yet. Cover a survivor before
+	// promotion removes it from the dense nursery ledger used by the next major.
+	if nativeCollectorFastPaths && c.majorYoungDirty {
+		c.noteMajorHandle(h)
+	}
+	c.handles[h] = oldEntry
 }
 func (c *Collector) free(h uint32) { c.releaseHandle(h, false, true) }
 

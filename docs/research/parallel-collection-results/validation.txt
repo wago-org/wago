@@ -1,0 +1,45 @@
+Host: Linux AMD64; AMD Ryzen 7 8845HS; Go 1.27.1
+Baseline Wago: fc6af651c15e286409d9cc117c94181e9ee50ff3
+Snap source: 87aef66ef6608d95bd9568af1bed8d3f602f16cc
+Official Core 3 interpreter: 9d36019973201a19f9c9ebb0f10828b2fe2374aa
+
+Baseline (before production changes):
+  go test ./src/core/runtime/gc/...                         PASS
+  go test -tags=wagodebug ./src/core/runtime/gc/...         PASS
+  go test -tags=wago_regalloccheck ./src/core/runtime/gc/... PASS
+
+Qualified environment for full suites:
+  DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+  WAGO_SPEC_INTERPRETER=/home/dev/Projects/wago/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm
+  WAGO_SPEC_INTERPRETER_REVISION=9d36019973201a19f9c9ebb0f10828b2fe2374aa
+
+After implementation:
+  go test ./...                                           PASS
+  go test -tags=wago_regalloccheck ./...                    PASS
+  (cd bench && go test -tags=wago_regalloccheck ./...)      PASS
+  go test -tags=wagodebug ./src/core/runtime/gc/... ./src/wago \
+    -run '(GC|Collector|Parallel|Throughput|Tiny|Nursery|Survivor|Promotion|Remembered|Root|Card|Scan)' PASS
+  go test -race -tags=wagodebug ./src/core/runtime/gc/native \
+    -run '^TestParallel'                                  PASS
+  go test -tags=wago_target_tinygo ./src/core/runtime/gc/... PASS
+  GOOS=linux GOARCH=arm64 go test -c ./src/core/runtime/gc/native PASS (compile only)
+  GOOS=linux GOARCH=riscv64 go test -c ./src/core/runtime/gc/native PASS (compile only)
+  go run ./tests/tools/docs-check                          PASS
+
+Focused parallel tests were additionally repeated; ordinary/debug tests include
+nonzero opaque extern-reference storage alongside traced collector references.
+RISC-V64 ownership-callback fallback coverage is compiled, not execution-verified.
+TinyGo qualification uses the Go build tag, not a TinyGo compiler execution.
+
+Initial broad runs exposed missing local prerequisites (Core 3 checkout and
+interpreter, PowerShell ICU); the environment above and initialized pinned
+submodule resolved them. One unrelated plugin install test returned 'text file
+busy' in an initial concurrent run and passed on isolated retry and in the final
+broad qualification. Existing spec-v1/spec-v2 submodule differences were retained.
+
+Final paired captures: 2026-10-24 13:08:38 through 13:13:36 UTC.
+Exclusive global Wago/Slipstream wall-time lease; GOMAXPROCS=4;
+affinity CPUs 8,10,12,14 (four distinct physical cores; respective SMT siblings
+8-9, 10-11, 12-13, 14-15). Five alternating-order pairs per matrix.
+Earlier interrupted and two-physical-core pilot captures are excluded.
+No experimental policy overlays were applied to the final implementation.
