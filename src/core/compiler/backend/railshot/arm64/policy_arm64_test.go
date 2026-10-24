@@ -84,6 +84,7 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkArm64(t *testing.T) {
 
 func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
 	names := []string{
+		"file-backed-code",
 		"simd-superopt", "interval-region-pins", "interval-next-use", "magic-div",
 		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "inverted-logical", "select-group-guard", "fp-immediate-const", "fp-literal-pool", "entry-init-elision", "prepared-direct-entry", "prepared-bounded-entry", "loop-int-const", "scoped-loop-int-const", "interval-call-regions", "indexed-base-reuse", "dominated-indexed-base", "dominated-indexed-key", "ordinary-shifted-immediate", "common-exit-compare", "borrowed-div-rem", "bounded-signed-quotient", "br-table-branch-vector", "regional-memory-read",
 		"v128-direct-results", "cold-call-local-pins", "convert-read", "guarded-boolean-xor", "taken-zero-branch", "cset-lineage", "integer-select-local-read",

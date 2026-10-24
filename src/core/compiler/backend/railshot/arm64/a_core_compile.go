@@ -814,6 +814,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		var err error
 		if opts.DeferCodeMapping {
 			codeBuffer, err = coreruntime.NewHeapCodeBuffer(codeCap)
+		} else if policy.EnabledOption(optFileBackedCode) {
+			codeBuffer, err = coreruntime.NewCompilerCodeBuffer(codeCap)
 		} else {
 			codeBuffer, err = coreruntime.NewCodeBuffer(codeCap)
 		}
@@ -842,6 +844,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 		}
 		var trapBodyCluster sharedTrapBodyCluster
+		fileCode := codeBuffer.OwnsCompilerFile()
+		reclaimedCode := 0
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		for i := range m.Code {
 			var st *CodegenStats
@@ -924,6 +928,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 					return nil, fmt.Errorf("arm64: grow code image: %w", err)
 				}
 			}
+			if fileCode && len(codeBuffer.Bytes())-reclaimedCode >= 8<<20 {
+				reclaimedCode, err = codeBuffer.ReclaimCompilerPages(reclaimedCode, len(codeBuffer.Bytes()))
+				if err != nil {
+					return nil, fmt.Errorf("arm64: reclaim compiler image: %w", err)
+				}
+			}
 			if !pressureDone && opts.MemoryPressure != nil && len(codeBuffer.Bytes()) >= pressureAt {
 				pressureDone = true
 				opts.MemoryPressure()
@@ -965,7 +975,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		if profileEnabled && opts.Profile {
 			recordProfileRegions(ms, entry, importedFuncs, len(code), len(code)-moduleOther, moduleOther)
 		}
-		if err := patchCallRelocs(code, entry, internalEntry, &relocs); err != nil {
+		if err := patchCallRelocsWithImage(code, entry, internalEntry, &relocs, codeBuffer); err != nil {
 			return nil, err
 		}
 		directPreparedBounded = mergeGCReducedBounds(resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTable), gcReducedBounded)
@@ -1044,11 +1054,24 @@ func finalizeOmittedInlineEntries(entry, internalEntry []int, relocs *callRelocT
 }
 
 func patchCallRelocs(code []byte, entry, internalEntry []int, relocs *callRelocTable) error {
+	return patchCallRelocsWithImage(code, entry, internalEntry, relocs, nil)
+}
+
+func patchCallRelocsWithImage(code []byte, entry, internalEntry []int, relocs *callRelocTable, image *coreruntime.CodeBuffer) error {
 	if len(entry) < relocs.functions() {
 		return fmt.Errorf("arm64: relocation entry table has %d functions, want at least %d", len(entry), relocs.functions())
 	}
 	asm := &a64.Asm{B: code}
+	fileCode := image != nil && image.OwnsCompilerFile()
+	reclaimedCode := 0
 	for i := 0; i < relocs.functions(); i++ {
+		if fileCode && entry[i]-reclaimedCode >= 8<<20 {
+			var err error
+			reclaimedCode, err = image.ReclaimCompilerPages(reclaimedCode, entry[i])
+			if err != nil {
+				return fmt.Errorf("arm64: reclaim relocated image: %w", err)
+			}
+		}
 		base := entry[i]
 		functionRelocs := relocs.serialFunction(i)
 		if relocs.results != nil {
@@ -1080,6 +1103,12 @@ func patchCallRelocs(code []byte, entry, internalEntry []int, relocs *callRelocT
 				return fmt.Errorf("arm64 direct call relocation from function %d at %#x to function %d at %#x exceeds BL range", i, site, rl.targetIndex(), target)
 			}
 		}
+	}
+	if fileCode {
+		if _, err := image.ReclaimCompilerPages(reclaimedCode, len(code)); err != nil {
+			return err
+		}
+		return image.FinishCompilerCode()
 	}
 	return nil
 }

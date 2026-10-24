@@ -107,6 +107,7 @@
               "entry-zero-pairs",
               "ext-fp-pins",
               "fcmp-fuse",
+              "file-backed-code",
               "float-frame-mem",
               "float-map-loop",
               "float-store-borrow",

@@ -7,9 +7,13 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/optimization"
 )
 
+// File-backed code remains opt-in while its compile-time tradeoff is qualified.
+var fileBackedCodeEnabled bool
+
 // The binding inventory is checked against the arm64 Optimization Definitions
 // during package initialization. Public sense is always "on = enabled".
 var optimizationBindings = optimization.NewBindings("arm64",
+	optimization.Bind("file-backed-code", &fileBackedCodeEnabled),
 	optimization.Bind("float-map-loop", &floatMapLoopEnabled),
 	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
 	optimization.Bind("atomic-notify-empty", &atomicNotifyEmptyEnabled),
@@ -119,6 +123,7 @@ var (
 	optSharedMemoryBase     = optimizationBindings.Option("shared-memory-base")
 	optAtomicLSE            = optimizationBindings.Option("atomic-lse")
 	optBoundsFacts          = optimizationBindings.Option("bounds-facts")
+	optFileBackedCode       = optimizationBindings.Option("file-backed-code")
 	optStraightLineBlock    = optimizationBindings.Option("straight-line-block")
 	optBulkFillVector       = optimizationBindings.Option("bulk-fill-vector")
 	optSIMDStoreLoadAddress = optimizationBindings.Option("simd-store-load-address")

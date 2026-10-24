@@ -406,3 +406,13 @@ func TestCatalogArchitectureSlicesAreOwnedByCaller(t *testing.T) {
 		})
 	}
 }
+
+func TestFileBackedCodeIsExperimentalArm64(t *testing.T) {
+	definition, ok := Lookup("arm64", "file-backed-code")
+	if !ok || definition.Default || !definition.Experimental {
+		t.Fatalf("file-backed code definition = %+v, found=%t", definition, ok)
+	}
+	if _, ok := Lookup("amd64", "file-backed-code"); ok {
+		t.Fatal("unqualified AMD64 file code option advertised")
+	}
+}

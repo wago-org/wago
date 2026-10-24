@@ -87,3 +87,24 @@ original campaign source, not the combined PR or its newer main baseline. The
 30% physical-memory target remains unproven. Full local experiment and recovery
 notes are retained under `.validation/pr1017-integration/` and are not published
 as production documentation.
+
+## Experimental file-backed compiler images
+
+Linux ARM64 can opt into `file-backed-code` for large serial mapped compiler
+images, for example with `WithOptimization("file-backed-code", true)` or the
+probe's `-option=file-backed-code -enabled=true` flags. The option defaults off
+while its compile-time tradeoff is being qualified. Guest code and artifact
+formats remain unchanged.
+
+Each compiler buffer owns an unnamed temporary file and releases completed
+pages during emission and relocation. It reserves disk blocks before writing;
+unavailable storage, memory-backed temporary filesystems, and no-execute mounts
+fall back to anonymous memory. Closing, sealing, or transferring the image
+releases the descriptor. Mappings retain the file's bytes after descriptor
+closure.
+
+This trades temporary disk space and I/O for lower compiler residency. Record
+RSS, charged memory including page cache, compilation time, and cold execution
+cost separately. The storage option alone has not established the full speed
+and execution targets. Other backends, parallel compilation, deferred heap
+images, and unsupported platforms use their existing storage paths.
