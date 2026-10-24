@@ -14,12 +14,13 @@ import (
 
 func TestCustomInstructionConsumesGCFrameCallsite(t *testing.T) {
 	// A lowered import followed by a real call must consume two source masks,
-	// while only the real call contributes a native return address.
+	// while only the real call contributes a native return address. The callee
+	// contains a loop so native inlining cannot eliminate that second call.
 	b := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(2, wasmtest.Vec(append(append(wasmtest.Name("env"), wasmtest.Name("inline")...), 0, 0))),
 		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{0})),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0, 0x10, 2, 0x0b}), wasmtest.Code([]byte{0x0b}))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0, 0x10, 2, 0x0b}), wasmtest.Code([]byte{0x03, 0x40, 0x0b, 0x0b}))),
 	)
 	m, err := wasm.DecodeModule(b)
 	if err != nil {
