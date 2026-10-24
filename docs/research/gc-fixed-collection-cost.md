@@ -53,11 +53,21 @@ cover the paths whose lifecycle rules remain in place.
 
 Linux/AMD64, Ryzen 7 8845HS, Go 1.27.1, 2026-10-24. The baseline is branch
 starting commit `fc6af651c15e286409d9cc117c94181e9ee50ff3` (main when this work
-started). Both native GC benchmark binaries were built from the same checkout
-and toolchain, before/after the runtime edits. Seven fresh-process pairs used
+started). The baseline binary was saved before the runtime edits; the fixed
+binary was rebuilt from implementation commit `6e4f56eee2efd89496408febe83c490bd10217d2`,
+using the same checkout and toolchain. Seven fresh-process pairs used
 seed 640611 to shuffle baseline/fixed order within each pair, `GOMAXPROCS=1`,
-CPU 2, and 1000 iterations per sample. No concurrent builds were launched by
-this thread during measurement; the machine was shared with other work.
+CPU 2, and 1000 iterations per sample. The global timing lease covered this run
+from **2026-10-24 12:57:22 UTC to 12:58:47 UTC**. Slipstream correctness gates had finished by 12:54 UTC, and the
+parallel-collection thread confirmed its measurements stopped before this run.
+No concurrent benchmarks or builds from these threads overlapped the run. The
+lease was released to the parallel thread immediately after measurement.
+
+This leased run supersedes the original paired round (approximately
+12:43:44–12:45:15 UTC, reconstructed from output file timestamps), which preceded
+the lease steering note and overlapped Slipstream correctness work. Samples
+from the two rounds are not pooled; the original round remains in commit
+`6e4f56eee`.
 
 All workloads are existing native GC benchmarks. Time includes the work each
 fixture places inside its timer, rather than whole-process startup. Medians and
@@ -65,35 +75,39 @@ sample minimum/maximum follow; overlapping ranges limit small-delta claims.
 
 | Workload | Baseline median [range], ns/op | Fixed median [range], ns/op | Time delta |
 |---|---:|---:|---:|
-| Full, 65,536 historical handles, one live | 685.2 [660.1–715.6] | 221.7 [213.9–233.5] | -67.64% |
-| Full, 262,144 historical handles, one live | 2110 [2055–2254] | 295.8 [280.1–315.6] | -85.98% |
-| Full, 262,144 historical handles, clustered live | 6326 [6105–8740] | 4576 [4438–4748] | -27.66% |
-| Full, 262,144 historical handles, spread live | 142647 [141543–150856] | 143345 [139603–204778] | +0.49% |
-| Full, 262,144 live handles (dense control) | 4391392 [4236165–6170477] | 4406309 [4278975–5135837] | +0.34% |
-| Full, 9000 live pointer-free objects | 150490 [145439–155135] | 150905 [146257–167878] | +0.28% |
-| Full, 90 live pointer-free objects | 1536 [1485–1687] | 1601 [1445–1719] | +4.23% |
-| Minor, 8 sparse remembered ranges | 821 [807.2–954.4] | 798.7 [748.3–844.6] | -2.72% |
-| Minor, 64 sparse remembered ranges | 4900 [4637–5055] | 4800 [4658–4968] | -2.04% |
-| Minor, 512 sparse remembered ranges | 35882 [34233–36299] | 35335 [33961–35666] | -1.52% |
-| Minor, one dirty root among 4096 global slots | 227.6 [203.5–251.9] | 232.6 [213.4–244.1] | +2.20% |
-| Mixed lifetime graph, immediate promotion | 219 [196.2–245.3] | 218 [179.1–222] | -0.46% |
-| Mixed lifetime graph, survivor aging | 174.2 [169.6–183.2] | 173.5 [172.2–188.6] | -0.40% |
-| Dead churn, immediate promotion | 48.56 [46.27–54.69] | 49.49 [46.1–55.91] | +1.92% |
-| Dead churn, survivor aging | 49.41 [47.42–68.25] | 51.62 [49.62–59.24] | +4.47% |
+| Full, 65,536 historical handles, one live | 664.3 [655.7–668.9] | 211.2 [204.1–234.6] | -68.21% |
+| Full, 262,144 historical handles, one live | 2056 [2028–2078] | 284.2 [278.9–295] | -86.18% |
+| Full, 262,144 historical handles, clustered live | 6095 [6083–6157] | 4568 [4446–8577] | -25.05% |
+| Full, 262,144 historical handles, spread live | 137394 [137084–141444] | 137465 [136594–141146] | +0.05% |
+| Full, 65,536 live handles (dense control) | 1059138 [1054617–1062392] | 1080606 [1076279–1101332] | +2.03% |
+| Full, 262,144 live handles (dense control) | 4249627 [4237738–4297982] | 4320382 [4300514–4449702] | +1.66% |
+| Full, 9000 live pointer-free objects | 144996 [143951–148241] | 146584 [146297–150462] | +1.10% |
+| Full, 90 live pointer-free objects | 1512 [1477–1611] | 1564 [1501–1639] | +3.44% |
+| Minor, 8 sparse remembered ranges | 810.8 [758.4–912.4] | 801.2 [747.1–817.8] | -1.18% |
+| Minor, 64 sparse remembered ranges | 4709 [4478–4810] | 4672 [4408–5189] | -0.79% |
+| Minor, 512 sparse remembered ranges | 34800 [34069–35318] | 33936 [33784–35007] | -2.48% |
+| Minor, one dirty root among 4096 global slots | 219.2 [203.2–231.1] | 218.4 [208–247.1] | -0.36% |
+| Mixed lifetime graph, immediate promotion | 223.2 [208.4–224.1] | 215.2 [181.9–223.7] | -3.58% |
+| Mixed lifetime graph, survivor aging | 179.4 [170.4–203.4] | 175.3 [171.3–180.4] | -2.29% |
+| Dead churn, immediate promotion | 48.48 [46.52–54.42] | 47.14 [45.73–47.92] | -2.76% |
+| Dead churn, survivor aging | 49.44 [46.8–53.4] | 47.9 [46.99–54.06] | -3.11% |
 
 The clear gain is repeated full collection of a historically large handle
 table with low live identities. Spread live identities still require a long
-clear prefix. Card-heavy minor results are small and overlap; no material
-minor-collection or dead-churn speedup is established. All cases retain the
-same median B/op and allocs/op. Nursery capacity and Collector size are
+clear prefix. Dense full-collection controls cost 1.66–2.03% more, with separated ranges for the two large dense
+cases; maintaining the reset bound adds work per traced live object. Card-heavy
+minor results are small and overlap; no material minor-collection or dead-churn
+speedup is established. All cases retain the same median B/op and allocs/op. Nursery capacity and Collector size are
 unchanged. These measurements do not reproduce Slipstream's 97% dead-churn
 improvement and do not measure whole-process RSS or a Linux mapping policy.
 
 [Baseline samples](gc-fixed-cost-results/baseline.txt),
 [fixed samples](gc-fixed-cost-results/fixed.txt), and
 [all median/range/allocation comparisons](gc-fixed-cost-results/summary.json)
-include every measured subcase, including small regressions omitted from the
-selected table. Reproduce with a benchmark binary built on each revision:
+include every measured subcase, including cases omitted from the selected table.
+[Run metadata and per-sample UTC timestamps](gc-fixed-cost-results/run.json)
+record the global-lease interval and measured source/binary identities.
+Reproduce with a benchmark binary built on each revision:
 
 ```sh
 go test -c -o /tmp/gc.test ./src/core/runtime/gc/native
@@ -107,5 +121,5 @@ with `random.Random(640611).shuffle(order)` in Python. The measured binary
 SHA-256 hashes were
 `ba9ea8a57ea8e37d66c626eabe51c6164237e103f98e37d8c527e3b47ce79f9f`
 (baseline) and
-`f4fc26364a74f013e4d8fbf6d731ac8ef42f0f970d0524ecb79d1095e7d75af6`
+`f5cfe48c30c748a2399e73a22a1c2d39aa73a04132ab7d5211d2b7633e2adb28`
 (fixed).
