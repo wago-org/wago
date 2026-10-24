@@ -1248,8 +1248,8 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		indirect = X17
 	}
 	p, rN := len(ft.Params), len(ft.Results)
-	d := f.depth()
 	allRoots := f.rootsBottomToTop()
+	d := len(allRoots)
 	allTypes := f.logicalTypes(allRoots)
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes
@@ -1259,20 +1259,8 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
 	}
 
-	// Identify the p argument roots (top of stack), deepest first.
-	argRoots := f.tmpRoots[:0]
-	if cap(argRoots) < p {
-		argRoots = make([]*elem, 0, p)
-	}
-	argRoots = argRoots[:p]
-	f.tmpRoots = argRoots
-	cur := f.s.back()
-	for i := p - 1; i >= 0; i-- {
-		argRoots[i] = cur
-		if i > 0 {
-			cur = f.s.prev(f.s.baseOfValentBlock(cur))
-		}
-	}
+	// Materialization keeps roots stable and does not reuse tmpRoots.
+	argRoots := allRoots[d-p:]
 
 	// Capture register args and overlapping slots before the lower stack flush.
 	moves := f.tmpMoves[:0]
@@ -1547,8 +1535,8 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		indirect = X17
 	}
 	p, rN := len(ft.Params), len(ft.Results)
-	d := f.depth()
 	allRoots := f.rootsBottomToTop()
+	d := len(allRoots)
 	allTypes := f.logicalTypes(allRoots)
 	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
 	f.tmpTypes2 = belowTypes

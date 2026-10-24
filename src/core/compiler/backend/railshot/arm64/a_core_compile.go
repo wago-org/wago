@@ -1016,6 +1016,20 @@ func serialLocalScratchCapacity(allHints []funcHints, inlineTargets inlineTarget
 // functions to one retained internal entry; the proof guarantees it is never
 // observed by Wasm or the host.
 func finalizeOmittedInlineEntries(entry, internalEntry []int, relocs *callRelocTable, hostAdapters []bool, targets inlineTargetTable) error {
+	// Omission is compact-only. Ordinary layouts have no omitted target and
+	// need neither a relocation proof walk nor entry aliasing.
+	hasOmitted := false
+	if inlineDeadBodyEnabled && targets.data != nil {
+		for i := range targets.data.targets {
+			if targets.data.targets[i].omitStandalone {
+				hasOmitted = true
+				break
+			}
+		}
+	}
+	if !hasOmitted {
+		return nil
+	}
 	if len(entry) == 0 {
 		return nil
 	}
