@@ -636,6 +636,10 @@ func splitImportKey(key string) (module, name string) {
 	return key, ""
 }
 
+// exactImportModuleEnd encodes one plus the module-name byte length so zero can
+// retain the legacy first-dot interpretation for hand-built Compiled values.
+func exactImportModuleEnd(module string) uint64 { return uint64(len(module)) + 1 }
+
 func importModuleEndAt(ends []uint64, index int) uint64 {
 	if index < 0 || index >= len(ends) {
 		return 0

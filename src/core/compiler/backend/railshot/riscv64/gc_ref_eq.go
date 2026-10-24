@@ -23,7 +23,7 @@ func AdmitGCRefEqSource(data []byte) bool { return admitRV64GCRefEqWire(data) }
 
 func admitRV64GCRefEq(m *wasm.Module) bool {
 	if m == nil || len(m.Types) != 9 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 1 || len(m.Exports) != 2 ||
-		len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
 		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}

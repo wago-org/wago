@@ -280,7 +280,7 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 		metadata += n
 		b.charge(n)
 	}
-	for _, n := range []int{len(m.Types), len(m.Imports), len(m.FuncTypes), len(m.Code), len(m.Tables), len(m.Memories), len(m.Globals), len(m.Tags), len(m.Elements), m.DataSegmentCount()} {
+	for _, n := range []int{len(m.Types), len(m.Imports), len(m.FuncTypes), len(m.Code), len(m.Tables), len(m.Memories), len(m.Globals), len(m.Tags), len(m.Elements), len(m.Data)} {
 		addMetadata(n)
 	}
 	for i := range m.Types {
@@ -457,7 +457,7 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 				result.Message = "unsupported dead source instruction"
 				return
 			}
-			base := max(int(v.top().height), len(v.vals)-inputs)
+			base := max(v.top().height, len(v.vals)-inputs)
 			if outputs > limits.Stack-base {
 				panic(sourceLedgerLimit{})
 			}

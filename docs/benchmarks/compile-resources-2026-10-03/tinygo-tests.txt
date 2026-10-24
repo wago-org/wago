@@ -1,0 +1,7 @@
+TinyGo0.42.0; CGO_ENABLED=0
+tinygo test -tags=wago_regalloccheck -scheduler=tasks ./internal/regalloccheck ./src/core/encoder/amd64 ./src/core/encoder/arm64 ./src/core/runtime ./src/wago
+ok  	github.com/wago-org/wago/internal/regalloccheck	0.002s
+ok  	github.com/wago-org/wago/src/core/encoder/amd64	0.009s
+ok  	github.com/wago-org/wago/src/core/encoder/arm64	0.026s
+ok  	github.com/wago-org/wago/src/core/runtime	0.046s
+ok  	github.com/wago-org/wago/src/wago	7.265s

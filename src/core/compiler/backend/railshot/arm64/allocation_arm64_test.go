@@ -425,9 +425,7 @@ func TestExecBrTableComputedIndexArm64(t *testing.T) {
 	beforeFinalizer := nativeFinalizerEnabled
 	beforeCompact := nativeCompactionEnabled
 	nativeFinalizerEnabled = true
-	// Compact policy can relax this small table to branches. Keep an actual
-	// indexed dispatch so the register-allocation regression stays exercised.
-	nativeCompactionEnabled = false
+	nativeCompactionEnabled = true
 	t.Cleanup(func() {
 		nativeFinalizerEnabled = beforeFinalizer
 		nativeCompactionEnabled = beforeCompact

@@ -713,7 +713,7 @@ func (v *funcValidator) stepArrayNew(in Instruction) error {
 			return err
 		}
 	case InstrArrayNewFixed:
-		available := len(v.vals) - int(v.top().height)
+		available := len(v.vals) - v.top().height
 		if uint64(in.Index2) > uint64(available) && !v.top().unreachable {
 			return v.verr(ErrTypeMismatch, "stack underflow")
 		}

@@ -190,6 +190,18 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, product stagedGCArrayProduct,
 	return gcArrayGlobalInit{}, fmt.Errorf("GC array constant expression is missing an array constructor")
 }
 
+func (c *Compiled) gcArrayGlobalInit(globalIndex int) (gcArrayGlobalInit, bool) {
+	if c == nil || c.memoryDir == nil {
+		return gcArrayGlobalInit{}, false
+	}
+	for _, init := range c.memoryDir.gcArrayGlobals {
+		if int(init.GlobalIndex) == globalIndex {
+			return init, true
+		}
+	}
+	return gcArrayGlobalInit{}, false
+}
+
 func instantiateGCArrayGlobal(collector *gc.Collector, mapping *gcTypeMapping, descs []gc.TypeDesc, init gcArrayGlobalInit, funcRefDescs []byte) (gc.Ref, uint32, error) {
 	if collector == nil || int(init.TypeID) >= len(descs) || descs[init.TypeID].Kind != gc.KindArray {
 		return gc.Null(), 0, fmt.Errorf("GC array global type %d is unavailable", init.TypeID)

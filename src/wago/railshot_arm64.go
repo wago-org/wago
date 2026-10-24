@@ -4,7 +4,7 @@ package wago
 
 import (
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64"
-
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoderarm64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
@@ -16,8 +16,17 @@ type railshotOptimizationSnapshot = railshot.OptimizationSnapshot
 type railshotModuleStats = railshot.ModuleStats
 
 func railshotOptKnobs() []railshotKnobInfo { return railshot.OptKnobs() }
-
+func railshotOptKnobSnapshot() ([]railshotKnobInfo, railshotOptimizationSnapshot) {
+	return railshot.OptKnobSnapshot()
+}
+func railshotCurrentOptKnobSnapshot() railshotOptimizationSnapshot {
+	return railshot.CurrentOptKnobSnapshot()
+}
 func railshotSetOptKnob(name string, on bool) bool { return railshot.SetOptKnob(name, on) }
+
+func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*railshotCompiledModule, error) {
+	return railshot.CompileModuleWith(m, opts)
+}
 
 func railshotGCNativeCodeTelemetry(stats *railshotModuleStats) GCNativeCodeTelemetry {
 	var out GCNativeCodeTelemetry

@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
-	"math"
 	"testing"
 )
 
@@ -77,10 +76,13 @@ func TestFloatMapInvariantCoefficientsAndDivision(t *testing.T) {
 					for _, length := range []uint32{step, 4 * step, 128, 128 + step, 256} {
 						for _, layout := range [][3]uint32{{4096, 0, 8192}, {0, 4096, 8192}, {4096, 0, 0}, {4096, 0, 1}, {4096, 0, step - 1}, {4096, 0, 128}, {4096, 0, 255}, {1, 4097, 65532}, {0, 65504, 65535}, {0xfffffff0, 4096, 8192}} {
 							m := floatCoefficientModule(t, wide, memory, divide, layout[0], layout[1], layout[2], length, coefficient)
-							want, wantMem, trapped := referenceFloatCoefficient(wide, memory, divide, layout[0], layout[1], layout[2], length, coefficient, initial)
-							got, gotMem, gotErr := runFloatMapMemory(t, m, initial)
-							if trapped != (gotErr != nil) || !trapped && got != want || !bytes.Equal(wantMem, gotMem) {
-								t.Fatalf("wide%t memory%t divide%t coef%x length%d layout%v: got%x/%v want%x/%v equal%t", wide, memory, divide, coefficient, length, layout, got, gotErr, want, trapped, bytes.Equal(wantMem, gotMem))
+							want, wantMem, wantErr, _ := runFloatMapMemory(t, m, false, initial)
+							got, gotMem, gotErr, hits := runFloatMapMemory(t, m, true, initial)
+							if (wantErr == nil) != (gotErr == nil) || wantErr == nil && got != want || !bytes.Equal(wantMem, gotMem) {
+								t.Fatalf("wide%t memory%t divide%t coef%x length%d layout%v: got%x/%v want%x/%v equal%t", wide, memory, divide, coefficient, length, layout, got, gotErr, want, wantErr, bytes.Equal(wantMem, gotMem))
+							}
+							if diagnosticsEnabled && hits != 1 {
+								t.Fatalf("missing admission: wide%t memory%t divide%t", wide, memory, divide)
 							}
 						}
 					}
@@ -88,60 +90,4 @@ func TestFloatMapInvariantCoefficientsAndDivision(t *testing.T) {
 			}
 		}
 	}
-}
-
-func referenceFloatCoefficient(wide, memory, divide bool, src, dst, pivot, length uint32, coefficient uint64, initial []byte) (uint32, []byte, bool) {
-	mem := append([]byte(nil), initial...)
-	size := uint32(4)
-	if wide {
-		size = 8
-	}
-	valid := func(p uint32) bool { return uint64(p)+uint64(size) <= uint64(len(mem)) }
-	var index, lastDst uint32
-	for {
-		source := src + index
-		lastDst = dst + index
-		if !valid(source) {
-			return 0, mem, true
-		}
-		bits := coefficient
-		if memory {
-			if !valid(pivot) {
-				return 0, mem, true
-			}
-			if wide {
-				bits = binary.LittleEndian.Uint64(mem[pivot:])
-			} else {
-				bits = uint64(binary.LittleEndian.Uint32(mem[pivot:]))
-			}
-		}
-		if wide {
-			x := math.Float64frombits(binary.LittleEndian.Uint64(mem[source:]))
-			y := math.Float64frombits(bits)
-			v := float64(x * y)
-			if divide {
-				v = float64(x / y)
-			}
-			if !valid(lastDst) {
-				return 0, mem, true
-			}
-			binary.LittleEndian.PutUint64(mem[lastDst:], math.Float64bits(v))
-		} else {
-			x := math.Float32frombits(binary.LittleEndian.Uint32(mem[source:]))
-			y := math.Float32frombits(uint32(bits))
-			v := float32(x * y)
-			if divide {
-				v = float32(x / y)
-			}
-			if !valid(lastDst) {
-				return 0, mem, true
-			}
-			binary.LittleEndian.PutUint32(mem[lastDst:], math.Float32bits(v))
-		}
-		index += size
-		if index == length {
-			break
-		}
-	}
-	return 123 ^ index ^ lastDst, mem, false
 }

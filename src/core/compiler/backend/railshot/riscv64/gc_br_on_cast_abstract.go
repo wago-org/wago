@@ -47,7 +47,7 @@ func admitRV64GCBrOnCastFailAbstract(m *wasm.Module) bool {
 
 func admitRV64GCBrOnCastAbstractKind(m *wasm.Module, fail bool) bool {
 	if m == nil || len(m.Types) != 7 || len(m.FuncTypes) != 7 || len(m.Code) != 7 || len(m.Tables) != 1 || len(m.Exports) != 6 || len(m.Elements) != 1 ||
-		len(m.Imports) != 0 || len(m.Globals) != 0 || len(m.Memories) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil ||
+		len(m.Imports) != 0 || len(m.Globals) != 0 || len(m.Memories) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil ||
 		len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}

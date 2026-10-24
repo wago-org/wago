@@ -13,7 +13,7 @@ func decodeCompilerSource(data []byte, features wasm.ValidationFeatures) (*wasm.
 		m, err := wasm.DecodeModuleWithFeatures(data, features)
 		return m, false, err
 	}
-	m, err := wasm.DecodeModuleForCompilation(data, features)
+	m, err := wasm.DecodeModuleForValidationWithFeatures(data, features)
 	if err != nil {
 		m, err = wasm.DecodeModuleWithFeatures(data, features)
 		return m, false, err

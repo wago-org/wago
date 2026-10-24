@@ -2,8 +2,11 @@
 
 package wago
 
-func rv64StorageFreeProof(*Compiled) bool     { return false }
-func setRV64StorageFreeProof(*Compiled, bool) {}
+import "github.com/wago-org/wago/src/core/compiler/wasm"
+
+func installRV64StorageFreeProof(*Compiled, *wasm.Module) {}
+func rv64StorageFreeProof(*Compiled) bool                 { return false }
+func setRV64StorageFreeProof(*Compiled, bool)             {}
 
 func rv64StructuralCodecMetadata(*Compiled) bool { return false }
 

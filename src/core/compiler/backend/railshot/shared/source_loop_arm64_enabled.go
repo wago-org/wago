@@ -9,10 +9,10 @@ import (
 
 // This zero-frame recipe keeps the original ABI carriers across the backedge.
 // Only fixed, same-length frame-slot rewrites and contiguous alignment NOPs
-// precede the loop; CBNZ Wn or adjacent CMP Wn,#0/B.NE reads its i32 condition.
+// precede the loop; an adjacent CMP Wn,#0/B.NE reads the source i32 condition.
 func decodeSourceLoopARM64(code []byte) (sourceBranchRecipe, bool) {
 	r := sourceBranchRecipe{}
-	if len(code) < 44 || len(code) > 128 || len(code)%4 != 0 {
+	if len(code) < 48 || len(code) > 128 || len(code)%4 != 0 {
 		return r, false
 	}
 	word := func(pc int) uint32 { return binary.LittleEndian.Uint32(code[pc : pc+4]) }
@@ -75,27 +75,19 @@ func decodeSourceLoopARM64(code []byte) (sourceBranchRecipe, bool) {
 			pc += 4
 		}
 	}
-	var condition uint8
-	branchPC := pc
-	var branch uint32
-	switch {
-	case pc+4 == end && word(pc)&0xff000000 == 0x35000000: // CBNZ Wn only.
-		condition = uint8(word(pc) & 31)
-		branch = word(pc)
-	case pc+8 == end && word(pc) & ^uint32(31<<5) == 0x7100001f:
-		condition = uint8((word(pc) >> 5) & 31)
-		branchPC = pc + 4
-		branch = word(branchPC)
-		if branch&0xff00001f != 0x54000001 { // B.NE only.
-			return r, false
-		}
-	default:
+	if pc+8 != end {
 		return r, false
 	}
+	w := word(pc)
+	if w & ^uint32(31<<5) != 0x7100001f {
+		return r, false
+	}
+	condition := uint8((w >> 5) & 31)
 	if condition >= 16 {
 		return r, false
 	}
-	if int64(branchPC)+int64(int32(branch<<8)>>13)*4 != int64(header) {
+	branch := word(pc + 4)
+	if branch&0xff00001f != 0x54000001 || int64(pc+4)+int64(int32(branch<<8)>>13)*4 != int64(header) {
 		return r, false
 	}
 	r.instructions = append(r.instructions, sourceBranchInstruction{section: 1, condition: true, effect: regalloccheck.Effect{Src: leafReg(condition)}})

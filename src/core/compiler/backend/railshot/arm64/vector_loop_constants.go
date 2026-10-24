@@ -14,7 +14,7 @@ func (f *fn) canBorrowVectorConstants(available, required int) bool {
 	}
 	for i := uint8(0); i < f.iconstN; i++ {
 		c := f.iconsts[i]
-		if f.pinned.has(c.reg) || f.pinnedLocalMask.has(c.reg) || f.regUser[c.reg] != nil {
+		if c.address || f.pinned.has(c.reg) || f.pinnedLocalMask.has(c.reg) || f.regUser[c.reg] != nil {
 			return false
 		}
 	}

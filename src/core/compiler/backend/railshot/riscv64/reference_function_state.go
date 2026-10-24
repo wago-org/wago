@@ -44,7 +44,7 @@ func admitClosedReferenceNumericState(m *wasm.Module, vector bool, remaining *in
 }
 
 func admitClosedReferenceNumericStateWithImports(m *wasm.Module, vector bool, remaining *int, counts closedReferenceImports) error {
-	if m.DataSegmentCount() > 256 || m.DataCount != nil && *m.DataCount != uint32(m.DataSegmentCount()) {
+	if len(m.Data) > 256 || m.DataCount != nil && *m.DataCount != uint32(len(m.Data)) {
 		return unsupported("closed reference numeric state directory bound")
 	}
 	consume := func(n int) bool {
@@ -117,8 +117,7 @@ func admitClosedReferenceNumericStateWithImports(m *wasm.Module, vector bool, re
 	if m.DataCount != nil && !consume(5) {
 		return unsupported("closed reference data count bytes")
 	}
-	for dataIndex := 0; dataIndex < m.DataSegmentCount(); dataIndex++ {
-		data := m.DataSegment(dataIndex)
+	for _, data := range m.Data {
 		if len(data.Mode.Offset.Instrs) != 0 {
 			return unsupported("closed reference byte-backed data offset")
 		}

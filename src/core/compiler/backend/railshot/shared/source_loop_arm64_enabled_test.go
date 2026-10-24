@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/wago-org/wago/internal/regalloccheck"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
-	"strings"
 	"testing"
 )
 
@@ -33,37 +32,8 @@ func TestSourceLoopARMAlignmentBound(t *testing.T) {
 	sourceLoopARMControl(t, "positive", 8, 9, regalloccheck.Inconclusive)
 }
 
-func TestSourceLoopARMZeroBranchProofControls(t *testing.T) {
-	for _, width := range []int{4, 8} {
-		for _, padding := range []int{0, 5, 8} {
-			t.Run(fmt.Sprintf("width%d/padding%d", width, padding), func(t *testing.T) {
-				sourceLoopARMControl(t, "zero:positive", width, padding, regalloccheck.Verified)
-			})
-		}
-	}
-	for _, tc := range []struct {
-		name string
-		want regalloccheck.Verdict
-	}{
-		{"wrong condition", regalloccheck.Rejected},
-		{"wide condition", regalloccheck.Inconclusive},
-		{"reserved condition", regalloccheck.Inconclusive},
-		{"wrong predicate", regalloccheck.Inconclusive},
-		{"wrong header target", regalloccheck.Inconclusive},
-		{"missing GP observer", regalloccheck.Inconclusive},
-		{"missing effect observer", regalloccheck.Inconclusive},
-		{"changed length", regalloccheck.Inconclusive},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			sourceLoopARMControl(t, "zero:"+tc.name, 8, 5, tc.want)
-		})
-	}
-}
-
 func sourceLoopARMControl(t *testing.T, mode string, width, padding int, want regalloccheck.Verdict) {
 	t.Helper()
-	zeroBranch := strings.HasPrefix(mode, "zero:")
-	mode = strings.TrimPrefix(mode, "zero:")
 	s, m := sourceLoopFixture(t)
 	b := BeginSourceLoop(s, m, 0, true)
 	if b == nil {
@@ -129,31 +99,16 @@ func sourceLoopARMControl(t *testing.T, mode string, width, padding int, want re
 	if mode == "wrong condition" {
 		condition = a64.X0
 	}
-	if mode == "reserved condition" {
-		condition = a64.X16
-	}
-	var branch int
-	if zeroBranch {
-		switch mode {
-		case "wide condition":
-			branch = a.Cbnz64(condition)
-		case "wrong predicate":
-			branch = a.Cbz32(condition)
-		default:
-			branch = a.Cbnz32(condition)
-		}
+	if mode == "wide condition" {
+		a.CmpImm64(condition, 0)
 	} else {
-		if mode == "wide condition" {
-			a.CmpImm64(condition, 0)
-		} else {
-			a.CmpImm32(condition, 0)
-		}
-		predicate := a64.CondNE
-		if mode == "wrong predicate" {
-			predicate = a64.CondEQ
-		}
-		branch = a.Bcond(predicate)
+		a.CmpImm32(condition, 0)
 	}
+	predicate := a64.CondNE
+	if mode == "wrong predicate" {
+		predicate = a64.CondEQ
+	}
+	branch := a.Bcond(predicate)
 	restore := a.Len()
 	emitSourceBranchARMFrame(&a, true)
 	a.Ret()

@@ -3,8 +3,14 @@
 package arm64
 
 import (
+	"encoding/binary"
+	"fmt"
 	"math"
 	"os"
+
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 var floatLiteralPoolEnabled = os.Getenv("WAGO_ARM64_NO_FCONST_POOL") != "1"
@@ -36,11 +42,450 @@ func floatBits(v float64, f64 bool) uint64 {
 
 // --- V (NEON) allocator ---
 
+func (f *fn) occupyF(e *elem, r Reg) {
+	if regallocCheckEnabled {
+		f.checkOccupy(e, r, true)
+	}
+
+	f.fregUser[r] = e
+	if e.isDeferred() {
+		f.s.removePendingDeferred()
+	}
+	e.st.kind, e.st.reg = stReg, r
+	e.setElemKind(ekValue)
+}
+
+func (f *fn) releaseF(r Reg) {
+	if r != regNone {
+		f.fregUser[r] = nil
+	}
+}
+
 type floatConstReg struct {
 	typ       machineType
 	bits      int64
 	reg       Reg
 	loopDepth uint16
+}
+
+func (f *fn) fconstMask() regMask {
+	var m regMask
+	for _, c := range f.fconsts {
+		m = m.add(c.reg)
+	}
+	return m
+}
+
+func (f *fn) blockedFRegs(avoid regMask) regMask {
+	return avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask()).union(f.v128ConstMask())
+}
+
+// allocFReg returns a free V register, spilling the deepest float-resident stack
+// value if none is free.
+func (f *fn) allocFReg(avoid regMask) Reg {
+	block := f.blockedFRegs(avoid)
+	for _, r := range fpAllocRegs {
+		if f.fregUser[r] == nil && !block.has(r) {
+			return r
+		}
+	}
+	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
+		if e.elemKind() == ekValue && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
+			r := e.st.reg
+			f.spillF(e)
+			return r
+		}
+	}
+	panic("arm64: no V register available to spill")
+}
+
+// spillF evicts a V-resident float/vector value to a fresh frame slot.
+func (f *fn) spillF(e *elem) {
+	before := f.a.Len()
+	defer func() { f.stats.addGCSpillReloadBytes(f.a.Len() - before) }()
+	r := e.st.reg
+	if e.st.typ == mtCustom {
+		cold := f.s.elemCold(e)
+		slot := f.allocSpillSlots(int(cold.custom.Size() / 8))
+		for i, reg := range cold.vregs {
+			start := f.a.Len()
+			f.a.StrQ(SP, f.spillOff(slot+i*2), reg)
+			if profileEnabled {
+				f.recordProfileCodeSite(start, "custom-spill")
+			}
+			f.fregUser[reg] = nil
+		}
+		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: uint32(slot)})
+		return
+	}
+	if e.st.typ == mtV128 {
+		slot := f.allocSpillSlots(2)
+		f.a.StrQ(a64.SP, f.spillOff(slot), r)
+		if profileEnabled {
+			f.recordProfileCodeSite(before, "vector-spill")
+		}
+		f.fregUser[r] = nil
+		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
+		return
+	}
+	slot := f.allocSpillSlot()
+	f.a.StrF(a64.SP, f.spillOff(slot), r, true)
+	if profileEnabled {
+		f.recordProfileCodeSite(before, "fp-spill")
+	}
+	f.fregUser[r] = nil
+	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
+}
+
+// materializeF ensures float value e lives in a V register and returns it.
+func (f *fn) materializeF(e *elem) Reg {
+	if regallocCheckEnabled {
+		f.checkUse(e)
+	}
+
+	switch e.st.kind {
+	case stReg:
+		return e.st.reg
+	case stConst:
+		if c, ok := f.floatConstReg(e.st); ok {
+			x := f.allocFReg(maskOf(c))
+			f.a.FmovReg(x, c, e.st.typ == mtF64)
+			f.occupyF(e, x)
+			return x
+		}
+		x := f.allocFReg(0)
+		f.loadFConst(x, e.st)
+		f.occupyF(e, x)
+		return x
+	case stSlot:
+		x := f.allocFReg(0)
+		before := f.a.Len()
+		f.a.LdrF(x, a64.SP, f.spillOff(e.st.slotIndex()), true) // 8B; f32 uses the low 4
+		if profileEnabled {
+			f.recordProfileCodeSite(before, "fp-reload")
+		}
+		f.stats.addGCSpillReloadBytes(f.a.Len() - before)
+		f.occupyF(e, x)
+		return x
+	case stLocalRef:
+		x := f.allocFReg(0)
+		f.a.LdrF(x, a64.SP, f.localOff(e.st.index()), e.st.typ == mtF64)
+		f.occupyF(e, x)
+		return x
+	case stLocalReg, stGlobReg:
+		// Borrowed pinned float local/global: copy into an owned V register so the caller
+		// may clobber it without corrupting the local.
+		x := f.allocFReg(0)
+		f.a.FmovReg(x, e.st.reg, e.st.typ == mtF64)
+		f.occupyF(e, x)
+		return x
+	case stMemRef:
+		x := f.allocFReg(0)
+		f.loadFMemRef(x, e)
+		f.releaseMemRef(e.st)
+		f.occupyF(e, x)
+		return x
+	}
+	panic("arm64: cannot materialize float storage")
+}
+
+// operandRegF returns a register holding e's value for READ-ONLY use as a NEON
+// source operand (never written, so it need not be a private copy). A pinned float
+// local/global is used directly and must not be released (owned=false); everything else is
+// materialized into an owned scratch register the caller releases (owned=true).
+// This avoids the fmov-to-scratch that materializeF emits for a pinned local when
+// the value is only being read — the dominant per-op float overhead.
+func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
+	if e.elemKind() == ekValue && (e.st.kind == stLocalReg || e.st.kind == stGlobReg) {
+		return e.st.reg, false
+	}
+	if e.elemKind() == ekValue && e.st.kind == stConst && e.st.typ.isFloat() {
+		if r, ok := f.floatConstReg(e.st); ok {
+			return r, false
+		}
+	}
+	return f.materializeF(e), true
+}
+
+func (f *fn) floatConstReg(st storage) (Reg, bool) {
+	for _, c := range f.fconsts {
+		if c.typ == st.typ && c.bits == st.cval {
+			return c.reg, true
+		}
+	}
+	return regNone, false
+}
+
+// Persistent constants must be initialized before control-flow-dependent body
+// execution. Constants missed by preload use ordinary materialization.
+func (f *fn) preloadFloatConst(st storage) (Reg, bool) {
+	if r, ok := f.floatConstReg(st); ok {
+		return r, true
+	}
+	if len(f.fconsts) >= 2 {
+		return regNone, false
+	}
+	x := f.allocFReg(0)
+	f.loadFConst(x, st)
+	f.fconsts = append(f.fconsts, floatConstReg{typ: st.typ, bits: st.cval, reg: x})
+	if regallocCheckEnabled {
+		f.checkImmutable(x, true, checkSize(st.typ))
+	}
+	return x, true
+}
+
+func (f *fn) preloadFloatConsts(code []byte) {
+	if f.makesCalls {
+		return
+	}
+	// Tally constants before reserving the two cache registers. The old first-seen
+	// policy was cheap, but frequently spent both registers on one-shot setup
+	// values while repeatedly materializing hot constants in the function body.
+	// Keep the scan allocation-free and bounded: up to 32 distinct constants are
+	// ranked without growing compile-time memory with input size. If a function
+	// exceeds that cap, conservatively fall back to the old first-two policy rather
+	// than rank an incomplete set. Ties retain bytecode order, also preserving the
+	// old choice for functions whose constants are all used equally often.
+	var cand [32]struct {
+		typ  machineType
+		bits int64
+		n    int
+	}
+	nCand := 0
+	r := wasm.NewReader(code)
+	var imm wasm.InstructionImmediate
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return
+		}
+		var typ machineType
+		var bits int64
+		switch op {
+		case 0x43: // f32.const
+			v, err := r.LEU32()
+			if err != nil {
+				return
+			}
+			typ, bits = mtF32, int64(v)
+		case 0x44: // f64.const
+			v, err := r.LEU64()
+			if err != nil {
+				return
+			}
+			typ, bits = mtF64, int64(v)
+		default:
+			if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
+				return
+			}
+			continue
+		}
+		found := false
+		for i := 0; i < nCand; i++ {
+			if cand[i].typ == typ && cand[i].bits == bits {
+				cand[i].n++
+				found = true
+				break
+			}
+		}
+		if !found {
+			if nCand == len(cand) {
+				for i := 0; i < 2; i++ {
+					f.preloadFloatConst(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
+				}
+				return
+			}
+			cand[nCand].typ, cand[nCand].bits, cand[nCand].n = typ, bits, 1
+			nCand++
+		}
+	}
+	if nCand == 0 {
+		return
+	}
+	choice := [2]int{0, -1}
+	if nCand > 1 {
+		choice[1] = 1
+	}
+	best := [2]int{-1, -1}
+	for i := 0; i < nCand; i++ {
+		if best[0] < 0 || cand[i].n > cand[best[0]].n {
+			best[1], best[0] = best[0], i
+		} else if best[1] < 0 || cand[i].n > cand[best[1]].n {
+			best[1] = i
+		}
+	}
+	// Static frequency is only a proxy for dynamic heat: a syntactically rarer
+	// constant can sit in a deeper loop. Replace the first-seen choices only with
+	// decisive evidence (at least twice their combined occurrence count). This
+	// keeps marginal reorderings from perturbing register pressure and scheduling.
+	firstN, bestN := cand[choice[0]].n, cand[best[0]].n
+	if choice[1] >= 0 {
+		firstN += cand[choice[1]].n
+	}
+	if best[1] >= 0 {
+		bestN += cand[best[1]].n
+	}
+	if bestN >= 2*firstN {
+		choice = best
+	}
+	oldSuppress := f.suppressFloatLiteral
+	f.suppressFloatLiteral = true
+	for _, i := range choice {
+		if i >= 0 {
+			f.preloadFloatConst(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
+		}
+	}
+	f.suppressFloatLiteral = oldSuppress
+}
+
+// pushFReg pushes a V-resident float value of the given type.
+func (f *fn) pushFReg(r Reg, typ machineType) *elem {
+	e := f.pushValue(storage{kind: stReg, typ: typ, reg: r})
+	f.fregUser[r] = e
+	return e
+}
+
+// loadFConst materializes a float constant's bits into V register r (via a GP
+// scratch).
+func (f *fn) loadFConst(r Reg, st storage) {
+	if f.opt(optFPImmediateConst) {
+		bits := uint64(st.cval)
+		if st.typ == mtF32 {
+			bits = uint64(uint32(st.cval))
+		}
+		if bits == 0 {
+			f.a.FmovFromGpr(r, a64.ZR, st.typ == mtF64)
+			f.stats.peep("fp-immediate-zero")
+			return
+		}
+		if imm8, ok := encodeFPImmediate(bits, st.typ == mtF64); ok {
+			f.a.FmovImm(r, imm8, st.typ == mtF64)
+			f.stats.peep("fp-immediate-const")
+			return
+		}
+	}
+	if f.floatLiteralPool && !f.suppressFloatLiteral {
+		f.recordFloatLiteral(uint64(st.cval), st.typ == mtF64, f.a.LdrLiteralF(r, st.typ == mtF64))
+		f.stats.peep("fp-literal-const")
+		return
+	}
+	t := f.allocReg(0)
+	if st.typ == mtF64 {
+		f.a.MovImm64(t, uint64(st.cval))
+		f.a.FmovFromGpr(r, t, true)
+	} else {
+		f.a.MovImm32(t, int32(uint32(st.cval)))
+		f.a.FmovFromGpr(r, t, false)
+	}
+	f.release(t)
+}
+
+func (f *fn) recordFloatLiteral(bits uint64, f64 bool, site int) {
+	if !f64 {
+		bits = uint64(uint32(bits))
+	}
+	for i := range f.floatPool {
+		c := &f.floatPool[i]
+		if c.bits == bits && c.f64 == f64 {
+			f.floatPoolSites = append(f.floatPoolSites, floatPoolSite{off: uint32(site), next: c.head})
+			c.head = uint32(len(f.floatPoolSites))
+			f.recordPCRelative(site)
+			return
+		}
+	}
+	f.floatPoolSites = append(f.floatPoolSites, floatPoolSite{off: uint32(site)})
+	f.floatPool = append(f.floatPool, floatPoolConst{bits: bits, head: uint32(len(f.floatPoolSites)), f64: f64})
+	f.recordPCRelative(site)
+}
+
+// emitFloatConstPool appends deduplicated scalar constants after the terminating
+// code and patches every LDR literal site. The pool is opaque to the native
+// finalizer, which still remaps each PC-relative load when it compacts code.
+func (f *fn) emitFloatConstPool() error {
+	if len(f.floatPool) == 0 {
+		return nil
+	}
+	poolStart := f.a.Len()
+	if poolStart&7 != 0 {
+		f.a.B = append(f.a.B, 0, 0, 0, 0)
+	}
+	for _, c := range f.floatPool {
+		off := f.a.Len()
+		var raw [8]byte
+		binary.LittleEndian.PutUint64(raw[:], c.bits)
+		size := 4
+		if c.f64 {
+			size = 8
+		}
+		f.a.B = append(f.a.B, raw[:size]...)
+		for head := c.head; head != 0; {
+			s := f.floatPoolSites[head-1]
+			if !f.a.PatchLiteral19(int(s.off), off) {
+				return fmt.Errorf("arm64: float literal at %d is out of range from load at %d", off, s.off)
+			}
+			head = s.next
+		}
+	}
+	f.recordOpaqueData(poolStart, f.a.Len())
+	if diagnosticsEnabled && f.stats != nil {
+		f.stats.NativeSize.LiteralPoolBytes += f.a.Len() - poolStart
+	}
+	f.floatPool = f.floatPool[:0]
+	f.floatPoolSites = f.floatPoolSites[:0]
+	return nil
+}
+
+// encodeFPImmediate is the inverse of ARM's VFPExpandImm for f32/f64. The
+// representable set is exact: one sign bit, a constrained exponent, the high
+// four fraction bits, and zero in every remaining fraction bit.
+func encodeFPImmediate(bits uint64, f64 bool) (uint8, bool) {
+	var sign, exponent, fraction uint64
+	var repeatBits uint64
+	if f64 {
+		sign = bits >> 63
+		exponent = bits >> 52 & 0x7ff
+		fraction = bits & (uint64(1)<<52 - 1)
+		if fraction&(uint64(1)<<48-1) != 0 {
+			return 0, false
+		}
+		repeatBits = exponent >> 2 & 0xff
+	} else {
+		bits = uint64(uint32(bits))
+		sign = bits >> 31
+		exponent = bits >> 23 & 0xff
+		fraction = bits & (uint64(1)<<23 - 1)
+		if fraction&(uint64(1)<<19-1) != 0 {
+			return 0, false
+		}
+		repeatBits = exponent >> 2 & 0x1f
+	}
+	b6 := repeatBits & 1
+	repeatMask := uint64(0x1f)
+	topBit := uint64(7)
+	fracShift := uint(19)
+	if f64 {
+		repeatMask = 0xff
+		topBit = 10
+		fracShift = 48
+	}
+	if repeatBits != b6*repeatMask || exponent>>topBit != b6^1 {
+		return 0, false
+	}
+	return uint8(sign<<7 | b6<<6 | (exponent&3)<<4 | fraction>>fracShift), true
+}
+
+// loadFMask materializes a 32/64-bit bit mask into V register dst (via a GP
+// scratch).
+func (f *fn) loadFMask(dst Reg, mask64 uint64, mask32 uint32, f64 bool) {
+	t := f.allocReg(0)
+	if f64 {
+		f.a.MovImm64(t, mask64)
+		f.a.FmovFromGpr(dst, t, true)
+	} else {
+		f.a.MovImm32(t, int32(mask32))
+		f.a.FmovFromGpr(dst, t, false)
+	}
+	f.release(t)
 }
 
 // IEEE-754 sign/magnitude masks for scalar sign operations.
@@ -62,6 +507,162 @@ const (
 )
 
 // --- float op handlers ---
+
+func (f *fn) fconst(bits uint64, typ machineType) {
+	f.pushValue(storage{kind: stConst, typ: typ, cval: int64(bits)})
+}
+
+// fbin lowers add/sub/mul/div via the 3-operand form dst = s1 <op> s2. Both
+// operands are read directly (a pinned local is borrowed, never copied), and the
+// result lands in a reused owned-operand register or a fresh one — so no operand is
+// pre-copied to scratch.
+//
+// arm64 has no memory-source float ops (§4a): a stMemRef right operand is not
+// folded here; operandRegF materializes it with an explicit LDR (loadFMemRef).
+// memOp is retained for caller-signature parity with the amd64 twin and is unused.
+func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64, poolRHS bool) {
+	b := f.popValue()
+	a := f.popValue()
+	s1, o1 := f.operandRegF(a)
+	f.fpinned = f.fpinned.add(s1)
+	var read regallocReadMask
+	if regallocCheckEnabled {
+		read = checkProtectRead(f, s1, true, f64)
+	}
+	oldSuppress := f.suppressFloatLiteral
+	f.suppressFloatLiteral = !poolRHS
+	s2, o2 := f.operandRegF(b)
+	f.suppressFloatLiteral = oldSuppress
+	// Destination: reuse an owned operand's register in place (it is being
+	// consumed), else a fresh register so a borrowed pinned local isn't clobbered.
+	var dst Reg
+	switch {
+	case o1:
+		dst = s1
+	case o2:
+		dst = s2
+	default:
+		// Both operands are borrowed pinned locals (blocked from allocation via the
+		// pinned-local mask); s1 is also fpinned here, so a fresh dst avoids both.
+		dst = f.allocFReg(0)
+	}
+	f.fpinned = f.fpinned.remove(s1)
+	if regallocCheckEnabled {
+		checkRestoreRead(f, read)
+	}
+	vop(dst, s1, s2, f64)
+	if o1 && dst != s1 {
+		f.releaseF(s1)
+	}
+	if o2 && dst != s2 {
+		f.releaseF(s2)
+	}
+	f.pushFReg(dst, mtOf2(f64))
+}
+
+func (f *fn) fbinInto(dst Reg, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
+	b := f.popValue()
+	a := f.popValue()
+	s1, o1 := f.operandRegF(a)
+	f.fpinned = f.fpinned.add(s1)
+	var read regallocReadMask
+	if regallocCheckEnabled {
+		read = checkProtectRead(f, s1, true, f64)
+	}
+	s2, o2 := f.operandRegF(b)
+	f.fpinned = f.fpinned.remove(s1)
+	if regallocCheckEnabled {
+		checkRestoreRead(f, read)
+	}
+	vop(dst, s1, s2, f64)
+	if o1 && dst != s1 {
+		f.releaseF(s1)
+	}
+	if o2 && dst != s2 {
+		f.releaseF(s2)
+	}
+}
+
+// scalarFMinMaxInto implements wasm min/max for one scalar lane. Branch on the
+// ordered compare; equal uses bitwise zero fixups, distinct ordered operands use
+// scalar FMIN/FMAX, and unordered propagates a quiet NaN through scalar add.
+func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
+	f.a.Fcmp(xa, xb, f64)
+	jnan := f.a.Bcond(a64.CondVS)  // unordered (NaN): arm64 FCMP sets V on unordered
+	jdist := f.a.Bcond(a64.CondNE) // distinct ordered operands
+
+	// Equal (incl. ±0): combine bitwise so max(-0,+0)=+0 (AND) / min(+0,-0)=-0 (ORR).
+	if isMax {
+		f.a.And16b(xa, xa, xb) // andps/pd analog: max(-0,+0) = +0
+	} else {
+		f.a.Orr16b(xa, xa, xb) // orps/pd analog: min(+0,-0) = -0
+	}
+	jdone := f.a.Branch()
+
+	f.patchBranch19(jdist, f.a.Len())
+	// Distinct ordered operands: scalar FMAX/FMIN give the larger/smaller because
+	// the operands are neither NaN nor equal here.
+	if isMax {
+		f.a.Fmax(xa, xa, xb, f64)
+	} else {
+		f.a.Fmin(xa, xa, xb, f64)
+	}
+	jdone2 := f.a.Branch()
+
+	f.patchBranch19(jnan, f.a.Len())
+	f.a.Fadd(xa, xa, xb, f64) // NaN + x -> quiet NaN.
+
+	f.patchBranch26(jdone, f.a.Len())
+	f.patchBranch26(jdone2, f.a.Len())
+}
+
+// fminmaxInto lowers scalar wasm min/max through the NaN and signed-zero helper.
+// When dst is supplied, it is a pinned local's V register and the result
+// is sunk there directly; otherwise an owned operand register is reused.
+func (f *fn) fminmaxInto(dst Reg, f64, isMax bool) {
+	b := f.popValue()
+	a := f.popValue()
+	xa, xaOwned := f.operandRegF(a)
+	f.fpinned = f.fpinned.add(xa)
+	xb, xbOwned := f.operandRegF(b) // read-only: compared and combined into xa
+	f.fpinned = f.fpinned.remove(xa)
+	if dst == regNone {
+		if xaOwned {
+			dst = xa
+		} else {
+			dst = f.allocFReg(maskOf(xa, xb))
+		}
+	}
+	if dst == xb && dst != xa {
+		f.scalarFMinMaxInto(dst, xa, f64, isMax)
+	} else {
+		if dst != xa {
+			f.a.FmovReg(dst, xa, f64)
+		}
+		f.scalarFMinMaxInto(dst, xb, f64, isMax)
+	}
+	if xaOwned && dst != xa {
+		f.releaseF(xa)
+	}
+	if xbOwned {
+		f.releaseF(xb)
+	}
+	f.pushFReg(dst, mtOf2(f64))
+}
+
+func (f *fn) fminmax(f64, isMax bool) {
+	f.fminmaxInto(regNone, f64, isMax)
+}
+
+func (f *fn) fsqrt(f64 bool) {
+	src, owned := f.operandRegF(f.popValue())
+	dst := src
+	if !owned { // borrowed pinned local: write a fresh dest, leave the local intact
+		dst = f.allocFReg(maskOf(src))
+	}
+	f.a.Fsqrt(dst, src, f64)
+	f.pushFReg(dst, mtOf2(f64))
+}
 
 // fsignInto writes a local assignment directly with the native sign op,
 // preserving signaling NaN payloads. The regular path uses a bitwise mask
@@ -103,13 +704,346 @@ func (f *fn) fsignInto(dst Reg, f64, neg bool) {
 	f.pushFReg(dst, mtOf2(f64))
 }
 
+func (f *fn) fsign(f64, neg bool) { f.fsignInto(regNone, f64, neg) }
+
+func (f *fn) fneg(f64 bool) { f.fsign(f64, true) }
+func (f *fn) fabs(f64 bool) { f.fsign(f64, false) }
+
+func (f *fn) fround(f64 bool, mode byte) {
+	src, owned := f.operandRegF(f.popValue())
+	dst := src
+	if !owned { // borrowed pinned local: round into a fresh dest, leave the local intact
+		dst = f.allocFReg(maskOf(src))
+	}
+	f.a.Frint(dst, src, f64, mode)
+	f.pushFReg(dst, mtOf2(f64))
+}
+
+// fcopysign selects the sign bit from b and all other bits from a. BSL is
+// bitwise, so even signaling NaN payloads are preserved without FP arithmetic.
+func (f *fn) fcopysign(f64 bool) {
+	b := f.popValue()
+	a := f.popValue()
+	saved := f.fpinned
+	xa, ownA := f.operandRegF(a)
+	f.fpinned = saved.add(xa)
+	xb, ownB := f.operandRegF(b)
+	f.fpinned = f.fpinned.add(xb)
+	dst := f.allocFReg(maskOf(xa, xb))
+	f.fpinned = f.fpinned.add(dst)
+	f.loadFMask(dst, fSignMask64, fSignMask32, f64)
+	f.a.NeonBsl16b(dst, xb, xa)
+	f.fpinned = saved
+	if ownA {
+		f.releaseF(xa)
+	}
+	if ownB {
+		f.releaseF(xb)
+	}
+	f.pushFReg(dst, mtOf2(f64))
+	f.stats.peep("float-copysign-bsl")
+}
+
+// fcmp lowers a NaN-correct float comparison to a 0/1 i32 result. arm64 FCMP sets
+// NZCV with a defined unordered result (V set, Z clear), so each wasm float compare
+// lowers directly to FCMP + Cset with the float condition (§4b) — no parity dance.
+func (f *fn) fcmp(kind wOp, f64 bool) {
+	b := f.popValue()
+	a := f.popValue()
+	xa, xaOwned := f.operandRegF(a) // read-only: only compared
+	saved := f.fpinned
+	f.fpinned = saved.add(xa)
+	xb, xbOwned := f.operandRegF(b) // read-only: only compared
+	f.fpinned = f.fpinned.add(xb)
+	dst := f.allocReg(0)
+	f.emitFCmpCset(kind, xa, xb, f64, dst)
+	f.fpinned = saved
+	if xaOwned {
+		f.releaseF(xa)
+	}
+	if xbOwned {
+		f.releaseF(xb)
+	}
+	f.pushReg(dst, mtI32)
+}
+
+// emitFCmpCset emits FCMP plus the NaN-correct CSET for a float relational op,
+// landing a 0/1 i32 boolean in dst. The ordered ops (gt/ge/lt/le) use GT/GE
+// (unordered clears N=V, so NaN yields false); lt/le swap the operands. Shared by
+// fcmp (eager boolean).
+func (f *fn) emitFCmpCset(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
+	if xa == xb && (kind == opLtS || kind == opGtS) {
+		// Inputs have been evaluated; strict self-relations are false even for NaN.
+		f.a.MovImm32(dst, 0)
+		f.stats.peep("float-self-compare-zero")
+		return
+	}
+	switch kind {
+	case opEq: // ordered equal: EQ requires Z=1, which unordered does not set
+		f.a.Fcmp(xa, xb, f64)
+		f.a.Cset32(dst, condE)
+	case opNe: // not-equal or unordered: NE (Z=0) is set on both
+		f.a.Fcmp(xa, xb, f64)
+		f.a.Cset32(dst, condNE)
+	case opGtS: // fc gt
+		f.a.Fcmp(xa, xb, f64)
+		f.a.Cset32(dst, a64.CondGT)
+	case opGeS: // fc ge
+		f.a.Fcmp(xa, xb, f64)
+		f.a.Cset32(dst, a64.CondGE)
+	case opLtS: // a<b == b>a
+		f.a.Fcmp(xb, xa, f64)
+		f.a.Cset32(dst, a64.CondGT)
+	case opLeS: // a<=b == b>=a
+		f.a.Fcmp(xb, xa, f64)
+		f.a.Cset32(dst, a64.CondGE)
+	}
+}
+
+// i2f converts a signed integer to float. srcWide selects an i64 source.
+func (f *fn) i2f(f64, srcWide bool) {
+	gpr, owned := f.materializeRead(f.popValue())
+	xmm := f.allocFReg(0)
+	f.a.Scvtf(xmm, gpr, f64, srcWide)
+	if owned {
+		f.release(gpr)
+	} else {
+		f.stats.peep("int-float-read")
+	}
+	f.pushFReg(xmm, mtOf2(f64))
+}
+
+// i2fU converts an unsigned integer directly with AArch64 UCVTF. Besides being
+// shorter than the old branch-and-bias sequence, the native instruction handles
+// the full u64 range and IEEE rounding without relying on width-flag conventions.
+func (f *fn) i2fU(f64, srcWide bool) {
+	gpr, owned := f.materializeRead(f.popValue())
+	xmm := f.allocFReg(0)
+	f.a.Ucvtf(xmm, gpr, f64, srcWide)
+	if owned {
+		f.release(gpr)
+	} else {
+		f.stats.peep("int-float-read")
+	}
+	f.pushFReg(xmm, mtOf2(f64))
+}
+
+// truncLimitBits returns the exclusive source-width float bounds outside which a
+// trunc to the given integer type must trap (x valid iff min < x < max). Mirrors
+// WARP FloatTruncLimitsExcl.
+func truncLimitBits(signed, f64src, dstWide bool) (minBits, maxBits uint64) {
+	switch {
+	case !f64src && signed && !dstWide:
+		return 0xCF000001, 0x4F000000
+	case !f64src && signed && dstWide:
+		return 0xDF000001, 0x5F000000
+	case !f64src && !signed && !dstWide:
+		return 0xBF800000, 0x4F800000
+	case !f64src && !signed && dstWide:
+		return 0xBF800000, 0x5F800000
+	case f64src && signed && !dstWide:
+		return 0xC1E0000000200000, 0x41E0000000000000
+	case f64src && signed && dstWide:
+		return 0xC3E0000000000001, 0x43E0000000000000
+	case f64src && !signed && !dstWide:
+		return 0xBFF0000000000000, 0x41F0000000000000
+	default:
+		return 0xBFF0000000000000, 0x43F0000000000000
+	}
+}
+
+// loadFConstBits materializes raw float bits into a fresh V register.
+func (f *fn) loadFConstBits(bits uint64, f64 bool) Reg {
+	x := f.allocFReg(0)
+	f.loadFConst(x, storage{typ: mtOf2(f64), cval: int64(bits)})
+	return x
+}
+
+// f2iTrunc converts float→int with truncation, trapping (TruncOverflow) on NaN or
+// out-of-range. srcF64 selects the source width; dstWide the i64 destination.
+func (f *fn) f2iTrunc(dstWide, srcF64, signed bool) {
+	f.materializePendingTraps()
+	x, owned := f.operandRegF(f.popValue())
+	f.fpinned = f.fpinned.add(x)
+
+	minBits, maxBits := truncLimitBits(signed, srcF64, dstWide)
+	lo := f.loadFConstBits(minBits, srcF64)
+	f.a.Fcmp(x, lo, srcF64)
+	f.releaseF(lo)
+	f.trapIf(a64.CondLE, trapTruncOverflow) // x <= lower-exclusive limit, or unordered (NaN)
+	hi := f.loadFConstBits(maxBits, srcF64)
+	f.a.Fcmp(x, hi, srcF64)
+	f.releaseF(hi)
+	f.trapIf(a64.CondGE, trapTruncOverflow) // x >= upper-exclusive limit
+
+	r := f.allocReg(0)
+	if signed {
+		f.a.Fcvtzs(r, x, srcF64, dstWide)
+	} else {
+		f.a.Fcvtzu(r, x, srcF64, dstWide)
+	}
+	f.fpinned = f.fpinned.remove(x)
+	if owned {
+		f.releaseF(x)
+	}
+	f.pushReg(r, mtOfInt(dstWide))
+}
+
 // --- saturating float→int truncation (0xFC 0-7): NaN→0, out-of-range clamps ---
 
+// AArch64 FCVTZS/FCVTZU already provide WebAssembly's saturating semantics:
+// truncate toward zero, clamp to the destination range, and map NaN to zero.
+// Reading the operand allows a pinned float local/global to stay borrowed.
+func (f *fn) truncSat(f64src, dstWide, signed bool) {
+	x, owned := f.operandRegF(f.popValue())
+	r := f.allocReg(0)
+	if signed {
+		f.a.Fcvtzs(r, x, f64src, dstWide)
+	} else {
+		f.a.Fcvtzu(r, x, f64src, dstWide)
+	}
+	if owned {
+		f.releaseF(x)
+	}
+	f.pushReg(r, mtOfInt(dstWide))
+}
+
+func (f *fn) fpromote() { // f32 → f64
+	x := f.materializeF(f.popValue())
+	f.a.FcvtS2D(x, x)
+	f.pushFReg(x, mtF64)
+}
+func (f *fn) fdemote() { // f64 → f32
+	x := f.materializeF(f.popValue())
+	f.a.FcvtD2S(x, x)
+	f.pushFReg(x, mtF32)
+}
+
+func (f *fn) reinterpretIntToFloat(wide bool) {
+	gpr, owned := f.materializeRead(f.popValue())
+	xmm := f.allocFReg(0)
+	f.a.FmovFromGpr(xmm, gpr, wide)
+	if owned {
+		f.release(gpr)
+	} else {
+		f.stats.peep("reinterpret-read")
+	}
+	f.pushFReg(xmm, mtOf2(wide))
+}
+func (f *fn) reinterpretFloatToInt(wide bool) {
+	xmm, owned := f.operandRegF(f.popValue())
+	gpr := f.allocReg(0)
+	f.a.FmovToGpr(gpr, xmm, wide)
+	if owned {
+		f.releaseF(xmm)
+	} else {
+		f.stats.peep("reinterpret-read")
+	}
+	f.pushReg(gpr, mtOfInt(wide))
+}
+
+// fload / fstore reuse the integer bounds-checked effective-address path.
+func (f *fn) fload(r *wasm.Reader, f64 bool) error {
+	memoryIndex, off, err := f.readMemArg(r)
+	if err != nil {
+		return err
+	}
+	size := 4
+	if f64 {
+		size = 8
+	}
+	if memoryIndex != 0 || f.threadedMemory0 {
+		f.materializePendingLoads()
+		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
+		x := f.allocFReg(0)
+		f.a.LdrFIdx(x, base, ea, disp, f64)
+		f.release(base)
+		f.release(ea)
+		f.pushFReg(x, mtF32)
+		if f64 {
+			f.s.back().st.typ = mtF64
+		}
+		return nil
+	}
+	addrLocal, addrOK := localAddressKey(f.s.back())
+	aliasLocal := -1
+	if addrOK {
+		aliasLocal = addrLocal
+	}
+	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, 0, f.guardMode)
+	e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow, aliasLocal))
+	if eaOwned {
+		f.regUser[ea] = e
+	}
+	return nil
+}
+
+func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
+	memoryIndex, off, err := f.readMemArg(r)
+	if err != nil {
+		return err
+	}
+	size := 4
+	if f64 {
+		size = 8
+	}
+	f.materializePendingTraps()
+	xmm := f.materializeF(f.popValue())
+	f.fpinned = f.fpinned.add(xmm)
+	if memoryIndex != 0 || f.threadedMemory0 {
+		f.materializePendingLoads()
+		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
+		f.a.StrFIdx(base, ea, xmm, disp, f64)
+		f.release(base)
+		f.release(ea)
+		f.fpinned = f.fpinned.remove(xmm)
+		f.releaseF(xmm)
+		return nil
+	}
+	addrLocal, addrOK := localAddressKey(f.s.back())
+	ea, eaOwned, _, disp := f.memAddr(off, size, true, 0, f.guardMode)
+	f.pinned = f.pinned.add(ea)
+	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
+	f.a.StrFIdx(linMemReg, ea, xmm, disp, f64)
+	f.pinned = f.pinned.remove(ea)
+	f.fpinned = f.fpinned.remove(xmm)
+	if eaOwned {
+		f.release(ea)
+	}
+	f.releaseF(xmm)
+	return nil
+}
+
 // helpers
+
+func (f *fn) loadFMemRef(dst Reg, e *elem) {
+	if regallocCheckEnabled {
+		f.checkConsumeMemRef(e)
+	}
+	if profileEnabled && f.stats != nil && f.stats.RecordSources {
+		previous := f.enterProfileNode(e)
+		defer f.switchProfileOrigin(previous)
+	}
+	st := e.st
+	f.a.LdrFIdx(dst, linMemReg, st.reg, st.memDisp(), st.typ == mtF64)
+}
 
 func fsize(f64 bool) int {
 	if f64 {
 		return 8
 	}
 	return 4
+}
+
+func mtOf2(f64 bool) machineType {
+	if f64 {
+		return mtF64
+	}
+	return mtF32
+}
+func mtOfInt(wide bool) machineType {
+	if wide {
+		return mtI64
+	}
+	return mtI32
 }

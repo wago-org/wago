@@ -58,7 +58,7 @@ func decodeFCWithMultiMemory(r *reader, multiMemory bool) (Instruction, error) {
 	case 17:
 		return indexInst(r, InstrTableFill)
 	default:
-		return Instruction{}, newDecodeError(ErrInvalidInstruction, r.off())
+		return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
 }
 
@@ -180,7 +180,7 @@ func decodeFB(r *reader) (Instruction, error) {
 		exact, ht, err := decodeRefHeapType(r)
 		return Instruction{Kind: InstrRefCastDescEq, Cast: CastOp{TargetNullable: sub == 36, SourceNullable: exact}, ext: &instrExt{HeapType: ht}}, err
 	default:
-		return Instruction{}, newDecodeError(ErrInvalidInstruction, r.off())
+		return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
 }
 
@@ -201,7 +201,7 @@ func decodeCastOp(r *reader) (CastOp, error) {
 	case 3:
 		return CastOp{SourceNullable: true, TargetNullable: true}, nil
 	default:
-		return CastOp{}, newDecodeError(ErrInvalidInstruction, r.off()-1)
+		return CastOp{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 	}
 }
 
@@ -220,7 +220,7 @@ func decodeFEWithMemargWidths(r *reader, widths memargWidths) (Instruction, erro
 			return Instruction{}, err
 		}
 		if b != 0 {
-			return Instruction{}, newDecodeError(ErrInvalidInstruction, r.off()-1)
+			return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 		}
 		return Instruction{Kind: InstrAtomicFence}, nil
 	}
@@ -257,7 +257,7 @@ func decodeFEWithMemargWidths(r *reader, widths memargWidths) (Instruction, erro
 		ma, err := decodeMemArgWithWidths(r, widths)
 		return Instruction{Kind: InstrAtomicCmpxchg, AtomicOp: sub, ext: &instrExt{MemArg: ma}}, err
 	}
-	return Instruction{}, newDecodeError(ErrInvalidInstruction, r.off())
+	return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }
 
 func decodeAtomicOrder(r *reader) (AtomicOrder, error) {
@@ -268,7 +268,7 @@ func decodeAtomicOrder(r *reader) (AtomicOrder, error) {
 	if b == byte(SeqCst) || b == byte(AcqRel) {
 		return AtomicOrder(b), nil
 	}
-	return 0, newDecodeError(ErrInvalidInstruction, r.off()-1)
+	return 0, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 }
 
 var feMem = [...]InstrKind{0x00: InstrMemoryAtomicNotify, 0x01: InstrMemoryAtomicWait32, 0x02: InstrMemoryAtomicWait64, 0x10: InstrI32AtomicLoad, 0x11: InstrI64AtomicLoad, 0x12: InstrI32AtomicLoad8U, 0x13: InstrI32AtomicLoad16U, 0x14: InstrI64AtomicLoad8U, 0x15: InstrI64AtomicLoad16U, 0x16: InstrI64AtomicLoad32U, 0x17: InstrI32AtomicStore, 0x18: InstrI64AtomicStore, 0x19: InstrI32AtomicStore8, 0x1a: InstrI32AtomicStore16, 0x1b: InstrI64AtomicStore8, 0x1c: InstrI64AtomicStore16, 0x1d: InstrI64AtomicStore32}
@@ -349,7 +349,7 @@ func decodeFDWithMemargWidthsInto(r *reader, widths memargWidths, ext *instrExt)
 		lane, err := r.byte()
 		return Instruction{Kind: k, Lane: LaneIdx(lane)}, err
 	}
-	return Instruction{}, newDecodeError(ErrInvalidInstruction, r.off())
+	return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }
 
 var fdMem = [...]InstrKind{0: InstrV128Load, 1: InstrV128Load8x8S, 2: InstrV128Load8x8U, 3: InstrV128Load16x4S, 4: InstrV128Load16x4U, 5: InstrV128Load32x2S, 6: InstrV128Load32x2U, 7: InstrV128Load8Splat, 8: InstrV128Load16Splat, 9: InstrV128Load32Splat, 10: InstrV128Load64Splat, 11: InstrV128Store, 84: InstrV128Load8Lane, 85: InstrV128Load16Lane, 86: InstrV128Load32Lane, 87: InstrV128Load64Lane, 88: InstrV128Store8Lane, 89: InstrV128Store16Lane, 90: InstrV128Store32Lane, 91: InstrV128Store64Lane, 92: InstrV128Load32Zero, 93: InstrV128Load64Zero}

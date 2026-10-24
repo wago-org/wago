@@ -1,0 +1,134 @@
+[
+  {
+    "id": "tiny",
+    "path": "corpus/workloads/synthetic/tiny.wasm",
+    "bytes": 60,
+    "sha256": "b1db87bef75ea124f339b6331951ae1406581add804b44f6b6ccf696d0c3674a"
+  },
+  {
+    "id": "fib_rec",
+    "path": "corpus/workloads/synthetic/fib_rec.wasm",
+    "bytes": 62,
+    "sha256": "31bae4eca49a7c769ab1cdc36814d2c8df75679f3a0af865534629fd88e5dd14"
+  },
+  {
+    "id": "many_funcs",
+    "path": "corpus/workloads/synthetic/many_funcs.wasm",
+    "bytes": 2992,
+    "sha256": "d3e33dac6c06b36b839936de79163453d52107a06e525886d98d5d8bef054fbd"
+  },
+  {
+    "id": "fannkuch",
+    "path": "corpus/workloads/compute/fannkuch.wasm",
+    "bytes": 2667,
+    "sha256": "31e05ae6968784b6d1078f70d4badb93ca8772a0b790559b724efefa64dfaf37"
+  },
+  {
+    "id": "matmul",
+    "path": "corpus/workloads/compute/matmul.wasm",
+    "bytes": 1042,
+    "sha256": "f4b7a4ce25b1c8a9a77061a77672726a062dac4f0351bdc23b16271a0cd00ff8"
+  },
+  {
+    "id": "sha256",
+    "path": "corpus/workloads/compute/sha256.wasm",
+    "bytes": 2818,
+    "sha256": "0dbe8308751754ba91836fc546e7b805101851e301edc7b135fbb64aab46e384"
+  },
+  {
+    "id": "raytrace",
+    "path": "corpus/workloads/compute/raytrace.wasm",
+    "bytes": 5803,
+    "sha256": "d5a226fa10efa31e193244858fdcb206edd7c935e3de794d7e39478538404c04"
+  },
+  {
+    "id": "json-as",
+    "path": "corpus/workloads/assemblyscript/json-as.wasm",
+    "bytes": 23410,
+    "sha256": "3b105acbd857f35d3916a59d363f0f928a50cc5071277c83d56d9b9e01ff205b"
+  },
+  {
+    "id": "json-as-simd",
+    "path": "corpus/workloads/assemblyscript/json-as-simd.wasm",
+    "bytes": 25576,
+    "sha256": "ca353a5601a88ad1912a7b041030da0d98604640cc25937f3d4b704a4dd9117c"
+  },
+  {
+    "id": "blake-as-simd",
+    "path": "corpus/workloads/assemblyscript/blake-as-simd.wasm",
+    "bytes": 23486,
+    "sha256": "741e9c374db8d28e8b80b6f45498c54da648087319232e47322095401e5a33f4"
+  },
+  {
+    "id": "utf-as-simd",
+    "path": "corpus/workloads/assemblyscript/utf-as-simd.wasm",
+    "bytes": 29801,
+    "sha256": "8867205c0e7c3772b776bb495867378a587db972de47cfb4914a4fa55083b31a"
+  },
+  {
+    "id": "polybench-cholesky",
+    "path": "corpus/workloads/polybench/cholesky.wasm",
+    "bytes": 2516,
+    "sha256": "32fa0520bc4ef20f36f5d9d374485ce8cd9dd505d57ce9cccc95c601a7f6557d"
+  },
+  {
+    "id": "polybench-correlation",
+    "path": "corpus/workloads/polybench/correlation.wasm",
+    "bytes": 2417,
+    "sha256": "d82e216024b8b69c6eac4a731851e9db9c9a9be54fed0ea4c0e920786542df7c"
+  },
+  {
+    "id": "polybench-gemm",
+    "path": "corpus/workloads/polybench/gemm.wasm",
+    "bytes": 2184,
+    "sha256": "8ba9ee8cafd9bf19b1547fe9127c861505daeecfe84c0516801776fddfcabd79"
+  },
+  {
+    "id": "coremark",
+    "path": "corpus/workloads/semantic/coremark/coremark.wasm",
+    "bytes": 8156,
+    "sha256": "dc98981b11142786c3e505e1c7a129bc5bb398ebabead2d8082072385954fb5a"
+  },
+  {
+    "id": "blake3",
+    "path": "corpus/workloads/semantic/blake3/blake3.wasm",
+    "bytes": 13174,
+    "sha256": "903150890d2c96d4d8f0dd321c6d54e04f2ed1c033f9fbe87ec3dbc2e8bc96c6"
+  },
+  {
+    "id": "yyjson",
+    "path": "corpus/workloads/semantic/yyjson/yyjson.wasm",
+    "bytes": 127009,
+    "sha256": "56874b0102785568fa02478e4d109ecc328419cc05fcc2654062d02df7a2c48b"
+  },
+  {
+    "id": "lodepng",
+    "path": "corpus/workloads/semantic/lodepng/lodepng.wasm",
+    "bytes": 97731,
+    "sha256": "254cc3dd5d15369282ed3976d3ac6d5291a1fb91d3f19e8b7da65267d8f38190"
+  },
+  {
+    "id": "pcre2",
+    "path": "corpus/workloads/semantic/pcre2/pcre2.wasm",
+    "bytes": 311039,
+    "sha256": "2d00dceff9bbb44ce56ce1e0ad4e1ee09c160da4bc7c4f44634dfee91d966eda"
+  },
+  {
+    "id": "quickjs-script",
+    "path": "corpus/workloads/applications/quickjs/qjs.wasm",
+    "bytes": 727617,
+    "sha256": "e384f80f3dd492dab373d9eda08fb124cc4484945bbc2c9d03cbc7598e711a40"
+  },
+  {
+    "id": "sqlite3-query",
+    "path": "corpus/workloads/applications/sqlite3/sqlite3.wasm",
+    "bytes": 1318577,
+    "sha256": "bbfa28f00fea33bd95bd3bd573c92fd821173d03b280180b7e40dac0af91a669"
+  },
+  {
+    "id": "esbuild-minify",
+    "path": "corpus/workloads/applications/esbuild/esbuild.wasm",
+    "bytes": 20677268,
+    "sha256": "a593128fc5b588cfc19d974ef8896ab9ad3bd3d8ccaaf392c981a26380617e8f"
+  }
+]

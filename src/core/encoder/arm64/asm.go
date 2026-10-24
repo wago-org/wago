@@ -112,10 +112,6 @@ type Asm struct {
 }
 
 // word appends one 32-bit instruction little-endian.
-// Keep slice growth and the store sequence out of every instruction emitter;
-// sharing this boundary reduces the compiler's executable working set.
-//
-//go:noinline
 func (a *Asm) word(w uint32) {
 	a.B = append(a.B, byte(w), byte(w>>8), byte(w>>16), byte(w>>24))
 }

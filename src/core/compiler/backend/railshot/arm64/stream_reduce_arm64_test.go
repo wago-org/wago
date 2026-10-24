@@ -31,12 +31,12 @@ func streamingReductionModule(t testing.TB, mutate bool) *wasm.Module {
 }
 
 func TestStreamingReductionOverflowAndLocalWrites(t *testing.T) {
-
+	old := streamReduceEnabled
+	defer func() { streamReduceEnabled = old }()
 	for _, mutate := range []bool{false, true} {
 		m := streamingReductionModule(t, mutate)
-		{
-			const enabled = false
-
+		for _, enabled := range []bool{false, true} {
+			streamReduceEnabled = enabled
 			for _, guard := range []bool{false, true} {
 				for _, x := range []uint64{0, 1, 17, 0x7fffffff, 0x80000000, 0xffffffff} {
 					want := x * 21
@@ -53,8 +53,52 @@ func TestStreamingReductionOverflowAndLocalWrites(t *testing.T) {
 	}
 }
 
-func TestStreamingReductionManyLiveLocals(t *testing.T) {
+func TestStreamingReductionAdmission(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	old := streamReduceEnabled
+	defer func() { streamReduceEnabled = old }()
+	for _, mutate := range []bool{false, true} {
+		m := streamingReductionModule(t, mutate)
+		for _, enabled := range []bool{false, true} {
+			streamReduceEnabled = enabled
+			hits := compileWithStats(t, m, true).Funcs[0].Peephole["streaming-integer-reduction"]
+			if enabled && hits != 1 || !enabled && hits != 0 {
+				t.Fatalf("mutate=%v enabled=%v hits=%d", mutate, enabled, hits)
+			}
+		}
+	}
+}
 
+func TestStreamingReductionRejectsCompletedTermWrites(t *testing.T) {
+	f := fn{localType: []machineType{mtI32}}
+	makeCode := func(post byte) []byte {
+		var b []byte
+		for i := 0; i < 4; i++ {
+			b = append(b, 0x20, 0, 0x41, 1, 0x6c)
+			if i == 0 && post != 0 {
+				b = append(b, post, 0)
+			}
+		}
+		b = append(b, 0x6a, 0x6a, 0x6a)
+		return b
+	}
+	for _, post := range []byte{0, 0x21, 0x22} {
+		r := wasm.ReaderFrom(makeCode(post))
+		_, ok := f.inspectStreamReduction(&r)
+		if ok != (post == 0) {
+			t.Fatalf("post=%x admitted=%v", post, ok)
+		}
+	}
+	f.localType[0] = mtI64
+	r := wasm.ReaderFrom(makeCode(0))
+	if _, ok := f.inspectStreamReduction(&r); ok {
+		t.Fatal("admitted non-i32 local")
+	}
+}
+
+func TestStreamingReductionManyLiveLocals(t *testing.T) {
+	old := streamReduceEnabled
+	defer func() { streamReduceEnabled = old }()
 	for _, terms := range []byte{16, 32, 64} {
 		body := []byte{1, terms, 0x7f}
 		for i := byte(1); i <= terms; i++ {
@@ -77,9 +121,8 @@ func TestStreamingReductionManyLiveLocals(t *testing.T) {
 		}
 		body = append(body, 0x0b, 0x0b)
 		m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
-		{
-			const enabled = false
-
+		for _, enabled := range []bool{false, true} {
+			streamReduceEnabled = enabled
 			for _, guard := range []bool{false, true} {
 				for _, x := range []uint64{0, 17, 0xffffffff} {
 					got, err := runArm64WrapperWithOptions(t, m, CompileOptions{ElideBoundsChecks: guard}, x)
@@ -90,5 +133,24 @@ func TestStreamingReductionManyLiveLocals(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestStreamingReductionPolicyRollback(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	old := streamReduceEnabled
+	defer func() { streamReduceEnabled = old }()
+	streamReduceEnabled = true
+	m := streamingReductionModule(t, true)
+	stats := &ModuleStats{}
+	cm, err := CompileModuleWith(m, CompileOptions{Stats: stats, Optimizations: map[string]bool{"streaming-i32-reduction": false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		cm.CodeImage.Close()
+	}
+	if stats.Funcs[0].Peephole["streaming-integer-reduction"] != 0 {
+		t.Fatal("policy rollback ignored")
 	}
 }

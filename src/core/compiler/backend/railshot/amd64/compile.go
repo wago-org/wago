@@ -1636,9 +1636,9 @@ type CompileOptions struct {
 	// Values <= 1 retain the exact serial fast path. Values > 1 are capped by
 	// runtime.GOMAXPROCS(0) and the module's local-function count.
 	Workers int
-	// DeferCodeMapping defers executable permissions and registration until the
-	// first instance. Serial compilation uses demand-paged RW staging; parallel
-	// compilation retains its heap join until activation.
+	// DeferCodeMapping defers code mapping and registration until the
+	// first instance. Deferred serial compilation uses heap staging, including
+	// compile-only Darwin callers that must not require MAP_JIT.
 	DeferCodeMapping bool
 
 	// ElideBoundsChecks omits inline linear-memory bounds checks, relying on
@@ -1862,7 +1862,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if diagnosticsEnabled && (opts.Stats != nil || explainEnabled) {
 		hintStart = time.Now()
 	}
-	allHints, hintSidecar, globalScores, err := computeModuleHintsWithWorkersResidencyPolicy(m, nGlobals, importedFuncs, workers, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy, diagnosticsEnabled && (opts.Stats != nil || explainEnabled))
+	allHints, hintSidecar, globalScores, err := computeModuleHintsWithWorkersResidencyPolicy(m, nGlobals, importedFuncs, workers, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy, diagnosticsEnabled && (opts.Stats != nil || explainEnabled), opts.GCFrameRoots == nil)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
@@ -2000,8 +2000,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		}
 		var codeBuffer *coreruntime.CodeBuffer
 		var err error
-		if policy.EnabledOption(optFileBackedCode) {
-			codeBuffer, err = coreruntime.NewCompilerCodeBuffer(codeCap)
+		if opts.DeferCodeMapping {
+			codeBuffer, err = coreruntime.NewHeapCodeBuffer(codeCap)
 		} else {
 			codeBuffer, err = coreruntime.NewCodeBuffer(codeCap)
 		}
@@ -2017,8 +2017,6 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if regallocCheckEnabled {
 			shared.SetSourceWorkerContext(&sc.scalar, codegen.SourceContextFor(opts.Codegen, m), 0, 1)
 		}
-		fileCode := codeBuffer.OwnsCompilerFile()
-		reclaimedCode := 0
 		pressureDone := false
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		var directPrepared, directPreparedBounded, gcReducedBounded, gcI31Inductions []uint64
@@ -2126,12 +2124,6 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 					return nil, fmt.Errorf("amd64: grow code image: %w", err)
 				}
 			}
-			if fileCode && len(codeBuffer.Bytes())-reclaimedCode >= 8<<20 {
-				reclaimedCode, err = codeBuffer.ReclaimCompilerPages(reclaimedCode, len(codeBuffer.Bytes()))
-				if err != nil {
-					return nil, fmt.Errorf("amd64: reclaim compiler image: %w", err)
-				}
-			}
 			if !pressureDone && opts.MemoryPressure != nil && len(codeBuffer.Bytes()) >= pressureAt {
 				pressureDone = true
 				opts.MemoryPressure()
@@ -2186,16 +2178,11 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if profileEnabled && opts.Profile {
 			recordProfileRegions(ms, entry, importedFuncs, len(code), functionsEnd, sharedAdapterBytes, literalBase, len(literalCode), stubBase, len(stubCode))
 		}
-		if err := patchModuleRelocsWithImage(code, entry, internalEntry, relocs, stubBase, stubOffsets, codeBuffer); err != nil {
+		if err := patchModuleRelocs(code, entry, internalEntry, relocs, stubBase, stubOffsets); err != nil {
 			return nil, err
 		}
-		if err := patchModuleLiteralRelocsWithImage(code, entry, literalWords, literalOffsets, literalBase, moduleLiterals, codeBuffer); err != nil {
+		if err := patchModuleLiteralRelocs(code, entry, literalWords, literalOffsets, literalBase, moduleLiterals); err != nil {
 			return nil, err
-		}
-		if fileCode {
-			if err := codeBuffer.FinishCompilerCode(); err != nil {
-				return nil, fmt.Errorf("amd64: finish compiler image: %w", err)
-			}
 		}
 		directPreparedBounded = resolveBoundedPreparedEntries(m, directPreparedBounded, allHints, relocs, immutableTables)
 		if gcInductionReductionsEnabled {
@@ -2614,23 +2601,10 @@ func finalizeOmittedInlineEntriesAMD64(entry, internalEntry []int, relocs [][]ca
 }
 
 func patchModuleRelocs(code []byte, entry, internalEntry []int, relocs [][]callReloc, stubBase int, stubOffsets [gcSharedStubMax]int) error {
-	return patchModuleRelocsWithImage(code, entry, internalEntry, relocs, stubBase, stubOffsets, nil)
-}
-
-func patchModuleRelocsWithImage(code []byte, entry, internalEntry []int, relocs [][]callReloc, stubBase int, stubOffsets [gcSharedStubMax]int, image *coreruntime.CodeBuffer) error {
 	if len(entry) < len(relocs) {
 		return fmt.Errorf("amd64: relocation entry table has %d functions, want at least %d", len(entry), len(relocs))
 	}
-	fileCode := image != nil && image.OwnsCompilerFile()
-	reclaimedCode := 0
 	for i := range relocs {
-		if fileCode && entry[i]-reclaimedCode >= 8<<20 {
-			var err error
-			reclaimedCode, err = image.ReclaimCompilerPages(reclaimedCode, entry[i])
-			if err != nil {
-				return fmt.Errorf("amd64: reclaim relocated image: %w", err)
-			}
-		}
 		base := entry[i]
 		if base < 0 || base > len(code) {
 			return fmt.Errorf("amd64: invalid function %d entry %#x for %d-byte code image", i, base, len(code))
@@ -2792,14 +2766,14 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayou
 }
 
 func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy, detailedResidency bool) ([]funcHints, funcHintSidecar, []int64, error) {
-	return computeModuleHintsWithWorkersResidencyPolicy(m, nGlobals, importedFuncs, 1, gcTypeLayouts, gcStructHelpers, policy, detailedResidency)
+	return computeModuleHintsWithWorkersResidencyPolicy(m, nGlobals, importedFuncs, 1, gcTypeLayouts, gcStructHelpers, policy, detailedResidency, true)
 }
 
 func computeModuleHintsWithWorkersPolicy(m *wasm.Module, nGlobals, importedFuncs, workers int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy) ([]funcHints, funcHintSidecar, []int64, error) {
-	return computeModuleHintsWithWorkersResidencyPolicy(m, nGlobals, importedFuncs, workers, gcTypeLayouts, gcStructHelpers, policy, false)
+	return computeModuleHintsWithWorkersResidencyPolicy(m, nGlobals, importedFuncs, workers, gcTypeLayouts, gcStructHelpers, policy, false, true)
 }
 
-func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, importedFuncs, workers int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy, detailedResidency bool) ([]funcHints, funcHintSidecar, []int64, error) {
+func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, importedFuncs, workers int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy, detailedResidency, collectInlineCalls bool) ([]funcHints, funcHintSidecar, []int64, error) {
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
 	totalScores := 0
@@ -2876,7 +2850,7 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			agg[gh.Index] += int64(gh.Score)
 		}
 	} else {
-		if policy.EnabledOption(optInline) && inlineHintBodyBytes >= 64<<10 {
+		if collectInlineCalls && policy.EnabledOption(optInline) && inlineHintBodyBytes >= 64<<10 {
 			inlineCaller = newInlineCallerHints(n)
 		}
 		var sparseAccum shared.GlobalHintAccumulator

@@ -791,7 +791,7 @@ func (m *Module) StructuralTypeKeyChecked(typeIdx uint32) (uint64, bool) {
 	if compTypeHasIndexedReferences(ft) || m.typeInNonSingletonRecGroup(typeIdx) || !sub.Final || len(sub.Supers) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 		return m.structuralIndexedFuncTypeKey(typeIdx)
 	}
-	return m.cachedStructuralFuncTypeKey(typeIdx, ft)
+	return StructuralFuncTypeKey(ft), true
 }
 
 // FunctionSubtypeTypeIndexes returns every function type declared by this

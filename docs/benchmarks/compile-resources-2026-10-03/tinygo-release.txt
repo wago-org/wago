@@ -1,0 +1,38 @@
+TinyGo0.42.0; -scheduler=tasks -no-debug -opt=z -gc=conservative; version0.0.0
+tags=wago_runtime,wago_lean,wago_minimal
+GNU strip -s --strip-section-headers --remove-section=.eh_frame --remove-section=.eh_frame_hdr --remove-section=.comment
+bytes=2717456
+3dc551bfdbe88aed564b8f7eae976e4abc20b2d5ab8b952d33f265ee905db13d  measurements/selected-tinygo
+Wago
+  channel      development
+  release      0.0.0
+  profile      minimal
+  build        tiny
+  platform     linux/amd64
+  toolchain    tinygo 0.42.0
+  runtime      measurements/selected-tinygo
+  plugins      none
+  guard pages  unavailable
+6765
+Wago
+  channel      development
+  release      0.0.0
+  profile      minimal
+  build        tiny
+  platform     linux/amd64
+  toolchain    tinygo 0.42.0
+  runtime      measurements/selected-tinygo
+  plugins      none
+  guard pages  unavailable
+6765
+Wago
+  channel      development
+  release      0.0.0
+  profile      minimal
+  build        tiny
+  platform     linux/amd64
+  toolchain    tinygo 0.42.0
+  runtime      measurements/selected-tinygo
+  plugins      none
+  guard pages  unavailable
+6765

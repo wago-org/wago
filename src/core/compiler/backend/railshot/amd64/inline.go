@@ -855,6 +855,46 @@ type inlineCallerPlan struct {
 	allCallsInline bool
 }
 
+// inlineCallerAccumulator is shared by the bytecode and cached-call traversals.
+// It owns only target filtering and first-occurrence deduplication.
+type inlineCallerAccumulator struct {
+	smallSeen [inlineLinearSeenTargets]int
+	seenN     int
+	largeSeen map[int]struct{}
+}
+
+func (a *inlineCallerAccumulator) add(plan *inlineCallerPlan, target *inlineTarget) bool {
+	if target == nil {
+		return false
+	}
+	inline := !target.recursive()
+	if a.largeSeen != nil {
+		if _, duplicate := a.largeSeen[target.globalIdx]; duplicate {
+			return inline
+		}
+	} else {
+		for _, global := range a.smallSeen[:a.seenN] {
+			if global == target.globalIdx {
+				return inline
+			}
+		}
+	}
+	if a.largeSeen != nil {
+		a.largeSeen[target.globalIdx] = struct{}{}
+	} else if a.seenN < len(a.smallSeen) {
+		a.smallSeen[a.seenN] = target.globalIdx
+		a.seenN++
+	} else {
+		a.largeSeen = make(map[int]struct{}, 2*len(a.smallSeen))
+		for _, global := range a.smallSeen {
+			a.largeSeen[global] = struct{}{}
+		}
+		a.largeSeen[target.globalIdx] = struct{}{}
+	}
+	plan.callees = append(plan.callees, target)
+	return inline
+}
+
 // buildInlineCallerPlan finds the distinct splice targets and determines
 // whether they replace every call in one body walk. Common immediate-free
 // instructions bypass the module classifier because neither result depends on
@@ -864,9 +904,7 @@ func buildInlineCallerPlan(caller *wasm.Func, targets inlineTargetTable) inlineC
 		return inlineCallerPlan{}
 	}
 	var plan inlineCallerPlan
-	var smallSeen [inlineLinearSeenTargets]int
-	seenN := 0
-	var largeSeen map[int]struct{}
+	var accumulate inlineCallerAccumulator
 	r := wasm.NewReader(caller.BodyBytes)
 	var imm wasm.InstructionImmediate
 	sawCall := false
@@ -885,41 +923,9 @@ func buildInlineCallerPlan(caller *wasm.Func, targets inlineTargetTable) inlineC
 				return plan
 			}
 			sawCall = true
-			t := targets.target(int(idx))
-			if t == nil {
-				allInline = false
-				continue
-			}
-			if t.recursive() {
+			if !accumulate.add(&plan, targets.target(int(idx))) {
 				allInline = false
 			}
-			duplicate := false
-			if largeSeen != nil {
-				_, duplicate = largeSeen[t.globalIdx]
-			} else {
-				for _, globalIdx := range smallSeen[:seenN] {
-					if globalIdx == t.globalIdx {
-						duplicate = true
-						break
-					}
-				}
-			}
-			if duplicate {
-				continue
-			}
-			if largeSeen != nil {
-				largeSeen[t.globalIdx] = struct{}{}
-			} else if seenN < len(smallSeen) {
-				smallSeen[seenN] = t.globalIdx
-				seenN++
-			} else {
-				largeSeen = make(map[int]struct{}, 2*len(smallSeen))
-				for _, globalIdx := range smallSeen {
-					largeSeen[globalIdx] = struct{}{}
-				}
-				largeSeen[t.globalIdx] = struct{}{}
-			}
-			plan.callees = append(plan.callees, t)
 			continue
 		}
 		switch op {

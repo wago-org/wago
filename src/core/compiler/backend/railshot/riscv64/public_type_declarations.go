@@ -11,7 +11,7 @@ func AdmitTypeDeclarations(m *wasm.Module) bool { return admitPublicTypeDeclarat
 // A declaration-only module retains the frontend-validated graph but has no
 // native frames, reference carriers, resource storage or executable start.
 func admitPublicTypeDeclarations(m *wasm.Module) bool {
-	if m == nil || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Globals) != 0 || len(m.Exports) != 0 || m.Start != nil || len(m.Elements) != 0 || m.DataSegmentCount() != 0 {
+	if m == nil || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Globals) != 0 || len(m.Exports) != 0 || m.Start != nil || len(m.Elements) != 0 || len(m.Data) != 0 {
 		return false
 	}
 	for _, group := range m.Types {
@@ -82,8 +82,7 @@ func AdmitPrimitiveFunctionGraphModule(m *wasm.Module) bool {
 			}
 		}
 	}
-	for dataIndex := 0; dataIndex < m.DataSegmentCount(); dataIndex++ {
-		data := m.DataSegment(dataIndex)
+	for _, data := range m.Data {
 		if !plain(data.Mode.Offset.BodyBytes) {
 			return false
 		}

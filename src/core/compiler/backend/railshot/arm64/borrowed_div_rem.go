@@ -1,0 +1,114 @@
+//go:build arm64
+
+package arm64
+
+import "os"
+
+var borrowedDivRemEnabled = os.Getenv("WAGO_ARM64_NO_BORROWED_DIV_REM") != "1" &&
+	os.Getenv("WAGO_ARM64_EXPERIMENT_BORROWED_DIV_REM") != "0"
+
+// Concrete read-only operands retain the existing traps and result allocation.
+func (f *fn) condenseBorrowedDivRem(node *elem, dest Reg) Reg {
+	w := node.st.typ.is64()
+	signed := node.deferredOp() == opDivS || node.deferredOp() == opRemS
+	wantRem := node.deferredOp() == opRemS || node.deferredOp() == opRemU
+	left := f.s.arg0(node)
+	right := f.s.arg1(node)
+
+	// Constant divisor: strength-reduce to shifts / multiply-high, avoiding the divide.
+	if right.elemKind() == ekValue && right.st.kind == stConst {
+		if r, ok := f.tryDivByConst(node, dest, right.st.cval); ok {
+			return r
+		}
+	}
+
+	// Divisor and dividend into ordinary registers (SDIV/UDIV read both without
+	// clobbering either).
+	previousPins := f.pinned
+	divisor, divisorOwned := f.readDivRemOperand(right, dest)
+	f.pinned = f.pinned.add(divisor)
+	dividend, dividendOwned := f.readDivRemOperand(left, dest)
+	f.pinned = f.pinned.add(dividend)
+
+	// Divide-by-zero trap for every division op.
+	f.cmpImm(divisor, 0, w)
+	f.trapIf(condE, trapDivZero)
+
+	// The result register: honor the caller hint when it is free of the operand
+	// registers, else a fresh temp (the remainder path also needs a scratch quotient
+	// distinct from result).
+	result := dest
+	if result == regNone || result == divisor || result == dividend {
+		result = f.allocReg(maskOf(divisor, dividend))
+	}
+
+	switch {
+	case signed && !wantRem: // div_s: INT_MIN / -1 would fault — trap it as overflow
+		f.cmpImmS(divisor, -1, w) // cmp divisor, -1
+		noOvf := f.a.Bcond(condNE)
+		f.cmpIntMin(dividend, w) // cmp dividend, INT_MIN
+		f.trapIf(condE, trapDivOverflow)
+		f.patchBranch19(noOvf, f.a.Len())
+		f.sdiv(result, dividend, divisor, w)
+	case signed: // rem_s: x % -1 == 0, computed directly to avoid the INT_MIN/-1 fault
+		f.cmpImmS(divisor, -1, w) // cmp divisor, -1
+		notM1 := f.a.Bcond(condNE)
+		f.a.MovImm64(result, 0) // remainder is 0
+		done := f.a.Branch()
+		f.patchBranch19(notM1, f.a.Len())
+		q := f.allocReg(maskOf(divisor, dividend, result))
+		f.sdiv(q, dividend, divisor, w)
+		f.msub(result, q, divisor, dividend, w) // rem = dividend - q*divisor
+		f.release(q)
+		f.patchBranch26(done, f.a.Len())
+	case !wantRem: // div_u
+		f.udiv(result, dividend, divisor, w)
+	default: // rem_u
+		q := f.allocReg(maskOf(divisor, dividend, result))
+		f.udiv(q, dividend, divisor, w)
+		f.msub(result, q, divisor, dividend, w) // rem = dividend - q*divisor
+		f.release(q)
+	}
+
+	f.pinned = previousPins
+	if divisorOwned {
+		f.release(divisor)
+	}
+	if dividendOwned && dividend != divisor {
+		f.release(dividend)
+	}
+	if !divisorOwned || !dividendOwned {
+		f.stats.peep("borrowed-div-rem")
+	}
+
+	f.consumeBlockBelow(node)
+	f.occupy(node, result)
+	return result
+}
+
+// A caller-provided result register must be honored even when it aliases a
+// borrowed source. Move that source into owned storage before reading the next
+// operand; condenseInto relies on the requested destination being written.
+func (f *fn) readDivRemOperand(e *elem, dest Reg) (Reg, bool) {
+	r, owned := f.materializeRead(e)
+	if r != dest {
+		return r, owned
+	}
+	copy := f.allocReg(maskOf(r))
+	f.a.MovReg64(copy, r)
+	if owned {
+		f.release(r)
+	}
+	f.occupy(e, copy)
+	return copy, true
+}
+
+// Keep the new cover on concrete source reads. Deferred evaluation continues
+// using the established destination-directed lowering and allocation order.
+func (f *fn) canBorrowDivRemOperands(node *elem) bool {
+	left, right := f.s.arg0(node), f.s.arg1(node)
+	if left == nil || right == nil || left.elemKind() != ekValue || right.elemKind() != ekValue {
+		return false
+	}
+	return left.st.kind == stLocalReg || left.st.kind == stGlobReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg
+}

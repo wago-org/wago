@@ -434,6 +434,14 @@ func stagedGCStructExecutionProduct(data []byte) (stagedGCStructProduct, bool) {
 	return 0, false
 }
 
+func (p stagedGCStructProduct) requiresHelpers() bool {
+	return p == stagedGCStructGeneric || p == stagedGCStructNamedGets || p == stagedGCStructNumericLocal || p == stagedGCStructNullDereference || p == stagedGCStructPacked || p == stagedGCStructBasic || p == stagedGCStructRefTestTable || p == stagedGCStructRefTestConcrete || p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq || p == stagedGCStructRefCastAbstract || p == stagedGCStructRefCastConcrete || p == stagedGCStructBrOnCastAbstract || p == stagedGCStructBrOnCastConcrete || p == stagedGCStructBrOnCastNullability || p == stagedGCStructBrOnCastFailAbstract || p == stagedGCStructBrOnCastFailConcrete || p == stagedGCStructBrOnCastFailNullability
+}
+
+func (p stagedGCStructProduct) requiresArrayHelpers() bool {
+	return p == stagedGCStructRefTestAbstract || p == stagedGCStructExtern || p == stagedGCStructRefEq || p == stagedGCStructRefCastAbstract || p == stagedGCStructBrOnCastAbstract || p == stagedGCStructBrOnCastFailAbstract
+}
+
 func (p stagedGCStructProduct) refTestCanonicalTypes() []gc.TypeID {
 	if p != stagedGCStructRefTestConcrete && p != stagedGCStructRefCastConcrete && p != stagedGCStructBrOnCastConcrete && p != stagedGCStructBrOnCastFailConcrete {
 		return nil
@@ -530,7 +538,7 @@ func stagedGCStructStateGraph(m *wasm.Module) string {
 		exports[i] = fmt.Sprintf("%s=%d:%d", m.Exports[i].Name, m.Exports[i].Index.Kind, m.Exports[i].Index.Index)
 	}
 	return fmt.Sprintf("imports=%d funcs=%d globals=[%s] tables=%d memories=%d tags=%d elements=%d data=%d exports=[%s]",
-		len(m.Imports), len(m.Code), strings.Join(globals, ","), m.TableCount(), m.MemCount(), m.TagCount(), len(m.Elements), m.DataSegmentCount(), strings.Join(exports, ","))
+		len(m.Imports), len(m.Code), strings.Join(globals, ","), m.TableCount(), m.MemCount(), m.TagCount(), len(m.Elements), len(m.Data), strings.Join(exports, ","))
 }
 
 func stagedGCStructOpcodeInventory(m *wasm.Module) ([]stagedGCStructOpcodeCount, error) {

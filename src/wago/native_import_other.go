@@ -15,6 +15,7 @@ func railshotInvokeNativeImportedStart(*Instance, int, map[uint32]uint64, contex
 // These targets preserve their established Runtime terminal-observer ordering.
 func railshotCheckImportedStartCompletion(*Instance, context.Context) error { return nil }
 
+func railshotNativeContextTrapABI() bool                               { return false }
 func railshotNativeImportArenaBytes(*Compiled, resolvedImports) int    { return 0 }
 func railshotRequiresPrivateOwnedHostThunk(*Compiled) bool             { return false }
 func railshotNativeContextIdentity(*coreruntime.JobMemory) uintptr     { return 0 }

@@ -88,45 +88,11 @@ func (h *inlineCallerHints) plan(function int, targets inlineTargetTable) (inlin
 	}
 	calls := h.calls[span.start : span.end&inlineCallerEndMask]
 	plan := inlineCallerPlan{allCallsInline: len(calls) != 0 && span.end&inlineCallerBlocked == 0}
-	var smallSeen [inlineLinearSeenTargets]int
-	seenN := 0
-	var largeSeen map[int]struct{}
+	var accumulate inlineCallerAccumulator
 	for _, index := range calls {
-		target := targets.target(int(index))
-		if target == nil {
-			plan.allCallsInline = false
-			continue
-		}
-		if target.recursive() {
+		if !accumulate.add(&plan, targets.target(int(index))) {
 			plan.allCallsInline = false
 		}
-		duplicate := false
-		if largeSeen != nil {
-			_, duplicate = largeSeen[target.globalIdx]
-		} else {
-			for _, global := range smallSeen[:seenN] {
-				if global == target.globalIdx {
-					duplicate = true
-					break
-				}
-			}
-		}
-		if duplicate {
-			continue
-		}
-		if largeSeen != nil {
-			largeSeen[target.globalIdx] = struct{}{}
-		} else if seenN < len(smallSeen) {
-			smallSeen[seenN] = target.globalIdx
-			seenN++
-		} else {
-			largeSeen = make(map[int]struct{}, 2*len(smallSeen))
-			for _, global := range smallSeen {
-				largeSeen[global] = struct{}{}
-			}
-			largeSeen[target.globalIdx] = struct{}{}
-		}
-		plan.callees = append(plan.callees, target)
 	}
 	return plan, true
 }

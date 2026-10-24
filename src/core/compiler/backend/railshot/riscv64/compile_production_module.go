@@ -368,8 +368,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 			return nil, unsupported("decoded instruction/data size bound")
 		}
 	}
-	for dataIndex := 0; dataIndex < m.DataSegmentCount(); dataIndex++ {
-		data := m.DataSegment(dataIndex)
+	for _, data := range m.Data {
 		if !consume(len(data.Init)) {
 			return nil, unsupported("decoded instruction/data size bound")
 		}

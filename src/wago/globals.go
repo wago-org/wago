@@ -29,6 +29,8 @@ func AsI64(b uint64) int64   { return int64(b) }
 func AsF32(b uint64) float32 { return math.Float32frombits(uint32(b)) }
 func AsF64(b uint64) float64 { return math.Float64frombits(b) }
 
+func valTypeEqual(a, b wasm.ValType) bool { return wasm.EqualValType(a, b) }
+
 func valTypeCode(t wasm.ValType) byte {
 	b, _ := wasm.EncodeValType(t)
 	return b

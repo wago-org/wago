@@ -98,7 +98,7 @@ func (f *fn) gcArrayReduction(code []byte) (uint32, uint32, bool) {
 
 func (f *fn) emitGCArrayReduction(typeIndex, length uint32) error {
 	f.gcReducedBounded = f.opt(optPreparedBoundedEntry) && len(f.localType) <= 128
-	f.sc.directPrepared = false
+	f.sc.directPrepared, f.sc.directPreparedLight = false, false
 	if reg, _, ok := f.pinReg(0); ok {
 		f.recoverLocal(0)
 		f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: reg, idx: 0})

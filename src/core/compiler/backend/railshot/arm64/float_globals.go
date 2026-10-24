@@ -3,8 +3,58 @@
 package arm64
 
 import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+// Spend only unused local-pin V registers, capped at four hot defined globals.
+// Imported globals may alias; calls, EH and helper-bearing GC/custom lowering
+// remain outside this proof. Mutable cells are synchronized on return/trap.
+func (f *fn) assignPinnedFloatGlobals(hints []shared.GlobalHint, hasCall bool, loopMin uint32, used, limit int) {
+	if hasCall || f.makesCalls || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || used >= limit {
+		return
+	}
+	var candidates [4]gpCand
+	globals := candidates[:0]
+	capacity := min(len(candidates), limit-used)
+	for _, hint := range hints {
+		if hint.Score < loopMin || int(hint.Index) < f.m.ImportedGlobalCount() || f.isModuleGlobal(int(hint.Index)) {
+			continue
+		}
+		gt, ok := f.globalType(hint.Index)
+		if !ok || !gt.Mutable {
+			continue
+		}
+		typ := wasm.GlobalValueType(gt)
+		if !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
+			continue
+		}
+		globals = insertGPCandidate(globals, gpCand{global: true, idx: hint.Index, score: hint.Score}, capacity)
+	}
+	for i, global := range globals {
+		reg := pinnedFLocalRegs[used+i]
+		f.globalReg[global.idx] = reg | globalRegFloat
+		f.fpinnedLocalMask = f.fpinnedLocalMask.add(reg)
+		f.stats.addPinnedGlobalValue()
+		f.stats.peep("float-global-value-pin")
+	}
+}
+
+func (f *fn) storePinnedGlobalValue(g int, state Reg, cell Reg) {
+	reg := globalRegValue(state)
+	if globalRegIsFloat(state) {
+		gt, _ := f.globalType(uint32(g))
+		if wasm.EqualValType(wasm.GlobalValueType(gt), wasm.F64) {
+			f.a.StrD(cell, 0, reg)
+		} else {
+			f.a.StrS(cell, 0, reg)
+		}
+	} else if f.globalIs64(g) {
+		f.st64(cell, 0, reg)
+	} else {
+		f.st32(cell, 0, reg)
+	}
+}
 
 // Sink scalar arithmetic into its global's V register. Earlier reads below the
 // operands materialize before overwrite, preserving global.get read timing.

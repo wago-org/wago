@@ -406,7 +406,7 @@ func buildCollectorOperandRoots(v *moduleValidator, fv *funcValidator, localFunc
 		}
 	}
 	if fv.rd.has() {
-		return nil, newDecodeError(ErrSectionSizeMismatch, fv.rd.off())
+		return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: fv.rd.off()}
 	}
 	return plan, nil
 }

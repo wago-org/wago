@@ -1,0 +1,95 @@
+Selected source c6f19404; CGO_ENABLED=0; Go1.27.1
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot	0.340s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.766s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.075s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/shared	0.034s
+ok  	github.com/wago-org/wago/src/core/compiler/codegen	0.005s
+ok  	github.com/wago-org/wago/src/core/compiler/frontend	0.029s
+ok  	github.com/wago-org/wago/src/core/compiler/ir	0.058s
+ok  	github.com/wago-org/wago/src/core/compiler/optimization	0.007s
+ok  	github.com/wago-org/wago/src/core/compiler/wasm	0.911s
+?   	github.com/wago-org/wago/src/core/compiler/wasm/internal/geninstrnames	[no test files]
+ok  	github.com/wago-org/wago/src/core/encoder/amd64	0.007s
+ok  	github.com/wago-org/wago/src/core/encoder/arm64	0.012s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot	0.123s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.846s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	0.052s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/shared	0.019s
+ok  	github.com/wago-org/wago/src/core/compiler/codegen	0.004s
+ok  	github.com/wago-org/wago/src/core/compiler/frontend	0.012s
+ok  	github.com/wago-org/wago/src/core/compiler/ir	0.043s
+ok  	github.com/wago-org/wago/src/core/compiler/optimization	0.007s
+ok  	github.com/wago-org/wago/src/core/compiler/wasm	0.833s
+?   	github.com/wago-org/wago/src/core/compiler/wasm/internal/geninstrnames	[no test files]
+ok  	github.com/wago-org/wago/src/wago	0.028s
+ok  	github.com/wago-org/wago/src/wago	0.028s
+=== RUN   TestSpecExec
+    spectest_exec_test.go:166: address              PASS    pass=255  fail=0   skip=1
+    spectest_exec_test.go:166: align                PASS    pass=48   fail=0   skip=83
+    spectest_exec_test.go:166: block                PASS    pass=52   fail=0   skip=170
+    spectest_exec_test.go:166: br                   PASS    pass=76   fail=0   skip=20
+    spectest_exec_test.go:166: br_if                PASS    pass=88   fail=0   skip=29
+    spectest_exec_test.go:166: br_table             PASS    pass=146  fail=0   skip=24
+    spectest_exec_test.go:166: call                 PASS    pass=72   fail=0   skip=18
+    spectest_exec_test.go:166: call_indirect        PASS    pass=122  fail=0   skip=33
+    spectest_exec_test.go:166: comments             EMPTY   pass=0    fail=0   skip=0
+    spectest_exec_test.go:166: const                PASS    pass=300  fail=0   skip=76
+    spectest_exec_test.go:166: conversions          PASS    pass=593  fail=0   skip=25
+    spectest_exec_test.go:166: custom               SKIP    pass=0    fail=0   skip=7
+    spectest_exec_test.go:166: data                 SKIP    pass=0    fail=0   skip=31
+    spectest_exec_test.go:166: endianness           PASS    pass=68   fail=0   skip=0
+    spectest_exec_test.go:166: exports              PASS    pass=6    fail=0   skip=30
+    spectest_exec_test.go:166: f32                  PASS    pass=2500 fail=0   skip=11
+    spectest_exec_test.go:166: f32_bitwise          PASS    pass=360  fail=0   skip=3
+    spectest_exec_test.go:166: f32_cmp              PASS    pass=2400 fail=0   skip=6
+    spectest_exec_test.go:166: f64                  PASS    pass=2500 fail=0   skip=11
+    spectest_exec_test.go:166: f64_bitwise          PASS    pass=360  fail=0   skip=3
+    spectest_exec_test.go:166: f64_cmp              PASS    pass=2400 fail=0   skip=6
+    spectest_exec_test.go:166: fac                  PASS    pass=7    fail=0   skip=0
+    spectest_exec_test.go:166: float_exprs          PASS    pass=794  fail=0   skip=0
+    spectest_exec_test.go:166: float_literals       PASS    pass=83   fail=0   skip=76
+    spectest_exec_test.go:166: float_memory         PASS    pass=60   fail=0   skip=0
+    spectest_exec_test.go:166: float_misc           PASS    pass=440  fail=0   skip=0
+    spectest_exec_test.go:166: forward              PASS    pass=4    fail=0   skip=0
+    spectest_exec_test.go:166: func                 PASS    pass=96   fail=0   skip=72
+    spectest_exec_test.go:166: func_ptrs            PASS    pass=25   fail=0   skip=7
+    spectest_exec_test.go:166: global               PASS    pass=48   fail=0   skip=44
+    spectest_exec_test.go:166: i32                  PASS    pass=374  fail=0   skip=83
+    spectest_exec_test.go:166: i64                  PASS    pass=384  fail=0   skip=29
+    spectest_exec_test.go:166: if                   PASS    pass=123  fail=0   skip=115
+    spectest_exec_test.go:166: imports              PARTIAL pass=23   fail=0   skip=98  module: wago: finalize imports: wago: duplicate import "spectest"."print_i32"
+    spectest_exec_test.go:166: inline-module        EMPTY   pass=0    fail=0   skip=0
+    spectest_exec_test.go:166: int_exprs            PASS    pass=89   fail=0   skip=0
+    spectest_exec_test.go:166: int_literals         PASS    pass=30   fail=0   skip=20
+    spectest_exec_test.go:166: labels               PASS    pass=25   fail=0   skip=3
+    spectest_exec_test.go:166: left-to-right        PASS    pass=95   fail=0   skip=0
+    spectest_exec_test.go:166: linking              PASS    pass=81   fail=0   skip=12
+    spectest_exec_test.go:166: load                 PASS    pass=37   fail=0   skip=59
+    spectest_exec_test.go:166: local_get            PASS    pass=19   fail=0   skip=16
+    spectest_exec_test.go:166: local_set            PASS    pass=19   fail=0   skip=33
+    spectest_exec_test.go:166: local_tee            PASS    pass=55   fail=0   skip=41
+    spectest_exec_test.go:166: loop                 PASS    pass=77   fail=0   skip=42
+    spectest_exec_test.go:166: memory               PASS    pass=45   fail=0   skip=24
+    spectest_exec_test.go:166: memory_grow          PASS    pass=84   fail=0   skip=5
+    spectest_exec_test.go:166: memory_redundancy    PASS    pass=4    fail=0   skip=0
+    spectest_exec_test.go:166: memory_size          PASS    pass=36   fail=0   skip=2
+    spectest_exec_test.go:166: memory_trap          PASS    pass=171  fail=0   skip=0
+    spectest_exec_test.go:166: names                PARTIAL pass=481  fail=0   skip=1   module: wago: finalize imports: wago: duplicate import "spectest"."print_i32"
+    spectest_exec_test.go:166: nop                  PASS    pass=83   fail=0   skip=4
+    spectest_exec_test.go:166: return               PASS    pass=63   fail=0   skip=20
+    spectest_exec_test.go:166: select               PASS    pass=94   fail=0   skip=27
+    spectest_exec_test.go:166: stack                PASS    pass=5    fail=0   skip=0
+    spectest_exec_test.go:166: start                PASS    pass=6    fail=0   skip=4
+    spectest_exec_test.go:166: store                PASS    pass=9    fail=0   skip=58
+    spectest_exec_test.go:166: switch               PASS    pass=26   fail=0   skip=1
+    spectest_exec_test.go:166: token                SKIP    pass=0    fail=0   skip=2
+    spectest_exec_test.go:166: traps                PASS    pass=32   fail=0   skip=0
+    spectest_exec_test.go:166: type                 SKIP    pass=0    fail=0   skip=2
+    spectest_exec_test.go:166: unreachable          PASS    pass=63   fail=0   skip=0
+    spectest_exec_test.go:166: unreached-invalid    SKIP    pass=0    fail=0   skip=111
+    spectest_exec_test.go:166: unwind               PASS    pass=49   fail=0   skip=0
+    spectest_exec_test.go:170: MVP execution: 55/57 applicable files fully passing | assertions pass=16585 fail=0 skip=1598
+--- PASS: TestSpecExec (0.52s)
+PASS
+ok  	github.com/wago-org/wago	0.523s
+docs-check: validated 75 Markdown files

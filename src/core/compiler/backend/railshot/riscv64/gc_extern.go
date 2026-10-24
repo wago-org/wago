@@ -24,7 +24,7 @@ func AdmitGCExternSource(data []byte) bool { return admitRV64GCExternWire(data) 
 
 func admitRV64GCExtern(m *wasm.Module) bool {
 	if m == nil || len(m.Types) != 8 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Globals) != 2 || len(m.Tables) != 1 || len(m.Exports) != 5 || len(m.Elements) != 1 ||
-		len(m.Imports) != 0 || len(m.Memories) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil ||
+		len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil ||
 		len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}

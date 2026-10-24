@@ -103,3 +103,60 @@ func TestMinPlusLoopIndependentExecution(t *testing.T) {
 		}
 	}
 }
+
+func TestMinPlusLoopAdmissionAndRollback(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, limit := range []uint32{24, 32, 40, 64, 128, 136, 4144} {
+		m := minPlusModule(t, 0, 8192, 4, 0, limit)
+		for _, enabled := range []bool{true, false} {
+			var stats ModuleStats
+			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"dot-loop-vector": enabled}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			cm.CodeImage.Close()
+			got := stats.Funcs[0].Peephole["minplus-loop-vector"]
+			if (got == 1) != enabled {
+				t.Fatalf("limit %d enabled %t: admitted %d", limit, enabled, got)
+			}
+			got = stats.Funcs[0].Peephole["minplus-loop-unroll"]
+			if (got == 1) != (enabled && limit >= 4*32+8) {
+				t.Fatalf("limit %d enabled %t: unrolled %d", limit, enabled, got)
+			}
+		}
+	}
+}
+
+func TestMinPlusLoopRejectsEffects(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, tc := range []struct {
+		name   string
+		prefix []byte
+		shared bool
+	}{
+		{"changed-base", []byte{0x41, 0, 0x21, 0}, false},
+		{"extra-load", []byte{0x41, 0, 0x28, 2, 0, 0x21, 4}, false},
+		{"extra-store", []byte{0x41, 0, 0x41, 0, 0x36, 2, 0}, false},
+		{"shared", nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := minPlusModule(t, 0, 256, 4, 0, 64)
+			if tc.shared {
+				m.Memories[0].Shared = true
+			} else {
+				body := m.Code[0].BodyBytes
+				for i := 0; i+1 < len(body); i++ {
+					if body[i] == 0x03 && body[i+1] == 0x40 {
+						body = append(append(append([]byte{}, body[:i+2]...), tc.prefix...), body[i+2:]...)
+						break
+					}
+				}
+				m.Code[0].BodyBytes = body
+			}
+			stats := compileWithStats(t, m, false).Funcs[0]
+			if stats.Peephole["minplus-loop-vector"] != 0 {
+				t.Fatal("unsafe loop admitted")
+			}
+		})
+	}
+}

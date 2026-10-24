@@ -70,7 +70,7 @@ func admitPublicDecodedDirectoryBudget(m *wasm.Module, opts CompileOptions) erro
 	}
 	// Each published function retains entry offsets; compact data needs at
 	// least one 16-byte record. These are lower bounds, not temporary sizes.
-	if m == nil || !consume(len(m.Code)+m.ImportedFuncCount(), 16) || !consume(len(m.Globals)+m.ImportedGlobalCount(), 16) || !consume(m.DataSegmentCount(), 16) {
+	if m == nil || !consume(len(m.Code)+m.ImportedFuncCount(), 16) || !consume(len(m.Globals)+m.ImportedGlobalCount(), 16) || !consume(len(m.Data), 16) {
 		return &coreruntime.ResourceLimitError{Resource: "metadata bytes", Scope: "compiled snapshot", Requested: limit + 1, Limit: limit}
 	}
 	for _, group := range m.Types {

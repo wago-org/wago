@@ -181,3 +181,22 @@ func TestInlineCallerHintModuleIntegration(t *testing.T) {
 		t.Fatal("small module retained a cache")
 	}
 }
+
+func TestInlineCallTapeCanBeSuppressedForGCRootPlans(t *testing.T) {
+	saved := inlineEnabled
+	inlineEnabled = true
+	t.Cleanup(func() { inlineEnabled = saved })
+	body := append([]byte{0, 0x10, 1}, bytes.Repeat([]byte{1}, 64<<10)...)
+	body = append(body, 0x0b)
+	m := modFuncs(t, funcDef{body: body}, funcDef{body: []byte{0, 0x0b}})
+	policy := currentCodegenPolicy()
+	for _, eligible := range []bool{true, false} {
+		_, sidecar, _, err := computeModuleHintsWithWorkersResidencyPolicy(m, 0, 0, 1, nil, false, policy, false, eligible)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := sidecar.inlineCaller != nil; got != eligible {
+			t.Fatalf("inline eligibility=%t: call tape=%t", eligible, got)
+		}
+	}
+}

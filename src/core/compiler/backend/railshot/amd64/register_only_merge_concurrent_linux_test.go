@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 
@@ -63,7 +64,7 @@ func TestRegisterOnlyMergeConcurrentCompiles(t *testing.T) {
 	}
 	for i, state := range registerOnlyMergeStates {
 		if state != lsReg {
-			t.Fatalf("shared state %d mutated to %d", i, state)
+			t.Fatal(fmt.Sprintf("shared state %d mutated to %d", i, state))
 		}
 	}
 }

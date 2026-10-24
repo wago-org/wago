@@ -1,0 +1,128 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+                                         │ measurements/exec-latest-all.txt │ measurements/exec-selected-all.txt │
+                                         │              sec/op              │    sec/op     vs base              │
+CommandExec/sqlite3-query                                       414.4m ± 2%   423.6m ±  3%       ~ (p=0.065 n=6)
+CommandExec/quickjs-script                                      225.1m ± 2%   227.7m ±  3%       ~ (p=0.240 n=6)
+CommandExec/esbuild-minify                                      755.1m ± 5%   731.5m ±  4%       ~ (p=0.310 n=6)
+CommandExec/lodepng                                             3.445m ± 8%   3.438m ±  2%       ~ (p=0.818 n=6)
+Exec/tiny.add                                                   20.57n ± 5%   20.71n ±  4%       ~ (p=0.310 n=6)
+Exec/fib_rec.fib                                                1.138m ± 8%   1.145m ±  1%       ~ (p=0.937 n=6)
+Exec/many_funcs.run                                             19.85n ± 2%   19.84n ±  2%       ~ (p=1.000 n=6)
+Exec/fannkuch.run                                               1.441m ± 2%   1.433m ±  1%       ~ (p=0.589 n=6)
+Exec/matmul.run                                                 156.2µ ± 5%   157.9µ ±  2%       ~ (p=0.818 n=6)
+Exec/sha256.hashN                                               57.00µ ± 5%   55.69µ ±  5%       ~ (p=0.093 n=6)
+Exec/raytrace.render                                            481.5µ ± 3%   487.1µ ±  2%       ~ (p=0.589 n=6)
+Exec/json-as.serializeN                                         29.89µ ± 8%   30.04µ ±  3%       ~ (p=0.699 n=6)
+Exec/json-as.deserializeN                                       54.55µ ± 3%   56.59µ ±  5%  +3.74% (p=0.026 n=6)
+Exec/json-as-simd.serializeN                                    35.62µ ± 7%   36.25µ ± 11%       ~ (p=0.394 n=6)
+Exec/json-as-simd.deserializeN                                  70.65µ ± 5%   70.78µ ±  3%       ~ (p=0.699 n=6)
+Exec/blake-as-simd.hashN                                        559.9µ ± 3%   551.0µ ±  3%       ~ (p=0.240 n=6)
+Exec/utf-as-simd.convertN                                       78.32µ ± 3%   81.01µ ± 12%       ~ (p=0.240 n=6)
+Exec/utf-as-simd.validateN                                      197.1µ ± 2%   194.9µ ±  5%       ~ (p=0.485 n=6)
+Exec/coremark.coremark_run                                      46.99m ± 2%   46.99m ± 10%       ~ (p=0.818 n=6)
+Exec/blake3.blake3_hash                                         360.2µ ± 2%   360.3µ ±  2%       ~ (p=0.937 n=6)
+Exec/blake3.blake3_keyed_hash                                   357.8µ ± 6%   357.7µ ±  1%       ~ (p=0.937 n=6)
+Exec/blake3.blake3_derive_key                                   368.4µ ± 4%   369.0µ ±  2%       ~ (p=0.699 n=6)
+Exec/yyjson.yyjson_run                                          1.199µ ± 3%   1.192µ ±  6%       ~ (p=0.846 n=6)
+Exec/pcre2.pcre2_run                                            14.80µ ± 3%   15.07µ ±  4%       ~ (p=0.180 n=6)
+Exec/polybench-cholesky.polybench_run                           2.056m ± 1%   2.064m ±  1%       ~ (p=0.394 n=6)
+Exec/polybench-correlation.polybench_run                        423.5µ ± 4%   427.8µ ±  2%       ~ (p=0.485 n=6)
+Exec/polybench-gemm.polybench_run                               393.9µ ± 3%   397.5µ ±  2%       ~ (p=0.310 n=6)
+geomean                                                         267.2µ        268.3µ        +0.41%
+
+                                         │ measurements/exec-latest-all.txt │  measurements/exec-selected-all.txt  │
+                                         │               B/op               │     B/op      vs base                │
+CommandExec/sqlite3-query                                    58.93Ki ± 0%     58.93Ki ± 0%       ~ (p=1.000 n=6) ¹
+CommandExec/quickjs-script                                   67.11Ki ± 0%     67.11Ki ± 0%       ~ (p=1.000 n=6) ¹
+CommandExec/esbuild-minify                                   77.83Ki ± 0%     77.83Ki ± 0%       ~ (p=1.000 n=6) ¹
+CommandExec/lodepng                                          40.18Ki ± 0%     40.18Ki ± 0%       ~ (p=1.000 n=6) ¹
+Exec/tiny.add                                                  0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/fib_rec.fib                                               0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/many_funcs.run                                            0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/fannkuch.run                                              0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/matmul.run                                                0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/sha256.hashN                                              0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/raytrace.render                                           0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/json-as.serializeN                                        0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/json-as.deserializeN                                      0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/json-as-simd.serializeN                                   0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/json-as-simd.deserializeN                                 0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/blake-as-simd.hashN                                       0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/utf-as-simd.convertN                                      0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/utf-as-simd.validateN                                     0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/coremark.coremark_run                                     0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/blake3.blake3_hash                                        0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/blake3.blake3_keyed_hash                                  0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/blake3.blake3_derive_key                                  0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/yyjson.yyjson_run                                         0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/pcre2.pcre2_run                                           0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/polybench-cholesky.polybench_run                          0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/polybench-correlation.polybench_run                       0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/polybench-gemm.polybench_run                              0.000 ± 0%       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                   ²                 +0.00%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                         │ measurements/exec-latest-all.txt │ measurements/exec-selected-all.txt │
+                                         │            allocs/op             │ allocs/op   vs base                │
+CommandExec/sqlite3-query                                      709.0 ± 0%     709.0 ± 0%       ~ (p=1.000 n=6) ¹
+CommandExec/quickjs-script                                     722.0 ± 0%     722.0 ± 0%       ~ (p=1.000 n=6) ¹
+CommandExec/esbuild-minify                                     893.0 ± 0%     893.0 ± 0%       ~ (p=1.000 n=6) ¹
+CommandExec/lodepng                                            412.0 ± 0%     412.0 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/tiny.add                                                  0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/fib_rec.fib                                               0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/many_funcs.run                                            0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/fannkuch.run                                              0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/matmul.run                                                0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/sha256.hashN                                              0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/raytrace.render                                           0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/json-as.serializeN                                        0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/json-as.deserializeN                                      0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/json-as-simd.serializeN                                   0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/json-as-simd.deserializeN                                 0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/blake-as-simd.hashN                                       0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/utf-as-simd.convertN                                      0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/utf-as-simd.validateN                                     0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/coremark.coremark_run                                     0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/blake3.blake3_hash                                        0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/blake3.blake3_keyed_hash                                  0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/blake3.blake3_derive_key                                  0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/yyjson.yyjson_run                                         0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/pcre2.pcre2_run                                           0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/polybench-cholesky.polybench_run                          0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/polybench-correlation.polybench_run                       0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Exec/polybench-gemm.polybench_run                              0.000 ± 0%     0.000 ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                   ²               +0.00%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                         │ measurements/exec-latest-all.txt │  measurements/exec-selected-all.txt  │
+                                         │           calls/batch            │ calls/batch   vs base                │
+Exec/tiny.add                                                 100.39k ±  2%   98.75k ±  4%       ~ (p=0.240 n=6)
+Exec/fib_rec.fib                                                2.000 ±  0%    2.000 ±  0%       ~ (p=1.000 n=6) ¹
+Exec/many_funcs.run                                            102.2k ±  7%   103.3k ±  2%       ~ (p=0.180 n=6)
+Exec/fannkuch.run                                               2.000 ±  0%    2.000 ±  0%       ~ (p=1.000 n=6) ¹
+Exec/matmul.run                                                 13.00 ±  8%    13.00 ±  8%       ~ (p=0.636 n=6)
+Exec/sha256.hashN                                               42.00 ±  2%    41.50 ±  4%       ~ (p=0.076 n=6)
+Exec/raytrace.render                                            5.000 ±  0%    5.000 ±  0%       ~ (p=1.000 n=6) ¹
+Exec/json-as.serializeN                                         76.50 ±  8%    77.00 ± 18%       ~ (p=0.974 n=6)
+Exec/json-as.deserializeN                                       47.00 ± 11%    46.50 ± 14%       ~ (p=0.935 n=6)
+Exec/json-as-simd.serializeN                                    61.00 ± 10%    60.50 ± 19%       ~ (p=0.686 n=6)
+Exec/json-as-simd.deserializeN                                  36.00 ± 22%    35.50 ±  7%       ~ (p=1.000 n=6)
+Exec/blake-as-simd.hashN                                        4.000 ±  0%    4.000 ±  0%       ~ (p=1.000 n=6) ¹
+Exec/utf-as-simd.convertN                                       28.50 ± 19%    29.00 ±  3%       ~ (p=0.212 n=6)
+Exec/utf-as-simd.validateN                                      11.00 ±  0%    11.00 ±  9%       ~ (p=0.455 n=6)
+Exec/coremark.coremark_run                                      1.000 ±  0%    1.000 ±  0%       ~ (p=1.000 n=6) ¹
+Exec/blake3.blake3_hash                                         6.000 ± 17%    6.000 ±  0%       ~ (p=1.000 n=6)
+Exec/blake3.blake3_keyed_hash                                   6.000 ± 17%    6.000 ± 17%       ~ (p=1.000 n=6)
+Exec/blake3.blake3_derive_key                                   6.000 ± 17%    6.000 ±  0%       ~ (p=1.000 n=6)
+Exec/yyjson.yyjson_run                                         1.847k ±  5%   1.837k ±  4%       ~ (p=1.000 n=6)
+Exec/pcre2.pcre2_run                                            153.0 ±  1%    153.5 ±  1%       ~ (p=0.188 n=6)
+Exec/polybench-cholesky.polybench_run                           1.000 ±  0%    1.000 ±  0%       ~ (p=1.000 n=6) ¹
+Exec/polybench-correlation.polybench_run                        5.000 ±  0%    5.000 ±  0%       ~ (p=1.000 n=6) ¹
+Exec/polybench-gemm.polybench_run                               6.000 ± 17%    6.000 ± 17%       ~ (p=1.000 n=6)
+geomean                                                         28.06          28.03        -0.12%
+¹ all samples are equal

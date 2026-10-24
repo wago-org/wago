@@ -161,30 +161,45 @@ func classifyExprOpAfterOpcodeWithWidths(r *reader, op byte, imm *InstructionImm
 	}
 }
 
-// oneIndexImmediateKinds shares the index-opcode mapping between validation and
-// immediate scanning. Unassigned opcodes retain InstrInvalid.
-var oneIndexImmediateKinds = [256]InstrKind{
-	0x08: InstrThrow,
-	0x0c: InstrBr,
-	0x0d: InstrBrIf,
-	0x10: InstrCall,
-	0x12: InstrReturnCall,
-	0x14: InstrCallRef,
-	0x15: InstrReturnCallRef,
-	0x20: InstrLocalGet,
-	0x21: InstrLocalSet,
-	0x22: InstrLocalTee,
-	0x23: InstrGlobalGet,
-	0x24: InstrGlobalSet,
-	0x25: InstrTableGet,
-	0x26: InstrTableSet,
-	0xd2: InstrRefFunc,
-	0xd5: InstrBrOnNull,
-	0xd6: InstrBrOnNonNull,
-}
-
 func oneIndexImmediateKind(op byte) InstrKind {
-	return oneIndexImmediateKinds[op]
+	switch op {
+	case 0x08:
+		return InstrThrow
+	case 0x0c:
+		return InstrBr
+	case 0x0d:
+		return InstrBrIf
+	case 0x10:
+		return InstrCall
+	case 0x12:
+		return InstrReturnCall
+	case 0x14:
+		return InstrCallRef
+	case 0x15:
+		return InstrReturnCallRef
+	case 0x20:
+		return InstrLocalGet
+	case 0x21:
+		return InstrLocalSet
+	case 0x22:
+		return InstrLocalTee
+	case 0x23:
+		return InstrGlobalGet
+	case 0x24:
+		return InstrGlobalSet
+	case 0x25:
+		return InstrTableGet
+	case 0x26:
+		return InstrTableSet
+	case 0xd2:
+		return InstrRefFunc
+	case 0xd5:
+		return InstrBrOnNull
+	case 0xd6:
+		return InstrBrOnNonNull
+	default:
+		return InstrInvalid
+	}
 }
 
 func skipResultTypeBytes(r *reader) error {
@@ -221,7 +236,7 @@ func classifyMemArgBytes(r *reader, imm *InstructionImmediate, widths memargWidt
 		imm.MemAlign = n
 	case n < 128:
 		if !widths.multiMemory {
-			return newDecodeError(ErrInvalidInstruction, r.off())
+			return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 		}
 		imm.MemAlign = n - 64
 		memoryIndex, err = r.u32()
@@ -231,7 +246,7 @@ func classifyMemArgBytes(r *reader, imm *InstructionImmediate, widths memargWidt
 		imm.HasMemIndex = true
 		imm.MemIndex = memoryIndex
 	default:
-		return newDecodeError(ErrInvalidInstruction, r.off())
+		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
 	if widths.offset64(memoryIndex) {
 		imm.MemOffset, err = r.u64()
@@ -265,7 +280,7 @@ func skipCatchVecBytes(r *reader) error {
 				return err
 			}
 		default:
-			return newDecodeError(ErrInvalidInstruction, r.off()-1)
+			return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 		}
 	}
 	return nil
@@ -311,7 +326,7 @@ func classifyFCBytes(r *reader, imm *InstructionImmediate, multiMemory bool) err
 		imm.UsesBulkMemory = true
 		return err
 	default:
-		return newDecodeError(ErrInvalidInstruction, r.off())
+		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
 }
 
@@ -398,7 +413,7 @@ func classifyFBBytes(r *reader, imm *InstructionImmediate) error {
 		imm.Kind = InstrRefCastDescEq
 		return skipRefHeapTypeBytes(r)
 	default:
-		return newDecodeError(ErrInvalidInstruction, r.off())
+		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
 }
 
@@ -524,7 +539,7 @@ func classifyFDBytes(r *reader, imm *InstructionImmediate, widths memargWidths) 
 		_, err := r.byte()
 		return err
 	}
-	return newDecodeError(ErrInvalidInstruction, r.off())
+	return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }
 
 func classifyFEBytes(r *reader, imm *InstructionImmediate, widths memargWidths) error {
@@ -539,7 +554,7 @@ func classifyFEBytes(r *reader, imm *InstructionImmediate, widths memargWidths) 
 			return err
 		}
 		if b != 0 {
-			return newDecodeError(ErrInvalidInstruction, r.off()-1)
+			return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 		}
 		imm.Kind = InstrAtomicFence
 		return nil
@@ -569,5 +584,5 @@ func classifyFEBytes(r *reader, imm *InstructionImmediate, widths memargWidths) 
 		imm.TouchesMemory = true
 		return classifyMemArgBytes(r, imm, widths)
 	}
-	return newDecodeError(ErrInvalidInstruction, r.off())
+	return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }

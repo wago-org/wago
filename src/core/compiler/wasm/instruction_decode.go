@@ -5,7 +5,7 @@ const maxInstructionNestingDepth = 20000
 func decodeBlockType(r *reader) (BlockType, error) {
 	b, ok := r.peek()
 	if !ok {
-		return BlockType{}, newDecodeError(ErrInvalidBlockType, r.off())
+		return BlockType{}, &DecodeError{Code: ErrInvalidBlockType, Offset: r.off()}
 	}
 	if b == 0x40 {
 		_, _ = r.byte()
@@ -17,7 +17,7 @@ func decodeBlockType(r *reader) (BlockType, error) {
 	}
 	x, err := r.s33()
 	if err != nil || x < 0 {
-		return BlockType{}, newDecodeError(ErrInvalidBlockType, r.off())
+		return BlockType{}, &DecodeError{Code: ErrInvalidBlockType, Offset: r.off()}
 	}
 	return BlockType{Kind: BlockTypeIndex, Type: TypeIdx{Index: uint32(x)}}, nil
 }
@@ -40,13 +40,13 @@ func decodeExprWithMemarg64(r *reader, depth int, memarg64 bool) (Expr, error) {
 
 func decodeExprWithMemargWidths(r *reader, depth int, widths memargWidths) (Expr, error) {
 	if depth > maxInstructionNestingDepth {
-		return Expr{}, newDecodeError(ErrInstructionNestingLimitExceeded, r.off())
+		return Expr{}, &DecodeError{Code: ErrInstructionNestingLimitExceeded, Offset: r.off()}
 	}
 	var instrs []Instruction
 	for {
 		b, ok := r.peek()
 		if !ok {
-			return Expr{}, newDecodeError(ErrIndexOutOfBounds, r.off())
+			return Expr{}, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
 		}
 		if b == 0x0b {
 			_, _ = r.byte()
@@ -70,7 +70,7 @@ func decodeInstructionWithMemarg64(r *reader, depth int, memarg64 bool) (Instruc
 
 func decodeInstructionWithMemargWidths(r *reader, depth int, widths memargWidths) (Instruction, error) {
 	if depth > maxInstructionNestingDepth {
-		return Instruction{}, newDecodeError(ErrInstructionNestingLimitExceeded, r.off())
+		return Instruction{}, &DecodeError{Code: ErrInstructionNestingLimitExceeded, Offset: r.off()}
 	}
 	op, err := r.byte()
 	if err != nil {
@@ -210,11 +210,11 @@ func decodeIfBodies(r *reader, depth int, widths memargWidths) ([]Instruction, [
 	for {
 		b, ok := r.peek()
 		if !ok {
-			return nil, nil, newDecodeError(ErrIndexOutOfBounds, r.off())
+			return nil, nil, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
 		}
 		if b == 0x05 {
 			if inElse {
-				return nil, nil, newDecodeError(ErrInvalidInstruction, r.off())
+				return nil, nil, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 			}
 			_, _ = r.byte()
 			inElse = true
@@ -260,7 +260,7 @@ func readReservedZeroByte(r *reader) error {
 		return err
 	}
 	if b != 0 {
-		return newDecodeError(ErrInvalidInstruction, r.off()-1)
+		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 	}
 	return nil
 }
@@ -345,7 +345,7 @@ func decodeMemArgWithWidths(r *reader, widths memargWidths) (MemArg, error) {
 	ma := MemArg{}
 	if n >= 64 && n < 128 {
 		if !widths.multiMemory {
-			return MemArg{}, newDecodeError(ErrInvalidInstruction, r.off())
+			return MemArg{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 		}
 		ma.Align = n - 64
 		mi, err := r.u32()
@@ -357,7 +357,7 @@ func decodeMemArgWithWidths(r *reader, widths memargWidths) (MemArg, error) {
 	} else if n < 64 {
 		ma.Align = n
 	} else {
-		return ma, newDecodeError(ErrInvalidInstruction, r.off())
+		return ma, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
 	memoryIndex := uint32(0)
 	if ma.Mem != nil {
@@ -390,7 +390,7 @@ func decodeCatch(r *reader) (Catch, error) {
 		l, err := r.u32()
 		return Catch{Kind: CatchKind(b), Label: LabelIdx(l)}, err
 	default:
-		return Catch{}, newDecodeError(ErrInvalidInstruction, r.off()-1)
+		return Catch{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 	}
 }
 func decodeRefTypeForNull(r *reader) (RefType, error) {

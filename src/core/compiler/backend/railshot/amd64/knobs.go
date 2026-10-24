@@ -7,12 +7,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/optimization"
 )
 
-var fileBackedCodeEnabled bool
-
 // The binding inventory is checked against the amd64 Optimization Definitions
 // during package initialization. Public sense is always "on = enabled".
 var optimizationBindings = optimization.NewBindings("amd64",
-	optimization.Bind("file-backed-code", &fileBackedCodeEnabled),
 	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
 	optimization.Bind("shared-memory-base", &sharedMemoryBaseEnabled),
 	optimization.Bind("atomic-notify-empty", &atomicNotifyEmptyEnabled),
@@ -91,7 +88,6 @@ var optimizationBindings = optimization.NewBindings("amd64",
 )
 
 var (
-	optFileBackedCode          = optimizationBindings.Option("file-backed-code")
 	optSharedMemoryBase        = optimizationBindings.Option("shared-memory-base")
 	optMemoryMinimumBounds     = optimizationBindings.Option("memory-min-bounds")
 	optAtomicNotifyEmpty       = optimizationBindings.Option("atomic-notify-empty")

@@ -155,6 +155,19 @@ func (f *fn) gcStructReduction(code []byte) (uint32, bool) {
 	return source, true
 }
 
+// Reduced functions have no native loop or guest call. Publish their segment
+// bound after ordinary call-graph resolution: callers of the original looping
+// body must not inherit this separate reduced-entry contract.
+func mergeGCReducedBounds(ordinary, reduced []uint64) []uint64 {
+	if len(ordinary) == 0 {
+		return reduced
+	}
+	for i, bits := range reduced {
+		ordinary[i] |= bits
+	}
+	return ordinary
+}
+
 func (f *fn) emitGCStructReduction(typeIndex uint32) error {
 	// Also cap the wrapper's local initialization work, independent of the
 	// reduction's constant-size native body. Allocation work runs in Go.
@@ -162,7 +175,7 @@ func (f *fn) emitGCStructReduction(typeIndex uint32) error {
 	// The bound admits only the checked Go-helper loop. It must never combine
 	// with a register-entry capability in low-level compilation without GC layouts.
 	f.sc.directPrepared = false
-
+	f.sc.directPreparedLight = false
 	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); f.gcReducedBounded && f.opt(optRegABI) && f.opt(optPreparedDirectEntry) && ok && layout.NativeAlloc && layout.PointerFree && layout.ObjectSize <= 4095 {
 		f.gcDeadBatchLayout = uint64(layout.ObjectSize) | uint64(max(layout.Align, 8))<<32
 	}

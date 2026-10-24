@@ -3,12 +3,10 @@ package wago
 import (
 	"crypto/sha256"
 	"encoding/binary"
-
-	"runtime"
-	"sync"
+	"fmt"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const rv64RootedMaxHostFunctionImports = 256
@@ -100,33 +98,6 @@ func rv64RootedTypeDigest(c *Compiled) ([32]byte, bool) {
 type compactActiveData struct {
 	records []compactDataRecord
 	bytes   []byte
-	owner   *compactDataMapping
-}
-
-type compactDataMapping struct {
-	bytes []byte
-	once  sync.Once
-	err   error
-}
-
-func ownCompactDataMapping(bytes []byte) *compactDataMapping {
-	owner := &compactDataMapping{bytes: bytes}
-	runtime.SetFinalizer(owner, func(owner *compactDataMapping) { _ = owner.Close() })
-	return owner
-}
-
-func (m *compactDataMapping) Close() error {
-	if m == nil {
-		return nil
-	}
-	m.once.Do(func() {
-		runtime.SetFinalizer(m, nil)
-		m.err = unmapCompactData(m.bytes)
-		if m.err == nil {
-			m.bytes = nil
-		}
-	})
-	return m.err
 }
 
 type compactDataRecord struct {
@@ -138,24 +109,33 @@ type compactDataRecord struct {
 
 const minCompactActiveData = 1024
 
-// releaseCompactDataLocked releases a mapped execution payload after the last
-// instance has dropped the shared compiled cache. Callers hold codeCache.mu.
-func (c *Compiled) releaseCompactDataLocked() error {
-	target := c
-	if target.compactData == nil {
-		if snapshot := c.loadValidateMemo().executionView(); snapshot != nil {
-			target = snapshot
-		}
-	}
-	if target.compactData == nil || target.compactData.owner == nil {
+// Validate packed spans before any reader forms a payload slice. Public
+// metadata copies can reach admission without the execution clone's proof.
+func (c *Compiled) validateCompactData() error {
+	if c == nil || c.compactData == nil {
 		return nil
 	}
-	if err := target.compactData.owner.Close(); err != nil {
-		return err
+	for _, record := range c.compactData.records {
+		if record.end < record.start || uint64(record.end) > uint64(len(c.compactData.bytes)) {
+			return fmt.Errorf("compiled metadata invalid: compact data payload range")
+		}
 	}
-	target.compactData.bytes = nil
-	target.compactData.owner = nil
 	return nil
+}
+
+func (c *Compiled) activeDataCount() int {
+	if c.compactData != nil {
+		return len(c.compactData.records)
+	}
+	return len(c.Data)
+}
+
+func (c *Compiled) activeDataAt(index int) DataInit {
+	if c.compactData == nil {
+		return c.Data[index]
+	}
+	d := c.compactData.records[index]
+	return DataInit{MemoryIndex: d.memoryIndex, Offset: OffsetInit{Base: d.offset}, Bytes: c.compactData.bytes[d.start:d.end:d.end]}
 }
 
 // rv64RootedImportDigest authenticates the bounded host boundary used by
@@ -887,21 +867,35 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	return digest, true
 }
 
-func cloneCompactActiveData(out *compactActiveData, c *Compiled, payloadBytes int) {
-	*out = compactActiveData{records: make([]compactDataRecord, c.activeDataCount())}
-	if bytes, err := mapCompactActiveData(c, payloadBytes); err == nil && bytes != nil {
-		out.bytes = bytes
-		out.owner = ownCompactDataMapping(bytes)
-	} else {
-		out.bytes = make([]byte, payloadBytes)
+// compactActiveDataSize also guards the uint32 byte-range representation. Rare
+// offset forms and nil-vs-empty metadata retain the ordinary exact deep copy.
+func compactActiveDataSize(c *Compiled) (int, bool) {
+	if c.compactData != nil {
+		return len(c.compactData.bytes), true
 	}
+	if len(c.Data) < minCompactActiveData {
+		return 0, false
+	}
+	var size uint64
+	for _, d := range c.Data {
+		if d.Offset.HasGlobal || d.Offset.Global != 0 || d.Offset.Expr != nil || d.Bytes == nil {
+			return 0, false
+		}
+		size += uint64(len(d.Bytes))
+		if size > uint64(^uint32(0)) || size > uint64(maxInt()) {
+			return 0, false
+		}
+	}
+	return int(size), true
+}
+
+func cloneCompactActiveData(out *compactActiveData, c *Compiled, payloadBytes int) {
+	*out = compactActiveData{records: make([]compactDataRecord, c.activeDataCount()), bytes: make([]byte, payloadBytes)}
 	next := 0
 	for i := range out.records {
 		d := c.activeDataAt(i)
 		end := next + len(d.Bytes)
-		if out.owner == nil {
-			copy(out.bytes[next:end], d.Bytes)
-		}
+		copy(out.bytes[next:end], d.Bytes)
 		out.records[i] = compactDataRecord{memoryIndex: d.MemoryIndex, offset: d.Offset.Base, start: uint32(next), end: uint32(end)}
 		next = end
 	}

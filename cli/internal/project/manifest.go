@@ -152,9 +152,6 @@ var retiredManifestOptimizationNames = stringSet(
 	"immutable-poly-fastpath", "inline-loop-callees", "legacy-fp-pins", "legacy-gp-pins",
 	"loop-precheck", "loop-region-pins", "swar-idioms", "tee-spill-elide",
 	"v128-sink",
-	"loop-memory-base", "bounded-branch-index", "wide-reuse-pins", "pure-reduce-vector",
-	"guarded-test-ccmp", "streaming-i32-reduction", "dot-loop-vector",
-	"crowded-products", "linear-integer-tree", "loop-trap-cell", "prepared-light-entry",
 )
 
 // IsRetiredOptimizationName reports whether name was accepted by the v1

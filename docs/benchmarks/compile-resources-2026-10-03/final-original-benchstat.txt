@@ -1,0 +1,108 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+                                  │ measurements/final-original-baseline-all.txt │ measurements/final-final-memory-all.txt │
+                                  │                    sec/op                    │      sec/op       vs base               │
+CompileFull/sqlite3-query                                           135.8m ± 18%       121.1m ±  3%  -10.84% (p=0.002 n=6)
+CompileFull/quickjs-script                                          64.29m ±  1%       57.37m ±  2%  -10.77% (p=0.002 n=6)
+CompileFull/esbuild-minify                                           1.334 ± 18%        1.145 ±  5%  -14.14% (p=0.002 n=6)
+CompileFull/tiny                                                    20.81µ ±  2%       18.51µ ±  5%  -11.04% (p=0.002 n=6)
+CompileFull/fib_rec                                                 26.05µ ±  5%       23.95µ ±  2%   -8.07% (p=0.002 n=6)
+CompileFull/many_funcs                                              602.1µ ±  2%       562.0µ ±  7%   -6.66% (p=0.002 n=6)
+CompileFull/fannkuch                                                180.9µ ±  4%       160.4µ ±  4%  -11.33% (p=0.002 n=6)
+CompileFull/matmul                                                 101.65µ ±  2%       86.48µ ±  7%  -14.92% (p=0.002 n=6)
+CompileFull/sha256                                                  148.6µ ±  5%       131.6µ ±  2%  -11.49% (p=0.002 n=6)
+CompileFull/raytrace                                                378.6µ ±  5%       317.2µ ±  1%  -16.20% (p=0.002 n=6)
+CompileFull/json-as                                                 2.168m ±  5%       1.916m ±  7%  -11.59% (p=0.002 n=6)
+CompileFull/json-as-simd                                            2.428m ±  2%       2.117m ±  2%  -12.80% (p=0.002 n=6)
+CompileFull/blake-as-simd                                           1.715m ±  1%       1.479m ±  2%  -13.73% (p=0.002 n=6)
+CompileFull/utf-as-simd                                            1014.9µ ±  3%       887.7µ ± 18%        ~ (p=0.065 n=6)
+CompileFull/coremark                                                955.5µ ±  5%       838.8µ ±  1%  -12.22% (p=0.002 n=6)
+CompileFull/blake3                                                  1.596m ±  2%       1.446m ±  2%   -9.40% (p=0.002 n=6)
+CompileFull/yyjson                                                  11.82m ± 18%       10.78m ±  3%   -8.83% (p=0.002 n=6)
+CompileFull/pcre2                                                   18.95m ± 13%       17.07m ±  5%   -9.94% (p=0.002 n=6)
+CompileFull/lodepng                                                 9.613m ±  3%       8.266m ±  1%  -14.02% (p=0.002 n=6)
+CompileFull/polybench-cholesky                                      263.7µ ±  4%       233.9µ ±  4%  -11.29% (p=0.002 n=6)
+CompileFull/polybench-correlation                                   239.8µ ±  3%       207.7µ ±  1%  -13.39% (p=0.002 n=6)
+CompileFull/polybench-gemm                                          206.4µ ±  3%       184.0µ ±  2%  -10.86% (p=0.002 n=6)
+geomean                                                             1.396m             1.233m        -11.67%
+
+                                  │ measurements/final-original-baseline-all.txt │ measurements/final-final-memory-all.txt │
+                                  │                    code-B                    │     code-B       vs base                │
+CompileFull/sqlite3-query                                           3.961Mi ± 0%      3.961Mi ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/quickjs-script                                          1.886Mi ± 0%      1.886Mi ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/esbuild-minify                                          42.98Mi ± 0%      42.98Mi ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/tiny                                                      96.00 ± 0%        96.00 ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/fib_rec                                                   294.0 ± 0%        294.0 ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/many_funcs                                              7.589Ki ± 0%      7.589Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/fannkuch                                                4.558Ki ± 0%      4.558Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/matmul                                                  2.095Ki ± 0%      2.095Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/sha256                                                  3.112Ki ± 0%      3.112Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/raytrace                                                12.93Ki ± 0%      12.93Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/json-as                                                 66.99Ki ± 0%      66.99Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/json-as-simd                                            80.08Ki ± 0%      80.08Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/blake-as-simd                                           38.74Ki ± 0%      38.74Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/utf-as-simd                                             21.92Ki ± 0%      21.92Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/coremark                                                23.84Ki ± 0%      23.84Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/blake3                                                  30.01Ki ± 0%      30.01Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/yyjson                                                  299.8Ki ± 0%      299.8Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/pcre2                                                   489.3Ki ± 0%      489.3Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/lodepng                                                 275.6Ki ± 0%      275.6Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/polybench-cholesky                                      5.913Ki ± 0%      5.913Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/polybench-correlation                                   5.373Ki ± 0%      5.373Ki ± 0%       ~ (p=1.000 n=6) ¹
+CompileFull/polybench-gemm                                          4.700Ki ± 0%      4.700Ki ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                             30.73Ki           30.73Ki       +0.00%
+¹ all samples are equal
+
+                                  │ measurements/final-original-baseline-all.txt │ measurements/final-final-memory-all.txt │
+                                  │                     B/op                     │       B/op        vs base               │
+CompileFull/sqlite3-query                                           8.011Mi ± 0%       6.907Mi ± 0%  -13.78% (p=0.002 n=6)
+CompileFull/quickjs-script                                          4.399Mi ± 0%       3.573Mi ± 0%  -18.78% (p=0.002 n=6)
+CompileFull/esbuild-minify                                         153.75Mi ± 0%       86.61Mi ± 0%  -43.67% (p=0.002 n=6)
+CompileFull/tiny                                                    17.98Ki ± 0%       17.59Ki ± 0%   -2.17% (p=0.002 n=6)
+CompileFull/fib_rec                                                 34.65Ki ± 0%       34.26Ki ± 0%   -1.13% (p=0.002 n=6)
+CompileFull/many_funcs                                              175.1Ki ± 0%       174.7Ki ± 0%   -0.22% (p=0.002 n=6)
+CompileFull/fannkuch                                                89.78Ki ± 0%       89.39Ki ± 0%   -0.44% (p=0.002 n=6)
+CompileFull/matmul                                                  76.67Ki ± 0%       44.23Ki ± 0%  -42.31% (p=0.002 n=6)
+CompileFull/sha256                                                  84.91Ki ± 0%       84.50Ki ± 0%   -0.49% (p=0.002 n=6)
+CompileFull/raytrace                                                204.5Ki ± 0%       148.0Ki ± 0%  -27.62% (p=0.002 n=6)
+CompileFull/json-as                                                 302.4Ki ± 0%       243.3Ki ± 0%  -19.55% (p=0.002 n=6)
+CompileFull/json-as-simd                                            321.4Ki ± 0%       261.9Ki ± 0%  -18.51% (p=0.002 n=6)
+CompileFull/blake-as-simd                                           526.4Ki ± 0%       357.9Ki ± 0%  -32.01% (p=0.002 n=6)
+CompileFull/utf-as-simd                                             343.2Ki ± 0%       280.0Ki ± 0%  -18.39% (p=0.002 n=6)
+CompileFull/coremark                                                358.7Ki ± 0%       190.2Ki ± 0%  -46.99% (p=0.002 n=6)
+CompileFull/blake3                                                  331.0Ki ± 0%       330.5Ki ± 0%   -0.13% (p=0.002 n=6)
+CompileFull/yyjson                                                  3.784Mi ± 0%       2.907Mi ± 0%  -23.17% (p=0.002 n=6)
+CompileFull/pcre2                                                   5.425Mi ± 0%       4.108Mi ± 0%  -24.26% (p=0.002 n=6)
+CompileFull/lodepng                                                1396.6Ki ± 0%       555.6Ki ± 0%  -60.22% (p=0.002 n=6)
+CompileFull/polybench-cholesky                                      112.3Ki ± 0%       111.9Ki ± 0%   -0.37% (p=0.002 n=6)
+CompileFull/polybench-correlation                                   110.0Ki ± 0%       109.6Ki ± 0%   -0.38% (p=0.002 n=6)
+CompileFull/polybench-gemm                                          103.9Ki ± 0%       103.5Ki ± 0%   -0.40% (p=0.002 n=6)
+geomean                                                             423.3Ki            337.7Ki       -20.22%
+
+                                  │ measurements/final-original-baseline-all.txt │ measurements/final-final-memory-all.txt │
+                                  │                  allocs/op                   │     allocs/op      vs base              │
+CompileFull/sqlite3-query                                            4.930k ± 0%         4.916k ± 0%  -0.28% (p=0.002 n=6)
+CompileFull/quickjs-script                                           3.714k ± 0%         3.698k ± 0%  -0.43% (p=0.002 n=6)
+CompileFull/esbuild-minify                                           33.35k ± 0%         33.26k ± 0%  -0.27% (p=0.002 n=6)
+CompileFull/tiny                                                     100.00 ± 0%          91.00 ± 0%  -9.00% (p=0.002 n=6)
+CompileFull/fib_rec                                                   116.0 ± 0%          107.0 ± 0%  -7.76% (p=0.002 n=6)
+CompileFull/many_funcs                                                94.00 ± 0%          85.00 ± 0%  -9.57% (p=0.002 n=6)
+CompileFull/fannkuch                                                  178.0 ± 0%          169.0 ± 0%  -5.06% (p=0.002 n=6)
+CompileFull/matmul                                                    162.0 ± 0%          151.0 ± 0%  -6.79% (p=0.002 n=6)
+CompileFull/sha256                                                    171.0 ± 0%          161.0 ± 0%  -5.85% (p=0.002 n=6)
+CompileFull/raytrace                                                  210.0 ± 0%          199.0 ± 0%  -5.24% (p=0.002 n=6)
+CompileFull/json-as                                                   408.0 ± 0%          396.0 ± 0%  -2.94% (p=0.002 n=6)
+CompileFull/json-as-simd                                              441.0 ± 0%          429.0 ± 0%  -2.72% (p=0.002 n=6)
+CompileFull/blake-as-simd                                             275.0 ± 0%          262.0 ± 0%  -4.73% (p=0.002 n=6)
+CompileFull/utf-as-simd                                               273.0 ± 0%          261.0 ± 0%  -4.40% (p=0.002 n=6)
+CompileFull/coremark                                                  231.0 ± 0%          218.0 ± 0%  -5.63% (p=0.002 n=6)
+CompileFull/blake3                                                    288.0 ± 0%          278.0 ± 0%  -3.47% (p=0.002 n=6)
+CompileFull/yyjson                                                    672.0 ± 0%          660.0 ± 0%  -1.79% (p=0.002 n=6)
+CompileFull/pcre2                                                     956.0 ± 0%          942.0 ± 0%  -1.46% (p=0.002 n=6)
+CompileFull/lodepng                                                   606.0 ± 0%          590.0 ± 0%  -2.64% (p=0.002 n=6)
+CompileFull/polybench-cholesky                                        199.0 ± 0%          189.0 ± 0%  -5.03% (p=0.002 n=6)
+CompileFull/polybench-correlation                                     199.0 ± 0%          189.0 ± 0%  -5.03% (p=0.002 n=6)
+CompileFull/polybench-gemm                                            194.0 ± 0%          184.0 ± 0%  -5.15% (p=0.002 n=6)
+geomean                                                               400.9               383.5       -4.36%

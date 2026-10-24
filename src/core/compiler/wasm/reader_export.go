@@ -24,7 +24,7 @@ func (r *Reader) HasNext() bool  { return r.BytesLeft() > 0 }
 // JumpTo moves the cursor to an absolute position in [0, len].
 func (r *Reader) JumpTo(pos int) error {
 	if pos < 0 || pos > len(r.data) {
-		return newDecodeError(ErrIndexOutOfBounds, r.pos)
+		return &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.pos}
 	}
 	r.pos = pos
 	return nil
@@ -44,7 +44,7 @@ func (r *Reader) SkipU32N(n uint32) error {
 
 func (r *Reader) Byte() (byte, error) {
 	if r.pos >= len(r.data) {
-		return 0, newDecodeError(ErrIndexOutOfBounds, r.pos)
+		return 0, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.pos}
 	}
 	b := r.data[r.pos]
 	r.pos++
@@ -78,7 +78,7 @@ func (r *Reader) leb128(signedInt bool, maxBits uint32) (uint64, error) {
 			return 0, err
 		}
 		if bitsWritten >= maxBits {
-			return 0, newDecodeError(ErrMalformedLEB, r.pos)
+			return 0, &DecodeError{Code: ErrMalformedLEB, Offset: r.pos}
 		}
 		lowByte := uint32(b) & 0x7F
 		result |= uint64(lowByte) << uint64(bitsWritten)
@@ -88,10 +88,10 @@ func (r *Reader) leb128(signedInt bool, maxBits uint32) (uint64, error) {
 			bitMask := (uint32(0xFF) << ((6 - over) + 1)) & 0x7F
 			if signedInt && (uint32(b)&(1<<(6-over))) != 0 {
 				if uint32(b)&bitMask != bitMask {
-					return 0, newDecodeError(ErrMalformedLEB, r.pos)
+					return 0, &DecodeError{Code: ErrMalformedLEB, Offset: r.pos}
 				}
 			} else if uint32(b)&bitMask != 0 {
-				return 0, newDecodeError(ErrMalformedLEB, r.pos)
+				return 0, &DecodeError{Code: ErrMalformedLEB, Offset: r.pos}
 			}
 		}
 	}

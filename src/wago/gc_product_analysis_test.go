@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -61,9 +60,6 @@ func TestGCProductGatePreservesArtifacts(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if retained := len(c.GCTypeDescs) != 0; retained != tc.gc {
-					t.Fatalf("collector descriptors retained=%v want=%v", retained, tc.gc)
-				}
 				b, err := marshalCompiled(c)
 				c.Close()
 				if err != nil {
@@ -73,61 +69,6 @@ func TestGCProductGatePreservesArtifacts(t *testing.T) {
 					want = b
 				} else if !bytes.Equal(want, b) {
 					t.Fatal("gate changed persisted code or metadata")
-				}
-			}
-		})
-	}
-}
-
-func TestCollectorFreeMetadataRoundTrip(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		typ  wasm.ValType
-		abi  ValType
-		arg  uint64
-	}{
-		{"i32", wasm.I32, ValI32, I32(42)},
-		{"f64", wasm.F64, ValF64, F64(3.5)},
-		{"funcref", wasm.FuncRef, ValFuncRef, 0},
-		{"externref", wasm.ExternRef, ValExternRef, 0},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			data := wasmtest.Module(
-				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{tc.typ}, []wasm.ValType{tc.typ}))),
-				wasmtest.Section(3, wasmtest.Vec([]byte{0})),
-				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("id", 0, 0))),
-				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x0b}))),
-			)
-			compiled, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).Compile(data)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer compiled.Close()
-			if len(compiled.GCTypeDescs) != 0 || len(compiled.Types) != 1 {
-				t.Fatalf("type tables: collector=%d function=%d", len(compiled.GCTypeDescs), len(compiled.Types))
-			}
-			cached := publicArtifactRoundTrip(t, compiled)
-			defer cached.Close()
-			// Older artifacts carried redundant function sentinels. They remain
-			// valid and must execute identically to the smaller representation.
-			legacy := mutableCompiledFixture(compiled)
-			defer legacy.Close()
-			legacy.GCTypeDescs = []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc, Final: true}}
-			cachedLegacy := publicArtifactRoundTrip(t, legacy)
-			defer cachedLegacy.Close()
-			for _, c := range []*Compiled{compiled, cached, cachedLegacy} {
-				params, results, err := c.Signature("id")
-				if err != nil || len(params) != 1 || len(results) != 1 || params[0] != tc.abi || results[0] != tc.abi {
-					t.Fatalf("signature=%v -> %v, %v", params, results, err)
-				}
-				in, err := Instantiate(c, InstantiateOptions{})
-				if err != nil {
-					t.Fatal(err)
-				}
-				got, err := in.Invoke("id", tc.arg)
-				in.Close()
-				if err != nil || len(got) != 1 || got[0] != tc.arg {
-					t.Fatalf("identity=%v, %v; want %d", got, err, tc.arg)
 				}
 			}
 		})

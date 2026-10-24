@@ -1,0 +1,21 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/bench/suite
+cpu: AMD EPYC 9V74 80-Core Processor
+                          │ measurements/exec-focused-baseline-all.txt │ measurements/exec-focused-selected-all.txt │
+                          │                   sec/op                   │          sec/op           vs base          │
+Exec/json-as.deserializeN                                  54.78µ ± 2%                54.65µ ± 1%  ~ (p=0.853 n=10)
+
+                          │ measurements/exec-focused-baseline-all.txt │ measurements/exec-focused-selected-all.txt │
+                          │                calls/batch                 │       calls/batch         vs base          │
+Exec/json-as.deserializeN                                  52.00 ± 23%                 52.00 ± 2%  ~ (p=0.656 n=10)
+
+                          │ measurements/exec-focused-baseline-all.txt │ measurements/exec-focused-selected-all.txt │
+                          │                    B/op                    │          B/op           vs base            │
+Exec/json-as.deserializeN                                   0.000 ± 0%               0.000 ± 0%  ~ (p=1.000 n=10) ¹
+¹ all samples are equal
+
+                          │ measurements/exec-focused-baseline-all.txt │ measurements/exec-focused-selected-all.txt │
+                          │                 allocs/op                  │       allocs/op         vs base            │
+Exec/json-as.deserializeN                                   0.000 ± 0%               0.000 ± 0%  ~ (p=1.000 n=10) ¹
+¹ all samples are equal

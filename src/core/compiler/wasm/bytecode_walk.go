@@ -176,9 +176,6 @@ func SkipInstructionImmediate(r *Reader, op byte) error {
 
 // SkipInstructionImmediateWithMemarg64 is the memory-width-aware form used by
 // backends while traversing validated dead code.
-// Keep its temporary record in this frame rather than in recursive consumers.
-//
-//go:noinline
 func SkipInstructionImmediateWithMemarg64(r *Reader, op byte, memarg64 bool) error {
 	widths := fixedMemargWidths(memarg64)
 	return skipInstructionImmediateWithWidths(r, op, &widths, true)

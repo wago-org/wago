@@ -1,0 +1,43 @@
+//go:build arm64
+
+package arm64
+
+import "os"
+
+var loopMemoryBaseEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_MEMORY_BASE") != "1"
+
+// Track four memory pages separately, sharing the existing four-register budget.
+// First sighting scores zero; only repeated loop memory pages qualify.
+func (s *byteBodyScanner) noteLoopMemoryBase(page int64, depth int, weight int64) {
+	if page > 0xfff000 {
+		return
+	}
+	for i := 0; i < int(s.loopMemoryBaseN); i++ {
+		c := &s.loopMemoryBases[i]
+		if c.typ() == 3 && c.bits == page {
+			c.addScore(uint64(2 * weight * loopWeight(depth)))
+			return
+		}
+	}
+	if int(s.loopMemoryBaseN) == len(s.loopMemoryBases) {
+		return
+	}
+	s.loopMemoryBases[s.loopMemoryBaseN] = newLoopIntConstCandidate(page, 0, 3)
+	s.loopMemoryBaseN++
+}
+
+func (f *fn) loadLinearIdx(dst, index Reg, disp int32, size int, signed, wide bool) {
+	if f.opt(optLoopMemoryBase) && disp >= 0x1000 {
+		page := int64(disp &^ 0xfff)
+		for i := 0; i < int(f.iconstN); i++ {
+			c := f.iconsts[i]
+			if c.address && c.bits == page {
+				f.a.LoadIdx(dst, c.reg, index, disp&0xfff, size, signed, wide)
+
+				f.stats.peep("loop-memory-base-hit")
+				return
+			}
+		}
+	}
+	f.a.LoadIdx(dst, linMemReg, index, disp, size, signed, wide)
+}

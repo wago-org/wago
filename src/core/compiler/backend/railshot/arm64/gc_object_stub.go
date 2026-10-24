@@ -31,7 +31,7 @@ func needsGCObjectStub(relocs *callRelocTable) bool {
 			function = relocs.parallelFunction(i)
 		}
 		for _, rl := range function {
-			if rl.isGCObject() {
+			if rl.gcObject {
 				return true
 			}
 		}

@@ -142,7 +142,7 @@ func decodeSection(m *Module, r *reader, id byte) error {
 		}
 		m.DataCount = &c
 	default:
-		return newDecodeError(ErrInvalidSection, r.off())
+		return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
 	}
 	return nil
 }
@@ -156,7 +156,7 @@ func decodeNumType(r *reader) (NumType, error) {
 	case NumI32, NumI64, NumF32, NumF64:
 		return NumType(b), nil
 	}
-	return 0, newDecodeError(ErrInvalidType, r.off()-1)
+	return 0, &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
 }
 func decodeAbsHeapType(r *reader) (AbsHeapType, error) {
 	b, err := r.byte()
@@ -166,7 +166,7 @@ func decodeAbsHeapType(r *reader) (AbsHeapType, error) {
 	if b >= 0x69 && b <= 0x74 || b == 0x64 {
 		return AbsHeapType(b), nil
 	}
-	return 0, newDecodeError(ErrInvalidType, r.off()-1)
+	return 0, &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
 }
 func decodeTypeIdx(r *reader) (TypeIdx, error) { x, err := r.u32(); return TypeIdx{Index: x}, err }
 func decodeS33TypeIdx(r *reader) (TypeIdx, error) {
@@ -175,7 +175,7 @@ func decodeS33TypeIdx(r *reader) (TypeIdx, error) {
 		return TypeIdx{}, err
 	}
 	if x < 0 {
-		return TypeIdx{}, newDecodeError(ErrInvalidType, r.off())
+		return TypeIdx{}, &DecodeError{Code: ErrInvalidType, Offset: r.off()}
 	}
 	return TypeIdx{Index: uint32(x)}, nil
 }
@@ -227,13 +227,13 @@ func decodeRefType(r *reader) (RefType, error) {
 		if b == 0x64 || b >= 0x69 && b <= 0x74 {
 			return AbsRef(AbsHeapType(b)), nil
 		}
-		return RefType{}, newDecodeError(ErrInvalidType, r.off()-1)
+		return RefType{}, &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
 	}
 }
 func decodeValType(r *reader) (ValType, error) {
 	b, ok := r.peek()
 	if !ok {
-		return ValType{}, newDecodeError(ErrIndexOutOfBounds, r.off())
+		return ValType{}, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
 	}
 	switch b {
 	case 0x7f, 0x7e, 0x7d, 0x7c:
@@ -246,7 +246,7 @@ func decodeValType(r *reader) (ValType, error) {
 		rt, err := decodeRefType(r)
 		return RefVal(rt), err
 	default:
-		return ValType{}, newDecodeError(ErrInvalidType, r.off())
+		return ValType{}, &DecodeError{Code: ErrInvalidType, Offset: r.off()}
 	}
 }
 
@@ -259,7 +259,7 @@ func decodeMut(r *reader) (Mut, error) {
 	if b == 0 || b == 1 {
 		return Mut(b), nil
 	}
-	return 0, newDecodeError(ErrInvalidType, r.off()-1)
+	return 0, &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
 }
 func decodeStorageType(r *reader) (StorageType, error) {
 	if b, ok := r.peek(); ok && (b == 0x77 || b == 0x78) {
@@ -301,7 +301,7 @@ func decodeCompType(r *reader) (CompType, error) {
 		res, err := decodeResultType(r)
 		return CompType{Kind: CompFunc, Params: p, Results: res}, err
 	default:
-		return CompType{}, newDecodeError(ErrInvalidType, r.off()-1)
+		return CompType{}, &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
 	}
 }
 func decodeTypeMetadata(r *reader) (TypeMetadata, error) {
@@ -318,12 +318,12 @@ func decodeTypeMetadata(r *reader) (TypeMetadata, error) {
 		}
 		if b == 0x4c {
 			if tm.Describes.Present() || tm.Descriptor.Present() {
-				return tm, newDecodeError(ErrInvalidType, r.off())
+				return tm, &DecodeError{Code: ErrInvalidType, Offset: r.off()}
 			}
 			tm.Describes = SomeTypeIdx(idx)
 		} else {
 			if tm.Descriptor.Present() {
-				return tm, newDecodeError(ErrInvalidType, r.off())
+				return tm, &DecodeError{Code: ErrInvalidType, Offset: r.off()}
 			}
 			tm.Descriptor = SomeTypeIdx(idx)
 		}
@@ -335,7 +335,7 @@ func decodeSubType(r *reader) (SubType, error) {
 	}
 	b, ok := r.peek()
 	if !ok {
-		return SubType{}, newDecodeError(ErrIndexOutOfBounds, r.off())
+		return SubType{}, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
 	}
 	st := SubType{Final: true}
 	if b == 0x4f || b == 0x50 {
@@ -410,7 +410,7 @@ func decodeLimits(r *reader) (Limits, error) {
 		}
 		return l, nil
 	default:
-		return l, newDecodeError(ErrInvalidLimits, r.off()-1)
+		return l, &DecodeError{Code: ErrInvalidLimits, Offset: r.off() - 1}
 	}
 }
 func decodeMemType(r *reader) (MemType, error) {
@@ -429,7 +429,7 @@ func decodeMemType(r *reader) (MemType, error) {
 		}
 		mt.Limits.Min = uint64(min)
 		if flag == 2 {
-			return mt, newDecodeError(ErrInvalidLimits, flagOffset)
+			return mt, &DecodeError{Code: ErrInvalidLimits, Offset: flagOffset}
 		}
 		if flag == 1 || flag == 3 {
 			max, err := r.u32()
@@ -448,7 +448,7 @@ func decodeMemType(r *reader) (MemType, error) {
 		}
 		mt.Limits.Min = min
 		if flag == 6 {
-			return mt, newDecodeError(ErrInvalidLimits, flagOffset)
+			return mt, &DecodeError{Code: ErrInvalidLimits, Offset: flagOffset}
 		}
 		if flag == 5 || flag == 7 {
 			max, err := r.u64()
@@ -459,7 +459,7 @@ func decodeMemType(r *reader) (MemType, error) {
 		}
 		return mt, nil
 	default:
-		return mt, newDecodeError(ErrInvalidLimits, r.off()-1)
+		return mt, &DecodeError{Code: ErrInvalidLimits, Offset: r.off() - 1}
 	}
 }
 func decodeTableType(r *reader) (TableType, error) {
@@ -487,7 +487,7 @@ func decodeTagType(r *reader) (TagType, error) {
 		return TagType{}, err
 	}
 	if b != 0 {
-		return TagType{}, newDecodeError(ErrInvalidType, r.off()-1)
+		return TagType{}, &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
 	}
 	idx, err := decodeTypeIdx(r)
 	return TagType{Type: idx}, err
@@ -518,7 +518,7 @@ func decodeExternTypeKind(r *reader, kind ExternKind) (ExternType, error) {
 		t, err := decodeTagType(r)
 		return NewTagExternType(t), err
 	default:
-		return ExternType{Kind: kind}, newDecodeError(ErrInvalidImport, r.off()-1)
+		return ExternType{Kind: kind}, &DecodeError{Code: ErrInvalidImport, Offset: r.off() - 1}
 	}
 }
 
@@ -575,7 +575,7 @@ func decodeImports(r *reader) ([]Import, bool, error) {
 		// Every item has at least a one-byte name length. Bound malformed
 		// counts by input bytes, and charge expansion before allocating metadata.
 		if uint64(count) > uint64(r.left()) {
-			return nil, compact, newDecodeError(ErrIndexOutOfBounds, r.off())
+			return nil, compact, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
 		}
 		if err := reserveDecodedSlice[Import](r, count); err != nil {
 			return nil, compact, err
@@ -612,7 +612,7 @@ func decodeExternIdx(r *reader) (ExternIdx, error) {
 		return ExternIdx{}, err
 	}
 	if k > 4 {
-		return ExternIdx{}, newDecodeError(ErrInvalidExport, r.off())
+		return ExternIdx{}, &DecodeError{Code: ErrInvalidExport, Offset: r.off()}
 	}
 	return ExternIdx{Kind: ExternKind(k), Index: idx}, nil
 }
@@ -636,7 +636,7 @@ func decodeLocals(r *reader) (Locals, error) {
 			return LocalRun{}, err
 		}
 		if uint64(c) > uint64(^uint32(0))-total {
-			return LocalRun{}, newDecodeError(ErrInvalidModule, r.off())
+			return LocalRun{}, &DecodeError{Code: ErrInvalidModule, Offset: r.off()}
 		}
 		total += uint64(c)
 		return LocalRun{Count: c, Type: vt}, nil

@@ -20,7 +20,7 @@ func admitMutableFunctionGlobalLocalCallWire(data []byte) bool {
 // the runtime artifact witness. It admits one mutable nullable funcref import
 // only when the module does nothing except re-export that exact cell.
 func admitStateOnlyMutableFunctionGlobalImport(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 0 || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Imports) != 1 || len(m.Globals) != 0 || len(m.Exports) != 1 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 0 || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Imports) != 1 || len(m.Globals) != 0 || len(m.Exports) != 1 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
 	imp := m.Imports[0]
@@ -36,7 +36,7 @@ func admitStateOnlyMutableFunctionGlobalImport(m *wasm.Module) bool {
 // Its sole function can only observe whether the imported cell is null; no raw
 // descriptor escapes and no guest write bypasses the container ownership path.
 func admitMutableFunctionGlobalGet(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 1 || len(m.Globals) != 0 || len(m.Exports) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 1 || len(m.Globals) != 0 || len(m.Exports) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
 	imp := m.Imports[0]
@@ -61,7 +61,7 @@ func admitMutableFunctionGlobalGet(m *wasm.Module) bool {
 // nullable funcref cell with null; lowering routes the mutation through the
 // parked runtime ownership transaction instead of storing a raw descriptor.
 func admitMutableFunctionGlobalClear(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 1 || len(m.Globals) != 0 || len(m.Exports) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 1 || len(m.Globals) != 0 || len(m.Exports) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
 	imp := m.Imports[0]
@@ -86,7 +86,7 @@ func admitMutableFunctionGlobalClear(m *wasm.Module) bool {
 // mutable global zero. Runtime lowering authenticates and transfers the raw
 // descriptor through the container ownership transaction.
 func admitMutableFunctionGlobalSetSelf(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 1 || len(m.Globals) != 0 || len(m.Exports) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 1 || len(m.Globals) != 0 || len(m.Exports) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
 	imp := m.Imports[0]
@@ -111,7 +111,7 @@ func admitMutableFunctionGlobalSetSelf(m *wasm.Module) bool {
 // into imported mutable funcref global one. Runtime lowering authenticates the
 // full-width descriptor and transfers its canonical owner root into the target.
 func admitMutableFunctionGlobalCopy(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 2 || len(m.Globals) != 0 || len(m.Exports) != 1 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 2 || len(m.Globals) != 0 || len(m.Exports) != 1 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
 	for i, name := range []string{"source", "target"} {
@@ -136,7 +136,7 @@ func admitMutableFunctionGlobalCopy(m *wasm.Module) bool {
 // body. It copies imported mutable funcref global zero into global one, then
 // clears global zero. Each write still crosses the parked ownership bridge.
 func admitMutableFunctionGlobalMove(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 2 || len(m.Globals) != 0 || len(m.Exports) != 1 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 2 || len(m.Globals) != 0 || len(m.Exports) != 1 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
 	for i, name := range []string{"source", "target"} {
@@ -163,7 +163,7 @@ func admitMutableFunctionGlobalMove(m *wasm.Module) bool {
 // The indexed parked bridge is therefore exercised for both destination cells
 // without opening arbitrary multi-write bodies.
 func admitMutableFunctionGlobalBidirectionalCopy(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Imports) != 2 || len(m.Globals) != 0 || len(m.Exports) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Imports) != 2 || len(m.Globals) != 0 || len(m.Exports) != 2 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
 	for i, name := range []string{"source", "target"} {
@@ -197,7 +197,7 @@ func admitMutableFunctionGlobalBidirectionalCopy(m *wasm.Module) bool {
 // function and copied into one imported mutable cell through the parked owner
 // transaction. The private cell cannot be exported or receive foreign values.
 func admitMutableFunctionGlobalLocalCopy(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 1 || len(m.Globals) != 1 || len(m.Exports) != 1 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 1 || len(m.Globals) != 1 || len(m.Exports) != 1 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
 	imp := m.Imports[0]
@@ -226,7 +226,7 @@ func admitMutableFunctionGlobalLocalCopy(m *wasm.Module) bool {
 // only escape copies the cell into imported mutable target zero through the
 // parked owner transaction.
 func admitMutableFunctionGlobalLocalPublish(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Imports) != 1 || len(m.Globals) != 1 || len(m.Exports) != 6 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Imports) != 1 || len(m.Globals) != 1 || len(m.Exports) != 6 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
 	imp := m.Imports[0]
@@ -271,7 +271,7 @@ func admitMutableFunctionGlobalLocalPublish(m *wasm.Module) bool {
 // three writes use the parked ownership bridge; no raw foreign descriptor is
 // ever committed directly to private native storage.
 func admitMutableFunctionGlobalLocalTransfer(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Imports) != 2 || len(m.Globals) != 1 || len(m.Exports) != 3 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Imports) != 2 || len(m.Globals) != 1 || len(m.Exports) != 3 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
 	for i, name := range []string{"source", "target"} {
@@ -313,7 +313,7 @@ func admitMutableFunctionGlobalLocalTransfer(m *wasm.Module) bool {
 // functions. Because host ingress may install a foreign descriptor between
 // calls, every guest write uses the parked ownership bridge.
 func admitMutableFunctionGlobalLocalExport(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 5 || len(m.Code) != 5 || len(m.Imports) != 0 || len(m.Globals) != 1 || len(m.Exports) != 6 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 5 || len(m.Code) != 5 || len(m.Imports) != 0 || len(m.Globals) != 1 || len(m.Exports) != 6 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
 	local := m.Globals[0]
@@ -349,7 +349,7 @@ func admitMutableFunctionGlobalLocalExport(m *wasm.Module) bool {
 // the two local functions; the observer can only reduce the current descriptor
 // to an i32 nullness result, so no unretained carrier escapes guest execution.
 func admitMutableFunctionGlobalLocalObserve(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 2 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Imports) != 0 || len(m.Globals) != 1 || len(m.Exports) != 7 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 2 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Imports) != 0 || len(m.Globals) != 1 || len(m.Exports) != 7 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
 	local := m.Globals[0]
@@ -403,7 +403,7 @@ func admitMutableFunctionGlobalLocalObserve(m *wasm.Module) bool {
 // signature, host ingress is checked against the same indexed heap type, and
 // the sole reader immediately consumes the retained descriptor with call_ref.
 func admitMutableFunctionGlobalLocalCall(m *wasm.Module) bool {
-	if m == nil || len(m.Types) != 2 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Imports) != 0 || len(m.Globals) != 1 || len(m.Exports) != 7 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
+	if m == nil || len(m.Types) != 2 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Imports) != 0 || len(m.Globals) != 1 || len(m.Exports) != 7 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || len(m.BranchHints) != 0 || m.UsesCompactImports {
 		return false
 	}
 	zeroArgument := i31CoreFunctionType(&m.Types[0], nil, []wasm.ValType{wasm.I32})
@@ -608,7 +608,7 @@ func mutableReferenceVectorBranchTransferBodies(tail bool) (identity, transform,
 // directly by ref.func, and its target must have the indexed function type
 // named by the cell. No imported target or subtype conversion is accepted.
 func privateIndexedFunctionGlobal(global wasm.Global, m *wasm.Module) (uint32, bool) {
-	if m == nil || global.Type.Mutable || len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.Start != nil || global.Type.Type.Kind() != wasm.ValRef {
+	if m == nil || global.Type.Mutable || len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.Start != nil || global.Type.Type.Kind() != wasm.ValRef {
 		return 0, false
 	}
 	ref := global.Type.Type.Ref()

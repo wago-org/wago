@@ -24,7 +24,7 @@ func AdmitGCRefTestAbstractSource(data []byte) bool { return admitRV64GCRefTestA
 
 func admitRV64GCRefTestAbstract(m *wasm.Module) bool {
 	if m == nil || len(m.Types) != 5 || len(m.FuncTypes) != 12 || len(m.Code) != 12 || len(m.Tables) != 3 || len(m.Exports) != 11 || len(m.Elements) != 1 ||
-		len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
 		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}

@@ -94,7 +94,7 @@ func TestPatchCallRelocsRangeChecks(t *testing.T) {
 	t.Run("internal entry", func(t *testing.T) {
 		code := make([]byte, 12)
 		binary.LittleEndian.PutUint32(code, 0x94000000)
-		err := patchCallRelocs(code, []int{0, 4}, []int{0, 8}, testCallRelocTable(t, []callReloc{{at: 0, target: callRelocInternal | 1}}, nil))
+		err := patchCallRelocs(code, []int{0, 4}, []int{0, 8}, testCallRelocTable(t, []callReloc{{at: 0, target: 1, internal: true}}, nil))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -133,7 +133,7 @@ func TestCallRelocTableRequiresFunctionOrder(t *testing.T) {
 	if !table.appendFunction(0, []callReloc{{target: 1}}) || !table.appendFunction(1, nil) {
 		t.Fatal("rejected ordered functions")
 	}
-	if got := table.serialFunction(0); len(got) != 1 || got[0].targetIndex() != 1 {
+	if got := table.serialFunction(0); len(got) != 1 || got[0].target != 1 {
 		t.Fatalf("function 0 relocations = %+v", got)
 	}
 	if table.appendFunction(1, nil) {
@@ -144,7 +144,7 @@ func TestCallRelocTableRequiresFunctionOrder(t *testing.T) {
 func TestGCObjectStubRelocation(t *testing.T) {
 	code := make([]byte, 8)
 	binary.LittleEndian.PutUint32(code, 0x94000000)
-	table := testCallRelocTable(t, []callReloc{{at: callRelocGCObject, target: invalidCallRelocField}})
+	table := testCallRelocTable(t, []callReloc{{at: 0, target: invalidCallRelocField, gcObject: true}})
 	if !needsGCObjectStub(table) {
 		t.Fatal("missing checked-object leaf")
 	}
@@ -161,43 +161,5 @@ func TestGCObjectStubRelocation(t *testing.T) {
 	}
 	if got := binary.LittleEndian.Uint32(code); got != 0x94000002 {
 		t.Fatalf("checked-object BL = %#x, want %#x", got, uint32(0x94000002))
-	}
-}
-
-func TestCheckedObjectRelocationTagPreservesFullAlignedSiteDomain(t *testing.T) {
-	for _, site := range []uint32{0, 4, 1 << 31, 0xfffffffc} {
-		r := callReloc{at: site | callRelocGCObject, target: 16}
-		if !r.isGCObject() || r.site() != site {
-			t.Fatalf("site %#x: %#v", site, r)
-		}
-		r.setSite(12)
-		if !r.isGCObject() || r.site() != 12 || r.target != 16 {
-			t.Fatalf("relocated tag lost: %#v", r)
-		}
-	}
-	invalid := callReloc{at: invalidCallRelocField}
-	if invalid.isGCObject() || invalid.site() != invalidCallRelocField {
-		t.Fatal("invalid site became checked-object call")
-	}
-}
-func TestCheckedObjectFallbackTracksNativeCompaction(t *testing.T) {
-	oldEnabled, oldCompact, oldDisabled, oldValidate := nativeFinalizerEnabled, nativeCompactionEnabled, nativeCompactionDisabled, nativeFinalizerValidate
-	nativeFinalizerEnabled, nativeCompactionEnabled, nativeCompactionDisabled, nativeFinalizerValidate = true, true, false, false
-	t.Cleanup(func() {
-		nativeFinalizerEnabled, nativeCompactionEnabled, nativeCompactionDisabled, nativeFinalizerValidate = oldEnabled, oldCompact, oldDisabled, oldValidate
-	})
-	code := make([]byte, 16)
-	for i, w := range []uint32{0x94000000, 0xd503201f, 0xd503201f, 0xd65f03c0} {
-		binary.LittleEndian.PutUint32(code[i*4:], w)
-	}
-	a := &a64.Asm{B: code}
-	sc := &scratch{asm: a, finalizerMarkers: map[int]bool{finalizerMarkerKey(8, markerDeadHole): true}}
-	f := fn{a: a, sc: sc, relocs: []callReloc{{at: callRelocGCObject, target: 12}}}
-	f.recordDeadHole(8)
-	if _, err := f.finalizeNativeCode(0); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.a.B) != 12 || !f.relocs[0].isGCObject() || f.relocs[0].site() != 0 || f.relocs[0].target != 8 {
-		t.Fatalf("compaction lost checked-object fallback: bytes=%d reloc=%#v", len(f.a.B), f.relocs)
 	}
 }

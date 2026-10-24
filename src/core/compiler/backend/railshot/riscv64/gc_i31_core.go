@@ -122,7 +122,7 @@ func admitRV64I31TableProduct(m *wasm.Module) bool {
 // collector participation. The object-bearing official module remains rejected.
 func admitRV64I31RefEqPilot(m *wasm.Module) bool {
 	if m == nil || len(m.Types) != 2 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 1 || len(m.Exports) != 2 ||
-		len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
 		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
@@ -153,7 +153,7 @@ func admitRV64I31RefEqPilot(m *wasm.Module) bool {
 func admitRV64I31MinimalCore(m *wasm.Module) bool {
 	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Exports) != 2 ||
 		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 ||
-		len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
 		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
@@ -209,7 +209,7 @@ func isI31CoreRef(typ wasm.ValType) bool {
 
 func admitRV64I31OfficialCore(m *wasm.Module) bool {
 	if m == nil || len(m.Types) != 5 || len(m.FuncTypes) != 7 || len(m.Code) != 7 || len(m.Globals) != 2 || len(m.Exports) != 7 ||
-		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
 		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
@@ -275,7 +275,7 @@ func admitRV64I31OfficialAnyTable(m *wasm.Module) bool {
 
 func admitRV64I31OfficialTableShape(m *wasm.Module, anyref bool) bool {
 	if m == nil || len(m.Types) != 4 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Tables) != 1 || len(m.Elements) != 2 || len(m.Exports) != 6 ||
-		len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		len(m.Imports) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
 		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
@@ -352,7 +352,7 @@ func admitRV64I31OfficialTableShape(m *wasm.Module, anyref bool) bool {
 // rows during instantiation; no other imported initializer inherits this path.
 func admitRV64I31OfficialTableGlobalInitializer(m *wasm.Module) bool {
 	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 1 || len(m.Tables) != 1 || len(m.Exports) != 1 ||
-		len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
 		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
@@ -385,7 +385,7 @@ func admitRV64I31OfficialTableGlobalInitializer(m *wasm.Module) bool {
 // i31 global; no other dynamic reference-global initializer inherits this path.
 func admitRV64I31OfficialGlobalInitializer(m *wasm.Module) bool {
 	if m == nil || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Imports) != 1 || len(m.Globals) != 1 || len(m.Exports) != 1 ||
-		len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
 		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
@@ -417,7 +417,7 @@ func admitRV64I31OfficialGlobalInitializer(m *wasm.Module) bool {
 // lowered without provisioning a collector or admitting arbitrary anyref state.
 func admitRV64I31OfficialAnyGlobal(m *wasm.Module) bool {
 	if m == nil || len(m.Types) != 2 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Globals) != 2 || len(m.Exports) != 2 ||
-		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
 		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
@@ -458,7 +458,7 @@ func admitRV64I31OfficialAnyGlobal(m *wasm.Module) bool {
 // abstract any/eq/i31/struct/array tests need no heap object classification.
 func admitRV64I31OfficialRefTest(m *wasm.Module) bool {
 	if m == nil || len(m.Types) != 2 || len(m.FuncTypes) != 7 || len(m.Code) != 7 || len(m.Exports) != 7 ||
-		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
+		len(m.Imports) != 0 || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Tags) != 0 || len(m.StringRefs) != 0 ||
 		m.Start != nil || len(m.Customs) != 0 || m.HasNameMetadata() || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}

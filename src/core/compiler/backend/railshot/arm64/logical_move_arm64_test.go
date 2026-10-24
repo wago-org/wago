@@ -3,42 +3,11 @@
 package arm64
 
 import (
-	"bytes"
-	"slices"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
-
-func TestForcedCompactPolicyMatchesExplicitOptionArm64(t *testing.T) {
-	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
-	t.Cleanup(func() { nativeCompactionEnabled, nativeCompactionDisabled = beforeEnabled, beforeDisabled })
-	nativeCompactionEnabled, nativeCompactionDisabled = false, false
-	body := append([]byte{0, 0x42}, wasmtest.SLEB64(0x00ff00ff00ff00ff)...)
-	body = append(body, 0x0b)
-	m := modFuncs(t, funcDef{results: []wasm.ValType{wasm.I64}, body: body}, funcDef{results: []wasm.ValType{wasm.I64}, body: body})
-	compile := func(compact bool) ([]byte, []int, []int) {
-		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: compact, Workers: 1})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if cm.CodeImage != nil {
-			t.Cleanup(func() { cm.CodeImage.Close() })
-		}
-		return cm.Code, cm.Entry, cm.InternalEntry
-	}
-	ordinary, _, _ := compile(false)
-	want, wantEntry, wantInternal := compile(true)
-	if bytes.Equal(ordinary, want) {
-		t.Fatal("fixture does not distinguish compact and ordinary policy")
-	}
-	nativeCompactionEnabled = true
-	got, gotEntry, gotInternal := compile(false)
-	if !bytes.Equal(got, want) || !slices.Equal(gotEntry, wantEntry) || !slices.Equal(gotInternal, wantInternal) {
-		t.Fatal("forced compaction differs from the explicit compact policy")
-	}
-}
 
 func TestCompactLogicalMoveImmediateArm64(t *testing.T) {
 	requireCompilerDiagnostics(t)

@@ -23,15 +23,15 @@ func TestGCFrameOffsetInternerSharesImmutableMaps(t *testing.T) {
 	}
 }
 
-func TestCompiledSealsExecutableCodeAtFirstInstantiate(t *testing.T) {
+func TestCompiledMapsExecutableCodeAtFirstInstantiate(t *testing.T) {
 	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), fibWasm)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Close()
 	original := unsafe.Pointer(&c.code[0])
-	if c.codeCache.sealed || c.codeCache.flags&compiledCacheWritableCode == 0 {
-		t.Fatal("Compile did not retain an unsealed writable code image")
+	if len(c.codeCache.mem) != 0 {
+		t.Fatal("Compile eagerly allocated executable memory")
 	}
 	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
@@ -42,8 +42,8 @@ func TestCompiledSealsExecutableCodeAtFirstInstantiate(t *testing.T) {
 		t.Fatal("executable mapping or readable code view is empty")
 	}
 	mapped := unsafe.Pointer(&c.codeCache.mem[0])
-	if mapped != original || !c.codeCache.sealed {
-		t.Fatalf("first Instantiate did not seal the existing code image: %p -> %p", original, mapped)
+	if mapped == original {
+		t.Fatalf("first Instantiate did not move heap staging into executable memory: %p", mapped)
 	}
 	if _, err := c.MarshalBinary(); err != nil {
 		t.Fatalf("marshal mapped code: %v", err)

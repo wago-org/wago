@@ -713,10 +713,7 @@ type Module struct {
 	Elements          []Elem
 	DataCount         *uint32
 	Code              []Func
-	// Data is the ordinary expanded representation. Compiler-only decoded
-	// modules use DataSegmentCount/DataSegment to project their compact view.
-	Data     []Data
-	dataView *dataSectionView
+	Data              []Data
 
 	UsesCompactImports bool
 

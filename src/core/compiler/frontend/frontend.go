@@ -973,8 +973,7 @@ func elemKindName(k wasm.ElemKindKind) string {
 }
 
 func (p supportPass) data() error {
-	for i := 0; i < p.m.DataSegmentCount(); i++ {
-		d := p.m.DataSegment(i)
+	for i, d := range p.m.Data {
 		switch d.Mode.Kind {
 		case wasm.DataActive:
 			if d.Mode.Mem != 0 && !p.feat.MultiMemory {
@@ -1093,8 +1092,8 @@ func needsPublicFuncrefHostReentry(m *wasm.Module, tables []TableRuntimeShape) b
 
 func passiveDataDescriptorCount(m *wasm.Module) int {
 	maxIdx := -1
-	for i := 0; i < m.DataSegmentCount(); i++ {
-		if m.DataSegmentIsPassive(i) {
+	for i := range m.Data {
+		if m.Data[i].Mode.Kind == wasm.DataPassive {
 			maxIdx = i
 		}
 	}
@@ -2582,8 +2581,8 @@ func ModuleNonCodeRequiresSIMD(m *wasm.Module) bool {
 			}
 		}
 	}
-	for i := 0; i < m.DataSegmentCount(); i++ {
-		if exprRequiresSIMD(m.DataSegment(i).Mode.Offset) {
+	for i := range m.Data {
+		if exprRequiresSIMD(m.Data[i].Mode.Offset) {
 			return true
 		}
 	}
