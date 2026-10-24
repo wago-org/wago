@@ -8,6 +8,55 @@ Standalone decoding, malformed-input diagnostics, typed validation and runtime
 guards remain checked. Adjacent compiler-local declarations are compacted while
 preserving zero-count type checks and original source offsets.
 
+## Qualified aggregate performance screen: Linux AMD64
+
+On a native GitHub Linux AMD64 runner (Intel Xeon Platinum 8370C), source
+`4ad00155048d3649664dbe55545ceb519d4b4704` versus main
+`dc13730184e8ba6a1a2b3e3887c53a2b880db88c` reaches both aggregate targets in
+one alternating fresh-process pair per frozen input:
+
+| Metric | Candidate / main | Change |
+| --- | ---: | ---: |
+| Total compile wall time | 0.657 | ~34% lower |
+| Sum of process compile peak RSS | 0.669 | ~33% lower |
+| Compile allocated bytes | 0.172 | ~83% lower |
+| Native code bytes | 1.000 | Equal |
+| Warm execution geometric mean | 0.993 | Roughly flat |
+
+All **40/40 exact execution oracles pass** and **20/20 generated native-code
+hashes match main exactly**. Individual execution samples vary (fastfloat +5.3%,
+esbuild +3.3%); short windows are noisy and do not establish a universal timing
+improvement. Byte identity and exact oracles support unchanged guest behavior.
+This is a ballpark screening result on this host, without precision repeats.
+
+Configuration: one compile worker, GOMAXPROCS=1, experimental default-off
+`file-backed-code` enabled. The runtime retains reclaimable file cache through
+relocation, while dropping process mappings in bounded windows; final flush and
+cache drop still occur before compile returns. This can retain more file cache
+outside process RSS during compilation. The result is **process RSS**, not total
+machine/cgroup memory. Code export and cold first invocation remain outside the
+compile measurement. The small-shell launch excludes inherited Python RSS;
+no startup/input subtraction is applied. Both binaries finish building before
+measurement and use identical fixtures, harness, CPU affinity, and oracles.
+
+Phase resource totals are also recorded: baseline/candidate user CPU 4.506/2.837s,
+system CPU 0.071/0.156s, major faults 0/7, and output blocks 0/485,384. Host and
+storage differ from the preceding Intel 8573C trial, so these data establish the
+whole profile versus main, not an isolated causal estimate of cache retention.
+
+Native checked AMD64 runtime/catalog/backend/public tests pass before timing;
+supplemental official-spec cases can skip without their conversion tools.
+Linux ARM64 file ownership/reclaim tests pass without skips, and Windows/Darwin
+AMD64 public binaries cross-build for the preceding AMD64 extension. Full
+correctness CI for this source is [running](https://github.com/wago-org/wago/actions/runs/40073075665),
+so final qualification remains pending. The previous accepted compiler plus test
+fixes passed [full CI](https://github.com/wago-org/wago/actions/runs/40070638663).
+
+[Identity](cold-compilation-2026-10-23/amd64-file-cache-identity.json),
+[samples](cold-compilation-2026-10-23/amd64-file-cache-samples.jsonl),
+[summary](cold-compilation-2026-10-23/amd64-file-cache-summary.json),
+[successful screen](https://github.com/wago-org/wago/actions/runs/40073017826).
+
 ## Native Linux screening
 
 The first native runs below carried a ~33 MiB Python-launcher RSS floor into
@@ -39,7 +88,8 @@ avoid rereading code pages from disk after emission reclaim. It still drops
 process mappings in bounded windows and flushes/drops the complete file image
 before publication. Cache outside process RSS may remain higher during compile;
 this is not a claim about total machine memory. The next measurement also
-records user/system CPU, page faults and output blocks. Trial results are pending.
+records user/system CPU, page faults and output blocks. Its completed results
+are reported above; the preceding source/host results remain distinct.
 
 A single alternating pair per frozen input on GitHub native Ubuntu 24.04
 runners, candidate `e3ca167ec51e` (compiler `85fd3b36af34`) against main
