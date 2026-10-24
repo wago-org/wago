@@ -8,6 +8,36 @@ Standalone decoding, malformed-input diagnostics, typed validation and runtime
 guards remain checked. Adjacent compiler-local declarations are compacted while
 preserving zero-count type checks and original source offsets.
 
+## Direct operand-stack sentinel lookup
+
+Production `85fd3b36af3417bfbc1d43c1665843ee1bbc3332` returns the existing nil/sentinel identities
+before resolving a general chunk/slot coordinate. Ordinary node lookup retains
+its bounds checks. This removes directory indirection for the list sentinel
+without adding allocation, cache state or generated guest instructions.
+Regression coverage checks identities across chunk growth and function reset.
+
+One fresh alternating pair per pinned input against main `dc13730184e8`, with
+the experimental file option enabled, measured total compile wall ratio
+**0.726** (~27% faster), summed process compile peak-RSS ratio **0.666**
+(~33% lower), allocation ratio 0.202 and geometric warm execution ratio 0.946.
+The execution aggregate is skewed by a large nussinov outlier (0.361); individual
+json-as-simd, sqlite and esbuild samples were about 7–8% slower. This does not
+establish same-or-better execution timing. All 40 exact oracles pass and all 20
+native hashes match the preceding published compiler.
+
+Backend/public regalloc checks, native Linux ARM64 public tests, the 36-pair
+file-option matrix across 33 unique workloads, and TinyGo build/two-input native
+hash parity pass. The same Go 1.27.1, worker-1, GOMAXPROCS-1 Linux ARM64 protocol
+and phase limits below apply. Host load was uncontrolled; the full goal remains
+open. Larger chunk-layout, paging and control-inventory trials were excluded
+after their broader results failed to establish a useful benefit.
+
+[Samples](cold-compilation-2026-10-23/sentinel-arm64-samples.jsonl),
+[identity](cold-compilation-2026-10-23/sentinel-arm64-identity.json),
+[qualification](cold-compilation-2026-10-23/sentinel-qualification.json) and
+[option matrix](cold-compilation-2026-10-23/sentinel-option-ablation.log.gz).
+Earlier profiles remain tied to their named sources.
+
 ## Direct validation while collecting compiler hints
 
 Production `70e8c20d0172cb28ce3f5da4357897e05a7a0dac` applies the existing direct memory,
