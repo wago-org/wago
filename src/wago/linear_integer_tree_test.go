@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
-	"runtime"
 	"testing"
 )
 
@@ -47,9 +46,6 @@ func TestLinearIntegerTreePublicExecution(t *testing.T) {
 						body = append(body, 0x0b, 0x0b)
 						module := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))), wasmtest.Section(3, wasmtest.Vec([]byte{0})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))))
 						cfg := NewRuntimeConfig().WithOptimization("reg-abi", regABI)
-						if runtime.GOARCH == "arm64" {
-							cfg = cfg
-						}
 						c, err := cfg.Compile(module)
 						if err != nil {
 							t.Fatal(err)

@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"strings"
 	"testing"
 	"unsafe"
 )
@@ -21,7 +22,12 @@ func TestSerialCompileOwnsWritableImageUntilInstantiateArm64(t *testing.T) {
 	if unsafe.SliceData(c.code) != base {
 		t.Fatal("serial compile retained a second code image")
 	}
-	if _, err := c.MarshalBinary(); err != nil {
+	_, err = c.MarshalBinary()
+	if c.boundsMode == BoundsChecksSignalsBased {
+		if err == nil || !strings.Contains(err.Error(), "signals-based compiled modules cannot be serialized") {
+			t.Fatalf("signal-bounds serialization: %v", err)
+		}
+	} else if err != nil {
 		t.Fatal(err)
 	}
 	in, err := Instantiate(c, InstantiateOptions{})
