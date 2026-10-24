@@ -108,9 +108,16 @@ func TestOptimizationStudySample(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+	var usageBefore, usageAfter syscall.Rusage
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &usageBefore); err != nil {
+		t.Fatal(err)
+	}
 	started := time.Now()
 	compiled, err := cfg.Compile(m.bytes)
 	compileNS := time.Since(started).Nanoseconds()
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &usageAfter); err != nil {
+		t.Fatal(err)
+	}
 	if profile != "" {
 		pprof.StopCPUProfile()
 	}
@@ -235,6 +242,11 @@ func TestOptimizationStudySample(t *testing.T) {
 	}
 	execNS := float64(time.Since(started).Nanoseconds()) / float64(count)
 	out := map[string]any{"id": m.ID, "optimization": opt, "on": enabled, "sha256": entry.SHA256, "go": runtime.Version(), "compile_ns": compileNS, "startup_peak_rss_bytes": startup, "compile_peak_rss_bytes": peak, "allocated_bytes": after.TotalAlloc - before.TotalAlloc, "allocations": after.Mallocs - before.Mallocs, "retained_heap_bytes": retained.HeapAlloc, "native_code_bytes": code, "native_code_sha256": hex.EncodeToString(codeHash.Sum(nil)), "exec_ns": execNS, "exec_calls": count, "oracle": "pass"}
+	out["compile_user_ns"] = usageAfter.Utime.Nano() - usageBefore.Utime.Nano()
+	out["compile_system_ns"] = usageAfter.Stime.Nano() - usageBefore.Stime.Nano()
+	out["compile_major_faults"] = usageAfter.Majflt - usageBefore.Majflt
+	out["compile_minor_faults"] = usageAfter.Minflt - usageBefore.Minflt
+	out["compile_output_blocks"] = usageAfter.Oublock - usageBefore.Oublock
 	raw, err = json.Marshal(out)
 	if err != nil {
 		t.Fatal(err)

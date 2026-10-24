@@ -18,7 +18,28 @@ peak RSS in a tiny child; a fresh small shell followed by a fork reduced the
 same child's peak to ~9 MiB. The corrected runner uses that launch boundary,
 with CPU affinity inherited from its parent and no Python pre-exec callback.
 Linux [preserves resource usage across exec](https://man7.org/linux/man-pages/man2/getrusage.2.html).
-The first corrected AMD64 comparison is pending.
+The corrected AMD64 comparison is complete: on an Intel Xeon Platinum 8573C,
+source `d2b12a6f242e` (compiler `a80ed5ab7`) versus main `dc13730184e8`, compile
+wall ratio was **1.276**, summed process peak-RSS ratio **0.670**, allocated
+bytes ratio **0.172**, and execution geometric ratio **0.999**. All 40 oracles
+pass and all 20 generated native-code hashes match main exactly. The launcher
+floor is gone (startup RSS now varies by workload). Memory clears 30%, but
+compilation is slower, so the full goal remains open. The preceding file-on
+run was on an AMD EPYC 7763: its compile ratio 0.658 is valid there, while its
+RSS ratio 0.761 includes the inherited floor. These hosts are not combined.
+
+[Corrected identity](cold-compilation-2026-10-23/amd64-file-corrected-rss-identity.json),
+[samples](cold-compilation-2026-10-23/amd64-file-corrected-rss-samples.jsonl),
+[summary](cold-compilation-2026-10-23/amd64-file-corrected-rss-summary.json);
+[launcher diagnostic](cold-compilation-2026-10-23/rss-launcher-diagnostic.json).
+[Corrected workflow run](https://github.com/wago-org/wago/actions/runs/40072409469).
+
+A follow-up storage trial retains reclaimable file cache during relocation to
+avoid rereading code pages from disk after emission reclaim. It still drops
+process mappings in bounded windows and flushes/drops the complete file image
+before publication. Cache outside process RSS may remain higher during compile;
+this is not a claim about total machine memory. The next measurement also
+records user/system CPU, page faults and output blocks. Trial results are pending.
 
 A single alternating pair per frozen input on GitHub native Ubuntu 24.04
 runners, candidate `e3ca167ec51e` (compiler `85fd3b36af34`) against main
@@ -53,8 +74,13 @@ identical measurement harness into the baseline without changing production
 source, and pins each fresh sample to one CPU with one worker/GOMAXPROCS=1.
 Generated-code hashes are also recorded in subsequent runs. Native checked
 AMD64 runtime/compiler/public tests run before measurements. Screening remains
-separate from required correctness CI. The AMD64 extension of the experimental,
-default-off file option is pending its first native qualification.
+separate from required correctness CI. The experimental AMD64 option passes native checked runtime/catalog/backend/public
+tests (supplemental official cases require conversion tools and can skip in
+this screening lane), and Windows/Darwin public cross-builds. All four reviewed
+Staticcheck profiles have zero new findings. The prior compiler plus test fixes
+at `5044248bb` passed the complete manually dispatched correctness CI matrix
+([run](https://github.com/wago-org/wago/actions/runs/40070638663)); qualification
+of subsequent storage changes is separate.
 
 ## Direct operand-stack sentinel lookup
 

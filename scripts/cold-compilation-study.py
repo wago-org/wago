@@ -108,6 +108,7 @@ def main():
                 "pairs": len(inputs), "oracles_passed": 2 * len(inputs),
                 "native_hashes_equal": sum(candidate[key]["native_code_sha256"] == baseline[key]["native_code_sha256"] for key in baseline),
                 "ratios_of_totals": {metric: sum(v[metric] for v in candidate.values()) / sum(v[metric] for v in baseline.values()) for metric in metrics},
+                "compile_resource_totals": {image: {metric: sum(row[metric] for row in rows.values()) for metric in ("compile_user_ns", "compile_system_ns", "compile_major_faults", "compile_minor_faults", "compile_output_blocks")} for image, rows in samples.items()},
                 "execution_geomean_ratio": math.exp(sum(math.log(candidate[key]["exec_ns"] / baseline[key]["exec_ns"]) for key in baseline) / len(inputs)),
                 "per_input_ratios": {key: {metric: candidate[key][metric] / baseline[key][metric] for metric in (*metrics, "exec_ns")} for key in baseline},
                 "limitations": "Single screening pair on a shared GitHub runner; 30ms execution windows are noisy. Process RSS excludes nonresident file cache. Ratios of summed peaks do not describe a single process.",

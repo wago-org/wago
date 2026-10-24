@@ -122,9 +122,9 @@ func (o *compilerImageOwner) reclaim(mem []byte, start, end int) (int, error) {
 	if err := madviseDontNeed(mem[start:end]); err != nil {
 		return start, err
 	}
-	if err := unix.Fadvise(int(entry.file.Fd()), 0, int64(end), unix.FADV_DONTNEED); err != nil {
-		return start, err
-	}
+	// Keep the reclaimable file cache through relocation: later patching must
+	// not turn every released code page into a disk read. Finish still flushes
+	// and drops the complete image before publishing it.
 	return end, nil
 }
 
