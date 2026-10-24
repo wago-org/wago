@@ -72,8 +72,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocUniform)
 		if layout, native := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native {
-			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
-				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeUniform}
+			length, bytes, static := nativeGCStaticArraySize(f, layout)
+			if !static || bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
+				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeUniform, dynamic: !static}
 				helper = gcArrayAllocUniformNative
 			}
 		}

@@ -1,0 +1,15 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCSharedNurseryArrays/alternating         	    1158	    184764 ns/op	    4731 B/op	       0 allocs/op
+BenchmarkGCSharedNurseryArrays/alternating         	    1269	    184958 ns/op	    4317 B/op	       0 allocs/op
+BenchmarkGCSharedNurseryArrays/alternating         	    1263	    186496 ns/op	    4337 B/op	       0 allocs/op
+BenchmarkGCSharedNurseryArrays/alternating-default 	    1341	    185739 ns/op	    4085 B/op	       0 allocs/op
+BenchmarkGCSharedNurseryArrays/alternating-default 	    1263	    178438 ns/op	    4337 B/op	       0 allocs/op
+BenchmarkGCSharedNurseryArrays/alternating-default 	    1322	    176433 ns/op	    4144 B/op	       0 allocs/op
+BenchmarkGCSharedNurseryArrays/alternating-fill    	    1281	    182154 ns/op	    4276 B/op	       0 allocs/op
+BenchmarkGCSharedNurseryArrays/alternating-fill    	    1285	    182678 ns/op	    4263 B/op	       0 allocs/op
+BenchmarkGCSharedNurseryArrays/alternating-fill    	    1284	    192604 ns/op	    4266 B/op	       0 allocs/op
+PASS
+ok  	github.com/wago-org/wago/src/wago	2.298s
