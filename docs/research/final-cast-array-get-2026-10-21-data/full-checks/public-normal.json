@@ -1,0 +1,18 @@
+{
+  "label": "public-normal",
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-count=1",
+    "-run",
+    "^TestGCFinalCastArrayGet",
+    "./src/wago"
+  ],
+  "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-cast-array-public",
+  "seconds": 25.663584565001656,
+  "exit": 0,
+  "stdout": "ok  \tgithub.com/wago-org/wago/src/wago\t0.005s\n",
+  "stderr": ""
+}

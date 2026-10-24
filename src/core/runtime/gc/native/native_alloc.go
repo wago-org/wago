@@ -354,6 +354,10 @@ func (c *Collector) CancelNativeAllocationBatch() {
 	if c == nil {
 		return
 	}
+	s := &c.nativeStructAlloc
+	if s.Count == 0 && s.ChunkEnd == 0 {
+		return
+	}
 	slowCount := c.arraySlow
 	c.discardNativeStructHandles()
 	c.arraySlow = slowCount

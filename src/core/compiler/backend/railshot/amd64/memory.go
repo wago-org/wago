@@ -213,6 +213,14 @@ func (f *fn) trapAlways(code uint32) {
 	f.sc.trapSites[code] = append(f.sc.trapSites[code], f.trapSite(f.a.JmpPlaceholder()))
 }
 
+// Deferred resolver tails represent many source instructions. Preserve the
+// normal attribution hooks, but never claim the final body instruction's PC.
+func (f *fn) trapAlwaysUnknownPC(code uint32) {
+	site := f.trapSite(f.a.JmpPlaceholder())
+	site.pc = ^uint32(0)
+	f.sc.trapSites[code] = append(f.sc.trapSites[code], site)
+}
+
 func (f *fn) trapSite(branch int) trapSite {
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		f.recordProfileTrap(branch)

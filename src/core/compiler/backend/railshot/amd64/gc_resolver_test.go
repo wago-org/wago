@@ -65,6 +65,16 @@ func gcResolveReuseStats(t *testing.T, composite, funcType, body []byte) *Codege
 	return stats.Funcs[0]
 }
 
+func TestGCOpenStructGetUsesNativeSubtypeResolver(t *testing.T) {
+	// Type 0 is open, so an operand can hold a proper subtype at run time.
+	openStruct := []byte{0x50, 0x00, 0x5f, 0x01, 0x7f, 0x00}
+	get := []byte{0x00, 0x20, 0x00, 0xfb, 0x02, 0x00, 0x00, 0x0b}
+	stats := gcResolveReuseStats(t, openStruct, []byte{0x60, 0x01, 0x64, 0x00, 0x01, 0x7f}, get)
+	if stats.GCHandleResolutions != 1 {
+		t.Fatalf("open struct.get native handle resolutions = %d, want 1", stats.GCHandleResolutions)
+	}
+}
+
 func TestGCResolvedHandleReuseAndInvalidation(t *testing.T) {
 	refTo0I32 := []byte{0x60, 0x01, 0x64, 0x00, 0x01, 0x7f}
 	refTo0TwoI32 := []byte{0x60, 0x01, 0x64, 0x00, 0x02, 0x7f, 0x7f}

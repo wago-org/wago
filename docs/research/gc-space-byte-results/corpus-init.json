@@ -1,0 +1,13 @@
+{
+  "command": [
+    "git",
+    "submodule",
+    "update",
+    "--init",
+    "tests/conformance/spec-v1",
+    "tests/conformance/spec-v2",
+    "tests/conformance/spec-v3"
+  ],
+  "seconds": 17.0830003580013,
+  "returncode": 0
+}

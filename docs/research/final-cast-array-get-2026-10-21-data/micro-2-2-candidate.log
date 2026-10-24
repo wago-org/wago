@@ -1,0 +1,11 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkGCFinalCastArrayGet/loop         	    8367	     28467 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCFinalCastArrayGet/ref-loop     	    7838	     32051 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCFinalCastArrayGet/pressure     	    5413	     44459 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCFinalCastArrayGet/negative-nop 	    4455	     57151 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCFinalCastArrayGet/negative-index         	    4406	     57880 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCFinalCastArrayGet/pin-entry              	 1000000	       204.8 ns/op	       0 B/op	       0 allocs/op
+PASS

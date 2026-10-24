@@ -1,0 +1,18 @@
+{
+  "command": [
+    "env",
+    "GOMAXPROCS=2",
+    "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1",
+    "GOWORK=off",
+    "CGO_ENABLED=0",
+    "go",
+    "test",
+    "-overlay=/tmp/wago-gc-space-byte/baseline-overlay.json",
+    ".",
+    "-run",
+    "^TestGoInstallBuildsNamedInstallerCommand$",
+    "-count=1"
+  ],
+  "seconds": 8.874569420997432,
+  "returncode": 1
+}

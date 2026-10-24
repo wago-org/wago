@@ -7,7 +7,10 @@ import (
 )
 
 func (c *Collector) loadValue(r Ref, off uint64, k StorageKind) (Value, error) {
-	b := c.bytes(r)
+	return loadValueBytes(c.bytes(r), off, k)
+}
+
+func loadValueBytes(b []byte, off uint64, k StorageKind) (Value, error) {
 	_, size, err := storageLayout(k)
 	if err != nil {
 		return Value{}, err

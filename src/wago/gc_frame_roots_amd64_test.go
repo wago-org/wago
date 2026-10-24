@@ -198,7 +198,9 @@ func TestGCEHNativeFrameRoots(t *testing.T) {
 }
 
 func gcVersionedLoopRootPlanModule() []byte {
-	callee := []byte{0x0b}
+	// Keep a real call: integer-only empty leaves may now inline under exact
+	// roots. Memory access is outside that deliberately narrow inline policy.
+	callee := []byte{0x3f, 0x00, 0x1a, 0x0b} // memory.size; drop; end
 	run := []byte{
 		0x01, 0x01, 0x63, 0x00, // local 1: rooted struct
 		0xfb, 0x01, 0x00, 0x21, 0x01, // initial allocation remains live
@@ -1272,7 +1274,7 @@ func TestGCSingleNativeFrameRootsCollectInsideInvocation(t *testing.T) {
 	defer compiled.Close()
 	plan := compiled.genericGCFrameRoots()
 	if plan == nil || len(plan.safepoints) != 2 || len(plan.safepoints[0].offsets) != 0 || len(plan.safepoints[1].offsets) != 1 || plan.safepoints[1].offsets[0] != 24 || plan.safepoints[1].frameBytes == 0 {
-		t.Fatalf("native GC frame-root plan = %+v, want local offset 24 only at the loop allocation", plan)
+		t.Fatalf("native GC frame-root plan = %+v, want no live local at creation and local offset 24 at the second site", plan)
 	}
 	want := []uint64{0x0706050403020100, 0x0f0e0d0c0b0a0908}
 	profiles := []struct {
@@ -1574,6 +1576,107 @@ func TestGCDeadLocalPreservesHiddenOperandRoot(t *testing.T) {
 					}
 				}
 			}
+		}
+	}
+}
+
+// External tokens are not collector roots. The synchronous host frame must
+// preserve the managed local while the host re-enters and collects.
+func TestGCExternRefHostReentryFrameRoots(t *testing.T) {
+	host := wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef})
+	outerType := wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef, wasm.I32})
+	innerType := wasmtest.FuncType(nil, nil)
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("reenter")...), 0, 1)
+	outer := []byte{1, 1, 0x63, 0, 0x41, 0xdb, 0, 0xfb, 0, 0, 0x21, 1, 0x20, 0, 0x10, 0, 0x20, 1, 0xfb, 2, 0, 0, 0x0b}
+	inner := []byte{1, 1, 0x7f, 0x03, 0x40, 0xfb, 1, 0, 0x1a, 0x20, 0, 0x41, 1, 0x6a, 0x22, 0, 0x41, 0xe4, 0, 0x49, 0x0d, 0, 0x0b, 0x0b}
+	bin := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 0}, host, outerType, innerType)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{2}, []byte{3})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("outer", 0, 1), wasmtest.ExportEntry("inner", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(outer))), outer...), append(wasmtest.ULEB(uint32(len(inner))), inner...))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if status := compiled.GCNativeRootAdmission(); !status.Exact {
+		t.Fatalf("externref host admission=%+v", status)
+	}
+	reloaded := publicArtifactRoundTrip(t, compiled)
+	defer reloaded.Close()
+	for _, candidate := range []*Compiled{compiled, reloaded} {
+		for _, cfg := range []GCConfig{
+			{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
+			{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
+		} {
+			var in *Instance
+			in, err = Instantiate(candidate, InstantiateOptions{GC: cfg, Imports: testImports("env.reenter", callerSlotHostFunc(func(h Caller, p, r []uint64) {
+				if _, err := in.InvokeFromHost(context.Background(), h, "inner"); err != nil {
+					panic(err)
+				}
+				r[0] = p[0]
+			}))})
+			if err != nil {
+				t.Fatal(err)
+			}
+			external, err := in.NewExternRef("cursor")
+			if err != nil {
+				t.Fatal(err)
+			}
+			bits := ValueExternRef(external).Bits()
+			got, err := in.Invoke("outer", bits)
+			if err != nil || !reflect.DeepEqual(got, []uint64{bits, 91}) {
+				t.Fatalf("outer=%v, %v", got, err)
+			}
+			if stats := in.gc.Stats(); stats.FullCollections+stats.MinorCollections == 0 {
+				t.Fatal("collection is disabled")
+			}
+			in.Close()
+		}
+	}
+}
+
+// A loop whose paths return or branch to its header cannot fall through. A
+// dead trailing call must not consume a root-map callsite index.
+func TestGCFrameRootsIgnoreCallAfterNonFallthroughLoop(t *testing.T) {
+	bin := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 0}, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}), wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xfb, 1, 0, 0x1a, 0x41, 42, 0x0b}),
+			wasmtest.Code([]byte{0x03, 0x40, 0x10, 0, 0x1a, 0x20, 0, 0x04, 0x40, 0x10, 0, 0x0f, 0x0b, 0x0c, 0, 0x0b, 0x10, 0, 0x0b}),
+		)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if status := compiled.GCNativeRootAdmission(); !status.Exact {
+		t.Fatalf("loop admission=%+v", status)
+	}
+	reloaded := publicArtifactRoundTrip(t, compiled)
+	defer reloaded.Close()
+	for _, candidate := range []*Compiled{compiled, reloaded} {
+		for _, cfg := range []GCConfig{
+			{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
+			{Profile: GCProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
+		} {
+			in, err := Instantiate(candidate, InstantiateOptions{GC: cfg})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := in.Invoke("run", 1)
+			if err != nil || !reflect.DeepEqual(got, []uint64{42}) {
+				t.Fatalf("run=%v, %v", got, err)
+			}
+			if stats := in.gc.Stats(); stats.FullCollections+stats.MinorCollections == 0 {
+				t.Fatal("no collection occurred")
+			}
+			in.Close()
 		}
 	}
 }

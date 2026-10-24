@@ -345,7 +345,8 @@ type fn struct {
 	gcHandleResolutions int
 	gcSubtypeProofs     [4]gcSubtypeProof
 	gcSubtypeProofN     uint8
-	nLocalSlots         int // total local frame slots in 8-byte units
+	gcGuardSites        uint8 // bounded prefix-match attempts; shares existing padding
+	nLocalSlots         int   // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
 	// type table used by existing lowering; locals holds the assigned register and
@@ -870,6 +871,7 @@ type scratch struct {
 	gcFinalCastStubSites    []int
 	gcDefinedTestStubSites  []int
 	gcArrayRefGetSites      []int
+	gcCastArrayGetSites     [5][]int
 	gcStructRefGetStubSites []int
 	gcStructRefSetStubSites []int
 	gcArrayRefSetStubSites  []int
@@ -1137,6 +1139,9 @@ func (sc *scratch) reset() {
 	sc.gcFinalCastStubSites = sc.gcFinalCastStubSites[:0]
 	sc.gcDefinedTestStubSites = sc.gcDefinedTestStubSites[:0]
 	sc.gcArrayRefGetSites = sc.gcArrayRefGetSites[:0]
+	for i := range sc.gcCastArrayGetSites {
+		sc.gcCastArrayGetSites[i] = sc.gcCastArrayGetSites[i][:0]
+	}
 	sc.gcStructRefGetStubSites = sc.gcStructRefGetStubSites[:0]
 	sc.gcStructRefSetStubSites = sc.gcStructRefSetStubSites[:0]
 	sc.gcArrayRefSetStubSites = sc.gcArrayRefSetStubSites[:0]
@@ -1946,10 +1951,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// call sites, keyed by global func index. Empty when inlining is disabled.
 	inlineTargets := buildInlineTargets(m, allHints, policy)
 	if opts.GCFrameRoots != nil {
-		// Exact frame-root callsite masks are derived from the validated Wasm call
-		// stream. Keep that stream one-to-one with native callsites rather than
-		// silently invalidating collection metadata by splicing a local callee.
-		inlineTargets = inlineTargetTable{}
+		restrictGCNumericInlineTargets(m, &inlineTargets)
 	}
 	requiresBMI2 := false
 	var requiresBitCount uint8
@@ -3791,7 +3793,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// spliced away (and inline targets are call-free leaves, so they add no call of
 	// their own), the caller makes no native call after inlining. Plan its pins and
 	// frame as a call-free function — aggressive pins, STACK_REG spill model off.
-	if f.opt(optInlineCallFree) && hasCall && inlinePlan.allCallsInline {
+	// Exact-GC callers keep their source call classification: the caller plan
+	// counts Wasm calls, while collecting GC helpers also need its call policy.
+	if f.opt(optInlineCallFree) && hasCall && inlinePlan.allCallsInline && gcFrameRoots == nil {
 		hasCall = false
 		f.stats.peep("all-calls-inlined")
 	}

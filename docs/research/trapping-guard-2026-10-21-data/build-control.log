@@ -1,0 +1,4 @@
+# github.com/wago-org/wago/src/wago [github.com/wago-org/wago/src/wago.test]
+src/wago/gc_trapping_guard_amd64_test.go:187:8: cannot use TrapCastFailure (constant 18 of uint32 type "github.com/wago-org/wago/src/core/runtime".TrapCode) as uint32 value in struct literal
+src/wago/gc_trapping_guard_amd64_test.go:187:30: cannot use TrapUnreachable (constant 1 of uint32 type "github.com/wago-org/wago/src/core/runtime".TrapCode) as uint32 value in struct literal
+src/wago/gc_trapping_guard_amd64_test.go:189:45: invalid operation: trap.Code != tc.code (mismatched types "github.com/wago-org/wago/src/core/runtime".TrapCode and uint32)

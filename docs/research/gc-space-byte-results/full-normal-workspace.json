@@ -1,0 +1,17 @@
+{
+  "command": [
+    "env",
+    "GOMAXPROCS=2",
+    "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1",
+    "WAGO_SPEC_INTERPRETER=/home/dev/Projects/wago/.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm",
+    "WAGO_SPEC_INTERPRETER_REVISION=9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+    "GOWORK=/home/dev/Projects/wago-gc-space-byte-pr/go.work",
+    "CGO_ENABLED=0",
+    "go",
+    "test",
+    "-p=2",
+    "./..."
+  ],
+  "seconds": 15.195358465000027,
+  "returncode": 0
+}

@@ -1,0 +1,12 @@
+{
+  "command": [
+    "wasm-tools",
+    "parse",
+    "tests/fixtures/wasm/gc-trapping-guard.wat",
+    "-o",
+    "tests/fixtures/wasm/gc-trapping-guard.wasm"
+  ],
+  "cwd": "/home/dev/Projects/wago-gc-trapping-guard-pr",
+  "seconds": 0.010724054998718202,
+  "exit": 0
+}

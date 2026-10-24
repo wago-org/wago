@@ -943,3 +943,25 @@ func gcLiveBranchFrame(stack []int, depth uint32) (int, bool) {
 	}
 	return stack[len(stack)-1-int(depth)], true
 }
+
+// Conservative masks scan every byte-stream site. Terminating transfers can
+// leave valid but unreachable calls or allocations after structured control.
+// Use CFG reachability for those bodies so masks match native emission.
+func gcFrameNeedsReachableMasks(body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
+	r := wasm.NewReader(body)
+	var imm wasm.InstructionImmediate
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return true
+		}
+		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+			return true
+		}
+		switch op {
+		case 0x00, 0x0c, 0x0e, 0x0f, 0x12, 0x13, 0x15:
+			return true
+		}
+	}
+	return false
+}

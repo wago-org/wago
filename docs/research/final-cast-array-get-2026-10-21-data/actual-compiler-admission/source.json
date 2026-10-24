@@ -1,0 +1,7 @@
+{
+  "source": "/home/dev/Projects/dewdrop/.tmp/wago-cast-array-qualification",
+  "commit": "a13816b55a4551fbb25b53cb44df9262b771da90",
+  "api_source_sha256": "955d0f2a6e0d2135a7151e5d8250ab233c670f03396aeb35cf9daceeb0c00e95",
+  "overlay_api_sha256": "5ffef34c539bc245a3d35e58ecb0238f0ad74889e1a4bb08d5933c9ada7de068",
+  "purpose": "diagnostic capture after ordinary public API selects exact root/helper/inline policies; no candidate source edits"
+}

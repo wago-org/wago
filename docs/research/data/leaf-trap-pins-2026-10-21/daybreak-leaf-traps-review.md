@@ -1,0 +1,5 @@
+**No concrete correctness finding** in the reviewed commit and uncommitted changes. The four new cold tails sit after a normal `Ret`; their direct failure branches restore saved R9–R11 values before the shared trap writes dirty globals. The array setter also pops its separately saved parent first. Fallback branches retain their existing destinations. The deferred tails use the unknown-PC sentinel, while direct inline trap sites remain unchanged.
+
+**Material coverage gap:** the new [leaf trap test](/home/dev/Projects/dewdrop/.tmp/wago-leaf-traps-followup/src/wago/gc_leaf_trap_pins_amd64_test.go:88) probes representative failures, including bounds, but does not exercise every physical failure guard or old/large-object setter paths. It also does not assert trap-frame PC attribution for these four leaves; the committed frame assertion covers the defined-type resolver.
+
+This review is of the installed combined tree. I did not run tests or verify that public PR #948 contains every separately landed performance change.

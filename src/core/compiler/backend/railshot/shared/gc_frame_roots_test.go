@@ -10,8 +10,10 @@ func TestGCFrameRootPlanFootprint(t *testing.T) {
 	if unsafe.Sizeof(uintptr(0)) != 8 {
 		t.Skip("64-bit fixed-footprint assertion")
 	}
-	if got := unsafe.Sizeof(GCFrameRootPlan{}); got != 136 {
-		t.Fatalf("GCFrameRootPlan size=%d, want 136", got)
+	// The extra slice retains collector-reference source types after frame
+	// liveness compacts the safepoint masks.
+	if got := unsafe.Sizeof(GCFrameRootPlan{}); got != 160 {
+		t.Fatalf("GCFrameRootPlan size=%d, want 160", got)
 	}
 	if got := unsafe.Sizeof(GCModuleFrameRootPlan{}); got != 48 {
 		t.Fatalf("GCModuleFrameRootPlan size=%d, want 48", got)
@@ -214,6 +216,20 @@ func TestGCFrameRootPlanTracksWideLocalPopulation(t *testing.T) {
 	plan.Candidate = false
 	if plan.TracksLocal(0) {
 		t.Fatal("non-candidate plan reported a retained local")
+	}
+}
+
+func TestGCFrameRootPlanTracksReferenceAfterFrameLivenessCompaction(t *testing.T) {
+	plan := &GCFrameRootPlan{
+		Candidate:          true,
+		Locals:             []GCFrameLocal{{Index: 1, Offset: 24}},
+		AllReferenceLocals: []GCFrameLocal{{Index: 1, Offset: 24}, {Index: 2, Offset: 32}},
+	}
+	if !plan.TracksLocal(2) {
+		t.Fatal("a reference loaded before a safepoint must remain typed on the operand stack")
+	}
+	if plan.TracksLocal(3) {
+		t.Fatal("numeric local was marked as a collector reference")
 	}
 }
 

@@ -1,0 +1,30 @@
+{
+  "common_base": "c6db3230a3c6ad5b8607617feb4cd1c27095e331",
+  "production": {
+    "src/core/compiler/backend/railshot/amd64/call.go": {
+      "candidate_sha256": "99c2808d1f629f1f43641e0c6fe94f1e63ccff7684f8a7c2b26282c054c786c5",
+      "control_sha256": "ade9b96005d3cc90544c23bf7a3b4dd2ba050a67e6a11bf152ae579a79fc9813"
+    },
+    "src/core/compiler/backend/railshot/amd64/compile.go": {
+      "candidate_sha256": "632f94fa538251b3bd3c81e25a8d3a568a54b8328be021d1d39bb35eeb218bc2",
+      "control_sha256": "716d312dbe85cddd36b066790540a4c0efeb597700bbcd0edc3b35685f34038c"
+    },
+    "src/core/compiler/backend/railshot/amd64/gc_struct.go": {
+      "candidate_sha256": "e14a54008e4da80d219dd78a0c26ed28e4118556144d30fd24d9018c7e790116",
+      "control_sha256": "a2837f79762e4aa9d520323e261a4aa5473bd9fcb103c4df5470597740daf8b5"
+    },
+    "src/core/compiler/backend/railshot/amd64/gc_trapping_guard.go": {
+      "candidate_sha256": "f3c14e27b3451ac5af6c3050cc816fa45fffb0d379114ed960f63b508efd9c11",
+      "control_sha256": "a357b28dd98fb4b3dc1c16a234e42b8cefefd7ba14712c2dc43ab6b6b30842eb"
+    }
+  },
+  "fixture_sha256": "9fb94b6fbef3f8d9446de7839fe89288429f3303ad3472fa618e2b75be532bbe",
+  "test_sources": {
+    "src/wago/gc_trapping_guard_amd64_test.go": "a59845448a3451de3e3acb585d1c2e5937e0aad5a21f5c051eafc9b462590e2a",
+    "src/wago/gc_trapping_guard_stats_amd64_test.go": "cf453092b30774dd1d9d173d36583036873df30b3d866faa86a43f87db870f20",
+    "tests/fixtures/wasm/gc-trapping-guard-import.wasm": "9d4fd27e452da41e5e581219692e652b152541a56e2b55ff4a4eb4bd1e8811ee",
+    "tests/fixtures/wasm/gc-trapping-guard-import.wat": "735926c3ae19da531228155967082470311f9b74ea7359ff788486d58a394a80",
+    "tests/fixtures/wasm/gc-trapping-guard.wasm": "9fb94b6fbef3f8d9446de7839fe89288429f3303ad3472fa618e2b75be532bbe",
+    "tests/fixtures/wasm/gc-trapping-guard.wat": "2b8eb61ecb912422c1ba5f7118072e16ee926f504a6ada3214b88b5977062ad9"
+  }
+}

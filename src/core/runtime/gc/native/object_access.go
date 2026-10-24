@@ -579,12 +579,12 @@ func (c *Collector) StructGet(ref Ref, field uint32) (Value, error) {
 // types retain declared-super traversal. actual is returned for precise caller
 // diagnostics when matched is false.
 func (c *Collector) StructGetTyped(ref Ref, required TypeID, exact bool, field uint32) (value Value, actual TypeID, matched bool, err error) {
-	d, err := c.refDesc(ref)
+	d, object, err := c.refDescPtrBytes(ref)
 	if err != nil {
 		return Value{}, 0, false, err
 	}
 	actual = d.ID
-	matched, err = c.typeDescSubtype(d, required, exact)
+	matched, err = c.typeDescSubtypePtr(d, required, exact)
 	if err != nil || !matched {
 		return Value{}, actual, matched, err
 	}
@@ -595,7 +595,7 @@ func (c *Collector) StructGetTyped(ref Ref, required TypeID, exact bool, field u
 		return Value{}, actual, true, errors.New("gc: field out of range")
 	}
 	f := d.Fields[field]
-	value, err = c.loadValue(ref, uint64(PayloadOffset+f.Offset), f.Kind)
+	value, err = loadValueBytes(object, uint64(PayloadOffset+f.Offset), f.Kind)
 	return value, actual, true, err
 }
 
@@ -712,6 +712,10 @@ func (c *Collector) StructSetTyped(ref Ref, required TypeID, exact bool, field u
 }
 
 func (c *Collector) typeDescSubtype(dynamic TypeDesc, required TypeID, exact bool) (bool, error) {
+	return c.typeDescSubtypePtr(&dynamic, required, exact)
+}
+
+func (c *Collector) typeDescSubtypePtr(dynamic *TypeDesc, required TypeID, exact bool) (bool, error) {
 	if exact {
 		if dynamic.ID == required {
 			return true, nil

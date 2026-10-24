@@ -1,0 +1,14 @@
+{
+  "seconds": 16.029080536995025,
+  "returncode": 0,
+  "expected_failure": false,
+  "cmd": [
+    "go",
+    "test",
+    "./src/core/compiler/backend/railshot/amd64",
+    "./src/wago",
+    "-run",
+    "TestGCResolversLoadSpaceByte|TestGCResolverSelectedSpaceDescriptor|TestGCResolverDependentSpaceFixture|TestGCResolverMixedSpaceFixture|TestGCResolverSpaceByteAcrossSpaces|TestGCResolverSpaceByteRejectsInvalidEntries|TestGCNativeDefinedCastAndTestAcrossCollectorSpaces|TestGCReferenceReadRootsAcrossCollectionAndCodec|TestGCReferenceReadRejectsInvalidParent",
+    "-count=1"
+  ]
+}

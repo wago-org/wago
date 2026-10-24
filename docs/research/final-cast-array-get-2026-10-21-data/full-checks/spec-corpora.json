@@ -1,0 +1,18 @@
+{
+  "label": "spec-corpora",
+  "command": [
+    "git",
+    "submodule",
+    "update",
+    "--init",
+    "--",
+    "tests/conformance/spec-v1",
+    "tests/conformance/spec-v2",
+    "tests/conformance/spec-v3"
+  ],
+  "cwd": "/home/dev/Projects/dewdrop/.tmp/wago-cast-array-qualification",
+  "seconds": 35.58595291399979,
+  "exit": 0,
+  "stdout": "Submodule path 'tests/conformance/spec-v1': checked out 'a8bcbafe6d2fb191ce0188de0e18fdc107fa2598'\nSubmodule path 'tests/conformance/spec-v2': checked out '05ca4182176763112561ae20153975c12bd689e4'\nSubmodule path 'tests/conformance/spec-v3': checked out '9d36019973201a19f9c9ebb0f10828b2fe2374aa'\n",
+  "stderr": "Cloning into '/home/dev/Projects/dewdrop/.tmp/wago-cast-array-qualification/tests/conformance/spec-v1'...\nCloning into '/home/dev/Projects/dewdrop/.tmp/wago-cast-array-qualification/tests/conformance/spec-v2'...\nCloning into '/home/dev/Projects/dewdrop/.tmp/wago-cast-array-qualification/tests/conformance/spec-v3'...\n"
+}

@@ -46,13 +46,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *c
 		if pc < in.base || pc-in.base >= uintptr(len(in.c.code)) {
 			return -1
 		}
-		rel := uint32(pc - in.base)
-		for i := range plan.callsites {
-			if plan.callsites[i].returnOffset == rel {
-				return i
-			}
-		}
-		return -1
+		return plan.callsiteIndexByReturnOffset(uint32(pc - in.base))
 	}
 	returnSlot := savedRSP
 	retPC := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(returnSlot)), 8)))

@@ -1,0 +1,39 @@
+=== RUN   TestGCFinalCastArrayGet
+--- PASS: TestGCFinalCastArrayGet (0.00s)
+=== RUN   TestGCFinalCastArrayGetColdPins
+    gc_final_cast_array_get_amd64_test.go:164: new leaf saves actual value pins R9,R10,R11; cold exits checked against all8 globals
+=== RUN   TestGCFinalCastArrayGetColdPins/null
+=== RUN   TestGCFinalCastArrayGetColdPins/i31
+=== RUN   TestGCFinalCastArrayGetColdPins/bounds
+=== RUN   TestGCFinalCastArrayGetColdPins/extent
+=== RUN   TestGCFinalCastArrayGetColdPins/success
+--- PASS: TestGCFinalCastArrayGetColdPins (0.00s)
+    --- PASS: TestGCFinalCastArrayGetColdPins/null (0.00s)
+    --- PASS: TestGCFinalCastArrayGetColdPins/i31 (0.00s)
+    --- PASS: TestGCFinalCastArrayGetColdPins/bounds (0.00s)
+    --- PASS: TestGCFinalCastArrayGetColdPins/extent (0.00s)
+    --- PASS: TestGCFinalCastArrayGetColdPins/success (0.00s)
+=== RUN   TestGCFinalCastArrayGetAdmission
+    gc_final_cast_array_get_stats_amd64_test.go:49: read fused=1 pins=0 code=574 calls=map[gcnative:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: nullable fused=1 pins=0 code=574 calls=map[gcnative:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: packed-s fused=1 pins=0 code=1124 calls=map[gcnative:1 gcnativearray:1 hostsync:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: packed-u fused=1 pins=0 code=1124 calls=map[gcnative:1 gcnativearray:1 hostsync:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: half-s fused=1 pins=0 code=1131 calls=map[gcnative:1 gcnativearray:1 hostsync:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: half-u fused=1 pins=0 code=1131 calls=map[gcnative:1 gcnativearray:1 hostsync:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: refs fused=1 pins=0 code=1324 calls=map[gcnative:1 gcnativearray:1 hostsync:2]
+    gc_final_cast_array_get_stats_amd64_test.go:49: float fused=1 pins=0 code=1152 calls=map[gcnative:1 gcnativearray:1 hostsync:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: vector fused=1 pins=0 code=1175 calls=map[gcnative:1 gcnativearray:1 hostsync:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: loop fused=1 pins=0 code=655 calls=map[gcnative:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: pressure fused=1 pins=0 code=793 calls=map[gcnative:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: negative-nop fused=0 pins=0 code=798 calls=map[gcnative:1 gcnative-leaf:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: negative-index fused=0 pins=0 code=798 calls=map[gcnative:1 gcnative-leaf:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: pin-entry fused=1 pins=7 code=1212 calls=map[gcnative:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: index-trap fused=0 pins=0 code=776 calls=map[gcnative:1 gcnative-leaf:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: roots fused=1 pins=0 code=2040 calls=map[gcnative:3 gcnativearray:1 hostsync:3]
+    gc_final_cast_array_get_stats_amd64_test.go:49: ref-loop fused=1 pins=0 code=672 calls=map[gcnative:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: float32 fused=1 pins=0 code=1142 calls=map[gcnative:1 gcnativearray:1 hostsync:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: int64 fused=1 pins=0 code=1137 calls=map[gcnative:1 gcnativearray:1 hostsync:1]
+    gc_final_cast_array_get_stats_amd64_test.go:49: nonfinal fused=0 pins=0 code=679 calls=map[gcnative:1 hostsync:2]
+--- PASS: TestGCFinalCastArrayGetAdmission (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.008s

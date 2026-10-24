@@ -1,0 +1,12 @@
+{
+  "command": [
+    "/tmp/wago-final-cast-array-get-control.test",
+    "-test.run=^TestGCFinalCastArrayGet$",
+    "-test.v"
+  ],
+  "cwd": "/home/dev/Projects/wago-gc-final-cast-array-get-pr/src/wago",
+  "seconds": 0.006715962001180742,
+  "exit_code": 0,
+  "GOMAXPROCS": "2",
+  "GOWORK": null
+}

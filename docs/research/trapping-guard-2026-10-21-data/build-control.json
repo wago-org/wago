@@ -1,0 +1,16 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-p",
+    "2",
+    "-overlay=docs/research/trapping-guard-2026-10-21-data/control-overlay.json",
+    "-c",
+    "-o",
+    "/tmp/wago-trapping-guard-control.test",
+    "./src/wago"
+  ],
+  "cwd": "/home/dev/Projects/wago-gc-trapping-guard-pr",
+  "seconds": 3.343385592001141,
+  "exit": 1
+}

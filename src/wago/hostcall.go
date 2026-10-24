@@ -2366,10 +2366,15 @@ func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr,
 	}
 	defer gcTemps.release(in)
 	caller.exact = exact
-	var gcResultTemps gcHostTempTokens
-	gcResultTemps.exactTypes = exactTypesPtr
-	caller.ephemeralGCResults = &gcResultTemps
-	defer gcResultTemps.release(in)
+	// Scalar results need no GC result scratch. Ordinary imports borrow their
+	// compiled type context directly. Host function references can have their own
+	// type context, so keep dispatch-owned state for that separate context.
+	separateTypes := exactTypesPtr != nil && (in.c == nil || exactTypesPtr != &in.c.Types)
+	if hasReferenceValType(sig.Results) || separateTypes {
+		gcResultTemps := &gcHostTempTokens{exactTypes: exactTypesPtr}
+		caller.ephemeralGCResults = gcResultTemps
+		defer gcResultTemps.release(in)
+	}
 	if invocation.scope != nil && invocationMayCancel(invocation.parent) {
 		scope.invocationContext(caller.generation, invocation.parent)
 	}

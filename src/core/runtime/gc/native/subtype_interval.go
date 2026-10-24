@@ -79,7 +79,7 @@ func (c *Collector) typeSubtypeIDs(actual, required TypeID) (bool, error) {
 	if int(actual) >= len(c.subtypeIntervals) || int(required) >= len(c.subtypeIntervals) {
 		return false, fmt.Errorf("gc: unknown subtype pair %d/%d", actual, required)
 	}
-	dynamic := c.types[actual]
+	dynamic := &c.types[actual]
 	const shallowParentLimit = 4
 	for range shallowParentLimit {
 		if dynamic.ID == required {
@@ -88,7 +88,7 @@ func (c *Collector) typeSubtypeIDs(actual, required TypeID) (bool, error) {
 		if !dynamic.HasSuper {
 			return false, nil
 		}
-		dynamic = c.types[dynamic.Super]
+		dynamic = &c.types[dynamic.Super]
 	}
 	if !gcSubtypeIntervalsEnabled {
 		for {
@@ -98,7 +98,7 @@ func (c *Collector) typeSubtypeIDs(actual, required TypeID) (bool, error) {
 			if !dynamic.HasSuper {
 				return false, nil
 			}
-			dynamic = c.types[dynamic.Super]
+			dynamic = &c.types[dynamic.Super]
 		}
 	}
 	a, r := c.subtypeIntervals[actual], c.subtypeIntervals[required]

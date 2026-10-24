@@ -3282,7 +3282,38 @@ func (c *Compiled) validateExactValueMetadata() error {
 	return nil
 }
 
+func (c *Compiled) validateStartMetadata() error {
+	if c.StartLocalFunc < 0 || c.StartImportIdx < 0 {
+		return fmt.Errorf("compiled metadata invalid: negative start function index")
+	}
+	if !c.HasStart {
+		if c.StartIsImport || c.StartLocalFunc != 0 || c.StartImportIdx != 0 {
+			return fmt.Errorf("compiled metadata invalid: start fields without a start function")
+		}
+		return nil
+	}
+	var sig FuncSig
+	if c.StartIsImport {
+		if c.StartLocalFunc != 0 || c.StartImportIdx >= len(c.importFuncSigs) || c.StartImportIdx >= len(c.Imports) {
+			return fmt.Errorf("compiled metadata invalid: start import index out of range")
+		}
+		sig = c.importFuncSigs[c.StartImportIdx]
+	} else {
+		if c.StartImportIdx != 0 || c.StartLocalFunc >= len(c.Funcs) || c.StartLocalFunc >= len(c.Entry) {
+			return fmt.Errorf("compiled metadata invalid: start local function index out of range")
+		}
+		sig = c.Funcs[c.StartLocalFunc]
+	}
+	if len(sig.Params) != 0 || len(sig.Results) != 0 {
+		return fmt.Errorf("compiled metadata invalid: start function must have signature () -> ()")
+	}
+	return nil
+}
+
 func (c *Compiled) validateCodecMetadata() error {
+	if err := c.validateStartMetadata(); err != nil {
+		return err
+	}
 	if err := c.validateImportModuleEnds(); err != nil {
 		return err
 	}
@@ -3884,7 +3915,7 @@ const wagoMagic = "WAGO"
 // after the EH tag-directory basedata offset moved.
 // The codec never serializes live owners, collector handles, mappings, tokens,
 // active handlers, thunk addresses, or store identity.
-const wagoVersion = 6
+const wagoVersion = 7
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 // Published modules serialize their frozen execution metadata; edits to the

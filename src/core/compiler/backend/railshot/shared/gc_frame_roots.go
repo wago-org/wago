@@ -74,6 +74,10 @@ type GCFrameRootPlan struct {
 	Conservative bool // local masks retain every tracked local at each site
 	FrameBytes   uint32
 	Locals       []GCFrameLocal
+	// AllReferenceLocals retains the source types for local.get after exact
+	// liveness removes locals that are dead in their frame at every safepoint.
+	// Their loaded values may still be live on the operand stack.
+	AllReferenceLocals []GCFrameLocal
 	// LiveMaskWords is one site-major, pointer-free arena. Allocating sites come
 	// first, followed by native calls; every site occupies rootMaskWordsPerSite
 	// words. The explicit counts avoid retaining two more slice headers and
@@ -331,8 +335,12 @@ func (p *GCFrameRootPlan) TracksLocal(index uint32) bool {
 	if p == nil || !p.Candidate {
 		return false
 	}
-	i := sort.Search(len(p.Locals), func(i int) bool { return p.Locals[i].Index >= index })
-	return i < len(p.Locals) && p.Locals[i].Index == index
+	locals := p.Locals
+	if p.AllReferenceLocals != nil {
+		locals = p.AllReferenceLocals
+	}
+	i := sort.Search(len(locals), func(i int) bool { return locals[i].Index >= index })
+	return i < len(locals) && locals[i].Index == index
 }
 
 // GCModuleFrameRootPlan owns one independent plan for every collecting local

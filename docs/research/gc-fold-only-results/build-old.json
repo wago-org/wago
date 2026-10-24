@@ -1,0 +1,15 @@
+{
+  "seconds": 13.64282698599709,
+  "returncode": 0,
+  "expected_failure": false,
+  "cmd": [
+    "go",
+    "test",
+    "-overlay",
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/fold-only/old-overlay.json",
+    "-c",
+    "-o",
+    "/home/dev/Projects/dewdrop/.tmp/wago-next-gc-perf/fold-only/old.test",
+    "./src/wago"
+  ]
+}

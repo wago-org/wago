@@ -467,6 +467,38 @@ func TestGCTypeMetadataNativeConstructorSlotBoundary(t *testing.T) {
 	}
 }
 
+func TestGCTypeMetadataNativeConstructorWithTypedCollectorReference(t *testing.T) {
+	types := []wasm.RecType{{SubTypes: []wasm.SubType{
+		st(field(val(wasm.I32))),
+		st(field(concrete(true, 0))),
+	}}}
+	metadata, err := LowerGCTypeMetadata(types)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !metadata.Layouts[1].NativeAlloc {
+		t.Fatal("final struct with a typed collector reference should use native allocation")
+	}
+}
+
+func TestGCTypeMetadataNativeConstructorWithOpenTypedCollectorReference(t *testing.T) {
+	open := wasm.SubType{Final: false, Comp: wasm.CompType{Kind: wasm.CompStruct, Fields: []wasm.FieldType{field(val(wasm.I32))}}}
+	child := st(field(val(wasm.I32)))
+	child.Supers = []wasm.TypeIdx{{Index: 0}}
+	types := []wasm.RecType{{SubTypes: []wasm.SubType{
+		open,
+		child,
+		st(field(concrete(true, 0))),
+	}}}
+	metadata, err := LowerGCTypeMetadata(types)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !metadata.Layouts[2].NativeAlloc {
+		t.Fatal("final struct with an open typed collector reference should use checked native allocation")
+	}
+}
+
 func TestBuildGCTypeDescsFromDecodedRecursiveTypeIndexes(t *testing.T) {
 	mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(
 		wasmtest.FuncType(nil, nil),
