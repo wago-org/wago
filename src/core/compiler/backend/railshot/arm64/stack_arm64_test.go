@@ -341,3 +341,28 @@ func TestStackArenaCapForBodyLargeFunctionArm64(t *testing.T) {
 		t.Fatalf("large stack arena cap = %d, want %d", cap(s.chunks[0]), want)
 	}
 }
+
+func TestOperandNodeIdentityAcrossGrowthAndResetArm64(t *testing.T) {
+	s := newStackWithCap(minStackArenaCap)
+	for range 3 {
+		if s.node(nilNodeID) != nil || s.node(sentinelNodeID) != s.head || s.head != &s.chunks[0][0] {
+			t.Fatal("nil or sentinel node identity changed")
+		}
+		ids := make([]nodeID, 0, 128)
+		nodes := make([]*elem, 0, 128)
+		for range 128 {
+			id, node := s.alloc()
+			ids, nodes = append(ids, id), append(nodes, node)
+		}
+		for i, id := range ids {
+			if s.node(id) != nodes[i] {
+				t.Fatal("growing chunk directory changed a node identity")
+			}
+		}
+		if s.node(sentinelNodeID) != s.head {
+			t.Fatal("growth changed sentinel identity")
+		}
+		s.finishFunction()
+		s.reset()
+	}
+}
