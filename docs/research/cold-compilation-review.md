@@ -6,7 +6,7 @@ execution policies and lightweight entry. Source-order experiments and file-back
 code/data staging are outside this PR. Requested deferred compilation uses heap
 staging, including compile-only Darwin callers.
 
-Use Go 1.27.1 on native Linux AMD64. From the repository root:
+Use Go 1.27.1 on native Linux AMD64/ARM64 or Darwin ARM64. From the repository root:
 
 ```sh
 python3 bench/suite/compare-cold.py
@@ -14,7 +14,8 @@ python3 bench/suite/compare-cold.py
 
 The script builds exact main `dc13730184e8` and the current revision before
 measurement, copying the same measurement tests into the base worktree. It uses
-one worker, GOMAXPROCS=1, one CPU, and one alternating fresh-process pair for each
+one worker, GOMAXPROCS=1, Linux CPU affinity (Darwin uses its scheduler),
+and one alternating fresh-process pair for each
 of 20 pinned wasm.fyi inputs per phase. `bench/suite/testdata/cold-compilation/manifest.json`
 contains input hashes and result contracts; command cases use the pinned corpus
 catalog's input/output checks. No code export occurs before the first result.

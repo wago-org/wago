@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux || darwin
 
 package wagobench
 
@@ -93,6 +93,9 @@ func TestOptimizationStudySample(t *testing.T) {
 		var r syscall.Rusage
 		if e := syscall.Getrusage(syscall.RUSAGE_SELF, &r); e != nil {
 			panic(e)
+		}
+		if runtime.GOOS == "darwin" {
+			return r.Maxrss // Darwin reports bytes; Linux reports KiB.
 		}
 		return r.Maxrss * 1024
 	}

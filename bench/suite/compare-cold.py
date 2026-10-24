@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One native Linux main/default pair per input and phase; no precision repeats."""
+"""One native main/default pair per input and phase; no precision repeats."""
 import hashlib
 import json
 import math
@@ -19,12 +19,12 @@ def run(args, cwd=ROOT, **kwargs):
     return subprocess.check_output(args, cwd=cwd, text=True, **kwargs).strip()
 
 def main():
-    if platform.system() != "Linux" or run(["go", "env", "GOARCH"]) != {"x86_64":"amd64","aarch64":"arm64"}.get(platform.machine()):
-        raise SystemExit("native Linux Go target required")
+    if platform.system() not in ("Linux", "Darwin") or run(["go", "env", "GOARCH"]) != {"x86_64":"amd64","aarch64":"arm64","arm64":"arm64"}.get(platform.machine()):
+        raise SystemExit("native Linux or Darwin Go target required")
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    env = {k:v for k,v in os.environ.items() if not k.startswith("WAGO_STUDY_")}
+    env = {k:v for k,v in os.environ.items() if not k.startswith("WAGO_") and k not in ("GOGC", "GOMEMLIMIT", "GODEBUG")}
     env.update(GOMAXPROCS="1", WAGO_STUDY_MANIFEST=str(MANIFEST))
-    identity = {"base":BASE,"candidate":run(["git","rev-parse","HEAD"]),"configuration":"defaults, one worker, GOMAXPROCS=1","go":run(["go","version"]),"cpu":run(["lscpu"]),"kernel":platform.uname()._asdict(),"manifest_sha256":hashlib.sha256(MANIFEST.read_bytes()).hexdigest(),"protocol":"one alternating fresh-process pair per frozen input for compile and first-result phases; no code export before first result; small-shell fork excludes inherited launcher RSS"}
+    identity = {"base":BASE,"candidate":run(["git","rev-parse","HEAD"]),"configuration":"defaults, one worker, GOMAXPROCS=1","go":run(["go","version"]),"cpu":run(["lscpu"] if platform.system()=="Linux" else ["sysctl","-n","machdep.cpu.brand_string"]),"kernel":platform.uname()._asdict(),"manifest_sha256":hashlib.sha256(MANIFEST.read_bytes()).hexdigest(),"protocol":"one alternating fresh-process pair per frozen input for compile and first-result phases; no code export before first result; small-shell fork excludes inherited launcher RSS"}
     inputs = json.loads(MANIFEST.read_text())["corpus"]
     samples = []
     with tempfile.TemporaryDirectory(prefix="wago-cold-") as temporary:
@@ -32,7 +32,7 @@ def main():
         base = temporary / "base"
         subprocess.run(["git","worktree","add","--detach",str(base),BASE],cwd=ROOT,check=True)
         try:
-            for rel in ("bench/suite/optimization_study_linux_test.go","src/wago/compile_review_bench_test.go"):
+            for rel in ("bench/suite/optimization_study_test.go","src/wago/compile_review_bench_test.go"):
                 shutil.copyfile(ROOT / rel, base / rel)
             binaries = {}
             for image, source in (("base",base),("candidate",ROOT)):
@@ -42,9 +42,12 @@ def main():
                 subprocess.run(["go","test","-c","-o",str(small),"./src/wago"],cwd=source,env=env,check=True)
                 binaries[image+"-small"] = small
                 identity[image+"_binary_sha256"] = hashlib.sha256(binaries[image].read_bytes()).hexdigest()
-            cpu = min(os.sched_getaffinity(0))
-            os.sched_setaffinity(0,{cpu})
-            identity["affinity_cpu"] = cpu
+            if platform.system() == "Linux":
+                cpu = min(os.sched_getaffinity(0))
+                os.sched_setaffinity(0,{cpu})
+                identity["affinity_cpu"] = cpu
+            else:
+                identity["affinity_cpu"] = None # Darwin has no sched_setaffinity
             (OUTPUT/"identity.json").write_text(json.dumps(identity,indent=2)+"\n")
             def launch(binary,args,cwd,sample_env):
                 return run(["/bin/sh","-c",'"$@" & child=$!; wait "$child"',"cold-launch",str(binary),*args],cwd=cwd,env=sample_env,stderr=subprocess.STDOUT,timeout=240)
