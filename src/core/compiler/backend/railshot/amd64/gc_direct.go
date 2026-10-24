@@ -1194,6 +1194,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	if !ok || site.mode == gcArrayNativeNone {
 		panic("amd64: invalid native array allocation layout")
 	}
+	dynamicLarge := site.dynamic && site.mode == gcArrayNativeDefault
 	a := f.a
 	controlReg, countReg, sizeReg := R12, R13, R14
 	callee := [...]Reg{R12, R13, R14, R15}
@@ -1236,7 +1237,11 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 
 	emitSize := func() {
 		if site.dynamic {
-			a.Load32(countReg, controlReg, hcArgs)
+			countOffset := int32(hcArgs)
+			if site.mode == gcArrayNativeUniform {
+				countOffset += int32(layout.valueSlots * 8)
+			}
+			a.Load32(countReg, controlReg, countOffset)
 		} else {
 			a.MovImm32(countReg, int32(site.count))
 		}
@@ -1262,6 +1267,10 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	}
 	if site.dynamic {
 		emitSize()
+		if !dynamicLarge {
+			a.AluRI(cmpDigit, sizeReg, int32(gc.NativeArrayAllocMaxBytes), false)
+			addFallback(a.JccPlaceholder(condA))
+		}
 	}
 
 	stateOffset := int32(gc.NativeViewStructAllocStateOffset)
@@ -1272,7 +1281,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		epochOffset = gc.NativeViewLargeArrayAllocEpochOffset
 		handleCapacity = 1
 	}
-	if site.dynamic {
+	if dynamicLarge {
 		a.AluRI(cmpDigit, sizeReg, int32(gc.NativeArrayAllocMaxBytes), false)
 		smallState := a.JccPlaceholder(condBE)
 		a.AluRI(cmpDigit, sizeReg, int32(gc.NativeLargeArrayAllocMaxBytes), false)
@@ -1300,7 +1309,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	addFallback(a.JccPlaceholder(condNE))
 	a.Load32(RCX, R10, gc.NativeStructAllocCursorOffset)
 	a.Load32(RAX, R10, gc.NativeStructAllocCountOffset)
-	if site.dynamic {
+	if dynamicLarge {
 		a.Cmp32(RAX, RDI)
 	} else {
 		a.AluRI(cmpDigit, RAX, handleCapacity, false)
@@ -1334,16 +1343,46 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		emitSize()
 	}
 
-	a.Load32(R15, R10, gc.NativeStructAllocChunkCursorOffset)
 	objectAlign := layout.elemAlign
 	if objectAlign < 8 {
 		objectAlign = 8
 	}
-	if objectAlign > 1 {
+	alignCursor := func() {
 		a.AluRI(0, R15, int32(objectAlign-1), false)
 		a.AluRI(4, R15, -int32(objectAlign), false)
 	}
+	// Struct batches own free identities without a private array chunk. Reuse
+	// those identities and the nursery bump instead of canceling the batch at
+	// every struct/array transition. Large arrays keep their exact reservation.
+	directReady := -1
+	var useChunk []int
+	if !site.large {
+		if dynamicLarge {
+			a.AluRI(cmpDigit, RDI, 1, false)
+			useChunk = append(useChunk, a.JccPlaceholder(condE))
+		}
+		a.CmpImm32Mem(R10, gc.NativeStructAllocChunkEndOffset, 0)
+		useChunk = append(useChunk, a.JccPlaceholder(condNE))
+		a.Load32(RAX, R8, gc.NativeViewNurseryObjectMaxBytesOffset)
+		a.Cmp32(sizeReg, RAX)
+		addFallback(a.JccPlaceholder(condAE))
+		a.Load64(RAX, R8, gc.NativeViewNurseryBumpOffset)
+		a.TestSelf(RAX, true)
+		addFallback(a.JccPlaceholder(condE))
+		a.Load32(R15, RAX, 0)
+		alignCursor()
+		a.Load32(RAX, R8, gc.NativeViewNurseryAllocBytesOffset)
+		directReady = a.JmpPlaceholder()
+	}
+	for _, branch := range useChunk {
+		a.PatchRel32(branch, a.Len())
+	}
+	a.Load32(R15, R10, gc.NativeStructAllocChunkCursorOffset)
+	alignCursor()
 	a.Load32(RAX, R10, gc.NativeStructAllocChunkEndOffset)
+	if directReady >= 0 {
+		a.PatchRel32(directReady, a.Len())
+	}
 	a.Cmp32(R15, RAX)
 	addFallback(a.JccPlaceholder(condA))
 	a.Sub32(RAX, R15)
@@ -1351,7 +1390,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	addFallback(a.JccPlaceholder(condB))
 	// A large reservation has one owning handle. Publishing a smaller extent
 	// would strand its tail, since reclamation derives ownership from that handle.
-	if site.dynamic {
+	if dynamicLarge {
 		a.AluRI(cmpDigit, RDI, 1, false)
 		smallReservation := a.JccPlaceholder(condNE)
 		a.MovRegReg32(RDX, sizeReg)
@@ -1368,7 +1407,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		addFallback(a.JccPlaceholder(condNE))
 	}
 	largeState := site.large
-	if site.dynamic {
+	if dynamicLarge {
 		a.MovImm32(RDX, int32(gc.NativeSpaceNursery))
 		a.AluRI(cmpDigit, RDI, 1, false)
 		smallState := a.JccPlaceholder(condNE)
@@ -1381,7 +1420,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		a.ShiftImm(5, RDX, 16, false)
 		a.AluRI(4, RDX, 0xff, false)
 	}
-	if site.dynamic || largeState {
+	if dynamicLarge || largeState {
 		a.AluRI(cmpDigit, RDX, int32(gc.NativeSpaceLarge), false)
 		throughputBase := a.JccPlaceholder(condE)
 		a.Load64(R11, R8, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceNursery*gc.NativeViewSpaceStride+gc.NativeSpaceBaseOffset))
@@ -1453,7 +1492,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	if layout.pointerFree {
 		flags = int32(gc.FlagPointerFree)
 	}
-	if site.dynamic || largeState {
+	if dynamicLarge || largeState {
 		a.AluRI(cmpDigit, RDX, int32(gc.NativeSpaceLarge), false)
 		largeFlags := a.JccPlaceholder(condE)
 		a.StoreImm32Mem(R11, 12, flags)
@@ -1461,7 +1500,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		a.PatchRel32(largeFlags, a.Len())
 		a.StoreImm32Mem(R11, 12, flags|int32(gc.FlagLarge))
 		a.PatchRel32(flagsReady, a.Len())
-		if site.dynamic {
+		if dynamicLarge {
 			a.AluRI(cmpDigit, RDI, 1, false)
 			smallMetadata := a.JccPlaceholder(condNE)
 			a.Load32(countReg, R10, gc.NativeStructAllocChunkBumpOffset)
@@ -1572,7 +1611,18 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	if site.mode != gcArrayNativeDefault {
 		a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
 	}
-	a.Store32(R10, gc.NativeStructAllocChunkCursorOffset, RAX)
+	if !site.large {
+		a.CmpImm32Mem(R10, gc.NativeStructAllocChunkEndOffset, 0)
+		chunk := a.JccPlaceholder(condNE)
+		a.Load64(RDX, R8, gc.NativeViewNurseryBumpOffset)
+		a.Store32(RDX, 0, RAX)
+		done := a.JmpPlaceholder()
+		a.PatchRel32(chunk, a.Len())
+		a.Store32(R10, gc.NativeStructAllocChunkCursorOffset, RAX)
+		a.PatchRel32(done, a.Len())
+	} else {
+		a.Store32(R10, gc.NativeStructAllocChunkCursorOffset, RAX)
+	}
 	if site.mode == gcArrayNativeDefault && (site.dynamic || site.large) {
 		a.Store32(R9, gc.NativeHandleMetadataOffset, countReg)
 	} else {
@@ -1581,10 +1631,15 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	a.Load32(RDX, R10, gc.NativeStructAllocCursorOffset)
 	a.AluRI(0, RDX, 1, false)
 	a.Store32(R10, gc.NativeStructAllocCursorOffset, RDX)
+	// Chunk-free batches reconcile all publications from Cursor at cancellation.
+	// Updating the statistic here as well would count arrays twice.
+	a.CmpImm32Mem(R10, gc.NativeStructAllocChunkEndOffset, 0)
+	deferredCount := a.JccPlaceholder(condE)
 	a.Load64(R10, R8, gc.NativeViewAllocationCountOffset)
 	a.Load64(RAX, R10, 0)
 	a.AluRI(0, RAX, 1, true)
 	a.Store64(R10, 0, RAX)
+	a.PatchRel32(deferredCount, a.Len())
 	a.MovRegReg32(RAX, RSI)
 	a.ShiftImm(4, RAX, 1, false)
 	a.Store64(controlReg, hcResults, RAX)
@@ -2623,8 +2678,9 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub(returnLimit ...bool) {
 // emitNativeBarrierSafeStructRefSetStub resolves an exact final struct in
 // Throughput nursery, old, or large space. Nursery stores need no barrier;
 // old/large stores proceed only for non-young children or an already remembered
-// parent. Tiny and stores that must grow the remembered set use the exact Go
-// helper fallback. The checked store returns EAX=1; EAX=0 selects that fallback.
+// parent with a card covering the field. Tiny and stores that must grow
+// metadata use the exact Go helper fallback. The checked store returns EAX=1;
+// EAX=0 selects that fallback.
 func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a := f.a
 	var traps []gcNativeLeafTrap
@@ -2649,7 +2705,7 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	}
 	a.MovRegReg32(RDI, RSI) // compact child
 	a.MovRegReg32(RSI, RCX) // required parent extent
-	var fallback [16]int
+	var fallback [24]int
 	nfallback := 0
 	addFallback := func(site int) { fallback[nfallback], nfallback = site, nfallback+1 }
 
@@ -2728,8 +2784,8 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a.AluRI(4, RAX, 0xff, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
-	// Old/large parents may bypass the Go barrier when the child is not young,
-	// or when the parent is already conservatively remembered.
+	// Old/large parents may bypass the Go barrier for a young child only
+	// when remembered membership and card coverage both hold.
 	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
 	childIsNursery := a.JccPlaceholder(condE)
 	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceLarge), false)
@@ -2740,6 +2796,37 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a.ShiftImm(5, RAX, 24, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
+	// Remembered membership alone does not cover the whole object: the Go
+	// barrier may have recorded only a different field's card. Require this
+	// field's payload byte to lie in the existing head range, as array.set does.
+	// Otherwise the helper records or coalesces the missing range.
+	a.Load32(RAX, R9, gc.NativeHandleCardSlotOffset)
+	a.TestSelf(RAX, false)
+	addFallback(a.JccPlaceholder(condE))
+	a.AluRI(5, RAX, 1, false)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewObjectCardCountOffset, false)
+	addFallback(a.JccPlaceholder(condAE))
+	a.Load64(R10, R8, gc.NativeViewObjectCardsOffset)
+	a.TestSelf(R10, true)
+	addFallback(a.JccPlaceholder(condE))
+	a.ImulRI(RAX, gc.NativeObjectCardStride, true)
+	a.Add64(R10, RAX)
+	// Recover the parent handle index from its validated handle-entry address.
+	a.MovReg64(RDX, R9)
+	a.Load64(RAX, R8, gc.NativeViewHandlesOffset)
+	a.AluRR(aluTable[opSub].rr, RDX, RAX, true)
+	a.ShiftImm(5, RDX, 4, true)
+	a.Load32(RAX, R10, gc.NativeObjectCardHandleOffset)
+	a.Cmp32(RAX, RDX)
+	addFallback(a.JccPlaceholder(condNE))
+	a.MovRegReg32(RCX, RSI)
+	a.AluRI(5, RCX, int32(gc.PayloadOffset)+4, false)
+	a.Load32(RAX, R10, gc.NativeObjectCardStartOffset)
+	a.Cmp32(RCX, RAX)
+	addFallback(a.JccPlaceholder(condB))
+	a.Load32(RAX, R10, gc.NativeObjectCardEndOffset)
+	a.Cmp32(RCX, RAX)
+	addFallback(a.JccPlaceholder(condA))
 	a.PatchRel32(childValid, a.Len())
 	a.PatchRel32(childI31, a.Len())
 	a.PatchRel32(childNotYoung, a.Len())

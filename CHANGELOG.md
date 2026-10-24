@@ -45,6 +45,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 - Execute branch casts to defined struct/array types, i31, and none in native
   AMD64 and ARM64 code. Preserve reference identity and helper fallbacks.
+- Run GC `ref.test` and `ref.cast` checks for null and compact i31 values
+  directly on AMD64 and ARM64 for i31 and none targets. Preserve checked
+  helper paths for object and foreign reference values.
 - Speed up AMD64 constant division/remainder pairs, scalar selects, predicate
   shifts, and contiguous SIMD byte shuffles.
   ([#895](https://github.com/wago-org/wago/pull/895))
@@ -54,6 +57,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Add opt-in pure integer select branches through `WAGO_AMD64_PURE_SELECT=1`;
   keep them disabled by default because unpredictable conditions can regress.
   ([#895](https://github.com/wago-org/wago/pull/895))
+- Keep small uniform `array.new` allocations with run-time lengths in native
+  AMD64 code. Larger arrays retain the checked helper fallback.
+
+- Let AMD64 small arrays use an existing native struct handle batch and nursery
+  bump. Mixed constructors no longer require a Go refill at every array.
 - Drop nonzero element segments in native AMD64 code when GC array helpers are
   enabled. Keep checked-root cleanup for segment zero in the helper.
 - Handle shared memory growth with a statically impossible delta in native

@@ -99,6 +99,7 @@
               "direct-forwarder",
               "direct-go-host-import",
               "direct-int-branch-merge",
+              "direct-reference-abi",
               "dominated-indexed-base",
               "dominated-indexed-key",
               "dot-loop-vector",

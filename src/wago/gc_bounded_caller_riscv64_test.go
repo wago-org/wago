@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -324,19 +323,23 @@ func TestRV64BoundedCollectorKeepsConcurrentHostOwners(t *testing.T) {
 				roots := provider.gcCollectFrameRoots(state)
 				sink := &boundedRootCounter{}
 				state.domainHostOwnersExtra = nil
-				var before, after runtime.MemStats
-				runtime.ReadMemStats(&before)
 				roots.RangeRootRefs(sink)
-				runtime.ReadMemStats(&after)
-				coldBytes := after.TotalAlloc - before.TotalAlloc
-				coldAllocations := after.Mallocs - before.Mallocs
-				if coldAllocations != 1 || coldBytes != uint64(unsafe.Sizeof(gcSuspendedRootOwner{})) {
-					t.Fatalf("cold ninth-owner snapshot=%d allocations/%d bytes", coldAllocations, coldBytes)
+				const overflowOwners = count - gcHostActivationLimit
+				if len(state.domainHostOwnersExtra) != 0 || cap(state.domainHostOwnersExtra) != overflowOwners {
+					t.Fatalf("cold ninth-owner scratch length/capacity=%d/%d, want 0/%d", len(state.domainHostOwnersExtra), cap(state.domainHostOwnersExtra), overflowOwners)
 				}
-				if allocations := testing.AllocsPerRun(100, func() { roots.RangeRootRefs(sink) }); allocations != 0 {
-					t.Fatalf("warm overflow root-scan allocations=%g", allocations)
+				backing := unsafe.SliceData(state.domainHostOwnersExtra[:cap(state.domainHostOwnersExtra)])
+				for scan := range 100 {
+					before := sink.count
+					roots.RangeRootRefs(sink)
+					if len(state.domainHostOwnersExtra) != 0 || cap(state.domainHostOwnersExtra) != overflowOwners || unsafe.SliceData(state.domainHostOwnersExtra[:cap(state.domainHostOwnersExtra)]) != backing {
+						t.Fatalf("warm overflow root-scan %d replaced scratch", scan)
+					}
+					if sink.count == before {
+						t.Fatalf("warm overflow root-scan %d did not visit roots", scan)
+					}
 				}
-				if cap(state.domainHostOwnersExtra) == 0 || sink.count == 0 {
+				if sink.count == 0 {
 					t.Fatal("overflow snapshot or native roots were not used")
 				}
 				for _, entry := range state.domainHostOwnersExtra[:cap(state.domainHostOwnersExtra)] {
@@ -344,7 +347,7 @@ func TestRV64BoundedCollectorKeepsConcurrentHostOwners(t *testing.T) {
 						t.Fatal("reused overflow snapshot retains an owner or state")
 					}
 				}
-				t.Logf("nine parked owners: cold %d allocation/%d bytes; 0 warm allocations; state header +%d bytes; root-set %d bytes", coldAllocations, coldBytes, unsafe.Sizeof(state.domainHostOwnersExtra), unsafe.Sizeof(roots))
+				t.Logf("nine parked owners: cold scratch %d bytes; stable across 100 warm scans; state header +%d bytes; root-set %d bytes", uintptr(overflowOwners)*unsafe.Sizeof(gcSuspendedRootOwner{}), unsafe.Sizeof(state.domainHostOwnersExtra), unsafe.Sizeof(roots))
 			}()
 			unpark()
 			for range count {

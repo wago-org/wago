@@ -41,6 +41,7 @@ ci-smoke:
     tests/scripts/build-release-assets.sh
     tests/scripts/release-qualification.sh
     bash tests/scripts/ci-download-go-modules.sh
+    python3 tests/scripts/ci-riscv64.py
     go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/*.yml
 
 # Run the deterministic runtime concurrency harness.

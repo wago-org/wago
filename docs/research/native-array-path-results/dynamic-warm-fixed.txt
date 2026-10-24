@@ -1,0 +1,35 @@
+# round 1
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCSharedNurseryArrays/alternating-fill-dynamic         	     100	    191055 ns/op	   28275 B/op	       0 allocs/op
+PASS
+# round 2
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCSharedNurseryArrays/alternating-fill-dynamic         	     100	    191578 ns/op	   28275 B/op	       0 allocs/op
+PASS
+# round 3
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCSharedNurseryArrays/alternating-fill-dynamic         	     100	    191360 ns/op	   28275 B/op	       0 allocs/op
+PASS
+# round 4
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCSharedNurseryArrays/alternating-fill-dynamic         	     100	    191085 ns/op	   28275 B/op	       0 allocs/op
+PASS
+# round 5
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+BenchmarkGCSharedNurseryArrays/alternating-fill-dynamic         	     100	    190723 ns/op	   28275 B/op	       0 allocs/op
+PASS
