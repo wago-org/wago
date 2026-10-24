@@ -1957,13 +1957,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// Compile is sequential, so sharing one scratch is safe.
 	// Auto-inlining (WAGO_INLINE): the straight-line leaf callees to splice at their
 	// call sites, keyed by global func index. Empty when inlining is disabled.
-	inlineTargets := buildInlineTargets(m, allHints, policy)
-	if opts.GCFrameRoots != nil {
-		// Exact frame-root callsite masks are derived from the validated Wasm call
-		// stream. Keep that stream one-to-one with native callsites rather than
-		// silently invalidating collection metadata by splicing a local callee.
-		inlineTargets = inlineTargetTable{}
+	var inlineTargets inlineTargetTable
+	if opts.GCFrameRoots == nil {
+		inlineTargets = buildInlineTargets(m, allHints, policy)
 	}
+	// Exact GC frame-root masks require one-to-one native callsites. Skip both
+	// target discovery and the optional call tape when that proof prohibits inlining.
 	requiresBMI2 := false
 	var requiresBitCount uint8
 	var usedAMD64Features shared.AMD64Features
