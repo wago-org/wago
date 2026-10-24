@@ -57,6 +57,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 		}
 	}
 	state.frameRoots.owner = in
+	state.frameRoots.domainHostRoots = true
 	state.frameRoots.physicalStack = stack
 	state.frameRoots.base = base
 	state.frameRoots.offsets = offsets
