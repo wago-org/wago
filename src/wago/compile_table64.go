@@ -113,7 +113,7 @@ func stagedOwnedTwoTable32SizeShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -153,7 +153,7 @@ func stagedOwnedTwoTable32GetSetShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -194,7 +194,7 @@ func stagedOwnedTwoTable32GrowShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -235,7 +235,7 @@ func stagedOwnedTwoTable32FillShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -276,7 +276,7 @@ func stagedOwnedTwoTable32CopyShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -317,7 +317,7 @@ func stagedOwnedTwoTable32CrossCopyShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -358,7 +358,7 @@ func stagedOwnedTwoTable64SizeShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -401,7 +401,7 @@ func stagedMixedTable64SizeShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
 		return false
 	}
 	for i := 0; i < 2; i++ {
@@ -441,7 +441,7 @@ func stagedMixedTable64GetSetShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
 		return false
 	}
 	for i := 0; i < 2; i++ {
@@ -484,7 +484,7 @@ func stagedMixedTable64GrowShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
 		return false
 	}
 	for i := 0; i < 2; i++ {
@@ -527,7 +527,7 @@ func stagedMixedTable64FillShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
 		return false
 	}
 	for i := 0; i < 2; i++ {
@@ -580,7 +580,7 @@ func stagedMixedTable64CopyProductShape(m *wasm.Module, cross bool) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
 		return false
 	}
 	for i := 0; i < 2; i++ {
@@ -631,7 +631,7 @@ func stagedMixedTable64NullInitDropShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 2 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 5 {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
 		return false
 	}
 	for i := 0; i < 2; i++ {
@@ -702,7 +702,7 @@ func stagedMixedTable64PassiveVectorShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 3 || len(m.FuncTypes) != 7 || len(m.Code) != 7 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 7 {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
 		return false
 	}
 	for i := 0; i < 2; i++ {
@@ -788,7 +788,7 @@ func stagedOwnedTwoTable64GetSetShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -829,7 +829,7 @@ func stagedOwnedTwoTable64GrowShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -870,7 +870,7 @@ func stagedOwnedTwoTable64FillShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -911,7 +911,7 @@ func stagedOwnedTwoTable64CopyShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -952,7 +952,7 @@ func stagedOwnedTwoTable64CrossCopyShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 2 || len(m.Elements) != 0 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -993,7 +993,7 @@ func stagedOwnedTable64SizeShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Tables) != 1 || len(m.Elements) != 0 || m.Tables[0].Init != nil || m.Start != nil {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table := m.Tables[0].Type
@@ -1034,7 +1034,7 @@ func stagedImportedTable64SizeShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || len(m.Tables) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Elements) != 0 || m.Start != nil {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table, ok := m.TableType(0)
@@ -1072,7 +1072,7 @@ func stagedImportedTable64GetSetShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || len(m.Tables) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Elements) != 0 || m.Start != nil {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table, ok := m.TableType(0)
@@ -1110,7 +1110,7 @@ func stagedImportedTable64GrowShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || len(m.Tables) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Elements) != 0 || m.Start != nil {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table, ok := m.TableType(0)
@@ -1148,7 +1148,7 @@ func stagedImportedTable64FillShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || len(m.Tables) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Elements) != 0 || m.Start != nil {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table, ok := m.TableType(0)
@@ -1186,7 +1186,7 @@ func stagedImportedTable64CopyShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || len(m.Tables) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Elements) != 0 || m.Start != nil {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table, ok := m.TableType(0)
@@ -1224,7 +1224,7 @@ func stagedImportedTable64InitDropShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || len(m.Tables) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Elements) != 1 || m.Start != nil {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table, ok := m.TableType(0)
@@ -1273,7 +1273,7 @@ func stagedOwnedTable64GrowShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Tables) != 1 || len(m.Elements) != 0 || m.Tables[0].Init != nil || m.Start != nil {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table := m.Tables[0].Type
@@ -1311,7 +1311,7 @@ func stagedOwnedTable64GetSetShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Tables) != 1 || len(m.Elements) != 0 || m.Tables[0].Init != nil || m.Start != nil {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table := m.Tables[0].Type
@@ -1353,7 +1353,7 @@ func stagedOwnedTable64IndirectCallShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 1 || len(m.Elements) != 1 || m.Tables[0].Init != nil || m.Start != nil {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table := m.Tables[0].Type
@@ -1404,7 +1404,7 @@ func stagedOwnedTable64IndirectTailShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 1 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 3 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table := m.Tables[0]
@@ -1458,7 +1458,7 @@ func stagedOwnedTwoTable32IndirectShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 2 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -1529,7 +1529,7 @@ func stagedOwnedTwoTable64IndirectCallShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 2 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -1598,7 +1598,7 @@ func stagedOwnedTwoTable64IndirectTailShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 5 || len(m.Code) != 5 || len(m.Tables) != 2 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 6 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i, table := range m.Tables {
@@ -1664,7 +1664,7 @@ func stagedMixedTable64MutationIndirectShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 2 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
 		return false
 	}
 	for i := 0; i < 2; i++ {
@@ -1746,7 +1746,7 @@ func stagedMixedTable64ActiveIndirectProductShape(m *wasm.Module, tail bool) boo
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 2 || len(m.FuncTypes) != 4 || len(m.Code) != 4 || len(m.Elements) != 2 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
 		return false
 	}
 	for i := 0; i < 2; i++ {
@@ -1830,7 +1830,7 @@ func stagedImportedTable64IndirectProductShape(m *wasm.Module, tail bool) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || len(m.Tables) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Elements) != 0 || m.Start != nil {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table, ok := m.TableType(0)
@@ -1883,7 +1883,7 @@ func stagedOwnedTable64FillShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Tables) != 1 || len(m.Elements) != 0 || m.Tables[0].Init != nil || m.Start != nil {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table := m.Tables[0].Type
@@ -1921,7 +1921,7 @@ func stagedOwnedTable64CopyShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Tables) != 1 || len(m.Elements) != 0 || m.Tables[0].Init != nil || m.Start != nil {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table := m.Tables[0].Type
@@ -1959,7 +1959,7 @@ func stagedOwnedTable64InitDropShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Tables) != 1 || len(m.Elements) != 1 || m.Tables[0].Init != nil || m.Start != nil {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table := m.Tables[0].Type
@@ -2008,7 +2008,7 @@ func stagedOwnedTwoTable64InitDropShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 2 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 5 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -2076,7 +2076,7 @@ func stagedOwnedTwoTable32InitDropShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 2 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 5 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for i := range m.Tables {
@@ -2147,7 +2147,7 @@ func stagedStateOnlyOwnedTable64DeclarationShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Tables) != 1 || len(m.Elements) != 0 || m.Tables[0].Init != nil || m.Start != nil {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil {
 		return false
 	}
 	for _, export := range m.Exports {
@@ -2168,7 +2168,7 @@ func stagedOwnedTable64ActiveElementShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 0 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Tables) != 1 || len(m.Elements) != 1 || m.Tables[0].Init != nil || m.Start != nil || len(m.Exports) != 1 {
 		return false
 	}
-	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	table := m.Tables[0].Type
@@ -2208,7 +2208,7 @@ func stagedMixedTable64ActiveElementShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 2 {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
 		return false
 	}
 	for i := 0; i < 2; i++ {
@@ -2252,7 +2252,7 @@ func stagedMixedTable64DualActiveElementsShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 1 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Elements) != 2 || m.Start != nil || len(m.Exports) != 2 {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
 		return false
 	}
 	for i := 0; i < 2; i++ {
@@ -2301,7 +2301,7 @@ func stagedMixedTable64DualActiveVectorsShape(m *wasm.Module) bool {
 	if m == nil || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 1 || len(m.FuncTypes) != 2 || len(m.Code) != 2 || len(m.Elements) != 2 || m.Start != nil || len(m.Exports) != 2 {
 		return false
 	}
-	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
+	if m.Imports[0].Type.Kind != wasm.ExternTable || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports || m.Tables[0].Init != nil {
 		return false
 	}
 	for i := 0; i < 2; i++ {

@@ -35,6 +35,7 @@ type directValidationEnv struct {
 }
 
 type directModule struct {
+	compactData        bool
 	m                  Module
 	direct             directValidationEnv
 	seenName           bool
@@ -47,7 +48,8 @@ type directModule struct {
 // structured function-body Expr/Instruction trees. Module contains compact
 // section metadata plus raw function BodyBytes; the unexported validation state
 // keeps remaining const-expression summaries for ValidateDecodedByteBackedModule.
-// Active data offsets live directly in Module.Data as byte-backed expressions.
+// Active data offsets are byte-backed expressions projected through DataSegment.
+// Ordinary decoding also exposes the expanded Module.Data records.
 type DecodedByteBackedModule struct {
 	Module *Module
 	direct directValidationEnv
@@ -194,7 +196,7 @@ func decodeDirectModuleLimited(data []byte, features ValidationFeatures, limits 
 }
 
 func decodeDirectModuleInnerLimits(data []byte, features ValidationFeatures, limits DecodeLimits) (*directModule, error) {
-	return decodeDirectModuleInnerLimitsMode(data, features, limits, false)
+	return decodeDirectModuleInnerLimitsMode(data, features, limits, false, false)
 }
 
 func (dm *directModule) decodeDirectCustomSection(r *reader) error {
@@ -325,15 +327,24 @@ func decodeDirectDataSection(dm *directModule, r *reader) error {
 	if err != nil {
 		return err
 	}
+	// Preserve the expanded decoder's conservative budget and rejection order.
 	if err := reserveDecodedSlice[Data](r, n); err != nil {
 		return err
 	}
-	// Every data segment needs at least a flags byte and a payload-length
-	// byte. Retain the conservative admission budget above, but allocate the
-	// checked vector once instead of accumulating pointer-rich growth
-	// buffers for modules with many segments.
 	if uint64(n) > uint64(r.left()/2) {
 		return newDecodeError(ErrIndexOutOfBounds, r.off())
+	}
+	if dm.compactData && n != 0 {
+		view := &dataSectionView{bytes: r.data, spans: make([]dataSegmentSpan, n)}
+		dm.m.dataView = view
+		for i := range view.spans {
+			span, err := decodeDirectDataSpan(r)
+			if err != nil {
+				return err
+			}
+			view.spans[i] = span
+		}
+		return nil
 	}
 	dm.m.Data = make([]Data, n)
 	for i := range dm.m.Data {
@@ -347,6 +358,41 @@ func decodeDirectDataSection(dm *directModule, r *reader) error {
 		dm.m.Data[i] = d
 	}
 	return nil
+}
+
+func decodeDirectDataSpan(r *reader) (dataSegmentSpan, error) {
+	var s dataSegmentSpan
+	flags, err := r.u32()
+	if err != nil {
+		return s, err
+	}
+	switch flags {
+	case 0, 2:
+		if flags == 2 {
+			s.memory, err = r.u32()
+			if err != nil {
+				return s, err
+			}
+		}
+		s.offsetStart = uint32(r.off())
+		if _, err = readDirectConstExprBytes(r); err != nil {
+			return s, err
+		}
+		s.offsetEnd = uint32(r.off())
+	case 1:
+	default:
+		return s, newDecodeError(ErrInvalidSection, r.off())
+	}
+	n, err := r.u32()
+	if err != nil {
+		return s, err
+	}
+	s.initStart = uint32(r.off())
+	if _, err = r.bytes(int(n)); err != nil {
+		return s, err
+	}
+	s.initEnd = uint32(r.off())
+	return s, nil
 }
 
 func decodeDirectData(r *reader) (Data, directConstExpr, error) {
@@ -1385,7 +1431,7 @@ func (v *funcValidator) validateFuncDirectObservedLoop(r *reader, widths memargW
 	}
 }
 
-func decodeDirectModuleInnerLimitsMode(data []byte, features ValidationFeatures, limits DecodeLimits, deferCodeBodies bool) (*directModule, error) {
+func decodeDirectModuleInnerLimitsMode(data []byte, features ValidationFeatures, limits DecodeLimits, deferCodeBodies, compactData bool) (*directModule, error) {
 	// Keep the top-level cursor in this frame. TinyGo's conservative collector
 	// can otherwise lose the heap-allocated reader while its backing slice is
 	// still being consumed across allocation-heavy section decoding.
@@ -1405,7 +1451,7 @@ func decodeDirectModuleInnerLimitsMode(data []byte, features ValidationFeatures,
 	if ver != 1 {
 		return nil, newDecodeError(ErrBadVersion, 4)
 	}
-	dm := &directModule{}
+	dm := &directModule{compactData: compactData}
 	var lastOrder uint8
 	var seen uint16 // standard section IDs are the dense range 1..13
 	sub := reader{budget: r.budget}
@@ -1478,7 +1524,7 @@ func decodeDirectModuleInnerLimitsMode(data []byte, features ValidationFeatures,
 	if len(dm.m.FuncTypes) != len(dm.m.Code) {
 		return nil, newDecodeError(ErrInvalidModule, len(data))
 	}
-	if dm.m.DataCount != nil && uint64(*dm.m.DataCount) != uint64(len(dm.m.Data)) {
+	if dm.m.DataCount != nil && uint64(*dm.m.DataCount) != uint64(dm.m.DataSegmentCount()) {
 		return nil, newDecodeError(ErrInvalidModule, len(data))
 	}
 	if dm.m.DataCount == nil && dm.usesDataCountInstr {
@@ -1618,7 +1664,19 @@ func (v *funcValidator) stepDirectMemory(kind InstrKind, arg MemArg) error {
 // ValidateModule call. Unlike DecodeModule, this is not a standalone syntax
 // checker. It is the first half of the compiler's fused decode/validate path.
 func DecodeModuleForValidationWithFeatures(data []byte, features ValidationFeatures) (*Module, error) {
-	dm, err := decodeDirectModuleInnerLimitsMode(data, features, DecodeLimits{}, true)
+	return decodeModuleForValidationDataMode(data, features, false)
+}
+
+// DecodeModuleForCompilation retains pointer-free data-section spans instead of
+// expanded data records. Function syntax still needs subsequent validation.
+// Read data through DataSegmentCount/DataSegment; ordinary
+// decoding and programmatically populated Module.Data remain unchanged.
+func DecodeModuleForCompilation(data []byte, features ValidationFeatures) (*Module, error) {
+	return decodeModuleForValidationDataMode(data, features, true)
+}
+
+func decodeModuleForValidationDataMode(data []byte, features ValidationFeatures, compactData bool) (*Module, error) {
+	dm, err := decodeDirectModuleInnerLimitsMode(data, features, DecodeLimits{}, true, compactData)
 	runtime.KeepAlive(data)
 	if err != nil {
 		return nil, err

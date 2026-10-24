@@ -26,7 +26,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionD
 	}
 	if m == nil || len(m.Code) > MaxFunctions || len(m.Types) == 0 || len(m.Types) > MaxFunctions || len(m.Exports) > MaxFunctions ||
 		len(m.Tables) > MaxFunctions || len(m.Memories) > maxRootedScalarMemories || len(m.Globals) > 256 ||
-		len(m.Elements) > 256 || len(m.Data) > 256 || len(m.Tags) != 0 ||
+		len(m.Elements) > 256 || m.DataSegmentCount() > 256 || len(m.Tags) != 0 ||
 		len(m.StringRefs) != 0 || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
@@ -95,7 +95,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionD
 			}
 		}
 	}
-	if m.DataCount != nil && (uint64(*m.DataCount) != uint64(len(m.Data)) || *m.DataCount > 256) {
+	if m.DataCount != nil && (uint64(*m.DataCount) != uint64(m.DataSegmentCount()) || *m.DataCount > 256) {
 		return false
 	}
 	if admitProductionStart(m) != nil {
@@ -299,8 +299,8 @@ func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionD
 		}
 	}
 	remainingData := MaxModuleBytes
-	for i := range m.Data {
-		data := &m.Data[i]
+	for i := 0; i < m.DataSegmentCount(); i++ {
+		data := m.DataSegment(i)
 		if len(data.Init) > remainingData {
 			return false
 		}

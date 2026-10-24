@@ -178,7 +178,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	if state.publicStarts && state.exports {
 		tableLimit = MaxFunctions
 	}
-	if len(m.Code) == 0 && (!state.publicStarts || !state.exports) || len(m.Code) > MaxFunctions && !state.publicStarts || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions && !state.publicStarts || len(m.Imports) > productionImportLimit(state.publicStarts) || len(m.Tables) > tableLimit || len(m.Globals) > productionGlobalLimit(state.publicStarts) || len(m.Tags) != 0 && mode.exceptionModule == nil || len(m.StringRefs) != 0 || m.Start != nil && !state.publicStarts || len(m.Elements) > productionElementSegmentLimit(state.publicStarts) || len(m.Data) > 256 && !state.publicStarts || !state.publicStarts && m.BranchHints != nil || len(m.Memories) > MaxProductionMemories {
+	if len(m.Code) == 0 && (!state.publicStarts || !state.exports) || len(m.Code) > MaxFunctions && !state.publicStarts || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions && !state.publicStarts || len(m.Imports) > productionImportLimit(state.publicStarts) || len(m.Tables) > tableLimit || len(m.Globals) > productionGlobalLimit(state.publicStarts) || len(m.Tags) != 0 && mode.exceptionModule == nil || len(m.StringRefs) != 0 || m.Start != nil && !state.publicStarts || len(m.Elements) > productionElementSegmentLimit(state.publicStarts) || m.DataSegmentCount() > 256 && !state.publicStarts || !state.publicStarts && m.BranchHints != nil || len(m.Memories) > MaxProductionMemories {
 		return nil, unsupported("SWAR module state/features/function bound")
 	}
 	imported, memoryImports, globalImports := 0, 0, 0
@@ -356,7 +356,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		}
 	} else {
 		var err error
-		dataSegments, activeData, err = swarModuleData(m.Data, memory)
+		dataSegments, activeData, err = swarModuleData(m.ExpandedDataSegments(), memory)
 		if err != nil {
 			return nil, err
 		}
@@ -477,7 +477,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 			}
 			continue
 		}
-		summaries[i], err = walkSWARPairsWithOwnedExceptions(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, mode.exceptionModule, mode.customInstructions, mode.tableModuleSource, mode.ownedExceptionReferences, nil, mode.primitiveTailTypes)
+		summaries[i], err = walkSWARPairsWithOwnedExceptions(&m.Code[i], functions[imported+i], memoryProfile, types, functions, globalTypes, m.DataSegmentCount(), table, typeKeys, len(m.Elements), imported, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, mode.exceptionModule, mode.customInstructions, mode.tableModuleSource, mode.ownedExceptionReferences, nil, mode.primitiveTailTypes)
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
 		}
@@ -525,7 +525,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		if len(state.integerFunctions) != 0 && state.integerFunctions[i] {
 			code, info, relocations, err = compileIntegerMode(&m.Code[i], functions[imported+i], state.integerState, integerSummaries[i], functionMode)
 		} else {
-			code, info, relocations, err = compileSWARPairsWithMemories(&m.Code[i], functions[imported+i], memories, state.indexedMemories, types, functions, globalTypes, len(m.Data), table, typeKeys, len(m.Elements), imported, functionMode)
+			code, info, relocations, err = compileSWARPairsWithMemories(&m.Code[i], functions[imported+i], memories, state.indexedMemories, types, functions, globalTypes, m.DataSegmentCount(), table, typeKeys, len(m.Elements), imported, functionMode)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("rv64: SWAR function %d: %w", i, err)
@@ -676,7 +676,7 @@ func admitSWARDecodedBudgetReferencesLimit(m *wasm.Module, publicStarts, referen
 	}
 	// Count and byte budgets precede validation, metadata expansion and payload
 	// copies. Decoded callers do not necessarily retain a bounded source blob.
-	if len(m.Code) == 0 && !publicStarts || len(m.Code) > MaxFunctions && !publicStarts || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions && !publicStarts || len(m.Imports) > productionImportLimit(publicStarts) || len(m.Tables) > maxTables || len(m.Memories) > maxMemories || len(m.Globals) > productionGlobalLimit(publicStarts) || len(m.Data) > 256 && !publicStarts || len(m.Elements) > productionElementSegmentLimit(publicStarts) || len(m.Exports) > MaxFunctions || len(m.Customs) > MaxFunctions || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || !publicStarts && m.BranchHints != nil {
+	if len(m.Code) == 0 && !publicStarts || len(m.Code) > MaxFunctions && !publicStarts || len(m.FuncTypes) != len(m.Code) || len(m.Types) > MaxFunctions && !publicStarts || len(m.Imports) > productionImportLimit(publicStarts) || len(m.Tables) > maxTables || len(m.Memories) > maxMemories || len(m.Globals) > productionGlobalLimit(publicStarts) || m.DataSegmentCount() > 256 && !publicStarts || len(m.Elements) > productionElementSegmentLimit(publicStarts) || len(m.Exports) > MaxFunctions || len(m.Customs) > MaxFunctions || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.Start != nil && !publicStarts || !publicStarts && m.BranchHints != nil {
 		return unsupported("SWAR module state/features/function bound")
 	}
 	globalCount, functionCount, memoryCount := len(m.Globals), 0, len(m.Memories)
@@ -777,7 +777,8 @@ func admitSWARDecodedBudgetReferencesLimit(m *wasm.Module, publicStarts, referen
 			return unsupported("SWAR decoded global initializer byte bound")
 		}
 	}
-	for _, data := range m.Data {
+	for dataIndex := 0; dataIndex < m.DataSegmentCount(); dataIndex++ {
+		data := m.DataSegment(dataIndex)
 		if len(data.Mode.Offset.Instrs) != 0 || !consume(len(data.Mode.Offset.BodyBytes)) || !consume(len(data.Init)) {
 			return unsupported("SWAR decoded data byte bound")
 		}

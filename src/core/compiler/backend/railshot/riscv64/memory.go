@@ -204,7 +204,7 @@ func admitStateOnlyExternrefGlobals(m *wasm.Module, production, public bool) boo
 	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 0 || len(m.FuncTypes) != 0 || len(m.Code) != 0 || len(m.Globals) == 0 || len(m.Globals) > 256 || len(m.Exports) > 256 || m.Start != nil {
 		return false
 	}
-	if len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Elements) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
+	if len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Elements) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
 		return false
 	}
 	for _, export := range m.Exports {
@@ -402,7 +402,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			s.memory = &memorySpec{min: uint32(t.Limits.Min), max: t.Limits.Max, hasMax: t.Limits.HasMax}
 		}
 	}
-	if len(s.globals)+len(m.Globals) > productionGlobalLimit(production && publicExports) || len(m.Data) > native.MaxDataSegments && !(production && publicExports) {
+	if len(s.globals)+len(m.Globals) > productionGlobalLimit(production && publicExports) || m.DataSegmentCount() > native.MaxDataSegments && !(production && publicExports) {
 		return s, unsupported("state count bound")
 	}
 	importedGlobals := len(s.globals)
@@ -496,7 +496,8 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		}
 		s.globals = append(s.globals, globalSpec{wide: w, mutable: g.Type.Mutable, value: v, typ: g.Type.Type})
 	}
-	for _, d := range m.Data {
+	for dataIndex := 0; dataIndex < m.DataSegmentCount(); dataIndex++ {
+		d := m.DataSegment(dataIndex)
 		if d.Mode.Kind == wasm.DataPassive {
 			s.passiveData = append(s.passiveData, append([]byte(nil), d.Init...))
 			continue

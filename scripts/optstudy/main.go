@@ -168,7 +168,7 @@ func measureRaw(path string, hold time.Duration, option string, enabled bool) {
 		"compile_ns": elapsed, "allocated_bytes": after.TotalAlloc - before.TotalAlloc,
 		"startup_peak_rss_bytes": startupRSS, "heap_after_compile_bytes": after.HeapAlloc,
 		"heap_sys_bytes": after.HeapSys, "heap_idle_bytes": after.HeapIdle,
-		"heap_released_bytes": after.HeapReleased, "stack_sys_bytes": after.StackSys,
+		"heap_released_bytes": after.HeapReleased, "stack_sys_bytes": stackSystemBytes(&after),
 		"compile_peak_rss_bytes": rss, "code_bytes": cm.CodeSize(),
 		"code_sha256": hex.EncodeToString(h.Sum(nil)), "oracle": "not-run-compile-only",
 		"platform": runtime.GOOS + "/" + runtime.GOARCH, "go": runtime.Version(),

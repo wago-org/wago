@@ -17,7 +17,7 @@ import (
 func VerifySourceCallModuleAMD64(ctx *codegen.SourceContext, m *wasm.Module, code []byte, entry, internal []int, admit bool) (r regalloccheck.Result) {
 	r = sourceLeafUnavailable(regalloccheck.UnsupportedOperation, "no admitted final-module call recipe")
 	a, features, ok := codegen.ValidatedSourceContext(ctx, m)
-	if !ok || !admit || len(m.Code) != 3 || len(m.FuncTypes) != 3 || len(m.Types) != 1 || len(m.Types[0].SubTypes) != 1 || len(m.Imports) != 0 || len(m.Exports) != 0 || m.Start != nil || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.DataCount != nil || len(m.Customs) != 0 || len(m.StringRefs) != 0 || len(m.BranchHints) != 0 {
+	if !ok || !admit || len(m.Code) != 3 || len(m.FuncTypes) != 3 || len(m.Types) != 1 || len(m.Types[0].SubTypes) != 1 || len(m.Imports) != 0 || len(m.Exports) != 0 || m.Start != nil || len(m.Tables) != 0 || len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.DataCount != nil || len(m.Customs) != 0 || len(m.StringRefs) != 0 || len(m.BranchHints) != 0 {
 		return r
 	}
 	for i := range m.Code {

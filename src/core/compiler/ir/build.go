@@ -161,8 +161,8 @@ func buildModuleMeta(m *wasm.Module) *Module {
 		e := m.Elements[i]
 		out.Elements = append(out.Elements, ElementMeta{TableIdx: uint32(e.Mode.Table), ElemType: elemType(e), Passive: e.Mode.Kind == wasm.ElemPassive, Declared: e.Mode.Kind == wasm.ElemDeclarative, Len: elemLen(e)})
 	}
-	for i := range m.Data {
-		d := m.Data[i]
+	for i := 0; i < m.DataSegmentCount(); i++ {
+		d := m.DataSegment(i)
 		out.Data = append(out.Data, DataMeta{MemIdx: uint32(d.Mode.Mem), Passive: d.Mode.Kind == wasm.DataPassive, Len: uint32(len(d.Init))})
 	}
 	return out
@@ -1384,7 +1384,7 @@ func (b *Builder) lowerFC() error {
 		if err != nil {
 			return err
 		}
-		if uint(data) >= uint(len(b.m.Data)) {
+		if uint(data) >= uint(b.m.DataSegmentCount()) {
 			return fmt.Errorf("unknown data segment %d", data)
 		}
 		mem, err := b.readZeroMemoryImmediate()
@@ -1416,7 +1416,7 @@ func (b *Builder) lowerFC() error {
 		if err != nil {
 			return err
 		}
-		if uint(data) >= uint(len(b.m.Data)) {
+		if uint(data) >= uint(b.m.DataSegmentCount()) {
 			return fmt.Errorf("unknown data segment %d", data)
 		}
 		if b.reachable {

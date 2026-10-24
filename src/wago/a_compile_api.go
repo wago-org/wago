@@ -112,7 +112,7 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 }
 
 func stagedNullReferenceProductShape(m *wasm.Module) (stagedNullReferenceProduct, error) {
-	if m == nil || len(m.Imports) != 0 || m.Start != nil || m.TagCount() != 0 || m.MemCount() != 0 || m.TableCount() != 0 || len(m.Elements) != 0 || len(m.Data) != 0 {
+	if m == nil || len(m.Imports) != 0 || m.Start != nil || m.TagCount() != 0 || m.MemCount() != 0 || m.TableCount() != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 {
 		return 0, errors.New("null-reference product requires only local functions and immutable local globals")
 	}
 	if len(m.Types) == 10 && m.FuncCount() == 9 && len(m.Code) == 9 && len(m.Globals) == 18 && len(m.Exports) == 9 {

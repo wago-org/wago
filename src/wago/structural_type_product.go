@@ -56,7 +56,7 @@ func stagedStructuralTypeProductShape(m *wasm.Module) (stagedStructuralTypeProdu
 	if m == nil {
 		return 0, fmt.Errorf("nil module")
 	}
-	if m.Start != nil || m.TagCount() != 0 || m.MemCount() != 0 || len(m.Data) != 0 {
+	if m.Start != nil || m.TagCount() != 0 || m.MemCount() != 0 || m.DataSegmentCount() != 0 {
 		return 0, fmt.Errorf("collector-free structural products reject start, tag, memory, and data state")
 	}
 	if err := stagedStructuralTypeMetadataShape(m); err != nil {

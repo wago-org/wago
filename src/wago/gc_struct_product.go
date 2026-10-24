@@ -530,7 +530,7 @@ func stagedGCStructStateGraph(m *wasm.Module) string {
 		exports[i] = fmt.Sprintf("%s=%d:%d", m.Exports[i].Name, m.Exports[i].Index.Kind, m.Exports[i].Index.Index)
 	}
 	return fmt.Sprintf("imports=%d funcs=%d globals=[%s] tables=%d memories=%d tags=%d elements=%d data=%d exports=[%s]",
-		len(m.Imports), len(m.Code), strings.Join(globals, ","), m.TableCount(), m.MemCount(), m.TagCount(), len(m.Elements), len(m.Data), strings.Join(exports, ","))
+		len(m.Imports), len(m.Code), strings.Join(globals, ","), m.TableCount(), m.MemCount(), m.TagCount(), len(m.Elements), m.DataSegmentCount(), strings.Join(exports, ","))
 }
 
 func stagedGCStructOpcodeInventory(m *wasm.Module) ([]stagedGCStructOpcodeCount, error) {

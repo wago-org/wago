@@ -513,14 +513,14 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 	// thousands of segments). Reserve once instead of geometrically copying the
 	// growing descriptor slice.
 	activeData := 0
-	for i := range m.Data {
-		if m.Data[i].Mode.Kind != wasm.DataPassive {
+	for i := 0; i < m.DataSegmentCount(); i++ {
+		if !m.DataSegmentIsPassive(i) {
 			activeData++
 		}
 	}
 	c.Data = make([]DataInit, 0, activeData)
-	for i := range m.Data {
-		d := &m.Data[i]
+	for i := 0; i < m.DataSegmentCount(); i++ {
+		d := m.DataSegment(i)
 		if d.Mode.Kind == wasm.DataPassive {
 			c.PassiveData[i] = PassiveDataInit{Bytes: append([]byte(nil), d.Init...)}
 			continue

@@ -134,7 +134,8 @@ func analyzeModuleRequirementsWithValidation(m *wasm.Module, analysis *wasm.Vali
 			out |= CoreFeatureReferenceTypes
 		}
 	}
-	for i, data := range m.Data {
+	for i := 0; i < m.DataSegmentCount(); i++ {
+		data := m.DataSegment(i)
 		if data.Mode.Kind == wasm.DataActive {
 			out |= requiredFeaturesForConstExpr(data.Mode.Offset, m.ImportedGlobalCount())
 		}

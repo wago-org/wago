@@ -722,7 +722,7 @@ func (v *funcValidator) checkMem(align uint32) error {
 func (v *funcValidator) checkDataIndex(idx uint32, op string) error {
 	// Bulk-memory data instructions are guarded by the data count section. The
 	// segment may have any mode; active segments are already dropped at runtime.
-	if v.m.DataCount == nil || idx >= *v.m.DataCount || uint(idx) >= uint(len(v.m.Data)) {
+	if v.m.DataCount == nil || idx >= *v.m.DataCount || uint(idx) >= uint(v.m.DataSegmentCount()) {
 		return v.verr(ErrInvalidDataCount, op+" data index")
 	}
 	return nil

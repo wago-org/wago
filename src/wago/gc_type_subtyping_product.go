@@ -178,7 +178,7 @@ func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 	if m == nil {
 		return 0, fmt.Errorf("nil module")
 	}
-	if m.TableCount() == 0 && m.MemCount() == 0 && len(m.Globals) == 0 && len(m.Elements) == 0 && len(m.Data) == 0 && m.TagCount() == 0 && m.Start == nil {
+	if m.TableCount() == 0 && m.MemCount() == 0 && len(m.Globals) == 0 && len(m.Elements) == 0 && m.DataSegmentCount() == 0 && m.TagCount() == 0 && m.Start == nil {
 		if len(m.Types) == 3 && len(m.Types[0].SubTypes) == 1 && len(m.Types[1].SubTypes) == 1 && len(m.Types[2].SubTypes) == 1 && (m.ImportedFuncCount() != 0 || len(m.Exports) == 3) {
 			return stagedGCTypeSubtypingLinkShape(m)
 		}
@@ -235,7 +235,7 @@ func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 		}
 		return stagedGCTypeSubtypingRefTestShape(m)
 	}
-	if len(m.Imports) != 0 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+	if len(m.Imports) != 0 || m.TableCount() != 0 || m.MemCount() != 0 || m.DataSegmentCount() != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("type-subtyping products reject imports, tables, memories, data, tags, and start")
 	}
 	hasHeapType, hasSubtypeMetadata := false, false
@@ -279,7 +279,7 @@ func stagedGCTypeSubtypingProductShape(m *wasm.Module) (stagedGCTypeSubtypingPro
 }
 
 func stagedGCTypeSubtypingLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
-	if len(m.Types) != 3 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+	if len(m.Types) != 3 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("link product requires exactly three type groups and no non-function state")
 	}
 	for i := 0; i < 3; i++ {
@@ -350,7 +350,7 @@ func stagedGCTypeSubtypingLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduc
 }
 
 func stagedGCTypeSubtypingExtendedRecursiveLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
-	if len(m.Types) != 4 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+	if len(m.Types) != 4 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("extended recursive link product requires four type groups and no non-function state")
 	}
 	for groupIndex := range m.Types {
@@ -396,7 +396,7 @@ func stagedGCTypeSubtypingExtendedRecursiveLinkShape(m *wasm.Module) (stagedGCTy
 }
 
 func stagedGCTypeSubtypingMismatchLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
-	if m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+	if m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("mismatch link product rejects non-function state")
 	}
 	for i := range m.Types {
@@ -439,7 +439,7 @@ func stagedGCTypeSubtypingMismatchLinkShape(m *wasm.Module) (stagedGCTypeSubtypi
 }
 
 func stagedGCTypeSubtypingNonFlatExportShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
-	if len(m.Types) != 4 || len(m.Types[0].SubTypes) != 1 || len(m.Types[1].SubTypes) != 1 || len(m.Types[2].SubTypes) != 1 || len(m.Types[3].SubTypes) != 3 || len(m.Imports) != 0 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Exports) != 6 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+	if len(m.Types) != 4 || len(m.Types[0].SubTypes) != 1 || len(m.Types[1].SubTypes) != 1 || len(m.Types[2].SubTypes) != 1 || len(m.Types[3].SubTypes) != 3 || len(m.Imports) != 0 || len(m.FuncTypes) != 6 || len(m.Code) != 6 || len(m.Exports) != 6 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("non-flat export product is outside the exact state shape")
 	}
 	for i := 0; i < 6; i++ {
@@ -451,7 +451,7 @@ func stagedGCTypeSubtypingNonFlatExportShape(m *wasm.Module) (stagedGCTypeSubtyp
 }
 
 func stagedGCTypeSubtypingDuplicateRecursiveLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
-	if len(m.Types) != 2 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+	if len(m.Types) != 2 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("duplicate recursive link product requires exactly two type groups and no non-function state")
 	}
 	for groupIndex := range m.Types {
@@ -498,7 +498,7 @@ func stagedGCTypeSubtypingDuplicateRecursiveLinkShape(m *wasm.Module) (stagedGCT
 }
 
 func stagedGCTypeSubtypingFinalityLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
-	if len(m.Types) != 2 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+	if len(m.Types) != 2 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("finality link product requires exactly two type groups and no non-function state")
 	}
 	for i := 0; i < 2; i++ {
@@ -554,7 +554,7 @@ func stagedGCTypeSubtypingFinalityLinkShape(m *wasm.Module) (stagedGCTypeSubtypi
 }
 
 func stagedGCTypeSubtypingStructLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
-	if len(m.Types) != 2 || len(m.Types[0].SubTypes) != 2 || len(m.Types[1].SubTypes) != 2 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+	if len(m.Types) != 2 || len(m.Types[0].SubTypes) != 2 || len(m.Types[1].SubTypes) != 2 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("struct link product requires exactly two two-member recursive groups and no non-function state")
 	}
 	for gi := range m.Types {
@@ -615,7 +615,7 @@ func stagedGCTypeSubtypingStructLinkShape(m *wasm.Module) (stagedGCTypeSubtyping
 }
 
 func stagedGCTypeSubtypingStructProjectionLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
-	if len(m.Types) != 3 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+	if len(m.Types) != 3 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("struct projection link product requires exactly three type groups and no non-function state")
 	}
 	for groupIndex := range m.Types {
@@ -706,7 +706,7 @@ func stagedGCTypeSubtypingStructMismatchLinkShape(m *wasm.Module) (stagedGCTypeS
 	if !provider {
 		wantGroups = 2
 	}
-	if len(m.Types) != wantGroups || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+	if len(m.Types) != wantGroups || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("struct mismatch link product requires exactly %d type groups and no non-function state", wantGroups)
 	}
 	for groupIndex := range m.Types {
@@ -770,7 +770,7 @@ func stagedGCTypeSubtypingStructMismatchLinkShape(m *wasm.Module) (stagedGCTypeS
 }
 
 func stagedGCTypeSubtypingIndependentStructLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
-	if len(m.Types) != 3 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+	if len(m.Types) != 3 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("independent struct link product requires exactly three type groups and no non-function state")
 	}
 	for groupIndex := range m.Types {
@@ -830,7 +830,7 @@ func stagedGCTypeSubtypingIndependentStructLinkShape(m *wasm.Module) (stagedGCTy
 }
 
 func stagedGCTypeSubtypingExtendedProjectionLinkShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
-	if len(m.Types) != 4 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+	if len(m.Types) != 4 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Globals) != 0 || len(m.Elements) != 0 || m.DataSegmentCount() != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("extended projection link product requires exactly four type groups and no non-function state")
 	}
 	for groupIndex := range m.Types {
@@ -953,7 +953,7 @@ func stagedGCTypeSubtypingRefFuncGlobalShape(m *wasm.Module) (stagedGCTypeSubtyp
 }
 
 func stagedGCTypeSubtypingRuntimeCallCastShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
-	if len(m.Imports) != 0 || len(m.Globals) != 0 || m.TableCount() != 1 || m.MemCount() != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+	if len(m.Imports) != 0 || len(m.Globals) != 0 || m.TableCount() != 1 || m.MemCount() != 0 || m.DataSegmentCount() != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("runtime call/cast product requires one local table and rejects imports, globals, memories, data, tags, and start")
 	}
 	if len(m.Types) == 2 && len(m.FuncTypes) == 6 && len(m.Code) == 6 && len(m.Elements) == 1 && len(m.Exports) == 4 {
@@ -1173,7 +1173,7 @@ func stagedGCTypeSubtypingRuntimeTypedTableCallShape(m *wasm.Module) (stagedGCTy
 }
 
 func stagedGCTypeSubtypingRefTestShape(m *wasm.Module) (stagedGCTypeSubtypingProduct, error) {
-	if len(m.Imports) != 0 || len(m.Globals) != 0 || m.TableCount() != 0 || m.MemCount() != 0 || len(m.Data) != 0 || m.TagCount() != 0 || m.Start != nil {
+	if len(m.Imports) != 0 || len(m.Globals) != 0 || m.TableCount() != 0 || m.MemCount() != 0 || m.DataSegmentCount() != 0 || m.TagCount() != 0 || m.Start != nil {
 		return 0, fmt.Errorf("function ref.test product rejects imports, globals, tables, memories, data, tags, and start")
 	}
 	if len(m.FuncTypes) != len(m.Code) || (len(m.Code) != 2 && len(m.Code) != 3) {

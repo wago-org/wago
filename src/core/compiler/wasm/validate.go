@@ -501,7 +501,8 @@ func (v *moduleValidator) validateModule() error {
 		}
 	}
 	activeData := 0
-	for _, d := range v.m.Data {
+	for dataIndex := 0; dataIndex < v.m.DataSegmentCount(); dataIndex++ {
+		d := v.m.DataSegment(dataIndex)
 		if d.Mode.Kind == DataActive {
 			activeData++
 			flags, ok := v.memoryProperties(uint32(d.Mode.Mem))
@@ -524,7 +525,7 @@ func (v *moduleValidator) validateModule() error {
 			}
 		}
 	}
-	if v.m.DataCount != nil && int(*v.m.DataCount) != len(v.m.Data) {
+	if v.m.DataCount != nil && int(*v.m.DataCount) != v.m.DataSegmentCount() {
 		return v.err(ErrInvalidDataCount, "")
 	}
 	_ = activeData

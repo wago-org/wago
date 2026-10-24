@@ -325,7 +325,8 @@ func UsesSWAR(m *wasm.Module) (bool, error) {
 		}
 		remaining -= len(fn.BodyBytes)
 	}
-	for _, data := range m.Data {
+	for dataIndex := 0; dataIndex < m.DataSegmentCount(); dataIndex++ {
+		data := m.DataSegment(dataIndex)
 		if len(data.Init) > remaining {
 			return false, unsupported("SWAR selector instruction/data size bound")
 		}

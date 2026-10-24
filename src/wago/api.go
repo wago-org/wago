@@ -530,7 +530,7 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls
 		return err
 	}
 	exactTailTable := tailCalls && m.TableCount() == 1 && m.ImportedTableCount() == 0 && len(m.Elements) == 1
-	if m.MemCount() != 0 || m.GlobalCount() != 0 || len(m.Data) != 0 || (m.TableCount() != 0 && !exactTailTable) || (len(m.Elements) != 0 && !exactTailTable && !hasFuncrefPayload) {
+	if m.MemCount() != 0 || m.GlobalCount() != 0 || m.DataSegmentCount() != 0 || (m.TableCount() != 0 && !exactTailTable) || (len(m.Elements) != 0 && !exactTailTable && !hasFuncrefPayload) {
 		return errors.New("bounded exception handling requires functions without memory/global/data state and only the exact immutable local tail table")
 	}
 	for _, ex := range m.Exports {
@@ -1275,12 +1275,12 @@ func moduleSegmentStateCounts(m *wasm.Module) (elemCount, dataCount int) {
 			elemCount = i + 1
 		}
 	}
-	for i := range m.Data {
-		if m.Data[i].Mode.Kind == wasm.DataPassive {
+	for i := 0; i < m.DataSegmentCount(); i++ {
+		if m.DataSegmentIsPassive(i) {
 			dataCount = i + 1
 		}
 	}
-	if elemCount == len(m.Elements) && dataCount == len(m.Data) {
+	if elemCount == len(m.Elements) && dataCount == m.DataSegmentCount() {
 		// Every declared index already has a passive descriptor slot (including
 		// the common zero-segment case), so no instruction walk is needed.
 		return elemCount, dataCount
@@ -1293,7 +1293,7 @@ func moduleSegmentStateCounts(m *wasm.Module) (elemCount, dataCount int) {
 				// nevertheless disagrees, reserve every declared slot rather than emit
 				// code that can index beyond the runtime descriptor arrays.
 				elemCount = len(m.Elements)
-				dataCount = len(m.Data)
+				dataCount = m.DataSegmentCount()
 			}
 		} else {
 			instrsSegmentStateCounts(fn.Body.Instrs, &elemCount, &dataCount)

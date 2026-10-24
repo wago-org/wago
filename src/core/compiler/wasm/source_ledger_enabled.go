@@ -280,7 +280,7 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 		metadata += n
 		b.charge(n)
 	}
-	for _, n := range []int{len(m.Types), len(m.Imports), len(m.FuncTypes), len(m.Code), len(m.Tables), len(m.Memories), len(m.Globals), len(m.Tags), len(m.Elements), len(m.Data)} {
+	for _, n := range []int{len(m.Types), len(m.Imports), len(m.FuncTypes), len(m.Code), len(m.Tables), len(m.Memories), len(m.Globals), len(m.Tags), len(m.Elements), m.DataSegmentCount()} {
 		addMetadata(n)
 	}
 	for i := range m.Types {
