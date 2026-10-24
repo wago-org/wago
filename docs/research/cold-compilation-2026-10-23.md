@@ -8,6 +8,20 @@ Standalone decoding, malformed-input diagnostics, typed validation and runtime
 guards remain checked. Adjacent compiler-local declarations are compacted while
 preserving zero-count type checks and original source offsets.
 
+## Native Linux screening
+
+The manual CI input `cold_compilation_study=true` runs
+`scripts/cold-compilation-study.py` on separate native Linux AMD64 and ARM64
+GitHub runners. It builds candidate and main `dc13730184e8` before timing, copies
+the identical measurement harness into the baseline without changing production
+source, and runs one alternating fresh-process pair per frozen input on one CPU.
+AMD64 uses defaults; ARM64 enables the experimental file option. Artifacts
+include source/binary/input-harness identity, CPU/kernel/filesystem details,
+all 40 oracle results, per-input ratios and ratios of totals. This optional
+screening job is separate from the required correctness checks. Shared runners
+and short execution windows limit timing conclusions; the job's presence is not
+a performance result.
+
 ## Direct operand-stack sentinel lookup
 
 Production `85fd3b36af3417bfbc1d43c1665843ee1bbc3332` returns the existing nil/sentinel identities
