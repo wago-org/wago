@@ -47,10 +47,16 @@ whole profile versus main, not an isolated causal estimate of cache retention.
 Native checked AMD64 runtime/catalog/backend/public tests pass before timing;
 supplemental official-spec cases can skip without their conversion tools.
 Linux ARM64 file ownership/reclaim tests pass without skips, and Windows/Darwin
-AMD64 public binaries cross-build for the preceding AMD64 extension. Full
-correctness CI for this source is [running](https://github.com/wago-org/wago/actions/runs/40073075665),
-so final qualification remains pending. The previous accepted compiler plus test
-fixes passed [full CI](https://github.com/wago-org/wago/actions/runs/40070638663).
+AMD64 public binaries cross-build for the preceding AMD64 extension. The full manually dispatched correctness matrix for this exact compiler/runtime
+source [passes](https://github.com/wago-org/wago/actions/runs/40073075665):
+53 successful jobs, with only three draft-only controls skipped. The planner and
+aggregate verify every expected full-profile job. This is separate from the
+PR's automatic draft smoke lane. Subsequent commits only add evidence and
+benchmark workflow support; compiler/runtime code is unchanged.
+
+[Final source-attributed qualification](cold-compilation-2026-10-23/final-qualification.json)
+records the configuration, checked requirements, switch coverage, full CI job
+results, and measurement limits.
 
 The subsequent current-source file-option check at `4de7ac3170fc` passes
 40/40 exact oracles and 20/20 native-code hash comparisons across all 20 inputs.
