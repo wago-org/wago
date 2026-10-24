@@ -22,6 +22,11 @@ Wasm/shared/ARM64/public tests, register-allocation checks, targeted race checks
 and native Linux ARM64 public tests. Linux AMD64 test binaries cross-compile;
 AMD64 execution has not been rerun locally for this integration.
 
+The root suite passed except for a CLI subprocess-start timeout (isolated rerun
+passed) and `cli/runtime/commands/build` rejecting extended attributes while
+publishing through a relative symlink. The latter reproduces on untouched current
+main; the full root suite is therefore not reported as passing.
+
 The full public profiling suite encounters a pre-existing mutex failure in
 `TestHostFuncRefNumericRetainedReference`, independently reproduced on current
 main and both parent sources. Backend profiling tests pass.
