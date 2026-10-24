@@ -40,27 +40,48 @@ this revised default configuration. Historical records remain at commit
 [40073017826](https://github.com/wago-org/wago/actions/runs/40073017826) and
 [40073536273](https://github.com/wago-org/wago/actions/runs/40073536273).
 
-## Native ARM64 review rerun, 2026-10-24
+
+## Native ARM64 follow-up, 2026-10-24
 
 Apple M4 Max, Darwin 25.6.0, Go 1.27.1, defaults, one worker and GOMAXPROCS=1.
-Main `dc13730184e8` versus `da6e10a36ee2`; one alternating pair per input/phase,
-under the exclusive Apple device-schedule lock, without Darwin CPU affinity.
-All 80 oracles passed; all 20 native hashes matched in both phases.
+Main `dc13730184e8` versus compiler source `3f34c3b36868`; one alternating pair per
+input/phase, under the exclusive Apple device-schedule lock, without Darwin CPU
+affinity. All 80 oracles passed; all 20 native hashes matched in both phases.
 [Recorded pairs, identity and totals](../../bench/suite/testdata/cold-compilation/arm64-review-2026-10-24.json).
 
 | Metric | Main | PR | Delta |
 |---|---:|---:|---:|
-| Compile wall, total | 2.464 s | 1.834 s | -25.6% |
-| Compile peak RSS, summed | 633.69 MiB | 629.52 MiB | -0.7% |
-| Compile Go allocation traffic, total | 415.83 MiB | 363.77 MiB | -12.5% |
-| Compile through first result, total | 4.460 s | 3.866 s | -13.3% |
-| Warm execution, geometric mean | 1.102 ms | 1.100 ms | -0.2% |
-| Tiny compile plus close | 8.604 us | 8.153 us | -5.2% |
+| Compile wall, total | 2.409 s | 1.815 s | -24.7% |
+| Compile peak RSS, summed | 635.77 MiB | 626.08 MiB | -1.5% |
+| Compile Go allocation traffic, total | 415.83 MiB | 363.80 MiB | -12.5% |
+| Compile through first result, total | 4.456 s | 3.797 s | -14.8% |
+| Warm execution, geometric mean | 1.061 ms | 1.077 ms | +1.6% |
+| Tiny compile plus close | 7.838 us | 8.030 us | +2.4% |
 
-RSS and warm execution are effectively flat at this sampling depth. Summed RSS
-is a sum of process peaks, not one process's peak or total machine memory.
-The raytrace compile sample regressed 12.5%; first-result samples regressed 0.8%
-for fannkuch and 2.7% for coremark. These are single pairs on a shared host;
-no universal speedup is claimed. Tiny compilation uses one 10,000-operation batch
-per revision (19,456 to 19,344 allocated bytes/op; 73 to 72 allocations/op).
-AMD64 remeasurement is deferred.
+An independent same-run control against previous head `c6ef64211772`, before the
+final small-move shortcut, measured 1.901 to 1.858 s (-2.3%) across the same 20
+inputs. Its exact results are retained separately in the measurement record.
+The prior main comparison at `da6e10a36ee2` measured -25.6%; runner variation means
+the new main percentage does not establish a larger headline win. The direct
+previous-head control supports only a modest additional gain.
+
+The retained changes reuse interleaved repeated adapter shapes in a bounded
+worker-local cache, reuse existing call roots, bypass unused omission proof
+walks, reuse the operand sentinel, reject impossible GC recognizers early, and
+avoid generic load/store and small register-move planning work. One-use types do
+not promote the adapter cache. Heap staging, execution options and lightweight
+prepared entry remain intact. Source ordering, encoder outlining, larger image
+reservation, and ordinary-layout trap sharing were screened and rejected.
+
+Single pairs are ballpark evidence on a shared host. RSS and warm execution are
+effectively flat. Summed RSS is not one process's peak or total machine memory.
+The fannkuch cold-compile sample regressed 30.4%; first-result samples regressed
+1.0% for sha256 and 1.3% for polybench-gemm. Tiny compilation uses one 10,000-op
+batch per revision (19,456 to 19,344 bytes/op; 73 to 72 allocations/op).
+No universal speedup is claimed. AMD64 remeasurement remains deferred.
+
+Full native ARM64 backend, encoder and public tests passed. The full checked
+backend passed, including a final GOMAXPROCS=1, WAGO_SHARED_SCALAR=0 native-spike
+run. One unrestricted checked run hit a foreign-stack split-stack crash;
+alternating pre/post-shortcut verbose controls subsequently passed twice each.
+The crash's cause was not established, and it is retained as a validation limit.
