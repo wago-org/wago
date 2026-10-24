@@ -1324,7 +1324,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 		f.flush()
 		if kind == cfLoop {
-
+			if pN == 0 && rN == 0 && (len(f.m.Memories) != 0 || f.m.ImportedMemCount() != 0) {
+				f.emitFloatMapLoop(r)
+			}
 			f.preloadScopedLoopConsts(&fr)
 			f.preloadScopedFloatConsts(r)
 			f.alignLoopHeader()

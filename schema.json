@@ -108,6 +108,7 @@
               "ext-fp-pins",
               "fcmp-fuse",
               "float-frame-mem",
+              "float-map-loop",
               "float-store-borrow",
               "fp-immediate-const",
               "fp-literal-pool",

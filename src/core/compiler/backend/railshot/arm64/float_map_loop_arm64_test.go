@@ -188,3 +188,29 @@ func referenceFloatMap(wide bool, packets int, src, dst, index, limit, neighbor 
 	}
 	return 123 ^ index ^ lastSrc ^ lastDst, mem, false
 }
+
+// Keep admission separate from the scalar oracle: correct fallback alone must
+// not hide loss of the vector prefix for an independent map.
+func TestFloatMapLoopPolicyAdmission(t *testing.T) {
+	m := floatMapModule(t, true, 1, 0, 4096, 0, 256, 0)
+	compile := func(enabled bool) []byte {
+		t.Helper()
+		var stats ModuleStats
+		opts := CompileOptions{Optimizations: map[string]bool{"float-map-loop": enabled}}
+		if diagnosticsEnabled {
+			opts.Stats = &stats
+		}
+		cm, err := CompileModuleWith(m, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer cm.CodeImage.Close()
+		if diagnosticsEnabled && (stats.Funcs[0].Peephole["float-map-loop-vector"] != 0) != enabled {
+			t.Fatalf("enabled=%t: %v", enabled, stats.Funcs[0].Peephole)
+		}
+		return append([]byte(nil), cm.Code...)
+	}
+	if bytes.Equal(compile(false), compile(true)) {
+		t.Fatal("independent map did not receive a vector prefix")
+	}
+}

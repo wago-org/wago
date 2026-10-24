@@ -10,6 +10,7 @@ import (
 // The binding inventory is checked against the arm64 Optimization Definitions
 // during package initialization. Public sense is always "on = enabled".
 var optimizationBindings = optimization.NewBindings("arm64",
+	optimization.Bind("float-map-loop", &floatMapLoopEnabled),
 	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
 	optimization.Bind("atomic-notify-empty", &atomicNotifyEmptyEnabled),
 	optimization.Bind("memory-min-bounds", &memoryMinimumBoundsEnabled),
@@ -165,6 +166,7 @@ var (
 	optOldDestRHSSink       = optimizationBindings.Option("olddest-rhs-sink")
 	optBranchFold           = optimizationBindings.Option("branch-fold")
 	optStoreLoadFwd         = optimizationBindings.Option("store-load-fwd")
+	optFloatMapLoop         = optimizationBindings.Option("float-map-loop")
 	optOperandNodeReuse     = optimizationBindings.Option("operand-node-reuse")
 	optOmitColdPhasePadding = optimizationBindings.Option("omit-cold-phase-padding")
 	optMemcopyTail4         = optimizationBindings.Option("memcopy-tail4")

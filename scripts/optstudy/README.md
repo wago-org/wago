@@ -76,6 +76,11 @@ Seven weak, default-off ARM64 selections were removed: `guarded-test-ccmp`,
 accept recognized retired names as ignored compatibility keys. New compilation no longer emits light-entry metadata; readers
 for older artifacts remain. Direct and bounded prepared entries remain supported.
 
+The independent floating-point-map part of the former loop-vector policy is
+retained as `float-map-loop`. Expanded corpus coverage found a substantial gemm
+benefit; integer dot/min-plus recognizers remain retired. Its admission test is
+separate from its scalar oracle so a correct fallback cannot hide lost codegen.
+
 The pre-integration Darwin/ARM64 Go screen against `fc6af651c` was about 29%
 faster compilation and 16% lower process peak RSS. Those figures describe the
 original campaign source, not the combined PR or its newer main baseline. The

@@ -414,6 +414,7 @@ var catalog = []Definition{
 	arm64("olddest-rhs-sink", "Old destination reuse", "reuse an old destination register as the right operand"),
 	both("branch-fold", "Branch folding", "fold branch pairs into one conditional branch"),
 	arm64("store-load-fwd", "Store/load forwarding", "forward stores into loads after assembly"),
+	{Name: "float-map-loop", Label: "Independent float map vectorization", Description: "vectorize proven independent floating-point maps with exact scalar tails and guarded alias/bounds fallback", Default: true, Architectures: catalogARM64Architectures},
 	{Name: "operand-node-reuse", Label: "Operand node reuse", Description: "reuse consumed operand slots after each lowering instruction", Default: true, Architectures: catalogARM64Architectures},
 	{Name: "omit-cold-phase-padding", Label: "Omit cold comparison padding", Description: "omit cold NOPs used only to preserve following function addresses in optimization comparisons", Default: true, Architectures: catalogARM64Architectures},
 	arm64("memcopy-tail4", "Four-byte memory-copy tails", "finish small dynamic memory copies with one four-byte tail chunk"),

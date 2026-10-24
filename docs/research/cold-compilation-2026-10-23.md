@@ -36,6 +36,30 @@ They do not measure the combined integration. A fresh paired comparison is still
 required to establish its compile, total process peak-RSS and execution effects.
 The 30% physical-memory reduction goal remains open.
 
+## Follow-up: restore independently proven float maps
+
+The expanded corpus exposed a real gap in the earlier retirement screen:
+polybench-gemm uses the independent floating-point-map component of the former
+`dot-loop-vector` policy. A focused reversed-order comparison reproduced about
+208 microseconds per call on integrated source versus 112 on main. Main with
+`dot-loop-vector` explicitly off measured about 205; compiler diagnostics showed
+`float-map-loop-vector` and `float-map-loop-unroll` admissions in main.
+
+Restore that bounded proof/emitter alone as the default-on `float-map-loop`
+selection. Integer dot/min-plus recognizers remain retired. Bounds/alias guards,
+expression ordering, NaN behavior and the original scalar tail are preserved;
+there is no workload identity check. The existing exhaustive memory oracle now
+covers the restored path, and a separate admission regression ensures scalar
+fallback cannot hide accidental removal of vectorization.
+
+The restored path measured about 114 microseconds per call in one focused sample;
+its explicit off switch restored the slowdown. This diagnoses the large gemm
+regression in the historical integrated table below. Backend/public/settings and
+project tests, codegen diagnostics and allocation-check float-map tests pass.
+The new policy's off/on check passes across both corpus sets: 36 execution-entry
+pairs across 33 workloads, plus default corpus checks. These timing screens are
+ballpark and do not establish the overall acceptance gates.
+
 ## Integrated source: rough Linux ARM64 comparison
 
 Tested source `1c3a98cb23ec4e7154221319b61ac77de3d1ba78` against unchanged
