@@ -49,7 +49,7 @@ supplemental official-spec cases can skip without their conversion tools.
 Linux ARM64 file ownership/reclaim tests pass without skips, and Windows/Darwin
 AMD64 public binaries cross-build for the preceding AMD64 extension. The full manually dispatched correctness matrix for this exact compiler/runtime
 source [passes](https://github.com/wago-org/wago/actions/runs/40073075665):
-53 successful jobs, with only three draft-only controls skipped. The planner and
+53 successful jobs and three expected skips. The planner and
 aggregate verify every expected full-profile job. This is separate from the
 PR's automatic draft smoke lane. Subsequent commits only add evidence and
 benchmark workflow support; compiler/runtime code is unchanged.

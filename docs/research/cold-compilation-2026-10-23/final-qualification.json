@@ -45,7 +45,7 @@
     "jobs": 56,
     "successful_jobs": 53,
     "skipped_jobs": 3,
-    "skips": "draft-smoke and draft-only controls; planner/aggregate verify every expected full-profile job",
+    "skips": "two draft smoke jobs and the nested GC corpus regeneration job; the top-level pinned-corpus regeneration passed. Planner/aggregate verify every expected full-profile job",
     "job_results": [
       {
         "conclusion": "success",
@@ -383,6 +383,11 @@
         "name": "CI",
         "status": "completed"
       }
+    ],
+    "skipped_job_names": [
+      "Draft smoke / Linux amd64",
+      "GC hardening / bounded / Regenerate regression corpus from pinned source",
+      "GC hardening / bounded / Draft GC smoke / Linux amd64"
     ]
   },
   "documentation": "just docs PASS, 97 Markdown files; final documentation-only update rechecked before publication",
