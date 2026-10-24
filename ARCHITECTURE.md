@@ -776,6 +776,13 @@ existing forward search remains the fallback. This avoids scanning the live
 nursery prefix for an unchanged reservation without changing the 40-byte native
 reservation state, prior collector field offsets, or the native ABI.
 
+Throughput full mark resets clear only the highest marked handle prefix, with
+the bound stored in existing collector padding. Complete young evacuation clears
+remembered owners and their card-list heads together before dropping scalar card
+lists. Nursery storage remains Go-owned and reused across minor collections;
+it has no collector-specific Linux mapping advice. See the
+[fixed collection cost mapping and measurements](docs/research/gc-fixed-collection-cost.md).
+
 ### Off-heap allocation
 
 `Arena` hands out stable, off-heap, 8-byte-aligned buffers for everything native

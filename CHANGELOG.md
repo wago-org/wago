@@ -32,6 +32,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Bound full GC mark clearing by the highest marked handle and reduce redundant
+  card metadata cleanup after complete young evacuation.
+
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.
 
