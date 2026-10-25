@@ -183,6 +183,10 @@ while IFS='|' read -r name tags package toolchain; do
   profiles=$((profiles + 1))
   if (( bytes > budget )); then
     failures=$((failures + 1))
+    overage=$((bytes - budget))
+    printf 'wago: release size profile %s (%s/%s): actual size %s bytes (%s), budget %s bytes (%s), exceeded by %s bytes (%s)\n' \
+      "$name" "$target_os" "$target_arch" "$bytes" "$(human "$bytes")" \
+      "$budget" "$budget_text" "$overage" "$(human "$overage")" >&2
     if [[ "$toolchain" == go ]]; then
       symbol_profiles+=("$name")
     fi
