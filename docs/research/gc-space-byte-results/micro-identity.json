@@ -1,8 +1,0 @@
-{
-  "base": "049cb7e40bb70ce3555556a674066ec4151456bb",
-  "affinity": "15",
-  "GOMAXPROCS": 1,
-  "control_sha256": "304a96f4441a80bafc83225bf8a8a224636aad18d8ee93f22c94a87ce6df4a09",
-  "candidate_sha256": "aaecf10e62ab68d07009eee06e4b6a4d84f7fbc0a2c1af0d7e95c4e8978806d5",
-  "method": "ABBA; two samples per process; 200ms per guest loop; all samples retained"
-}

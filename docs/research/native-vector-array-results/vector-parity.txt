@@ -1,2 +1,0 @@
-read: Wago 31149.0 ns/op; V8 5693.6 ns/op; ratio 5.471; FAIL
-write: Wago 30141.0 ns/op; V8 4736.8 ns/op; ratio 6.363; FAIL

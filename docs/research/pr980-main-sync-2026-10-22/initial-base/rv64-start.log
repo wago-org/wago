@@ -1,3 +1,0 @@
-fork/exec ./scripts/qemu-riscv64.sh: no such file or directory
-FAIL	github.com/wago-org/wago/src/wago	0.000s
-FAIL
