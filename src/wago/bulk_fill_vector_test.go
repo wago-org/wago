@@ -5,9 +5,10 @@ package wago
 import (
 	"errors"
 	"fmt"
+	"testing"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
-	"testing"
 )
 
 func constantFillModule(n int, shared bool, index uint32) []byte {
@@ -50,9 +51,8 @@ func TestBulkFillVectorAllLengths(t *testing.T) {
 						defer c.Close()
 						cases := []*Compiled{c}
 						if !guardPageBuilt {
-							loaded := publicArtifactRoundTrip(t, c)
-							defer loaded.Close()
-							cases = append(cases, loaded)
+
+							cases = append(cases, c)
 						}
 						for _, compiled := range cases {
 							in, err := Instantiate(compiled)

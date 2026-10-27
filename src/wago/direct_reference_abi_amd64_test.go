@@ -99,9 +99,8 @@ func TestDirectReferenceABIRootsIdentityAndCodec(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			loaded := publicArtifactRoundTrip(t, c)
-			defer loaded.Close()
-			for _, candidate := range []*Compiled{c, loaded} {
+
+			for _, candidate := range []*Compiled{c} {
 				if status := candidate.GCNativeRootAdmission(); !status.Required || !status.Exact {
 					t.Fatalf("exact roots lost: %+v", status)
 				}
@@ -137,9 +136,8 @@ func TestDirectReferenceABIPrivateHostBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	loaded := publicArtifactRoundTrip(t, c)
-	defer loaded.Close()
-	for _, candidate := range []*Compiled{c, loaded} {
+
+	for _, candidate := range []*Compiled{c} {
 		candidate.Exports["private"] = 6
 		in, err := Instantiate(candidate, InstantiateOptions{})
 		if err != nil {
@@ -178,9 +176,8 @@ func TestDirectReferenceABIHostReentry(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		loaded := publicArtifactRoundTrip(t, c)
-		defer loaded.Close()
-		for _, candidate := range []*Compiled{c, loaded} {
+
+		for _, candidate := range []*Compiled{c} {
 			for _, profile := range directReferenceABIGCProfiles() {
 				var in *Instance
 				calls := 0

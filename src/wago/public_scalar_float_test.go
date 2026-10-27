@@ -49,21 +49,13 @@ func TestPublicScalarFloatArtifactCallsStateAndTrapReuse(t *testing.T) {
 	if !c.requiredFeatures.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion) {
 		t.Fatal("saturating conversion missing artifact feature")
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	in, err := Instantiate(loaded)
+
+	in, err := Instantiate(c)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if err := loaded.Close(); err != nil {
+	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
 	initial, err := in.Invoke("initial")

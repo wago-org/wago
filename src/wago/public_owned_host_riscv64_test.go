@@ -12,8 +12,9 @@ import (
 	"sync"
 	"time"
 
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"testing"
+
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -30,16 +31,9 @@ func TestRV64PublicOwnedHostScalarCarriersAndLifetime(t *testing.T) {
 			t.Fatal(err)
 		}
 		if loaded {
-			blob, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			copy, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
+
 			c.Close()
-			c = copy
+			c = c
 		}
 		defer c.Close()
 		mod, err := rt.Module(c)

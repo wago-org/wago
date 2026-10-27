@@ -32,19 +32,8 @@ func TestARMIntegerHostRegisterAdmission(t *testing.T) {
 			if c.integerHostContextAllowed() != tc.want {
 				t.Fatalf("register grant = %t, want %t", c.integerHostContextAllowed(), tc.want)
 			}
-			blob, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			var decoded Compiled
-			if err := decoded.UnmarshalBinary(blob); err != nil {
-				t.Fatal(err)
-			}
-			defer decoded.Close()
-			if decoded.integerHostContextAllowed() {
-				t.Fatal("artifact retained compiler register grant")
-			}
-			for _, compiled := range []*Compiled{c, &decoded} {
+
+			for _, compiled := range []*Compiled{c} {
 				calls := 0
 				integerOwner := false
 				in, err := Instantiate(compiled, InstantiateOptions{Imports: testImports("env.step", func(v int32) int32 {

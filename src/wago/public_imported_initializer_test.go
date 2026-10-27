@@ -81,32 +81,24 @@ func TestPublicImportedInitializerRawBitsArtifactAndIndependentCells(t *testing.
 			t.Fatal("initializer metadata", c.Globals)
 		}
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
+
 	objects := []*Global{NewGlobalI32(7, false), NewGlobalI64(int64(bits[1]), false), NewGlobalF32(math.Float32frombits(uint32(bits[2])), false), NewGlobalF64(math.Float64frombits(bits[3]), false)}
 	im := NewImports()
 	for i, g := range objects {
 		im.Global("env", "g"+string(rune('0'+i)), g)
 		defer g.Close()
 	}
-	a, err := Instantiate(loaded, im)
+	a, err := Instantiate(c, im)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	b, err := Instantiate(loaded, initializerValueImports(bits))
+	b, err := Instantiate(c, initializerValueImports(bits))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer b.Close()
-	if err := loaded.Close(); err != nil {
+	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.Close(); err != nil {

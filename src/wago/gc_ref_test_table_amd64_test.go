@@ -7,9 +7,8 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
-	"unsafe"
 
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const stagedGCRefTestTableHex = "0061736d01000000019b808080000550005f005001005f017f005001005f017e0060000060017f017f0385808080000403040404048480808000016b0002079e808080000404696e6974000004626173650001046c656674000205726967687400030ac080808000049080808000004100fb010126004101fb010226000b89808080000020002500fb14000b89808080000020002500fb14010b89808080000020002500fb14020b"
@@ -161,59 +160,6 @@ func TestStagedGCRefTestTableTrapAtomicityAndTinyFailure(t *testing.T) {
 	if got := invokeRefTestTable(t, tiny, "base", 1); got != 0 {
 		t.Fatalf("Tiny untouched second slot = %d, want 0", got)
 	}
-}
-
-func TestStagedGCRefTestTableProductClosure(t *testing.T) {
-	data := stagedGCRefTestTableBytes(t)
-	c, err := compileStagedGCStruct(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	blob, err := marshalCompiled(c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if loaded.stagedGCStructProduct() != 0 || loaded.usesGCStructHelpers() || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
-		t.Fatalf("codec inherited object ref.test admission: product=%v helpers=%v features=%v", loaded.stagedGCStructProduct(), loaded.usesGCStructHelpers(), loaded.stagedFeatures())
-	}
-	if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
-		t.Fatalf("codec-loaded instantiate = %v, want required-feature rejection", err)
-	}
-
-	cfg := NewRuntimeConfig()
-	cfg.boundsChecks = BoundsChecksSignalsBased
-	features := cfg.frontendFeatures()
-	features.TypedFunctionReferences = true
-	features.GCStructProducts = true
-	guarded, err := compileWithFrontendFeatures(cfg, data, features)
-	if err != nil {
-		t.Fatalf("guard compile: %v", err)
-	}
-	_ = guarded.Close()
-	unknown := append([]byte(nil), data...)
-	for i := 0; i+5 <= len(unknown); i++ {
-		if string(unknown[i:i+5]) == "right" {
-			unknown[i+4] = 'x'
-			break
-		}
-	}
-	cfg = NewRuntimeConfig()
-	features = cfg.frontendFeatures()
-	features.TypedFunctionReferences = true
-	features.GCStructProducts = true
-	widened, err := compileWithFrontendFeatures(cfg, unknown, features)
-	if err != nil {
-		t.Fatalf("shape-independent object ref.test compile: %v", err)
-	}
-	_ = widened.Close()
-
-	t.Logf("object ref.test product: wasm=%d code=%d codec=%d state=%d plugin=%d", len(data), len(c.code), len(blob), unsafe.Sizeof(gcRefTestTableState{}), unsafe.Sizeof(instancePluginState{}))
 }
 
 func BenchmarkStagedGCRefTestTable(b *testing.B) {

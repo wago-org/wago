@@ -42,7 +42,7 @@ func TestNativeLeafRegisterImportPreservesContextAndCanonicalResult(t *testing.T
 					t.Fatal(err)
 				}
 				defer c.Close()
-				for artifact, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+				for artifact, code := range []*Compiled{c} {
 					in, err := Instantiate(code, InstantiateOptions{Imports: testImports("env.a", nativeImportIdentity, "env.b", nativeImportIdentity)})
 					if err != nil {
 						t.Fatal(err)

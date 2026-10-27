@@ -51,9 +51,8 @@ func TestGCNumericLeafInlineTrapGlobals(t *testing.T) {
 		if admission := c.GCNativeRootAdmission(); !admission.Exact || !admission.Required {
 			t.Fatalf("trap fixture must use exact roots: %+v", admission)
 		}
-		loaded := publicArtifactRoundTrip(t, c)
-		defer loaded.Close()
-		for ai, artifact := range []*Compiled{c, loaded} {
+
+		for ai, artifact := range []*Compiled{c} {
 			for _, tc := range []struct {
 				export string
 				x, y   uint64
@@ -133,9 +132,8 @@ func TestGCNumericLeafInlineRoots(t *testing.T) {
 			if admission := c.GCNativeRootAdmission(); !admission.Exact || c.genericGCFrameRoots() == nil {
 				t.Fatalf("numeric inline module must retain exact roots: %+v", admission)
 			}
-			loaded := publicArtifactRoundTrip(t, c)
-			defer loaded.Close()
-			for _, artifact := range []*Compiled{c, loaded} {
+
+			for _, artifact := range []*Compiled{c} {
 				if admission := artifact.GCNativeRootAdmission(); !admission.Exact {
 					t.Fatalf("artifact lost exact roots: %+v", admission)
 				}

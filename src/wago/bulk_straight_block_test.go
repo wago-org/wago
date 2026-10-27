@@ -5,9 +5,10 @@ package wago
 import (
 	"errors"
 	"fmt"
+	"testing"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
-	"testing"
 )
 
 func bulkStraightModule(wide, shared bool, index uint32) []byte {
@@ -120,7 +121,7 @@ func TestBulkStraightBlockPublicExecutionAndTraps(t *testing.T) {
 										t.Fatal(err)
 									}
 									defer c.Close()
-									for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+									for _, compiled := range []*Compiled{c} {
 										in, err := Instantiate(compiled)
 										if err != nil {
 											t.Fatal(err)
@@ -257,7 +258,7 @@ func TestBulkMinimumZeroGrowsBeforeBoundedFill(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+						for _, compiled := range []*Compiled{c} {
 							in, err := Instantiate(compiled)
 							if err != nil {
 								t.Fatal(err)

@@ -4,6 +4,7 @@ package wago
 
 import (
 	"fmt"
+
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -22,7 +23,7 @@ func rv64PrimitiveReferenceContract(c *Compiled) bool {
 			}
 		}
 	}
-	return rv64PrimitiveReferenceDeclarations(c) && rv64ArtifactContractValid(c)
+	return rv64PrimitiveReferenceDeclarations(c) && rv64SourceContractValid(c)
 }
 
 // Declaration classification is also needed while encoding the metadata that

@@ -1,4 +1,4 @@
-//go:build (wago_guardpage && (linux || darwin || windows) && (amd64 || arm64)) || (wago_guardpage && linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled)
+//go:build (wago_guardpage && (linux || darwin || windows) && (amd64 || arm64)) || (wago_guardpage && linux && riscv64 && !tinygo && !wago_target_tinygo)
 
 package wago
 
@@ -47,18 +47,5 @@ func TestConfigSignalsBasedEndToEnd(t *testing.T) {
 	}
 	if _, err := in.Invoke("f", I32(1<<20)); err == nil { // OOB -> guard-page trap
 		t.Fatal("out-of-bounds load did not trap")
-	}
-}
-
-// TestSignalsBasedNotSerializable documents the footgun guard: an elided module
-// must not be silently serialized (a loaded blob can't record that it needs a
-// guard-page memory).
-func TestSignalsBasedNotSerializable(t *testing.T) {
-	c, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased).Compile(loadModule())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.MarshalBinary(); err == nil {
-		t.Fatal("signals-based module should not serialize")
 	}
 }

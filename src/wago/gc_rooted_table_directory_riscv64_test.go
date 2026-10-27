@@ -1,12 +1,13 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
-	"testing"
 )
 
 func rv64RootedTableDirectorySource(count int) []byte {
@@ -31,9 +32,8 @@ func TestRV64RootedTableDirectorySourceAndArtifact(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			loaded := publicArtifactRoundTrip(t, c)
-			defer loaded.Close()
-			for _, candidate := range []*Compiled{c, loaded} {
+
+			for _, candidate := range []*Compiled{c} {
 				if candidate.tableCount() != count || !rv64FreshRootedGC(candidate.executionView()) {
 					t.Fatal("rooted table directory receipt", candidate.tableCount())
 				}
@@ -74,9 +74,8 @@ func TestRV64RootedTableClearOnlyHelperFrame(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		loaded := publicArtifactRoundTrip(t, c)
-		defer loaded.Close()
-		for _, candidate := range []*Compiled{c, loaded} {
+
+		for _, candidate := range []*Compiled{c} {
 			in, err := Instantiate(candidate, InstantiateOptions{})
 			if err != nil {
 				t.Fatal(err)

@@ -77,7 +77,7 @@ func rv64GCTypeSubtypingTransitiveMismatchLinkProfileWithCode(c *Compiled, allow
 	default:
 		return 0
 	}
-	metadata, err := marshalCompiledMetadata(c)
+	metadata, err := rv64CanonicalMetadata(c)
 	if err != nil || len(metadata) != rv64GCTypeSubtypingTransitiveMismatchLinkMetadataLens[variant-1] || sha256.Sum256(metadata) != rv64GCTypeSubtypingTransitiveMismatchLinkMetadataDigests[variant-1] {
 		return 0
 	}
@@ -90,18 +90,4 @@ func rv64GCTypeSubtypingTransitiveMismatchLink(c *Compiled) bool {
 
 func rv64GCTypeSubtypingTransitiveMismatchLinkExecutionCode(c *Compiled) bool {
 	return c != nil && (len(c.code) == rv64GCTypeSubtypingTransitiveMismatchLinkProviderCodeLen && sha256.Sum256(c.code) == rv64GCTypeSubtypingTransitiveMismatchLinkProviderCodeDigest || len(c.code) == 0)
-}
-
-func railshotRestoreGCTypeSubtypingTransitiveMismatchLinkArtifact(c *Compiled) {
-	variant := rv64GCTypeSubtypingTransitiveMismatchLinkProfileWithCode(c, true, true)
-	if variant == 0 {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	if variant == 1 {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingTransitiveMismatchLinkProvider
-	} else {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingTransitiveMismatchLinkConsumer
-	}
 }

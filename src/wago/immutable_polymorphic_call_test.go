@@ -70,9 +70,8 @@ func TestImmutablePolymorphicWideIntegerExecution(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						loaded := publicArtifactRoundTrip(t, c)
-						defer loaded.Close()
-						for ci, compiled := range []*Compiled{c, loaded} {
+
+						for ci, compiled := range []*Compiled{c} {
 							in, err := Instantiate(compiled)
 							if err != nil {
 								t.Fatal(err)
@@ -123,9 +122,8 @@ func TestMonomorphicCallIndirectRegisterABIModes(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			loaded := publicArtifactRoundTrip(t, c)
-			defer loaded.Close()
-			for _, compiled := range []*Compiled{c, loaded} {
+
+			for _, compiled := range []*Compiled{c} {
 				in, err := Instantiate(compiled)
 				if err != nil {
 					t.Fatal(err)

@@ -2,6 +2,5 @@
 
 package wago
 
-func rv64GCArrayCopy(*Compiled) bool               { return false }
-func rv64GCArrayCopyExecutionCode(*Compiled) bool  { return false }
-func railshotRestoreGCArrayCopyArtifact(*Compiled) {}
+func rv64GCArrayCopy(*Compiled) bool              { return false }
+func rv64GCArrayCopyExecutionCode(*Compiled) bool { return false }

@@ -87,12 +87,7 @@ func TestGCCrossInstanceCallsWithSharedPersistentRoots(t *testing.T) {
 		mode := map[bool]string{false: "compiled", true: "codec"}[codec]
 		t.Run(mode, func(t *testing.T) {
 			providerCandidate, consumerCandidate := providerCode, consumerCode
-			if codec {
-				providerCandidate = publicArtifactRoundTrip(t, providerCode)
-				consumerCandidate = publicArtifactRoundTrip(t, consumerCode)
-				defer providerCandidate.Close()
-				defer consumerCandidate.Close()
-			}
+
 			for _, tc := range []struct {
 				name    string
 				profile GCProfile

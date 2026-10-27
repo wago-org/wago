@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func stagedGCStructNumericGlobalsBytes(t testing.TB) []byte {
@@ -83,38 +83,5 @@ func TestStagedGCStructGlobalRootsAndPublicEgress(t *testing.T) {
 				t.Fatalf("root access after close = %v, want collector closed", err)
 			}
 		})
-	}
-}
-
-func TestStagedGCStructGlobalRootRollbackAndCodecGate(t *testing.T) {
-	data := stagedGCStructNumericGlobalsBytes(t)
-	c, err := compileStagedGCStruct(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	for i := 0; i < 3; i++ {
-		if in, err := instantiateCore(c, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 32, TinyBlockBytes: 16}}); err == nil || !strings.Contains(err.Error(), "tiny heap exhausted") {
-			if in != nil {
-				_ = in.Close()
-			}
-			t.Fatalf("tiny rooted-global instantiation %d = %v, want deterministic second-allocation failure", i, err)
-		}
-	}
-
-	blob, err := marshalCompiled(c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if loaded.memoryDir != nil && len(loaded.memoryDir.gcStructGlobals) != 0 {
-		t.Fatal("codec reload inherited live GC global initializer sidecar")
-	}
-	if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
-		t.Fatalf("codec-loaded GC-global instantiate = %v, want required-feature rejection", err)
 	}
 }

@@ -76,20 +76,7 @@ func TestPDFiumCorpus(t *testing.T) {
 			}
 			defer module.Compiled().Close()
 			runPDFiumInvoice(t, rt, module, pdf, oracle)
-			blob, err := module.Compiled().MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			loaded := &wago.Compiled{}
-			if err := loaded.UnmarshalBinary(blob); err != nil {
-				t.Fatal(err)
-			}
-			defer loaded.Close()
-			reloaded, err := rt.Module(loaded)
-			if err != nil {
-				t.Fatal(err)
-			}
-			runPDFiumInvoice(t, rt, reloaded, pdf, oracle)
+
 		})
 	}
 }

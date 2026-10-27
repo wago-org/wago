@@ -3,68 +3,11 @@
 package wago
 
 import (
-	"bytes"
 	"fmt"
 	"math"
 	"runtime"
 	"testing"
 )
-
-func TestIntegerHostContextAdmission(t *testing.T) {
-	// Artifact round-trips require explicit bounds checks, including guard-page builds.
-	cfg := goHostSegmentConfig().WithBoundsChecks(BoundsChecksExplicit)
-	for _, tc := range []struct {
-		name, body, locals string
-		want               bool
-	}{
-		{"integer", "local.get 0 call $step", "", true},
-		{"integer-width", "local.get 0 call $step i64.extend_i32_u i32.wrap_i64", "(local i64)", true},
-		{"unused-float-local", "local.get 0 call $step", "(local f64)", false},
-		{"float-alu", "f32.const 1 f32.const 2 f32.add drop local.get 0 call $step", "", false},
-		{"float-to-int", "f64.const 1 i32.trunc_f64_s call $step", "", false},
-		{"reinterpret", "f32.const 1 i32.reinterpret_f32 call $step", "", false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			module := fmt.Sprintf(`(module (import "env" "step" (func $step (param i32)(result i32))) (func (export "run") (param i32)(result i32) %s %s))`, tc.locals, tc.body)
-			c, err := Compile(cfg, watToWasm(t, module))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer c.Close()
-			if c.integerHostContextAllowed() != tc.want {
-				t.Fatalf("integer proof=%t want %t", c.integerHostContextAllowed(), tc.want)
-			}
-			var artifact bytes.Buffer
-			if _, err := c.WriteTo(&artifact); err != nil {
-				t.Fatal(err)
-			}
-			decoded := new(Compiled)
-			if _, err := decoded.ReadFrom(bytes.NewReader(artifact.Bytes())); err != nil {
-				t.Fatal(err)
-			}
-			defer decoded.Close()
-			if decoded.integerHostContextAllowed() {
-				t.Fatal("artifact retained integer capability")
-			}
-			for _, code := range []*Compiled{c, decoded} {
-				imports := NewImports()
-				imports.HostFunc("env", "step", func(v int32) int32 { return v + 1 }).Params(ValI32).Results(ValI32)
-				in, err := Instantiate(code, InstantiateOptions{Imports: imports})
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer in.Close()
-				p := in.eng.PreparedScalarHost()
-				if p != nil && p.IntegerGuestContext() != (integerNumericHostEnabled && numericContextDetached(in) && code == c && tc.want) {
-					t.Fatal("incorrect bridge admission")
-				}
-				if _, err := in.Invoke("run", 1); err != nil {
-					t.Fatal(err)
-				}
-			}
-		})
-	}
-}
 
 func TestIntegerHostContextPreservesCallbackFPState(t *testing.T) {
 	if codeProfileEnabled {

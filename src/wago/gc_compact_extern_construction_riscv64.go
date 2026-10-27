@@ -6,8 +6,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"unsafe"
+
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Only constant construction uses this journal. Local cells transfer their

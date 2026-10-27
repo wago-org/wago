@@ -85,7 +85,6 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 		}
 		if options.TinyGo {
 			plan["toolchain"] = "tinygo"
-			plan["precompiled"] = true
 		}
 		if options.Invoke != "" {
 			plan["invoke"] = options.Invoke

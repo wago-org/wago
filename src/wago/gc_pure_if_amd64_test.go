@@ -4,9 +4,10 @@ package wago
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
-	"testing"
 )
 
 func gcPureIfModule(reads, regions int, kind string) []byte {
@@ -59,10 +60,7 @@ func TestGCPureIf(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer c.Close()
-				if kind == "pure" {
-					c = publicArtifactRoundTrip(t, c)
-					defer c.Close()
-				}
+
 				iterations := 100
 				if kind == "call" {
 					// Every allocation triggers heap verification. Keep this case small

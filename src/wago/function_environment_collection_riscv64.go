@@ -4,6 +4,7 @@ package wago
 
 import (
 	"fmt"
+
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 

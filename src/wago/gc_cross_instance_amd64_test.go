@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
@@ -192,12 +192,7 @@ func TestGCCrossInstanceCanonicalTypesAcrossReorderedModules(t *testing.T) {
 	for _, codec := range []bool{false, true} {
 		t.Run(map[bool]string{false: "compiled", true: "codec"}[codec], func(t *testing.T) {
 			providerCandidate, consumerCandidate := providerCode, consumerCode
-			if codec {
-				providerCandidate = publicArtifactRoundTrip(t, providerCode)
-				consumerCandidate = publicArtifactRoundTrip(t, consumerCode)
-				defer providerCandidate.Close()
-				defer consumerCandidate.Close()
-			}
+
 			store := newReferenceStore(false)
 			defer store.closeRuntime()
 			gcConfig := GCConfig{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}
@@ -282,14 +277,7 @@ func TestGCCrossInstanceMultiHopFrameRootsAndCodec(t *testing.T) {
 	for _, codec := range []bool{false, true} {
 		t.Run(map[bool]string{false: "compiled", true: "codec"}[codec], func(t *testing.T) {
 			providerCandidate, relayCandidate, consumerCandidate := providerCode, relayCode, consumerCode
-			if codec {
-				providerCandidate = publicArtifactRoundTrip(t, providerCode)
-				relayCandidate = publicArtifactRoundTrip(t, relayCode)
-				consumerCandidate = publicArtifactRoundTrip(t, consumerCode)
-				defer providerCandidate.Close()
-				defer relayCandidate.Close()
-				defer consumerCandidate.Close()
-			}
+
 			if relayCandidate.genericGCFrameRoots() == nil {
 				t.Fatal("relay lost exact native roots")
 			}

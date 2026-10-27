@@ -1,7 +1,6 @@
 package wago
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -13,7 +12,7 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestCompiledExecutionSnapshot(t *testing.T) {
@@ -58,98 +57,15 @@ func TestCompiledExecutionSnapshot(t *testing.T) {
 	}
 }
 
-func TestCompiledArtifactUsesExecutionSnapshot(t *testing.T) {
-	for _, loaded := range []bool{false, true} {
-		name := "compiler"
-		if loaded {
-			name = "loader"
-		}
-		t.Run(name, func(t *testing.T) {
-			c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), benchAddOneModule())
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer c.Close()
-			want, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if loaded {
-				c = &Compiled{}
-				if err := c.UnmarshalBinary(want); err != nil {
-					t.Fatal(err)
-				}
-				defer c.Close()
-				want, err = c.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			sizes, err := c.ArtifactSectionSizes()
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, invalid := range []bool{false, true} {
-				// Both valid edits and malformed public metadata must leave the
-				// published artifact and its validation bound to the snapshot.
-				delete(c.Exports, "f")
-				c.Exports["renamed"] = 0
-				if invalid {
-					c.Funcs[0].Params[0] = ValF64
-					c.Globals = []GlobalDef{{Type: ValI32, Bits: I32(7)}}
-					c.Entry = nil
-					c.InternalEntry = []int{len(c.code)}
-					c.NumImports = 99
-				}
-				name := "valid public edits"
-				if invalid {
-					name = "invalid public edits"
-				}
-				t.Run(name, func(t *testing.T) {
-					t.Run("MarshalBinary", func(t *testing.T) {
-						got, err := c.MarshalBinary()
-						if err != nil || !bytes.Equal(got, want) {
-							t.Fatalf("artifact changed after public edits: %v", err)
-						}
-					})
-					t.Run("WriteTo", func(t *testing.T) {
-						var dst bytes.Buffer
-						n, err := c.WriteTo(&dst)
-						if err != nil || n != int64(len(want)) || !bytes.Equal(dst.Bytes(), want) {
-							t.Fatalf("stream changed after public edits: %d bytes, %v", n, err)
-						}
-					})
-					t.Run("ArtifactSectionSizes", func(t *testing.T) {
-						got, err := c.ArtifactSectionSizes()
-						if err != nil || got != sizes {
-							t.Fatalf("sizes changed after public edits: %+v, %v; want %+v", got, err, sizes)
-						}
-					})
-				})
-			}
-		})
-	}
-}
-
 func TestCompiledReflectionUsesExecutionSnapshot(t *testing.T) {
-	for _, source := range []string{"compiler", "loader", "hand-built"} {
+	for _, source := range []string{"compiler", "hand-built"} {
 		t.Run(source, func(t *testing.T) {
 			c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), benchAddOneModule())
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			if source == "loader" {
-				blob, err := c.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				c = &Compiled{}
-				if err := c.UnmarshalBinary(blob); err != nil {
-					t.Fatal(err)
-				}
-				defer c.Close()
-			} else if source == "hand-built" {
+			if source == "hand-built" {
 				c = mutableCompiledFixture(c)
 				c.Globals = []GlobalDef{{Type: ValI32, InitExpr: []byte{0x41, 7, 0x0b}}}
 				c.GlobalExports = map[string]int{"g": 0}

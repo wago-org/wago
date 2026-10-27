@@ -128,24 +128,9 @@ func rv64PublicSWARGlobalImportCompile(t *testing.T, artifact, ownedMemory bool)
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
-	if !artifact {
-		return c
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if loaded != nil {
-		t.Cleanup(func() { _ = loaded.Close() })
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := c.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return loaded
+
+	return c
+
 }
 
 func rv64PublicSWARImportedGlobalWant(bits []uint64, private V128) []uint64 {
@@ -432,20 +417,16 @@ func TestRV64PublicSWARGlobalImportLastDirectoryCell(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if loaded != nil {
-		defer loaded.Close()
+
+	if c != nil {
+		defer c.Close()
 	}
 	if err != nil {
 		t.Fatal(err)
 	}
 	vector := rv64PublicVector(0x80000000deadbeef, 0x7ff0000000000001)
 	values := NewImports().Global("env", "v", GlobalImport{Type: ValV128, V128: vector})
-	for _, code := range []*Compiled{c, loaded} {
+	for _, code := range []*Compiled{c} {
 		in, err := Instantiate(code, values)
 		if err != nil {
 			t.Fatal(err)

@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const rv64RootedMaxHostFunctionImports = 256

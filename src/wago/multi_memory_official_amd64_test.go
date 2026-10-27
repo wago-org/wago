@@ -5,12 +5,13 @@ package wago
 import (
 	"encoding/json"
 	"errors"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 
 	"github.com/wago-org/wago/tests/conformance/spectest"
 )
@@ -92,22 +93,8 @@ func stagedCompactConsumerRoundTrip(t *testing.T, data []byte, wantImports []str
 	if got := compiled.MemoryImports(); !equalStrings(got, wantImports) {
 		t.Fatalf("compact memory imports = %v, want %v", got, wantImports)
 	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal compact-import product: %v", err)
-	}
-	if err := compiled.Close(); err != nil {
-		t.Fatalf("close source compact-import product: %v", err)
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatalf("public reload compact-import product: %v", err)
-	}
-	if got := loaded.MemoryImports(); !equalStrings(got, wantImports) {
-		loaded.Close()
-		t.Fatalf("reloaded compact memory imports = %v, want %v", got, wantImports)
-	}
-	return &loaded
+	return compiled
+
 }
 
 func equalStrings(a, b []string) bool {

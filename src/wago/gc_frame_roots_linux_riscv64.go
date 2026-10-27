@@ -1,9 +1,10 @@
-//go:build linux && riscv64 && !tinygo && !wago_precompiled
+//go:build linux && riscv64 && !tinygo
 
 package wago
 
 import (
 	"fmt"
+
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"

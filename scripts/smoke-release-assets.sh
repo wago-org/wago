@@ -70,18 +70,4 @@ for runtime in "${runtimes[@]}"; do
   }
 done
 
-artifact="$scratch/fib.wago"
-"$standard" build --output "$artifact" "$fixture" >/dev/null
-[[ -s "$artifact" ]] || {
-  echo "release runtime did not produce a .wago artifact" >&2
-  exit 1
-}
-for runtime in "${runtimes[@]}"; do
-  output=$("$runtime" run --allow-native-artifact --invoke fib "$artifact" 20)
-  [[ "$output" == "6765" ]] || {
-    echo "$(basename "$runtime") .wago smoke output: $output" >&2
-    exit 1
-  }
-done
-
 printf 'smoke-tested qualified release assets for %s at %s\n' "$target" "$version"

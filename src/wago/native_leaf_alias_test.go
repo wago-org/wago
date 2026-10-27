@@ -6,11 +6,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"testing"
+	"unsafe"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
-	"testing"
-	"unsafe"
 )
 
 func nativeLeafAliasModule() []byte {
@@ -30,7 +31,7 @@ func TestNativeLeafAliasesAdmissionAndValues(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		for index, product := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+		for index, product := range []*Compiled{c} {
 			in, err := Instantiate(product, InstantiateOptions{Imports: testImports("env.a", nativeLeafIncrement, "env.b", nativeLeafIncrement)})
 			if err != nil {
 				t.Fatal(err)
@@ -152,7 +153,7 @@ func TestNativeLeafAliasesPreserveInstanceContext(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		for index, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+		for index, code := range []*Compiled{c} {
 			in, err := Instantiate(code, InstantiateOptions{Imports: testImports("env.a", nativeLeafIncrement, "env.b", nativeLeafIncrement)})
 			if err != nil {
 				t.Fatal(err)
@@ -258,7 +259,7 @@ func TestNativeLeafImportPreservesFloatLocalsAcrossBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	for _, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+	for _, code := range []*Compiled{c} {
 		for _, native := range []bool{false, true} {
 			calls := 0
 			var callback any = nativeLeafIncrement
@@ -301,7 +302,7 @@ func TestNativeLeafAliasPairArgumentResultOverlap(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	for index, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+	for index, code := range []*Compiled{c} {
 		for _, native := range []bool{false, true} {
 			calls := 0
 			var callback any = nativeLeafPolynomial

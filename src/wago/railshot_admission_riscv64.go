@@ -12,7 +12,7 @@ import (
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 var _ [railshot.MaxHostFunctionImports - rv64RootedMaxHostFunctionImports]struct{}
@@ -29,11 +29,11 @@ func rv64FreshRootedGC(c *Compiled) bool {
 	}
 	var artifactReceipt validateMemo
 	if memo != nil && contract != nil {
-		if !rv64ArtifactContractValid(c) {
+		if !rv64SourceContractValid(c) {
 			return false
 		}
 		if !memo.rv64FreshRootedGC {
-			if !rv64PopulateArtifactReceipt(&artifactReceipt, c) {
+			if !rv64PopulateSourceReceipt(&artifactReceipt, c) {
 				return false
 			}
 			memo = &artifactReceipt
@@ -781,7 +781,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	if c != nil && c.rv64ExecutionContract() != nil {
 		// A general contract cannot fall back to an older image profile when
 		// its bound code or metadata changes, including for state-only modules.
-		if !rv64ArtifactContractValid(c) {
+		if !rv64SourceContractValid(c) {
 			return fmt.Errorf("%w: RV64 native execution contract lacks admitted source or artifact metadata", railshot.ErrUnsupported)
 		}
 		if compiledStructuralRequiredFeatures(c)&^c.requiredFeatures != 0 {
@@ -814,7 +814,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	functionOnlyTypes := compiledFunctionOnlyTypeGraph(c)
 	// Dynamic tail metadata is executable state. Require its source or artifact
 	// receipt before any declared type graph can grant execution permission.
-	if rv64HasDynamicTail(rv64NativeTailModule(c)) && !rv64ArtifactContractValid(c) && c.rv64ExecutionContract() == nil {
+	if rv64HasDynamicTail(rv64NativeTailModule(c)) && !rv64SourceContractValid(c) && c.rv64ExecutionContract() == nil {
 		return reject("dynamic tail requires admitted source or artifact metadata")
 	}
 	// A verified general contract binds the full code and metadata. Legacy
@@ -1321,7 +1321,7 @@ func railshotValidateCompiled(c *Compiled) error {
 	}
 	// Dead validated reference-tail instructions need no emitted plan or ABI
 	// flag. Their retained syntax feature still needs its full code binding.
-	emptyTypedTail := rv64NativeTailModule(c) != nil && len(rv64NativeTailModule(c).Plans) == 0 && rv64ArtifactContractValid(c)
+	emptyTypedTail := rv64NativeTailModule(c) != nil && len(rv64NativeTailModule(c).Plans) == 0 && rv64SourceContractValid(c)
 	if primitiveReferences || functionOnlyTypes {
 		qualifiedFeatures |= CoreFeatureGC
 	}

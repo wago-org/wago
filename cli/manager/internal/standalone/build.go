@@ -115,7 +115,7 @@ func Build(request Request) (Result, error) {
 	}
 	host := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
 	if request.Target != host {
-		return Result{}, fmt.Errorf("precompiled standalone builds require the native target %s; got %s", host, request.Target)
+		return Result{}, fmt.Errorf("standalone builds require the native target %s; got %s", host, request.Target)
 	}
 	if request.Output == "" {
 		request.Output = DefaultOutput(request.Input, request.Target)
@@ -151,7 +151,7 @@ func Build(request Request) (Result, error) {
 		return Result{}, err
 	}
 	mainPath := filepath.Join(buildDir, "main.go")
-	if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet, false), 0o644); err != nil {
+	if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet), 0o644); err != nil {
 		return Result{}, err
 	}
 	environment := append(os.Environ(),
@@ -162,25 +162,21 @@ func Build(request Request) (Result, error) {
 	if err := runGo(buildDir, environment, request.Verbose, "mod", "tidy"); err != nil {
 		return Result{}, err
 	}
-	if err := os.WriteFile(mainPath, artifactCompilerSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet), 0o644); err != nil {
+	validation := mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet)
+	validation = bytes.Replace(validation,
+		[]byte("func main() { os.Exit(standalone.Run(module, pluginSet(), options, os.Args)) }"),
+		[]byte("func main() { if err := standalone.Validate(module, pluginSet(), options); err != nil { println(err.Error()); os.Exit(1) } }"), 1)
+	if err := os.WriteFile(mainPath, validation, 0o644); err != nil {
 		return Result{}, err
 	}
-	helperArgs := []string{"run"}
-	if request.TinyGo {
-		// The helper itself uses standard Go, but its output executes under TinyGo.
-		// Select final-runtime capabilities such as cooperative interruption while
-		// retaining the standard compiler needed to generate the artifact.
-		helperArgs = append(helperArgs, "-tags=wago_target_tinygo")
+	if err := runGo(buildDir, environment, request.Verbose, "run", "."); err != nil {
+		return Result{}, fmt.Errorf("validate standalone source: %w", err)
 	}
-	helperArgs = append(helperArgs, ".")
-	if err := runGo(buildDir, environment, request.Verbose, helperArgs...); err != nil {
-		return Result{}, fmt.Errorf("precompile standalone artifact: %w", err)
-	}
-	if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet, true), 0o644); err != nil {
+	if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet), 0o644); err != nil {
 		return Result{}, err
 	}
 	if request.TinyGo {
-		args := []string{"build", "-scheduler=tasks", "-opt=z", "-gc=conservative", "-tags=wago_precompiled"}
+		args := []string{"build", "-scheduler=tasks", "-opt=z", "-gc=conservative"}
 		if !request.KeepSymbols {
 			args = append(args, "-no-debug")
 		}
@@ -195,7 +191,7 @@ func Build(request Request) (Result, error) {
 		}
 		return Result{Output: output, Target: request.Target, Plugins: len(inputs.Build.Selections)}, nil
 	}
-	args := []string{"build", "-buildvcs=false", "-trimpath", "-tags=wago_precompiled"}
+	args := []string{"build", "-buildvcs=false", "-trimpath"}
 	if !request.KeepSymbols {
 		args = append(args, "-ldflags=-s -w")
 	}
@@ -219,7 +215,7 @@ func requireToolchain(name string) error {
 Install %s and ensure %q is available on PATH: %s`, label, label, name, website)
 }
 
-func mainSource(providerImports []string, selections []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool, features wago.CoreFeatures, featuresSet bool, precompiled bool) []byte {
+func mainSource(providerImports []string, selections []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool, features wago.CoreFeatures, featuresSet bool) []byte {
 	providerImports = append([]string(nil), providerImports...)
 	sort.Strings(providerImports)
 	var source bytes.Buffer
@@ -229,13 +225,7 @@ func mainSource(providerImports []string, selections []byte, invoke string, core
 	for index, providerImport := range providerImports {
 		fmt.Fprintf(&source, "\tprovider%d %q\n", index, providerImport)
 	}
-	artifact := "module.wasm"
-	run := "Run"
-	if precompiled {
-		artifact = "module.wago"
-		run = "RunArtifact"
-	}
-	fmt.Fprintf(&source, ")\n\n//go:embed %s\nvar module []byte\n\n", artifact)
+	source.WriteString(")\n\n//go:embed module.wasm\nvar module []byte\n\n")
 	fmt.Fprintf(&source, "var selectionJSON = []byte(%q)\n\n", selections)
 	source.WriteString("func pluginSet() wago.PluginSet {\n\tvar selections []wago.PluginSelection\n\tif err := json.Unmarshal(selectionJSON, &selections); err != nil { panic(err) }\n\tvar providers []wago.PluginProvider\n")
 	for index := range providerImports {
@@ -252,17 +242,8 @@ func mainSource(providerImports []string, selections []byte, invoke string, core
 		fmt.Fprintf(&source, "%q: %t, ", name, optimizations[name])
 	}
 	source.WriteString("}}\n\n")
-	fmt.Fprintf(&source, "func main() { os.Exit(standalone.%s(module, pluginSet(), options, os.Args)) }\n", run)
+	source.WriteString("func main() { os.Exit(standalone.Run(module, pluginSet(), options, os.Args)) }\n")
 	return source.Bytes()
-}
-
-func artifactCompilerSource(providerImports []string, selections []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool, features wago.CoreFeatures, featuresSet bool) []byte {
-	source := mainSource(providerImports, selections, invoke, core, deferredBoundsChecking, functionWorkers, optimizations, features, featuresSet, false)
-	source = bytes.Replace(source, []byte("\t\"os\"\n"), []byte("\t\"os\"\n\t\"fmt\"\n"), 1)
-	source = bytes.Replace(source,
-		[]byte("func main() { os.Exit(standalone.Run(module, pluginSet(), options, os.Args)) }"),
-		[]byte("func main() { artifact, err := standalone.CompileArtifact(module, pluginSet(), options); if err == nil { err = os.WriteFile(\"module.wago\", artifact, 0o644) }; if err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) } }"), 1)
-	return source
 }
 
 func runGo(dir string, environment []string, verbose bool, args ...string) error {

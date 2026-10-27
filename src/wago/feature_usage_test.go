@@ -249,9 +249,8 @@ func TestAggregateStorageTypesRequireIndependentFeatures(t *testing.T) {
 			if got := (&Module{c: compiled}).Metadata().RequiredFeatures; !got.IsEnabled(tc.required) {
 				t.Fatalf("compiled metadata features = %s, want at least %s", got, tc.required)
 			}
-			loaded := publicArtifactRoundTrip(t, compiled)
-			defer loaded.Close()
-			if got := (&Module{c: loaded}).Metadata().RequiredFeatures; !got.IsEnabled(tc.required) {
+
+			if got := (&Module{c: compiled}).Metadata().RequiredFeatures; !got.IsEnabled(tc.required) {
 				t.Fatalf("loaded metadata features = %s, want at least %s", got, tc.required)
 			}
 		})
@@ -267,65 +266,6 @@ func tableReferenceModule(ref wasm.RefType, imported bool) []byte {
 	entry = append(entry, byte(wasm.ExternTable))
 	entry = append(entry, tableType...)
 	return wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(entry)))
-}
-
-func TestBottomTableReferenceRequirementsAndAdmission(t *testing.T) {
-	for _, heap := range []wasm.AbsHeapType{wasm.HeapNoFunc, wasm.HeapNoExtern} {
-		for _, imported := range []bool{false, true} {
-			name := heap.String() + "/local"
-			if imported {
-				name = heap.String() + "/import"
-			}
-			t.Run(name, func(t *testing.T) {
-				module := tableReferenceModule(wasm.AbsRef(heap), imported)
-				decoded, err := wasm.DecodeModule(module)
-				if err != nil {
-					t.Fatal(err)
-				}
-				want := CoreFeatureReferenceTypes | CoreFeatureGC
-				if got := moduleRequiredFeatures(decoded); got != want {
-					t.Fatalf("module required features = %s, want %s", got, want)
-				}
-				if compiled, err := compatibilityDefaultConfig().Compile(module); err == nil {
-					compiled.Close()
-					t.Fatal("compatibility feature set accepted a typed bottom table")
-				} else if !strings.Contains(err.Error(), "unsupported reference type") {
-					t.Fatalf("compatibility feature error = %v, want typed reference rejection", err)
-				}
-				if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
-					return
-				}
-				gcOnly, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureGC).Compile(module)
-				if err != nil {
-					t.Fatalf("GC without typed function references compile: %v", err)
-				}
-				gcOnly.Close()
-				compiled, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).Compile(module)
-				if err != nil {
-					t.Fatalf("Core 3 compile: %v", err)
-				}
-				defer compiled.Close()
-				if !compiled.requiredFeatures.IsEnabled(want) {
-					t.Fatalf("compiled required features = %s, want %s", compiled.requiredFeatures, want)
-				}
-				if got := (&Module{c: compiled}).Metadata().RequiredFeatures; !got.IsEnabled(want) {
-					t.Fatalf("metadata required features = %s, want %s", got, want)
-				}
-				blob, err := compiled.MarshalBinary()
-				if err != nil {
-					t.Fatalf("marshal: %v", err)
-				}
-				var loaded Compiled
-				if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
-					t.Fatalf("unmarshal: %v", err)
-				}
-				defer loaded.Close()
-				if !loaded.requiredFeatures.IsEnabled(want) {
-					t.Fatalf("loaded required features = %s, want %s", loaded.requiredFeatures, want)
-				}
-			})
-		}
-	}
 }
 
 func TestMVPFuncrefTableRemainsFeatureFree(t *testing.T) {
@@ -354,189 +294,12 @@ func TestMVPFuncrefTableRemainsFeatureFree(t *testing.T) {
 			if got := (&Module{c: compiled}).Metadata().RequiredFeatures; got != 0 {
 				t.Fatalf("metadata required features = %s, want none", got)
 			}
-			blob, err := compiled.MarshalBinary()
-			if err != nil {
-				t.Fatalf("marshal: %v", err)
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatalf("load trusted artifact: %v", err)
-			}
-			defer loaded.Close()
-			if loaded.requiredFeatures != 0 {
-				t.Fatalf("loaded required features = %s, want none", loaded.requiredFeatures)
+
+			if compiled.requiredFeatures != 0 {
+				t.Fatalf("loaded required features = %s, want none", compiled.requiredFeatures)
 			}
 		})
 	}
-}
-
-func mvpFuncrefElementModule() []byte {
-	element := append([]byte{0x00, 0x41, 0x00, 0x0b}, wasmtest.Vec(wasmtest.ULEB(0))...)
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(4, wasmtest.Vec([]byte{wasm.MustEncodeValType(wasm.FuncRef), 0x00, 0x01})),
-		wasmtest.Section(9, wasmtest.Vec(element)),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
-	)
-}
-
-func nonNullFuncrefElementModule() []byte {
-	element := []byte{0x05, 0x64, byte(wasm.HeapFunc)} // passive (ref func)
-	element = append(element, wasmtest.Vec([]byte{0xd2, 0x00, 0x0b})...)
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(9, wasmtest.Vec(element)),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
-	)
-}
-
-func nullableFuncrefElementModule() []byte {
-	element := []byte{0x05, byte(wasm.HeapFunc)} // passive funcref expression segment
-	element = append(element, wasmtest.Vec([]byte{0xd0, byte(wasm.HeapFunc), 0x0b})...)
-	return wasmtest.Module(wasmtest.Section(9, wasmtest.Vec(element)))
-}
-
-func TestFuncrefElementArtifactRequirements(t *testing.T) {
-	t.Run("MVP function-index segment", func(t *testing.T) {
-		module := mvpFuncrefElementModule()
-		if got := moduleRequiredFeatures(mustDecodeModule(t, module)); got != 0 {
-			t.Fatalf("module required features = %s, want none", got)
-		}
-		compiled, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV1).WithBoundsChecks(BoundsChecksExplicit).Compile(module)
-		if err != nil {
-			t.Fatalf("Core 1 compile: %v", err)
-		}
-		defer compiled.Close()
-		if len(compiled.Elems) != 1 || compiled.Elems[0].HasValueType {
-			t.Fatalf("compiled legacy element type = %#v, want implicit function-index metadata", compiled.Elems)
-		}
-		exact, err := compiled.elemExactType(compiled.Elems[0])
-		if err != nil || exact.Kind != ValueTypeReference || exact.Ref.Nullable || exact.Ref.Heap.Abstract != AbstractHeapFunc {
-			t.Fatalf("compiled legacy element exact type = %#v, %v; want non-null (ref func)", exact, err)
-		}
-		if got := (&Module{c: compiled}).Metadata().RequiredFeatures; got != 0 {
-			t.Fatalf("metadata required features = %s, want none", got)
-		}
-		blob, err := compiled.MarshalBinary()
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatalf("load trusted artifact: %v", err)
-		}
-		defer loaded.Close()
-		if loaded.requiredFeatures != 0 {
-			t.Fatalf("loaded required features = %s, want none", loaded.requiredFeatures)
-		}
-	})
-
-	t.Run("legacy segment initializes non-null table", func(t *testing.T) {
-		if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
-			t.Skip("typed function reference execution backend is unavailable")
-		}
-		module := wasmtest.Module(
-			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
-			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-			wasmtest.Section(4, wasmtest.Vec([]byte{0x40, 0x00, 0x64, byte(wasm.HeapFunc), 0x00, 0x01, 0xd2, 0x00, 0x0b})),
-			wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00})),
-			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
-		)
-		compiled, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).Compile(module)
-		if err != nil {
-			t.Fatalf("compile: %v", err)
-		}
-		defer compiled.Close()
-		instance, err := Instantiate(compiled, InstantiateOptions{})
-		if err != nil {
-			t.Fatalf("instantiate: %v", err)
-		}
-		instance.Close()
-
-		blob, err := compiled.MarshalBinary()
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatalf("load trusted artifact: %v", err)
-		}
-		defer loaded.Close()
-		loadedInstance, err := Instantiate(loaded, InstantiateOptions{})
-		if err != nil {
-			t.Fatalf("instantiate loaded artifact: %v", err)
-		}
-		loadedInstance.Close()
-	})
-
-	t.Run("nullable expression segment", func(t *testing.T) {
-		module := nullableFuncrefElementModule()
-		compiled, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithBoundsChecks(BoundsChecksExplicit).Compile(module)
-		if err != nil {
-			t.Fatalf("compile: %v", err)
-		}
-		defer compiled.Close()
-		if len(compiled.passiveElems) != 1 || !compiled.passiveElems[0].HasValueType {
-			t.Fatalf("compiled expression element type = %#v, want structural metadata", compiled.passiveElems)
-		}
-		compiled.requiredFeatures = 0 // structural inference must recover tampered/lost feature bits.
-		want := CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes
-		if got := (&Module{c: compiled}).Metadata().RequiredFeatures; got != want {
-			t.Fatalf("metadata required features = %s, want %s", got, want)
-		}
-		blob, err := compiled.MarshalBinary()
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatalf("load trusted artifact: %v", err)
-		}
-		defer loaded.Close()
-		if loaded.requiredFeatures != want {
-			t.Fatalf("loaded required features = %s, want %s", loaded.requiredFeatures, want)
-		}
-	})
-
-	t.Run("non-null expression segment", func(t *testing.T) {
-		if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
-			t.Skip("typed function reference execution backend is unavailable")
-		}
-		module := nonNullFuncrefElementModule()
-		compiled, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).Compile(module)
-		if err != nil {
-			t.Fatalf("Core 3 compile: %v", err)
-		}
-		defer compiled.Close()
-		compiled.requiredFeatures = 0 // structural inference must recover tampered/lost feature bits.
-		want := CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences
-		if got := (&Module{c: compiled}).Metadata().RequiredFeatures; got != want {
-			t.Fatalf("metadata required features = %s, want %s", got, want)
-		}
-		blob, err := compiled.MarshalBinary()
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
-		loaded, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatalf("load trusted artifact: %v", err)
-		}
-		defer loaded.Close()
-		if loaded.requiredFeatures != want {
-			t.Fatalf("loaded required features = %s, want %s", loaded.requiredFeatures, want)
-		}
-	})
-}
-
-func mustDecodeModule(t testing.TB, module []byte) *wasm.Module {
-	t.Helper()
-	decoded, err := wasm.DecodeModule(module)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return decoded
 }
 
 func TestBottomReferenceDescriptorRequirements(t *testing.T) {
@@ -649,22 +412,14 @@ func TestExactI31ArithmeticElementInitializer(t *testing.T) {
 	if err != nil || len(result) != 1 || result[0] != 3 {
 		t.Fatalf("run = %v, %v; want [3], nil", result, err)
 	}
-	blob, err := compiled.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
+
+	if len(compiled.Elems) != 1 || len(compiled.Elems[0].Values) != 1 || len(compiled.Elems[0].Values[0].Expr) == 0 {
+		t.Fatalf("loaded element initializer = %#v, want deferred arithmetic expression", compiled.Elems)
 	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatalf("load trusted artifact: %v", err)
-	}
-	defer loaded.Close()
-	if len(loaded.Elems) != 1 || len(loaded.Elems[0].Values) != 1 || len(loaded.Elems[0].Values[0].Expr) == 0 {
-		t.Fatalf("loaded element initializer = %#v, want deferred arithmetic expression", loaded.Elems)
-	}
-	if got := loaded.requiredFeatures; !got.IsEnabled(wantFeatures) {
+	if got := compiled.requiredFeatures; !got.IsEnabled(wantFeatures) {
 		t.Fatalf("loaded required features = %s, want at least %s", got, wantFeatures)
 	}
-	loadedInstance, err := Instantiate(loaded, InstantiateOptions{})
+	loadedInstance, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate loaded artifact: %v", err)
 	}

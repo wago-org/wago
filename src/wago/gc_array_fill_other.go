@@ -2,6 +2,5 @@
 
 package wago
 
-func rv64GCArrayFill(*Compiled) bool               { return false }
-func rv64GCArrayFillExecutionCode(*Compiled) bool  { return false }
-func railshotRestoreGCArrayFillArtifact(*Compiled) {}
+func rv64GCArrayFill(*Compiled) bool              { return false }
+func rv64GCArrayFillExecutionCode(*Compiled) bool { return false }

@@ -2,5 +2,4 @@
 
 package wago
 
-func rv64GCRefTestTable(*Compiled) bool               { return false }
-func railshotRestoreGCRefTestTableArtifact(*Compiled) {}
+func rv64GCRefTestTable(*Compiled) bool { return false }

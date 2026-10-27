@@ -747,7 +747,7 @@ func (rt *Runtime) compile(wasmBytes []byte, allowLoading bool) (*Module, error)
 }
 
 // Module binds an already compiled artifact to this runtime's plugin imports
-// and lifecycle. It is the precompiled counterpart of Runtime.Compile.
+// and lifecycle. It adopts an in-memory Compiled rather than compiling Wasm again.
 func (rt *Runtime) Module(c *Compiled) (*Module, error) {
 	return rt.bindModule(c, false)
 }

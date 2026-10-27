@@ -25,15 +25,6 @@ type Options struct {
 	OptimizationKnobs map[string]bool
 }
 
-// RunArtifact executes a precompiled module embedded in a native executable.
-// Unlike Run, it never invokes Wago's compiler.
-func RunArtifact(artifact []byte, plugins wago.PluginSet, options Options, args []string) int {
-	if err := executeArtifact(artifact, plugins, options, args); err != nil {
-		return reportError(err, args)
-	}
-	return 0
-}
-
 func reportError(err error, args []string) int {
 	var exit *wago.ExitError
 	if errors.As(err, &exit) {
@@ -71,23 +62,6 @@ func onlyGuestExit(err error, exit *wago.ExitError) bool {
 		return onlyGuestExit(wrapped.Unwrap(), exit)
 	}
 	return false
-}
-
-func executeArtifact(artifact []byte, plugins wago.PluginSet, options Options, args []string) (err error) {
-	runtime, err := loadRuntime(plugins, options, args)
-	if err != nil {
-		return err
-	}
-	defer finishRuntime(runtime, &err)
-	compiled, err := wago.LoadTrustedArtifact(artifact)
-	if err != nil {
-		return err
-	}
-	module, err := runtime.AdoptModule(compiled)
-	if err != nil {
-		return err
-	}
-	return executeModule(runtime, module, options, args)
 }
 
 func loadRuntime(plugins wago.PluginSet, options Options, args []string) (*wago.Runtime, error) {

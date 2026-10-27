@@ -4,6 +4,7 @@ package wago
 
 import (
 	"fmt"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 

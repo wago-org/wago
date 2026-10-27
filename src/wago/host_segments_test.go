@@ -168,38 +168,6 @@ func testBoundedHostYieldGCAndCancellation(t *testing.T, kind string) {
 	}
 }
 
-func TestBoundedHostYieldArtifactDropsCompilerProof(t *testing.T) {
-	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), hostYieldLoopModule())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	if !c.boundedHostSegments() {
-		t.Fatal("fixture lacks proof")
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var decoded Compiled
-	if err := decoded.UnmarshalBinary(blob); err != nil {
-		t.Fatal(err)
-	}
-	defer decoded.Close()
-	if decoded.boundedHostSegments() || decoded.nativeScalarLeafAllowed() || decoded.boundedNativeScalarLeaf() {
-		t.Fatal("artifact retained compiler-only scheduler proof")
-	}
-	in, err := Instantiate(&decoded, InstantiateOptions{Imports: testImports("env.step", func(v int32) int32 { return v + 1 })})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	got, err := in.Invoke("run", 1024, 0)
-	if err != nil || len(got) != 1 || got[0] != 1024 {
-		t.Fatalf("decoded call = %v, %v", got, err)
-	}
-}
-
 func TestBoundedCallerHostYieldReentryAndExpiry(t *testing.T) {
 	c, err := Compile(NewRuntimeConfig(), benchReturningImportModule())
 	if err != nil {

@@ -1024,36 +1024,6 @@ func TestThreadsAtomicWaitNotifyOnImportedUnsharedMemory(t *testing.T) {
 	assertUnsharedAtomicWaitNotifySemantics(t, instance)
 }
 
-func TestThreadsAtomicWaitHelperAdmissionSurvivesArtifactRoundTrip(t *testing.T) {
-	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
-	compiled, err := Compile(config, sharedAtomicWaitNotifyModule())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer compiled.Close()
-	loaded := publicArtifactRoundTrip(t, compiled)
-	if loaded != compiled {
-		defer loaded.Close()
-	}
-	if !loaded.usesAtomicWaitHelpers() || !loaded.requiredFeatures.IsEnabled(CoreFeatureThreads) {
-		t.Fatalf("round-trip helper/features = %v/%s", loaded.usesAtomicWaitHelpers(), loaded.requiredFeatures)
-	}
-	memory, _ := NewSharedMemory(1, 1)
-	defer memory.Close()
-	instance, err := Instantiate(loaded, testImports("env.memory", memory))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer instance.Close()
-	if len(instance.ctrl) == 0 {
-		t.Fatal("round-tripped wait module has no synchronous control frame")
-	}
-	out, err := instance.Invoke("wait32", I32(0), I32(1), I64(-1))
-	if err != nil || AsI32(out[0]) != int32(memoryWaitNotEqual) {
-		t.Fatalf("round-tripped wait = %v, %v", out, err)
-	}
-}
-
 func TestThreadsModuleInspectionReportsExactFeatureAndSharedMemory(t *testing.T) {
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 	rt := NewRuntime(WithRuntimeConfig(config))
@@ -1157,7 +1127,7 @@ func TestThreadsUnsharedMemory32AtomicWrites(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer c.Close()
-						for _, compiled := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+						for _, compiled := range []*Compiled{c} {
 							memory, err := NewMemory(1, 1)
 							if err != nil {
 								t.Fatal(err)

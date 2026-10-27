@@ -1,4 +1,4 @@
-//go:build linux && (amd64 || arm64 || riscv64) && !tinygo && !wago_target_tinygo && !wago_precompiled
+//go:build linux && (amd64 || arm64 || riscv64) && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -19,17 +19,14 @@ func TestGCEmptyStructExplicitConstructor(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			c, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(source)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			if artifact {
-				c = publicArtifactRoundTrip(t, c)
-				defer c.Close()
-			}
+
 			rt := NewRuntime()
 			defer rt.Close()
 			mod, err := rt.Module(c)

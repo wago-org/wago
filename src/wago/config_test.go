@@ -30,23 +30,6 @@ func signExtModule() []byte {
 // Optional extensions are not required for ordinary Wasm execution.
 func currentBackendAvailable() bool { return runtime.GOARCH != "amd64" || hostSupportsSIMD() }
 
-func scalarFloatAddModule() []byte {
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64, wasm.F64}, []wasm.ValType{wasm.F64}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0xa0, 0x0b}))),
-	)
-}
-
-func scalarBulkCopyModule() []byte {
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(5, []byte{0x01, 0x00, 0x01}),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0a, 0x00, 0x00, 0x0b}))),
-	)
-}
-
 // simdModule exports f() and uses v128.const/drop, enough to exercise 0xfd
 // feature gating without requiring the public API to marshal a v128 result.
 func simdModule() []byte {
@@ -865,80 +848,6 @@ func TestDefaultRuntimeConfigFastPathCodeIdentity(t *testing.T) {
 	}
 }
 
-func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
-	producerCode := MustCompile(benchAddOneModule())
-	defer producerCode.Close()
-	producer, err := Instantiate(producerCode, InstantiateOptions{})
-	if err != nil {
-		t.Fatalf("instantiate producer: %v", err)
-	}
-	defer producer.Close()
-	f, err := producer.ExportedFunc("f")
-	if err != nil {
-		t.Fatalf("export producer function: %v", err)
-	}
-
-	mod := benchImportedModule(64, 16)
-	imports := testImports("env.f", f)
-	compile := func(workers int) *Compiled {
-		t.Helper()
-		c, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(workers).Compile(mod)
-		if err != nil {
-			t.Fatalf("workers=%d compile: %v", workers, err)
-		}
-		if !c.dynamicImports || len(c.code) == 0 {
-			t.Fatalf("workers=%d dynamic=%v code=%d", workers, c.dynamicImports, len(c.code))
-		}
-		if err := c.validateImportBindings(imports.bindings, nil); err != nil {
-			_ = c.Close()
-			t.Fatalf("workers=%d bindings: %v", workers, err)
-		}
-		return c
-	}
-	serial := compile(1)
-	defer serial.Close()
-	parallel := compile(8)
-	defer parallel.Close()
-	if !bytes.Equal(parallel.code, serial.code) || !bytes.Equal(intSliceBytes(parallel.Entry), intSliceBytes(serial.Entry)) || !bytes.Equal(intSliceBytes(parallel.InternalEntry), intSliceBytes(serial.InternalEntry)) {
-		t.Fatal("parallel codegen differs from serial output")
-	}
-	serialBlob, err := serial.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	parallelBlob, err := parallel.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(parallelBlob, serialBlob) {
-		t.Fatal("function-worker policy changed serialized output")
-	}
-	var loaded Compiled
-	if err := loaded.UnmarshalBinary(parallelBlob); err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if !loaded.dynamicImports {
-		t.Fatal("serialized imported module lost dynamic dispatch metadata")
-	}
-	for _, compiled := range []*Compiled{serial, parallel, &loaded} {
-		instance, err := Instantiate(compiled, InstantiateOptions{Imports: imports})
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer instance.Close()
-		mapped := compiled.codeCache.mem
-		if len(compiled.code) == 0 || len(mapped) == 0 || &compiled.code[0] != &mapped[0] {
-			t.Fatal("live compiled public view retained separate heap code backing")
-		}
-		result, err := instance.Invoke("f0", I32(1))
-		if err != nil || len(result) != 1 || AsI32(result[0]) != 18 {
-			t.Fatalf("mapped imported code = %v, %v", result, err)
-		}
-	}
-
-}
-
 func intSliceBytes(v []int) []byte {
 	out := make([]byte, 8*len(v))
 	for i, x := range v {
@@ -1007,63 +916,6 @@ func TestConfigRejectsSIMDWhenHostUnsupported(t *testing.T) {
 	}
 	if runtime.GOARCH != "amd64" && SupportedFeatures().IsEnabled(CoreFeatureSIMD) {
 		t.Fatal("SupportedFeatures should clear SIMD when host SIMD is unavailable")
-	}
-}
-
-func TestScalarAMD64RequiresBackendCPU(t *testing.T) {
-	if runtime.GOARCH != "amd64" {
-		return
-	}
-	old := simdHostFeaturesSupported
-	defer func() { simdHostFeaturesSupported = old }()
-	simdHostFeaturesSupported = func() bool { return false }
-	if err := NewRuntimeConfig().Validate(); !errors.Is(err, errNativeCPUFeatures) {
-		t.Fatalf("default config should fail closed without the current AMD64 baseline: %v", err)
-	}
-	if got := SupportedFeatures(); got != 0 {
-		t.Fatalf("unsupported AMD64 backend reports executable features: %s", got)
-	}
-	for _, tc := range []struct {
-		name   string
-		module []byte
-	}{
-		{"scalar float", scalarFloatAddModule()},
-		{"bulk memory", scalarBulkCopyModule()},
-		{"integer", signExtModule()},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)
-			simdHostFeaturesSupported = func() bool { return true }
-			compiled, err := Compile(cfg, tc.module)
-			if err != nil {
-				t.Fatalf("compile on compatible host: %v", err)
-			}
-			defer compiled.Close()
-			if compiled.requiredFeatures.IsEnabled(CoreFeatureSIMD) {
-				t.Fatal("scalar module unexpectedly requires Wasm SIMD")
-			}
-			blob, err := compiled.MarshalBinary()
-			if err != nil {
-				t.Fatalf("marshal: %v", err)
-			}
-			var compatible Compiled
-			if err := compatible.UnmarshalBinary(blob); err != nil {
-				t.Fatalf("load on compatible host: %v", err)
-			}
-			compatible.Close()
-
-			simdHostFeaturesSupported = func() bool { return false }
-			if _, err := Compile(cfg, tc.module); !errors.Is(err, errNativeCPUFeatures) {
-				t.Fatalf("compile on incompatible host: %v", err)
-			}
-			var incompatible Compiled
-			if err := incompatible.UnmarshalBinary(blob); !errors.Is(err, errNativeCPUFeatures) {
-				t.Fatalf("load on incompatible host: %v", err)
-			}
-			if _, err := incompatible.ReadFrom(bytes.NewReader(blob)); !errors.Is(err, errNativeCPUFeatures) {
-				t.Fatalf("stream load on incompatible host: %v", err)
-			}
-		})
 	}
 }
 

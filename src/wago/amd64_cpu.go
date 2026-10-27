@@ -2,9 +2,10 @@ package wago
 
 import (
 	"bytes"
-	"fmt"
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+
 	"sync"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 )
 
 var amd64CPUCache struct {
@@ -113,14 +114,4 @@ func amd64LinuxCPUFeatures(data []byte) (shared.AMD64Features, bool) {
 		seen = true
 	}
 	return features, seen
-}
-
-func checkAMD64Requirements(required, available shared.AMD64Features, detected bool) error {
-	if !detected {
-		return fmt.Errorf("wago: AMD64 CPU capability detection failed")
-	}
-	if missing := required &^ available; missing != 0 {
-		return fmt.Errorf("wago: compiled module requires unavailable AMD64 CPU features %#x", missing)
-	}
-	return nil
 }

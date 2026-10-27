@@ -88,35 +88,6 @@ func TestStagedGCI31CoreExecutionAndPublicCategory(t *testing.T) {
 	}
 }
 
-func TestStagedGCI31CorePublicArtifactPreservesAdmission(t *testing.T) {
-	c, err := compileStagedGCI31(stagedGCI31CoreBytes(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("i31 core codec=%d", len(blob))
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	if loaded.stagedGCI31Product() != stagedGCI31ProductCore || !loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
-		t.Fatalf("codec inherited i31 admission: product=%v features=%v", loaded.stagedGCI31Product(), loaded.stagedFeatures())
-	}
-	in, err := instantiateCore(loaded, InstantiateOptions{})
-	if err != nil {
-		t.Fatalf("codec-loaded i31 instantiate = %v", err)
-	}
-	defer in.Close()
-	if got, err := in.Invoke("get_globals"); err != nil || len(got) != 2 || got[0] != 2 || got[1] != 3 {
-		t.Fatalf("codec-loaded globals=%v err=%v", got, err)
-	}
-}
-
 func TestI31RefPublicValueSemantics(t *testing.T) {
 	for _, v := range []int32{0, 1, -1, 0x3fffffff, 0x40000000, -0x55555556} {
 		r := NewI31Ref(v)

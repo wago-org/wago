@@ -121,7 +121,6 @@ func TestRawStackCaptureRequiresExplicitConfiguration(t *testing.T) {
 			func(o *Options) { o.Backend = "none" },
 			func(o *Options) { o.IncludeCode = false },
 			func(o *Options) { o.UnwindMaps = false },
-			func(o *Options) { o.ReloadArtifact = true },
 			func(o *Options) { o.Phase = "reload" },
 		} {
 			invalid := o
@@ -169,56 +168,6 @@ func TestDirectGuestTimelineCaptureAndLoss(t *testing.T) {
 					t.Fatal(report)
 				}
 			}
-		}
-	}
-}
-
-func TestArtifactReloadCapture(t *testing.T) {
-	for _, phase := range []string{"reload", "execute", "all"} {
-		for _, mode := range []string{"public", "prepared"} {
-			t.Run(phase+"/"+mode, func(t *testing.T) {
-				out := filepath.Join(t.TempDir(), "capture")
-				o := Options{Out: out, Backend: "none", Phase: phase, Mode: mode, Iterations: 3, Warmup: 1, Bounds: "explicit", Rate: 99, ReloadArtifact: phase != "reload", IncludeCode: true, SourceMaps: true, UnwindMaps: true}
-				w := Workload{ID: "identity", Calls: []Call{{Export: "identity", Args: []uint64{37}, Want: []uint64{37}}}}
-				if err := Run(o, w, fixtureModule()); err != nil {
-					t.Fatal(err)
-				}
-				raw, err := os.ReadFile(filepath.Join(out, "manifest.json"))
-				if err != nil {
-					t.Fatal(err)
-				}
-				var m Manifest
-				if err := json.Unmarshal(raw, &m); err != nil {
-					t.Fatal(err)
-				}
-				if !m.Complete || !m.ReloadArtifact || len(m.ArtifactHash) != 64 || m.ArtifactBytes == 0 || m.Iterations != 3 || m.Invocations != 3 || m.SourceMaps || m.CompilerSites || m.SiteCoverage != "" || m.UnwindMaps || !m.UnwindMapsRequested || m.UnwindCoverage != "unavailable" || m.Status.Dropped != 0 {
-					t.Fatalf("invalid reload capture: %+v", m)
-				}
-				want := []string{"compile", "artifact-prepare", "reload", "instantiate", "initialize", "warmup", "execute", "close"}
-				if len(m.Phases) != len(want) {
-					t.Fatal(m.Phases)
-				}
-				for i, p := range m.Phases {
-					if p.Name != want[i] || p.End < p.Start || i > 0 && p.Start < m.Phases[i-1].End {
-						t.Fatal(m.Phases)
-					}
-				}
-				raw, err = os.ReadFile(filepath.Join(out, "images.json"))
-				if err != nil {
-					t.Fatal(err)
-				}
-				var events []wago.CodeProfileEvent
-				if err := json.Unmarshal(raw, &events); err != nil {
-					t.Fatal(err)
-				}
-				if len(events) != 2 || events[0].Kind != "load" || events[1].Kind != "retire" || events[0].ImageID != events[1].ImageID {
-					t.Fatal(events)
-				}
-				image := events[0].Image
-				if image == nil || image.ModuleID != "" || len(image.Regions) != 1 || image.Regions[0].Kind != "unknown" || len(image.Code) == 0 {
-					t.Fatalf("invented metadata or lost artifact image: %+v", image)
-				}
-			})
 		}
 	}
 }

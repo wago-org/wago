@@ -65,18 +65,9 @@ func TestCompactImportsIndependentOfMultiMemory(t *testing.T) {
 				t.Fatal("compact imports changed generated native code")
 			}
 
-			blob, err := compiled.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			var loaded Compiled
-			if err := loaded.UnmarshalBinary(blob); err != nil {
-				t.Fatal(err)
-			}
-			defer loaded.Close()
 			// The compact wire encoding is erased at compilation; an ordinary Core 2
 			// runtime can execute the persisted, expanded import metadata.
-			for _, product := range []*Compiled{compiled, &loaded} {
+			for _, product := range []*Compiled{compiled} {
 				instance, err := Instantiate(product, InstantiateOptions{Imports: testImports(
 					"env.a", slotHostFunc(func(_ HostModule, _, results []uint64) { results[0] = 17 }),
 					"env.b", slotHostFunc(func(_ HostModule, _, results []uint64) { results[0] = 25 }),

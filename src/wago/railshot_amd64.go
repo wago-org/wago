@@ -1,9 +1,10 @@
-//go:build amd64 && !wago_precompiled
+//go:build amd64
 
 package wago
 
 import (
 	"fmt"
+
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"

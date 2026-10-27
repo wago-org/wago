@@ -21,7 +21,7 @@ func TestSharedSingleNativePinsAndGoFallback(t *testing.T) {
 			t.Fatal(err)
 		}
 		images[mode] = append([]byte(nil), image.Bytes()...)
-		for index, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+		for index, code := range []*Compiled{c} {
 			for _, kind := range []string{"go", "leaf", "pure-helper"} {
 				native := kind == "leaf"
 				calls := 0

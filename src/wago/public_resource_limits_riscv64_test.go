@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !wago_precompiled && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
 
 package wago
 
@@ -65,23 +65,13 @@ func TestRV64PublicLargeLocalsRespectConfiguredLimitAndNativeHomes(t *testing.T)
 	if code, err := NewRuntimeConfig().WithMaxFunctionLocals(1055).Compile(source); code != nil || err == nil || !strings.Contains(err.Error(), "configured limit") {
 		t.Fatal("configured local ceiling was not enforced", err)
 	}
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		code, err := NewRuntimeConfig().WithMaxFunctionLocals(1056).Compile(source)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer code.Close()
-		if artifact {
-			data, err := code.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			code, err = LoadTrustedArtifact(data)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer code.Close()
-		}
+
 		in, err := Instantiate(code)
 		if err != nil {
 			t.Fatal(err)

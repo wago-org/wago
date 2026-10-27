@@ -3,7 +3,6 @@
 package wago
 
 import (
-	"bytes"
 	"errors"
 	"testing"
 )
@@ -39,41 +38,6 @@ func TestStateOnlyCodeOwnerWithoutMapping(t *testing.T) {
 	}
 }
 
-func TestStateOnlyCodeReaderAvoidsEmptyMapping(t *testing.T) {
-	c := &Compiled{nativeContextTrapABI: railshotNativeContextTrapABI()}
-	blob, err := marshalCompiled(c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	decoded, image, _, err := readCompiledFrom(bytes.NewReader(blob), DefaultArtifactLimits())
-	if image != nil {
-		defer image.Close()
-	}
-	if err != nil || decoded == nil || image != nil || !decoded.hasNoFunctionCode() {
-		t.Fatal("state-only reader allocated mapping", err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if loaded != nil {
-		defer loaded.Close()
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.codeCache.mem != nil || loaded.codeCache.base != 0 || loaded.codeCache.flags&compiledCacheWritableCode != 0 {
-		t.Fatal("state-only loader published an empty mapping")
-	}
-	if _, err := loaded.acquireCode(); err != nil {
-		t.Fatal(err)
-	}
-	if err := loaded.UnmarshalBinary(blob); err == nil {
-		t.Fatal("replacement succeeded with a live state-only owner")
-	}
-	loaded.releaseCode()
-	if err := loaded.UnmarshalBinary(blob); err != nil {
-		t.Fatal("quiescent state-only replacement", err)
-	}
-}
-
 func TestStateOnlyCodeShapeDoesNotHideFunctionMetadata(t *testing.T) {
 	for _, c := range []*Compiled{
 		{NumImports: 1}, {Funcs: []FuncSig{{}}}, {code: []byte{1}},
@@ -82,20 +46,5 @@ func TestStateOnlyCodeShapeDoesNotHideFunctionMetadata(t *testing.T) {
 		if c.hasNoFunctionCode() {
 			t.Fatal("non-state-only code owner classified as empty")
 		}
-	}
-}
-
-func TestImportOnlyCodeReaderKeepsMappedOwner(t *testing.T) {
-	c := &Compiled{NumImports: 1, Imports: []string{"env.f"}, importFuncSigs: []FuncSig{{}}, dynamicImports: true}
-	blob, err := marshalCompiled(c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	decoded, image, _, err := readCompiledFrom(bytes.NewReader(blob), DefaultArtifactLimits())
-	if image != nil {
-		defer image.Close()
-	}
-	if err != nil || decoded == nil || image == nil || image.Base() == 0 || decoded.hasNoFunctionCode() {
-		t.Fatal("import-only reader lost mapped ownership", err)
 	}
 }

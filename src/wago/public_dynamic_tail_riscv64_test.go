@@ -7,13 +7,14 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"runtime"
 	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
+
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -49,7 +50,7 @@ func rv64PublicDynamicTailModule(types []wasm.ValType, imported bool) []byte {
 }
 
 func TestRV64PublicDynamicTailSourceArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		for _, shape := range []string{"zero", "mixed", "pair"} {
 			for _, foreign := range []bool{false, true} {
 				t.Run(fmt.Sprintf("artifact%t-%s-foreign%t", artifact, shape, foreign), func(t *testing.T) {
@@ -87,7 +88,7 @@ func TestRV64PublicDynamicTailSourceArtifact(t *testing.T) {
 					if m == nil || len(m.Plans) != 1 || m.Plans[0].Kind != encoder.NativeTailIndirect || m.Plans[0].TypeIndex != 2 || m.Plans[0].ReferenceBase == 0 {
 						t.Fatal("lost dynamic source plan", m)
 					}
-					w := compiledWriter{}
+					w := metadataWriter{}
 					if err := railshotWriteNativeTail(&w, c); err != nil || binary.LittleEndian.Uint32(w.buf) != 2 {
 						t.Fatal("symbolic version", err)
 					}

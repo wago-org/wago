@@ -312,16 +312,8 @@ func TestPublicImportedMemoryQuotaRecheckedAfterLeaseWait(t *testing.T) {
 func TestPublicImportedMemoryArtifactAndRetainedOwner(t *testing.T) {
 	p, memory := importedMemoryProvider(t)
 	c := importedMemoryCompile(t, true, 20, true, false, 0)
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
-	a, err := Instantiate(loaded, NewImports().Memory("env", "memory", memory))
+
+	a, err := Instantiate(c, NewImports().Memory("env", "memory", memory))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +323,7 @@ func TestPublicImportedMemoryArtifactAndRetainedOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer b.Close()
-	if err := loaded.Close(); err != nil {
+	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
 	reexport, err := a.ExportedMemory("memory")

@@ -148,7 +148,6 @@ func (d Dirs) LegacyRunnerBinary(version, profile string) string {
 	return filepath.Join(d.Versions, version, profile, name)
 }
 
-func (d Dirs) CachePath(key string) string   { return filepath.Join(d.Cache, key+".wago") }
 func (d Dirs) ConfigFile(name string) string { return filepath.Join(d.Config, name) }
 
 func (d Dirs) Ensure() error {

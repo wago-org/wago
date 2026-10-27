@@ -4,12 +4,13 @@ package wago
 
 import (
 	"context"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 //go:noinline
@@ -48,7 +49,7 @@ func testFixedSharedIntegerGoOwner(t *testing.T, nativeLeaf bool) {
 		} else {
 			t.Setenv("WAGO_FIXED_SHARED_INTEGER_CONTEXT", "0")
 		}
-		for artifact, code := range []*Compiled{c, publicArtifactRoundTrip(t, c)} {
+		for artifact, code := range []*Compiled{c} {
 			if code.fixedSharedHostInteger != (artifact == 0) {
 				t.Fatal("artifact retained register proof")
 			}

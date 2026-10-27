@@ -4,10 +4,11 @@ package wago
 
 import (
 	"encoding/binary"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"math/bits"
 	"unsafe"
+
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Bulk foreign pins are reserved while store.mu protects the slot generation.

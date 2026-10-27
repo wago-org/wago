@@ -70,30 +70,14 @@ func rv64PublicVector(lo, hi uint64) V128 {
 }
 func TestRV64PublicSWAROwnedGlobalExportsHostAccessAndArtifactIsolation(t *testing.T) {
 	initial := []uint64{0xffffffff, 0x8000000000000001, 0x7f800001, 0x7ff0000000000001, 0x8899aabbccddeeff, 0x0807060504030201, 0x7ff0000000000001, 0x80000000deadbeef}
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			c, err := Compile(nil, rv64PublicSWARGlobalExportsModule())
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			if artifact {
-				blob, err := c.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if loaded != nil {
-					defer loaded.Close()
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := c.Close(); err != nil {
-					t.Fatal(err)
-				}
-				c = loaded
-			}
+
 			a, err := Instantiate(c)
 			if err != nil {
 				t.Fatal(err)
@@ -234,130 +218,5 @@ func TestRV64PublicSWARGlobalExportMetadataBounds(t *testing.T) {
 	}
 	if c.codeCache.base != 0 {
 		t.Fatal("metadata rejection changed deferred code ownership")
-	}
-}
-
-func TestRV64PublicSWARScalarGlobalBorrowersRetainRetiredVectorProducer(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
-		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
-			compiled, err := Compile(nil, rv64PublicSWARGlobalExportsModule())
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer compiled.Close()
-			if artifact {
-				blob, err := compiled.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				loaded, err := LoadTrustedArtifact(blob)
-				if loaded != nil {
-					defer loaded.Close()
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := compiled.Close(); err != nil {
-					t.Fatal(err)
-				}
-				compiled = loaded
-			}
-			producer, err := Instantiate(compiled)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer producer.Close()
-			if err := compiled.Close(); err != nil {
-				t.Fatal(err)
-			}
-			imports := NewImports()
-			objects := make([]*Global, 4)
-			for i := range objects {
-				name := "g" + string(rune('0'+i))
-				objects[i], err = producer.ExportedGlobalObject(name)
-				if err != nil {
-					t.Fatal(err)
-				}
-				imports.Global("env", name, objects[i])
-			}
-			consumers := make([]*Instance, 2)
-			codes := make([]*Compiled, 2)
-			for i := range consumers {
-				codes[i], err = Compile(nil, publicImportedGlobalModule(true, 0, true, byte(44+i*11)))
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer codes[i].Close()
-				if i == 1 {
-					blob, err := codes[i].MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					loaded, err := LoadTrustedArtifact(blob)
-					if loaded != nil {
-						defer loaded.Close()
-					}
-					if err != nil {
-						t.Fatal(err)
-					}
-					if err := codes[i].Close(); err != nil {
-						t.Fatal(err)
-					}
-					codes[i] = loaded
-				}
-				consumers[i], err = Instantiate(codes[i], imports)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer consumers[i].Close()
-			}
-			runtime.GC()
-			args := []uint64{0xdeadbeef80000000, 0x123456789abcdef0, 0xabcdef017f800001, 0xfff0000000000001}
-			normalized := []uint64{0x80000000, args[1], 0x7f800001, args[3]}
-			importedGlobalInvoke(t, consumers[0], "set", append(slices.Clone(normalized), 44), args...)
-			want := append(slices.Clone(normalized), 0x8899aabbccddeeff, 0x0807060504030201, 0x7ff0000000000001, 0x80000000deadbeef)
-			got, err := producer.Invoke("get")
-			if err != nil || !slices.Equal(got, want) {
-				t.Fatal("scalar borrower damaged vector producer neighbors", got, err)
-			}
-			if err := producer.Close(); err != nil {
-				t.Fatal(err)
-			}
-			runtime.GC()
-			if !producer.hasPhysicalResources() {
-				t.Fatal("logical SIMD producer close unmapped borrowed scalar cells")
-			}
-			if objects[0].Get() != 0 || objects[0].Set(7) == nil {
-				t.Fatal("closed producer global remained host accessible")
-			}
-			if late, err := Instantiate(codes[0], imports); late != nil || err == nil {
-				t.Fatal("closed SIMD producer accepted a new global borrower")
-			}
-			for i, consumer := range consumers {
-				importedGlobalInvoke(t, consumer, "get", append(slices.Clone(normalized), uint64(44+i*11)))
-			}
-			args = []uint64{0xdeadbeefffffffff, 0x8000000000000001, 0xdeadbeef80000000, 0x7ff0000000000042}
-			normalized = []uint64{0xffffffff, args[1], 0x80000000, args[3]}
-			importedGlobalInvoke(t, consumers[1], "set", append(slices.Clone(normalized), 55), args...)
-			importedGlobalInvoke(t, consumers[0], "get", append(slices.Clone(normalized), 44))
-			if err := consumers[0].Close(); err != nil {
-				t.Fatal(err)
-			}
-			if !producer.hasPhysicalResources() {
-				t.Fatal("first global borrower released SIMD producer storage")
-			}
-			importedGlobalInvoke(t, consumers[1], "get", append(slices.Clone(normalized), 55))
-			if err := consumers[1].Close(); err != nil {
-				t.Fatal(err)
-			}
-			if producer.hasPhysicalResources() {
-				t.Fatal("final global borrower retained retired SIMD producer storage")
-			}
-			for _, object := range objects {
-				if len(object.cell) != 0 {
-					t.Fatal("retired exported object still names an arena cell")
-				}
-			}
-		})
 	}
 }

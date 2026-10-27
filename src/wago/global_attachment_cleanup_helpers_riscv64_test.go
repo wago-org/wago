@@ -15,19 +15,9 @@ func globalCleanupCompile(t *testing.T, module []byte, artifact bool) *Compiled 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
-	if !artifact {
-		return c
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = loaded.Close() })
-	return loaded
+
+	return c
+
 }
 
 func globalCleanupMappingStatus(address uintptr) syscall.Errno {

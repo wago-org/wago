@@ -4,8 +4,6 @@ package wago
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -14,23 +12,7 @@ import (
 
 func immediateWarmCompile(t *testing.T, immediate, artifact bool) *Compiled {
 	t.Helper()
-	mode, dir := os.Getenv("WAGO_RV64_IMMEDIATE_ARTIFACT_MODE"), os.Getenv("WAGO_RV64_IMMEDIATE_ARTIFACT_DIR")
-	path := filepath.Join(dir, fmt.Sprintf("immediate-%t.wago", immediate))
-	if mode == "load" {
-		if !artifact {
-			t.Skip("compiler-free artifact case")
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err := LoadTrustedArtifact(data)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { c.Close() })
-		return c
-	}
+
 	body := []byte{0x41, 1, 0x0b}
 	if immediate {
 		body = []byte{0x41, 7, 0xfb, 0x1c, 0xfb, 0x14, 0x6c, 0x0b}
@@ -41,30 +23,9 @@ func immediateWarmCompile(t *testing.T, immediate, artifact bool) *Compiled {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { c.Close() })
-	if !artifact && mode != "prepare" {
-		return c
-	}
-	data, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err = os.MkdirAll(dir, 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(path, data, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if !artifact {
-		return c
-	}
-	loaded, err := LoadTrustedArtifact(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { loaded.Close() })
-	return loaded
+
+	return c
+
 }
 
 func TestRV64ImmediateReferenceWarmAllocations(t *testing.T) {

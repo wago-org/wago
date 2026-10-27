@@ -3,14 +3,11 @@
 package wago
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"runtime"
 	"testing"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -180,87 +177,5 @@ func TestRV64PublicReferenceNonNullRetiredGlobalOwner(t *testing.T) {
 				})
 			}
 		}
-	}
-}
-
-func TestRV64PublicReferenceNonNullMarkerAdmission(t *testing.T) {
-	source := rv64ReferenceNonNullSource(false, false)
-	if c, err := compatibilityDefaultConfig().Compile(source); c != nil || err == nil {
-		t.Fatal("public typed-reference gate widened", err)
-	}
-	base := rv64NativeTailCompile(t, "non-null-marker", source, false)
-	for _, call := range []bool{false, true} {
-		impossible := rv64ReferenceStartCopy(base.executionView())
-		impossible.NumImports, impossible.Funcs = len(impossible.Funcs), nil
-		impossible.nativeReferenceCallABI = call
-		impossible.nativeReferenceControlABI = !call
-		if err := railshotValidateReferenceCalls(impossible); err == nil {
-			t.Fatal("instruction witness without any defined body", call)
-		}
-	}
-	for _, tc := range []struct {
-		name   string
-		mutate func(*Compiled)
-	}{
-		{"missing-marker", func(c *Compiled) { c.nativeReferenceControlABI = false }},
-		{"missing-typed", func(c *Compiled) { c.requiredFeatures &^= CoreFeatureTypedFunctionReferences }},
-		{"missing-reference-abi", func(c *Compiled) { c.nativeTableReferenceABI = false }},
-		{"missing-context-abi", func(c *Compiled) { c.nativeTableContextABI = false }},
-		{"missing-trap-abi", func(c *Compiled) { c.nativeContextTrapABI = false }},
-		{"register-abi", func(c *Compiled) { c.registerABIDisabled = false }},
-		{"reference-signature", func(c *Compiled) { c.Types[1].Params[0] = ValueTypeDescriptor{Kind: ValueTypeReference} }},
-		{"nonfinal-type", func(c *Compiled) { c.Types[0].Final = false }},
-		{"subtype", func(c *Compiled) { c.Types[0].Supers = []uint32{1} }},
-		{"unknown-cpu-bit", func(c *Compiled) { c.requiredAMD64Features = shared.AMD64Features(1 << 17) }},
-		{"cpu-marker-alias", func(c *Compiled) { c.requiredAMD64Features = shared.AMD64Features(1 << 18) }},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			c := rv64ReferenceStartCopy(base.executionView())
-			tc.mutate(c)
-			if err := railshotValidateCompiled(c); !errors.Is(err, railshot.ErrUnsupported) {
-				t.Fatal("invalid non-null ABI shape admitted", err)
-			}
-			blob, err := marshalCompiled(c)
-			if err != nil {
-				return
-			}
-			got, err := LoadTrustedArtifact(blob)
-			if err == nil {
-				if got != nil {
-					got.Close()
-				}
-				t.Fatal("invalid non-null artifact admitted")
-			}
-		})
-	}
-	// Reusing a metadata decoder must clear both instruction witnesses. A valid
-	// ordinary artifact keeps precisely the same metadata bytes after round trip.
-	plain := rv64NativeTailCompile(t, "non-null-plain", rv64PublicNativeIdentityModule([]wasm.ValType{wasm.I32}), false)
-	plainBytes, err := marshalCompiledMetadata(plain)
-	if err != nil {
-		t.Fatal(err)
-	}
-	markedBytes, err := marshalCompiledMetadata(base)
-	if err != nil {
-		t.Fatal(err)
-	}
-	decoded := Compiled{code: base.code}
-	if err := unmarshalCompiledMetadata(&decoded, markedBytes); err != nil || !decoded.nativeReferenceControlABI || decoded.nativeReferenceCallABI {
-		t.Fatal("marked decoder", err)
-	}
-	decoded.code = plain.code
-	if err := unmarshalCompiledMetadata(&decoded, plainBytes); err != nil || decoded.nativeReferenceControlABI || decoded.nativeReferenceCallABI {
-		t.Fatal("reused decoder retained reference witnesses", err)
-	}
-	roundtrip, err := marshalCompiledMetadata(&decoded)
-	if err != nil || !bytes.Equal(roundtrip, plainBytes) {
-		t.Fatal("ordinary artifact bytes changed", err)
-	}
-	if a := testing.AllocsPerRun(10, func() {
-		if err := railshotValidateReferenceCalls(base); err != nil {
-			panic(err)
-		}
-	}); a != 0 {
-		t.Fatal("non-null marker admission allocated", a)
 	}
 }

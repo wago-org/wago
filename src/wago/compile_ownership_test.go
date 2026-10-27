@@ -141,11 +141,7 @@ func TestCompilerCloseBeforeInstantiateReleasesSnapshotCodeImage(t *testing.T) {
 	if len(snapshot.code) == 0 {
 		t.Fatal("execution snapshot has no staged code before Close")
 	}
-	if compiled.boundsMode != BoundsChecksSignalsBased {
-		if _, err := compiled.MarshalBinary(); err != nil {
-			t.Fatalf("MarshalBinary before Close: %v", err)
-		}
-	}
+
 	if err := compiled.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
@@ -183,58 +179,6 @@ func TestCompiledCodeInspectionDoesNotExposeMutableStorage(t *testing.T) {
 	}
 	if _, err := compiled.WriteCodeTo(&code); err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Fatalf("WriteCodeTo after Close error = %v, want closed", err)
-	}
-}
-
-func TestCompiledDecodeReleasesReplacedCodeImage(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithFunctionWorkers(1), benchAddOneModule())
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
-	oldCache := compiled.codeCache
-	empty, err := (&Compiled{}).MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary empty: %v", err)
-	}
-	if err := compiled.UnmarshalBinary(empty); err != nil {
-		t.Fatalf("UnmarshalBinary replacement: %v", err)
-	}
-	defer compiled.Close()
-	oldCache.mu.Lock()
-	oldClosed, oldMapped := oldCache.closed, len(oldCache.mem) != 0
-	oldCache.mu.Unlock()
-	if !oldClosed || oldMapped {
-		t.Fatalf("replaced code cache = closed %v mapped %v, want closed and unmapped", oldClosed, oldMapped)
-	}
-	if compiled.CodeSize() != 0 {
-		t.Fatalf("replacement CodeSize = %d, want 0", compiled.CodeSize())
-	}
-}
-
-func TestCompiledDecodeRejectsReplacementWithLiveInstance(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithFunctionWorkers(1), benchAddOneModule())
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
-	defer compiled.Close()
-	instance, err := Instantiate(compiled)
-	if err != nil {
-		t.Fatalf("Instantiate: %v", err)
-	}
-	defer instance.Close()
-	empty, err := (&Compiled{}).MarshalBinary()
-	if err != nil {
-		t.Fatalf("MarshalBinary empty: %v", err)
-	}
-	if err := compiled.UnmarshalBinary(empty); err == nil || !strings.Contains(err.Error(), "live instance") {
-		t.Fatalf("UnmarshalBinary with live instance error = %v, want live-instance rejection", err)
-	}
-	result, err := instance.Invoke("f", I32(41))
-	if err != nil {
-		t.Fatalf("Invoke after rejected replacement: %v", err)
-	}
-	if got := AsI32(result[0]); got != 42 {
-		t.Fatalf("f(41) after rejected replacement = %d, want 42", got)
 	}
 }
 

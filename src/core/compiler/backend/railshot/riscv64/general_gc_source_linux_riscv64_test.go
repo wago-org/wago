@@ -11,11 +11,11 @@ import (
 	"github.com/wago-org/wago/src/wago"
 )
 
-// Former fixed-image inputs must use the ordinary source and artifact paths.
+// Former fixed-image inputs must use the ordinary source path.
 // A wire mutation is accepted exactly when it is a valid Core 3 module.
 func TestFormerRV64FixtureGeneralCompilation(t *testing.T) {
 	cfg := wago.NewRuntimeConfig().WithCoreFeatures(wago.CoreFeaturesV3).WithBoundsChecks(wago.BoundsChecksExplicit)
-	check := func(t *testing.T, wire []byte, wantValid bool, artifact bool) {
+	check := func(t *testing.T, wire []byte, wantValid bool) {
 		t.Helper()
 		c, err := cfg.Compile(wire)
 		if !wantValid {
@@ -32,26 +32,16 @@ func TestFormerRV64FixtureGeneralCompilation(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		if artifact {
-			blob, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			loaded, err := wago.LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
-			loaded.Close()
-		}
+
 	}
 	for _, tc := range backend.GeneralGCSourceFixtures() {
 		t.Run(tc.Name, func(t *testing.T) {
-			t.Run("source", func(t *testing.T) { check(t, tc.Wire, true, true) })
-			t.Run("canonical", func(t *testing.T) { check(t, tc.Canonical, true, true) })
+			t.Run("source", func(t *testing.T) { check(t, tc.Wire, true) })
+			t.Run("canonical", func(t *testing.T) { check(t, tc.Canonical, true) })
 			// A custom section is inert and cannot select a different compiler product.
 			t.Run("custom", func(t *testing.T) {
 				wire := append(append([]byte(nil), tc.Canonical...), 0, 2, 1, 'q')
-				check(t, wire, true, true)
+				check(t, wire, true)
 			})
 			t.Run("mutations", func(t *testing.T) {
 				for i := range tc.Wire {
@@ -62,7 +52,7 @@ func TestFormerRV64FixtureGeneralCompilation(t *testing.T) {
 						if err == nil {
 							err = wasm.ValidateModuleWithFeatures(m, wasm.ValidationFeatures{CompactImports: true, MultiMemory: true, ExtendedConstGlobals: true, GCConstExpr: true})
 						}
-						check(t, wire, err == nil, false)
+						check(t, wire, err == nil)
 					})
 				}
 			})

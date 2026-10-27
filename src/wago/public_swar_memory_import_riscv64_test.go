@@ -35,13 +35,9 @@ func TestRV64PublicSWARImportedMemoryQuotaContextAndRetiredOwner(t *testing.T) {
 		}
 		defer c.Close()
 		if i == 1 {
-			blob, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			loaded, err := LoadTrustedArtifact(blob)
-			if loaded != nil {
-				defer loaded.Close()
+
+			if c != nil {
+				defer c.Close()
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -49,7 +45,7 @@ func TestRV64PublicSWARImportedMemoryQuotaContextAndRetiredOwner(t *testing.T) {
 			if err := c.Close(); err != nil {
 				t.Fatal(err)
 			}
-			c = loaded
+			c = c
 		}
 		consumers[i], err = Instantiate(c, NewImports().Memory("env", "memory", memory))
 		if err != nil {

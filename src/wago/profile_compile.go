@@ -1,5 +1,3 @@
-//go:build !wago_precompiled
-
 package wago
 
 import (

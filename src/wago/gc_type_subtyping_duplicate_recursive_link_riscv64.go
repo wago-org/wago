@@ -86,7 +86,7 @@ func rv64GCTypeSubtypingDuplicateRecursiveLinkProfileWithCode(c *Compiled, allow
 	default:
 		return 0
 	}
-	metadata, err := marshalCompiledMetadata(c)
+	metadata, err := rv64CanonicalMetadata(c)
 	if err != nil {
 		return 0
 	}
@@ -102,18 +102,4 @@ func rv64GCTypeSubtypingDuplicateRecursiveLink(c *Compiled) bool {
 
 func rv64GCTypeSubtypingDuplicateRecursiveLinkExecutionCode(c *Compiled) bool {
 	return c != nil && (len(c.code) == rv64GCTypeSubtypingDuplicateRecursiveLinkProviderCodeLen && sha256.Sum256(c.code) == rv64GCTypeSubtypingDuplicateRecursiveLinkProviderCodeDigest || len(c.code) == 0)
-}
-
-func railshotRestoreGCTypeSubtypingDuplicateRecursiveLinkArtifact(c *Compiled) {
-	variant := rv64GCTypeSubtypingDuplicateRecursiveLinkProfileWithCode(c, true, true)
-	if variant == 0 {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	if variant == 1 {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingDuplicateRecursiveLinkProvider
-	} else {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingDuplicateRecursiveLinkConsumer
-	}
 }

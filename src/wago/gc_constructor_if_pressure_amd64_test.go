@@ -52,9 +52,7 @@ func TestGCConstructorIfPressure(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer c.Close()
-			c = publicArtifactRoundTrip(t, c)
-			defer c.Close()
+
 			for _, profile := range []GCProfile{GCProfileThroughput, GCProfileTiny} {
 				for _, cond := range []uint64{0, 1} {
 					cfg := GCConfig{Profile: profile, StressNurseryBytes: 64, VerifyAfterCollect: true}

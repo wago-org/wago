@@ -3,5 +3,3 @@
 package wago
 
 func rv64GCStructNumericGlobals(*Compiled) bool { return false }
-
-func railshotRestoreGCStructNumericGlobalsArtifact(*Compiled) {}

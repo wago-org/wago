@@ -4,6 +4,7 @@ package wago
 
 import (
 	"context"
+
 	"github.com/wago-org/wago/internal/jitprofile"
 )
 

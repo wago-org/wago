@@ -77,7 +77,7 @@ func rv64GCTypeSubtypingExtendedProjectionLinkProfileWithCode(c *Compiled, allow
 	default:
 		return 0
 	}
-	metadata, err := marshalCompiledMetadata(c)
+	metadata, err := rv64CanonicalMetadata(c)
 	if err != nil || len(metadata) != rv64GCTypeSubtypingExtendedProjectionLinkMetadataLens[variant-1] || sha256.Sum256(metadata) != rv64GCTypeSubtypingExtendedProjectionLinkMetadataDigests[variant-1] {
 		return 0
 	}
@@ -90,18 +90,4 @@ func rv64GCTypeSubtypingExtendedProjectionLink(c *Compiled) bool {
 
 func rv64GCTypeSubtypingExtendedProjectionLinkExecutionCode(c *Compiled) bool {
 	return c != nil && (len(c.code) == rv64GCTypeSubtypingExtendedProjectionLinkProviderCodeLen && sha256.Sum256(c.code) == rv64GCTypeSubtypingExtendedProjectionLinkProviderCodeDigest || len(c.code) == 0)
-}
-
-func railshotRestoreGCTypeSubtypingExtendedProjectionLinkArtifact(c *Compiled) {
-	variant := rv64GCTypeSubtypingExtendedProjectionLinkProfileWithCode(c, true, true)
-	if variant == 0 {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences | CoreFeatureGC
-	if variant == 1 {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingExtendedProjectionLinkProvider
-	} else {
-		c.codeCache.gcTypeSubtypingProduct = stagedGCTypeSubtypingExtendedProjectionLinkConsumer
-	}
 }

@@ -39,9 +39,8 @@ func TestDirectReferenceABITrapsAndGlobals(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		loaded := publicArtifactRoundTrip(t, c)
-		defer loaded.Close()
-		for _, candidate := range []*Compiled{c, loaded} {
+
+		for _, candidate := range []*Compiled{c} {
 			for _, tc := range []struct {
 				entry string
 				arg   uint64

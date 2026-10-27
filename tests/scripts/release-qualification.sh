@@ -119,20 +119,7 @@ if [[ "\${1:-}" == "--json" ]]; then
   printf '{"release":"$version"}\n'
   exit 0
 fi
-if [[ "\${1:-}" == "build" ]]; then
-  while ((\$# > 0)); do
-    if [[ "\$1" == "--output" ]]; then
-      printf 'artifact\n' >"\$2"
-      exit 0
-    fi
-    shift
-  done
-  exit 1
-fi
 if [[ "\${1:-}" == "run" ]]; then
-  if [[ "\$*" == *".wago"* && "\$*" != *"--allow-native-artifact"* ]]; then
-    exit 1
-  fi
   printf '6765\n'
   exit 0
 fi

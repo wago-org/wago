@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -21,38 +20,9 @@ import (
 
 func rv64TableStageCompile(t *testing.T, name string, source []byte, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_DIR"), os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE")
-	if mode == "load" {
-		if !artifact {
-			t.Skip("precompiled artifact path only")
-		}
-		blob, err := os.ReadFile(filepath.Join(dir, name+".wago"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err := LoadTrustedArtifact(blob)
-		if c != nil {
-			t.Cleanup(func() { _ = c.Close() })
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Logf("loaded compiler-free artifact %s", name)
-		return c
-	}
+
 	c := rv64PublicStartCompile(t, source, artifact)
-	if mode == "prepare" {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, name+".wago"), blob, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
+
 	return c
 }
 
@@ -372,18 +342,6 @@ func TestRV64ImportedTablePreflightCloseRace(t *testing.T) {
 			t.Fatal("temporary storage lease leaked")
 		}
 		_ = table.Close()
-	}
-}
-
-func TestRV64ActualImportedTablePrecompiledCompilerGate(t *testing.T) {
-	if os.Getenv("WAGO_RV64_TABLE_STAGE_ARTIFACT_MODE") != "load" {
-		t.Skip("actual precompiled runtime only")
-	}
-	if c, err := Compile(nil, rv64ImportedTableModule([]wasm.ValType{wasm.I32}, 7, false, false, true, 1)); c != nil || err == nil || !strings.Contains(err.Error(), "source compilation is unavailable") {
-		if c != nil {
-			_ = c.Close()
-		}
-		t.Fatal("precompiled witness used source compilation", err)
 	}
 }
 

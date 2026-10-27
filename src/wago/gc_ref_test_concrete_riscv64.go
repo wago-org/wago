@@ -116,11 +116,3 @@ func rv64GCConcreteSubtypeProduct(c *Compiled, executionCode func(*Compiled) boo
 		c.usesGCStructHelpers() && !c.usesGCArrayHelpers() && c.genericGCFrameRoots() == nil && c.requiredFeatures == requiredFeatures && c.requiredAMD64Features == 0 &&
 		slices.Equal(c.Entry, wantEntry) && slices.Equal(c.InternalEntry, wantEntry)
 }
-
-func railshotRestoreGCRefTestConcreteArtifact(c *Compiled) {
-	if !rv64GCRefTestConcrete(c) {
-		return
-	}
-	c.ensureCodeCache()
-	c.codeCache.gcStructProduct = stagedGCStructRefTestConcrete
-}

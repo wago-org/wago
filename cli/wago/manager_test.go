@@ -179,7 +179,6 @@ func TestManagerOwnsRuntimeHelpWithoutSelectedRuntime(t *testing.T) {
 		{name: "run", args: []string{"run", "--help"}, want: "Usage: wago run"},
 		{name: "module group", args: []string{"module"}, want: "Usage: wago module <command>"},
 		{name: "module child", args: []string{"module", "imports", "--help"}, want: "Usage: wago module imports"},
-		{name: "build", args: []string{"build", "--help"}, want: "Usage: wago build"},
 		{name: "validate", args: []string{"validate", "--help"}, want: "Usage: wago validate"},
 	}
 	for _, test := range tests {

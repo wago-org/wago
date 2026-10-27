@@ -2,6 +2,5 @@
 
 package wago
 
-func rv64GCStructBasicExecutionCode(*Compiled) bool  { return false }
-func rv64GCStructBasic(*Compiled) bool               { return false }
-func railshotRestoreGCStructBasicArtifact(*Compiled) {}
+func rv64GCStructBasicExecutionCode(*Compiled) bool { return false }
+func rv64GCStructBasic(*Compiled) bool              { return false }

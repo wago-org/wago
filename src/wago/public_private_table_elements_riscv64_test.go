@@ -92,27 +92,20 @@ func rv64PrivateTableInitCancellation(t *testing.T, privateFrame, vector bool) {
 	} else {
 		c = ownedTableCompile(t, data)
 	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close()
+
+	var err error
 	var in *Instance
 	if privateFrame {
-		in = rv64ReferenceTableBulkInstantiate(t, loaded)
+		in = rv64ReferenceTableBulkInstantiate(t, c)
 	} else {
-		in, err = Instantiate(loaded)
+		in, err = Instantiate(c)
 	}
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
 	_ = c.Close()
-	_ = loaded.Close()
+	_ = c.Close()
 	runtime.GC()
 	a := slices.Clone(in.funcRefDescs[80:112])
 	b := slices.Clone(in.funcRefDescs[120:152])

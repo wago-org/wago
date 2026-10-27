@@ -15,17 +15,7 @@ func conditionalReleaseMappedCompile(t *testing.T, kind string, artifact bool) *
 	} else {
 		c = importedGlobalCompile(t, false, 0, true)
 	}
-	if artifact {
-		blob, err := c.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err = LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = c.Close() })
-	}
+
 	return c
 }
 

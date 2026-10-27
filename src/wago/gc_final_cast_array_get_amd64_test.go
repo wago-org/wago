@@ -6,14 +6,15 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
-	"github.com/wago-org/wago/tests/support/wasmtest"
 	"math"
 	"os"
 	"strings"
 	"testing"
 	"unsafe"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func finalCastArrayCompiled(tb testing.TB, codec bool) *Compiled {
@@ -26,19 +27,8 @@ func finalCastArrayCompiled(tb testing.TB, codec bool) *Compiled {
 	if err != nil {
 		tb.Fatal(err)
 	}
-	if codec {
-		blob, err := c.MarshalBinary()
-		c.Close()
-		if err != nil {
-			tb.Fatal(err)
-		}
-		c = &Compiled{}
-		if err = c.UnmarshalBinary(blob); err != nil {
-			tb.Fatal(err)
-		}
-	}
-	tb.Cleanup(func() { c.Close() })
 	return c
+
 }
 
 func TestGCFinalCastArrayGet(t *testing.T) {

@@ -610,15 +610,7 @@ func testExtendedConstElementFixture(t *testing.T, id string) {
 		t.Fatalf("compile extended-const fixture %s: %v", id, err)
 	}
 
-	blob, err := mod.c.MarshalBinary()
-	if err != nil {
-		t.Fatalf("marshal extended-const fixture %s: %v", id, err)
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatalf("load extended-const fixture %s: %v", id, err)
-	}
-	defer loaded.Close()
+	loaded := mod.c
 	foundGlobalInit := false
 	for _, elems := range [][]ElemInit{loaded.Elems, loaded.passiveElems} {
 		for _, elem := range elems {

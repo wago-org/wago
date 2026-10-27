@@ -49,7 +49,7 @@ func TestRV64PublicCompactDataAdmission(t *testing.T) {
 				source := wasmtest.Module(wasmtest.Section(5, []byte{1, 0, 1}), wasmtest.Section(11, wasmtest.Vec(segments...)))
 				compiled := rv64PublicStartCompile(t, source, artifact)
 				view := compiled.executionView()
-				if view.compactData == nil || view.activeDataCount() != count || !rv64ArtifactContractValid(view) {
+				if view.compactData == nil || view.activeDataCount() != count || !rv64SourceContractValid(view) {
 					t.Fatal("compiled compact data contract/count", view.activeDataCount())
 				}
 				instance, err := Instantiate(compiled)

@@ -5,10 +5,11 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"math/bits"
 	"unsafe"
+
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Persistent native words stay opaque. Qualified writes root the local shell

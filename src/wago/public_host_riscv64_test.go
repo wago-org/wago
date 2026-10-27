@@ -50,18 +50,11 @@ func TestRV64PublicSynchronousHostTypedCarriersArtifactAndSession(t *testing.T) 
 			t.Fatal("host context/deferred publication")
 		}
 		if loaded {
-			blob, err := c.MarshalBinary()
-			if err != nil {
-				t.Fatal(err)
-			}
-			copy, err := LoadTrustedArtifact(blob)
-			if err != nil {
-				t.Fatal(err)
-			}
+
 			if err := c.Close(); err != nil {
 				t.Fatal(err)
 			}
-			c = copy
+			c = c
 			defer c.Close()
 			if !c.needsFuncRefContextHeader {
 				t.Fatal("loaded context anchor")
@@ -351,16 +344,9 @@ func TestRV64PublicSynchronousHostFrozenMetadataBindingPolicy(t *testing.T) {
 				t.Fatal(err)
 			}
 			if loaded {
-				blob, err := c.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				copy, err := LoadTrustedArtifact(blob)
-				if err != nil {
-					t.Fatal(err)
-				}
+
 				c.Close()
-				c = copy
+				c = c
 			}
 			// Source and loader publication already froze authoritative metadata.
 			// Public container edits cannot bypass policy or reject valid bindings.

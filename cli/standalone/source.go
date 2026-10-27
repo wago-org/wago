@@ -1,5 +1,3 @@
-//go:build !wago_precompiled
-
 package standalone
 
 import "github.com/wago-org/wago"
@@ -26,18 +24,18 @@ func execute(source []byte, plugins wago.PluginSet, options Options, args []stri
 	return executeModule(runtime, module, options, args)
 }
 
-// CompileArtifact applies the selected plugins and compilation options once and
-// returns the target-specific artifact embedded by standalone builds.
-func CompileArtifact(source []byte, plugins wago.PluginSet, options Options) (artifact []byte, err error) {
+// Validate checks the source and plugin configuration without executing the guest.
+// Standalone builds use this before linking; native code is never persisted.
+func Validate(source []byte, plugins wago.PluginSet, options Options) (err error) {
 	runtime, err := loadRuntime(plugins, options, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer finishRuntime(runtime, &err)
 	module, err := runtime.Compile(source)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer finishModule(module, &err)
-	return module.Compiled().MarshalBinary()
+	return nil
 }

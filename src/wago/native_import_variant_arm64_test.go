@@ -6,9 +6,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
-	"testing"
 )
 
 func nativeImportVariantModule(pair bool) []byte {
@@ -59,9 +60,8 @@ func TestNativeImportVariantSourceArtifactAndCalls(t *testing.T) {
 							t.Fatal(err)
 						}
 						images[mode] = append([]byte(nil), image.Bytes()...)
-						decoded := publicArtifactRoundTrip(t, c)
-						defer decoded.Close()
-						for index, code := range []*Compiled{c, decoded} {
+
+						for index, code := range []*Compiled{c} {
 							for _, native := range []bool{false, true} {
 								rt := NewRuntime(WithRuntimeConfig(cfg))
 								module, err := rt.Module(code)

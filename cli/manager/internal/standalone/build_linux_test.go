@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func TestTinyGoArtifactSupportsCooperativeInterruption(t *testing.T) {
+func TestTinyGoSupportsCooperativeInterruption(t *testing.T) {
 	if _, err := exec.LookPath("tinygo"); err != nil {
 		t.Skip("tinygo is not installed")
 	}
@@ -26,24 +26,18 @@ func TestTinyGoArtifactSupportsCooperativeInterruption(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(interruptionArtifactCompilerSource), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(interruptionTinyGoRunnerSource), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	environment := append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
 	if err := runGo(dir, environment, false, "mod", "tidy"); err != nil {
 		t.Fatal(err)
 	}
-	if err := runGo(dir, environment, false, "run", "-tags=wago_target_tinygo", "."); err != nil {
-		t.Fatalf("compile artifact for TinyGo target: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(interruptionTinyGoRunnerSource), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	executable := filepath.Join(dir, "runner")
 	// A distinct host thread publishes cancellation while the CPU-bound guest
-	// owns its execution thread. This isolates whether the artifact contains the
+	// owns its execution thread. This isolates whether source compilation emits the
 	// cooperative poll that the TinyGo runtime needs to consume that request.
-	if err := runTool("tinygo", dir, environment, false, "build", "-scheduler=threads", "-gc=conservative", "-tags=wago_precompiled", "-o", executable, "."); err != nil {
+	if err := runTool("tinygo", dir, environment, false, "build", "-scheduler=threads", "-gc=conservative", "-o", executable, "."); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -57,13 +51,14 @@ func TestTinyGoArtifactSupportsCooperativeInterruption(t *testing.T) {
 	}
 }
 
-const interruptionArtifactCompilerSource = `package main
+const interruptionTinyGoRunnerSource = `package main
 
 import (
-	"os"
+	"context"
+	"errors"
+	"time"
 
 	"github.com/wago-org/wago"
-	"github.com/wago-org/wago/cli/standalone"
 )
 
 var infiniteLoop = []byte{
@@ -74,38 +69,10 @@ var infiniteLoop = []byte{
 	0x0a, 0x09, 0x01, 0x07, 0x00, 0x03, 0x40, 0x0c, 0x00, 0x0b, 0x0b,
 }
 
-func main() {
-	artifact, err := standalone.CompileArtifact(infiniteLoop, wago.PluginSet{}, standalone.Options{})
-	if err == nil {
-		err = os.WriteFile("module.wago", artifact, 0o644)
-	}
-	if err != nil {
-		panic(err)
-	}
-}
-`
-
-const interruptionTinyGoRunnerSource = `package main
-
-import (
-	"context"
-	_ "embed"
-	"errors"
-	"time"
-
-	"github.com/wago-org/wago"
-)
-
-//go:embed module.wago
-var artifact []byte
 
 func main() {
-	compiled, err := wago.LoadTrustedArtifact(artifact)
-	if err != nil {
-		panic(err)
-	}
 	rt := wago.NewRuntime()
-	module, err := rt.AdoptModule(compiled)
+	module, err := rt.Compile(infiniteLoop)
 	if err != nil {
 		panic(err)
 	}

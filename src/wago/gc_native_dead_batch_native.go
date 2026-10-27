@@ -2,7 +2,7 @@
 
 package wago
 
-import "github.com/wago-org/wago/src/core/runtime/gc/native"
+import gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 
 // Prepare only bounded batches. Larger runs generally cross a collection
 // boundary and should not pay to reserve handles after every helper return.

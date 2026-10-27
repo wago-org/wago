@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"testing"
@@ -19,23 +18,8 @@ import (
 
 func globalValueAccessCompile(t *testing.T, imported, artifact bool) *Compiled {
 	t.Helper()
-	dir, mode := os.Getenv("WAGO_GLOBAL_VALUE_ACCESS_ARTIFACT_DIR"), os.Getenv("WAGO_GLOBAL_VALUE_ACCESS_ARTIFACT_MODE")
-	path := filepath.Join(dir, fmt.Sprintf("global-value-access-import%t.wago", imported))
-	if mode == "load" {
-		if !artifact {
-			t.Fatal("compiler-free runner selected source")
-		}
-		blob, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err := LoadTrustedArtifact(blob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = c.Close() })
-		return c
-	}
+	_, mode := os.Getenv("WAGO_GLOBAL_VALUE_ACCESS_ARTIFACT_DIR"), os.Getenv("WAGO_GLOBAL_VALUE_ACCESS_ARTIFACT_MODE")
+
 	sections := [][]byte{wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})))}
 	function, body := uint32(0), []byte{0x41, 17, 0x0b}
 	if imported {
@@ -59,27 +43,9 @@ func globalValueAccessCompile(t *testing.T, imported, artifact bool) *Compiled {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
-	if !artifact {
-		return c
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mode == "prepare" {
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, blob, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	loaded, err := LoadTrustedArtifact(blob)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = loaded.Close() })
-	return loaded
+
+	return c
+
 }
 
 func globalValueAccessInstantiate(t *testing.T, rt *Runtime, c *Compiled, imports *Imports) *Instance {
