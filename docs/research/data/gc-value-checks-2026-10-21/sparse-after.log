@@ -1,8 +1,0 @@
-goos: linux
-goarch: amd64
-pkg: github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64
-cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
-BenchmarkGCValueChecksSparseBarriers-2      	34333039	         6.896 ns/op
-BenchmarkGCValueCheckPlanSparseBarriers-2   	    5830	     41181 ns/op
-PASS
-ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.671s

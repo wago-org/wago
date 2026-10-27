@@ -1,5 +1,0 @@
-**No findings** in the bounded `f78eb48ae..HEAD` review of the four production files and the new profile test.
-
-The merged leaf keeps the safety parent’s `trapAlwaysUnknownPC` cold tail. Its new field mode checks type identity and field extent before returning the address; the fused path consumes that address before another call. The new stub sites are cleared with per-function scratch, and the function state resets per compilation. The [profile test](/home/dev/Projects/dewdrop/.tmp/wago-test-field-public/src/wago/gc_test_field_profile_amd64_test.go:13) checks code neutrality, map validity, a fused field source PC, and an older reference root under forced collection.
-
-**Remaining gaps:** This was read only; I did not rerun the reported passing test or other checks. The profile test establishes that the field PC appears in the source map, but does not assert its precise native span or exercise the cold unknown-PC trap. The separate reference-register ABI and forwarder PRs are outside this branch and review.

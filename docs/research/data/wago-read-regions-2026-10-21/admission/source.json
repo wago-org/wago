@@ -1,7 +1,0 @@
-{
-  "source": "/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions",
-  "commit": "073b2f61880e965d3c33ba83e32f72e9391a845d",
-  "api_source_sha256": "955d0f2a6e0d2135a7151e5d8250ab233c670f03396aeb35cf9daceeb0c00e95",
-  "overlay_api_sha256": "76c04bd2fcc1bd380597c742a1d9fc6c2eca13b89f805df8db4b2a3ba0bcb2b5",
-  "purpose": "diagnostic capture after ordinary public API selects exact root/helper/inline policies; no candidate source edits"
-}

@@ -1,7 +1,0 @@
-{
-  "source": "/home/dev/Projects/dewdrop/.tmp/wago-ref-test-field-pr",
-  "commit": "bac0932c7f95e25b3a3a2cd2a6cacb5e4365e918",
-  "api_source_sha256": "955d0f2a6e0d2135a7151e5d8250ab233c670f03396aeb35cf9daceeb0c00e95",
-  "overlay_api_sha256": "e342dc4623ff3690c7a8ac2d772085679976a9ff0b2ebfe8f540436ba899c713",
-  "purpose": "diagnostic capture after ordinary public API selects exact root/helper/inline policies; no candidate source edits"
-}

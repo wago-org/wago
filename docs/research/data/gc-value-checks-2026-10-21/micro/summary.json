@@ -1,7 +1,0 @@
-{
-  "BenchmarkGCValueChecks": {
-    "control": 135233.0,
-    "candidate": 79859.5,
-    "reduction_percent": 40.9467363735183
-  }
-}

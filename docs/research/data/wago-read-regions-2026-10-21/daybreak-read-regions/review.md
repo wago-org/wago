@@ -1,5 +1,0 @@
-**P1 — A branch result can overwrite a cached raw GC address.** [gc_read_region.go](/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions/src/core/compiler/backend/railshot/amd64/gc_read_region.go:425) can lease `RBP` for a resolved object. At an `if` join, [control.go](/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions/src/core/compiler/backend/railshot/amd64/control.go:1668) can put an integer result in that same register. The region then restores the earlier proof at [gc_read_region.go](/home/dev/Projects/dewdrop/.tmp/wago-gc-read-regions/src/core/compiler/backend/railshot/amd64/gc_read_region.go:375), so a later field read may treat the integer as an object address.
-
-A valid shape is: read a struct field as the `if` condition; produce an `i32` result in both arms; then read another field from the same parameter. Exclude `RBP` from the lease while register merging is enabled, or prevent the merge from using a leased register.
-
-This was source inspection only. I did not run tests or benchmarks, and I cannot confirm the runtime outcome from this review.

@@ -1,8 +1,0 @@
-goos: linux
-goarch: amd64
-pkg: github.com/wago-org/wago/src/wago
-cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
-BenchmarkGCTestField/loop         	    4401	     55206 ns/op	       1 B/op	       0 allocs/op
-BenchmarkGCTestField/loop-nop     	    5306	     45707 ns/op	       0 B/op	       0 allocs/op
-BenchmarkGCTestField/loop-wrong   	    5763	     42087 ns/op	       0 B/op	       0 allocs/op
-PASS

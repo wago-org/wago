@@ -1,5 +1,0 @@
-**No concrete defects found** in the reviewed change.
-
-The fused path emits the ordinary `if` branch before the field load, so the false arm bypasses that load. The leaf checks the object and type first, checks field extent only on a match, and restores saved R9–R11 values on both return and trap paths. The loaded ref32 field is marked as a GC root. I found no source call or call-mask consumption in the fusion. See [gc_test_field.go](/home/dev/Projects/dewdrop/.tmp/wago-ref-test-field-pr/src/core/compiler/backend/railshot/amd64/gc_test_field.go:110) and [gc_direct.go](/home/dev/Projects/dewdrop/.tmp/wago-ref-test-field-pr/src/core/compiler/backend/railshot/amd64/gc_direct.go:2213).
-
-Material gaps in the added tests: they do not exercise malformed subtype intervals or handles, trap exits with dirty R9–R11 global pins, the 16-site limit, or profiling and lean builds. The tests do cover matching and mismatching shortened objects, GC modes, and codec reloads. I did not run tests, as requested.
