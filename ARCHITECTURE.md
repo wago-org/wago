@@ -240,8 +240,7 @@ partition dead-handle discovery; the caller commits frees in handle order.
 Large admitted promotion batches copy disjoint payloads before the caller
 publishes handles. Every phase joins before allocator/card mutation, verification,
 or mutator resumption; `Close` stops and joins parked helpers. Small collections,
-Tiny/TinyGo, and ownership-edge callbacks retain serial paths. See the
-[parallel collector design and measurements](docs/research/parallel-collection.md).
+Tiny/TinyGo, and ownership-edge callbacks retain serial paths.
 
 Exact native GC liveness starts with bounded backward sweeps, switching to a
 compact predecessor directory and work queue when more propagation is needed.
