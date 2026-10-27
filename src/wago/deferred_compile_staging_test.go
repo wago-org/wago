@@ -1,3 +1,5 @@
+//go:build amd64 || arm64
+
 package wago
 
 import (
@@ -9,7 +11,7 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
-func TestMappedCompilerStagingLifecycle(t *testing.T) {
+func TestDeferredCompilerStagingLifecycle(t *testing.T) {
 	body := []byte{0x20, 0}
 	for i := 0; i < 512; i++ {
 		body = append(body, 0x41, 1, 0x6a)
@@ -32,21 +34,29 @@ func TestMappedCompilerStagingLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if c.codeCache.mem == nil || c.codeCache.base == 0 || c.codeCache.sealed {
-			t.Fatal("large compile did not retain an unsealed mapped image")
+		if c.codeCache.mem != nil || c.codeCache.base != 0 || c.codeCache.sealed {
+			t.Fatal("compile mapped deferred code before instantiation")
 		}
-		base := c.codeCache.base
 		snapshot := c.executionView()
-		if uintptr(unsafe.Pointer(unsafe.SliceData(c.code))) != base || uintptr(unsafe.Pointer(unsafe.SliceData(snapshot.code))) != base {
-			t.Fatal("published views do not share mapped staging")
+		if len(c.code) == 0 || unsafe.SliceData(c.code) != unsafe.SliceData(snapshot.code) {
+			t.Fatal("published views do not share heap staging")
+		}
+		if _, err := c.MarshalBinary(); err != nil {
+			t.Fatal(err)
+		}
+		if c.codeCache.mem != nil {
+			t.Fatal("serialization mapped deferred code")
 		}
 		if activate {
 			in, err := Instantiate(c, InstantiateOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !c.codeCache.sealed || c.codeCache.base != base {
-				t.Fatal("activation did not seal the existing mapping")
+			if c.codeCache.mem == nil || c.codeCache.base == 0 || !c.codeCache.sealed {
+				t.Fatal("activation did not map and seal deferred code")
+			}
+			if unsafe.SliceData(c.code) != unsafe.SliceData(c.codeCache.mem) || unsafe.SliceData(snapshot.code) != unsafe.SliceData(c.codeCache.mem) {
+				t.Fatal("activation left a published view on heap staging")
 			}
 			got, err := in.Invoke("run", 7)
 			if err != nil || len(got) != 1 || got[0] != 519 {
@@ -60,7 +70,7 @@ func TestMappedCompilerStagingLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		if c.codeCache.mem != nil || c.code != nil || snapshot.code != nil {
-			t.Fatal("Close retained mapped compiler storage")
+			t.Fatal("Close retained compiler storage")
 		}
 	}
 }
