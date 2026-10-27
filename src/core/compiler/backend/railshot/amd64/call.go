@@ -334,6 +334,23 @@ func tailResultABICompatible(a, b []wasm.ValType) bool {
 	return true
 }
 
+// selectedInlineTarget is the actual call-site policy, shared with bounded
+// transformations that require proof that a source call emits no native call.
+func (f *fn) selectedInlineTarget(idx uint32) *inlineTarget {
+	if f.inlineTargets.empty() {
+		return nil
+	}
+	t := f.inlineTargets.target(int(idx))
+	if t == nil {
+		return nil
+	}
+	_, reserved := f.inlineBase[int(idx)]
+	if (t.isI32AddConst() || reserved) && (!t.recursive() || f.inlineDepth == 0) {
+		return t
+	}
+	return nil
+}
+
 func (f *fn) callOp(r *wasm.Reader) error {
 	idx, err := r.U32()
 	if err != nil {
@@ -354,12 +371,13 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	// f.nLocals in this caller; the splice binds params, zeroes declared locals, and
 	// runs the body with localBase set. Straight-line callees touch no control frame,
 	// so this is a pure operand-stack/local transform.
-	if !f.inlineTargets.empty() {
-		if t := f.inlineTargets.target(int(idx)); t != nil {
-			if _, ok := f.inlineBase[int(idx)]; (t.isI32AddConst() || ok) && (!t.recursive() || f.inlineDepth == 0) {
-				return f.inlineCall(t)
-			}
+	if t := f.selectedInlineTarget(idx); t != nil {
+		if f.gcFrameRoots != nil {
+			// Advance the original source mask even though no native call remains.
+			f.consumeGCFrameCallsite()
+			f.stats.peep("gc-numeric-leaf-inline")
 		}
+		return f.inlineCall(t)
 	}
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && (f.importBindings[idx].Dynamic || f.importBindings[idx].CrossInstance) {
@@ -2155,9 +2173,8 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
 	f.setDepthTypesWithGCRoots(types, gcRoots)
 }
 
-// callInternal lowers a direct call to another local function. Integer-only
-// callees use the fast register ABI (args/result in registers); others go
-// through the wrapper (rsp-buffer) ABI.
+// callInternal lowers a direct call to another local function. Admitted numeric
+// and reference signatures use registers; other signatures use wrapper buffers.
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
 	relocBase := len(f.relocs)
@@ -2171,7 +2188,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 		}
 		f.gcFrameRoots.RecordCallsite(uint32(f.relocs[relocBase].at+4), 0, rootOffsets)
 	}
-	if f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))) {
+	if f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)) || f.directReferenceRegABI(localIdx, ft)) {
 		if sigIsIntOnly(ft) {
 			f.stats.call(callKindRegisterABI)
 			f.emitRegisterCall(localIdx, ft, resHint)

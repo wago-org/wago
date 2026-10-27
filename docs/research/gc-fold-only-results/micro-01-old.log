@@ -1,0 +1,11 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkGCResolverDependentSpace/Old         	67554121	         3.518 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCResolverDependentSpace/Nursery     	53371143	         4.446 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCResolverDependentSpace/Large       	53324457	         4.417 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCResolverDependentSpace/Tiny        	53514699	         4.429 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCResolverMixedSpace/Alternating     	52044626	         4.539 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCResolverMixedSpace/Random          	59695166	         3.975 ns/op	       0 B/op	       0 allocs/op
+PASS

@@ -1,0 +1,11 @@
+{
+  "command": [
+    "python3",
+    "tests/scripts/ci-riscv64.py"
+  ],
+  "seconds": 2.3258922199893277,
+  "exit": 0,
+  "user_seconds": 1.542122,
+  "system_seconds": 0.772627,
+  "peak_rss_kib": 12928
+}

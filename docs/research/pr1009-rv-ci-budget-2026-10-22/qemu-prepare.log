@@ -1,0 +1,77 @@
+=== RUN   TestRV64PortableFeatureArtifacts
+=== RUN   TestRV64PortableFeatureArtifacts/reference-call
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/reference-call.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/reference-tail
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/reference-tail.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/indexed-table-tail
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/indexed-table-tail.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/unreachable-reference-tail
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/unreachable-reference-tail.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/rooted-tail
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/rooted-tail.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/segment-arrays
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/segment-arrays.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/exceptions
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/exceptions.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/owned-exceptions
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/owned-exceptions.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/owned-functions
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/owned-functions.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/function-struct
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/function-struct.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/function-array
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/function-array.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/owned-null
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/owned-null.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/threads
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/threads.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/plugin
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/plugin.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/plugin-v128
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/plugin-v128.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/table64-capacity
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/table64-capacity.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/table64-mixed
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/table64-mixed.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/gc-memory32
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/gc-memory32.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/gc-memory64
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/gc-memory64.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/gc-memory32-unbounded
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/gc-memory32-unbounded.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/gc-memory64-unbounded
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/gc-memory64-unbounded.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/gc-memory32-large
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/gc-memory32-large.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/gc-memory-shared
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/gc-memory-shared.wago: no such file or directory
+=== RUN   TestRV64PortableFeatureArtifacts/gc-memory-shared-call
+    rv64_portable_features_test.go:31: open /tmp/wago-pr1009-rv-cancel-20261022-evidence/artifacts-prepared/gc-memory-shared-call.wago: no such file or directory
+--- FAIL: TestRV64PortableFeatureArtifacts (0.25s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/reference-call (0.06s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/reference-tail (0.01s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/indexed-table-tail (0.01s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/unreachable-reference-tail (0.00s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/rooted-tail (0.02s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/segment-arrays (0.01s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/exceptions (0.01s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/owned-exceptions (0.00s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/owned-functions (0.03s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/function-struct (0.01s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/function-array (0.00s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/owned-null (0.03s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/threads (0.01s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/plugin (0.01s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/plugin-v128 (0.01s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/table64-capacity (0.00s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/table64-mixed (0.02s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/gc-memory32 (0.01s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/gc-memory64 (0.00s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/gc-memory32-unbounded (0.00s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/gc-memory64-unbounded (0.00s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/gc-memory32-large (0.00s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/gc-memory-shared (0.00s)
+    --- FAIL: TestRV64PortableFeatureArtifacts/gc-memory-shared-call (0.00s)
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.314s
+FAIL

@@ -1,0 +1,10 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkGCTrappingGuard/loop         	    2908	     86060 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCTrappingGuard/same-field   	  908724	       247.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCTrappingGuard/negative-loop         	    2970	     88496 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCTrappingGuard/noninline-loop        	    2636	     92759 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGCTrappingGuard/pressure              	  891718	       253.1 ns/op	       0 B/op	       0 allocs/op
+PASS

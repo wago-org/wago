@@ -147,16 +147,21 @@ func (c *Collector) refTest(r Ref, target RefTestTarget, canonical *TypeCanonica
 			return false, nil
 		}
 	}
+	// Abstract object tests need only a live handle. Do not read the object
+	// header or its descriptor when the target has no indexed heap type.
+	switch target.Kind {
+	case RefTestAny, RefTestEq, RefTestI31, RefTestNone:
+		if !c.validObjectRef(r) {
+			return false, errors.New("gc: invalid object ref")
+		}
+		return target.Kind == RefTestAny || target.Kind == RefTestEq, nil
+	}
 
 	dynamic, err := c.refDesc(r)
 	if err != nil {
 		return false, err
 	}
 	switch target.Kind {
-	case RefTestAny, RefTestEq:
-		return true, nil
-	case RefTestI31, RefTestNone:
-		return false, nil
 	case RefTestStruct:
 		return dynamic.Kind == KindStruct, nil
 	case RefTestArray:
@@ -175,15 +180,16 @@ func (c *Collector) refTest(r Ref, target RefTestTarget, canonical *TypeCanonica
 			return c.typeSubtypeIDs(dynamic.ID, defined.ID)
 		}
 		want := canonical.types[defined.ID]
+		ancestor := &c.types[dynamic.ID]
 		for {
-			actual := canonical.types[dynamic.ID]
+			actual := canonical.types[ancestor.ID]
 			if actual == want {
 				return true, nil
 			}
-			if !dynamic.HasSuper {
+			if !ancestor.HasSuper {
 				return false, nil
 			}
-			dynamic = c.types[dynamic.Super]
+			ancestor = &c.types[ancestor.Super]
 		}
 	default:
 		panic("unreachable")

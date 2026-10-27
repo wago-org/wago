@@ -1,0 +1,70 @@
+--- a/src/core/compiler/backend/railshot/amd64/gc_direct.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_direct.go
+@@ -477,9 +477,7 @@
+ 	a.ShiftImm(4, RAX, 4, true)
+ 	a.Add64(R9, RAX)
+ 
+-	a.Load32(R10, R9, gc.NativeHandleMetadataOffset)
+-	a.ShiftImm(5, R10, 16, false)
+-	a.AluRI(4, R10, 0xff, false)
++	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+ 	a.TestSelf(R10, false)
+ 	castFailures = append(castFailures, a.JccPlaceholder(condE))
+ 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
+@@ -711,10 +709,8 @@
+ 	f.a.ShiftImm(4, ref, 4, true)
+ 	f.a.Add64(tmp, ref) // tmp = handle entry
+ 
+-	// Extract the one-byte space from the entry's metadata word.
+-	f.a.Load32(ref, tmp, gc.NativeHandleMetadataOffset)
+-	f.a.ShiftImm(5, ref, 16, false)
+-	f.a.AluRI(4, ref, 0xff, false)
++	// Class and remembered bits are independent of the space byte.
++	f.a.LoadIdx(ref, tmp, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+ 	f.a.TestSelf(ref, false)
+ 	f.trapIf(condE, trapCastFailure)
+ 	f.a.AluRI(cmpDigit, ref, gc.NativeSpaceCount-1, false)
+@@ -2144,9 +2140,7 @@
+ 	a.Add64(R9, RAX)
+ 
+ 	// Select the current backing space and validate the handle range.
+-	a.Load32(R10, R9, gc.NativeHandleMetadataOffset)
+-	a.ShiftImm(5, R10, 16, false)
+-	a.AluRI(4, R10, 0xff, false)
++	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+ 	a.TestSelf(R10, false)
+ 	f.trapIf(condE, trapCastFailure)
+ 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
+@@ -2256,9 +2250,7 @@
+ 	a.ShiftImm(4, RAX, 4, true)
+ 	a.Add64(R9, RAX)
+ 
+-	a.Load32(R10, R9, gc.NativeHandleMetadataOffset)
+-	a.ShiftImm(5, R10, 16, false)
+-	a.AluRI(4, R10, 0xff, false)
++	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+ 	a.TestSelf(R10, false)
+ 	f.trapIf(condE, trapCastFailure)
+ 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
+@@ -2387,9 +2379,7 @@
+ 	a.ShiftImm(4, RAX, 4, true)
+ 	a.Add64(R9, RAX)
+ 
+-	a.Load32(R10, R9, gc.NativeHandleMetadataOffset)
+-	a.ShiftImm(5, R10, 16, false)
+-	a.AluRI(4, R10, 0xff, false)
++	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+ 	a.TestSelf(R10, false)
+ 	f.trapIf(condE, trapCastFailure)
+ 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
+@@ -2490,9 +2480,7 @@
+ 	a.ShiftImm(4, RAX, 4, true)
+ 	a.Add64(R9, RAX)
+ 
+-	a.Load32(R10, R9, gc.NativeHandleMetadataOffset)
+-	a.ShiftImm(5, R10, 16, false)
+-	a.AluRI(4, R10, 0xff, false)
++	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+ 	a.TestSelf(R10, false)
+ 	castFailure(condE)
+ 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)

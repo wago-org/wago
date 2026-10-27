@@ -1,0 +1,51 @@
+{
+  "label": "call-byte-private-reference-abi-1",
+  "command": [
+    "taskset",
+    "-c",
+    "12,14",
+    "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/private-reference-abi-host",
+    "run",
+    "-p8",
+    "--core",
+    "3",
+    "--local",
+    "--locked",
+    "--no-input",
+    "--gc-heap",
+    "512MiB",
+    "--gc-nursery",
+    "64MiB",
+    "/home/dev/Projects/dewdrop/.tmp/transform-workers/run-rvr6ozve/compiler.wasm",
+    ".tmp/wago-local-perf-2026-10-20/request.bin"
+  ],
+  "cwd": "/home/dev/Projects/dewdrop",
+  "seconds": 38.815079564999905,
+  "user_seconds": 38.962693,
+  "system_seconds": 0.301979,
+  "peak_rss_kib": 1137344,
+  "exit": 0,
+  "timeout": false,
+  "load_start": [
+    1.6044921875,
+    1.7587890625,
+    2.5283203125
+  ],
+  "load_end": [
+    1.4794921875,
+    1.708984375,
+    2.478515625
+  ],
+  "environment": {
+    "WAGO_HOME": "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/call-byte-private-reference-abi-1-home",
+    "DEW_TRANSFORM_WORKERS": "0",
+    "WAGO_AMD64_GC_STRUCT_BATCH": "",
+    "DEW_WAGO_NATIVE_MAP": "",
+    "DEW_WAGO_PROFILE_DIR": ""
+  },
+  "output_wasm_sha256": "89af055df4b2a4e44be109f10f50d98b5e29deb4810194aca234c9e019912fbb",
+  "output_cache_sha256": "c3a9142e2f4a1186fb5d47f78dfea5adcbf1892e52ff0a803a7c3332e7236240",
+  "validated_main": 42,
+  "request_sha256": "077b0ff0271706cc3034f3e06c7a228f227c49aeec7786d21373b2072af89c72",
+  "native_cache": "cold"
+}

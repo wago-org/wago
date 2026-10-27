@@ -1,0 +1,13 @@
+{
+  "command": [
+    "go",
+    "run",
+    "github.com/rhysd/actionlint/cmd/actionlint@v1.7.7",
+    ".github/workflows/riscv64.yml"
+  ],
+  "seconds": 0.18703845498384908,
+  "exit": 0,
+  "user_seconds": 0.060474999999999994,
+  "system_seconds": 0.031825,
+  "peak_rss_kib": 32232
+}

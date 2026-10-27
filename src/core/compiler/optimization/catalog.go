@@ -528,6 +528,7 @@ var catalog = []Definition{
 	both("v128-const-cache", "Vector constant cache", "reserve repeated vector constants and target-specific masks"),
 	both("v128-pins", "Vector pins", "pin hot vector locals in registers"),
 	{Name: "reg-abi", Label: "Register ABI", Description: "use Wago's internal register calling convention", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
+	amd64("direct-reference-abi", "Direct reference register ABI", "pass bounded ordinary local reference signatures through registers"),
 	both("inline", "Inlining", "inline eligible callees"),
 	both("stack-fence", "Stack fence", "emit the stack-overflow guard fence"),
 	both("stack-reg", "Stack register", "keep the guest stack pointer in a register"),

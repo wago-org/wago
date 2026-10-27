@@ -1,0 +1,13 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-tags=wago_regalloccheck",
+    "./src/wago",
+    "-run",
+    "^TestGCResolverSpaceByte",
+    "-count=1"
+  ],
+  "seconds": 16.32262625200019,
+  "returncode": 0
+}

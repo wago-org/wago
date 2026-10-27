@@ -13,8 +13,8 @@ import (
 )
 
 // directGCScalar describes a pointer-free scalar storage location that can be
-// accessed without entering the parked Go helper. Reference and v128 storage
-// deliberately remain helper-bound until their barrier/vector paths are proven.
+// accessed without entering the parked Go helper. Reference writes and v128
+// storage use separate checked barrier/vector paths.
 type gcSharedStubKind uint8
 
 const (
@@ -106,7 +106,27 @@ func nativeGCStructAllocLayout(m *wasm.Module, typeIndex uint32) (fields []nativ
 		entry := nativeGCStructAllocField{offset: off, size: size, slot: slot}
 		if field.Storage().Val().Kind() == wasm.ValRef {
 			heap := field.Storage().Val().Ref().Heap()
-			if heap.Kind() != wasm.HeapAbs || (heap.Abs() != wasm.HeapAny && heap.Abs() != wasm.HeapEq) || size != 4 {
+			if size != 4 || !nativeGCCollectorRefStorage(m, typeIndex, field.Storage()) {
+				return nil, 0, 0, false, false
+			}
+			switch heap.Kind() {
+			case wasm.HeapAbs:
+				if heap.Abs() != wasm.HeapAny && heap.Abs() != wasm.HeapEq {
+					return nil, 0, 0, false, false
+				}
+			case wasm.HeapTypeIndex:
+				target := heap.Type().Index
+				if heap.Type().Rec {
+					base, _, found := nativeGCRecGroup(m, typeIndex)
+					if !found {
+						return nil, 0, 0, false, false
+					}
+					target += base
+				}
+				if _, found := nativeGCFlatType(m, target); !found {
+					return nil, 0, 0, false, false
+				}
+			default:
 				return nil, 0, 0, false, false
 			}
 			entry.ref = true
@@ -452,18 +472,12 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded, arrayOperand bo
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
 
-	a.Load32(R10, R9, gc.NativeHandleMetadataOffset)
-	a.ShiftImm(5, R10, 16, false)
-	a.AluRI(4, R10, 0xff, false)
+	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.TestSelf(R10, false)
 	castFailures = append(castFailures, a.JccPlaceholder(condE))
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
 	castFailures = append(castFailures, a.JccPlaceholder(condA))
-	a.ImulRI(R10, gc.NativeViewSpaceStride, true)
-	a.LeaDisp(R8, R8, gc.NativeViewSpacesOffset)
-	a.Add64(R8, R10)
-	a.Load64(R11, R8, gc.NativeSpaceBaseOffset)
-	a.Load32(R8, R8, gc.NativeSpaceBytesOffset)
+	emitGCSelectIndexedSpace(a)
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 	a.Cmp32(RAX, R8)
 	castFailures = append(castFailures, a.JccPlaceholder(condA))
@@ -548,6 +562,20 @@ func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded, arrayOperand bo
 		a.Load64(R8, RBX, -offCustomCtx)
 	}
 	a.Ret()
+}
+
+// R10 is the already range-checked space byte. Select that exact descriptor
+// without a generation-specific branch. Return R11=base and R8D=bytes.
+func emitGCSelectIndexedSpace(a *x64.Asm) {
+	// The checked space byte is at most four, so the 32-bit shift produces
+	// the exact widened byte offset for the fixed native descriptor stride.
+	if gc.NativeViewSpaceStride != 16 {
+		panic("amd64: native GC space descriptor stride is not 16")
+	}
+	a.ShiftImm(4, R10, 4, false)
+	// R8 retains the view until the second load has evaluated its address.
+	a.LoadIdx(R11, R8, R10, gc.NativeViewSpacesOffset+gc.NativeSpaceBaseOffset, 8, false, true)
+	a.LoadIdx(R8, R8, R10, gc.NativeViewSpacesOffset+gc.NativeSpaceBytesOffset, 4, false, false)
 }
 
 func (f *fn) emitDirectGCObject(object *elem, localType, requiredBytes uint32, local int, hasLocal bool) (obj Reg, done func()) {
@@ -686,10 +714,8 @@ func (f *fn) emitCheckedGCObject(object *elem, localType, requiredBytes uint32) 
 	f.a.ShiftImm(4, ref, 4, true)
 	f.a.Add64(tmp, ref) // tmp = handle entry
 
-	// Extract the one-byte space from the entry's metadata word.
-	f.a.Load32(ref, tmp, gc.NativeHandleMetadataOffset)
-	f.a.ShiftImm(5, ref, 16, false)
-	f.a.AluRI(4, ref, 0xff, false)
+	// Class and remembered bits are independent of the space byte.
+	f.a.LoadIdx(ref, tmp, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	f.a.TestSelf(ref, false)
 	f.trapIf(condE, trapCastFailure)
 	f.a.AluRI(cmpDigit, ref, gc.NativeSpaceCount-1, false)
@@ -808,7 +834,7 @@ func (f *fn) emitNativeDefinedTest(typeIndex uint32, nullable bool) error {
 	return nil
 }
 
-func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, nullable bool) error {
+func (f *fn) emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, fieldBytes uint32, nullable bool) error {
 	object := f.popValue()
 	f.flush()
 	ref := f.materialize(object)
@@ -816,9 +842,9 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 		f.a.MovReg64(RAX, ref)
 	}
 	f.release(ref)
-	required := uint64(gc.PayloadOffset) + uint64(fieldOffset) + 4
+	required := uint64(gc.PayloadOffset) + uint64(fieldOffset) + uint64(fieldBytes)
 	if required > math.MaxInt32 {
-		return fmt.Errorf("amd64: final struct reference field extent %d exceeds native immediate", required)
+		return fmt.Errorf("amd64: final struct field extent %d exceeds native immediate", required)
 	}
 	f.a.MovImm32(RDX, int32(typeIndex))
 	f.a.MovImm32(RCX, int32(required))
@@ -833,9 +859,37 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 	site := f.a.CallRel32()
 	f.sc.gcStructRefGetStubSites = append(f.sc.gcStructRefGetStubSites, site)
 	f.stats.call("gcnative")
+	return nil
+}
+
+func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, nullable bool) error {
+	if err := f.emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, 4, nullable); err != nil {
+		return err
+	}
 	f.a.Load32(RAX, RAX, int32(gc.PayloadOffset+fieldOffset))
 	result := f.pushReg(RAX, mtI64)
 	f.setStackGCRoot(result, true)
+	return nil
+}
+
+func (f *fn) emitNativeFinalCastStructScalarGet(typeIndex, fieldOffset uint32, scalar directGCScalar, signed, nullable bool) error {
+	if err := f.emitNativeFinalCastStructFieldAddress(typeIndex, fieldOffset, uint32(scalar.size), nullable); err != nil {
+		return err
+	}
+	disp := int32(gc.PayloadOffset + fieldOffset)
+	switch {
+	case scalar.typ == mtV128:
+		x := f.allocFReg(0)
+		f.mov128LoadDisp(x, RAX, disp)
+		f.pushVReg(x)
+	case scalar.typ.isFloat():
+		x := f.allocFReg(0)
+		f.a.FLoadDisp(x, RAX, disp, scalar.typ == mtF64)
+		f.pushFReg(x, scalar.typ)
+	default:
+		f.a.LoadIdx(RAX, RAX, RSP, disp, scalar.size, signed, scalar.typ == mtI64)
+		f.pushReg(RAX, scalar.typ)
+	}
 	return nil
 }
 
@@ -971,12 +1025,24 @@ func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
 }
 
 func (f *fn) emitNativeGCStubs() {
+
 	before := f.a.Len()
 	defer func() {
 		n := f.a.Len() - before
 		f.stats.addGCSharedStubBytes(n)
 		f.stats.addGCHandleResolutionBytes(n)
 	}()
+	for i, sites := range f.sc.gcCastArrayGetSites {
+		if len(sites) == 0 {
+			continue
+		}
+		entry := f.a.Len()
+		f.emitNativeFinalCastArrayGetStub(1 << i)
+		for _, site := range sites {
+			f.a.PatchRel32(site, entry)
+		}
+	}
+
 	if len(f.sc.gcArrayAllocStubSites) != 0 {
 		type arrayStubKey struct {
 			typeIndex uint32
@@ -1083,6 +1149,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	if !ok || site.mode == gcArrayNativeNone {
 		panic("amd64: invalid native array allocation layout")
 	}
+	dynamicLarge := site.dynamic && site.mode == gcArrayNativeDefault
 	a := f.a
 	controlReg, countReg, sizeReg := R12, R13, R14
 	callee := [...]Reg{R12, R13, R14, R15}
@@ -1125,7 +1192,11 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 
 	emitSize := func() {
 		if site.dynamic {
-			a.Load32(countReg, controlReg, hcArgs)
+			countOffset := int32(hcArgs)
+			if site.mode == gcArrayNativeUniform {
+				countOffset += int32(layout.valueSlots * 8)
+			}
+			a.Load32(countReg, controlReg, countOffset)
 		} else {
 			a.MovImm32(countReg, int32(site.count))
 		}
@@ -1151,6 +1222,10 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	}
 	if site.dynamic {
 		emitSize()
+		if !dynamicLarge {
+			a.AluRI(cmpDigit, sizeReg, int32(gc.NativeArrayAllocMaxBytes), false)
+			addFallback(a.JccPlaceholder(condA))
+		}
 	}
 
 	stateOffset := int32(gc.NativeViewStructAllocStateOffset)
@@ -1161,7 +1236,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		epochOffset = gc.NativeViewLargeArrayAllocEpochOffset
 		handleCapacity = 1
 	}
-	if site.dynamic {
+	if dynamicLarge {
 		a.AluRI(cmpDigit, sizeReg, int32(gc.NativeArrayAllocMaxBytes), false)
 		smallState := a.JccPlaceholder(condBE)
 		a.AluRI(cmpDigit, sizeReg, int32(gc.NativeLargeArrayAllocMaxBytes), false)
@@ -1189,7 +1264,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	addFallback(a.JccPlaceholder(condNE))
 	a.Load32(RCX, R10, gc.NativeStructAllocCursorOffset)
 	a.Load32(RAX, R10, gc.NativeStructAllocCountOffset)
-	if site.dynamic {
+	if dynamicLarge {
 		a.Cmp32(RAX, RDI)
 	} else {
 		a.AluRI(cmpDigit, RAX, handleCapacity, false)
@@ -1223,16 +1298,46 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		emitSize()
 	}
 
-	a.Load32(R15, R10, gc.NativeStructAllocChunkCursorOffset)
 	objectAlign := layout.elemAlign
 	if objectAlign < 8 {
 		objectAlign = 8
 	}
-	if objectAlign > 1 {
+	alignCursor := func() {
 		a.AluRI(0, R15, int32(objectAlign-1), false)
 		a.AluRI(4, R15, -int32(objectAlign), false)
 	}
+	// Struct batches own free identities without a private array chunk. Reuse
+	// those identities and the nursery bump instead of canceling the batch at
+	// every struct/array transition. Large arrays keep their exact reservation.
+	directReady := -1
+	var useChunk []int
+	if !site.large {
+		if dynamicLarge {
+			a.AluRI(cmpDigit, RDI, 1, false)
+			useChunk = append(useChunk, a.JccPlaceholder(condE))
+		}
+		a.CmpImm32Mem(R10, gc.NativeStructAllocChunkEndOffset, 0)
+		useChunk = append(useChunk, a.JccPlaceholder(condNE))
+		a.Load32(RAX, R8, gc.NativeViewNurseryObjectMaxBytesOffset)
+		a.Cmp32(sizeReg, RAX)
+		addFallback(a.JccPlaceholder(condAE))
+		a.Load64(RAX, R8, gc.NativeViewNurseryBumpOffset)
+		a.TestSelf(RAX, true)
+		addFallback(a.JccPlaceholder(condE))
+		a.Load32(R15, RAX, 0)
+		alignCursor()
+		a.Load32(RAX, R8, gc.NativeViewNurseryAllocBytesOffset)
+		directReady = a.JmpPlaceholder()
+	}
+	for _, branch := range useChunk {
+		a.PatchRel32(branch, a.Len())
+	}
+	a.Load32(R15, R10, gc.NativeStructAllocChunkCursorOffset)
+	alignCursor()
 	a.Load32(RAX, R10, gc.NativeStructAllocChunkEndOffset)
+	if directReady >= 0 {
+		a.PatchRel32(directReady, a.Len())
+	}
 	a.Cmp32(R15, RAX)
 	addFallback(a.JccPlaceholder(condA))
 	a.Sub32(RAX, R15)
@@ -1240,7 +1345,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	addFallback(a.JccPlaceholder(condB))
 	// A large reservation has one owning handle. Publishing a smaller extent
 	// would strand its tail, since reclamation derives ownership from that handle.
-	if site.dynamic {
+	if dynamicLarge {
 		a.AluRI(cmpDigit, RDI, 1, false)
 		smallReservation := a.JccPlaceholder(condNE)
 		a.MovRegReg32(RDX, sizeReg)
@@ -1257,7 +1362,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		addFallback(a.JccPlaceholder(condNE))
 	}
 	largeState := site.large
-	if site.dynamic {
+	if dynamicLarge {
 		a.MovImm32(RDX, int32(gc.NativeSpaceNursery))
 		a.AluRI(cmpDigit, RDI, 1, false)
 		smallState := a.JccPlaceholder(condNE)
@@ -1270,7 +1375,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		a.ShiftImm(5, RDX, 16, false)
 		a.AluRI(4, RDX, 0xff, false)
 	}
-	if site.dynamic || largeState {
+	if dynamicLarge || largeState {
 		a.AluRI(cmpDigit, RDX, int32(gc.NativeSpaceLarge), false)
 		throughputBase := a.JccPlaceholder(condE)
 		a.Load64(R11, R8, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceNursery*gc.NativeViewSpaceStride+gc.NativeSpaceBaseOffset))
@@ -1342,7 +1447,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	if layout.pointerFree {
 		flags = int32(gc.FlagPointerFree)
 	}
-	if site.dynamic || largeState {
+	if dynamicLarge || largeState {
 		a.AluRI(cmpDigit, RDX, int32(gc.NativeSpaceLarge), false)
 		largeFlags := a.JccPlaceholder(condE)
 		a.StoreImm32Mem(R11, 12, flags)
@@ -1350,7 +1455,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 		a.PatchRel32(largeFlags, a.Len())
 		a.StoreImm32Mem(R11, 12, flags|int32(gc.FlagLarge))
 		a.PatchRel32(flagsReady, a.Len())
-		if site.dynamic {
+		if dynamicLarge {
 			a.AluRI(cmpDigit, RDI, 1, false)
 			smallMetadata := a.JccPlaceholder(condNE)
 			a.Load32(countReg, R10, gc.NativeStructAllocChunkBumpOffset)
@@ -1461,7 +1566,18 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	if site.mode != gcArrayNativeDefault {
 		a.Load64(R10, R8, gc.NativeViewStructAllocStateOffset)
 	}
-	a.Store32(R10, gc.NativeStructAllocChunkCursorOffset, RAX)
+	if !site.large {
+		a.CmpImm32Mem(R10, gc.NativeStructAllocChunkEndOffset, 0)
+		chunk := a.JccPlaceholder(condNE)
+		a.Load64(RDX, R8, gc.NativeViewNurseryBumpOffset)
+		a.Store32(RDX, 0, RAX)
+		done := a.JmpPlaceholder()
+		a.PatchRel32(chunk, a.Len())
+		a.Store32(R10, gc.NativeStructAllocChunkCursorOffset, RAX)
+		a.PatchRel32(done, a.Len())
+	} else {
+		a.Store32(R10, gc.NativeStructAllocChunkCursorOffset, RAX)
+	}
 	if site.mode == gcArrayNativeDefault && (site.dynamic || site.large) {
 		a.Store32(R9, gc.NativeHandleMetadataOffset, countReg)
 	} else {
@@ -1470,10 +1586,15 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	a.Load32(RDX, R10, gc.NativeStructAllocCursorOffset)
 	a.AluRI(0, RDX, 1, false)
 	a.Store32(R10, gc.NativeStructAllocCursorOffset, RDX)
+	// Chunk-free batches reconcile all publications from Cursor at cancellation.
+	// Updating the statistic here as well would count arrays twice.
+	a.CmpImm32Mem(R10, gc.NativeStructAllocChunkEndOffset, 0)
+	deferredCount := a.JccPlaceholder(condE)
 	a.Load64(R10, R8, gc.NativeViewAllocationCountOffset)
 	a.Load64(RAX, R10, 0)
 	a.AluRI(0, RAX, 1, true)
 	a.Store64(R10, 0, RAX)
+	a.PatchRel32(deferredCount, a.Len())
 	a.MovRegReg32(RAX, RSI)
 	a.ShiftImm(4, RAX, 1, false)
 	a.Store64(controlReg, hcResults, RAX)
@@ -1525,6 +1646,38 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 		f.emitNativeDeadStructChargeStub(objectSize, objectAlign, inline, resultSlot)
 		return
 	}
+	st, ok := f.stagedStructType(typeIndex)
+	if !ok || len(st.Comp.Fields) != len(fields) {
+		panic("amd64: invalid native struct field types")
+	}
+	var typedTargets []uint32
+	var typedFinal []bool
+	for i, field := range st.Comp.Fields {
+		storage := field.Storage()
+		if storage.Val().Kind() != wasm.ValRef || storage.Val().Ref().Heap().Kind() != wasm.HeapTypeIndex {
+			continue
+		}
+		if typedTargets == nil {
+			typedTargets = make([]uint32, len(fields))
+			typedFinal = make([]bool, len(fields))
+		}
+		target := storage.Val().Ref().Heap().Type().Index
+		if storage.Val().Ref().Heap().Type().Rec {
+			if layout, found := f.gcTypeLayout(typeIndex, wasm.CompStruct); found {
+				target += layout.RecBase
+			} else if base, _, found := nativeGCRecGroup(f.m, typeIndex); found {
+				target += base
+			} else {
+				panic("amd64: native struct reference has no recursive group")
+			}
+		}
+		typedTargets[i] = target
+		targetType, found := f.stagedGCType(target)
+		if !found || (targetType.Comp.Kind != wasm.CompStruct && targetType.Comp.Kind != wasm.CompArray) {
+			panic("amd64: native struct reference target is not a collector type")
+		}
+		typedFinal[i] = targetType.Final
+	}
 	a := f.a
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
@@ -1539,6 +1692,9 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 			preserve[reg-R9] = true
 		}
 	}
+	if typedTargets != nil {
+		a.Push(R12)
+	}
 	a.Push(R8)
 	for i, yes := range preserve {
 		if yes {
@@ -1546,6 +1702,9 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 		}
 	}
 	stackDelta := int32(8)
+	if typedTargets != nil {
+		stackDelta += 8
+	}
 	for _, yes := range preserve {
 		if yes {
 			stackDelta += 8
@@ -1622,11 +1781,18 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 	a.TestSelf(R11, true)
 	addFallback(a.JccPlaceholder(condE))
 	a.Add64(R11, RCX)
+	a.Load64(RAX, R8, gc.NativeViewAllocationCountOffset)
+	a.TestSelf(RAX, true)
+	addFallback(a.JccPlaceholder(condE))
+	if typedTargets != nil {
+		a.MovRegReg32(R12, RCX) // keep the nursery cursor while checking field types
+	}
 
-	for _, field := range fields {
+	for i, field := range fields {
 		if !field.CollectorRef {
 			continue
 		}
+		typed := typedTargets != nil && st.Comp.Fields[i].Storage().Val().Ref().Heap().Kind() == wasm.HeapTypeIndex
 		loadArg32(RAX, field.Slot)
 		a.TestSelf(RAX, false)
 		nullOK := -1
@@ -1638,7 +1804,12 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 		a.MovRegReg32(RDX, RAX)
 		a.AluRI(4, RDX, 1, false)
 		a.TestSelf(RDX, false)
-		i31OK := a.JccPlaceholder(condNE)
+		i31OK := -1
+		if typed {
+			addFallback(a.JccPlaceholder(condNE))
+		} else {
+			i31OK = a.JccPlaceholder(condNE)
+		}
 		a.ShiftImm(5, RAX, 1, false)
 		a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
 		addFallback(a.JccPlaceholder(condAE))
@@ -1652,11 +1823,66 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 		addFallback(a.JccPlaceholder(condE))
 		a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceTiny), false)
 		addFallback(a.JccPlaceholder(condA))
+		if typed {
+			// Verify that a host-supplied or stale reference cannot enter the
+			// object through the native path.
+			a.ImulRI(RAX, gc.NativeViewSpaceStride, true)
+			a.Add64(RAX, R8)
+			a.Load32(RDX, RAX, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceBytesOffset))
+			a.Load32(RCX, R10, gc.NativeHandleOffsetOffset)
+			a.Cmp32(RCX, RDX)
+			addFallback(a.JccPlaceholder(condAE))
+			a.Sub32(RDX, RCX)
+			a.Load32(R10, R10, gc.NativeHandleSizeOffset)
+			a.Cmp32(R10, RDX)
+			addFallback(a.JccPlaceholder(condA))
+			a.AluRI(cmpDigit, R10, int32(gc.HeaderSize), false)
+			addFallback(a.JccPlaceholder(condB))
+			a.Load64(RAX, RAX, int32(gc.NativeViewSpacesOffset+gc.NativeSpaceBaseOffset))
+			a.TestSelf(RAX, true)
+			addFallback(a.JccPlaceholder(condE))
+			a.Add64(RAX, RCX)
+			a.Load32(RAX, RAX, 0)
+			a.Load64(RDX, RBX, -int32(abi.GCNativeViewPtrOffset))
+			a.Load64(RDX, RDX, gc.NativeInstanceViewLocalTypesOffset)
+			a.Load32(RDX, RDX, int32(typedTargets[i]*4))
+			if typedFinal[i] {
+				a.Cmp32(RAX, RDX)
+				addFallback(a.JccPlaceholder(condNE))
+			} else {
+				a.MovRegReg32(R10, RAX)
+				a.AluRM(cmpRMcode, R10, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+				addFallback(a.JccPlaceholder(condAE))
+				a.MovRegReg32(R10, RDX)
+				a.AluRM(cmpRMcode, R10, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+				addFallback(a.JccPlaceholder(condAE))
+				a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
+				a.TestSelf(R10, true)
+				addFallback(a.JccPlaceholder(condE))
+				a.ImulRI(RAX, 8, true)
+				a.LoadIdx(RAX, R10, RAX, 0, 8, false, true)
+				a.ImulRI(RDX, 8, true)
+				a.LoadIdx(RDX, R10, RDX, 0, 8, false, true)
+				a.MovReg64(RCX, RAX)
+				a.ShiftImm(5, RCX, 32, true)
+				a.MovReg64(R10, RDX)
+				a.ShiftImm(5, R10, 32, true)
+				a.Cmp32(RCX, R10)
+				addFallback(a.JccPlaceholder(condB))
+				a.Cmp32(RAX, RDX)
+				addFallback(a.JccPlaceholder(condA))
+			}
+		}
 		valid := a.Len()
 		if nullOK >= 0 {
 			a.PatchRel32(nullOK, valid)
 		}
-		a.PatchRel32(i31OK, valid)
+		if i31OK >= 0 {
+			a.PatchRel32(i31OK, valid)
+		}
+	}
+	if typedTargets != nil {
+		a.MovRegReg32(RCX, R12)
 	}
 
 	// Complete object bytes before publishing the handle's nursery-space byte.
@@ -1735,6 +1961,9 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 		}
 	}
 	a.Pop(R8)
+	if typedTargets != nil {
+		a.Pop(R12)
+	}
 	if !inline {
 		a.Ret()
 	}
@@ -1872,12 +2101,46 @@ func (f *fn) rejectForeignAnyref(fail func(Cond)) {
 	fail(condNE)
 }
 
+// gcNativeLeafTrap records a branch out of a leaf that has saved pin values.
+type gcNativeLeafTrap struct {
+	site int
+	code uint32
+}
+
+// Keep successful leaves unchanged. Cold exits must unwind private saves before
+// the enclosing trap tail writes dirty global pins back to their cells.
+func (f *fn) emitNativeGCRestoreTrapTails(traps []gcNativeLeafTrap, preserve [3]bool, parentSaved bool) {
+	for _, code := range [...]uint32{trapCastFailure, trapNullReference, trapBuiltin} {
+		found := false
+		for _, failure := range traps {
+			if failure.code == code {
+				f.a.PatchRel32(failure.site, f.a.Len())
+				found = true
+			}
+		}
+		if !found {
+			continue
+		}
+		if parentSaved {
+			f.a.Pop(RDX)
+		}
+		for i := len(preserve) - 1; i >= 0; i-- {
+			if preserve[i] {
+				f.a.Pop(R9 + Reg(i))
+			}
+		}
+		f.trapAlwaysUnknownPC(code)
+	}
+}
+
 // emitNativeFinalCastArrayLenStub emits one per-function checked native stub.
 // Inputs are EAX=compact reference, EDX=module-local final array type, and
 // ECX=cast-null flag. The result is returned in EAX. Only caller-saved registers
 // are clobbered; callers home pinned caller-saved locals before entering.
 func (f *fn) emitNativeFinalCastArrayLenStub() {
 	a := f.a
+	var traps []gcNativeLeafTrap
+	trapIf := func(cond Cond, code uint32) { traps = append(traps, gcNativeLeafTrap{a.JccPlaceholder(cond), code}) }
 	// R9-R11 may hold extended pinned locals or value-pinned globals. Preserve
 	// only the registers this function actually reserves.
 	var preserve [3]bool
@@ -1898,19 +2161,19 @@ func (f *fn) emitNativeFinalCastArrayLenStub() {
 			a.Push(R9 + Reg(i))
 		}
 	}
-	f.rejectForeignAnyref(func(cond Cond) { f.trapIf(cond, trapCastFailure) })
+	f.rejectForeignAnyref(func(cond Cond) { trapIf(cond, trapCastFailure) })
 	a.TestSelf(RAX, false)
 	nonNull := a.JccPlaceholder(condNE)
 	a.TestSelf(RCX, false)
-	f.trapIf(condE, trapCastFailure)
-	f.trapAlways(trapNullReference)
+	trapIf(condE, trapCastFailure)
+	traps = append(traps, gcNativeLeafTrap{a.JmpPlaceholder(), trapNullReference})
 	a.PatchRel32(nonNull, a.Len())
 
 	// i31 immediates cannot satisfy a defined array cast.
 	a.MovRegReg32(R10, RAX)
 	a.AluRI(4, R10, 1, false)
 	a.TestSelf(R10, false)
-	f.trapIf(condNE, trapCastFailure)
+	trapIf(condNE, trapCastFailure)
 
 	// Instantiation proved the immutable view ABI and local type-map shape.
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
@@ -1922,39 +2185,33 @@ func (f *fn) emitNativeFinalCastArrayLenStub() {
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
-	f.trapIf(condAE, trapCastFailure)
+	trapIf(condAE, trapCastFailure)
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
 
 	// Select the current backing space and validate the handle range.
-	a.Load32(R10, R9, gc.NativeHandleMetadataOffset)
-	a.ShiftImm(5, R10, 16, false)
-	a.AluRI(4, R10, 0xff, false)
+	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.TestSelf(R10, false)
-	f.trapIf(condE, trapCastFailure)
+	trapIf(condE, trapCastFailure)
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
-	f.trapIf(condA, trapCastFailure)
-	a.ImulRI(R10, gc.NativeViewSpaceStride, true)
-	a.LeaDisp(R8, R8, gc.NativeViewSpacesOffset)
-	a.Add64(R8, R10)
-	a.Load64(R11, R8, gc.NativeSpaceBaseOffset)
-	a.Load32(R8, R8, gc.NativeSpaceBytesOffset)
+	trapIf(condA, trapCastFailure)
+	emitGCSelectIndexedSpace(a)
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 	a.Cmp32(RAX, R8)
-	f.trapIf(condA, trapCastFailure)
+	trapIf(condA, trapCastFailure)
 	a.Sub32(R8, RAX)
 	a.Load32(RCX, R9, gc.NativeHandleSizeOffset)
 	a.Cmp32(RCX, R8)
-	f.trapIf(condA, trapCastFailure)
+	trapIf(condA, trapCastFailure)
 	a.AluRI(cmpDigit, RCX, int32(gc.HeaderSize), false)
-	f.trapIf(condB, trapCastFailure)
+	trapIf(condB, trapCastFailure)
 
 	// Exact final type equality proves the object is the statically known array.
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0)
 	a.Cmp32(RCX, RDX)
-	f.trapIf(condNE, trapCastFailure)
+	trapIf(condNE, trapCastFailure)
 	a.Load32(RAX, R11, 8)
 	for i := len(preserve) - 1; i >= 0; i-- {
 		if preserve[i] {
@@ -1962,6 +2219,7 @@ func (f *fn) emitNativeFinalCastArrayLenStub() {
 		}
 	}
 	a.Ret()
+	f.emitNativeGCRestoreTrapTails(traps, preserve, false)
 }
 
 // emitNativeDefinedCastStub validates one defined collector cast through exact
@@ -1996,12 +2254,15 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 		}
 	}
 
+	castFailures := make([]int, 0, 16)
+	castFailure := func(cond Cond) { castFailures = append(castFailures, a.JccPlaceholder(cond)) }
+
 	mismatches := make([]int, 0, 3)
 	failIf := func(cond Cond) {
 		if test {
 			mismatches = append(mismatches, a.JccPlaceholder(cond))
 		} else {
-			f.trapIf(cond, trapCastFailure)
+			castFailure(cond)
 		}
 	}
 
@@ -2012,7 +2273,7 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 		a.MovRegReg32(RAX, RCX)
 	} else {
 		a.TestSelf(RCX, false)
-		f.trapIf(condE, trapCastFailure)
+		castFailure(condE)
 	}
 	nullDone := a.JmpPlaceholder()
 	a.PatchRel32(nonNull, a.Len())
@@ -2035,32 +2296,26 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
-	f.trapIf(condAE, trapCastFailure)
+	castFailure(condAE)
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
 
-	a.Load32(R10, R9, gc.NativeHandleMetadataOffset)
-	a.ShiftImm(5, R10, 16, false)
-	a.AluRI(4, R10, 0xff, false)
+	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.TestSelf(R10, false)
-	f.trapIf(condE, trapCastFailure)
+	castFailure(condE)
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
-	f.trapIf(condA, trapCastFailure)
-	a.ImulRI(R10, gc.NativeViewSpaceStride, true)
-	a.LeaDisp(R8, R8, gc.NativeViewSpacesOffset)
-	a.Add64(R8, R10)
-	a.Load64(R11, R8, gc.NativeSpaceBaseOffset)
-	a.Load32(R8, R8, gc.NativeSpaceBytesOffset)
+	castFailure(condA)
+	emitGCSelectIndexedSpace(a)
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 	a.Cmp32(RAX, R8)
-	f.trapIf(condA, trapCastFailure)
+	castFailure(condA)
 	a.Sub32(R8, RAX)
 	a.Load32(RCX, R9, gc.NativeHandleSizeOffset)
 	a.Cmp32(RCX, R8)
-	f.trapIf(condA, trapCastFailure)
+	castFailure(condA)
 	a.AluRI(cmpDigit, RCX, int32(gc.HeaderSize), false)
-	f.trapIf(condB, trapCastFailure)
+	castFailure(condB)
 
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0) // actual canonical type ID
@@ -2080,13 +2335,13 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 	a.MovRegReg32(RAX, RCX)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
-	f.trapIf(condAE, trapCastFailure)
+	castFailure(condAE)
 	a.MovRegReg32(RAX, RDX)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
-	f.trapIf(condAE, trapCastFailure)
+	castFailure(condAE)
 	a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
 	a.TestSelf(R10, true)
-	f.trapIf(condE, trapCastFailure)
+	castFailure(condE)
 	a.MovRegReg32(RAX, RCX)
 	a.ImulRI(RAX, 8, true)
 	a.LoadIdx(R9, R10, RAX, 0, 8, false, true)
@@ -2126,12 +2381,26 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 		}
 	}
 	a.Ret()
+
+	// The trap tail publishes dirty global pins. Restore saved values before
+	// entering it; resolver scratch must never become observable global state.
+	for _, site := range castFailures {
+		a.PatchRel32(site, a.Len())
+	}
+	for i := len(preserve) - 1; i >= 0; i-- {
+		if preserve[i] {
+			a.Pop(R9 + Reg(i))
+		}
+	}
+	f.trapAlwaysUnknownPC(trapCastFailure)
 }
 
 // emitNativeFinalArrayRefGetStub loads one collector reference from a final
 // typed array. EAX is the compact object, EDX the local type, and ECX the index.
 func (f *fn) emitNativeFinalArrayRefGetStub() {
 	a := f.a
+	var traps []gcNativeLeafTrap
+	trapIf := func(cond Cond, code uint32) { traps = append(traps, gcNativeLeafTrap{a.JccPlaceholder(cond), code}) }
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
 		if reg := f.locals[local].reg; reg >= R9 && reg <= R11 {
@@ -2151,12 +2420,12 @@ func (f *fn) emitNativeFinalArrayRefGetStub() {
 		}
 	}
 	a.TestSelf(RAX, false)
-	f.trapIf(condE, trapNullReference)
+	trapIf(condE, trapNullReference)
 	a.MovRegReg32(RSI, RCX)
 	a.MovRegReg32(R10, RAX)
 	a.AluRI(4, R10, 1, false)
 	a.TestSelf(R10, false)
-	f.trapIf(condNE, trapCastFailure)
+	trapIf(condNE, trapCastFailure)
 
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
 	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
@@ -2166,49 +2435,43 @@ func (f *fn) emitNativeFinalArrayRefGetStub() {
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
-	f.trapIf(condAE, trapCastFailure)
+	trapIf(condAE, trapCastFailure)
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
 
-	a.Load32(R10, R9, gc.NativeHandleMetadataOffset)
-	a.ShiftImm(5, R10, 16, false)
-	a.AluRI(4, R10, 0xff, false)
+	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.TestSelf(R10, false)
-	f.trapIf(condE, trapCastFailure)
+	trapIf(condE, trapCastFailure)
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
-	f.trapIf(condA, trapCastFailure)
-	a.ImulRI(R10, gc.NativeViewSpaceStride, true)
-	a.LeaDisp(R8, R8, gc.NativeViewSpacesOffset)
-	a.Add64(R8, R10)
-	a.Load64(R11, R8, gc.NativeSpaceBaseOffset)
-	a.Load32(R8, R8, gc.NativeSpaceBytesOffset)
+	trapIf(condA, trapCastFailure)
+	emitGCSelectIndexedSpace(a)
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 	a.Cmp32(RAX, R8)
-	f.trapIf(condA, trapCastFailure)
+	trapIf(condA, trapCastFailure)
 	a.Sub32(R8, RAX)
 	a.Load32(RCX, R9, gc.NativeHandleSizeOffset)
 	a.Cmp32(RCX, R8)
-	f.trapIf(condA, trapCastFailure)
+	trapIf(condA, trapCastFailure)
 	a.AluRI(cmpDigit, RCX, int32(gc.PayloadOffset), false)
-	f.trapIf(condB, trapCastFailure)
+	trapIf(condB, trapCastFailure)
 
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0)
 	a.Cmp32(RCX, RDX)
-	f.trapIf(condNE, trapCastFailure)
+	trapIf(condNE, trapCastFailure)
 	a.Load32(R10, R11, 8)
 	a.Cmp32(RSI, R10)
-	f.trapIf(condAE, trapBuiltin)
+	trapIf(condAE, trapBuiltin)
 	a.ImulRI(RSI, 4, true)
 	a.Load32(R10, R11, 4)
 	a.MovReg64(R8, RSI)
 	a.AluRI(0, R8, int32(gc.PayloadOffset)+4, true)
 	a.Load32(RDX, R9, gc.NativeHandleSizeOffset)
 	a.Cmp64(R8, RDX)
-	f.trapIf(condA, trapCastFailure)
+	trapIf(condA, trapCastFailure)
 	a.Cmp64(R8, R10)
-	f.trapIf(condA, trapCastFailure)
+	trapIf(condA, trapCastFailure)
 	a.LoadIdx(RAX, R11, RSI, int32(gc.PayloadOffset), 4, false, false)
 	for i := len(preserve) - 1; i >= 0; i-- {
 		if preserve[i] {
@@ -2216,15 +2479,20 @@ func (f *fn) emitNativeFinalArrayRefGetStub() {
 		}
 	}
 	a.Ret()
+	f.emitNativeGCRestoreTrapTails(traps, preserve, false)
 }
 
 // emitNativeFinalCastStructRefResolverStub validates a final cast and returns
 // the resolved object-header pointer. Inputs are EAX=compact reference,
 // EDX=module-local final struct type, ECX=minimum object extent, and
 // ESI=cast-null flag. The call site immediately performs one constant-offset
-// reference load before any safepoint can relocate the object.
+// field load before any safepoint can relocate the object.
 func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 	a := f.a
+	var castFailures []int
+	castFailure := func(cond Cond) {
+		castFailures = append(castFailures, a.JccPlaceholder(cond))
+	}
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
 		if reg := f.locals[local].reg; reg >= R9 && reg <= R11 {
@@ -2244,18 +2512,18 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 		}
 	}
 	a.MovRegReg32(RDI, RCX) // preserve required extent
-	f.rejectForeignAnyref(func(cond Cond) { f.trapIf(cond, trapCastFailure) })
+	f.rejectForeignAnyref(castFailure)
 	a.TestSelf(RAX, false)
 	nonNull := a.JccPlaceholder(condNE)
 	a.TestSelf(RSI, false)
-	f.trapIf(condE, trapCastFailure)
-	f.trapAlways(trapNullReference)
+	castFailure(condE)
+	nullFailure := a.JmpPlaceholder()
 	a.PatchRel32(nonNull, a.Len())
 
 	a.MovRegReg32(R10, RAX)
 	a.AluRI(4, R10, 1, false)
 	a.TestSelf(R10, false)
-	f.trapIf(condNE, trapCastFailure)
+	castFailure(condNE)
 
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
 	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
@@ -2265,40 +2533,34 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
-	f.trapIf(condAE, trapCastFailure)
+	castFailure(condAE)
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
 
-	a.Load32(R10, R9, gc.NativeHandleMetadataOffset)
-	a.ShiftImm(5, R10, 16, false)
-	a.AluRI(4, R10, 0xff, false)
+	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.TestSelf(R10, false)
-	f.trapIf(condE, trapCastFailure)
+	castFailure(condE)
 	a.AluRI(cmpDigit, R10, gc.NativeSpaceCount-1, false)
-	f.trapIf(condA, trapCastFailure)
-	a.ImulRI(R10, gc.NativeViewSpaceStride, true)
-	a.LeaDisp(R8, R8, gc.NativeViewSpacesOffset)
-	a.Add64(R8, R10)
-	a.Load64(R11, R8, gc.NativeSpaceBaseOffset)
-	a.Load32(R8, R8, gc.NativeSpaceBytesOffset)
+	castFailure(condA)
+	emitGCSelectIndexedSpace(a)
 	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 	a.Cmp32(RAX, R8)
-	f.trapIf(condA, trapCastFailure)
+	castFailure(condA)
 	a.Sub32(R8, RAX)
 	a.Load32(RCX, R9, gc.NativeHandleSizeOffset)
 	a.Cmp32(RCX, R8)
-	f.trapIf(condA, trapCastFailure)
+	castFailure(condA)
 	a.Cmp32(RCX, RDI)
-	f.trapIf(condB, trapCastFailure)
+	castFailure(condB)
 
 	a.Add64(R11, RAX)
 	a.Load32(RCX, R11, 0)
 	a.Cmp32(RCX, RDX)
-	f.trapIf(condNE, trapCastFailure)
+	castFailure(condNE)
 	a.Load32(RCX, R11, 4)
 	a.Cmp32(RCX, RDI)
-	f.trapIf(condB, trapCastFailure)
+	castFailure(condB)
 	a.MovReg64(RSI, R11)
 	for i := len(preserve) - 1; i >= 0; i-- {
 		if preserve[i] {
@@ -2307,15 +2569,37 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 	}
 	a.MovReg64(RAX, RSI)
 	a.Ret()
+
+	// The function's trap tail writes dirty global pins back to their cells.
+	// Restore this leaf's saved registers before entering that tail: R9-R11
+	// now contain resolver scratch, including native addresses. Keep failure
+	// restores after Ret so the successful instruction sequence stays unchanged.
+	for _, failure := range []struct {
+		sites []int
+		code  uint32
+	}{{castFailures, trapCastFailure}, {[]int{nullFailure}, trapNullReference}} {
+		for _, site := range failure.sites {
+			a.PatchRel32(site, a.Len())
+		}
+		for i := len(preserve) - 1; i >= 0; i-- {
+			if preserve[i] {
+				a.Pop(R9 + Reg(i))
+			}
+		}
+		f.trapAlwaysUnknownPC(failure.code)
+	}
 }
 
 // emitNativeBarrierSafeStructRefSetStub resolves an exact final struct in
 // Throughput nursery, old, or large space. Nursery stores need no barrier;
 // old/large stores proceed only for non-young children or an already remembered
-// parent. Tiny and stores that must grow the remembered set use the exact Go
-// helper fallback. The checked store returns EAX=1; EAX=0 selects that fallback.
+// parent with a card covering the field. Tiny and stores that must grow
+// metadata use the exact Go helper fallback. The checked store returns EAX=1;
+// EAX=0 selects that fallback.
 func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a := f.a
+	var traps []gcNativeLeafTrap
+	trapIf := func(cond Cond, code uint32) { traps = append(traps, gcNativeLeafTrap{a.JccPlaceholder(cond), code}) }
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
 		if reg := f.locals[local].reg; reg >= R9 && reg <= R11 {
@@ -2336,7 +2620,7 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	}
 	a.MovRegReg32(RDI, RSI) // compact child
 	a.MovRegReg32(RSI, RCX) // required parent extent
-	var fallback [16]int
+	var fallback [24]int
 	nfallback := 0
 	addFallback := func(site int) { fallback[nfallback], nfallback = site, nfallback+1 }
 
@@ -2388,7 +2672,7 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	addFallback(a.JccPlaceholder(condNE))
 	a.Load32(RCX, R11, 4)
 	a.Cmp32(RCX, RSI)
-	f.trapIf(condB, trapCastFailure)
+	trapIf(condB, trapCastFailure)
 	// Retain the parent-space byte through object validation, then use it as the
 	// host-first generational barrier. Nursery initialization avoids resolving
 	// the trusted compact child and old-to-young stores avoid reloading space.
@@ -2415,8 +2699,8 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a.AluRI(4, RAX, 0xff, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
-	// Old/large parents may bypass the Go barrier when the child is not young,
-	// or when the parent is already conservatively remembered.
+	// Old/large parents may bypass the Go barrier for a young child only
+	// when remembered membership and card coverage both hold.
 	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
 	childIsNursery := a.JccPlaceholder(condE)
 	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceLarge), false)
@@ -2427,6 +2711,37 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a.ShiftImm(5, RAX, 24, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
+	// Remembered membership alone does not cover the whole object: the Go
+	// barrier may have recorded only a different field's card. Require this
+	// field's payload byte to lie in the existing head range, as array.set does.
+	// Otherwise the helper records or coalesces the missing range.
+	a.Load32(RAX, R9, gc.NativeHandleCardSlotOffset)
+	a.TestSelf(RAX, false)
+	addFallback(a.JccPlaceholder(condE))
+	a.AluRI(5, RAX, 1, false)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewObjectCardCountOffset, false)
+	addFallback(a.JccPlaceholder(condAE))
+	a.Load64(R10, R8, gc.NativeViewObjectCardsOffset)
+	a.TestSelf(R10, true)
+	addFallback(a.JccPlaceholder(condE))
+	a.ImulRI(RAX, gc.NativeObjectCardStride, true)
+	a.Add64(R10, RAX)
+	// Recover the parent handle index from its validated handle-entry address.
+	a.MovReg64(RDX, R9)
+	a.Load64(RAX, R8, gc.NativeViewHandlesOffset)
+	a.AluRR(aluTable[opSub].rr, RDX, RAX, true)
+	a.ShiftImm(5, RDX, 4, true)
+	a.Load32(RAX, R10, gc.NativeObjectCardHandleOffset)
+	a.Cmp32(RAX, RDX)
+	addFallback(a.JccPlaceholder(condNE))
+	a.MovRegReg32(RCX, RSI)
+	a.AluRI(5, RCX, int32(gc.PayloadOffset)+4, false)
+	a.Load32(RAX, R10, gc.NativeObjectCardStartOffset)
+	a.Cmp32(RCX, RAX)
+	addFallback(a.JccPlaceholder(condB))
+	a.Load32(RAX, R10, gc.NativeObjectCardEndOffset)
+	a.Cmp32(RCX, RAX)
+	addFallback(a.JccPlaceholder(condA))
 	a.PatchRel32(childValid, a.Len())
 	a.PatchRel32(childI31, a.Len())
 	a.PatchRel32(childNotYoung, a.Len())
@@ -2449,6 +2764,7 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	}
 	a.MovReg64(RAX, RCX)
 	a.Ret()
+	f.emitNativeGCRestoreTrapTails(traps, preserve, false)
 }
 
 // emitNativeCardSafeArrayRefSetStub extends nursery stores to Throughput
@@ -2458,6 +2774,8 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 // the exact helper fallback.
 func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	a := f.a
+	var traps []gcNativeLeafTrap
+	trapIf := func(cond Cond, code uint32) { traps = append(traps, gcNativeLeafTrap{a.JccPlaceholder(cond), code}) }
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
 		if reg := f.locals[local].reg; reg >= R9 && reg <= R11 {
@@ -2529,15 +2847,15 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	addFallback(a.JccPlaceholder(condNE))
 	a.Load32(R10, R11, 8)
 	a.Cmp32(RSI, R10)
-	f.trapIf(condAE, trapBuiltin)
+	trapIf(condAE, trapBuiltin)
 	a.ImulRI(RSI, 4, true)
 	a.MovReg64(R10, RSI)
 	a.AluRI(0, R10, int32(gc.PayloadOffset)+4, true)
 	a.Cmp64(R10, RCX)
-	f.trapIf(condA, trapCastFailure)
+	trapIf(condA, trapCastFailure)
 	a.Load32(RCX, R11, 4)
 	a.Cmp64(R10, RCX)
-	f.trapIf(condA, trapCastFailure)
+	trapIf(condA, trapCastFailure)
 	a.MovRegReg32(RCX, RSI)
 	a.ShiftImm(5, RCX, 2, false) // restore the logical array index for card metadata
 	// Like V8's host-first write barrier, reject the generational case from the
@@ -2631,10 +2949,22 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 		}
 	}
 	a.Ret()
+	f.emitNativeGCRestoreTrapTails(traps, preserve, true)
 }
 
 func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex uint32, helper uint32) bool {
 	off, scalar, final, ok := f.directGCStructLayout(typeIndex, fieldIndex)
+	collectorRef := false
+	if !ok && helper == gcStructGet {
+		// A read changes no edge and needs no write barrier. Keep this separate
+		// from scalar storage so reference writes and opaque func/extern fields
+		// retain their checked helper/barrier paths.
+		field, fieldFinal, found := f.gcStructFieldLayout(typeIndex, fieldIndex)
+		if found && field.CollectorRef && field.Size == 4 && field.Offset <= math.MaxInt32-gc.PayloadOffset-4 {
+			off, scalar, final, ok = field.Offset, directGCScalar{size: 4, typ: mtI64}, fieldFinal, true
+			collectorRef = true
+		}
+	}
 	if !ok || (!final && !gcSharedStubsEnabled) {
 		return false
 	}
@@ -2669,10 +2999,15 @@ func (f *fn) emitDirectGCStructGet(reader *wasm.Reader, typeIndex, fieldIndex ui
 	}
 	result := f.allocReg(maskOf(obj))
 	signed := helper == gcStructGetS
-	f.a.LoadIdx(result, obj, RSP, disp, scalar.size, signed, scalar.typ == mtI64)
+	f.a.LoadIdx(result, obj, RSP, disp, scalar.size, signed, scalar.typ == mtI64 && !collectorRef)
 	done()
 	f.spillFloor = oldFloor
 	f.pushReg(result, scalar.typ)
+	if collectorRef {
+		// Publish the loaded compact child as a root, without assigning it the
+		// parent's local provenance or retaining its raw address as a value.
+		f.markTopGCReference()
+	}
 	return true
 }
 

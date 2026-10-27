@@ -1,0 +1,19 @@
+{
+  "source_commit": "59f785143d7ed810f305bce435d1bef6768adf25",
+  "command": [
+    "go",
+    "build",
+    "-mod=mod",
+    "-ldflags=-X main.runtimePatchIdentity=trapping-guard-59f785143 -X main.workerPluginIdentity=trapping-guard-59f785143",
+    "-o",
+    "/home/dev/Projects/dewdrop/.tmp/wago-local-perf-2026-10-20/trapping-guard-candidate-host",
+    "."
+  ],
+  "build_seconds": 8.162258361997374,
+  "total_prepare_seconds": 9.670906847000879,
+  "exit": 0,
+  "stdout": "",
+  "stderr": "",
+  "managed_patch_sha256": "3f016f6442cc891cf982b5edf6f4de9952e7cb03b634c5c40f5c4e7f8842ec87",
+  "binary_sha256": "3a12c39b2d865064e5086ff6db18a91c0f08cffa9d53793b6cd79885e3c05807"
+}
