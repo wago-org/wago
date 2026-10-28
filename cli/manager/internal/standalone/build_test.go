@@ -279,7 +279,8 @@ func TestBuildNativeModuleWithData(t *testing.T) {
 	if err := os.WriteFile(input, source, 0644); err != nil {
 		t.Fatal(err)
 	}
-	result, err := Build(Request{Input: input, Output: filepath.Join(dir, "program"), Target: Target{OS: runtime.GOOS, Arch: runtime.GOARCH}, Invoke: "run", Core: 2, KeepSymbols: true})
+	target := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
+	result, err := Build(Request{Input: input, Output: filepath.Join(dir, DefaultOutput("program.wasm", target)), Target: target, Invoke: "run", Core: 2, KeepSymbols: true})
 	if err != nil {
 		t.Fatal(err)
 	}
