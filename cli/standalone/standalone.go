@@ -33,20 +33,6 @@ func RunCompiled(compiled *wago.Compiled, plugins wago.PluginSet, options Option
 	return 0
 }
 
-func executeCompiled(compiled *wago.Compiled, plugins wago.PluginSet, options Options, args []string) (err error) {
-	runtime, err := loadRuntime(plugins, options, args)
-	if err != nil {
-		return err
-	}
-	defer finishRuntime(runtime, &err)
-	module, err := runtime.AdoptModule(compiled)
-	if err != nil {
-		_ = compiled.Close()
-		return err
-	}
-	return executeModule(runtime, module, options, args)
-}
-
 func reportError(err error, args []string) int {
 	var exit *wago.ExitError
 	if errors.As(err, &exit) {
@@ -84,6 +70,20 @@ func onlyGuestExit(err error, exit *wago.ExitError) bool {
 		return onlyGuestExit(wrapped.Unwrap(), exit)
 	}
 	return false
+}
+
+func executeCompiled(compiled *wago.Compiled, plugins wago.PluginSet, options Options, args []string) (err error) {
+	runtime, err := loadRuntime(plugins, options, args)
+	if err != nil {
+		return err
+	}
+	defer finishRuntime(runtime, &err)
+	module, err := runtime.AdoptModule(compiled)
+	if err != nil {
+		_ = compiled.Close()
+		return err
+	}
+	return executeModule(runtime, module, options, args)
 }
 
 func loadRuntime(plugins wago.PluginSet, options Options, args []string) (*wago.Runtime, error) {

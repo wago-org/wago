@@ -5,7 +5,6 @@ package wago
 import (
 	"os"
 	"path/filepath"
-
 	"testing"
 )
 

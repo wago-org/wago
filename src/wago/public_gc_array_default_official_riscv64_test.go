@@ -6,11 +6,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-
 	"math"
-
 	"slices"
-
 	"testing"
 
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"

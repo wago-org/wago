@@ -5,10 +5,8 @@ package wago
 import (
 	"context"
 	"fmt"
-
 	"runtime"
 	"slices"
-
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"

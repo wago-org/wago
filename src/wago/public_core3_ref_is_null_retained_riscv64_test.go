@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"

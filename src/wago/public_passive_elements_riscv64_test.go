@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-
 	"testing"
 	"unsafe"
 

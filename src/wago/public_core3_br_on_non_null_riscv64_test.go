@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"slices"
-
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"

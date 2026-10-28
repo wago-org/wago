@@ -3,10 +3,9 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
-	goruntime "runtime"
-
 	"github.com/wago-org/wago/internal/runtimebridge"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	goruntime "runtime"
 )
 
 // callGCPrepared runs under the ordinary invocation and GC domain leases. It

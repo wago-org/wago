@@ -4,7 +4,6 @@ package wago
 
 import (
 	"fmt"
-
 	"runtime"
 	"slices"
 	"testing"

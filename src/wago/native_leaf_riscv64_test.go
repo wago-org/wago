@@ -3,10 +3,9 @@
 package wago
 
 import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"slices"
 	"testing"
-
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 //go:noinline

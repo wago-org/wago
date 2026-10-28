@@ -39,4 +39,4 @@ func railshotNonCallableFunction(*Compiled, int) bool { return false }
 
 func railshotNativeLeafAllowed(*Compiled) bool { return false }
 
-func railshotWriteNativeTail(*metadataWriter, *Compiled) error { return nil }
+func railshotWriteNativeTail(*compiledWriter, *Compiled) error { return nil }

@@ -5,11 +5,10 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"sync"
 	"sync/atomic"
 	"unsafe"
-
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // A host resource owns the collector claim directly. It must not retain an

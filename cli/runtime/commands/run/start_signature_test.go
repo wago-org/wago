@@ -1,15 +1,14 @@
 package run
 
 import (
+	"github.com/wago-org/wago/cli/internal/command"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/wago-org/wago/cli/internal/command"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestRunStartSignature(t *testing.T) {

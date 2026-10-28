@@ -4,7 +4,6 @@ package wago
 
 import (
 	"context"
-
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 
 	"testing"

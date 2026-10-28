@@ -4,11 +4,10 @@ package wago
 
 import (
 	"fmt"
-	"math"
-	"testing"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"math"
+	"testing"
 )
 
 func floatGlobalPinModule(wide bool) []byte {

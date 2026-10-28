@@ -7,9 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-
 	"slices"
-
 	"testing"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"

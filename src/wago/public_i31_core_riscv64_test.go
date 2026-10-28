@@ -5,7 +5,6 @@ package wago
 import (
 	"context"
 	"crypto/sha256"
-
 	"slices"
 	"strings"
 	"testing"

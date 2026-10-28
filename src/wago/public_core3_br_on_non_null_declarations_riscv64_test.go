@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"os"
-
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"

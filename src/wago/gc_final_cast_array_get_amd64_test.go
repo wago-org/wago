@@ -6,15 +6,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 	"math"
 	"os"
 	"strings"
 	"testing"
 	"unsafe"
-
-	"github.com/wago-org/wago/src/core/compiler/wasm"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
-	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func finalCastArrayCompiled(tb testing.TB, codec bool) *Compiled {

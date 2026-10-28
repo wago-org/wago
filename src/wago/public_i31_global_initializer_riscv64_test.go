@@ -6,9 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-
 	"slices"
-
 	"testing"
 )
 

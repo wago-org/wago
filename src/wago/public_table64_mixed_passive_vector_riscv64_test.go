@@ -5,7 +5,6 @@ package wago
 import (
 	"errors"
 	"fmt"
-
 	"slices"
 	"testing"
 

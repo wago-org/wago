@@ -4,7 +4,6 @@ package wago
 
 import (
 	"math/bits"
-
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"

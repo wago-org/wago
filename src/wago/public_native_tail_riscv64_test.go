@@ -8,10 +8,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
-
 	"runtime"
 	"slices"
 	"sync"
@@ -22,7 +20,6 @@ import (
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 

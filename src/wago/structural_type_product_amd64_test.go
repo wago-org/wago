@@ -4,7 +4,6 @@ package wago
 
 import (
 	"encoding/hex"
-
 	"strings"
 	"testing"
 	"unsafe"

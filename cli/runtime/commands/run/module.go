@@ -4,7 +4,6 @@ import (
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/ui"
 	"github.com/wago-org/wago/cli/internal/wasmcall"
-
 	"github.com/wago-org/wago/cli/runtime/internal/modulefile"
 )
 

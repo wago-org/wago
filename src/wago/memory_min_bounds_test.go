@@ -6,10 +6,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"testing"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
 )
 
 func requireNativeTestFeatures(t *testing.T, features CoreFeatures) CoreFeatures {

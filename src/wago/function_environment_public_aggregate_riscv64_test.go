@@ -5,10 +5,9 @@ package wago
 import (
 	"context"
 	"fmt"
-	"testing"
-
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
 )
 
 func TestRV64ManagedFunctionAggregateExecutionAndArtifacts(t *testing.T) {

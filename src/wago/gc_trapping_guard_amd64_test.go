@@ -5,12 +5,11 @@ package wago
 import (
 	"encoding/binary"
 	"errors"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"os"
 	"strings"
 	"testing"
 	"unsafe"
-
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestGCTrappingGuard(t *testing.T) {

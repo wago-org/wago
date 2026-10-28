@@ -5,7 +5,6 @@ package wago
 import (
 	"context"
 	"errors"
-
 	"testing"
 	"time"
 )

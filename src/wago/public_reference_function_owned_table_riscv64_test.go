@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-
 	"fmt"
 	"slices"
 	"testing"

@@ -5,7 +5,6 @@ package wago
 import (
 	"bytes"
 	"context"
-
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	x64 "github.com/wago-org/wago/src/core/encoder/amd64"

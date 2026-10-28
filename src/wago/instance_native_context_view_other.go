@@ -3,9 +3,8 @@
 package wago
 
 import (
-	"unsafe"
-
 	wruntime "github.com/wago-org/wago/src/core/runtime"
+	"unsafe"
 )
 
 func nativeInstanceContextView(in *Instance) []byte {

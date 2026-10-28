@@ -5,13 +5,11 @@ package wago
 import (
 	"context"
 	"fmt"
-
-	"testing"
-	"unsafe"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
+	"unsafe"
 )
 
 func TestRV64CompactExternHostTablePrivate(t *testing.T) {

@@ -2,7 +2,6 @@ package wago
 
 import (
 	"context"
-
 	"errors"
 	"reflect"
 	"strings"

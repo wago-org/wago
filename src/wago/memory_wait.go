@@ -3,12 +3,11 @@ package wago
 import (
 	"context"
 	"errors"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
-
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 const (

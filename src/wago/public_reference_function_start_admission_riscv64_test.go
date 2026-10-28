@@ -4,7 +4,6 @@ package wago
 
 import (
 	"slices"
-
 	"testing"
 
 	"github.com/wago-org/wago/tests/support/wasmtest"

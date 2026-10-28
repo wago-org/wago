@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"

@@ -6,10 +6,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"testing"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
 )
 
 func nativeImportVariantModule(pair bool) []byte {

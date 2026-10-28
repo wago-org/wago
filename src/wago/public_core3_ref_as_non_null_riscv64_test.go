@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"slices"
-
 	"testing"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"

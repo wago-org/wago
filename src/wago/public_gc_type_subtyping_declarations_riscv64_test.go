@@ -5,9 +5,7 @@ package wago
 import (
 	"context"
 	"encoding/hex"
-
 	"strconv"
-
 	"testing"
 )
 

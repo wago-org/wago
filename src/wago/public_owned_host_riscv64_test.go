@@ -12,9 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"testing"
-
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"

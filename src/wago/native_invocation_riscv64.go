@@ -4,7 +4,6 @@ package wago
 
 import (
 	"encoding/binary"
-
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 

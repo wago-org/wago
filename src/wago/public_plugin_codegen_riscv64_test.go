@@ -4,11 +4,10 @@ package wago
 
 import (
 	"context"
-	"testing"
-
 	rv "github.com/wago-org/wago/codegen/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
 )
 
 func TestRV64PublicPluginMachineCode(t *testing.T) {

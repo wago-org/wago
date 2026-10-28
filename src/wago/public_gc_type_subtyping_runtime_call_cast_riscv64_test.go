@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-
 	"testing"
 )
 

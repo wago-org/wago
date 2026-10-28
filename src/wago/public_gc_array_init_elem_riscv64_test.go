@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-
 	"testing"
 	"unsafe"
 

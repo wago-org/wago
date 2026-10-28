@@ -5,10 +5,9 @@ package wago
 import (
 	"errors"
 	"fmt"
-	"testing"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
 )
 
 func constantFillModule(n int, shared bool, index uint32) []byte {

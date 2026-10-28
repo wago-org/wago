@@ -133,7 +133,7 @@ func TestCompactExecutionDataMatchesLegacyEncoding(t *testing.T) {
 		if snapshot.compactData == nil {
 			t.Fatal("fixture did not use compact directory")
 		}
-		var legacy, compact metadataWriter
+		var legacy, compact compiledWriter
 		legacy.data(c.Data)
 		compact.compiledData(snapshot)
 		if !bytes.Equal(legacy.buf, compact.buf) {

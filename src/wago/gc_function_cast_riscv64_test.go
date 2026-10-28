@@ -4,9 +4,8 @@ package wago
 
 import (
 	"fmt"
-	"testing"
-
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
 )
 
 func rv64CollectorFunctionCastSource(graph string, vector bool) []byte {

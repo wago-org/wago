@@ -7,9 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-
 	"slices"
-
 	"testing"
 
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"

@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
-
 	"strings"
 	"testing"
 

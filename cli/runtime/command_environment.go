@@ -3,7 +3,6 @@ package runtime
 import (
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
-
 	runtimeplugin "github.com/wago-org/wago/cli/runtime/internal/plugin"
 )
 

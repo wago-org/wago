@@ -4,9 +4,7 @@ package wago
 
 import (
 	"fmt"
-
 	"runtime"
-
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"

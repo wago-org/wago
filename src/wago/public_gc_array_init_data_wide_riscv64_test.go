@@ -8,7 +8,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
-
 	"testing"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"

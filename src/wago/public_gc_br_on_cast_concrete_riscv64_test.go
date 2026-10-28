@@ -9,7 +9,6 @@ import (
 	"errors"
 	"os"
 	"slices"
-
 	"testing"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"

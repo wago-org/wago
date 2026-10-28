@@ -5,11 +5,10 @@ package wago
 import (
 	"context"
 	"fmt"
+	railshotshared "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"reflect"
 	"strings"
 	"testing"
-
-	railshotshared "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"

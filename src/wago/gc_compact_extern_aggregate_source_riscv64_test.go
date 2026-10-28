@@ -5,7 +5,6 @@ package wago
 import (
 	"context"
 	"fmt"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"

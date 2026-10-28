@@ -400,7 +400,7 @@ func rv64ValidateNativeTailPlansWithCodeBytes(c *Compiled, plans []encoder.Nativ
 
 // RV64 architecture 4 + required TailCall determines this appendix. It has no
 // addresses, and occupies a fixed position before GC descriptors/root maps.
-func railshotWriteNativeTail(w *metadataWriter, c *Compiled) error {
+func railshotWriteNativeTail(w *compiledWriter, c *Compiled) error {
 	if err := rv64ValidateNativeTail(c); err != nil {
 		return err
 	}

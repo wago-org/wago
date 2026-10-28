@@ -13,11 +13,6 @@ import (
 )
 
 const (
-	compiledSectionCode                  = 1
-	compiledSectionMetadata              = 2
-	compiledSectionCount                 = 2
-	compiledHeader                       = compiledArchitecture<<4 | compiledSectionCount
-	_                             byte   = 15 - compiledSectionCount
 	compiledStartFunction         uint64 = 1 << 29
 	compiledCore1SegmentPreflight uint64 = 1 << 31
 
@@ -77,6 +72,56 @@ func compiledUvarintLen(v uint64) int {
 	return binary.PutUvarint(buf[:], v)
 }
 
+func compiledMetadataUsesSIMD(c *Compiled) bool {
+	if c == nil {
+		return false
+	}
+	for _, sig := range c.importFuncSigs {
+		if valTypesUseSIMD(sig.Params) || valTypesUseSIMD(sig.Results) {
+			return true
+		}
+	}
+	for _, sig := range c.Funcs {
+		if valTypesUseSIMD(sig.Params) || valTypesUseSIMD(sig.Results) {
+			return true
+		}
+	}
+	for _, g := range c.GlobalImports {
+		if g.Type == ValV128 {
+			return true
+		}
+	}
+	for _, g := range c.Globals {
+		if g.Type == ValV128 {
+			return true
+		}
+	}
+	for _, typ := range c.Types {
+		switch typ.Kind {
+		case CompositeTypeStruct:
+			for _, field := range typ.Fields {
+				if !field.Storage.Packed && field.Storage.Value.Kind == ValueTypeV128 {
+					return true
+				}
+			}
+		case CompositeTypeArray:
+			if !typ.Array.Storage.Packed && typ.Array.Storage.Value.Kind == ValueTypeV128 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func valTypesUseSIMD(ts []ValType) bool {
+	for _, t := range ts {
+		if t == ValV128 {
+			return true
+		}
+	}
+	return false
+}
+
 func compiledMetadataBytes(c *Compiled, checkRoots bool) ([]byte, error) {
 	if err := c.validateCompactData(); err != nil {
 		return nil, err
@@ -91,7 +136,7 @@ func compiledMetadataBytes(c *Compiled, checkRoots bool) ([]byte, error) {
 	if compiledArchitecture == 4 && uint64(c.requiredAMD64Features)&((compiledRV64OwnedExceptionReferences|compiledRV64Table64ImportedInitDropABI|compiledRV64Table64ImportedCopyABI|compiledRV64Table64ImportedFillABI|compiledRV64Table64ImportedGrowABI|compiledRV64Table64ImportedGetSetABI|compiledRV64Table64ImportedSizeABI|compiledRV64Table64InitDropABI|compiledRV64Table64CopyABI|compiledRV64Table64FillABI|compiledRV64Table64IndirectABI|compiledRV64Table64GetSetABI|compiledRV64Table64GrowABI|compiledRV64Table64SizeABI|compiledRV64ReferenceFunctionABI|compiledRV64ReferenceControlABI|compiledRV64ReferenceCallABI)>>32) != 0 {
 		return nil, fmt.Errorf("AMD64 CPU requirement aliases an RV64 execution marker")
 	}
-	w := metadataWriter{buf: make([]byte, 0, 256)}
+	w := compiledWriter{buf: make([]byte, 0, 256)}
 	w.intSlice(c.Entry)
 	w.internalEntrySlice(c.InternalEntry)
 	w.uvar(uint64(c.NumImports))
@@ -315,14 +360,14 @@ func compiledMetadataBytes(c *Compiled, checkRoots bool) ([]byte, error) {
 	return w.buf, nil
 }
 
-type metadataWriter struct {
+type compiledWriter struct {
 	buf []byte
 	tmp [binary.MaxVarintLen64]byte
 }
 
-func (w *metadataWriter) appendBytes(p []byte)  { w.buf = append(w.buf, p...) }
-func (w *metadataWriter) appendString(s string) { w.buf = append(w.buf, s...) }
-func (w *metadataWriter) u8(v byte) {
+func (w *compiledWriter) appendBytes(p []byte)  { w.buf = append(w.buf, p...) }
+func (w *compiledWriter) appendString(s string) { w.buf = append(w.buf, s...) }
+func (w *compiledWriter) u8(v byte) {
 	w.tmp[0] = v
 	w.appendBytes(w.tmp[:1])
 }
@@ -331,7 +376,7 @@ func (w *metadataWriter) u8(v byte) {
 // appends inline inside each encoder.
 //
 //go:noinline
-func (w *metadataWriter) bool(v bool) {
+func (w *compiledWriter) bool(v bool) {
 	if v {
 		w.u8(1)
 	} else {
@@ -340,60 +385,60 @@ func (w *metadataWriter) bool(v bool) {
 }
 
 //go:noinline
-func (w *metadataWriter) uvar(v uint64) {
+func (w *compiledWriter) uvar(v uint64) {
 	n := binary.PutUvarint(w.tmp[:], v)
 	w.appendBytes(w.tmp[:n])
 }
-func (w *metadataWriter) ivar(v int) {
+func (w *compiledWriter) ivar(v int) {
 	n := binary.PutVarint(w.tmp[:], int64(v))
 	w.appendBytes(w.tmp[:n])
 }
 
 //go:noinline
-func (w *metadataWriter) u32(v uint32) {
+func (w *compiledWriter) u32(v uint32) {
 	binary.LittleEndian.PutUint32(w.tmp[:4], v)
 	w.appendBytes(w.tmp[:4])
 }
 
 //go:noinline
-func (w *metadataWriter) u64(v uint64) {
+func (w *compiledWriter) u64(v uint64) {
 	binary.LittleEndian.PutUint64(w.tmp[:8], v)
 	w.appendBytes(w.tmp[:8])
 }
-func (w *metadataWriter) bytes(b []byte) {
+func (w *compiledWriter) bytes(b []byte) {
 	w.uvar(uint64(len(b)))
 	w.appendBytes(b)
 }
 
-func (w *metadataWriter) str(s string) {
+func (w *compiledWriter) str(s string) {
 	w.uvar(uint64(len(s)))
 	w.appendString(s)
 }
-func (w *metadataWriter) stringSlice(v []string) {
+func (w *compiledWriter) stringSlice(v []string) {
 	w.uvar(uint64(len(v)))
 	for _, s := range v {
 		w.str(s)
 	}
 }
-func (w *metadataWriter) intSlice(v []int) {
+func (w *compiledWriter) intSlice(v []int) {
 	w.uvar(uint64(len(v)))
 	for _, x := range v {
 		w.ivar(x)
 	}
 }
-func (w *metadataWriter) internalEntrySlice(v []int) {
+func (w *compiledWriter) internalEntrySlice(v []int) {
 	w.uvar(uint64(len(v)))
 	for _, x := range v {
 		w.ivar(internalEntryOffset(x))
 	}
 }
-func (w *metadataWriter) u64Slice(v []uint64) {
+func (w *compiledWriter) u64Slice(v []uint64) {
 	w.uvar(uint64(len(v)))
 	for _, x := range v {
 		w.u64(x)
 	}
 }
-func (w *metadataWriter) tags(c *Compiled) {
+func (w *compiledWriter) tags(c *Compiled) {
 	if c.memoryDir == nil {
 		w.uvar(0)
 		w.stringIntMap(nil)
@@ -413,7 +458,7 @@ func (w *metadataWriter) tags(c *Compiled) {
 	w.stringIntMap(c.memoryDir.ehTagExports)
 }
 
-func (w *metadataWriter) memories(c *Compiled) {
+func (w *compiledWriter) memories(c *Compiled) {
 	_, _, memoryModuleEnds, _, exactImportNames := c.importModuleEndSections()
 	w.uvar(uint64(c.memoryCount()))
 	for i := 0; i < c.memoryCount(); i++ {
@@ -435,7 +480,7 @@ func (w *metadataWriter) memories(c *Compiled) {
 	w.u32(c.MemMaxPages)
 }
 
-func (w *metadataWriter) stringIntMap(m map[string]int) {
+func (w *compiledWriter) stringIntMap(m map[string]int) {
 	w.uvar(uint64(len(m)))
 	keys := make([]string, 0, len(m))
 	for k := range m {
@@ -447,21 +492,21 @@ func (w *metadataWriter) stringIntMap(m map[string]int) {
 		w.ivar(m[k])
 	}
 }
-func (w *metadataWriter) nameMap(m wasm.NameMap) {
+func (w *compiledWriter) nameMap(m wasm.NameMap) {
 	w.uvar(uint64(len(m)))
 	for _, a := range m {
 		w.u32(a.Index)
 		w.str(a.Name)
 	}
 }
-func (w *metadataWriter) indirectNameMap(m wasm.IndirectNameMap) {
+func (w *compiledWriter) indirectNameMap(m wasm.IndirectNameMap) {
 	w.uvar(uint64(len(m)))
 	for _, a := range m {
 		w.u32(a.Index)
 		w.nameMap(a.Names)
 	}
 }
-func (w *metadataWriter) nameSec(n *wasm.NameSec) {
+func (w *compiledWriter) nameSec(n *wasm.NameSec) {
 	w.bool(n != nil)
 	if n == nil {
 		return
@@ -482,7 +527,7 @@ func (w *metadataWriter) nameSec(n *wasm.NameSec) {
 	w.indirectNameMap(n.FieldNames)
 	w.nameMap(n.TagNames)
 }
-func (w *metadataWriter) valType(t ValType) error {
+func (w *compiledWriter) valType(t ValType) error {
 	code, ok := t.code()
 	if !ok {
 		return fmt.Errorf("unsupported value type %s in compiled metadata", t)
@@ -490,7 +535,7 @@ func (w *metadataWriter) valType(t ValType) error {
 	w.u8(code)
 	return nil
 }
-func (w *metadataWriter) valueTypeRef(legacy ValType, has bool, index uint32, pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) error {
+func (w *compiledWriter) valueTypeRef(legacy ValType, has bool, index uint32, pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) error {
 	if _, err := exactValueType(legacy, has, index, pool, types); err != nil {
 		return err
 	}
@@ -502,7 +547,7 @@ func (w *metadataWriter) valueTypeRef(legacy ValType, has bool, index uint32, po
 	return w.valType(legacy)
 }
 
-func (w *metadataWriter) valueType(t ValueTypeDescriptor) {
+func (w *compiledWriter) valueType(t ValueTypeDescriptor) {
 	w.u8(byte(t.Kind))
 	if t.Kind != ValueTypeReference {
 		return
@@ -517,14 +562,14 @@ func (w *metadataWriter) valueType(t ValueTypeDescriptor) {
 	}
 }
 
-func (w *metadataWriter) valueTypes(v []ValueTypeDescriptor) {
+func (w *compiledWriter) valueTypes(v []ValueTypeDescriptor) {
 	w.uvar(uint64(len(v)))
 	for _, t := range v {
 		w.valueType(t)
 	}
 }
 
-func (w *metadataWriter) fieldType(f FieldTypeDescriptor) {
+func (w *compiledWriter) fieldType(f FieldTypeDescriptor) {
 	w.bool(f.Storage.Packed)
 	if f.Storage.Packed {
 		w.u8(byte(f.Storage.PackedType))
@@ -534,7 +579,7 @@ func (w *metadataWriter) fieldType(f FieldTypeDescriptor) {
 	w.bool(f.Mutable)
 }
 
-func (w *metadataWriter) typeDescriptors(v []DefinedTypeDescriptor) error {
+func (w *compiledWriter) typeDescriptors(v []DefinedTypeDescriptor) error {
 	if err := validateDefinedTypeDescriptors(v); err != nil {
 		return err
 	}
@@ -571,7 +616,7 @@ func (w *metadataWriter) typeDescriptors(v []DefinedTypeDescriptor) error {
 	return nil
 }
 
-func (w *metadataWriter) funcSigs(v []FuncSig, types []DefinedTypeDescriptor) error {
+func (w *compiledWriter) funcSigs(v []FuncSig, types []DefinedTypeDescriptor) error {
 	w.uvar(uint64(len(v)))
 	for i, sig := range v {
 		if err := validateFuncSignature(sig, types); err != nil {
@@ -592,13 +637,13 @@ func (w *metadataWriter) funcSigs(v []FuncSig, types []DefinedTypeDescriptor) er
 	}
 	return nil
 }
-func (w *metadataWriter) offset(o OffsetInit) {
+func (w *compiledWriter) offset(o OffsetInit) {
 	w.u32(o.Base)
 	w.bool(o.HasGlobal)
 	w.ivar(o.Global)
 	w.bytes(o.Expr)
 }
-func (w *metadataWriter) elems(v []ElemInit, c *Compiled) error {
+func (w *compiledWriter) elems(v []ElemInit, c *Compiled) error {
 	w.uvar(uint64(len(v)))
 	for _, e := range v {
 		w.u32(e.TableIndex)
@@ -631,7 +676,7 @@ func (w *metadataWriter) elems(v []ElemInit, c *Compiled) error {
 	}
 	return nil
 }
-func (w *metadataWriter) compiledData(c *Compiled) {
+func (w *compiledWriter) compiledData(c *Compiled) {
 	if c.compactData == nil {
 		w.data(c.Data)
 		return
@@ -645,7 +690,7 @@ func (w *metadataWriter) compiledData(c *Compiled) {
 	}
 }
 
-func (w *metadataWriter) data(v []DataInit) {
+func (w *compiledWriter) data(v []DataInit) {
 	w.uvar(uint64(len(v)))
 	for _, d := range v {
 		w.u32(d.MemoryIndex)
@@ -653,13 +698,13 @@ func (w *metadataWriter) data(v []DataInit) {
 		w.bytes(d.Bytes)
 	}
 }
-func (w *metadataWriter) passiveData(v []PassiveDataInit) {
+func (w *compiledWriter) passiveData(v []PassiveDataInit) {
 	w.uvar(uint64(len(v)))
 	for _, d := range v {
 		w.bytes(d.Bytes)
 	}
 }
-func (w *metadataWriter) globals(v []GlobalDef, c *Compiled) error {
+func (w *compiledWriter) globals(v []GlobalDef, c *Compiled) error {
 	w.uvar(uint64(len(v)))
 	for _, g := range v {
 		if err := w.valueTypeRef(g.Type, g.HasValueType, g.ValueTypeIndex, c.ValueTypes, c.Types); err != nil {
@@ -687,7 +732,7 @@ func (w *metadataWriter) globals(v []GlobalDef, c *Compiled) error {
 	return nil
 }
 
-func (w *metadataWriter) tables(c *Compiled) error {
+func (w *compiledWriter) tables(c *Compiled) error {
 	count := c.tableCount()
 	_, tableModuleEnds, _, _, exactImportNames := c.importModuleEndSections()
 	w.uvar(uint64(count))
@@ -721,7 +766,7 @@ func (w *metadataWriter) tables(c *Compiled) error {
 	}
 	return nil
 }
-func (w *metadataWriter) globalImports(v []GlobalImportDef, c *Compiled) error {
+func (w *compiledWriter) globalImports(v []GlobalImportDef, c *Compiled) error {
 	w.uvar(uint64(len(v)))
 	for _, g := range v {
 		w.str(g.Module)
@@ -733,7 +778,7 @@ func (w *metadataWriter) globalImports(v []GlobalImportDef, c *Compiled) error {
 	}
 	return nil
 }
-func (w *metadataWriter) gcFrameRoots(rootMap *compiledGCFrameRoots) {
+func (w *compiledWriter) gcFrameRoots(rootMap *compiledGCFrameRoots) {
 	w.uvar(uint64(len(rootMap.adapterReturnOffsets)))
 	for _, off := range rootMap.adapterReturnOffsets {
 		w.u32(off)
@@ -759,7 +804,7 @@ func (w *metadataWriter) gcFrameRoots(rootMap *compiledGCFrameRoots) {
 	}
 }
 
-func (w *metadataWriter) gcTypeDescs(v []gc.TypeDesc) {
+func (w *compiledWriter) gcTypeDescs(v []gc.TypeDesc) {
 	w.uvar(uint64(len(v)))
 	for _, d := range v {
 		w.u32(uint32(d.ID))

@@ -6,10 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 	"strings"
 	"testing"
-
-	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestRV64PublicReferenceFunctionImportedStartLinkingAndInitializer(t *testing.T) {

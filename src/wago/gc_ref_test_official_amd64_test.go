@@ -11,10 +11,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"strings"
-
 	"sort"
-
+	"strings"
 	"testing"
 
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"

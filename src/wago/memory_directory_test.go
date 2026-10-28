@@ -2,7 +2,6 @@ package wago
 
 import (
 	"errors"
-
 	"strings"
 	"testing"
 )

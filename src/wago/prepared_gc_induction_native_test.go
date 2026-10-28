@@ -5,13 +5,12 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
-	"testing"
-	"unsafe"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	rt "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
+	"unsafe"
 )
 
 func TestGCDeadInductionEntry(t *testing.T) {

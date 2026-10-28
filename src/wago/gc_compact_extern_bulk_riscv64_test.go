@@ -6,14 +6,12 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-
-	"slices"
-	"testing"
-	"unsafe"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"slices"
+	"testing"
+	"unsafe"
 )
 
 func rv64CompactExternBulkModule(vector bool, imported ...bool) []byte {

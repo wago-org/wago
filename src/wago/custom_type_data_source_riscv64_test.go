@@ -3,10 +3,9 @@
 package wago
 
 import (
-	"testing"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
 )
 
 func rv64WideDataSource(carrier byte, body []byte, extraTypes ...[]byte) []byte {

@@ -4,10 +4,9 @@ package wago
 
 import (
 	"fmt"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"sync"
 	"sync/atomic"
-
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Construction has no Instance descriptor directory until registration. Its

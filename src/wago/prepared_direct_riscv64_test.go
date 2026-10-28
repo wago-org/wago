@@ -4,11 +4,10 @@ package wago
 
 import (
 	"fmt"
-	"slices"
-	"testing"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"slices"
+	"testing"
 )
 
 func TestRV64DirectIntegerTrapAndReuse(t *testing.T) {

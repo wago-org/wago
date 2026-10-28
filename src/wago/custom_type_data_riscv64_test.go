@@ -4,7 +4,6 @@ package wago
 
 import (
 	"fmt"
-
 	rv "github.com/wago-org/wago/codegen/riscv64"
 )
 

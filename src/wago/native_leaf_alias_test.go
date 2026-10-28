@@ -6,12 +6,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"testing"
-	"unsafe"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
+	"unsafe"
 )
 
 func nativeLeafAliasModule() []byte {

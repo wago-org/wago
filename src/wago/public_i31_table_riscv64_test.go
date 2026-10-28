@@ -4,7 +4,6 @@ package wago
 
 import (
 	"crypto/sha256"
-
 	"slices"
 	"strings"
 	"testing"

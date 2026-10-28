@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"os"
 	"slices"
-
 	"testing"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"

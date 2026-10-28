@@ -2,10 +2,8 @@ package wago
 
 import (
 	"bytes"
-
-	"sync"
-
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"sync"
 )
 
 var amd64CPUCache struct {

@@ -5,13 +5,12 @@ package wago
 import (
 	"encoding/json"
 	"errors"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 
 	"github.com/wago-org/wago/tests/conformance/spectest"
 )

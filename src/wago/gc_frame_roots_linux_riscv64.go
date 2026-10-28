@@ -4,7 +4,6 @@ package wago
 
 import (
 	"fmt"
-
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"

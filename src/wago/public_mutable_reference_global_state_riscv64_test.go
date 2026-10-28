@@ -4,9 +4,7 @@ package wago
 
 import (
 	"context"
-
 	"fmt"
-
 	"strings"
 	"testing"
 

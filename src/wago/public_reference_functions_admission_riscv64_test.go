@@ -4,7 +4,6 @@ package wago
 
 import (
 	"bytes"
-
 	"slices"
 	"testing"
 

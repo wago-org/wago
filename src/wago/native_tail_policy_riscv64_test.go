@@ -5,7 +5,6 @@ package wago
 import (
 	"errors"
 	"fmt"
-
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"

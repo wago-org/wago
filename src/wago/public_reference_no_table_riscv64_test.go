@@ -5,9 +5,7 @@ package wago
 import (
 	"context"
 	"encoding/binary"
-
 	"fmt"
-
 	"slices"
 	"testing"
 	"time"

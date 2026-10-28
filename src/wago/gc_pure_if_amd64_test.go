@@ -4,10 +4,9 @@ package wago
 
 import (
 	"fmt"
-	"testing"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
 )
 
 func gcPureIfModule(reads, regions int, kind string) []byte {

@@ -4,11 +4,10 @@ package wago
 
 import (
 	"fmt"
-	"strings"
-	"testing"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"strings"
+	"testing"
 )
 
 func rv64HostTypedExternResultModule(typ wasm.ValType) []byte {

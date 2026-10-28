@@ -5,7 +5,6 @@ package wago
 import (
 	"bytes"
 	"encoding/binary"
-
 	"fmt"
 	"runtime"
 	"slices"

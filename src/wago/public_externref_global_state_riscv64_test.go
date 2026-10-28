@@ -5,7 +5,6 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
-
 	"os"
 	"strings"
 	"testing"

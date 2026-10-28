@@ -5,6 +5,7 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"github.com/wago-org/wago/internal/jitprofile"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,8 +13,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/wago-org/wago/internal/jitprofile"
 
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/handoff"

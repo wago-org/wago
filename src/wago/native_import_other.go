@@ -4,9 +4,8 @@ package wago
 
 import (
 	"context"
-	"strconv"
-
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"strconv"
 )
 
 func railshotInvokeNativeImportedStart(*Instance, int, map[uint32]uint64, context.Context) (bool, error) {

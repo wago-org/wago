@@ -4,11 +4,10 @@ package wago
 
 import (
 	"fmt"
-	"testing"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	rt "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
 )
 
 func TestGCI31ReductionGoEntry(t *testing.T) {
