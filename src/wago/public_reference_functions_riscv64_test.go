@@ -70,7 +70,7 @@ func rv64ClosedReferenceSource(vector, tails, indexed, nullable bool) []byte {
 }
 
 func TestRV64PublicReferenceFunctionsSourceArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		for _, vector := range []bool{false, true} {
 			for _, tails := range []bool{false, true} {
 				for _, indexed := range []bool{false, true} {
@@ -175,8 +175,8 @@ func TestRV64PublicReferenceFunctionsBaselineAndDestination(t *testing.T) {
 		t.Fatal("baseline feature metadata", c.requiredFeatures)
 	}
 
-	if c.codeCache.sealed || c.codeCache.flags&compiledCacheWritableCode == 0 || c.codeCache.base == 0 {
-		t.Fatal("decode did not retain unpublished RW staging")
+	if c.codeCache.sealed || c.codeCache.flags&compiledCacheWritableCode != 0 || c.codeCache.base != 0 {
+		t.Fatal("source compilation did not defer code mapping")
 	}
 	standalone, err := Instantiate(c)
 	if err != nil {

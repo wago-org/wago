@@ -48,7 +48,7 @@ func TestRV64Core3RefPinnedDeclarations(t *testing.T) {
 	if len(source) != 47 || fmt.Sprintf("%x", sha256.Sum256(source)) != "c9615f60f19a2d7a416ae8e7d6383b0f478cf8a5f9864adf8b095d14576d00a9" {
 		t.Fatal("pinned declaration source identity", len(source))
 	}
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			if os.Getenv("WAGO_RV64_CORE3_REF_ARTIFACT_MODE") == "load" && !artifact {
 				t.Skip("compiler-free artifact case only")

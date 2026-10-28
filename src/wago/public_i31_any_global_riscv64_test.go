@@ -41,7 +41,7 @@ func TestRV64PublicI31OfficialAnyGlobalExecutionAndArtifact(t *testing.T) {
 	if len(data) != 131 || sha256.Sum256(data) != wantSource {
 		t.Fatal("official i31 anyref-global source identity changed")
 	}
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			c := rv64I31OfficialAnyGlobalCompile(t, artifact)
 			view := c.executionView()

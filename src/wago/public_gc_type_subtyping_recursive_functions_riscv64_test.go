@@ -52,7 +52,7 @@ func rv64PublicGCTypeSubtypingRecursiveFunctionsCompile(t *testing.T, variant ui
 
 func TestRV64PublicGCTypeSubtypingRecursiveFunctionsExecutionAndArtifact(t *testing.T) {
 	for variant := uint8(1); int(variant) <= len(rv64PublicGCTypeSubtypingRecursiveFunctionsHex); variant++ {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			t.Run(strconv.Itoa(int(variant))+map[bool]string{false: "/source", true: "/artifact"}[artifact], func(t *testing.T) {
 				compiled := rv64PublicGCTypeSubtypingRecursiveFunctionsCompile(t, variant, artifact)
 				t.Cleanup(func() { _ = compiled.Close() })

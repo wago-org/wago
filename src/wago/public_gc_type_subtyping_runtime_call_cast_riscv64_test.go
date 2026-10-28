@@ -46,7 +46,7 @@ func rv64AssertGCTypeSubtypingRuntimeTrap(t *testing.T, in *Instance, name strin
 }
 
 func TestRV64PublicGCTypeSubtypingRuntimeCallCastExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCTypeSubtypingRuntimeCallCastCompile(t, artifact)
 			view := compiled.executionView()

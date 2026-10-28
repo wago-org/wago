@@ -852,8 +852,8 @@ Current tracks:
 - [x] WebAssembly 2.0 product closeout: deterministic module inspection and
   cross-link teardown coverage for source-compiled modules.
 - [ ] `call_indirect` inline caches behind a table epoch
-- [x] Standalone commands: `wago compile` embeds the reviewed Wasm/plugin graph
-  in a native executable and compiles the Wasm at startup. `--tinygo` selects
+- [x] Standalone commands: `wago compile` compiles the reviewed Wasm/plugin graph
+  ahead of time and links its machine code with the runtime, without a compiler. `--tinygo` selects
   TinyGo for the final link and strips the resulting native binary.
 
 ## Verification and quality

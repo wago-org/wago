@@ -668,8 +668,9 @@ read-only diagnostic stream; callers never receive a mutable alias:
 - `Data` (active data segments)
 
 `Load` accepts raw Wasm and compiles it. Compiled modules have no serialization
-or native-code reload API. Standalone executables embed Wasm and compile it at
-startup using the selected runtime configuration and plugins.
+or native-code reload API. Standalone executables link ahead-of-time machine code and runtime metadata
+as generated Go initializers. They contain the runtime and selected plugins,
+without Wasm source, an artifact decoder, or a compiler.
 
 ---
 
@@ -1035,7 +1036,8 @@ pinned specification suites. See [tests/README.md](tests/README.md) for prerequi
 ## 16. Current scope & limitations
 
 - Wago has no interpreter tier: supported modules execute as native code. Wasm
-  is compiled in-process, including in standalone executables that embed Wasm.
+  is compiled in-process. Standalone executables instead link machine code and
+  runtime metadata at build time and omit the compiler.
 - Linux on amd64, arm64, and riscv64, plus macOS and Windows on amd64 and arm64,
   execute the native JIT and are required release targets. Signal-backed guard pages remain specific to
   Linux/amd64, Linux/arm64, Linux/riscv64, and Darwin/arm64; other targets use

@@ -42,7 +42,7 @@ func TestRV64PublicI31OfficialTableGlobalInitializerExecutionAndArtifact(t *test
 	if len(data) != 96 || sha256.Sum256(data) != wantSource {
 		t.Fatal("official i31 table-global initializer source identity changed")
 	}
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			c := rv64I31OfficialTableGlobalInitializerCompile(t, artifact)
 			view := c.executionView()

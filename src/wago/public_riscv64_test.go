@@ -71,20 +71,14 @@ func rv64PublicSpinModule() []byte {
 func TestRV64PublicActiveCancellationAndClose(t *testing.T) {
 	previous := runtime.GOMAXPROCS(1)
 	defer runtime.GOMAXPROCS(previous)
-	for _, action := range []string{"cancel", "cancel-loaded", "close"} {
+	for _, action := range []string{"cancel", "close"} {
 		t.Run(action, func(t *testing.T) {
 			c, err := Compile(nil, rv64PublicSpinModule())
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			if action == "cancel-loaded" {
 
-				if err := c.Close(); err != nil {
-					t.Fatal(err)
-				}
-
-			}
 			in, err := Instantiate(c)
 			if err != nil {
 				t.Fatal(err)

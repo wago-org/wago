@@ -36,7 +36,7 @@ func rv64PublicGCTypeSubtypingRuntimeTypedTableCallCompile(t *testing.T, artifac
 }
 
 func TestRV64PublicGCTypeSubtypingRuntimeTypedTableCallExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCTypeSubtypingRuntimeTypedTableCallCompile(t, artifact)
 			view := compiled.executionView()

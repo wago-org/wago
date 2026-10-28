@@ -70,7 +70,7 @@ func rv64Core3CallRefCompile(t *testing.T, fixture rv64Core3CallRefFixture, arti
 func TestRV64Core3CallRefUnreachableExecutionAndArtifact(t *testing.T) {
 	for _, fixture := range rv64Core3CallRefUnreachableFixtures {
 		fixture := fixture
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			t.Run(fmt.Sprintf("%s-artifact%t", fixture.name, artifact), func(t *testing.T) {
 				if os.Getenv("WAGO_RV64_CORE3_CALL_REF_ARTIFACT_MODE") == "load" && !artifact {
 					t.Skip("compiler-free artifact case only")

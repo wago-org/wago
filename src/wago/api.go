@@ -1063,6 +1063,9 @@ func narrowFrontendFeatures(features *frontend.Features, requiredByModule CoreFe
 }
 
 func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features, instructions map[instructionKey]*registeredInstruction) (*Compiled, error) {
+	if !sourceCompilationEnabled {
+		return nil, errors.New("source compilation is unavailable in a standalone executable")
+	}
 	railshotConfigureFrontendTable64(&features)
 	if cfg.maxModuleBytes != 0 && uint64(len(wasmBytes)) > cfg.maxModuleBytes {
 		return nil, &wruntime.ResourceLimitError{

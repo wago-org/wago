@@ -162,21 +162,44 @@ func Build(request Request) (Result, error) {
 	if err := runGo(buildDir, environment, request.Verbose, "mod", "tidy"); err != nil {
 		return Result{}, err
 	}
-	validation := mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet)
-	validation = bytes.Replace(validation,
-		[]byte("func main() { os.Exit(standalone.Run(module, pluginSet(), options, os.Args)) }"),
-		[]byte("func main() { if err := standalone.Validate(module, pluginSet(), options); err != nil { println(err.Error()); os.Exit(1) } }"), 1)
-	if err := os.WriteFile(mainPath, validation, 0o644); err != nil {
+	nativeRuntime, err := prepareNativeRuntime(buildDir, environment)
+	if err != nil {
 		return Result{}, err
 	}
-	if err := runGo(buildDir, environment, request.Verbose, "run", "."); err != nil {
-		return Result{}, fmt.Errorf("validate standalone source: %w", err)
+	helper := mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet)
+	helper = bytes.Replace(helper,
+		[]byte("func main() { os.Exit(standalone.Run(module, pluginSet(), options, os.Args)) }"),
+		[]byte("func main() { sources, err := standalone.GenerateModule(module, pluginSet(), options); if err == nil { for name, source := range sources { if err = os.WriteFile(name+\".txt\", source, 0644); err != nil { break } } }; if err != nil { println(err.Error()); os.Exit(1) } }"), 1)
+	if err := os.WriteFile(mainPath, helper, 0644); err != nil {
+		return Result{}, err
 	}
-	if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet), 0o644); err != nil {
+	tags := "wago_standalone_generator"
+	if request.TinyGo {
+		tags += ",wago_target_tinygo"
+	}
+	if err := runGo(buildDir, environment, request.Verbose, "run", "-trimpath", "-tags="+tags, "."); err != nil {
+		return Result{}, fmt.Errorf("compile standalone machine code: %w", err)
+	}
+	generated := map[string][]byte{}
+	for _, name := range []string{"standalone_module.go", "standalone_dispatcher.go"} {
+		body, err := os.ReadFile(filepath.Join(buildDir, name+".txt"))
+		if err != nil {
+			return Result{}, err
+		}
+		generated[name] = body
+	}
+	if err := linkNativeModule(nativeRuntime, generated); err != nil {
+		return Result{}, err
+	}
+	nativeMain := mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet)
+	nativeMain = bytes.ReplaceAll(nativeMain, []byte("\t_ \"embed\"\n"), nil)
+	nativeMain = bytes.ReplaceAll(nativeMain, []byte("//go:embed module.wasm\nvar module []byte\n"), nil)
+	nativeMain = bytes.Replace(nativeMain, []byte("standalone.Run(module, pluginSet(), options, os.Args)"), []byte("standalone.RunCompiled(wago.StandaloneCompiled(), pluginSet(), options, os.Args)"), 1)
+	if err := os.WriteFile(mainPath, nativeMain, 0644); err != nil {
 		return Result{}, err
 	}
 	if request.TinyGo {
-		args := []string{"build", "-scheduler=tasks", "-opt=z", "-gc=conservative"}
+		args := []string{"build", "-scheduler=tasks", "-opt=z", "-gc=conservative", "-tags=wago_standalone"}
 		if !request.KeepSymbols {
 			args = append(args, "-no-debug")
 		}
@@ -191,7 +214,7 @@ func Build(request Request) (Result, error) {
 		}
 		return Result{Output: output, Target: request.Target, Plugins: len(inputs.Build.Selections)}, nil
 	}
-	args := []string{"build", "-buildvcs=false", "-trimpath"}
+	args := []string{"build", "-buildvcs=false", "-trimpath", "-tags=wago_standalone"}
 	if !request.KeepSymbols {
 		args = append(args, "-ldflags=-s -w")
 	}

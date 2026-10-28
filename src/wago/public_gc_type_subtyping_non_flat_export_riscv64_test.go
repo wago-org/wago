@@ -41,7 +41,7 @@ func rv64PublicGCTypeSubtypingNonFlatExportCompile(t *testing.T, artifact bool) 
 }
 
 func TestRV64PublicGCTypeSubtypingNonFlatExportExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCTypeSubtypingNonFlatExportCompile(t, artifact)
 			view := compiled.executionView()

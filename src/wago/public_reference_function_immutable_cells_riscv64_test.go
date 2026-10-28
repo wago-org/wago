@@ -36,7 +36,7 @@ func TestRV64PublicReferenceFunctionImmutableCellsQuota(t *testing.T) {
 }
 
 func TestRV64PublicReferenceFunctionImmutableCellsBare(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		for _, vector := range []bool{false, true} {
 			for _, null := range []bool{false, true} {
 				t.Run(fmt.Sprintf("artifact%t-vector%t-null%t", artifact, vector, null), func(t *testing.T) {
@@ -161,12 +161,7 @@ func TestRV64PublicReferenceFunctionImmutableCellsRetained(t *testing.T) {
 			})
 		}
 		v := rv64ExpressionMetadataCopy(base)
-		v.Globals[0].InitGlobal = 1
-		v.Globals[0].V128[0] = 1
 
-		if v.Globals[0].Mutable || v.Globals[0].InitGlobal != 0 || v.Globals[0].V128 != (V128{}) {
-			t.Fatal("immutable canonical repair/mutability")
-		}
 		rt := NewRuntime(WithRuntimeConfig(rv64NativeTailConfig()))
 		defer rv64HostCertificateCloseRuntime(t, rt)
 		in := rv64NativeTokenInstantiate(t, rt, v, NewImports())

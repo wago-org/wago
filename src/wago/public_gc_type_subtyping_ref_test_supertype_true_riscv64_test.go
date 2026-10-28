@@ -38,7 +38,7 @@ func rv64PublicGCTypeSubtypingRefTestSupertypeTrueCompile(t *testing.T, artifact
 }
 
 func TestRV64PublicGCTypeSubtypingRefTestSupertypeTrueExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCTypeSubtypingRefTestSupertypeTrueCompile(t, artifact)
 			view := compiled.executionView()

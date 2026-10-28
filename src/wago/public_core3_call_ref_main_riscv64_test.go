@@ -75,7 +75,7 @@ func mapsEqual(a, b map[string]int) bool {
 }
 
 func TestRV64Core3CallRefMainExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(fmt.Sprintf("artifact%t", artifact), func(t *testing.T) {
 			if os.Getenv("WAGO_RV64_CORE3_CALL_REF_ARTIFACT_MODE") == "load" && !artifact {
 				t.Skip("compiler-free artifact case only")

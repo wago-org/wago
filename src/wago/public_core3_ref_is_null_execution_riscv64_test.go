@@ -8,7 +8,7 @@ import (
 )
 
 func TestRV64Core3RefIsNullExecution(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64Core3RefIsNullExecutionCompile(t, artifact)
 			t.Cleanup(func() { _ = compiled.Close() })

@@ -11,8 +11,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Remove the `.wago` native-code artifact format, compiled-module serialization
   and loading APIs, `wago build`, the automatic compiled disk cache, and the
   `wago_precompiled` build profile. Use the original `.wasm` source instead;
-  existing artifacts cannot be migrated. `wago compile` now embeds Wasm source
-  and compiles it at startup, retaining the compiler in standalone executables.
+  existing artifacts cannot be migrated. `wago compile` still builds standalone
+  executables containing machine code and the runtime, without a Wasm compiler.
 
 ### Fixed
 

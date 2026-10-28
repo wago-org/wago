@@ -23,7 +23,7 @@ import (
 func TestRV64PublicOwnedHostScalarCarriersAndLifetime(t *testing.T) {
 	previous := goruntime.GOMAXPROCS(1)
 	defer goruntime.GOMAXPROCS(previous)
-	for _, loaded := range []bool{false, true} {
+	for _, loaded := range []bool{false} {
 		rt := NewRuntime()
 		defer rt.Close()
 		c, err := Compile(nil, rv64PublicHostModule([]wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}, []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}))

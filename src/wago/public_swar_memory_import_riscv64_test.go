@@ -34,19 +34,7 @@ func TestRV64PublicSWARImportedMemoryQuotaContextAndRetiredOwner(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		if i == 1 {
 
-			if c != nil {
-				defer c.Close()
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := c.Close(); err != nil {
-				t.Fatal(err)
-			}
-			c = c
-		}
 		consumers[i], err = Instantiate(c, NewImports().Memory("env", "memory", memory))
 		if err != nil {
 			t.Fatal(err)

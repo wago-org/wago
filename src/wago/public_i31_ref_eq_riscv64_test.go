@@ -36,7 +36,7 @@ func TestRV64PublicI31RefEqPilotExecutionAndArtifact(t *testing.T) {
 	if len(data) != 128 || sha256.Sum256(data) != wantSource {
 		t.Fatal("i31 ref.eq pilot source identity changed")
 	}
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			c := rv64I31RefEqPilotCompile(t, artifact)
 			view := c.executionView()
@@ -93,7 +93,7 @@ func rv64OfficialGCRefEqCompile(t *testing.T, artifact bool) *Compiled {
 }
 
 func TestRV64PublicOfficialGCRefEqExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64OfficialGCRefEqCompile(t, artifact)
 			view := compiled.executionView()

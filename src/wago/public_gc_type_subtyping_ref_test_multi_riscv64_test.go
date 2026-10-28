@@ -39,7 +39,7 @@ func rv64PublicGCTypeSubtypingRefTestMultiCompile(t *testing.T, artifact bool) *
 }
 
 func TestRV64PublicGCTypeSubtypingRefTestMultiExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCTypeSubtypingRefTestMultiCompile(t, artifact)
 			view := compiled.executionView()

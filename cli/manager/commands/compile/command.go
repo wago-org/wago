@@ -51,7 +51,7 @@ func Command(environment Environment) *command.Cmd {
 		Normalize: func(args []string) ([]string, error) {
 			return internalparallel.NormalizeArgs(args, parserFlags, false)
 		},
-		Long: "The executable embeds Wasm source, the runtime, and selected plugin configuration. It compiles at startup and by default\n" +
+		Long: "The executable contains ahead-of-time machine code, the runtime, and selected plugins. It omits the compiler and by default\n" +
 			"calls _start, then main, then the sole exported function; use --invoke to select\n" +
 			"another export. --tinygo uses TinyGo for the final runtime link. Core features,\n" +
 			"parallelism, and optimization knobs are fixed at build time. --target must match the current platform.",

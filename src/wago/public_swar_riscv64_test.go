@@ -513,14 +513,4 @@ func TestRV64PublicSWARCPUAdmissionBeforePublication(t *testing.T) {
 	if compiled, err := Compile(nil, source); compiled != nil || err == nil {
 		t.Fatal("unavailable baseline admitted source")
 	}
-
-	if c != nil {
-		defer c.Close()
-		if c.codeCache != nil && c.codeCache.base != 0 {
-			t.Fatal("CPU-rejected artifact mapped")
-		}
-	}
-	if err == nil {
-		t.Fatal("CPU-rejected artifact admitted")
-	}
 }

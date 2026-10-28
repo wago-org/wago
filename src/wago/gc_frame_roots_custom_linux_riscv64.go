@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo
+//go:build linux && riscv64 && !tinygo && !wago_standalone
 
 package wago
 

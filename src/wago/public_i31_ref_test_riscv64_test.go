@@ -29,7 +29,7 @@ func TestRV64PublicI31OfficialRefTestExecutionAndArtifact(t *testing.T) {
 	if len(data) != 255 || sha256.Sum256(data) != wantSource {
 		t.Fatal("official i31 ref.test source identity changed")
 	}
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			c := rv64I31OfficialRefTestCompile(t, artifact)
 			view := c.executionView()

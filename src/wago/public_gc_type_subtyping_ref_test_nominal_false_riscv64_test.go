@@ -38,7 +38,7 @@ func rv64PublicGCTypeSubtypingRefTestNominalFalseCompile(t *testing.T, artifact 
 }
 
 func TestRV64PublicGCTypeSubtypingRefTestNominalFalseExecutionAndArtifact(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run(map[bool]string{false: "source", true: "artifact"}[artifact], func(t *testing.T) {
 			compiled := rv64PublicGCTypeSubtypingRefTestNominalFalseCompile(t, artifact)
 			view := compiled.executionView()

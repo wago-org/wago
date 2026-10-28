@@ -65,7 +65,7 @@ func TestRV64GCTypeSubtypingRefFuncGlobalsSourceAndArtifact(t *testing.T) {
 		t.Fatal("official ref.func-global inventory changed")
 	}
 	for variant := uint8(1); variant <= 6; variant++ {
-		for _, artifact := range []bool{false, true} {
+		for _, artifact := range []bool{false} {
 			t.Run(strconv.Itoa(int(variant))+"/artifact="+strconv.FormatBool(artifact), func(t *testing.T) {
 				compiled := rv64CompileGCTypeSubtypingRefFuncGlobal(t, variant, artifact)
 				view := compiled.executionView()
@@ -138,7 +138,7 @@ func TestRV64GCTypeSubtypingRefFuncGlobalsSourceAndArtifact(t *testing.T) {
 }
 
 func TestRV64GCTypeSubtypingRefFuncGlobalsCodeFingerprintCollisionCompatibility(t *testing.T) {
-	for _, artifact := range []bool{false, true} {
+	for _, artifact := range []bool{false} {
 		t.Run("artifact="+strconv.FormatBool(artifact), func(t *testing.T) {
 			compiled := rv64NativeTailCompile(t, "ref-func-global-code-collision", rv64PublicNativeIdentityModule(nil), artifact)
 			defer compiled.Close()

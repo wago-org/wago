@@ -1,4 +1,4 @@
-// Package standalone runs a Wasm command embedded in a native executable.
+// Package standalone runs an ahead-of-time compiled command in a native executable.
 package standalone
 
 import (
@@ -23,6 +23,28 @@ type Options struct {
 	DeferBoundsChecks bool
 	FunctionWorkers   int
 	OptimizationKnobs map[string]bool
+}
+
+// RunCompiled executes an ahead-of-time compiled module linked into the executable.
+func RunCompiled(compiled *wago.Compiled, plugins wago.PluginSet, options Options, args []string) int {
+	if err := executeCompiled(compiled, plugins, options, args); err != nil {
+		return reportError(err, args)
+	}
+	return 0
+}
+
+func executeCompiled(compiled *wago.Compiled, plugins wago.PluginSet, options Options, args []string) (err error) {
+	runtime, err := loadRuntime(plugins, options, args)
+	if err != nil {
+		return err
+	}
+	defer finishRuntime(runtime, &err)
+	module, err := runtime.AdoptModule(compiled)
+	if err != nil {
+		_ = compiled.Close()
+		return err
+	}
+	return executeModule(runtime, module, options, args)
 }
 
 func reportError(err error, args []string) int {

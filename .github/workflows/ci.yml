@@ -1195,9 +1195,9 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y lld
 
-      - name: Test source-based standalone under TinyGo
+      - name: Test native standalone under TinyGo
         if: runner.os == 'Linux'
-        run: go test -count=1 -run '^(TestBuildTinyGoEmbedsWasm|TestBuildTinyGoStripsByDefault|TestTinyGoSupportsCooperativeInterruption)$' ./cli/manager/internal/standalone
+        run: go test -count=1 -run '^(TestBuildTinyGoLinksMachineCodeWithoutCompiler|TestBuildTinyGoStripsByDefault|TestTinyGoSupportsCooperativeInterruption)$' ./cli/manager/internal/standalone
 
       - name: Build CLI with TinyGo
         if: matrix.cli
