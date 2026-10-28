@@ -779,12 +779,11 @@ or unknown edge invalidates it before lowering. Native allocation reserves ident
 only; collection cancels unused reservations before tracing. Live-struct batches
 start at the configured maximum, shrink after low-use cancellation, and double
 after 32 consecutive full batches. Feedback belongs to each collector and excludes array chunks and
-one-handle dead-struct proofs. See the
-[batch cancellation measurements](docs/research/native-batch-cancellation.md).
+one-handle dead-struct proofs.
 
 AMD64 defined GC casts and tests accept equal canonical type IDs after checked
 object resolution. Unequal ordinary types use subtype intervals; unequal exact
-casts fail. See [identity measurements](docs/research/canonical-identity-shortcut.md).
+casts fail.
 
 On AMD64, small arrays can also consume a chunk-free struct reservation. They
 advance the nursery bump after initializing the payload and publish the handle
@@ -792,17 +791,14 @@ last. These batches account for both constructor kinds from their consumed
 cursor. Uniform arrays with run-time lengths use this path only when their
 checked object size is at most 256 bytes; larger uniform arrays use the helper.
 Private array chunks and exact-size large reservations retain their own
-cursor and immediate accounting. See the
-[native array path measurements](docs/research/native-array-paths.md).
+cursor and immediate accounting.
 On AMD64, an adjacent final cast and struct field read share one checked native
 object resolution for collector references, integers, packed integers, floats,
 and vectors. The raw address is consumed by the field load before any safepoint.
-See [cast/field-read measurements](docs/research/cast-field-read-fusion.md).
 
 AMD64 final `v128` arrays use the scalar checked resolver and bounds path with
 16-byte SSE2 or AVX loads and stores. This access layout is separate from scalar
-fill and copy admission. See the
-[vector array measurements](docs/research/native-vector-array-access.md).
+fill and copy admission.
 
 Large-array reservations retain their nursery-list position in one private Go
 `int` at the end of `Collector`. Cancellation checks the saved index and handle
