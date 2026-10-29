@@ -20,6 +20,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Keep the required atomic length read when an oversized memory64 shared grow
   request fails in the Go helper.
 
+- Preserve denied plugin authorities when their requests are unchanged, so
+  removing another plugin succeeds without granting previously denied access.
+
 - Use an allocated scratch register for AMD64 prefix spill moves. Checked
   builds no longer reject a temporary borrow of a live load-address register.
 
