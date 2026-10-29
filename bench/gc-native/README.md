@@ -23,5 +23,3 @@ The comparison uses medians and a ratio target of 1. It prints both engine
 timings and fails visibly when Wago is slower. A failure is a performance gap,
 not a correctness failure. Do not replace it with a timeout or hide it in CI.
 These loops isolate two instructions; they do not establish compiler parity.
-
-See [measurements and full compiler results](https://github.com/wago-org/wago/blob/3e25dc9a318b46cbadb41b4086267a1fcc42951d/docs/research/native-vector-array-access.md).

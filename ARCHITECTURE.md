@@ -757,6 +757,11 @@ one-handle dead-struct proofs. See the
 AMD64 defined GC casts and tests accept equal canonical type IDs after checked
 object resolution. Unequal ordinary types use subtype intervals; unequal exact
 casts fail. See [identity measurements](https://github.com/wago-org/wago/blob/3e25dc9a318b46cbadb41b4086267a1fcc42951d/docs/research/canonical-identity-shortcut.md).
+one-handle dead-struct proofs.
+
+AMD64 defined GC casts and tests accept equal canonical type IDs after checked
+object resolution. Unequal ordinary types use subtype intervals; unequal exact
+casts fail.
 
 On AMD64, small arrays can also consume a chunk-free struct reservation. They
 advance the nursery bump after initializing the payload and publish the handle
@@ -775,6 +780,14 @@ AMD64 final `v128` arrays use the scalar checked resolver and bounds path with
 16-byte SSE2 or AVX loads and stores. This access layout is separate from scalar
 fill and copy admission. See the
 [vector array measurements](https://github.com/wago-org/wago/blob/3e25dc9a318b46cbadb41b4086267a1fcc42951d/docs/research/native-vector-array-access.md).
+cursor and immediate accounting.
+On AMD64, an adjacent final cast and struct field read share one checked native
+object resolution for collector references, integers, packed integers, floats,
+and vectors. The raw address is consumed by the field load before any safepoint.
+
+AMD64 final `v128` arrays use the scalar checked resolver and bounds path with
+16-byte SSE2 or AVX loads and stores. This access layout is separate from scalar
+fill and copy admission.
 
 Large-array reservations retain their nursery-list position in one private Go
 `int` at the end of `Collector`. Cancellation checks the saved index and handle
