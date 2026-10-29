@@ -4,7 +4,6 @@ package wago
 
 import (
 	"fmt"
-	"runtime"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -111,10 +110,7 @@ func TestIndexedAtomicWaitLargeImportedHelperEntries(t *testing.T) {
 						if err != nil || len(got) != 1 || got[0] != 2-value {
 							t.Fatalf("value%d:%x,%v", value, got, err)
 						}
-						want := 0
-						if value == 0 || runtime.GOARCH == "arm64" && index > 1365 {
-							want = 1
-						}
+						want := 1 - int(value)
 						if entries := count() - before; entries != want {
 							t.Fatalf("large-index helper entries%d,want%d", entries, want)
 						}
