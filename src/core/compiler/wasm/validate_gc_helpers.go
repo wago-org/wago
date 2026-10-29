@@ -439,16 +439,14 @@ func (v *moduleValidator) resolvedCompType(idx TypeIdx) (*CompType, bool) {
 	return entry.ct, entry.ok
 }
 
+// structFields borrows the read-only fields with their recursion-group context.
+// Callers resolve only the fields they consume, avoiding a full copy per access.
 func (v *moduleValidator) structFields(idx TypeIdx) ([]FieldType, *SubType, int, bool) {
 	st, recGroup, ok := v.subtypeByTypeIdxWithRecGroup(idx)
 	if !ok || st.Comp.Kind != CompStruct {
 		return nil, nil, 0, false
 	}
-	fields := make([]FieldType, len(st.Comp.Fields))
-	for i, f := range st.Comp.Fields {
-		fields[i] = v.resolveFieldTypeRecIndexes(f, recGroup)
-	}
-	return fields, st, recGroup, true
+	return st.Comp.Fields, st, recGroup, true
 }
 
 func (v *moduleValidator) arrayField(idx TypeIdx) (FieldType, *SubType, bool) {

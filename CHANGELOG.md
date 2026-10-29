@@ -50,6 +50,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Avoid copying entire GC struct field lists for each access or construction
+  during validation, preventing allocation amplification from repeated accesses.
+
 - Accept equal canonical GC type IDs before loading subtype intervals in AMD64
   native casts, tests, and branch casts.
 
