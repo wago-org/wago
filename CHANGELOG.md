@@ -37,6 +37,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   for the outer callback plus every permitted reentry.
 - Detect register clobbers during RV64 address, store, compare and paired-FP
   input preparation in checked builds.
+
+- Match immutable reference-global imports by their exact Wasm subtype, allowing
+  `i31ref` globals to satisfy `eqref` and `anyref` imports while preserving
+  mutable-global invariance and nullability checks.
+
 - Preserve deferred load addresses derived from pinned mutable globals on
   AMD64, including Go-style exported function stack wrappers.
 

@@ -1695,7 +1695,9 @@ func (c *Compiled) validateImportedGlobal(key string, g *Global, imp GlobalImpor
 	} else if len(g.cell) < globalCellSize(g.Type) {
 		return fmt.Errorf("imported global %q storage is closed", key)
 	}
-	if actualType != imp.Type {
+	// Reference ABI categories can differ for valid subtypes (i31ref to
+	// anyref, for example). Compare their exact Wasm types below.
+	if actualType != imp.Type && (!isReferenceValType(actualType) || !isReferenceValType(imp.Type)) {
 		return fmt.Errorf("imported global %q has type %s, want %s", key, actualType, imp.Type)
 	}
 	if actualMutable != imp.Mutable {
