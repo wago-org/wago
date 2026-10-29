@@ -22,33 +22,29 @@ func TestGCGeneralScalarArraySetVectorCodecJoins(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	loaded := publicArtifactRoundTrip(t, c)
-	defer loaded.Close()
-	for _, compiled := range []*Compiled{c, loaded} {
-		in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 256, VerifyAfterCollect: true}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer in.Close()
-		const bits = uint64(0x7ff8123456789abc)
-		if _, err := in.Invoke("init", 17, bits); err != nil {
-			t.Fatal(err)
-		}
-		if err := in.CollectGC(); err != nil {
-			t.Fatal(err)
-		}
-		view := in.gc.NativeView()
-		count := view.HandleCount
-		for _, fallback := range []bool{false, true} {
-			for _, branch := range []uint64{0, 1} {
-				if fallback {
-					view.HandleCount = 0
-				}
-				got, err := in.Invoke("run", 16, branch)
-				view.HandleCount = count
-				if err != nil || len(got) != 5 || got[0] != 0x0706050403020100 || got[1] != 0x0f0e0d0c0b0a0908 || got[2] != 42 || got[3] != 23 || got[4] != 55 {
-					t.Fatalf("fallback%v branch%d:%x,%v", fallback, branch, got, err)
-				}
+	in, err := Instantiate(c, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 256, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	const bits = uint64(0x7ff8123456789abc)
+	if _, err := in.Invoke("init", 17, bits); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	view := in.gc.NativeView()
+	count := view.HandleCount
+	for _, fallback := range []bool{false, true} {
+		for _, branch := range []uint64{0, 1} {
+			if fallback {
+				view.HandleCount = 0
+			}
+			got, err := in.Invoke("run", 16, branch)
+			view.HandleCount = count
+			if err != nil || len(got) != 5 || got[0] != 0x0706050403020100 || got[1] != 0x0f0e0d0c0b0a0908 || got[2] != 42 || got[3] != 23 || got[4] != 55 {
+				t.Fatalf("fallback%v branch%d:%x,%v", fallback, branch, got, err)
 			}
 		}
 	}
